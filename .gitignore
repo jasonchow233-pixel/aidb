@@ -37,3 +37,4 @@ tmp/
 # ── 测试产物 ──
 engine/tests/node_modules/
 engine/tests/package-lock.json
+engine/tests/package-lock.json
