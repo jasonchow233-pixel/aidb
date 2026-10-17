@@ -230,7 +230,8 @@ select.input { cursor: pointer; }
 .toolbar__filter button { color: inherit; opacity: .7; }
 .toolbar__filter button:hover { opacity: 1; }
 
-.grid-wrap { flex: 1; overflow: auto; min-height: 0; }
+/* ⭐ position: relative —— 列头筛选面板要挂在表格容器内定位 */
+.grid-wrap { flex: 1; overflow: auto; min-height: 0; position: relative; }
 table.grid { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
 table.grid th, table.grid td {
   border-right: var(--bw) solid var(--border);
@@ -244,7 +245,12 @@ table.grid thead th {
   background: var(--bg-elevated);
   border-bottom: var(--bw) solid var(--border-strong);
 }
-table.grid thead th .th-main { display: flex; align-items: center; gap: 4px; }
+table.grid thead th .th-main {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+} display: flex; align-items: center; gap: 4px; }
 table.grid thead th .th-type {
   font-size: var(--fs-xs); font-weight: var(--fw-normal);
   color: var(--text-tertiary); font-family: var(--font-mono);

@@ -5,6 +5,7 @@ import {
   type FilterOp, type TableFilter,
 } from "@/lib/store";
 import { api, capabilities, compact, dangerClass, dangerIcon, type ColumnDef } from "@/lib/api";
+import ColumnFilterPanel from "@/components/ColumnFilterPanel.vue";
 
 const emit = defineEmits<{ run: [sql: string] }>();
 
@@ -18,6 +19,22 @@ const showFilter = ref(false);
 const filterCol = ref("");
 const filterOp = ref<FilterOp>("=");
 const filterVal = ref("");
+
+// ── 列头筛选面板（A2）──
+/** 当前打开筛选面板的列（null = 未打开） */
+const filterPanelCol = ref<string | null>(null);
+const filterPanelMeta = computed(() =>
+  filterPanelCol.value
+    ? state.columns.find((c) => c.name === filterPanelCol.value)
+    : undefined,
+);
+function toggleFilterPanel(col: string) {
+  filterPanelCol.value = filterPanelCol.value === col ? null : col;
+}
+/** 该列是否已有筛选条件 */
+function hasColFilter(col: string): boolean {
+  return state.filters.some((f) => f.col === col);
+}
 
 // ── 分页 ──
 const currentPage = computed(() => Math.floor(state.offset / state.rowLimit) + 1);
@@ -488,17 +505,26 @@ function clearFilter() {
 
     <!-- ══ 表格 ══ -->
     <div class="grid-wrap" v-if="state.columns.length">
+      <!-- ⭐ 列头筛选面板：挂在表格容器内（position: relative） -->
+      <ColumnFilterPanel
+        v-if="filterPanelCol && filterPanelMeta"
+        :column="filterPanelCol"
+        :category="filterPanelMeta.category"
+        :enum-values="filterPanelMeta.enumValues"
+        @close="filterPanelCol = null"
+        @applied="filterPanelCol = null"
+      />
       <table class="grid">
         <thead>
           <tr :style="{ height: 'var(--h-toolbar)' }">
             <th class="rownum" style="width: 62px; min-width:62px; max-width:62px">#</th>
-            <th v-for="c in state.columns" :key="c.id"
+            <th v-for="(c, ci) in state.columns" :key="c.id"
                 :class="{ 'is-pk': c.isPk, 'is-fk': c.isFk, 'is-sorted': state.sortCol === c.name }"
-                :title="c.comment ? `${c.comment}\n点击按此列排序（下推到数据库）` : '点击按此列排序'"
+                :title="c.comment ? `${c.comment}\n点击表头排序；点 ▼ 筛选` : '点击表头排序；点 ▼ 筛选'"
                 :style="{ minWidth: '140px' }"
                 @click="toggleSort(c.name)">
               <div class="th-main">
-                <span>{{ c.name }}</span>
+                <span class="truncate">{{ c.name }}</span>
                 <span v-if="c.isPk" style="color: var(--warning)" title="主键">🔑</span>
                 <span v-if="c.isFk" style="color: var(--accent)" title="外键">🔗</span>
                 <span v-if="!c.nullable" class="muted" title="NOT NULL">•</span>
@@ -506,6 +532,11 @@ function clearFilter() {
                 <span v-if="state.sortCol === c.name" class="muted">
                   {{ state.sortDir === "asc" ? "↑" : "↓" }}
                 </span>
+                <!-- ⭐ 列头筛选入口：Navicat 的核心操作。
+                     用 ci（真实列下标）而不是 DOM 顺序，避免与行号列错位。 -->
+                <button class="th-filter" :class="{ 'is-on': hasColFilter(c.name) }"
+                        :title="hasColFilter(c.name) ? '已设置筛选条件' : `按 ${c.name} 筛选（候选值 + 计数）`"
+                        @click.stop="toggleFilterPanel(c.name)">▼</button>
               </div>
               <div class="th-type">{{ c.ty }}{{ c.defaultExpr ? ` = ${c.defaultExpr}` : "" }}</div>
               <div v-if="c.comment" class="th-comment">{{ c.comment }}</div>
@@ -617,6 +648,23 @@ function clearFilter() {
   background: var(--warning-bg);
   box-shadow: inset 2px 0 0 var(--warning);
 }
+
+/* ── 列头筛选入口 ── */
+.th-filter {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 8px;
+  line-height: 1;
+  padding: 2px 3px;
+  border-radius: var(--r-sm);
+  flex: 0 0 auto;
+}
+.th-filter:hover { background: var(--bg-hover); color: var(--text-primary); }
+/* ⭐ 有筛选条件的列高亮 —— 让人一眼看到"哪些列被筛过" */
+.th-filter.is-on { color: var(--accent); background: var(--accent-bg); }
 
 /* ── 分页控件 ── */
 .pager { display: flex; align-items: center; gap: var(--sp-1); }

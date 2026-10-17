@@ -49,7 +49,7 @@ export interface TableFilter {
 
 export type FilterOp =
   | "=" | "!=" | ">" | ">=" | "<" | "<="
-  | "LIKE" | "IS NULL" | "IS NOT NULL";
+  | "LIKE" | "IN" | "IS NULL" | "IS NOT NULL";
 
 export const FILTER_OPS: { op: FilterOp; label: string }[] = [
   { op: "=", label: "等于" },
@@ -59,6 +59,7 @@ export const FILTER_OPS: { op: FilterOp; label: string }[] = [
   { op: "<", label: "小于" },
   { op: "<=", label: "小于等于" },
   { op: "LIKE", label: "包含" },
+  { op: "IN", label: "属于" },
   { op: "IS NULL", label: "为空" },
   { op: "IS NOT NULL", label: "不为空" },
 ];
@@ -111,6 +112,13 @@ function filterToSql(f: TableFilter): string | null {
   const col = quoteIdent(f.col);
   if (f.op === "IS NULL") return `${col} IS NULL`;
   if (f.op === "IS NOT NULL") return `${col} IS NOT NULL`;
+  if (f.op === "IN") {
+    // ⭐ IN 的值必须是数组。空数组会生成 `IN ()` → 语法错误，
+    //    而「一个都没选」在 UI 上表示"不筛选"，所以这里返回 null 让它被跳过。
+    const arr = Array.isArray(f.value) ? f.value : [f.value];
+    if (!arr.length) return null;
+    return `${col} IN (${arr.map(sqlLiteral).join(", ")})`;
+  }
   if (f.op === "LIKE") {
     // ⭐ 转义 LIKE 通配符，否则用户搜 "100%" 会变成通配符，
     //    匹配到一大堆无关数据却不报错
@@ -706,6 +714,17 @@ export const actions = {
       if (row) row[e.col] = e.oldWasNull ? null : e.oldValue;
     }
     state.edits.byTable.delete(table);
+  },
+
+  /** ⭐ 设一个筛选条件（替换该列已有的同列条件） */
+  setFilter(col: string, op: FilterOp, value: unknown) {
+    const i = state.filters.findIndex((f) => f.col === col);
+    if (i >= 0) state.filters.splice(i, 1);
+    state.filters.push({ col, op, value });
+    state.offset = 0;
+    state.totalStale = true;
+    const t = state.tableDef?.name;
+    if (t) void actions.loadTable(t);
   },
 
   /** ⭐ 加筛选条件：总数随之失效 */
