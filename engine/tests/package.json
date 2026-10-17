@@ -1,0 +1,16 @@
+{
+  "name": "agenticdb-tests",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AgenticDB 测试套件：API 契约 + 浏览器冒烟",
+  "scripts": {
+    "test:api": "python3 e2e_contract.py",
+    "test:api:autostart": "python3 e2e_contract.py --autostart",
+    "test:browser": "node smoke_browser.mjs",
+    "test": "npm run test:api:autostart && npm run test:browser"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

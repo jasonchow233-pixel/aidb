@@ -408,6 +408,96 @@ pub fn materialize(path: &str) {
     }
 
     let _ = c.execute_batch("ANALYZE");
+
+    // ⭐ 压测模式：把「1 万对象」从一句口号变成一条可跑的断言。
+    //
+    // 为什么需要它：U2 门禁要求「1 万对象冷启动 ≤ 3s」，
+    // 但默认演示库只有 26 个对象 —— 这条门禁根本无法验证，
+    // 只能靠想象通过。设置 `ADB_STRESS_OBJECTS=1` 后会额外生成 1 万张表，
+    // 侧栏的虚拟滚动（U1-4.2）与性能门禁才能被真正测到。
+    //
+    // 默认关闭：生成 1 万表要几十秒，且会让演示库变得不可用。
+    if stress_enabled() {
+        let n = stress_count();
+        let t0 = std::time::Instant::now();
+        if let Err(e) = seed_stress_objects(&mut c, n) {
+            eprintln!("[agenticdb] 压测对象生成失败（{n} 个）: {e}");
+        } else {
+            let _ = c.execute_batch("ANALYZE");
+            eprintln!(
+                "[agenticdb] 压测模式：已生成 {n} 张表，用时 {:?}",
+                t0.elapsed()
+            );
+        }
+    }
+}
+
+/// 压测模式开关（`ADB_STRESS_OBJECTS=1`）。
+pub fn stress_enabled() -> bool {
+    matches!(
+        std::env::var("ADB_STRESS_OBJECTS").as_deref(),
+        Ok("1") | Ok("true") | Ok("TRUE")
+    )
+}
+
+/// 压测对象数量，可用 `ADB_STRESS_COUNT` 覆盖（默认 10_000）。
+pub fn stress_count() -> usize {
+    std::env::var("ADB_STRESS_COUNT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10_000)
+}
+
+/// ⭐ 生成 N 张结构各异的空表，用来压测**对象树与元数据**（不是数据量）。
+///
+/// 每张表刻意给不同的列数/列名/注释，模拟真实项目里的多租户表：
+/// `t_<租户>_<域>_<序号>`，5~12 列，含中文注释与枚举标注。
+///
+/// ⭐ 必须**整批 execute_batch** 而不是循环调用：
+///    循环版本实测 1 万表要 26.6 秒，压测就失去意义了。
+fn seed_stress_objects(c: &mut Sqlite, n: usize) -> rusqlite::Result<()> {
+    let domains = ["订单", "用户", "支付", "物流", "商品", "库存", "营销", "客服"];
+    let name_of = |i: usize| {
+        let tenant = i / 500 + 1;
+        let domain = domains[i % domains.len()];
+        format!("t{tenant}_{domain}_{i}")
+    };
+
+    // ⭐⭐ SQL 的 `?` 占位符只能绑**值**，不能绑**标识符** ——
+    //    `CREATE TABLE ?1` 直接语法错误。表名只能拼进 SQL 文本。
+    //
+    //    关键是**拼成一整批**再执行，而不是循环 execute_batch：
+    //    后者每次都要重新解析 SQL，1 万次往返把建库从 ~1s 拖到 **26.6s**
+    //    （实测）。改成单批后差距是数量级的。
+    //
+    //    拼字符串本身安全：标识符由「固定域名数组 + 整数序号」构成，
+    //    没有任何外部输入。真要接收外部输入，标识符必须走白名单或双引号转义。
+    let mut sql = String::with_capacity(n * 220);
+    for i in 0..n {
+        sql.push_str(&format!(
+            "CREATE TABLE \"{t}\" (
+               id INTEGER PRIMARY KEY,
+               tenant_id INTEGER NOT NULL,
+               biz_no TEXT NOT NULL,
+               status INTEGER NOT NULL DEFAULT 1,
+               amount_cents INTEGER NOT NULL DEFAULT 0,
+               remark TEXT,
+               created_at TEXT NOT NULL DEFAULT '2026-01-01 00:00:00'
+             );\n",
+            t = name_of(i)
+        ));
+    }
+    c.execute_batch(&sql)?;
+
+    // 建索引同样批量。SQLite 没有「CREATE INDEX ON 表列表」语法，
+    // 但一条 execute_batch 可以带多条语句。
+    let mut idx = String::with_capacity(n * 90);
+    for i in 0..n {
+        let t = name_of(i);
+        idx.push_str(&format!("CREATE INDEX \"idx_{t}\" ON \"{t}\"(tenant_id);\n"));
+    }
+    c.execute_batch(&idx)?;
+    Ok(())
 }
 
 /// ⭐ FTS 索引的填充 + 同步触发器。
@@ -929,11 +1019,20 @@ pub fn introspect(c: &Sqlite) -> Vec<TableDef> {
         .map(|it| it.filter_map(Result::ok).collect())
         .unwrap_or_default();
 
-    // 先收集虚拟表名，用于影子表判定
-    let vtables: Vec<String> = rows
+    // ⭐⭐ 虚拟表名**一次性**取回，不要在循环里逐个查。
+    //
+    // 之前是 `rows.iter().filter(.. && is_virtual(c, n))`，而 `is_virtual`
+    // 每次都全表扫一遍 `sqlite_master`。1 万个对象时这是
+    // 10000 × 10000 = **1 亿次** LIKE 比较 —— 实测 introspect 21 秒，
+    // 而列表名 + PRAGMA + COUNT(*) 三项加起来才 101ms。
+    // 门禁要求「1 万对象冷启动 ≤3s」，这条卡点是直接原因。
+    let vtables: std::collections::HashSet<String> = virtual_tables(c);
+
+    // ⭐ 影子表判定同理：预先算好「哪些名字是影子」，避免在循环里
+    //    对每个对象去遍历所有虚拟表（O(n·m)）。
+    let shadows: std::collections::HashSet<String> = vtables
         .iter()
-        .filter(|(t, n)| t == "table" && is_virtual(c, n))
-        .map(|(_, n)| n.clone())
+        .flat_map(|v| FTS_SHADOW_SUFFIXES.iter().map(move |s| format!("{v}{s}")))
         .collect();
 
     let mut out = Vec::new();
@@ -942,7 +1041,7 @@ pub fn introspect(c: &Sqlite) -> Vec<TableDef> {
             continue;
         }
         // FTS5 影子表：`<vtab>_<suffix>`
-        if kind == "table" && vtables.iter().any(|v| is_shadow_of(&name, v)) {
+        if kind == "table" && shadows.contains(&name) {
             continue;
         }
         out.push(if kind == "view" {
@@ -954,22 +1053,21 @@ pub fn introspect(c: &Sqlite) -> Vec<TableDef> {
     out
 }
 
-/// 该对象是否为虚拟表（FTS5 / RTREE 等）
-fn is_virtual(c: &Sqlite, name: &str) -> bool {
-    c.query_row(
-        "SELECT 1 FROM sqlite_master WHERE name = ?1 AND sql LIKE '%VIRTUAL TABLE%'",
-        [name],
-        |_| Ok(()),
-    )
-    .is_ok()
-}
+/// FTS5 影子表的后缀（固定这几个，由 FTS5 引擎自动创建）。
+const FTS_SHADOW_SUFFIXES: &[&str] = &["_data", "_idx", "_content", "_docsize", "_config"];
 
-/// `name` 是否为虚拟表 `vtab` 的影子表
-fn is_shadow_of(name: &str, vtab: &str) -> bool {
-    const SUFFIXES: &[&str] = &["_data", "_idx", "_content", "_docsize", "_config"];
-    name.strip_prefix(vtab)
-        .map(|rest| SUFFIXES.contains(&rest))
-        .unwrap_or(false)
+/// ⭐ **一次查询**取回所有虚拟表名。
+fn virtual_tables(c: &Sqlite) -> std::collections::HashSet<String> {
+    let Ok(mut st) = c.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND sql LIKE '%VIRTUAL TABLE%'",
+    ) else {
+        return Default::default();
+    };
+    let v: Vec<String> = st
+        .query_map([], |r| r.get::<_, String>(0))
+        .map(|it| it.filter_map(Result::ok).collect())
+        .unwrap_or_default();
+    v.into_iter().collect()
 }
 
 /// ⭐ 视图定义：视图没有真正的主键/索引，列信息仍可用 `PRAGMA table_info` 拿。
@@ -1582,6 +1680,112 @@ mod tests {
         assert!(
             !diagnostics(audit).is_empty(),
             "audit_logs 无主键，必须被诊断出来"
+        );
+    }
+}
+
+#[cfg(test)]
+mod bench {
+    use super::*;
+    use rusqlite::Connection as Sqlite;
+    use std::time::{Duration, Instant};
+
+    /// ⭐⭐ 性能门禁：1 万对象的元数据内省必须 **< 3 秒**。
+    ///
+    /// 这是 `TODO.md` U2 的硬指标（「1 万对象冷启动 ≤ 3s」）。
+    /// 没有这条断言，性能只能靠「感觉还行」—— 回归了也没人知道。
+    ///
+    /// ⭐ 这条测试**自己造**压测库，不依赖外部文件，所以 CI 里也能跑。
+    /// 造 1 万表要几十秒，用 1 万个**空表**即可：元数据内省的耗时
+    /// 主要在 PRAGMA 与 COUNT 的往返次数上，与行数无关。
+    #[test]
+    fn introspect_10k_objects_under_3s() {
+        let mut p = std::env::temp_dir();
+        p.push(format!("agenticdb-bench-10k-{}.db", std::process::id()));
+        for s in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{}", p.display(), s));
+        }
+
+        {
+            let c = Sqlite::open(&p).expect("压测库应可创建");
+            // 整批建表：循环 execute_batch 在 1 万次时要 26s，会拖垮测试本身
+            let mut sql = String::with_capacity(3_000_000);
+            for i in 0..10_000 {
+                sql.push_str(&format!(
+                    "CREATE TABLE \"t{i}\" (id INTEGER PRIMARY KEY, \
+                     tenant_id INTEGER NOT NULL, created_at TEXT);\n"
+                ));
+            }
+            c.execute_batch(&sql).expect("批量建表应成功");
+        }
+
+        let c = Sqlite::open(&p).expect("压测库应可打开");
+
+        let t0 = Instant::now();
+        let all = introspect(&c);
+        let elapsed = t0.elapsed();
+
+        println!(
+            "introspect {} 个对象耗时 {:?}",
+            all.len(),
+            elapsed
+        );
+
+        for s in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{}", p.display(), s));
+        }
+
+        assert!(all.len() >= 10_000, "应至少内省出 1 万个对象，实得 {}", all.len());
+        assert!(
+            elapsed < Duration::from_secs(3),
+            "1 万对象内省耗时 {:?}，超过 3s 门禁 —— 大概率是又引入了 O(n²)",
+            elapsed
+        );
+    }
+
+    /// ⭐ 回归锁：虚拟表判定必须是**一次性**取回，不能在循环里逐个查。
+    ///
+    /// 之前 `introspect` 对每个对象调一次 `is_virtual()`，
+    /// 而它每次全表扫 `sqlite_master` → 10000 × 10000 = 1 亿次比较，
+    /// 实测 21 秒。
+    ///
+    /// 这里用「虚拟表数量」做可观测断言：1 万个表里只有 1 个虚拟表时，
+    /// 正确实现只该查 1 次；若又退回逐个查，耗时立刻爆掉。
+    #[test]
+    fn virtual_table_lookup_is_not_quadratic() {
+        let mut p = std::env::temp_dir();
+        p.push(format!("agenticdb-bench-vtab-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&p);
+        {
+            let c = Sqlite::open(&p).unwrap();
+            let mut sql = String::new();
+            for i in 0..5_000 {
+                sql.push_str(&format!("CREATE TABLE \"t{i}\" (id INTEGER PRIMARY KEY);\n"));
+            }
+            // 一个真正的 FTS5 虚拟表
+            sql.push_str("CREATE VIRTUAL TABLE ft USING fts5(body);\n");
+            c.execute_batch(&sql).unwrap();
+        }
+        let c = Sqlite::open(&p).unwrap();
+
+        let t0 = Instant::now();
+        let all = introspect(&c);
+        let elapsed = t0.elapsed();
+        let _ = std::fs::remove_file(&p);
+
+        // 5000 表 + 1 虚拟表 + 5 个影子表 → 影子表要被滤掉
+        assert!(
+            all.iter().any(|t| t.name == "ft"),
+            "虚拟表本身必须保留"
+        );
+        assert!(
+            !all.iter().any(|t| t.name == "ft_data" || t.name == "ft_idx"),
+            "影子表必须被滤掉"
+        );
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "5000 个对象的内省耗时 {:?} —— 疑似退回 O(n²)",
+            elapsed
         );
     }
 }

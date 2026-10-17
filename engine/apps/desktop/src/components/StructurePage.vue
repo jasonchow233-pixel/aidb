@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref, watch, toRaw } from "vue";
 import { state, actions, notify } from "@/lib/store";
 import { api, capabilities, compact, type TableDef } from "@/lib/api";
 
@@ -15,7 +15,30 @@ const warnings = computed(() =>
   capabilities.warnings(state.connectionKind).filter((w) => w.whereToShow === "structureEditor"),
 );
 
-watch(tbl, (v) => { rows.value = v ? structuredClone(v.columns) : []; }, { immediate: true });
+/**
+ * ⭐ 编辑缓冲：从 `state.tableDef` 深拷贝出可编辑副本。
+ *
+ * ⭐ **不能用 `structuredClone`**：`state` 是 `reactive()` 包过的，
+ *    `state.tableDef.columns` 是 Proxy 对象，而 `structuredClone`
+ *    只接受可结构化克隆的原始值，遇到 Proxy 会抛
+ *    `DataCloneError: [object Object] could not be cloned`。
+ *    抛错发生在 watcher 里，整个结构页直接渲染不出来 ——
+ *    而 `vite build` 与所有单测都发现不了。
+ *
+ *    `toRaw()` 剥掉 Proxy 后仍是 Vue 的深层 reactive，
+ *    所以再走一次 `JSON.parse(JSON.stringify())` 拿到纯对象。
+ */
+function cloneColumns(cols: TableDef["columns"]): TableDef["columns"] {
+  return JSON.parse(JSON.stringify(toRaw(cols)));
+}
+
+watch(
+  tbl,
+  (v) => {
+    rows.value = v ? cloneColumns(v.columns) : [];
+  },
+  { immediate: true },
+);
 
 const ddl = computed(() => {
   if (!tbl.value) return "";
