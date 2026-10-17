@@ -8,7 +8,20 @@ import { api, capabilities, type Descriptor, type TableDef, type TreeNode, type 
 export interface Tab {
   id: string;
   title: string;
-  kind: "grid" | "structure" | "query" | "diagnosis" | "transfer" | "capability";
+  /**
+   * ⭐ 页面路由的唯一依据。
+   * 不要再引入第二个并行字段（历史上 `state.tool` 与它重复过，
+   * 结果 `mask` / `audit` 两个工具页被 `diagnosis` 分支抢先命中）。
+   */
+  kind:
+    | "grid"
+    | "structure"
+    | "query"
+    | "diagnosis"
+    | "transfer"
+    | "capability"
+    | "mask"
+    | "audit";
   table?: string;
   sql?: string;
   pinned?: boolean;
@@ -195,11 +208,30 @@ export const actions = {
     state.activeTabId = id;
   },
 
+  /**
+   * ⭐ 打开工具页。
+   *
+   * ⚠ 这里必须**按工具给出正确的 `kind`**。
+   *   之前把除 transfer/capability 之外的都写成 `"diagnosis"`，
+   *   而 App.vue 是按 `tab.kind` 依次匹配的
+   *   （`kind === 'diagnosis'` 排在 `state.tool === 'mask'` 前面），
+   *   于是「数据工厂」和「变更管控」**永远渲染成诊断页** ——
+   *   点进去看到的还是别的页，用户完全不知道。
+   *
+   *   教训：两个字段（`state.tool` 与 `tab.kind`）描述同一件事，
+   *   迟早会不一致。**只用 `tab.kind` 路由**，`state.tool` 保留仅为兼容。
+   */
   openTool(tool: State["tool"], title: string) {
     state.tool = tool;
     const id = `x:${tool}`;
+    const kind: Tab["kind"] =
+      tool === "transfer" ? "transfer"
+      : tool === "capability" ? "capability"
+      : tool === "mask" ? "mask"
+      : tool === "audit" ? "audit"
+      : "diagnosis";
     const exist = state.tabs.find((t) => t.id === id);
-    if (!exist) state.tabs.push({ id, title, kind: tool === "transfer" ? "transfer" : tool === "capability" ? "capability" : "diagnosis" });
+    if (!exist) state.tabs.push({ id, title, kind });
     state.activeTabId = id;
   },
 

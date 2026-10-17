@@ -124,14 +124,16 @@ function startDrag(ev: MouseEvent) {
           </div>
         </div>
 
-        <!-- 页面路由 -->
+        <!-- 页面路由：⭐ 只按 tab.kind 分发，不要用 state.tool 二次判断。
+             历史上两个字段描述同一件事，导致 mask/audit 两个页面
+             被 diagnosis 分支抢先命中，点了跟没点一样。 -->
         <DataGridPage v-else-if="tab.kind === 'grid'" @run="runFromGrid" />
         <QueryPage v-else-if="tab.kind === 'query'" />
         <DiagnosisPage v-else-if="tab.kind === 'diagnosis'" />
         <TransferPage v-else-if="tab.kind === 'transfer'" />
         <CapabilityPage v-else-if="tab.kind === 'capability'" />
-        <MaskPage v-else-if="state.tool === 'mask'" />
-        <ChangeControlPage v-else-if="state.tool === 'audit'" />
+        <MaskPage v-else-if="tab.kind === 'mask'" />
+        <ChangeControlPage v-else-if="tab.kind === 'audit'" />
         <StructurePage v-else />
       </div>
 

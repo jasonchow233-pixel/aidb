@@ -141,7 +141,54 @@ try {
   const editor = await page.locator("textarea.editor, .editor").first().isVisible();
   check("查询编辑器可见", editor);
 
-  console.log("\n═══ 9. 控制台干净 ═══");
+  console.log("\n═══ 9. 工具页路由（回归：mask/audit 曾被 diagnosis 分支抢先命中）═══");
+  // 侧栏「工具」分组默认折叠
+  await page.locator(".tree .sec", { hasText: "工具" }).first().click();
+  await page.waitForTimeout(600);
+
+  // ⭐ 工具节点紧跟在「工具」分组标题之后；用「后 5 个节点」定位，
+  //    不要去匹配图标 —— 图标是装饰，改一次就会让测试假失败。
+  const toolNodes = await page.evaluate(() =>
+    [...document.querySelectorAll(".tree button.node")]
+      .map((b, i) => ({ i, text: b.innerText.replace(/\n/g, "|") }))
+      .slice(-5),
+  );
+  const expected = ["诊断", "数据传输", "数据工厂", "能力矩阵", "变更管控"];
+  const toolIdx = {};
+  for (const n of toolNodes) {
+    for (const name of expected) {
+      if (n.text.includes(name)) toolIdx[name] = n.i;
+    }
+  }
+  check(
+    "侧栏存在 5 个工具入口",
+    Object.keys(toolIdx).length === 5,
+    `找到 ${Object.keys(toolIdx).join(",")} / 预期 ${expected.join(",")}`,
+  );
+
+  // ⭐ 每个工具页必须渲染出**不同的**内容。
+  //   之前 mask/audit 都被路由到 DiagnosisPage，内容长度完全一样（2126）——
+  //   点了跟没点一样，但没有任何报错。
+  const fingerprints = {};
+  for (const name of ["诊断", "数据传输", "数据工厂", "能力矩阵", "变更管控"]) {
+    const i = toolIdx[name];
+    if (i === undefined) continue;
+    await page.evaluate((idx) => {
+      document.querySelectorAll(".tree button.node")[idx].click();
+    }, i);
+    await page.waitForTimeout(900);
+    const info = await page.evaluate(() => ({
+      tab: document.querySelector(".tab--active")?.textContent?.trim().replace("✕", "") ?? "",
+      body: (document.querySelector(".tabbar")?.nextElementSibling)?.innerText ?? "",
+    }));
+    fingerprints[name] = { tab: info.tab, len: info.body.length, head: info.body.slice(0, 40).replace(/\n/g, " ") };
+    check(`「${name}」激活对应 tab`, info.tab.includes(name), `实际=${info.tab}`);
+  }
+
+  const lens = Object.values(fingerprints).map((f) => f.len);
+  check("工具页内容互不相同", new Set(lens).size === lens.length, lens.join("/"));
+
+  console.log("\n═══ 10. 控制台干净 ═══");
   check("无未捕获异常", pageErrors.length === 0, pageErrors.slice(0, 2).join(" | "));
   check("无 console.error", consoleErrors.length === 0, consoleErrors.slice(0, 2).join(" | "));
 } finally {
