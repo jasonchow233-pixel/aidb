@@ -118,6 +118,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/table", get(table))
         .route("/api/query", post(query))
         .route("/api/query/cancel", post(cancel))
+        .route("/api/execute", post(execute))
         .route("/api/search", get(search))
         .route("/api/diagnostics", get(diagnostics))
         .route("/api/cell", get(cell))
@@ -338,6 +339,80 @@ async fn cancel(State(s): State<AppState>) -> Response {
     }
 }
 
+/// ⭐ 真实写入（落库）。
+///
+/// `/api/query` 对写语句是 **dry-run**：事务里跑一遍就回滚，永远不落盘。
+/// 数据网格的「编辑并保存」需要一个真正落库的通道，就是这里。
+///
+/// ⭐ 三重防护，缺一不可：
+///   1. `analyze()` 在服务端算危险级别，**不接受前端传入**
+///   2. `require_confirm` 必须为 `true` —— 证明前端已经让用户确认过
+///   3. 驱动层再判一次，destructive 直接拒绝（必须走变更管控）
+/// ⭐ 与 `QueryReq` 同理：请求字段也必须 camelCase。
+///    没有 `rename_all` 时 `requireConfirm` 绑定不上，`#[serde(default)]`
+///    会静默取 `false` —— 于是**每一次真实编辑都被 428 拒绝**，
+///    而报错信息说的是「请先确认」，极具误导性。
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExecuteReq {
+    sql: String,
+    /// ⭐ 前端必须显式声明「用户已确认」。缺这个字段直接 428。
+    ///
+    /// 这样「忘记弹确认框」会变成一个**响亮的失败**，
+    /// 而不是让用户的生产库被静默改掉。
+    #[serde(default)]
+    require_confirm: bool,
+}
+
+async fn execute(State(s): State<AppState>, Json(req): Json<ExecuteReq>) -> Response {
+    // 1) 服务端分级，不信前端
+    let danger = analyze(&req.sql);
+
+    if danger == Danger::ReadOnly {
+        return ok_json(serde_json::json!({
+            "applied": false,
+            "danger": danger,
+            "dangerLabel": danger.label(),
+            "reason": "只读语句，无需落库",
+        }));
+    }
+
+    // 2) 必须经过用户确认
+    if !req.require_confirm {
+        return err_json(
+            StatusCode::PRECONDITION_REQUIRED,
+            "confirm_required",
+            &format!(
+                "该语句为 {} 级写操作，必须先向用户展示并确认",
+                danger.label()
+            ),
+        );
+    }
+
+    // 3) 驱动层再判一次（纵深防御）
+    if danger.requires_approval() {
+        return err_json(
+            StatusCode::FORBIDDEN,
+            "approval_required",
+            &format!(
+                "{} 级操作必须走变更管控流程，不能从数据网格直接执行",
+                danger.label()
+            ),
+        );
+    }
+
+    let sql = req.sql.clone();
+    match with_session(s, move |sess| sess.execute_blocking(&sql, danger)).await {
+        Ok(affected) => ok_json(serde_json::json!({
+            "applied": true,
+            "danger": danger,
+            "dangerLabel": danger.label(),
+            "affectedRows": affected,
+        })),
+        Err(e) => driver_err(e),
+    }
+}
+
 /// ⭐ 本地搜索：拼音首字母 + 注释 + 标识符。走 SQLite FTS 是后端优化，
 ///    这里先做等价的内存实现，行为一致。
 #[derive(Deserialize)]
@@ -479,4 +554,29 @@ async fn type_map(AxQuery(q): AxQuery<TypeMapReq>) -> Response {
         "toFamily": family_of(&q.to).map(|f| f.label.clone()),
         "mappings": out,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ⭐ 回归：`requireConfirm` 必须能被反序列化。
+    ///
+    /// 之前实测「写语句 + requireConfirm=true」仍然返回 confirm_required，
+    /// 说明字段根本没绑定上 —— 而这会让**所有真实编辑都无法落库**。
+    #[test]
+    fn execute_req_binds_require_confirm() {
+        let r: ExecuteReq = serde_json::from_str(
+            r#"{"sql":"UPDATE t SET a=1 WHERE id=1","requireConfirm":true}"#,
+        )
+        .expect("应能反序列化");
+        assert!(r.require_confirm, "requireConfirm=true 必须绑定为 true");
+
+        let r2: ExecuteReq =
+            serde_json::from_str(r#"{"sql":"SELECT 1","requireConfirm":false}"#).unwrap();
+        assert!(!r2.require_confirm, "requireConfirm=false 必须绑定为 false");
+
+        let r3: ExecuteReq = serde_json::from_str(r#"{"sql":"SELECT 1"}"#).unwrap();
+        assert!(!r3.require_confirm, "缺字段时应默认 false（安全侧）");
+    }
 }

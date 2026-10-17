@@ -101,6 +101,15 @@ function rowClass(rowIdx: number) {
   };
 }
 
+/** ⭐ 该单元格是否有未保存的改动（用背景色标出来） */
+function isDirty(rowIdx: number, col: string): boolean {
+  const table = state.tableDef?.name;
+  if (!table) return false;
+  return (
+    state.edits.byTable.get(table)?.some((e) => e.row === rowIdx && e.col === col) ?? false
+  );
+}
+
 /** ⭐ 大字段：主查询已截断，双击才拉完整值 */
 async function openDetail(col: ColumnDef, rowIdx: number) {
   if (!state.tableDef) return;
@@ -195,13 +204,91 @@ function copyRowFormats(row: Record<string, unknown>) {
 }
 
 function startEdit(rowIdx: number, col: string, value: unknown) {
-  editingCell.value = { row: rowIdx, col, value: String(value ?? "") };
+  editingCell.value = { row: rowIdx, col, value: formatEditable(value) };
 }
 
-function saveEdit() {
-  if (!editingCell.value) return;
-  notify("info", `单元格已更新（演示模式）：${editingCell.value.col} = ${editingCell.value.value}`);
+/** ⭐ 编辑框的初始值：NULL 显示为空文本框，但不能变成字符串 "null" */
+function formatEditable(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+/** ⭐ 编辑框的值 → JS 值。空文本框一律视为「设成空串」，而不是 NULL。 */
+function parseEditable(text: string): unknown {
+  return text; // ⭐ 空串就是空串；要设 NULL 必须走显式的「设 NULL」操作
+}
+
+/**
+ * ⭐ 提交一次单元格编辑 —— 进缓冲，**不落库**。
+ *
+ * ⚠ 值从 `editingCell` 内部取，**不要**从模板传参。
+ *    Vue 模板会自动解包 `ref`，所以模板里的 `editingCell` 已经是对象本身，
+ *    再写 `editingCell.value` 拿到的是 `undefined` ——
+ *    参数悄悄变成 undefined，改动被当成「没改」而丢弃。
+ *    （这与之前 `selectedRows.value.length` 白屏是同一类错误。）
+ */
+function commitEdit(rowIdx: number, col: string) {
+  const table = state.tableDef?.name;
+  const raw = editingCell.value?.value;
   editingCell.value = null;
+  if (!table || raw === undefined) return;
+
+  // ⭐ `edits` 在 **state** 上，不在 actions 上 —— 写成 actions.edits 会是
+//    undefined，报错还很难联想到真正原因。
+  const original = state.edits.byTable.get(table)?.find(
+    (e) => e.row === rowIdx && e.col === col,
+  );
+  // ⭐ 已进入缓冲的改动，用缓冲里的当前值判断「是否真的改了」
+  const current = original ? original.newValue : state.rows[rowIdx]?.[col];
+  const next = parseEditable(raw);
+  if (String(current ?? "") === String(next ?? "")) return;
+
+  actions.editCell(table, rowIdx, col, next);
+}
+
+/** ⭐ 显式「设成 NULL」—— 与「设成空串」是两个不同操作 */
+function setNull(rowIdx: number, col: string) {
+  const table = state.tableDef?.name;
+  if (!table) return;
+  actions.editCell(table, rowIdx, col, null);
+}
+
+/** 待保存的 SQL —— 保存前必须让用户看清楚 */
+const pendingSql = computed(() => {
+  const table = state.tableDef?.name;
+  if (!table || !actions.hasPending(table)) return null;
+  return actions.buildSaveSql(table);
+});
+
+const pendingCount = computed(() => {
+  const table = state.tableDef?.name;
+  return table ? actions.pendingCount(table) : 0;
+});
+
+/** ⭐ 保存：必须先弹确认框展示 SQL，再落库 */
+async function saveEdits() {
+  const table = state.tableDef?.name;
+  if (!table || !pendingSql.value) return;
+  if (pendingSql.value.error) {
+    notify("error", pendingSql.value.error);
+    return;
+  }
+  const sql = pendingSql.value.statements.join("\n");
+  // ⭐ 用原生 confirm：这一版先把「看到 SQL 再落库」的闭环打通，
+  //   F1 阶段换成带影响面评估的正式对话框。
+  if (!confirm(`即将执行 ${pendingSql.value.statements.length} 条语句：\n\n${sql}\n\n确认落库？`)) {
+    return;
+  }
+  await actions.saveEdits(table, true);
+}
+
+function discardEdits() {
+  const table = state.tableDef?.name;
+  if (!table) return;
+  if (pendingCount.value && !confirm(`放弃 ${pendingCount.value} 处未保存的改动？`)) return;
+  actions.discardEdits(table);
+  notify("info", "已放弃未保存的改动");
 }
 
 function copyRow(row: Record<string, unknown>) {
@@ -322,6 +409,14 @@ function clearFilter() {
                v-model="searchTerm" placeholder="搜索当前结果" />
         <span class="muted small">仅搜索已加载的 {{ filteredRows.length }} 行</span>
         <div class="grow"></div>
+        <!-- ⭐ 未保存改动：条数 + 保存/放弃 -->
+        <template v-if="pendingCount">
+          <span class="badge badge--warn" :title="`${pendingCount} 处改动尚未落库`">
+            ● {{ pendingCount }} 处未保存
+          </span>
+          <button class="btn btn--sm btn--primary" @click="saveEdits">保存</button>
+          <button class="btn btn--sm btn--ghost" @click="discardEdits">放弃</button>
+        </template>
         <button class="btn btn--sm" :disabled="!state.tableDef" @click="exportTable">导出 CSV</button>
         <button class="btn btn--sm" :disabled="!state.tableDef" @click="openStructure">表结构</button>
         <button class="btn btn--sm" :disabled="!state.tableDef" @click="openInEditor">在查询编辑器打开</button>
@@ -365,6 +460,7 @@ function clearFilter() {
                   link: isUrl(row[c.name]),
                   json: c.category === 'json',
                   large: c.isLarge && String(row[c.name] ?? '').length > 40,
+                  'is-dirty': isDirty(i, c.name),
                 }"
                 :title="c.isLarge ? '点击查看完整内容' : undefined"
                 @dblclick.stop="openDetail(c, i)"
@@ -372,8 +468,9 @@ function clearFilter() {
               <template v-if="editingCell?.row === i && editingCell?.col === c.name">
                 <input class="input" style="height: 20px; font-size: 11px; padding: 0 4px"
                        v-model="editingCell.value"
-                       @blur="saveEdit"
-                       @keydown.enter="saveEdit"
+                       @blur="commitEdit(i, c.name)"
+                       @keydown.enter.prevent="commitEdit(i, c.name)"
+                       @keydown.escape="editingCell = null"
                        @click.stop />
               </template>
               <template v-else-if="row[c.name] === null"><em>NULL</em></template>
@@ -383,7 +480,6 @@ function clearFilter() {
             </td>
             <td @click.stop>
               <button class="btn btn--sm btn--ghost" @click="copyRow(row)" title="复制整行">复制</button>
-              <button class="btn btn--sm btn--ghost" @click="copyAsSQL(row)" title="复制为 SQL">SQL</button>
               <button class="btn btn--sm btn--danger" @click="deleteRow(i)" title="删除行">删除</button>
             </td>
           </tr>
@@ -443,4 +539,9 @@ function clearFilter() {
 
 <style scoped>
 .ico { color: var(--text-tertiary); }
+/* ⭐ 未保存的单元格：底色提示 + 左侧竖线，一眼能看出改了哪些 */
+.is-dirty {
+  background: var(--warning-bg);
+  box-shadow: inset 2px 0 0 var(--warning);
+}
 </style>

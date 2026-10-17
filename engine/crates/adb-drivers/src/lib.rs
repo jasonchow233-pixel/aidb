@@ -94,6 +94,25 @@ pub trait Session: Send + Sync {
         danger: Danger,
     ) -> Result<RowPage>;
 
+    /// ⭐⭐ **真实写入**（落库），返回受影响行数。
+    ///
+    /// 为什么与 `query` 分开，而不是给它加个开关：
+    /// `query` 对所有写语句一律**事务内 dry-run 后回滚**，那是演示模式的安全网；
+    /// 一旦用参数绕过，漏传一个参数就是**静默丢数据**。
+    /// 拆成两个方法后，「会落库」这件事在类型签名上就是显式的，
+    /// 每个调用点都必须面对它。
+    ///
+    /// ⚠ 调用方**必须**先经 `analyze()` 分级并向用户确认；
+    ///    且不得用于 destructive 语句（该走变更管控流程）。
+    fn execute_blocking(&self, sql: &str, danger: Danger) -> Result<u64> {
+        // 默认实现是安全的：驱动没实现真实写入就明确报错，
+        // 而不是悄悄回滚让调用方以为写成功了。
+        Err(AdbError::Internal(format!(
+            "{} 驱动尚未实现真实写入",
+            danger.label()
+        )))
+    }
+
     /// ⭐ 取消必须幂等。取消后**绝不自动重放**。
     async fn cancel(&self) -> Result<()>;
 

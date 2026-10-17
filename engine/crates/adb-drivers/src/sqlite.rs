@@ -128,6 +128,39 @@ impl Session for SqliteSession {
         Ok(())
     }
 
+    /// ⭐ 真实写入：`query` 对写语句一律回滚，这里才真正落库。
+    ///
+    /// ⚠ 只接受 **mutating**（INSERT/UPDATE/DELETE…WHERE）。
+    ///    destructive（DROP/TRUNCATE/无 WHERE 的 DELETE）**一律拒绝** ——
+    ///    那类操作必须走变更管控流程（备份 + 审批 + 回滚脚本），
+    ///    不能从数据网格里点一下就没了。
+    ///
+    ///    权限判断由调用方的 `analyze()` 负责，这里再做一次：
+    ///    ⭐ 纵深防御 —— 万一调用方漏判，驱动层是最后一道闸。
+    fn execute_blocking(&self, sql: &str, danger: Danger) -> crate::Result<u64> {
+        if danger == Danger::ReadOnly {
+            return Err(crate::AdbError::Internal(
+                "execute 不接受只读语句 —— 那是 query 的职责".into(),
+            ));
+        }
+        if danger == Danger::Destructive || danger == Danger::Admin {
+            return Err(crate::AdbError::Internal(format!(
+                "拒绝执行 {} 级语句：这类操作必须走变更管控流程",
+                danger.label()
+            )));
+        }
+
+        let guard = self.lock();
+        guard.execute_batch(sql).map_err(|e| {
+            crate::query_error(
+                sql,
+                &strip_sqlite_prefix(&e.to_string()),
+                &table_names(self.snapshot.as_ref()),
+            )
+        })?;
+        Ok(guard.changes())
+    }
+
     async fn query(&self, sql: &str, opt: QueryOptions, _d: Danger) -> Result<RowPage> {
         // ⭐ owned 数据移进 spawn_blocking：不用 unsafe，也不持锁跨 await
         let conn = Arc::clone(&self.conn);

@@ -2,6 +2,41 @@ import { reactive } from "vue";
 import { api, capabilities, type Descriptor, type TableDef, type TreeNode, type Finding, type UiWarning } from "./api";
 
 // ─────────────────────────────────────────────────────────────
+// ⭐ 编辑缓冲（U1-5.2）
+// ─────────────────────────────────────────────────────────────
+
+/** 一次单元格改动。 */
+export interface CellEdit {
+  row: number;
+  col: string;
+  oldValue: unknown;
+  newValue: unknown;
+  /**
+   * ⭐ 旧值是否本来就是 NULL。
+   *
+   * 必须单独记一个布尔位：读出来的 NULL 和「用户改成 NULL」都是 `null`，
+   * 只存 `oldValue` 就分不出「撤销回原样」和「继续改成空」。
+   * 这与 `#10505`（NULL 与空串必须可区分）是同一类问题。
+   */
+  oldWasNull: boolean;
+}
+
+/** 一次保存的批次（撤销粒度 = 一次保存，不是单次按键） */
+export interface EditRecord {
+  table: string;
+  edits: CellEdit[];
+}
+
+export interface EditBuffer {
+  /** 表名 → 该表所有未保存的改动 */
+  byTable: Map<string, CellEdit[]>;
+  /** 已保存批次的撤销栈 */
+  undo: EditRecord[];
+  /** 重做栈 */
+  redo: EditRecord[];
+}
+
+// ─────────────────────────────────────────────────────────────
 // ⭐ UI 状态（UI-DESIGN §11.1：store 不持有凭据）
 // ─────────────────────────────────────────────────────────────
 
@@ -59,6 +94,15 @@ interface State {
   lastDanger: string;
   loading: boolean;
 
+  // ⭐ 编辑缓冲（U1-5.2）：改动先进内存，**不自动保存**
+  /**
+   * ⭐ 一次单元格改动的完整记录。
+   *
+   * `oldValue` 必存：撤销、重做、以及「保存前展示 diff」全靠它。
+   * 只存新值的话，撤销就只能靠再查一次库，慢且容易出错。
+   */
+  edits: EditBuffer;
+
   // 诊断
   findings: Finding[];
 
@@ -101,6 +145,8 @@ export const state = reactive<State>({
   queryMs: 0,
   lastDanger: "readOnly",
   loading: false,
+
+  edits: { byTable: new Map(), undo: [], redo: [] } as EditBuffer,
 
   findings: [],
 
@@ -235,9 +281,34 @@ export const actions = {
     state.activeTabId = id;
   },
 
-  closeTab(id: string) {
+  /**
+   * ⭐ 关闭标签页，**带未保存拦截**。
+   *
+   * 静默丢弃用户编辑是不可逆的（刷新就没了），
+   * 所以这里明确弹 3 选项：保存 / 放弃 / 取消。
+   */
+  async closeTab(id: string) {
     const i = state.tabs.findIndex((t) => t.id === id);
     if (i < 0) return;
+    const tab = state.tabs[i];
+
+    if (tab.table && actions.hasPending(tab.table)) {
+      const n = actions.pendingCount(tab.table);
+      const choice = window.prompt(
+        `「${tab.title}」有 ${n} 处改动尚未保存。\n\n` +
+          `输入 s 保存后关闭，输入 d 放弃改动后关闭，直接回车取消`,
+        "d",
+      );
+      if (choice === null) return; // 取消
+      if (choice.trim().toLowerCase() === "s") {
+        await actions.saveEdits(tab.table, true);
+      } else if (choice.trim().toLowerCase() !== "d") {
+        return; // 其它输入 → 取消
+      } else {
+        actions.discardEdits(tab.table);
+      }
+    }
+
     state.tabs.splice(i, 1);
     if (state.activeTabId === id) {
       state.activeTabId = state.tabs[Math.max(0, i - 1)]?.id ?? null;
@@ -288,6 +359,156 @@ export const actions = {
     }
   },
 
+  // ── 编辑缓冲（U1-5.2）──
+
+  /**
+   * ⭐ 记录一次单元格改动（**不落库**）。
+   *
+   * 同一个 (row, col) 重复编辑时只更新 `newValue`，保留最早的 `oldValue` ——
+   * 否则撤销只能退回到「上一次编辑」而不是「进入编辑前的原值」。
+   */
+  editCell(table: string, row: number, col: string, newValue: unknown) {
+    const rows = state.rows;
+    const current = rows[row];
+    if (!current) return;
+
+    const list = state.edits.byTable.get(table) ?? [];
+    const existing = list.find((e) => e.row === row && e.col === col);
+
+    if (existing) {
+      existing.newValue = newValue;
+    } else {
+      list.push({
+        row,
+        col,
+        oldValue: current[col],
+        newValue,
+        oldWasNull: current[col] === null,
+      });
+    }
+    state.edits.byTable.set(table, list);
+    // ⭐ 有新改动就废掉重做栈 —— 标准编辑器行为
+    state.edits.redo = [];
+    // 立即反映到行数据上，让用户看到效果
+    rows[row][col] = newValue;
+  },
+
+  /** 某表是否有未保存改动 */
+  hasPending(table: string): boolean {
+    return (state.edits.byTable.get(table)?.length ?? 0) > 0;
+  },
+
+  /** 未保存改动总数（显示在 tab 上） */
+  pendingCount(table?: string): number {
+    if (table) return state.edits.byTable.get(table)?.length ?? 0;
+    let n = 0;
+    for (const l of state.edits.byTable.values()) n += l.length;
+    return n;
+  },
+
+  /**
+   * ⭐⭐ 把待保存的改动生成为可预览的 SQL。
+   *
+   * 这是「保存前必须让用户看清楚要执行什么」的关键一步。
+   *
+   * ⭐ WHERE **必须带全部主键**；无主键的表**明确拒绝**生成 UPDATE ——
+   *    没有主键就无法精确定位行，那条 SQL 会改到整张表去。
+   *    这正是诊断页报「audit_logs 没有主键」的实际后果。
+   */
+  buildSaveSql(table: string): { statements: string[]; error?: string } {
+    const edits = state.edits.byTable.get(table) ?? [];
+    if (!edits.length) return { statements: [] };
+
+    const cols = state.columns ?? [];
+    const pk = cols.filter((c) => c.isPk);
+    if (!pk.length) {
+      return {
+        statements: [],
+        error: `表 ${table} 没有主键，无法生成安全的 UPDATE —— 请改用 WHERE 明确指定行`,
+      };
+    }
+
+    // 按行分组：同一行改多列合并成一条 UPDATE
+    const byRow = new Map<number, CellEdit[]>();
+    for (const e of edits) {
+      const l = byRow.get(e.row) ?? [];
+      l.push(e);
+      byRow.set(e.row, l);
+    }
+
+    const statements: string[] = [];
+    for (const [rowIdx, cellEdits] of byRow) {
+      const row = state.rows[rowIdx];
+      if (!row) continue;
+
+      const sets = cellEdits
+        .map((e) => `"${e.col}" = ${sqlLiteral(e.newValue)}`)
+        .join(", ");
+
+      // ⭐ WHERE 用主键当前值，且用**编辑前**的值 ——
+      //    如果用户改了主键本身，用新值会定位不到行。
+      const where = pk
+        .map((c) => `"${c.name}" = ${sqlLiteral(row[c.name])}`)
+        .join(" AND ");
+
+      statements.push(`UPDATE "${table}" SET ${sets} WHERE ${where};`);
+    }
+    return { statements };
+  },
+
+  /**
+   * ⭐ 保存改动（真正落库）。
+   *
+   * 流程：生成 SQL → 调用方已展示并得到用户确认 → `/api/execute` 落库
+   * → 清缓冲 → 重新拉数据。
+   *
+   * ⭐ 落库失败**不清缓冲** —— 用户辛苦编辑的内容必须留着可重试。
+   */
+  async saveEdits(table: string, requireConfirm: boolean) {
+    const { statements, error } = actions.buildSaveSql(table);
+    if (error) {
+      notify("error", error);
+      return { ok: false, error };
+    }
+    if (!statements.length) {
+      notify("info", "没有待保存的改动");
+      return { ok: true, affected: 0 };
+    }
+
+    let affected = 0;
+    try {
+      for (const sql of statements) {
+        const r = await api.execute(sql, requireConfirm);
+        affected += r.affectedRows ?? 0;
+      }
+    } catch (e) {
+      // ⭐ 失败时保留缓冲，让用户能改完重试
+      notify("error", e instanceof Error ? e.message : String(e));
+      return { ok: false, error: String(e) };
+    }
+
+    // 成功后：进撤销栈、清缓冲、刷新数据
+    const record: EditRecord = { table, edits: [...(state.edits.byTable.get(table) ?? [])] };
+    state.edits.undo.push(record);
+    state.edits.redo = [];
+    state.edits.byTable.delete(table);
+
+    await actions.loadTable(table);
+    notify("info", `已保存 ${affected} 处改动（${statements.length} 条语句）`);
+    return { ok: true, affected, statements };
+  },
+
+  /** 放弃某表的未保存改动 */
+  discardEdits(table: string) {
+    const edits = state.edits.byTable.get(table) ?? [];
+    // 先把行数据恢复成原值，界面才和数据库一致
+    for (const e of edits) {
+      const row = state.rows[e.row];
+      if (row) row[e.col] = e.oldWasNull ? null : e.oldValue;
+    }
+    state.edits.byTable.delete(table);
+  },
+
   // ── 布局 ──
   setSidebarWidth(w: number) {
     state.sidebarWidth = Math.min(480, Math.max(160, w));
@@ -321,4 +542,26 @@ export function notify(kind: string, text: string) {
   state.toast = { kind, text };
   clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => (state.toast = null), 4200);
+}
+
+/**
+ * ⭐⭐ 把 JS 值转成 SQL 字面量。
+ *
+ * **NULL 与空串必须严格区分**（`#10505`）：
+ *   · `null` / `undefined` → `NULL`（SQL 关键字，不加引号）
+ *   · `""`                 → `''`（空字符串字面量）
+ * 把空串写成 `NULL` 是数据损坏，把 NULL 写成 `''` 也是 —— 两者都不可逆。
+ *
+ * ⭐ 这里**不做任何隐式转换**：值与列类型对不上时，
+ *    让数据库报错并显示位置，比悄悄改掉用户的值好得多。
+ */
+export function sqlLiteral(v: unknown): string {
+  if (v === null || v === undefined) return "NULL";
+  if (typeof v === "number") {
+    // ⭐ NaN / Infinity 不是合法 SQL 字面量，直接报错比写出坏 SQL 好
+    if (!Number.isFinite(v)) return "NULL";
+    return String(v);
+  }
+  if (typeof v === "boolean") return v ? "1" : "0";
+  return `'${String(v).replace(/'/g, "''")}'`;
 }

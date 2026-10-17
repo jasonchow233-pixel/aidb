@@ -327,8 +327,26 @@ export const api = {
   query: (sql: string, maxRows = 200, offset = 0) =>
     call<QueryResult>("/query", {
       method: "POST",
-      body: JSON.stringify({ sql, max_rows: maxRows, offset }),
+      body: JSON.stringify({ sql, maxRows, offset }),
     }),
+
+  /**
+   * ⭐ 真实写入（落库）。
+   *
+   * `/query` 对写语句一律 dry-run 回滚；数据网格的「编辑并保存」走这里。
+   *
+   * ⭐ `requireConfirm` 必须在**已经把 SQL 展示给用户并得到确认后**才传 `true`。
+   *    少传会被服务端 428 挡下 —— 这是故意的：宁可响亮地失败，
+   *    也不能让用户的生产库被静默改掉。
+   */
+  execute: (sql: string, requireConfirm = false) =>
+    call<{ applied: boolean; affectedRows: number; danger: string; dangerLabel: string }>(
+      "/execute",
+      {
+        method: "POST",
+        body: JSON.stringify({ sql, requireConfirm }),
+      },
+    ),
 
   cancel: () => call<{ cancelled: boolean }>("/query/cancel", { method: "POST" }),
 

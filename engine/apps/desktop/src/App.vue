@@ -88,8 +88,14 @@ function startDrag(ev: MouseEvent) {
         <!-- 标签栏 -->
         <div class="tabbar">
           <div v-for="t in state.tabs" :key="t.id" class="tab"
-               :class="{ 'tab--active': t.id === state.activeTabId }" @click="state.activeTabId = t.id">
+               :class="{ 'tab--active': t.id === state.activeTabId, 'tab--dirty': actions.pendingCount(t.table) > 0 }"
+               @click="state.activeTabId = t.id">
             <span class="truncate">{{ t.title }}</span>
+            <!-- ⭐ 未保存计数：切走/关页面前用户能一眼看到有未落库的改动 -->
+            <span v-if="actions.pendingCount(t.table)" class="tab__dirty"
+                  :title="`${actions.pendingCount(t.table)} 处改动未保存`">
+              ●{{ actions.pendingCount(t.table) }}
+            </span>
             <span class="tab__x" @click.stop="actions.closeTab(t.id)">✕</span>
           </div>
           <button class="tabbar__add" title="新建查询 ⌘T" @click="actions.openQuery()">＋</button>
