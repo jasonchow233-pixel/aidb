@@ -324,6 +324,13 @@ export const api = {
       `/table?name=${encodeURIComponent(name)}`,
     ),
 
+  /**
+   * 查询。
+   *
+   * ⭐ `offset` 必须传**服务端分页**，不能前端切片：
+   *   前端切片会让「第 5 页」也得先拉回前 4 页的全部行，
+   *   50 万行时直接卡死。
+   */
   query: (sql: string, maxRows = 200, offset = 0) =>
     call<QueryResult>("/query", {
       method: "POST",

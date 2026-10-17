@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { state, actions, notify } from "@/lib/store";
+import {
+  state, actions, notify, FILTER_OPS,
+  type FilterOp, type TableFilter,
+} from "@/lib/store";
 import { api, capabilities, compact, dangerClass, dangerIcon, type ColumnDef } from "@/lib/api";
 
 const emit = defineEmits<{ run: [sql: string] }>();
@@ -9,21 +12,67 @@ const detail = ref<{ col: ColumnDef; row: number; text: string; total: number } 
 const detailLoading = ref(false);
 const pageLimit = ref(state.rowLimit);
 const searchTerm = ref("");
-const sortCol = ref<string | null>(null);
-const sortDir = ref<"asc" | "desc">("asc");
 const selectedRows = ref<Set<number>>(new Set());
 const editingCell = ref<{ row: number; col: string; value: string } | null>(null);
 const showFilter = ref(false);
 const filterCol = ref("");
-const filterOp = ref("=");
+const filterOp = ref<FilterOp>("=");
 const filterVal = ref("");
+
+// ── 分页 ──
+const currentPage = computed(() => Math.floor(state.offset / state.rowLimit) + 1);
+const totalPages = computed(() =>
+  state.total !== null ? Math.ceil(state.total / state.rowLimit) : null,
+);
+/** 跳页输入框的值 */
+const jumpPage = ref("");
+
+function doJump() {
+  const n = Number(jumpPage.value);
+  if (!Number.isFinite(n) || n < 1) return;
+  actions.goToPage(n);
+  jumpPage.value = "";
+}
+
+// ── 筛选 ──
+/** ⭐ IS NULL / IS NOT NULL 不需要值输入 */
+const needsValue = computed(
+  () => !["IS NULL", "IS NOT NULL"].includes(filterOp.value),
+);
+function applyFilter() {
+  if (!filterCol.value) return;
+  const needs = !["IS NULL", "IS NOT NULL"].includes(filterOp.value);
+  if (needs && filterVal.value === "") return;
+  // ⭐ 走 store 的 action —— 它会重置 offset、重查、并把 total 标记为失效
+  actions.addFilter({
+    col: filterCol.value,
+    op: filterOp.value,
+    value: needs ? filterVal.value : null,
+  });
+  filterVal.value = "";
+}
+function removeFilter(i: number) {
+  actions.removeFilter(i);
+}
 
 /** ⭐ 当前连接的传输家族（来自声明层），拿不到就不显示 —— 不猜。 */
 const connFamily = computed(
   () => capabilities.byId(state.connectionKind)?.transferObjectFamily ?? null,
 );
 
-watch(pageLimit, (v) => actions.setRowLimit(v));
+/**
+ * ⭐ 页大小变化必须**重新查询**。
+ *
+ * 只调 `setRowLimit`（只写 localStorage）的话：offset 还停在旧页码上，
+ * 用新页大小算出来的偏移量会越界，用户看到「本页 200 行」却选了 100。
+ */
+watch(pageLimit, (v) => {
+  actions.setRowLimit(v);
+  // 页大小变了，offset 必须回到起点，否则会跳到错乱的页
+  state.offset = 0;
+  const t = state.tableDef?.name;
+  if (t) void actions.loadTable(t);
+});
 
 const total = computed(() => state.total);
 const rowH = computed(() =>
@@ -38,45 +87,18 @@ const findingsForTable = computed(() =>
 );
 
 /**
- * ⭐ 客户端筛选 + 排序。
+ * ⭐ 只做「当前页内」的文本搜索。
  *
- * 范围必须写死在 UI 上（「仅搜索已加载的 N 行」）——
- * 让用户以为在搜全表，实际只搜了当前页，是 Navicat 之外工具最常见的坑。
+ * ⭐ **范围必须写在 UI 上**（「仅搜索本页 N 行」）：
+ *   让用户以为在搜全表、实际只搜了当前页，是数据库工具最常见的坑。
+ *   全表搜索要走 A2 列头筛选面板（带 WHERE 下推），不是这个输入框。
  */
 const filteredRows = computed(() => {
-  let rows = state.rows;
-  if (searchTerm.value) {
-    const q = searchTerm.value.toLowerCase();
-    rows = rows.filter((r) =>
-      state.columns.some((c) => String(r[c.name] ?? "").toLowerCase().includes(q)),
-    );
-  }
-  if (filterCol.value && filterVal.value) {
-    rows = rows.filter((r) => {
-      const v = String(r[filterCol.value] ?? "");
-      switch (filterOp.value) {
-        case "=":  return v === filterVal.value;
-        case "!=": return v !== filterVal.value;
-        case ">":  return v > filterVal.value;
-        case "<":  return v < filterVal.value;
-        case "LIKE": return v.toLowerCase().includes(filterVal.value.toLowerCase());
-        default: return true;
-      }
-    });
-  }
-  if (sortCol.value) {
-    const col = sortCol.value;
-    const dir = sortDir.value === "asc" ? 1 : -1;
-    rows = [...rows].sort((a, b) => {
-      const av = a[col];
-      const bv = b[col];
-      if (av === bv) return 0;
-      if (av === null) return 1;   // NULL 恒排最后，不随升降序翻转
-      if (bv === null) return -1;
-      return (av > bv ? 1 : -1) * dir;
-    });
-  }
-  return rows;
+  if (!searchTerm.value) return state.rows;
+  const q = searchTerm.value.toLowerCase();
+  return state.rows.filter((r) =>
+    state.columns.some((c) => String(r[c.name] ?? "").toLowerCase().includes(q)),
+  );
 });
 
 // ── 单元格取值 ──────────────────────────────────────────────
@@ -127,13 +149,9 @@ async function openDetail(col: ColumnDef, rowIdx: number) {
 }
 
 // ── 表头操作 ────────────────────────────────────────────────
+/** ⭐ 排序交给 store：它会重置 offset 并重查（内存排序只对当前页有效） */
 function toggleSort(col: string) {
-  if (sortCol.value === col) {
-    sortDir.value = sortDir.value === "asc" ? "desc" : "asc";
-  } else {
-    sortCol.value = col;
-    sortDir.value = "asc";
-  }
+  actions.toggleSort(col);
 }
 
 const gridSQL = computed(() => {
@@ -368,46 +386,48 @@ function clearFilter() {
         <button class="btn btn--sm" @click="state.tableDef && actions.loadTable(state.tableDef.name)">刷新</button>
       </div>
 
-      <!-- 工具栏：⭐ 筛选 + 排序 + 密度 -->
+      <!-- 工具栏：⭐ 分页 + 筛选 + 排序 + 密度 -->
       <div class="toolbar">
-        <span class="muted">行数</span>
-        <select class="input" style="width: 84px; height: var(--h-btn-sm); font-size: var(--fs-xs)"
-                v-model.number="pageLimit">
-          <option :value="100">100</option>
-          <option :value="200">200</option>
-          <option :value="1000">1,000</option>
-          <option :value="5000">5,000</option>
-        </select>
+        <!-- ⭐ 分页控件：页大小 / 上一页 / 页码 / 下一页 / 跳页 -->
+        <div class="pager">
+          <select class="input" style="width: 84px; height: var(--h-btn-sm); font-size: var(--fs-xs)"
+                  v-model.number="pageLimit">
+            <option :value="100">100</option>
+            <option :value="200">200</option>
+            <option :value="500">500</option>
+            <option :value="1000">1,000</option>
+            <option :value="5000">5,000</option>
+          </select>
+          <button class="btn btn--sm" :disabled="state.offset <= 0" @click="actions.prevPage()"
+                  title="上一页">◀</button>
+          <span class="pager__pos mono">
+            第 {{ currentPage }} 页<template v-if="totalPages !== null && !state.totalStale"> / {{ totalPages }}</template>
+          </span>
+          <button class="btn btn--sm" :disabled="!state.hasNextPage" @click="actions.nextPage()"
+                  title="下一页">▶</button>
+          <input class="input input--mono pager__jump" style="height: var(--h-btn-sm); font-size: var(--fs-xs)"
+                 v-model="jumpPage" placeholder="跳页" @keydown.enter="doJump" />
+        </div>
+
+        <div class="toolbar__sep"></div>
+
+        <button class="btn btn--sm" :class="{ 'btn--primary': showFilter || state.filters.length }"
+                @click="showFilter = !showFilter">
+          筛选<template v-if="state.filters.length"> · {{ state.filters.length }}</template>
+        </button>
+
         <select class="input" style="width: 78px; height: var(--h-btn-sm); font-size: var(--fs-xs)"
                 :value="state.density" @change="actions.setDensity(($event.target as HTMLSelectElement).value as any)">
           <option value="compact">紧凑</option>
           <option value="normal">标准</option>
           <option value="comfort">宽松</option>
         </select>
+
         <div class="toolbar__sep"></div>
-        <button class="btn btn--sm" :class="{ 'btn--primary': showFilter }" @click="showFilter = !showFilter">
-          {{ showFilter ? "清除筛选" : "筛选" }}
-        </button>
-        <template v-if="showFilter">
-          <select class="input" style="width: 120px; height: var(--h-btn-sm); font-size: var(--fs-xs)" v-model="filterCol">
-            <option value="">选择列</option>
-            <option v-for="c in state.columns" :key="c.id" :value="c.name">{{ c.name }}</option>
-          </select>
-          <select class="input" style="width: 60px; height: var(--h-btn-sm); font-size: var(--fs-xs)" v-model="filterOp">
-            <option value="=">=</option>
-            <option value="!=">≠</option>
-            <option value=">">></option>
-            <option value="<"><</option>
-            <option value="LIKE">包含</option>
-          </select>
-          <input class="input" style="width: 140px; height: var(--h-btn-sm); font-size: var(--fs-xs)"
-                 v-model="filterVal" placeholder="值" />
-          <button class="btn btn--sm btn--ghost" @click="clearFilter">清除</button>
-        </template>
-        <div class="toolbar__sep"></div>
-        <input class="input input--mono" style="width: 180px; height: var(--h-btn-sm); font-size: var(--fs-xs)"
-               v-model="searchTerm" placeholder="搜索当前结果" />
-        <span class="muted small">仅搜索已加载的 {{ filteredRows.length }} 行</span>
+        <input class="input input--mono" style="width: 170px; height: var(--h-btn-sm); font-size: var(--fs-xs)"
+               v-model="searchTerm" placeholder="搜索本页" />
+        <span class="muted small">仅本页 {{ filteredRows.length }} 行</span>
+
         <div class="grow"></div>
         <!-- ⭐ 未保存改动：条数 + 保存/放弃 -->
         <template v-if="pendingCount">
@@ -423,6 +443,49 @@ function clearFilter() {
       </div>
     </div>
 
+    <!-- ══ 筛选条件条：可见可清除 ══ -->
+    <div v-if="state.filters.length || showFilter" class="filterbar">
+      <!-- 条件构造器 -->
+      <template v-if="showFilter">
+        <select class="input" style="width: 140px; height: var(--h-btn-sm); font-size: var(--fs-xs)"
+                v-model="filterCol">
+          <option value="">选择列…</option>
+          <option v-for="c in state.columns" :key="c.id" :value="c.name">
+            {{ c.name }}{{ c.comment ? `（${c.comment}）` : '' }}
+          </option>
+        </select>
+        <select class="input" style="width: 104px; height: var(--h-btn-sm); font-size: var(--fs-xs)"
+                v-model="filterOp">
+          <option v-for="o in FILTER_OPS" :key="o.op" :value="o.op">{{ o.label }}</option>
+        </select>
+        <input v-if="needsValue"
+               class="input input--mono" style="width: 180px; height: var(--h-btn-sm); font-size: var(--fs-xs)"
+               v-model="filterVal" placeholder="值" @keydown.enter="applyFilter" />
+        <button class="btn btn--sm btn--primary" :disabled="!filterCol" @click="applyFilter">添加</button>
+        <div class="toolbar__sep"></div>
+      </template>
+
+      <!-- ⭐ 已生效的条件 -->
+      <template v-for="(f, i) in state.filters" :key="i">
+        <span class="filterchip">
+          <span class="mono">{{ f.col }}</span>
+          <span class="muted">{{ FILTER_OPS.find(o => o.op === f.op)?.label ?? f.op }}</span>
+          <template v-if="f.op !== 'IS NULL' && f.op !== 'IS NOT NULL'">
+            <span class="mono">{{ f.value === '' ? "''" : f.value }}</span>
+          </template>
+          <button class="filterchip__x" title="移除该条件" @click="removeFilter(i)">✕</button>
+        </span>
+      </template>
+      <button v-if="state.filters.length" class="btn btn--sm btn--ghost"
+              @click="actions.clearFilters()">全部清除</button>
+
+      <!-- ⭐ 明确告知条件已下推到数据库，不是内存过滤 -->
+      <span class="grow"></span>
+      <span class="muted small" v-if="state.filters.length" title="筛选条件会作为 WHERE 子句发给数据库">
+        ⓘ 条件已下推到数据库
+      </span>
+    </div>
+
     <!-- ══ 表格 ══ -->
     <div class="grid-wrap" v-if="state.columns.length">
       <table class="grid">
@@ -430,8 +493,8 @@ function clearFilter() {
           <tr :style="{ height: 'var(--h-toolbar)' }">
             <th class="rownum" style="width: 62px; min-width:62px; max-width:62px">#</th>
             <th v-for="c in state.columns" :key="c.id"
-                :class="{ 'is-pk': c.isPk, 'is-fk': c.isFk, 'is-sorted': sortCol === c.name }"
-                :title="c.comment ?? c.name"
+                :class="{ 'is-pk': c.isPk, 'is-fk': c.isFk, 'is-sorted': state.sortCol === c.name }"
+                :title="c.comment ? `${c.comment}\n点击按此列排序（下推到数据库）` : '点击按此列排序'"
                 :style="{ minWidth: '140px' }"
                 @click="toggleSort(c.name)">
               <div class="th-main">
@@ -439,7 +502,10 @@ function clearFilter() {
                 <span v-if="c.isPk" style="color: var(--warning)" title="主键">🔑</span>
                 <span v-if="c.isFk" style="color: var(--accent)" title="外键">🔗</span>
                 <span v-if="!c.nullable" class="muted" title="NOT NULL">•</span>
-                <span v-if="sortCol === c.name" class="muted">{{ sortDir === "asc" ? "↑" : "↓" }}</span>
+                <!-- ⭐ 排序标记读 store（已下推到数据库），不是本地 ref -->
+                <span v-if="state.sortCol === c.name" class="muted">
+                  {{ state.sortDir === "asc" ? "↑" : "↓" }}
+                </span>
               </div>
               <div class="th-type">{{ c.ty }}{{ c.defaultExpr ? ` = ${c.defaultExpr}` : "" }}</div>
               <div v-if="c.comment" class="th-comment">{{ c.comment }}</div>
@@ -495,12 +561,19 @@ function clearFilter() {
       <div class="small">从左侧对象树双击一张表</div>
     </div>
 
-    <!-- ══ 底部：行数 + 加载全部 ══ -->
+    <!-- ══ 底栏：说清「当前页」与「总行数」的关系，避免误解 ══ -->
     <div class="grid-foot" v-if="state.tableDef">
       <span class="mono">
-        已加载 {{ filteredRows.length.toLocaleString() }} /
-        <template v-if="total !== null">{{ total.toLocaleString() }}</template>
-        <template v-else><span class="muted" title="复杂查询不执行 COUNT，避免全表扫描">未估算</span></template>
+        本页 {{ filteredRows.length.toLocaleString() }} 行
+        <template v-if="state.total !== null && !state.totalStale">
+          · 共 {{ state.total.toLocaleString() }} 行
+        </template>
+        <template v-else-if="state.filters.length">
+          · <span class="muted" title="有筛选时不执行 COUNT（避免全表扫），且未筛选时的总数不适用于当前条件">筛选后总数未统计</span>
+        </template>
+        <template v-else-if="state.hasNextPage">
+          · <span class="muted">还有更多</span>
+        </template>
       </span>
       <span class="muted">{{ state.queryMs }} ms</span>
       <span class="grow"></span>
@@ -544,4 +617,41 @@ function clearFilter() {
   background: var(--warning-bg);
   box-shadow: inset 2px 0 0 var(--warning);
 }
+
+/* ── 分页控件 ── */
+.pager { display: flex; align-items: center; gap: var(--sp-1); }
+.pager__pos { font-size: var(--fs-xs); color: var(--text-secondary); white-space: nowrap; }
+.pager__jump { width: 64px; text-align: center; }
+
+/* ── 筛选条件条 ── */
+.filterbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: var(--bw) solid var(--border);
+  background: var(--bg-inset);
+}
+.filterchip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 2px var(--sp-1) 2px var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--accent-bg);
+  border: var(--bw) solid var(--accent);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+.filterchip__x {
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 10px;
+  line-height: 1;
+}
+.filterchip__x:hover { color: var(--danger); }
 </style>

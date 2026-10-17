@@ -37,6 +37,91 @@ export interface EditBuffer {
 }
 
 // ─────────────────────────────────────────────────────────────
+// ⭐ 查询构造：把 UI 状态编译成 SQL
+// ─────────────────────────────────────────────────────────────
+
+/** 一条筛选条件 */
+export interface TableFilter {
+  col: string;
+  op: FilterOp;
+  value: unknown;
+}
+
+export type FilterOp =
+  | "=" | "!=" | ">" | ">=" | "<" | "<="
+  | "LIKE" | "IS NULL" | "IS NOT NULL";
+
+export const FILTER_OPS: { op: FilterOp; label: string }[] = [
+  { op: "=", label: "等于" },
+  { op: "!=", label: "不等于" },
+  { op: ">", label: "大于" },
+  { op: ">=", label: "大于等于" },
+  { op: "<", label: "小于" },
+  { op: "<=", label: "小于等于" },
+  { op: "LIKE", label: "包含" },
+  { op: "IS NULL", label: "为空" },
+  { op: "IS NOT NULL", label: "不为空" },
+];
+
+/**
+ * ⭐⭐ 从 UI 状态构造表数据查询的 SQL。
+ *
+ * 这条 SQL 会被**原样送到数据库**，所以：
+ *   · 标识符（表名/列名）必须转义 —— `"` 包裹，内部 `"` 翻倍
+ *   · 值一律走 `sqlLiteral()`，单引号转义，杜绝注入
+ *
+ * ⭐ 为什么必须下推：前端只拿到当前页，内存里排序/筛选**只对这一页有效**。
+ *   用户点「按金额倒序」，看到的其实是「这一页里最大的几行」，
+ *   而不是全表最大的 —— 结果看着像模像样，实际是错的。
+ *   这类错误用户极难察觉，却会直接导致误判。
+ */
+export function buildTableQuery(table: string): { sql: string } {
+  const parts = [`SELECT * FROM ${quoteIdent(table)}`];
+
+  const conds = state.filters.map(filterToSql).filter(Boolean) as string[];
+  if (conds.length) parts.push(`WHERE ${conds.join(" AND ")}`);
+
+  // ⭐ 只能有**一个** ORDER BY 子句，多个会被数据库判为语法错误
+  //    （SQLite 容忍但忽略后面的，等于排序失效且没有任何提示）。
+  const orderCols: string[] = [];
+  if (state.sortCol) {
+    orderCols.push(
+      `${quoteIdent(state.sortCol)} ${state.sortDir === "desc" ? "DESC" : "ASC"}`,
+    );
+  }
+  // 主键兜底：保证翻页不重不漏。
+  // 没有它，同值行在不同页的顺序未定义，
+  // 用户会在第 2 页看到第 1 页已经出现过的行。
+  const pk = state.columns.find((c) => c.isPk);
+  if (pk && state.sortCol !== pk.name) {
+    orderCols.push(`${quoteIdent(pk.name)} ASC`);
+  }
+  if (orderCols.length) parts.push(`ORDER BY ${orderCols.join(", ")}`);
+
+  return { sql: parts.join(" ") };
+}
+
+/** ⭐ 标识符转义：双引号包裹，内部双引号翻倍 */
+export function quoteIdent(name: string): string {
+  return `"${String(name).replace(/"/g, '""')}"`;
+}
+
+/** 单条筛选条件 → SQL 片段 */
+function filterToSql(f: TableFilter): string | null {
+  const col = quoteIdent(f.col);
+  if (f.op === "IS NULL") return `${col} IS NULL`;
+  if (f.op === "IS NOT NULL") return `${col} IS NOT NULL`;
+  if (f.op === "LIKE") {
+    // ⭐ 转义 LIKE 通配符，否则用户搜 "100%" 会变成通配符，
+    //    匹配到一大堆无关数据却不报错
+    const raw = String(f.value ?? "");
+    const escaped = raw.replace(/[\\%_]/g, (m) => `\\${m}`);
+    return `${col} LIKE ${sqlLiteral(`%${escaped}%`)} ESCAPE '\\'`;
+  }
+  return `${col} ${f.op} ${sqlLiteral(f.value)}`;
+}
+
+// ─────────────────────────────────────────────────────────────
 // ⭐ UI 状态（UI-DESIGN §11.1：store 不持有凭据）
 // ─────────────────────────────────────────────────────────────
 
@@ -94,6 +179,28 @@ interface State {
   lastDanger: string;
   loading: boolean;
 
+  // ── 分页 ──
+  /** 是否还有下一页（来自后端 nextCursor，不是猜的） */
+  hasNextPage: boolean;
+  /**
+   * ⭐ `total` 是否已不适用于当前查询。
+   *
+   * 翻页时后端不重算 COUNT，`total` 沿用上一���的值 —— 这没问题。
+   * 但**一旦加了筛选条件**，那个数就是「未筛选时的总数」，
+   * 继续显示就是骗人（用户会以为筛选后还有 5000 行）。
+   * 所以要用这个标记把两种情况分开：
+   *   false → total 权威，显示
+   *   true  → total 只对"无筛选"成立，不显示
+   */
+  totalStale: boolean;
+
+  // ── 排序（下推到数据库）──
+  sortCol: string | null;
+  sortDir: "asc" | "desc";
+
+  // ── 筛选（下推到数据库）──
+  filters: TableFilter[];
+
   // ⭐ 编辑缓冲（U1-5.2）：改动先进内存，**不自动保存**
   /**
    * ⭐ 一次单元格改动的完整记录。
@@ -145,6 +252,11 @@ export const state = reactive<State>({
   queryMs: 0,
   lastDanger: "readOnly",
   loading: false,
+  hasNextPage: false,
+  totalStale: false,
+  sortCol: null,
+  sortDir: "asc",
+  filters: [],
 
   edits: { byTable: new Map(), undo: [], redo: [] } as EditBuffer,
 
@@ -319,17 +431,34 @@ export const actions = {
     return state.tabs.find((t) => t.id === state.activeTabId) ?? null;
   },
 
-  // ── 加载表数据（真分页）──
+  // ── 加载表数据（服务端分页 + 条件下推）──
+  /**
+   * ⭐⭐ 排序与筛选**必须下推到数据库**。
+   *
+   * 前端只拿到当前页的 200 行，在内存里排序 = 只排了这 200 行；
+   * 用户点「按金额倒序」看到的是「这 200 行里最大的」，
+   * 而不是全表最大的 —— 结果看着像模像样，实际是错的。
+   * 这类错误用户极难察觉，却会直接导致误判。
+   */
   async loadTable(table: string) {
     state.loading = true;
     try {
-      const r = await api.query(`SELECT * FROM "${table}" LIMIT ${state.rowLimit}`, state.rowLimit);
+      const sql = buildTableQuery(table);
+      const r = await api.query(sql.sql, state.rowLimit, state.offset);
       state.rows = r.page.rows;
-      state.columns = r.page.columns;
-      state.total = r.page.total ?? null;
-      state.offset = 0;
+      state.columns = r.page.columns.length ? r.page.columns : state.columns;
       state.queryMs = r.page.durationMs;
       state.lastDanger = r.danger;
+      state.hasNextPage = !!r.page.nextCursor;
+      // ⭐ total 只在后端给权威值时更新。
+      //    有筛选时后端**故意**返回 null（不给错数），此时沿用上次已知值，
+      //    但标记为 stale —— 显示时会说明它不适用于当前筛选。
+      if (r.page.total !== null) {
+        state.total = r.page.total;
+        state.totalStale = false;
+      } else if (state.filters.length) {
+        state.totalStale = true;
+      }
       const meta = await api.table(table);
       state.tableDef = meta.table;
       state.findings = await api.diagnostics();
@@ -338,6 +467,76 @@ export const actions = {
     } finally {
       state.loading = false;
     }
+  },
+
+  /** 上一页 */
+  prevPage() {
+    state.offset = Math.max(0, state.offset - state.rowLimit);
+    const t = state.tableDef?.name;
+    if (t) void actions.loadTable(t);
+  },
+
+  /** 下一页（无 nextCursor 时禁用） */
+  nextPage() {
+    if (!state.hasNextPage) return;
+    state.offset += state.rowLimit;
+    const t = state.tableDef?.name;
+    if (t) void actions.loadTable(t);
+  },
+
+  /** 跳到第 n 页（n 从 1 开始） */
+  goToPage(n: number) {
+    const p = Math.max(1, Math.floor(n));
+    state.offset = (p - 1) * state.rowLimit;
+    const t = state.tableDef?.name;
+    if (t) void actions.loadTable(t);
+  },
+
+  /** 排序：同一列再点一次切换方向 */
+  toggleSort(col: string) {
+    if (state.sortCol === col) {
+      state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+    } else {
+      state.sortCol = col;
+      state.sortDir = "asc";
+    }
+    // ⭐ 排序变了必须重查 —— 内存里排只对当前页有效
+    state.offset = 0;
+    const t = state.tableDef?.name;
+    if (t) void actions.loadTable(t);
+  },
+
+  /** 设置排序（多列级联时用，columns 按优先级排列） */
+  setSort(col: string | null, dir: "asc" | "desc" = "asc") {
+    state.sortCol = col;
+    state.sortDir = dir;
+    state.offset = 0;
+    const t = state.tableDef?.name;
+    if (t) void actions.loadTable(t);
+  },
+
+  /** 加/减一个筛选条件 */
+  addFilter(f: TableFilter) {
+    state.filters.push(f);
+    state.offset = 0;
+    const t = state.tableDef?.name;
+    if (t) void actions.loadTable(t);
+  },
+
+  /** 删一个筛选条件 */
+  removeFilter(i: number) {
+    state.filters.splice(i, 1);
+    state.offset = 0;
+    const t = state.tableDef?.name;
+    if (t) void actions.loadTable(t);
+  },
+
+  /** 清空所有筛选 */
+  clearFilters() {
+    state.filters = [];
+    state.offset = 0;
+    const t = state.tableDef?.name;
+    if (t) void actions.loadTable(t);
   },
 
   async runSql(sql: string) {
@@ -509,7 +708,32 @@ export const actions = {
     state.edits.byTable.delete(table);
   },
 
-  // ── 布局 ──
+  /** ⭐ 加筛选条件：总数随之失效 */
+  addFilter(f: TableFilter) {
+    state.filters.push(f);
+    state.offset = 0;
+    state.totalStale = true;
+    const t = state.tableDef?.name;
+    if (t) void actions.loadTable(t);
+  },
+
+  /** ⭐ 删筛选条件 */
+  removeFilter(i: number) {
+    state.filters.splice(i, 1);
+    state.offset = 0;
+    state.totalStale = state.filters.length > 0;
+    const t = state.tableDef?.name;
+    if (t) void actions.loadTable(t);
+  },
+
+  /** ⭐ 清空筛选：总数重新变得可用 */
+  clearFilters() {
+    state.filters = [];
+    state.offset = 0;
+    state.totalStale = false;
+    const t = state.tableDef?.name;
+    if (t) void actions.loadTable(t);
+  },
   setSidebarWidth(w: number) {
     state.sidebarWidth = Math.min(480, Math.max(160, w));
     localStorage.setItem("adb.sidebarWidth", String(state.sidebarWidth));
