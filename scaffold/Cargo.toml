@@ -1,0 +1,167 @@
+# ============================================================================
+# Workspace 根 Cargo.toml —— 修正版
+#
+# ⭐ 抄 DBX 的 [profile.release]，它明确选了体积而不是性能。
+#    数据库工具的性能靠驱动和数据库，不靠本地编译优化。
+# ============================================================================
+
+[workspace]
+resolver = "2"
+members = [
+  # ── 应用 ──
+  "crates/adb-desktop",
+  # ── 编排 ──
+  "crates/adb-core",
+  # ── 类型（零依赖，构建期消费 declarations）──
+  "crates/adb-types",
+  # ── 基础能力 ──
+  "crates/adb-platform",
+  "crates/adb-secret",
+  # ── SQL（facade + 4 子 crate）──
+  "crates/adb-sql",
+  "crates/adb-sql-core",
+  "crates/adb-sql-dialect",
+  "crates/adb-sql-data",
+  "crates/adb-sql-schema",
+  # ── 驱动（facade + per-driver）──
+  "crates/adb-drivers",
+  "crates/adb-driver-support",
+  "crates/adb-driver-postgres",
+  "crates/adb-driver-mysql",
+  "crates/adb-driver-sqlite",
+  "crates/adb-driver-redis",
+  "crates/adb-driver-mongodb",
+  "crates/adb-driver-clickhouse",
+  "crates/adb-driver-jdbc",
+  # ── 格式 ──
+  "crates/adb-formats",
+  # ── 差异化引擎 ──
+  "crates/adb-mask",
+  "crates/adb-diag",
+  "crates/adb-change",
+  "crates/adb-audit",
+  # ── 入口 ──
+  "crates/adb-registry",
+  "crates/adb-mcp",
+  "crates/adb-cli",
+  "crates/adb-web",
+]
+
+# ============================================================================
+# ⛔ 刻意不做的三件事（对照 DBX）
+#
+#   1. 不 vendor 任何 Tauri/wry 官方库
+#      DBX vendor 了 8 个（wry/tiberius/rumqttc/ctor/dirs-sys/pageant/
+#      webview2-com-sys/tauri-plugin-updater），主因是 Win7 兼容性。
+#      我们的目标用户不需要 Win7 → 不 vendor。
+#
+#   2. 不 fork tokio-postgres / mysql_async
+#      DBX fork 了 tokio-postgres（3 个 crate）支持高斯。
+#      我们用 crates/adb-driver-postgres/src/variant.rs 的补丁层：
+#      变体差异只在元数据 SQL + 方言两层，0 个 fork。
+#
+#   3. 不为国产库改上游 crate
+#      如果某天真的需要改 wire protocol，
+#      先在 adb-driver-{x}/src/patch/ 里用 trait 包装做，
+#      实在不行才考虑 fork，并且必须写 ADR 记录原因。
+# ============================================================================
+
+# [patch.crates-io]
+# ⛔ 空。保持为空就是 CI 守卫的一部分：
+#    xtask/guard.rs 会检查本节是否被填充，非空则要求对应 ADR 文件存在。
+
+# ============================================================================
+# 构建 profile
+# ============================================================================
+
+# ⭐ 抄 DBX：依赖库不需要断点调试，但保留行号表让 backtrace 可读。
+#    大幅缩短开发和测试构建时间 + 缩小产物。
+[profile.dev.package."*"]
+debug = "line-tables-only"
+
+[profile.release]
+# ⭐ 体积优先（抄 DBX）。25MB 是唯一传播点。
+opt-level = "s"          # ⭐⭐ 注意：不是 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+strip = "symbols"
+
+# 体积门禁（xtask/lean.rs 检查）
+#   binary ≤ 18MB
+#   bundle  ≤ 40MB（M5 终态，含 5 原生驱动）
+#   jar     ≤  2MB（JDBC Agent）
+
+# ============================================================================
+# 依赖版本锁（集中管理，避免各处版本漂移）
+# ============================================================================
+
+[workspace.dependencies]
+# 运行时
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+futures = "0.3"
+async-trait = "0.1"
+
+# 序列化
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+serde_yaml_ng = "0.10"
+toml = "0.9"
+
+# 错误
+thiserror = "2"
+anyhow = "1"
+
+# 本地存储（⭐ FTS5 —— 中文/拼音检索靠它）
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "fts5"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# SQL
+sqlparser = "0.51"
+sqlformat = "0.2"
+
+# 加密 / 凭据
+argon2 = "0.5"
+sha2 = "0.10"
+hmac = "0.12"
+# ⭐ 三个平台后端都要。Docker/无头环境走 file-key feature。
+keyring = { version = "3", default-features = false }
+
+# 压缩 / 编码
+flate2 = "1"
+zip = { version = "4", default-features = false, features = ["deflate"] }
+base64 = "0.22"
+percent-encoding = "2"
+csv = "1"
+
+# 网络
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+russh = { version = "0.54", default-features = false }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+
+# MCP / CLI / Web
+rmcp = { version = "0.2", features = ["server"] }
+clap = { version = "4", features = ["derive"] }
+axum = { version = "0.8", features = ["ws"] }
+
+# 工具
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+dashmap = "6"
+once_cell = "1"
+regex = "1"
+rayon = "1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"                       # ⭐ 数据库工具禁止 unsafe
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+# ⭐⭐ 这两条是把架构纪律编译进 CI
+indexing_slicing = "deny"          # 禁止裸 [i]，强制用 .get()
+unwrap_used = "deny"                # ⭐ 库代码不允许 unwrap
+todo = "deny"
+dbg_macro = "deny"

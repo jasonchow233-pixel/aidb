@@ -1,0 +1,51 @@
+schemaVersion: 1
+order: 30
+id: sqlite
+rustVariant: Sqlite
+label: SQLite
+labelEn: SQLite
+icon: sqlite.svg
+
+dialect: Sqlite
+runtimeMode: native
+mcpMode: builtin
+defaultPort: 0
+urlTemplate: "sqlite://{database}"
+
+traits:
+  schemaAware: false          # ⭐ 没有 schema 层级 → UI 树只到 database
+  singleDatabase: false
+  clearableQuerySchema: false
+  identityKind: rowid
+  sequenceObjects: false      # ⭐ 无序列对象
+  transactionalDdl: true     # ⭐ SQLite 的 DDL 在事务内 → 快照提示可省
+  onlineDdlConcurrent: false
+  multipleResultsets: false
+  savepoints: true
+  explainFormats: [text]
+  maxParams: 0               # 0 = 无限制
+  identifierQuote: "\""
+  paramStyle: named
+
+capabilities:
+  queryExecution: true
+  metadataBrowse: true
+  objectBrowser: false        # ⭐ SQLite 无存储过程
+  objectSource: false
+  schemaSearch: false
+  diagram: false
+  tableDataEdit: true
+  tableStructureEdit: true
+  tableImport: true
+  dataTransfer: true
+  sqlFileExecution: true
+  databaseCreate: false       # ⭐ 明确关闭
+  fieldLineage: false
+  sqlExplain: true
+  userAdmin: false            # ⭐ 明确关闭
+  specializedSurface: false
+
+compareModes: [schema, data]
+transferSupportLevel: native
+transferObjectFamily: sqlite
+supportLevel: full

@@ -1,0 +1,36 @@
+# ── 构建产物 ──
+target/
+dist/
+node_modules/
+*.tsbuildinfo
+
+# ── 运行时数据 ──
+# 演示库是可生成的产物（35MB），不该进版本库。
+# `demo::materialize()` 首次运行会自动重建。
+*.db
+*.db-wal
+*.db-shm
+
+# ── 凭据：绝不能提交 ──
+# adb-secret 目前仅内存实现，但 Keyring 落地后这些文件会出现
+*.pem
+*.key
+*.p12
+*.pfx
+.env
+.env.*
+!.env.example
+secrets.yaml
+credentials.yaml
+
+# ── 编辑器 / 系统 ──
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# ── 覆盖率 / 临时 ──
+coverage/
+*.profraw
+tmp/

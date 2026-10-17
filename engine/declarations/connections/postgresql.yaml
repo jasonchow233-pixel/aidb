@@ -1,0 +1,55 @@
+# ============================================================
+# PostgreSQL 连接描述符
+# 参考实现。build.rs 会校验并生成 Rust enum + JSON manifest。
+# ============================================================
+
+schemaVersion: 1
+order: 10
+id: postgresql
+rustVariant: Postgres
+label: PostgreSQL
+icon: postgresql.svg
+
+dialect: Postgres
+runtimeMode: native
+mcpMode: builtin
+defaultPort: 5432
+urlTemplate: "postgresql://{user}:{password}@{host}:{port}/{database}"
+
+traits:
+  schemaAware: true
+  singleDatabase: false
+  clearableQuerySchema: true
+  identityKind: identity
+  sequenceObjects: true
+  transactionalDdl: true          # ⭐ PG 特有：DDL 可在事务内回滚
+  onlineDdlConcurrent: true        # ⭐ CREATE INDEX CONCURRENTLY
+  multipleResultsets: true         # ⭐ 简单查询协议可返回多结果集
+  savepoints: true
+  explainFormats: [json, text]
+  maxParams: 65535
+  identifierQuote: "\""
+  paramStyle: numbered             # ⭐ $1
+
+capabilities:
+  queryExecution: true
+  metadataBrowse: true
+  objectBrowser: true
+  objectSource: true
+  schemaSearch: true
+  diagram: true
+  tableDataEdit: true
+  tableStructureEdit: true
+  tableImport: true
+  dataTransfer: true
+  sqlFileExecution: true
+  databaseCreate: true
+  fieldLineage: true
+  sqlExplain: true
+  userAdmin: true
+  specializedSurface: false
+
+compareModes: [schema, data]
+transferSupportLevel: native
+transferObjectFamily: postgres
+supportLevel: full

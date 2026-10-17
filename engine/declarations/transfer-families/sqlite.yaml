@@ -1,0 +1,23 @@
+schemaVersion: 1
+id: sqlite
+label: SQLite 家族
+members: [sqlite, duckdb]
+supportsTransactionalDdl: true
+identityKeyword: AUTOINCREMENT
+quoteIdent: '"'
+typeMapping:
+  INTEGER:
+    lossy: false
+    to: { postgres: INTEGER, mysql: INT, sqlserver: INT, oracle: NUMBER(10) }
+  REAL:
+    lossy: true
+    to: { postgres: DOUBLE PRECISION, mysql: DOUBLE, sqlserver: FLOAT, oracle: BINARY_DOUBLE }
+  TEXT:
+    lossy: false
+    to: { postgres: TEXT, mysql: LONGTEXT, sqlserver: NVARCHAR(MAX), oracle: CLOB }
+  BLOB:
+    lossy: false
+    to: { postgres: BYTEA, mysql: LONGBLOB, sqlserver: VARBINARY(MAX), oracle: BLOB }
+  NUMERIC:
+    lossy: true
+    to: { postgres: NUMERIC, mysql: DECIMAL(38,10), sqlserver: DECIMAL(38,10), oracle: NUMBER }

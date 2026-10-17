@@ -1,0 +1,17 @@
+[package]
+name = "adb-secret"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+default = ["os-keyring"]
+os-keyring = []
+
+[dependencies]
+adb-types = { path = "../adb-types" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

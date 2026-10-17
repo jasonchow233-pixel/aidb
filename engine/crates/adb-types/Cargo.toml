@@ -1,0 +1,22 @@
+[package]
+name = "adb-types"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "adb_types"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml_ng = { workspace = true }
+
+[build-dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml_ng = { workspace = true }
+
+[lints]
+workspace = true

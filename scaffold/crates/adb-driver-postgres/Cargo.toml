@@ -1,0 +1,43 @@
+# ============================================================================
+# crates/adb-driver-postgres/Cargo.toml
+#
+# ⭐ 关键设计：驱动变体（高斯/金仓等 PG 兼容国产库）走**补丁层**，
+#    不 fork tokio-postgres。
+#    —— 这是对 DBX 做法（fork 三个 crate 并锁定 commit）的改进。
+# ============================================================================
+
+[package]
+name = "adb-driver-postgres"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[features]
+default = []
+test-support = ["adb-types/test-support"]
+
+[dependencies]
+adb-types   = { path = "../adb-types",     default-features = false }
+adb-support  = { path = "../adb-driver-support", default-features = false }
+
+tokio = { version = "1", features = ["full"] }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1", "with-uuid-1"] }
+deadpool-postgres = { version = "0.14", features = ["rt_tokio_1"] }
+
+# ⛔ 绝不用 [patch.crates-io] 指向自己的 fork。
+#    国产库差异全部在 src/variant.rs 里做适配层。
+postgres-types = "0.2"
+postgres-protocol = "0.6"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"
+thiserror = "2"
+dashmap = "6"
+# ⭐ 对象身份表（模拟 OID —— PG 有系统表，MySQL 需要）
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
+
+[dev-dependencies]
+testcontainers = "0.23"
+serial_test = "3"
