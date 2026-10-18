@@ -149,45 +149,46 @@ try {
   });
   check("数据已还原为 NULL", restored === null, `实际=${restored}`);
 
-  console.log("\n═══ 8. 无主键表必须拒绝生成 SQL ═══");
+  console.log("\n═══ 8. ⭐ 无主键表整表只读 ═══");
+  // ⭐ 之前的实现是「先让你编辑、保存时再拒绝」。现在改成**入口就挡住**：
+  //    点单元格不弹编辑框、直接告诉用户为什么。
+  //    「保存时才拒绝」的问题是用户可能改完十几格才被告知 —— 白干。
   await page.locator(".tree button.node", { hasText: "audit_logs" }).first().click();
-  await page.waitForSelector(".grid tbody tr", { timeout: 15000 });
-  await page.waitForTimeout(800);
+  await page.waitForSelector(".grid tbody tr:not(.win-spacer)", { timeout: 15000 });
+  await page.waitForTimeout(1000);
   const akIdx = await page.evaluate(() => {
     const ths = [...document.querySelectorAll(".grid thead th")];
     return ths.findIndex((t) => t.innerText.trim().startsWith("actor"));
   });
-  if (akIdx > 0) {
-    const c = page.locator(".grid tbody tr").nth(0).locator("td").nth(akIdx);
-    await c.click();
-    await page.waitForTimeout(300);
-    const inp = page.locator(".grid tbody tr").nth(0).locator(".cell-editor");
-    if (await inp.count()) {
-      await inp.fill("noop_pk_test");
-      await inp.press("Enter");
-      await page.waitForTimeout(400);
-      const saveBtn = page.locator(".toolbar button", { hasText: "保存" });
-      if (await saveBtn.count()) {
-        await saveBtn.first().click();
-        await page.waitForTimeout(900);
-        // ⭐ 拒绝走的是 toast（不是 confirm 弹窗）—— 断言要跟着实现走
-        const toast = await page.locator(".toast").count();
-        const toastText = toast ? await page.locator(".toast").first().innerText() : "";
-        check("⭐ 无主键表拒绝生成 UPDATE", /没有主键/.test(toastText), toastText.slice(0, 80));
-        // ⭐ 更关键：数据必须没被改
-        const after = await page.evaluate(async () => {
-          const r = await fetch("/api/query", {
-            method: "POST", headers: { "content-type": "application/json" },
-            body: JSON.stringify({ sql: "SELECT actor FROM audit_logs LIMIT 1", maxRows: 1 }),
-          });
-          return (await r.json()).data?.page?.rows?.[0]?.actor;
-        });
-        check("⭐ 数据库没被误改", after !== "noop_pk_test", `actor=${after}`);
-      } else {
-        check("无主键表未进缓冲（无保存按钮）", true);
-      }
-    }
-  }
+  check("找到目标列", akIdx > 0, `actor 列下标=${akIdx}`);
+
+  await page.evaluate((i) => {
+    const tr = [...document.querySelectorAll(".grid tbody tr")]
+      .filter((x) => !x.classList.contains("win-spacer"))[0];
+    tr.querySelectorAll("td")[i].click();
+  }, akIdx);
+  await page.waitForTimeout(600);
+
+  check("⭐ 无主键表点不出编辑框",
+    (await page.locator(".grid .cell-editor").count()) === 0);
+  const roToast = (await page.locator(".toast").count())
+    ? await page.locator(".toast").first().innerText() : "";
+  check("⭐ 说明了**为什么**不能编辑", /主键/.test(roToast), roToast.slice(0, 80));
+  check("⭐ 行内标注只读",
+    (await page.locator(".grid-foot, .grid").getByText("只读").count()) > 0
+    || (await page.locator(".grid .btn--danger").count()) === 0);
+  check("⭐ 没有保存按钮（压根没进缓冲）",
+    (await page.locator(".toolbar button", { hasText: "保存" }).count()) === 0);
+  check("⭐ 撤销键不可用", await page.locator(".toolbar button[title*='撤销']").isDisabled());
+
+  const actorAfter = await page.evaluate(async () => {
+    const r = await fetch("/api/query", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sql: "SELECT actor FROM audit_logs LIMIT 1", maxRows: 1 }),
+    });
+    return (await r.json()).data?.page?.rows?.[0]?.actor;
+  });
+  check("⭐ 数据库没被误改", actorAfter !== "noop_pk_test", `actor=${actorAfter}`);
 
   console.log("\n═══ 9. 控制台 ═══");
   check("无未捕获异常", errs.filter((e) => !/confirm|prompt/i.test(e)).length === 0,

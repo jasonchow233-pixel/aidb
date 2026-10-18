@@ -35,6 +35,7 @@ run "API 契约"  python3 e2e_contract.py
 run "浏览器冒烟" node smoke_browser.mjs
 run "客户端交互" node smoke_client.mjs
 run "编辑闭环"   node smoke_edit.mjs
+run "编辑交互"   node smoke_editui.mjs
 run "筛选面板"   node smoke_filter.mjs
 run "表格内核"   node smoke_grid.mjs
 

@@ -21,19 +21,54 @@ export interface CellEdit {
   oldWasNull: boolean;
 }
 
-/** 一次保存的批次（撤销粒度 = 一次保存，不是单次按键） */
+/** 一次保存的批次（用于「撤销到上次保存」，不是单次按键的粒度） */
 export interface EditRecord {
   table: string;
   edits: CellEdit[];
 }
 
+/** ⭐ 单次单元格改动的撤销条目（⌘Z 的粒度） */
+export interface UndoStep {
+  table: string;
+  row: number;
+  col: string;
+  /** 改动前的值（可能是 null / undefined —— 那也是值） */
+  before: unknown;
+  /** 改动后的值 */
+  after: unknown;
+}
+
 export interface EditBuffer {
   /** 表名 → 该表所有未保存的改动 */
   byTable: Map<string, CellEdit[]>;
-  /** 已保存批次的撤销栈 */
-  undo: EditRecord[];
+  /** ⭐ 单格撤销栈：新改动进来就清空重做栈 */
+  undo: UndoStep[];
   /** 重做栈 */
-  redo: EditRecord[];
+  redo: UndoStep[];
+  /** 已保存批次的快照（「回滚到上次保存」要用） */
+  saved: EditRecord[];
+}
+
+/**
+ * ⭐⭐ 值是否「真的相等」。
+ *
+ * **null / undefined 必须与 "" 严格区分**（`#10505`）：
+ *   之前用的是 `String(a ?? "") === String(b ?? "")`，
+ *   于是 `null ?? ""` 和 `""` 都变成 `""` —— 用户把一个 NULL 单元格
+ *   改成空串，程序判定「没变」直接丢弃。没有报错、没有提示，
+ *   用户以为改好了，实际什么都没发生。
+ *
+ * 非空值之间仍然按字符串比，因为编辑框给出的是字符串、
+ * 数据库给出的是数字/布尔；只对「空」这一侧要求严格。
+ */
+export function sameValue(a: unknown, b: unknown): boolean {
+  const aNil = a === null || a === undefined;
+  const bNil = b === null || b === undefined;
+  if (aNil || bNil) return aNil && bNil;
+  if (typeof a === "object" || typeof b === "object") {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+  return String(a) === String(b);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -266,7 +301,7 @@ export const state = reactive<State>({
   sortDir: "asc",
   filters: [],
 
-  edits: { byTable: new Map(), undo: [], redo: [] } as EditBuffer,
+  edits: { byTable: new Map(), undo: [], redo: [], saved: [] } as EditBuffer,
 
   findings: [],
 
@@ -523,29 +558,10 @@ export const actions = {
     if (t) void actions.loadTable(t);
   },
 
-  /** 加/减一个筛选条件 */
-  addFilter(f: TableFilter) {
-    state.filters.push(f);
-    state.offset = 0;
-    const t = state.tableDef?.name;
-    if (t) void actions.loadTable(t);
-  },
-
-  /** 删一个筛选条件 */
-  removeFilter(i: number) {
-    state.filters.splice(i, 1);
-    state.offset = 0;
-    const t = state.tableDef?.name;
-    if (t) void actions.loadTable(t);
-  },
-
-  /** 清空所有筛选 */
-  clearFilters() {
-    state.filters = [];
-    state.offset = 0;
-    const t = state.tableDef?.name;
-    if (t) void actions.loadTable(t);
-  },
+  // ⭐ 注意：addFilter / removeFilter / clearFilters 定义在**下面**编辑缓冲那一段，
+  //   那里还负责维护 `totalStale`。这里曾经有一份同名副本，
+  //   对象字面量里后写的会**静默覆盖**先写的 —— 改前一份不会有任何效果，
+  //   编译也只给一句警告。已删除，避免「改了却不生效」的假象。
 
   async runSql(sql: string) {
     state.loading = true;
@@ -579,11 +595,30 @@ export const actions = {
     const current = rows[row];
     if (!current) return;
 
-    const list = state.edits.byTable.get(table) ?? [];
-    const existing = list.find((e) => e.row === row && e.col === col);
+    // ⭐ 没有净变化就不记账：否则撤销栈里会出现一堆「按了 ⌘Z 但什么都没变」的步
+    if (sameValue(current[col], newValue)) return;
 
-    if (existing) {
-      existing.newValue = newValue;
+    // ⭐ 撤销粒度 = 一次「进入编辑 → 提交」。
+    //   只有**紧接着的同格**编辑才合并；隔了一格再回来就是另一步
+    //   —— 否则「A → B → A」会被并成一步，⌘Z 回不到中间那个 B。
+    const top = state.edits.undo[state.edits.undo.length - 1];
+    if (top && top.table === table && top.row === row && top.col === col) {
+      top.after = newValue;
+      // ⭐ 改回原值 → 这一步什么也没做，占着撤销位只会让 ⌘Z「按了没反应」
+      if (sameValue(top.before, top.after)) state.edits.undo.pop();
+    } else {
+      state.edits.undo.push({ table, row, col, before: current[col], after: newValue });
+    }
+
+    const list = state.edits.byTable.get(table) ?? [];
+    const idx = list.findIndex((e) => e.row === row && e.col === col);
+
+    if (idx >= 0) {
+      list[idx].newValue = newValue;
+      // ⭐⭐ 净变化为 0 就把这格从「待保存」里拿掉。
+      //    原值 A → B → A，用户眼里就是「没改」，
+      //    留着会生成一条改了等于没改的 UPDATE，还虚增「未保存 N 处」。
+      if (sameValue(list[idx].oldValue, newValue)) list.splice(idx, 1);
     } else {
       list.push({
         row,
@@ -593,11 +628,46 @@ export const actions = {
         oldWasNull: current[col] === null,
       });
     }
-    state.edits.byTable.set(table, list);
+    if (!list.length) state.edits.byTable.delete(table);
+    else state.edits.byTable.set(table, list);
     // ⭐ 有新改动就废掉重做栈 —— 标准编辑器行为
     state.edits.redo = [];
     // 立即反映到行数据上，让用户看到效果
     rows[row][col] = newValue;
+  },
+
+  /**
+   * ⭐ 撤销一步（⌘Z）。
+   *
+   * ⭐ 撤销回**原值**时，必须把这格从「待保存」缓冲里去掉 ——
+   *    否则生成的 SQL 会把原值又写一遍：一条改了等于没改的 UPDATE，
+   *    还会占掉「affected rows」的统计。净变化为 0 就不该出现在待保存里。
+   */
+  undoEdit(): boolean {
+    const step = state.edits.undo.pop();
+    if (!step) return false;
+    const row = state.rows[step.row];
+    if (row) row[step.col] = step.before;
+
+    const list = state.edits.byTable.get(step.table);
+    if (list) {
+      const i = list.findIndex((e) => e.row === step.row && e.col === step.col);
+      if (i >= 0 && sameValue(list[i].oldValue, step.before)) list.splice(i, 1);
+      if (!list.length) state.edits.byTable.delete(step.table);
+    }
+    state.edits.redo.push(step);
+    return true;
+  },
+
+  /** ⭐ 重做一步（⌘⇧Z） */
+  redoEdit(): boolean {
+    const step = state.edits.redo.pop();
+    if (!step) return false;
+    // ⭐ 直接复用 editCell：它负责写行数据、维护待保存缓冲、清空重做栈、
+    //   并把这一步压回撤销栈 —— 这正是重做该有的样子。
+    //   在这里自己 push 会产生重复条目。
+    actions.editCell(step.table, step.row, step.col, step.after);
+    return true;
   },
 
   /** 某表是否有未保存改动 */
@@ -694,11 +764,12 @@ export const actions = {
       return { ok: false, error: String(e) };
     }
 
-    // 成功后：进撤销栈、清缓冲、刷新数据
-    const record: EditRecord = { table, edits: [...(state.edits.byTable.get(table) ?? [])] };
-    state.edits.undo.push(record);
-    state.edits.redo = [];
+    // 成功后：记快照、清缓冲、刷新数据
+    state.edits.saved.push({ table, edits: [...(state.edits.byTable.get(table) ?? [])] });
     state.edits.byTable.delete(table);
+    // ⭐ 保存是一次新动作，重做栈里的东西已经无法按顺序接回去了
+    state.edits.undo = [];
+    state.edits.redo = [];
 
     await actions.loadTable(table);
     notify("info", `已保存 ${affected} 处改动（${statements.length} 条语句）`);
@@ -714,6 +785,10 @@ export const actions = {
       if (row) row[e.col] = e.oldWasNull ? null : e.oldValue;
     }
     state.edits.byTable.delete(table);
+    // ⭐ 这批改动已经不成立了，撤销栈里对应的步也必须一起丢掉 ——
+    //    否则「放弃」之后按 ⌘Z 会把已经放弃的改动又变回来。
+    state.edits.undo = state.edits.undo.filter((s) => s.table !== table);
+    state.edits.redo = state.edits.redo.filter((s) => s.table !== table);
   },
 
   /** ⭐ 设一个筛选条件（替换该列已有的同列条件） */
@@ -806,5 +881,20 @@ export function sqlLiteral(v: unknown): string {
     return String(v);
   }
   if (typeof v === "boolean") return v ? "1" : "0";
+  // ⭐⭐ 对象 / 数组必须序列化成 JSON。
+  //   之前落到最后一行 `String(v)`，写出来是 `'[object Object]'` ——
+  //   一条语法合法的 SQL，把用户的数据毁成了一坨字面量字符串。
+  //   而且没有任何报错：保存成功、值确实变了、只是变成了垃圾。
+  if (typeof v === "object") {
+    let json: string;
+    try {
+      json = JSON.stringify(v);
+    } catch {
+      // ⭐ 循环引用之类没法序列化 —— 宁可报「不可序列化」也不要写出坏 SQL
+      throw new Error("值无法序列化为 JSON（可能含有循环引用）");
+    }
+    if (json === undefined) throw new Error("值无法序列化为 JSON");
+    return `'${json.replace(/'/g, "''")}'`;
+  }
   return `'${String(v).replace(/'/g, "''")}'`;
 }

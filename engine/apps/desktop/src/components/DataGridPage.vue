@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
-  state, actions, notify, FILTER_OPS, sqlLiteral,
+  state, actions, notify, FILTER_OPS, sqlLiteral, sameValue,
   type FilterOp, type TableFilter,
 } from "@/lib/store";
 import { api, capabilities, compact, dangerClass, dangerIcon, type ColumnDef } from "@/lib/api";
@@ -462,10 +462,6 @@ function copyRowFormats(row: Record<string, unknown>) {
   notify("info", "已复制为 INSERT 语句");
 }
 
-function startEdit(rowIdx: number, col: string, value: unknown) {
-  editingCell.value = { row: rowIdx, col, value: formatEditable(value) };
-}
-
 /** ⭐ 编辑框的初始值：NULL 显示为空文本框，但不能变成字符串 "null" */
 function formatEditable(v: unknown): string {
   if (v === null || v === undefined) return "";
@@ -473,9 +469,102 @@ function formatEditable(v: unknown): string {
   return String(v);
 }
 
-/** ⭐ 编辑框的值 → JS 值。空文本框一律视为「设成空串」，而不是 NULL。 */
-function parseEditable(text: string): unknown {
-  return text; // ⭐ 空串就是空串；要设 NULL 必须走显式的「设 NULL」操作
+/**
+ * ⭐ 编辑框的值 → JS 值。空文本框一律视为「设成空串」，而不是 NULL。
+ *
+ * ⭐ 必须按**列类型**还原，而不是把输入框里的字符串原样塞进去：
+ *   枚举列下拉给的是 `"2"`，数值列给的是 `"42"`。
+ *   直接塞字符串会生成 `SET "status" = '2'` —— SQLite 靠隐式转换能过，
+ *   换到 Postgres/MySQL 的强类型列就是类型错误，或者干脆写进去一个字符串。
+ */
+function parseEditable(text: string, col?: ColumnDef): unknown {
+  // ⭐ 空串就是空串；要设 NULL 必须走显式的「设 NULL」按钮
+  if (text === "") return "";
+  // ⭐ 按**声明类型**还原，而不是按 category：
+  //   category="enum" 会丢掉底层类型（INTEGER 还是 TEXT），
+  //   只看 category 就只能把 "2" 当字符串写进去。
+  const ty = (col?.ty ?? "").toUpperCase();
+  const numeric = /INT|REAL|FLOA|DOUB|NUM|DECIMAL/.test(ty) && !/CHAR|TEXT|CLOB/.test(ty);
+  if (numeric || col?.category === "number") {
+    const n = Number(text);
+    // ⭐ 不做隐式转换：值与列类型对不上就让数据库报错并显示位置，
+    //   悄悄改成 0 或 null 比报错糟糕得多。
+    return Number.isFinite(n) ? n : text;
+  }
+  if (col?.category === "boolean") {
+    return text === "1" || text === "true" ? 1 : 0;
+  }
+  if (col?.category === "json") {
+    try { return JSON.parse(text); } catch { return text; }
+  }
+  return text;
+}
+
+// ── A1-8 类型化编辑器 ────────────────────────────────────────
+/**
+ * ⭐ 不是所有列都配得上同一个输入框。
+ *
+ * 枚举列给文本框 = 让用户手打数字键，还可能打错；
+ * 布尔列给文本框 = 让用户猜该填 true 还是 1；
+ * JSON 列给文本框 = 括号少一个都不告诉你哪儿错。
+ *
+ * ⭐ 关键约束：**控件类型只依据后端给的元数据**，绝不按列名猜。
+ *   加一种数据库、换一个列名，这套判断不用改一行。
+ */
+type EditorKind = "enum" | "bool" | "json" | "text";
+
+const editKind = ref<EditorKind>("text");
+/** JSON 编辑失败时的提示；非空则禁止提交 */
+const editError = ref("");
+
+/** 视图 / 无主键表：整表只读，且要告诉用户**为什么** */
+const tableReadOnly = computed(() => {
+  const t = state.tableDef;
+  if (!t) return null;
+  if (t.kind === "view") return "这是视图，数据来自查询，不能直接编辑";
+  if (!state.columns.some((c) => c.isPk)) {
+    return "该表没有主键，无法保证改到的是你看到的那一行";
+  }
+  return null;
+});
+
+function editorKindFor(col: ColumnDef): EditorKind {
+  if (col.category === "enum" && col.enumValues && Object.keys(col.enumValues).length) {
+    return "enum";
+  }
+  if (col.category === "boolean") return "bool";
+  if (col.category === "json") return "json";
+  return "text";
+}
+
+function startEdit(rowIdx: number, col: ColumnDef, value: unknown) {
+  if (tableReadOnly.value) {
+    notify("warn", tableReadOnly.value);
+    return;
+  }
+  editingCell.value = { row: rowIdx, col: col.name, value: formatEditable(value) };
+  editKind.value = editorKindFor(col);
+  editError.value = "";
+}
+
+/** ⭐ 提交前的类型校验 —— 不合格就地拒绝，不把脏数据塞进缓冲 */
+function validateEdit(kind: EditorKind, text: string): string {
+  if (kind === "json" && text.trim() !== "") {
+    try {
+      JSON.parse(text);
+    } catch (e) {
+      return `JSON 格式错误：${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+  return "";
+}
+
+/** ⭐ 勾选布尔列：先把草稿写成 "1"/"0"，再走同一条 commitEdit 通道。
+ *  不另开一条写入路径 —— 否则布尔列就会绕过校验与撤销栈。 */
+function setBoolDraft(e: Event, rowIdx: number, colName: string) {
+  const on = (e.target as HTMLInputElement).checked;
+  if (editingCell.value) editingCell.value = on ? "1" : "0";
+  commitEdit(rowIdx, colName);
 }
 
 /**
@@ -490,8 +579,18 @@ function parseEditable(text: string): unknown {
 function commitEdit(rowIdx: number, col: string) {
   const table = state.tableDef?.name;
   const raw = editingCell.value?.value;
-  editingCell.value = null;
   if (!table || raw === undefined) return;
+  const colDef = state.columns.find((c) => c.name === col);
+
+  // ⭐ 提交前先校验：JSON 写坏了就留在编辑态并说清哪儿坏，
+  //    绝不先收进缓冲再等保存时才报错 —— 那时候用户已经翻页了。
+  const bad = validateEdit(editKind.value, raw);
+  if (bad) {
+    editError.value = bad;
+    return;
+  }
+  editingCell.value = null;
+  editError.value = "";
 
   // ⭐ `edits` 在 **state** 上，不在 actions 上 —— 写成 actions.edits 会是
 //    undefined，报错还很难联想到真正原因。
@@ -500,8 +599,11 @@ function commitEdit(rowIdx: number, col: string) {
   );
   // ⭐ 已进入缓冲的改动，用缓冲里的当前值判断「是否真的改了」
   const current = original ? original.newValue : state.rows[rowIdx]?.[col];
-  const next = parseEditable(raw);
-  if (String(current ?? "") === String(next ?? "")) return;
+  const next = parseEditable(raw, colDef);
+  // ⭐ 必须用 sameValue，不能用 `String(a ?? "") === String(b ?? "")`：
+  //    后者把 null 和 "" 都归成 ""，于是「把 NULL 改成空串」会被**静默丢弃** ——
+  //    不报错、不提示，用户以为改好了，实际什么都没发生。
+  if (sameValue(current, next)) return;
 
   actions.editCell(table, rowIdx, col, next);
 }
@@ -512,6 +614,52 @@ function setNull(rowIdx: number, col: string) {
   if (!table) return;
   actions.editCell(table, rowIdx, col, null);
 }
+
+/** ⭐ 显式「设成空串」—— 同样是一个独立操作，不能与设 NULL 合并 */
+function setEmptyString(rowIdx: number, col: string) {
+  const table = state.tableDef?.name;
+  if (!table) return;
+  actions.editCell(table, rowIdx, col, "");
+}
+
+/** 这格现在是不是 NULL / 空串 —— 用来把对应按钮置灰 */
+function isNullCell(rowIdx: number, col: string): boolean {
+  const v = state.rows[rowIdx]?.[col];
+  return v === null || v === undefined;
+}
+function isEmptyStringCell(rowIdx: number, col: string): boolean {
+  return state.rows[rowIdx]?.[col] === "";
+}
+
+/**
+ * ⭐ A1-7 撤销 / 重做。
+ *
+ * ⭐ 粒度是「一次进入编辑 → 提交」，不是每次按键 ——
+ *    用户在同一个格子里改三次、按一次 ⌘Z，期望回到**进入编辑前**的原值，
+ *    而不是中间某个中间态。
+ *
+ * ⭐ 正在编辑某个格子时不响应 ⌘Z：那时候 ⌘Z 应该归文本框管，
+ *    把单元格值跳掉会让人以为打字丢了。
+ */
+function onKeydown(e: KeyboardEvent) {
+  const meta = e.metaKey || e.ctrlKey;
+  if (!meta || e.key.toLowerCase() !== "z") return;
+  if (editingCell.value) return;
+  e.preventDefault();
+  if (e.shiftKey) {
+    if (!actions.redoEdit()) notify("info", "没有可重做的改动");
+  } else {
+    if (!actions.undoEdit()) notify("info", "没有可撤销的改动");
+  }
+  const t = state.tableDef?.name;
+  if (t) void actions.loadTable(t);
+}
+onMounted(() => window.addEventListener("keydown", onKeydown));
+onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
+
+/** 撤销栈深度 —— 拿来做按钮的可用态 */
+const canUndo = computed(() => state.edits.undo.length > 0);
+const canRedo = computed(() => state.edits.redo.length > 0);
 
 /** 待保存的 SQL —— 保存前必须让用户看清楚 */
 const pendingSql = computed(() => {
@@ -687,6 +835,11 @@ function clearFilter() {
         <span class="muted small">仅本页 {{ filteredRows.length }} 行</span>
 
         <div class="grow"></div>
+        <!-- ⭐ 撤销/重做：粒度 = 一次编辑提交（⌘Z / ⌘⇧Z） -->
+        <button class="btn btn--sm" :disabled="!canUndo"
+                title="撤销上一次编辑（⌘Z）" @click="actions.undoEdit()">↶</button>
+        <button class="btn btn--sm" :disabled="!canRedo"
+                title="重做（⌘⇧Z）" @click="actions.redoEdit()">↷</button>
         <!-- ⭐ 未保存改动：条数 + 保存/放弃 -->
         <template v-if="pendingCount">
           <span class="badge badge--warn" :title="`${pendingCount} 处改动尚未落库`">
@@ -833,15 +986,52 @@ function clearFilter() {
                 }"
                 :title="c.isLarge ? '点击查看完整内容' : undefined"
                 @dblclick.stop="openDetail(c, w.ri)"
-                @click.stop="startEdit(w.ri, c.name, w.row[c.name])">
+                @click.stop="startEdit(w.ri, c, w.row[c.name])">
+              <!-- ⭐ A1-8 类型化编辑器：控件由后端元数据决定，不按列名猜 -->
               <template v-if="editingCell?.row === w.ri && editingCell?.col === c.name">
-                <input class="input cell-editor" style="height: 20px; font-size: 11px; padding: 0 4px"
+                <!-- 枚举：下拉。选项来自 enumValues，写错值不可能发生 -->
+                <select v-if="editKind === 'enum'" class="input cell-editor"
+                        :aria-label="`编辑 ${c.name}`"
+                        v-model="editingCell.value"
+                        @change="commitEdit(w.ri, c.name)"
+                        @keydown.escape="editingCell = null"
+                        @blur="commitEdit(w.ri, c.name)"
+                        @click.stop>
+                  <option v-for="(label, val) in c.enumValues" :key="val" :value="String(val)">
+                    {{ label }}（{{ val }}）
+                  </option>
+                </select>
+                <!-- 布尔：复选框，勾选直接落 0/1 -->
+                <label v-else-if="editKind === 'bool'" class="cell-bool" @click.stop>
+                  <input type="checkbox" class="cell-editor"
+                         :aria-label="`编辑 ${c.name}`"
+                         :checked="editingCell.value === '1' || editingCell.value === 'true'"
+                         @change="setBoolDraft($event, w.ri, c.name)" />
+                  <span class="muted">{{ editingCell.value === "1" ? "是" : "否" }}</span>
+                </label>
+                <!-- 文本 / JSON：文本框 + 就地校验 -->
+                <input v-else class="input cell-editor"
+                       style="height: 20px; font-size: 11px; padding: 0 4px"
                        :aria-label="`编辑 ${c.name}`"
                        v-model="editingCell.value"
                        @blur="commitEdit(w.ri, c.name)"
                        @keydown.enter.prevent="commitEdit(w.ri, c.name)"
                        @keydown.escape="editingCell = null"
                        @click.stop />
+                <!-- ⭐ 校验失败必须显示出来，且编辑态不退出 -->
+                <div v-if="editError" class="cell-edit-err" @click.stop>{{ editError }}</div>
+
+                <!-- ⭐⭐ NULL 与空串是两个**独立**按钮，不能合并成一个「清空」。
+                     文本框清空只等于「设成空串」，所以要设成 NULL 必须有显式入口 ——
+                     否则这个值根本改不到（之前 setNull 压根没接上 UI）。 -->
+                <div class="cell-edit-ops" @click.stop>
+                  <button class="btn btn--mini" :disabled="isNullCell(w.ri, c.name)"
+                          title="把这一格设成 SQL NULL"
+                          @click="setNull(w.ri, c.name); editingCell = null">设 NULL</button>
+                  <button class="btn btn--mini" :disabled="isEmptyStringCell(w.ri, c.name)"
+                          title="把这一格设成空字符串（不是 NULL）"
+                          @click="setEmptyString(w.ri, c.name); editingCell = null">设空串</button>
+                </div>
               </template>
               <template v-else-if="w.row[c.name] === null"><em>NULL</em></template>
               <template v-else-if="isEnum(c)">{{ enumText(c, w.row[c.name]) }}</template>
@@ -850,7 +1040,10 @@ function clearFilter() {
             </td>
             <td @click.stop>
               <button class="btn btn--sm btn--ghost" @click="copyRow(w.row)" title="复制整行">复制</button>
-              <button class="btn btn--sm btn--danger" @click="deleteRow(w.ri)" title="删除行">删除</button>
+              <!-- ⭐ 只读表不给删除入口：视图 / 无主键表根本不该提供写操作 -->
+              <button v-if="!tableReadOnly" class="btn btn--sm btn--danger"
+                      @click="deleteRow(w.ri)" title="删除行">删除</button>
+              <span v-else class="muted small" :title="tableReadOnly">只读</span>
             </td>
           </tr>
 
@@ -940,6 +1133,36 @@ function clearFilter() {
   padding: 0 !important;
   border: none !important;
   background: transparent;
+}
+
+/* ── A1-8 类型化编辑器 ── */
+.cell-bool {
+  display: inline-flex; align-items: center; gap: 4px;
+  cursor: pointer; height: 100%;
+}
+.cell-bool input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+/* ⭐ NULL / 空串 两个动作并排放，让「它们是两件事」一眼可见 */
+.cell-edit-ops {
+  position: absolute; z-index: 5;
+  left: 8px; top: 100%;
+  display: inline-flex; gap: 4px;
+}
+.btn--mini {
+  height: 18px; padding: 0 6px;
+  font-size: 10px; line-height: 1;
+}
+/* ⭐ 校验错误必须显眼：它挡住了提交，不提示的话用户只会以为没点上 */
+.cell-edit-err {
+  position: absolute; z-index: 5;
+  left: 8px; top: calc(100% - 2px);
+  max-width: 320px; padding: 4px 8px;
+  border: var(--bw) solid var(--danger);
+  border-radius: var(--r-sm);
+  background: var(--danger-bg, var(--bg-elevated));
+  color: var(--danger);
+  font-size: var(--fs-xs);
+  white-space: normal;
+  box-shadow: var(--shadow-2);
 }
 
 /* ── A3 选择列 ── */
