@@ -154,6 +154,18 @@ export interface IndexDef {
   def?: string | null;
 }
 
+/** ⭐ 外键 4 元组 = [本表列, 引用表, 引用列, ON DELETE 规则]（与后端 TableDef.foreignKeys 同构） */
+export type ForeignKey = [fromCol: string, toTable: string, toCol: string, onDelete: string];
+
+/** ⭐ 约束一览（主键 / 唯一 / 非空 / 外键 / 检查），由后端真实内省推导 */
+export interface ConstraintDef {
+  id: string;
+  kind: "PRIMARY KEY" | "UNIQUE" | "NOT NULL" | "FOREIGN KEY" | "CHECK";
+  name?: string | null;
+  columns: string[];
+  detail?: string | null;
+}
+
 export interface TableDef {
   id: string;
   name: string;
@@ -163,7 +175,8 @@ export interface TableDef {
   sizeBytes?: number | null;
   columns: ColumnDef[];
   indexes: IndexDef[];
-  foreignKeys: [string, string, string, string][];
+  foreignKeys: ForeignKey[];
+  constraints: ConstraintDef[];
 }
 
 export interface TreeNode {

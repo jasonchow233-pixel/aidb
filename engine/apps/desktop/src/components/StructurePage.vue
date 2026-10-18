@@ -3,7 +3,7 @@ import { computed, ref, watch, toRaw } from "vue";
 import { state, actions, notify } from "@/lib/store";
 import { api, capabilities, compact, type TableDef } from "@/lib/api";
 
-const t = ref<"columns" | "indexes" | "ddl" | "diag">("columns");
+const t = ref<"columns" | "indexes" | "fk" | "constraints" | "ddl" | "diag">("columns");
 const editMode = ref(false);
 const rows = ref<TableDef["columns"]>([]);
 
@@ -64,6 +64,17 @@ function save() {
   notify("info", `结构保存已提交（demo 模式不落盘）：${rows.value.length} 列`);
   editMode.value = false;
 }
+
+// ⭐ 约束类型 → 徽章样式（与索引页同族配色，不引入新 class）
+function constraintBadge(kind: string): string {
+  switch (kind) {
+    case "PRIMARY KEY": return "badge--warn";
+    case "UNIQUE": return "badge--ok";
+    case "NOT NULL":
+    case "CHECK": return "badge--info";
+    default: return "";
+  }
+}
 </script>
 
 <template>
@@ -94,7 +105,7 @@ function save() {
     </div>
 
     <div class="tabs">
-      <div v-for="x in ([['columns','列'],['indexes','索引'],['ddl','DDL'],['diag','诊断']] as const)"
+      <div v-for="x in ([['columns','列'],['indexes','索引'],['fk','外键'],['constraints','约束'],['ddl','DDL'],['diag','诊断']] as const)"
            :key="x[0]" class="tabs__item" :class="{ 'tabs__item--active': t === x[0] }"
            @click="t = x[0]">
         {{ x[1] }}
@@ -160,6 +171,51 @@ function save() {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="scroll pad" v-else-if="t === 'fk'">
+      <table class="grid" style="min-width:100%">
+        <thead><tr>
+          <th style="min-width:200px">列</th>
+          <th style="min-width:160px">引用表</th>
+          <th style="min-width:160px">引用列</th>
+          <th style="min-width:120px">ON DELETE</th>
+        </tr></thead>
+        <tbody>
+          <tr v-for="(fk, i) in tbl.foreignKeys" :key="i" :style="{ height: 'var(--row-normal)' }">
+            <td class="mono">{{ fk[0] }}</td>
+            <td class="mono">{{ fk[1] }}</td>
+            <td class="mono">{{ fk[2] }}</td>
+            <td class="mono muted small">{{ fk[3] || "—" }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-if="!tbl.foreignKeys.length" class="empty">
+        <div class="empty__icon">🔗</div>
+        <div class="empty__title">该表没有外键</div>
+      </div>
+    </div>
+
+    <div class="scroll pad" v-else-if="t === 'constraints'">
+      <table class="grid" style="min-width:100%">
+        <thead><tr>
+          <th style="min-width:140px">类型</th>
+          <th>列</th>
+          <th>详情</th>
+        </tr></thead>
+        <tbody>
+          <tr v-for="c in tbl.constraints.filter((x) => x.kind !== 'FOREIGN KEY')" :key="c.id"
+              :style="{ height: 'var(--row-normal)' }">
+            <td><span class="badge" :class="constraintBadge(c.kind)">{{ c.kind }}</span></td>
+            <td class="mono">{{ c.columns.join(", ") }}</td>
+            <td class="mono muted small">{{ c.detail ?? "—" }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-if="!tbl.constraints.filter((x) => x.kind !== 'FOREIGN KEY').length" class="empty">
+        <div class="empty__icon">📐</div>
+        <div class="empty__title">该表没有约束</div>
+      </div>
     </div>
 
     <div class="scroll" v-else-if="t === 'ddl'">

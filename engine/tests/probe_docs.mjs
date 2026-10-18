@@ -79,10 +79,12 @@ try {
   await p.locator(".toolbar button", { hasText: "表结构" }).first().click();
   await p.waitForTimeout(1500);
   const tabs = await p.locator(".tabs__item").allInnerTexts();
-  check("结构页 4 个 tab", tabs.length === 4, tabs.join("/"));
-  check("缺外键与约束 tab（文档已如此标注）",
-    !tabs.some((t) => /外键/.test(t)) && !tabs.some((t) => /约束/.test(t)),
-    tabs.join("/"));
+  // ⭐ D1-1 已交付：结构页从 4 tab 升级为 6 tab（新增「外键」「约束」）。
+  //   断言必须跟着文档一起改 —— 否则文档写对、代码也写对的时候这一层
+  //   照样红，久了就没人看它了。与第 13 层门禁 smoke_structure.mjs 呼应。
+  check("结构页 6 个 tab（D1 已升级）", tabs.length === 6, tabs.join("/"));
+  check("含外键 tab（D1 已交付）", tabs.some((t) => /外键/.test(t)), tabs.join("/"));
+  check("含约束 tab（D1 已交付）", tabs.some((t) => /约束/.test(t)), tabs.join("/"));
 
   console.log("\n═══ BENCHMARK.md §查询编辑器 ═══");
   await p.keyboard.press("Meta+t");

@@ -210,7 +210,7 @@ try {
   const colTab = await activeTab();
   check("⭐ ⌘Click 列名 → 打开**所属表**的结构页", colTab === "orders 结构",
     `实际=${colTab}（若显示「o 结构」说明别名没解析）`);
-  check("结构页渲染出列清单", (await page.locator(".tabs__item").count()) === 4,
+  check("结构页渲染出列清单（D1 升级为 6 tab）", (await page.locator(".tabs__item").count()) === 6,
     `${await page.locator(".tabs__item").count()} 个 tab`);
 
   // ⭐ 不可跳转的位置不该有反应（弹窗 = 噪音）

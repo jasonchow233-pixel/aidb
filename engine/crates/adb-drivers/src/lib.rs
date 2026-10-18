@@ -8,10 +8,10 @@ use adb_types::{
     ColumnDef, ConnectionType, Danger, Descriptor, QueryError, SchemaSnapshot, SqlPosition,
 };
 
-pub mod error;
-pub mod sqlite;
 pub mod demo;
+pub mod error;
 pub mod faults;
+pub mod sqlite;
 
 pub use error::{AdbError, Result};
 pub use sqlite::SqliteDriver;
@@ -37,7 +37,9 @@ pub struct Cursor(pub i64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum ReadMode { Paged }
+pub enum ReadMode {
+    Paged,
+}
 
 #[derive(Debug, Clone)]
 pub struct QueryOptions {
@@ -48,7 +50,11 @@ pub struct QueryOptions {
 
 impl Default for QueryOptions {
     fn default() -> Self {
-        Self { max_rows: 1000, cursor: None, mode: ReadMode::Paged }
+        Self {
+            max_rows: 1000,
+            cursor: None,
+            mode: ReadMode::Paged,
+        }
     }
 }
 
@@ -87,12 +93,7 @@ pub trait Session: Send + Sync {
     fn cancel_blocking(&self) -> Result<()>;
 
     /// ⭐ 统一返回分页结果。`sql` 必须已经通过风险分析。
-    async fn query(
-        &self,
-        sql: &str,
-        opt: QueryOptions,
-        danger: Danger,
-    ) -> Result<RowPage>;
+    async fn query(&self, sql: &str, opt: QueryOptions, danger: Danger) -> Result<RowPage>;
 
     /// ⭐⭐ **真实写入**（落库），返回受影响行数。
     ///
@@ -164,12 +165,16 @@ pub enum RegistryError {
 
 pub type DriverFactory = fn() -> Box<dyn Driver + 'static>;
 
-static REGISTRY: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<ConnectionType, DriverFactory>>> =
-    std::sync::OnceLock::new();
+static REGISTRY: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<ConnectionType, DriverFactory>>,
+> = std::sync::OnceLock::new();
 
-fn registry() -> &'static std::sync::Mutex<std::collections::HashMap<ConnectionType, DriverFactory>> {
+fn registry() -> &'static std::sync::Mutex<std::collections::HashMap<ConnectionType, DriverFactory>>
+{
     REGISTRY.get_or_init(|| {
-        fn sqlite_factory() -> Box<dyn Driver + 'static> { Box::new(SqliteDriver::new()) }
+        fn sqlite_factory() -> Box<dyn Driver + 'static> {
+            Box::new(SqliteDriver::new())
+        }
         let mut m: std::collections::HashMap<ConnectionType, DriverFactory> =
             std::collections::HashMap::new();
         m.insert(ConnectionType::Sqlite, sqlite_factory as DriverFactory);
@@ -180,7 +185,10 @@ fn registry() -> &'static std::sync::Mutex<std::collections::HashMap<ConnectionT
 /// ⭐ 后注册接口：上层 crate 可在启动时追加驱动实现。
 ///    这样 facade 不依赖 per-driver crate，避免循环依赖。
 pub fn register(t: ConnectionType, factory: DriverFactory) {
-    registry().lock().unwrap_or_else(|e| e.into_inner()).insert(t, factory);
+    registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(t, factory);
 }
 
 pub fn create(t: ConnectionType) -> std::result::Result<Box<dyn Driver>, RegistryError> {
@@ -188,7 +196,9 @@ pub fn create(t: ConnectionType) -> std::result::Result<Box<dyn Driver>, Registr
     match reg.get(&t) {
         Some(f) => Ok(f()),
         None => {
-            let declared = adb_types::all_descriptors().iter().any(|d| d.id == t.as_str());
+            let declared = adb_types::all_descriptors()
+                .iter()
+                .any(|d| d.id == t.as_str());
             Err(if declared {
                 RegistryError::NotCompiled(t.as_str().into())
             } else {
@@ -219,9 +229,13 @@ pub fn analyze(sql: &str) -> Danger {
     if up.contains(';') {
         let mut worst = Danger::ReadOnly;
         for stmt in sql.split(';') {
-            if stmt.trim().is_empty() { continue; }
+            if stmt.trim().is_empty() {
+                continue;
+            }
             let d = analyze_single(stmt);
-            if (d as u8) > (worst as u8) { worst = d; }
+            if (d as u8) > (worst as u8) {
+                worst = d;
+            }
         }
         return worst;
     }
@@ -344,7 +358,11 @@ pub fn similar_names(input: &str, candidates: &[String], limit: usize) -> Vec<St
         })
         .collect();
     scored.sort_by_key(|(d, _)| *d);
-    scored.into_iter().take(limit).map(|(_, s)| s.clone()).collect()
+    scored
+        .into_iter()
+        .take(limit)
+        .map(|(_, s)| s.clone())
+        .collect()
 }
 
 fn levenshtein(a: &[char], b: &[char]) -> usize {
@@ -385,7 +403,11 @@ pub fn query_error(sql: &str, raw: &str, known_tables: &[String]) -> AdbError {
         suggestions.push("先在表结构页确认列名".into());
         hints.push(adb_types::Hint {
             kind: "column".into(),
-            label: if col.is_empty() { "未知列".into() } else { col },
+            label: if col.is_empty() {
+                "未知列".into()
+            } else {
+                col
+            },
             detail: "该列不存在".into(),
         });
     }
@@ -536,7 +558,10 @@ mod tests {
     fn danger_classification() {
         assert_eq!(analyze("SELECT 1"), Danger::ReadOnly);
         assert_eq!(analyze("  select * from t "), Danger::ReadOnly);
-        assert_eq!(analyze("WITH x AS (SELECT 1) SELECT * FROM x"), Danger::ReadOnly);
+        assert_eq!(
+            analyze("WITH x AS (SELECT 1) SELECT * FROM x"),
+            Danger::ReadOnly
+        );
         assert_eq!(analyze("INSERT INTO t VALUES(1)"), Danger::Mutating);
         assert_eq!(analyze("UPDATE t SET a=1 WHERE id=2"), Danger::Mutating);
         // ⭐ 无 WHERE 的 DELETE 是破坏性
@@ -574,7 +599,10 @@ mod tests {
         assert_eq!(p.line, 1);
         assert_eq!(p.column, 8, "nope 在第 8 列（`SELECT ` 共 7 字符）");
         assert_eq!(p.offset, 7);
-        assert_eq!(p.length, 4, "长度应是列名本身 4 个字符，而不是整条报错的长��");
+        assert_eq!(
+            p.length, 4,
+            "长度应是列名本身 4 个字符，而不是整条报错的长��"
+        );
     }
 
     /// ⭐ 跨行的列名错误也要定位到正确行
@@ -645,11 +673,7 @@ mod tests {
 
     #[test]
     fn similar_names_finds_typo() {
-        let cands = vec![
-            "orders".into(),
-            "order_items".into(),
-            "users".into(),
-        ];
+        let cands = vec!["orders".into(), "order_items".into(), "users".into()];
         let r = similar_names("oder", &cands, 3);
         assert!(r.contains(&"orders".to_string()), "got {r:?}");
     }
@@ -673,6 +697,7 @@ mod tests {
                     columns: Vec::new(),
                     indexes: Vec::new(),
                     foreign_keys: Vec::new(),
+                    constraints: Vec::new(),
                 })
                 .collect(),
         }
@@ -685,7 +710,10 @@ mod tests {
 
         // 裸单表扫描 —— 这是唯一能给权威值的形状
         assert_eq!(estimate_total("SELECT * FROM orders", &s), Some(5000));
-        assert_eq!(estimate_total("select id, name from orders", &s), Some(5000));
+        assert_eq!(
+            estimate_total("select id, name from orders", &s),
+            Some(5000)
+        );
         assert_eq!(estimate_total("SELECT * FROM \"orders\";", &s), Some(5000));
         assert_eq!(estimate_total("SELECT * FROM main.orders", &s), Some(5000));
     }
@@ -709,7 +737,10 @@ mod tests {
     #[test]
     fn filtered_or_joined_queries_are_never_estimated() {
         use crate::sqlite::estimate_total;
-        let s = snap_with(&[("orders", "table", Some(5000)), ("users", "table", Some(800))]);
+        let s = snap_with(&[
+            ("orders", "table", Some(5000)),
+            ("users", "table", Some(800)),
+        ]);
         // 这些查询的真实行数都 ≠ 基表行数
         for q in [
             "SELECT * FROM orders WHERE status=1",
@@ -728,141 +759,154 @@ mod tests {
     }
 
     /// ⭐ ⭐ JOIN 结果的列必须归属到**正确的表**。
-///
-/// 回归测试：之前 `build_columns` 在**全库**按列名找第一个匹配，于是
-/// ```text
-/// SELECT o.order_no, u.name FROM orders o JOIN users u ON o.user_id = u.id
-/// ```
-/// 里的 `name` 被安成 `categories.name`（注释「分类名」），
-/// 因为 categories 在字母序上排在 users 前面。
-/// 错误信息不只是注释 —— 类型、nullable、isPk 全都是错的，用户看不出来。
-#[test]
-fn joined_columns_are_attributed_to_the_right_table() {
-    use crate::sqlite::{build_columns, referenced_tables};
-    use adb_types::SchemaSnapshot;
+    ///
+    /// 回归测试：之前 `build_columns` 在**全库**按列名找第一个匹配，于是
+    /// ```text
+    /// SELECT o.order_no, u.name FROM orders o JOIN users u ON o.user_id = u.id
+    /// ```
+    /// 里的 `name` 被安成 `categories.name`（注释「分类名」），
+    /// 因为 categories 在字母序上排在 users 前面。
+    /// 错误信息不只是注释 —— 类型、nullable、isPk 全都是错的，用户看不出来。
+    #[test]
+    fn joined_columns_are_attributed_to_the_right_table() {
+        use crate::sqlite::{build_columns, referenced_tables};
+        use adb_types::SchemaSnapshot;
 
-    let mk_col = |t: &str, c: &str, comment: &str| adb_types::ColumnDef {
-        id: format!("t:{t}:{c}"),
-        name: c.into(),
-        category: adb_types::ColumnType::Text,
-        is_large: false,
-        ty: "TEXT".into(),
-        nullable: true,
-        default_expr: None,
-        comment: Some(comment.into()),
-        is_pk: false,
-        is_fk: false,
-        enum_values: None,
-        ord: 0,
-    };
+        let mk_col = |t: &str, c: &str, comment: &str| adb_types::ColumnDef {
+            id: format!("t:{t}:{c}"),
+            name: c.into(),
+            category: adb_types::ColumnType::Text,
+            is_large: false,
+            ty: "TEXT".into(),
+            nullable: true,
+            default_expr: None,
+            comment: Some(comment.into()),
+            is_pk: false,
+            is_fk: false,
+            enum_values: None,
+            ord: 0,
+        };
 
-    // 三张表里都有 `name` 列，注释各不相同 —— 最容易认错的那种情况
-    let snap = SchemaSnapshot {
-        db_id: "d".into(),
-        taken_at: "0".into(),
-        tables: vec![
-            adb_types::TableDef {
-                id: "t:categories".into(),
-                name: "categories".into(),
-                comment: None,
-                kind: "table".into(),
-                row_estimate: Some(12),
-                size_bytes: None,
-                columns: vec![mk_col("categories", "name", "分类名")],
-                indexes: Vec::new(),
-                foreign_keys: Vec::new(),
-            },
-            adb_types::TableDef {
+        // 三张表里都有 `name` 列，注释各不相同 —— 最容易认错的那种情况
+        let snap = SchemaSnapshot {
+            db_id: "d".into(),
+            taken_at: "0".into(),
+            tables: vec![
+                adb_types::TableDef {
+                    id: "t:categories".into(),
+                    name: "categories".into(),
+                    comment: None,
+                    kind: "table".into(),
+                    row_estimate: Some(12),
+                    size_bytes: None,
+                    columns: vec![mk_col("categories", "name", "分类名")],
+                    indexes: Vec::new(),
+                    foreign_keys: Vec::new(),
+                    constraints: Vec::new(),
+                },
+                adb_types::TableDef {
+                    id: "t:orders".into(),
+                    name: "orders".into(),
+                    comment: None,
+                    kind: "table".into(),
+                    row_estimate: Some(5000),
+                    size_bytes: None,
+                    columns: vec![mk_col("orders", "order_no", "订单号（业务唯一）")],
+                    indexes: Vec::new(),
+                    foreign_keys: Vec::new(),
+                    constraints: Vec::new(),
+                },
+                adb_types::TableDef {
+                    id: "t:users".into(),
+                    name: "users".into(),
+                    comment: None,
+                    kind: "table".into(),
+                    row_estimate: Some(800),
+                    size_bytes: None,
+                    columns: vec![mk_col("users", "name", "姓名（敏感字段）")],
+                    indexes: Vec::new(),
+                    foreign_keys: Vec::new(),
+                    constraints: Vec::new(),
+                },
+            ],
+        };
+
+        let sql = "SELECT o.order_no, u.name FROM orders o JOIN users u ON o.user_id = u.id";
+        let referenced = referenced_tables(sql, &snap);
+        let cols = build_columns(&["order_no".into(), "name".into()], &referenced);
+
+        assert_eq!(cols[0].comment.as_deref(), Some("订单号（业务唯一）"));
+        assert_eq!(
+            cols[1].comment.as_deref(),
+            Some("姓名（敏感字段）"),
+            "`name` 被安到了错误的表上 —— 只在被引用的表里找列"
+        );
+    }
+
+    /// ⭐ ⭐ 找不到归属的列必须标成未知，**不能随便挑一个同名列**。
+    #[test]
+    fn unknown_columns_are_marked_unknown_not_guessed() {
+        use crate::sqlite::{build_columns, referenced_tables};
+        use adb_types::SchemaSnapshot;
+
+        let snap = SchemaSnapshot {
+            db_id: "d".into(),
+            taken_at: "0".into(),
+            tables: vec![adb_types::TableDef {
                 id: "t:orders".into(),
                 name: "orders".into(),
                 comment: None,
                 kind: "table".into(),
                 row_estimate: Some(5000),
                 size_bytes: None,
-                columns: vec![mk_col("orders", "order_no", "订单号（业务唯一）")],
+                columns: vec![adb_types::ColumnDef {
+                    id: "t:orders:c0".into(),
+                    name: "total_cents".into(),
+                    category: adb_types::ColumnType::Number,
+                    is_large: false,
+                    ty: "INTEGER".into(),
+                    nullable: false,
+                    default_expr: None,
+                    comment: Some("订单总额".into()),
+                    is_pk: true,
+                    is_fk: false,
+                    enum_values: None,
+                    ord: 0,
+                }],
                 indexes: Vec::new(),
                 foreign_keys: Vec::new(),
-            },
-            adb_types::TableDef {
-                id: "t:users".into(),
-                name: "users".into(),
-                comment: None,
-                kind: "table".into(),
-                row_estimate: Some(800),
-                size_bytes: None,
-                columns: vec![mk_col("users", "name", "姓名（敏感字段）")],
-                indexes: Vec::new(),
-                foreign_keys: Vec::new(),
-            },
-        ],
-    };
-
-    let sql = "SELECT o.order_no, u.name FROM orders o JOIN users u ON o.user_id = u.id";
-    let referenced = referenced_tables(sql, &snap);
-    let cols = build_columns(&["order_no".into(), "name".into()], &referenced);
-
-    assert_eq!(cols[0].comment.as_deref(), Some("订单号（业务唯一）"));
-    assert_eq!(
-        cols[1].comment.as_deref(),
-        Some("姓名（敏感字段）"),
-        "`name` 被安到了错误的表上 —— 只在被引用的表里找列"
-    );
-}
-
-/// ⭐ ⭐ 找不到归属的列必须标成未知，**不能随便挑一个同名列**。
-#[test]
-fn unknown_columns_are_marked_unknown_not_guessed() {
-    use crate::sqlite::{build_columns, referenced_tables};
-    use adb_types::SchemaSnapshot;
-
-    let snap = SchemaSnapshot {
-        db_id: "d".into(),
-        taken_at: "0".into(),
-        tables: vec![adb_types::TableDef {
-            id: "t:orders".into(),
-            name: "orders".into(),
-            comment: None,
-            kind: "table".into(),
-            row_estimate: Some(5000),
-            size_bytes: None,
-            columns: vec![adb_types::ColumnDef {
-                id: "t:orders:c0".into(),
-                name: "total_cents".into(),
-                category: adb_types::ColumnType::Number,
-                is_large: false,
-                ty: "INTEGER".into(),
-                nullable: false,
-                default_expr: None,
-                comment: Some("订单总额".into()),
-                is_pk: true,
-                is_fk: false,
-                enum_values: None,
-                ord: 0,
+                constraints: Vec::new(),
             }],
-            indexes: Vec::new(),
-            foreign_keys: Vec::new(),
-        }],
-    };
+        };
 
-    // 计算出来的列不属于任何表
-    let sql = "SELECT total_cents / 100.0 AS yuan FROM orders";
-    let referenced = referenced_tables(sql, &snap);
-    let cols = build_columns(&["yuan".into()], &referenced);
-    assert!(
-        cols[0].id.starts_with("expr:"),
-        "未知列应标记为 expr:，实得 id={}",
-        cols[0].id
-    );
-    assert!(cols[0].comment.is_none(), "未知列不该有注释");
-}
+        // 计算出来的列不属于任何表
+        let sql = "SELECT total_cents / 100.0 AS yuan FROM orders";
+        let referenced = referenced_tables(sql, &snap);
+        let cols = build_columns(&["yuan".into()], &referenced);
+        assert!(
+            cols[0].id.starts_with("expr:"),
+            "未知列应标记为 expr:，实得 id={}",
+            cols[0].id
+        );
+        assert!(cols[0].comment.is_none(), "未知列不该有注释");
+    }
 
-/// ⭐ 「列不存在」的提示只放列名，不把整条 SQL 抄一遍。
-#[test]
+    /// ⭐ 「列不存在」的提示只放列名，不把整条 SQL 抄一遍。
+    #[test]
     fn missing_column_hint_names_only_the_column() {
-        let raw = "no such column: nonexistent_col in SELECT nonexistent_col FROM orders at offset 7";
-        let e = query_error("SELECT nonexistent_col FROM orders", raw, &["orders".into()]);
+        let raw =
+            "no such column: nonexistent_col in SELECT nonexistent_col FROM orders at offset 7";
+        let e = query_error(
+            "SELECT nonexistent_col FROM orders",
+            raw,
+            &["orders".into()],
+        );
         let AdbError::Query(q) = e else { panic!() };
-        let h = q.hints.iter().find(|h| h.kind == "column").expect("应有列提示");
+        let h = q
+            .hints
+            .iter()
+            .find(|h| h.kind == "column")
+            .expect("应有列提示");
         assert_eq!(h.label, "nonexistent_col");
         assert!(
             !h.label.contains("SELECT"),
@@ -891,7 +935,9 @@ fn unknown_columns_are_marked_unknown_not_guessed() {
             "CHECK constraint failed: reviews",
         ] {
             let e = query_error("DELETE FROM orders", raw, &known);
-            let AdbError::Query(q) = e else { panic!("应为 query 错误") };
+            let AdbError::Query(q) = e else {
+                panic!("应为 query 错误")
+            };
             assert!(
                 !q.message.contains("constraint failed"),
                 "裸 SQLite 报错泄漏给了用户: {}",
@@ -902,10 +948,7 @@ fn unknown_columns_are_marked_unknown_not_guessed() {
                 "翻译后应是中文: {}",
                 q.message
             );
-            assert!(
-                !q.suggestions.is_empty(),
-                "{raw} 必须给出下一步建议"
-            );
+            assert!(!q.suggestions.is_empty(), "{raw} 必须给出下一步建议");
         }
     }
 

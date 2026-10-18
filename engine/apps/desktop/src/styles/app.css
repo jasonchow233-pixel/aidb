@@ -122,6 +122,7 @@ select.input { cursor: pointer; }
 .badge--prod   { color: var(--env-prod); background: var(--env-prod-bg); border-color: var(--env-prod); }
 .badge--warn   { color: var(--warning); background: var(--warning-bg); border-color: var(--warning); }
 .badge--ok     { color: var(--success); background: var(--success-bg); border-color: var(--success); }
+.badge--info   { color: var(--info); background: var(--info-bg); border-color: var(--info); }
 
 .kbd {
   display: inline-block; min-width: 16px; padding: 1px 5px;

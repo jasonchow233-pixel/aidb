@@ -7,7 +7,7 @@
 > ① 「Navicat 里对应什么操作」——没有对应物的多半是自嗨，砍掉
 > ② 「门禁里哪条断言验它」——指不出来的就是没做完
 >
-> 最后刷新：2026-10-18（A4 表格进阶能力交付，11 层门禁）
+> 最后刷新：2026-10-18（D1 结构页补完，13 层门禁）
 
 ---
 
@@ -242,8 +242,9 @@
 
 # 七、D 表格结构页 ⭐
 
-- [ ] **D1-1** 5 个 tab：列 / 索引 / **外键** / **约束** / 统计
-  - 当前 4 个（列 / 索引 / DDL / 诊断）；缺**外键**与**约束**
+- [x] **D1-1** ⭐ 6 个 tab：列 / 索引 / **外键** / **约束** / DDL / 诊断（从 4 个升级）
+  - 后端 `PRAGMA foreign_key_list` + `sqlite_master.sql` 括号配平**真实内省**外键与约束（PK/UNIQUE/NOT NULL/CHECK），不再是死字段
+  - 证据：`smoke_structure.mjs` 12 项（第 13 层门禁）、`demo.rs`、`StructurePage.vue`
 - [ ] **D1-2** 结构编辑（增删列、改类型/默认值/注释）
 - [ ] **D1-3** ⭐ 生成 DDL 预览（编辑 → 实时看到 ALTER 语句）
 - [ ] **D1-4** ⭐ 影响评估：锁级别 / 时长区间 / 扫描行数 / 空间 / 在线 DDL 建议
@@ -305,11 +306,11 @@
 
 ---
 
-# 十一、门禁（十二层，一条命令）
+# 十一、门禁（十三层，一条命令）
 
 ```bash
 engine/tests/run_gates.sh                 # 全跑
-SKIP_CARGO=1 engine/tests/run_gates.sh    # 只跑非 Rust 那十一层
+SKIP_CARGO=1 engine/tests/run_gates.sh    # 只跑非 Rust 那十二层
 ```
 
 | 层 | 命令 | 抓什么 | 断言数 |
@@ -319,15 +320,16 @@ SKIP_CARGO=1 engine/tests/run_gates.sh    # 只跑非 Rust 那十一层
 | 3 | `python3 engine/tests/e2e_contract.py` | HTTP 契约：DTO 字段名、状态码、错误文案 | 83 |
 | 4 | `node engine/tests/smoke_browser.mjs` | 页面能不能打开、导航对不对 | 30 |
 | 5 | `node engine/tests/smoke_tree.mjs` | 对象树：右键菜单/双击打开/视图分组/收藏/只读标记 | 27 |
-| 6 | `node engine/tests/smoke_client.mjs` | 分页/排序/筛选是否真的下推给数据库 | 41 |
-| 7 | `node engine/tests/smoke_edit.mjs` | 编辑是否落到正确的那一行 | 27 |
-| 8 | `node engine/tests/smoke_editui.mjs` | 撤销/重做 + 类型化编辑器 + NULL/空串 | 59 |
-| 9 | `node engine/tests/smoke_filter.mjs` | 列头筛选面板 | 25 |
-| 10 | `node engine/tests/smoke_grid.mjs` | 窗口化 + 批量操作 + 行标识一致性 + A4 表格进阶 | 79 |
-| 11 | `node engine/tests/smoke_query.mjs` | 查询编辑器：高亮/跳转/多语句/执行计划 | 71 |
-| 12 | `node engine/tests/probe_docs.mjs` | **文档说的和代码做的对不对得上** | 18 |
+| 6 | `node engine/tests/smoke_structure.mjs` | 结构页：6 tab 齐备 / 外键真实内省 / 约束（PK+UNIQUE+NOT NULL+CHECK）/ 空态 / 无控制台异常 | 12 |
+| 7 | `node engine/tests/smoke_client.mjs` | 分页/排序/筛选是否真的下推给数据库 | 41 |
+| 8 | `node engine/tests/smoke_edit.mjs` | 编辑是否落到正确的那一行 | 27 |
+| 9 | `node engine/tests/smoke_editui.mjs` | 撤销/重做 + 类型化编辑器 + NULL/空串 | 59 |
+| 10 | `node engine/tests/smoke_filter.mjs` | 列头筛选面板 | 25 |
+| 11 | `node engine/tests/smoke_grid.mjs` | 窗口化 + 批量操作 + 行标识一致性 + A4 表格进阶 | 79 |
+| 12 | `node engine/tests/smoke_query.mjs` | 查询编辑器：高亮/跳转/多语句/执行计划 | 71 |
+| 13 | `node engine/tests/probe_docs.mjs` | **文档说的和代码做的对不对得上** | 19 |
 
-前端断言合计 **460**（+ 词法内核 24）。
+前端断言合计 **473**（+ 词法内核 24）。
 
 辅助脚本：`engine/tests/probe_ab.mjs`（窗口化 A/B 实测）、
 `engine/tests/helpers.mjs`（窗口化之后行数必须从底栏读，不能数 DOM）。
@@ -384,7 +386,7 @@ SKIP_CARGO=1 engine/tests/run_gates.sh    # 只跑非 Rust 那十一层
 6. ⛔ **排序/筛选必须下推数据库**（内存只对当前页有效）
 7. ⛔ **NULL 与空串在编辑 / 导出 / SQL 三处都必须分开**（`#10505`）
 8. ⛔ **统计数字宁可不给也不能给错**（「未统计」优于假数字）
-9. ⛔ 每一步都过**九层门禁**（`run_gates.sh`）
+9. ⛔ 每一步都过**十三层门禁**（`run_gates.sh`）
 10. ⛔ **文档里写"已完成"的，必须能指向一条门禁断言**——
     指不出来的就当没做。文档漂移和代码 bug 一样致命。
 

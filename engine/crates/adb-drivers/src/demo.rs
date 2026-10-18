@@ -17,7 +17,7 @@
 //!   · 支持多语言（中文/英文/日文）
 //!   · 支持扩展功能（FTS5/JSON1/RTREE）
 
-use adb_types::{ColumnDef, ColumnType, IndexDef, TableDef};
+use adb_types::{ColumnDef, ColumnType, ConstraintDef, IndexDef, TableDef};
 use rusqlite::Connection as Sqlite;
 use std::path::PathBuf;
 
@@ -28,7 +28,9 @@ pub fn db_path() -> String {
 }
 
 fn dirs_data() -> String {
-    if let Ok(p) = std::env::var("ADB_DATA_DIR") { return p; }
+    if let Ok(p) = std::env::var("ADB_DATA_DIR") {
+        return p;
+    }
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
     format!("{home}/.agenticdb")
 }
@@ -393,8 +395,12 @@ CREATE INDEX idx_notifications_unread ON notifications(user_id, is_read) WHERE i
 // ─────────────────────────────────────────────────────────────
 
 pub fn materialize(path: &str) {
-    let Ok(mut c) = Sqlite::open(path) else { return };
-    if c.execute_batch(DDL).is_err() { return; }
+    let Ok(mut c) = Sqlite::open(path) else {
+        return;
+    };
+    if c.execute_batch(DDL).is_err() {
+        return;
+    }
     let _ = c.execute_batch("BEGIN");
     seed(&mut c);
     let _ = c.execute_batch("COMMIT");
@@ -457,7 +463,9 @@ pub fn stress_count() -> usize {
 /// ⭐ 必须**整批 execute_batch** 而不是循环调用：
 ///    循环版本实测 1 万表要 26.6 秒，压测就失去意义了。
 fn seed_stress_objects(c: &mut Sqlite, n: usize) -> rusqlite::Result<()> {
-    let domains = ["订单", "用户", "支付", "物流", "商品", "库存", "营销", "客服"];
+    let domains = [
+        "订单", "用户", "支付", "物流", "商品", "库存", "营销", "客服",
+    ];
     let name_of = |i: usize| {
         let tenant = i / 500 + 1;
         let domain = domains[i % domains.len()];
@@ -495,7 +503,9 @@ fn seed_stress_objects(c: &mut Sqlite, n: usize) -> rusqlite::Result<()> {
     let mut idx = String::with_capacity(n * 90);
     for i in 0..n {
         let t = name_of(i);
-        idx.push_str(&format!("CREATE INDEX \"idx_{t}\" ON \"{t}\"(tenant_id);\n"));
+        idx.push_str(&format!(
+            "CREATE INDEX \"idx_{t}\" ON \"{t}\"(tenant_id);\n"
+        ));
     }
     c.execute_batch(&idx)?;
     Ok(())
@@ -576,7 +586,11 @@ fn seed(c: &mut Sqlite) {
         };
         let phone = match rnd.below(100) {
             0..=3 => None,
-            _ => Some(format!("1{}{:08}", [3, 5, 7, 8, 9][rnd.below(5) as usize], rnd.below(100_000_000))),
+            _ => Some(format!(
+                "1{}{:08}",
+                [3, 5, 7, 8, 9][rnd.below(5) as usize],
+                rnd.below(100_000_000)
+            )),
         };
         emails.push(email.clone());
         phones.push(phone.clone());
@@ -622,8 +636,16 @@ fn seed(c: &mut Sqlite) {
                 "INSERT INTO user_profiles (user_id,nickname,bio,preferences) VALUES (?1,?2,?3,?4)",
                 rusqlite::params![
                     i as i64,
-                    if rnd.below(100) < 90 { format!("user_{i}") } else { String::new() },
-                    if rnd.below(100) < 40 { Some("这个人很懒，什么都没写。".to_string()) } else { None::<String> },
+                    if rnd.below(100) < 90 {
+                        format!("user_{i}")
+                    } else {
+                        String::new()
+                    },
+                    if rnd.below(100) < 40 {
+                        Some("这个人很懒，什么都没写。".to_string())
+                    } else {
+                        None::<String>
+                    },
                     // ⭐ preferences 一半是 JSON **数组**（订阅渠道），一半留空。
                     //   数组渲染器需要真实数据：没有数组值，"支持 array" 无法被断言。
                     match rnd.below(100) {
@@ -642,8 +664,20 @@ fn seed(c: &mut Sqlite) {
             "INSERT INTO categories (id,name,parent_id,sort_order) VALUES (?1,?2,?3,?4)",
             rusqlite::params![
                 i as i64,
-                ["电子数码","家用电器","服饰鞋包","食品生鲜","母婴用品","美妆护肤",
-                 "手机配件","电脑外设","厨房用具","床上用品","运动户外","图书文娱"][i-1],
+                [
+                    "电子数码",
+                    "家用电器",
+                    "服饰鞋包",
+                    "食品生鲜",
+                    "母婴用品",
+                    "美妆护肤",
+                    "手机配件",
+                    "电脑外设",
+                    "厨房用具",
+                    "床上用品",
+                    "运动户外",
+                    "图书文娱"
+                ][i - 1],
                 if i > 6 { Some((i - 6) as i64) } else { None },
                 i as i64
             ],
@@ -673,7 +707,7 @@ fn seed(c: &mut Sqlite) {
     }
 
     // addresses
-    let provs = ["广东省","浙江省","江苏省","北京市","上海市","四川省"];
+    let provs = ["广东省", "浙江省", "江苏省", "北京市", "上海市", "四川省"];
     for i in 1..=ADDRESSES {
         let uid = (rnd.below(USERS as u64) + 1) as i64;
         let _ = c.execute(
@@ -698,7 +732,7 @@ fn seed(c: &mut Sqlite) {
             43..=69 => 2, // 已支付 27%
             70..=84 => 3, // 已发货
             85..=95 => 4, // 已完成
-            _ => 9,      // 已取消
+            _ => 9,       // 已取消
         };
         let created = ts(&mut rnd, 120);
         let total = (rnd.below(500_000) + 100) as i64;
@@ -725,7 +759,8 @@ fn seed(c: &mut Sqlite) {
                  VALUES (?1,?2,?3,?4,?5,?6)",
                 rusqlite::params![
                     ((i - 1) * ITEMS_PER_ORDER) as i64 + rnd.below(ITEMS_PER_ORDER as u64) as i64,
-                    i as i64, pid,
+                    i as i64,
+                    pid,
                     (rnd.below(5) + 1) as i64,
                     (rnd.below(100_000) + 100) as i64,
                     created
@@ -759,10 +794,16 @@ fn seed(c: &mut Sqlite) {
             "INSERT INTO sessions (id,user_id,token,device,ip,expires_at,created_at)
              VALUES (?1,?2,?3,?4,?5,?6,?7)",
             rusqlite::params![
-                i as i64, uid,
+                i as i64,
+                uid,
                 format!("tok_{:032}", i),
-                ["iOS","Android","Web","macOS","Windows"][rnd.below(5) as usize],
-                format!("10.{}.{}.{}", rnd.below(255), rnd.below(255), rnd.below(255)),
+                ["iOS", "Android", "Web", "macOS", "Windows"][rnd.below(5) as usize],
+                format!(
+                    "10.{}.{}.{}",
+                    rnd.below(255),
+                    rnd.below(255),
+                    rnd.below(255)
+                ),
                 ts(&mut rnd, 30),
                 ts(&mut rnd, 90)
             ],
@@ -770,7 +811,16 @@ fn seed(c: &mut Sqlite) {
     }
 
     // audit_logs —— ⭐ 超大表，无主键（诊断会报）
-    let actions = ["login","logout","update_profile","create_order","delete","export","grant","revoke"];
+    let actions = [
+        "login",
+        "logout",
+        "update_profile",
+        "create_order",
+        "delete",
+        "export",
+        "grant",
+        "revoke",
+    ];
     let stmt = "INSERT INTO audit_logs (tenant_id,actor,action,target,payload,created_at)
                 VALUES (?1,?2,?3,?4,?5,?6)";
     for _ in 0..AUDIT_LOGS {
@@ -781,7 +831,15 @@ fn seed(c: &mut Sqlite) {
                 format!("user{}", rnd.below(USERS as u64) + 1),
                 actions[rnd.below(actions.len() as u64) as usize],
                 format!("tbl:{}", rnd.below(ORDERS as u64) + 1),
-                if rnd.below(100) < 30 { Some(format!("{{\"ip\":\"10.0.{}.{}\"}}", rnd.below(255), rnd.below(255))) } else { None },
+                if rnd.below(100) < 30 {
+                    Some(format!(
+                        "{{\"ip\":\"10.0.{}.{}\"}}",
+                        rnd.below(255),
+                        rnd.below(255)
+                    ))
+                } else {
+                    None
+                },
                 ts(&mut rnd, 60)
             ],
         );
@@ -790,13 +848,19 @@ fn seed(c: &mut Sqlite) {
     // ⭐ 扩展表数据生成
 
     // tags
-    let tag_names = ["热销","新品","推荐","限时","包邮","正品","保修","现货","预售","清仓"];
+    let tag_names = [
+        "热销", "新品", "推荐", "限时", "包邮", "正品", "保修", "现货", "预售", "清仓",
+    ];
     for i in 1..=TAGS {
         let _ = c.execute(
             "INSERT INTO tags (id,name,color,sort_order) VALUES (?1,?2,?3,?4)",
             rusqlite::params![
                 i as i64,
-                if i <= 10 { tag_names[i-1].to_string() } else { format!("标签{}", i) },
+                if i <= 10 {
+                    tag_names[i - 1].to_string()
+                } else {
+                    format!("标签{}", i)
+                },
                 format!("#{:06x}", rnd.below(0xFFFFFF)),
                 i as i64
             ],
@@ -825,8 +889,24 @@ fn seed(c: &mut Sqlite) {
                 (rnd.below(USERS as u64) + 1) as i64,
                 (rnd.below(5) + 1) as i64,
                 if rnd.below(100) < 70 {
-                    Some(["很好","不错","一般","较差","很好用的商品","质量一般","性价比高","物流慢","包装好","与描述不符"][rnd.below(10) as usize].to_string())
-                } else { None },
+                    Some(
+                        [
+                            "很好",
+                            "不错",
+                            "一般",
+                            "较差",
+                            "很好用的商品",
+                            "质量一般",
+                            "性价比高",
+                            "物流慢",
+                            "包装好",
+                            "与描述不符",
+                        ][rnd.below(10) as usize]
+                            .to_string(),
+                    )
+                } else {
+                    None
+                },
                 if rnd.below(100) < 20 { 1 } else { 0 },
                 ts(&mut rnd, 180)
             ],
@@ -881,7 +961,8 @@ fn seed(c: &mut Sqlite) {
             "INSERT INTO invoices (id,order_id,type,title,tax_no,amount_cents,status,created_at)
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
             rusqlite::params![
-                i as i64, oid,
+                i as i64,
+                oid,
                 (rnd.below(3) + 1) as i64,
                 format!("发票{}", i),
                 format!("TAX{:015}", i),
@@ -899,9 +980,15 @@ fn seed(c: &mut Sqlite) {
             "INSERT INTO refunds (id,order_id,payment_id,amount_cents,reason,status,created_at)
              VALUES (?1,?2,?3,?4,?5,?6,?7)",
             rusqlite::params![
-                i as i64, oid, oid,
+                i as i64,
+                oid,
+                oid,
                 (rnd.below(10_000) + 100) as i64,
-                if rnd.below(100) < 80 { Some("不想要了".to_string()) } else { None },
+                if rnd.below(100) < 80 {
+                    Some("不想要了".to_string())
+                } else {
+                    None
+                },
                 (rnd.below(3) + 1) as i64,
                 ts(&mut rnd, 90)
             ],
@@ -917,8 +1004,19 @@ fn seed(c: &mut Sqlite) {
                 i as i64,
                 (rnd.below(USERS as u64) + 1) as i64,
                 (rnd.below(5) + 1) as i64,
-                ["订单状态变更","优惠活动","系统通知","物流更新","账户安全"][rnd.below(5) as usize].to_string(),
-                if rnd.below(100) < 60 { Some("您有一条新消息".to_string()) } else { None },
+                [
+                    "订单状态变更",
+                    "优惠活动",
+                    "系统通知",
+                    "物流更新",
+                    "账户安全"
+                ][rnd.below(5) as usize]
+                    .to_string(),
+                if rnd.below(100) < 60 {
+                    Some("您有一条新消息".to_string())
+                } else {
+                    None
+                },
                 if rnd.below(100) < 50 { 1 } else { 0 },
                 ts(&mut rnd, 30)
             ],
@@ -970,18 +1068,33 @@ struct Rng(u64);
 impl Rng {
     fn next(&mut self) -> u64 {
         let mut x = self.0;
-        x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
         self.0 = x;
         x
     }
-    fn below(&mut self, n: u64) -> u64 { if n == 0 { 0 } else { self.next() % n } }
+    fn below(&mut self, n: u64) -> u64 {
+        if n == 0 {
+            0
+        } else {
+            self.next() % n
+        }
+    }
 }
 
 fn surname_or_num(rnd: &mut Rng) -> String {
     if rnd.below(100) < 55 {
-        ["伟","芳","娜","敏","静","磊","洋","勇","艳","杰","涛","明"][rnd.below(12) as usize].to_string()
+        [
+            "伟", "芳", "娜", "敏", "静", "磊", "洋", "勇", "艳", "杰", "涛", "明",
+        ][rnd.below(12) as usize]
+            .to_string()
     } else {
-        format!("{}{}", ["小","阿"][rnd.below(2) as usize], ["明","华","强","雪","丽"][rnd.below(5) as usize])
+        format!(
+            "{}{}",
+            ["小", "阿"][rnd.below(2) as usize],
+            ["明", "华", "强", "雪", "丽"][rnd.below(5) as usize]
+        )
     }
 }
 
@@ -1004,11 +1117,11 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
     let doe = (z - era * 146097) as u64;
-    let yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
     let y = yoe as i64 + era * 400;
-    let doy = doe - (365*yoe + yoe/4 - yoe/100);
-    let mp = (5*doy + 2)/153;
-    let d = (doy - (153*mp+2)/5 + 1) as u32;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
     let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
@@ -1029,7 +1142,7 @@ pub fn introspect(c: &Sqlite) -> Vec<TableDef> {
         "SELECT type, name FROM sqlite_master \
          WHERE type IN ('table','view') ORDER BY type, name",
     ) else {
-        return Vec::new()
+        return Vec::new();
     };
     let rows: Vec<(String, String)> = stmt
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
@@ -1052,6 +1165,11 @@ pub fn introspect(c: &Sqlite) -> Vec<TableDef> {
         .flat_map(|v| FTS_SHADOW_SUFFIXES.iter().map(move |s| format!("{v}{s}")))
         .collect();
 
+    // ⭐⭐ 建表 SQL **一次性**取回（name → sql 映射），传给 `table_def`
+    //    用来解析 CHECK 约束。否则每张表各查一次 `sqlite_master`，
+    //    1 万张表就是 1 万次额外往返 —— 直接击穿 3s 门禁。
+    let sqls = all_table_sqls(c);
+
     let mut out = Vec::new();
     for (kind, name) in rows {
         if name.starts_with("sqlite_") || name.starts_with("_adb_") {
@@ -1064,10 +1182,30 @@ pub fn introspect(c: &Sqlite) -> Vec<TableDef> {
         out.push(if kind == "view" {
             view_def(c, &name)
         } else {
-            table_def(c, &name)
+            table_def(c, &name, &sqls)
         });
     }
     out
+}
+
+/// ⭐ **一次查询**取回所有表的建表 SQL，供 CHECK 约束解析复用。
+///
+/// 之前 `table_def` 内部对每张表各发一条 `SELECT sql FROM sqlite_master`，
+/// 1 万张表 → 1 万次额外往返；这里一次性拿全，O(1) 查找。
+fn all_table_sqls(c: &Sqlite) -> std::collections::HashMap<String, String> {
+    let mut m = std::collections::HashMap::new();
+    if let Ok(mut st) = c.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'table'") {
+        if let Ok(it) = st.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+        }) {
+            for row in it.filter_map(Result::ok) {
+                if let (name, Some(sql)) = row {
+                    m.insert(name, sql);
+                }
+            }
+        }
+    }
+    m
 }
 
 /// FTS5 影子表的后缀（固定这几个，由 FTS5 引擎自动创建）。
@@ -1108,7 +1246,11 @@ fn view_def(c: &Sqlite, name: &str) -> TableDef {
                     name: col.clone(),
                     category: categorize(&ty, &col),
                     is_large: false,
-                    ty: if ty.is_empty() { "视图列".into() } else { ty },
+                    ty: if ty.is_empty() {
+                        "视图列".into()
+                    } else {
+                        ty
+                    },
                     // 视图列的 nullable 未知 —— 标 true，避免 UI 误标 NOT NULL
                     nullable: true,
                     default_expr: None,
@@ -1137,6 +1279,7 @@ fn view_def(c: &Sqlite, name: &str) -> TableDef {
         columns,
         indexes: Vec::new(),
         foreign_keys: Vec::new(),
+        constraints: Vec::new(),
     }
 }
 
@@ -1147,19 +1290,23 @@ const VIEW_COMMENTS: &[(&str, &str)] = &[
     ("v_user_stats", "用户消费统计视图"),
 ];
 
-fn table_def(c: &Sqlite, name: &str) -> TableDef {
+fn table_def(
+    c: &Sqlite,
+    name: &str,
+    sqls: &std::collections::HashMap<String, String>,
+) -> TableDef {
     let id = format!("t:{name}");
     let mut columns = Vec::new();
 
     if let Ok(mut s) = c.prepare(&format!("PRAGMA table_info('{name}')")) {
         let rows = s.query_map([], |r| {
             Ok((
-                r.get::<_, i64>(0)?,             // cid
-                r.get::<_, String>(1)?,          // name
-                r.get::<_, String>(2)?,          // type
-                r.get::<_, i64>(3)?,             // notnull
-                r.get::<_, Option<String>>(4)?,  // dflt
-                r.get::<_, i64>(5)?,             // pk
+                r.get::<_, i64>(0)?,            // cid
+                r.get::<_, String>(1)?,         // name
+                r.get::<_, String>(2)?,         // type
+                r.get::<_, i64>(3)?,            // notnull
+                r.get::<_, Option<String>>(4)?, // dflt
+                r.get::<_, i64>(5)?,            // pk
             ))
         });
         if let Ok(it) = rows {
@@ -1169,11 +1316,12 @@ fn table_def(c: &Sqlite, name: &str) -> TableDef {
                 let comment: Option<String> = meta.and_then(|m| m.2).map(str::to_string);
                 let enum_values = meta.and_then(|m| {
                     m.3.map(|s| {
-                        s.split('|').filter_map(|kv| {
-                            kv.split_once(':')
-                                .map(|(k, v)| (k.to_string(), v.to_string()))
-                        })
-                        .collect::<std::collections::BTreeMap<_, _>>()
+                        s.split('|')
+                            .filter_map(|kv| {
+                                kv.split_once(':')
+                                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                            })
+                            .collect::<std::collections::BTreeMap<_, _>>()
                     })
                 });
                 columns.push(ColumnDef {
@@ -1198,20 +1346,24 @@ fn table_def(c: &Sqlite, name: &str) -> TableDef {
     if let Ok(mut s) = c.prepare(&format!("PRAGMA index_list('{name}')")) {
         let rows = s.query_map([], |r| {
             Ok((
-                r.get::<_, String>(1)?,          // name
-                r.get::<_, i64>(2)?,             // unique
-                r.get::<_, String>(3)?,          // origin (c/u/pk)
-                r.get::<_, Option<i64>>(4)?,     // partial
+                r.get::<_, String>(1)?,      // name
+                r.get::<_, i64>(2)?,         // unique
+                r.get::<_, String>(3)?,      // origin (c/u/pk)
+                r.get::<_, Option<i64>>(4)?, // partial
             ))
         });
         if let Ok(it) = rows {
             for (i, row) in it.flatten().enumerate() {
                 let (iname, unique, origin, _) = row;
-                if origin == "c" { continue; }  // 跳过 SQLite 自动索引
+                if origin == "c" {
+                    continue;
+                } // 跳过 SQLite 自动索引
                 let mut cols = Vec::new();
                 if let Ok(mut ic) = c.prepare(&format!("PRAGMA index_info('{iname}')")) {
                     if let Ok(rit) = ic.query_map([], |r| r.get::<_, Option<String>>(2)) {
-                        for cc in rit.flatten().flatten() { cols.push(cc); }
+                        for cc in rit.flatten().flatten() {
+                            cols.push(cc);
+                        }
                     }
                 }
                 indexes.push(IndexDef {
@@ -1223,6 +1375,90 @@ fn table_def(c: &Sqlite, name: &str) -> TableDef {
                     def: None,
                 });
             }
+        }
+    }
+
+    // ⭐ 外键：真实内省（之前 foreign_keys 恒为空，外键页是死的）。
+    //    PRAGMA foreign_key_list 返回列：id, seq, table, from, to, on_update, on_delete, match
+    //    4 元组语义：(本表列, 引用表, 引用列, ON DELETE 规则)
+    let mut fks: Vec<(String, String, String, String)> = Vec::new();
+    let mut constraints: Vec<ConstraintDef> = Vec::new();
+    if let Ok(mut s) = c.prepare(&format!("PRAGMA foreign_key_list('{name}')")) {
+        if let Ok(it) = s.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(3)?, // from（本表列）
+                r.get::<_, String>(2)?, // table（引用表）
+                r.get::<_, String>(4)?, // to（引用列）
+                r.get::<_, String>(6)?, // on_delete
+            ))
+        }) {
+            for (i, row) in it.flatten().enumerate() {
+                let (from, to_table, to, on_delete) = row;
+                fks.push((
+                    from.clone(),
+                    to_table.clone(),
+                    to.clone(),
+                    on_delete.clone(),
+                ));
+                constraints.push(ConstraintDef {
+                    id: format!("{id}:fk{i}"),
+                    kind: "FOREIGN KEY".into(),
+                    name: None,
+                    columns: vec![from],
+                    detail: Some(format!("{to_table}({to})")),
+                });
+            }
+        }
+    }
+
+    // ⭐ 约束一览：主键 / 非空 / 唯一 / 检查（FK 已并入上面）
+    let pk_cols: Vec<String> = columns
+        .iter()
+        .filter(|c| c.is_pk)
+        .map(|c| c.name.clone())
+        .collect();
+    if !pk_cols.is_empty() {
+        constraints.push(ConstraintDef {
+            id: format!("{id}:pk"),
+            kind: "PRIMARY KEY".into(),
+            name: None,
+            columns: pk_cols,
+            detail: None,
+        });
+    }
+    for col in &columns {
+        if !col.nullable && !col.is_pk {
+            constraints.push(ConstraintDef {
+                id: format!("{id}:nnull:{}", col.name),
+                kind: "NOT NULL".into(),
+                name: None,
+                columns: vec![col.name.clone()],
+                detail: None,
+            });
+        }
+    }
+    for idx in &indexes {
+        if idx.unique && !idx.primary {
+            constraints.push(ConstraintDef {
+                id: format!("{id}:uq:{}", idx.name),
+                kind: "UNIQUE".into(),
+                name: Some(idx.name.clone()),
+                columns: idx.columns.clone(),
+                detail: None,
+            });
+        }
+    }
+    // ⭐ CHECK：SQLite 没有暴露 CHECK 的 PRAGMA，只能回到建表 SQL 解析（真实数据，非编造）。
+    //    sql 来自 `introspect` 一次性取回的 name→sql 映射，不在循环里再查一次。
+    if let Some(sql) = sqls.get(name) {
+        for (i, expr) in extract_checks(sql).into_iter().enumerate() {
+            constraints.push(ConstraintDef {
+                id: format!("{id}:ck{i}"),
+                kind: "CHECK".into(),
+                name: None,
+                columns: Vec::new(),
+                detail: Some(expr),
+            });
         }
     }
 
@@ -1240,13 +1476,89 @@ fn table_def(c: &Sqlite, name: &str) -> TableDef {
         size_bytes: None,
         columns,
         indexes,
-        foreign_keys: Vec::new(),
+        foreign_keys: fks,
+        constraints,
     }
 }
 
+/// ⭐ 从建表 SQL 解析 CHECK 约束表达式。
+///
+/// SQLite 没有暴露 CHECK 的 PRAGMA，只能回到 `sqlite_master.sql` 解析。
+/// 这里做**括号配平**扫描：定位 `CHECK` 关键字，取其后的 `(...)` 内层表达式。
+/// 只认 `CHECK (expr)` 形态（演示库与绝大多数手写 DDL 都是这种），
+/// 不在 SQL 里做完整解析 —— 拿到表达式字符串交给 UI 展示即可。
+///
+/// ⚠ 字符串字面量内的括号会被跳过，避免 `CHECK (status IN ('a','b'))` 这类误配平。
+fn extract_checks(sql: &str) -> Vec<String> {
+    let bytes = sql.as_bytes();
+    let upper = sql.to_uppercase();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if upper[i..].starts_with("CHECK") {
+            let is_word_start = i == 0 || !is_ident_byte(bytes[i - 1]);
+            let end = (i + 5).min(bytes.len());
+            let is_word_end = end >= bytes.len() || !is_ident_byte(bytes[end]);
+            if is_word_start && is_word_end {
+                let mut j = i + 5;
+                while j < bytes.len() && matches!(bytes[j], b' ' | b'\t' | b'\n' | b'\r') {
+                    j += 1;
+                }
+                if j < bytes.len() && bytes[j] == b'(' {
+                    if let Some((expr, next)) = balanced(bytes, j) {
+                        out.push(expr);
+                        i = next;
+                        continue;
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+fn is_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+/// 从 `(` 开始配平括号，返回内层表达式字符串与配平后的下一个下标。
+fn balanced(bytes: &[u8], open: usize) -> Option<(String, usize)> {
+    let mut depth: i32 = 0;
+    let mut k = open;
+    let n = bytes.len();
+    while k < n {
+        match bytes[k] {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    let inner = String::from_utf8_lossy(&bytes[open + 1..k]).to_string();
+                    return Some((inner, k + 1));
+                }
+            }
+            q @ (b'\'' | b'"') => {
+                // 跳过字符串字面量，避免引号内的括号干扰配平
+                k += 1;
+                while k < n && bytes[k] != q {
+                    if bytes[k] == b'\\' {
+                        k += 1;
+                    }
+                    k += 1;
+                }
+            }
+            _ => {}
+        }
+        k += 1;
+    }
+    None
+}
+
 fn estimate_rows(c: &Sqlite, table: &str) -> Option<i64> {
-    c.query_row(&format!("SELECT COUNT(*) FROM \"{table}\""), [], |r| r.get(0))
-        .ok()
+    c.query_row(&format!("SELECT COUNT(*) FROM \"{table}\""), [], |r| {
+        r.get(0)
+    })
+    .ok()
 }
 
 fn is_fk_column(_table: &str, col: &str) -> bool {
@@ -1264,14 +1576,18 @@ fn categorize(ty: &str, col: &str) -> ColumnType {
     if u.contains("REAL") || u.contains("FLOA") || u.contains("DOUB") {
         return ColumnType::Number;
     }
-    if u.contains("BLOB") { return ColumnType::Binary; }
+    if u.contains("BLOB") {
+        return ColumnType::Binary;
+    }
     if col == "created_at" || col == "paid_at" || col == "expires_at" {
         return ColumnType::DateTime;
     }
     if col == "attributes" || col == "profile" || col == "payload" || col == "preferences" {
         return ColumnType::Json;
     }
-    if col == "avatar_url" || col == "image_url" { return ColumnType::Text; }
+    if col == "avatar_url" || col == "image_url" {
+        return ColumnType::Text;
+    }
     if u.contains("CHAR") || u.contains("TEXT") || u.contains("CLOB") {
         return ColumnType::Text;
     }
@@ -1307,66 +1623,154 @@ const TABLE_COMMENTS: &[(&str, &str)] = &[
 /// ⭐ 列注释 + 枚举含义（真实项目来自数据库原生注释或 .adbctx）
 const META: &[(&str, &str, Option<&str>, Option<&str>)] = &[
     // (表, 列, 列注释, 枚举 "k:v|k:v")
-    ("tenants", "plan",    Some("套餐类型"),   None),
+    ("tenants", "plan", Some("套餐类型"), None),
     ("tenants", "max_users", Some("最大用户数"), None),
-    ("users",   "email",   Some("邮箱（敏感字段，建议脱敏）"), None),
-    ("users",   "name",    Some("姓名（敏感字段）"), None),
-    ("users",   "phone",   Some("手机号（敏感字段）"), None),
-    ("users",   "level",   Some("用户等级"),   Some("1:普通|2:VIP|3:SVIP")),
-    ("users",   "status",  Some("账号状态"),   Some("1:正常|0:禁用")),
-    ("users",   "balance_cents", Some("账户余额（单位：分，不是元）"), None),
-    ("users",   "profile", Some("JSON 扩展信息"), None),
-    ("users",   "created_at", Some("注册时间"), None),
+    ("users", "email", Some("邮箱（敏感字段，建议脱敏）"), None),
+    ("users", "name", Some("姓名（敏感字段）"), None),
+    ("users", "phone", Some("手机号（敏感字段）"), None),
+    (
+        "users",
+        "level",
+        Some("用户等级"),
+        Some("1:普通|2:VIP|3:SVIP"),
+    ),
+    ("users", "status", Some("账号状态"), Some("1:正常|0:禁用")),
+    (
+        "users",
+        "balance_cents",
+        Some("账户余额（单位：分，不是元）"),
+        None,
+    ),
+    ("users", "profile", Some("JSON 扩展信息"), None),
+    ("users", "created_at", Some("注册时间"), None),
     ("user_profiles", "nickname", Some("昵称"), None),
     ("categories", "name", Some("分类名"), None),
     ("products", "price_cents", Some("单价（单位：分）"), None),
-    ("products", "attributes",  Some("JSON 属性"),  None),
-    ("products", "image_url",   Some("图片 URL"),  None),
-    ("products", "is_active",   Some("是否上架"),   Some("1:上架|0:下架")),
-    ("addresses", "receiver", Some("收货人姓名（敏感字段）"), None),
-    ("addresses", "phone",    Some("收货电话（敏感字段）"), None),
-    ("addresses", "detail",   Some("详细地址（敏感字段）"), None),
-    ("orders",   "order_no",     Some("订单号（业务唯一）"), None),
-    ("orders",   "status",       Some("订单状态"),
-     Some("1:待支付|2:已支付|3:已发货|4:已完成|9:已取消")),
-    ("orders",   "total_cents",  Some("订单总额（单位：分）"), None),
-    ("orders",   "remark",       Some("买家备注（长文本）"), None),
-    ("orders",   "created_at",   Some("下单时间"), None),
-    ("orders",   "paid_at",      Some("支付时间（未支付为 NULL）"), None),
-    ("order_items", "quantity",  Some("购买数量"), None),
-    ("order_items", "price_cents", Some("成交单价（单位：分）"), None),
-    ("payments", "status",    Some("支付状态"), Some("1:待支付|2:成功|3:失败")),
-    ("payments", "method",    Some("支付方式"), Some("1:支付宝|2:微信|3:银行卡")),
-    ("payments", "error_msg", Some("失败原因（成功时为 NULL）"), None),
+    ("products", "attributes", Some("JSON 属性"), None),
+    ("products", "image_url", Some("图片 URL"), None),
+    (
+        "products",
+        "is_active",
+        Some("是否上架"),
+        Some("1:上架|0:下架"),
+    ),
+    (
+        "addresses",
+        "receiver",
+        Some("收货人姓名（敏感字段）"),
+        None,
+    ),
+    ("addresses", "phone", Some("收货电话（敏感字段）"), None),
+    ("addresses", "detail", Some("详细地址（敏感字段）"), None),
+    ("orders", "order_no", Some("订单号（业务唯一）"), None),
+    (
+        "orders",
+        "status",
+        Some("订单状态"),
+        Some("1:待支付|2:已支付|3:已发货|4:已完成|9:已取消"),
+    ),
+    ("orders", "total_cents", Some("订单总额（单位：分）"), None),
+    ("orders", "remark", Some("买家备注（长文本）"), None),
+    ("orders", "created_at", Some("下单时间"), None),
+    ("orders", "paid_at", Some("支付时间（未支付为 NULL）"), None),
+    ("order_items", "quantity", Some("购买数量"), None),
+    (
+        "order_items",
+        "price_cents",
+        Some("成交单价（单位：分）"),
+        None,
+    ),
+    (
+        "payments",
+        "status",
+        Some("支付状态"),
+        Some("1:待支付|2:成功|3:失败"),
+    ),
+    (
+        "payments",
+        "method",
+        Some("支付方式"),
+        Some("1:支付宝|2:微信|3:银行卡"),
+    ),
+    (
+        "payments",
+        "error_msg",
+        Some("失败原因（成功时为 NULL）"),
+        None,
+    ),
     ("payments", "created_at", Some("支付发起时间"), None),
-    ("sessions", "device",     Some("设备类型"), None),
+    ("sessions", "device", Some("设备类型"), None),
     ("sessions", "expires_at", Some("过期时间"), None),
-    ("audit_logs", "action",   Some("操作类型"), None),
-    ("audit_logs", "payload",  Some("操作载荷（长 JSON）"), None),
+    ("audit_logs", "action", Some("操作类型"), None),
+    ("audit_logs", "payload", Some("操作载荷（长 JSON）"), None),
     ("audit_logs", "created_at", Some("发生时间"), None),
     ("tags", "name", Some("标签名"), None),
     ("tags", "color", Some("标签颜色"), None),
-    ("reviews", "rating", Some("评分（1-5）"), Some("1:很差|2:较差|3:一般|4:较好|5:很好")),
+    (
+        "reviews",
+        "rating",
+        Some("评分（1-5）"),
+        Some("1:很差|2:较差|3:一般|4:较好|5:很好"),
+    ),
     ("reviews", "content", Some("评价内容"), None),
-    ("reviews", "is_anonymous", Some("是否匿名"), Some("1:匿名|0:实名")),
+    (
+        "reviews",
+        "is_anonymous",
+        Some("是否匿名"),
+        Some("1:匿名|0:实名"),
+    ),
     ("coupons", "code", Some("优惠券码"), None),
-    ("coupons", "type", Some("优惠类型"), Some("1:满减|2:折扣|3:立减")),
+    (
+        "coupons",
+        "type",
+        Some("优惠类型"),
+        Some("1:满减|2:折扣|3:立减"),
+    ),
     ("coupons", "discount", Some("优惠金额（分）"), None),
-    ("shipping", "method", Some("配送方式"), Some("1:快递|2:自提|3:同城")),
-    ("shipping", "status", Some("物流状态"), Some("1:待发货|2:已发货|3:运输中|4:已签收|5:异常")),
+    (
+        "shipping",
+        "method",
+        Some("配送方式"),
+        Some("1:快递|2:自提|3:同城"),
+    ),
+    (
+        "shipping",
+        "status",
+        Some("物流状态"),
+        Some("1:待发货|2:已发货|3:运输中|4:已签收|5:异常"),
+    ),
     ("invoices", "type", Some("发票类型"), Some("1:个人|2:企业")),
     ("invoices", "title", Some("发票抬头"), None),
     ("refunds", "reason", Some("退款原因"), None),
-    ("refunds", "status", Some("退款状态"), Some("1:待处理|2:已退款|3:已拒绝")),
-    ("notifications", "type", Some("通知类型"), Some("1:订单|2:优惠|3:系统|4:物流|5:安全")),
+    (
+        "refunds",
+        "status",
+        Some("退款状态"),
+        Some("1:待处理|2:已退款|3:已拒绝"),
+    ),
+    (
+        "notifications",
+        "type",
+        Some("通知类型"),
+        Some("1:订单|2:优惠|3:系统|4:物流|5:安全"),
+    ),
     ("notifications", "title", Some("通知标题"), None),
-    ("notifications", "is_read", Some("是否已读"), Some("1:已读|0:未读")),
+    (
+        "notifications",
+        "is_read",
+        Some("是否已读"),
+        Some("1:已读|0:未读"),
+    ),
     ("user_favorites", "created_at", Some("收藏时间"), None),
-    ("system_logs", "level", Some("日志级别"), Some("INFO:信息|WARN:警告|ERROR:错误|DEBUG:调试")),
+    (
+        "system_logs",
+        "level",
+        Some("日志级别"),
+        Some("INFO:信息|WARN:警告|ERROR:错误|DEBUG:调试"),
+    ),
     ("system_logs", "module", Some("模块"), None),
     ("system_logs", "action", Some("操作"), None),
 ];
-
 
 // ─────────────────────────────────────────────────────────────
 // ⭐ 诊断（U2/M3 的演示；这里先给出可验证的规则）
@@ -1399,7 +1803,9 @@ pub fn diagnostics(t: &TableDef) -> Vec<Finding> {
 
     // 外键列无索引
     for c in &t.columns {
-        if !c.is_fk { continue; }
+        if !c.is_fk {
+            continue;
+        }
         let covered = t.indexes.iter().any(|i| i.columns.first() == Some(&c.name));
         if !covered {
             v.push(Finding {
@@ -1437,7 +1843,10 @@ pub fn diagnostics(t: &TableDef) -> Vec<Finding> {
     for c in &t.columns {
         let n = c.name.to_lowercase();
         if matches!(n.as_str(), "phone" | "email" | "idcard" | "receiver")
-            && c.comment.as_deref().map(|x| x.contains("敏感")).unwrap_or(false)
+            && c.comment
+                .as_deref()
+                .map(|x| x.contains("敏感"))
+                .unwrap_or(false)
         {
             v.push(Finding {
                 level: "warning",
@@ -1577,8 +1986,7 @@ mod tests {
         assert_eq!(sub, 1, "子串查询只应命中带空格的那一行");
 
         // 短语查询：能精确命中无空格的那一行
-        let phrase =
-            scalar_i64(&c, "SELECT count(*) FROM f WHERE f MATCH '\"无线充电器\"'");
+        let phrase = scalar_i64(&c, "SELECT count(*) FROM f WHERE f MATCH '\"无线充电器\"'");
         assert_eq!(phrase, 1, "短语查询必须能命中无空格的中文整句");
     }
 
@@ -1623,9 +2031,7 @@ mod tests {
         let c = db.open();
         let names: Vec<(String, String)> = {
             let mut st = c
-                .prepare(
-                    "SELECT type,name FROM sqlite_master WHERE type IN ('table','view')",
-                )
+                .prepare("SELECT type,name FROM sqlite_master WHERE type IN ('table','view')")
                 .unwrap();
             let v = st
                 .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
@@ -1643,12 +2049,23 @@ mod tests {
                         .any(|s| n.ends_with(s))
             })
             .count();
-        assert!(shadows > 0, "演示库本应包含 FTS 影子表，否则这条测试没有意义");
+        assert!(
+            shadows > 0,
+            "演示库本应包含 FTS 影子表，否则这条测试没有意义"
+        );
 
         let shown = introspect(&c);
         for t in &shown {
-            assert!(!t.name.starts_with("sqlite_"), "内省泄露了 sqlite_ 内部表: {}", t.name);
-            assert!(!t.name.starts_with("_adb_"), "内省泄露了 _adb_ 内部表: {}", t.name);
+            assert!(
+                !t.name.starts_with("sqlite_"),
+                "内省泄露了 sqlite_ 内部表: {}",
+                t.name
+            );
+            assert!(
+                !t.name.starts_with("_adb_"),
+                "内省泄露了 _adb_ 内部表: {}",
+                t.name
+            );
             for suffix in ["_data", "_idx", "_content", "_docsize", "_config"] {
                 assert!(
                     !t.name.ends_with(suffix) || t.name == "product_search",
@@ -1660,7 +2077,9 @@ mod tests {
 
         // ⭐ 视图必须能被看见（Navicat 会显示视图，用户预期能看到）
         assert!(
-            shown.iter().any(|t| t.kind == "view" && t.name == "v_order_summary"),
+            shown
+                .iter()
+                .any(|t| t.kind == "view" && t.name == "v_order_summary"),
             "视图 v_order_summary 没出现在内省结果里"
         );
         // ⭐ 虚拟表本身要保留（它是用户可见的搜索对象）
@@ -1742,17 +2161,17 @@ mod bench {
         let all = introspect(&c);
         let elapsed = t0.elapsed();
 
-        println!(
-            "introspect {} 个对象耗时 {:?}",
-            all.len(),
-            elapsed
-        );
+        println!("introspect {} 个对象耗时 {:?}", all.len(), elapsed);
 
         for s in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{}", p.display(), s));
         }
 
-        assert!(all.len() >= 10_000, "应至少内省出 1 万个对象，实得 {}", all.len());
+        assert!(
+            all.len() >= 10_000,
+            "应至少内省出 1 万个对象，实得 {}",
+            all.len()
+        );
         assert!(
             elapsed < Duration::from_secs(3),
             "1 万对象内省耗时 {:?}，超过 3s 门禁 —— 大概率是又引入了 O(n²)",
@@ -1777,7 +2196,9 @@ mod bench {
             let c = Sqlite::open(&p).unwrap();
             let mut sql = String::new();
             for i in 0..5_000 {
-                sql.push_str(&format!("CREATE TABLE \"t{i}\" (id INTEGER PRIMARY KEY);\n"));
+                sql.push_str(&format!(
+                    "CREATE TABLE \"t{i}\" (id INTEGER PRIMARY KEY);\n"
+                ));
             }
             // 一个真正的 FTS5 虚拟表
             sql.push_str("CREATE VIRTUAL TABLE ft USING fts5(body);\n");
@@ -1791,12 +2212,10 @@ mod bench {
         let _ = std::fs::remove_file(&p);
 
         // 5000 表 + 1 虚拟表 + 5 个影子表 → 影子表要被滤掉
+        assert!(all.iter().any(|t| t.name == "ft"), "虚拟表本身必须保留");
         assert!(
-            all.iter().any(|t| t.name == "ft"),
-            "虚拟表本身必须保留"
-        );
-        assert!(
-            !all.iter().any(|t| t.name == "ft_data" || t.name == "ft_idx"),
+            !all.iter()
+                .any(|t| t.name == "ft_data" || t.name == "ft_idx"),
             "影子表必须被滤掉"
         );
         assert!(

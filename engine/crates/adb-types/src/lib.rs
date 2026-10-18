@@ -54,19 +54,34 @@ pub struct Descriptor {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum RuntimeMode { Native, Jdbc, Http }
+pub enum RuntimeMode {
+    Native,
+    Jdbc,
+    Http,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum McpMode { Builtin, Bridge, None }
+pub enum McpMode {
+    Builtin,
+    Bridge,
+    None,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum SupportLevel { Full, Operate, ReadOnly, Experimental }
+pub enum SupportLevel {
+    Full,
+    Operate,
+    ReadOnly,
+    Experimental,
+}
 
 impl SupportLevel {
     /// ⭐ experimental 的连接在 UI 默认隐藏，需 Settings 开启。
-    pub fn visible_by_default(self) -> bool { self != Self::Experimental }
+    pub fn visible_by_default(self) -> bool {
+        self != Self::Experimental
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,12 +127,25 @@ pub struct Capabilities {
 impl Capabilities {
     pub fn enabled_count(&self) -> usize {
         [
-            self.query_execution, self.metadata_browse, self.object_browser,
-            self.object_source, self.schema_search, self.diagram,
-            self.table_data_edit, self.table_structure_edit, self.table_import,
-            self.data_transfer, self.sql_file_execution, self.database_create,
-            self.field_lineage, self.sql_explain, self.user_admin,
-        ].iter().filter(|b| **b).count()
+            self.query_execution,
+            self.metadata_browse,
+            self.object_browser,
+            self.object_source,
+            self.schema_search,
+            self.diagram,
+            self.table_data_edit,
+            self.table_structure_edit,
+            self.table_import,
+            self.data_transfer,
+            self.sql_file_execution,
+            self.database_create,
+            self.field_lineage,
+            self.sql_explain,
+            self.user_admin,
+        ]
+        .iter()
+        .filter(|b| **b)
+        .count()
     }
 }
 
@@ -154,11 +182,21 @@ pub fn descriptor_by_id(id: &str) -> Option<&'static Descriptor> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum WarningLevel { Info, Important, Critical }
+pub enum WarningLevel {
+    Info,
+    Important,
+    Critical,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum WarnSite { Sidebar, StructureEditor, Transfer, QueryEditor, DataGrid }
+pub enum WarnSite {
+    Sidebar,
+    StructureEditor,
+    Transfer,
+    QueryEditor,
+    DataGrid,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -203,7 +241,10 @@ fn warnings_of(d: &Descriptor) -> Vec<UiWarning> {
         v.push(UiWarning {
             level: WarningLevel::Info,
             code: "identity-not-autoincrement",
-            message: format!("{} 使用 {} 而非 AUTO_INCREMENT。", d.label, d.traits.identity_kind),
+            message: format!(
+                "{} 使用 {} 而非 AUTO_INCREMENT。",
+                d.label, d.traits.identity_kind
+            ),
             where_to_show: WarnSite::Transfer,
         });
     }
@@ -273,9 +314,11 @@ pub fn map_type(from: &str, to: &str, source_type: &str) -> Option<MappedType> {
     let map = f.type_mapping.as_object()?;
     // ⭐ 大小写不敏感：YAML 里写 NUMBER，UI 传 number 也要命中
     let want = source_type.trim().to_lowercase();
-    let rule = map
-        .get(&want)
-        .or_else(|| map.iter().find(|(k, _)| k.eq_ignore_ascii_case(&want)).map(|(_, v)| v))?;
+    let rule = map.get(&want).or_else(|| {
+        map.iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(&want))
+            .map(|(_, v)| v)
+    })?;
 
     // ⭐⭐ 同家族 = 同方言 = **恒等映射**。
     //
@@ -309,9 +352,7 @@ pub fn map_type(from: &str, to: &str, source_type: &str) -> Option<MappedType> {
         .map(str::to_string)?;
     Some(MappedType {
         lossy,
-        reason: lossy.then(|| {
-            format!("{source_type} → {target} 可能丢失精度或语义")
-        }),
+        reason: lossy.then(|| format!("{source_type} → {target} 可能丢失精度或语义")),
         target,
     })
 }
@@ -326,7 +367,9 @@ pub fn map_type(from: &str, to: &str, source_type: &str) -> Option<MappedType> {
 pub struct ObjectId(pub String);
 
 impl ObjectId {
-    pub fn as_str(&self) -> &str { &self.0 }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 /// ⭐ 危险四级。这是安全体系的地基。
@@ -345,12 +388,16 @@ pub enum Danger {
 
 impl Danger {
     /// ⭐ MCP `ToolAnnotations` 由此生成，绝不手写（DBX #12154 的教训）
-    pub fn read_only_hint(self) -> bool { self == Self::ReadOnly }
+    pub fn read_only_hint(self) -> bool {
+        self == Self::ReadOnly
+    }
     pub fn destructive_hint(self) -> bool {
         matches!(self, Self::Destructive | Self::Admin)
     }
     /// 是否需要用户确认弹窗
-    pub fn requires_confirm(self) -> bool { self != Self::ReadOnly }
+    pub fn requires_confirm(self) -> bool {
+        self != Self::ReadOnly
+    }
     /// 是否需要走审批流
     pub fn requires_approval(self) -> bool {
         matches!(self, Self::Destructive | Self::Admin)
@@ -368,7 +415,16 @@ impl Danger {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ColumnType {
-    Text, Number, Bool, Date, DateTime, Json, Binary, Uuid, Enum, Unknown,
+    Text,
+    Number,
+    Bool,
+    Date,
+    DateTime,
+    Json,
+    Binary,
+    Uuid,
+    Enum,
+    Unknown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -404,6 +460,28 @@ pub struct IndexDef {
     pub def: Option<String>,
 }
 
+/// ⭐ 约束一览（主键 / 唯一 / 非空 / 外键 / 检查）。
+///
+/// 之前约束散落在 columns（is_pk / nullable）与 indexes（unique）里，
+/// 结构页没有「一张表有哪些约束」的统一视图。这里由后端**真实内省**推导，
+/// 前端只读、不重算 —— 与「加库只写 YAML、组件不许 if (conn===…)」同一纪律。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConstraintDef {
+    /// 稳定 id（pk / uq:<indexName> / nnull:<col> / fk:<i> / ck:<i>）
+    pub id: String,
+    /// 约束种类：PRIMARY KEY / UNIQUE / NOT NULL / FOREIGN KEY / CHECK
+    pub kind: String,
+    /// 约束名（UNIQUE / CHECK / FK 可能有名；内联 NOT NULL / 派生 PK 为 None）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// 涉及的列
+    pub columns: Vec<String>,
+    /// 补充信息：FK 为 `目标表(目标列)`，CHECK 为表达式，可空
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableDef {
@@ -416,7 +494,10 @@ pub struct TableDef {
     pub size_bytes: Option<i64>,
     pub columns: Vec<ColumnDef>,
     pub indexes: Vec<IndexDef>,
+    /// ⭐ 外键（真实内省）：4 元组 = (本表列, 引用表, 引用列, ON DELETE 规则)
     pub foreign_keys: Vec<(String, String, String, String)>,
+    /// ⭐ 约束一览（主键 / 唯一 / 非空 / 外键 / 检查），由真实内省推导
+    pub constraints: Vec<ConstraintDef>,
 }
 
 impl TableDef {
@@ -424,7 +505,9 @@ impl TableDef {
         self.columns.iter().find(|c| c.is_pk)
     }
     /// ⭐ 结果集可编辑的前提：能定位目标表 + 有可靠行身份
-    pub fn editable(&self) -> bool { self.pk().is_some() }
+    pub fn editable(&self) -> bool {
+        self.pk().is_some()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -508,9 +591,14 @@ mod tests {
     #[test]
     fn every_descriptor_enables_at_least_one_capability() {
         for d in all_descriptors() {
-            if d.capabilities.specialized_surface { continue; }
-            assert!(d.capabilities.enabled_count() > 0,
-                "{}: 所有能力均为 false", d.id);
+            if d.capabilities.specialized_surface {
+                continue;
+            }
+            assert!(
+                d.capabilities.enabled_count() > 0,
+                "{}: 所有能力均为 false",
+                d.id
+            );
         }
     }
 
@@ -528,8 +616,10 @@ mod tests {
     #[test]
     fn mysql_warns_about_implicit_ddl_commit() {
         let w = ui_warnings(ConnectionType::MySQL);
-        assert!(w.iter().any(|x| x.code == "ddl-implicit-commit"),
-            "MySQL 必须警告 DDL 隐式提交");
+        assert!(
+            w.iter().any(|x| x.code == "ddl-implicit-commit"),
+            "MySQL 必须警告 DDL 隐式提交"
+        );
     }
 
     #[test]
@@ -548,11 +638,17 @@ mod tests {
         for d in all_descriptors() {
             let by_id = ui_warnings_by_id(&d.id);
             let Some(t) = ConnectionType::ALL.iter().find(|t| t.as_str() == d.id) else {
-                panic!("声明了 {} 但 ConnectionType::ALL 里没有 —— 枚举与 YAML 不同步", d.id);
+                panic!(
+                    "声明了 {} 但 ConnectionType::ALL 里没有 —— 枚举与 YAML 不同步",
+                    d.id
+                );
             };
             let by_enum = ui_warnings(*t);
             let a: Vec<_> = by_id.iter().map(|w| (w.code, w.message.clone())).collect();
-            let b: Vec<_> = by_enum.iter().map(|w| (w.code, w.message.clone())).collect();
+            let b: Vec<_> = by_enum
+                .iter()
+                .map(|w| (w.code, w.message.clone()))
+                .collect();
             assert_eq!(a, b, "{} 的两个警告入口结果不一致", d.id);
         }
     }
@@ -571,14 +667,17 @@ mod tests {
     }
 
     /// ⭐⭐ 同家族传输必须可用且无损。
-///
-/// 回归测试：`typeMapping.to` 只列兄弟家族，所以以前 `dameng → oracle`
-/// 会返回 `None`，UI 显示「无映射」—— 而 TransferPage 上写着
-/// 「源与目标同属 Oracle 兼容家族，语法高度兼容」。界面承诺 ≠ 后端行为。
-#[test]
+    ///
+    /// 回归测试：`typeMapping.to` 只列兄弟家族，所以以前 `dameng → oracle`
+    /// 会返回 `None`，UI 显示「无映射」—— 而 TransferPage 上写着
+    /// 「源与目标同属 Oracle 兼容家族，语法高度兼容」。界面承诺 ≠ 后端行为。
+    #[test]
     fn same_family_transfer_is_lossless_identity() {
         // dameng 与 oracle 同属 oracle 家族
-        assert_eq!(family_of("dameng").unwrap().id, family_of("oracle").unwrap().id);
+        assert_eq!(
+            family_of("dameng").unwrap().id,
+            family_of("oracle").unwrap().id
+        );
 
         for ty in ["NUMBER", "VARCHAR2", "CLOB", "DATE"] {
             let m = map_type("dameng", "oracle", ty)
@@ -598,11 +697,15 @@ mod tests {
             .expect("应有 oracle 家族")
             .members
             .clone();
-        assert!(members.len() >= 2, "oracle 家族应含多个成员，实得 {:?}", members);
+        assert!(
+            members.len() >= 2,
+            "oracle 家族应含多个成员，实得 {:?}",
+            members
+        );
         for a in &members {
             for b in &members {
-                let m = map_type(a, b, "NUMBER")
-                    .unwrap_or_else(|| panic!("{a} → {b} 同家族却无映射"));
+                let m =
+                    map_type(a, b, "NUMBER").unwrap_or_else(|| panic!("{a} → {b} 同家族却无映射"));
                 assert!(!m.lossy, "{a} → {b} 被标成有损");
             }
         }
