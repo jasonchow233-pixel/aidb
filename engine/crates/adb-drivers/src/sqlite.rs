@@ -21,6 +21,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::{demo, Cursor, Depth, Driver, Health, QueryOptions, Result, RowPage, Session};
 
+/// ⭐ `EXPLAIN QUERY PLAN` 的四列含义。
+///
+/// 直接把它们放进列注释里：用户看计划表时，**表头就说明了这一列是什么**，
+/// 不用去翻文档猜 `notused` 是什么。
+const PLAN_COL_HELP: [&str; 4] = ["节点序号", "父节点序号", "（SQLite 未使用）", "计划步骤"];
+
 // ─────────────────────────────────────────────────────────────
 // Driver
 // ─────────────────────────────────────────────────────────────
@@ -120,6 +126,73 @@ impl Session for SqliteSession {
     fn query_blocking(&self, sql: &str, opt: QueryOptions, _danger: Danger) -> Result<RowPage> {
         let guard = self.lock();
         run_query(&guard, &self.snapshot, &self.cancelled, sql, opt)
+    }
+
+    /// ⭐⭐ 执行计划：`EXPLAIN QUERY PLAN`，**不套分页壳**。
+    ///
+    /// 走 `run_query` 会变成 `SELECT * FROM (EXPLAIN QUERY PLAN …) LIMIT …`
+    /// 直接语法报错，所以这里自己 prepare。
+    ///
+    /// ⭐ 计划本身没有列元数据可言（id/parent/notused/detail），
+    ///   但列名必须给对，否则前端表格会是空表头。
+    fn explain_blocking(&self, sql: &str) -> crate::Result<RowPage> {
+        let t0 = std::time::Instant::now();
+        let guard = self.lock();
+        let known = table_names(self.snapshot.as_ref());
+
+        // ⭐ 只解释**查询**语句。解释 INSERT 得到的计划是「全表扫描」这类噪声，
+        //   还不如明说「执行计划只支持查询语句」，省得用户以为自己的写语句没问题。
+        if crate::analyze(sql) != Danger::ReadOnly {
+            return Err(crate::AdbError::Internal(
+                "执行计划只支持只读查询（SELECT / WITH / VALUES）".into(),
+            ));
+        }
+
+        let mut stmt = guard
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", sql.trim().trim_end_matches(';')))
+            .map_err(|e| crate::query_error(sql, &strip_sqlite_prefix(&e.to_string()), &known))?;
+        let names: Vec<String> = stmt.column_names().into_iter().map(str::to_string).collect();
+
+        let mut rows = Vec::new();
+        {
+            let mut qr = stmt.query([]).map_err(|e| crate::AdbError::Internal(e.to_string()))?;
+            while let Some(row) = qr.next().map_err(|e| crate::AdbError::Internal(e.to_string()))? {
+                let mut o = serde_json::Map::with_capacity(names.len());
+                for (i, key) in names.iter().enumerate() {
+                    o.insert(key.clone(), cell_value(row.get_ref(i).ok()));
+                }
+                rows.push(serde_json::Value::Object(o));
+            }
+        }
+
+        Ok(RowPage {
+            // ⭐ 计划列不是业务列，标成未知而不是随便安个类型
+            columns: names
+                .iter()
+                .enumerate()
+                .map(|(i, n)| ColumnDef {
+                    id: format!("plan:{n}"),
+                    name: n.clone(),
+                    ty: "TEXT".into(),
+                    category: ColumnType::Text,
+                    nullable: true,
+                    default_expr: None,
+                    comment: PLAN_COL_HELP.get(i).map(|s| (*s).to_string()),
+                    is_pk: false,
+                    is_fk: false,
+                    is_large: false,
+                    enum_values: None,
+                    ord: i as i64,
+                })
+                .collect(),
+            rows,
+            next_cursor: None,
+            // ⭐ 计划没有「总行数」这回事 —— 给 null，UI 显示「未估算」而不是编一个
+            total: None,
+            duration_ms: t0.elapsed().as_millis() as u64,
+            truncated_columns: Vec::new(),
+            mutated: false,
+        })
     }
 
     fn cancel_blocking(&self) -> Result<()> {
@@ -257,8 +330,19 @@ fn run_query(
         let _ = probe.column_count();
     }
 
-    // ⭐ 真服务端分页：LIMIT/OFFSET 下推到 SQL 引擎
-    let paged_sql = format!("SELECT * FROM ({sql}) LIMIT {limit} OFFSET {offset}");
+    // ⭐⭐ 真服务端分页：LIMIT/OFFSET 下推到 SQL 引擎。
+    //
+    // ⚠⭐ **必须先去掉尾部分号**。
+    //   `SELECT * FROM (SELECT id FROM orders;) LIMIT 200 OFFSET 0`
+    //   里，子查询内部以分号结尾是**语法错误** ——
+    //   `near ";": syntax error`。
+    //
+    //   也就是说：**用户写一条以分号结尾的、语法完全正确的 SQL，会被服务端拒绝**，
+    //   而报错信息（`near ";": syntax error`）指向的是他们没写错的地方。
+    //   分号结尾是最常见的写法（几乎所有编辑器格式化后都会加），
+    //   所以这不是边角情况，是**主路径**。
+    let body = sql.trim().trim_end_matches(';');
+    let paged_sql = format!("SELECT * FROM ({body}) LIMIT {limit} OFFSET {offset}");
     let mut stmt = conn
         .prepare(&paged_sql)
         .map_err(|e| crate::query_error(sql, &strip_sqlite_prefix(&e.to_string()), &known))?;
@@ -587,4 +671,171 @@ pub fn compact(n: i64) -> String {
     if n >= 1e8 { format!("{:.1}亿", n / 1e8) }
     else if n >= 1e4 { format!("{:.1}万", n / 1e4) }
     else { format!("{n}") }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 物化一次演示库，返回的路径在 drop 时自动清理。
+    struct TempDb(std::path::PathBuf);
+    impl TempDb {
+        fn new(tag: &str) -> Self {
+            let mut p = std::env::temp_dir();
+            p.push(format!("agenticdb-sqlite-test-{}-{}.db", tag, std::process::id()));
+            let _ = std::fs::remove_file(&p);
+            demo::materialize(&p.to_string_lossy());
+            Self(p)
+        }
+    }
+    impl Drop for TempDb {
+        fn drop(&mut self) {
+            for suffix in ["", "-wal", "-shm"] {
+                let _ = std::fs::remove_file(format!("{}{}", self.0.display(), suffix));
+            }
+        }
+    }
+
+    fn session(tag: &str) -> (TempDb, SqliteSession) {
+        let db = TempDb::new(tag);
+        let conn = Sqlite::open(&db.0).expect("演示库应可打开");
+        let snap = SchemaSnapshot {
+            db_id: db.0.to_string_lossy().to_string(),
+            taken_at: "test".into(),
+            tables: demo::introspect(&conn),
+        };
+        let sess = SqliteSession {
+            conn: Arc::new(Mutex::new(conn)),
+            snapshot: Arc::new(snap),
+            cancelled: Arc::new(AtomicBool::new(false)),
+            txn_open: Arc::new(AtomicBool::new(false)),
+            cancel: tokio::sync::watch::channel(false).0,
+        };
+        (db, sess)
+    }
+
+    /// ⭐⭐ 回归：以分号结尾的查询必须能跑。
+    ///
+    /// 分页壳是 `SELECT * FROM (原句) LIMIT n OFFSET m`，
+    /// 而**子查询内部以分号结尾是语法错误**：
+    /// ```text
+    /// SELECT * FROM (SELECT id FROM orders;) LIMIT 200 OFFSET 0
+    /// → near ";": syntax error
+    /// ```
+    /// 也就是说用户写一条语法完全正确、只是带了个分号的 SQL 会被服务端拒绝，
+    /// 而报错指向的是他没写错的地方。
+    /// 分号结尾是最常见的写法（几乎所有格式化工具都会加），所以这是**主路径**。
+    #[test]
+    fn trailing_semicolon_still_runs() {
+        let (_db, s) = session("semicolon");
+        for sql in [
+            "SELECT id FROM orders LIMIT 3;",
+            "SELECT id FROM orders LIMIT 3 ;",
+            "SELECT id FROM orders LIMIT 3;;",
+        ] {
+            let page = s
+                .query_blocking(sql, QueryOptions { max_rows: 10, cursor: None, mode: crate::ReadMode::Paged }, Danger::ReadOnly)
+                .unwrap_or_else(|e| panic!("带分号的查询应能执行（{sql}）：{e:?}"));
+            assert_eq!(page.rows.len(), 3, "{sql} 应返回 3 行");
+        }
+    }
+
+    /// ⭐ 去掉分号不能影响 total 估算（那也是拿原句去数的）
+    #[test]
+    fn trailing_semicolon_keeps_total() {
+        let (_db, s) = session("semicolon-total");
+        let p = s
+            .query_blocking("SELECT * FROM orders;", QueryOptions::default(), Danger::ReadOnly)
+            .expect("应能执行");
+        assert_eq!(p.total, Some(5000), "带分号时 total 仍是权威值");
+    }
+
+    /// ⭐⭐ 回归：执行计划**不能**被分页壳包住。
+    ///
+    /// 之前前端只能把 `EXPLAIN QUERY PLAN …` 丢给 `query_blocking`，
+    /// 而它会包成 `SELECT * FROM (EXPLAIN QUERY PLAN …) LIMIT n OFFSET m`
+    /// → `near "PLAN": syntax error`。
+    /// 用户看到的是一条自己没写错的语法错误，成本极高。
+    #[test]
+    fn explain_is_not_wrapped_in_paging_shell() {
+        let (_db, s) = session("explain");
+        let page = s
+            .explain_blocking("SELECT id, order_no FROM orders WHERE status = 2 LIMIT 10")
+            .expect("执行计划应成功");
+
+        assert!(!page.rows.is_empty(), "执行计划不应为空 —— 空计划会被 UI 当成「没全表扫」");
+        let detail = page
+            .rows
+            .iter()
+            .filter_map(|r| r.get("detail").and_then(|v| v.as_str()))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        assert!(!detail.is_empty(), "计划里应有 detail 文本，实得空");
+        assert!(
+            !detail.contains("EXPLAIN"),
+            "detail 里不该回显 EXPLAIN 前缀：{detail}"
+        );
+    }
+
+    /// ⭐ 计划**不给 total**：计划本身没有「结果集多少行」这回事。
+    /// 给一个数会被 UI 显示成权威行数，那是撒谎。
+    #[test]
+    fn explain_gives_no_fake_total() {
+        let (_db, s) = session("explain-total");
+        let page = s.explain_blocking("SELECT * FROM orders").expect("ok");
+        assert!(page.total.is_none(), "执行计划不应给 total");
+    }
+
+    /// ⭐ 执行计划只解释查询语句；写语句明确拒绝，不返回噪声计划。
+    #[test]
+    fn explain_rejects_write_statements() {
+        let (_db, s) = session("explain-write");
+        let e = s
+            .explain_blocking("UPDATE orders SET remark = 'x' WHERE id = 1")
+            .expect_err("写语句应被拒绝");
+        let msg = e.to_string();
+        assert!(msg.contains("只读查询") || msg.contains("只读"), "错误信息应说清限制：{msg}");
+    }
+
+    /// ⭐ 坏 SQL 的报错要指向**用户写的那个词**，并给出相似表名。
+    ///
+    /// ⚠ 断言要读 `to_payload()` 而不是 `to_string()`：
+    ///    `AdbError::Query` 的 `Display` 就是「查询失败」四个字
+    ///    （`#[error("查询失败")]`），真正的 message 在 `QueryError` 里。
+    ///    用 `to_string()` 断言会得到一句完全对不上号的假象。
+    #[test]
+    fn explain_reports_error_position_and_similar_name() {
+        let (_db, s) = session("explain-bad");
+        let e = s
+            .explain_blocking("SELECT nope FROM orderz")
+            .expect_err("不存在的表应报错");
+        let p = e.to_payload();
+        let msg = p["message"].as_str().unwrap_or_default().to_string();
+        assert!(msg.contains("orderz"), "错误信息应指向出错的标识符：{msg}");
+
+        let pos = &p["position"];
+        assert!(!pos.is_null(), "应给出位置，UI 才能跳转：{p}");
+        assert_eq!(pos["line"].as_u64(), Some(1), "第 1 行：{p}");
+        assert_eq!(pos["length"].as_u64(), Some(6), "应标出 6 个字符：{p}");
+        // ⭐ 位置必须真的落在 orderz 上，而不是句首 —— 否则「跳转到错误位置」跳错地方。
+        //    断言方式是从 SQL 反查，而不是写死列号：写死的数字在改测试 SQL 时会假失败。
+        let sql = "SELECT nope FROM orderz";
+        let off = pos["offset"].as_u64().unwrap() as usize;
+        assert_eq!(
+            &sql[off..off + 6],
+            "orderz",
+            "offset 应对准出错的标识符：{p}"
+        );
+        assert_eq!(
+            pos["column"].as_u64(),
+            Some(off as u64 + 1),
+            "column 应是 offset 的 1 基列号：{p}"
+        );
+
+        let hints = p["hints"].as_array().cloned().unwrap_or_default();
+        assert!(
+            hints.iter().any(|h| h["label"] == "orders"),
+            "应提示相似表名 orders：{p}"
+        );
+    }
 }

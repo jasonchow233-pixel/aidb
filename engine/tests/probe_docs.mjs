@@ -76,17 +76,57 @@ try {
 
   console.log("\n═══ BENCHMARK.md §查询编辑器 ═══");
   await p.keyboard.press("Meta+t");
-  await p.waitForTimeout(1000);
-  const isTextarea = await p.locator("textarea").count();
-  check("编辑器是纯 textarea（文档说：无语法高亮）", isTextarea > 0, `${isTextarea} 个`);
-  const highlighted = await p.evaluate(() =>
-    document.querySelectorAll(".cm-content, .CodeMirror, [class*=highlight], .tok-").length);
-  check("确认没有高亮 DOM（文档说：无语法高亮）", highlighted === 0, `${highlighted} 个高亮节点`);
+  await p.waitForTimeout(1400);
+  // ⭐ 文档 2026-10-18 已更新：编辑器从「纯 textarea 无高亮」升级为
+  //   自研高亮 + 跳转 + 多语句。断言必须跟着文档一起改 ——
+  //   否则这一层会在文档写对、代码也写对的时候红，久了就没人看它了。
+  const isTextarea = await p.locator(".sqled__ta").count();
+  check("编辑器渲染出来了", isTextarea === 1, `${isTextarea} 个`);
+  const hlTokens = await p.locator(".sqled__hl .tk").count();
+  check("⭐ 文档说的「有语法高亮」是真的（有高亮 token）", hlTokens > 5, `${hlTokens} 个 token`);
+  const kwColored = await p.evaluate(() => {
+    const kw = document.querySelector(".sqled__hl .tk--keyword");
+    const base = getComputedStyle(document.querySelector(".sqled__hl")).color;
+    return kw ? getComputedStyle(kw).color !== base : false;
+  });
+  check("⭐ 高亮真的上了颜色（不只是有 DOM）", kwColored);
+  const gutter = await p.locator(".sqled__ln").count();
+  check("文档说的「有行号」是真的", gutter > 1, `${gutter} 行`);
+
+  console.log("\n═══ BENCHMARK.md §多语句 ═══");
+  await p.locator(".sqled__ta").click();
+  await p.keyboard.press("Meta+a");
+  await p.keyboard.type("SELECT 1 AS a; SELECT 2 AS b;");
+  await p.waitForTimeout(600);
+  check("文档说的「每条语句一个结果页签」：识别出 2 条",
+    (await p.locator("[data-test=stmt-count]").innerText().catch(() => "")).includes("2"),
+    await p.locator("[data-test=stmt-count]").innerText().catch(() => "NONE"));
+  await p.locator("[data-test=run]").click();
+  await p.waitForTimeout(3000);
+  check("⭐ 执行后确实出现 2 个结果页签",
+    (await p.locator("[data-test=result-tab]").count()) === 2,
+    `${await p.locator("[data-test=result-tab]").count()} 个`);
+
+  console.log("\n═══ BENCHMARK.md §执行计划 ═══");
+  await p.locator(".sqled__ta").click();
+  await p.keyboard.press("Meta+a");
+  await p.keyboard.type("SELECT id FROM orders WHERE status = 2");
+  await p.waitForTimeout(500);
+  await p.locator("[data-test=explain]").click();
+  await p.waitForTimeout(2500);
+  const exText = await p.locator("[data-test=explain-panel]").innerText().catch(() => "");
+  check("文档说的「有执行计划 + 人话解读」是真的",
+    /覆盖索引|走索引|全表扫描/.test(exText), exText.replace(/\n/g, " ").slice(0, 120));
 
   console.log("\n═══ BENCHMARK.md §命令面板 ═══");
+  // ⚠ 必须先离开编辑器：⌘K 在 textarea 里可能被输入法/浏览器吃掉，
+  //   那样测出来的是「编辑器抢了快捷键」而不是「命令面板没实现」。
+  await p.locator(".tab--active").click();
+  await p.locator(".app-main").click({ position: { x: 5, y: 5 } });
+  await p.waitForTimeout(400);
   const before = await p.locator(".cmdk, .palette, .command-palette").count();
   await p.keyboard.press("Meta+k");
-  await p.waitForTimeout(800);
+  await p.waitForTimeout(900);
   check("⌘K 不弹命令面板（文档说：无实现）", (await p.locator(".cmdk, .palette, .command-palette").count()) === before);
   check("⌘K 实际绑到 AI 面板（文档已如此标注）",
     await p.locator(".ai-panel, [class*=ai-panel]").count() > 0);

@@ -118,6 +118,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/table", get(table))
         .route("/api/query", post(query))
         .route("/api/query/cancel", post(cancel))
+        .route("/api/explain", post(explain))
         .route("/api/execute", post(execute))
         .route("/api/search", get(search))
         .route("/api/diagnostics", get(diagnostics))
@@ -335,6 +336,26 @@ async fn query(State(s): State<AppState>, Json(req): Json<QueryReq>) -> Response
 async fn cancel(State(s): State<AppState>) -> Response {
     match with_session(s, |sess| sess.cancel_blocking()).await {
         Ok(()) => ok_json(serde_json::json!({ "cancelled": true })),
+        Err(e) => driver_err(e),
+    }
+}
+
+/// ⭐⭐ 执行计划（EXPLAIN）。
+///
+/// 与 `/api/query` 的区别只有一处，但那一处是关键：
+/// `query` 会把语句包进 `SELECT * FROM (…) LIMIT n OFFSET m` 做服务端分页，
+/// 而 `EXPLAIN QUERY PLAN SELECT …` 被这么一包就成了
+/// `SELECT * FROM (EXPLAIN QUERY PLAN SELECT …)` → `near "PLAN": syntax error`。
+/// 用户会看到一条**自己没写错**的语法错误，成本极高。所以走独立方法。
+#[derive(Deserialize)]
+struct ExplainReq { sql: String }
+
+async fn explain(State(s): State<AppState>, Json(req): Json<ExplainReq>) -> Response {
+    let result = with_session(s, move |sess| sess.explain_blocking(&req.sql)).await;
+    match result {
+        Ok(page) => ok_json(serde_json::json!({
+            "page": serde_json::to_value(&page).unwrap_or_default(),
+        })),
         Err(e) => driver_err(e),
     }
 }

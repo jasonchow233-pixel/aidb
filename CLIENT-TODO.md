@@ -7,7 +7,7 @@
 > ① 「Navicat 里对应什么操作」——没有对应物的多半是自嗨，砍掉
 > ② 「门禁里哪条断言验它」——指不出来的就是没做完
 >
-> 最后刷新：2026-10-18（对应提交 `a507228`）
+> 最后刷新：2026-10-18（B1 查询编辑器内核交付，11 层门禁）
 
 ---
 
@@ -33,19 +33,27 @@
 | 枚举中文化 | ✅ `1=待支付` 渲染成「待支付」 | `smoke_client` §8 |
 | 不撒谎的总数 | ✅ 筛选时显示「筛选后总数未统计」 | `smoke_client` §6 |
 | NULL 样式 | ✅ 专属样式 | `smoke_client` §8 |
+| SQL 语法高亮 | ✅ 自研分词器，零依赖 | `smoke_query` §1-2 |
+| Ctrl+Click 跳转 | ✅ 表→数据页、列→所属表结构页 | `smoke_query` §5 |
+| hover 注释/枚举 | ✅ 150ms 延迟 + 缓存 | `smoke_query` §6 |
+| 多语句结果页签 | ✅ 每条语句一个页签 | `smoke_query` §7 |
+| 内联结果 | ✅ 上下/左右两种布局 | `smoke_query` §8 |
+| 真格式化 | ✅ 子句分行 + 选择列表对齐 | `smoke_query` §9 |
+| 执行计划人话解读 | ✅ 覆盖索引/全表扫描翻译 | `smoke_query` §11 |
 
 ### 确认还缺（按"盲测能否通过"排序）
 
 | 能力 | Navicat 对应 | 卡住谁 |
 |---|---|---|
-| **SQL 语法高亮** | 编辑器彩色 SQL | **T3 硬缺口** |
-| **Ctrl+Click 符号跳转** | 点表名/列名直接跳定义 | **T3 硬缺口** |
 | 列冻结（PK 列） | 冻结行号 + 主键 | 宽表横向滚动 |
 | 列宽拖拽 | 拖表头边界 | 宽表 |
 | 列显示控制 | 列设置面板 | 宽表 |
 | 右键菜单 | 右键表/列/单元格 | 点击数 |
 | Cell Renderer 补 5 类 | date/image/hex/blob/array | 可读性 |
 | 本页搜索 vs 全表搜索 | 全表搜索 | 当前只搜本页（UI 已明示范围） |
+
+> SQL 语法高亮 / Ctrl+Click 跳转 / hover 注释 / 多语句 / 内联结果 / 执行计划
+> 已随 B1 交付（见第五节），盲测 T3 已通。
 
 ---
 
@@ -137,19 +145,37 @@
 
 ---
 
-# 五、B 查询编辑器 ⭐⭐
+# 五、B 查询编辑器 ⭐⭐（B1-1~B1-9 已完成）
 
-- [ ] **B1-1** ⭐ SQL 语法高亮
-  - ⭐ **优先自研轻量高亮**（overlay，零依赖，约 200 行）
+- [x] **B1-1** ⭐ SQL 语法高亮
+  - ⭐ **自研轻量高亮**（overlay，零依赖，`lib/sql.ts` 约 260 行词法内核）
   - 理由：pnpm 装 CodeMirror 反复超时；自研体积为 0
-- [ ] **B1-2** 括号/引号自动配对、Tab 缩进
-- [ ] **B1-3** ⭐ **Ctrl+Click 符号跳转**（表名 → 打开该表）
-- [ ] **B1-4** ⭐ hover 弹窗显示列注释与枚举（delay 150ms + 缓存）
-- [ ] **B1-5** ⭐ 内联结果（结果在编辑器下方）
-- [ ] **B1-6** 多语句 + 分号分割 + **选中执行**（按钮已有，逻辑未接）
-- [ ] **B1-7** 真格式化（当前只做关键字大小写归一）
-- [ ] **B1-8** 大文件降级（>5000 行关高亮）
-- [ ] **B1-9** EXPLAIN 面板 + 人话解读
+  - ⭐ 高亮层与 textarea 逐字符对齐（font/padding/white-space 三条铁律），有专层断言
+  - ⭐ 高亮文本必须 === 用户写的原文（分词不丢字符，`sql_lexer.test.mjs` 24 项）
+- [x] **B1-2** 括号/引号自动配对、Tab 缩进
+  - ⭐ 光标已在闭合符上时**跳过**而不是补成两个；⌫ 一次删一对
+- [x] **B1-3** ⭐ **Ctrl+Click 符号跳转**（表名 → 打开该表）
+  - ⭐ 鼠标坐标 → 文本偏移靠自研二分探针（textarea 没有 caretPositionFromPoint）
+  - ⭐ 别名经 `collectScope` 解析回**真实表**（否则会跳到一张叫 `o` 的表）
+  - ⭐ 列名跳转打开**它真正所属的那张表**的结构页；同名列跨表时不猜，列出候选
+- [x] **B1-4** ⭐ hover 弹窗显示列注释与枚举（delay 150ms + 缓存）
+  - ⭐ 查不到元数据时说「元数据里没有这个对象」，不编造注释
+- [x] **B1-5** ⭐ 内联结果（结果在编辑器下方）
+  - 默认上下布局，可切左右分栏（写长 JOIN 时编辑器要宽）
+- [x] **B1-6** 多语句 + 分号分割 + **选中执行**
+  - ⭐ 字符串/注释里的分号不算分隔符；每条语句一个结果页签
+  - ⭐ ⌘⇧⏎ 只跑选中那条（没选中跑光标所在那条，不是全部）
+- [x] **B1-7** 真格式化（子句分行 + 选择列表对齐 + 关键字大写）
+  - ⭐ 不折行字符串与注释（语义改变）；行注释后必须换行
+  - ⭐ 往返不丢内容有断言（重新分词后与原文等价）
+- [x] **B1-8** 大文件降级（>5000 行）
+  - ⭐⭐ 降级必须**真的不渲染** token（曾只加 class 不关渲染，5000 行直接卡死）
+- [x] **B1-9** EXPLAIN 面板 + 人话解读
+  - ⭐ 独立 `/api/explain` 端点：`EXPLAIN QUERY PLAN` 被分页壳包住会得到
+    `near "PLAN": syntax error` —— 用户没写错却看到语法错
+  - ⭐ 人话规则覆盖 SQLite 全部主要形态（含 COVERING INDEX）；认不出来的原样显示
+
+证据：`smoke_query.mjs` 71 项 + `sql_lexer.test.mjs` 24 项 + `e2e_contract` §12（9 项）
 
 ---
 
@@ -224,20 +250,16 @@
 第 2 轮  A4-1 窗口化渲染                   ✅
          A3-1/A3-2 行选择与批量            ✅
          A1-7 撤销 / A1-8 类型化编辑器      ✅
-第 3 轮  B1 查询编辑器内核    ← ⭐ 唯一硬缺口：高亮 + 跳转 + 内联结果
-         A4-2~A4-8 列冻结/列宽/列显示/右键菜单/Renderer
+第 3 轮  B1 查询编辑器内核                  ✅（高亮 + 跳转 + 多语句 + 执行计划）
+第 4 轮  A4-2~A4-8 列冻结/列宽/列显示/右键菜单/Renderer   ← 进行中
          C1 右键菜单 / 对象树补全
-第 4 轮  D1 结构页补完        ← 外键/约束 tab + DDL 预览 + 影响评估
-第 5 轮  E1 命令面板 / 亮色走查 / 缩放   ← U2 硬要求
+第 5 轮  D1 结构页补完        ← 外键/约束 tab + DDL 预览 + 影响评估
+第 6 轮  E1 命令面板 / 亮色走查 / 缩放   ← U2 硬要求
          C2 连接向导
-第 6 轮  E1-6 导入导出
+第 7 轮  E1-6 导入导出
 ```
 
-**第 1-2 轮做完，数据页核心体验已对上 Navicat**
-（详见 `BENCHMARK.md` 第八节的点击数对照）。
-
-⚠️ 但盲测 T3（三表 JOIN + Ctrl+Click 跳转）仍然做不到，
-所以 B1 不能跳。
+**第 1-3 轮做完，盲测五任务全部可做**（T3 随 B1 打通，详见 `BENCHMARK.md` 第七节）。
 
 ---
 
@@ -250,17 +272,19 @@ SKIP_CARGO=1 engine/tests/run_gates.sh    # 只跑前端那八层
 
 | 层 | 命令 | 抓什么 | 断言数 |
 |---|---|---|---|
-| 1 | `cargo test --workspace` | 业务逻辑（含 2 个性能门禁） | 41 |
-| 2 | `python3 engine/tests/e2e_contract.py` | HTTP 契约：DTO 字段名、状态码、错误文案 | 70 |
-| 3 | `node engine/tests/smoke_browser.mjs` | 页面能不能打开、导航对不对 | 29 |
-| 4 | `node engine/tests/smoke_client.mjs` | 分页/排序/筛选是否真的下推给数据库 | 41 |
-| 5 | `node engine/tests/smoke_edit.mjs` | 编辑是否落到正确的那一行 | 27 |
-| 6 | `node engine/tests/smoke_editui.mjs` | 撤销/重做 + 类型化编辑器 + NULL/空串 | 58 |
-| 7 | `node engine/tests/smoke_filter.mjs` | 列头筛选面板 | 24 |
-| 8 | `node engine/tests/smoke_grid.mjs` | 窗口化 + 批量操作 + 行标识一致性 | 35 |
-| 9 | `node engine/tests/probe_docs.mjs` | **文档说的和代码做的对不对得上** | 12 |
+| 1 | `cargo test --workspace` | 业务逻辑（含 2 个性能门禁） | 52 |
+| 2 | `node --test sql_lexer.test.mjs` | SQL 词法内核（纯函数，秒级） | 24 |
+| 3 | `python3 engine/tests/e2e_contract.py` | HTTP 契约：DTO 字段名、状态码、错误文案 | 83 |
+| 4 | `node engine/tests/smoke_browser.mjs` | 页面能不能打开、导航对不对 | 30 |
+| 5 | `node engine/tests/smoke_client.mjs` | 分页/排序/筛选是否真的下推给数据库 | 41 |
+| 6 | `node engine/tests/smoke_edit.mjs` | 编辑是否落到正确的那一行 | 27 |
+| 7 | `node engine/tests/smoke_editui.mjs` | 撤销/重做 + 类型化编辑器 + NULL/空串 | 58 |
+| 8 | `node engine/tests/smoke_filter.mjs` | 列头筛选面板 | 24 |
+| 9 | `node engine/tests/smoke_grid.mjs` | 窗口化 + 批量操作 + 行标识一致性 | 35 |
+| 10 | `node engine/tests/smoke_query.mjs` | 查询编辑器：高亮/跳转/多语句/执行计划 | 71 |
+| 11 | `node engine/tests/probe_docs.mjs` | **文档说的和代码做的对不对得上** | 17 |
 
-前端断言合计 **368**。
+前端断言合计 **303**（+ 词法内核 24）。
 
 辅助脚本：`engine/tests/probe_ab.mjs`（窗口化 A/B 实测）、
 `engine/tests/helpers.mjs`（窗口化之后行数必须从底栏读，不能数 DOM）。

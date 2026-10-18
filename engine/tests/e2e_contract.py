@@ -264,6 +264,65 @@ def run_all():
     check("列不存在只报列名", col_hint and col_hint[0]["label"] == "nonexistent_col", str(col_hint))
     check("列提示不重复整条 SQL", col_hint and "SELECT" not in col_hint[0]["label"])
 
+    # ⭐⭐ 回归：列错误的位置之前落在 (1,1)，跳转跳到句首。
+    #   SQLite 的原文是 `no such column: X in <整条 SQL> at offset N`，
+    #   解析时必须先截掉 ` in ` 之后的后缀。
+    #   ⚠ 断言 offset 而非硬编码列号：offset 反查回原文才认得出是不是那个词。
+    e = err_of("SELECT nonexistent_col FROM orders")
+    pos = e.get("position") or {}
+    off = pos.get("offset")
+    sql_used = "SELECT nonexistent_col FROM orders"
+    check(
+        "⭐ 列错误位置落在出错列名上（曾恒为第 1 行第 1 列）",
+        isinstance(off, int) and sql_used[off:off + len("nonexistent_col")] == "nonexistent_col",
+        f"pos={pos}",
+    )
+    check("⭐ 列错误长度是列名本身而非整条报错", pos.get("length") == len("nonexistent_col"), str(pos))
+    check("⭐ 文案不把整条 SQL 再抄一遍", "SELECT" not in (e.get("message") or ""), str(e.get("message")))
+    check("⭐ 文案说清缺的是哪一列", "nonexistent_col" in (e.get("message") or ""), str(e.get("message")))
+
+    print()
+    print("=== 12. 执行计划（EXPLAIN）===")
+    # ⭐ 必须有独立端点：/api/query 会把语句包进 `SELECT * FROM (…) LIMIT n`，
+    #   EXPLAIN QUERY PLAN 被这么一包就成了 `near "PLAN": syntax error`。
+    r = post("/api/explain", {"sql": "SELECT id FROM orders WHERE status = 2"})
+    check("EXPLAIN 端点可用", r.get("ok"), str(r)[:200])
+    if r.get("ok"):
+        rows = r["data"]["page"]["rows"]
+        check("返回计划步骤", len(rows) > 0, str(len(rows)))
+        check("步骤里有 detail 文本", any("detail" in x for x in rows), str(rows[:2]))
+        check(
+            "⭐ 计划里不回显 EXPLAIN 前缀",
+            not any("EXPLAIN" in str(x.get("detail", "")) for x in rows),
+            str([x.get("detail") for x in rows]),
+        )
+        # ⭐ 断言要看**语义**（有没有走索引），不是匹配某个固定字符串 ——
+        #   SQLite 实际输出的是 `USING COVERING INDEX`（覆盖索引），
+        #   写成 `USING INDEX` 会假失败，而计划本身是对的。
+        details = [str(x.get("detail", "")) for x in rows]
+        check(
+            "⭐ 走了索引而不是全表扫描（status 有索引）",
+            any(d.startswith("SEARCH ") and "USING" in d and "INDEX" in d for d in details)
+            and not any(d.startswith("SCAN orders") for d in details),
+            str(details),
+        )
+
+    # ⭐ 执行计划**不给 total**：计划没有「结果集多少行」这回事，
+    #   给一个数会被 UI 显示成权威行数，那是撒谎。
+    r = post("/api/explain", {"sql": "SELECT * FROM orders"})
+    check("⭐ 执行计划不给 total（宁可不写也不给错）",
+          r.get("ok") and r["data"]["page"]["total"] is None,
+          str(r.get("data", {}).get("page", {}).get("total")))
+
+    # ⭐ 写语句要明确拒绝，不能给一份噪声计划让用户误以为自己的写语句没问题
+    r = post("/api/explain", {"sql": "UPDATE orders SET remark='x' WHERE id=1"})
+    check("写语句被明确拒绝", not r.get("ok") and "只读查询" in r["error"]["message"], str(r)[:200])
+
+    # ⭐ 坏 SQL 的错误位置也要能回来
+    r = post("/api/explain", {"sql": "SELECT nope FROM orderz"})
+    check("坏 SQL 报错带位置", not r.get("ok") and r["error"].get("position") is not None, str(r)[:200])
+    check("坏 SQL 给相似表名", not r.get("ok") and any(h["label"] == "orders" for h in r["error"].get("hints") or []), str(r)[:200])
+
     print()
     print(f"通过 {ok_count} / 失败 {fail_count}")
     sys.exit(1 if fail_count else 0)

@@ -410,6 +410,35 @@ export const actions = {
   },
 
   /**
+   * ⭐⭐ 打开某张表的**结构页**。
+   *
+   * 存在的理由：查询编辑器的 Ctrl+Click 要能从列名跳到它所属的表结构。
+   * 之前只有 DataGridPage 里一个私有的 `openStructure()`，
+   * 那里**必须先有 `state.tableDef`**（即必须先打开数据页）才能跳 ——
+   * 于是「在查询里跳转一张还没打开过的表」根本做不到。
+   *
+   * ⚠ 结构页读的是 `state.tableDef`，所以这里必须先把元数据拉回来，
+   *    否则切过去会看到「未选择表」。
+   */
+  async openStructure(table: string) {
+    const id = `s:${table}`;
+    const exist = state.tabs.find((t) => t.id === id);
+    if (!exist) {
+      state.tabs.push({ id, title: `${table} 结构`, kind: "structure", table });
+    }
+    state.activeTabId = id;
+    if (state.tableDef?.name !== table) {
+      try {
+        const meta = await api.table(table);
+        state.tableDef = meta.table;
+      } catch (e) {
+        notify("error", e instanceof Error ? e.message : String(e));
+        return;
+      }
+    }
+  },
+
+  /**
    * ⭐ 打开工具页。
    *
    * ⚠ 这里必须**按工具给出正确的 `kind`**。

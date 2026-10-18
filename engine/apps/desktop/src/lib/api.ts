@@ -355,6 +355,23 @@ export const api = {
       },
     ),
 
+  /**
+   * ⭐⭐ 执行计划（EXPLAIN）。
+   *
+   * ⚠ **不能**用 `query("EXPLAIN QUERY PLAN " + sql)` 代替：
+   *   `/query` 会把语句包进 `SELECT * FROM (…) LIMIT n OFFSET m` 做服务端分页，
+   *   于是 `EXPLAIN QUERY PLAN SELECT …` 被包成
+   *   `SELECT * FROM (EXPLAIN QUERY PLAN SELECT …)` → `near "PLAN": syntax error`。
+   *   用户看到的是一条**自己没写错**的语法错误。
+   *
+   * 后端另有 `/api/explain`，不套分页壳。
+   */
+  explain: (sql: string) =>
+    call<{ page: RowPage }>("/explain", {
+      method: "POST",
+      body: JSON.stringify({ sql }),
+    }),
+
   cancel: () => call<{ cancelled: boolean }>("/query/cancel", { method: "POST" }),
 
   search: (q: string) => call<SearchHit[]>(`/search?q=${encodeURIComponent(q)}`),

@@ -143,9 +143,14 @@ try {
 
   console.log("\n═══ 8. 查询编辑器 ═══");
   await page.locator("button", { hasText: "查询" }).first().click();
-  await page.waitForTimeout(600);
-  const editor = await page.locator("textarea.editor, .editor").first().isVisible();
+  await page.waitForTimeout(800);
+  // ⭐ B1 起查询页换成了自研 SqlEditor（透明 textarea + 高亮层）。
+  //   选择器必须跟着实现改 —— 旧断言找 `textarea.editor`，
+  //   编辑器重写后它会假失败，而页面其实是好的。
+  //   深度行为（高亮/跳转/多语句）由 smoke_query.mjs 专层负责，这里只看「渲染出来了」。
+  const editor = await page.locator(".sqled__ta").first().isVisible();
   check("查询编辑器可见", editor);
+  check("编辑器带行号条（B1 内核）", (await page.locator(".sqled__ln").count()) > 1);
 
   console.log("\n═══ 9. 工具页路由（回归：mask/audit 曾被 diagnosis 分支抢先命中）═══");
   // 侧栏「工具」分组默认折叠

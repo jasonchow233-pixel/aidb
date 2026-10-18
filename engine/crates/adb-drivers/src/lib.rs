@@ -113,6 +113,22 @@ pub trait Session: Send + Sync {
         )))
     }
 
+    /// ⭐⭐ 执行计划（EXPLAIN）—— 「这条查询会不会扫全表」的权威答案。
+    ///
+    /// 为什么必须单独一个方法，不能让前端拼 `EXPLAIN ` 前缀丢给 `query_blocking`：
+    ///   `query_blocking` 会把语句包进 `SELECT * FROM (原句) LIMIT n OFFSET m`，
+    ///   于是 `EXPLAIN QUERY PLAN SELECT ...` 变成
+    ///   `SELECT * FROM (EXPLAIN QUERY PLAN SELECT ...) LIMIT ...`
+    ///   → `near "PLAN": syntax error`。
+    ///   即「用户点执行计划 → 报语法错」，而且**错在用户没写错的地方**，
+    ///   排查成本极高。
+    ///
+    /// ⚠ 驱动没实现时**明确报不支持**，不返回空计划 ——
+    ///    一个空的执行计划会被 UI 显示成「没有全表扫描」，那是撒谎。
+    fn explain_blocking(&self, _sql: &str) -> Result<RowPage> {
+        Err(AdbError::Internal("该驱动尚未实现执行计划".into()))
+    }
+
     /// ⭐ 取消必须幂等。取消后**绝不自动重放**。
     async fn cancel(&self) -> Result<()>;
 
@@ -249,21 +265,51 @@ fn analyze_single(sql: &str) -> Danger {
 // ⭐ 错误定位 —— UI 点击错误跳转的来源
 // ─────────────────────────────────────────────────────────────
 
-/// 从 SQLite 错误里提取位置。`no such column: x near "y"` → 第 N 行第 M 列
+/// ⭐⭐ 从 SQLite 错误里提取位置 → 第 N 行第 M 列。
+///
+/// SQLite 的错误文本有三种形态，**每一种都要单独处理**：
+/// ```text
+/// 1. no such table: oder
+/// 2. no such column: x near "FROM oder"
+/// 3. no such column: nope in SELECT nope FROM orders at offset 7   ← 实际最常见
+/// ```
+///
+/// ⭐⭐ 形态 3 之前被解析错了：代码把 `strip_prefix("no such column: ")`
+///   之后的**整段**当成了标识符，于是
+///   ```text
+///   ident = "nope in SELECT nope FROM orders at offset 7"
+///   sql.find(ident) → None → unwrap_or(0)
+///   ```
+///   结果是 **`line:1 column:1 length:75`** —— 前端点「跳转到错误位置」
+///   跳到句首，用户完全不知道自己在看哪里。
+///
+///   而 `no such table` 是能正确定位的（形态 1 没有后缀），
+///   所以这个 bug 只在**写错列名**时出现 —— 恰好是最常见的一类手误。
 pub fn locate(sql: &str, err_msg: &str) -> Option<SqlPosition> {
-    // SQLite 有两种相关格式：
-    //   1. `no such table: oder`                     （裸标识符）
-    //   2. `no such column: x near "FROM oder"`      （near 引号）
     let ident = if let Some(rest) = err_msg.split("near \"").nth(1) {
-        rest.split('"').next()?
+        rest.split('"').next()?.trim()
     } else if let Some(rest) = err_msg.strip_prefix("no such table: ") {
+        // 表名后面不带任何东西
         rest.trim()
     } else if let Some(rest) = err_msg.strip_prefix("no such column: ") {
-        rest.trim()
+        // ⭐⭐ 形态 3：截到 ` in ` / ` at offset ` 为止。
+        //   列名本身不含这两个分隔符（SQL 标识符允许它们出现在引号里，
+        //   而那种写法 SQLite 报的是形态 2）。
+        let head = rest.split(" in ").next().unwrap_or(rest);
+        head.split(" at offset ").next().unwrap_or(head).trim()
     } else {
         return None;
     };
-    let offset = sql.find(ident).unwrap_or(0);
+
+    if ident.is_empty() {
+        return None;
+    }
+
+    // ⭐ 找不到就**不给位置**，而不是给 (1,1)。
+    //   (1,1) 是个看起来合法、实际完全错误的答案：
+    //   前端会照着跳，用户会以为「定位不准」而放弃这个功能。
+    //   没有位置时前端显示「无位置信息」，那才是诚实的。
+    let offset = sql.find(ident)?;
 
     let prefix = &sql[..offset];
     let line = prefix.matches('\n').count() as u32 + 1;
@@ -364,12 +410,40 @@ pub fn query_error(sql: &str, raw: &str, known_tables: &[String]) -> AdbError {
     }
 
     AdbError::Query(QueryError {
-        message: raw.to_string(),
+        message: human_message(raw),
         position,
         sql_state: None,
         hints,
         suggestions,
     })
+}
+
+/// ⭐⭐ 把 SQLite 的裸报错整理成一句人话。
+///
+/// SQLite 的原文会把**整条 SQL 再抄一遍**：
+/// ```text
+/// no such column: nope in SELECT nope FROM orders at offset 7
+/// ```
+/// 用户面前已经摆着这条 SQL 了，再抄一遍毫无帮助；
+/// 真正有信息量的是「哪一列不存在」，那句应该单独说清楚。
+///
+/// ⚠ 只**裁剪**，不改写语义：`no such table: oder` 这类本来就干净的
+///   原样返回。裁掉后若内容不完整，宁可保留原文也不能说错话。
+fn human_message(raw: &str) -> String {
+    if let Some(rest) = raw.strip_prefix("no such column: ") {
+        let head = rest.split(" in ").next().unwrap_or(rest);
+        let col = head.split(" at offset ").next().unwrap_or(head).trim();
+        if !col.is_empty() {
+            return format!("列 {col} 不存在");
+        }
+    }
+    if let Some(rest) = raw.strip_prefix("no such table: ") {
+        let tbl = rest.trim();
+        if !tbl.is_empty() && !tbl.contains(char::is_whitespace) {
+            return format!("表 {tbl} 不存在");
+        }
+    }
+    raw.to_string()
 }
 
 /// ⭐ 把 SQLite 的裸约束报错翻译成「发生了什么 + 该怎么办」。
@@ -481,6 +555,92 @@ mod tests {
         let p = locate(sql, err).expect("should locate");
         assert_eq!(p.line, 3);
         assert_eq!(p.column, 6);
+    }
+
+    /// ⭐⭐ 回归：`no such column` 的**实际最常见形态**是
+    /// ```text
+    /// no such column: nope in SELECT nope FROM orders at offset 7
+    /// ```
+    /// 之前把 ` in ` 之后的整段当成了标识符，于是定位结果是 `(1, 1)`、
+    /// 长度 75 —— 点「跳转到错误位置」跳到句首。
+    ///
+    /// ⚠ 这个 bug **只影响写错列名**，不影响写错表名（表名错误没有后缀），
+    ///   所以在只测表名的老用例里完全看不出来。
+    #[test]
+    fn locate_handles_no_such_column_with_in_clause() {
+        let sql = "SELECT nope FROM orders";
+        let err = "no such column: nope in SELECT nope FROM orders at offset 7";
+        let p = locate(sql, err).expect("should locate");
+        assert_eq!(p.line, 1);
+        assert_eq!(p.column, 8, "nope 在第 8 列（`SELECT ` 共 7 字符）");
+        assert_eq!(p.offset, 7);
+        assert_eq!(p.length, 4, "长度应是列名本身 4 个字符，而不是整条报错的长��");
+    }
+
+    /// ⭐ 跨行的列名错误也要定位到正确行
+    #[test]
+    fn locate_column_error_across_lines() {
+        let sql = "SELECT id,\n       nope\nFROM orders";
+        let err = "no such column: nope in SELECT id,\n       nope\nFROM orders at offset 16";
+        let p = locate(sql, err).expect("should locate");
+        assert_eq!(p.line, 2, "应落在第 2 行：{p:?}");
+        assert_eq!(p.column, 8);
+        assert_eq!(p.length, 4);
+    }
+
+    /// ⭐ 认不出标识符时**不给位置**，而不是给 (1,1)。
+    ///
+    /// (1,1) 是个「看起来合法、实际全错」的答案：
+    /// 前端会照着跳，用户以为定位不准，从此不再信任这个功能。
+    #[test]
+    fn locate_returns_none_when_identifier_absent() {
+        let sql = "SELECT 1";
+        // 报错里的标识符在 SQL 里根本不存在
+        assert!(locate(sql, "no such column: ghost in SELECT 1 at offset 3").is_none());
+        // 空标识符也不该给位置
+        assert!(locate(sql, "no such column: ").is_none());
+        // 完全认不出的错误类型
+        assert!(locate(sql, "something went totally wrong").is_none());
+    }
+
+    /// ⭐ 错误文案不该把整条 SQL 再抄一遍 ——
+    /// 用户面前已经摆着这条 SQL 了，重复只会淹没真正有用的那半句。
+    #[test]
+    fn error_message_does_not_echo_whole_sql() {
+        assert_eq!(
+            human_message("no such column: nope in SELECT nope FROM orders at offset 7"),
+            "列 nope 不存在"
+        );
+        assert_eq!(human_message("no such table: oder"), "表 oder 不存在");
+        // ⭐ 认不出来的错误**原样透传**，不硬套模板（会说出错的话）
+        assert_eq!(
+            human_message("FOREIGN KEY constraint failed"),
+            "FOREIGN KEY constraint failed"
+        );
+        // ⭐ 内容不完整时不裁剪：宁可给原文也不能说「列  不存在」
+        assert_eq!(human_message("no such column: "), "no such column: ");
+        // 表名里带空格（那本来就是别的错误）→ 不套模板
+        assert_eq!(
+            human_message("no such table: SELECT * FROM orders"),
+            "no such table: SELECT * FROM orders"
+        );
+    }
+
+    /// ⭐⭐ 端到端：位置与文案必须**同时**正确。
+    ///
+    /// 这两条分开测都可能过，合起来才是用户在屏幕上看到的：
+    /// 「列 nope 不存在 · 第 1 行第 8 列」，点跳转正好落在 nope 上。
+    #[test]
+    fn column_error_position_and_message_agree() {
+        let sql = "SELECT nope FROM orders";
+        let raw = "no such column: nope in SELECT nope FROM orders at offset 7";
+        let e = query_error(sql, raw, &["orders".to_string()]);
+        let p = e.to_payload();
+        assert_eq!(p["message"], "列 nope 不存在");
+        let off = p["position"]["offset"].as_u64().unwrap() as usize;
+        assert_eq!(&sql[off..off + 4], "nope", "跳转位置要落在出错列名上");
+        assert_eq!(p["position"]["length"].as_u64(), Some(4));
+        assert_eq!(p["position"]["column"].as_u64(), Some(8));
     }
 
     #[test]
@@ -755,7 +915,19 @@ fn unknown_columns_are_marked_unknown_not_guessed() {
         let known = vec!["orders".into(), "order_items".into()];
         let e = query_error("SELECT * FROM oder", "no such table: oder", &known);
         let AdbError::Query(q) = e else { panic!() };
-        assert!(q.message.contains("no such table"), "应保留原始信息");
+        // ⚠ 这里断言的是「**信息没丢**」，不是「原文一字不动」。
+        //   消息已改为 `表 oder 不存在`（`human_message`），
+        //   但用户要能从这句话看出**缺的是表**、**叫什么名字** —— 断言这两点。
+        assert!(
+            q.message.contains("oder"),
+            "必须指出是哪个对象出的问题：{}",
+            q.message
+        );
+        assert!(
+            q.message.contains("表"),
+            "必须说清缺的是表（而不是列）：{}",
+            q.message
+        );
         assert!(
             q.hints.iter().any(|h| h.label == "orders"),
             "相似表名建议被约束翻译吃掉了"
