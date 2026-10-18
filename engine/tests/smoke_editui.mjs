@@ -337,7 +337,16 @@ try {
     optTexts.length >= 3 && optTexts.some((o) => /已支付/.test(o)) && optTexts.some((o) => /\d/.test(o)),
     optTexts.join(" | "));
   check("⭐ 选一项就提交", (await page.locator(".grid .cell-editor").count()) === 1);
-  await page.locator(".grid .cell-editor").first().selectOption({ index: 1 });
+  // ⭐ 必须挑一个与当前值**不同**的选项：commitEdit 对「值没变」的记录
+  //    本来就会跳过（sameValue），选到当前值等于什么都没做。
+  //    ⚠ 不能写死 index：演示库重新物化后各行 status 会变，
+  //      写死就会随机挂（曾经 row1 的 status 恰好等于 index 1 的值）。
+  const curLabel = (await page.locator(".grid tbody tr:not(.win-spacer)")
+    .first().locator('td[data-col="status"]').innerText()).trim();
+  const pickIdx = optTexts.findIndex((t) => !t.startsWith(curLabel));
+  check("找到与当前值不同的枚举选项（否则这次编辑等于没改）",
+    pickIdx >= 0, `当前=${curLabel} 选项=${optTexts.join(" | ")}`);
+  await page.locator(".grid .cell-editor").first().selectOption({ index: pickIdx });
   await page.waitForTimeout(600);
   check("枚举值已进待保存", (await pending()) === 1, `${await pending()}`);
   const enumSql = await saveAndCaptureSql();

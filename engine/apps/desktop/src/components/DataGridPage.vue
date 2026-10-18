@@ -9,7 +9,7 @@ import ColumnFilterPanel from "@/components/ColumnFilterPanel.vue";
 
 const emit = defineEmits<{ run: [sql: string] }>();
 
-const detail = ref<{ col: ColumnDef; row: number; text: string; total: number } | null>(null);
+const detail = ref<{ col: ColumnDef; row: number; text: string; total: number; hex?: string | null } | null>(null);
 const detailLoading = ref(false);
 const pageLimit = ref(state.rowLimit);
 const searchTerm = ref("");
@@ -118,16 +118,28 @@ const findingsForTable = computed(() =>
  *   编辑 / 删除 / 批量选中若都拿 filteredRows 的下标去索引 state.rows，
  *   改到的会是**另一行** —— 页面看着一切正常，数据已经错了。
  *   （与「内存排序看着对实际错」是同一类错误。）
+ *
+ * ⭐ A4-8 隐藏 NULL / 空串：只作用于**当前页**，范围写在 UI 上
+ *   （「隐藏 NULL · 仅本页」）。假装全表生效是数据库工具最常见的坑。
  */
+const hideNull = ref(false);
+const hideEmpty = ref(false);
+/** ⭐ A4-8 转置：把当前**可见窗口**的行换成列。只读 —— 编辑需要行标识，
+ *  转置后「第几行」不再是稳定概念，所以干脆不提供编辑入口，也不假装能编辑。 */
+const transpose = ref(false);
 const filteredRows = computed(() => {
   const q = searchTerm.value.trim().toLowerCase();
-  const out: { row: Record<string, unknown>; ri: number }[] = [];
+  let out: { row: Record<string, unknown>; ri: number }[] = [];
   state.rows.forEach((row, ri) => {
     if (!q) { out.push({ row, ri }); return; }
     if (state.columns.some((c) => String(row[c.name] ?? "").toLowerCase().includes(q))) {
       out.push({ row, ri });
     }
   });
+  // ⭐ 语义写清楚：隐藏「含有 NULL 的行」/「含有空串的行」，仅当前页。
+  //   含糊的「隐藏空值」会让用户以为在改查询条件 —— 那不是同一个东西。
+  if (hideNull.value) out = out.filter(({ row }) => !state.columns.some((c) => row[c.name] === null));
+  if (hideEmpty.value) out = out.filter(({ row }) => !state.columns.some((c) => row[c.name] === ""));
   return out;
 });
 
@@ -206,6 +218,9 @@ const winRows = computed(() =>
 function onWrapScroll() {
   const el = wrapRef.value;
   if (!el) return;
+  // ⭐ 右键菜单必须跟着滚动关闭：不关的话菜单会浮在别的内容上，
+  //   而用户此刻已经滚到别处，点下去就是误操作。
+  closeCtxMenu();
   scrollTop.value = el.scrollTop;
   // ⭐ 顺带校正视口高度：窗口缩放 / 分栏拖动都会改变它。
   //   不校正的话窗口一变，可视区里就少渲染几行、露出空白。
@@ -238,6 +253,186 @@ watch(
     viewportH.value = el.clientHeight || 600;
   },
 );
+
+// ── A4-2~A4-5 列布局：顺序 / 宽度 / 显隐 ─────────────────────
+/**
+ * ⭐ 列布局三件事，全部按「连接 + 表名」分键持久化：
+ *   · 顺序（colOrder）  · 宽度（colWidths）  · 显隐（hiddenCols）
+ *
+ * ⭐ 为什么必须持久化：宽表每次重开都要重新拖一遍列宽，
+ *   用户会直接把工具判定为「不好用」。Navicat 同样有这个行为。
+ *
+ * ⚠ 持久化的 key 必须带连接标识：不同库的同名表布局不一定一样。
+ * ⚠ 读到的布局可能引用已不存在的列（表结构变了）——
+ *   以当前列清单为准合并、**丢弃失效项**，绝不让旧布局把新表搞坏。
+ */
+const LAYOUT_KEY_PREFIX = "adb.gridlayout:";
+interface GridLayout { order: string[]; widths: Record<string, number>; hidden: string[] }
+
+function layoutKey(): string {
+  return `${LAYOUT_KEY_PREFIX}${state.connectionKind}:${state.tableDef?.name ?? ""}`;
+}
+
+const colWidths = ref<Record<string, number>>({});
+const colOrder = ref<string[]>([]);
+const hiddenCols = ref<Set<string>>(new Set());
+
+function loadLayout() {
+  colWidths.value = {};
+  colOrder.value = [];
+  hiddenCols.value = new Set();
+  if (!state.tableDef) return;
+  try {
+    const raw = localStorage.getItem(layoutKey());
+    if (!raw) return;
+    const l = JSON.parse(raw) as Partial<GridLayout>;
+    const names = new Set(state.columns.map((c) => c.name));
+    if (Array.isArray(l.order)) colOrder.value = l.order.filter((n) => names.has(n));
+    if (l.widths && typeof l.widths === "object") {
+      const w: Record<string, number> = {};
+      for (const [k, v] of Object.entries(l.widths)) {
+        if (names.has(k) && typeof v === "number") w[k] = Math.max(56, Math.min(800, v));
+      }
+      colWidths.value = w;
+    }
+    if (Array.isArray(l.hidden)) hiddenCols.value = new Set(l.hidden.filter((n) => names.has(n)));
+  } catch {
+    // ⭐ 布局损坏不影响主流程：当成没有布局，而不是让页面打不开
+  }
+}
+
+let layoutSaveTimer = 0;
+function saveLayout() {
+  if (!state.tableDef) return;
+  window.clearTimeout(layoutSaveTimer);
+  layoutSaveTimer = window.setTimeout(() => {
+    try {
+      const l: GridLayout = {
+        order: visibleColumns.value.map((c) => c.name),
+        widths: colWidths.value,
+        hidden: [...hiddenCols.value],
+      };
+      localStorage.setItem(layoutKey(), JSON.stringify(l));
+    } catch {
+      // 存储写满：个别布局丢就丢了，不该打断用户
+    }
+  }, 300);
+}
+
+watch(() => state.tableDef?.name, loadLayout);
+watch([colOrder, colWidths, hiddenCols], saveLayout, { deep: true });
+
+/** ⭐ 当前实际渲染的列：顺序 = 持久化顺序（新列追加在末尾），再扣掉隐藏的 */
+const visibleColumns = computed<ColumnDef[]>(() => {
+  const byName = new Map(state.columns.map((c) => [c.name, c]));
+  const ordered: ColumnDef[] = [];
+  const seen = new Set<string>();
+  for (const n of colOrder.value) {
+    const c = byName.get(n);
+    if (c && !seen.has(n)) { ordered.push(c); seen.add(n); }
+  }
+  // ⭐ 结构变了（新增列）→ 追加在末尾，不动用户排好的前段
+  for (const c of state.columns) if (!seen.has(c.name)) { ordered.push(c); seen.add(c.name); }
+  return ordered.filter((c) => !hiddenCols.value.has(c.name));
+});
+
+function colWidth(c: ColumnDef): number {
+  return colWidths.value[c.name] ?? 140;
+}
+
+// ── A4-3 列宽拖拽 + 双击自适应 + 列序拖拽 ─────────────────────
+const resizing = ref<{ col: string; startX: number; startW: number } | null>(null);
+const reordering = ref<{ col: string; over: string | null } | null>(null);
+/** ⭐ 区分「点击表头排序」与「拖拽列宽/列序」—— 拖拽结束的那一次 click 不能触发排序 */
+const suppressSortClick = ref(false);
+
+function onResizeStart(e: MouseEvent, col: string) {
+  e.preventDefault();
+  e.stopPropagation();
+  resizing.value = { col, startX: e.clientX, startW: colWidths.value[col] ?? 140 };
+  window.addEventListener("mousemove", onResizeMove);
+  window.addEventListener("mouseup", onResizeEnd);
+}
+function onResizeMove(e: MouseEvent) {
+  const r = resizing.value;
+  if (!r) return;
+  const w = Math.max(56, Math.min(800, r.startW + e.clientX - r.startX));
+  colWidths.value = { ...colWidths.value, [r.col]: w };
+}
+function onResizeEnd() {
+  resizing.value = null;
+  window.removeEventListener("mousemove", onResizeMove);
+  window.removeEventListener("mouseup", onResizeEnd);
+}
+
+/** ⭐ 双击列宽手柄：量**已渲染单元格**的真实内容宽度，不猜字符数 */
+function autosizeCol(col: string) {
+  const cells = [...document.querySelectorAll(`td[data-col="${CSS.escape(col)}"]`)] as HTMLElement[];
+  let w = 56;
+  for (const td of cells) w = Math.max(w, td.scrollWidth);
+  const th = document.querySelector(`th[data-col="${CSS.escape(col)}"]`) as HTMLElement | null;
+  if (th) w = Math.max(w, th.scrollWidth);
+  colWidths.value = { ...colWidths.value, [col]: Math.min(800, Math.ceil(w) + 12) };
+}
+
+function onThMouseDown(e: MouseEvent, col: string) {
+  if (e.button !== 0) return;
+  // 筛选按钮与列宽手柄有自己的语义，不启动列序拖拽
+  if ((e.target as HTMLElement | null)?.closest(".th-filter, .col-resizer")) return;
+  const startX = e.clientX;
+  let started = false;
+  const move = (ev: MouseEvent) => {
+    if (!started && Math.abs(ev.clientX - startX) > 6) {
+      started = true;
+      reordering.value = { col, over: null };
+    }
+    if (!started) return;
+    const el = document.elementFromPoint(ev.clientX, ev.clientY);
+    const th = el?.closest("th[data-col]") as HTMLElement | null;
+    if (reordering.value) reordering.value = { col, over: th?.dataset.col ?? null };
+  };
+  const up = () => {
+    window.removeEventListener("mousemove", move);
+    window.removeEventListener("mouseup", up);
+    const r = reordering.value;
+    reordering.value = null;
+    if (r && r.over && r.over !== r.col) {
+      moveColumn(r.col, r.over);
+      // click 会在 mouseup 之后同步派发，setTimeout(0) 之前flag还在
+      suppressSortClick.value = true;
+      window.setTimeout(() => { suppressSortClick.value = false; }, 0);
+    }
+  };
+  window.addEventListener("mousemove", move);
+  window.addEventListener("mouseup", up);
+}
+
+function moveColumn(from: string, to: string) {
+  const order = visibleColumns.value.map((c) => c.name);
+  const i = order.indexOf(from);
+  const j = order.indexOf(to);
+  if (i < 0 || j < 0) return;
+  order.splice(i, 1);
+  order.splice(j, 0, from);
+  colOrder.value = order;
+}
+
+// ── A4-4 列显示 / 隐藏 ────────────────────────────────────────
+const showColPanel = ref(false);
+function toggleColVisible(name: string) {
+  const next = new Set(hiddenCols.value);
+  if (next.has(name)) next.delete(name);
+  else next.add(name);
+  hiddenCols.value = next;
+}
+function showAllCols() { hiddenCols.value = new Set(); }
+function resetColLayout() {
+  hiddenCols.value = new Set();
+  colOrder.value = [];
+  colWidths.value = {};
+  try { localStorage.removeItem(layoutKey()); } catch { /* 无所谓 */ }
+  showColPanel.value = false;
+}
 
 // ── A3 批量操作 ──────────────────────────────────────────────
 /** ⭐ 全选 —— 只作用于**当前窗口内**的行。
@@ -377,10 +572,10 @@ function isDirty(rowIdx: number, col: string): boolean {
 async function openDetail(col: ColumnDef, rowIdx: number) {
   if (!state.tableDef) return;
   detailLoading.value = true;
-  detail.value = { col, row: rowIdx, text: "", total: 0 };
+  detail.value = { col, row: rowIdx, text: "", total: 0, hex: null };
   try {
     const r = await api.cell(state.tableDef.name, rowIdx, col.name, 0, 20000);
-    detail.value = { col, row: rowIdx, text: r.text, total: r.totalLen };
+    detail.value = { col, row: rowIdx, text: r.text, total: r.totalLen, hex: r.hex ?? null };
   } catch (e) {
     notify("error", e instanceof Error ? e.message : String(e));
     detail.value = null;
@@ -389,9 +584,167 @@ async function openDetail(col: ColumnDef, rowIdx: number) {
   }
 }
 
+// ── A4-7 Cell Renderer：五类补齐 ─────────────────────────────
+/**
+ * ⭐ 渲染规则全部依据**后端元数据 + 值形态**，不按列名猜：
+ *   · date/dateTime → category 是日期类
+ *   · image          → 值是 http(s) URL 且以图片扩展名结尾（与既有 isUrl 同类的值形态判断）
+ *   · array          → category=json 且解析出来是数组
+ *   · blob/hex       → category=binary（值形如 ⟨binary⟩ N B；hex 走详情面板）
+ */
+function isImageUrl(v: unknown): v is string {
+  return typeof v === "string" && /^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|svg|bmp|avif)(?:\?\S*)?$/i.test(v);
+}
+function jsonArrayOf(col: ColumnDef, v: unknown): unknown[] | null {
+  if (col.category !== "json") return null;
+  if (Array.isArray(v)) return v;
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  if (!t.startsWith("[")) return null;
+  try {
+    const p = JSON.parse(t);
+    return Array.isArray(p) ? p : null;
+  } catch {
+    return null;
+  }
+}
+/** ⭐ 日期友好格式；完整值留在 title，不丢信息 */
+function fmtDate(col: ColumnDef, v: unknown): string | null {
+  if (col.category !== "date" && col.category !== "dateTime") return null;
+  if (typeof v !== "string") return null;
+  const m = v.match(/^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2})(?::\d{2})?)?/);
+  if (!m) return null;
+  return col.category === "date" ? m[1] : `${m[1]} ${m[2] ?? ""}`.trim();
+}
+/** ⭐ 二进制占位符 → 字节数。后端给的是 `⟨binary⟩ N B`（网格不铺 hex） */
+function binaryBytes(v: unknown): number | null {
+  if (typeof v !== "string") return null;
+  const m = v.match(/^⟨binary⟩\s+(\d+)\s*B$/);
+  return m ? Number(m[1]) : null;
+}
+/** 图片加载失败（内网/离线常见）→ 收起缩略图，露出 URL 文本 */
+const failedImgs = ref(new Set<string>());
+function imgFailed(url: string): boolean { return failedImgs.value.has(url); }
+function markImgFailed(url: string) {
+  failedImgs.value = new Set(failedImgs.value).add(url);
+}
+
+/** ⭐ hex dump 按 16 字节一行折行 —— 一长串 hex 没法看 */
+function formatHex(hex: string): string[] {
+  const clean = hex.replace(/[^0-9a-fA-F]/g, "");
+  const out: string[] = [];
+  for (let i = 0; i < clean.length; i += 32) {
+    const chunk = clean.slice(i, i + 32);
+    out.push((chunk.match(/../g) ?? []).join(" "));
+  }
+  return out;
+}
+
+// ── A4-6 单元格右键菜单 ──────────────────────────────────────
+/**
+ * ⭐ 右键菜单是 Navicat 的高频入口；「设 NULL」「设空串」必须是**两个独立项**
+ *   （#10505：合成一个「清空」就等于没有设 NULL 的能力）。
+ *
+ * ⚠ 菜单用 fixed 定位（视口坐标）；关闭条件有三个：点击别处 / Esc / 滚动。
+ *    漏一个就会出现「菜单跟着表格一起滚」的鬼故事。
+ */
+const ctxMenu = ref<{ x: number; y: number; row: number; col: ColumnDef } | null>(null);
+
+function onCellContextMenu(e: MouseEvent, rowIdx: number, col: ColumnDef) {
+  e.preventDefault();
+  e.stopPropagation();
+  ctxMenu.value = { x: e.clientX, y: e.clientY, row: rowIdx, col };
+}
+function closeCtxMenu() { ctxMenu.value = null; }
+
+/**
+ * ⭐ 菜单的「点外面关 / Esc 关」用**常驻**监听器 + 开门检查，而不是
+ *    「打开时挂、关闭时摘」。后者的三种坏法全部真实发生过：
+ *
+ *    1. 挂在 setTimeout(0) 里 → 右键后紧接着按 Esc，第一次按键被整个吞掉
+ *       （菜单开着、按了没反应、控制台一声不响）；
+ *    2. 靠 watch 回调 return 的清理函数摘监听 → **Vue 根本不调它**
+ *       （onCleanup 要以第三参数传），每开合一轮就漏一对监听器；
+ *    3. capture 级 mousedown 不排除菜单自身 → 点菜单项时先被它卸掉菜单，
+ *       click 永远不触发 —— 7 个菜单项全是摆设，页面还一切正常。
+ *
+ *    常驻监听器没有开关窗口期，三个问题一起消失：
+ *    mousedown 一定早于 contextmenu，所以「右键按下」不会误关自己。
+ */
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (e.key === "Escape" && ctxMenu.value) closeCtxMenu();
+}
+function onGlobalMousedown(e: MouseEvent) {
+  if (!ctxMenu.value) return;
+  // 点在菜单里面：交给菜单项自己的 click，不关
+  const menu = document.querySelector("[data-test=cell-ctx-menu]");
+  if (menu && e.target instanceof Node && menu.contains(e.target)) return;
+  closeCtxMenu();
+}
+onMounted(() => {
+  window.addEventListener("keydown", onGlobalKeydown);
+  window.addEventListener("mousedown", onGlobalMousedown, { capture: true });
+});
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onGlobalKeydown);
+  window.removeEventListener("mousedown", onGlobalMousedown, { capture: true });
+});
+
+/** 右键菜单项公用的「这一格的值」 */
+function ctxValue(): unknown {
+  const m = ctxMenu.value;
+  if (!m) return undefined;
+  return state.rows[m.row]?.[m.col.name];
+}
+function ctxEdit() {
+  const m = ctxMenu.value;
+  if (!m) return;
+  closeCtxMenu();
+  startEdit(m.row, m.col, ctxValue());
+}
+function ctxSetNull() {
+  const m = ctxMenu.value;
+  if (!m) return;
+  closeCtxMenu();
+  setNull(m.row, m.col.name);
+}
+function ctxSetEmpty() {
+  const m = ctxMenu.value;
+  if (!m) return;
+  closeCtxMenu();
+  setEmptyString(m.row, m.col.name);
+}
+function ctxCopy() {
+  const m = ctxMenu.value;
+  if (!m) return;
+  closeCtxMenu();
+  copyCellValue(state.rows[m.row] ?? {}, m.col);
+}
+function ctxCopySql() {
+  const m = ctxMenu.value;
+  if (!m) return;
+  closeCtxMenu();
+  copyAsSQL(state.rows[m.row] ?? {});
+}
+function ctxDetail() {
+  const m = ctxMenu.value;
+  if (!m) return;
+  closeCtxMenu();
+  void openDetail(m.col, m.row);
+}
+function ctxDelete() {
+  const m = ctxMenu.value;
+  if (!m) return;
+  closeCtxMenu();
+  void deleteRow(m.row);
+}
+
 // ── 表头操作 ────────────────────────────────────────────────
-/** ⭐ 排序交给 store：它会重置 offset 并重查（内存排序只对当前页有效） */
+/** ⭐ 排序交给 store：它会重置 offset 并重查（内存排序只对当前页有效）。
+ *  ⚠ 列序拖拽结束时会派发一次 click —— 用 suppressSortClick 把它挡掉，
+ *    否则用户刚排好的列顺手就被加了排序，两个意图缠在一起。 */
 function toggleSort(col: string) {
+  if (suppressSortClick.value) return;
   actions.toggleSort(col);
 }
 
@@ -829,10 +1182,52 @@ function clearFilter() {
         </select>
 
         <div class="toolbar__sep"></div>
+
+        <!-- ⭐ A4-4 列显示/隐藏 + 布局重置 -->
+        <div class="colpanel-anchor">
+          <button class="btn btn--sm" :class="{ 'btn--primary': hiddenCols.size }"
+                  data-test="col-panel-btn"
+                  :title="hiddenCols.size ? `已隐藏 ${hiddenCols.size} 列` : '显示 / 隐藏列'"
+                  @click="showColPanel = !showColPanel">
+            列<template v-if="hiddenCols.size"> · {{ hiddenCols.size }}</template>
+          </button>
+          <div v-if="showColPanel" class="colpanel-catch" @click="showColPanel = false"></div>
+          <div v-if="showColPanel" class="colpanel" data-test="col-panel">
+            <div class="colpanel__head">
+              <strong>列显示</strong>
+              <span class="grow"></span>
+              <button class="btn btn--sm btn--ghost" @click="showAllCols">全部显示</button>
+              <button class="btn btn--sm btn--ghost" data-test="col-reset" @click="resetColLayout">重置布局</button>
+            </div>
+            <label v-for="c in state.columns" :key="c.id" class="colpanel__item">
+              <input type="checkbox" :checked="!hiddenCols.has(c.name)"
+                     :data-test="`col-toggle-${c.name}`"
+                     @change="toggleColVisible(c.name)" />
+              <span class="mono">{{ c.name }}</span>
+              <span class="muted small">{{ c.ty }}</span>
+            </label>
+            <div class="colpanel__foot muted small">列宽 / 列序 / 显隐按「连接 + 表名」记住</div>
+          </div>
+        </div>
+
+        <!-- ⭐ A4-8 转置 / 隐藏 NULL / 隐藏空串（均只作用于当前页，UI 明示） -->
+        <button class="btn btn--sm" :class="{ 'btn--primary': transpose }" data-test="transpose-btn"
+                title="行列互换（仅当前可见行，只读）" @click="transpose = !transpose">转置</button>
+        <button class="btn btn--sm" :class="{ 'btn--primary': hideNull }" data-test="hide-null-btn"
+                title="隐藏含有 NULL 的行（仅本页）" @click="hideNull = !hideNull">隐藏 NULL</button>
+        <button class="btn btn--sm" :class="{ 'btn--primary': hideEmpty }" data-test="hide-empty-btn"
+                title="隐藏含有空串的行（仅本页）" @click="hideEmpty = !hideEmpty">隐藏空串</button>
+
+        <div class="toolbar__sep"></div>
         <input class="input input--mono searchbox" style="width: 170px; height: var(--h-btn-sm); font-size: var(--fs-xs)"
                v-model="searchTerm" placeholder="搜索本页"
                aria-label="搜索本页（仅本页）" />
-        <span class="muted small">仅本页 {{ filteredRows.length }} 行</span>
+        <span class="muted small">
+          仅本页 {{ filteredRows.length }} 行
+          <template v-if="hideNull || hideEmpty">
+            · 已隐藏<template v-if="hideNull"> NULL</template><template v-if="hideNull && hideEmpty"> /</template><template v-if="hideEmpty"> 空串</template>
+          </template>
+        </span>
 
         <div class="grow"></div>
         <!-- ⭐ 撤销/重做：粒度 = 一次编辑提交（⌘Z / ⌘⇧Z） -->
@@ -908,7 +1303,7 @@ function clearFilter() {
         @close="filterPanelCol = null"
         @applied="filterPanelCol = null"
       />
-      <table class="grid">
+      <table class="grid" v-if="!transpose">
         <thead>
           <tr :style="{ height: 'var(--h-toolbar)' }">
             <th class="rownum" style="width: 88px; min-width:88px; max-width:88px">
@@ -925,10 +1320,17 @@ function clearFilter() {
                 <span>#</span>
               </span>
             </th>
-            <th v-for="(c, ci) in state.columns" :key="c.id"
-                :class="{ 'is-pk': c.isPk, 'is-fk': c.isFk, 'is-sorted': state.sortCol === c.name }"
-                :title="c.comment ? `${c.comment}\n点击表头排序；点 ▼ 筛选` : '点击表头排序；点 ▼ 筛选'"
-                :style="{ minWidth: '140px' }"
+            <th v-for="c in visibleColumns" :key="c.id"
+                :data-col="c.name"
+                :class="{
+                  'is-pk': c.isPk, 'is-fk': c.isFk, 'is-sorted': state.sortCol === c.name,
+                  'frozen-pk': c.isPk,
+                  'is-reorder-over': !!reordering && reordering.over === c.name && reordering.col !== c.name,
+                  'is-reordering': !!reordering && reordering.col === c.name,
+                }"
+                :title="c.comment ? `${c.comment}\n点击表头排序；点 ▼ 筛选；拖拽改列序/列宽` : '点击表头排序；点 ▼ 筛选；拖拽改列序/列宽'"
+                :style="{ width: colWidth(c) + 'px', minWidth: colWidth(c) + 'px', maxWidth: colWidth(c) + 'px' }"
+                @mousedown="onThMouseDown($event, c.name)"
                 @click="toggleSort(c.name)">
               <div class="th-main">
                 <span class="truncate">{{ c.name }}</span>
@@ -939,14 +1341,17 @@ function clearFilter() {
                 <span v-if="state.sortCol === c.name" class="muted">
                   {{ state.sortDir === "asc" ? "↑" : "↓" }}
                 </span>
-                <!-- ⭐ 列头筛选入口：Navicat 的核心操作。
-                     用 ci（真实列下标）而不是 DOM 顺序，避免与行号列错位。 -->
+                <!-- ⭐ 列头筛选入口：Navicat 的核心操作。 -->
                 <button class="th-filter" :class="{ 'is-on': hasColFilter(c.name) }"
                         :title="hasColFilter(c.name) ? '已设置筛选条件' : `按 ${c.name} 筛选（候选值 + 计数）`"
                         @click.stop="toggleFilterPanel(c.name)">▼</button>
               </div>
               <div class="th-type">{{ c.ty }}{{ c.defaultExpr ? ` = ${c.defaultExpr}` : "" }}</div>
               <div v-if="c.comment" class="th-comment">{{ c.comment }}</div>
+              <!-- ⭐ A4-3 列宽手柄：左右拖改宽，双击按内容自适应 -->
+              <span class="col-resizer" title="拖拽改宽 · 双击自适应"
+                    @mousedown.stop="onResizeStart($event, c.name)"
+                    @dblclick.stop="autosizeCol(c.name)"></span>
             </th>
             <th style="width: 100px">操作</th>
           </tr>
@@ -956,7 +1361,7 @@ function clearFilter() {
                ⚠ 缺了它，滚动条只反映「渲染出来的几十行」，
                  用户会以为整张表就这么点数据。 -->
           <tr v-if="win.padTop > 0" class="win-spacer" aria-hidden="true">
-            <td :colspan="state.columns.length + 2" :style="{ height: win.padTop + 'px', padding: 0 }"></td>
+            <td :colspan="visibleColumns.length + 2" :style="{ height: win.padTop + 'px', padding: 0 }"></td>
           </tr>
 
           <!-- ⭐ 只渲染可视区附近的行。`w.ri` 是 state.rows 里的真实下标，
@@ -973,7 +1378,8 @@ function clearFilter() {
                 <span>{{ w.no }}</span>
               </span>
             </td>
-            <td v-for="c in state.columns" :key="c.id"
+            <td v-for="c in visibleColumns" :key="c.id"
+                :data-col="c.name"
                 :class="{
                   num: c.category === 'number',
                   null: w.row[c.name] === null,
@@ -983,10 +1389,12 @@ function clearFilter() {
                   json: c.category === 'json',
                   large: c.isLarge && String(w.row[c.name] ?? '').length > 40,
                   'is-dirty': isDirty(w.ri, c.name),
+                  'frozen-pk': c.isPk,
                 }"
                 :title="c.isLarge ? '点击查看完整内容' : undefined"
                 @dblclick.stop="openDetail(c, w.ri)"
-                @click.stop="startEdit(w.ri, c, w.row[c.name])">
+                @click.stop="startEdit(w.ri, c, w.row[c.name])"
+                @contextmenu.stop="onCellContextMenu($event, w.ri, c)">
               <!-- ⭐ A1-8 类型化编辑器：控件由后端元数据决定，不按列名猜 -->
               <template v-if="editingCell?.row === w.ri && editingCell?.col === c.name">
                 <!-- 枚举：下拉。选项来自 enumValues，写错值不可能发生 -->
@@ -1034,7 +1442,34 @@ function clearFilter() {
                 </div>
               </template>
               <template v-else-if="w.row[c.name] === null"><em>NULL</em></template>
+              <!-- ⭐ A4-7 blob：二进制不铺 hex，只给字节数；hex 在双击详情里 -->
+              <template v-else-if="binaryBytes(w.row[c.name]) !== null">
+                <span class="cell-bin" :title="`二进制 ${binaryBytes(w.row[c.name])} 字节 · 双击查看 hex`">
+                  ⬢ {{ binaryBytes(w.row[c.name]) }} B
+                </span>
+              </template>
               <template v-else-if="isEnum(c)">{{ enumText(c, w.row[c.name]) }}</template>
+              <!-- ⭐ A4-7 array：JSON 数组渲染成 chips，不糊成一坨字符串 -->
+              <template v-else-if="jsonArrayOf(c, w.row[c.name])">
+                <span class="cell-arr">
+                  <span class="cell-arr__item" v-for="(item, ai) in jsonArrayOf(c, w.row[c.name])" :key="ai">
+                    {{ typeof item === "object" ? JSON.stringify(item) : item }}
+                  </span>
+                </span>
+              </template>
+              <!-- ⭐ A4-7 image：URL 形态的图片值给缩略图；加载失败回落 URL 文本 -->
+              <template v-else-if="isImageUrl(w.row[c.name])">
+                <span class="cell-imgbox">
+                  <img v-if="!imgFailed(w.row[c.name])" class="cell-img"
+                       :src="w.row[c.name]" :alt="w.row[c.name]" loading="lazy"
+                       @error="markImgFailed(w.row[c.name])" />
+                  <span class="cell-img-txt">{{ w.row[c.name] }}</span>
+                </span>
+              </template>
+              <!-- ⭐ A4-7 date/dateTime：友好格式，完整值留在 title -->
+              <template v-else-if="fmtDate(c, w.row[c.name])">
+                <span :title="String(w.row[c.name])">{{ fmtDate(c, w.row[c.name]) }}</span>
+              </template>
               <template v-else-if="typeof w.row[c.name] === 'object'">{{ cellText(w.row[c.name]) }}</template>
               <template v-else>{{ cellText(w.row[c.name]) }}</template>
             </td>
@@ -1048,10 +1483,38 @@ function clearFilter() {
           </tr>
 
           <tr v-if="win.padBottom > 0" class="win-spacer" aria-hidden="true">
-            <td :colspan="state.columns.length + 2" :style="{ height: win.padBottom + 'px', padding: 0 }"></td>
+            <td :colspan="visibleColumns.length + 2" :style="{ height: win.padBottom + 'px', padding: 0 }"></td>
           </tr>
         </tbody>
       </table>
+
+      <!-- ⭐ A4-8 转置视图：仅当前可见窗口、只读。
+           「第几行」在转置后不再是稳定概念，所以不提供编辑入口 ——
+           给一个改了不知道会落到哪儿的编辑器，比不给更糟。 -->
+      <table class="grid grid--transpose" v-else-if="winRows.length">
+        <thead>
+          <tr>
+            <th class="rownum t-field">字段</th>
+            <th v-for="w in winRows" :key="w.ri" class="t-rowhead">第 {{ w.no }} 行</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="c in visibleColumns" :key="c.id">
+            <td class="rownum t-field">
+              <span class="truncate" :title="`${c.name} · ${c.ty}`">{{ c.name }}</span>
+            </td>
+            <td v-for="w in winRows" :key="w.ri"
+                :class="{ null: w.row[c.name] === null, num: c.category === 'number' }">
+              <em v-if="w.row[c.name] === null">NULL</em>
+              <template v-else>{{ isEnum(c) ? enumText(c, w.row[c.name]) : cellText(w.row[c.name]) }}</template>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-else-if="transpose" class="empty">
+        <div class="empty__icon">▤</div>
+        <div class="empty__title">当前窗口没有行</div>
+      </div>
 
       <div v-if="state.loading" style="padding: var(--sp-2); text-align:center" class="muted small">加载中…</div>
     </div>
@@ -1114,6 +1577,37 @@ function clearFilter() {
         <span v-if="detailLoading" class="muted">加载中…</span>
         <template v-else>{{ detail.text || "（空）" }}</template>
       </div>
+      <!-- ⭐ A4-7 hex：二进制列的真实字节（后端 hex() 查询），16 字节一行 -->
+      <div v-if="detail.hex" class="cell-detail__hex" data-test="cell-detail-hex">
+        <div class="small muted" style="margin-bottom: var(--sp-1)">
+          HEX · {{ detail.hex.length / 2 }} 字节
+        </div>
+        <pre class="mono small">{{ formatHex(detail.hex).join("\n") }}</pre>
+      </div>
+    </div>
+
+    <!-- ══ A4-6 单元格右键菜单 ══ -->
+    <div v-if="ctxMenu" class="ctxmenu" data-test="cell-ctx-menu"
+         :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+         @click.stop>
+      <div class="ctxmenu__head muted small">
+        {{ ctxMenu.col.name }} · 第 {{ ctxMenu.row + 1 }} 行
+      </div>
+      <button class="ctxmenu__item" data-test="ctx-edit" @click="ctxEdit">✎ 编辑</button>
+      <button class="ctxmenu__item" data-test="ctx-set-null"
+              :disabled="isNullCell(ctxMenu.row, ctxMenu.col.name)"
+              @click="ctxSetNull">设 NULL</button>
+      <button class="ctxmenu__item" data-test="ctx-set-empty"
+              :disabled="isEmptyStringCell(ctxMenu.row, ctxMenu.col.name)"
+              @click="ctxSetEmpty">设空串</button>
+      <div class="ctxmenu__sep"></div>
+      <button class="ctxmenu__item" @click="ctxCopy">复制</button>
+      <button class="ctxmenu__item" @click="ctxCopySql">复制为 SQL</button>
+      <button class="ctxmenu__item" @click="ctxDetail">查看详情</button>
+      <template v-if="!tableReadOnly">
+        <div class="ctxmenu__sep"></div>
+        <button class="ctxmenu__item ctxmenu__item--danger" data-test="ctx-delete" @click="ctxDelete">删除行</button>
+      </template>
     </div>
   </div>
 </template>
@@ -1235,4 +1729,115 @@ table.grid tbody tr.is-selected td.rownum { color: var(--accent); }
   line-height: 1;
 }
 .filterchip__x:hover { color: var(--danger); }
+
+/* ── A4-2 冻结列（PK）── */
+/* ⭐ sticky 单元格必须自带**不透明**背景，否则横向滚动时下面的内容会透出来。
+   斑马纹的 even 行是半透明的，这里用「surface 55% over canvas」算出等效不透明色。 */
+table.grid th.frozen-pk, table.grid td.frozen-pk {
+  position: sticky; left: 88px; z-index: 1;
+  background: var(--bg-surface);
+  border-right: var(--bw) solid var(--border-strong);
+}
+table.grid thead th.frozen-pk { z-index: 3; background: var(--bg-elevated); }
+table.grid tbody tr:nth-child(even) td.frozen-pk { background: color-mix(in srgb, var(--bg-surface) 55%, var(--bg-canvas)); }
+table.grid tbody tr:hover td.frozen-pk { background: var(--bg-hover); }
+table.grid tbody tr.is-current td.frozen-pk { background: var(--bg-selected); }
+table.grid tbody tr.is-selected td.frozen-pk { background: var(--bg-active); }
+
+/* ── A4-3 列宽手柄 / 列序拖拽 ── */
+.col-resizer {
+  position: absolute; top: 0; right: 0; bottom: 0;
+  width: 6px; cursor: col-resize; z-index: 4;
+}
+.col-resizer:hover { background: var(--accent); }
+/* ⭐ 拖拽中的列半透明 + 目标列左侧亮线 —— 用户必须看得见「松手会插到哪儿」 */
+table.grid th.is-reordering { opacity: .5; }
+table.grid th.is-reorder-over { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* ── A4-4 列显示面板 ── */
+.colpanel-anchor { position: relative; }
+.colpanel-catch { position: fixed; inset: 0; z-index: calc(var(--z-dropdown) - 1); }
+.colpanel {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: var(--z-dropdown);
+  min-width: 220px; max-height: 420px; overflow: auto;
+  background: var(--bg-elevated);
+  border: var(--bw) solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--sp-1) 0;
+}
+.colpanel__head {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  border-bottom: var(--bw) solid var(--border);
+}
+.colpanel__item {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  cursor: pointer; font-size: var(--fs-xs);
+}
+.colpanel__item:hover { background: var(--bg-hover); }
+.colpanel__item input { margin: 0; cursor: pointer; accent-color: var(--accent); }
+.colpanel__foot { padding: var(--sp-2) var(--sp-3); border-top: var(--bw) solid var(--border); }
+
+/* ── A4-6 单元格右键菜单 ── */
+.ctxmenu {
+  position: fixed; z-index: var(--z-dropdown);
+  min-width: 168px; padding: var(--sp-1) 0;
+  background: var(--bg-elevated);
+  border: var(--bw) solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+}
+.ctxmenu__head { padding: var(--sp-1) var(--sp-3); border-bottom: var(--bw) solid var(--border); }
+.ctxmenu__item {
+  display: block; width: 100%; text-align: left;
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-xs); color: var(--text-primary);
+  background: none; border: none; cursor: pointer;
+}
+.ctxmenu__item:hover:not(:disabled) { background: var(--bg-hover); }
+.ctxmenu__item:disabled { color: var(--text-disabled); cursor: default; }
+.ctxmenu__item--danger { color: var(--danger); }
+.ctxmenu__sep { height: var(--bw); background: var(--border); margin: var(--sp-1) 0; }
+
+/* ── A4-7 Cell Renderer ── */
+/* blob：二进制只给字节数，不铺 hex */
+.cell-bin {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 6px; border-radius: var(--r-sm);
+  background: var(--bg-active); color: var(--text-link);
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+}
+/* array：JSON 数组渲染成 chips */
+.cell-arr { display: inline-flex; gap: 3px; flex-wrap: wrap; }
+.cell-arr__item {
+  padding: 0 5px; border-radius: var(--r-sm);
+  background: var(--accent-subtle); color: var(--text-link);
+  font-size: var(--fs-xs); white-space: nowrap;
+}
+/* image：缩略图 + URL 文本（加载失败时只剩文本） */
+.cell-imgbox { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.cell-img {
+  width: 18px; height: 18px; flex: 0 0 auto;
+  object-fit: cover; border-radius: var(--r-sm);
+  background: var(--bg-hover); border: var(--bw) solid var(--border);
+}
+.cell-img-txt {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-link); font-size: var(--fs-xs);
+}
+
+/* ── A4-8 转置视图 ── */
+.grid--transpose .t-field { width: 160px; min-width: 160px; max-width: 160px; text-align: left; }
+.grid--transpose .t-rowhead { min-width: 120px; }
+.grid--transpose td { white-space: nowrap; }
+
+/* ── 详情面板：hex 区 ── */
+.cell-detail__hex {
+  border-top: var(--bw) solid var(--border);
+  padding: var(--sp-2) var(--sp-3);
+  max-height: 200px; overflow: auto;
+}
+.cell-detail__hex pre { margin: 0; white-space: pre; color: var(--syn-number); }
 </style>

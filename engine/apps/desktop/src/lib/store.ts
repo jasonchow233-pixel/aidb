@@ -397,7 +397,16 @@ export const actions = {
   openTable(table: string) {
     const id = `t:${table}`;
     const exist = state.tabs.find((t) => t.id === id);
-    if (exist) { state.activeTabId = id; return; }
+    if (exist) {
+      state.activeTabId = id;
+      // ⭐⭐ 已打开的 tab 也要保证数据是**这一张表**的。
+      //   DataGridPage 读的是全局 state.tableDef / state.rows，
+      //   只切 activeTabId 不重载的话：tab 标题是 users、内容是 user_profiles，
+      //   **页面不报任何错**，而用户已经按错误的数据在思考了。
+      //   （与「编辑改到别的行」同族：全局态与视图错位。）
+      if (state.tableDef?.name !== table) void actions.loadTable(table);
+      return;
+    }
     state.tabs.push({ id, title: table, kind: "grid", table });
     state.activeTabId = id;
     void actions.loadTable(table);

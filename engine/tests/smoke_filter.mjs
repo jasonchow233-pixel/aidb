@@ -39,6 +39,22 @@ try {
   await page.waitForSelector(".grid tbody tr", { timeout: 15000 });
   await page.waitForTimeout(1500);
 
+  // ⭐ 趁还没有任何筛选，先记下一个「status ≠ 已支付」的 order_no ——
+  //    §5 要用它构造**冲突条件**（status=已支付 AND order_no=那一行 → 0 行）。
+  //    ⚠ 不能写死 NO0000000001：演示库重新物化后各行 status 会变，
+  //      写死就会随机挂（曾经 id=1 恰好就是已支付，冲突不再冲突）。
+  const conflictNo = await page.evaluate(() => {
+    for (const tr of document.querySelectorAll(".grid tbody tr")) {
+      if (tr.classList.contains("win-spacer")) continue;
+      const no = tr.querySelector('td[data-col="order_no"]')?.innerText.trim();
+      const st = tr.querySelector('td[data-col="status"]')?.innerText.trim();
+      if (no && st && st !== "已支付") return no;
+    }
+    return null;
+  });
+  check("前提：窗口内有一行 status≠已支付 的订单（冲突条件才构造得出来）",
+    conflictNo !== null, String(conflictNo));
+
   console.log("═══ 1. 入口 ═══");
   check("每列都有筛选按钮", (await page.locator(".th-filter").count()) === 9,
     `${await page.locator(".th-filter").count()} 个（orders 有 9 列）`);
@@ -108,14 +124,14 @@ try {
   check("⭐ 高基数列不列值", /不同值/.test(highCard) && /精确匹配/.test(highCard),
     highCard.replace(/\n/g, " ").slice(0, 80));
   const manual = page.locator(".fpanel__manual input");
-  await manual.fill("NO0000000001");
+  await manual.fill(conflictNo);
   await page.locator(".fpanel button", { hasText: "匹配" }).click();
   await page.waitForTimeout(2000);
   // ⭐ 行数一律从底栏文案读，不数 DOM：
   //    窗口化之后 DOM 里只有可视区的几十行，数出来是 30 不是 0/100。
   const conflictRows = await trueRowCount(page);
-  // ⭐ 注意：status=已支付 的条件还在，而 NO0000000001 的 status=已完成，
-  //    所以 0 行是**正确行为**（级联条件同时生效）。
+  // ⭐ 注意：status=已支付 的条件还在，而 conflictNo 那一行的 status 不是
+  //    已支付（setup 时专门挑的），所以 0 行是**正确行为**（级联条件同时生效）。
   //    这里验的是「精确匹配条件确实加进去了」，不是「一定有行」。
   const chips = await page.locator(".filterchip").allInnerTexts();
   check("精确匹配条件已加入", chips.some((c) => /order_no/.test(c)),

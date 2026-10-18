@@ -63,7 +63,17 @@ try {
     const th = document.querySelector(".grid thead th.rownum");
     return th ? getComputedStyle(th).position : "NO_TH";
   });
-  check("行号列是 sticky（文档说：只有行号冻结）", rownumSticky === "sticky", rownumSticky);
+  check("行号列是 sticky", rownumSticky === "sticky", rownumSticky);
+  // ⭐ 2026-10-18 A4-2：PK 列也冻结了，BENCHMARK 从「只有行号」升级为
+  //    「双冻结」。断言必须跟着文档一起改 —— 否则文档写对、代码也写对的
+  //    时候这一层照样红，久了就没人看它了。
+  const pkFrozen = await p.evaluate(() => {
+    const th = document.querySelector(".grid thead th.frozen-pk");
+    if (!th) return "NO_TH";
+    const cs = getComputedStyle(th);
+    return `${cs.position}/${cs.left}`;
+  });
+  check("PK 列也冻结（文档已升级为双冻结）", pkFrozen === "sticky/88px", pkFrozen);
 
   console.log("\n═══ BENCHMARK.md §结构页 tab ═══");
   await p.locator(".toolbar button", { hasText: "表结构" }).first().click();

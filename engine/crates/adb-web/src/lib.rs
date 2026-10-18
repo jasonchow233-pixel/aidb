@@ -521,13 +521,19 @@ struct CellReq {
 }
 
 /// ⭐ 大字段延迟读取：主查询不取全文（UI-SPEC §2.2）
+///
+/// ⭐⭐ 二进制列的特殊处理：主查询对 BLOB 只回 `⟨binary⟩ N B` 占位符
+///   （网格里铺几千字节 hex 是灾难）。但要**看**字节时不能没有数据 ——
+///   所以这里对二进制值再跑一次 `hex()`，把真实字节以十六进制交给详情面板。
+///   没有这一步，hex 渲染器就永远只能显示一句占位符，「支持 hex」是空话。
 async fn cell(State(s): State<AppState>, AxQuery(q): AxQuery<CellReq>) -> Response {
     let limit = if q.limit == 0 { 2000 } else { q.limit.min(100_000) };
     let sql = format!(
         "SELECT \"{}\" FROM \"{}\" ORDER BY rowid LIMIT 1 OFFSET {}",
         q.column, q.table, q.row
     );
-    let result = with_session(s, move |sess| {
+    // ⭐ AppState 是 Arc，clone 只是引用计数 +1 —— 同一 handler 里进两次会话不冲突
+    let result = with_session(Arc::clone(&s), move |sess| {
         sess.query_blocking(&sql, QueryOptions { max_rows: 1, cursor: None, mode: adb_drivers::ReadMode::Paged }, Danger::ReadOnly)
     })
     .await;
@@ -542,8 +548,31 @@ async fn cell(State(s): State<AppState>, AxQuery(q): AxQuery<CellReq>) -> Respon
                 .to_string();
             let full: String = text.chars().skip(q.offset).take(limit).collect();
             let total_len = text.chars().count();
+            // ⭐ 二进制值：补一次 hex() 查询，让详情面板能显示真实字节
+            let mut hex: Option<String> = None;
+            if text.starts_with("⟨binary⟩") {
+                let hex_sql = format!(
+                    "SELECT hex(\"{}\") FROM \"{}\" ORDER BY rowid LIMIT 1 OFFSET {}",
+                    q.column, q.table, q.row
+                );
+                // ⭐ AppState 是 Arc，clone 只是引用计数 +1 —— 第二次进会话不冲突
+                let hr = with_session(Arc::clone(&s), move |sess| {
+                    sess.query_blocking(&hex_sql, QueryOptions { max_rows: 1, cursor: None, mode: adb_drivers::ReadMode::Paged }, Danger::ReadOnly)
+                })
+                .await;
+                if let Ok(hp) = hr {
+                    hex = hp
+                        .rows
+                        .first()
+                        .and_then(|r| r.as_object())
+                        .and_then(|o| o.values().next())
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string);
+                }
+            }
             ok_json(serde_json::json!({
                 "text": full,
+                "hex": hex,
                 "totalLen": total_len,
                 "truncated": q.offset + limit < total_len,
                 "nextOffset": if q.offset + limit < total_len { Some(q.offset + limit) } else { None },

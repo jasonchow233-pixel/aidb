@@ -104,7 +104,7 @@ pub trait Session: Send + Sync {
     ///
     /// ⚠ 调用方**必须**先经 `analyze()` 分级并向用户确认；
     ///    且不得用于 destructive 语句（该走变更管控流程）。
-    fn execute_blocking(&self, sql: &str, danger: Danger) -> Result<u64> {
+    fn execute_blocking(&self, _sql: &str, danger: Danger) -> Result<u64> {
         // 默认实现是安全的：驱动没实现真实写入就明确报错，
         // 而不是悄悄回滚让调用方以为写成功了。
         Err(AdbError::Internal(format!(

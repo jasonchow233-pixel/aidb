@@ -7,7 +7,7 @@
 > ① 「Navicat 里对应什么操作」——没有对应物的多半是自嗨，砍掉
 > ② 「门禁里哪条断言验它」——指不出来的就是没做完
 >
-> 最后刷新：2026-10-18（B1 查询编辑器内核交付，11 层门禁）
+> 最后刷新：2026-10-18（A4 表格进阶能力交付，11 层门禁）
 
 ---
 
@@ -21,7 +21,7 @@
 | 排序下推 | ✅ `ORDER BY "col", "id"`（主键兜底） | `smoke_client` §3 |
 | 筛选下推 | ✅ `WHERE ... AND ...`，10 种操作符 | `smoke_client` §4-5 |
 | 筛选 chip | ✅ 可见可单独删 + 全部清除 | `smoke_client` §7 |
-| **列头筛选面板** | ✅ 候选值 + 计数 + 级联 + 高基数降级 | `smoke_filter` 24 项 |
+| **列头筛选面板** | ✅ 候选值 + 计数 + 级联 + 高基数降级 | `smoke_filter` 25 项 |
 | 编辑落库 | ✅ 带主键 WHERE；无主键表入口就挡住 | `smoke_edit` 27 项 |
 | 撤销 / 重做 | ✅ ⌘Z / ⌘⇧Z，粒度 = 一次编辑提交 | `smoke_editui` §3-6 |
 | 类型化编辑器 | ✅ 枚举下拉 / 布尔复选框 / JSON 就地校验 | `smoke_editui` §7-8 |
@@ -29,6 +29,13 @@
 | 行复选框 + 全选 | ✅ 含半选态 | `smoke_grid` §5 |
 | 批量操作条 | ✅ 复制 TSV / 复制为 SQL / 删除 | `smoke_grid` §7-8 |
 | 窗口化渲染 | ✅ 5000 行 DOM 91,503 → 1,357 | `probe_ab.mjs` |
+| **列冻结（行号 + PK）** | ✅ 双冻结，PK 列 `left:88px` 且背景不透明 | `smoke_grid` §9、`probe_docs` |
+| **列宽 / 列序拖拽** | ✅ 拖宽 56–800px 限位 + 双击自适应；拖序 6px 阈值、不误触排序 | `smoke_grid` §9 |
+| **列显示 / 隐藏** | ✅ 列面板勾选，隐藏列从 DOM 消失 | `smoke_grid` §9 |
+| **列布局持久化** | ✅ 顺序/宽度/显隐按「连接 + 表名」写 localStorage | `smoke_grid` §9 |
+| **单元格右键菜单** | ✅ 7 项；设 NULL/设空串独立；NULL 格置灰；Esc/点外面可关 | `smoke_grid` §9 |
+| **Cell Renderer 五类** | ✅ date/image/array/blob（芯片+详情 hex） | `smoke_grid` §9 |
+| **转置 / 隐藏 NULL** | ✅ 转置只读；隐藏 NULL 仅本页且工具栏明示 | `smoke_grid` §9 |
 | 类型提示 | ✅ 类型/注释/默认值/PK/FK 标记 | `smoke_client` §8 |
 | 枚举中文化 | ✅ `1=待支付` 渲染成「待支付」 | `smoke_client` §8 |
 | 不撒谎的总数 | ✅ 筛选时显示「筛选后总数未统计」 | `smoke_client` §6 |
@@ -45,12 +52,9 @@
 
 | 能力 | Navicat 对应 | 卡住谁 |
 |---|---|---|
-| 列冻结（PK 列） | 冻结行号 + 主键 | 宽表横向滚动 |
-| 列宽拖拽 | 拖表头边界 | 宽表 |
-| 列显示控制 | 列设置面板 | 宽表 |
-| 右键菜单 | 右键表/列/单元格 | 点击数 |
-| Cell Renderer 补 5 类 | date/image/hex/blob/array | 可读性 |
 | 本页搜索 vs 全表搜索 | 全表搜索 | 当前只搜本页（UI 已明示范围） |
+| WHERE 框 / 多级排序 | 条件构造器 | 筛选面板只有勾选和精确匹配 |
+| 范围选 / 跨页全选 | Shift 连选 | 大批量操作 |
 
 > SQL 语法高亮 / Ctrl+Click 跳转 / hover 注释 / 多语句 / 内联结果 / 执行计划
 > 已随 B1 交付（见第五节），盲测 T3 已通。
@@ -108,14 +112,43 @@
     **不能**用 `onMounted` + `addEventListener` —— 容器在 `v-if` 里，
     挂载那一刻还不存在，监听永远挂不上，
     页面不报错、滚动条也能拖，但列表永远停在第一屏
-- [ ] **A4-2** 冻结列（行号 + PK；行号列已 sticky，PK 列还没有）
-- [ ] **A4-3** 列宽拖拽 + 双击自适应 + 列顺序拖拽
-- [ ] **A4-4** 列显示/隐藏控制
-- [ ] **A4-5** 列布局持久化（按 表名+连接 分键）
-- [ ] **A4-6** 单元格右键菜单（含「设 NULL」「设空串」两个独立项）
-- [ ] **A4-7** Cell Renderer 补 5 类：date / image / hex / blob / array
-  - 现有 8 类：number / bool / NULL / enum / URL / JSON / large / text
-- [ ] **A4-8** 转置视图 / 隐藏 NULL / 隐藏空串
+- [x] **A4-2** ⭐ 冻结列（行号 + PK）
+  - PK 列 `position: sticky; left: 88px`（行号列之后），z-index 分层
+  - ⭐ 背景**必须不透明**：斑马纹/hover/选中态各有等效色
+    （`color-mix(in srgb, var(--bg-surface) 55%, var(--bg-canvas))`），
+    透出下面内容的冻结列比没有更糟
+- [x] **A4-3** 列宽拖拽 + 双击自适应 + 列顺序拖拽
+  - 宽限 56–800px；双击量 `td/td.scrollWidth` 取大者（`CSS.escape` 防怪列名）
+  - ⭐ 列序拖拽 6px 阈值区分点击/拖拽；拖拽末尾那次 click 必须吞掉
+    （否则每次调完列序都顺手排个序）；`elementFromPoint` 找目标列
+  - ⭐ 拖拽视觉：被拖列半透明、目标列左侧亮线 ——
+    用户必须看得见「松手会插到哪儿」
+- [x] **A4-4** 列显示/隐藏控制（列面板：勾选 + 全部显示 + 重置布局）
+- [x] **A4-5** 列布局持久化（按「连接 + 表名」分键，300ms 防抖）
+  - ⭐ 读入时以当前列清单为准合并、**丢弃失效项** ——
+    绝不让旧布局把新表搞坏；存储写满时个别布局丢就丢了，不打断用户
+- [x] **A4-6** 单元格右键菜单（7 项：编辑 / 设 NULL / 设空串 / 复制 / 复制为 SQL / 详情 / 删除行）
+  - ⭐ 「设 NULL」「设空串」两个独立入口（`#10505`）；NULL 格「设 NULL」置灰
+  - ⭐⭐⭐ 关闭机制用**常驻监听器 + 开门检查**。三种坏法全部真实发生过：
+    ① 挂在 `setTimeout(0)` 里 → 右键后立刻按 Esc，第一次按键被整个吞掉；
+    ② 靠 watch 回调 `return` 的清理函数摘监听 → **Vue 根本不调它**
+    （`onCleanup` 要以第三参数传），每开合一轮漏一对监听器；
+    ③ capture 级 mousedown 不排除菜单自身 → 点菜单项时先被它卸掉菜单，
+    `click` 永不触发 —— **7 个菜单项全是摆设，页面还一切正常**
+- [x] **A4-7** Cell Renderer 补 5 类：date / image / array / blob / hex
+  - date/dateTime：友好格式，**完整值留在 title**（不为好看丢信息）
+  - image：URL 形态给缩略图，加载失败回落 URL 文本（沙箱无外网时的既定行为）
+  - array：JSON 数组渲染成 chips，不糊成一坨字符串
+  - blob：网格只给 `⬢ N B` 芯片；hex 走 `/api/cell` 的 `hex()` 二次查询进详情面板
+  - ⭐ 演示库为此种了真实数据：`users.avatar_blob`（PNG 魔数 BLOB）与
+    `user_profiles.preferences`（JSON 数组）—— 没有数据，"支持 array" 无法被断言
+  - ⭐ 双击看 hex **不产生未保存改动**：二进制占位符在编辑框里往返同值，
+    `sameValue` 直接拦下，不会把 `⟨binary⟩ 64 B` 写进库
+- [x] **A4-8** 转置视图 / 隐藏 NULL / 隐藏空串
+  - ⭐ 转置**只读**：转置后「第几行」不再是稳定概念，
+    给一个改了不知道会落到哪儿的编辑器，比不给更糟
+  - ⭐ 隐藏 NULL/空串仅本页，工具栏明示「已隐藏 NULL」——
+    用户必须看得见自己当前在看什么
 
 ---
 
@@ -251,8 +284,8 @@
          A3-1/A3-2 行选择与批量            ✅
          A1-7 撤销 / A1-8 类型化编辑器      ✅
 第 3 轮  B1 查询编辑器内核                  ✅（高亮 + 跳转 + 多语句 + 执行计划）
-第 4 轮  A4-2~A4-8 列冻结/列宽/列显示/右键菜单/Renderer   ← 进行中
-         C1 右键菜单 / 对象树补全
+第 4 轮  A4-2~A4-8 列冻结/列宽/列显示/右键菜单/Renderer   ✅
+         C1 右键菜单 / 对象树补全           ← 下一轮
 第 5 轮  D1 结构页补完        ← 外键/约束 tab + DDL 预览 + 影响评估
 第 6 轮  E1 命令面板 / 亮色走查 / 缩放   ← U2 硬要求
          C2 连接向导
@@ -263,11 +296,11 @@
 
 ---
 
-# 十一、门禁（九层，一条命令）
+# 十一、门禁（十一层，一条命令）
 
 ```bash
 engine/tests/run_gates.sh                 # 全跑
-SKIP_CARGO=1 engine/tests/run_gates.sh    # 只跑前端那八层
+SKIP_CARGO=1 engine/tests/run_gates.sh    # 只跑非 Rust 那十层
 ```
 
 | 层 | 命令 | 抓什么 | 断言数 |
@@ -278,20 +311,20 @@ SKIP_CARGO=1 engine/tests/run_gates.sh    # 只跑前端那八层
 | 4 | `node engine/tests/smoke_browser.mjs` | 页面能不能打开、导航对不对 | 30 |
 | 5 | `node engine/tests/smoke_client.mjs` | 分页/排序/筛选是否真的下推给数据库 | 41 |
 | 6 | `node engine/tests/smoke_edit.mjs` | 编辑是否落到正确的那一行 | 27 |
-| 7 | `node engine/tests/smoke_editui.mjs` | 撤销/重做 + 类型化编辑器 + NULL/空串 | 58 |
-| 8 | `node engine/tests/smoke_filter.mjs` | 列头筛选面板 | 24 |
-| 9 | `node engine/tests/smoke_grid.mjs` | 窗口化 + 批量操作 + 行标识一致性 | 35 |
+| 7 | `node engine/tests/smoke_editui.mjs` | 撤销/重做 + 类型化编辑器 + NULL/空串 | 59 |
+| 8 | `node engine/tests/smoke_filter.mjs` | 列头筛选面板 | 25 |
+| 9 | `node engine/tests/smoke_grid.mjs` | 窗口化 + 批量操作 + 行标识一致性 + A4 表格进阶 | 79 |
 | 10 | `node engine/tests/smoke_query.mjs` | 查询编辑器：高亮/跳转/多语句/执行计划 | 71 |
-| 11 | `node engine/tests/probe_docs.mjs` | **文档说的和代码做的对不对得上** | 17 |
+| 11 | `node engine/tests/probe_docs.mjs` | **文档说的和代码做的对不对得上** | 18 |
 
-前端断言合计 **303**（+ 词法内核 24）。
+前端断言合计 **350**（+ 词法内核 24）。
 
 辅助脚本：`engine/tests/probe_ab.mjs`（窗口化 A/B 实测）、
 `engine/tests/helpers.mjs`（窗口化之后行数必须从底栏读，不能数 DOM）。
 
 **新增能力必须同步补断言。** 只写代码不补断言 = 下次一定回归。
 
-⛔ 历史教训（**12 个 bug 编译与前几层全绿，只有后面几层能抓到**）：
+⛔ 历史教训（**16 个 bug 编译与前几层全绿，只有后面几层能抓到**）：
 表格白屏、丢 12 个 computed、表结构页打不开、排序生成两个 ORDER BY、
 勾选框勾不上、滚动监听绑 null、**列表永远停在第一屏**、
 **批量删除外键失败后无声无息**、
@@ -299,7 +332,11 @@ SKIP_CARGO=1 engine/tests/run_gates.sh    # 只跑前端那八层
 **编辑会改到别的行**、
 **JSON 列写进去的是 `[object Object]`**、
 **枚举/数值列被当字符串写**、
-**store 里重复的 action 被后者静默覆盖**。
+**store 里重复的 action 被后者静默覆盖**、
+**切到已打开的表 tab：标题是 A、内容是 B**（`openTable` 只切 tab 不重载）、
+**右键后立刻按 Esc 关不掉菜单**（监听器 `setTimeout(0)` 延后挂载，
+第一次按键被整个吞掉；同处还有 watch `return` 清理函数 Vue 根本不调导致的监听器泄漏）、
+**右键菜单 7 个项全是摆设**（capture 级 mousedown 先卸掉菜单，`click` 永不触发）。
 
 ⛔ 断言要盯**「有没有下推到数据库」**，不只是「结果看起来对不对」：
 内存排序在 200 行里也是「看起来对」的。

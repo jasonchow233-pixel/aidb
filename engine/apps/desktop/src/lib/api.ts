@@ -380,7 +380,7 @@ export const api = {
 
   cell: (table: string, row: number, column: string, offset = 0, limit = 2000) => {
     const p = new URLSearchParams({ table, row: String(row), column, offset: String(offset), limit: String(limit) });
-    return call<{ text: string; totalLen: number; truncated: boolean; nextOffset: number | null }>(
+    return call<{ text: string; hex?: string | null; totalLen: number; truncated: boolean; nextOffset: number | null }>(
       `/cell?${p}`,
     );
   },

@@ -70,6 +70,7 @@ CREATE TABLE users (
   status        INTEGER NOT NULL DEFAULT 1,
   balance_cents INTEGER NOT NULL DEFAULT 0,
   avatar_url    TEXT,
+  avatar_blob   BLOB,
   profile       TEXT,
   created_at    TEXT NOT NULL
 );
@@ -581,8 +582,8 @@ fn seed(c: &mut Sqlite) {
         phones.push(phone.clone());
 
         let _ = c.execute(
-            "INSERT INTO users (id,tenant_id,email,name,phone,level,status,balance_cents,avatar_url,profile,created_at)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+            "INSERT INTO users (id,tenant_id,email,name,phone,level,status,balance_cents,avatar_url,avatar_blob,profile,created_at)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
             rusqlite::params![
                 i as i64,
                 (rnd.below(TENANTS as u64) + 1) as i64,
@@ -593,6 +594,16 @@ fn seed(c: &mut Sqlite) {
                 if rnd.below(100) < 92 { 1 } else { 0 },        // 90% 正常
                 rnd.below(500_000) as i64,
                 if rnd.below(100) < 40 { format!("https://cdn.example.com/avatar/{i}.png") } else { String::new() },
+                // ⭐ BLOB 列：约 30% 的用户带头像二进制（PNG 魔数 + 少量填充）。
+                //   存在的理由：网格的 blob / hex 渲染器需要真实字节才能验 ——
+                //   没有数据，"支持 BLOB" 就只是一句没人验证过的口号。
+                if rnd.below(100) < 30 {
+                    let mut b = vec![0x89u8, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]; // PNG 魔数
+                    b.extend(std::iter::repeat(0x2Au8).take(24 + rnd.below(40) as usize));
+                    Some(rusqlite::types::Value::Blob(b))
+                } else {
+                    None::<rusqlite::types::Value>
+                },
                 if rnd.below(100) < 30 {
                     Some(format!("{{\"theme\":\"{}\",\"lang\":\"zh-CN\"}}",
                         if rnd.below(2) == 0 { "dark" } else { "light" }))
@@ -613,7 +624,13 @@ fn seed(c: &mut Sqlite) {
                     i as i64,
                     if rnd.below(100) < 90 { format!("user_{i}") } else { String::new() },
                     if rnd.below(100) < 40 { Some("这个人很懒，什么都没写。".to_string()) } else { None::<String> },
-                    None::<String>
+                    // ⭐ preferences 一半是 JSON **数组**（订阅渠道），一半留空。
+                    //   数组渲染器需要真实数据：没有数组值，"支持 array" 无法被断言。
+                    match rnd.below(100) {
+                        0..=44 => Some("[\"email\",\"sms\",\"push\"]".to_string()),
+                        45..=69 => Some("[\"sms\"]".to_string()),
+                        _ => None::<String>,
+                    }
                 ],
             );
         }
