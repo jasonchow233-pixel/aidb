@@ -214,15 +214,24 @@
 
 # 六、C 对象树与连接 ⭐⭐
 
-- [ ] **C1-1** ⭐ **右键菜单**（10 项含分隔线）
-- [ ] **C1-2** 双击打开（现在只有单击）
-- [ ] **C1-3** 对象树补全：视图/函数/存储过程/触发器/序列
-  - ⭐ 按 `traits` 声明驱动，不硬编码
-- [ ] **C1-4** 收藏星标
-- [ ] **C1-5** 只读标记（连接只读时禁用编辑入口）
-- [ ] **C1-6** ⭐ 树虚拟滚动（后端已 1.7s，前端还没虚拟化）
-- [ ] **C1-7** 拼音首字母搜索（`dd` → `orders`）
-- [ ] **C1-8** 拖表到查询编辑器（生成 FROM）
+- [x] **C1-1** ⭐ **右键菜单**（10 项含分隔线）
+  - 8 动作（打开数据/打开结构/刷新此表/收藏/复制表名/复制 SELECT/在查询中打开/诊断此表）+ 2 分隔线；菜单项真能触发（非摆设）；Esc/点外面可关
+  - 证据：`smoke_tree` §2-4
+- [x] **C1-2** 双击打开（单点保持「展开 + 开表」，不破坏既有门禁）
+  - 证据：`smoke_tree` §5
+- [x] **C1-3** 对象树补全：视图独立成组、按 `kind` 渲染图标（📊 等）
+  - ⭐ 按 `kind` 声明驱动，不硬编码；函数/过程/触发器/序列预留同类图标位（demo 仅 table/view，其余 kind 在支持它们的驱动里自动出现）
+  - 证据：`smoke_tree` §1
+- [x] **C1-4** 收藏星标
+  - ☆/★ 切换，持久化到 localStorage（`adb.starred`），跨刷新保留；独立「收藏」分组
+  - 证据：`smoke_tree` §6
+- [~] **C1-5** 只读标记（连接只读时禁用编辑入口）
+  - ⚠️ 逻辑已实现（数据库节点 🛡 盾牌 + `DataGridPage.tableReadOnly` 禁用编辑），非只读路径已门禁验证；
+    **只读分支（supportLevel="read-only"）待 C2 接入只读连接后补门禁**（demo 为 `full`，无法在本轮触发）
+  - 证据：`smoke_tree` §7
+- [ ] **C1-6** ⭐ 树虚拟滚动（后端已 1.7s，前端还没虚拟化）—— 下一轮
+- [ ] **C1-7** 拼音首字母搜索（`dd` → `orders`）—— 下一轮
+- [ ] **C1-8** 拖表到查询编辑器（生成 FROM）—— 下一轮
 - [ ] **C2-1** ⭐ **新建连接向导**（三步）
 - [ ] **C2-2** 保存连接（`connections.yaml` 进 git）
 - [ ] **C2-3** 连接测试 + 状态指示 + 密码提示（前端永不接触密码）
@@ -285,7 +294,7 @@
          A1-7 撤销 / A1-8 类型化编辑器      ✅
 第 3 轮  B1 查询编辑器内核                  ✅（高亮 + 跳转 + 多语句 + 执行计划）
 第 4 轮  A4-2~A4-8 列冻结/列宽/列显示/右键菜单/Renderer   ✅
-         C1 右键菜单 / 对象树补全           ← 下一轮
+         C1 右键菜单/双击打开/视图分组/收藏/只读标记   ✅
 第 5 轮  D1 结构页补完        ← 外键/约束 tab + DDL 预览 + 影响评估
 第 6 轮  E1 命令面板 / 亮色走查 / 缩放   ← U2 硬要求
          C2 连接向导
@@ -296,11 +305,11 @@
 
 ---
 
-# 十一、门禁（十一层，一条命令）
+# 十一、门禁（十二层，一条命令）
 
 ```bash
 engine/tests/run_gates.sh                 # 全跑
-SKIP_CARGO=1 engine/tests/run_gates.sh    # 只跑非 Rust 那十层
+SKIP_CARGO=1 engine/tests/run_gates.sh    # 只跑非 Rust 那十一层
 ```
 
 | 层 | 命令 | 抓什么 | 断言数 |
@@ -309,15 +318,16 @@ SKIP_CARGO=1 engine/tests/run_gates.sh    # 只跑非 Rust 那十层
 | 2 | `node --test sql_lexer.test.mjs` | SQL 词法内核（纯函数，秒级） | 24 |
 | 3 | `python3 engine/tests/e2e_contract.py` | HTTP 契约：DTO 字段名、状态码、错误文案 | 83 |
 | 4 | `node engine/tests/smoke_browser.mjs` | 页面能不能打开、导航对不对 | 30 |
-| 5 | `node engine/tests/smoke_client.mjs` | 分页/排序/筛选是否真的下推给数据库 | 41 |
-| 6 | `node engine/tests/smoke_edit.mjs` | 编辑是否落到正确的那一行 | 27 |
-| 7 | `node engine/tests/smoke_editui.mjs` | 撤销/重做 + 类型化编辑器 + NULL/空串 | 59 |
-| 8 | `node engine/tests/smoke_filter.mjs` | 列头筛选面板 | 25 |
-| 9 | `node engine/tests/smoke_grid.mjs` | 窗口化 + 批量操作 + 行标识一致性 + A4 表格进阶 | 79 |
-| 10 | `node engine/tests/smoke_query.mjs` | 查询编辑器：高亮/跳转/多语句/执行计划 | 71 |
-| 11 | `node engine/tests/probe_docs.mjs` | **文档说的和代码做的对不对得上** | 18 |
+| 5 | `node engine/tests/smoke_tree.mjs` | 对象树：右键菜单/双击打开/视图分组/收藏/只读标记 | 27 |
+| 6 | `node engine/tests/smoke_client.mjs` | 分页/排序/筛选是否真的下推给数据库 | 41 |
+| 7 | `node engine/tests/smoke_edit.mjs` | 编辑是否落到正确的那一行 | 27 |
+| 8 | `node engine/tests/smoke_editui.mjs` | 撤销/重做 + 类型化编辑器 + NULL/空串 | 59 |
+| 9 | `node engine/tests/smoke_filter.mjs` | 列头筛选面板 | 25 |
+| 10 | `node engine/tests/smoke_grid.mjs` | 窗口化 + 批量操作 + 行标识一致性 + A4 表格进阶 | 79 |
+| 11 | `node engine/tests/smoke_query.mjs` | 查询编辑器：高亮/跳转/多语句/执行计划 | 71 |
+| 12 | `node engine/tests/probe_docs.mjs` | **文档说的和代码做的对不对得上** | 18 |
 
-前端断言合计 **350**（+ 词法内核 24）。
+前端断言合计 **460**（+ 词法内核 24）。
 
 辅助脚本：`engine/tests/probe_ab.mjs`（窗口化 A/B 实测）、
 `engine/tests/helpers.mjs`（窗口化之后行数必须从底栏读，不能数 DOM）。
@@ -337,6 +347,7 @@ SKIP_CARGO=1 engine/tests/run_gates.sh    # 只跑非 Rust 那十层
 **右键后立刻按 Esc 关不掉菜单**（监听器 `setTimeout(0)` 延后挂载，
 第一次按键被整个吞掉；同处还有 watch `return` 清理函数 Vue 根本不调导致的监听器泄漏）、
 **右键菜单 7 个项全是摆设**（capture 级 mousedown 先卸掉菜单，`click` 永不触发）。
+**对象树选中高亮 / 收藏分组反推失败**（树节点 id 是 `tbl:t:<name>` 双段格式，旧 `tabFor` 按 `tbl:` 单段反推得到 `t:t:users`，与 `openTable` 的 `t:users` 对不上；`starredNodes` 用 `tbl:<name>` 查不到，收藏分组不出现。C1 改为按 label 匹配）。
 
 ⛔ 断言要盯**「有没有下推到数据库」**，不只是「结果看起来对不对」：
 内存排序在 200 行里也是「看起来对」的。

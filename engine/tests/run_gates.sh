@@ -6,6 +6,7 @@
 #   sql_lexer       → SQL 词法内核（纯函数，不需要浏览器与后端）
 #   e2e_contract   → HTTP 契约（DTO 字段名、状态码、错误信息）
 #   smoke_browser  → 页面能不能打开、导航对不对
+#   smoke_tree     → 对象树：右键菜单 / 双击打开 / 视图分组 / 收藏 / 只读标记
 #   smoke_client   → 分页/排序/筛选是否真的下推给了数据库
 #   smoke_edit     → 编辑是否落到正确的那一行
 #   smoke_editui   → 撤销重做 + 类型化编辑器
@@ -40,6 +41,7 @@ fi
 run "SQL 词法内核" node --test sql_lexer.test.mjs
 run "API 契约"  python3 e2e_contract.py
 run "浏览器冒烟" node smoke_browser.mjs
+run "对象树"     node smoke_tree.mjs
 run "客户端交互" node smoke_client.mjs
 run "编辑闭环"   node smoke_edit.mjs
 run "编辑交互"   node smoke_editui.mjs

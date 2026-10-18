@@ -1,31 +1,33 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { state, actions } from "@/lib/store";
-import { api, capabilities, type SearchHit } from "@/lib/api";
+import { api } from "@/lib/api";
+import type { TreeNode } from "@/lib/api";
+import TreeRow from "./TreeRow.vue";
 
 const filter = ref("");
-const hits = ref<SearchHit[]>([]);
+const hits = ref<import("@/lib/api").SearchHit[]>([]);
 const searching = ref(false);
 const showTools = ref(true);
 
 // ⭐ 折叠态只保留环境色点 + 角标数字
 const criticalCount = computed(() => state.findings.filter((f) => f.level === "critical").length);
-const dbId = computed(() => [...state.tree.keys()].find((k) => k.startsWith("db:")) ?? "");
-const tables = computed(() => actions.childrenOf(dbId.value || undefined));
+const dbId = computed(() => actions.dbNodeId());
+const dbNode = computed(() => (dbId.value ? state.tree.get(dbId.value) : undefined));
 
-// ⭐ 按风险等级分组
-const tablesByRisk = computed(() => {
-  const high = tables.value.filter((t) => (t.riskBadge ?? 0) >= 2);
-  const medium = tables.value.filter((t) => (t.riskBadge ?? 0) === 1);
-  const low = tables.value.filter((t) => !t.riskBadge);
-  return { high, medium, low, total: tables.value.length };
-});
+// ⭐ C1-5：连接只读 → 盾牌 + 禁用一切编辑入口
+const readOnly = computed(() => actions.isConnectionReadOnly());
+
+// ⭐ C1-3：按 kind 分组（视图独立成组；表按风险分成高/中/低）
+const allObjects = computed(() => actions.childrenOf(dbId.value || undefined));
+const tableView = computed(() => allObjects.value.filter((n) => n.kind === "table"));
+const viewNodes = computed(() => allObjects.value.filter((n) => n.kind === "view"));
+const highRisk = computed(() => tableView.value.filter((t) => (t.riskBadge ?? 0) >= 2));
+const medRisk = computed(() => tableView.value.filter((t) => (t.riskBadge ?? 0) === 1));
+const lowRisk = computed(() => tableView.value.filter((t) => !t.riskBadge));
+const starredNodes = computed(() => actions.starredNodes());
 
 // ⭐ 首次加载自动展开到表一级
-//
-// ⭐ 两个分区都要展开：`__conn__`（数据库分组标题）与 db 节点本身。
-// 之前只 toggle 了 db 节点，而模板要求**两者同时**展开才渲染表 ——
-// 于是首次加载侧栏是一棵空树，用户以为坏了，得连点两次才看到表。
 onMounted(() => {
   watch(
     () => dbId.value,
@@ -49,14 +51,62 @@ watch(filter, (q) => {
 });
 
 function columnsOf(tableId: string) { return actions.childrenOf(tableId); }
-function hasComment(nodes: ReturnType<typeof columnsOf>) { return nodes.some((n) => n.comment); }
-function tabFor(tableId: string) { return `t:${tableId.replace("tbl:", "")}`; }
+// ⭐ 判断某树节点是否对应当前激活页签（按 label 匹配，兼容 t:/s: 两种页签与表/视图）。
+//   之前用 `tabFor(t.id)` 按 id 前缀反推，但节点 id 是 `tbl:t:<name>` 双段格式，
+//   反推出来是 `t:t:users` 与 openTable 的 `t:users` 对不上 —— 选中高亮永远不亮。
+function isActive(node: TreeNode): boolean {
+  return state.activeTabId === `t:${node.label}` || state.activeTabId === `s:${node.label}`;
+}
 
-function riskClass(badge?: number | null) {
-  if (!badge) return "";
-  if (badge >= 3) return "risk-high";
-  if (badge >= 1) return "risk-medium";
-  return "risk-low";
+// ── C1-1 右键菜单 ────────────────────────────────────────────
+// ⭐ 监听器常驻（onMounted 挂 / onBeforeUnmount 摘），
+//   关闭逻辑用「开门检查」（点在菜单内不关）—— 避免上轮 #14/#15 那类
+//   监听器泄漏 + 事件被吞的 bug。
+const treeCtx = ref<{ x: number; y: number; node: TreeNode } | null>(null);
+
+function onTreeCtx(node: TreeNode, ev: MouseEvent) {
+  treeCtx.value = { x: ev.clientX, y: ev.clientY, node };
+}
+function closeTreeCtx() { treeCtx.value = null; }
+
+function onGlobalMousedown(e: MouseEvent) {
+  if (!treeCtx.value) return;
+  const menu = document.querySelector("[data-test=tree-ctx-menu]");
+  if (menu && e.target instanceof Node && menu.contains(e.target)) return;
+  closeTreeCtx();
+}
+function onCtxKey(e: KeyboardEvent) {
+  if (e.key === "Escape") closeTreeCtx();
+}
+onMounted(() => {
+  window.addEventListener("keydown", onCtxKey);
+  window.addEventListener("mousedown", onGlobalMousedown, { capture: true });
+});
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onCtxKey);
+  window.removeEventListener("mousedown", onGlobalMousedown, { capture: true });
+});
+
+// ⭐ 菜单动作：集中在这里，模板只负责渲染
+function runCtx(kind: string) {
+  const node = treeCtx.value?.node;
+  if (!node) return;
+  const table = node.label;
+  switch (kind) {
+    case "open": actions.openTable(table); break;
+    case "structure": actions.openStructure(table); break;
+    case "refresh": void actions.refreshObject(table); break;
+    case "star": actions.toggleStar(table); break;
+    case "copy-name": void actions.copyName(table); break;
+    case "copy-select": void actions.copySelect(table); break;
+    case "query": actions.openInQuery(table); break;
+    case "diagnose": actions.diagnoseTable(table); break;
+  }
+  closeTreeCtx();
+}
+function starLabel(): string {
+  const node = treeCtx.value?.node;
+  return node && actions.isStarred(node.label) ? "取消收藏" : "收藏";
 }
 </script>
 
@@ -106,79 +156,93 @@ function riskClass(badge?: number | null) {
     <div v-else class="tree">
       <button class="sec" @click="actions.toggle('__conn__')">
         <span class="caret" :class="{ on: state.expanded.has('__conn__') }">▶</span>数据库
-        <span class="count">{{ tablesByRisk.total }}</span>
+        <span class="count">{{ allObjects.length }}</span>
       </button>
 
       <template v-if="state.expanded.has('__conn__')">
-        <button v-for="n in actions.childrenOf()" :key="n.id" class="node node--prod"
-                :aria-expanded="state.expanded.has(n.id)" @click="actions.toggle(n.id)">
-          <span class="caret" :class="{ on: state.expanded.has(n.id) }">▶</span>
+        <!-- 数据库节点（只读时显示盾牌） -->
+        <button
+          v-if="dbNode"
+          class="node node--prod"
+          :class="{ 'node--readonly': readOnly }"
+          :aria-expanded="state.expanded.has(dbNode.id)"
+          @click="actions.toggle(dbNode.id)"
+        >
+          <span class="caret" :class="{ on: state.expanded.has(dbNode.id) }">▶</span>
           <span class="ico">🗄</span>
-          <span class="grow truncate">{{ n.label }}</span>
-          <span class="meta">{{ n.meta }}</span>
+          <span class="grow truncate">{{ dbNode.label }}</span>
+          <span v-if="readOnly" class="shield" title="连接只读：编辑入口已禁用">🛡 只读</span>
+          <span v-else class="meta">{{ dbNode.meta }}</span>
         </button>
 
         <template v-if="state.expanded.has(dbId)">
-          <!-- ⭐ 按风险分组显示 -->
-          <template v-if="tablesByRisk.high.length">
+          <!-- 高风险表 -->
+          <template v-if="highRisk.length">
             <button class="sec sec--risk" @click="showTools = !showTools">
               <span class="caret" :class="{ on: showTools }">▶</span>高风险表
-              <span class="count" style="color: var(--risk-2-structure)">{{ tablesByRisk.high.length }}</span>
+              <span class="count" style="color: var(--risk-2-structure)">{{ highRisk.length }}</span>
             </button>
             <template v-if="showTools">
-              <button v-for="t in tablesByRisk.high" :key="t.id"
-                  class="node node--risk-high"
-                  :class="{ sel: state.activeTabId === tabFor(t.id) }"
-                  :title="t.comment ?? undefined"
-                  :aria-expanded="state.expanded.has(t.id)"
-                  @click="actions.pickTable(t.id, t.label)">
-                <span class="caret" :class="{ on: state.expanded.has(t.id) }">▶</span>
-                <span class="ico">▦</span>
-                <span class="row grow">
-                  <span class="truncate">{{ t.label }}</span>
-                  <span v-if="!state.expanded.has(t.id)" class="comment truncate">{{ t.comment }}</span>
-                  <span class="meta">{{ t.meta }}</span>
-                  <span v-if="t.riskBadge" class="badge-warn" :title="`${t.riskBadge} 个问题`">⚠{{ t.riskBadge }}</span>
-                </span>
-              </button>
+              <TreeRow
+                v-for="t in highRisk" :key="t.id" :node="t" cls="node--risk-high"
+                :class="{ sel: isActive(t) }"
+                @open="(n) => actions.pickTable(n.id, n.label)"
+                @dblopen="(n) => actions.openTable(n.label)"
+                @ctx="onTreeCtx" @toggle-star="(n) => actions.toggleStar(n.label)"
+              />
             </template>
           </template>
 
-          <template v-for="t in tablesByRisk.medium" :key="t.id">
-            <button class="node node--risk-medium"
-                :class="{ sel: state.activeTabId === tabFor(t.id) }"
-                :title="t.comment ?? undefined"
-                :aria-expanded="state.expanded.has(t.id)"
-                @click="actions.pickTable(t.id, t.label)">
-              <span class="caret" :class="{ on: state.expanded.has(t.id) }">▶</span>
-              <span class="ico">▦</span>
-              <span class="row grow">
-                <span class="truncate">{{ t.label }}</span>
-                <span v-if="!state.expanded.has(t.id)" class="comment truncate">{{ t.comment }}</span>
-                <span class="meta">{{ t.meta }}</span>
-                <span v-if="t.riskBadge" class="badge-warn" :title="`${t.riskBadge} 个问题`">⚠{{ t.riskBadge }}</span>
-              </span>
+          <!-- 中风险表 -->
+          <TreeRow
+            v-for="t in medRisk" :key="t.id" :node="t" cls="node--risk-medium"
+            :class="{ sel: isActive(t) }"
+            @open="(n) => actions.pickTable(n.id, n.label)"
+            @dblopen="(n) => actions.openTable(n.label)"
+            @ctx="onTreeCtx" @toggle-star="(n) => actions.toggleStar(n.label)"
+          />
+
+          <!-- 低风险 / 无风险表 -->
+          <TreeRow
+            v-for="t in lowRisk" :key="t.id" :node="t"
+            :class="{ sel: isActive(t) }"
+            @open="(n) => actions.pickTable(n.id, n.label)"
+            @dblopen="(n) => actions.openTable(n.label)"
+            @ctx="onTreeCtx" @toggle-star="(n) => actions.toggleStar(n.label)"
+          />
+
+          <!-- ⭐ C1-3 视图独立成组（按 kind 渲染，不硬编码） -->
+          <template v-if="viewNodes.length">
+            <button class="sec" style="margin-top: var(--sp-2)" @click="showTools = !showTools">
+              <span class="caret" :class="{ on: showTools }">▶</span>视图
+              <span class="count">{{ viewNodes.length }}</span>
             </button>
+            <TreeRow
+              v-for="v in viewNodes" :key="v.id" :node="v"
+              :class="{ sel: isActive(v) }"
+              @open="(n) => actions.pickTable(n.id, n.label)"
+              @dblopen="(n) => actions.openTable(n.label)"
+              @ctx="onTreeCtx" @toggle-star="(n) => actions.toggleStar(n.label)"
+            />
           </template>
 
-          <template v-for="t in tablesByRisk.low" :key="t.id">
-            <button class="node"
-                :class="{ sel: state.activeTabId === tabFor(t.id) }"
-                :title="t.comment ?? undefined"
-                :aria-expanded="state.expanded.has(t.id)"
-                @click="actions.pickTable(t.id, t.label)">
-              <span class="caret" :class="{ on: state.expanded.has(t.id) }">▶</span>
-              <span class="ico">▦</span>
-              <span class="row grow">
-                <span class="truncate">{{ t.label }}</span>
-                <span v-if="!state.expanded.has(t.id)" class="comment truncate">{{ t.comment }}</span>
-                <span class="meta">{{ t.meta }}</span>
-              </span>
+          <!-- ⭐ C1-4 收藏组 -->
+          <template v-if="starredNodes.length">
+            <button class="sec" style="margin-top: var(--sp-2)" @click="showTools = !showTools">
+              <span class="caret" :class="{ on: showTools }">▶</span>收藏
+              <span class="count">{{ starredNodes.length }}</span>
             </button>
+            <TreeRow
+              v-for="s in starredNodes" :key="s.id" :node="s"
+              :class="{ sel: isActive(s) }"
+              @open="(n) => actions.pickTable(n.id, n.label)"
+              @dblopen="(n) => actions.openTable(n.label)"
+              @ctx="onTreeCtx" @toggle-star="(n) => actions.toggleStar(n.label)"
+            />
           </template>
 
           <!-- 展开表的列 -->
-          <template v-for="t in tables" :key="`cols:${t.id}`">
+          <template v-for="t in tableView" :key="`cols:${t.id}`">
             <template v-if="state.expanded.has(t.id)">
               <div v-for="c in columnsOf(t.id)" :key="c.id" class="node node--col" :title="c.comment ?? undefined">
                 <span class="caret"></span>
@@ -216,6 +280,25 @@ function riskClass(badge?: number | null) {
           <span class="caret"></span><span class="ico">📋</span><span class="grow">变更管控</span>
         </button>
       </template>
+    </div>
+
+    <!-- ⭐ C1-1 右键菜单（10 项 + 2 分隔线） -->
+    <div
+      v-if="treeCtx"
+      class="ctxmenu"
+      data-test="tree-ctx-menu"
+      :style="{ left: treeCtx.x + 'px', top: treeCtx.y + 'px' }"
+    >
+      <button class="ctxmenu__item" data-test="ctx-tree-open" @click="runCtx('open')">打开数据</button>
+      <button class="ctxmenu__item" data-test="ctx-tree-structure" @click="runCtx('structure')">打开结构</button>
+      <button class="ctxmenu__item" data-test="ctx-tree-refresh" @click="runCtx('refresh')">刷新此表</button>
+      <div class="ctxmenu__sep"></div>
+      <button class="ctxmenu__item" data-test="ctx-tree-star" @click="runCtx('star')">{{ starLabel() }}</button>
+      <button class="ctxmenu__item" data-test="ctx-tree-copy-name" @click="runCtx('copy-name')">复制表名</button>
+      <button class="ctxmenu__item" data-test="ctx-tree-copy-select" @click="runCtx('copy-select')">复制 SELECT</button>
+      <button class="ctxmenu__item" data-test="ctx-tree-query" @click="runCtx('query')">在查询中打开</button>
+      <div class="ctxmenu__sep"></div>
+      <button class="ctxmenu__item" data-test="ctx-tree-diagnose" @click="runCtx('diagnose')">诊断此表</button>
     </div>
   </template>
 </template>
@@ -258,8 +341,7 @@ function riskClass(badge?: number | null) {
 .node:hover { background: var(--bg-hover); }
 .node.sel { background: var(--bg-selected); }
 .node--prod::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--env-prod); }
-.node--risk-high { border-left: 3px solid var(--risk-2-structure); }
-.node--risk-medium { border-left: 3px solid var(--warning); }
+.node--readonly::before { background: var(--warning); }
 .node--col { padding-left: 34px; }
 .col-comments { padding: 2px 0 4px 52px; }
 
@@ -273,6 +355,7 @@ function riskClass(badge?: number | null) {
   font-family: var(--font-mono); flex: 0 0 auto; }
 .badge-warn { margin-left: 4px; padding: 0 4px; border-radius: var(--r-sm);
   background: var(--warning-bg); color: var(--warning); font-size: 10px; flex: 0 0 auto; }
+.shield { margin-left: auto; font-size: var(--fs-xs); color: var(--warning); flex: 0 0 auto; }
 
 .hit {
   display: flex; align-items: center; gap: 6px;
@@ -281,4 +364,19 @@ function riskClass(badge?: number | null) {
 .hit:hover { background: var(--bg-hover); }
 .hit__kind { font-size: 10px; padding: 0 4px; border-radius: var(--r-sm);
   background: var(--bg-elevated); color: var(--text-tertiary); flex: 0 0 auto; }
+
+/* ⭐ C1-1 右键菜单 */
+.ctxmenu {
+  position: fixed; z-index: 1000; min-width: 168px;
+  background: var(--bg-surface); border: var(--bw) solid var(--border);
+  border-radius: var(--r-md); box-shadow: var(--shadow-pop);
+  padding: 4px; font-size: var(--fs-sm);
+}
+.ctxmenu__item {
+  display: block; width: 100%; text-align: left; padding: 6px 10px;
+  background: none; border: none; color: var(--text-primary);
+  border-radius: var(--r-sm); cursor: pointer; font-size: inherit;
+}
+.ctxmenu__item:hover { background: var(--bg-hover); }
+.ctxmenu__sep { height: 1px; background: var(--border); margin: 4px 6px; }
 </style>

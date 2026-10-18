@@ -267,6 +267,9 @@ interface State {
   density: "compact" | "normal" | "comfort";
   rowLimit: number;
   toast: { kind: string; text: string } | null;
+
+  // 对象树收藏（表名数组，持久化到 localStorage）
+  starred: string[];
 }
 
 export const state = reactive<State>({
@@ -314,6 +317,8 @@ export const state = reactive<State>({
   density: (localStorage.getItem("adb.density") as any) ?? "normal",
   rowLimit: Number(localStorage.getItem("adb.rowLimit") ?? 200),
   toast: null,
+
+  starred: JSON.parse(localStorage.getItem("adb.starred") ?? "[]") as string[],
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -445,6 +450,79 @@ export const actions = {
         return;
       }
     }
+  },
+
+  // ── 对象树右键菜单 / 收藏 / 辅助动作（C1）──
+  /** 当前数据库节点 id（树里唯一以 `db:` 开头的节点）。 */
+  dbNodeId(): string {
+    return [...state.tree.keys()].find((k) => k.startsWith("db:")) ?? "";
+  },
+
+  /** C1-5：连接只读时（descriptor.supportLevel === "read-only"）禁用一切编辑入口。 */
+  isConnectionReadOnly(): boolean {
+    return state.descriptor?.supportLevel === "read-only";
+  },
+
+  // ⭐⭐ 收藏：表名数组持久化到 localStorage，跨会话保留。
+  isStarred(table: string): boolean {
+    return state.starred.includes(table);
+  },
+  toggleStar(table: string) {
+    const i = state.starred.indexOf(table);
+    if (i >= 0) state.starred.splice(i, 1);
+    else state.starred.push(table);
+    localStorage.setItem("adb.starred", JSON.stringify(state.starred));
+  },
+  /** 收藏对应的树节点（按 label 反查，不依赖 id 格式）。 */
+  starredNodes(): TreeNode[] {
+    const set = new Set(state.starred);
+    return [...state.tree.values()].filter(
+      (n): n is TreeNode => set.has(n.label) && (n.kind === "table" || n.kind === "view"),
+    );
+  },
+
+  /** C1-1「刷新此表」：重拉对象树（表结构可能变了）+ 重载已开的页签。 */
+  async refreshObject(table: string) {
+    await actions.loadChildren(actions.dbNodeId() || undefined);
+    const grid = state.tabs.find((t) => t.id === `t:${table}`);
+    if (grid) {
+      state.activeTabId = grid.id;
+      await actions.loadTable(table);
+    }
+    const struct = state.tabs.find((t) => t.id === `s:${table}`);
+    if (struct) {
+      try {
+        const meta = await api.table(table);
+        state.tableDef = meta.table;
+      } catch { /* 结构页重载失败不阻塞刷新 */ }
+    }
+    notify("info", `已刷新 ${table}`);
+  },
+
+  async copyName(table: string) {
+    try {
+      await navigator.clipboard.writeText(table);
+      notify("info", `已复制表名：${table}`);
+    } catch {
+      notify("error", "复制失败（剪贴板不可用）");
+    }
+  },
+  async copySelect(table: string) {
+    const sql = `SELECT * FROM ${table} LIMIT 100;`;
+    try {
+      await navigator.clipboard.writeText(sql);
+      notify("info", `已复制查询：${table}`);
+    } catch {
+      notify("error", "复制失败（剪贴板不可用）");
+    }
+  },
+  /** C1-1「在查询中打开」：新开查询页并预填 SELECT。 */
+  openInQuery(table: string) {
+    actions.openQuery(`SELECT * FROM ${table} LIMIT 100;`);
+  },
+  /** C1-1「诊断此表」：打开诊断工具页。 */
+  diagnoseTable(_table: string) {
+    actions.openTool("diagnosis", "诊断");
   },
 
   /**

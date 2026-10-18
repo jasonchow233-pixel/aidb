@@ -870,10 +870,12 @@ const editKind = ref<EditorKind>("text");
 /** JSON 编辑失败时的提示；非空则禁止提交 */
 const editError = ref("");
 
-/** 视图 / 无主键表：整表只读，且要告诉用户**为什么** */
+/** 视图 / 无主键表 / 连接只读：整表只读，且要告诉用户**为什么** */
 const tableReadOnly = computed(() => {
   const t = state.tableDef;
   if (!t) return null;
+  // ⭐ C1-5：连接只读（descriptor.supportLevel === "read-only"）时全局禁用编辑入口
+  if (actions.isConnectionReadOnly()) return "连接为只读模式，编辑入口已禁用";
   if (t.kind === "view") return "这是视图，数据来自查询，不能直接编辑";
   if (!state.columns.some((c) => c.isPk)) {
     return "该表没有主键，无法保证改到的是你看到的那一行";

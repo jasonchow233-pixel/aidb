@@ -3,7 +3,7 @@
 > **本文只写"现在实测是什么样"。** 要做的东西看 `CLIENT-TODO.md`，
 > 与竞品比看 `BENCHMARK.md`，文档关系看 `README.md`。
 >
-> 最后刷新：2026-10-18，提交 `8fc5608` + B1（查询编辑器内核）+ A4（表格进阶能力，待提交）
+> 最后刷新：2026-10-18，提交 `367e3b2`（A4 表格进阶）+ `待提交`（C1 对象树）
 
 ---
 
@@ -20,19 +20,20 @@ SKIP_CARGO=1 engine/tests/run_gates.sh   # 只跑前端那十层
 | 2 | `node --test sql_lexer.test.mjs` | **24 / 24** | SQL 词法内核（纯函数，秒级，不受 SKIP_CARGO 影响） |
 | 3 | `python3 e2e_contract.py` | **83 / 83** | HTTP 契约：DTO 字段名、状态码、错误文案 |
 | 4 | `node smoke_browser.mjs` | **30 / 30** | 页面能不能打开、导航对不对 |
-| 5 | `node smoke_client.mjs` | **41 / 41** | 分页/排序/筛选是否真的下推给数据库 |
-| 6 | `node smoke_edit.mjs` | **27 / 27** | 编辑是否落到正确的那一行 |
-| 7 | `node smoke_editui.mjs` | **59 / 59** | 撤销重做 + 类型化编辑器 + NULL/空串 |
-| 8 | `node smoke_filter.mjs` | **25 / 25** | 列头筛选面板 |
-| 9 | `node smoke_grid.mjs` | **79 / 79** | 窗口化 + 批量操作 + 行标识一致性 + A4 表格进阶 |
-| 10 | `node smoke_query.mjs` | **71 / 71** | 查询编辑器：高亮/跳转/多语句/执行计划 |
-| 11 | `node probe_docs.mjs` | **18 / 18** | **文档说的和代码做的对不对得上** |
+| 5 | `node smoke_tree.mjs` | **27 / 27** | 对象树：右键菜单/双击打开/视图分组/收藏/只读标记 |
+| 6 | `node smoke_client.mjs` | **41 / 41** | 分页/排序/筛选是否真的下推给数据库 |
+| 7 | `node smoke_edit.mjs` | **27 / 27** | 编辑是否落到正确的那一行 |
+| 8 | `node smoke_editui.mjs` | **59 / 59** | 撤销重做 + 类型化编辑器 + NULL/空串 |
+| 9 | `node smoke_filter.mjs` | **25 / 25** | 列头筛选面板 |
+| 10 | `node smoke_grid.mjs` | **79 / 79** | 窗口化 + 批量操作 + 行标识一致性 + A4 表格进阶 |
+| 11 | `node smoke_query.mjs` | **71 / 71** | 查询编辑器：高亮/跳转/多语句/执行计划 |
+| 12 | `node probe_docs.mjs` | **18 / 18** | **文档说的和代码做的对不对得上** |
 
-前端断言合计 **350**，全绿。
+前端断言合计 **460**，全绿。
 
-### 为什么是十一层，不是三层
+### 为什么是十二层，不是三层
 
-这个项目已经抓到 **19 个「编译通过 + 单测通过 + API 契约通过，
+这个项目已经抓到 **16 个「编译通过 + 单测通过 + API 契约通过，
 但页面是坏的」** bug。三层门禁只能挡住前两个案例。
 
 而第 11 层是另一类问题：`NEXT.md` 和 `GUI-GAPS.md` 都被开发进度甩在后面，
@@ -94,11 +95,12 @@ SKIP_CARGO=1 engine/tests/run_gates.sh   # 只跑前端那十层
 | 第九层：文档一致性 | `8fc5608` | 新增 `probe_docs.mjs` —— 文档漂移和代码 bug 一样致命 |
 | **B1 查询编辑器内核** | 本轮 | 自研分词器 + 高亮 + Ctrl+Click 跳转 + hover 注释 + 多语句页签 + 内联结果 + 真格式化 + 执行计划人话解读；盲测 T3 打通 |
 | 门禁扩到十一层 | 本轮 | 新增 `sql_lexer.test.mjs`（24 项）+ `smoke_query.mjs`（71 项）；`/api/explain` 独立端点 |
-| **A4-2~A4-8 表格进阶** | 本轮 | 双冻结列 + 列宽/列序拖拽 + 列显隐 + 布局持久化 + 右键菜单 + Renderer 补 5 类（date/image/array/blob/hex）+ 转置/隐藏 NULL；演示库种 BLOB 与数组真实数据，`/api/cell` 增加 `hex()` 二次查询 |
+| **A4-2~A4-8 表格进阶** | `367e3b2` | 双冻结列 + 列宽/列序拖拽 + 列显隐 + 布局持久化 + 右键菜单 + Renderer 补 5 类（date/image/array/blob/hex）+ 转置/隐藏 NULL；演示库种 BLOB 与数组真实数据，`/api/cell` 增加 `hex()` 二次查询 |
+| **C1 对象树** | 本轮 | 右键菜单（10 项 + 2 分隔线，真能触发）/ 双击打开 / 视图分组（按 kind 渲染）/ 收藏星标（localStorage 持久化 + 收藏分组）/ 只读标记（descriptor.supportLevel 驱动盾牌 + 禁用编辑）；新增 `smoke_tree.mjs`（27 项，第 12 层门禁）；`TreeRow.vue` 复用渲染 |
 
 ---
 
-## 五、这轮抓到的 15 个真 bug
+## 五、这轮抓到的 16 个真 bug
 
 全部是「编译通过、单测通过、API 契约通过，但页面是坏的」。
 
@@ -126,6 +128,7 @@ SKIP_CARGO=1 engine/tests/run_gates.sh   # 只跑前端那十层
 | 11 | 丢 12 个 computed | 重写组件时遗漏 |
 | 12 | 侧栏首屏空树 | `__conn__` 分区默认折叠 |
 | 14 | **右键后立刻按 Esc 关不掉菜单**（连带监听器泄漏） | Esc 监听器被 `setTimeout(0)` 延后挂载，落在窗口期里的第一次按键被整个吞掉；同处还靠 watch 回调 `return` 的清理函数摘监听 —— **Vue 根本不调它**，每开合一轮漏一对。已改为常驻监听器 + 开门检查 |
+| 16 | **对象树选中高亮 / 收藏分组反推失败** | 树节点 id 是 `tbl:t:<name>` 双段格式，旧 `tabFor(t.id)` 按 `tbl:` 单段前缀反推得到 `t:t:users`，与 `openTable` 的 `t:users` 对不上 —— 选中高亮永远不亮；`starredNodes()` 用 `tbl:<name>` 反查也查不到，导致收藏分组不出现。C1 改为按 label 匹配（`isActive(node)` / `starredNodes` 用 `state.starred` 集合过滤） |
 | — | 表结构页打不开 | `structuredClone(reactive Proxy)` 抛 `DataCloneError` |
 | — | 工具页永远渲染成诊断页 | 路由按 `tab.kind` 依次匹配时被抢先命中 |
 
@@ -173,14 +176,15 @@ SKIP_CARGO=1 engine/tests/run_gates.sh   # 只跑前端那十层
 
 按依赖顺序（细节见 `CLIENT-TODO.md`）：
 
-1. **C1** 对象树右键菜单与补全（视图/函数/存储过程/触发器/序列、星标、只读标记）
+1. **C1** 对象树右键菜单/双击打开/视图分组/收藏/只读标记 —— **已完成**（见上）
 2. **D1** 结构页补完：外键/约束 tab + DDL 预览 + 影响评估
 3. **E1** 命令面板 / 缩放 / 亮色主题全页面走查（U2 门禁要求）
 4. **C2** 连接向导
+5. **C1-6/7/8 延伸**（树虚拟滚动 / 拼音首字母搜索 / 拖表到查询编辑器）—— 本轮留作下一轮
 
 A4-2~A4-8 表格进阶能力已完成（双冻结列 / 列宽列序拖拽 / 列显隐 /
 布局持久化 / 右键菜单 / Renderer 补 5 类 / 转置与隐藏 NULL），
-B1 查询编辑器内核已完成，盲测五任务全部可做。
+B1 查询编辑器内核已完成，C1 对象树已完成，盲测五任务全部可做。
 
 ---
 
