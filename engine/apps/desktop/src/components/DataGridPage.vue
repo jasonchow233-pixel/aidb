@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
-  state, actions, notify, FILTER_OPS,
+  state, actions, notify, FILTER_OPS, sqlLiteral,
   type FilterOp, type TableFilter,
 } from "@/lib/store";
 import { api, capabilities, compact, dangerClass, dangerIcon, type ColumnDef } from "@/lib/api";
@@ -110,13 +110,237 @@ const findingsForTable = computed(() =>
  *   让用户以为在搜全表、实际只搜了当前页，是数据库工具最常见的坑。
  *   全表搜索要走 A2 列头筛选面板（带 WHERE 下推），不是这个输入框。
  */
+/**
+ * ⭐ 当前页 + 本页搜索命中的行，**每行带上它在 `state.rows` 里的真实下标**。
+ *
+ * ⭐ 为什么必须带下标：
+ *   一旦用了「搜索本页」，filteredRows 与 state.rows 就错位了。
+ *   编辑 / 删除 / 批量选中若都拿 filteredRows 的下标去索引 state.rows，
+ *   改到的会是**另一行** —— 页面看着一切正常，数据已经错了。
+ *   （与「内存排序看着对实际错」是同一类错误。）
+ */
 const filteredRows = computed(() => {
-  if (!searchTerm.value) return state.rows;
-  const q = searchTerm.value.toLowerCase();
-  return state.rows.filter((r) =>
-    state.columns.some((c) => String(r[c.name] ?? "").toLowerCase().includes(q)),
-  );
+  const q = searchTerm.value.trim().toLowerCase();
+  const out: { row: Record<string, unknown>; ri: number }[] = [];
+  state.rows.forEach((row, ri) => {
+    if (!q) { out.push({ row, ri }); return; }
+    if (state.columns.some((c) => String(row[c.name] ?? "").toLowerCase().includes(q))) {
+      out.push({ row, ri });
+    }
+  });
+  return out;
 });
+
+// ── A4-1 窗口化渲染 ───────────────────────────────────────────
+/**
+ * ⭐ 只渲染可视区附近的行，上下各用一个 spacer 撑出完整高度。
+ *
+ * 实测（`tests/probe_ab.mjs`，orders 本页 5000 行 × 9 列）：
+ *   · 全量渲染 → 91,503 个 DOM 节点（其中表格 91,130）
+ *   · 窗口化   →  1,357 个 DOM 节点（其中表格    984），67 倍差距
+ *
+ * ⭐ 关于帧时间：headless Chromium 不做合成，滚动的帧耗时在两种策略下
+ *   都是 ~16.6ms，**测不出差异**。所以这里只主张「DOM 少了 67 倍」
+ *   这一条实测结论，不吹帧率。DOM 数量决定的是建表、选中态更新、
+ *   每次翻页重排的常量开销，这一项已经实测到位。
+ *
+ * ⭐ 为什么自研而不是装 AG Grid / 现成虚拟列表：
+ *   装包在本机反复超时；自研只要两个 ref + 两个 computed，
+ *   而且接口按虚拟列表的通用语义写（可视区 = scrollTop/行高 ± overscan），
+ *   以后换库只需替换 `win` 这一个 computed。
+ *
+ * ⭐ 三个必须保证的点：
+ *   1. **滚动条长度正确** —— 靠上下 spacer 的高度，
+ *      否则用户以为表里只有几十行
+ *   2. **行号连续** —— 行号 = state.offset + 真实下标，spacer 不参与编号
+ *   3. **行高必须是确定的 px** —— CSS 变量是定值才能用像素算可视区
+ */
+const wrapRef = ref<HTMLElement | null>(null);
+const scrollTop = ref(0);
+const viewportH = ref(600);
+const OVERSCAN = 12; // 上下各多渲染几行，快速滚动时不露白
+
+/** 行高（px）。必须与 tokens.css 的 --row-* 保持一致。 */
+const rowPx = computed(() => {
+  if (state.density === "compact") return 26;
+  if (state.density === "comfort") return 40;
+  return 32;
+});
+
+const win = computed(() => {
+  const total = filteredRows.value.length;
+  const h = rowPx.value;
+  const start = Math.max(0, Math.floor(scrollTop.value / h) - OVERSCAN);
+  const end = Math.min(total, start + Math.ceil(viewportH.value / h) + OVERSCAN * 2);
+  return {
+    start,
+    end,
+    /** 上方 spacer 高度：撑出「前面还有多少行」 */
+    padTop: start * h,
+    /** 下方 spacer 高度 */
+    padBottom: Math.max(0, (total - end) * h),
+  };
+});
+
+/** ⭐ 只含可视区的行；`ri` 是它在 state.rows 里的真实下标，`no` 是全局行号 */
+const winRows = computed(() =>
+  filteredRows.value.slice(win.value.start, win.value.end).map((r) => ({
+    ...r,
+    no: state.offset + r.ri + 1,
+  })),
+);
+
+/**
+ * ⭐ 滚动处理放在模板的 `@scroll` 上，**不要**用生命周期钩子去 addEventListener。
+ *
+ * 踩过的坑（很难查，且没有任何报错）：
+ *   表格容器在 `v-if="state.columns.length"` 里面，组件挂载那一刻还没打开表，
+ *   `wrapRef.value` 是 null → `onMounted` 里挂不上监听；
+ *   而 `watch(wrapRef, ...)` 靠模板 ref 赋值触发，那个赋值发生在渲染补丁阶段，
+ *   默认的 `flush: "pre"` 会在补丁**之前**跑、拿到旧值，改成 `"post"` 也仍然
+ *   在某些更新路径上错过。结果就是：**页面不报错、滚动条也能拖，
+ *   但列表永远停在第一屏**。
+ *
+ * 模板上的 `@scroll` 是 vnode 的一部分，跟着元素生灭，零生命周期风险。
+ */
+function onWrapScroll() {
+  const el = wrapRef.value;
+  if (!el) return;
+  scrollTop.value = el.scrollTop;
+  // ⭐ 顺带校正视口高度：窗口缩放 / 分栏拖动都会改变它。
+  //   不校正的话窗口一变，可视区里就少渲染几行、露出空白。
+  //   放进 rAF 是为了不在 scroll 回调里强制同步布局。
+  if (el.clientHeight !== viewportH.value) {
+    requestAnimationFrame(() => { viewportH.value = el.clientHeight || 600; });
+  }
+}
+
+/** 换页 / 换筛选 / 换表后必须把滚动位置拉回顶部。
+ *  不拉回去的话 `scrollTop` 还停在新结果的「中段」，
+ *  页面会显示一张空表、行号从几百开始 —— 看起来像加载失败。 */
+watch(
+  [() => state.offset, () => state.filters.length, () => state.tableDef?.name],
+  () => {
+    const el = wrapRef.value;
+    if (el) el.scrollTop = 0;
+    scrollTop.value = 0;
+  },
+);
+
+/** 数据到位后重新量一次视口：首次打开表时元素才刚存在 */
+watch(
+  () => state.rows,
+  () => {
+    const el = wrapRef.value;
+    if (!el) return;
+    el.scrollTop = 0;
+    scrollTop.value = 0;
+    viewportH.value = el.clientHeight || 600;
+  },
+);
+
+// ── A3 批量操作 ──────────────────────────────────────────────
+/** ⭐ 全选 —— 只作用于**当前窗口内**的行。
+ *  假装「全选」= 选了整页是不可见的，用户点完全选却只处理了几十行。 */
+const allSelected = computed(
+  () => winRows.value.length > 0 && winRows.value.every((w) => selectedRows.value.has(w.ri)),
+);
+/** ⭐ 部分选中 —— 表头复选框显示半选方块 */
+const someSelected = computed(() => {
+  const ws = winRows.value;
+  return ws.some((w) => selectedRows.value.has(w.ri)) && !allSelected.value;
+});
+function toggleSelectAll() {
+  const next = new Set(selectedRows.value);
+  if (allSelected.value) winRows.value.forEach((w) => next.delete(w.ri));
+  else winRows.value.forEach((w) => next.add(w.ri));
+  selectedRows.value = next;
+}
+function toggleRowSelection(ri: number) {
+  const next = new Set(selectedRows.value);
+  if (next.has(ri)) next.delete(ri);
+  else next.add(ri);
+  selectedRows.value = next;
+}
+function clearSelection() {
+  selectedRows.value = new Set();
+}
+/** ⭐ 选中行按自然顺序排好 —— 否则复制出来的 TSV 顺序是哈希序，没法用 */
+const selectedRowList = computed(() =>
+  [...selectedRows.value].sort((a, b) => a - b).map((ri) => state.rows[ri]).filter(Boolean),
+);
+
+/** ⭐ 批量复制选中行（TSV，带表头） */
+function batchCopy() {
+  const rows = selectedRowList.value;
+  if (!rows.length) return;
+  const cols = state.columns.map((c) => c.name);
+  const lines = [cols.join("\t")];
+  for (const row of rows) {
+    // ⭐ 空串与 NULL 必须区分：空串输出 `""`，NULL 输出 NULL 文本
+    lines.push(cols.map((c) => {
+      const v = row[c];
+      return v === null || v === undefined ? "NULL" : `"${String(v).replace(/"/g, '""')}"`;
+    }).join("\t"));
+  }
+  navigator.clipboard.writeText(lines.join("\n"));
+  notify("info", `已复制 ${rows.length} 行（TSV 格式）`);
+}
+
+/** ⭐ 批量复制为 INSERT 语句 —— 转义交给 sqlLiteral，不自己拼字符串 */
+function batchCopyAsSQL() {
+  const table = state.tableDef?.name;
+  const rows = selectedRowList.value;
+  if (!table || !rows.length) return;
+  const cols = state.columns.map((c) => `"${c.name}"`).join(", ");
+  const lines = rows.map((row) => {
+    const vals = state.columns.map((c) => sqlLiteral(row[c.name])).join(", ");
+    return `INSERT INTO "${table}" (${cols}) VALUES (${vals});`;
+  });
+  navigator.clipboard.writeText(lines.join("\n"));
+  notify("info", `已复制 ${rows.length} 条 INSERT 语句`);
+}
+
+/** ⭐ 批量删除 —— 走真实写入通道，逐条 WHERE 主键，出错立刻停并说清。
+ *
+ *  ⚠ `api.execute` 在出错时是 **reject**，不是返回 `{ok:false}`。
+ *    不 try/catch 的话批量删到一半失败会变成一个没人接的 Promise 拒绝：
+ *    控制台一条红字、用户什么都看不到，还以为删成功了。
+ */
+async function batchDelete() {
+  const table = state.tableDef?.name;
+  const rows = selectedRowList.value;
+  if (!table || !rows.length) return;
+  const pk = state.columns.find((c) => c.isPk);
+  if (!pk) {
+    // ⭐ 无主键表不给「全选删除」：没有主键就没有稳定行标识，
+    //   一旦底层有变动，删掉的可能不是用户看到的那几行。
+    notify("error", "该表无主键，无法保证删的是这几行 —— 请改用筛选后逐行删除");
+    return;
+  }
+  if (!confirm(`确认删除选中的 ${rows.length} 行？此操作不可撤销。`)) return;
+  let done = 0;
+  for (const row of rows) {
+    const sql = `DELETE FROM "${table}" WHERE "${pk.name}" = ${sqlLiteral(row[pk.name])};`;
+    try {
+      await api.execute(sql, true);
+    } catch (e) {
+      // ⭐ 说清「删到第几行停的」，而不是笼统报个错 ——
+      //   部分成功才是最危险的状态，用户必须知道哪些已经没了。
+      notify(
+        "error",
+        done > 0
+          ? `已删除 ${done} 行后中断：${e instanceof Error ? e.message : String(e)}`
+          : `未删除任何行：${e instanceof Error ? e.message : String(e)}`,
+      );
+      break;
+    }
+    done++;
+  }
+  clearSelection();
+  await actions.loadTable(table);
+  if (done === rows.length) notify("info", `已删除 ${done} 行`);
+}
 
 // ── 单元格取值 ──────────────────────────────────────────────
 function cellText(v: unknown): string {
@@ -346,16 +570,32 @@ function copyAsSQL(row: Record<string, unknown>) {
   notify("info", "已复制为 INSERT 语句");
 }
 
+/**
+ * ⭐ 删除单行 —— 真的落库。
+ *
+ * 之前这里只弹一句「演示模式不真正执行」，但按钮写的是「删除」、
+ * 还弹了确认框。用户以为删掉了，刷新一下行还在 —— 这是最坏的一种骗人：
+ * 连报错都没有。宁可拒绝执行，也不要假装成功。
+ */
 async function deleteRow(rowIdx: number) {
-  if (!state.tableDef) return;
+  const table = state.tableDef?.name;
+  if (!table) return;
   const row = state.rows[rowIdx];
+  if (!row) return;
   const pk = state.columns.find((c) => c.isPk);
   if (!pk) {
-    notify("error", "该表无主键，无法安全删除");
+    notify("error", "该表无主键，无法保证删的是这一行");
     return;
   }
-  if (!confirm(`确认删除第 ${rowIdx + 1} 行？\\nWHERE ${pk.name} = ${row[pk.name]}`)) return;
-  notify("info", "删除操作已记录（演示模式不真正执行）");
+  const sql = `DELETE FROM "${table}" WHERE "${pk.name}" = ${sqlLiteral(row[pk.name])};`;
+  if (!confirm(`确认删除第 ${rowIdx + 1} 行？\n\n${sql}`)) return;
+  try {
+    const r = await api.execute(sql, true);
+    await actions.loadTable(table);
+    notify("info", `已删除 ${r.affectedRows} 行`);
+  } catch (e) {
+    notify("error", `未删除任何行：${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 function exportTable() {
@@ -441,8 +681,9 @@ function clearFilter() {
         </select>
 
         <div class="toolbar__sep"></div>
-        <input class="input input--mono" style="width: 170px; height: var(--h-btn-sm); font-size: var(--fs-xs)"
-               v-model="searchTerm" placeholder="搜索本页" />
+        <input class="input input--mono searchbox" style="width: 170px; height: var(--h-btn-sm); font-size: var(--fs-xs)"
+               v-model="searchTerm" placeholder="搜索本页"
+               aria-label="搜索本页（仅本页）" />
         <span class="muted small">仅本页 {{ filteredRows.length }} 行</span>
 
         <div class="grow"></div>
@@ -504,7 +745,7 @@ function clearFilter() {
     </div>
 
     <!-- ══ 表格 ══ -->
-    <div class="grid-wrap" v-if="state.columns.length">
+    <div class="grid-wrap" v-if="state.columns.length" ref="wrapRef" @scroll.passive="onWrapScroll">
       <!-- ⭐ 列头筛选面板：挂在表格容器内（position: relative） -->
       <ColumnFilterPanel
         v-if="filterPanelCol && filterPanelMeta"
@@ -517,7 +758,20 @@ function clearFilter() {
       <table class="grid">
         <thead>
           <tr :style="{ height: 'var(--h-toolbar)' }">
-            <th class="rownum" style="width: 62px; min-width:62px; max-width:62px">#</th>
+            <th class="rownum" style="width: 88px; min-width:88px; max-width:88px">
+              <span class="pickcell">
+                <!-- ⭐ 全选只作用于「当前窗口内」的行：窗口化之后表里的 DOM 行
+                     就是用户能看到的行，说全选却只选几十行等于骗人。
+                     title 里说清楚范围，避免用户以为选了整页。 -->
+                <input type="checkbox"
+                       :checked="allSelected"
+                       :indeterminate="someSelected"
+                       title="全选当前可见行"
+                       aria-label="全选当前可见行"
+                       @change="toggleSelectAll" />
+                <span>#</span>
+              </span>
+            </th>
             <th v-for="(c, ci) in state.columns" :key="c.id"
                 :class="{ 'is-pk': c.isPk, 'is-fk': c.isFk, 'is-sorted': state.sortCol === c.name }"
                 :title="c.comment ? `${c.comment}\n点击表头排序；点 ▼ 筛选` : '点击表头排序；点 ▼ 筛选'"
@@ -545,40 +799,63 @@ function clearFilter() {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(row, i) in filteredRows" :key="i" :class="rowClass(i)" :style="{ height: rowH }"
+          <!-- ⭐ 窗口化：上下 spacer 撑出完整高度，保证滚动条长度与真实行数一致。
+               ⚠ 缺了它，滚动条只反映「渲染出来的几十行」，
+                 用户会以为整张表就这么点数据。 -->
+          <tr v-if="win.padTop > 0" class="win-spacer" aria-hidden="true">
+            <td :colspan="state.columns.length + 2" :style="{ height: win.padTop + 'px', padding: 0 }"></td>
+          </tr>
+
+          <!-- ⭐ 只渲染可视区附近的行。`w.ri` 是 state.rows 里的真实下标，
+               搜索本页之后 filteredRows 与 state.rows 会错位，
+               拿 filteredRows 的下标去编辑会改到另一行。 -->
+          <tr v-for="w in winRows" :key="w.ri" :class="rowClass(w.ri)" :style="{ height: rowH }"
               @click="detail && (detail = null)">
-            <td class="rownum">{{ state.offset + i + 1 }}</td>
+            <td class="rownum">
+              <span class="pickcell">
+                <input type="checkbox"
+                       :checked="selectedRows.has(w.ri)"
+                       :aria-label="`选中第 ${w.no} 行`"
+                       @change="toggleRowSelection(w.ri)" />
+                <span>{{ w.no }}</span>
+              </span>
+            </td>
             <td v-for="c in state.columns" :key="c.id"
                 :class="{
                   num: c.category === 'number',
-                  null: row[c.name] === null,
-                  'bool-yes': row[c.name] === true || row[c.name] === 1,
-                  'bool-no': row[c.name] === false || row[c.name] === 0,
-                  link: isUrl(row[c.name]),
+                  null: w.row[c.name] === null,
+                  'bool-yes': w.row[c.name] === true || w.row[c.name] === 1,
+                  'bool-no': w.row[c.name] === false || w.row[c.name] === 0,
+                  link: isUrl(w.row[c.name]),
                   json: c.category === 'json',
-                  large: c.isLarge && String(row[c.name] ?? '').length > 40,
-                  'is-dirty': isDirty(i, c.name),
+                  large: c.isLarge && String(w.row[c.name] ?? '').length > 40,
+                  'is-dirty': isDirty(w.ri, c.name),
                 }"
                 :title="c.isLarge ? '点击查看完整内容' : undefined"
-                @dblclick.stop="openDetail(c, i)"
-                @click.stop="startEdit(i, c.name, row[c.name])">
-              <template v-if="editingCell?.row === i && editingCell?.col === c.name">
-                <input class="input" style="height: 20px; font-size: 11px; padding: 0 4px"
+                @dblclick.stop="openDetail(c, w.ri)"
+                @click.stop="startEdit(w.ri, c.name, w.row[c.name])">
+              <template v-if="editingCell?.row === w.ri && editingCell?.col === c.name">
+                <input class="input cell-editor" style="height: 20px; font-size: 11px; padding: 0 4px"
+                       :aria-label="`编辑 ${c.name}`"
                        v-model="editingCell.value"
-                       @blur="commitEdit(i, c.name)"
-                       @keydown.enter.prevent="commitEdit(i, c.name)"
+                       @blur="commitEdit(w.ri, c.name)"
+                       @keydown.enter.prevent="commitEdit(w.ri, c.name)"
                        @keydown.escape="editingCell = null"
                        @click.stop />
               </template>
-              <template v-else-if="row[c.name] === null"><em>NULL</em></template>
-              <template v-else-if="isEnum(c)">{{ enumText(c, row[c.name]) }}</template>
-              <template v-else-if="typeof row[c.name] === 'object'">{{ cellText(row[c.name]) }}</template>
-              <template v-else>{{ cellText(row[c.name]) }}</template>
+              <template v-else-if="w.row[c.name] === null"><em>NULL</em></template>
+              <template v-else-if="isEnum(c)">{{ enumText(c, w.row[c.name]) }}</template>
+              <template v-else-if="typeof w.row[c.name] === 'object'">{{ cellText(w.row[c.name]) }}</template>
+              <template v-else>{{ cellText(w.row[c.name]) }}</template>
             </td>
             <td @click.stop>
-              <button class="btn btn--sm btn--ghost" @click="copyRow(row)" title="复制整行">复制</button>
-              <button class="btn btn--sm btn--danger" @click="deleteRow(i)" title="删除行">删除</button>
+              <button class="btn btn--sm btn--ghost" @click="copyRow(w.row)" title="复制整行">复制</button>
+              <button class="btn btn--sm btn--danger" @click="deleteRow(w.ri)" title="删除行">删除</button>
             </td>
+          </tr>
+
+          <tr v-if="win.padBottom > 0" class="win-spacer" aria-hidden="true">
+            <td :colspan="state.columns.length + 2" :style="{ height: win.padBottom + 'px', padding: 0 }"></td>
           </tr>
         </tbody>
       </table>
@@ -608,14 +885,21 @@ function clearFilter() {
       </span>
       <span class="muted">{{ state.queryMs }} ms</span>
       <span class="grow"></span>
+      <!-- ⭐ 批量操作条：只在有选中时出现，不占平时的工作区 -->
+      <template v-if="selectedRows.size">
+        <span class="badge badge--warn" title="已选中的行会随窗口化保留，滚动后仍然有效">
+          已选 {{ selectedRows.size }} 行
+        </span>
+        <button class="btn btn--sm btn--ghost" @click="batchCopy">复制</button>
+        <button class="btn btn--sm btn--ghost" @click="batchCopyAsSQL">复制为 SQL</button>
+        <button class="btn btn--sm btn--danger" @click="batchDelete">删除</button>
+        <button class="btn btn--sm btn--ghost" @click="clearSelection">清除选择</button>
+      </template>
       <!-- ⭐ 模板里 ref 会被自动解包，写 `selectedRows.value` 会变成
            `undefined.value` → 渲染崩掉。script 里才用 `.value`。 -->
-      <span class="muted small" v-if="selectedRows.size">
-        已选 {{ selectedRows.size }} 行
-      </span>
       <!-- ⭐ 传输家族来自声明层，不硬编码 `connectionKind === 'sqlite'`：
            加一种数据库时这里自动跟着 YAML 走，不用改前端。 -->
-      <span class="muted small" v-if="connFamily">
+      <span class="muted small" v-else-if="connFamily">
         传输家族：{{ connFamily }}
       </span>
     </div>
@@ -648,6 +932,32 @@ function clearFilter() {
   background: var(--warning-bg);
   box-shadow: inset 2px 0 0 var(--warning);
 }
+
+/* ── A4-1 窗口化 spacer ── */
+/* ⭐ spacer 只负责撑高度，不参与行号/选中/编辑。
+   给 `visibility: hidden` 是为了不让它的边框在视觉上多出一条线。 */
+.win-spacer td {
+  padding: 0 !important;
+  border: none !important;
+  background: transparent;
+}
+
+/* ── A3 选择列 ── */
+/* ⭐ 复选框 + 行号挤在一格里，所以行号列变宽；它本来就是 sticky 冻结列，
+   横向滚动时选择框一直可见。 */
+.pickcell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+  height: 100%;
+}
+.pickcell input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+table.grid tbody tr.is-selected td.rownum { color: var(--accent); }
 
 /* ── 列头筛选入口 ── */
 .th-filter {

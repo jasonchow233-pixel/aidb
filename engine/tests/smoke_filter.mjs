@@ -7,6 +7,7 @@
  *   3. NULL 与空串分开显示（#10505）
  */
 import { chromium } from "playwright";
+import { trueRowCount } from "./helpers.mjs";
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -72,8 +73,11 @@ try {
   await page.locator(".fpanel button", { hasText: "应用筛选" }).click();
   await page.waitForTimeout(2000);
 
+  // ⭐ 排除窗口化 spacer：它只有 1 个 td，td[5] 是 undefined，
+//    混进 Set 会让「唯一值 === 1」的断言误报成「筛选没生效」。
   const stVals = await page.evaluate(() =>
     [...new Set([...document.querySelectorAll(".grid tbody tr")]
+      .filter((r) => !r.classList.contains("win-spacer"))
       .map((r) => r.querySelectorAll("td")[5]?.innerText.trim()))]);
   check("⭐ 结果只剩已支付", stVals.length === 1 && stVals[0] === "已支付", stVals.join(","));
   check("筛选图标高亮", (await page.locator(".th-filter.is-on").count()) === 1);
@@ -107,7 +111,9 @@ try {
   await manual.fill("NO0000000001");
   await page.locator(".fpanel button", { hasText: "匹配" }).click();
   await page.waitForTimeout(2000);
-  const rowCount = await page.locator(".grid tbody tr").count();
+  // ⭐ 行数一律从底栏文案读，不数 DOM：
+  //    窗口化之后 DOM 里只有可视区的几十行，数出来是 30 不是 0/100。
+  const conflictRows = await trueRowCount(page);
   // ⭐ 注意：status=已支付 的条件还在，而 NO0000000001 的 status=已完成，
   //    所以 0 行是**正确行为**（级联条件同时生效）。
   //    这里验的是「精确匹配条件确实加进去了」，不是「一定有行」。
@@ -115,13 +121,15 @@ try {
   check("精确匹配条件已加入", chips.some((c) => /order_no/.test(c)),
     chips.map((c) => c.replace(/\n/g, " ")).join(" | "));
   check("条件数为 2（级联同时生效）", chips.length === 2, `${chips.length} 个`);
-  check("冲突条件返回 0 行（级联正确）", rowCount === 0, `${rowCount} 行`);
+  check("冲突条件返回 0 行（级联正确）", conflictRows === 0, `${conflictRows} 行`);
 
   console.log("\n═══ 6. 清除 ═══");
   await page.locator(".filterbar button", { hasText: "全部清除" }).click();
   await page.waitForTimeout(2000);
   check("chip 清空", (await page.locator(".filterchip").count()) === 0);
-  check("行数恢复", (await page.locator(".grid tbody tr").count()) >= 100);
+  const foot = await page.locator(".grid-foot").innerText();
+  const restoredRows = await trueRowCount(page);
+  check("行数恢复", restoredRows >= 100, `${restoredRows} 行`);
   check("高亮消失", (await page.locator(".th-filter.is-on").count()) === 0);
 
   console.log("\n═══ 7. 控制台 ═══");

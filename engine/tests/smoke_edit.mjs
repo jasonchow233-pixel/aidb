@@ -60,7 +60,7 @@ try {
     const cell = page.locator(".grid tbody tr").nth(r).locator("td").nth(remarkIdx);
     await cell.click();
     await page.waitForTimeout(200);
-    const input = page.locator(".grid tbody tr").nth(r).locator("input").first();
+    const input = page.locator(".grid tbody tr").nth(r).locator(".cell-editor");
     check(`第 ${r + 1} 行出现编辑框`, (await input.count()) > 0);
     if ((await input.count()) > 0) {
       await input.fill(`SMOKE_${r}`);
@@ -161,7 +161,7 @@ try {
     const c = page.locator(".grid tbody tr").nth(0).locator("td").nth(akIdx);
     await c.click();
     await page.waitForTimeout(300);
-    const inp = page.locator(".grid tbody tr").nth(0).locator("input").first();
+    const inp = page.locator(".grid tbody tr").nth(0).locator(".cell-editor");
     if (await inp.count()) {
       await inp.fill("noop_pk_test");
       await inp.press("Enter");

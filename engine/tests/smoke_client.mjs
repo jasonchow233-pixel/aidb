@@ -7,6 +7,7 @@
  *   结果看着像模像样，实际是错的 —— 这类错误极难察觉。
  */
 import { chromium } from "playwright";
+import { dataCells as pageDataCells, trueRowCount } from "./helpers.mjs";
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -27,13 +28,22 @@ page.on("request", (r) => {
 page.on("pageerror", (e) => errs.push(String(e).slice(0, 200)));
 page.on("dialog", async (d) => d.accept());
 
+/** ⭐ 当前真实数据行的「单元格文本矩阵」，排除窗口化 spacer。
+ *
+ *  ⭐ 为什么必须排掉 spacer：spacer 行只有 1 个 td，取 td[5] 得到 undefined，
+ *    undefined 进 Set 会让「唯一值 === 1」的断言失败，
+ *    报出来是「筛选没生效」，真因却是测试自己数错了行。
+ */
+const dataCells = () => pageDataCells(page);
+
 const colIdx = (n) =>
   page.evaluate((name) =>
     [...document.querySelectorAll(".grid thead th")].findIndex((t) =>
       t.innerText.trim().startsWith(name)), n);
 const cellVals = (i, n = 6) =>
   page.evaluate(([idx, cnt]) =>
-    [...document.querySelectorAll(".grid tbody tr")].slice(0, cnt)
+    [...document.querySelectorAll(".grid tbody tr")]
+      .filter((r) => !r.classList.contains("win-spacer")).slice(0, cnt)
       .map((r) => Number(r.querySelectorAll("td")[idx].innerText.replace(/,/g, ""))), [i, n]);
 
 try {
@@ -74,8 +84,8 @@ try {
   console.log("\n═══ 2. 页大小切换 ═══");
   await page.locator(".pager select").selectOption("100");
   await page.waitForTimeout(1800);
-  const rowCount = await page.locator(".grid tbody tr").count();
-  check("⭐ 页大小生效", rowCount === 100, `实际 ${rowCount} 行`);
+  const footSize = await page.locator(".grid-foot").innerText();
+  check("⭐ 页大小生效", (await trueRowCount(page)) === 100, `底栏显示 ${footSize.split("\n")[0]}`);
   check("页码重置到第 1 页", /第 1 页/.test(await page.locator(".pager__pos").innerText()));
 
   console.log("\n═══ 3. 排序（下推到数据库）═══");
@@ -111,9 +121,7 @@ try {
 
   check("⭐ SQL 含 WHERE", /WHERE/.test(sqls[sqls.length - 1]), sqls[sqls.length - 1]);
   check("⭐ 筛选后 offset 归零", /status/.test(sqls[sqls.length - 1]));
-  const stVals = await page.evaluate(() =>
-    [...new Set([...document.querySelectorAll(".grid tbody tr")]
-      .map((r) => r.querySelectorAll("td")[5]?.innerText.trim()))]);
+  const stVals = [...new Set((await dataCells()).map((r) => r[5]))];
   check("⭐ 结果只剩已支付", stVals.length === 1 && stVals[0] === "已支付", stVals.join(","));
   check("有条件 chip", (await page.locator(".filterchip").count()) === 1);
   check("提示条件已下推", /下推到数据库/.test(await page.locator(".filterbar").innerText()));
@@ -131,13 +139,13 @@ try {
   const nullRows = await page.evaluate(() =>
     [...document.querySelectorAll(".grid tbody tr")]
       .filter((r) => r.querySelectorAll("td")[7]?.innerText.trim() === "NULL").length);
-  check("结果全部为 NULL", nullRows === (await page.locator(".grid tbody tr").count()),
-    `${nullRows} / ${await page.locator(".grid tbody tr").count()}`);
+  const domRows = await page.locator(".grid tbody tr:not(.win-spacer)").count();
+  check("结果全部为 NULL", nullRows === domRows, `${nullRows} / ${domRows}`);
 
   console.log("\n═══ 6. 总数不撒谎 ═══");
-  const foot = await page.locator(".grid-foot").innerText();
-  check("⭐ 筛选时不显示未筛选的总数", /总数未统计/.test(foot), foot.split("\n")[0]);
-  check("不显示 5,000（那是未筛选的数）", !/共 5,000 行/.test(foot), foot.split("\n")[0]);
+  const footFiltered = await page.locator(".grid-foot").innerText();
+  check("⭐ 筛选时不显示未筛选的总数", /总数未统计/.test(footFiltered), footFiltered.split("\n")[0]);
+  check("不显示 5,000（那是未筛选的数）", !/共 5,000 行/.test(footFiltered), footFiltered.split("\n")[0]);
 
   console.log("\n═══ 7. 移除条件 ═══");
   await page.locator(".filterchip__x").first().click();
@@ -147,8 +155,8 @@ try {
   await page.locator(".filterbar button", { hasText: "全部清除" }).click();
   await page.waitForTimeout(1800);
   check("全部清除后无 WHERE", !/WHERE/.test(sqls[sqls.length - 1]), sqls[sqls.length - 1]);
-  const foot2 = await page.locator(".grid-foot").innerText();
-  check("⭐ 总数恢复显示", /共 5,000 行/.test(foot2), foot2.split("\n")[0]);
+  const footCleared = await page.locator(".grid-foot").innerText();
+  check("⭐ 总数恢复显示", /共 5,000 行/.test(footCleared), footCleared.split("\n")[0]);
 
   console.log("\n═══ 8. 类型提示 ═══");
   const heads = await page.evaluate(() =>
@@ -158,9 +166,7 @@ try {
   check("表头显示默认值", heads.some((h) => /=/.test(h)));
   check("主键有标记", heads.some((h) => /🔑/.test(h)));
   check("外键有标记", heads.some((h) => /🔗/.test(h)));
-  const enums = await page.evaluate(() =>
-    [...new Set([...document.querySelectorAll(".grid tbody tr")]
-      .map((r) => r.querySelectorAll("td")[5]?.innerText.trim()))]);
+  const enums = [...new Set((await dataCells()).map((r) => r[5]))];
   check("⭐ 枚举显示中文", enums.some((e) => /待支付|已支付|已完成|已发货/.test(e || "")),
     enums.slice(0, 4).join(","));
   check("NULL 有专属样式", (await page.locator(".grid td.null").count()) > 0);

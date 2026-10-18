@@ -89,9 +89,15 @@ try {
   await page.locator(".tree button.node", { hasText: "orders" }).first().click();
   await page.waitForSelector(".grid", { timeout: 15000 });
 
-  const gridRows = await page.locator(".grid tbody tr").count();
-  check("表格渲染出数据行", gridRows > 0, `${gridRows} 行`);
-  check("行数达到一页（>=100）", gridRows >= 100, `${gridRows} 行`);
+  // ⭐ 窗口化渲染：DOM 里只有可视区的几十行，
+  //    行数要从底栏文案读，不是数 <tr>。
+  const domRows = await page.locator(".grid tbody tr:not(.win-spacer)").count();
+  const footText = await page.locator(".grid-foot").innerText();
+  const pageRows = Number(footText.match(/本页\s+([\d,]+)\s*行/)?.[1].replace(/,/g, "") ?? -1);
+  check("表格渲染出数据行", domRows > 0, `DOM ${domRows} 行`);
+  check("底栏报告本页行数", pageRows >= 100, `${pageRows} 行`);
+  check("⭐ 窗口化生效（DOM 行数远小于本页行数）", domRows < pageRows,
+    `DOM ${domRows} < 本页 ${pageRows}`);
 
   const colHeaders = await page.locator(".grid thead th").count();
   check("表头有列", colHeaders > 3, `${colHeaders} 列`);
