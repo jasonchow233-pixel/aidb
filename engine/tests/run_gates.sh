@@ -38,6 +38,11 @@ run "编辑闭环"   node smoke_edit.mjs
 run "编辑交互"   node smoke_editui.mjs
 run "筛选面板"   node smoke_filter.mjs
 run "表格内核"   node smoke_grid.mjs
+# ⭐ 这一层查的是**文档说的和代码做的对不对得上**。
+#   文档漂移是这个项目最常见的问题（历史上 NEXT.md / GUI-GAPS.md
+#   都被开发进度甩在后面，还照着"未做"来指导决策）。
+#   所以文档里写进去的每条 ✅，都要有一条断言兜着。
+run "文档一致性" node probe_docs.mjs
 
 echo ""
 if [ "$fail" != "0" ]; then

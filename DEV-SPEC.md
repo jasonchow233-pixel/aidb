@@ -3,6 +3,7 @@
 > 版本 v1.0 ｜ 2026-10-16
 > 依据：DBX 源码架构 + 356 条 issue 实测挖掘 + 竞品横评
 > 配套文档：`PRODUCT.md`（产品文档）、`UI-DESIGN.md`（UI 设计文档）
+> 📖 全部文档的关系见 `README.md`；当前进度见 `STATUS.md`
 
 ---
 

@@ -1,6 +1,7 @@
 # AgenticDB — 实施方案 v4.0
 
-> **执行清单见 `TODO.md` v4.0**。本文件是**架构与理由**，两者配套。
+> **执行清单见 `TODO.md` v4.0**（理想排期）与 `CLIENT-TODO.md`（实际待办）。
+> 本文件是**架构与理由**。📖 文档关系见 `README.md`。
 >
 > **v4 变更**：吸收 `DBX-ARCHITECTURE-STUDY.md` 源码研读结论
 > 1. crate 16 → **24**（facade + per-driver 分层）

@@ -1,6 +1,21 @@
 # AgenticDB — TODO List v4.0
 
-> 日期：2026-10-16 ｜ 配套 `UI-SPEC.md` `IMPLEMENTATION.md` v4.0 `DEV-SPEC.md` v4.0 `DBX-ARCHITECTURE-STUDY.md`
+> ⚠️ **这是一份「理想排期」，不是「当前进度」。**
+> 42 周是按 3-5 人团队估的，实际进度以门禁跑出来的数字为准。
+>
+> | 你想知道 | 看哪份 |
+> |---|---|
+> | 现在做到了什么 | **`STATUS.md`** |
+> | 接下来做什么 | **`CLIENT-TODO.md`** |
+> | 和 Navicat 比怎么样 | **`BENCHMARK.md`** |
+> | 文档之间的关系 | **`README.md`** |
+>
+> 本文的勾选框只标到 U0/U1 的骨架搭建，**后续阶段全是未完成**，
+> 不要拿本文的 `[ ]` 当作"还没开始"—— 很多已经做了。
+
+---
+
+> 日期：2026-10-16（**进度未同步，见上**） ｜ 配套 `UI-SPEC.md` `IMPLEMENTATION.md` v4.0 `DEV-SPEC.md` v4.0 `DBX-ARCHITECTURE-STUDY.md`
 > **顺序**：UI 设计 → UI 实现(Mock) → UI 盲测 → **MySQL + PG** → 功能补全
 > **粒度**：半日为最小单位，共 8 阶段 42 周
 > **v4 变更**：吸收 DBX 源码研读结论 —— facade crate / 能力声明矩阵 / YAML 双生成 / 传输家族

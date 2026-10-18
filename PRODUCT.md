@@ -2,6 +2,7 @@
 
 > 版本 v1.0 ｜ 2026-10-16
 > 配套：`DEV-SPEC.md`（开发文档）、`UI-DESIGN.md`（UI 设计文档）
+> 📖 全部文档的关系见 `README.md`；当前进度见 `STATUS.md`
 
 ---
 
