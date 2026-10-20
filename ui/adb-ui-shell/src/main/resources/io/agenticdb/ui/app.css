@@ -1201,3 +1201,199 @@
     -fx-border-radius: 6;
     -fx-background-radius: 6;
 }
+
+/* ── 查询页 ─────────────────────────────────────────────────────────── */
+
+.adb-query-page {
+    -fx-background-color: -adb-bg-canvas;
+}
+
+.adb-query__header {
+    -fx-padding: 12 16 6 16;
+}
+
+.adb-query__toolbar {
+    -fx-padding: 0 16 8 16;
+    -fx-border-color: transparent transparent -adb-border transparent;
+}
+
+.adb-query__find {
+    -fx-padding: 6 16;
+    -fx-background-color: -adb-bg-surface;
+    -fx-border-color: transparent transparent -adb-border transparent;
+}
+
+.adb-query__find-field {
+    -fx-background-color: -adb-bg-inset;
+    -fx-text-fill: -adb-text-primary;
+    -fx-prompt-text-fill: -adb-text-disabled;
+    -fx-border-color: -adb-border;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+}
+
+.adb-query__risk {
+    -fx-border-width: 1;
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+}
+
+.adb-risk--read {
+    -fx-background-color: -adb-bg-elevated;
+    -fx-text-fill: -adb-text-secondary;
+    -fx-border-color: -adb-border;
+}
+
+.adb-risk--write {
+    -fx-background-color: -adb-warning-bg;
+    -fx-text-fill: -adb-warning;
+    -fx-border-color: -adb-warning;
+}
+
+.adb-risk--structure,
+.adb-risk--admin {
+    -fx-background-color: -adb-error-bg;
+    -fx-text-fill: -adb-error;
+    -fx-border-color: -adb-error;
+}
+
+.adb-query__editor-box {
+    -fx-background-color: -adb-bg-inset;
+    -fx-border-color: -adb-border;
+    -fx-border-width: 0 0 1 0;
+}
+
+.adb-sql-editor {
+    -fx-background-color: -adb-bg-inset;
+    -fx-font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    -fx-font-size: 12.5px;
+}
+
+.adb-sql-editor .text {
+    -fx-fill: -adb-text-primary;
+}
+
+.adb-sql-editor .paragraph-box:has-caret {
+    -fx-background-color: -adb-bg-hover;
+}
+
+.adb-sql-editor .lineno {
+    -fx-background-color: -adb-bg-surface;
+    -fx-text-fill: -adb-text-disabled;
+    -fx-font-size: 11px;
+    -fx-padding: 0 8 0 6;
+}
+
+.adb-sql-editor .caret {
+    -fx-stroke: -adb-accent;
+}
+
+.sql-keyword {
+    -fx-fill: -adb-syn-keyword;
+    -fx-font-weight: bold;
+}
+
+.sql-string {
+    -fx-fill: -adb-syn-string;
+}
+
+.sql-number {
+    -fx-fill: -adb-syn-number;
+}
+
+.sql-comment {
+    -fx-fill: -adb-syn-comment;
+    -fx-font-style: italic;
+}
+
+.sql-param {
+    -fx-fill: -adb-syn-param;
+    -fx-font-weight: bold;
+}
+
+.sql-identifier {
+    -fx-fill: -adb-syn-ident;
+}
+
+.sql-operator {
+    -fx-fill: -adb-syn-type;
+}
+
+.adb-query__hint {
+    -fx-text-fill: -adb-text-disabled;
+    -fx-font-size: 12px;
+}
+
+.adb-query__split > .split-pane-divider {
+    -fx-background-color: -adb-border;
+    -fx-padding: 0 0 0 0;
+    -fx-pref-height: 1;
+}
+
+.adb-query__results {
+    -fx-background-color: -adb-bg-canvas;
+}
+
+.adb-query__results .tab-header-area .tab-header-background {
+    -fx-background-color: -adb-bg-surface;
+    -fx-border-color: transparent transparent -adb-border transparent;
+}
+
+.adb-query__results .tab {
+    -fx-background-color: transparent;
+    -fx-padding: 4 10;
+}
+
+.adb-query__results .tab:selected {
+    -fx-background-color: -adb-bg-canvas;
+    -fx-border-color: -adb-accent transparent transparent transparent;
+    -fx-border-width: 2 0 0 0;
+}
+
+.adb-query__results .tab .tab-label {
+    -fx-text-fill: -adb-text-secondary;
+    -fx-font-size: 12px;
+}
+
+.adb-query__results .tab:selected .tab-label {
+    -fx-text-fill: -adb-text-primary;
+}
+
+.adb-query__result-box {
+    -fx-background-color: -adb-bg-canvas;
+    -fx-padding: 6 10 10 10;
+}
+
+.adb-query__result-toolbar {
+    -fx-padding: 2 2 4 2;
+}
+
+.adb-query__result-meta,
+.adb-query__status-meta {
+    -fx-text-fill: -adb-text-secondary;
+    -fx-font-size: 11px;
+}
+
+.adb-query__result-table {
+    -fx-background-color: -adb-bg-canvas;
+}
+
+.adb-query__message {
+    -fx-font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    -fx-font-size: 12px;
+    -fx-text-fill: -adb-text-primary;
+    -fx-control-inner-background: -adb-bg-inset;
+    -fx-background-color: -adb-bg-inset;
+    -fx-border-color: transparent;
+}
+
+.adb-query__statusbar {
+    -fx-padding: 4 16;
+    -fx-background-color: -adb-bg-surface;
+    -fx-border-color: -adb-border transparent transparent transparent;
+}
+
+.adb-query__status-text {
+    -fx-text-fill: -adb-text-secondary;
+    -fx-font-size: 11px;
+}

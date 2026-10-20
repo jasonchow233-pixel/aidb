@@ -2,8 +2,10 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.ui.App;
 import javafx.scene.control.Label;
+import javafx.scene.control.TabPane;
 import javafx.scene.control.TableView;
 import javafx.stage.Stage;
+import org.fxmisc.richtext.CodeArea;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -299,6 +301,32 @@ class AppShellTest {
     private static TableView<java.util.Map<String, Object>> table(FxRobot robot) {
         return (TableView<java.util.Map<String, Object>>) robot.lookup("#data-table")
                 .queryAs(TableView.class);
+    }
+
+    @Test
+    void opensQueryPageRunsSqlAndShowsResultTab(FxRobot robot) throws Exception {
+        robot.clickOn("#new-query-button");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        CodeArea editor = robot.lookup("#query-editor").queryAs(CodeArea.class);
+        assertThat(editor).isNotNull();
+        WaitForAsyncUtils.waitForAsyncFx(5_000,
+                () -> editor.replaceText("SELECT 42 AS answer;"));
+
+        robot.clickOn("#query-run");
+        WaitForAsyncUtils.waitFor(10, TimeUnit.SECONDS, () ->
+                robot.lookup("#query-results").queryAs(TabPane.class).getTabs().size() == 1);
+        WaitForAsyncUtils.waitForFxEvents();
+
+        TabPane results = robot.lookup("#query-results").queryAs(TabPane.class);
+        assertThat(results.getTabs().getFirst().getText()).contains("结果 1");
+        assertThat(robot.lookup("#query-status").queryAs(Label.class).getText())
+                .contains("执行完成");
+        assertThat(robot.lookup("#query-risk").queryAs(Label.class).getText())
+                .isEqualTo("只读");
+
+        QueryPage query = robot.lookup(".adb-query-page").queryAs(QueryPage.class);
+        WaitForAsyncUtils.waitForAsyncFx(5_000, query::markClean);
     }
 
     @Test

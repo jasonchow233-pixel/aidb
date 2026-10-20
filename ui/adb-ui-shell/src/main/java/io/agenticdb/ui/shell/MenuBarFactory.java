@@ -50,6 +50,7 @@ public final class MenuBarFactory {
                 disabled("粘贴"),
                 new SeparatorMenuItem(),
                 actions.menuItem("focus-search"),
+                actions.menuItem("query.comment"),
                 actions.menuItem("command-palette"));
     }
 
@@ -76,8 +77,13 @@ public final class MenuBarFactory {
                 actions.menuItem("demo.open"),
                 actions.menuItem("new-query"),
                 new SeparatorMenuItem(),
-                disabled("执行语句"),
-                disabled("解释执行计划"));
+                actions.menuItem("query.run"),
+                actions.menuItem("query.run-all"),
+                actions.menuItem("query.cancel"),
+                actions.menuItem("query.explain"),
+                new SeparatorMenuItem(),
+                actions.menuItem("query.format"),
+                actions.menuItem("query.save"));
     }
 
     private Menu toolsMenu() {

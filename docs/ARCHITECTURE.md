@@ -26,7 +26,7 @@ core/
   adb-model          领域模型：ColumnDef / ColumnType / RowPage / QueryLimits / Danger
   adb-declarations   连接与传输声明加载（YAML + JSON Schema）
   adb-safety         危险分级、错误归类、SQL 风险提示
-  adb-sql            SQL 词法内核（P3：分句、高亮、格式化）
+  adb-sql            SQL 词法内核：分句、高亮、格式化（不依赖 UI）
 
 workbench/
   adb-jdbc           统一 JDBC 会话：连接、参数化查询/更新、事务、方言、类型映射
@@ -46,7 +46,8 @@ bootstrap/
 ```
 
 模块依赖只向下：`ui-shell → workbench → core`，`bootstrap → ui-shell`。
-`adb-sql` 在 P3 接入 RichTextFX 前保持独立，不反向依赖 UI。
+`adb-sql` 保持独立：只把 SQL 切成 token / 语句 / 格式化文本，不反向依赖 UI 或 JDBC。
+RichTextFX 的样式映射在 `ui-shell` 的 `SqlHighlighter` 中完成。
 
 ---
 
@@ -59,19 +60,26 @@ Launcher
        ├─ SessionManager → JdbcSession（SQLite）
        ├─ SchemaService.listObjects() → SideBar
        └─ TabBar / WorkspaceView
-            └─ DataGridPage（按 tab id 缓存）
-                 ├─ SchemaService.describe()
-                 ├─ DataSqlBuilder.page() → DbSession.query()
-                 ├─ EditBuffer（内存中的单元格/删除/草稿）
-                 └─ EditSqlBuilder.plan() → 预览 → 事务执行
+            ├─ DataGridPage（按 tab id 缓存）
+            │    ├─ SchemaService.describe()
+            │    ├─ DataSqlBuilder.page() → DbSession.query()
+            │    ├─ EditBuffer（内存中的单元格/删除/草稿）
+            │    └─ EditSqlBuilder.plan() → 预览 → 事务执行
+            └─ QueryPage（按 tab id 缓存）
+                 ├─ SqlLexer / SqlSplitter / SqlFormatter
+                 ├─ DangerClassifier → 写操作确认
+                 ├─ DbSession.execute() → ExecutionResult（单条语句）
+                 └─ 结果 / 消息 / 错误页签 → CellRenderer / CsvExporter
 ```
 
 ### 线程模型
 
 1. `DataGridPage` 的每次加载创建 `Task`，提交到共享单线程执行器 `adb-db`。
 2. 请求带递增序号；切页/刷新后旧结果直接丢弃，不覆盖新页。
-3. JDBC 结果只在 `Task` 内读取，组装成不可变 `RowPage` 后回 JavaFX 线程。
+3. JDBC 结果只在 `Task` 内读取，组装成不可变 `RowPage` / `ExecutionResult` 后回 JavaFX 线程。
 4. 同一连接上的查询、保存、撤销保存严格串行，避免 SQLite 锁竞争。
+5. 查询页先用 `SqlSplitter` 在 UI 线程分句，再把每条语句依次提交到 `adb-db`；任务带请求序号，取消或重跑后迟到回调直接丢弃。
+6. `DbSession.cancelCurrent()` 调用当前 `Statement.cancel()`；SQLite 驱动不支持时，任务仍会在当前语句结束后退出。
 
 ---
 
@@ -129,9 +137,9 @@ Launcher
 
 | 层 | 内容 |
 |---|---|
-| 单元 | `EditBuffer`、`EditSqlBuilder`、`CellRenderer`、`CsvExporter`、SQL 构造、类型映射 |
-| 数据 | 演示库固定种子；分页/排序/筛选 SQL 断言；保存/反向撤销真实 SQLite |
-| UI | TestFX + Monocle Headless：外壳、标签、数据页、批量条、详情抽屉 |
+| 单元 | `EditBuffer`、`EditSqlBuilder`、`CellRenderer`、`CsvExporter`、`SqlLexer`、`SqlSplitter`、`SqlFormatter` |
+| 数据 | 演示库固定种子；分页/排序/筛选 SQL 断言；保存/反向撤销真实 SQLite；`DbSession.execute` 多语句/错误/行上限 |
+| UI | TestFX + Monocle Headless：外壳、标签、数据页、批量条、详情抽屉、查询页执行/取消/多结果 |
 | 样式 | `TokenParityTest`：JSON 键、`Tokens.ALL_KEYS`、亮暗 CSS 一致；禁止颜色字面量 |
 
 统一命令：
@@ -146,7 +154,7 @@ Launcher
 
 | 阶段 | 内容 |
 |---|---|
-| P3 | SQL 词法内核、RichTextFX 编辑器、多语句结果页签、取消执行、错误定位、执行计划 |
+| P3 ✅ | SQL 词法内核、RichTextFX 编辑器、多语句结果页签、取消执行、错误定位、执行计划、查询历史 |
 | P4 | 结构页：列/索引/外键/DDL 查看与安全的表结构编辑 |
 | P5 | 连接管理、PostgreSQL / MySQL、连接池、凭据存储 |
 | P6 | 导入/导出向导：CSV / JSON / Excel、字段映射、预览、批处理 |

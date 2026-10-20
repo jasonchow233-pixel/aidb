@@ -22,7 +22,7 @@ public final class StatusBar extends HBox {
     private final Label transaction = segment("自动提交", "adb-status__transaction");
     private final Label dirty = segment("", "adb-status__dirty");
     private final Label readonly = segment("只读", "adb-status__readonly");
-    private final Label version = segment("v0.1.0 · P2", "adb-status__version");
+    private final Label version = segment("v0.1.0 · P3", "adb-status__version");
 
     public StatusBar() {
         getStyleClass().add("adb-statusbar");

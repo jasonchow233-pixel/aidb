@@ -25,13 +25,20 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.time.LocalTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -71,6 +78,9 @@ public final class AppShell extends StackPane {
     private final HBox toast = new HBox(10, toastLabel, toastAction);
     private final String connectionName;
     private final DbSession session;
+    private final Map<String, String> initialQuerySql = new HashMap<>();
+    private final Map<String, File> initialQueryFile = new HashMap<>();
+    private int queryCounter;
 
     private Stage stage;
     private Region resizer;
@@ -101,7 +111,8 @@ public final class AppShell extends StackPane {
         this.sideBar = new SideBar(actions, objects, connectionName,
                 this::openTab, statusBar::setMessage);
         this.sideBar.setOnRefreshObjects(this::reloadObjects);
-        this.workspace = new WorkspaceView(actions, connectionName, this::createGridPage);
+        this.workspace = new WorkspaceView(actions, connectionName,
+                this::createGridPage, this::createQueryPage);
         this.palette = new CommandPalette(actions);
 
         registerActions();
@@ -162,6 +173,21 @@ public final class AppShell extends StackPane {
         if (!initial.isEmpty()) {
             openTab(new TabItem("grid:" + initial, initial, TabKind.GRID, initial));
         }
+        String initialQuery = System.getProperty("adb.query",
+                System.getenv().getOrDefault("ADB_QUERY", "")).trim();
+        if (!initialQuery.isEmpty()) {
+            String sql = initialQuery.equals("1") || initialQuery.equalsIgnoreCase("true")
+                    ? "SELECT id, name, email, active FROM users ORDER BY id LIMIT 100;"
+                    : initialQuery;
+            String id = "query:" + System.nanoTime();
+            initialQuerySql.put(id, sql);
+            openTab(new TabItem(id, "查询示例", TabKind.QUERY));
+            QueryPage page = workspace.activeQuery();
+            if (page != null) {
+                page.markClean();
+            }
+            Platform.runLater(workspace::runQuery);
+        }
     }
 
     /** 窗口关闭时调用：先停掉在途查询，再关连接。 */
@@ -196,11 +222,9 @@ public final class AppShell extends StackPane {
                         "连接向导将在 P5 接入。\n\n"
                                 + "P0 只验证外壳；P1 会先用固定的 SQLite 演示库跑通数据页。"));
         actions.register("new-query", "新建查询", "文件",
-                key("Shift+Shortcut+N"), () -> openTab(new TabItem(
-                        "query:" + System.nanoTime(), "未命名查询", TabKind.QUERY)));
+                key("Shift+Shortcut+N"), this::openNewQuery);
         actions.register("open-sql", "打开 SQL 文件…", "文件",
-                null, () -> showInfo("打开 SQL 文件",
-                        "文件打开与查询保存将在 P3 接入。"));
+                key("Shortcut+O"), this::openSqlFile);
         actions.register("tab.close", "关闭标签", "文件",
                 key("Shortcut+W"), () -> tabBar.closeActive());
         actions.register("window.close", "关闭窗口", "文件",
@@ -223,7 +247,54 @@ public final class AppShell extends StackPane {
         actions.register("command-palette", "命令面板", "编辑",
                 key("Shortcut+K"), palette::showPalette);
         actions.register("focus-search", "搜索对象", "编辑",
-                key("Shortcut+F"), sideBar::focusSearch);
+                key("Shortcut+F"), () -> {
+                    if (!workspace.focusSearch()) {
+                        sideBar.focusSearch();
+                    }
+                });
+
+        actions.register("query.run", "执行当前语句", "查询",
+                key("Shortcut+R"), () -> {
+                    if (!workspace.runQuery()) {
+                        status("请先新建一个查询页");
+                    }
+                });
+        actions.register("query.run-all", "执行全部语句", "查询",
+                key("Shift+Shortcut+R"), () -> {
+                    if (!workspace.runAllQuery()) {
+                        status("请先新建一个查询页");
+                    }
+                });
+        actions.register("query.cancel", "取消执行", "查询",
+                key("Shortcut+Period"), () -> {
+                    if (!workspace.cancelQuery()) {
+                        status("当前没有正在执行的查询");
+                    }
+                });
+        actions.register("query.explain", "解释执行计划", "查询",
+                key("Shortcut+E"), () -> {
+                    if (!workspace.explainQuery()) {
+                        status("请先新建一个查询页");
+                    }
+                });
+        actions.register("query.format", "格式化 SQL", "查询",
+                key("Alt+Shift+F"), () -> {
+                    if (!workspace.formatQuery()) {
+                        status("请先新建一个查询页");
+                    }
+                });
+        actions.register("query.save", "保存 SQL", "查询",
+                key("Shortcut+S"), () -> {
+                    if (!workspace.saveQuery()) {
+                        status("请先新建一个查询页");
+                    }
+                });
+        actions.register("query.comment", "注释 / 取消注释", "查询",
+                key("Shortcut+Slash"), () -> {
+                    if (!workspace.toggleQueryComment()) {
+                        status("请先新建一个查询页");
+                    }
+                });
 
         actions.register("sidebar.toggle", "折叠 / 展开侧栏", "视图",
                 key("Shortcut+Backslash"),
@@ -271,10 +342,11 @@ public final class AppShell extends StackPane {
                 key("F1"), this::showShortcuts);
         actions.register("about", "关于 AgenticDB", "帮助",
                 null, () -> showInfo("关于 AgenticDB",
-                        "AgenticDB v0.1.0\nJavaFX 25 · P1 竖线\n\n"
-                                + "SQLite 演示库 · 真实内省 · 只读分页数据页\n"
+                        "AgenticDB v0.1.0\nJavaFX 25 · P3 查询页\n\n"
+                                + "SQLite 演示库 · 真实内省 · 分页数据页 · SQL 编辑器\n"
                                 + "执行清单：NAVICAT-TODO.md\n"
                                 + "不内嵌浏览器，不启动 HTTP 端口。"));
+        updateQueryActions();
     }
 
     private void buildUi() {
@@ -367,13 +439,14 @@ public final class AppShell extends StackPane {
     private void showTab(TabItem tab) {
         workspace.showTab(tab);
         status("已激活：" + tab.title());
-        if (tab.kind() != TabKind.GRID) {
+        if (tab.kind() != TabKind.GRID && tab.kind() != TabKind.QUERY) {
             statusBar.setRange("—");
             statusBar.setDuration(-1);
             statusBar.setDirty(0);
             statusBar.setReadonly(true);
         }
         updateTabCloseEnabled();
+        updateQueryActions();
     }
 
     private boolean confirmClose(TabItem tab) {
@@ -424,8 +497,10 @@ public final class AppShell extends StackPane {
             workspace.showWelcome();
             statusBar.setRange("—");
             statusBar.setDuration(-1);
+            statusBar.setDirty(0);
         }
         updateTabCloseEnabled();
+        updateQueryActions();
     }
 
     private void updateTabCloseEnabled() {
@@ -454,47 +529,109 @@ public final class AppShell extends StackPane {
             return startupErrorPage(tab);
         }
         DataGridPage page = new DataGridPage(session, schemaService, tab.target(), connectionName,
-                new DataGridPage.Feedback() {
-                    @Override
-                    public void status(String message) {
-                        statusBar.setMessage(message);
-                    }
-
-                    @Override
-                    public void range(String text) {
-                        statusBar.setRange(text);
-                    }
-
-                    @Override
-                    public void duration(long millis) {
-                        statusBar.setDuration(millis);
-                    }
-
-                    @Override
-                    public void dirty(int count) {
-                        statusBar.setDirty(count);
-                    }
-
-                    @Override
-                    public void readonly(boolean readonly) {
-                        statusBar.setReadonly(readonly);
-                    }
-
-                    @Override
-                    public void toast(String message) {
-                        AppShell.this.toast(message);
-                    }
-
-                    @Override
-                    public void toast(String message, Runnable action) {
-                        AppShell.this.toast(message, action);
-                    }
-                },
-                this::openStructure,
-                dbExecutor,
-                settings);
+                pageFeedback(), this::openStructure, dbExecutor, settings);
         page.setDirtyListener(tab::markDirty);
         return page;
+    }
+
+    private QueryPage createQueryPage(TabItem tab) {
+        if (session == null) {
+            return null;
+        }
+        String initial = initialQuerySql.remove(tab.id());
+        File file = initialQueryFile.remove(tab.id());
+        QueryPage page = new QueryPage(session, connectionName, initial, dbExecutor, settings,
+                pageFeedback());
+        if (file != null) {
+            page.setCurrentFile(file);
+            page.markClean();
+        }
+        page.setDirtyListener(tab::markDirty);
+        page.setStateListener(this::updateQueryActions);
+        return page;
+    }
+
+    private DataGridPage.Feedback pageFeedback() {
+        return new DataGridPage.Feedback() {
+            @Override
+            public void status(String message) {
+                statusBar.setMessage(message);
+            }
+
+            @Override
+            public void range(String text) {
+                statusBar.setRange(text);
+            }
+
+            @Override
+            public void duration(long millis) {
+                statusBar.setDuration(millis);
+            }
+
+            @Override
+            public void dirty(int count) {
+                statusBar.setDirty(count);
+            }
+
+            @Override
+            public void readonly(boolean readonly) {
+                statusBar.setReadonly(readonly);
+            }
+
+            @Override
+            public void toast(String message) {
+                AppShell.this.toast(message);
+            }
+
+            @Override
+            public void toast(String message, Runnable action) {
+                AppShell.this.toast(message, action);
+            }
+        };
+    }
+
+    private void openNewQuery() {
+        queryCounter++;
+        String title = "未命名查询 " + queryCounter;
+        openTab(new TabItem("query:" + System.nanoTime(), title, TabKind.QUERY));
+        status("新建查询：" + title);
+    }
+
+    private void openSqlFile() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("打开 SQL 文件");
+        chooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("SQL", "*.sql", "*.txt"));
+        File file = chooser.showOpenDialog(stage);
+        if (file == null) {
+            return;
+        }
+        String sql;
+        try {
+            sql = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            status("打开失败：" + readable(e));
+            toast("打开失败：" + readable(e));
+            return;
+        }
+        String id = "query:" + System.nanoTime();
+        initialQuerySql.put(id, sql);
+        initialQueryFile.put(id, file);
+        openTab(new TabItem(id, file.getName(), TabKind.QUERY));
+        status("已打开：" + file.getName());
+    }
+
+    private void updateQueryActions() {
+        QueryPage page = workspace.activeQuery();
+        boolean hasPage = page != null;
+        boolean running = hasPage && page.isRunning();
+        actions.find("query.run").ifPresent(action -> action.setEnabled(hasPage && !running));
+        actions.find("query.run-all").ifPresent(action -> action.setEnabled(hasPage && !running));
+        actions.find("query.explain").ifPresent(action -> action.setEnabled(hasPage && !running));
+        actions.find("query.format").ifPresent(action -> action.setEnabled(hasPage && !running));
+        actions.find("query.save").ifPresent(action -> action.setEnabled(hasPage && !running));
+        actions.find("query.comment").ifPresent(action -> action.setEnabled(hasPage && !running));
+        actions.find("query.cancel").ifPresent(action -> action.setEnabled(running));
     }
 
     private void reloadObjects() {
@@ -622,11 +759,19 @@ public final class AppShell extends StackPane {
         showInfo("快捷键", """
                 ⌘N        新建连接
                 ⇧⌘N       新建查询
+                ⌘O        打开 SQL 文件
                 ⌘K        命令面板
-                ⌘F        搜索对象
+                ⌘F        搜索对象 / 查询页查找
+                ⌘R        执行当前语句
+                ⇧⌘R       执行全部语句
+                ⌘.        取消执行
+                ⌘E        解释执行计划
+                ⌘/        注释 / 取消注释
+                ⌥⇧F       格式化 SQL
+                ⌘S        保存 SQL
                 ⌘\\        折叠 / 展开侧栏
                 ⌘,        设置
-                F5        刷新
+                F5        刷新 / 重跑当前语句
                 ⌘W        关闭标签
                 ⇧⌘W       关闭窗口
                 F1        本页

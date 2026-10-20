@@ -28,6 +28,11 @@ public final class MainToolBar extends HBox {
         Button refresh = iconButton("↻", "刷新 (F5)", () -> actions.run("refresh"));
         refresh.setId("refresh-button");
 
+        Button query = actions.button("new-query");
+        query.setText("SQL");
+        query.setTooltip(new Tooltip("新建查询 (⇧⌘N)"));
+        query.setId("new-query-button");
+
         ComboBox<String> connections = new ComboBox<>();
         connections.getStyleClass().add("adb-connection-picker");
         connections.getItems().addAll(connectionName + " · 只读");
@@ -55,7 +60,7 @@ public final class MainToolBar extends HBox {
         settings.setId("settings-button");
 
         getChildren().addAll(
-                connect, refresh, separator(), connections,
+                connect, refresh, query, separator(), connections,
                 leftSpacer, search, rightSpacer,
                 theme, settings);
     }

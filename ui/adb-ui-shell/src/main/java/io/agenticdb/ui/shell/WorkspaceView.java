@@ -24,21 +24,27 @@ public final class WorkspaceView extends StackPane {
     private final ActionRegistry actions;
     private final String connectionName;
     private final Function<TabItem, Node> gridPageFactory;
+    private final Function<TabItem, QueryPage> queryPageFactory;
     private final Map<String, DataGridPage> gridPages = new LinkedHashMap<>();
+    private final Map<String, QueryPage> queryPages = new LinkedHashMap<>();
 
     private DataGridPage activeGrid;
+    private QueryPage activeQuery;
 
     public WorkspaceView(ActionRegistry actions, String connectionName,
-                         Function<TabItem, Node> gridPageFactory) {
+                         Function<TabItem, Node> gridPageFactory,
+                         Function<TabItem, QueryPage> queryPageFactory) {
         this.actions = actions;
         this.connectionName = connectionName;
         this.gridPageFactory = gridPageFactory;
+        this.queryPageFactory = queryPageFactory;
         getStyleClass().add("adb-workspace");
         showWelcome();
     }
 
     public void showWelcome() {
         activeGrid = null;
+        activeQuery = null;
 
         Label logo = new Label("◈");
         logo.getStyleClass().add("adb-welcome__logo");
@@ -88,12 +94,32 @@ public final class WorkspaceView extends StackPane {
             }
             if (page != null) {
                 activeGrid = page;
+                activeQuery = null;
                 getChildren().setAll(page);
                 page.activate();
                 return;
             }
         }
+        if (tab.kind() == TabKind.QUERY) {
+            QueryPage page = queryPages.get(tab.id());
+            if (page == null) {
+                page = queryPageFactory.apply(tab);
+                if (page == null) {
+                    activeGrid = null;
+                    activeQuery = null;
+                    getChildren().setAll(buildStaticPage(tab));
+                    return;
+                }
+                queryPages.put(tab.id(), page);
+            }
+            activeGrid = null;
+            activeQuery = page;
+            getChildren().setAll(page);
+            page.activate();
+            return;
+        }
         activeGrid = null;
+        activeQuery = null;
         getChildren().setAll(buildStaticPage(tab));
     }
 
@@ -106,6 +132,13 @@ public final class WorkspaceView extends StackPane {
             }
             page.close();
         }
+        QueryPage query = queryPages.remove(id);
+        if (query != null) {
+            if (query == activeQuery) {
+                activeQuery = null;
+            }
+            query.close();
+        }
     }
 
     public boolean hasDirtyChanges(String id) {
@@ -114,16 +147,93 @@ public final class WorkspaceView extends StackPane {
 
     public int dirtyCount(String id) {
         DataGridPage page = gridPages.get(id);
-        return page == null ? 0 : page.dirtyCount();
+        if (page != null) {
+            return page.dirtyCount();
+        }
+        QueryPage query = queryPages.get(id);
+        return query == null ? 0 : query.dirtyCount();
     }
 
-    /** F5：只刷新当前数据页；静态页返回 false，由外壳给通用提示。 */
+    /** F5：刷新当前数据页，或重新执行当前查询页的光标语句。 */
     public boolean refreshActive() {
-        if (activeGrid == null) {
+        if (activeGrid != null) {
+            activeGrid.refresh();
+            return true;
+        }
+        if (activeQuery != null) {
+            activeQuery.runCurrent();
+            return true;
+        }
+        return false;
+    }
+
+    /** ⌘F：查询页优先打开自己的查找栏。 */
+    public boolean focusSearch() {
+        if (activeQuery != null) {
+            activeQuery.focusSearch();
+            return true;
+        }
+        return false;
+    }
+
+    public boolean runQuery() {
+        if (activeQuery == null) {
             return false;
         }
-        activeGrid.refresh();
+        activeQuery.runCurrent();
         return true;
+    }
+
+    public boolean runAllQuery() {
+        if (activeQuery == null) {
+            return false;
+        }
+        activeQuery.runAll();
+        return true;
+    }
+
+    public boolean cancelQuery() {
+        if (activeQuery == null || !activeQuery.isRunning()) {
+            return false;
+        }
+        activeQuery.cancel();
+        return true;
+    }
+
+    public boolean explainQuery() {
+        if (activeQuery == null) {
+            return false;
+        }
+        activeQuery.explainCurrent();
+        return true;
+    }
+
+    public boolean formatQuery() {
+        if (activeQuery == null) {
+            return false;
+        }
+        activeQuery.formatSql();
+        return true;
+    }
+
+    public boolean toggleQueryComment() {
+        if (activeQuery == null) {
+            return false;
+        }
+        activeQuery.toggleComment();
+        return true;
+    }
+
+    public boolean saveQuery() {
+        if (activeQuery == null) {
+            return false;
+        }
+        activeQuery.save();
+        return true;
+    }
+
+    public QueryPage activeQuery() {
+        return activeQuery;
     }
 
     private VBox buildStaticPage(TabItem tab) {
@@ -160,8 +270,8 @@ public final class WorkspaceView extends StackPane {
 
         switch (tab.kind()) {
             case QUERY -> body.getChildren().add(emptyState(
-                    "⌨", "SQL 编辑器尚未接入",
-                    "P3 会在这里挂 RichTextFX、执行计划与结果表格。"));
+                    "⌨", "查询页不可用",
+                    "演示数据库未连接，查询页无法创建。请重启应用后重试。"));
             case STRUCTURE -> body.getChildren().add(emptyState(
                     "⚙", "结构页尚未接入",
                     "P4 会在这里显示列、索引、外键、DDL 与危险操作确认。"));

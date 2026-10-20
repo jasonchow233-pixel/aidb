@@ -8,7 +8,7 @@
 
 ## 当前状态（2026-10-20）
 
-**P0 外壳 + P1 竖线 + P2 数据页已完成。下一阶段是 P3 查询页。**
+**P0 外壳 + P1 竖线 + P2 数据页 + P3 查询页已完成。下一阶段是 P4 结构页。**
 
 | 能力 | 状态 | 证据 |
 |---|---|---|
@@ -39,14 +39,20 @@
 | 双主题（暗/亮，跟随系统，本地记忆） | ✅ | `ThemeManager` + `theme-*.css` |
 | 命令面板 ⌘K | ✅ | `CommandPalette` |
 | SQLite JDBC 会话（参数化查询/事务/类型映射/限流） | ✅ | `JdbcSession` |
-| TestFX 冒烟 + 数据页/编辑门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `EditBufferTest` |
+| SQL 词法/分句/格式化内核 | ✅ | `adb-sql`：`SqlLexer` / `SqlSplitter` / `SqlFormatter` |
+| RichTextFX SQL 编辑器：高亮、行号、当前行、查找替换 | ✅ | `SqlEditor` / `SqlHighlighter` / `QueryPage` |
+| 查询页：`⌘R` 当前语句、`⇧⌘R` 全部、`⌘.` 取消 | ✅ | `QueryPage` + `AppShell` 动作 |
+| 多语句结果页签：结果集 / 消息 / 错误 | ✅ | `QueryPage` |
+| 执行计划、错误定位、查询历史（最近 50 条） | ✅ | `QueryPage` / `ErrorLocator` / `QueryHistory` |
+| 查询结果只读表格、复制 TSV/SQL、CSV 导出 | ✅ | `CellRenderer` / `CsvExporter` |
+| TestFX 冒烟 + 数据页/编辑/查询页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` |
 
-当前门禁：**18 个测试类、81 条测试，0 失败**。统一命令：`./mvnw -B clean verify`。
+当前门禁：**24 个测试类、114 条测试，0 失败**。统一命令：`./mvnw -B clean verify`。
 
 演示库首次启动自动生成：4 张表（`users` 200 行、`orders` 500 行、`products` 80 行、`notes` 空表）+ 1 个视图。
 已有有效演示库不会被覆盖；`-Dadb.demo.db=/path/to/file.db` 可指定其他文件。
 
-真实窗口截图：`docs/screenshots/p0-shell.png`、`docs/screenshots/p2-users.png`。
+真实窗口截图：`docs/screenshots/p0-shell.png`、`docs/screenshots/p2-users.png`、`docs/screenshots/p3-query.png`。
 
 ---
 
@@ -66,6 +72,9 @@
 
 # 4. 验收时直接打开某张表
 ADB_OPEN=users ./mvnw -pl bootstrap/adb-desktop javafx:run
+
+# 5. 验收查询页：打开示例 SQL 并自动执行
+ADB_QUERY=1 ./mvnw -pl bootstrap/adb-desktop javafx:run
 ```
 
 只跑 UI 门禁：
@@ -83,7 +92,7 @@ TestFX 默认用 Monocle 无头模式；在本机想看真实窗口，去掉父 
 
 | 文档 | 回答什么问题 |
 |---|---|
-| **`NAVICAT-TODO.md`** | ⭐ **唯一执行清单**：当前状态、P2 完成项、P3–P7 路线与门禁 |
+| **`NAVICAT-TODO.md`** | ⭐ **唯一执行清单**：当前状态、P0–P3 完成项、P4–P7 路线与门禁 |
 | `docs/ARCHITECTURE.md` | 模块、数据流、线程模型、编辑/SQL/撤销不变量 |
 | `docs/UI-GUIDE.md` | 视觉基线、六区、组件与交互规则、令牌生成 |
 | `docs/COMPONENT-SELECTION.md` | 开源组件选型、版本、许可证、禁入清单 |
@@ -99,7 +108,7 @@ core/
   adb-model          领域模型（ColumnDef / RowPage / Danger / QueryLimits）
   adb-declarations   声明层加载与 Schema 校验
   adb-safety         危险分级与错误定位
-  adb-sql            SQL 词法内核（P3）
+  adb-sql            SQL 词法、分句、格式化内核
 
 workbench/
   adb-jdbc           统一 JDBC 会话、方言、类型映射
@@ -109,7 +118,7 @@ workbench/
 
 ui/
   adb-ui-core        设计令牌（tokens.json → Tokens.java + theme CSS）
-  adb-ui-shell       JavaFX 六区外壳、菜单、命令面板、数据页
+  adb-ui-shell       JavaFX 六区外壳、菜单、命令面板、数据页、查询页
 
 testing/
   adb-fixtures       演示库与测试夹具（固定种子）
@@ -142,7 +151,10 @@ bootstrap/
 - 反向撤销只覆盖最近一次保存；发生新编辑后不再提供。
 - 转置视图只读，不参与批量选择。
 - 本页搜索/隐藏只作用于当前页，不改变服务端分页。
-- 结构页与 SQL 编辑器仍是空状态骨架；P3/P4 依次接入。
+- 结构页仍是空状态骨架；P4 接入。
+- 查询页暂未做括号匹配与结果列宽持久化（P3.1）；当前高亮、行号、查找替换与只读结果均可用。
+- SQL 词法优先按标准 SQL / SQLite 解析；MySQL 反斜杠转义与 `#` 注释随 P5 方言接入。
+- 多语句逐条自动提交；失败会保留已完成语句的结果，不提供整批回滚。
 - 对象树在启动时一次性读取；PG/MySQL 大库再改异步懒加载。
 - 连接向导、设置持久化仍是轻量实现（`java.util.prefs`），P5 迁到 `config.db`。
 - 主题“跟随系统”目前只探测 macOS；Windows/Linux 默认亮色。
