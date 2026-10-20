@@ -12,6 +12,7 @@ public final class TabItem {
     private final String title;
     private final TabKind kind;
     private final String target;
+    private final String connectionId;
     private final BooleanProperty dirty = new SimpleBooleanProperty(false);
     private final IntegerProperty dirtyCount = new SimpleIntegerProperty(0);
 
@@ -24,10 +25,19 @@ public final class TabItem {
      *               页面工厂必须靠它取数据，不能从标题反解析。
      */
     public TabItem(String id, String title, TabKind kind, String target) {
+        this(id, title, kind, target, null);
+    }
+
+    /**
+     * @param connectionId 该标签属于哪个连接；{@code null} 表示设置/工具等全局标签。
+     *                     多连接下页面工厂按它取会话，避免不同连接的页共享一个全局 session。
+     */
+    public TabItem(String id, String title, TabKind kind, String target, String connectionId) {
         this.id = id;
         this.title = title;
         this.kind = kind;
         this.target = target == null ? title : target;
+        this.connectionId = connectionId;
     }
 
     public String id() {
@@ -44,6 +54,10 @@ public final class TabItem {
 
     public String target() {
         return target;
+    }
+
+    public String connectionId() {
+        return connectionId;
     }
 
     public BooleanProperty dirtyProperty() {

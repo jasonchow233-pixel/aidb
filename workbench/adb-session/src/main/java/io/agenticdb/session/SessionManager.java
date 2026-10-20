@@ -21,7 +21,9 @@ public final class SessionManager implements AutoCloseable {
 
     public synchronized DbSession open(String id, ConnectionSpec spec) throws SQLException {
         closeQuietly(id);
-        DbSession session = JdbcSession.open(spec);
+        // SQLite 的文件连接不走 HikariCP；PG/MySQL 走固定 1 连接的池。
+        DbSession session = spec.kind() == io.agenticdb.jdbc.DialectKind.SQLITE
+                ? JdbcSession.open(spec) : ConnectionPool.open(spec);
         sessions.put(id, session);
         return session;
     }

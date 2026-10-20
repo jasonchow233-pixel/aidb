@@ -5,9 +5,14 @@ import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.SchemaService.SchemaObject;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.session.ConnectionProfile;
+import io.agenticdb.session.ConnectionStore;
+import io.agenticdb.session.CredentialStore;
 import io.agenticdb.session.SessionManager;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Cursor;
@@ -72,12 +77,19 @@ public final class AppShell extends StackPane {
     private final SideBar sideBar;
     private final WorkspaceView workspace;
     private final CommandPalette palette;
+    private final ConnectionStore connectionStore;
+    private final CredentialStore credentials;
+    private final ObservableList<ConnectionProfile> connections = FXCollections.observableArrayList();
+    private final Map<String, List<SchemaObject>> objectsByConnection = new HashMap<>();
+    private final Map<String, ConnectionProfile> profilesById = new HashMap<>();
     private final BorderPane root = new BorderPane();
     private final Label toastLabel = new Label();
     private final Button toastAction = new Button("撤销");
     private final HBox toast = new HBox(10, toastLabel, toastAction);
-    private final String connectionName;
-    private final DbSession session;
+    private String connectionName;
+    private DbSession session;
+    private ConnectionProfile activeProfile;
+    private MainToolBar mainToolBar;
     private final Map<String, String> initialQuerySql = new HashMap<>();
     private final Map<String, File> initialQueryFile = new HashMap<>();
     private int queryCounter;
@@ -93,26 +105,20 @@ public final class AppShell extends StackPane {
         this.themeManager = themeManager;
 
         Path demoPath = DemoDatabase.defaultPath();
+        DemoDatabase.ensure(demoPath);
+        this.connectionStore = ConnectionStore.defaultStore();
+        this.credentials = connectionStore.credentials();
+        this.connectionStore.ensureDemo(demoPath);
+        this.connections.setAll(connectionStore.load());
         this.connectionName = demoPath.getFileName() == null
                 ? DemoDatabase.DEFAULT_FILE_NAME : demoPath.getFileName().toString();
 
-        DbSession opened = null;
-        List<SchemaObject> objects = List.of();
-        String error = null;
-        try {
-            DemoDatabase.ensure(demoPath);
-            opened = sessions.open("demo", ConnectionSpec.sqlite(demoPath));
-            objects = schemaService.listObjects(opened);
-        } catch (Exception e) {
-            error = readable(e);
-        }
-        this.session = opened;
-
-        this.sideBar = new SideBar(actions, objects, connectionName,
-                this::openTab, statusBar::setMessage);
+        this.sideBar = new SideBar(actions, List.of(), connectionName,
+                this::openTab, statusBar::setMessage, "demo", connections, this::selectConnection);
         this.sideBar.setOnRefreshObjects(this::reloadObjects);
         this.workspace = new WorkspaceView(actions, connectionName,
-                this::createGridPage, this::createQueryPage);
+                this::createGridPage, this::createQueryPage, this::createStructurePage,
+                this::createConnectionsPage);
         this.palette = new CommandPalette(actions);
 
         registerActions();
@@ -134,14 +140,201 @@ public final class AppShell extends StackPane {
         applySidebarWidth();
         updateTabCloseEnabled();
 
-        statusBar.setConnection(connectionName);
+        refreshProfiles();
+        ConnectionProfile demo = profileById("demo");
+        if (demo != null) {
+            connectProfile(demo, false);
+        }
         statusBar.setReadonly(true);
         statusBar.setRange("—");
-        if (error != null) {
-            status("演示库不可用：" + error);
+        if (activeProfile == null) {
+            status("演示库不可用：无法打开 " + connectionName);
         } else {
-            status("已连接 " + connectionName + " · " + objects.size() + " 个对象");
+            status("已连接 " + connectionName + " · " + objectsByConnection.getOrDefault(
+                    activeProfile.id(), List.of()).size() + " 个对象");
         }
+    }
+
+    // ─────────────────────────── 连接管理 ───────────────────────────
+
+    private void refreshProfiles() {
+        profilesById.clear();
+        for (ConnectionProfile profile : connections) {
+            profilesById.put(profile.id(), profile);
+        }
+        if (mainToolBar != null) {
+            mainToolBar.setConnections(connections,
+                    activeProfile == null ? "demo" : activeProfile.id());
+        }
+        sideBar.setConnections(connections);
+    }
+
+    private ConnectionProfile profileById(String id) {
+        return profilesById.get(id);
+    }
+
+    /** 激活一个连接：打开（或复用）会话、读取对象树、同步侧栏与工具栏。 */
+    private void connectProfile(ConnectionProfile profile, boolean touch) {
+        if (profile == null) {
+            return;
+        }
+        activeProfile = profile;
+        connectionName = profile.name();
+        session = null;
+        List<SchemaObject> objects = List.of();
+        try {
+            String password = credentials.password(profile.id()).orElse(null);
+            DbSession opened = sessions.open(profile.id(), profile.spec(password));
+            session = opened;
+            objects = schemaService.listObjects(session);
+            objectsByConnection.put(profile.id(), objects);
+            if (touch) {
+                connectionStore.touch(profile);
+                ConnectionProfile touched = profile.withLastUsed(System.currentTimeMillis());
+                connections.removeIf(existing -> existing.id().equals(touched.id()));
+                connections.add(touched);
+                connectionStore.save(touched);
+            }
+        } catch (Exception e) {
+            session = null;
+            status("连接失败：" + readable(e));
+            return;
+        }
+
+        refreshProfiles();
+        sideBar.setObjects(objects);
+        sideBar.setConnection(profile.id(), profile.name());
+        statusBar.setConnection(profile.name());
+        statusBar.setReadonly(true);
+        statusBar.setRange("—");
+        status("已连接 " + profile.name() + " · " + objects.size() + " 个对象");
+    }
+
+    /** 侧栏/工具栏切换连接。已打开的会话复用，不重开。 */
+    private void selectConnection(ConnectionProfile profile) {
+        if (profile == null) {
+            return;
+        }
+        if (activeProfile != null && activeProfile.id().equals(profile.id())
+                && sessions.isOpen(profile.id())) {
+            status("当前连接：" + profile.name());
+            return;
+        }
+        connectProfile(profile, true);
+    }
+
+    private void openConnectionWizard() {
+        openConnectionWizard(null);
+    }
+
+    private void openConnectionWizard(ConnectionProfile existing) {
+        if (stage == null) {
+            return;
+        }
+        ConnectionWizard wizard = new ConnectionWizard(stage, existing, credentials,
+                this::testConnection);
+        wizard.showAndWait().ifPresent(profile -> {
+            if (existing != null) {
+                connections.removeIf(item -> item.id().equals(existing.id()));
+                credentials.delete(existing.id());
+                sessions.close(existing.id());
+            }
+            connections.add(profile);
+            connectionStore.save(profile);
+            String password = wizard.password();
+            if (password != null && !password.isBlank()) {
+                credentials.save(profile.id(), password);
+            }
+            refreshProfiles();
+            connectProfile(profile, true);
+            openConnections();
+        });
+    }
+
+    private String testConnection(ConnectionSpec spec) {
+        try (DbSession test = io.agenticdb.session.ConnectionPool.open(spec)) {
+            test.query("SELECT 1", 1);
+            return null;
+        } catch (Exception e) {
+            return readable(e);
+        }
+    }
+
+    private void openConnections() {
+        openTab(new TabItem("connections", "连接管理", TabKind.CONNECTIONS));
+    }
+
+    private ConnectionsPage createConnectionsPage(TabItem tab) {
+        ConnectionsPage page = new ConnectionsPage(connections,
+                this::openConnectionWizard,
+                this::selectConnection,
+                this::openConnectionWizard,
+                this::duplicateConnection,
+                this::deleteConnection,
+                profile -> sessions.isOpen(profile.id()),
+                pageFeedback());
+        page.setDeleteConfirmation(this::confirmDeleteConnection);
+        return page;
+    }
+
+    private void duplicateConnection(ConnectionProfile profile) {
+        ConnectionProfile copy = profile.duplicate();
+        credentials.password(profile.id()).ifPresent(password ->
+                credentials.save(copy.id(), password));
+        connections.add(copy);
+        connectionStore.save(copy);
+        refreshProfiles();
+        status("已复制连接：" + copy.name());
+    }
+
+    private void deleteConnection(ConnectionProfile profile) {
+        if (profile == null) {
+            return;
+        }
+        sessions.close(profile.id());
+        credentials.delete(profile.id());
+        connectionStore.delete(profile);
+        connections.removeIf(existing -> existing.id().equals(profile.id()));
+        profilesById.remove(profile.id());
+        objectsByConnection.remove(profile.id());
+        if (activeProfile != null && activeProfile.id().equals(profile.id())) {
+            activeProfile = null;
+            session = null;
+            ConnectionProfile fallback = profileById("demo");
+            if (fallback == null) {
+                fallback = connections.isEmpty() ? null : connections.getFirst();
+            }
+            if (fallback != null) {
+                connectProfile(fallback, true);
+            } else {
+                sideBar.setObjects(List.of());
+                statusBar.setConnection("未连接");
+            }
+        }
+        refreshProfiles();
+        status("已删除连接：" + profile.name());
+    }
+
+    private boolean confirmDeleteConnection(ConnectionProfile profile) {
+        ButtonType ok = new ButtonType("删除", ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle("删除连接");
+        alert.setHeaderText("删除 " + profile.name() + "？");
+        alert.setContentText("连接元数据与钥匙串口令会被移除；数据库本身不受影响。");
+        alert.getButtonTypes().setAll(ok, cancel);
+        styleDialog(alert);
+        return alert.showAndWait().orElse(cancel) == ok;
+    }
+
+    private void reconnectConnection() {
+        if (activeProfile == null) {
+            status("当前没有连接");
+            return;
+        }
+        sessions.close(activeProfile.id());
+        session = null;
+        connectProfile(activeProfile, false);
     }
 
     // ─────────────────────────── 生命周期 ───────────────────────────
@@ -168,10 +361,27 @@ public final class AppShell extends StackPane {
     public void afterShown(Stage stage) {
         this.stage = stage;
         workspace.requestFocus();
+        String connection = System.getProperty("adb.connection",
+                System.getenv().getOrDefault("ADB_CONNECTION", "")).trim();
+        if (!connection.isEmpty()) {
+            ConnectionProfile selected = connections.stream()
+                    .filter(profile -> profile.id().equals(connection)
+                            || profile.name().equalsIgnoreCase(connection))
+                    .findFirst().orElse(null);
+            if (selected != null) {
+                selectConnection(selected);
+            }
+        }
         String initial = System.getProperty("adb.open",
                 System.getenv().getOrDefault("ADB_OPEN", "")).trim();
         if (!initial.isEmpty()) {
-            openTab(new TabItem("grid:" + initial, initial, TabKind.GRID, initial));
+            openTab(new TabItem("grid:" + activeProfileId() + ":" + initial, initial,
+                    TabKind.GRID, initial, activeProfileId()));
+        }
+        String structure = System.getProperty("adb.structure",
+                System.getenv().getOrDefault("ADB_STRUCTURE", "")).trim();
+        if (!structure.isEmpty()) {
+            openStructure(activeProfileId(), structure);
         }
         String initialQuery = System.getProperty("adb.query",
                 System.getenv().getOrDefault("ADB_QUERY", "")).trim();
@@ -179,9 +389,9 @@ public final class AppShell extends StackPane {
             String sql = initialQuery.equals("1") || initialQuery.equalsIgnoreCase("true")
                     ? "SELECT id, name, email, active FROM users ORDER BY id LIMIT 100;"
                     : initialQuery;
-            String id = "query:" + System.nanoTime();
+            String id = "query:" + activeProfileId() + ":" + System.nanoTime();
             initialQuerySql.put(id, sql);
-            openTab(new TabItem(id, "查询示例", TabKind.QUERY));
+            openTab(new TabItem(id, "查询示例", TabKind.QUERY, null, activeProfileId()));
             QueryPage page = workspace.activeQuery();
             if (page != null) {
                 page.markClean();
@@ -218,9 +428,9 @@ public final class AppShell extends StackPane {
 
     private void registerActions() {
         actions.register("new-connection", "新建连接…", "文件",
-                key("Shortcut+N"), () -> showInfo("新建连接",
-                        "连接向导将在 P5 接入。\n\n"
-                                + "P0 只验证外壳；P1 会先用固定的 SQLite 演示库跑通数据页。"));
+                key("Shortcut+N"), this::openConnectionWizard);
+        actions.register("connections.manage", "连接管理…", "文件",
+                null, this::openConnections);
         actions.register("new-query", "新建查询", "文件",
                 key("Shift+Shortcut+N"), this::openNewQuery);
         actions.register("open-sql", "打开 SQL 文件…", "文件",
@@ -314,8 +524,11 @@ public final class AppShell extends StackPane {
 
         actions.register("refresh", "刷新", "数据库",
                 key("F5"), this::refresh);
+        actions.register("connection.reconnect", "重新连接", "数据库",
+                null, this::reconnectConnection);
         actions.register("demo.open", "打开演示表 users", "数据库",
-                null, () -> openTab(new TabItem("grid:users", "users", TabKind.GRID, "users")));
+                null, () -> openTab(new TabItem("grid:" + activeProfileId() + ":users",
+                        "users", TabKind.GRID, "users", activeProfileId())));
 
         actions.register("diagnostics", "诊断", "工具",
                 null, () -> openTool("诊断"));
@@ -351,9 +564,10 @@ public final class AppShell extends StackPane {
 
     private void buildUi() {
         MenuBar menuBar = new MenuBarFactory(actions).build();
-        MainToolBar toolBar = new MainToolBar(actions, connectionName, this::status);
+        mainToolBar = new MainToolBar(actions, this::status, connections,
+                activeProfile == null ? "demo" : activeProfile.id(), this::selectConnection);
 
-        VBox top = new VBox(menuBar, toolBar);
+        VBox top = new VBox(menuBar, mainToolBar);
         top.getStyleClass().add("adb-top");
 
         resizer = buildResizer();
@@ -437,6 +651,12 @@ public final class AppShell extends StackPane {
     }
 
     private void showTab(TabItem tab) {
+        if (tab.connectionId() != null && !tab.connectionId().equals(activeProfileId())) {
+            ConnectionProfile target = profileById(tab.connectionId());
+            if (target != null) {
+                selectConnection(target);
+            }
+        }
         workspace.showTab(tab);
         status("已激活：" + tab.title());
         if (tab.kind() != TabKind.GRID && tab.kind() != TabKind.QUERY) {
@@ -513,7 +733,12 @@ public final class AppShell extends StackPane {
     }
 
     private void openStructure(String name) {
-        openTab(new TabItem("structure:" + name, name, TabKind.STRUCTURE, name));
+        openStructure(activeProfileId(), name);
+    }
+
+    private void openStructure(String connectionId, String name) {
+        openTab(new TabItem("structure:" + connectionId + ":" + name, name,
+                TabKind.STRUCTURE, name, connectionId));
         status("打开结构：" + name);
     }
 
@@ -525,22 +750,27 @@ public final class AppShell extends StackPane {
     // ─────────────────────────── 数据页 ───────────────────────────
 
     private Node createGridPage(TabItem tab) {
-        if (session == null) {
+        ConnectionProfile profile = connectionFor(tab);
+        DbSession pageSession = profile == null ? null : sessions.find(profile.id()).orElse(null);
+        if (pageSession == null) {
             return startupErrorPage(tab);
         }
-        DataGridPage page = new DataGridPage(session, schemaService, tab.target(), connectionName,
-                pageFeedback(), this::openStructure, dbExecutor, settings);
+        DataGridPage page = new DataGridPage(pageSession, schemaService, tab.target(),
+                profile.name(), pageFeedback(), name -> openStructure(profile.id(), name),
+                dbExecutor, settings);
         page.setDirtyListener(tab::markDirty);
         return page;
     }
 
     private QueryPage createQueryPage(TabItem tab) {
-        if (session == null) {
+        ConnectionProfile profile = connectionFor(tab);
+        DbSession pageSession = profile == null ? null : sessions.find(profile.id()).orElse(null);
+        if (pageSession == null) {
             return null;
         }
         String initial = initialQuerySql.remove(tab.id());
         File file = initialQueryFile.remove(tab.id());
-        QueryPage page = new QueryPage(session, connectionName, initial, dbExecutor, settings,
+        QueryPage page = new QueryPage(pageSession, profile.name(), initial, dbExecutor, settings,
                 pageFeedback());
         if (file != null) {
             page.setCurrentFile(file);
@@ -549,6 +779,31 @@ public final class AppShell extends StackPane {
         page.setDirtyListener(tab::markDirty);
         page.setStateListener(this::updateQueryActions);
         return page;
+    }
+
+    private StructurePage createStructurePage(TabItem tab) {
+        ConnectionProfile profile = connectionFor(tab);
+        DbSession pageSession = profile == null ? null : sessions.find(profile.id()).orElse(null);
+        if (pageSession == null) {
+            return null;
+        }
+        return new StructurePage(pageSession, schemaService, tab.target(), profile.name(),
+                pageFeedback(), dbExecutor, () -> schemaChanged(profile.id()));
+    }
+
+    private void schemaChanged(String connectionId) {
+        reloadObjects(connectionId);
+        workspace.refreshAll();
+    }
+
+    private ConnectionProfile connectionFor(TabItem tab) {
+        String id = tab == null ? null : tab.connectionId();
+        ConnectionProfile profile = id == null ? activeProfile : profilesById.get(id);
+        return profile == null ? activeProfile : profile;
+    }
+
+    private String activeProfileId() {
+        return activeProfile == null ? "demo" : activeProfile.id();
     }
 
     private DataGridPage.Feedback pageFeedback() {
@@ -593,7 +848,8 @@ public final class AppShell extends StackPane {
     private void openNewQuery() {
         queryCounter++;
         String title = "未命名查询 " + queryCounter;
-        openTab(new TabItem("query:" + System.nanoTime(), title, TabKind.QUERY));
+        openTab(new TabItem("query:" + activeProfileId() + ":" + System.nanoTime(), title,
+                TabKind.QUERY, null, activeProfileId()));
         status("新建查询：" + title);
     }
 
@@ -614,10 +870,10 @@ public final class AppShell extends StackPane {
             toast("打开失败：" + readable(e));
             return;
         }
-        String id = "query:" + System.nanoTime();
+        String id = "query:" + activeProfileId() + ":" + System.nanoTime();
         initialQuerySql.put(id, sql);
         initialQueryFile.put(id, file);
-        openTab(new TabItem(id, file.getName(), TabKind.QUERY));
+        openTab(new TabItem(id, file.getName(), TabKind.QUERY, null, activeProfileId()));
         status("已打开：" + file.getName());
     }
 
@@ -635,16 +891,25 @@ public final class AppShell extends StackPane {
     }
 
     private void reloadObjects() {
-        if (session == null) {
-            status("演示库未连接，无法刷新对象");
+        reloadObjects(activeProfileId());
+    }
+
+    private void reloadObjects(String connectionId) {
+        ConnectionProfile profile = profileById(connectionId);
+        DbSession target = profile == null ? null : sessions.find(profile.id()).orElse(null);
+        if (target == null) {
+            status("连接未打开，无法刷新对象");
             return;
         }
         status("正在刷新对象…");
         dbExecutor.submit(() -> {
             try {
-                List<SchemaObject> objects = schemaService.listObjects(session);
+                List<SchemaObject> objects = schemaService.listObjects(target);
                 Platform.runLater(() -> {
-                    sideBar.setObjects(objects);
+                    objectsByConnection.put(profile.id(), objects);
+                    if (activeProfile != null && activeProfile.id().equals(profile.id())) {
+                        sideBar.setObjects(objects);
+                    }
                     status("对象已刷新 · " + objects.size() + " 个");
                 });
             } catch (SQLException e) {

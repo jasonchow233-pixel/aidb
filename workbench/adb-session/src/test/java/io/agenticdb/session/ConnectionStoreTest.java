@@ -1,0 +1,82 @@
+package io.agenticdb.session;
+
+import io.agenticdb.jdbc.ConnectionSpec;
+import io.agenticdb.jdbc.DialectKind;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class ConnectionStoreTest {
+
+    @TempDir
+    Path temp;
+
+    @Test
+    void persistsMetadataWithoutPasswordAndKeepsDemoFavorite() throws Exception {
+        Path file = temp.resolve("connections.json");
+        CredentialStore credentials = CredentialStore.inMemory();
+        ConnectionStore store = new ConnectionStore(file, credentials);
+
+        store.ensureDemo(Path.of("demo.db"));
+        ConnectionProfile saved = ConnectionProfile.newProfile("Local PG",
+                DialectKind.POSTGRESQL, "localhost", 5432, "shop", "postgres");
+        credentials.save(saved.id(), "s3cret");
+        store.save(saved);
+
+        List<ConnectionProfile> loaded = store.load();
+        assertThat(loaded).extracting(ConnectionProfile::id)
+                .contains("demo", saved.id());
+        assertThat(loaded.getFirst().id()).isEqualTo("demo");
+        assertThat(loaded.getFirst().favorite()).isTrue();
+        assertThat(credentials.password(saved.id())).contains("s3cret");
+        assertThat(Files.readString(file, StandardCharsets.UTF_8))
+                .doesNotContain("s3cret")
+                .contains("Local PG");
+    }
+
+    @Test
+    void deleteRemovesMetadataAndCredential() {
+        ConnectionStore store = new ConnectionStore(temp.resolve("connections.json"),
+                CredentialStore.inMemory());
+        ConnectionProfile profile = ConnectionProfile.newProfile("MySQL", DialectKind.MYSQL,
+                "127.0.0.1", 3307, "demo", "root");
+        store.credentials().save(profile.id(), "pw");
+        store.save(profile);
+
+        store.delete(profile);
+
+        assertThat(store.load()).isEmpty();
+        assertThat(store.credentials().password(profile.id())).isEmpty();
+    }
+
+    @Test
+    void duplicateKeepsConnectionDetailsButNewIdAndNoLastUsed() {
+        ConnectionProfile profile = ConnectionProfile.newProfile("Old", DialectKind.POSTGRESQL,
+                "db.local", 5432, "app", "app").withFavorite(true).withLastUsed(123456L);
+        ConnectionProfile copy = profile.duplicate();
+
+        assertThat(copy.id()).isNotEqualTo(profile.id());
+        assertThat(copy.name()).isEqualTo("Old 副本");
+        assertThat(copy.favorite()).isFalse();
+        assertThat(copy.lastUsedAt()).isZero();
+        assertThat(copy.displayTarget()).isEqualTo("db.local:5432/app");
+    }
+
+    @Test
+    void profileToStringNeverContainsPassword() {
+        ConnectionProfile profile = ConnectionProfile.newProfile("PG", DialectKind.POSTGRESQL,
+                "db.local", 5432, "app", "app");
+        ConnectionSpec spec = profile.spec("very-secret");
+
+        assertThat(spec.toString()).doesNotContain("very-secret");
+        assertThat(profile.toString()).doesNotContain("very-secret");
+        assertThat(spec.jdbcUrl()).doesNotContain("very-secret");
+    }
+}

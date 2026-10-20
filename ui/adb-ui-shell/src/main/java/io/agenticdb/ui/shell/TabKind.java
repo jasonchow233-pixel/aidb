@@ -5,6 +5,7 @@ public enum TabKind {
     GRID("▦", "数据"),
     QUERY("⌨", "查询"),
     STRUCTURE("⚙", "结构"),
+    CONNECTIONS("◈", "连接"),
     TOOL("◆", "工具"),
     SETTINGS("⚙", "设置");
 

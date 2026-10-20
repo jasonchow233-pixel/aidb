@@ -25,19 +25,29 @@ public final class WorkspaceView extends StackPane {
     private final String connectionName;
     private final Function<TabItem, Node> gridPageFactory;
     private final Function<TabItem, QueryPage> queryPageFactory;
+    private final Function<TabItem, StructurePage> structurePageFactory;
+    private final Function<TabItem, ConnectionsPage> connectionsPageFactory;
     private final Map<String, DataGridPage> gridPages = new LinkedHashMap<>();
     private final Map<String, QueryPage> queryPages = new LinkedHashMap<>();
+    private final Map<String, StructurePage> structurePages = new LinkedHashMap<>();
+    private final Map<String, ConnectionsPage> connectionsPages = new LinkedHashMap<>();
 
     private DataGridPage activeGrid;
     private QueryPage activeQuery;
+    private StructurePage activeStructure;
+    private ConnectionsPage activeConnections;
 
     public WorkspaceView(ActionRegistry actions, String connectionName,
                          Function<TabItem, Node> gridPageFactory,
-                         Function<TabItem, QueryPage> queryPageFactory) {
+                         Function<TabItem, QueryPage> queryPageFactory,
+                         Function<TabItem, StructurePage> structurePageFactory,
+                         Function<TabItem, ConnectionsPage> connectionsPageFactory) {
         this.actions = actions;
         this.connectionName = connectionName;
         this.gridPageFactory = gridPageFactory;
         this.queryPageFactory = queryPageFactory;
+        this.structurePageFactory = structurePageFactory;
+        this.connectionsPageFactory = connectionsPageFactory;
         getStyleClass().add("adb-workspace");
         showWelcome();
     }
@@ -45,6 +55,8 @@ public final class WorkspaceView extends StackPane {
     public void showWelcome() {
         activeGrid = null;
         activeQuery = null;
+        activeStructure = null;
+        activeConnections = null;
 
         Label logo = new Label("◈");
         logo.getStyleClass().add("adb-welcome__logo");
@@ -118,8 +130,50 @@ public final class WorkspaceView extends StackPane {
             page.activate();
             return;
         }
+        if (tab.kind() == TabKind.CONNECTIONS) {
+            ConnectionsPage page = connectionsPages.get(tab.id());
+            if (page == null) {
+                page = connectionsPageFactory.apply(tab);
+                if (page == null) {
+                    activeGrid = null;
+                    activeQuery = null;
+                    activeStructure = null;
+                    getChildren().setAll(buildStaticPage(tab));
+                    return;
+                }
+                connectionsPages.put(tab.id(), page);
+            }
+            activeGrid = null;
+            activeQuery = null;
+            activeStructure = null;
+            activeConnections = page;
+            getChildren().setAll(page);
+            return;
+        }
+        if (tab.kind() == TabKind.STRUCTURE) {
+            StructurePage page = structurePages.get(tab.id());
+            if (page == null) {
+                page = structurePageFactory.apply(tab);
+                if (page == null) {
+                    activeGrid = null;
+                    activeQuery = null;
+                    activeStructure = null;
+                    getChildren().setAll(buildStaticPage(tab));
+                    return;
+                }
+                structurePages.put(tab.id(), page);
+            }
+            activeGrid = null;
+            activeQuery = null;
+            activeStructure = page;
+            activeConnections = null;
+            getChildren().setAll(page);
+            return;
+        }
         activeGrid = null;
         activeQuery = null;
+        activeStructure = null;
+        activeConnections = null;
         getChildren().setAll(buildStaticPage(tab));
     }
 
@@ -138,6 +192,17 @@ public final class WorkspaceView extends StackPane {
                 activeQuery = null;
             }
             query.close();
+        }
+        StructurePage structure = structurePages.remove(id);
+        if (structure != null) {
+            if (structure == activeStructure) {
+                activeStructure = null;
+            }
+            structure.close();
+        }
+        ConnectionsPage connections = connectionsPages.remove(id);
+        if (connections != null) {
+            connections.close();
         }
     }
 
@@ -164,7 +229,25 @@ public final class WorkspaceView extends StackPane {
             activeQuery.runCurrent();
             return true;
         }
+        if (activeStructure != null) {
+            activeStructure.reload();
+            return true;
+        }
+        if (activeConnections != null) {
+            activeConnections.refresh();
+            return true;
+        }
         return false;
+    }
+
+    /** 结构变更后：刷新所有已打开的数据页与结构页。 */
+    public void refreshAll() {
+        for (DataGridPage page : gridPages.values()) {
+            page.refresh();
+        }
+        for (StructurePage page : structurePages.values()) {
+            page.reload();
+        }
     }
 
     /** ⌘F：查询页优先打开自己的查找栏。 */
@@ -257,6 +340,7 @@ public final class WorkspaceView extends StackPane {
             case GRID -> connectionName + " · 只读";
             case QUERY -> "未执行";
             case STRUCTURE -> connectionName;
+            case CONNECTIONS -> "多连接管理";
             case TOOL -> "工具";
             case SETTINGS -> "本地设置";
         });
@@ -273,8 +357,11 @@ public final class WorkspaceView extends StackPane {
                     "⌨", "查询页不可用",
                     "演示数据库未连接，查询页无法创建。请重启应用后重试。"));
             case STRUCTURE -> body.getChildren().add(emptyState(
-                    "⚙", "结构页尚未接入",
-                    "P4 会在这里显示列、索引、外键、DDL 与危险操作确认。"));
+                    "⚙", "结构页不可用",
+                    "连接未打开时无法读取表结构。请重新连接后再试。"));
+            case CONNECTIONS -> body.getChildren().add(emptyState(
+                    "◈", "连接管理不可用",
+                    "连接配置不可用时无法管理连接。请重启应用后重试。"));
             case TOOL -> body.getChildren().add(emptyState(
                     "◆", tab.title(),
                     "该工具只保留入口；功能按 NAVICAT-TODO 的 P5/P6 接入。"));

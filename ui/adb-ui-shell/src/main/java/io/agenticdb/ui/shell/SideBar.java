@@ -4,8 +4,10 @@ import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TextField;
@@ -23,8 +25,10 @@ import javafx.scene.layout.VBox;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.SchemaService.ObjectKind;
 import io.agenticdb.introspect.SchemaService.SchemaObject;
+import io.agenticdb.session.ConnectionProfile;
 
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -39,9 +43,12 @@ import java.util.function.Consumer;
 public final class SideBar extends VBox {
 
     private final ActionRegistry actions;
-    private final String connectionName;
+    private String connectionName;
+    private String connectionId;
     private final Consumer<TabItem> openTab;
     private final Consumer<String> status;
+    private Consumer<ConnectionProfile> onSelectConnection = profile -> { };
+    private List<ConnectionProfile> connections = List.of();
     private List<SchemaObject> tables = List.of();
     private List<SchemaObject> views = List.of();
     private Runnable onRefreshObjects = () -> { };
@@ -52,6 +59,7 @@ public final class SideBar extends VBox {
     private final VBox favoriteBox = new VBox(4);
     private final TextField search = new TextField();
     private final TreeView<DemoNode> tree = new TreeView<>();
+    private final ComboBox<ConnectionProfile> connectionPicker = new ComboBox<>();
 
     private Consumer<Boolean> onCollapsed = value -> { };
     private boolean collapsed;
@@ -61,10 +69,24 @@ public final class SideBar extends VBox {
                    String connectionName,
                    Consumer<TabItem> openTab,
                    Consumer<String> status) {
+        this(actions, objects, connectionName, openTab, status, null, List.of(), profile -> { });
+    }
+
+    public SideBar(ActionRegistry actions,
+                   List<SchemaObject> objects,
+                   String connectionName,
+                   Consumer<TabItem> openTab,
+                   Consumer<String> status,
+                   String connectionId,
+                   List<ConnectionProfile> connections,
+                   Consumer<ConnectionProfile> onSelectConnection) {
         this.actions = actions;
         this.connectionName = connectionName;
+        this.connectionId = connectionId;
         this.openTab = openTab;
         this.status = status;
+        this.connections = connections == null ? List.of() : List.copyOf(connections);
+        this.onSelectConnection = onSelectConnection == null ? profile -> { } : onSelectConnection;
         setObjects(objects == null ? List.of() : objects, false);
 
         getStyleClass().add("adb-sidebar");
@@ -83,6 +105,25 @@ public final class SideBar extends VBox {
 
     public void setOnRefreshObjects(Runnable onRefreshObjects) {
         this.onRefreshObjects = onRefreshObjects == null ? () -> { } : onRefreshObjects;
+    }
+
+    /** 多连接切换：替换可选连接列表并保持当前选中项。 */
+    public void setConnections(List<ConnectionProfile> connections) {
+        this.connections = connections == null ? List.of() : List.copyOf(connections);
+        connectionPicker.setItems(javafx.collections.FXCollections.observableArrayList(this.connections));
+        if (connectionId != null) {
+            connectionPicker.getSelectionModel().select(findActiveProfile());
+        }
+    }
+
+    public void setConnection(String id, String name) {
+        this.connectionId = id;
+        this.connectionName = name;
+        refreshTree();
+        refreshFavorites();
+        if (id != null) {
+            connectionPicker.getSelectionModel().select(findActiveProfile());
+        }
     }
 
     /** 用新的内省结果替换对象树；对象在数据库里被增删后调用。 */
@@ -155,6 +196,33 @@ public final class SideBar extends VBox {
         search.setPrefHeight(28);
         search.textProperty().addListener((observable, oldValue, newValue) -> refreshTree());
 
+        Button manageConnections = new Button("◈  连接管理");
+        manageConnections.setId("sidebar-connections");
+        manageConnections.getStyleClass().add("adb-sidebar__nav");
+        manageConnections.setMaxWidth(Double.MAX_VALUE);
+        manageConnections.setAlignment(Pos.CENTER_LEFT);
+        manageConnections.setOnAction(event -> openConnections());
+
+        connectionPicker.setId("sidebar-connection-picker");
+        connectionPicker.getStyleClass().add("adb-connection-picker");
+        connectionPicker.setMaxWidth(Double.MAX_VALUE);
+        connectionPicker.setCellFactory(view -> new ConnectionCell());
+        connectionPicker.setButtonCell(new ConnectionCell());
+        connectionPicker.setItems(javafx.collections.FXCollections.observableArrayList(connections));
+        if (connectionId != null) {
+            connectionPicker.getSelectionModel().select(findActiveProfile());
+        }
+        connectionPicker.setOnAction(event -> {
+            ConnectionProfile selected = connectionPicker.getValue();
+            if (selected != null) {
+                onSelectConnection.accept(selected);
+            }
+        });
+
+        HBox connectionBar = new HBox(6, manageConnections, connectionPicker);
+        HBox.setHgrow(connectionPicker, Priority.ALWAYS);
+        connectionBar.getStyleClass().add("adb-sidebar__connection");
+
         VBox favorites = section("收藏", favoriteBox);
         VBox connections = section("连接", tree);
         VBox.setVgrow(tree, Priority.ALWAYS);
@@ -216,7 +284,8 @@ public final class SideBar extends VBox {
                 navButton("⇅  导入 / 导出", () -> openTool("导入 / 导出")),
                 navButton("⚙  设置", () -> openTab.accept(new TabItem("settings", "设置", TabKind.SETTINGS))));
 
-        expanded.getChildren().addAll(header, search, favorites, connections, workbench, tools);
+        expanded.getChildren().addAll(header, search, connectionBar, favorites, connections,
+                workbench, tools);
         VBox.setVgrow(connections, Priority.ALWAYS);
 
         refreshFavorites();
@@ -418,19 +487,27 @@ public final class SideBar extends VBox {
     }
 
     private void openGrid(String name) {
-        openTab.accept(new TabItem("grid:" + name, name, TabKind.GRID, name));
+        openTab.accept(new TabItem("grid:" + connectionId + ":" + name, name, TabKind.GRID,
+                name, connectionId));
         status.accept("打开表：" + name);
     }
 
     private void openStructure(String name) {
-        openTab.accept(new TabItem("structure:" + name, name, TabKind.STRUCTURE, name));
+        openTab.accept(new TabItem("structure:" + connectionId + ":" + name, name,
+                TabKind.STRUCTURE, name, connectionId));
         status.accept("打开结构：" + name);
     }
 
     private void openQuery(String name) {
         String title = name == null ? "未命名查询" : "查询 · " + name;
-        openTab.accept(new TabItem("query:" + System.nanoTime(), title, TabKind.QUERY));
+        openTab.accept(new TabItem("query:" + connectionId + ":" + System.nanoTime(), title,
+                TabKind.QUERY, null, connectionId));
         status.accept("新建查询");
+    }
+
+    private void openConnections() {
+        openTab.accept(new TabItem("connections", "连接管理", TabKind.CONNECTIONS));
+        status.accept("打开连接管理");
     }
 
     private void openTool(String title) {
@@ -444,11 +521,30 @@ public final class SideBar extends VBox {
         Clipboard.getSystemClipboard().setContent(content);
     }
 
+    private ConnectionProfile findActiveProfile() {
+        return connections.stream()
+                .filter(profile -> profile.id().equals(connectionId))
+                .findFirst()
+                .orElse(null);
+    }
+
     private enum NodeKind {
         CONNECTION, GROUP, TABLE, VIEW
     }
 
     private record DemoNode(String name, NodeKind kind, String icon) {
+    }
+
+    private final class ConnectionCell extends ListCell<ConnectionProfile> {
+        @Override
+        protected void updateItem(ConnectionProfile item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setText(null);
+                return;
+            }
+            setText(item.name() + "  ·  " + item.kindLabel() + "  ·  " + item.displayTarget());
+        }
     }
 
     private final class DemoCell extends TreeCell<DemoNode> {

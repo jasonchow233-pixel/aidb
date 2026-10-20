@@ -39,11 +39,13 @@ class AppShellTest {
     static void isolateDemoDatabase() throws IOException {
         demoDirectory = Files.createTempDirectory("adb-app-test-");
         System.setProperty("adb.demo.db", demoDirectory.resolve("demo.db").toString());
+        System.setProperty("adb.connections.file", demoDirectory.resolve("connections.json").toString());
     }
 
     @AfterAll
     static void cleanDemoDatabase() throws IOException {
         System.clearProperty("adb.demo.db");
+        System.clearProperty("adb.connections.file");
         if (demoDirectory == null) {
             return;
         }
