@@ -1,0 +1,98 @@
+# ============================================================
+# SQL Server 传输家族
+# ============================================================
+
+schemaVersion: 1
+id: sqlserver
+label: SQL Server 兼容家族
+
+members:
+  - sqlserver
+  - azure-sql
+  - synapse
+
+supportsTransactionalDdl: true      # ⭐ SQL Server 支持事务 DDL
+identityKeyword: IDENTITY(1,1)
+quoteIdent: '['                    # ⭐ SQL Server 用方括号，不是双引号
+
+typeMapping:
+  bit:
+    lossy: false
+    to: { postgres: BOOLEAN, mysql: TINYINT(1), sqlite: INTEGER, oracle: NUMBER(1) }
+  tinyint:
+    lossy: false
+    to: { postgres: SMALLINT, mysql: TINYINT, sqlite: INTEGER, oracle: NUMBER(3) }
+  smallint:
+    lossy: false
+    to: { postgres: SMALLINT, mysql: SMALLINT, sqlite: INTEGER, oracle: NUMBER(5) }
+  int:
+    lossy: false
+    to: { postgres: INTEGER, mysql: INT, sqlite: INTEGER, oracle: NUMBER(10) }
+  bigint:
+    lossy: false
+    to: { postgres: BIGINT, mysql: BIGINT, sqlite: INTEGER, oracle: NUMBER(19) }
+  decimal:
+    lossy: false
+    to:
+      postgres: NUMERIC
+      mysql: DECIMAL(38,10)
+      sqlite: NUMERIC
+      oracle: NUMBER
+  money:
+    lossy: true                  # ⭐ 货币类型，精度固定，迁移必须转 DECIMAL
+    # ⛔ 值里带逗号必须加引号，原因同 sqlite.yaml 的 NUMERIC
+    to: { postgres: 'NUMERIC(19,4)', mysql: 'DECIMAL(19,4)', sqlite: NUMERIC, oracle: 'NUMBER(19,4)' }
+  float:
+    lossy: true
+    to: { postgres: REAL, mysql: FLOAT, sqlite: REAL, oracle: BINARY_FLOAT }
+  real:
+    lossy: true
+    to: { postgres: REAL, mysql: FLOAT, sqlite: REAL, oracle: BINARY_FLOAT }
+  char:
+    lossy: false
+    to: { postgres: CHAR, mysql: CHAR, sqlite: TEXT, oracle: CHAR }
+  nchar:
+    lossy: false
+    to: { postgres: CHAR, mysql: CHAR, sqlite: TEXT, oracle: NCHAR }
+  varchar:
+    lossy: false
+    to: { postgres: VARCHAR, mysql: VARCHAR, sqlite: TEXT, oracle: VARCHAR2 }
+  nvarchar:
+    lossy: false
+    to: { postgres: VARCHAR, mysql: VARCHAR, sqlite: TEXT, oracle: NVARCHAR2 }
+  text:
+    lossy: false
+    to: { postgres: TEXT, mysql: LONGTEXT, sqlite: TEXT, oracle: CLOB }
+  ntext:
+    lossy: false
+    to: { postgres: TEXT, mysql: LONGTEXT, sqlite: TEXT, oracle: NCLOB }
+  binary:
+    lossy: false
+    to: { postgres: BYTEA, mysql: BINARY, sqlite: BLOB, oracle: RAW }
+  varbinary:
+    lossy: false
+    to: { postgres: BYTEA, mysql: VARBINARY, sqlite: BLOB, oracle: RAW }
+  image:
+    lossy: false
+    to: { postgres: BYTEA, mysql: LONGBLOB, sqlite: BLOB, oracle: BLOB }
+  date:
+    lossy: false
+    to: { postgres: DATE, mysql: DATE, sqlite: TEXT, oracle: DATE }
+  time:
+    lossy: false
+    to: { postgres: TIME, mysql: TIME, sqlite: TEXT, oracle: VARCHAR2(18) }
+  datetime:
+    lossy: true
+    to: { postgres: TIMESTAMP, mysql: DATETIME, sqlite: TEXT, oracle: TIMESTAMP }
+  datetime2:
+    lossy: false
+    to: { postgres: TIMESTAMP, mysql: DATETIME(6), sqlite: TEXT, oracle: TIMESTAMP }
+  datetimeoffset:
+    lossy: false
+    to: { postgres: TIMESTAMPTZ, mysql: DATETIME, sqlite: TEXT, oracle: TIMESTAMP }
+  uniqueidentifier:
+    lossy: false
+    to: { postgres: UUID, mysql: CHAR(36), sqlite: TEXT, oracle: VARCHAR2(36) }
+  sql_variant:
+    lossy: true
+    to: { postgres: TEXT, mysql: TEXT, sqlite: TEXT, oracle: VARCHAR2(4000) }

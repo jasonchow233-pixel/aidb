@@ -1,0 +1,70 @@
+# ============================================================
+# 达梦 DM8 连接描述符 —— ⭐ 展示三个关键设计
+#
+#   1. runtimeMode: jdbc  → 加这个库 = 1 个 YAML，0 行代码
+#      （迁移前这里的 jdbc 指的是「Rust 主程序 spawn 的 Java 子进程」；
+#       迁移后主程序本身是 Java，jdbc 就是本进程内的 JDBC 通道）
+#   2. transferObjectFamily: oracle → 传输规则复用 oracle 家族
+#   3. traits 显式 false → UI 自动隐藏/提示，不需要 UI 硬编码
+#
+# 对照 DBX：#12124 导出错误生成 IDENTITY_INSERT / #11794 丢失自增属性
+# 根因就是这些差异没有在任何地方声明，只能靠用户报 issue。
+# ============================================================
+
+schemaVersion: 1
+order: 260
+id: dameng
+rustVariant: Dameng
+label: 达梦 DM8
+icon: dameng.svg
+
+dialect: Dameng
+runtimeMode: jdbc                  # ⭐ Java 侧本进程 JDBC 通道
+mcpMode: bridge                    # ⭐ MCP 经 Agent 代理
+defaultPort: 5236
+urlTemplate: "jdbc:dm://{host}:{port}/{database}?schema={database}"
+
+driverClass: dm.jdbc.driver.DmDriver    # ⭐ build.rs 断言 runtimeMode=jdbc 时必填
+driverArtifact:
+  key: dameng-dm8
+  jar: dm8-jdbc.jar
+  checksum: "sha256:9f2c1a4e7b3d8f6a5c2e1b0d9a8f7e6d5c4b3a2918273645"  # ⭐ 真实形态
+  license: "达梦官方"
+
+traits:
+  schemaAware: false
+  singleDatabase: true             # ⭐ 达梦单库，无 database 层
+  clearableQuerySchema: true
+  identityKind: identity           # ⭐ 不是 autoIncrement
+  sequenceObjects: false           # ⭐ UI 隐藏序列工作台
+  transactionalDdl: false          # ⭐ UI 提示「DDL 会自动提交」
+  onlineDdlConcurrent: false
+  multipleResultsets: false
+  savepoints: true
+  explainFormats: [text]           # ⭐ 仅文本 → UI 只显示文本选项
+  maxParams: 32767
+  identifierQuote: "\""
+  paramStyle: named                # ⭐ 达梦用 :name
+
+capabilities:
+  queryExecution: true
+  metadataBrowse: true
+  objectBrowser: true
+  objectSource: true
+  schemaSearch: true
+  diagram: true
+  tableDataEdit: true
+  tableStructureEdit: true
+  tableImport: true
+  dataTransfer: true
+  sqlFileExecution: true
+  databaseCreate: false            # ⭐ 明确关闭（不是"不写"）
+  fieldLineage: true
+  sqlExplain: true
+  userAdmin: false                 # ⭐ 明确关闭
+  specializedSurface: false
+
+compareModes: [schema, data]
+transferSupportLevel: family-compatible
+transferObjectFamily: oracle      # ⭐⭐⭐ 传输规则复用 oracle 家族
+supportLevel: operate              # ⭐ 有已知限制，UI 显示「操作级支持」徽标

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.agenticdb</groupId>
+    <artifactId>aidb-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>adb-ui-core</artifactId>
+  <name>AgenticDB :: UI Core</name>
+  <description>设计令牌、主题、图标。颜色字面量只允许出现在生成产物里。</description>
+
+  <dependencies>
+    <dependency><groupId>io.agenticdb</groupId><artifactId>adb-model</artifactId></dependency>
+    <dependency><groupId>org.openjfx</groupId><artifactId>javafx-controls</artifactId></dependency>
+    <dependency><groupId>org.controlsfx</groupId><artifactId>controlsfx</artifactId></dependency>
+    <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><scope>test</scope></dependency>
+  </dependencies>
+</project>

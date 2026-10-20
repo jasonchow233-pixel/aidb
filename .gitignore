@@ -1,8 +1,13 @@
 # ── 构建产物 ──
 target/
 dist/
+build/
+.vite/
 node_modules/
 *.tsbuildinfo
+*.log
+hs_err_pid*
+replay_pid*
 
 # ── 运行时数据 ──
 # 演示库是可生成的产物（35MB），不该进版本库。
@@ -34,7 +39,8 @@ credentials.yaml
 coverage/
 *.profraw
 tmp/
-# ── 测试产物 ──
-engine/tests/node_modules/
-engine/tests/package-lock.json
-engine/tests/package-lock.json
+out/
+
+# ── 旧工具残留（项目已无 Python） ──
+__pycache__/
+*.pyc

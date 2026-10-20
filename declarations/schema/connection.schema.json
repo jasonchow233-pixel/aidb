@@ -1,0 +1,325 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenticdb.dev/schemas/connection-v1.json",
+  "title": "AgenticDB Connection Descriptor",
+  "description": "declarations/connections/*.yaml 的唯一真相源。由 crates/adb-types/build.rs 校验并代码生成。",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "order",
+    "id",
+    "rustVariant",
+    "label",
+    "dialect",
+    "runtimeMode",
+    "mcpMode",
+    "defaultPort",
+    "traits",
+    "capabilities"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "description": "描述符格式版本。build.rs 断言必须为 1。"
+    },
+    "order": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9999,
+      "description": "UI 排序权重。build.rs 断言全局唯一。"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "稳定标识。序列化 API 与 MCP 工具名使用。build.rs 断言全局唯一。"
+    },
+    "rustVariant": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Za-z0-9]*$",
+      "description": "生成的 Rust enum 变体名。build.rs 断言全局唯一。"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "description": "显示名（中文优先）"
+    },
+    "labelEn": {
+      "type": "string",
+      "description": "英文名。缺失时回退到 label。"
+    },
+    "icon": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+\\.svg$"
+    },
+    "dialect": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Za-z0-9]*$",
+      "description": "绑定的 SQL 方言。build.rs 断言 declarations/dialects/<name>.yaml 存在。"
+    },
+    "runtimeMode": {
+      "enum": [
+        "native",
+        "jdbc",
+        "http"
+      ],
+      "description": "驱动通道。native=编译进主二进制；jdbc=Java Agent 子进程；http=Rust HTTP 驱动。"
+    },
+    "mcpMode": {
+      "enum": [
+        "builtin",
+        "bridge",
+        "none"
+      ],
+      "description": "builtin=直接暴露工具；bridge=经 Agent 代理；none=不支持 MCP。"
+    },
+    "defaultPort": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535,
+      "description": "默认端口。0 = 无端口（文件型数据库，如 SQLite）。UI 在值为 0 时必须隐藏端口输入框。"
+    },
+    "urlTemplate": {
+      "type": "string",
+      "description": "占位符：{host} {port} {database} {user} {password}。缺失时 UI 用表单模式。"
+    },
+    "driverClass": {
+      "type": "string",
+      "description": "JDBC 主类。runtimeMode=jdbc 时必填（build.rs 断言）。"
+    },
+    "driverArtifact": {
+      "type": "object",
+      "required": [
+        "key"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "驱动商店条目 key"
+        },
+        "jar": {
+          "type": "string",
+          "description": "默认 jar 名（仅提示）"
+        },
+        "checksum": {
+          "type": "string",
+          "description": "sha256:<hex>，下载校验"
+        },
+        "license": {
+          "type": "string"
+        }
+      }
+    },
+    "traits": {
+      "type": "object",
+      "description": "引擎特性。驱动 UI 提示与工作台显示的唯一真相源。全部显式声明，不依赖缺失推断。",
+      "additionalProperties": false,
+      "required": [
+        "schemaAware",
+        "singleDatabase",
+        "identityKind",
+        "sequenceObjects",
+        "transactionalDdl"
+      ],
+      "properties": {
+        "schemaAware": {
+          "type": "boolean",
+          "description": "是否存在 schema 层级（SQLite=false）"
+        },
+        "singleDatabase": {
+          "type": "boolean",
+          "description": "单库引擎，无 database 层（达梦/Oracle 模式=true）"
+        },
+        "clearableQuerySchema": {
+          "type": "boolean",
+          "description": "查询 schema 选择器是否可清空为全库"
+        },
+        "identityKind": {
+          "enum": [
+            "identity",
+            "autoIncrement",
+            "rowid",
+            "rowguid",
+            "sequence",
+            "none"
+          ],
+          "description": "自增机制。决定导出器生成的 DDL 关键字。"
+        },
+        "sequenceObjects": {
+          "type": "boolean",
+          "description": "有独立序列对象 → UI 显示序列工作台"
+        },
+        "transactionalDdl": {
+          "type": "boolean",
+          "description": "⭐ DDL 可在事务内回滚。false 时 UI 必须提示「DDL 会自动提交」"
+        },
+        "onlineDdlConcurrent": {
+          "type": "boolean",
+          "description": "支持 CREATE INDEX CONCURRENTLY / ONLINE"
+        },
+        "multipleResultsets": {
+          "type": "boolean"
+        },
+        "savepoints": {
+          "type": "boolean"
+        },
+        "explainFormats": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "json",
+              "tree",
+              "text",
+              "stats"
+            ]
+          },
+          "minItems": 1,
+          "description": "EXPLAIN 可用格式。UI 只显示支持的选项。"
+        },
+        "maxParams": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "预处理参数上限。0=无限制（MySQL）。"
+        },
+        "identifierQuote": {
+          "type": "string",
+          "minLength": 1,
+          "default": "\""
+        },
+        "paramStyle": {
+          "enum": [
+            "numbered",
+            "positional",
+            "named"
+          ],
+          "default": "numbered"
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "⭐ 产品能力矩阵。全部字段必须显式 true/false —— 缺失即视为声明违规。build.rs 强制。",
+      "additionalProperties": false,
+      "required": [
+        "queryExecution",
+        "metadataBrowse",
+        "objectBrowser",
+        "objectSource",
+        "schemaSearch",
+        "diagram",
+        "tableDataEdit",
+        "tableStructureEdit",
+        "tableImport",
+        "dataTransfer",
+        "sqlFileExecution",
+        "databaseCreate",
+        "fieldLineage",
+        "sqlExplain",
+        "userAdmin"
+      ],
+      "properties": {
+        "queryExecution": {
+          "type": "boolean",
+          "description": "SQL 执行"
+        },
+        "metadataBrowse": {
+          "type": "boolean",
+          "description": "元数据树"
+        },
+        "objectBrowser": {
+          "type": "boolean",
+          "description": "视图/存储过程/函数/触发器"
+        },
+        "objectSource": {
+          "type": "boolean",
+          "description": "对象源码编辑"
+        },
+        "schemaSearch": {
+          "type": "boolean",
+          "description": "跨 schema 搜索"
+        },
+        "diagram": {
+          "type": "boolean",
+          "description": "ER 图"
+        },
+        "tableDataEdit": {
+          "type": "boolean",
+          "description": "表格数据编辑"
+        },
+        "tableStructureEdit": {
+          "type": "boolean",
+          "description": "可视化改表"
+        },
+        "tableImport": {
+          "type": "boolean",
+          "description": "CSV/Excel 导入"
+        },
+        "dataTransfer": {
+          "type": "boolean",
+          "description": "跨连接数据传输"
+        },
+        "sqlFileExecution": {
+          "type": "boolean",
+          "description": ".sql 文件执行"
+        },
+        "databaseCreate": {
+          "type": "boolean",
+          "description": "建库"
+        },
+        "fieldLineage": {
+          "type": "boolean",
+          "description": "字段血缘"
+        },
+        "sqlExplain": {
+          "type": "boolean",
+          "description": "EXPLAIN"
+        },
+        "userAdmin": {
+          "type": "boolean",
+          "description": "用户/权限管理"
+        },
+        "specializedSurface": {
+          "type": "boolean",
+          "default": false,
+          "description": "⭐ 有专属管理界面（Redis 浏览器/MQ 控制台）。设 true 时可绕过「至少一个能力」检查。"
+        }
+      }
+    },
+    "compareModes": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "schema",
+          "data"
+        ]
+      },
+      "uniqueItems": true,
+      "default": [
+        "schema"
+      ]
+    },
+    "transferSupportLevel": {
+      "enum": [
+        "native",
+        "family-compatible",
+        "read-only"
+      ],
+      "description": "native=方言原生；family-compatible=按 transferObjectFamily 复用；read-only=只导不传"
+    },
+    "transferObjectFamily": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "⭐ 传输规则家族。build.rs 断言 declarations/transfer-families/<id>.yaml 存在。达梦/金仓 Oracle 模式共用 oracle 家族。"
+    },
+    "supportLevel": {
+      "enum": [
+        "full",
+        "operate",
+        "read-only",
+        "experimental"
+      ],
+      "description": "⭐ experimental 的连接在 UI 默认隐藏，需 Settings 开启。"
+    }
+  }
+}
