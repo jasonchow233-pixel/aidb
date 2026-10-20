@@ -53,7 +53,8 @@ public final class TypeMapper {
                 length,
                 precision,
                 scale,
-                false);
+                false,
+                typeName);
     }
 
     public static ColumnType from(int jdbcType, String rawTypeName) {

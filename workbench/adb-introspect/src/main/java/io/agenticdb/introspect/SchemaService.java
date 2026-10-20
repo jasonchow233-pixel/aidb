@@ -2,17 +2,22 @@ package io.agenticdb.introspect;
 
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.ColumnDef;
+import io.agenticdb.model.ColumnType;
 import io.agenticdb.model.QueryLimits;
 import io.agenticdb.model.RowPage;
 
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -65,8 +70,10 @@ public final class SchemaService {
     public List<SchemaObject> listObjects(DbSession session) throws SQLException {
         DatabaseMetaData meta = session.connection().getMetaData();
         List<SchemaObject> objects = new ArrayList<>();
+        String catalog = currentCatalog(session);
+        String schema = currentSchema(session);
 
-        try (ResultSet rs = meta.getTables(null, null, "%", new String[]{"TABLE", "VIEW"})) {
+        try (ResultSet rs = meta.getTables(catalog, schema, "%", new String[]{"TABLE", "VIEW"})) {
             while (rs.next()) {
                 String name = rs.getString("TABLE_NAME");
                 String type = rs.getString("TABLE_TYPE");
@@ -106,7 +113,7 @@ public final class SchemaService {
     private static Set<String> primaryKeys(DbSession session, String name) throws SQLException {
         Set<String> keys = new LinkedHashSet<>();
         try (ResultSet rs = session.connection().getMetaData()
-                .getPrimaryKeys(null, null, name)) {
+                .getPrimaryKeys(currentCatalog(session), currentSchema(session), name)) {
             while (rs.next()) {
                 String column = rs.getString("COLUMN_NAME");
                 if (column != null && !column.isBlank()) {
@@ -117,11 +124,409 @@ public final class SchemaService {
         return keys;
     }
 
+    private static List<ColumnDef> markUnique(List<ColumnDef> columns, List<IndexDef> indexes) {
+        Set<String> unique = new HashSet<>();
+        for (IndexDef index : indexes) {
+            if (index.unique() && index.columns().size() == 1) {
+                unique.add(index.columns().getFirst().toLowerCase(Locale.ROOT));
+            }
+        }
+        if (unique.isEmpty()) {
+            return columns;
+        }
+        return columns.stream().map(column -> unique.contains(
+                        column.name().toLowerCase(Locale.ROOT)) && !column.unique()
+                        ? new ColumnDef(column.name(), column.type(), column.nullable(),
+                        column.primaryKey(), column.defaultValue(), column.comment(),
+                        column.enumValues(), column.charMaxLength(),
+                        column.numericPrecision(), column.numericScale(), true,
+                        column.rawType())
+                        : column)
+                .toList();
+    }
+
     private static ColumnDef withPrimaryKey(ColumnDef column) {
         return new ColumnDef(column.name(), column.type(), column.nullable(), true,
                 column.defaultValue(), column.comment(), column.enumValues(),
                 column.charMaxLength(), column.numericPrecision(), column.numericScale(),
-                column.unique());
+                column.unique(), column.rawType());
+    }
+
+    /**
+     * 结构页完整快照：列、主键、索引、外键、触发器、DDL。
+     *
+     * <p>DDL 对 SQLite/MySQL 直接取数据库保存的原文；PostgreSQL 没有
+     * {@code SHOW CREATE TABLE}，用内省结果生成等价 DDL，并在 UI 标注为“生成”。
+     * 结构变更始终以列/索引元数据为准，不反过来解析 DDL。
+     */
+    public TableStructure structure(DbSession session, String name) throws SQLException {
+        TableSchema table = describe(session, name);
+        boolean view = isView(session, name);
+        List<IndexDef> indexes = indexes(session, name);
+        List<ForeignKeyDef> foreignKeys = foreignKeys(session, name);
+        List<TriggerDef> triggers = triggers(session, name);
+        List<ColumnDef> baseColumns = session.dialect() == io.agenticdb.jdbc.DialectKind.SQLITE
+                ? sqliteColumns(session, name) : table.columns();
+        List<ColumnDef> columns = markUnique(baseColumns, indexes);
+        String ddl = ddl(session, name, view, columns, table.primaryKeys(),
+                indexes, foreignKeys, triggers);
+        return new TableStructure(name, view, columns, table.primaryKeys(),
+                indexes, foreignKeys, triggers, ddl);
+    }
+
+    /**
+     * SQLite 的结果集元数据不带 DEFAULT/声明类型，结构页必须读 PRAGMA。
+     * 数据页仍走 {@link #describe}，避免把结构专用字段混进查询结果。
+     */
+    private List<ColumnDef> sqliteColumns(DbSession session, String name) throws SQLException {
+        List<ColumnDef> columns = new ArrayList<>();
+        try (Statement statement = session.connection().createStatement();
+             ResultSet rs = statement.executeQuery(
+                     "PRAGMA table_info(" + session.dialect().quote(name) + ")")) {
+            while (rs.next()) {
+                String type = rs.getString("type");
+                columns.add(new ColumnDef(
+                        rs.getString("name"),
+                        typeOf(type),
+                        rs.getInt("notnull") == 0,
+                        rs.getInt("pk") > 0,
+                        rs.getString("dflt_value"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        false,
+                        type));
+            }
+        }
+        return List.copyOf(columns);
+    }
+
+    private static ColumnType typeOf(String rawType) {
+        String type = rawType == null ? "" : rawType.toUpperCase(Locale.ROOT);
+        if (type.contains("JSON")) {
+            return ColumnType.JSON;
+        }
+        if (type.contains("UUID")) {
+            return ColumnType.UUID;
+        }
+        if (type.contains("INT")) {
+            return ColumnType.NUMBER;
+        }
+        if (type.contains("REAL") || type.contains("FLOA") || type.contains("DOUB")
+                || type.contains("DEC") || type.contains("NUM")) {
+            return ColumnType.NUMBER;
+        }
+        if (type.contains("BOOL")) {
+            return ColumnType.BOOLEAN;
+        }
+        if (type.contains("TIMESTAMP") || type.contains("DATETIME")) {
+            return ColumnType.TIMESTAMP;
+        }
+        if (type.contains("DATE")) {
+            return ColumnType.DATE;
+        }
+        if (type.contains("TIME")) {
+            return ColumnType.TIME;
+        }
+        if (type.contains("BLOB") || type.contains("BINARY")) {
+            return ColumnType.BINARY;
+        }
+        return ColumnType.TEXT;
+    }
+
+    private List<IndexDef> indexes(DbSession session, String name) throws SQLException {
+        if (session.dialect() == io.agenticdb.jdbc.DialectKind.SQLITE) {
+            return sqliteIndexes(session, name);
+        }
+
+        DatabaseMetaData meta = session.connection().getMetaData();
+        Map<String, IndexAccumulator> found = new LinkedHashMap<>();
+        try (ResultSet rs = meta.getIndexInfo(currentCatalog(session),
+                currentSchema(session), name, false, false)) {
+            while (rs.next()) {
+                String index = rs.getString("INDEX_NAME");
+                String column = rs.getString("COLUMN_NAME");
+                if (index == null || index.isBlank() || column == null || column.isBlank()) {
+                    continue;
+                }
+                int position = rs.getInt("ORDINAL_POSITION");
+                boolean unique = !rs.getBoolean("NON_UNIQUE");
+                found.computeIfAbsent(index, key -> new IndexAccumulator(unique))
+                        .columns.put(position > 0 ? position : found.size() + 1, column);
+            }
+        } catch (SQLException ignored) {
+            // 某些驱动/权限不允许读索引；结构页仍应展示列与外键。
+        }
+        return found.entrySet().stream()
+                .map(entry -> new IndexDef(entry.getKey(), entry.getValue().unique,
+                        entry.getValue().ordered(), ""))
+                .sorted(Comparator.comparing(IndexDef::name, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    private List<IndexDef> sqliteIndexes(DbSession session, String name) throws SQLException {
+        List<IndexDef> result = new ArrayList<>();
+        try (Statement statement = session.connection().createStatement();
+             ResultSet rs = statement.executeQuery(
+                     "PRAGMA index_list(" + session.dialect().quote(name) + ")")) {
+            while (rs.next()) {
+                String indexName = rs.getString("name");
+                if (indexName == null || indexName.isBlank()) {
+                    continue;
+                }
+                boolean unique = rs.getInt("unique") != 0;
+                String origin = rs.getString("origin");
+                List<String> columns = new ArrayList<>();
+                try (Statement info = session.connection().createStatement();
+                     ResultSet columnsRs = info.executeQuery(
+                             "PRAGMA index_info(" + session.dialect().quote(indexName) + ")")) {
+                    while (columnsRs.next()) {
+                        String column = columnsRs.getString("name");
+                        if (column != null) {
+                            columns.add(column);
+                        }
+                    }
+                }
+                result.add(new IndexDef(indexName, unique, columns, origin));
+            }
+        }
+        result.sort(Comparator.comparing(IndexDef::name, String.CASE_INSENSITIVE_ORDER));
+        return List.copyOf(result);
+    }
+
+    private List<ForeignKeyDef> foreignKeys(DbSession session, String name) throws SQLException {
+        Map<String, ForeignKeyAccumulator> found = new LinkedHashMap<>();
+        try (ResultSet rs = session.connection().getMetaData()
+                .getImportedKeys(currentCatalog(session), currentSchema(session), name)) {
+            while (rs.next()) {
+                String fkName = rs.getString("FK_NAME");
+                String refTable = rs.getString("PKTABLE_NAME");
+                String update = rs.getString("UPDATE_RULE");
+                String delete = rs.getString("DELETE_RULE");
+                if (refTable == null) {
+                    continue;
+                }
+                String key = fkName == null || fkName.isBlank()
+                        ? "~" + refTable + "~" + update + "~" + delete
+                        : fkName;
+                ForeignKeyAccumulator accumulator = found.computeIfAbsent(key,
+                        ignored -> new ForeignKeyAccumulator(fkName, refTable, update, delete));
+                int position = rs.getInt("KEY_SEQ");
+                accumulator.columns.put(position > 0 ? position : accumulator.columns.size() + 1,
+                        rs.getString("FKCOLUMN_NAME"));
+                accumulator.referencedColumns.put(
+                        position > 0 ? position : accumulator.referencedColumns.size() + 1,
+                        rs.getString("PKCOLUMN_NAME"));
+            }
+        } catch (SQLException ignored) {
+            // 同索引：权限/驱动差异不应让整个结构页失败。
+        }
+
+        List<ForeignKeyDef> result = new ArrayList<>();
+        int anonymous = 0;
+        for (ForeignKeyAccumulator value : found.values()) {
+            String fkName = value.name;
+            if (fkName == null || fkName.isBlank()) {
+                anonymous++;
+                fkName = "fk_" + name + "_" + anonymous;
+            }
+            result.add(new ForeignKeyDef(fkName, value.ordered(value.columns),
+                    value.referencedTable, value.ordered(value.referencedColumns),
+                    value.updateRule, value.deleteRule));
+        }
+        result.sort(Comparator.comparing(ForeignKeyDef::name, String.CASE_INSENSITIVE_ORDER));
+        return List.copyOf(result);
+    }
+
+    private List<TriggerDef> triggers(DbSession session, String name) throws SQLException {
+        List<TriggerDef> result = new ArrayList<>();
+        String sql = switch (session.dialect()) {
+            case SQLITE -> "SELECT name, sql FROM sqlite_master "
+                    + "WHERE type = 'trigger' AND tbl_name = ? ORDER BY name";
+            case POSTGRESQL -> "SELECT trigger_name, action_timing, event_manipulation, "
+                    + "action_statement FROM information_schema.triggers "
+                    + "WHERE event_object_table = ? AND trigger_schema = current_schema() "
+                    + "ORDER BY trigger_name";
+            case MYSQL -> "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, "
+                    + "ACTION_STATEMENT FROM information_schema.TRIGGERS "
+                    + "WHERE EVENT_OBJECT_TABLE = ? AND TRIGGER_SCHEMA = DATABASE() "
+                    + "ORDER BY TRIGGER_NAME";
+        };
+        try (var statement = session.connection().prepareStatement(sql)) {
+            statement.setString(1, name);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    String triggerName = rs.getString(1);
+                    if (session.dialect() == io.agenticdb.jdbc.DialectKind.SQLITE) {
+                        String ddl = rs.getString(2);
+                        result.add(new TriggerDef(triggerName, timingOf(ddl), eventOf(ddl), ddl));
+                    } else {
+                        result.add(new TriggerDef(triggerName, rs.getString(2),
+                                rs.getString(3), rs.getString(4)));
+                    }
+                }
+            }
+        } catch (SQLException ignored) {
+            // 没有触发器权限时返回空列表。
+        }
+        return List.copyOf(result);
+    }
+
+    private String ddl(DbSession session, String name, boolean view, List<ColumnDef> columns,
+                       List<String> primaryKeys, List<IndexDef> indexes,
+                       List<ForeignKeyDef> foreignKeys, List<TriggerDef> triggers)
+            throws SQLException {
+        return switch (session.dialect()) {
+            case SQLITE -> sqliteDdl(session, name, columns, primaryKeys, indexes,
+                    foreignKeys, triggers);
+            case MYSQL -> mysqlDdl(session, name, view);
+            case POSTGRESQL -> {
+                if (view) {
+                    yield pgViewDdl(session, name);
+                }
+                yield StructureSqlBuilder.createTableSql(session, name, columns, primaryKeys,
+                        indexes, foreignKeys);
+            }
+        };
+    }
+
+    private String sqliteDdl(DbSession session, String name, List<ColumnDef> columns,
+                             List<String> primaryKeys, List<IndexDef> indexes,
+                             List<ForeignKeyDef> foreignKeys, List<TriggerDef> triggers)
+            throws SQLException {
+        try (var statement = session.connection().prepareStatement(
+                "SELECT sql FROM sqlite_master WHERE name = ? AND type IN ('table', 'view')")) {
+            statement.setString(1, name);
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    String ddl = rs.getString(1);
+                    if (ddl != null && !ddl.isBlank()) {
+                        return ddl;
+                    }
+                }
+            }
+        }
+        return StructureSqlBuilder.createTableSql(session, name, columns, primaryKeys,
+                indexes, foreignKeys);
+    }
+
+    private String mysqlDdl(DbSession session, String name, boolean view) throws SQLException {
+        String sql = "SHOW CREATE " + (view ? "VIEW" : "TABLE") + " "
+                + session.dialect().quote(name);
+        try (Statement statement = session.connection().createStatement();
+             ResultSet rs = statement.executeQuery(sql)) {
+            if (rs.next()) {
+                return rs.getString(2);
+            }
+        }
+        return "";
+    }
+
+    private String pgViewDdl(DbSession session, String name) throws SQLException {
+        try (var statement = session.connection().prepareStatement(
+                "SELECT pg_get_viewdef(?::regclass, true)")) {
+            statement.setString(1, name);
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    return "CREATE OR REPLACE VIEW " + session.dialect().quote(name)
+                            + " AS\n" + rs.getString(1);
+                }
+            }
+        }
+        return "";
+    }
+
+    private boolean isView(DbSession session, String name) throws SQLException {
+        try (ResultSet rs = session.connection().getMetaData().getTables(
+                currentCatalog(session), currentSchema(session), name,
+                new String[]{"TABLE", "VIEW"})) {
+            while (rs.next()) {
+                if (name.equalsIgnoreCase(rs.getString("TABLE_NAME"))) {
+                    String type = rs.getString("TABLE_TYPE");
+                    return type != null && type.toUpperCase(Locale.ROOT).contains("VIEW");
+                }
+            }
+        }
+        return false;
+    }
+
+    private static String timingOf(String ddl) {
+        return match(ddl, "(?i)\\b(BEFORE|AFTER|INSTEAD\\s+OF)\\b");
+    }
+
+    private static String eventOf(String ddl) {
+        return match(ddl, "(?i)\\b(INSERT|UPDATE|DELETE)\\b");
+    }
+
+    private static String match(String value, String pattern) {
+        if (value == null) {
+            return "";
+        }
+        var matcher = java.util.regex.Pattern.compile(pattern).matcher(value);
+        return matcher.find() ? matcher.group(1).toUpperCase(Locale.ROOT) : "";
+    }
+
+    private static String currentCatalog(DbSession session) {
+        try {
+            return session.dialect() == io.agenticdb.jdbc.DialectKind.SQLITE
+                    ? null : session.connection().getCatalog();
+        } catch (SQLException ignored) {
+            return null;
+        }
+    }
+
+    private static String currentSchema(DbSession session) {
+        try {
+            if (session.dialect() == io.agenticdb.jdbc.DialectKind.SQLITE) {
+                return null;
+            }
+            return session.connection().getSchema();
+        } catch (SQLException ignored) {
+            return null;
+        }
+    }
+
+    private static final class IndexAccumulator {
+        private final boolean unique;
+        private final Map<Integer, String> columns = new LinkedHashMap<>();
+
+        private IndexAccumulator(boolean unique) {
+            this.unique = unique;
+        }
+
+        private List<String> ordered() {
+            return columns.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .map(Map.Entry::getValue)
+                    .toList();
+        }
+    }
+
+    private static final class ForeignKeyAccumulator {
+        private final String name;
+        private final String referencedTable;
+        private final String updateRule;
+        private final String deleteRule;
+        private final Map<Integer, String> columns = new LinkedHashMap<>();
+        private final Map<Integer, String> referencedColumns = new LinkedHashMap<>();
+
+        private ForeignKeyAccumulator(String name, String referencedTable,
+                                      String updateRule, String deleteRule) {
+            this.name = name;
+            this.referencedTable = referencedTable;
+            this.updateRule = updateRule;
+            this.deleteRule = deleteRule;
+        }
+
+        private List<String> ordered(Map<Integer, String> values) {
+            return values.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .map(Map.Entry::getValue)
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
+        }
     }
 
     /** 精确总数。只在打开/刷新数据页时调用；超过 OFFSET 上限后提示改用筛选。 */
