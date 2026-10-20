@@ -48,6 +48,12 @@ JavaFX 内置 `TableView` 底层是 `VirtualFlow`，只创建可见行的 Node�
 
 CSV 首版由 `CsvExporter` 自写（RFC 4180 引号/换行转义），暂不引入 commons-csv。
 
+### 1.5 已在 POM 里但运行时未使用的模块
+
+| 模块 | 现状 | 决定 |
+|---|---|---|
+| `core/adb-declarations` | 提供 YAML 连接 / 方言 / 传输家族声明 + JSON Schema 校验；**当前运行时一次都没引用**（不是任何模块的 Maven 依赖），`loadFromClasspath()` 的 jar 读取路径也不可用 | P5 二选一：接进运行时（驱动解析、方言词表、能力矩阵驱动 UI 显隐）**或**整模块删除。详见 `docs/ARCHITECTURE.md` §2.1 与 `NAVICAT-TODO.md` §10 A2/A3 |
+
 ---
 
 ## 2. 明确不用
@@ -61,6 +67,7 @@ CSV 首版由 `CsvExporter` 自写（RFC 4180 引号/换行转义），暂不引
 | 自绘标题栏 | ❌ | 首版明确不做；用 `StageStyle.DECORATED` |
 | 内嵌 WebView / JCEF | ❌ | 已确定原生 JavaFX 路线，不引入浏览器运行时 |
 | 自研虚拟表格 | ❌ | 重复造轮子；内置 `TableView` 已够用 |
+| 图标字体（Font Awesome / Material Icons） | ❌（暂时） | 首版用 Unicode 符号，避免字体资源与打包体积；代价是同义不同形、跨平台缺字、无 accessible text。长期方向是**内嵌 SVG 图标集**（JavaFX 原生支持，无需字体） |
 
 TestFX 两年未大版本更新，但仍是 JavaFX 无头 UI 门禁最成熟的组合；
 固定版本、`test` scope、不进入发行物。
@@ -77,6 +84,10 @@ TestFX 两年未大版本更新，但仍是 JavaFX 无头 UI 门禁最成熟的�
 | `SqlLexer` / 语句分句器 | 领域语法与错误 offset，通用编辑器不提供 |
 | `DangerClassifier` | 危险 SQL 分级，安全关键 |
 | 列布局持久化 | 按“连接 + 表”记忆，业务语义强 |
+| `StructureSqlBuilder` | 按方言生成安全的列级 DDL；SQLite 整表重建、PG/MySQL 差异都自己兜 |
+| `CsvExporter` | RFC 4180 引号/换行转义，首版不引 commons-csv |
+| `ConnectionWizard` | 三步、可回退、测试连接、口令不落盘；注意 JavaFX `DialogPane` 的按钮陷阱（见架构文档 §7.1） |
+
 
 ---
 
@@ -95,3 +106,4 @@ TestFX 两年未大版本更新，但仍是 JavaFX 无头 UI 门禁最成熟的�
 - 当前技术栈足够支撑 Navicat 级数据页与查询页，不需要引入 WebView 或 Eclipse RCP。
 - 数据表格、对话框、编辑器底座用成熟库；编辑语义、SQL 安全、渲染规则自己掌握。
 - P3 的唯一新 UI 依赖是 RichTextFX；P5 才引入连接池与 Testcontainers；P6 才引入 POI。
+- 图标暂时用 Unicode 符号（P4.5 统一字形 + 补 accessible text）；长期迁移到内嵌 SVG 图标集。
