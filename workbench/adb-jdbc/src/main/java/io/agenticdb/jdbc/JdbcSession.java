@@ -29,6 +29,8 @@ public final class JdbcSession implements DbSession {
     private final Connection connection;
     private final String label;
     private final DialectKind dialect;
+    /** 查询页的「取消」从 JavaFX 线程调用，所以必须是 volatile。 */
+    private volatile Statement activeStatement;
 
     private JdbcSession(Connection connection, String label, DialectKind dialect) {
         this.connection = connection;
@@ -112,28 +114,9 @@ public final class JdbcSession implements DbSession {
             bind(statement, params);
 
             try (ResultSet resultSet = statement.executeQuery()) {
-                ResultSetMetaData meta = resultSet.getMetaData();
-                int columnCount = meta.getColumnCount();
-
-                List<ColumnDef> columns = new ArrayList<>(columnCount);
-                List<String> keys = new ArrayList<>(columnCount);
-                for (int i = 1; i <= columnCount; i++) {
-                    ColumnDef column = TypeMapper.toColumnDef(meta, i);
-                    columns.add(column);
-                    keys.add(uniqueKey(column.name(), keys));
-                }
-
-                List<Map<String, Object>> rows = new ArrayList<>();
-                while (resultSet.next()) {
-                    Map<String, Object> row = new LinkedHashMap<>(columnCount * 2);
-                    for (int i = 1; i <= columnCount; i++) {
-                        row.put(keys.get(i - 1), resultSet.getObject(i));
-                    }
-                    rows.add(row);
-                }
-
-                long durationMs = (System.nanoTime() - started) / 1_000_000;
-                return new RowPage(columns, rows, null, null, durationMs, List.of(), false);
+                ExecutionResult result = readResultSet(resultSet, sql, started);
+                return new RowPage(result.columns(), result.rows(), null, null,
+                        result.durationMs(), List.of(), false);
             }
         }
     }
@@ -144,6 +127,69 @@ public final class JdbcSession implements DbSession {
             bind(statement, params);
             return statement.executeUpdate();
         }
+    }
+
+    @Override
+    public ExecutionResult execute(String sql) throws SQLException {
+        long started = System.nanoTime();
+        try (Statement statement = connection.createStatement()) {
+            activeStatement = statement;
+            statement.setMaxRows(QueryLimits.MAX_PAGE_SIZE);
+            statement.setFetchSize(Math.min(QueryLimits.MAX_PAGE_SIZE, 500));
+            boolean hasResult = statement.execute(sql);
+            if (hasResult) {
+                ResultSet resultSet = statement.getResultSet();
+                if (resultSet != null) {
+                    try (resultSet) {
+                        return readResultSet(resultSet, sql, started);
+                    }
+                }
+            }
+            int updateCount = statement.getUpdateCount();
+            long durationMs = (System.nanoTime() - started) / 1_000_000;
+            return new ExecutionResult(sql, List.of(), List.of(), updateCount, durationMs);
+        } finally {
+            activeStatement = null;
+        }
+    }
+
+    @Override
+    public void cancelCurrent() {
+        Statement statement = activeStatement;
+        if (statement == null) {
+            return;
+        }
+        try {
+            statement.cancel();
+        } catch (SQLException ignored) {
+            // 取消是尽力而为；驱动不支持时由执行线程的异常路径收尾。
+        }
+    }
+
+    private static ExecutionResult readResultSet(ResultSet resultSet, String sql,
+                                                long started) throws SQLException {
+        ResultSetMetaData meta = resultSet.getMetaData();
+        int columnCount = meta.getColumnCount();
+
+        List<ColumnDef> columns = new ArrayList<>(columnCount);
+        List<String> keys = new ArrayList<>(columnCount);
+        for (int i = 1; i <= columnCount; i++) {
+            ColumnDef column = TypeMapper.toColumnDef(meta, i);
+            columns.add(column);
+            keys.add(uniqueKey(column.name(), keys));
+        }
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        while (rows.size() < QueryLimits.MAX_PAGE_SIZE && resultSet.next()) {
+            Map<String, Object> row = new LinkedHashMap<>(columnCount * 2);
+            for (int i = 1; i <= columnCount; i++) {
+                row.put(keys.get(i - 1), resultSet.getObject(i));
+            }
+            rows.add(row);
+        }
+
+        long durationMs = (System.nanoTime() - started) / 1_000_000;
+        return new ExecutionResult(sql, columns, rows, -1, durationMs);
     }
 
     private static void bind(PreparedStatement statement, List<Object> params) throws SQLException {

@@ -49,6 +49,19 @@ public interface DbSession extends AutoCloseable {
     /** 参数化写语句。编辑保存必须使用这个重载。 */
     int update(String sql, List<Object> params) throws SQLException;
 
+    /**
+     * 执行一条任意 SQL（查询 / DML / DDL），用于查询页。
+     * 实现必须限制返回行数，不能把整表塞进内存。
+     */
+    ExecutionResult execute(String sql) throws SQLException;
+
+    /**
+     * 取消当前正在执行的语句。查询页的「取消」按钮从 UI 线程调用，
+     * 实现必须允许跨线程调用 JDBC {@code Statement.cancel()}。
+     */
+    default void cancelCurrent() {
+    }
+
     void begin() throws SQLException;
 
     void commit() throws SQLException;

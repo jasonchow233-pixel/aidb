@@ -116,6 +116,38 @@ class JdbcSessionTest {
     }
 
     @Test
+    void executesQueryAndDmlWithOneApi() throws SQLException {
+        try (JdbcSession session = JdbcSession.open(ConnectionSpec.sqliteMemory())) {
+            ExecutionResult create = session.execute("CREATE TABLE t (id INTEGER, name TEXT)");
+            assertThat(create.hasRows()).isFalse();
+            assertThat(create.updateCount()).isZero();
+
+            ExecutionResult insert = session.execute("INSERT INTO t VALUES (1, 'a'), (2, 'b')");
+            assertThat(insert.updateCount()).isEqualTo(2);
+
+            ExecutionResult query = session.execute("SELECT id, name FROM t ORDER BY id");
+            assertThat(query.hasRows()).isTrue();
+            assertThat(query.columns()).extracting("name").containsExactly("id", "name");
+            assertThat(query.rows()).hasSize(2);
+            assertThat(query.rows().getFirst()).containsEntry("name", "a");
+            assertThat(query.durationMs()).isGreaterThanOrEqualTo(0);
+        }
+    }
+
+    @Test
+    void executeRespectsQueryRowLimit() throws SQLException {
+        try (JdbcSession session = JdbcSession.open(ConnectionSpec.sqliteMemory())) {
+            ExecutionResult result = session.execute("""
+                    WITH RECURSIVE seq(x) AS (
+                      SELECT 1 UNION ALL SELECT x + 1 FROM seq WHERE x < 1500
+                    )
+                    SELECT x FROM seq
+                    """);
+            assertThat(result.rowCount()).isEqualTo(io.agenticdb.model.QueryLimits.MAX_PAGE_SIZE);
+        }
+    }
+
+    @Test
     void duplicateColumnLabelsGetDistinctKeys() throws SQLException {
         try (JdbcSession session = JdbcSession.open(ConnectionSpec.sqliteMemory())) {
             RowPage page = session.query(
