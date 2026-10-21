@@ -4,6 +4,7 @@ import io.agenticdb.fixtures.DemoDatabase;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.JdbcSession;
+import io.agenticdb.model.ColumnSpec;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -78,7 +79,7 @@ class StructureServiceTest {
     void addsColumnAndExecutesPlanInTransaction() throws Exception {
         TableStructure users = schema.structure(session, "users");
         StructurePlan plan = StructureSqlBuilder.addColumn(session, users,
-                new StructureSqlBuilder.ColumnSpec("nickname", "TEXT", true,
+                new ColumnSpec("nickname", "TEXT", true,
                         "'anonymous'", null, false, false));
 
         assertThat(plan.statements()).hasSize(1);
@@ -95,7 +96,7 @@ class StructureServiceTest {
         long before = schema.count(session, "users");
         TableStructure users = schema.structure(session, "users");
         StructurePlan plan = StructureSqlBuilder.alterColumn(session, users, "email",
-                new StructureSqlBuilder.ColumnSpec("email", "TEXT", false, null,
+                new ColumnSpec("email", "TEXT", false, null,
                         null, true, false));
 
         assertThat(plan.approvalRequired()).isTrue();
@@ -131,7 +132,7 @@ class StructureServiceTest {
     void refusesNotNullAddWithoutDefaultOnSqlite() {
         TableStructure users = assertDoesNotThrowStructure("users");
         assertThatThrownBy(() -> StructureSqlBuilder.addColumn(session, users,
-                new StructureSqlBuilder.ColumnSpec("required", "TEXT", false,
+                new ColumnSpec("required", "TEXT", false,
                         null, null, false, false)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("默认值");

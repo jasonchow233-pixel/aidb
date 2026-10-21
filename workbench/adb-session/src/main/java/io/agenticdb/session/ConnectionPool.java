@@ -4,7 +4,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
-import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.jdbc.ExecutionResult;
 import io.agenticdb.jdbc.JdbcSession;
 import io.agenticdb.model.RowPage;
@@ -27,7 +27,8 @@ public final class ConnectionPool {
     }
 
     public static DbSession open(ConnectionSpec spec) throws SQLException {
-        if (spec.kind() == DialectKind.SQLITE) {
+        // ⭐ 是否池化由方言决定 —— 以前这里硬编码 `== SQLITE`。
+        if (!spec.kind().dialect().pooled()) {
             return JdbcSession.open(spec);
         }
 
@@ -80,7 +81,7 @@ public final class ConnectionPool {
         }
 
         @Override
-        public DialectKind dialect() {
+        public Dialect dialect() {
             return delegate.dialect();
         }
 

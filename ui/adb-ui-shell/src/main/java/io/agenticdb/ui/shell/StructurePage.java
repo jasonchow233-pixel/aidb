@@ -9,6 +9,7 @@ import io.agenticdb.introspect.TriggerDef;
 import io.agenticdb.introspect.ForeignKeyDef;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.ColumnDef;
+import io.agenticdb.model.ColumnSpec;
 import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
@@ -133,7 +134,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
         edit.getStyleClass().add("adb-button");
         edit.setId("structure-edit");
         edit.setOnAction(event -> selectedColumn().ifPresent(column ->
-                showColumnDialog("修改列 " + column.name(), StructureSqlBuilder.ColumnSpec.from(column))));
+                showColumnDialog("修改列 " + column.name(), ColumnSpec.from(column))));
         rename.getStyleClass().add("adb-button");
         rename.setId("structure-rename");
         rename.setOnAction(event -> selectedColumn().ifPresent(this::renameColumn));
@@ -217,7 +218,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
         });
         columns.setOnMouseClicked(event -> {
             if (event.getClickCount() == 2 && selectedColumn().isPresent()) {
-                showColumnDialog("修改列", StructureSqlBuilder.ColumnSpec.from(
+                showColumnDialog("修改列", ColumnSpec.from(
                         selectedColumn().orElseThrow()));
             }
         });
@@ -236,7 +237,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
         }
         MenuItem editItem = new MenuItem("修改列");
         editItem.setOnAction(event -> showColumnDialog("修改列 " + column.name(),
-                StructureSqlBuilder.ColumnSpec.from(column)));
+                ColumnSpec.from(column)));
         MenuItem renameItem = new MenuItem("重命名");
         renameItem.setOnAction(event -> renameColumn(column));
         MenuItem dropItem = new MenuItem("删除列");
@@ -334,8 +335,10 @@ public final class StructurePage extends VBox implements AutoCloseable {
                 + " · 外键 " + structure.foreignKeys().size()
                 + " · 触发器 " + structure.triggers().size());
         ddl.setText(structure.ddl());
-        ddlNote.setText(session.dialect() == io.agenticdb.jdbc.DialectKind.POSTGRESQL
-                && !structure.view() ? "PostgreSQL 无 SHOW CREATE TABLE；以下为由内省生成的等价 DDL" : "");
+        // ⭐ 「没有 SHOW CREATE TABLE」是方言的事实，不是 PostgreSQL 的硬编码。
+        ddlNote.setText(!session.dialect().readsDdlFromDatabase() && !structure.view()
+                ? session.dialect().displayName() + " 无 SHOW CREATE TABLE；以下为由内省生成的等价 DDL"
+                : "");
         columns.setItems(FXCollections.observableArrayList(structure.columns()));
         setIndexes(structure.indexes());
         setForeignKeys(structure.foreignKeys());
@@ -348,11 +351,11 @@ public final class StructurePage extends VBox implements AutoCloseable {
         return selected == null ? Optional.empty() : Optional.of(selected);
     }
 
-    private void showColumnDialog(String title, StructureSqlBuilder.ColumnSpec initial) {
+    private void showColumnDialog(String title, ColumnSpec initial) {
         if (structure == null || !structure.editable()) {
             return;
         }
-        Dialog<StructureSqlBuilder.ColumnSpec> dialog = new Dialog<>();
+        Dialog<ColumnSpec> dialog = new Dialog<>();
         dialog.setTitle("结构变更");
         dialog.setHeaderText(title);
         dialog.initOwner(sceneWindow());
@@ -436,7 +439,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
                 return null;
             }
             String rawType = type.getValue() == null ? "TEXT" : type.getValue().trim();
-            return new StructureSqlBuilder.ColumnSpec(
+            return new ColumnSpec(
                     name.getText().trim(), rawType, nullable.isSelected(),
                     defaultValue.getText().trim(), comment.getText().trim(),
                     unique.isSelected(), initial != null && initial.primaryKey());

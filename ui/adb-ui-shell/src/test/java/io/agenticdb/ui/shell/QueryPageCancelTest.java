@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.jdbc.ExecutionResult;
 import io.agenticdb.model.RowPage;
@@ -98,8 +99,8 @@ class QueryPageCancelTest {
         }
 
         @Override
-        public DialectKind dialect() {
-            return DialectKind.SQLITE;
+        public Dialect dialect() {
+            return DialectKind.SQLITE.dialect();
         }
 
         @Override

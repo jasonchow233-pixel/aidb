@@ -28,11 +28,11 @@ public final class JdbcSession implements DbSession {
 
     private final Connection connection;
     private final String label;
-    private final DialectKind dialect;
+    private final Dialect dialect;
     /** 查询页的「取消」从 JavaFX 线程调用，所以必须是 volatile。 */
     private volatile Statement activeStatement;
 
-    private JdbcSession(Connection connection, String label, DialectKind dialect) {
+    private JdbcSession(Connection connection, String label, Dialect dialect) {
         this.connection = connection;
         this.label = label;
         this.dialect = dialect;
@@ -41,11 +41,8 @@ public final class JdbcSession implements DbSession {
     public static JdbcSession open(ConnectionSpec spec) throws SQLException {
         try {
             // JDBC 4 会自动加载，但显式加载能给出更清楚的错误
-            Class.forName(switch (spec.kind()) {
-                case SQLITE -> "org.sqlite.JDBC";
-                case POSTGRESQL -> "org.postgresql.Driver";
-                case MYSQL -> "com.mysql.cj.jdbc.Driver";
-            });
+            // ⭐ 驱动类名由方言自己给 —— 以前这里是 switch，加一种库要改两处。
+            Class.forName(spec.kind().dialect().driverClassName());
         } catch (ClassNotFoundException e) {
             throw new SQLException("缺少 " + spec.kind().displayName() + " JDBC 驱动", e);
         }
@@ -65,29 +62,29 @@ public final class JdbcSession implements DbSession {
         Connection connection = DriverManager.getConnection(spec.jdbcUrl(), props);
         connection.setAutoCommit(true);
         return new JdbcSession(connection, spec.kind().displayName() + " · " + spec.database(),
-                spec.kind());
+                spec.kind().dialect());
     }
 
     public static JdbcSession wrap(Connection connection, String label) {
         return new JdbcSession(connection, label, inferDialect(connection));
     }
 
-    private static DialectKind inferDialect(Connection connection) {
+    private static Dialect inferDialect(Connection connection) {
         try {
             String url = connection.getMetaData().getURL();
             if (url != null) {
                 String normalized = url.toLowerCase(java.util.Locale.ROOT);
                 if (normalized.startsWith("jdbc:postgresql:")) {
-                    return DialectKind.POSTGRESQL;
+                    return DialectKind.POSTGRESQL.dialect();
                 }
                 if (normalized.startsWith("jdbc:mysql:")) {
-                    return DialectKind.MYSQL;
+                    return DialectKind.MYSQL.dialect();
                 }
             }
         } catch (SQLException ignored) {
             // 取不到 URL 时按 SQLite 处理：当前首版只有 SQLite 会走 wrap。
         }
-        return DialectKind.SQLITE;
+        return DialectKind.SQLITE.dialect();
     }
 
     @Override
@@ -101,7 +98,7 @@ public final class JdbcSession implements DbSession {
     }
 
     @Override
-    public DialectKind dialect() {
+    public Dialect dialect() {
         return dialect;
     }
 

@@ -165,8 +165,9 @@ public final class SchemaService {
         List<IndexDef> indexes = indexes(session, name);
         List<ForeignKeyDef> foreignKeys = foreignKeys(session, name);
         List<TriggerDef> triggers = triggers(session, name);
-        List<ColumnDef> baseColumns = session.dialect() == io.agenticdb.jdbc.DialectKind.SQLITE
-                ? sqliteColumns(session, name) : table.columns();
+        // ⭐ 列来源由方言决定（SQLite 的结果集元数据不带声明类型与默认值，要读 PRAGMA）。
+        List<ColumnDef> baseColumns = session.dialect().readsColumnsViaJdbcMetadata()
+                ? table.columns() : sqliteColumns(session, name);
         List<ColumnDef> columns = markUnique(baseColumns, indexes);
         String ddl = ddl(session, name, view, columns, table.primaryKeys(),
                 indexes, foreignKeys, triggers);
@@ -182,7 +183,7 @@ public final class SchemaService {
         List<ColumnDef> columns = new ArrayList<>();
         try (Statement statement = session.connection().createStatement();
              ResultSet rs = statement.executeQuery(
-                     "PRAGMA table_info(" + session.dialect().quote(name) + ")")) {
+                     session.dialect().columnsSql(name))) {
             while (rs.next()) {
                 String type = rs.getString("type");
                 columns.add(new ColumnDef(
@@ -237,7 +238,8 @@ public final class SchemaService {
     }
 
     private List<IndexDef> indexes(DbSession session, String name) throws SQLException {
-        if (session.dialect() == io.agenticdb.jdbc.DialectKind.SQLITE) {
+        // ⭐ SQLite 的 getIndexInfo 不可用，要读 PRAGMA。
+        if (!session.dialect().readsIndexesViaJdbcMetadata()) {
             return sqliteIndexes(session, name);
         }
 
@@ -270,7 +272,7 @@ public final class SchemaService {
         List<IndexDef> result = new ArrayList<>();
         try (Statement statement = session.connection().createStatement();
              ResultSet rs = statement.executeQuery(
-                     "PRAGMA index_list(" + session.dialect().quote(name) + ")")) {
+                     session.dialect().indexesSql(name))) {
             while (rs.next()) {
                 String indexName = rs.getString("name");
                 if (indexName == null || indexName.isBlank()) {
@@ -281,7 +283,7 @@ public final class SchemaService {
                 List<String> columns = new ArrayList<>();
                 try (Statement info = session.connection().createStatement();
                      ResultSet columnsRs = info.executeQuery(
-                             "PRAGMA index_info(" + session.dialect().quote(indexName) + ")")) {
+                             session.dialect().indexColumnsSql(indexName))) {
                     while (columnsRs.next()) {
                         String column = columnsRs.getString("name");
                         if (column != null) {
@@ -342,24 +344,15 @@ public final class SchemaService {
 
     private List<TriggerDef> triggers(DbSession session, String name) throws SQLException {
         List<TriggerDef> result = new ArrayList<>();
-        String sql = switch (session.dialect()) {
-            case SQLITE -> "SELECT name, sql FROM sqlite_master "
-                    + "WHERE type = 'trigger' AND tbl_name = ? ORDER BY name";
-            case POSTGRESQL -> "SELECT trigger_name, action_timing, event_manipulation, "
-                    + "action_statement FROM information_schema.triggers "
-                    + "WHERE event_object_table = ? AND trigger_schema = current_schema() "
-                    + "ORDER BY trigger_name";
-            case MYSQL -> "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, "
-                    + "ACTION_STATEMENT FROM information_schema.TRIGGERS "
-                    + "WHERE EVENT_OBJECT_TABLE = ? AND TRIGGER_SCHEMA = DATABASE() "
-                    + "ORDER BY TRIGGER_NAME";
-        };
+        // ⭐ 触发器查询由方言给 —— 以前这里是 switch，加一种库要改这里。
+        String sql = session.dialect().triggersSql(name);
         try (var statement = session.connection().prepareStatement(sql)) {
             statement.setString(1, name);
             try (ResultSet rs = statement.executeQuery()) {
                 while (rs.next()) {
                     String triggerName = rs.getString(1);
-                    if (session.dialect() == io.agenticdb.jdbc.DialectKind.SQLITE) {
+                    if (!session.dialect().readsIndexesViaJdbcMetadata()) {
+                        // SQLite 的第 2 列是触发器 DDL，时机与事件要从 DDL 里解析。
                         String ddl = rs.getString(2);
                         result.add(new TriggerDef(triggerName, timingOf(ddl), eventOf(ddl), ddl));
                     } else {
@@ -378,65 +371,25 @@ public final class SchemaService {
                        List<String> primaryKeys, List<IndexDef> indexes,
                        List<ForeignKeyDef> foreignKeys, List<TriggerDef> triggers)
             throws SQLException {
-        return switch (session.dialect()) {
-            case SQLITE -> sqliteDdl(session, name, columns, primaryKeys, indexes,
-                    foreignKeys, triggers);
-            case MYSQL -> mysqlDdl(session, name, view);
-            case POSTGRESQL -> {
-                if (view) {
-                    yield pgViewDdl(session, name);
-                }
-                yield StructureSqlBuilder.createTableSql(session, name, columns, primaryKeys,
-                        indexes, foreignKeys);
-            }
-        };
-    }
-
-    private String sqliteDdl(DbSession session, String name, List<ColumnDef> columns,
-                             List<String> primaryKeys, List<IndexDef> indexes,
-                             List<ForeignKeyDef> foreignKeys, List<TriggerDef> triggers)
-            throws SQLException {
-        try (var statement = session.connection().prepareStatement(
-                "SELECT sql FROM sqlite_master WHERE name = ? AND type IN ('table', 'view')")) {
-            statement.setString(1, name);
-            try (ResultSet rs = statement.executeQuery()) {
-                if (rs.next()) {
-                    String ddl = rs.getString(1);
-                    if (ddl != null && !ddl.isBlank()) {
-                        return ddl;
-                    }
-                }
+        // ⭐ DDL 来源完全由方言决定 —— 这一层现在没有一行方言专属的 SQL：
+        //    SQLite 读 sqlite_master、MySQL 走 SHOW CREATE TABLE、
+        //    PostgreSQL 只能由内省生成（UI 会标注「等价 DDL」）。
+        String fromDatabase = session.dialect().readDdl(session.connection(), name, view);
+        if (fromDatabase != null && !fromDatabase.isBlank()) {
+            return fromDatabase;
+        }
+        if (view) {
+            String viewDdl = session.dialect().readViewDdl(session.connection(), name);
+            if (viewDdl != null && !viewDdl.isBlank()) {
+                return viewDdl;
             }
         }
         return StructureSqlBuilder.createTableSql(session, name, columns, primaryKeys,
                 indexes, foreignKeys);
     }
 
-    private String mysqlDdl(DbSession session, String name, boolean view) throws SQLException {
-        String sql = "SHOW CREATE " + (view ? "VIEW" : "TABLE") + " "
-                + session.dialect().quote(name);
-        try (Statement statement = session.connection().createStatement();
-             ResultSet rs = statement.executeQuery(sql)) {
-            if (rs.next()) {
-                return rs.getString(2);
-            }
-        }
-        return "";
-    }
 
-    private String pgViewDdl(DbSession session, String name) throws SQLException {
-        try (var statement = session.connection().prepareStatement(
-                "SELECT pg_get_viewdef(?::regclass, true)")) {
-            statement.setString(1, name);
-            try (ResultSet rs = statement.executeQuery()) {
-                if (rs.next()) {
-                    return "CREATE OR REPLACE VIEW " + session.dialect().quote(name)
-                            + " AS\n" + rs.getString(1);
-                }
-            }
-        }
-        return "";
-    }
+
 
     private boolean isView(DbSession session, String name) throws SQLException {
         try (ResultSet rs = session.connection().getMetaData().getTables(
@@ -470,8 +423,7 @@ public final class SchemaService {
 
     private static String currentCatalog(DbSession session) {
         try {
-            return session.dialect() == io.agenticdb.jdbc.DialectKind.SQLITE
-                    ? null : session.connection().getCatalog();
+            return session.dialect().currentCatalog(session.connection());
         } catch (SQLException ignored) {
             return null;
         }
@@ -479,10 +431,7 @@ public final class SchemaService {
 
     private static String currentSchema(DbSession session) {
         try {
-            if (session.dialect() == io.agenticdb.jdbc.DialectKind.SQLITE) {
-                return null;
-            }
-            return session.connection().getSchema();
+            return session.dialect().currentSchema(session.connection());
         } catch (SQLException ignored) {
             return null;
         }

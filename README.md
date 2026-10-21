@@ -63,7 +63,7 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**36 个测试类、313 条测试用例，0 失败**。统一命令：`./mvnw -B clean verify`。
+当前门禁：**38 个测试类、341 条测试用例，0 失败**。统一命令：`./mvnw -B clean verify`。
 
 统计口径用工具兜底（`@Nested` 的测试类在 surefire XML 里会写成 `tests="0"`）：
 
@@ -139,7 +139,7 @@ core/
   adb-sql            SQL 词法、分句、格式化内核
 
 workbench/
-  adb-jdbc           统一 JDBC 会话、方言、类型映射
+  adb-jdbc           统一 JDBC 会话、方言抽象层、类型映射
   adb-introspect     对象列表、列定义、主键、行数、分页/筛选/排序 SQL、结构内省与结构变更 SQL
   adb-session        连接档案、凭据存储、连接池、会话生命周期
   adb-editing        编辑缓冲、撤销/重做、SQL 计划、反向撤销

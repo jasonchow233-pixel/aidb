@@ -24,7 +24,12 @@ public interface DbSession extends AutoCloseable {
     String label();
 
     /** 方言。SQL 构造（引用标识符、分页）只允许从这里取，不在 UI 里猜。 */
-    DialectKind dialect();
+    Dialect dialect();
+
+    /** 方言的枚举项（持久化的判别式）。 */
+    default DialectKind dialectKind() {
+        return DialectKind.of(dialect());
+    }
 
     /**
      * 执行查询。实现必须调用 {@code Statement.setMaxRows}，

@@ -73,7 +73,7 @@ public final class ConnectionWizard {
         if (initial != null) {
             type.setValue(initial.kind());
             name.setText(initial.name());
-            file.setText(initial.kind() == DialectKind.SQLITE ? initial.database() : "");
+            file.setText(initial.kind().dialect().usesFilePath() ? initial.database() : "");
             host.setText(initial.host());
             port.setText(String.valueOf(initial.port() > 0 ? initial.port()
                     : ConnectionProfile.defaultPort(initial.kind())));
@@ -226,7 +226,7 @@ public final class ConnectionWizard {
     }
 
     private Node step2() {
-        if (type.getValue() == DialectKind.SQLITE) {
+        if (type.getValue().dialect().usesFilePath()) {
             GridPane grid = grid();
             grid.addRow(0, new Label("数据库文件"), file);
             Button browse = new Button("浏览…");
@@ -320,7 +320,7 @@ public final class ConnectionWizard {
     }
 
     private boolean validateDetails() {
-        if (type.getValue() == DialectKind.SQLITE) {
+        if (type.getValue().dialect().usesFilePath()) {
             if (file.getText() == null || file.getText().isBlank()) {
                 showStepError("请选择数据库文件");
                 return false;
@@ -370,7 +370,7 @@ public final class ConnectionWizard {
         String id = initial == null ? UUID.randomUUID().toString() : initial.id();
         Map<String, String> options = initial == null ? Map.of() : initial.options();
         String connectionName = name.getText() == null ? kind.displayName() : name.getText().trim();
-        if (kind == DialectKind.SQLITE) {
+        if (kind.dialect().usesFilePath()) {
             return new ConnectionProfile(id, connectionName, kind, "", 0, file.getText().trim(),
                     "", initial != null && initial.favorite(),
                     initial == null ? 0 : initial.lastUsedAt(), options);

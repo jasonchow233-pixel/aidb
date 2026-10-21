@@ -39,6 +39,7 @@ A23（死代码清理）、侧栏「查询历史」「诊断」接真功能。
 | 项 | 内容 | 验收 |
 |---|---|---|
 | 4.5-14 | 令牌收敛：剩余 **60 个非颜色令牌**（`fs-*` `sp-*` `r-*` `h-*` `z-*` `dur-*` …）要么从 `tokens.json` 移除，要么在 Java 代码里用起来 | `TokenParityTest` 增加「令牌不得有未引用项」断言 |
+| ~~A1~~ ✅ | ~~方言抽象层~~ **已做**（见 §2） | `DialectBranchAuditTest` 扫源码禁止方言分支散落 |
 | A6 | 危险分级**第三层**：`DbSession.execute(sql, danger)` 做驱动侧复查 | `DbSession` 接口加 `danger` 参数 + 单测 |
 | — | `core/adb-declarations` 是否接进运行时（**决策点**：先做 A1 方言抽象层，还是先删模块） | 书面决策，写进 `NAVICAT-TODO.md` §10 A2 |
 
@@ -52,10 +53,13 @@ TODO §7.2 已列细项，本文件定**顺序**：
    切标签即切连接。改法是每个 `TabItem` 持有自己的 session，工具栏显示**当前标签**的连接。
    （**会话泄漏已修**，这一条是剩下的根。）
 2. **连接属性页**：`ConnectionProfile.options` 自由 Map 向导化（读超时 / SSL / 字符集 / 连接池）。
-3. **schema / catalog 树**：`getSchemas()` / `getCatalogs()` 已存在但没人调用；接到对象树上做二级分组。
+3. **schema / catalog 树**：`getSchemas()` / `getCatalogs()` 已存在但没人调用；
+   接到对象树上做二级分组。**方言层已经铺好路**（`Dialect.hasCatalog()` / `hasSchema()`），
+   这一步只剩把分组渲染出来。
 4. **收藏落盘**：`SideBar.starred` 只在内存，退出即丢（用户明确感受过的缺陷）。
-5. **方言抽象层**（A1）：`Dialect` 接口消灭 5 个文件里的 6 个 `switch` + 13 个 `if`。
-   排在 schema 树之后 —— schema 树会新增方言分支，先有接口再扩。
+5. ~~**方言抽象层**（A1）~~ **已做**：`Dialect` 接口 + 三个实现已落地，
+   `SchemaService` / `StructureSqlBuilder` 里没有方言专属 SQL，源码审计门禁守着。
+   下面第 5 项的 schema 树可以直接加新的内省能力，不用再改散落的分支。
 6. **PG / MySQL 真联调**：Testcontainers 集成测试。
 7. **Windows 凭据**：WinCred / DPAPI 后端（当前落内存，P7 前必须补）。
 
@@ -115,7 +119,8 @@ TODO §7.2 已列细项，本文件定**顺序**：
 ```
 1) 4.5-14  令牌收敛（剩余 60 个非颜色令牌）
 2) A6      危险分级第三层（驱动侧复查）
-3) A2      declarations 去留决策 + A1 方言抽象层开工
+3) A2      declarations 去留决策（A1 已完成，声明层可以接进运行时了）
+4) C-3     schema / catalog 树（方言层已铺好路）
 ```
 
 每项做完跑一次 `./mvnw -B clean verify` + `java tools/TestCount.java`，全绿再进下一项。

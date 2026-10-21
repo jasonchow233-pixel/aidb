@@ -30,7 +30,8 @@ core/
   adb-sql            SQL 词法内核：分句、高亮、格式化（不依赖 UI）
 
 workbench/
-  adb-jdbc           统一 JDBC 会话：连接、参数化查询/更新、事务、方言、类型映射
+  adb-jdbc           统一 JDBC 会话：连接、参数化查询/更新、事务、类型映射
+                     ＋ ⭐ Dialect 抽象层：连接 / 引用 / 能力 / 内省 SQL / DDL 生成
   adb-introspect     对象列表、列定义、主键、行数、分页/排序/筛选 SQL 构造
                       ＋ 结构内省（IndexDef / ForeignKeyDef / TriggerDef / TableStructure）
                       ＋ 结构变更 SQL 生成（StructureSqlBuilder / StructurePlan）
@@ -228,6 +229,45 @@ CHECK 约束不内省；PG 的 DEFAULT / COMMENT 丢失（`TypeMapper` 不读 `g
 - ⚠️ **`ConnectionPool` 不是池**：`getConnection()` 借出后全程不归还，`idleTimeout` /
   `maxLifetime` 形同虚设；每个连接档案一个 `HikariDataSource`。
 - ⚠️ **切连接泄漏会话**：`AppShell.connectProfile` 开新会话不关旧会话。
+
+### 6.2 方言抽象层（A1，✅ 已落地）
+
+以前加一种数据库要改 **5 个文件**（`DialectKind` / `JdbcSession` / `ConnectionProfile` /
+`SchemaService` / `StructureSqlBuilder` / `SessionManager`+`ConnectionPool`），
+共 6 个 `switch` + 13 个 `if` 方言分支。漏一处就是「某个方言下功能悄悄不对」。
+
+现在：**加一种数据库 = 写一个 `Dialect` 实现 + 在 `DialectKind` 里登记一项**。
+
+```
+DialectKind（枚举 = 持久化的判别式：connections.json 的 kind 字段）
+   │  kind.dialect()
+   ▼
+Dialect（接口 = 行为）
+   ├─ 连接：quote / jdbcUrl / driverClassName / defaultPort / pooled / usesFilePath
+   ├─ 能力：supportsColumnComment / readsColumnsViaJdbcMetadata /
+   │        readsIndexesViaJdbcMetadata / hasCatalog / hasSchema /
+   │        rebuildsTableOnColumnChange / requiresDefaultForNotNullColumn
+   ├─ 内省：columnsSql / indexesSql / indexColumnsSql / triggersSql /
+   │        readDdl / readViewDdl / dependentViews / currentCatalog / currentSchema
+   ├─ DDL：columnDefinition / addColumnSql / renameColumnSql / dropColumnSql /
+   │        alterColumnStatements / appendColumnComment
+   └─ 计划：explainSql
+        ▲
+   ┌────┴────┬──────────────┬───────────────┐
+SqliteDialect PostgresDialect MySqlDialect
+```
+
+**三个实现承担了全部方言差异**：
+SQLite 没有 catalog/schema、结果集元数据不带声明类型（要读 PRAGMA）、
+`getIndexInfo` 不可用、没有列注释、改列要整表重建；
+MySQL 标识符用反引号、注释写在列定义里、改列要一条 `MODIFY`；
+PostgreSQL 注释用独立的 `COMMENT ON`、DDL 只能由内省生成。
+
+`SchemaService` 与 `StructureSqlBuilder` 现在**一行方言专属的 SQL 都没有**。
+
+**门禁**：`DialectBranchAuditTest` 扫源码，
+不允许在方言层之外出现 `DialectKind.SQLITE/POSTGRESQL/MYSQL`、方言相等比较或 `switch (dialect())`。
+这条门禁把「加一种库要改五个文件」的老问题**挡在门外**。
 
 ---
 

@@ -483,11 +483,11 @@ ui/adb-ui-shell → workbench/{adb-session, adb-introspect, adb-editing, adb-jdb
 
 | # | 缺口 | 影响 | 证据 |
 |---|---|---|---|
-| A1 | **没有 Dialect 抽象层** | SQL 生成散落 **6 个 `switch` + 13 个 `if` 方言分支**（5 个文件） | `ConnectionProfile.java:52,80`；`SchemaService.java:345,381`；`DialectKind.java:62`；`JdbcSession.java:44`；`SchemaService.java:168,240,362,473,482`；`StructureSqlBuilder.java:60,96,110,197,315,323` |
+| ~~A1~~ | ~~没有 Dialect 抽象层~~ **已做**：`Dialect` 接口 + 三个实现（SQLite / PostgreSQL / MySQL）承担全部方言差异；`SchemaService` 与 `StructureSqlBuilder` 里一行方言专属 SQL 都没有 | 门禁 `DialectBranchAuditTest` 扫源码，禁止方言分支散落 |
 | A2 | **`declarations/` 是死代码** | 4 连接声明 + 4 方言词表 + 5 传输家族 + JSON Schema ≈ 1500 行，**运行时一次都没读**，且**不是任何模块的 Maven 依赖** | 全仓 `io.agenticdb.declarations` 只在模块内部命中 |
 | A3 | **`loadFromClasspath()` 不可用** | 爆炸 classpath 下抛 `DeclarationException`；jar 下**静默返回空模型**（0 字节目录条目） | `DeclarationLoader.java:119-151` |
-| A4 | **参数风格 / 标识符引用被硬编码** | YAML 里声明的 `paramStyle: numbered`（PG）、`identifierQuote` 全部无效 | `JdbcSession.bind` 永远用 `?`；`DialectKind.quote` 硬编码（`:47-50`） |
-| A5 | **元数据只读当前 schema** | `getSchemas()` / `getCatalogs()` / `getExportedKeys()` / `getColumns()` **一次都没调用** → PG 的 DEFAULT / COMMENT 全丢 | `SchemaService` |
+| ~~A4~~ | ~~参数风格 / 标识符引用被硬编码~~ **标识符引用已进方言层**（`Dialect.quote`）；**参数风格仍固定 `?`** —— 声明里的 `paramStyle: numbered` 无效 | `JdbcSession.bind` 永远用 `?` |
+| A5 | **元数据只读当前 schema** | `getSchemas()` / `getCatalogs()` / `getExportedKeys()` / `getColumns()` **一次都没调用** → PG 的 DEFAULT / COMMENT 全丢。**现在有 `Dialect.hasCatalog()` / `hasSchema()` 铺路了**，接上即可 | `SchemaService` |
 | A6 | **危险分级第三层门禁不存在；数据页保存不分类** | 文档宣称三层，实际两层 | `DbSession.java:56`；`DataGridPage.saveChanges`（`:379-437`）**不 import** `DangerClassifier` |
 | A7 | **危险分级 fail-open** | `MERGE`/`UPSERT`/`CALL`/`COPY`/`SET`/`LOCK`/`ANALYZE`/`BEGIN`/`DO` 全部判为只读不拦；`WITH` 在只读白名单 → `WITH … DELETE` **无确认框** | `DangerClassifier.java:39, 104-105` |
 | A8 | **多语句切分不看字符串/注释** | 裸 `String.split(";")` | `DangerClassifier.java:65` |
@@ -562,7 +562,7 @@ ui/adb-ui-shell → workbench/{adb-session, adb-introspect, adb-editing, adb-jdb
 | **P1** | 对象树补触发器 / 视图 / 过程节点 | 内省已有触发器数据（`TriggerDef`），只是没接到树上 |
 | **P1** | 表清单元数据列（行数 / 大小 / 引擎 / 创建日期 / 注释） | Navicat 对象浏览层的核心信息密度（骨架 S2） |
 | **P1** | 顶部功能栏（大图标 + 文字的入口区） | 骨架 S1，直接影响功能可发现性 |
-| **P1** | 真方言抽象层（Dialect 接口） | 再加两种数据库前必须做，否则 `switch` 会失控 |
+| ~~P1~~ ✅ | ~~真方言抽象层（Dialect 接口）~~ **已做** | 方言分支全进方言层，并有源码审计门禁守着 |
 | **P1** | 多连接并行（**会话泄漏已修**，A21 ✅） | 连接管理做了一半，单连接是硬天花板 |
 | **P1** | 侧栏收藏落盘 + 「收藏夹」顶级菜单 | 骨架 S6；用户明确感受过的缺陷 |
 | **P2** | 侧栏「已保存查询」「导入导出」空壳入口处理 | P6 未到，先从侧栏撤掉而不是留死页面 |

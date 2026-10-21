@@ -3,19 +3,29 @@ package io.agenticdb.jdbc;
 import java.nio.file.Path;
 import java.util.Locale;
 
-/** 支持的数据库方言。新增一个库 = 在这里加一项 + 一个 JDBC 驱动依赖。 */
+/**
+ * 支持的数据库方言。
+ *
+ * <p>这个枚举是<b>持久化的判别式</b>（{@code connections.json} 里的 {@code kind} 字段），
+ * 而<b>行为</b>在 {@link Dialect} 的三个实现里。
+ *
+ * <p>加一种数据库 = 写一个 {@code Dialect} 实现 + 在这里加一项。
+ * 以前行为散在五个文件的 {@code switch} 里，加一种库要同时改五处。
+ */
 public enum DialectKind {
 
-    SQLITE("sqlite", "SQLite"),
-    POSTGRESQL("postgresql", "PostgreSQL"),
-    MYSQL("mysql", "MySQL");
+    SQLITE("sqlite", "SQLite", new SqliteDialect()),
+    POSTGRESQL("postgresql", "PostgreSQL", new PostgresDialect()),
+    MYSQL("mysql", "MySQL", new MySqlDialect());
 
     private final String id;
     private final String displayName;
+    private final Dialect dialect;
 
-    DialectKind(String id, String displayName) {
+    DialectKind(String id, String displayName, Dialect dialect) {
         this.id = id;
         this.displayName = displayName;
+        this.dialect = dialect;
     }
 
     public String id() {
@@ -24,6 +34,11 @@ public enum DialectKind {
 
     public String displayName() {
         return displayName;
+    }
+
+    /** 这个方言的行为实现。 */
+    public Dialect dialect() {
+        return dialect;
     }
 
     public static DialectKind of(String id) {
@@ -39,14 +54,14 @@ public enum DialectKind {
         throw new IllegalArgumentException("未知的数据库类型: " + id);
     }
 
+    /** 由方言实现反查枚举项。 */
+    public static DialectKind of(Dialect dialect) {
+        return dialect == null ? SQLITE : dialect.kind();
+    }
+
     /** SQL 标识符引用。SQLite/PG 用双引号，MySQL 用反引号。 */
     public String quote(String identifier) {
-        if (identifier == null) {
-            throw new IllegalArgumentException("标识符不能为空");
-        }
-        return this == MYSQL
-                ? "`" + identifier.replace("`", "``") + "`"
-                : "\"" + identifier.replace("\"", "\"\"") + "\"";
+        return dialect.quote(identifier);
     }
 
     /**
@@ -55,16 +70,11 @@ public enum DialectKind {
      * 否则就是永远填不进、读不出的死控件（4.5-22）。
      */
     public boolean supportsColumnComment() {
-        return this != SQLITE;
+        return dialect.supportsColumnComment();
     }
 
     public String jdbcUrl(String host, int port, String database) {
-        return switch (this) {
-            case SQLITE -> "jdbc:sqlite:" + database;
-            case POSTGRESQL -> "jdbc:postgresql://" + host + ":" + port + "/" + database;
-            case MYSQL -> "jdbc:mysql://" + host + ":" + port + "/" + database
-                    + "?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC";
-        };
+        return dialect.jdbcUrl(host, port, database);
     }
 
     public String sqliteUrl(Path file) {

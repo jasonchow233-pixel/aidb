@@ -22,9 +22,9 @@ public final class SessionManager implements AutoCloseable {
 
     public synchronized DbSession open(String id, ConnectionSpec spec) throws SQLException {
         closeQuietly(id);
-        // SQLite 的文件连接不走 HikariCP；PG/MySQL 走固定 1 连接的池。
-        DbSession session = spec.kind() == io.agenticdb.jdbc.DialectKind.SQLITE
-                ? JdbcSession.open(spec) : ConnectionPool.open(spec);
+        // ⭐ 是否池化由方言决定（SQLite 单文件直连，PG/MySQL 走池）。
+        DbSession session = spec.kind().dialect().pooled()
+                ? ConnectionPool.open(spec) : JdbcSession.open(spec);
         sessions.put(id, session);
         return session;
     }

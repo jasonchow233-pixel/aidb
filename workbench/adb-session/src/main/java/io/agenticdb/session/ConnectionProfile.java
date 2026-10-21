@@ -49,11 +49,8 @@ public record ConnectionProfile(
     }
 
     public static int defaultPort(DialectKind kind) {
-        return switch (kind) {
-            case POSTGRESQL -> 5432;
-            case MYSQL -> 3306;
-            case SQLITE -> 0;
-        };
+        // ⭐ 端口由方言给 —— 以前这里是 switch，加一种库要改这里。
+        return kind.dialect().defaultPort();
     }
 
     public ConnectionProfile withFavorite(boolean value) {
@@ -123,10 +120,9 @@ public record ConnectionProfile(
     }
 
     public String displayTarget() {
-        return switch (kind) {
-            case SQLITE -> database;
-            case POSTGRESQL, MYSQL -> host + ":" + port + "/" + database;
-        };
+        return kind.dialect().usesFilePath()
+                ? database
+                : host + ":" + port + "/" + database;
     }
 
     public String kindLabel() {

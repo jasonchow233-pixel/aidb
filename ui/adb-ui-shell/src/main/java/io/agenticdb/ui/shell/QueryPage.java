@@ -742,11 +742,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
     }
 
     private String explainSql(String sql) {
-        return switch (session.dialect()) {
-            case SQLITE -> "EXPLAIN QUERY PLAN\n" + sql;
-            case POSTGRESQL -> "EXPLAIN " + sql;
-            case MYSQL -> "EXPLAIN " + sql;
-        };
+        // ⭐ 执行计划语句由方言给 —— 以前这里是 switch，加一种库要改这里。
+        return session.dialect().explainSql(sql);
     }
 
     // ─────────────────────────── 结果页 ───────────────────────────

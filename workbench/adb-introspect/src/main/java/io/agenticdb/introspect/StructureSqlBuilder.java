@@ -1,8 +1,9 @@
 package io.agenticdb.introspect;
 
 import io.agenticdb.jdbc.DbSession;
-import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.model.ColumnDef;
+import io.agenticdb.model.ColumnSpec;
 import io.agenticdb.model.ColumnType;
 import io.agenticdb.model.Danger;
 
@@ -24,48 +25,18 @@ public final class StructureSqlBuilder {
     private StructureSqlBuilder() {
     }
 
-    /** 新增/修改列的输入。{@code rawType} 为空时按 {@link ColumnType} 给默认类型。 */
-    public record ColumnSpec(
-            String name,
-            String rawType,
-            boolean nullable,
-            String defaultValue,
-            String comment,
-            boolean unique,
-            boolean primaryKey) {
-
-        public ColumnSpec {
-            name = name == null ? "" : name.trim();
-            rawType = rawType == null ? "" : rawType.trim();
-            defaultValue = defaultValue == null || defaultValue.isBlank()
-                    ? null : defaultValue.trim();
-            comment = comment == null || comment.isBlank() ? null : comment.trim();
-        }
-
-        public static ColumnSpec from(ColumnDef column) {
-            return new ColumnSpec(column.name(), column.rawType(), column.nullable(),
-                    column.defaultValue(), column.comment(), column.unique(),
-                    column.primaryKey());
-        }
-
-        public ColumnSpec withName(String value) {
-            return new ColumnSpec(value, rawType, nullable, defaultValue, comment, unique,
-                    primaryKey);
-        }
-    }
-
     public static StructurePlan addColumn(DbSession session, TableStructure table,
                                           ColumnSpec column) {
         validateColumn(column);
-        if (session.dialect() == DialectKind.SQLITE && !column.nullable()
+        Dialect dialect = session.dialect();
+        if (dialect.requiresDefaultForNotNullColumn() && !column.nullable()
                 && column.defaultValue() == null && !column.primaryKey()) {
-            throw new IllegalArgumentException("SQLite 新增 NOT NULL 列必须提供默认值");
+            throw new IllegalArgumentException(dialect.displayName()
+                    + " 新增 NOT NULL 列必须提供默认值");
         }
         List<String> statements = new ArrayList<>();
-        String definition = columnDefinition(session, column, true);
-        statements.add("ALTER TABLE " + session.dialect().quote(table.name())
-                + " ADD COLUMN " + definition);
-        appendComment(session, table.name(), column, statements);
+        statements.add(dialect.addColumnSql(table.name(), column));
+        dialect.appendColumnComment(table.name(), column, statements);
         return new StructurePlan("新增列 " + column.name(), statements,
                 Danger.DESTRUCTIVE, false, false);
     }
@@ -78,9 +49,8 @@ public final class StructureSqlBuilder {
         if (oldName == null || oldName.isBlank()) {
             throw new IllegalArgumentException("请选择要重命名的列");
         }
-        String sql = "ALTER TABLE " + session.dialect().quote(table.name())
-                + " RENAME COLUMN " + session.dialect().quote(oldName)
-                + " TO " + session.dialect().quote(newName.trim());
+        String sql = session.dialect().renameColumnSql(table.name(), oldName,
+                newName.trim());
         return new StructurePlan("重命名列 " + oldName + " → " + newName.trim(),
                 List.of(sql), Danger.DESTRUCTIVE, false, false);
     }
@@ -93,33 +63,19 @@ public final class StructureSqlBuilder {
             throw new IllegalArgumentException("列不存在: " + oldName);
         }
 
-        if (session.dialect() == DialectKind.SQLITE) {
+        Dialect dialect = session.dialect();
+        if (dialect.rebuildsTableOnColumnChange()) {
+            // SQLite 的 ALTER TABLE 改不了列 —— 整表重建。
             ColumnSpec preserved = new ColumnSpec(next.name(), next.rawType(), next.nullable(),
                     next.defaultValue(), next.comment(), old.unique(), old.primaryKey());
             return rebuildPlan(session, table, oldName, preserved);
         }
 
-        List<String> statements = new ArrayList<>();
-        String tableName = session.dialect().quote(table.name());
-        String columnName = session.dialect().quote(oldName);
-        String rawType = rawType(next);
-        if (!sameType(old.rawType(), rawType)) {
-            statements.add("ALTER TABLE " + tableName + " ALTER COLUMN " + columnName
-                    + " TYPE " + rawType);
-        }
-        if (session.dialect() == DialectKind.MYSQL) {
-            // MySQL 没有独立的 SET NOT NULL / SET DEFAULT；一条 MODIFY 必须带完整定义。
-            statements.clear();
-            statements.add("ALTER TABLE " + tableName + " MODIFY COLUMN "
-                    + columnDefinition(session, next, true));
-        } else {
-            statements.add("ALTER TABLE " + tableName + " ALTER COLUMN " + columnName
-                    + (next.nullable() ? " DROP NOT NULL" : " SET NOT NULL"));
-            statements.add("ALTER TABLE " + tableName + " ALTER COLUMN " + columnName
-                    + (next.defaultValue() == null ? " DROP DEFAULT"
-                    : " SET DEFAULT " + next.defaultValue()));
-        }
-        appendComment(session, table.name(), next, statements);
+        // ⭐ 改列语句由方言生成 —— MySQL 要一条 MODIFY 带完整定义，
+        //    PostgreSQL 要拆成 TYPE / NOT NULL / DEFAULT 三条。
+        List<String> statements = new ArrayList<>(
+                dialect.alterColumnStatements(table.name(), oldName, next, old.rawType()));
+        dialect.appendColumnComment(table.name(), next, statements);
         return new StructurePlan("修改列 " + oldName, statements, Danger.DESTRUCTIVE,
                 true, false);
     }
@@ -132,8 +88,7 @@ public final class StructureSqlBuilder {
         if (table.primaryKeys().stream().anyMatch(key -> key.equalsIgnoreCase(columnName))) {
             throw new IllegalArgumentException("主键列不能直接删除；请先调整主键");
         }
-        String sql = "ALTER TABLE " + session.dialect().quote(table.name())
-                + " DROP COLUMN " + session.dialect().quote(columnName);
+        String sql = session.dialect().dropColumnSql(table.name(), columnName);
         return new StructurePlan("删除列 " + columnName, List.of(sql), Danger.DESTRUCTIVE,
                 true, false);
     }
@@ -157,7 +112,7 @@ public final class StructureSqlBuilder {
         String temporaryQuote = session.dialect().quote(temporary);
 
         List<String> statements = new ArrayList<>();
-        List<String> views = sqliteDependentViews(session, table.name());
+        List<String> views = dependentViews(session, table.name());
         for (String view : views) {
             statements.add("DROP VIEW " + session.dialect().quote(view));
         }
@@ -184,7 +139,7 @@ public final class StructureSqlBuilder {
             }
         }
         for (String view : views) {
-            String sql = sqliteViewSql(session, view);
+            String sql = viewDdl(session, view);
             if (sql != null && !sql.isBlank()) {
                 statements.add(sql.strip().replaceAll(";\\s*$", ""));
             }
@@ -193,35 +148,20 @@ public final class StructureSqlBuilder {
                 Danger.DESTRUCTIVE, true, true);
     }
 
-    private static List<String> sqliteDependentViews(DbSession session, String table) {
-        if (session.dialect() != DialectKind.SQLITE) {
+    /** 引用了这张表的视图 —— 只有整表重建需要拆它们。 */
+    private static List<String> dependentViews(DbSession session, String table) {
+        try {
+            return session.dialect().dependentViews(session.connection(), table);
+        } catch (java.sql.SQLException ignored) {
+            // 读不到就当作没有依赖视图，让重建走到数据库自己的错误。
             return List.of();
         }
-        List<String> names = new ArrayList<>();
-        java.util.regex.Pattern reference = java.util.regex.Pattern.compile(
-                "(?i)\\b" + java.util.regex.Pattern.quote(table) + "\\b");
-        try (var statement = session.connection().createStatement();
-             ResultSet rs = statement.executeQuery(
-                     "SELECT name, sql FROM sqlite_master WHERE type = 'view' ORDER BY name")) {
-            while (rs.next()) {
-                String sql = rs.getString(2);
-                if (sql != null && reference.matcher(sql).find()) {
-                    names.add(rs.getString(1));
-                }
-            }
-        } catch (java.sql.SQLException ignored) {
-            // 没有 sqlite_master 权限时让重建走到数据库自己的错误，UI 会展示原因。
-        }
-        return names;
     }
 
-    private static String sqliteViewSql(DbSession session, String view) {
-        try (var statement = session.connection().prepareStatement(
-                "SELECT sql FROM sqlite_master WHERE type = 'view' AND name = ?")) {
-            statement.setString(1, view);
-            try (ResultSet rs = statement.executeQuery()) {
-                return rs.next() ? rs.getString(1) : null;
-            }
+    /** 视图的 DDL。 */
+    private static String viewDdl(DbSession session, String view) {
+        try {
+            return session.dialect().readDdl(session.connection(), view, true);
         } catch (java.sql.SQLException ignored) {
             return null;
         }
@@ -299,43 +239,6 @@ public final class StructureSqlBuilder {
         }
     }
 
-    private static String columnDefinition(DbSession session, ColumnSpec column,
-                                           boolean includeName) {
-        String definition = (includeName ? quoteIdentifier(session, column.name()) + " " : "")
-                + rawType(column);
-        if (!column.nullable()) {
-            definition += " NOT NULL";
-        }
-        if (column.defaultValue() != null) {
-            definition += " DEFAULT " + column.defaultValue();
-        }
-        if (column.unique()) {
-            definition += " UNIQUE";
-        }
-        if (session.dialect() == DialectKind.MYSQL && column.comment() != null) {
-            definition += " COMMENT '" + column.comment().replace("'", "''") + "'";
-        }
-        return definition;
-    }
-
-    private static void appendComment(DbSession session, String table, ColumnSpec column,
-                                      List<String> statements) {
-        if (column.comment() == null || session.dialect() != DialectKind.POSTGRESQL) {
-            return;
-        }
-        statements.add("COMMENT ON COLUMN " + quoteIdentifier(session, table) + "."
-                + quoteIdentifier(session, column.name()) + " IS '"
-                + column.comment().replace("'", "''") + "'");
-    }
-
-    private static String rawType(ColumnSpec column) {
-        return column.rawType().isBlank() ? defaultType(column.primaryKey()) : column.rawType();
-    }
-
-    private static String defaultType(boolean primaryKey) {
-        return primaryKey ? "INTEGER" : "TEXT";
-    }
-
     private static String defaultRawType(ColumnDef column) {
         if (column.rawType() != null && !column.rawType().isBlank()) {
             return column.rawType();
@@ -353,15 +256,10 @@ public final class StructureSqlBuilder {
         };
     }
 
-    private static boolean sameType(String left, String right) {
-        return left != null && right != null
-                && left.replace(" ", "").equalsIgnoreCase(right.replace(" ", ""));
-    }
-
     private static ColumnDef toColumnDef(ColumnSpec column) {
         return new ColumnDef(column.name(), ColumnType.OTHER, column.nullable(),
                 column.primaryKey(), column.defaultValue(), column.comment(), null,
-                null, null, null, column.unique(), rawType(column));
+                null, null, null, column.unique(), column.effectiveType());
     }
 
     private static String quoteIdentifier(DbSession session, String value) {
