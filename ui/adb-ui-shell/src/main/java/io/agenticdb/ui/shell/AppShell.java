@@ -122,6 +122,8 @@ public final class AppShell extends StackPane {
                 this::openTab, statusBar::setMessage, "demo", connections, this::selectConnection);
         this.sideBar.setOnRefreshObjects(this::reloadObjects);
         this.sideBar.setOnSelectSchema(this::switchSchema);
+        // ⭐ 多连接对象树：展开一个没读过的连接时，去连它、读它的对象。
+        this.sideBar.setOnLoadObjects(this::loadObjectsFor);
         this.workspace = new WorkspaceView(actions, connectionName,
                 this::createGridPage, this::createQueryPage, this::createStructurePage,
                 this::createConnectionsPage);
@@ -212,7 +214,8 @@ public final class AppShell extends StackPane {
         }
 
         refreshProfiles();
-        sideBar.setObjects(objects);
+        objectsByConnection.put(profile.id(), objects);
+        sideBar.setObjects(profile.id(), objects);
         sideBar.setConnection(profile.id(), profile.name());
         // ⭐ schema 切换器：列出这个连接能看到的 schema。
         //    多于一个才显示（SQLite 没有、单 schema 不添乱）。
@@ -278,6 +281,33 @@ public final class AppShell extends StackPane {
         } catch (SQLException e) {
             status("切换 schema 失败：" + readable(e));
         }
+    }
+
+    /**
+     * 读取某个连接的对象（多连接对象树的懒加载）。
+     *
+     * <p>在后台线程做 —— 一个连不上的连接不能把界面卡住。
+     */
+    private void loadObjectsFor(String connectionId) {
+        ConnectionProfile profile = profilesById.get(connectionId);
+        if (profile == null) {
+            return;
+        }
+        dbExecutor.execute(() -> {
+            try {
+                String password = credentials.password(profile.id()).orElse(null);
+                DbSession session = sessions.open(profile.id(), profile.spec(password));
+                List<SchemaObject> objects = schemaService.listObjects(session);
+                objectsByConnection.put(profile.id(), objects);
+                Platform.runLater(() -> {
+                    sideBar.setObjects(profile.id(), objects);
+                    status("已读取 " + profile.name() + " 的 " + objects.size() + " 个对象");
+                });
+            } catch (Exception e) {
+                Platform.runLater(() ->
+                        status("读取 " + profile.name() + " 的对象失败：" + readable(e)));
+            }
+        });
     }
 
     /** 侧栏/工具栏切换连接。已打开的会话复用，不重开。 */

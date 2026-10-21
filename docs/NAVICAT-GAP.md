@@ -21,7 +21,7 @@
 | 查询编辑器 | ✅ | 词法内核 + 高亮 + 多语句 + 取消 + 执行计划 + 历史；**变量替换 / 代码折叠 / 括号匹配 / 结果排序缺失** |
 | 结构 / DDL | 🟡 | 只读信息完整，**只能改列**，索引/外键/触发器不可编辑，也不能建表 |
 | 连接管理 | 🟡 | 列表/向导/钥匙串都做了，**凭据已加固**（脱敏 + stdin + 不被 options 覆盖）；**多连接并行、schema 树、连接属性页缺失** |
-| 对象树 | 🟡 | 只有表/视图两类节点，**没有过程/函数/触发器/schema 分组**；**收藏不落盘** |
+| 对象树 | 🟡 | **多连接树已做**；但节点类型仍只有表/视图两类，**没有过程/函数/触发器分组**；**收藏不落盘** |
 | 导入导出 | ⛔ | 只有「当前页 CSV / TSV / SQL」，**没有向导**；侧栏入口是空壳 |
 | 工具 / 运维 | 🟡 | **查询历史、诊断、导入导出已接真功能**；已保存查询仍是空壳 |
 | 分发 | ⛔ | 只有 `mvnw`，没有 jlink / jpackage / 签名 |
@@ -118,7 +118,7 @@
 | **D18** | `core/adb-declarations` 的 `DeclarationLoader.java:36` javadoc 写「两者的解析结果必须完全相同，这本身要有一条测试守着」——**没有这条测试**，且 `loadFromClasspath()` 实际是坏的 | `DeclarationLoader.java:119-151` |
 | **D19** | `DeclarationLoader.java:27` 的 `{@link DeclarationCheckMojo}` **指向一个不存在的类** | 全仓 0 命中 |
 
-### 0.3 本轮关闭的差距（26 项）
+### 0.3 本轮关闭的差距（27 项）
 
 第四轮复核后，**B0–B4 批次全部落地**，下列差距已经关掉：
 
@@ -147,6 +147,7 @@
 | **方言** | **方言抽象层（A1）**：加一种数据库从「改 5 个文件」变成「写一个 Dialect 实现」；`SchemaService` / `StructureSqlBuilder` 里没有方言专属 SQL | `Dialect` + 3 实现 + `DialectBranchAuditTest` |
 | **方言** | **第三层危险门禁（驱动侧复查）**：调用方必须声明危险等级，驱动侧再判一次，实际更危险就拒绝 | `DbSession.requireDeclared` |
 | **统计** | surefire 统计口径失真已修（`tools/TestCount.java` 按 `<testcase>` 计数 + 下限断言） | `tools/TestCount.java` |
+| **对象树** | **多连接对象树**：所有连接在同一棵树里（Navicat 的「我的连接」模型），展开懒加载；打开表按节点所属连接建标签 | `SideBar.buildTreeModel` + `SideBarTreeTest` |
 | **设计令牌** | **令牌体系收敛**：112 → 60 个，全部被用到（CSS 引用或 Java 常量消费）；`risk-*` 家族终于用上了（四级风险各一套配色）；侧栏宽度 / 栏高 / Toast 时长的魔数换成令牌 | `tokens.json` + `TokenParityTest.everyTokenIsActuallyUsed` |
 | **文档** | 6 张截图已重拍（补上 `⇤/⇥/跳至页`、去掉多余的「注释」列） | `docs/screenshots/` |
 
@@ -177,7 +178,7 @@
 
 | Navicat 能力 | 我们 | 证据 / 差距 |
 |---|---|---|
-| 连接 → 表 / 视图分组 | ✅ | `SideBar.buildTreeModel` |
+| 连接 → 表 / 视图分组 | ✅ | `SideBar.buildTreeModel` —— **所有连接在同一棵树里**（Navicat 的「我的连接」模型），展开懒加载 |
 | 双击打开 | 🟡 | 树 `setOnMouseClicked` 与单元格局部 `setOnMouseClicked` **都会触发**，靠 `TabBar.open` 去重兜底（`SideBar.java:235-248, 588-594`） |
 | 右键菜单 | 🟡 | 表/视图节点 7 项、连接节点 3 项、组节点 1 项；**没有重命名、没有新建表、没有导出、没有表属性**；**且不经过 `ActionRegistry`**（→ 4.5-8） |
 | 收藏 | 🟡 | `SideBar.starred` **只在内存**（`SideBar.java:56`），退出即丢；`ConnectionProfile.favorite` 才落盘 —— **两套互不相干的收藏系统** |

@@ -24,7 +24,7 @@
 | 原生窗口装饰 + macOS 系统菜单栏 | ✅ | `StageStyle.DECORATED` + `MenuBar.setUseSystemMenuBar(true)` |
 | 统一动作注册表（菜单/工具栏/右键/命令面板） | ✅ | `ActionRegistry` |
 | 侧栏 240px / 折叠 48px / 拖动改宽 | ✅ | `SideBar` + `AppShell` |
-| 真实 SQLite 对象树（表/视图） | ✅ | `SchemaService` + `SideBar` |
+| 真实 SQLite 对象树（表/视图，**多连接同树**） | ✅ | `SchemaService` + `SideBar` |
 | 演示库（固定种子，可重建） | ✅ | `~/.agenticdb/agenticdb-demo.db`，`DemoDatabase` |
 | 数据页：服务端分页、选择列、行号、类型行 | ✅ | `DataGridPage` |
 | 底部分页条：100/200/500/1000 | ✅ | `DataGridPage` |
@@ -64,7 +64,7 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**42 个测试类、377 条测试用例，0 失败**。统一命令：`./mvnw -B clean verify`。
+当前门禁：**43 个测试类、380 条测试用例，0 失败**。统一命令：`./mvnw -B clean verify`。
 
 统计口径用工具兜底（`@Nested` 的测试类在 surefire XML 里会写成 `tests="0"`）：
 

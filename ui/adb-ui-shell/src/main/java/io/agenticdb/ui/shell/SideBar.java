@@ -27,10 +27,12 @@ import io.agenticdb.introspect.SchemaService.ObjectKind;
 import io.agenticdb.introspect.SchemaService.SchemaObject;
 import io.agenticdb.session.ConnectionProfile;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -51,6 +53,17 @@ public final class SideBar extends VBox {
     private List<ConnectionProfile> connections = List.of();
     private List<SchemaObject> tables = List.of();
     private List<SchemaObject> views = List.of();
+    /**
+     * ⭐ 每个连接各自的对象（多连接对象树）。
+     *
+     * <p>以前侧栏只显示「当前连接」的对象 —— 切到另一个连接，整棵树就换掉了，
+     * 没法同时浏览两个库。Navicat 的对象树是**所有连接都在同一棵树里**。
+     */
+    private final Map<String, List<SchemaObject>> objectsByConnection = new LinkedHashMap<>();
+    /** 需要某个连接的对象时调用（AppShell 负责连上去读）。 */
+    private Consumer<String> onLoadObjects = connectionId -> { };
+    /** 已经尝试过读取的对象（读失败也不反复试）。 */
+    private final Set<String> attempted = new LinkedHashSet<>();
     /** 出现的 schema 个数；> 1 时对象树按 schema 分组。 */
     private int schemaCount;
     private Runnable onRefreshObjects = () -> { };
@@ -171,6 +184,7 @@ public final class SideBar extends VBox {
         this.connectionName = name;
         refreshTree();
         refreshFavorites();
+        loadObjectsIfNeeded(id);
         if (id != null) {
             connectionPicker.getSelectionModel().select(findActiveProfile());
         }
@@ -179,6 +193,35 @@ public final class SideBar extends VBox {
     /** 用新的内省结果替换对象树；对象在数据库里被增删后调用。 */
     public void setObjects(List<SchemaObject> objects) {
         setObjects(objects, true);
+    }
+
+    /**
+     * ⭐ 设置某个连接的对象（多连接对象树）。
+     *
+     * @param connectionId 哪个连接
+     */
+    public void setObjects(String connectionId, List<SchemaObject> objects) {
+        if (connectionId == null) {
+            return;
+        }
+        objectsByConnection.put(connectionId,
+                objects == null ? List.of() : List.copyOf(objects));
+        attempted.add(connectionId);
+        if (connectionId.equals(this.connectionId)) {
+            setObjects(objects, true);
+        } else {
+            refreshTree();
+        }
+    }
+
+    /** 需要某个连接的对象时调用（AppShell 连上去读）。 */
+    public void setOnLoadObjects(Consumer<String> onLoadObjects) {
+        this.onLoadObjects = onLoadObjects == null ? id -> { } : onLoadObjects;
+    }
+
+    /** 供门禁触发对象树动作。 */
+    void actionForTest(String actionId) {
+        actions.run(actionId);
     }
 
     /** schema 切换的回调（AppShell 改会话的 search_path 并重新内省）。 */
@@ -337,6 +380,14 @@ public final class SideBar extends VBox {
         tree.getSelectionModel().selectedItemProperty().addListener((obs, old, item) -> {
             selectedNode = item == null ? null : item.getValue();
             updateObjectActionStates();
+            // ⭐ 选中一个还没读过的连接 → 去读它的对象（懒加载）。
+            //    不这么做的话，多连接树里非当前连接的节点永远是空的。
+            if (item != null) {
+                DemoNode node = item.getValue();
+                if (node.kind() == NodeKind.CONNECTION && !node.connectionId().isBlank()) {
+                    loadObjectsIfNeeded(node.connectionId());
+                }
+            }
         });
         tree.setOnMouseClicked(event -> {
             if (event.getClickCount() == 2) {
@@ -346,7 +397,7 @@ public final class SideBar extends VBox {
                 }
                 DemoNode node = selected.getValue();
                 if (node.kind() == NodeKind.TABLE || node.kind() == NodeKind.VIEW) {
-                    openGrid(node.name());
+                    openGrid(node.connectionId(), node.name());
                 } else if (node.kind() == NodeKind.CONNECTION) {
                     selected.setExpanded(!selected.isExpanded());
                 }
@@ -474,33 +525,81 @@ public final class SideBar extends VBox {
 
     // ─────────────────────────── 对象树 ───────────────────────────
 
+    /**
+     * 对象树模型。
+     *
+     * <p>⭐ <b>所有连接都在同一棵树里</b>（Navicat 的「我的连接」模型）：
+     * 以前树根就是当前连接，切连接整棵树就换掉了 —— 用户没法同时浏览两个库。
+     * 现在每个连接一个节点，展开即读该连接的对象（懒加载）。
+     */
     private TreeItem<DemoNode> buildTreeModel(String filter) {
         String needle = filter == null ? "" : filter.trim().toLowerCase(Locale.ROOT);
 
+        // 连接清单：优先用已保存的连接档案；没有档案时用当前连接兜底。
+        // ⭐ 这里**不能**造一个带方言的 ConnectionProfile —— 那是方言分支，
+        //    会被 DialectBranchAuditTest 拦下（而且本来就该避免）。
+        List<String[]> entries = new ArrayList<>();
+        for (ConnectionProfile profile : connections) {
+            entries.add(new String[]{profile.id(), profile.name()});
+        }
+        if (entries.isEmpty() && connectionId != null) {
+            entries.add(new String[]{connectionId, connectionName});
+        }
+
         TreeItem<DemoNode> root = new TreeItem<>(
-                new DemoNode(connectionName, NodeKind.CONNECTION, "◈"));
+                new DemoNode("我的连接", NodeKind.ROOT, "◈"));
         root.setExpanded(true);
 
-        root.getChildren().addAll(
-                kindGroup("表", NodeKind.TABLE, tables, needle),
-                kindGroup("视图", NodeKind.VIEW, views, needle));
+        for (String[] entry : entries) {
+            String id = entry[0];
+            boolean active = id.equals(connectionId);
+            TreeItem<DemoNode> connectionNode = new TreeItem<>(
+                    new DemoNode(entry[1], NodeKind.CONNECTION, "◈", id));
+            connectionNode.setExpanded(active);
+
+            List<SchemaObject> objects = objectsByConnection.getOrDefault(id, List.of());
+            List<SchemaObject> profileTables = objects.stream()
+                    .filter(object -> object.kind() == ObjectKind.TABLE).toList();
+            List<SchemaObject> profileViews = objects.stream()
+                    .filter(object -> object.kind() == ObjectKind.VIEW).toList();
+
+            connectionNode.getChildren().addAll(
+                    kindGroup("表", NodeKind.TABLE, profileTables, needle, id),
+                    kindGroup("视图", NodeKind.VIEW, profileViews, needle, id));
+
+            // 空分组不显示（没读到对象的连接只留一个可展开的连接节点）。
+            connectionNode.getChildren().removeIf(TreeItem::isLeaf);
+            root.getChildren().add(connectionNode);
+        }
         return root;
     }
 
 
     /** 一个分组节点（表 / 视图）。 */
     private TreeItem<DemoNode> kindGroup(String label, NodeKind kind,
-                                        List<SchemaObject> objects, String needle) {
+                                        List<SchemaObject> objects, String needle,
+                                        String connectionId) {
         TreeItem<DemoNode> group = new TreeItem<>(
-                new DemoNode(label, NodeKind.GROUP, kind == NodeKind.TABLE ? "▤" : "◇"));
+                new DemoNode(label, NodeKind.GROUP, kind == NodeKind.TABLE ? "▤" : "◇",
+                        connectionId));
         group.setExpanded(true);
         for (SchemaObject object : objects) {
             if (matches(object.name(), needle)) {
                 group.getChildren().add(new TreeItem<>(
-                        new DemoNode(object.name(), kind, object.kind().icon(), object.schema())));
+                        new DemoNode(object.name(), kind, object.kind().icon(), object.schema(),
+                                connectionId)));
             }
         }
         return group;
+    }
+
+    /** 该连接的对象还没读过就去读（懒加载）。 */
+    private void loadObjectsIfNeeded(String id) {
+        if (id == null || attempted.contains(id)) {
+            return;
+        }
+        attempted.add(id);
+        onLoadObjects.accept(id);
     }
 
     private static boolean matches(String value, String needle) {
@@ -589,22 +688,25 @@ public final class SideBar extends VBox {
             return;
         }
         boolean isObject = node.kind() == NodeKind.TABLE || node.kind() == NodeKind.VIEW;
+        // ⭐ 多连接对象树：动作作用在**节点所属的连接**上，不是当前激活的连接。
+        String owner = node.connectionId() == null || node.connectionId().isBlank()
+                ? connectionId : node.connectionId();
         switch (action) {
             case OPEN_DATA -> {
                 if (isObject) {
-                    openGrid(node.name());
+                    openGrid(owner, node.name());
                 } else {
                     status.accept("只有表和视图能打开数据");
                 }
             }
             case OPEN_STRUCTURE -> {
                 if (isObject) {
-                    openStructure(node.name());
+                    openStructure(owner, node.name());
                 } else {
                     status.accept("只有表和视图有结构页");
                 }
             }
-            case NEW_QUERY -> openQuery(isObject ? node.name() : null);
+            case NEW_QUERY -> openQuery(owner, isObject ? node.name() : null);
             case FAVORITE -> {
                 if (isObject) {
                     toggleStar(node.name());
@@ -654,22 +756,38 @@ public final class SideBar extends VBox {
         actions.find(id).ifPresent(action -> action.setEnabled(enabled));
     }
 
+    /** 打开表。{@code targetConnection} 为空表示当前连接。 */
     private void openGrid(String name) {
-        openTab.accept(new TabItem("grid:" + connectionId + ":" + name, name, TabKind.GRID,
-                name, connectionId));
+        openGrid(connectionId, name);
+    }
+
+    private void openGrid(String targetConnection, String name) {
+        String id = targetConnection == null ? connectionId : targetConnection;
+        openTab.accept(new TabItem("grid:" + id + ":" + name, name, TabKind.GRID,
+                name, id));
         status.accept("打开表：" + name);
     }
 
     private void openStructure(String name) {
-        openTab.accept(new TabItem("structure:" + connectionId + ":" + name, name,
-                TabKind.STRUCTURE, name, connectionId));
+        openStructure(connectionId, name);
+    }
+
+    private void openStructure(String targetConnection, String name) {
+        String id = targetConnection == null ? connectionId : targetConnection;
+        openTab.accept(new TabItem("structure:" + id + ":" + name, name,
+                TabKind.STRUCTURE, name, id));
         status.accept("打开结构：" + name);
     }
 
     private void openQuery(String name) {
+        openQuery(connectionId, name);
+    }
+
+    private void openQuery(String targetConnection, String name) {
+        String id = targetConnection == null ? connectionId : targetConnection;
         String title = name == null ? "未命名查询" : "查询 · " + name;
-        openTab.accept(new TabItem("query:" + connectionId + ":" + System.nanoTime(), title,
-                TabKind.QUERY, null, connectionId));
+        openTab.accept(new TabItem("query:" + id + ":" + System.nanoTime(), title,
+                TabKind.QUERY, null, id));
         status.accept("新建查询");
     }
 
@@ -697,18 +815,24 @@ public final class SideBar extends VBox {
     }
 
     private enum NodeKind {
-        CONNECTION, GROUP, TABLE, VIEW
+        ROOT, CONNECTION, GROUP, TABLE, VIEW
     }
 
     /**
      * 树节点。
      *
-     * @param schema 所属 schema（表/视图节点用；其它节点为空串）
+     * @param schema       所属 schema（表/视图节点用；其它节点为空串）
+     * @param connectionId 所属连接（连接节点与其下的对象用；其它节点为空串）
      */
-    private record DemoNode(String name, NodeKind kind, String icon, String schema) {
+    private record DemoNode(String name, NodeKind kind, String icon, String schema,
+                            String connectionId) {
 
         private DemoNode(String name, NodeKind kind, String icon) {
-            this(name, kind, icon, "");
+            this(name, kind, icon, "", "");
+        }
+
+        private DemoNode(String name, NodeKind kind, String icon, String connectionId) {
+            this(name, kind, icon, "", connectionId);
         }
     }
 
@@ -754,6 +878,7 @@ public final class SideBar extends VBox {
             }
 
             switch (item.kind()) {
+                case ROOT -> getStyleClass().add("adb-tree-cell--connection");
                 case GROUP -> getStyleClass().add("adb-tree-cell--group");
                 case CONNECTION -> getStyleClass().add("adb-tree-cell--connection");
                 default -> getStyleClass().add("adb-tree-cell--object");
@@ -762,7 +887,8 @@ public final class SideBar extends VBox {
             setOnMouseClicked(event -> {
                 if (event.getClickCount() == 2
                         && (item.kind() == NodeKind.TABLE || item.kind() == NodeKind.VIEW)) {
-                    openGrid(item.name());
+                    // ⭐ 按节点所属连接打开（多连接对象树）
+                    openGrid(item.connectionId(), item.name());
                     event.consume();
                 }
             });

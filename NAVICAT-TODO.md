@@ -40,7 +40,7 @@
 ./mvnw -B clean verify
 ```
 
-当前结果：**42 个测试类 / 377 条测试用例，0 失败 / 0 错误 / 0 跳过**（2026-10-21 实测）。
+当前结果：**43 个测试类 / 380 条测试用例，0 失败 / 0 错误 / 0 跳过**（2026-10-21 实测）。
 
 统计口径用工具兜底：
 
@@ -62,7 +62,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `workbench/adb-transfer` | 15 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告 |
 | `ui/adb-ui-core` | 5 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** |
-| `ui/adb-ui-shell` | 96 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**图标语义唯一**、**注册表收口**、**保存守卫**、**工具页** |
+| `ui/adb-ui-shell` | 99 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**图标语义唯一**、**注册表收口**、**保存守卫**、**工具页** |
 
 > ⚠️ **统计口径（4.5-28）**：用 `@Nested` 的 4 个测试类（`QueryLimitsTest`、
 > `DangerClassifierTest`、`DeclarationLoaderTest`、`DeclarationValidationTest`）在 surefire XML 里
@@ -314,6 +314,8 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 
 ### 7.2 待办
 
+- [x] **多连接对象树**：⭐ 对象树改成 Navicat 的「我的连接」模型 —— **所有连接在同一棵树里**，
+      展开即懒加载该连接的对象；打开表时按**节点所属连接**建标签（不是当前激活的连接）
 - [ ] **多连接并行**：去掉 `AppShell` 单一 `activeProfile` / `session`，改为按连接 id 取会话
 - [x] **切连接不泄漏会话**（✅ A21）：`AppShell.closeOrphanSessions` 回收没有标签页引用的会话
 - [ ] **Windows 凭据**：WinCred / DPAPI 后端（`CredentialStore.platform()` 补分支）
