@@ -260,6 +260,24 @@ public final class PostgresDialect implements Dialect {
         return "ALTER TABLE " + quote(table) + " ADD COLUMN " + columnDefinition(column, true);
     }
 
+    /**
+     * 自增列：PostgreSQL 10+ 的 identity 列
+     * （{@code information_schema.columns.is_identity = 'YES'}）。
+     */
+    @Override
+    public String autoIncrementColumn(java.sql.Connection connection, String table)
+            throws java.sql.SQLException {
+        try (java.sql.PreparedStatement ps = connection.prepareStatement(
+                "SELECT column_name FROM information_schema.columns "
+                        + "WHERE table_schema = current_schema() AND table_name = ? "
+                        + "AND is_identity = 'YES'")) {
+            ps.setString(1, table);
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString(1) : null;
+            }
+        }
+    }
+
     @Override
     public String explainSql(String sql) {
         return "EXPLAIN " + sql;

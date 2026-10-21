@@ -276,6 +276,23 @@ public final class MySqlDialect implements Dialect {
         return "ALTER TABLE " + quote(table) + " ADD COLUMN " + columnDefinition(column, true);
     }
 
+    /**
+     * 自增列：{@code information_schema.columns.EXTRA} 里带 {@code auto_increment}。
+     */
+    @Override
+    public String autoIncrementColumn(java.sql.Connection connection, String table)
+            throws java.sql.SQLException {
+        try (java.sql.PreparedStatement ps = connection.prepareStatement(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                        + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? "
+                        + "AND EXTRA LIKE '%auto_increment%'")) {
+            ps.setString(1, table);
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString(1) : null;
+            }
+        }
+    }
+
     @Override
     public String explainSql(String sql) {
         return "EXPLAIN " + sql;

@@ -57,14 +57,31 @@ public final class SchemaService {
         }
     }
 
-    public record TableSchema(String name, List<ColumnDef> columns, List<String> primaryKeys) {
+    public record TableSchema(String name, List<ColumnDef> columns, List<String> primaryKeys,
+                              String autoIncrementColumn) {
         public TableSchema {
             columns = List.copyOf(columns == null ? List.of() : columns);
             primaryKeys = List.copyOf(primaryKeys == null ? List.of() : primaryKeys);
+            autoIncrementColumn = autoIncrementColumn == null || autoIncrementColumn.isBlank()
+                    ? null : autoIncrementColumn;
         }
 
         public TableSchema(String name, List<ColumnDef> columns) {
-            this(name, columns, List.of());
+            this(name, columns, List.of(), null);
+        }
+
+        public TableSchema(String name, List<ColumnDef> columns, List<String> primaryKeys) {
+            this(name, columns, primaryKeys, null);
+        }
+
+        /**
+         * 某列是不是**自增列**？
+         *
+         * <p>新增行时这一列应该留空 —— ���数据库自动赋值。
+         */
+        public boolean autoIncrement(String columnName) {
+            return autoIncrementColumn != null
+                    && autoIncrementColumn.equalsIgnoreCase(columnName);
         }
 
         /** 没有主键的表/视图不能安全行内编辑：UPDATE 可能命中多行。 */
@@ -262,8 +279,10 @@ public final class SchemaService {
         String sql = "SELECT * FROM " + session.dialect().quote(name) + " LIMIT 0";
         RowPage page = session.query(sql, 1);
         Set<String> primaryKeys = primaryKeys(session, name);
+        // ⭐ 自增列：新增行时这一列留空，交给数据库赋值。
+        String autoIncrement = autoIncrementColumn(session, name);
         if (primaryKeys.isEmpty()) {
-            return new TableSchema(name, page.columns());
+            return new TableSchema(name, page.columns(), List.of(), autoIncrement);
         }
         List<ColumnDef> columns = page.columns().stream()
                 .map(column -> primaryKeys.contains(column.name().toLowerCase(Locale.ROOT))
@@ -273,7 +292,21 @@ public final class SchemaService {
                 .map(ColumnDef::name)
                 .filter(key -> primaryKeys.contains(key.toLowerCase(Locale.ROOT)))
                 .toList();
-        return new TableSchema(name, columns, orderedKeys);
+        return new TableSchema(name, columns, orderedKeys, autoIncrement);
+    }
+
+    /**
+     * 探测自增列。
+     *
+     * <p>探测不到（方言不支持 / 出错）就当没有 —— 探测是**锦上添花**，
+     * 不该让整张表的元信息读不出来。
+     */
+    private static String autoIncrementColumn(DbSession session, String name) {
+        try {
+            return session.dialect().autoIncrementColumn(session.connection(), name);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static Set<String> primaryKeys(DbSession session, String name) throws SQLException {

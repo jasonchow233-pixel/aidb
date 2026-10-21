@@ -245,6 +245,37 @@ public final class SqliteDialect implements Dialect {
         return "ALTER TABLE " + quote(table) + " ADD COLUMN " + columnDefinition(column, true);
     }
 
+    /**
+     * 自增列：SQLite 没有 AUTO_INCREMENT 语法，
+     * 但**恰好声明为 {@code INTEGER PRIMARY KEY} 的单列主键**就是 rowid 的别名 ——
+     * 插入时留空（或 NULL）由 SQLite 自动分配。
+     *
+     * <p>注意 SQLite 的规则很挑：类型必须**恰好**是 {@code INTEGER}
+     * （{@code INT PRIMARY KEY} 不算），而且不能是复合主键。
+     */
+    @Override
+    public String autoIncrementColumn(java.sql.Connection connection, String table)
+            throws java.sql.SQLException {
+        String name = null;
+        int primaryKeyCount = 0;
+        try (java.sql.Statement statement = connection.createStatement();
+             java.sql.ResultSet rs = statement.executeQuery(
+                     "PRAGMA table_info(" + quote(table) + ")")) {
+            while (rs.next()) {
+                if (rs.getInt("pk") > 0) {
+                    primaryKeyCount++;
+                    name = rs.getString("name");
+                    String type = rs.getString("type");
+                    if (type == null || !type.trim().equalsIgnoreCase("INTEGER")) {
+                        name = null;
+                    }
+                }
+            }
+        }
+        // 复合主键没有 rowid 别名
+        return primaryKeyCount == 1 ? name : null;
+    }
+
     @Override
     public String explainSql(String sql) {
         return "EXPLAIN QUERY PLAN " + sql;

@@ -160,6 +160,20 @@ public interface Dialect {
      */
     String readViewDdl(Connection connection, String table) throws SQLException;
 
+    /**
+     * 该表的**自增列**（auto increment / identity / rowid 别名）。
+     *
+     * <p>为什么要探测：新增行时这一列**应该留空**，交给数据库赋值 ——
+     * 用户看到「自增」标记才知道可以不管它；看不到标记就可能手动填一个，
+     * 结果撞主键。
+     *
+     * @return 自增列名；这张表没有自增列时返回 {@code null}
+     */
+    default String autoIncrementColumn(Connection connection, String table)
+            throws SQLException {
+        return null;
+    }
+
     /** 当前 catalog；没有这个概念时返回 {@code null}。 */
     String currentCatalog(Connection connection) throws SQLException;
 

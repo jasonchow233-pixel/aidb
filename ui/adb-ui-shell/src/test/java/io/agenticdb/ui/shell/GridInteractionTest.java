@@ -159,6 +159,70 @@ class GridInteractionTest {
         assertThat(funnel.getOpacity()).isEqualTo(1.0);
     }
 
+    // ─────────────────────────── G6：自增列 ───────────────────────────
+
+    @Test
+    void theAutoIncrementColumnIsDetected() {
+        io.agenticdb.introspect.SchemaService schemaService =
+                new io.agenticdb.introspect.SchemaService();
+        try {
+            io.agenticdb.introspect.SchemaService.TableSchema schema =
+                    schemaService.describe(session, "users");
+            // SQLite 的 rowid 别名规则：恰好声明为 INTEGER PRIMARY KEY 的单列主键
+            assertThat(schema.autoIncrementColumn())
+                    .as("id INTEGER PRIMARY KEY 就是 SQLite 的 rowid 别名（自增列）")
+                    .isEqualTo("id");
+            assertThat(schema.autoIncrement("id")).isTrue();
+            assertThat(schema.autoIncrement("name")).isFalse();
+        } catch (java.sql.SQLException e) {
+            throw new AssertionError("读表结构失败", e);
+        }
+    }
+
+    @Test
+    void theGridMarksTheAutoIncrementColumn() {
+        javafx.scene.control.Label type = (javafx.scene.control.Label)
+                page.lookup(".adb-grid__column-type");
+        assertThat(type).isNotNull();
+        boolean anyMarked = page.lookupAll(".adb-grid__column-type").stream()
+                .filter(node -> node instanceof javafx.scene.control.Label label)
+                .map(node -> ((javafx.scene.control.Label) node).getText())
+                .anyMatch(text -> text != null && text.contains("自增"));
+        assertThat(anyMarked)
+                .as("自增列要在列头上标出来 —— 否则用户会以为得自己填主键")
+                .isTrue();
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void aNewRowLeavesTheAutoIncrementColumnEmpty() {
+        TableView<?> table = (TableView<?>) page.lookup("#data-table");
+        int before = table.getItems().size();
+
+        WaitForAsyncUtils.asyncFx(() -> {
+            javafx.scene.control.Button add =
+                    (javafx.scene.control.Button) page.lookup("#data-add");
+            add.fire();
+            return null;
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(table.getItems().size()).isEqualTo(before + 1);
+        // 草稿行排在**前面**（rebuildItems 的顺序：草稿 → 本页数据）
+        java.util.Map<String, Object> draft = null;
+        for (Object item : table.getItems()) {
+            java.util.Map<String, Object> row = (java.util.Map<String, Object>) item;
+            if (row.containsKey(io.agenticdb.editing.EditBuffer.DRAFT_KEY)) {
+                draft = row;
+                break;
+            }
+        }
+        assertThat(draft).as("新增的草稿行").isNotNull();
+        assertThat(draft.get("id"))
+                .as("新增行时自增列必须**留空** —— 由数据库赋值")
+                .isNull();
+    }
+
     @Test
     void columnsCanBeReorderedAtRuntime() {
         TableView<?> table = (TableView<?>) page.lookup("#data-table");

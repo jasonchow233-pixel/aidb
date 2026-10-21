@@ -48,8 +48,8 @@
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **SQLite（默认）** | **440** | 30 | 0 |
-| **MySQL 5.7 真库**（环境变量接入） | **454** | 16 | 0 |
+| **SQLite（默认）** | **443** | 32 | 0 |
+| **MySQL 5.7 真库**（环境变量接入） | **458** | 17 | 0 |
 
 **57 个测试类**。跳过的是「本机没有的外部依赖」：Testcontainers 的 PG/MySQL 容器
 （无 Docker）与未配置的 PG 真库 —— **跳过不算通过**，门禁统计里单列一行。
@@ -682,7 +682,7 @@ hover 规则不得被删、focus 规则不得少于 10 条；
 | **G2** | 列头**拖拽重排**（顺序已能持久化，只缺运行时入口） | `DataGridPageTest.columnDragReorderPersists` | ⬜ |
 | **G1** | **冻结列**（两表四路同步：滚动 / 选择 / 排序 / 编辑） | `DataGridPageTest.frozenColumnsStayPut` | ⬜ |
 | **G4** | 单元格**区域选择**（拖选 / Shift 范围 / 复制矩形） | `DataGridPageTest.rectangleSelectionCopies` | ⬜ |
-| **G6** | 自增列插入（新增行时主键留空交给数据库） | `DataGridSaveGuardTest.autoIncrementColumnStaysEmpty` | ⬜ |
+| ~~G6~~ ✅ | ~~自增列插入（新增行时主键留空交给数据库）~~ **已完成** | `GridInteractionTest` + `MySqlIntegrationTest`（真库） | ✅ |
 | **Q5** | 查询结果**分页**（现在硬上限 1000） | `QueryPageTest.resultPagination` | ⬜ |
 | **Q6** | 代码片段库（与已保存查询合并） | `SavedQueriesPageTest.snippetLibrary` | ⬜ |
 | **U1** | **catalog 树**（MySQL 多库；MySQL 的 schema = 数据库，`USE` 不管用，需切后重连） | `SchemaServiceTest.catalogSwitch` | ⬜ |

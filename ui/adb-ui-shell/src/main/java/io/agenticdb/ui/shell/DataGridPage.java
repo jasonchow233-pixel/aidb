@@ -1797,11 +1797,17 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
     private javafx.scene.Node columnHeader(TableColumn<Map<String, Object>, Object> column,
                                        ColumnDef definition) {
+        // ⭐ G6：标出自增列 —— 新增行时这一列**留空**就行，数据库自动赋值。
+        //    不标出来，用户会以为得自己填，然后撞主键。
+        boolean autoIncrement = tableSchema != null
+                && tableSchema.autoIncrement(definition.name());
         Label name = new Label(definition.name()
                 + (definition.primaryKey() ? "  [PK]" : definition.nullable() ? "" : "  •"));
         name.setId("data-header-" + definition.name());
         name.getStyleClass().add("adb-grid__column-name");
-        if (definition.primaryKey()) {
+        if (autoIncrement) {
+            name.setTooltip(new Tooltip("自增列 · 新增行时留空，数据库自动赋值"));
+        } else if (definition.primaryKey()) {
             name.setTooltip(new Tooltip("主键" + (definition.comment() == null
                     ? "" : " · " + definition.comment())));
         } else if (!definition.nullable()) {
@@ -1811,7 +1817,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             name.setTooltip(new Tooltip(definition.comment()));
         }
 
-        Label type = new Label(typeLabel(definition));
+        Label type = new Label(typeLabel(definition)
+                + (autoIncrement ? " · 自增" : ""));
         type.getStyleClass().add("adb-grid__column-type");
 
         Label sortBadge = new Label();
@@ -2423,7 +2430,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         rebuildItems();
         selectDraft(id);
         updateDirty();
-        feedback.status("已新增行 · 填写后保存");
+        // ⭐ 自增列留空即可 —— 明确告诉用户，别让他去手填主键。
+        feedback.status(tableSchema != null && tableSchema.autoIncrementColumn() != null
+                ? "已新增行 · 自增列（" + tableSchema.autoIncrementColumn() + "）留空即可"
+                : "已新增行 · 填写后保存");
     }
 
     private void cloneRow(Map<String, Object> row) {
