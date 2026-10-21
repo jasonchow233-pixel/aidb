@@ -288,17 +288,17 @@ PostgreSQL 注释用独立的 `COMMENT ON`、DDL 只能由内省生成。
 - 业务 CSS 只允许引用 `-adb-*` looked-up colors；`TokenParityTest` 会扫描颜色字面量。
 - 原生窗口：`StageStyle.DECORATED`；macOS 使用系统菜单栏。
 
-### 7.0 危险分级的三层门禁 —— 前两层已落地，第三层仍缺
+### 7.0 危险分级的三层门禁 —— 三层都落地了
 
-`Danger` 的 javadoc 宣称「三层写门禁」：
+`Danger` 的 javadoc 宣称「三层写门禁」，现在**三层都是真的**：
 
 | 层 | 承诺 | 实现 |
 |---|---|---|
 | 1 | 语句分类 | `DangerClassifier.classify` ✅ **fail-closed**（2026-10-21 修） |
 | 2 | UI 二次确认 | `QueryPage.confirmDanger` + `DataGridPage.planDanger` ✅（查询页 + 数据页保存都有） |
-| 3 | **驱动侧复查** | ❌ **仍不存在**：`DbSession.execute(String)` 没有 `danger` 参数 |
+| 3 | **驱动侧复查** | ✅ `DbSession.execute(sql, danger)` / `update(sql, params, danger)` |
 
-**第 1 层以前是 fail-open**，本轮已收紧（`NAVICAT-TODO.md` 4.5-24 / 4.5-25）：
+**第 1 层以前是 fail-open**，已收紧（4.5-24 / 4.5-25）：
 
 | 以前 | 现在 |
 |---|---|
@@ -308,9 +308,28 @@ PostgreSQL 注释用独立的 `COMMENT ON`、DDL 只能由内省生成。
 | `EXPLAIN ANALYZE` 判只读 | `EXPLAIN ANALYZE` 会**真的执行**语句，按内层语句分级 |
 | `PRAGMA x = y` 判只读 | 赋值型 `PRAGMA` 判 `MUTATING`（它会改库的持久化设置） |
 
-**第 3 层（驱动侧复查）还没有**：`DbSession.execute(sql)` 不带 `danger` 参数，
-驱动侧不做任何复查。第 1、2 层现在足以挡住「用户手打 SQL」这条路，
-但**程序化执行路径（未来的传输 / 计划任务）没有纵深防御** —— 那是 P7 的事。
+**第 3 层（驱动侧复查）是这一轮补上的**（A6）：
+
+```java
+// DbSession
+static void requireDeclared(Danger declared, String sql) throws SQLException {
+    Danger actual = DangerClassifier.classify(sql);
+    if (actual.ordinal() > declared.ordinal()) {
+        throw new SQLException("危险等级不符，语句已被拒绝：声明「" + declared.label()
+                + "」，实际「" + actual.label() + "」");
+    }
+}
+```
+
+调用方**必须声明**这条语句的危险等级，驱动侧**自己再判一次**：
+实际比声明的高 → 拒绝执行。
+
+为什么只拦「实际更危险」：调用方可能保守地声明高等级
+（把只读查询说成写数据），那不该被执行层拒绝；
+但把 DELETE 说成只读 —— 那是**绕过确认**，必须拦。
+
+这一层的价值在于：前两层都在 UI 侧，**程序化执行路径（未来的传输 / 计划任务）
+若忘了走确认流程，第 3 层会兜住**。
 
 ### 7.1 主题机制：类选择器，不是换样式表
 

@@ -114,7 +114,8 @@ class QueryPageCancelTest {
         }
 
         @Override
-        public ExecutionResult execute(String sql) throws SQLException {
+        public ExecutionResult execute(String sql, io.agenticdb.model.Danger declared)
+                throws SQLException {
             started.countDown();
             try {
                 release.await(10, TimeUnit.SECONDS);

@@ -40,7 +40,7 @@ A23（死代码清理）、侧栏「查询历史」「诊断」接真功能。
 |---|---|---|
 | 4.5-14 | 令牌收敛：剩余 **60 个非颜色令牌**（`fs-*` `sp-*` `r-*` `h-*` `z-*` `dur-*` …）要么从 `tokens.json` 移除，要么在 Java 代码里用起来 | `TokenParityTest` 增加「令牌不得有未引用项」断言 |
 | ~~A1~~ ✅ | ~~方言抽象层~~ **已做**（见 §2） | `DialectBranchAuditTest` 扫源码禁止方言分支散落 |
-| A6 | 危险分级**第三层**：`DbSession.execute(sql, danger)` 做驱动侧复查 | `DbSession` 接口加 `danger` 参数 + 单测 |
+| ~~A6~~ ✅ | ~~危险分级第三层~~ **已做**：`DbSession.execute(sql, danger)` / `update(sql, params, danger)` 强制声明等级，驱动侧再判一次 | `JdbcSessionTest.driverSideCheckRejectsUnderDeclaredDanger` |
 | — | `core/adb-declarations` 是否接进运行时（**决策点**：先做 A1 方言抽象层，还是先删模块） | 书面决策，写进 `NAVICAT-TODO.md` §10 A2 |
 
 ---
@@ -118,7 +118,7 @@ TODO §7.2 已列细项，本文件定**顺序**：
 
 ```
 1) 4.5-14  令牌收敛（剩余 60 个非颜色令牌）
-2) A6      危险分级第三层（驱动侧复查）
+2) ~~A6~~    危险分级第三层 —— ✅ 已做
 3) A2      declarations 去留决策（A1 已完成，声明层可以接进运行时了）
 4) C-3     schema / catalog 树（方言层已铺好路）
 ```

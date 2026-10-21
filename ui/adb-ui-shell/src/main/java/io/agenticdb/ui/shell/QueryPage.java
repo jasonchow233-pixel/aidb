@@ -633,7 +633,10 @@ public final class QueryPage extends VBox implements AutoCloseable {
                     SqlStatement statement = snapshot.get(i);
                     String sql = explainPlan ? explainSql(statement.text()) : statement.text();
                     try {
-                        completed.add(session.execute(sql));
+                        // ⭐ 第三层门禁：把刚才分类出来的危险等级**声明**给驱动层，
+                        //    驱动层会自己再判一次 —— 声明比实际低就会被拒绝。
+                        Danger statementDanger = DangerClassifier.classify(statement.text());
+                        completed.add(session.execute(sql, statementDanger));
                     } catch (java.sql.SQLException e) {
                         long elapsed = (System.nanoTime() - started) / 1_000_000;
                         return new RunResult(completed, e, statement, i, elapsed, joined);

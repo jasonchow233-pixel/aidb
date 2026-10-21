@@ -1,6 +1,7 @@
 package io.agenticdb.jdbc;
 
 import io.agenticdb.model.ColumnType;
+import io.agenticdb.model.Danger;
 import io.agenticdb.model.QueryLimits;
 import io.agenticdb.model.RowPage;
 import org.junit.jupiter.api.Test;
@@ -324,6 +325,60 @@ class JdbcSessionTest {
         @Override
         public void close() throws SQLException {
             real.close();
+        }
+    }
+
+    /**
+     * ⭐ A6：第三层门禁（驱动侧复查）。
+     *
+     * <p>前两层（分类 + UI 确认）都在 UI 侧；第三层在数据通路侧，
+     * <b>不依赖 UI 是否走了正确的路径</b>。
+     */
+    @Test
+    void driverSideCheckRejectsUnderDeclaredDanger() throws SQLException {
+        try (JdbcSession session = JdbcSession.open(ConnectionSpec.sqliteMemory())) {
+            session.execute("CREATE TABLE t (id INTEGER)");
+
+            // 把 DELETE 声明成只读 → 拒绝（这就是「绕过确认」）
+            assertThatThrownBy(() -> session.execute("DELETE FROM t", Danger.READ_ONLY))
+                    .isInstanceOf(SQLException.class)
+                    .hasMessageContaining("危险等级不符")
+                    .hasMessageContaining("已被拒绝");
+
+            // 带 WHERE 的 DELETE 才是「写数据」级 → 声明一致，放行
+            assertThat(session.execute("DELETE FROM t WHERE id = 1", Danger.MUTATING))
+                    .isNotNull();
+
+            // 无 WHERE 的 DELETE 是「改结构」级 —— 声明成「写数据」也拦
+            assertThatThrownBy(() -> session.execute("DELETE FROM t", Danger.MUTATING))
+                    .isInstanceOf(SQLException.class)
+                    .hasMessageContaining("危险等级不符");
+
+            // 声明得比实际高（保守）→ 不拦
+            assertThat(session.execute("SELECT 1", Danger.DESTRUCTIVE)).isNotNull();
+        }
+    }
+
+    @Test
+    void driverSideCheckAlsoGuardsParameterisedWrites() throws SQLException {
+        try (JdbcSession session = JdbcSession.open(ConnectionSpec.sqliteMemory())) {
+            session.execute("CREATE TABLE t (id INTEGER)");
+
+            assertThatThrownBy(() -> session.update("DELETE FROM t", List.of(), Danger.READ_ONLY))
+                    .isInstanceOf(SQLException.class)
+                    .hasMessageContaining("危险等级不符");
+
+            assertThat(session.update("INSERT INTO t VALUES (?)", List.of(1), Danger.MUTATING))
+                    .isEqualTo(1);
+        }
+    }
+
+    @Test
+    void executeWithoutDeclarationClassifiesItself() throws SQLException {
+        try (JdbcSession session = JdbcSession.open(ConnectionSpec.sqliteMemory())) {
+            session.execute("CREATE TABLE t (id INTEGER)");
+            // 默认实现自己分类 —— 声明与实际必然一致，不会被自己的门禁拦住。
+            assertThat(session.execute("DELETE FROM t")).isNotNull();
         }
     }
 

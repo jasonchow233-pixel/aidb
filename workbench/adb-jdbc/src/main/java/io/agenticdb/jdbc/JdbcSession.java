@@ -1,6 +1,7 @@
 package io.agenticdb.jdbc;
 
 import io.agenticdb.model.ColumnDef;
+import io.agenticdb.model.Danger;
 import io.agenticdb.model.QueryLimits;
 import io.agenticdb.model.RowPage;
 
@@ -140,6 +141,18 @@ public final class JdbcSession implements DbSession {
         } finally {
             activeStatement = null;
         }
+    }
+
+    /**
+     * ⭐ 第三层门禁：驱动侧复查（见 {@link DbSession#execute(String, Danger)}）。
+     *
+     * <p>实际等级比声明的高 → 拒绝执行。这条拦的是「绕过确认」：
+     * 调用方把一条 DELETE 说成只读，驱动层不认。
+     */
+    @Override
+    public ExecutionResult execute(String sql, Danger declared) throws SQLException {
+        DbSession.requireDeclared(declared, sql);
+        return execute(sql);
     }
 
     @Override

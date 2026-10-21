@@ -80,7 +80,7 @@
 |---|---|---|---|---|
 | **D1** | `NAVICAT-TODO.md` 4.5-4 ✅「未知语句头按**管理操作**处理（**fail-closed**）、复用 `SqlSplitter` 做字符串/注释安全切分、`WITH` 体内写语句扫描」 | **完全没做**：仍是 `return Danger.READ_ONLY`（fail-open）；仍用 `sql.split(";")` 裸切分；`WITH` 仍在只读白名单 | `DangerClassifier.java:39, 65, 104-105`；`git diff HEAD -- core/adb-safety` **无改动**；测试方法名就叫 `未知语句failOpen`（`DangerClassifierTest.java:139`） | **「WITH cte AS (…) DELETE FROM t」被判 READ_ONLY → 不弹确认框直接执行**。这是绕过写操作的路径。 |
 | **D2** | 同上，声称复用 `SqlSplitter` 做「字符串/注释安全切分」 | 未复用。`core/adb-safety` **不依赖** `adb-sql`，用裸 `String.split(";")` | `DangerClassifier.java:65` | 字符串里的分号会把语句切碎，误判等级 |
-| **D3** | `Danger.java:9-14` 与 `NAVICAT-TODO.md` §10 A6 写「**三层**写门禁」，第三层 = 驱动侧复查 | **第三层不存在**：`DbSession.execute(String)` 没有 `danger` 参数，`JdbcSession` 不做任何危险检查 | `DbSession.java:56`、`JdbcSession.java:135` | 门禁只有 2 层（分类 + UI 确认），文档宣称 3 层 |
+| **D3** | `Danger.java:9-14` 与 `NAVICAT-TODO.md` §10 A6 写「**三层**写门禁」，第三层 = 驱动侧复查 | 当时**第三层不存在** —— `DbSession.execute(String)` 没有 `danger` 参数 | `DbSession.java:56`、`JdbcSession.java:135` | ✅ **本轮已补**（见 §0.3）：`DbSession.execute(sql, danger)` 强制声明等级，驱动侧再判一次 |
 | **D4** | `docs/NAVICAT-GAP.md` §1.3 / `NAVICAT-TODO.md` A11「结果截断静默 ✅ 已修」 | **只修了查询页**。`JdbcSession.query()` 算出了 `truncated` 却**丢掉了**：`new RowPage(..., List.of(), false)`；`RowPage` **没有** truncated 字段 | `JdbcSession.java:119-121`、`RowPage.java:17-30` | 数据页走 `query()` 路径仍**静默截断**；`RowPage.truncatedColumns` 永远是空列表 |
 
 ### 0.2.2 交互 / 图标（文档说没做，其实在做）
@@ -118,7 +118,7 @@
 | **D18** | `core/adb-declarations` 的 `DeclarationLoader.java:36` javadoc 写「两者的解析结果必须完全相同，这本身要有一条测试守着」——**没有这条测试**，且 `loadFromClasspath()` 实际是坏的 | `DeclarationLoader.java:119-151` |
 | **D19** | `DeclarationLoader.java:27` 的 `{@link DeclarationCheckMojo}` **指向一个不存在的类** | 全仓 0 命中 |
 
-### 0.3 本轮关闭的差距（21 项）
+### 0.3 本轮关闭的差距（23 项）
 
 第四轮复核后，**B0–B4 批次全部落地**，下列差距已经关掉：
 
@@ -126,6 +126,7 @@
 |---|---|---|
 | **安全语义** | 危险分级 fail-open → fail-closed；`WITH … DELETE` 不再绕过确认；`CALL`/`DO`/`MERGE`/`UPSERT`/`COPY` 不再判只读；字符串/注释里的分号不切碎语句 | `DangerClassifier` + `adb-sql` 依赖 |
 | **安全语义** | 数据页保存路径接入分级（以前完全不分类）；高风险额外走一级 `DestructiveConfirm` | `DataGridPage.planDanger` |
+| **安全语义** | **第三层门禁（驱动侧复查）落地**：调用方必须声明危险等级，驱动侧自己再判一次，实际更危险就拒绝执行 —— 前两层都在 UI 侧，程序化执行路径现在有纵深防御 | `DbSession.requireDeclared` |
 | **安全语义** | 批量「设空串」不得改主键列（VARCHAR/TEXT 主键会被清空） | `DataGridPage.applyColumnValue` |
 | **安全语义** | 保存预览弹窗默认按钮是「取消」，不是「执行」（回车不再执行破坏性 SQL） | `DataGridPage.buildSavePreviewDialog` |
 | **安全语义** | macOS 钥匙串口令改走 stdin，不再进 argv | `KeychainCredentialStore` |
@@ -141,6 +142,7 @@
 | **架构** | 密度档位覆盖数据网格行高（以前只影响对象树） | `DataGridPage.setDensity` |
 | **架构** | 切连接泄漏会话已修（回收没有标签页引用的会话） | `AppShell.closeOrphanSessions` |
 | **架构** | `loadFromClasspath()` 修好：爆炸 classpath 与打包 jar 两条路径都能加载 | `DeclarationLoader` |
+| **架构** | **方言抽象层（A1）**：加一种数据库从「改 5 个文件」变成「写一个 Dialect 实现」；`SchemaService` / `StructureSqlBuilder` 里一行方言专属 SQL 都没有 | `Dialect` + 3 实现 + `DialectBranchAuditTest` |
 | **图标** | `⚙` 撞车彻底拆开；新增「符号 → 语义唯一」门禁 | `IconAuditTest` |
 | **统计** | surefire 统计口径失真已修（`tools/TestCount.java` 按 `<testcase>` 计数 + 下限断言） | `tools/TestCount.java` |
 | **文档** | 6 张截图已重拍（补上 `⇤/⇥/跳至页`、去掉多余的「注释」列） | `docs/screenshots/` |
@@ -488,7 +490,7 @@ ui/adb-ui-shell → workbench/{adb-session, adb-introspect, adb-editing, adb-jdb
 | A3 | **`loadFromClasspath()` 不可用** | 爆炸 classpath 下抛 `DeclarationException`；jar 下**静默返回空模型**（0 字节目录条目） | `DeclarationLoader.java:119-151` |
 | ~~A4~~ | ~~参数风格 / 标识符引用被硬编码~~ **标识符引用已进方言层**（`Dialect.quote`）；**参数风格仍固定 `?`** —— 声明里的 `paramStyle: numbered` 无效 | `JdbcSession.bind` 永远用 `?` |
 | A5 | **元数据只读当前 schema** | `getSchemas()` / `getCatalogs()` / `getExportedKeys()` / `getColumns()` **一次都没调用** → PG 的 DEFAULT / COMMENT 全丢。**现在有 `Dialect.hasCatalog()` / `hasSchema()` 铺路了**，接上即可 | `SchemaService` |
-| A6 | **危险分级第三层门禁不存在；数据页保存不分类** | 文档宣称三层，实际两层 | `DbSession.java:56`；`DataGridPage.saveChanges`（`:379-437`）**不 import** `DangerClassifier` |
+| ~~A6~~ | ~~危险分级第三层门禁不存在；数据页保存不分类~~ **已做** | 三层门禁全部落地：`DbSession.requireDeclared` 做驱动侧复查；`DataGridPage.planDanger` 做保存路径分级 |
 | A7 | **危险分级 fail-open** | `MERGE`/`UPSERT`/`CALL`/`COPY`/`SET`/`LOCK`/`ANALYZE`/`BEGIN`/`DO` 全部判为只读不拦；`WITH` 在只读白名单 → `WITH … DELETE` **无确认框** | `DangerClassifier.java:39, 104-105` |
 | A8 | **多语句切分不看字符串/注释** | 裸 `String.split(";")` | `DangerClassifier.java:65` |
 | A9 | **取消只覆盖查询页** | `query()` / `update()` 不记录 `activeStatement` | `JdbcSession.java:106-132` |

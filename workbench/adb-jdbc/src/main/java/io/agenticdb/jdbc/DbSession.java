@@ -1,5 +1,6 @@
 package io.agenticdb.jdbc;
 
+import io.agenticdb.model.Danger;
 import io.agenticdb.model.RowPage;
 
 import java.sql.Connection;
@@ -55,10 +56,58 @@ public interface DbSession extends AutoCloseable {
     int update(String sql, List<Object> params) throws SQLException;
 
     /**
+     * ⭐ 带危险等级的参数化写 —— 第三层门禁的写路径。
+     *
+     * <p>语义与 {@link #execute(String, Danger)} 相同：驱动侧自己再判一次，
+     * 实际等级比声明的高就拒绝。
+     */
+    default int update(String sql, List<Object> params, Danger declared) throws SQLException {
+        requireDeclared(declared, sql);
+        return update(sql, params);
+    }
+
+    /**
+     * ⭐ 驱动侧复查：声明的危险等级不能低于语句的实际等级。
+     *
+     * <p>拦的是「绕过确认」—— 把 DELETE 说成只读，驱动层不认。
+     * 声明得比实际高（保守）不拦。
+     *
+     * @throws SQLException 等级不符时抛出，语句不执行
+     */
+    static void requireDeclared(Danger declared, String sql) throws SQLException {
+        Danger actual = io.agenticdb.safety.DangerClassifier.classify(sql);
+        if (actual.ordinal() > declared.ordinal()) {
+            throw new SQLException("危险等级不符，语句已被拒绝：声明「" + declared.label()
+                    + "」，实际「" + actual.label() + "」");
+        }
+    }
+
+    /**
      * 执行一条任意 SQL（查询 / DML / DDL），用于查询页。
      * 实现必须限制返回行数，不能把整表塞进内存。
      */
-    ExecutionResult execute(String sql) throws SQLException;
+    default ExecutionResult execute(String sql) throws SQLException {
+        return execute(sql, io.agenticdb.safety.DangerClassifier.classify(sql));
+    }
+
+    /**
+     * ⭐ 执行一条任意 SQL，<b>并声明这条语句的危险等级</b>。
+     *
+     * <p>这是三层写门禁的<b>第三层：驱动侧复查</b>。
+     * 前两层是「分类 + UI 确认」，都在 UI 侧；这一层在数据通路侧，
+     * <b>不依赖 UI 是否走了正确的路径</b>。
+     *
+     * <p>实现必须做两件事：
+     * <ol>
+     *   <li><b>自己再判一次</b>，实际等级比声明的高 → <b>拒绝执行</b>；</li>
+     *   <li>等级一致或实际更低 → 正常执行。</li>
+     * </ol>
+     *
+     * <p>为什么只拦「实际更危险」：调用方可能保守地声明了高等级
+     * （比如把只读查询声明成写数据），那不该被执行层拒绝；
+     * 但把 DELETE 声明成只读 —— 那是<b>绕过确认</b>，必须拦。
+     */
+    ExecutionResult execute(String sql, Danger declared) throws SQLException;
 
     /**
      * 取消当前正在执行的语句。查询页的「取消」按钮从 UI 线程调用，

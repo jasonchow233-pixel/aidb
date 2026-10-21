@@ -40,7 +40,7 @@
 ./mvnw -B clean verify
 ```
 
-当前结果：**38 个测试类 / 341 条测试用例，0 失败 / 0 错误 / 0 跳过**（2026-10-21 实测）。
+当前结果：**38 个测试类 / 344 条测试用例，0 失败 / 0 错误 / 0 跳过**（2026-10-21 实测）。
 
 统计口径用工具兜底：
 
@@ -55,7 +55,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `core/adb-declarations` | 40 | 声明校验、快照一致性、**classpath 与源码目录对拍** |
 | `core/adb-safety` | 59 | 危险分级四档、**fail-closed**、WITH 体内扫描、PRAGMA 读写、词法切分 |
 | `core/adb-sql` | 17 | 词法 / 分句 / 格式化 |
-| `workbench/adb-jdbc` | 42 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为** |
+| `workbench/adb-jdbc` | 45 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为** |
 | `testing/adb-fixtures` | 3 | 演示库固定种子 |
 | `workbench/adb-introspect` | 24 | 内省、分页排序筛选 SQL、结构变更 |
 | `workbench/adb-session` | 11 | 连接档案、凭据、连接池、**敏感项脱敏** |
@@ -180,7 +180,8 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 - [x] 查询历史：最近 50 条，去重，落 `java.util.prefs`
 - [x] 结果表格复用 P2 单元格渲染器；只读、支持复制 TSV/SQL、导出 CSV
 - [x] 查询写操作沿用 `DangerClassifier` 危险分级 + 执行前二次确认；`EXPLAIN` 不触发确认
-      （⛔ 第三层「驱动侧复查」未实现 → 见 §10 A6；⛔ **分类器本身仍是 fail-open → 见 4.5-24**）
+      （✅ 三层门禁全部落地：分类 fail-closed + UI 确认 + **驱动侧复查**
+      `DbSession.execute(sql, danger)`，见 §10 A6）
 
 ### 5.4 P3 已知限制
 
@@ -372,7 +373,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | A3 | `loadFromClasspath()` 不可用（jar 索引解析错误） | **已修**：枚举目录（爆炸 classpath）/ jar 条目（打包），两条路径实测一致 | P4.5 | ✅ |
 | ~~A4~~ | ~~`paramStyle` / `identifierQuote` 被硬编码~~ **标识符引用已进 `Dialect`**；**参数风格仍固定 `?`**（`paramStyle: numbered` 未实现） | P5 | 🟡 |
 | A5 | 元数据只读当前 schema | 引入 `getSchemas()` / `getCatalogs()` / `getExportedKeys()` / `getColumns()` | P5 | ⬜ |
-| A6 | 危险分级第三层门禁不存在；数据页保存不分类 | `DbSession.execute(sql, danger)` 驱动侧复查 | P4.5 | 🟡 |
+| ~~A6~~ | ~~危险分级第三层门禁不存在；数据页保存不分类~~ **已做**：数据页保存已接入分级；**第三层（驱动侧复查）已落地** —— `DbSession.execute(sql, danger)` / `update(sql, params, danger)` 强制声明等级，驱动侧再判一次，实际更危险就拒绝 | P4.5 | ✅ |
 | A7 | 危险分级 fail-open（未知 → 只读） | **已做**：未知语句头按管理操作处理；`WITH` 体内扫描写语句 | P4.5 | ✅ |
 | A8 | 多语句切分不看字符串/注释 | **已做**：复用 `adb-sql` 的 `SqlSplitter` | P4.5 | ✅ |
 | A9 | 取消只覆盖查询页 | **已做**：`query()` / `update()` 也记录 `activeStatement` | P4.5 | ✅ |

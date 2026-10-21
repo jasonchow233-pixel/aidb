@@ -96,6 +96,12 @@ public final class ConnectionPool {
         }
 
         @Override
+        public ExecutionResult execute(String sql, io.agenticdb.model.Danger declared)
+                throws SQLException {
+            return delegate.execute(sql, declared);
+        }
+
+        @Override
         public ExecutionResult execute(String sql) throws SQLException {
             return delegate.execute(sql);
         }

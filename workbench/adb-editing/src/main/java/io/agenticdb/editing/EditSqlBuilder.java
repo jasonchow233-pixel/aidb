@@ -289,7 +289,11 @@ public final class EditSqlBuilder {
         try {
             int affected = 0;
             for (Statement statement : plan.statements()) {
-                affected += session.update(statement.sql(), statement.params());
+                // ⭐ 第三层门禁：保存路径的每条语句也声明自己的危险等级。
+                //    数据页生成的都是 UPDATE / DELETE / INSERT，级别是「写数据」，
+                //    驱动层复查后一致才放行。
+                affected += session.update(statement.sql(), statement.params(),
+                        io.agenticdb.model.Danger.MUTATING);
             }
             if (ownTransaction) {
                 session.commit();
