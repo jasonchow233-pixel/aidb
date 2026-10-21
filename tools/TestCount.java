@@ -20,6 +20,13 @@ import java.util.regex.Pattern;
  *
  * <p>所以这里一律按 {@code <testcase>} 元素计数。
  *
+ * <h2>为什么还要区分「跳过」</h2>
+ * surefire 跳过一个测试类时，**仍会为每个 {@code @Test} 写一个
+ * {@code <testcase><skipped/></testcase>}**。只按 {@code <testcase>} 元素计数，
+ * 会把「根本没跑」算成「跑过了」—— 那样一个类被大面积跳过，门禁却还是绿的。
+ * 所以这里只把**没带 {@code <skipped/>} 的** {@code <testcase>} 算作已执行，
+ * 跳过的单列一行提示，**不计入下限**。
+ *
  * <h2>用法</h2>
  * <pre>
  * ./mvnw -B clean verify
@@ -54,35 +61,54 @@ public final class TestCount {
             System.exit(2);
         }
 
-        Pattern testcase = Pattern.compile("<testcase\\b");
+        Pattern testcase = Pattern.compile("<testcase\\b[^>]*/>|<testcase\\b[^>]*>.*?</testcase>",
+                Pattern.DOTALL);
+        Pattern skipped = Pattern.compile("<skipped\\b");
         Pattern failure = Pattern.compile("<failure\\b|<error\\b");
         Map<String, Integer> perModule = new LinkedHashMap<>();
+        Map<String, Integer> skippedPerModule = new LinkedHashMap<>();
         int total = 0;
+        int skippedTotal = 0;
         int problems = 0;
 
         for (Path report : reports) {
             String xml = Files.readString(report, StandardCharsets.UTF_8);
             Matcher cases = testcase.matcher(xml);
             int count = 0;
+            int skippedCount = 0;
             while (cases.find()) {
+                // ⚠️ 跳过的用例**不算执行过**。
+                //    surefire 跳过一个类时，仍会为每个 @Test 写一个 <testcase><skipped/></testcase>，
+                //    只按 <testcase> 元素计数会把「没跑的」算成「跑过的」——
+                //    那样一个类被大面积跳过，门禁却还是绿的。
+                if (skipped.matcher(cases.group()).find()) {
+                    skippedCount++;
+                    continue;
+                }
                 count++;
+                Matcher bad = failure.matcher(cases.group());
+                if (bad.find()) {
+                    problems++;
+                }
             }
-            Matcher bad = failure.matcher(xml);
-            int badCount = 0;
-            while (bad.find()) {
-                badCount++;
-            }
-            problems += badCount;
+            skippedTotal += skippedCount;
             total += count;
             String module = moduleOf(root, report);
             perModule.merge(module, count, Integer::sum);
+            skippedPerModule.merge(module, skippedCount, Integer::sum);
         }
 
         System.out.println("── 测试门禁统计 ──────────────────────────────────");
-        perModule.forEach((module, count) ->
-                System.out.printf("%-32s %4d%n", module, count));
+        perModule.forEach((module, count) -> {
+            int moduleSkipped = skippedPerModule.getOrDefault(module, 0);
+            System.out.printf("%-32s %4d%s%n", module, count,
+                    moduleSkipped > 0 ? "  （跳过 " + moduleSkipped + "）" : "");
+        });
         System.out.printf("%-32s %4d  （%d 个测试类）%n", "合计", total, reports.size());
         System.out.println("─────────────────────────────────────────────────");
+        if (skippedTotal > 0) {
+            System.out.println("ℹ️  另有 " + skippedTotal + " 条被跳过（不计入门禁）");
+        }
 
         if (problems > 0) {
             System.err.println("⛔ 有 " + problems + " 条失败 / 错误");
@@ -93,7 +119,7 @@ public final class TestCount {
                     + "。统计口径可能坏了（surefire 的 tests= 属性不计 @Nested 用例）。");
             System.exit(1);
         }
-        System.out.println("✅ 测试数 " + total + " ≥ 下限 " + minimum + "，0 失败");
+        System.out.println("✅ 执行 " + total + " 条 ≥ 下限 " + minimum + "，0 失败");
     }
 
     private static String moduleOf(Path root, Path report) {

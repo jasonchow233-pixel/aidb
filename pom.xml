@@ -53,6 +53,7 @@
 
     <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
     <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
+    <maven-jar-plugin.version>3.4.1</maven-jar-plugin.version>
     <maven-enforcer-plugin.version>3.5.0</maven-enforcer-plugin.version>
     <javafx-maven-plugin.version>0.0.8</javafx-maven-plugin.version>
   </properties>
@@ -84,6 +85,14 @@
         <groupId>io.agenticdb</groupId>
         <artifactId>adb-jdbc</artifactId>
         <version>${project.version}</version>
+      </dependency>
+      <!-- adb-jdbc 的测试产物：真库契约（ExternalDatabase / RealDatabaseContract）
+           跨模块共享，避免两个模块各写一份环境变量名。 -->
+      <dependency>
+        <groupId>io.agenticdb</groupId>
+        <artifactId>adb-jdbc</artifactId>
+        <version>${project.version}</version>
+        <type>test-jar</type>
       </dependency>
       <dependency>
         <groupId>io.agenticdb</groupId>
@@ -243,6 +252,11 @@
             <release>${maven.compiler.release}</release>
             <parameters>true</parameters>
           </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>${maven-jar-plugin.version}</version>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>

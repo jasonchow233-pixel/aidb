@@ -1,7 +1,7 @@
 package io.agenticdb.introspect;
 
-import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.jdbc.ExternalDatabase;
 import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.jdbc.JdbcSession;
@@ -44,37 +44,27 @@ class MySqlIntegrationTest {
 
     private static final String PREFIX = "adb_it_";
 
-    private static String host;
-    private static int port;
-    private static String database;
-    private static String user;
-    private static String password;
+    /** ⭐ 环境变量读取**共用** adb-jdbc 测试产物（见 ExternalDatabase）。 */
+    private static ExternalDatabase target;
 
     private DbSession session;
     private String table;
+    /** 本次真的建出触发器了吗？（账号没有 TRIGGER 权限时为 false） */
+    private boolean triggerCreated;
 
-    /** 环境变量齐了吗？ */
+    /** 环境变量齐了吗？（与 adb-jdbc 的真库契约用同一份读取逻辑） */
     public static boolean isConfigured() {
-        return System.getenv("ADB_TEST_MYSQL_HOST") != null
-                && !System.getenv("ADB_TEST_MYSQL_HOST").isBlank();
+        return ExternalDatabase.isMySqlConfigured();
     }
 
     @BeforeAll
     static void readEnvironment() {
-        host = System.getenv("ADB_TEST_MYSQL_HOST");
-        port = Integer.parseInt(orDefault(System.getenv("ADB_TEST_MYSQL_PORT"), "3306"));
-        database = orDefault(System.getenv("ADB_TEST_MYSQL_DB"), "");
-        user = orDefault(System.getenv("ADB_TEST_MYSQL_USER"), "");
-        password = orDefault(System.getenv("ADB_TEST_MYSQL_PASSWORD"), "");
-    }
-
-    private static String orDefault(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value;
+        target = ExternalDatabase.mysql();
     }
 
     @BeforeEach
     void open() throws Exception {
-        session = JdbcSession.open(ConnectionSpec.mysql(host, port, database, user, password));
+        session = JdbcSession.open(target.spec());
         table = PREFIX + "t" + System.nanoTime();
         exec("CREATE TABLE `" + table + "` ("
                 + "id INT PRIMARY KEY, name VARCHAR(64) NOT NULL, score DOUBLE)");
@@ -85,14 +75,17 @@ class MySqlIntegrationTest {
         if (session == null) {
             return;
         }
-        // ⚠️ 清理要**尽力清干净**：视图、触发器、临时表都要删 ——
+        // ⚠️ 清理要**尽力清干净**：视图、临时表都要删 ——
         //    之前的失败跑在服务器上留过孤儿对象。
-        //    每条语句**各自** try：一条失败（比如账号没有 DROP TRIGGER 权限）
-        //    不能把后面的 DROP TABLE 一起跳过。
-        for (String suffix : new String[]{"", "_v", "_trg"}) {
+        //    每条语句**各自** try：一条失败不能把后面的 DROP TABLE 一起跳过。
+        for (String suffix : new String[]{"", "_v"}) {
             drop("DROP TABLE IF EXISTS `" + table + suffix + "`");
             drop("DROP VIEW IF EXISTS `" + table + suffix + "`");
-            drop("DROP TRIGGER IF EXISTS `" + table + suffix + "`");
+        }
+        // 触发器**只删我们真的建出来的** —— 账号没有 TRIGGER 权限时，
+        // 无条件 DROP TRIGGER 会刷一屏「没有 SUPER 权限」的噪音。
+        if (triggerCreated) {
+            drop("DROP TRIGGER IF EXISTS `" + table + "_trg`");
         }
         session.close();
     }
@@ -120,8 +113,8 @@ class MySqlIntegrationTest {
 
     @Test
     void mysqlAcceptsTheGeneratedUrl() {
-        assertThat(session.dialect().jdbcUrl(host, port, database))
-                .startsWith("jdbc:mysql://" + host + ":" + port + "/")
+        assertThat(session.dialect().jdbcUrl(target.host(), target.port(), target.database()))
+                .startsWith("jdbc:mysql://" + target.host() + ":" + target.port() + "/")
                 .contains("serverTimezone=UTC");
     }
 
@@ -161,10 +154,11 @@ class MySqlIntegrationTest {
         // ⚠️ MySQL 5.7 开二进制日志时，建触发器要 SUPER 权限 —— 普通测试账号没有。
         //    这是**服务器侧的限制**，不是我们的 bug：建不出来就跳过触发器那半段，
         //    但视图那半段必须照样验。
-        boolean triggerCreated = true;
+        triggerCreated = false;
         try {
             exec("CREATE TRIGGER `" + table + "_trg` AFTER INSERT ON `" + table
                     + "` FOR EACH ROW SET @x = 1");
+            triggerCreated = true;
         } catch (Exception e) {
             triggerCreated = false;
             System.out.println("[mysql-it] 服务器不允许建触发器（"
@@ -344,7 +338,14 @@ class MySqlIntegrationTest {
         try {
             exec(sql);
         } catch (Exception e) {
-            System.err.println("[mysql-it] 清理语句失败（" + e.getMessage() + "）：" + sql);
+            String message = String.valueOf(e.getMessage());
+            // ⚠️ 「没有 SUPER 权限」是**服务器侧**的已知限制，不是清理失败。
+            //    它不该刷成一屏红色错误 —— 但也不能悄悄吞掉。
+            if (message.contains("SUPER privilege")) {
+                System.out.println("[mysql-it] 跳过（服务器不允许该操作）：" + sql);
+                return;
+            }
+            System.err.println("[mysql-it] 清理语句失败（" + message + "）：" + sql);
         }
     }
 
