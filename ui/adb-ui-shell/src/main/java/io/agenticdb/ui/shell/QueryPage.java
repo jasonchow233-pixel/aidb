@@ -217,6 +217,13 @@ public final class QueryPage extends VBox implements AutoCloseable {
         saveNamed.setTooltip(new Tooltip("给当前 SQL 起个名字，之后从「已保存查询」一键打开"));
         saveNamed.setOnAction(event -> saveNamed());
 
+        // ⭐ Q2：变量按钮 —— 语句里有 ? / :name 就亮起来
+        Button variables = new Button("变量");
+        variables.setId("query-variables");
+        variables.getStyleClass().add("adb-button");
+        variables.setTooltip(new Tooltip("填写语句里的参数（? 与 :name）"));
+        variables.setOnAction(event -> runWithVariables());
+
         Button clear = new Button("清空");
         clear.getStyleClass().add("adb-button");
         clear.setOnAction(event -> editor.setText(""));
@@ -228,7 +235,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
         Region toolbarSpacer = new Region();
         HBox.setHgrow(toolbarSpacer, Priority.ALWAYS);
 
-        HBox toolbar = new HBox(6, run, runAll, cancel, explain, format, save, saveNamed, clear,
+        HBox toolbar = new HBox(6, run, runAll, cancel, explain, format, save, saveNamed,
+                variables, clear,
                 risk, toolbarSpacer);
         toolbar.getStyleClass().add("adb-query__toolbar");
         toolbar.setAlignment(Pos.CENTER_LEFT);
@@ -639,7 +647,43 @@ public final class QueryPage extends VBox implements AutoCloseable {
         updateButtons();
     }
 
+    /**
+     * ⭐ Q2：带变量执行。
+     *
+     * <p>先问用户要参数的值，再**参数化绑定**执行 —— 值不进 SQL 文本。
+     */
+    private void runWithVariables() {
+        if (running) {
+            return;
+        }
+        List<SqlStatement> statements = SqlSplitter.statementAt(editor.text(), editor.caret())
+                .map(statement -> List.of(statement)).orElseGet(List::of);
+        if (statements.isEmpty()) {
+            status.setText("没有可执行语句");
+            return;
+        }
+        String sql = statements.getFirst().text();
+        VariableDialog.Bound bound = VariableDialog.prompt(sql);
+        if (bound == null) {
+            return;
+        }
+        List<String> missing = new ArrayList<>();
+        io.agenticdb.sql.SqlParameters.Prepared prepared =
+                io.agenticdb.sql.SqlParameters.toPositional(sql, bound.named(),
+                        bound.positional(), missing);
+        if (!missing.isEmpty()) {
+            status.setText("有参数没填值：" + String.join(", ", missing));
+            return;
+        }
+        execute(prepared.sql(), prepared.values(), statements, false);
+    }
+
     private void execute(List<SqlStatement> statements, boolean explainPlan) {
+        execute(statements.getFirst().text(), List.of(), statements, explainPlan);
+    }
+
+    private void execute(String sql, List<String> params, List<SqlStatement> statements,
+                         boolean explainPlan) {
         if (running) {
             return;
         }
@@ -673,7 +717,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
                         // ⭐ 第三层门禁：把刚才分类出来的危险等级**声明**给驱动层，
                         //    驱动层会自己再判一次 —— 声明比实际低就会被拒绝。
                         Danger statementDanger = DangerClassifier.classify(statement.text());
-                        completed.add(session.execute(sql, statementDanger));
+                        // ⭐ Q2：有参数时走参数化绑定（值不进 SQL 文本）。
+                        List<Object> bound = i == 0 ? new ArrayList<>(params) : List.of();
+                        completed.add(session.execute(sql, bound, statementDanger));
                     } catch (java.sql.SQLException e) {
                         long elapsed = (System.nanoTime() - started) / 1_000_000;
                         return new RunResult(completed, e, statement, i, elapsed, joined);

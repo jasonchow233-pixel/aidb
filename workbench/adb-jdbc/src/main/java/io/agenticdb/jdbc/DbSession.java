@@ -110,6 +110,22 @@ public interface DbSession extends AutoCloseable {
     ExecutionResult execute(String sql, Danger declared) throws SQLException;
 
     /**
+     * ⭐ Q2：带参数执行（变量替换）。
+     *
+     * <p>参数**参数化绑定**，不是字符串替换 —— 值永远不进 SQL 文本，
+     * 所以注入风险从根上不存在。
+     *
+     * @param params 按 {@code ?} 出现顺序绑定；{@code :name} 形式由调用方先转成 {@code ?}
+     */
+    default ExecutionResult execute(String sql, List<Object> params, Danger declared)
+            throws SQLException {
+        if (params == null || params.isEmpty()) {
+            return execute(sql, declared);
+        }
+        throw new UnsupportedOperationException("该会话不支持带参数执行");
+    }
+
+    /**
      * 取消当前正在执行的语句。查询页的「取消」按钮从 UI 线程调用，
      * 实现必须允许跨线程调用 JDBC {@code Statement.cancel()}。
      */

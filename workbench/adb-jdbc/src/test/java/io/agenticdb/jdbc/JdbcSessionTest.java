@@ -382,6 +382,27 @@ class JdbcSessionTest {
         }
     }
 
+    /**
+     * ⭐ Q2：带参数执行 —— 值走参数化绑定，**不进 SQL 文本**。
+     */
+    @Test
+    void executeBindsParameters() throws SQLException {
+        try (JdbcSession session = JdbcSession.open(ConnectionSpec.sqliteMemory())) {
+            session.execute("CREATE TABLE t (id INTEGER, name TEXT)");
+
+            ExecutionResult result = session.execute(
+                    "INSERT INTO t (id, name) VALUES (?, ?)",
+                    java.util.List.of(7, "张三"), Danger.MUTATING);
+
+            assertThat(result.updateCount()).isEqualTo(1);
+
+            RowPage page = session.query("SELECT name FROM t WHERE id = ?", 10,
+                    java.util.List.of(7));
+            assertThat(page.rows()).hasSize(1);
+            assertThat(page.rows().getFirst().get("name")).isEqualTo("张三");
+        }
+    }
+
     @Test
     void duplicateColumnLabelsGetDistinctKeys() throws SQLException {
         try (JdbcSession session = JdbcSession.open(ConnectionSpec.sqliteMemory())) {

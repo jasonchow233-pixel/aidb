@@ -40,7 +40,7 @@
 ./mvnw -B clean verify
 ```
 
-当前结果：**46 个测试类 / 395 条测试用例，0 失败 / 0 错误 / 0 跳过**（2026-10-21 实测）。
+当前结果：**47 个测试类 / 402 条测试用例，0 失败 / 0 错误 / 0 跳过**（2026-10-21 实测）。
 
 统计口径用工具兜底：
 
@@ -54,8 +54,8 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `core/adb-model` | 30 | 分页/行数上限契约 |
 | `core/adb-declarations` | 40 | 声明校验、快照一致性、**classpath 与源码目录对拍** |
 | `core/adb-safety` | 59 | 危险分级四档、**fail-closed**、WITH 体内扫描、PRAGMA 读写、词法切分 |
-| `core/adb-sql` | 24 | 词法 / 分句 / 格式化 / **括号配对** |
-| `workbench/adb-jdbc` | 46 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为** |
+| `core/adb-sql` | 31 | 词法 / 分句 / 格式化 / **括号配对** / **参数检测** |
+| `workbench/adb-jdbc` | 48 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为** |
 | `testing/adb-fixtures` | 3 | 演示库固定种子 |
 | `workbench/adb-introspect` | 25 | 内省、分页排序筛选 SQL、结构变更 |
 | `workbench/adb-session` | 11 | 连接档案、凭据、连接池、**敏感项脱敏** |
@@ -437,7 +437,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | # | 任务 | 说明 |
 |---|---|---|
 | ~~Q1~~ ✅ | ~~括号匹配~~ **已完成**（折叠未做）：新增 `SqlBrackets` —— 字符串与注释里的括号不算；SQLite 的 `[]` 是标识符引用不是括号 | ✅ | `SqlBrackets` + `SqlBracketsTest` |
-| Q2 | **变量 / 参数替换** | `?` / `:name` 绑定面板 |
+| ~~Q2~~ ✅ | ~~变量 / 参数替换~~ **已完成**：查询页「变量」按钮列出语句里的 `?` 与 `:name`，填值后**参数化绑定**执行（值不进 SQL 文本） | ✅ | `SqlParameters` + `VariableDialog` + `DbSession.execute(sql, params, danger)` |
 | ~~Q3~~ ✅ | ~~结果集排序~~ **已完成**：结果列可排序 | ✅ | `QueryPage.resultTab` |
 | ~~Q4~~ ✅ | ~~结果列宽持久化~~ **已完成**：按「连接名 + 列名」记住 | ✅ | `QueryPage.savedColumnWidth` |
 | Q5 | **结果集分页** | 现在一次性装进 `ObservableList`，硬上限 1000 |

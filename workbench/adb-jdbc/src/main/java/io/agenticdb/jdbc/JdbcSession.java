@@ -155,6 +155,36 @@ public final class JdbcSession implements DbSession {
         return execute(sql);
     }
 
+    /**
+     * ⭐ Q2：带参数执行。
+     *
+     * <p>用 {@link PreparedStatement} 绑定参数 —— 值不进 SQL 文本。
+     */
+    @Override
+    public ExecutionResult execute(String sql, List<Object> params, Danger declared)
+            throws SQLException {
+        DbSession.requireDeclared(declared, sql);
+        if (params == null || params.isEmpty()) {
+            return execute(sql);
+        }
+        long started = System.nanoTime();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            bind(statement, params);
+            activeStatement = statement;
+            statement.setMaxRows(QueryLimits.MAX_PAGE_SIZE + 1);
+            statement.setFetchSize(Math.min(QueryLimits.MAX_PAGE_SIZE, 500));
+            if (statement.execute()) {
+                try (ResultSet rs = statement.getResultSet()) {
+                    return readResultSet(rs, sql, started, QueryLimits.MAX_PAGE_SIZE);
+                }
+            }
+            return new ExecutionResult(sql, List.of(), List.of(), statement.getUpdateCount(),
+                    (System.nanoTime() - started) / 1_000_000);
+        } finally {
+            activeStatement = null;
+        }
+    }
+
     @Override
     public ExecutionResult execute(String sql) throws SQLException {
         long started = System.nanoTime();
