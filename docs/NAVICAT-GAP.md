@@ -532,8 +532,8 @@ ui/adb-ui-shell → workbench/{adb-session, adb-introspect, adb-editing, adb-jdb
 
 | 项 | 值 |
 |---|---|
-| 测试类 | **38** |
-| 测试用例 | **345**（`@Test` + `@ParameterizedTest`） |
+| 测试类 | **44** |
+| 测试用例 | **385**（`@Test` + `@ParameterizedTest`） |
 | 失败 / 错误 / 跳过 | **0 / 0 / 0** |
 | 命令 | `./mvnw -B clean verify` |
 
@@ -548,13 +548,14 @@ ui/adb-ui-shell → workbench/{adb-session, adb-introspect, adb-editing, adb-jdb
 | `core/adb-declarations` | 40 |
 | `core/adb-safety` | 59 |
 | `core/adb-sql` | 17 |
-| `workbench/adb-jdbc` | 46 |
+| `workbench/adb-jdbc` | 49 |
 | `workbench/adb-introspect` | 25 |
 | `workbench/adb-session` | 11 |
 | `workbench/adb-editing` | 19 |
-| `ui/adb-ui-core` | 4 |
-| `ui/adb-ui-shell` | 92 |
+| `ui/adb-ui-core` | 5 |
+| `ui/adb-ui-shell` | 104 |
 | `testing/adb-fixtures` | 3 |
+| `workbench/adb-transfer` | 15 |
 
 ### 7.2 优先级
 
