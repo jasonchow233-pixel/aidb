@@ -3,7 +3,8 @@
 > 面向实现的 UI 规则。数值令牌以
 > `ui/adb-ui-core/src/main/resources/tokens/tokens.json` 为唯一真相；
 > 交互清单以 `NAVICAT-TODO.md` 为准；
-> 与 Navicat 的差距以 `docs/NAVICAT-GAP.md` 为准。
+> 与 Navicat 的差距以 `docs/NAVICAT-GAP.md` 为准；
+> **界面专项的差距分析、批次计划与排版 / 间距 / 圆角 / 焦点规范以 `docs/UI-ROADMAP.md` 为准**。
 
 ---
 
@@ -15,6 +16,17 @@
 - **颜色**：业务 CSS 不写 `#rrggbb` / `rgba(...)`，只引用 `-adb-*` looked-up colors。
 - **圆角/间距**：控件 6–8px，面板 8–10px；页面外边距 16px，工具栏 8px。
 - **图标**：首版使用系统可显示的 Unicode 符号，避免额外图标字体依赖。
+
+> ⚠️ **本节部分条目已被 `docs/UI-ROADMAP.md` §4–§8 取代**（第五轮实测发现现状与本节不符）：
+>
+> | 本节原文 | 新规范 | 出处 |
+> |---|---|---|
+> | 圆角 6–8px / 面板 8–10px | **3 档令牌**：`r-sm` 3 / `r-md` 5 / `r-lg` 8，外层 ≥ 内层 | `UI-ROADMAP.md` §6 |
+> | 间距未成体系 | **4px 阶梯 7 档** `sp-1`…`sp-7` | `UI-ROADMAP.md` §5 |
+> | 「默认 13px 字体」但 CSS 实际 12px | **7 级字号阶梯** `fs-2xs`…`fs-2xl`，**9px 禁止** | `UI-ROADMAP.md` §4 |
+> | 「图标用 Unicode 符号」 | → **改为 32 个 SVGPath 矢量图标**（`Icons` 类） | `UI-ROADMAP.md` §3 B4 / `NAVICAT-TODO.md` §13.4 |
+>
+> 下一批开工时按 `UI-ROADMAP.md` 同步本节。
 
 ### 令牌生成
 

@@ -5,8 +5,9 @@
 > 组件选型见 `docs/COMPONENT-SELECTION.md`；**Navicat 对标差距见 `docs/NAVICAT-GAP.md`**；
 > **阶段规划（批次 / 顺序 / 门禁）见 `docs/NEXT-STEPS.md`**。
 >
-> 最后更新：**2026-10-21（第四轮：逐文件代码复核 + B0–B5 全部落地）**
-> 当前基线：**P0–P4 完成，P4.5 收尾中，P5 🟡**；下一动作见 `docs/NEXT-STEPS.md` §1 批次 B2。
+> 最后更新：**2026-10-21（第五轮：界面专项重做计划定稿）**
+> 当前基线：**P0–P4 完成，P4.5 收尾中，P5 🟡**；
+> **下一动作 = UI/UX 重做 U-B1（排版层）**，见 §13 与 `docs/UI-ROADMAP.md`。
 
 ---
 
@@ -21,8 +22,9 @@
 | P4 结构页 | ✅ 完成 | 列/索引/外键/触发器/DDL 五页签、加列/改列/重命名列/删列、两级危险确认、单事务、结构变更联动刷新 |
 | P4.5 契约修复 | 🟡 收尾中 | **B0–B4 已全部落地**（安全语义 / 数据正确性 / 注册表收口 / 并发 / 图标令牌）；剩 4.5-3 已做、4.5-14 收尾、4.5-23 已做 |
 | P5 连接管理 | 🟡 进行中 | 连接管理页、三步向导、测试连接、钥匙串 / Secret Service 凭据、连接档案落盘、HikariCP 连接池（PG/MySQL）；**本轮补上：凭据脱敏 + 口令走 stdin + 孤儿会话回收** |
-| P6 导入导出 | ⬜ 计划 | CSV / JSON / Excel 向导、字段映射、预览 |
+| P6 导入导出 | 🟡 进行中 | CSV / TSV / JSON Lines / SQL 导出 + CSV / TSV 导入、字段映射、坏行报告、导入导出向导；**本轮补上：MySQL 5.7 真库联调**（`MySqlIntegrationTest` 9 例，抓出两个真 bug） |
 | P7 分发 | ⬜ 计划 | jlink / jpackage、自动更新、性能与可访问性收尾 |
+| **UI/UX 专项** | ⬜ **待开工** | **§13**：实测 11 个界面问题（字号 / 间距 / 圆角 / 焦点环 / 按钮层级 / 图标 / 密度 / 列头 / 连接列表）；批次 U-B1–U-B6 |
 
 首版明确不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务、传输同步。
 
@@ -461,7 +463,10 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | 数据 | 演示库固定种子；SQL 下推与事务保存有真实 SQLite 断言 |
 | UI | TestFX + Monocle；外壳、数据页、批量条、详情抽屉、查询页、结构页、连接页、连接向导 |
 | 样式 | `TokenParityTest`：键一致、亮暗一致、无颜色字面量、令牌无未引用项 |
-| 图标 / 无障碍 | `IconAuditTest`：图标控件同时具备 Tooltip 与 accessible text + **符号语义唯一** |
+| **样式审计** | `AppCssAuditTest`（🆕 §13.7）：`app.css` 内无字面量字号 / padding / border-radius；字号只 7 档、圆角只 3 档、间距只 7 档；`9px` 出现 0 次 |
+| **焦点 / 交互态** | `FocusRingAuditTest`（🆕 §13.7）：每个可聚焦组件类都有 `:focused` 规则；`-fx-opacity` 只出现 1 处 |
+| **密度覆盖** | `DensityCoverageTest`（🆕 §13.7）：密度同时改 4 张表的行高 |
+| 图标 / 无障碍 | `IconAuditTest`：图标控件同时具备 Tooltip 与 accessible text + **符号语义唯一** + **无中文词图标** + 图标均来自 `Icons` + `Icons` 无死常量 |
 | 菜单 | `MenuBarFactoryTest`：菜单项全部来自 `ActionRegistry`，无永久禁用死项 |
 | 文档 | README、本清单、架构、UI 指南、对标文档、NEXT-STEPS 与实际实现同步 |
 | 对标 | `docs/NAVICAT-GAP.md` 的差距项要么进清单，要么写明「明确不做」 |
@@ -507,3 +512,123 @@ ADB_THEME_FORCE=light ADB_SHOTS=$PWD/docs/screenshots \
 3. macOS 没有 `timeout` 命令，长跑用工具自带超时。
 4. 拍完用像素密度自检（PIL：非背景像素占比），空白帧 / 主题错误一眼可见。
 5. **⚠️ 现有 6 张图已过期**（缺 `⇤/⇥/跳至页`、多一列 `注释`）—— 按 4.5-31 重拍。
+
+---
+
+## 13. UI/UX 重做（🆕 第五轮，Navicat 对标）
+
+> **详细分析、规范与截图对比见 `docs/UI-ROADMAP.md`；批次顺序见 `docs/NEXT-STEPS.md` §2。**
+>
+> 本节是**界面专项的执行清单**，每条都有可执行的门禁。
+> ✅ = 已实现且有门禁断言 · 🟡 = 部分完成 · ⬜ = 未做
+>
+> ⚠️ 上一轮的问题：界面差距一直**不在任何功能清单上**，所以一直没被发现。
+> 本节把它变成可勾选的条目。
+
+### 13.0 实测到的问题清单（问题 ≠ 任务，用来验收）
+
+| # | 问题 | 实测数据 | 归属 |
+|---|---|---|---|
+| UX-01 | 字号散落 **13 种**（79 处声明），最小 9px | 12px×32 / 11px×21 / **10px×9** / **9px×3** / 12.5px×1 | U-B1 |
+| UX-02 | 间距 **47 种**硬编码内边距（68 处声明） | `0` `2 4` `2 8` `3 8` `4 8` `4 10` `6 16` `12` `0 2` `0 4` `0 8` `0 16 6 16` `48` `16 18` …… | U-B2 |
+| UX-03 | 圆角 **5 个**硬编码值，无规则 | **3 / 5 / 6 / 8 / 10** 写死在 26 处 | U-B2 |
+| UX-04 | **字号 / 间距 / 圆角根本没有令牌** | 60 个令牌里 **40 个是颜色** | U-B1 / U-B2 |
+| UX-05 | **只有 3 处 focus 环** | 18 条 `:hover` vs **3 条** `:focus` | U-B3 |
+| UX-06 | 禁用态整体 opacity 压暗 | `.adb-button:disabled { -fx-opacity: 0.45 }` | U-B3 |
+| UX-07 | 网格工具栏 **11 个按钮 10 个一样** | ghost = 透明底 + 透明边 | U-B5 |
+| UX-08 | 图标**符号与中文词混用** | `◈ ⌨ ▦ ⇅ ◆` vs `关闭/重试/打开/复制/删除/保存` | U-B4 |
+| UX-09 | 密度只覆盖 **2 处** | `setFixedCellSize` 仅在 `DataGridPage` | U-B5 |
+| UX-10 | 连接管理页是 **ListView** | `ConnectionsPage.list = new ListView<>()` | U-B5 |
+| UX-11 | **每列常显**筛选按钮 | `Button funnel = new Button("▽")` | U-B5 |
+
+### 13.1 U-B1 排版层
+
+- [ ] 令牌新增 **7 级字号**：`fs-2xs` 10 / `fs-xs` 11 / `fs-sm` 12 / `fs-md` 13 / `fs-lg` 14 / `fs-xl` 16 / `fs-2xl` 20
+- [ ] `GenTokens` 生成字号令牌（暗色同值 —— 字号不随主题变）
+- [ ] `app.css` 全部字面量字号改引用令牌（**32 处 12px** 起步）
+- [ ] **9px 全面废除**（`.adb-rail__dialect` / `.adb-tab__dirty` / `.adb-tab__close`）
+- [ ] 10px 只允许留在**单字符徽标**（`.adb-badge`）；状态栏 / 列类型行 / 功能栏文字 **升到 11px**
+- [ ] 删掉 **12.5px 孤例**
+- [ ] 字体族统一 `-fx-font-family: "System"`，不硬编码 `"SF Pro"` / `"Segoe UI"`
+- [ ] 空状态 60px 大标题降到 34px（对照 Navicat）
+
+**门禁**：`AppCssAuditTest`（🆕，见 §12.3）断言 `app.css` 内无字面量字号、字号只允许 7 档、`9px` 出现 0 次；
+`TokenParityTest` 断言 7 个字号令牌全部被引用。
+
+### 13.2 U-B2 间距 + 圆角层
+
+- [ ] 令牌新增 **7 档间距**：`sp-1` 2 / `sp-2` 4 / `sp-3` 8 / `sp-4` 12 / `sp-5` 16 / `sp-6` 24 / `sp-7` 32
+- [ ] 令牌新增 **3 档圆角**：`r-sm` 3 / `r-md` 5 / `r-lg` 8（+ `r-full` 999 备用）
+- [ ] `app.css` 的 **47 种**硬编码 padding（68 处声明）全部换成 `sp-*`
+- [ ] `app.css` 的 **3 / 5 / 6 / 8 / 10** 圆角（26 处声明）换成 `r-*`，并遵守**外层圆角 ≥ 内层圆角**
+- [ ] 按钮内边距统一 `5 12`；图标按钮 `4 6`；输入框 `6 10`；面板 `12`
+
+**门禁**：`AppCssAuditTest` 断言 `app.css` 内无字面量 padding / border-radius；圆角只有 3 个值、间距只有 7 个值。
+
+### 13.3 U-B3 焦点与交互态层
+
+- [ ] 新增 `-adb-focus-ring` 令牌（= `accent`）与焦点样式：边框 `accent` 2px + 1px 外扩
+- [ ] 补 focus 规则的组件：`adb-button` / `adb-icon-button` / `adb-feature` / `.tree-cell` / `.table-cell` / `.adb-tab` / 通用 `.text-field`
+- [ ] 焦点环在**暗色主题**下同样可见
+- [ ] 禁用态改用 `text-disabled` + `bg-disabled` + **保留边框**，去掉 `-fx-opacity`
+- [ ] `-fx-opacity` 在 `app.css` 中只允许剩 **1 处**（带注释说明用途）
+- [ ] 加载中按钮：内嵌 spinner + 禁用 + **保持原宽度**（不跳动）
+
+**门禁**：`FocusRingAuditTest`（🆕）扫描 `app.css` 断言每个可聚焦组件类都有 `:focused` 规则，
+并断言 `-fx-opacity` 只出现 1 次；
+`AppShellTest` 键盘 Tab 遍历断言焦点节点每步都有可见边框。
+
+### 13.4 U-B4 图标层
+
+- [ ] 新建 `ui/adb-ui-core` 的 `Icons` 类：手绘 **32 个 SVGPath 矢量图标**（16×16 viewBox、1.5px 描边）
+- [ ] 图标统一走 `text-secondary` → hover `text-primary`
+- [ ] **所有「中文词当图标」的按钮**改为图形图标 + Tooltip + accessibleText
+      （`关闭` `重试` `打开` `复制` `删除` `保存` `筛选` `编辑` `清除` …）
+- [ ] 功能栏图标（`◈ ⌨ ▦ ⇅ ◆`）换成矢量图标
+- [ ] 图标按钮**只放图标**，文字进 Tooltip；命中区 ≥ 28×28
+
+**门禁**：`IconAuditTest` 扩展 —— ① 断言不存在中文词图标按钮；② 断言图标按钮图形均来自 `Icons`；
+③ 断言 `Icons` 每个常量都被至少一个界面用到（无死图标）。
+
+> ⚠️ **本批工作量最大**（估 1.5 天）。要压缩就先做**数据页工具栏 + 标签栏 + 侧栏**三处（覆盖 80% 可见图标）。
+
+### 13.5 U-B5 布局与组件层
+
+- [ ] 数据网格工具栏**按语义分 3 组**（浏览 / 编辑 / 视图），组间加分隔线
+- [ ] 工具栏**最多 7 个常显**，其余收进「更多」菜单
+- [ ] 新增**记录导航条**（首 / 上 / 下 / 末 记录 + 记录号输入），放在网格**上方左侧**
+- [ ] 列头筛选按钮 `▽` 改为**悬停列头才浮现**（常态只有列名 + 排序角标）
+- [ ] `ConnectionsPage` 由 `ListView` 改 **`TableView`**（名称 / 主机 / 端口 / 数据库 / 用户 / 状态），可排序、可拖列宽
+- [ ] **密度全局生效**：数据网格 / 查询结果网格 / 表清单 / 结构页三张表 **4 处**同步行高
+- [ ] 空状态补**一个明确的下一步按钮**（primary）+ 说明
+- [ ] 应用图标（标签栏 / 窗口标题）
+
+**门禁**：`DataGridPageTest`（工具栏分组 / 记录导航条 / 列头筛选悬停才可见）·
+`ConnectionsPageTest`（表格列与排序）· `DensityCoverageTest`（🆕，断言密度同时改 4 张表的行高）。
+
+### 13.6 U-B6 功能补齐层（与前 5 批并行）
+
+| # | 任务 | 门禁 | 状态 |
+|---|---|---|---|
+| **G2** | 列头**拖拽重排**（顺序已能持久化，只缺运行时入口） | `DataGridPageTest.columnDragReorderPersists` | ⬜ |
+| **G1** | **冻结列**（两表四路同步：滚动 / 选择 / 排序 / 编辑） | `DataGridPageTest.frozenColumnsStayPut` | ⬜ |
+| **G4** | 单元格**区域选择**（拖选 / Shift 范围 / 复制矩形） | `DataGridPageTest.rectangleSelectionCopies` | ⬜ |
+| **G6** | 自增列插入（新增行时主键留空交给数据库） | `DataGridSaveGuardTest.autoIncrementColumnStaysEmpty` | ⬜ |
+| **Q5** | 查询结果**分页**（现在硬上限 1000） | `QueryPageTest.resultPagination` | ⬜ |
+| **Q6** | 代码片段库（与已保存查询合并） | `SavedQueriesPageTest.snippetLibrary` | ⬜ |
+| **U1** | **catalog 树**（MySQL 多库；MySQL 的 schema = 数据库，`USE` 不管用，需切后重连） | `SchemaServiceTest.catalogSwitch` | ⬜ |
+| **U2** | **多连接并行**（`AppShell` 单 `activeProfile`/单 `session` → 按连接 id 取） | `SessionManagerTest` 扩用例 | ⬜ |
+| **U3** | 连接属性页（超时 / SSL / 字符集 / 连接池 / 附加参数） | `ConnectionWizardTest.propertiesStep` | ⬜ |
+| **U4** | 索引 / 外键 / 触发器**可编辑**（当前只读） | `StructurePageTest.indexEditor` | ⬜ |
+| **U5** | 对象首页标签（S5，见 §6.4） | `TabBarTest.objectHomeTabIsPermanent` | ⬜ |
+| **U6** | 状态栏补：当前用户 / 服务器版本 / 延迟 | `ActionRegistryConvergenceTest.statusBar*` | ⬜ |
+
+### 13.7 本节新增门禁汇总
+
+| 门禁 | 类 | 断言 |
+|---|---|---|
+| `AppCssAuditTest` | 🆕 | `app.css` 内无字面量字号 / padding / border-radius / 颜色；字号只 7 档；圆角只 3 档；间距只 7 档；`9px` 出现 0 次 |
+| `FocusRingAuditTest` | 🆕 | 每个可聚焦组件类都有 `:focused` 规则；`-fx-opacity` 只出现 1 处 |
+| `DensityCoverageTest` | 🆕 | 密度同时改 4 张表的行高 |
+| `IconAuditTest`（扩展） | 改 | 无中文词图标；图标均来自 `Icons`；`Icons` 无死常量 |
+| `TokenParityTest`（扩展） | 改 | 字号 / 间距 / 圆角令牌全部被引用 |
