@@ -17,7 +17,6 @@ import java.util.function.Consumer;
 public final class MainToolBar extends HBox {
 
     private final ComboBox<ConnectionProfile> connections = new ComboBox<>();
-    private String activeConnectionId;
     private Consumer<ConnectionProfile> onSelectConnection = profile -> { };
 
     public MainToolBar(ActionRegistry actions, String connectionName, Consumer<String> status) {
@@ -38,7 +37,7 @@ public final class MainToolBar extends HBox {
         connect.getStyleClass().add("adb-button--primary");
         connect.setText("＋ 连接");
 
-        Button refresh = iconButton("↻", "刷新 (F5)", () -> actions.run("refresh"));
+        Button refresh = actions.iconButton("refresh", "↻", "刷新 (F5)", "刷新");
         refresh.setId("refresh-button");
 
         Button query = actions.button("new-query");
@@ -71,9 +70,11 @@ public final class MainToolBar extends HBox {
         Region rightSpacer = new Region();
         HBox.setHgrow(rightSpacer, Priority.ALWAYS);
 
-        Button theme = iconButton("◐", "切换主题", () -> actions.run("theme.toggle"));
+        // ⭐ 图标按钮走 actions.iconButton：enabled 与动作同步，
+        //    动作禁用时按钮会真的变灰，而不是「看起来能点、点了没反应」。
+        Button theme = actions.iconButton("theme.toggle", "◐", "切换主题", "切换主题");
         theme.setId("theme-toggle-button");
-        Button settings = iconButton("⚙", "设置 (⌘,)", () -> actions.run("settings"));
+        Button settings = actions.iconButton("settings", "⚙", "设置 (⌘,)", "设置");
         settings.setId("settings-button");
 
         getChildren().addAll(
@@ -81,12 +82,11 @@ public final class MainToolBar extends HBox {
                 leftSpacer, search, rightSpacer,
                 theme, settings);
         this.onSelectConnection = onSelectConnection == null ? profile -> { } : onSelectConnection;
-        this.activeConnectionId = activeConnectionId;
+
         setConnections(profiles, activeConnectionId);
     }
 
     public void setConnections(List<ConnectionProfile> profiles, String activeConnectionId) {
-        this.activeConnectionId = activeConnectionId;
         connections.setItems(javafx.collections.FXCollections.observableArrayList(
                 profiles == null ? List.of() : profiles));
         ConnectionProfile active = profiles == null ? null : profiles.stream()
@@ -95,14 +95,6 @@ public final class MainToolBar extends HBox {
         if (active != null) {
             connections.getSelectionModel().select(active);
         }
-    }
-
-    private static Button iconButton(String text, String tooltip, Runnable handler) {
-        Button button = new Button(text);
-        button.getStyleClass().addAll("adb-icon-button");
-        button.setTooltip(new Tooltip(tooltip));
-        button.setOnAction(event -> handler.run());
-        return button;
     }
 
     private static Region separator() {

@@ -12,13 +12,17 @@ import io.agenticdb.introspect.SortSpec;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnType;
+import io.agenticdb.model.Danger;
+import io.agenticdb.model.PageSize;
 import io.agenticdb.model.QueryLimits;
 import io.agenticdb.model.RowPage;
+import io.agenticdb.safety.DangerClassifier;
 import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.collections.FXCollections;
 import javafx.concurrent.Task;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
@@ -37,6 +41,7 @@ import javafx.scene.control.Separator;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
+import javafx.scene.control.TablePosition;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
@@ -97,10 +102,34 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         default void readonly(boolean readonly) {
         }
 
+        /**
+         * 当前选中的行数（4.5-11）。
+         *
+         * <p>状态栏的「选择」段以前永远是「未选择」——这个 setter 零调用。
+         */
+        default void selection(int count) {
+        }
+
+        /**
+         * 会话是否处于事务中（4.5-11）。
+         *
+         * <p>状态栏的「事务」段以前永远是「自动提交」。
+         */
+        default void transaction(boolean inTransaction) {
+        }
+
         default void toast(String message) {
         }
 
         default void toast(String message, Runnable action) {
+            toast(message);
+        }
+
+        /**
+         * 「结果不可撤销」类提示：没有撤销按钮，但用户需要更长时间反应过来
+         * （如新增行无主键、保存后无法反向撤销）。默认退化为普通 toast。
+         */
+        default void toastUnreversible(String message) {
             toast(message);
         }
     }
@@ -127,6 +156,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final Label pageLabel = new Label("—");
     private final Button previous = new Button("‹ 上一页");
     private final Button next = new Button("下一页 ›");
+    private final Button firstPageButton = new Button("⇤");
+    private final Button lastPageButton = new Button("⇥");
+    private final TextField jumpField = new TextField();
     private final ComboBox<Integer> pageSizeBox = new ComboBox<>();
     private final Button filterButton = new Button("筛选");
     private final Button clearQueryButton = new Button("清除条件");
@@ -258,6 +290,26 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 searchField.requestFocus();
                 searchField.selectAll();
                 event.consume();
+            } else if (event.isShortcutDown() && !event.isShiftDown() && !event.isAltDown()
+                    && event.getCode() == KeyCode.C) {
+                // ⌘C 复制当前单元格的值
+                copyFocusedCellValue();
+                event.consume();
+            } else if (event.isShortcutDown() && event.isAltDown()
+                    && event.getCode() == KeyCode.C) {
+                // ⌥⌘C 复制选中行（无选中则复制当前行）为 TSV
+                copyRowsAsTsv(rowsForCopy(), "选中行");
+                event.consume();
+            } else if (event.isShortcutDown() && event.isShiftDown()
+                    && event.getCode() == KeyCode.C) {
+                // ⇧⌘C 复制为 INSERT
+                copyRowsAsSql(rowsForCopy(), "选中行");
+                event.consume();
+            } else if (event.isShortcutDown() && !event.isShiftDown() && !event.isAltDown()
+                    && event.getCode() == KeyCode.A) {
+                // ⌘A 全选当前页
+                selectAllCurrentPage();
+                event.consume();
             } else if (event.getCode() == KeyCode.ESCAPE
                     && searchField.isFocused() && !searchField.getText().isEmpty()) {
                 searchField.clear();
@@ -266,7 +318,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         });
     }
 
-    private void undo() {
+    /** 撤销上一处编辑（编辑菜单 / 快捷键共用）。 */
+    public void undo() {
         if (saving || loading) {
             return;
         }
@@ -282,7 +335,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         }
     }
 
-    private void redo() {
+    /** 重做（编辑菜单 / 快捷键共用）。 */
+    public void redo() {
         if (saving || loading) {
             return;
         }
@@ -296,6 +350,23 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             updateDirty();
             feedback.status("已重做 · " + editBuffer.dirtyCount() + " 处待保存");
         }
+    }
+
+    /** 编辑缓冲里是否还能撤销（决定菜单项 enabled）。 */
+    public boolean canUndo() {
+        return tableSchema != null && tableSchema.editable()
+                && !loading && !saving && editBuffer.canUndo();
+    }
+
+    /** 编辑缓冲里是否还能重做（决定菜单项 enabled）。 */
+    public boolean canRedo() {
+        return tableSchema != null && tableSchema.editable()
+                && !loading && !saving && editBuffer.canRedo();
+    }
+
+    /** 上一次保存是否留有可撤销的反向 SQL。 */
+    public boolean hasPendingSaveUndo() {
+        return saveUndoPlan != null && !saveUndoPlan.isEmpty() && !undoingSave && !saving;
     }
 
     private void updateDirty() {
@@ -336,7 +407,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             feedback.status("无法生成保存 SQL：" + readable(e));
             return;
         }
-        if (plan.isEmpty() || !confirmSqlPreview(plan)) {
+        if (plan.isEmpty() || !confirmSqlPreview(plan, planDanger(plan))) {
             return;
         }
         EditSqlBuilder.Plan undoPlan;
@@ -350,6 +421,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         saveButton.setText("保存中…");
         saving = true;
         grid.setDisable(true);
+        // 4.5-11：状态栏的「事务」段接真实数据 —— 保存跑在单事务里。
+        feedback.transaction(true);
         EditSqlBuilder.Plan inverse = undoPlan;
         Task<Integer> task = new Task<>() {
             @Override
@@ -361,6 +434,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             int affected = task.getValue();
             saving = false;
             grid.setDisable(false);
+            feedback.transaction(false);
             saveUndoPlan = inverse;
             editBuffer.clear();
             updateDirty();
@@ -368,7 +442,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             if (!inverse.isEmpty() && inverse.complete()) {
                 feedback.toast("已保存 " + plan.size() + " 条变更 · 可撤销", this::undoLastSave);
             } else if (!inverse.isEmpty()) {
-                feedback.toast("已保存 " + plan.size() + " 条变更（新增行无主键，不能反向撤销）");
+                feedback.toastUnreversible("已保存 " + plan.size()
+                        + " 条变更（新增行无主键，不能反向撤销）");
             } else {
                 feedback.toast("已保存 " + plan.size() + " 条变更");
             }
@@ -377,6 +452,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         task.setOnFailed(event -> {
             saving = false;
             grid.setDisable(false);
+            feedback.transaction(false);
             updateEditControls();
             feedback.status("保存失败：" + readable(task.getException()));
             showErrorDialog("保存失败", readable(task.getException()));
@@ -384,8 +460,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         dbExecutor.execute(task);
     }
 
-    /** Toast 上的“撤销保存”：执行保存前生成的反向 SQL，再刷新当前页。 */
-    private void undoLastSave() {
+    /** Toast 上的“撤销保存”（编辑菜单共用）：执行保存前生成的反向 SQL，再刷新当前页。 */
+    public void undoLastSave() {
         EditSqlBuilder.Plan inverse = saveUndoPlan;
         if (inverse == null || inverse.isEmpty() || undoingSave || saving) {
             return;
@@ -413,26 +489,113 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         dbExecutor.execute(task);
     }
 
-    private boolean confirmSqlPreview(EditSqlBuilder.Plan plan) {
+    /**
+     * 保存计划的风险等级 —— 取所有语句里最危险的那条。
+     *
+     * <p>⭐ 数据页保存路径以前<b>完全不分类</b>：危险 SQL 在查询页被拦住了，
+     * 在保存路径却没拦，等于门禁是空的。现在接上 {@link DangerClassifier}，
+     * 与查询页共用同一套分级语义。
+     */
+    Danger planDanger(EditSqlBuilder.Plan plan) {
+        Danger worst = Danger.READ_ONLY;
+        for (EditSqlBuilder.Statement statement : plan.statements()) {
+            worst = worst.worse(DangerClassifier.classify(statement.sql()));
+        }
+        return worst;
+    }
+
+    /**
+     * 保存前确认：展示将要执行的 SQL，并按风险等级决定确认强度。
+     *
+     * <p>⭐ <b>默认按钮必须是「取消」</b>。以前这里用的是
+     * {@code ButtonType("执行", ButtonData.OK_DONE)} —— {@code OK_DONE}
+     * 语义上就是「默认且确认」，于是<b>回车 = 直接执行破坏性 SQL</b>。
+     * 现在「执行」用 {@code OTHER}，并在弹窗显示后把默认按钮钉在「取消」上
+     * （{@link DestructiveConfirm#pinCancelAsDefault}）。
+     *
+     * <p>高风险（改结构 / 管理操作）额外走一级 {@link DestructiveConfirm}。
+     */
+    private boolean confirmSqlPreview(EditSqlBuilder.Plan plan, Danger danger) {
+        if (danger.requiresApproval()) {
+            DestructiveConfirm confirm = DestructiveConfirm.of(
+                    "保存修改",
+                    plan.size() + " 条变更 · 风险等级：" + danger.label(),
+                    "以下 SQL 会在单个事务里执行，任一条失败整体回滚。\n\n"
+                            + plan.preview(),
+                    "继续");
+            if (!confirm.confirmed()) {
+                return false;
+            }
+        }
+        Dialog<ButtonType> dialog = buildSavePreviewDialog(plan, danger);
+        // ⚠️ 必须用弹窗上**同一个** ButtonType 实例来比对：
+        //    ButtonType 没有覆写 equals，新建的实例比不上。
+        ButtonType execute = dialog.getDialogPane().getButtonTypes().stream()
+                .filter(type -> "执行".equals(type.getText()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("保存预览弹窗缺少「执行」按钮"));
+        return dialog.showAndWait().filter(execute::equals).isPresent();
+    }
+
+    /** 保存预览弹窗的「执行」按钮类型。抽出来是为了测试能断言它不是默认按钮。 */
+    static ButtonType executeButtonType() {
+        // ⭐ OTHER：不是默认按钮，回车不会落在「执行」上。
+        return new ButtonType("执行", ButtonBar.ButtonData.OTHER);
+    }
+
+    /** 保存预览弹窗的「取消」按钮类型。 */
+    static ButtonType cancelButtonType() {
+        return new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+    }
+
+    /**
+     * 构造保存预览弹窗（不显示）。
+     *
+     * <p>抽成独立方法是为了让门禁能直接断言「默认按钮不是执行」，
+     * 而不用真的把模态弹窗弹出来。
+     */
+    Dialog<ButtonType> buildSavePreviewDialog(EditSqlBuilder.Plan plan, Danger danger) {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle("保存修改");
-        dialog.setHeaderText(plan.size() + " 条变更 · 单事务执行");
-        ButtonType execute = new ButtonType("执行", ButtonBar.ButtonData.OK_DONE);
-        dialog.getDialogPane().getButtonTypes().addAll(execute,
-                new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE));
+        dialog.setHeaderText(plan.size() + " 条变更 · 单事务执行 · 风险：" + danger.label());
+        ButtonType execute = executeButtonType();
+        ButtonType cancel = cancelButtonType();
+        dialog.getDialogPane().getButtonTypes().addAll(execute, cancel);
+        dialog.setResultConverter(type -> type);
+
         TextArea sql = new TextArea(plan.preview());
         sql.setEditable(false);
         sql.setWrapText(false);
         sql.getStyleClass().add("adb-sql-preview");
         sql.setPrefColumnCount(72);
         sql.setPrefRowCount(Math.min(18, Math.max(4, plan.size() + 2)));
-        dialog.getDialogPane().setContent(sql);
+
+        Label badge = new Label(danger.label());
+        badge.getStyleClass().add("adb-query__risk");
+        badge.getStyleClass().add(riskStyleClass(danger));
+
+        VBox content = new VBox(8, badge, sql);
+        content.setPadding(new Insets(0, 0, 0, 0));
+        VBox.setVgrow(sql, Priority.ALWAYS);
+        dialog.getDialogPane().setContent(content);
         dialog.getDialogPane().getStyleClass().add("adb-dialog");
         if (getScene() != null) {
             dialog.initOwner(getScene().getWindow());
             dialog.getDialogPane().getStylesheets().addAll(getScene().getStylesheets());
         }
-        return dialog.showAndWait().filter(execute::equals).isPresent();
+        // ⭐ 默认按钮钉在「取消」上。必须在 skin 创建之后（shown 之后）才生效。
+        dialog.setOnShown(event -> DestructiveConfirm.pinCancelAsDefault(
+                dialog.getDialogPane(), cancel, execute));
+        return dialog;
+    }
+
+    /** 风险等级对应的样式类。 */
+    private static String riskStyleClass(Danger danger) {
+        return switch (danger) {
+            case READ_ONLY -> "adb-risk--read";
+            case MUTATING -> "adb-risk--write";
+            case DESTRUCTIVE, ADMIN -> "adb-risk--structure";
+        };
     }
 
     private void showErrorDialog(String title, String message) {
@@ -472,13 +635,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         toolbar.getStyleClass().add("adb-inline-toolbar");
         toolbar.setAlignment(Pos.CENTER_LEFT);
 
-        Button refresh = new Button("⟳ 刷新");
+        Button refresh = new Button("↻ 刷新");
         refresh.setId("data-refresh");
         refresh.getStyleClass().addAll("adb-button", "adb-button--ghost");
         refresh.setTooltip(new Tooltip("重新统计总数并拉取当前页 (F5)"));
         refresh.setOnAction(event -> refresh());
 
-        Button structure = new Button("⚙ 结构");
+        Button structure = new Button("☰ 结构");
         structure.setId("data-structure");
         structure.getStyleClass().addAll("adb-button", "adb-button--ghost");
         structure.setOnAction(event -> openStructure.accept(tableName));
@@ -550,7 +713,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
         searchField.setId("data-search");
         searchField.getStyleClass().add("adb-grid__search");
-        searchField.setPromptText("🔍 本页搜索");
+        searchField.setPromptText("⌕ 本页搜索");
         searchField.setPrefWidth(168);
         searchField.setTooltip(new Tooltip("只在当前页内过滤 (⌘F)"));
         searchField.textProperty().addListener((observable, previous, value) -> rebuildItems());
@@ -587,6 +750,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 (javafx.collections.ListChangeListener<Map<String, Object>>) change -> {
                     updateBatchBar();
                     updateSelectAllState();
+                    // 4.5-11：把选中行数报给状态栏。
+                    feedback.selection(grid.getSelectionModel().getSelectedItems().size());
                     grid.refresh();
                 });
         grid.setRowFactory(view -> new TableRow<>() {
@@ -715,6 +880,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         previous.getStyleClass().addAll("adb-button", "adb-button--ghost");
         previous.setOnAction(event -> previousPage());
 
+        firstPageButton.setId("data-first");
+        firstPageButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        firstPageButton.setTooltip(new Tooltip("第一页"));
+        firstPageButton.setAccessibleText("第一页");
+        firstPageButton.setOnAction(event -> firstPage());
+
         pageLabel.setId("data-page");
         pageLabel.getStyleClass().add("adb-grid__page");
 
@@ -722,14 +893,29 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         next.getStyleClass().addAll("adb-button", "adb-button--ghost");
         next.setOnAction(event -> nextPage());
 
+        lastPageButton.setId("data-last");
+        lastPageButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        lastPageButton.setTooltip(new Tooltip("最后一页"));
+        lastPageButton.setAccessibleText("最后一页");
+        lastPageButton.setOnAction(event -> lastPage());
+
+        jumpField.setId("data-jump");
+        jumpField.getStyleClass().add("adb-grid__jump");
+        jumpField.setPromptText("跳至页");
+        jumpField.setTooltip(new Tooltip("输入页码后回车跳转"));
+        jumpField.setAccessibleText("跳至指定页");
+        jumpField.setPrefWidth(72);
+        jumpField.setOnAction(event -> jumpToPage(jumpField.getText()));
+
         Label perPage = new Label("每页");
         perPage.getStyleClass().add("adb-muted");
 
         pageSizeBox.setId("data-page-size");
         pageSizeBox.getStyleClass().add("adb-page-size");
-        pageSizeBox.getItems().setAll(Arrays.stream(QueryLimits.ALLOWED_PAGE_SIZES)
-                .boxed().toList());
-        pageSizeBox.getSelectionModel().select(Integer.valueOf(pageSize));
+        // ⭐ 档位来自 PageSize 枚举（唯一真相），不再在 UI 里写死一份数组。
+        pageSizeBox.getItems().setAll(Arrays.stream(PageSize.values())
+                .map(PageSize::value).toList());
+        pageSizeBox.getSelectionModel().select(PageSize.nearest(pageSize).value());
         pageSizeBox.setPrefWidth(78);
         pageSizeBox.setOnAction(event -> {
             Integer value = pageSizeBox.getValue();
@@ -741,7 +927,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             load(false);
         });
 
-        pager.getChildren().addAll(rangeLabel, spacer, previous, pageLabel, next,
+        pager.getChildren().addAll(rangeLabel, spacer, firstPageButton, previous, pageLabel,
+                next, lastPageButton, jumpField,
                 new Separator(javafx.geometry.Orientation.VERTICAL), perPage, pageSizeBox);
         return pager;
     }
@@ -757,6 +944,71 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             return;
         }
         offset = Math.max(0, offset - pageSize);
+        load(false);
+    }
+
+    private void firstPage() {
+        if (loading || offset == 0) {
+            return;
+        }
+        offset = 0;
+        load(false);
+    }
+
+    private void lastPage() {
+        if (loading || total <= 0) {
+            return;
+        }
+        long lastOffset = (total - 1) / pageSize * pageSize;
+        if (lastOffset == offset) {
+            return;
+        }
+        if (QueryLimits.exceedsOffsetLimit(lastOffset)) {
+            showError("已到达 OFFSET 上限 " + QueryLimits.MAX_OFFSET
+                    + "，请改用筛选条件而不是继续翻页。");
+            return;
+        }
+        offset = lastOffset;
+        load(false);
+    }
+
+    /** 跳页：页码从 1 开始；越界或非法输入不动作并给出行内提示。 */
+    private void jumpToPage(String raw) {
+        if (loading) {
+            return;
+        }
+        String text = raw == null ? "" : raw.trim();
+        if (text.isEmpty()) {
+            return;
+        }
+        long page;
+        try {
+            page = Long.parseLong(text);
+        } catch (NumberFormatException e) {
+            feedback.status("跳页失败：「" + text + "」不是页码");
+            return;
+        }
+        if (page < 1) {
+            feedback.status("跳页失败：页码从 1 开始");
+            return;
+        }
+        long pages = QueryLimits.totalPages(total, pageSize);
+        if (pages >= 0 && page > pages) {
+            feedback.status("跳页失败：最大页码 " + pages);
+            return;
+        }
+        long target = (page - 1) * pageSize;
+        if (QueryLimits.exceedsOffsetLimit(target)) {
+            showError("已到达 OFFSET 上限 " + QueryLimits.MAX_OFFSET
+                    + "，请改用筛选条件而不是继续翻页。");
+            return;
+        }
+        if (target == offset) {
+            jumpField.clear();
+            return;
+        }
+        offset = target;
+        jumpField.clear();
         load(false);
     }
 
@@ -884,9 +1136,38 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         updateViewControls();
         feedback.range(rangeText());
         feedback.duration(result.elapsedMs);
-        feedback.status("已加载 " + tableName + " · " + lastRowCount + " 行 · "
-                + result.elapsedMs() + " ms");
+        // ⭐ 结果被硬上限截断时必须说出来。数据页平时不会截断（分页 + COUNT 已知总数），
+        //    但只要发生了，用户看到的就不是完整数据 —— 静默丢数据是正确性问题。
+        boolean truncated = result.page.rowsTruncated();
+        feedback.status(truncated
+                ? "已加载 " + tableName + " · " + lastRowCount + " 行（⚠ 结果已截断）· "
+                        + result.elapsedMs() + " ms"
+                : "已加载 " + tableName + " · " + lastRowCount + " 行 · "
+                        + result.elapsedMs() + " ms");
         activated = true;
+    }
+
+    /**
+     * 应用密度档位（A19）。
+     *
+     * <p>行高来自设计令牌 {@code row-compact} / {@code row-normal} / {@code row-comfort}，
+     * 不写死在 CSS 里 —— 令牌是唯一真相。
+     * 以前密度只影响对象树，数据网格行高不变，等于「紧凑 / 宽松」这个设置
+     * 对最费屏的地方不起作用。
+     */
+    public void setDensity(String density) {
+        int rowHeight = switch (density == null ? "normal" : density) {
+            case "compact" -> io.agenticdb.ui.Tokens.ROW_COMPACT_LIGHT;
+            case "comfort" -> io.agenticdb.ui.Tokens.ROW_COMFORT_LIGHT;
+            default -> io.agenticdb.ui.Tokens.ROW_NORMAL_LIGHT;
+        };
+        grid.setFixedCellSize(rowHeight);
+        transposeTable.setFixedCellSize(rowHeight);
+    }
+
+    /** 当前行高（供测试断言密度真的作用到了网格）。 */
+    public double rowHeight() {
+        return grid.getFixedCellSize();
     }
 
     /** 切回该标签时把状态栏恢复成这一页的真实状态，而不是上一页的残留。 */
@@ -1199,7 +1480,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
     private javafx.scene.Node columnHeader(ColumnDef definition) {
         Label name = new Label(definition.name()
-                + (definition.primaryKey() ? "  🔑" : definition.nullable() ? "" : "  •"));
+                + (definition.primaryKey() ? "  [PK]" : definition.nullable() ? "" : "  •"));
         name.setId("data-header-" + definition.name());
         name.getStyleClass().add("adb-grid__column-name");
         if (definition.primaryKey()) {
@@ -1220,7 +1501,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         sortBadge.setVisible(false);
         sortBadge.setManaged(false);
 
-        Button funnel = new Button("⌄");
+        Button funnel = new Button("▽");
+        funnel.setAccessibleText("筛选");
         funnel.setId("data-filter-" + definition.name());
         funnel.setFocusTraversable(false);
         funnel.getStyleClass().add("adb-grid__filter-button");
@@ -1675,6 +1957,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         int selected = grid.getSelectionModel().getSelectedItems().size();
         selectAllBox.setSelected(total > 0 && selected == total);
         selectAllBox.setIndeterminate(selected > 0 && selected < total);
+        // 4.5-11：状态栏的「选择」段接真实数据。
+        feedback.selection(selected);
     }
 
     private void addRow() {
@@ -1871,8 +2155,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         ColumnDef focused = focusedColumn();
         batchDelete.setDisable(!editable);
         batchClone.setDisable(!editable);
-        batchNull.setDisable(!editable || focused == null || !focused.nullable());
-        batchEmpty.setDisable(!editable || focused == null || !textual(focused.type()));
+        // ⛔ 主键列不能批量改（见 applyColumnValue）——按钮也要跟着禁用，
+        //    不能让用户点下去才发现什么也没发生。
+        boolean pkColumn = focused != null && focused.primaryKey();
+        batchNull.setDisable(!editable || focused == null || !focused.nullable() || pkColumn);
+        batchEmpty.setDisable(!editable || focused == null || !textual(focused.type()) || pkColumn);
     }
 
     private ColumnDef focusedColumn() {
@@ -1917,6 +2204,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             feedback.status(definition.name() + " 不是文本列，不能设为空串");
             return;
         }
+        // ⛔ 主键列是保护区。单元格编辑路径有 cellEditable 的主键检查，
+        //    批量路径以前漏了，导致 VARCHAR/TEXT 主键能被批量「设空串」，
+        //    生成 UPDATE t SET pk='' WHERE pk=? —— 主键损坏、唯一约束冲突。
+        if (definition.primaryKey()) {
+            feedback.status(definition.name() + " 是主键列，不能批量修改");
+            return;
+        }
         List<Map<String, Object>> selected = List.copyOf(
                 grid.getSelectionModel().getSelectedItems());
         List<EditBuffer.CellWrite> cells = new ArrayList<>();
@@ -1953,6 +2247,53 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             }
         }
         return names;
+    }
+
+    /** ⌘A：全选当前页（含勾选列同步）。 */
+    private void selectAllCurrentPage() {
+        if (grid.getItems().isEmpty()) {
+            feedback.status("当前页没有可选的行");
+            return;
+        }
+        grid.getSelectionModel().selectAll();
+        selectAllBox.setSelected(true);
+        feedback.status("已选中当前页 " + grid.getItems().size() + " 行");
+    }
+
+    /** ⌥⌘C / ⇧⌘C 的作用范围：优先选中行，其次光标所在行。 */
+    private List<Map<String, Object>> rowsForCopy() {
+        List<Map<String, Object>> selected =
+                List.copyOf(grid.getSelectionModel().getSelectedItems());
+        if (!selected.isEmpty()) {
+            return selected;
+        }
+        Map<String, Object> focused = grid.getFocusModel().getFocusedItem();
+        return focused == null ? List.of() : List.of(focused);
+    }
+
+    /** ⌘C：复制光标所在单元格的值（编辑菜单 / 快捷键共用）。 */
+    public void copyFocusedCellValue() {
+        TablePosition<Map<String, Object>, ?> focused =
+                (TablePosition<Map<String, Object>, ?>) grid.getFocusModel().getFocusedCell();
+        if (focused == null || focused.getRow() < 0
+                || focused.getRow() >= grid.getItems().size()) {
+            feedback.status("请先选中一个单元格");
+            return;
+        }
+        TableColumn<Map<String, Object>, ?> column =
+                (TableColumn<Map<String, Object>, ?>) focused.getTableColumn();
+        if (column == null || column.getUserData() == null) {
+            feedback.status("请先选中一个数据单元格");
+            return;
+        }
+        Map<String, Object> row = grid.getItems().get(focused.getRow());
+        Object value = column.getCellObservableValue(row) == null
+                ? null
+                : column.getCellObservableValue(row).getValue();
+        ClipboardContent content = new ClipboardContent();
+        content.putString(value == null ? "" : String.valueOf(value));
+        Clipboard.getSystemClipboard().setContent(content);
+        feedback.status("已复制单元格值");
     }
 
     private void copySelectedAsTsv() {
@@ -2468,6 +2809,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         rangeLabel.setText(rangeText());
         previous.setDisable(loading || offset <= 0);
         next.setDisable(loading || (total >= 0 && offset + pageSize >= total));
+        firstPageButton.setDisable(loading || offset <= 0);
+        lastPageButton.setDisable(loading || total <= 0
+                || (total - 1) / pageSize * pageSize == offset);
+        jumpField.setDisable(loading || total < 0);
         pageSizeBox.setDisable(loading);
     }
 
@@ -2514,6 +2859,35 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             cursor = cursor.getCause();
         }
         return message == null ? error.getClass().getSimpleName() : message;
+    }
+
+    /**
+     * 取消当前正在跑的加载 / 保存（4.5-13）。
+     *
+     * <p>⭐ 以前数据页的加载与保存<b>无法真正取消</b>：{@code JdbcSession.activeStatement}
+     * 只在 {@code execute()} 里赋值，{@code query()} / {@code update()} 不赋值，
+     * 所以 {@code ⌘.} 只能逻辑放弃 —— JDBC 语句还在数据库里跑。
+     * 现在 {@code query()} / {@code update()} 也记录语句，
+     * 这里调 {@code Statement.cancel()} 能真的把它打断。
+     */
+    public void cancel() {
+        requestSequence++;
+        if (inFlight != null) {
+            inFlight.cancel(true);
+            inFlight = null;
+        }
+        session.cancelCurrent();
+        loading = false;
+        saving = false;
+        grid.setDisable(false);
+        hideState();
+        updateEditControls();
+        feedback.status("已取消 · " + tableName);
+    }
+
+    /** 是否正在加载或保存。 */
+    public boolean isBusy() {
+        return loading || saving;
     }
 
     @Override

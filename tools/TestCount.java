@@ -1,0 +1,115 @@
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * 统计门禁测试数（4.5-28）。
+ *
+ * <h2>为什么不能用 surefire XML 的 {@code tests=} 属性</h2>
+ * 用 {@code @Nested} 写的测试类，surefire 会把外层类写成 {@code tests="0"}，
+ * 真实用例落在<b>内层类</b>的报告条目里。于是按 {@code tests=} 统计会少算一大截
+ * （本项目当时是 159，而真实值是 268）。
+ *
+ * <p>所以这里一律按 {@code <testcase>} 元素计数。
+ *
+ * <h2>用法</h2>
+ * <pre>
+ * ./mvnw -B clean verify
+ * java tools/TestCount.java          # 打印明细并校验下限
+ * java tools/TestCount.java 300      # 自定义下限
+ * </pre>
+ *
+ * <p>下限的作用是**防回归**：一旦有人把统计口径改回 {@code tests=}，
+ * 这里会立刻失败，而不是让「少算 100 多条」悄悄发生。
+ */
+public final class TestCount {
+
+    /** 默认下限。低于这个数说明统计口径坏了，或测试被大面积跳过。 */
+    private static final int DEFAULT_MINIMUM = 300;
+
+    private TestCount() {
+    }
+
+    public static void main(String[] args) throws IOException {
+        int minimum = args.length > 0 ? Integer.parseInt(args[0]) : DEFAULT_MINIMUM;
+        Path root = findRoot();
+        List<Path> reports = new ArrayList<>();
+        try (var paths = Files.walk(root)) {
+            paths.filter(p -> p.getFileName().toString().startsWith("TEST-")
+                            && p.getFileName().toString().endsWith(".xml")
+                            && p.getParent() != null
+                            && p.getParent().getFileName().toString().equals("surefire-reports"))
+                    .forEach(reports::add);
+        }
+        if (reports.isEmpty()) {
+            System.err.println("找不到 surefire 报告，请先跑 ./mvnw -B clean verify");
+            System.exit(2);
+        }
+
+        Pattern testcase = Pattern.compile("<testcase\\b");
+        Pattern failure = Pattern.compile("<failure\\b|<error\\b");
+        Map<String, Integer> perModule = new LinkedHashMap<>();
+        int total = 0;
+        int problems = 0;
+
+        for (Path report : reports) {
+            String xml = Files.readString(report, StandardCharsets.UTF_8);
+            Matcher cases = testcase.matcher(xml);
+            int count = 0;
+            while (cases.find()) {
+                count++;
+            }
+            Matcher bad = failure.matcher(xml);
+            int badCount = 0;
+            while (bad.find()) {
+                badCount++;
+            }
+            problems += badCount;
+            total += count;
+            String module = moduleOf(root, report);
+            perModule.merge(module, count, Integer::sum);
+        }
+
+        System.out.println("── 测试门禁统计 ──────────────────────────────────");
+        perModule.forEach((module, count) ->
+                System.out.printf("%-32s %4d%n", module, count));
+        System.out.printf("%-32s %4d  （%d 个测试类）%n", "合计", total, reports.size());
+        System.out.println("─────────────────────────────────────────────────");
+
+        if (problems > 0) {
+            System.err.println("⛔ 有 " + problems + " 条失败 / 错误");
+            System.exit(1);
+        }
+        if (total < minimum) {
+            System.err.println("⛔ 测试数 " + total + " 低于下限 " + minimum
+                    + "。统计口径可能坏了（surefire 的 tests= 属性不计 @Nested 用例）。");
+            System.exit(1);
+        }
+        System.out.println("✅ 测试数 " + total + " ≥ 下限 " + minimum + "，0 失败");
+    }
+
+    private static String moduleOf(Path root, Path report) {
+        Path relative = root.relativize(report);
+        return relative.getName(0) + "/" + relative.getName(1);
+    }
+
+    private static Path findRoot() {
+        Path cursor = Path.of(System.getProperty("user.dir")).toAbsolutePath();
+        while (cursor != null) {
+            if (Files.isRegularFile(cursor.resolve("pom.xml"))
+                    && Files.isDirectory(cursor.resolve("core"))) {
+                return cursor;
+            }
+            cursor = cursor.getParent();
+        }
+        throw new IllegalStateException("找不到仓库根目录");
+    }
+}

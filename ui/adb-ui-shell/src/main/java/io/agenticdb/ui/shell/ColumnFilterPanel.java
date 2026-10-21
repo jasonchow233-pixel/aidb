@@ -48,6 +48,15 @@ final class ColumnFilterPanel extends VBox {
     record ValueCount(Object value, long count) {
     }
 
+    /**
+     * 一次候选值查询的结果。
+     *
+     * @param values   取到的候选值
+     * @param truncated 结果被硬上限截断（还有更多候选值没取到）
+     */
+    record Candidates(List<ValueCount> values, boolean truncated) {
+    }
+
     private final DbSession session;
     private final String tableName;
     private final ColumnDef column;
@@ -71,7 +80,7 @@ final class ColumnFilterPanel extends VBox {
     private final PopOver popover = new PopOver();
 
     private boolean highCardinalityMode;
-    private Task<List<ValueCount>> inFlight;
+    private Task<Candidates> inFlight;
 
     ColumnFilterPanel(DbSession session, String tableName, ColumnDef column, DataQuery query,
                       Executor dbExecutor, Consumer<FilterCondition> onApply, Runnable onClear) {
@@ -220,9 +229,9 @@ final class ColumnFilterPanel extends VBox {
         status.setText("正在读取候选值…");
         DataQuery cascading = query.withoutFiltersFor(column.name());
 
-        Task<List<ValueCount>> task = new Task<>() {
+        Task<Candidates> task = new Task<>() {
             @Override
-            protected List<ValueCount> call() throws Exception {
+            protected Candidates call() throws Exception {
                 DataSqlBuilder.Sql sql = DataSqlBuilder.distinctValues(
                         session, tableName, column.name(), cascading, MAX_CANDIDATES + 1);
                 RowPage page = session.query(sql.text(), MAX_CANDIDATES + 1, sql.params());
@@ -233,7 +242,7 @@ final class ColumnFilterPanel extends VBox {
                             ? number.longValue() : 0;
                     values.add(new ValueCount(value, count));
                 }
-                return values;
+                return new Candidates(values, page.rowsTruncated());
             }
         };
 
@@ -243,8 +252,14 @@ final class ColumnFilterPanel extends VBox {
             }
             inFlight = null;
             setLoading(false);
-            List<ValueCount> values = task.getValue();
-            highCardinalityMode = values.size() > MAX_CANDIDATES;
+            Candidates candidates = task.getValue();
+            List<ValueCount> values = candidates.values();
+            // ⭐ 高基数判定必须看<b>截断标记</b>，不能只看「取回来的条数」。
+            //    以前请求 MAX_CANDIDATES+1 = 1001 行，但 JdbcSession 会把它夹到
+            //    单页硬上限 1000 —— 于是 values.size() 永远 ≤ 1000，
+            //    「> 1000」这个条件永远不成立，超过 1000 个候选值的列
+            //    会被当成普通列，悄悄只显示前 1000 个值。
+            highCardinalityMode = candidates.truncated() || values.size() > MAX_CANDIDATES;
             allValues.setAll(highCardinalityMode ? List.of() : values);
             highCardinality.setVisible(highCardinalityMode);
             highCardinality.setManaged(highCardinalityMode);

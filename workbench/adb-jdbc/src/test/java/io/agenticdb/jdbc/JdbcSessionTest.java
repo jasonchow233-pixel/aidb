@@ -1,10 +1,16 @@
 package io.agenticdb.jdbc;
 
 import io.agenticdb.model.ColumnType;
+import io.agenticdb.model.QueryLimits;
 import io.agenticdb.model.RowPage;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -67,6 +73,41 @@ class JdbcSessionTest {
             RowPage page = session.query("SELECT id FROM t", 100);
 
             assertThat(page.rowCount()).isEqualTo(100);
+        }
+    }
+
+    /** 4.5-2：截断必须能被检测出来，否则 UI 无从提示。 */
+    @Test
+    void marksResultTruncatedAtPageLimit() throws SQLException {
+        try (JdbcSession session = JdbcSession.open(ConnectionSpec.sqliteMemory())) {
+            session.update("CREATE TABLE t (id INTEGER)");
+            session.begin();
+            for (int i = 0; i < QueryLimits.MAX_PAGE_SIZE + 5; i++) {
+                session.update("INSERT INTO t VALUES (" + i + ")");
+            }
+            session.commit();
+
+            ExecutionResult result = session.execute("SELECT id FROM t");
+
+            assertThat(result.rowCount()).isEqualTo(QueryLimits.MAX_PAGE_SIZE);
+            assertThat(result.isTruncated())
+                    .as("库里还有 5 行没读出来，必须告诉用户被截断了")
+                    .isTrue();
+        }
+    }
+
+    @Test
+    void queryWithLimitJustBelowTotalIsNotTruncated() throws SQLException {
+        try (JdbcSession session = JdbcSession.open(ConnectionSpec.sqliteMemory())) {
+            session.update("CREATE TABLE t (id INTEGER)");
+            for (int i = 0; i < 10; i++) {
+                session.update("INSERT INTO t VALUES (" + i + ")");
+            }
+            ExecutionResult result = session.execute("SELECT id FROM t");
+            assertThat(result.rowCount()).isEqualTo(10);
+            assertThat(result.isTruncated())
+                    .as("结果没到上限就不能报截断")
+                    .isFalse();
         }
     }
 
@@ -147,6 +188,145 @@ class JdbcSessionTest {
         }
     }
 
+    /**
+     * 4.5-13：{@code query()} / {@code update()} 也必须记录 {@code activeStatement}，
+     * 否则数据页的加载与保存<b>无法被 ⌘. 真正中断</b>，只能逻辑放弃。
+     *
+     * <p>用代理 Statement 精确观测：{@code cancel()} 有没有被调用。
+     * 不靠「跑一个长查询然后看时间」来赌，避免 flaky。
+     */
+    @Test
+    void queryRegistersTheStatementSoCancelCanInterruptIt() throws Exception {
+        try (SpyConnection spy = new SpyConnection("jdbc:sqlite::memory:")) {
+            try (JdbcSession session = JdbcSession.wrap(spy.connection(), "spy")) {
+                spy.blockNextExecution();
+                AtomicReference<Throwable> failure = new AtomicReference<>();
+                Thread runner = new Thread(() -> {
+                    try {
+                        session.query("SELECT 1", 10);
+                    } catch (Throwable t) {
+                        failure.set(t);
+                    }
+                });
+                runner.start();
+
+                assertThat(spy.awaitExecutionStarted())
+                        .as("查询必须已经开始执行，才能验证取消")
+                        .isTrue();
+                session.cancelCurrent();
+                assertThat(spy.cancelCount())
+                        .as("⌘. 必须真的调用 Statement.cancel()（4.5-13）")
+                        .isPositive();
+                spy.releaseExecution();
+                runner.join(10_000);
+                assertThat(runner.isAlive()).isFalse();
+            }
+        }
+    }
+
+    @Test
+    void updateRegistersTheStatementSoCancelCanInterruptIt() throws Exception {
+        try (SpyConnection spy = new SpyConnection("jdbc:sqlite::memory:")) {
+            try (JdbcSession session = JdbcSession.wrap(spy.connection(), "spy")) {
+                session.execute("CREATE TABLE t (a INTEGER)");
+                spy.blockNextExecution();
+                Thread runner = new Thread(() -> {
+                    try {
+                        session.update("UPDATE t SET a = ?", List.of(1));
+                    } catch (Throwable ignored) {
+                        // 取消后必然抛异常，这是预期。
+                    }
+                });
+                runner.start();
+
+                assertThat(spy.awaitExecutionStarted()).isTrue();
+                session.cancelCurrent();
+                assertThat(spy.cancelCount())
+                        .as("保存路径的 update() 也必须能被取消（4.5-13）")
+                        .isPositive();
+                spy.releaseExecution();
+                runner.join(10_000);
+            }
+        }
+    }
+
+    /**
+     * 观测用的连接代理：包装 {@link Statement}，记录 {@code cancel()} 调用次数，
+     * 并可以让下一次执行阻塞在闸门上。
+     */
+    private static final class SpyConnection implements AutoCloseable {
+
+        private final Connection real;
+        private final java.util.concurrent.atomic.AtomicInteger cancels =
+                new java.util.concurrent.atomic.AtomicInteger();
+        private final java.util.concurrent.CountDownLatch started =
+                new java.util.concurrent.CountDownLatch(1);
+        private final java.util.concurrent.CountDownLatch release =
+                new java.util.concurrent.CountDownLatch(1);
+        private volatile boolean blocking;
+
+        SpyConnection(String url) throws SQLException {
+            real = DriverManager.getConnection(url);
+        }
+
+        Connection connection() {
+            return (Connection) java.lang.reflect.Proxy.newProxyInstance(
+                    Connection.class.getClassLoader(), new Class<?>[]{Connection.class},
+                    (proxy, method, args) -> {
+                        if ("prepareStatement".equals(method.getName())) {
+                            return spyStatement((Statement) method.invoke(real, args));
+                        }
+                        return method.invoke(real, args);
+                    });
+        }
+
+        private Statement spyStatement(Statement delegate) {
+            // ⭐ 代理必须实现 PreparedStatement —— JdbcSession 里的变量类型是
+            //    PreparedStatement，只代理 Statement 会在赋值时 ClassCastException。
+            return (Statement) java.lang.reflect.Proxy.newProxyInstance(
+                    java.sql.PreparedStatement.class.getClassLoader(),
+                    new Class<?>[]{java.sql.PreparedStatement.class},
+                    (proxy, method, args) -> {
+                        String name = method.getName();
+                        if ("cancel".equals(name)) {
+                            cancels.incrementAndGet();
+                            return null;
+                        }
+                        if (("executeQuery".equals(name) || "executeUpdate".equals(name))
+                                && blocking) {
+                            started.countDown();
+                            release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                        }
+                        try {
+                            return method.invoke(delegate, args);
+                        } catch (java.lang.reflect.InvocationTargetException e) {
+                            throw e.getCause();
+                        }
+                    });
+        }
+
+        void blockNextExecution() {
+            blocking = true;
+        }
+
+        boolean awaitExecutionStarted() throws InterruptedException {
+            return started.await(10, java.util.concurrent.TimeUnit.SECONDS);
+        }
+
+        void releaseExecution() {
+            release.countDown();
+        }
+
+        int cancelCount() {
+            return cancels.get();
+        }
+
+        @Override
+        public void close() throws SQLException {
+            real.close();
+        }
+    }
+
     @Test
     void duplicateColumnLabelsGetDistinctKeys() throws SQLException {
         try (JdbcSession session = JdbcSession.open(ConnectionSpec.sqliteMemory())) {
@@ -154,6 +334,35 @@ class JdbcSessionTest {
                     "SELECT 1 AS id, 2 AS id, 3 AS id_2", 200);
 
             assertThat(page.rows().get(0)).containsKeys("id", "id_2", "id_2_2");
+        }
+    }
+
+    /**
+     * 4.5-2 的补齐：{@code query()} 以前把截断标记丢了，
+     * 调用方永远不知道自己拿到的是残缺结果。
+     */
+    @Test
+    void queryPreservesTheTruncationFlag() throws SQLException {
+        try (JdbcSession session = JdbcSession.open(ConnectionSpec.sqliteMemory())) {
+            session.execute("CREATE TABLE seq (x INTEGER)");
+            session.execute("""
+                    WITH RECURSIVE n(x) AS (
+                      SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 1500
+                    )
+                    INSERT INTO seq (x) SELECT x FROM n
+                    """);
+
+            RowPage truncated = session.query("SELECT x FROM seq", 200);
+            assertThat(truncated.rowsTruncated())
+                    .as("结果比请求的行数多，必须标出「被截断」")
+                    .isTrue();
+            assertThat(truncated.rowCount()).isEqualTo(200);
+
+            RowPage exact = session.query("SELECT x FROM seq WHERE x <= 10", 200);
+            assertThat(exact.rowsTruncated())
+                    .as("没被截断时不能误报")
+                    .isFalse();
+            assertThat(exact.rowCount()).isEqualTo(10);
         }
     }
 }

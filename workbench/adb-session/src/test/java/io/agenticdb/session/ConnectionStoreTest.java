@@ -41,9 +41,65 @@ class ConnectionStoreTest {
                 .contains("Local PG");
     }
 
+    /**
+     * A14：{@code options} 是自由 Map，用户可能塞进 {@code password} / {@code token}。
+     * 它们<b>不允许</b>明文落盘。
+     */
     @Test
-    void deleteRemovesMetadataAndCredential() {
-        ConnectionStore store = new ConnectionStore(temp.resolve("connections.json"),
+    void sensitiveOptionsNeverReachTheDisk() throws Exception {
+        Path file = temp.resolve("connections.json");
+        CredentialStore credentials = CredentialStore.inMemory();
+        ConnectionStore store = new ConnectionStore(file, credentials);
+
+        ConnectionProfile base = ConnectionProfile.newProfile("Leaky", DialectKind.POSTGRESQL,
+                "localhost", 5432, "shop", "postgres");
+        ConnectionProfile leaky = base.withPasswordlessOptions(java.util.Map.of(
+                "ssl", "true",
+                "password", "should-never-be-written",
+                "apiKey", "also-secret"));
+        store.save(leaky);
+
+        String json = Files.readString(file, StandardCharsets.UTF_8);
+        assertThat(json)
+                .as("敏感键不得落盘（A14）")
+                .doesNotContain("should-never-be-written")
+                .doesNotContain("also-secret")
+                .contains("ssl");
+    }
+
+    /**
+     * R4：{@code options} 不得覆盖钥匙串里的口令。
+     *
+     * <p>以前 {@code JdbcSession.open} 先设 password 再 apply options，
+     * 于是 options 里的 password 反而赢了。
+     */
+    @Test
+    void optionsCannotOverrideTheKeychainPassword() {
+        ConnectionProfile base = ConnectionProfile.newProfile("Override", DialectKind.POSTGRESQL,
+                "localhost", 5432, "shop", "postgres");
+        ConnectionProfile leaky = base.withPasswordlessOptions(
+                java.util.Map.of("password", "from-options"));
+
+        ConnectionSpec spec = leaky.spec("from-keychain");
+
+        assertThat(spec.options())
+                .as("敏感键在建立连接前就要被剔除")
+                .doesNotContainKey("password");
+        assertThat(spec.password()).isEqualTo("from-keychain");
+    }
+
+    @Test
+    void sensitiveOptionDetectionIsCaseAndSeparatorInsensitive() {
+        assertThat(ConnectionProfile.isSensitiveOption("password")).isTrue();
+        assertThat(ConnectionProfile.isSensitiveOption("Password")).isTrue();
+        assertThat(ConnectionProfile.isSensitiveOption("sslPassword")).isTrue();
+        assertThat(ConnectionProfile.isSensitiveOption("api-key")).isTrue();
+        assertThat(ConnectionProfile.isSensitiveOption("sslmode")).isFalse();
+        assertThat(ConnectionProfile.isSensitiveOption("ApplicationName")).isFalse();
+    }
+
+    @Test
+    void deleteRemovesMetadataAndCredential() {        ConnectionStore store = new ConnectionStore(temp.resolve("connections.json"),
                 CredentialStore.inMemory());
         ConnectionProfile profile = ConnectionProfile.newProfile("MySQL", DialectKind.MYSQL,
                 "127.0.0.1", 3307, "demo", "root");

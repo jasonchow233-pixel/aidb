@@ -27,6 +27,7 @@ public final class TabBar extends HBox {
     private final Map<String, Node> nodes = new LinkedHashMap<>();
 
     private String activeId;
+    private ContextMenu lastContextMenu;
     private Consumer<TabItem> onActivate = tab -> { };
     private Consumer<TabItem> onClose = tab -> { };
     private Predicate<TabItem> closeGuard = tab -> true;
@@ -53,6 +54,7 @@ public final class TabBar extends HBox {
         HBox.setHgrow(scroll, Priority.ALWAYS);
 
         Button add = new Button("＋");
+        add.setAccessibleText("新建标签");
         add.getStyleClass().addAll("adb-icon-button", "adb-tabbar__add");
         add.setTooltip(new javafx.scene.control.Tooltip("新建查询 ⇧⌘N"));
         add.setOnAction(event -> actions.run("new-query"));
@@ -141,6 +143,10 @@ public final class TabBar extends HBox {
             setManaged(false);
         }
         actions.require("tab.close").setEnabled(!items.isEmpty());
+        actions.find("tab.close-others").ifPresent(action ->
+                action.setEnabled(items.size() > 1));
+        actions.find("tab.close-all").ifPresent(action ->
+                action.setEnabled(!items.isEmpty()));
         onClose.accept(tab);
         return true;
     }
@@ -172,6 +178,11 @@ public final class TabBar extends HBox {
         return activeId == null ? null : items.get(activeId);
     }
 
+    /** 供门禁检查标签栏右键菜单是否来自注册表（4.5-29）。 */
+    ContextMenu contextMenuForTest() {
+        return lastContextMenu;
+    }
+
     private Node buildTab(TabItem tab) {
         Label icon = new Label(tab.kind().icon());
         icon.getStyleClass().add("adb-tab__icon");
@@ -186,6 +197,7 @@ public final class TabBar extends HBox {
         dirty.managedProperty().bind(tab.dirtyProperty());
 
         Button close = new Button("✕");
+        close.setAccessibleText("关闭");
         close.getStyleClass().add("adb-tab__close");
         close.setFocusTraversable(false);
         close.setOnAction(event -> {
@@ -205,14 +217,19 @@ public final class TabBar extends HBox {
         });
 
         ContextMenu menu = new ContextMenu();
-        MenuItem closeItem = new MenuItem("关闭");
-        closeItem.setOnAction(event -> close(tab.id()));
-        MenuItem closeOthers = new MenuItem("关闭其他");
-        closeOthers.setOnAction(event -> closeOthers(tab.id()));
-        MenuItem closeAll = new MenuItem("全部关闭");
-        closeAll.setOnAction(event -> closeAll());
+        lastContextMenu = menu;
+        // ⭐ 右键菜单走 ActionRegistry（4.5-29）：和菜单栏、命令面板同源，
+        //    enabled 状态统一，也能在 ⌘K 里搜到。
+        MenuItem closeItem = actions.menuItem("tab.close", "关闭");
+        MenuItem closeOthers = actions.menuItem("tab.close-others", "关闭其他");
+        MenuItem closeAll = actions.menuItem("tab.close-all", "全部关闭");
         menu.getItems().addAll(closeItem, closeOthers, new SeparatorMenuItem(), closeAll);
-        node.setOnContextMenuRequested(event -> menu.show(node, event.getScreenX(), event.getScreenY()));
+        node.setOnContextMenuRequested(event -> {
+            // 右键先激活该标签：这样菜单里的「关闭 / 关闭其他」作用的就是
+            // 用户右键的那个标签，而不是上一次激活的那个。
+            activate(tab.id());
+            menu.show(node, event.getScreenX(), event.getScreenY());
+        });
 
         return node;
     }

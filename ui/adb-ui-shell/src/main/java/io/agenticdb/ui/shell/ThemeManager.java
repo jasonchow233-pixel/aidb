@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import javafx.scene.Scene;
 import javafx.scene.Node;
+import javafx.scene.Parent;
 
 import java.net.URL;
 import java.util.Locale;
@@ -36,19 +37,44 @@ public final class ThemeManager {
     }
 
     public void apply(ThemeMode next) {
+        apply(next, true);
+    }
+
+    /**
+     * {@code persist=false} 只改运行时外观、不写入设置 —— 供验收截图
+     * 等一次性场景使用，避免把测试用的主题覆盖进用户偏好。
+     */
+    public void apply(ThemeMode next, boolean persist) {
         this.mode = next;
-        settings.set("ui.theme", next.id());
+        if (persist) {
+            settings.set("ui.theme", next.id());
+        }
         if (scene == null) {
             return;
         }
 
-        URL theme = resource(isDark() ? "/io/agenticdb/ui/theme-dark.css" : "/io/agenticdb/ui/theme-light.css");
+        // ⭐ 4.5-23：两套主题样式表<b>一直都在</b>，切换主题只改根节点的 style class。
+        //    以前是 scene.getStylesheets().setAll(...) 换掉整份样式表 ——
+        //    那会让 JavaFX 对整棵场景图重做 CSS 计算，紧随其后的 scene.snapshot()
+        //    会拿到「样式表已换、像素还没重画」的空白帧（真实窗口复现过：
+        //    中央密度 0.000、109 色）。改成类选择器后不再换样式表，问题从根上消失。
+        URL dark = resource("/io/agenticdb/ui/theme-dark.css");
+        URL light = resource("/io/agenticdb/ui/theme-light.css");
         URL app = resource("/io/agenticdb/ui/app.css");
-        scene.getStylesheets().setAll(theme.toExternalForm(), app.toExternalForm());
+        if (!scene.getStylesheets().contains(dark.toExternalForm())) {
+            scene.getStylesheets().setAll(dark.toExternalForm(), light.toExternalForm(),
+                    app.toExternalForm());
+        }
 
         Node root = scene.getRoot();
         root.getStyleClass().removeAll("theme-dark", "theme-light");
         root.getStyleClass().add(isDark() ? "theme-dark" : "theme-light");
+
+        // 强制同步一次 CSS 与布局，别让快照拿到「样式已换、像素还没重画」的帧。
+        root.applyCss();
+        if (root instanceof Parent parent) {
+            parent.layout();
+        }
     }
 
     public void toggle() {

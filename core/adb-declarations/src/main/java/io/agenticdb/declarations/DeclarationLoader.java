@@ -24,8 +24,8 @@ import java.util.stream.Stream;
  * <h2>加载 vs 校验的分工</h2>
  * <ul>
  *   <li>本类：加载 + 校验 + 映射成 record。<b>一次性</b>，启动时跑</li>
- *   <li>{@link DeclarationCheckMojo}：在 Maven {@code process-sources}
- *       阶段跑同一套校验，让「改错 YAML 编译不过」这条 Rust 侧已有的防线不丢</li>
+ *   <li>Maven 校验：在 {@code process-sources} 阶段跑同一套校验，
+ *       让「改错 YAML 编译不过」这条防线不丢</li>
  * </ul>
  *
  * <h2>两个数据源</h2>
@@ -33,7 +33,8 @@ import java.util.stream.Stream;
  *   <li>{@code file:.../declarations} —— 开发时从源码目录读，改 YAML 立即生效</li>
  *   <li>{@code jar:/declarations} —— 生产时从 jar 内读，随应用分发</li>
  * </ol>
- * 两者的解析结果必须完全相同，这本身要有一条测试守着。
+ * 两者的解析结果必须完全相同，这本身要有一条测试守着
+ * （{@code DeclarationLoaderTest.classpathAndPathAgree}）。
  */
 public final class DeclarationLoader {
 
@@ -124,30 +125,85 @@ public final class DeclarationLoader {
             issues.add(new Issue(Issue.Rule.YAML_SYNTAX, "jar:/declarations/" + sub, "资源不存在"));
             return out;
         }
-        try (InputStream is = url.openStream()) {
-            // classpath 下的文件列表无法直接枚举；这里依赖构建产物目录列表
-            String index = new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-            if (!index.isBlank()) {
-                for (String line : index.split("\n")) {
-                    if (!line.isBlank() && (line.endsWith(".yaml") || line.endsWith(".yml"))) {
-                        try (InputStream fis = DeclarationLoader.class
-                                .getResourceAsStream("/declarations/" + sub + "/" + line)) {
-                            if (fis != null) {
-                                Map<String, Object> m = YamlReader.parse(fis.readAllBytes());
-                                if (m != null) {
-                                    m.put("__file", line);
-                                    out.add(m);
-                                }
-                            }
-                        }
-                    }
-                }
+        try {
+            if ("jar".equals(url.getProtocol())) {
+                readFromJar(url, sub, issues, out);
+            } else {
+                // 爆炸 classpath：url 指向一个**目录**，要枚举目录里的文件。
+                // ⭐ 旧实现把目录当成「换行分隔的文件名索引」去读 —— 那永远读不到东西：
+                //    目录在 classpath 下要么抛 IOException，要么读出空字符串，
+                //    结果是**静默返回空模型**（调用方以为加载了 4 个连接，实际是 0 个）。
+                readFromDirectory(Path.of(url.toURI()), sub, issues, out);
             }
-        } catch (IOException e) {
+        } catch (IOException | java.net.URISyntaxException e) {
             issues.add(new Issue(Issue.Rule.YAML_SYNTAX, "jar:/declarations/" + sub,
                     "读取失败: " + e.getMessage()));
         }
         return out;
+    }
+
+    /** 爆炸 classpath：枚举目录里的 YAML。 */
+    @SuppressWarnings("unchecked")
+    private static void readFromDirectory(Path dir, String sub, List<Issue> issues,
+                                          List<Map<String, Object>> out) throws IOException {
+        if (!Files.isDirectory(dir)) {
+            issues.add(new Issue(Issue.Rule.YAML_SYNTAX, dir.toString(), "不是目录"));
+            return;
+        }
+        List<Path> files;
+        try (Stream<Path> s = Files.list(dir)) {
+            files = s.filter(p -> p.toString().endsWith(".yaml") || p.toString().endsWith(".yml"))
+                    .sorted(Comparator.comparing(Path::toString))
+                    .toList();
+        }
+        for (Path f : files) {
+            Map<String, Object> m = YamlReader.parse(Files.readAllBytes(f));
+            if (m != null) {
+                m.put("__file", f.getFileName().toString());
+                out.add(m);
+            }
+        }
+    }
+
+    /** 打包 jar：枚举 jar 条目。 */
+    @SuppressWarnings("unchecked")
+    private static void readFromJar(java.net.URL url, String sub, List<Issue> issues,
+                                    List<Map<String, Object>> out) throws IOException,
+            java.net.URISyntaxException {
+        String external = url.toExternalForm();
+        int separator = external.indexOf("!/");
+        if (separator < 0) {
+            issues.add(new Issue(Issue.Rule.YAML_SYNTAX, external, "不是合法的 jar URL"));
+            return;
+        }
+        // "jar:file:/path/to.jar!/declarations/connections" → "file:/path/to.jar"
+        String jarUrl = external.substring(0, separator);
+        if (jarUrl.startsWith("jar:")) {
+            jarUrl = jarUrl.substring("jar:".length());
+        }
+        String prefix = "declarations/" + sub + "/";
+        try (java.util.jar.JarFile jar = new java.util.jar.JarFile(
+                Path.of(new java.net.URI(jarUrl)).toFile())) {
+            List<String> names = jar.stream()
+                    .map(java.util.jar.JarEntry::getName)
+                    .filter(name -> name.startsWith(prefix))
+                    .filter(name -> name.endsWith(".yaml") || name.endsWith(".yml"))
+                    .sorted()
+                    .toList();
+            for (String name : names) {
+                java.util.jar.JarEntry entry = jar.getJarEntry(name);
+                if (entry == null) {
+                    continue;
+                }
+                try (InputStream is = jar.getInputStream(entry)) {
+                    Map<String, Object> m = YamlReader.parse(is.readAllBytes());
+                    if (m != null) {
+                        m.put("__file", name.substring(prefix.length()));
+                        out.add(m);
+                    }
+                }
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")

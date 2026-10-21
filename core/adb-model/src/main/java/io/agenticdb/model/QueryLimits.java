@@ -35,7 +35,7 @@ package io.agenticdb.model;
  * 这个数字与「用户选了多大的页」无关，与「表里有多少行」也无关。
  *
  * @see PageSize
- * @see QueryOptions
+
  */
 public final class QueryLimits {
 

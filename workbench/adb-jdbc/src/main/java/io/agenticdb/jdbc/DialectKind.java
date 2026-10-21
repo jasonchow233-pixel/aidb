@@ -49,6 +49,15 @@ public enum DialectKind {
                 : "\"" + identifier.replace("\"", "\"\"") + "\"";
     }
 
+    /**
+     * 方言是否支持列注释（MySQL {@code COMMENT} / PostgreSQL {@code COMMENT ON}）。
+     * SQLite 没有列注释概念 —— UI 必须据此收起注释列与输入框，
+     * 否则就是永远填不进、读不出的死控件（4.5-22）。
+     */
+    public boolean supportsColumnComment() {
+        return this != SQLITE;
+    }
+
     public String jdbcUrl(String host, int port, String database) {
         return switch (this) {
             case SQLITE -> "jdbc:sqlite:" + database;

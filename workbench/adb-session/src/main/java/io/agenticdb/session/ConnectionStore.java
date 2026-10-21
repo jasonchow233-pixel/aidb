@@ -116,7 +116,13 @@ public final class ConnectionStore {
             }
             Path temp = Files.createTempFile(parent == null ? Path.of(".") : parent,
                     "connections-", ".json.tmp");
-            mapper.writeValue(temp.toFile(), profiles);
+            // ⭐ A14：落盘前剔除敏感键（口令类）。
+            //    options 是自由 Map，用户可能塞了 password / token 之类，
+            //    那样它们会明文躺在 connections.json 里 —— 即使文件是 0600。
+            mapper.writeValue(temp.toFile(), profiles.stream()
+                    .map(profile -> profile.withPasswordlessOptions(
+                            ConnectionProfile.sanitizedOptions(profile.options())))
+                    .toList());
             restrictToOwner(temp);
             Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE);

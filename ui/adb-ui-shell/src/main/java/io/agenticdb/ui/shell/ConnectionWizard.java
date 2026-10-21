@@ -17,8 +17,6 @@ import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
-import javafx.event.ActionEvent;
-import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -53,14 +51,9 @@ public final class ConnectionWizard {
     private final PasswordField password = new PasswordField();
     private final Label review = new Label();
     private final Label testResult = new Label("尚未测试");
-    private final Label error = new Label();
     private final TextArea summary = new TextArea();
-    private final BorderPane layout = new BorderPane();
-    private final HBox navRow = new HBox(8);
-    private final Button backButton = new Button("上一步");
-    private final Button nextButton = new Button("下一步");
-    private final Button testButton = new Button("测试连接");
-    private ConnectionProfile pendingProfile;
+    /** 第 3 步的常驻错误行：校验失败时保存不关窗，原因写在这里（4.5-12）。 */
+    private final Label saveError = new Label();
 
     private final ConnectionProfile initial;
     private final CredentialStore credentials;
@@ -104,53 +97,31 @@ public final class ConnectionWizard {
         password.setId("wizard-password");
         review.setId("wizard-review");
         testResult.setId("wizard-test-result");
-        error.setId("wizard-error");
-        error.getStyleClass().add("adb-grid__state-text--error");
-        error.setWrapText(true);
         summary.setId("wizard-summary");
         summary.setEditable(false);
         summary.setWrapText(true);
         summary.setPrefRowCount(4);
+        saveError.setId("wizard-save-error");
+        saveError.getStyleClass().add("adb-error");
+        saveError.setWrapText(true);
+        saveError.setVisible(false);
+        saveError.setManaged(false);
 
-        // ⛔ 导航按钮不能放进 DialogPane.getButtonTypes()：
-        // DialogPane.createButton 会给每一个按钮挂 ACTION 处理器并调用
-        // dialog.setResultAndClose(...)，点“下一步”会把整个向导关掉。
-        // 所以“上一步 / 下一步 / 测试连接”放在内容区，只有“保存 / 取消”用原生按钮。
-        backButton.setId("wizard-back");
-        nextButton.setId("wizard-next");
-        testButton.setId("wizard-test");
-        backButton.setOnAction(event -> back());
-        nextButton.setOnAction(event -> next());
-        testButton.setOnAction(event -> testConnection());
-        navRow.setAlignment(Pos.CENTER_LEFT);
-        navRow.getChildren().addAll(backButton, nextButton, testButton, error);
-        HBox.setHgrow(error, Priority.ALWAYS);
-        layout.setBottom(navRow);
-        layout.setPadding(new Insets(4));
-        dialog.getDialogPane().setContent(layout);
-
-        ButtonType save = new ButtonType("保存", ButtonBar.ButtonData.OK_DONE);
         ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
-        dialog.getDialogPane().getButtonTypes().setAll(save, cancel);
-
-        Button saveButton = (Button) dialog.getDialogPane().lookupButton(save);
-        saveButton.setId("wizard-save");
-        // 事件过滤器先于 DialogPane 的处理器运行：校验不通过时吞掉事件，向导不关闭。
-        saveButton.addEventFilter(ActionEvent.ACTION, event -> {
-            if (!validateBasic() || !validateDetails()) {
-                event.consume();
-                pendingProfile = null;
-                return;
-            }
-            pendingProfile = buildProfile();
-        });
+        // ⭐ 按钮栏只留「取消」。back/next/test/save 全部放在每一步的内容区：
+        // DialogPane 会给按钮栏里每个按钮挂 setResultAndClose，点「下一步」
+        // 曾经把整个向导关掉（4.5-12 的回归点）；而且按钮栏按钮无法在测试里稳定挂载。
+        dialog.getDialogPane().getButtonTypes().setAll(cancel);
 
         dialog.setOnShown(event -> updateButtons());
-        dialog.setResultConverter(button -> button == save ? pendingProfile : null);
+        // 保存走 commit()：setResult + close，取消返回 null。
+        dialog.setResultConverter(button -> button == cancel ? null : dialog.getResult());
         updateStep();
     }
 
-    private void back() {
+    // ─────────────────── 导航与操作（按钮与测试共用） ───────────────────
+
+    void goBack() {
         if (step == 3) {
             step = 2;
         } else if (step == 2) {
@@ -159,7 +130,7 @@ public final class ConnectionWizard {
         updateStep();
     }
 
-    private void next() {
+    void goNext() {
         if (step == 1) {
             if (!validateBasic()) {
                 return;
@@ -171,28 +142,77 @@ public final class ConnectionWizard {
             }
             step = 3;
         }
+        clearStepError();
         updateStep();
+    }
+
+    void runTest() {
+        testConnection();
+    }
+
+    /** 保存：校验通过才关窗，校验失败留在第 3 步并把原因写在常驻错误行。 */
+    void commit() {
+        if (!validateBasic() || !validateDetails()) {
+            if (step != 3) {
+                step = 3;
+                updateStep();
+            }
+            saveError.setText(review.getText());
+            saveError.setVisible(true);
+            saveError.setManaged(true);
+            return;
+        }
+        saveError.setVisible(false);
+        saveError.setManaged(false);
+        dialog.setResult(buildProfile());
+        if (dialog.isShowing()) {
+            dialog.hide();
+        }
+    }
+
+    int step() {
+        return step;
+    }
+
+    /** 当前步骤的内容节点（不含 Dialog 外壳）——测试直接挂它，绕开 DialogPane 的场景归属问题。 */
+    Node stepContent() {
+        return dialog.getDialogPane().getContent();
+    }
+
+    /** 保存结果（{@code commit()} 后非空）——测试与 {@code showAndWait()} 共用同一来源。 */
+    Optional<ConnectionProfile> dialogResult() {
+        return Optional.ofNullable(dialog.getResult());
     }
 
     private void updateStep() {
         if (step == 1) {
             dialog.setHeaderText(initial == null ? "第 1 步 / 共 3 步：类型与名称"
                     : "编辑连接 · 第 1 步 / 共 3 步");
-            layout.setCenter(step1());
+            dialog.getDialogPane().setContent(step1());
         } else if (step == 2) {
             dialog.setHeaderText("第 2 步 / 共 3 步：连接参数");
-            layout.setCenter(step2());
+            dialog.getDialogPane().setContent(step2());
         } else {
             dialog.setHeaderText("第 3 步 / 共 3 步：测试与保存");
-            layout.setCenter(step3());
+            dialog.getDialogPane().setContent(step3());
         }
         updateButtons();
     }
 
+    private Button navButton(String id, String label, Runnable action) {
+        Button button = new Button(label);
+        button.setId(id);
+        button.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        button.setOnAction(event -> action.run());
+        return button;
+    }
+
     private void updateButtons() {
-        backButton.setDisable(step == 1);
-        nextButton.setDisable(step == 3);
-        testButton.setDisable(step != 3);
+        // 按钮都在内容区、随步骤重建；这里只维护第 3 步错误行的显隐。
+        if (step != 3) {
+            saveError.setVisible(false);
+            saveError.setManaged(false);
+        }
     }
 
     private Node step1() {
@@ -201,8 +221,8 @@ public final class ConnectionWizard {
         grid.addRow(1, new Label("名称"), name);
         Label hint = new Label("SQLite 用于本地文件；PostgreSQL/MySQL 用于服务器。");
         hint.getStyleClass().add("adb-muted");
-        VBox box = new VBox(8, grid, hint);
-        return box;
+        return withNav(new VBox(8, grid, hint),
+                navButton("wizard-next", "下一步 →", this::goNext));
     }
 
     private Node step2() {
@@ -225,7 +245,9 @@ public final class ConnectionWizard {
             HBox fileRow = new HBox(8, file, browse);
             HBox.setHgrow(file, Priority.ALWAYS);
             grid.addRow(0, new Label("数据库文件"), fileRow);
-            return grid;
+            return withNav(grid,
+                    navButton("wizard-back", "← 上一步", this::goBack),
+                    navButton("wizard-next", "下一步 →", this::goNext));
         }
 
         GridPane grid = grid();
@@ -234,7 +256,18 @@ public final class ConnectionWizard {
         grid.addRow(2, new Label("数据库"), database);
         grid.addRow(3, new Label("用户名"), username);
         grid.addRow(4, new Label("密码"), password);
-        return grid;
+        return withNav(grid,
+                navButton("wizard-back", "← 上一步", this::goBack),
+                navButton("wizard-next", "下一步 →", this::goNext));
+    }
+
+    /** 步骤内容 + 底部按钮行：导航按钮必须在内容区，不能进 Dialog 按钮栏（4.5-12）。 */
+    private VBox withNav(Node content, Button... buttons) {
+        HBox nav = new HBox(8, buttons);
+        nav.setAlignment(Pos.CENTER_RIGHT);
+        VBox box = new VBox(8, content, saveError, nav);
+        VBox.setVgrow(content, Priority.ALWAYS);
+        return box;
     }
 
     private Node step3() {
@@ -242,8 +275,20 @@ public final class ConnectionWizard {
                 + "名称：" + name.getText().trim() + "\n"
                 + "目标：" + targetSummary() + "\n"
                 + "口令：" + (password.getText().isEmpty() ? "（未设置）" : "（已设置）"));
+        Button testButton = new Button("测试连接");
+        testButton.setId("wizard-test");
+        testButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        testButton.setOnAction(event -> testConnection());
+        Button saveButton = new Button("保存");
+        saveButton.setId("wizard-save");
+        saveButton.getStyleClass().addAll("adb-button", "adb-button--primary");
+        saveButton.setOnAction(event -> commit());
+        VBox box = new VBox(8, review, testResult, new Label("摘要"), summary,
+                withNav(new Label(),
+                        navButton("wizard-back", "← 上一步", this::goBack),
+                        testButton, saveButton));
         summary.setText(targetSummary());
-        return new VBox(8, review, testResult, new Label("摘要"), summary);
+        return box;
     }
 
     private GridPane grid() {
@@ -264,56 +309,60 @@ public final class ConnectionWizard {
 
     private boolean validateBasic() {
         if (type.getValue() == null) {
-            return fail("请选择数据库类型");
+            showStepError("请选择数据库类型");
+            return false;
         }
         if (name.getText() == null || name.getText().isBlank()) {
-            return fail("连接名称不能为空");
+            showStepError("连接名称不能为空");
+            return false;
         }
-        clearError();
         return true;
     }
 
     private boolean validateDetails() {
         if (type.getValue() == DialectKind.SQLITE) {
             if (file.getText() == null || file.getText().isBlank()) {
-                return fail("请选择数据库文件");
+                showStepError("请选择数据库文件");
+                return false;
             }
-            clearError();
             return true;
         }
         if (host.getText() == null || host.getText().isBlank()) {
-            return fail("主机不能为空");
+            showStepError("主机不能为空");
+            return false;
         }
         if (database.getText() == null || database.getText().isBlank()) {
-            return fail("数据库不能为空");
+            showStepError("数据库不能为空");
+            return false;
         }
-        clearError();
         return true;
     }
 
-    /** 校验失败：错误写在常驻的错误行里（第 1、2 步看不到第 3 步的摘要区）。 */
-    private boolean fail(String message) {
-        error.setText(message);
-        return false;
+    /**
+     * 常驻错误行：每一步的内容区都有它，校验失败时显示、成功前进时隐藏。
+     * 早期版本把错误写进第 3 步才有的 {@code review}，第 1、2 步填错时用户
+     * 什么都看不到（4.5-12）。
+     */
+    private void showStepError(String message) {
+        saveError.setText(message);
+        saveError.setVisible(true);
+        saveError.setManaged(true);
     }
 
-    private void clearError() {
-        error.setText("");
+    private void clearStepError() {
+        saveError.setVisible(false);
+        saveError.setManaged(false);
     }
 
     private void testConnection() {
-        if (!validateBasic() || !validateDetails()) {
-            testResult.setText("请先补全连接参数");
-            return;
-        }
         ConnectionProfile profile = buildProfile();
         if (profile == null) {
             testResult.setText("请先补全连接参数");
             return;
         }
         testResult.setText("正在测试…");
-        String message = tester.test(profile.spec(password.getText()));
-        testResult.setText(message == null ? "连接成功" : "连接失败：" + message);
+        String error = tester.test(profile.spec(password.getText()));
+        testResult.setText(error == null ? "连接成功" : "连接失败：" + error);
     }
 
     private ConnectionProfile buildProfile() {
@@ -344,11 +393,6 @@ public final class ConnectionWizard {
 
     public String password() {
         return password.getText();
-    }
-
-    /** 测试用：把 DialogPane 挂到普通 Stage 上，避免无头 Dialog 窗口的焦点问题。 */
-    javafx.scene.control.DialogPane dialogPane() {
-        return dialog.getDialogPane();
     }
 
     public void show() {

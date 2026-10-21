@@ -75,6 +75,9 @@ final class CellDetailsDrawer extends VBox {
         close.setId("data-details-close");
         close.getStyleClass().addAll("adb-icon-button", "adb-details__close");
         close.setTooltip(new javafx.scene.control.Tooltip("关闭详情 (Esc)"));
+        // 4.5-6 / 4.5-5：读屏软件要能读出「关闭」，
+        // 且 ✕ 的语义必须与标签栏的 ✕ 一致（一个符号只表一个意思）。
+        close.setAccessibleText("关闭");
         close.setOnAction(event -> close());
 
         copy.getStyleClass().addAll("adb-button", "adb-button--ghost");

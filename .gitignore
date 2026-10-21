@@ -44,3 +44,6 @@ out/
 # ── 旧工具残留（项目已无 Python） ──
 __pycache__/
 *.pyc
+
+# ── AI 工具的本地记忆目录，不进版本库 ──
+.workbuddy/

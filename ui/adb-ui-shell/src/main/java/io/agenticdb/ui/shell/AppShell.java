@@ -42,8 +42,10 @@ import java.nio.file.Path;
 import java.sql.SQLException;
 import java.time.LocalTime;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -120,9 +122,13 @@ public final class AppShell extends StackPane {
                 this::createGridPage, this::createQueryPage, this::createStructurePage,
                 this::createConnectionsPage);
         this.palette = new CommandPalette(actions);
+        // 侧栏「查询历史」接真实功能：QueryHistory 本来就可用，只是侧栏开错了页面。
+        this.workspace.setHistory(new QueryHistory(settings), this::openQueryWith);
 
         registerActions();
         actions.validateUniqueAccelerators();
+        // 4.5-30：动作被禁用时给出解释，不再静默 no-op。
+        actions.setFeedback(statusBar::setMessage);
 
         tabBar.setOnActivate(this::showTab);
         tabBar.setOnClose(this::tabClosed);
@@ -205,9 +211,39 @@ public final class AppShell extends StackPane {
         sideBar.setObjects(objects);
         sideBar.setConnection(profile.id(), profile.name());
         statusBar.setConnection(profile.name());
+        // 侧栏「诊断」接真实功能：表结构 + 行数的健康概览。会话变了要跟着换。
+        workspace.setDiagnostics(session, schemaService, dbExecutor);
+        // 4.5-11：状态栏与折叠侧栏的左端徽标显示真实方言，不再是写死的「DEV」。
+        String dialectName = session == null ? "—" : session.dialect().displayName();
+        statusBar.setDialect(dialectName);
+        sideBar.setDialect(dialectName);
         statusBar.setReadonly(true);
         statusBar.setRange("—");
         status("已连接 " + profile.name() + " · " + objects.size() + " 个对象");
+        closeOrphanSessions();
+    }
+
+    /**
+     * 关掉「没有任何标签页引用」的会话。
+     *
+     * <p>A21：切换连接时旧会话一直留着，每切一次就多占一条数据库连接。
+     * 但<b>有标签页在用</b>的连接必须留着 —— 标签页绑定的是 connectionId，
+     * 关掉它的会话会让已打开的页面立刻不可用。
+     */
+    private void closeOrphanSessions() {
+        Set<String> used = new HashSet<>();
+        for (TabItem tab : tabBar.openTabs()) {
+            if (tab.connectionId() != null) {
+                used.add(tab.connectionId());
+            }
+        }
+        used.add(activeProfileId());
+        for (String id : sessions.openIds()) {
+            if (!used.contains(id)) {
+                sessions.close(id);
+                objectsByConnection.remove(id);
+            }
+        }
     }
 
     /** 侧栏/工具栏切换连接。已打开的会话复用，不重开。 */
@@ -315,16 +351,16 @@ public final class AppShell extends StackPane {
         status("已删除连接：" + profile.name());
     }
 
+    // ⛔ 别再手写 ButtonType("删除", OK_DONE) —— OK_DONE 是默认按钮，回车即删。
+    //    统一走 DestructiveConfirm：破坏性按钮用 OTHER，默认按钮落在「取消」上。
     private boolean confirmDeleteConnection(ConnectionProfile profile) {
-        ButtonType ok = new ButtonType("删除", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setTitle("删除连接");
-        alert.setHeaderText("删除 " + profile.name() + "？");
-        alert.setContentText("连接元数据与钥匙串口令会被移除；数据库本身不受影响。");
-        alert.getButtonTypes().setAll(ok, cancel);
-        styleDialog(alert);
-        return alert.showAndWait().orElse(cancel) == ok;
+        DestructiveConfirm confirm = DestructiveConfirm.of(
+                "删除连接",
+                "删除 " + profile.name() + "？",
+                "连接元数据与钥匙串口令会被移除；数据库本身不受影响。",
+                "删除");
+        styleDialog(confirm.alert());
+        return confirm.confirmed();
     }
 
     private void reconnectConnection() {
@@ -437,6 +473,12 @@ public final class AppShell extends StackPane {
                 key("Shortcut+O"), this::openSqlFile);
         actions.register("tab.close", "关闭标签", "文件",
                 key("Shortcut+W"), () -> tabBar.closeActive());
+        // 4.5-29：标签栏右键菜单以前是手搓 MenuItem，现在也走注册表，
+        // 于是「关闭其他 / 全部关闭」能在 ⌘K 里搜到，enabled 也统一。
+        actions.register("tab.close-others", "关闭其他", "文件",
+                null, () -> tabBar.closeOthers(tabBar.activeId()));
+        actions.register("tab.close-all", "全部关闭", "文件",
+                null, () -> tabBar.closeAll());
         actions.register("window.close", "关闭窗口", "文件",
                 key("Shift+Shortcut+W"), () -> {
                     if (stage != null) {
@@ -462,6 +504,20 @@ public final class AppShell extends StackPane {
                         sideBar.focusSearch();
                     }
                 });
+
+        // 编辑菜单三件套：撤销 / 重做 / 复制，全部委托当前活动数据页。
+        // 快捷键不在此注册 —— DataGridPage 已在自己的 scene 上绑了 ⌘Z/⇧⌘Z/⌘C，
+        // 两边都注册会双触发（撤销两次）；菜单入口复用同一方法，行为一致。
+        actions.register("edit.undo", "撤销  (⌘Z)", "编辑", null, this::editUndo);
+        actions.register("edit.redo", "重做  (⇧⌘Z)", "编辑", null, this::editRedo);
+        actions.register("edit.copy", "复制  (⌘C)", "编辑", null, () -> {
+            DataGridPage grid = workspace.activeGrid();
+            if (grid == null) {
+                status("复制只在数据页可用");
+                return;
+            }
+            grid.copyFocusedCellValue();
+        });
 
         actions.register("query.run", "执行当前语句", "查询",
                 key("Shortcut+R"), () -> {
@@ -531,9 +587,11 @@ public final class AppShell extends StackPane {
                         "users", TabKind.GRID, "users", activeProfileId())));
 
         actions.register("diagnostics", "诊断", "工具",
-                null, () -> openTool("诊断"));
+                null, () -> actions.run("object.diagnostics"));
+        // P6 的「导入 / 导出」向导还没做：入口先从侧栏撤掉，
+        // 不留「点了只有一句提示」的死 UI（TODO §12.1「要么接要么删」）。
         actions.register("import-export", "导入 / 导出", "工具",
-                null, () -> openTool("导入 / 导出"));
+                null, () -> status("导入 / 导出向导在 P6 接入，现在还没有可用的向导"));
         actions.register("settings", "设置…", "工具",
                 key("Shortcut+Comma"),
                 () -> openTab(new TabItem("settings", "设置", TabKind.SETTINGS)));
@@ -674,30 +732,26 @@ public final class AppShell extends StackPane {
         if (count == 0) {
             return true;
         }
-        ButtonType discard = new ButtonType("放弃修改", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setTitle("未保存的修改");
-        alert.setHeaderText(tab.title() + " 有 " + count + " 处未保存修改");
-        alert.setContentText("关闭标签会丢弃这些修改。取消后编辑缓冲原样保留。");
-        alert.getButtonTypes().setAll(discard, cancel);
-        styleDialog(alert);
-        return alert.showAndWait().orElse(cancel) == discard;
+        DestructiveConfirm confirm = DestructiveConfirm.of(
+                "未保存的修改",
+                tab.title() + " 有 " + count + " 处未保存修改",
+                "关闭标签会丢弃这些修改。取消后编辑缓冲原样保留。",
+                "放弃修改");
+        styleDialog(confirm.alert());
+        return confirm.confirmed();
     }
 
     private boolean confirmDiscardAll() {
         if (!tabBar.hasDirtyTabs()) {
             return true;
         }
-        ButtonType discard = new ButtonType("放弃并退出", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setTitle("未保存的修改");
-        alert.setHeaderText("仍有标签包含未保存修改");
-        alert.setContentText("退出会丢弃所有编辑缓冲。");
-        alert.getButtonTypes().setAll(discard, cancel);
-        styleDialog(alert);
-        return alert.showAndWait().orElse(cancel) == discard;
+        DestructiveConfirm confirm = DestructiveConfirm.of(
+                "未保存的修改",
+                "仍有标签包含未保存修改",
+                "退出会丢弃所有编辑缓冲。",
+                "放弃并退出");
+        styleDialog(confirm.alert());
+        return confirm.confirmed();
     }
 
     private void styleDialog(Alert alert) {
@@ -758,7 +812,12 @@ public final class AppShell extends StackPane {
         DataGridPage page = new DataGridPage(pageSession, schemaService, tab.target(),
                 profile.name(), pageFeedback(), name -> openStructure(profile.id(), name),
                 dbExecutor, settings);
-        page.setDirtyListener(tab::markDirty);
+        // 新开的数据页要继承当前密度档位（A19）。
+        page.setDensity(currentDensity());
+        page.setDirtyListener(count -> {
+            tab.markDirty(count);
+            updateEditActions();
+        });
         return page;
     }
 
@@ -806,7 +865,34 @@ public final class AppShell extends StackPane {
         return activeProfile == null ? "demo" : activeProfile.id();
     }
 
-    private DataGridPage.Feedback pageFeedback() {
+    // ───────────────────── 门禁用的只读访问器 ─────────────────────
+
+    ActionRegistry actionRegistry() {
+        return actions;
+    }
+
+    StatusBar statusBar() {
+        return statusBar;
+    }
+
+    WorkspaceView workspace() {
+        return workspace;
+    }
+
+    TabBar tabBar() {
+        return tabBar;
+    }
+
+    SideBar sideBar() {
+        return sideBar;
+    }
+
+    /** 供门禁切换密度档位（A19）。 */
+    void applyDensityForTest(String density) {
+        applyDensity(density);
+    }
+
+    DataGridPage.Feedback pageFeedback() {
         return new DataGridPage.Feedback() {
             @Override
             public void status(String message) {
@@ -834,6 +920,16 @@ public final class AppShell extends StackPane {
             }
 
             @Override
+            public void selection(int count) {
+                statusBar.setSelection(count);
+            }
+
+            @Override
+            public void transaction(boolean inTransaction) {
+                statusBar.setTransaction(inTransaction);
+            }
+
+            @Override
             public void toast(String message) {
                 AppShell.this.toast(message);
             }
@@ -841,6 +937,11 @@ public final class AppShell extends StackPane {
             @Override
             public void toast(String message, Runnable action) {
                 AppShell.this.toast(message, action);
+            }
+
+            @Override
+            public void toastUnreversible(String message) {
+                AppShell.this.toastUnreversible(message);
             }
         };
     }
@@ -851,6 +952,18 @@ public final class AppShell extends StackPane {
         openTab(new TabItem("query:" + activeProfileId() + ":" + System.nanoTime(), title,
                 TabKind.QUERY, null, activeProfileId()));
         status("新建查询：" + title);
+    }
+
+    /**
+     * 新建一个查询页并预填 SQL（查询历史的「载入到新查询」走这条）。
+     */
+    private void openQueryWith(String sql) {
+        queryCounter++;
+        String title = "未命名查询 " + queryCounter;
+        String id = "query:" + activeProfileId() + ":" + System.nanoTime();
+        initialQuerySql.put(id, sql);
+        openTab(new TabItem(id, title, TabKind.QUERY, null, activeProfileId()));
+        status("已载入历史查询：" + title);
     }
 
     private void openSqlFile() {
@@ -888,6 +1001,45 @@ public final class AppShell extends StackPane {
         actions.find("query.save").ifPresent(action -> action.setEnabled(hasPage && !running));
         actions.find("query.comment").ifPresent(action -> action.setEnabled(hasPage && !running));
         actions.find("query.cancel").ifPresent(action -> action.setEnabled(running));
+        updateEditActions();
+    }
+
+    /**
+     * 编辑菜单三件套的启用态：撤销 = 缓冲可撤销 **或** 上次保存留有反向 SQL
+     * （保存后仍能撤销，与 Toast 上的「撤销」等价）。
+     */
+    private void updateEditActions() {
+        DataGridPage grid = workspace.activeGrid();
+        boolean canUndo = grid != null && (grid.canUndo() || grid.hasPendingSaveUndo());
+        boolean canRedo = grid != null && grid.canRedo();
+        boolean canCopy = grid != null;
+        actions.find("edit.undo").ifPresent(action -> action.setEnabled(canUndo));
+        actions.find("edit.redo").ifPresent(action -> action.setEnabled(canRedo));
+        actions.find("edit.copy").ifPresent(action -> action.setEnabled(canCopy));
+    }
+
+    private void editUndo() {
+        DataGridPage grid = workspace.activeGrid();
+        if (grid == null) {
+            status("撤销只在数据页可用");
+            return;
+        }
+        if (grid.canUndo()) {
+            grid.undo();
+        } else if (grid.hasPendingSaveUndo()) {
+            grid.undoLastSave();
+        }
+        updateEditActions();
+    }
+
+    private void editRedo() {
+        DataGridPage grid = workspace.activeGrid();
+        if (grid == null) {
+            status("重做只在数据页可用");
+            return;
+        }
+        grid.redo();
+        updateEditActions();
     }
 
     private void reloadObjects() {
@@ -950,6 +1102,14 @@ public final class AppShell extends StackPane {
         }
     }
 
+    private String currentDensity() {
+        String value = settings.get("ui.density", "normal");
+        return switch (value) {
+            case "compact", "comfort" -> value;
+            default -> "normal";
+        };
+    }
+
     private void changeDensity(String density) {
         String value = applyDensity(density);
         status("密度：" + switch (value) {
@@ -967,6 +1127,15 @@ public final class AppShell extends StackPane {
         getStyleClass().removeAll("density-compact", "density-normal", "density-comfort");
         getStyleClass().add("density-" + value);
         settings.set("ui.density", value);
+        // A19：密度以前只影响对象树，数据网格行高不变。现在一起作用。
+        if (workspace != null) {
+            workspace.applyDensity(value);
+        }
+        // 勾选态跟着动作走：菜单 / 命令面板读的都是同一份 selected。
+        for (String id : new String[]{"density-compact", "density-normal", "density-comfort"}) {
+            actions.find(id).ifPresent(action ->
+                    action.setSelected(id.endsWith(value)));
+        }
         return value;
     }
 
@@ -990,12 +1159,31 @@ public final class AppShell extends StackPane {
         });
         toast.setVisible(true);
         toast.setManaged(true);
+        startToast(action == null ? 1.8 : 6.0);
+    }
+
+    /** 「结果不可撤销」类提示：没有撤销按钮，但用户需要更长时间反应过来（4.5-21 第三档）。 */
+    private void toastUnreversible(String message) {
+        toastLabel.setText(message);
+        toastAction.setVisible(false);
+        toastAction.setManaged(false);
+        toast.setVisible(true);
+        toast.setManaged(true);
+        startToast(4.0);
+    }
+
+    private void startToast(double seconds) {
         if (toastTimer != null) {
             toastTimer.stop();
         }
-        toastTimer = new PauseTransition(Duration.seconds(action == null ? 1.8 : 6));
+        toastTimer = new PauseTransition(Duration.seconds(seconds));
         toastTimer.setOnFinished(event -> hideToast());
         toastTimer.play();
+    }
+
+    /** 当前 Toast 的停留时长（毫秒）——供 4.5-21 的门禁断言三档分级。 */
+    long toastDelayMillis() {
+        return toastTimer == null ? 0 : (long) toastTimer.getDuration().toMillis();
     }
 
     private void hideToast() {

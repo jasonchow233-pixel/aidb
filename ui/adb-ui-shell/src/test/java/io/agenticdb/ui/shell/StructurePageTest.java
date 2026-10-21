@@ -6,6 +6,7 @@ import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.JdbcSession;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.Label;
 import javafx.scene.control.TextInputControl;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
@@ -19,6 +20,7 @@ import org.testfx.util.WaitForAsyncUtils;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -105,6 +107,96 @@ class StructurePageTest {
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(page.structure().column("nickname")).isNotNull();
+    }
+
+    @Test
+    void rejectsInvalidColumnNameWithoutClosingDialog(FxRobot robot) throws Exception {
+        waitForStructure();
+        int before = page.structure().columns().size();
+
+        robot.clickOn("#structure-add");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        Button ok = okButton(robot);
+        // 1) 空列名：点了「确定」对话框必须还在
+        robot.clickOn(ok);
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(robot.lookup("#structure-dialog-name").queryTextInputControl()).isNotNull();
+        assertThat(robot.lookup("#structure-dialog-error").queryAs(Label.class).isVisible())
+                .as("非法列名必须给出可见的错误，而不是默默关掉对话框")
+                .isTrue();
+        assertThat(page.structure().columns()).hasSize(before);
+
+        // 2) 非法列名（数字开头）
+        TextInputControl name = robot.lookup("#structure-dialog-name").queryTextInputControl();
+        robot.clickOn(name);
+        robot.write("1bad");
+        robot.clickOn(ok);
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(robot.lookup("#structure-dialog-name").queryTextInputControl()).isNotNull();
+        assertThat(page.structure().columns()).hasSize(before);
+
+        // 3) 改成合法列名后能正常提交
+        name = robot.lookup("#structure-dialog-name").queryTextInputControl();
+        robot.clickOn(name);
+        robot.eraseText(4);
+        robot.write("nickname");
+        robot.clickOn(ok);
+        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                page.structure() != null && page.structure().columns().size() == before + 1);
+        assertThat(page.structure().column("nickname")).isNotNull();
+    }
+
+    @Test
+    void columnNameRulesAreExplicit() {
+        assertThat(StructurePage.columnSpecProblem("", "TEXT", null, List.of()))
+                .isEqualTo("列名不能为空");
+        assertThat(StructurePage.columnSpecProblem(null, "TEXT", null, List.of()))
+                .isEqualTo("列名不能为空");
+        assertThat(StructurePage.columnSpecProblem("1bad", "TEXT", null, List.of()))
+                .contains("字母或下划线开头");
+        assertThat(StructurePage.columnSpecProblem("bad name", "TEXT", null, List.of()))
+                .contains("字母或下划线开头");
+        assertThat(StructurePage.columnSpecProblem("good_name1", "", null, List.of()))
+                .isEqualTo("列类型不能为空");
+        assertThat(StructurePage.columnSpecProblem("nickname", "TEXT", null, List.of()))
+                .isNull();
+    }
+
+    @Test
+    void commentColumnIsHiddenWhenDialectHasNoComment(FxRobot robot) throws Exception {
+        // 4.5-22：SQLite 没有列注释，列清单若显示「注释」就是一列永远为空的白骨。
+        waitForStructure();
+
+        assertThat(io.agenticdb.jdbc.DialectKind.SQLITE.supportsColumnComment()).isFalse();
+        assertThat(io.agenticdb.jdbc.DialectKind.MYSQL.supportsColumnComment()).isTrue();
+        assertThat(io.agenticdb.jdbc.DialectKind.POSTGRESQL.supportsColumnComment()).isTrue();
+
+        @SuppressWarnings("unchecked")
+        var columns = (javafx.scene.control.TableView<io.agenticdb.model.ColumnDef>) robot
+                .lookup("#structure-columns").queryAs(javafx.scene.control.TableView.class);
+        assertThat(columns.getColumns().stream()
+                .map(column -> String.valueOf(column.getText())))
+                .doesNotContain("注释")
+                .contains("名称", "类型", "主键");
+    }
+
+    @Test
+    void commentFieldIsDisabledWhenDialectHasNoComment(FxRobot robot) throws Exception {
+        // 同一个道理用在对话框上：输入框可打字但存不住，是数据丢失幻觉。
+        waitForStructure();
+        robot.clickOn("#structure-add");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        TextInputControl comment = robot.lookup("#structure-dialog-comment").queryTextInputControl();
+        assertThat(comment.isDisabled()).isTrue();
+        assertThat(comment.getPromptText()).contains("不支持列注释");
+    }
+
+    private static Button okButton(FxRobot robot) {
+        return robot.lookup(node -> node instanceof Button button
+                        && "确定".equals(button.getText()))
+                .queryAs(Button.class);
     }
 
     @Test

@@ -17,7 +17,14 @@ public record ExecutionResult(
         List<ColumnDef> columns,
         List<Map<String, Object>> rows,
         int updateCount,
-        long durationMs) {
+        long durationMs,
+        boolean truncated) {
+
+    /** 兼容构造：不带截断标记时按「未截断」处理。 */
+    public ExecutionResult(String statement, List<ColumnDef> columns,
+                           List<Map<String, Object>> rows, int updateCount, long durationMs) {
+        this(statement, columns, rows, updateCount, durationMs, false);
+    }
 
     public ExecutionResult {
         columns = columns == null ? List.of() : List.copyOf(columns);
@@ -30,6 +37,16 @@ public record ExecutionResult(
 
     public int rowCount() {
         return rows.size();
+    }
+
+    /**
+     * 结果是否被行数上限截断。
+     *
+     * <p>被截断时必须告诉用户 —— 静默丢行会让人以为看到的就是全部，
+     * 然后基于不完整的数据做决定。UI 上要显示「已截断」而不是假装没事。
+     */
+    public boolean isTruncated() {
+        return truncated;
     }
 
     /**

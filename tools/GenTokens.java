@@ -49,8 +49,8 @@ public final class GenTokens {
         }
 
         emitJava(root.resolve(JAVA_OUT), tokens);
-        emitCss(root.resolve(CSS_DIR).resolve("theme-dark.css"), tokens, "dark");
-        emitCss(root.resolve(CSS_DIR).resolve("theme-light.css"), tokens, "light");
+        emitCss(root.resolve(CSS_DIR).resolve("theme-dark.css"), tokens, "dark", "theme-dark");
+        emitCss(root.resolve(CSS_DIR).resolve("theme-light.css"), tokens, "light", "theme-light");
         System.out.println("generated " + tokens.size()
                 + " tokens -> Tokens.java + theme-dark.css + theme-light.css");
     }
@@ -121,12 +121,22 @@ public final class GenTokens {
         Files.writeString(output, String.join("\n", lines), StandardCharsets.UTF_8);
     }
 
-    private static void emitCss(Path output, Map<String, Object> tokens, String theme)
-            throws IOException {
+    /**
+     * 生成一套主题的 CSS。
+     *
+     * <p>⭐ 选择器是<b>类</b>（{@code .theme-dark} / {@code .theme-light}）而不是
+     * {@code .root}。原因是：主题切换时如果整份样式表被换掉，JavaFX 要对
+     * 整棵场景图重做一遍 CSS 计算，紧随其后的 {@code scene.snapshot()} 会拿到
+     * 「样式表已换、像素还没重画」的空白帧（4.5-23 真实窗口复现过）。
+     * 改成类选择器后，切换主题只是改根节点的一个 style class，
+     * 不动样式表列表，CSS 重算范围小得多，也不再出现空白帧。
+     */
+    private static void emitCss(Path output, Map<String, Object> tokens, String theme,
+                                 String selector) throws IOException {
         List<String> lines = new ArrayList<>();
         lines.add("/* 由 tools/GenTokens.java 生成，不要手改。 */");
-        lines.add("/* theme: " + theme + " */");
-        lines.add(".root {");
+        lines.add("/* theme: " + theme + " · selector: ." + selector + " */");
+        lines.add("." + selector + " {");
         for (Map.Entry<String, Object> entry : tokens.entrySet()) {
             Map<String, Object> token = asObject(entry.getValue());
             if (!"color".equals(token.get("type"))) {

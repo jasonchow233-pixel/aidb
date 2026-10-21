@@ -2,6 +2,10 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.ui.App;
 import javafx.scene.control.Label;
+import javafx.scene.control.Menu;
+import javafx.scene.control.MenuBar;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.RadioMenuItem;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TableView;
 import javafx.stage.Stage;
@@ -19,7 +23,9 @@ import org.testfx.util.WaitForAsyncUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.prefs.Preferences;
 
@@ -346,5 +352,142 @@ class AppShellTest {
         robot.push(javafx.scene.input.KeyCode.ESCAPE);
         WaitForAsyncUtils.waitForFxEvents();
         assertThat(robot.lookup(".adb-palette-overlay").queryAs(javafx.scene.layout.StackPane.class).isVisible()).isFalse();
+    }
+
+    @Test
+    void editMenuFollowsActivePageAndDensitySelectionTracksAction(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+
+        MenuItem editCopy = menuItem(robot, "edit.copy");
+        RadioMenuItem densityNormal = radioItem(robot, "density-normal");
+
+        // 欢迎页：复制没有目标，禁用；密度默认标准且已勾选。
+        assertThat(editCopy.isDisable()).isTrue();
+        assertThat(densityNormal.isSelected()).isTrue();
+
+        openTable(robot, "users");
+        WaitForAsyncUtils.waitFor(8, TimeUnit.SECONDS, () ->
+                robot.lookup(".adb-grid-page").tryQuery().isPresent());
+
+        // 数据页：复制可用；撤销在编辑前禁用。
+        assertThat(editCopy.isDisable()).isFalse();
+        assertThat(menuItem(robot, "edit.undo").isDisable()).isTrue();
+
+        javafx.scene.control.TableCell<?, ?> nameCell = robot.lookup(node ->
+                node instanceof javafx.scene.control.TableCell<?, ?> cell
+                        && "User 001".equals(cell.getText()))
+                .queryAs(javafx.scene.control.TableCell.class);
+        robot.doubleClickOn(nameCell);
+        WaitForAsyncUtils.waitForFxEvents();
+        javafx.scene.control.TextField editor = robot.lookup(".adb-grid__editor")
+                .queryAs(javafx.scene.control.TextField.class);
+        robot.clickOn(editor);
+        robot.write("Renamed User");
+        robot.push(javafx.scene.input.KeyCode.ENTER);
+        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                !menuItem(robot, "edit.undo").isDisable());
+
+        // 密度切到紧凑：勾选态跟着动作走（MenuBarFactory 用 bindBidirectional）。
+        // 菜单项不是 Node，不能 clickOn；直接 fire 与真实点击等价。
+        WaitForAsyncUtils.asyncFx(radioItem(robot, "density-compact")::fire).get();
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(radioItem(robot, "density-compact").isSelected()).isTrue();
+        assertThat(densityNormal.isSelected()).isFalse();
+        assertThat(robot.lookup(".app-shell").queryAs(AppShell.class)
+                .getStyleClass().contains("density-compact")).isTrue();
+    }
+
+    private static MenuItem menuItem(FxRobot robot, String id) {        return items(robot).stream()
+                .filter(item -> id.equals(item.getId()))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private static RadioMenuItem radioItem(FxRobot robot, String id) {
+        MenuItem item = menuItem(robot, id);
+        assertThat(item).isInstanceOf(RadioMenuItem.class);
+        return (RadioMenuItem) item;
+    }
+
+    /** 菜单项不是 Node，TestFX 查不到；从 MenuBar（Node）反推。 */
+    private static List<MenuItem> items(FxRobot robot) {
+        MenuBar bar = robot.lookup(".menu-bar").queryAs(MenuBar.class);
+        List<MenuItem> all = new ArrayList<>();
+        for (Menu menu : bar.getMenus()) {
+            all.addAll(menu.getItems());
+        }
+        return all;
+    }
+
+    @Test
+    void toastDurationsComeInThreeTiers(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
+
+        // 1) 普通提示：1.8 秒（刷新对象走的就是这一档）
+        robot.clickOn("#refresh-button");
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(shell.toastDelayMillis()).isEqualTo(1_800);
+
+        // 2) 带「撤销」的：6 秒 —— 用户要读完消息再决定点不点
+        WaitForAsyncUtils.asyncFx(() -> shell.pageFeedback()
+                .toast("已保存 3 条变更 · 可撤销", () -> { })).get();
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(shell.toastDelayMillis()).isEqualTo(6_000);
+
+        // 3) 不可撤销结果：4 秒 —— 没有撤销按钮，但要留足阅读时间
+        WaitForAsyncUtils.asyncFx(() -> shell.pageFeedback()
+                .toastUnreversible("已保存 3 条变更（新增行无主键，不能反向撤销）")).get();
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(shell.toastDelayMillis()).isEqualTo(4_000);
+    }
+
+    /**
+     * 4.5-23 复现门禁：主题热切换后 {@code scene.snapshot()} 不得返回空白帧。
+     *
+     * <p>真实窗口里点「切换主题」后截图曾出现过「场景图完好、CSS 已挂载、
+     * 控件可交互，但快照像素全是背景色」的暗显示缺陷。截图链路已用
+     * {@code ADB_THEME_FORCE} 规避；这里把现象固化成测试，修好后它就是回归门禁。
+     */
+    @Test
+    void themeHotSwitchKeepsSnapshotPixels(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
+
+        double before = nonBackgroundRatio(robot);
+        assertThat(before).as("初始快照就必须有内容").isGreaterThan(0.01);
+
+        robot.clickOn("#theme-toggle-button");
+        WaitForAsyncUtils.waitForFxEvents();
+        WaitForAsyncUtils.waitForFxEvents();
+
+        double after = nonBackgroundRatio(robot);
+        assertThat(after)
+                .as("主题热切换后快照不得变空白（当前 before=%.3f after=%.3f）", before, after)
+                .isGreaterThan(0.01);
+    }
+
+    /** 快照里与四角背景色差异超过阈值的像素占比。 */
+    private static double nonBackgroundRatio(FxRobot robot) throws Exception {
+        javafx.scene.image.WritableImage shot = WaitForAsyncUtils
+                .asyncFx(() -> robot.window(0).getScene().snapshot(null)).get();
+        int width = shot.getWidth() > 0 ? (int) shot.getWidth() : 1;
+        int height = shot.getHeight() > 0 ? (int) shot.getHeight() : 1;
+        javafx.scene.image.PixelReader reader = shot.getPixelReader();
+        javafx.scene.paint.Color background = reader.getColor(0, 0);
+        long total = 0;
+        long differing = 0;
+        for (int y = 0; y < height; y += 4) {
+            for (int x = 0; x < width; x += 4) {
+                javafx.scene.paint.Color color = reader.getColor(x, y);
+                total++;
+                if (Math.abs(color.getRed() - background.getRed())
+                        + Math.abs(color.getGreen() - background.getGreen())
+                        + Math.abs(color.getBlue() - background.getBlue()) > 0.05) {
+                    differing++;
+                }
+            }
+        }
+        return total == 0 ? 0 : (double) differing / total;
     }
 }

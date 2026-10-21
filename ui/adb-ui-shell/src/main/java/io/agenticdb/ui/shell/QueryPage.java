@@ -283,6 +283,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         replaceAll.setOnAction(event -> replaceAll());
 
         Button close = new Button("✕");
+        close.setAccessibleText("关闭");
         close.getStyleClass().add("adb-icon-button");
         close.setOnAction(event -> hideFind());
 
@@ -801,7 +802,19 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox toolbar = new HBox(6, meta, spacer, copy, export);
+
+        HBox toolbar;
+        if (result.isTruncated()) {
+            // ⭐ 静默截断比不分页更糟：用户会以为看到的就是全部。
+            meta.setText(meta.getText() + " · 已截断");
+            Label warning = new Label("\u26A0 结果已截断，上限 "
+                    + io.agenticdb.model.QueryLimits.MAX_PAGE_SIZE + " 行");
+            warning.setId("query-result-truncated");
+            warning.getStyleClass().add("adb-query__result-truncated");
+            toolbar = new HBox(6, meta, warning, spacer, copy, export);
+        } else {
+            toolbar = new HBox(6, meta, spacer, copy, export);
+        }
         toolbar.getStyleClass().add("adb-query__result-toolbar");
         toolbar.setAlignment(Pos.CENTER_LEFT);
 

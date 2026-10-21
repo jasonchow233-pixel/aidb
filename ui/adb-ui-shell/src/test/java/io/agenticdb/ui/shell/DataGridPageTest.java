@@ -84,12 +84,15 @@ class DataGridPageTest {
         try {
             DataGridPage first = new DataGridPage(session, new SchemaService(), "users",
                     connection, noOpFeedback(), name -> { }, executor, settings);
+            // ⚠️ 列集合由 FX 线程在数据加载完成时重建，测试线程直接遍历会偶发
+            //    ConcurrentModificationException。所有读取都放进 asyncFx，与 FX 线程串行。
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> first.lookup("#data-table") != null
-                    && tableOf(first).getColumns().stream()
-                    .anyMatch(column -> "name".equals(column.getUserData())));
-            javafx.scene.control.TableColumn<?, ?> nameColumn = tableOf(first).getColumns()
-                    .stream().filter(column -> "name".equals(column.getUserData()))
-                    .findFirst().orElseThrow();
+                    && !tableItems(first).isEmpty());
+            javafx.scene.control.TableColumn<?, ?> nameColumn = WaitForAsyncUtils.asyncFx(() ->
+                    tableOf(first).getColumns().stream()
+                            .filter(column -> "name".equals(column.getUserData()))
+                            .findFirst().orElse(null)).get();
+            assertThat(nameColumn).as("name 列应该存在").isNotNull();
             WaitForAsyncUtils.asyncFx(() -> nameColumn.setVisible(false)).get();
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> settings.get(
                     "ui.grid." + connection + ".users.hidden", "").contains("name"));
@@ -98,11 +101,12 @@ class DataGridPageTest {
             DataGridPage second = new DataGridPage(session, new SchemaService(), "users",
                     connection, noOpFeedback(), name -> { }, executor, settings);
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> second.lookup("#data-table") != null
-                    && tableOf(second).getColumns().stream()
-                    .anyMatch(column -> "name".equals(column.getUserData())));
-            javafx.scene.control.TableColumn<?, ?> restored = tableOf(second).getColumns()
-                    .stream().filter(column -> "name".equals(column.getUserData()))
-                    .findFirst().orElseThrow();
+                    && !tableItems(second).isEmpty());
+            javafx.scene.control.TableColumn<?, ?> restored = WaitForAsyncUtils.asyncFx(() ->
+                    tableOf(second).getColumns().stream()
+                            .filter(column -> "name".equals(column.getUserData()))
+                            .findFirst().orElse(null)).get();
+            assertThat(restored).isNotNull();
             assertThat(restored.isVisible()).isFalse();
             second.close();
         } finally {
@@ -323,6 +327,11 @@ class DataGridPageTest {
         return (javafx.scene.control.TableView<Map<String, Object>>) page.lookup("#data-table");
     }
 
+    /** 只读行数，避免在测试线程上遍历会被 FX 线程重建的集合。 */
+    private static List<Map<String, Object>> tableItems(DataGridPage page) {
+        return List.copyOf(tableOf(page).getItems());
+    }
+
     @Test
     void showsRetryableErrorStateWhenTableDisappears() throws Exception {
         DbSession session = JdbcSession.open(ConnectionSpec.sqliteMemory());
@@ -360,6 +369,177 @@ class DataGridPageTest {
             executor.shutdownNow();
             session.close();
         }
+    }
+
+    /** 4.5-1：UI 指南承诺的四个复制 / 全选快捷键必须真的能用。 */
+    @Test
+    void copyShortcutsAndSelectAllWork() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("shortcuts.db"))));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        List<String> messages = new java.util.ArrayList<>();
+        DataGridPage.Feedback feedback = new DataGridPage.Feedback() {
+            @Override
+            public void status(String message) {
+                messages.add(message);
+            }
+
+            @Override
+            public void range(String text) {
+            }
+
+            @Override
+            public void duration(long millis) {
+            }
+        };
+        try {
+            DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
+                    "shortcuts.db", feedback, name -> { }, executor);
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                    page.lookup("#data-table") != null
+                            && tableOf(page).getItems().size() == 200);
+            WaitForAsyncUtils.waitForFxEvents();
+
+            javafx.scene.control.TableView<Map<String, Object>> table = tableOf(page);
+
+            // 1) ⌘A 全选当前页
+            pressShortcut(page, javafx.scene.input.KeyCode.A, false, false);
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(table.getSelectionModel().getSelectedItems())
+                    .as("⌘A 必须全选当前页")
+                    .hasSize(table.getItems().size());
+
+            // 2) ⌥⌘C 复制为 TSV（此时整页都选中）
+            pressShortcut(page, javafx.scene.input.KeyCode.C, false, true);
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(clipboardText()).contains("\t").contains("\n");
+
+            // 3) ⇧⌘C 复制为 INSERT
+            pressShortcut(page, javafx.scene.input.KeyCode.C, true, false);
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(clipboardText()).contains("INSERT INTO");
+
+            // 4) ⌘C 复制光标所在单元格的值
+            Map<String, Object> firstRow = table.getItems().getFirst();
+            WaitForAsyncUtils.asyncFx(() -> {
+                table.getSelectionModel().clearSelection();
+                table.getFocusModel().focus(0, table.getColumns().get(2));
+            }).get();
+            WaitForAsyncUtils.waitForFxEvents();
+            pressShortcut(page, javafx.scene.input.KeyCode.C, false, false);
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(messages).anyMatch(message -> message.contains("已复制单元格值"));
+            assertThat(clipboardText()).isNotNull();
+            assertThat(firstRow).isNotNull();
+
+            page.close();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    @Test
+    void firstLastAndJumpPaginationWork() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("pager.db"))));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        List<String> messages = new java.util.ArrayList<>();
+        DataGridPage.Feedback feedback = new DataGridPage.Feedback() {
+            @Override
+            public void status(String message) {
+                messages.add(message);
+            }
+
+            @Override
+            public void range(String text) {
+            }
+
+            @Override
+            public void duration(long millis) {
+            }
+        };
+        try {
+            DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
+                    "pager.db", feedback, name -> { }, executor);
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                    page.lookup("#data-table") != null && tableOf(page).getItems().size() == 200);
+
+            // 每页改成 100 → users 200 行分 2 页
+            // ⚠️ 程序化 select 在部分 JavaFX 版本不触发 onAction，这里显式补发与用户操作等价的事件。
+            @SuppressWarnings("unchecked")
+            javafx.scene.control.ComboBox<Integer> sizeBox =
+                    (javafx.scene.control.ComboBox<Integer>) page.lookup("#data-page-size");
+            WaitForAsyncUtils.asyncFx(() -> {
+                if (!Integer.valueOf(100).equals(sizeBox.getValue())) {
+                    sizeBox.getSelectionModel().select(Integer.valueOf(100));
+                }
+                sizeBox.fireEvent(new javafx.event.ActionEvent());
+            }).get();
+            javafx.scene.control.Label pageLabel =
+                    (javafx.scene.control.Label) page.lookup("#data-page");
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                    pageLabel.getText().contains("1 / 2"));
+            WaitForAsyncUtils.waitForFxEvents();
+
+            javafx.scene.control.Button first =
+                    (javafx.scene.control.Button) page.lookup("#data-first");
+            javafx.scene.control.Button last =
+                    (javafx.scene.control.Button) page.lookup("#data-last");
+            javafx.scene.control.TextField jump =
+                    (javafx.scene.control.TextField) page.lookup("#data-jump");
+
+            assertThat(first.isDisable()).as("第 1 页时首页按钮禁用").isTrue();
+            assertThat(last.isDisable()).as("第 1 页时末页按钮可用").isFalse();
+
+            // 跳页到 2
+            WaitForAsyncUtils.asyncFx(() -> jump.setText("2")).get();
+            WaitForAsyncUtils.asyncFx(() ->
+                    jump.fireEvent(new javafx.event.ActionEvent())).get();
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                    pageLabel.getText().contains("2 / 2"));
+            WaitForAsyncUtils.waitForFxEvents();
+
+            assertThat(tableOf(page).getItems()).hasSize(100);
+            assertThat(first.isDisable()).as("第 2 页时首页按钮可用").isFalse();
+            assertThat(last.isDisable()).as("第 2 页时末页按钮禁用").isTrue();
+            assertThat(jump.getText()).as("跳转后输入框应清空").isEmpty();
+
+            // 越界跳页：给状态提示，不翻页
+            WaitForAsyncUtils.asyncFx(() -> jump.setText("9")).get();
+            WaitForAsyncUtils.asyncFx(() ->
+                    jump.fireEvent(new javafx.event.ActionEvent())).get();
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(messages).anyMatch(message -> message.contains("最大页码 2"));
+            assertThat(pageLabel.getText()).as("越界跳页不应改变页码").contains("2 / 2");
+
+            // 回到第 1 页
+            WaitForAsyncUtils.asyncFx(first::fire).get();
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                    pageLabel.getText().contains("1 / 2"));
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(tableOf(page).getItems()).hasSize(100);
+            assertThat(((javafx.scene.control.Label) page.lookup("#data-range")).getText())
+                    .isEqualTo("1–100 / 200");
+
+            page.close();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    private static void pressShortcut(DataGridPage page, javafx.scene.input.KeyCode code,
+                                      boolean shift, boolean alt) throws Exception {
+        javafx.scene.input.KeyEvent event = new javafx.scene.input.KeyEvent(
+                javafx.scene.input.KeyEvent.KEY_PRESSED, "", "", code,
+                shift, true, alt, true);
+        WaitForAsyncUtils.asyncFx(() -> page.fireEvent(event)).get();
+    }
+
+    private static String clipboardText() throws Exception {
+        return WaitForAsyncUtils.asyncFx(() ->
+                javafx.scene.input.Clipboard.getSystemClipboard().getString()).get();
     }
 
     private static DataGridPage.Feedback noOpFeedback() {

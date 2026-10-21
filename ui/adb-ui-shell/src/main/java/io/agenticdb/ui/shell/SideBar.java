@@ -54,6 +54,8 @@ public final class SideBar extends VBox {
     private Runnable onRefreshObjects = () -> { };
 
     private final Set<String> starred = new LinkedHashSet<>();
+    private DemoNode selectedNode;
+    private String dialectName = "—";
     private final VBox expanded = new VBox(8);
     private final VBox rail = new VBox(6);
     private final VBox favoriteBox = new VBox(4);
@@ -94,9 +96,51 @@ public final class SideBar extends VBox {
         setMinWidth(240);
         setMaxWidth(240);
 
+        registerObjectActions();
         buildExpanded();
         buildRail();
         getChildren().add(expanded);
+    }
+
+    /**
+     * 注册对象树的动作（4.5-8）。
+     *
+     * <p>⭐ 以前侧栏树的右键菜单是<b>手搓 MenuItem</b>：7 个菜单项既不在命令面板里，
+     * 也没有统一的 enabled 判断。现在它们和其它动作一样进 {@link ActionRegistry}，
+     * 于是能在 ⌘K 里搜到（「复制 SELECT」），禁用时也会变灰并给出解释。
+     *
+     * <p>动作行为依赖「当前选中的树节点」，所以这里登记的是<b>节点无关</b>的命令，
+     * 具体作用对象由 {@link #selectedNode} 决定。
+     */
+    private void registerObjectActions() {
+        actions.register("object.open-data", "打开数据", "对象", null,
+                () -> onSelected(SideBarObject.OPEN_DATA));
+        actions.register("object.open-structure", "打开结构", "对象", null,
+                () -> onSelected(SideBarObject.OPEN_STRUCTURE));
+        actions.register("object.new-query", "新建查询", "对象", null,
+                () -> onSelected(SideBarObject.NEW_QUERY));
+        actions.register("object.favorite", "收藏 / 取消收藏", "对象", null,
+                () -> onSelected(SideBarObject.FAVORITE));
+        actions.register("object.copy-name", "复制名称", "对象", null,
+                () -> onSelected(SideBarObject.COPY_NAME));
+        actions.register("object.copy-select", "复制 SELECT", "对象", null,
+                () -> onSelected(SideBarObject.COPY_SELECT));
+        actions.register("object.diagnostics", "诊断", "对象", null,
+                () -> onSelected(SideBarObject.DIAGNOSTICS));
+        actions.register("object.refresh-objects", "刷新对象", "对象", null,
+                () -> onSelected(SideBarObject.REFRESH_OBJECTS));
+    }
+
+    /** 对象树动作的种类。 */
+    private enum SideBarObject {
+        OPEN_DATA,
+        OPEN_STRUCTURE,
+        NEW_QUERY,
+        FAVORITE,
+        COPY_NAME,
+        COPY_SELECT,
+        DIAGNOSTICS,
+        REFRESH_OBJECTS
     }
 
     public void setOnCollapsed(Consumer<Boolean> onCollapsed) {
@@ -183,6 +227,7 @@ public final class SideBar extends VBox {
         HBox.setHgrow(headerSpacer, Priority.ALWAYS);
 
         Button collapse = new Button("«");
+        collapse.setAccessibleText("折叠侧栏");
         collapse.setId("sidebar-collapse");
         collapse.getStyleClass().add("adb-icon-button");
         collapse.setTooltip(new Tooltip("折叠侧栏 (⌘\\)"));
@@ -231,6 +276,12 @@ public final class SideBar extends VBox {
         tree.setShowRoot(true);
         tree.setCellFactory(view -> new DemoCell());
         tree.setRoot(buildTreeModel(""));
+        // ⭐ 记住当前选中的节点：对象树的动作（打开数据 / 复制 SELECT …）
+        //    都是节点无关的命令，具体作用对象由它决定。
+        tree.getSelectionModel().selectedItemProperty().addListener((obs, old, item) -> {
+            selectedNode = item == null ? null : item.getValue();
+            updateObjectActionStates();
+        });
         tree.setOnMouseClicked(event -> {
             if (event.getClickCount() == 2) {
                 TreeItem<DemoNode> selected = tree.getSelectionModel().getSelectedItem();
@@ -276,13 +327,12 @@ public final class SideBar extends VBox {
         });
 
         VBox workbench = section("工作台",
-                navButton("◷  查询历史", () -> openTool("查询历史")),
-                navButton("★  已保存查询", () -> openTool("已保存查询")));
+                navButton("◷  查询历史", "查询历史", () -> openTool("查询历史")));
 
         VBox tools = section("工具",
-                navButton("◆  诊断", () -> openTool("诊断")),
-                navButton("⇅  导入 / 导出", () -> openTool("导入 / 导出")),
-                navButton("⚙  设置", () -> openTab.accept(new TabItem("settings", "设置", TabKind.SETTINGS))));
+                // 诊断接真实功能：诊断对象树里当前选中的表。
+                navButton("◆  诊断", "诊断", () -> actions.run("object.diagnostics")),
+                navButton("⚙  设置", "设置", () -> openTab.accept(new TabItem("settings", "设置", TabKind.SETTINGS))));
 
         expanded.getChildren().addAll(header, search, connectionBar, favorites, connections,
                 workbench, tools);
@@ -300,8 +350,9 @@ public final class SideBar extends VBox {
         return box;
     }
 
-    private Button navButton(String text, Runnable handler) {
+    private Button navButton(String text, String accessible, Runnable handler) {
         Button button = new Button(text);
+        button.setAccessibleText(accessible);
         button.getStyleClass().add("adb-sidebar__nav");
         button.setMaxWidth(Double.MAX_VALUE);
         button.setAlignment(Pos.CENTER_LEFT);
@@ -316,7 +367,7 @@ public final class SideBar extends VBox {
         rail.setAlignment(Pos.TOP_CENTER);
         rail.setPadding(new Insets(8, 0, 8, 0));
 
-        Button expand = railButton("☰", "展开侧栏 (⌘\\)", () -> actions.run("sidebar.toggle"));
+        Button expand = railButton("»", "展开侧栏 (⌘\\)", () -> actions.run("sidebar.toggle"));
         expand.setId("sidebar-expand");
         Button connection = railButton("◈", connectionName,
                 () -> status.accept("连接：" + connectionName));
@@ -336,16 +387,29 @@ public final class SideBar extends VBox {
         Region spacer = new Region();
         VBox.setVgrow(spacer, Priority.ALWAYS);
 
-        Label env = new Label("DEV");
-        env.getStyleClass().add("adb-rail__env");
+        // 4.5-11：这里以前是写死的「DEV」。现在显示当前连接的方言 —— 真信息。
+        Label dialect = new Label(dialectName);
+        dialect.getStyleClass().add("adb-rail__dialect");
+        dialect.setAccessibleText("当前数据库方言：" + dialectName);
 
-        rail.getChildren().addAll(expand, connection, favorites, users, find, tools, spacer, env);
+        rail.getChildren().addAll(expand, connection, favorites, users, find, tools, spacer, dialect);
+    }
+
+    /** 设置当前连接的方言（状态栏与折叠侧栏共用同一个信息）。 */
+    public void setDialect(String name) {
+        this.dialectName = name == null || name.isBlank() ? "—" : name;
+        if (rail.getChildren().size() > 0) {
+            Label last = (Label) rail.getChildren().get(rail.getChildren().size() - 1);
+            last.setText(dialectName);
+            last.setAccessibleText("当前数据库方言：" + dialectName);
+        }
     }
 
     private Button railButton(String text, String tooltip, Runnable handler) {
         Button button = new Button(text);
         button.getStyleClass().add("adb-rail__button");
         button.setTooltip(new Tooltip(tooltip));
+        button.setAccessibleText(tooltip);
         button.setOnAction(event -> handler.run());
         return button;
     }
@@ -429,61 +493,114 @@ public final class SideBar extends VBox {
         status.accept(starred.contains(name) ? "已收藏 " + name : "已取消收藏 " + name);
     }
 
+    /** 供门禁检查右键菜单是否来自注册表（4.5-8）。 */
+    ContextMenu contextMenuForTest() {
+        return selectedNode == null ? null : menuFor(selectedNode);
+    }
+
+    /** 当前选中的树节点（门禁用）。 */
+    String selectedNodeName() {
+        return selectedNode == null ? null : selectedNode.name();
+    }
+
     private ContextMenu menuFor(DemoNode node) {
         ContextMenu menu = new ContextMenu();
         switch (node.kind()) {
-            case TABLE, VIEW -> {
-                MenuItem open = new MenuItem("打开数据");
-                open.setOnAction(event -> openGrid(node.name()));
-                MenuItem structure = new MenuItem("打开结构");
-                structure.setOnAction(event -> openStructure(node.name()));
-                MenuItem query = new MenuItem("新建查询");
-                query.setOnAction(event -> openQuery(node.name()));
-
-                MenuItem star = new MenuItem(
-                        starred.contains(node.name()) ? "取消收藏" : "收藏");
-                star.setOnAction(event -> toggleStar(node.name()));
-
-                MenuItem copyName = new MenuItem("复制名称");
-                copyName.setOnAction(event -> copy(node.name()));
-                MenuItem copySelect = new MenuItem("复制 SELECT");
-                copySelect.setOnAction(event -> copy(
-                        "SELECT * FROM \"" + node.name() + "\" LIMIT 200;"));
-
-                MenuItem diagnose = new MenuItem("诊断");
-                diagnose.setOnAction(event -> openTool("诊断 · " + node.name()));
-
-                menu.getItems().addAll(open, structure, query,
-                        new SeparatorMenuItem(), star, copyName, copySelect,
-                        new SeparatorMenuItem(), diagnose);
-            }
-            case CONNECTION -> {
-                MenuItem edit = new MenuItem("编辑连接");
-                edit.setOnAction(event -> actions.run("new-connection"));
-                MenuItem refresh = new MenuItem("刷新对象");
-                refresh.setOnAction(event -> {
-                    onRefreshObjects.run();
-                    status.accept("已刷新 " + connectionName);
-                });
-                MenuItem query = new MenuItem("新建查询");
-                query.setOnAction(event -> openQuery(null));
-                menu.getItems().addAll(edit, refresh, new SeparatorMenuItem(), query);
-            }
-            case GROUP -> {
-                MenuItem refresh = new MenuItem("刷新对象");
-                refresh.setOnAction(event -> {
-                    onRefreshObjects.run();
-                    status.accept("已刷新 " + connectionName);
-                });
-                menu.getItems().add(refresh);
-            }
-            default -> {
-                MenuItem open = new MenuItem("打开");
-                open.setOnAction(event -> openGrid(node.name()));
-                menu.getItems().add(open);
-            }
+            case TABLE, VIEW -> menu.getItems().addAll(
+                    actions.menuItem("object.open-data", "打开数据"),
+                    actions.menuItem("object.open-structure", "打开结构"),
+                    actions.menuItem("object.new-query", "新建查询"),
+                    new SeparatorMenuItem(),
+                    actions.menuItem("object.favorite",
+                            starred.contains(node.name()) ? "取消收藏" : "收藏"),
+                    actions.menuItem("object.copy-name", "复制名称"),
+                    actions.menuItem("object.copy-select", "复制 SELECT"),
+                    new SeparatorMenuItem(),
+                    actions.menuItem("object.diagnostics", "诊断"));
+            case CONNECTION -> menu.getItems().addAll(
+                    actions.menuItem("new-connection", "编辑连接"),
+                    actions.menuItem("object.refresh-objects", "刷新对象"),
+                    new SeparatorMenuItem(),
+                    actions.menuItem("object.new-query", "新建查询"));
+            case GROUP -> menu.getItems().add(
+                    actions.menuItem("object.refresh-objects", "刷新对象"));
+            default -> menu.getItems().add(
+                    actions.menuItem("object.open-data", "打开"));
         }
         return menu;
+    }
+
+    /** 执行一个对象树动作。动作本身不知道作用对象，由当前选中节点决定。 */
+    private void onSelected(SideBarObject action) {
+        DemoNode node = selectedNode;
+        if (node == null) {
+            status.accept("请先在对象树里选中一个对象");
+            return;
+        }
+        boolean isObject = node.kind() == NodeKind.TABLE || node.kind() == NodeKind.VIEW;
+        switch (action) {
+            case OPEN_DATA -> {
+                if (isObject) {
+                    openGrid(node.name());
+                } else {
+                    status.accept("只有表和视图能打开数据");
+                }
+            }
+            case OPEN_STRUCTURE -> {
+                if (isObject) {
+                    openStructure(node.name());
+                } else {
+                    status.accept("只有表和视图有结构页");
+                }
+            }
+            case NEW_QUERY -> openQuery(isObject ? node.name() : null);
+            case FAVORITE -> {
+                if (isObject) {
+                    toggleStar(node.name());
+                } else {
+                    status.accept("只有表和视图可以收藏");
+                }
+            }
+            case COPY_NAME -> {
+                if (isObject) {
+                    copy(node.name());
+                }
+            }
+            case COPY_SELECT -> {
+                if (isObject) {
+                    copy("SELECT * FROM \"" + node.name() + "\" LIMIT 200;");
+                }
+            }
+            case DIAGNOSTICS -> {
+                if (isObject) {
+                    openTool("诊断 · " + node.name());
+                }
+            }
+            case REFRESH_OBJECTS -> {
+                onRefreshObjects.run();
+                status.accept("已刷新 " + connectionName);
+            }
+        }
+    }
+
+    /** 按当前选中节点刷新对象动作的 enabled 状态。 */
+    private void updateObjectActionStates() {
+        DemoNode node = selectedNode;
+        boolean isObject = node != null
+                && (node.kind() == NodeKind.TABLE || node.kind() == NodeKind.VIEW);
+        boolean isConnection = node != null && node.kind() == NodeKind.CONNECTION;
+        setObjectActionEnabled("object.open-data", isObject);
+        setObjectActionEnabled("object.open-structure", isObject);
+        setObjectActionEnabled("object.new-query", isObject || isConnection);
+        setObjectActionEnabled("object.favorite", isObject);
+        setObjectActionEnabled("object.copy-name", isObject);
+        setObjectActionEnabled("object.copy-select", isObject);
+        setObjectActionEnabled("object.diagnostics", isObject);
+        setObjectActionEnabled("object.refresh-objects", node != null);
+    }
+
+    private void setObjectActionEnabled(String id, boolean enabled) {
+        actions.find(id).ifPresent(action -> action.setEnabled(enabled));
     }
 
     private void openGrid(String name) {
@@ -571,6 +688,7 @@ public final class SideBar extends VBox {
             if ((item.kind() == NodeKind.TABLE || item.kind() == NodeKind.VIEW)
                     && starred.contains(item.name())) {
                 Label star = new Label("★");
+                star.setAccessibleText("收藏");
                 star.getStyleClass().add("adb-tree__star");
                 box.getChildren().add(star);
             }

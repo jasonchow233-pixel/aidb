@@ -37,6 +37,32 @@ public final class WorkspaceView extends StackPane {
     private StructurePage activeStructure;
     private ConnectionsPage activeConnections;
 
+    /** 查询历史（真实功能，只是以前侧栏按钮开错了页面）。 */
+    private QueryHistory history;
+    private java.util.function.Consumer<String> onUseHistory;
+
+    /** 诊断页需要的依赖。 */
+    private io.agenticdb.jdbc.DbSession diagnosticSession;
+    private io.agenticdb.introspect.SchemaService diagnosticSchemaService;
+    private java.util.concurrent.Executor diagnosticExecutor;
+
+    /** 当前活动数据页（编辑菜单据此启用/禁用）；欢迎页或其它页时为 {@code null}。 */
+    public DataGridPage activeGrid() {
+        return activeGrid;
+    }
+
+    /**
+     * 把密度档位应用到所有已打开的数据页（A19）。
+     *
+     * <p>以前密度只改对象树的行内边距，<b>数据网格行高纹丝不动</b> ——
+     * 「紧凑 / 标准 / 宽松」对最费屏的地方不起作用。
+     */
+    public void applyDensity(String density) {
+        for (DataGridPage page : gridPages.values()) {
+            page.setDensity(density);
+        }
+    }
+
     public WorkspaceView(ActionRegistry actions, String connectionName,
                          Function<TabItem, Node> gridPageFactory,
                          Function<TabItem, QueryPage> queryPageFactory,
@@ -52,13 +78,33 @@ public final class WorkspaceView extends StackPane {
         showWelcome();
     }
 
-    public void showWelcome() {
-        activeGrid = null;
+    /**
+     * 接入查询历史。
+     *
+     * <p>侧栏「查询历史」入口以前开的是空壳页，而 {@link QueryHistory} 早就存在且可用 ——
+     * 现在把真功能接上去。
+     */
+    public void setHistory(QueryHistory history, java.util.function.Consumer<String> onUse) {
+        this.history = history;
+        this.onUseHistory = onUse;
+    }
+
+    /** 接入诊断页的依赖（表结构 + 执行器）。 */
+    public void setDiagnostics(io.agenticdb.jdbc.DbSession session,
+                               io.agenticdb.introspect.SchemaService schemaService,
+                               java.util.concurrent.Executor executor) {
+        this.diagnosticSession = session;
+        this.diagnosticSchemaService = schemaService;
+        this.diagnosticExecutor = executor;
+    }
+
+    public void showWelcome() {        activeGrid = null;
         activeQuery = null;
         activeStructure = null;
         activeConnections = null;
 
         Label logo = new Label("◈");
+        logo.setAccessibleText("连接");
         logo.getStyleClass().add("adb-welcome__logo");
 
         Label title = new Label("AgenticDB");
@@ -275,12 +321,23 @@ public final class WorkspaceView extends StackPane {
         return true;
     }
 
+    /**
+     * 取消当前正在跑的操作（4.5-13）。
+     *
+     * <p>以前只取消查询页；数据页的加载 / 保存不会被 {@code ⌘.} 打断。
+     * 现在两边都覆盖。
+     */
     public boolean cancelQuery() {
-        if (activeQuery == null || !activeQuery.isRunning()) {
-            return false;
+        boolean cancelled = false;
+        if (activeQuery != null && activeQuery.isRunning()) {
+            activeQuery.cancel();
+            cancelled = true;
         }
-        activeQuery.cancel();
-        return true;
+        if (activeGrid != null && activeGrid.isBusy()) {
+            activeGrid.cancel();
+            cancelled = true;
+        }
+        return cancelled;
     }
 
     public boolean explainQuery() {
@@ -357,14 +414,26 @@ public final class WorkspaceView extends StackPane {
                     "⌨", "查询页不可用",
                     "演示数据库未连接，查询页无法创建。请重启应用后重试。"));
             case STRUCTURE -> body.getChildren().add(emptyState(
-                    "⚙", "结构页不可用",
+                    "☰", "结构页不可用",
                     "连接未打开时无法读取表结构。请重新连接后再试。"));
             case CONNECTIONS -> body.getChildren().add(emptyState(
                     "◈", "连接管理不可用",
                     "连接配置不可用时无法管理连接。请重启应用后重试。"));
-            case TOOL -> body.getChildren().add(emptyState(
-                    "◆", tab.title(),
-                    "该工具只保留入口；功能按 NAVICAT-TODO 的 P5/P6 接入。"));
+            case TOOL -> {
+                // ⭐ 查询历史与诊断有真功能可接，不再是空壳。
+                if ("查询历史".equals(tab.title()) && history != null) {
+                    body.getChildren().add(new HistoryPage(history, onUseHistory));
+                } else if (tab.title() != null && tab.title().startsWith("诊断")
+                        && diagnosticSession != null) {
+                    String table = tab.title().substring("诊断 · ".length()).trim();
+                    body.getChildren().add(new DiagnosticsPage(diagnosticSession,
+                            diagnosticSchemaService, table, diagnosticExecutor));
+                } else {
+                    body.getChildren().add(emptyState(
+                            "◆", tab.title(),
+                            "该工具只保留入口；功能按 NAVICAT-TODO 的 P5/P6 接入。"));
+                }
+            }
             case SETTINGS -> body.getChildren().add(settingsSkeleton());
             default -> body.getChildren().add(emptyState("◇", tab.title(), ""));
         }

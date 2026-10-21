@@ -6,6 +6,7 @@ import io.agenticdb.jdbc.JdbcSession;
 
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -42,6 +43,11 @@ public final class SessionManager implements AutoCloseable {
 
     public synchronized boolean isOpen(String id) {
         return sessions.containsKey(id);
+    }
+
+    /** 当前打开的会话 id。用于清理「没有标签页引用」的孤儿会话。 */
+    public synchronized List<String> openIds() {
+        return List.copyOf(sessions.keySet());
     }
 
     public synchronized void close(String id) {

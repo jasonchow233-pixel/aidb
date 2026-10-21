@@ -37,8 +37,13 @@ public final class KeychainCredentialStore implements CredentialStore {
             delete(profileId);
             return;
         }
-        ProcessResult result = run(5, "add-generic-password", "-U", "-s", SERVICE, "-a",
-                profileId, "-w", password);
+        // ⭐ A13：口令走 <b>stdin</b>，不进 argv。
+        //    `security add-generic-password -w <password>` 会把明文口令暴露在
+        //    进程参数里 —— `ps` / 活动监视器一眼就能看到，那是明文密码泄露。
+        //    `security` 支持从 stdin 读：`-w` 不带值时提示两次输入，
+        //    这里用「`-w` + 空格 + 换行」的形式喂给它（等价于交互输入一次）。
+        ProcessResult result = runWithInput(5, password,
+                "add-generic-password", "-U", "-s", SERVICE, "-a", profileId, "-w");
         if (result.exitCode() != 0) {
             throw new IllegalStateException("Keychain 写入失败: " + result.stderr().trim());
         }
@@ -50,12 +55,29 @@ public final class KeychainCredentialStore implements CredentialStore {
     }
 
     private ProcessResult run(int timeoutSeconds, String... args) {
+        return runWithInput(timeoutSeconds, null, args);
+    }
+
+    /**
+     * 跑一条命令；{@code stdin} 非空时把它写进子进程的标准输入。
+     *
+     * <p>口令只能走这条路，绝不能出现在 argv 里。
+     */
+    private ProcessResult runWithInput(int timeoutSeconds, String stdin, String... args) {
         try {
             java.util.List<String> command = new java.util.ArrayList<>();
             command.add(executable);
             command.addAll(java.util.Arrays.asList(args));
             Process process = new ProcessBuilder(command).start();
-            process.getOutputStream().close();
+            if (stdin == null) {
+                process.getOutputStream().close();
+            } else {
+                // 口令以「一行」的形式送出，末尾补换行 —— `security` 按行读。
+                byte[] payload = (stdin + "\n").getBytes(StandardCharsets.UTF_8);
+                process.getOutputStream().write(payload);
+                process.getOutputStream().flush();
+                process.getOutputStream().close();
+            }
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             ByteArrayOutputStream err = new ByteArrayOutputStream();
             Thread outReader = reader(process.getInputStream(), out);

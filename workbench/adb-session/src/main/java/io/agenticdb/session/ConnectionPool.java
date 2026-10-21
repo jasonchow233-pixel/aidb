@@ -33,6 +33,9 @@ public final class ConnectionPool {
 
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(spec.jdbcUrl());
+        // ⭐ R4：options 先加，user / password 后设 —— 钥匙串里的口令必须赢。
+        //    否则 options 里的 password 会覆盖它，落盘的明文反而压过安全存储。
+        spec.options().forEach(config::addDataSourceProperty);
         config.setUsername(spec.username());
         config.setPassword(spec.password());
         config.setMaximumPoolSize(1);
@@ -43,7 +46,6 @@ public final class ConnectionPool {
         config.setMaxLifetime(1_800_000);
         config.setPoolName("adb-" + spec.kind().id());
         config.setAutoCommit(true);
-        spec.options().forEach(config::addDataSourceProperty);
 
         HikariDataSource dataSource = new HikariDataSource(config);
         try {

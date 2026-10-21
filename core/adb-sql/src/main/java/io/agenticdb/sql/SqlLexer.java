@@ -30,7 +30,11 @@ public final class SqlLexer {
             "BLOB", "NUMERIC", "VARCHAR", "CHAR", "DATE", "TIME", "TIMESTAMP",
             "BOOLEAN", "JSON", "AUTOINCREMENT", "REPLACE", "RETURNING", "ATTACH",
             "DETACH", "VACUUM", "ANALYZE", "REINDEX", "GRANT", "REVOKE", "SHOW",
-            "DESCRIBE", "USE", "DATABASE", "SCHEMA", "TEMP", "TEMPORARY");
+            "DESCRIBE", "USE", "DATABASE", "SCHEMA", "TEMP", "TEMPORARY",
+            // ↓ 语句级动词：危险分级（DangerClassifier）要靠「是不是关键字」把
+            //   标识符（表名/列名）和真正的语句头区分开，缺一个就会误判。
+            "MERGE", "UPSERT", "CALL", "DO", "COPY", "LOCK", "RESET", "SAVEPOINT",
+            "RELEASE", "START");
 
     /**
      * 把 SQL 切成 token。空白也保留，这样 UI 可以直接按起止 offset 覆盖整段文本。

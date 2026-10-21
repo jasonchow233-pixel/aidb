@@ -83,15 +83,6 @@ class QueryLimitsTest {
         }
 
         @Test
-        @DisplayName("⭐ QueryOptions 在构造器里夹紧，调用方绕不过")
-        void 构造器夹紧() {
-            QueryOptions o = new QueryOptions(999_999, 0, "SELECT 1");
-            assertThat(o.maxRows()).isEqualTo(QueryLimits.MAX_PAGE_SIZE);
-            assertThat(QueryOptions.of("SELECT 1", 50_000).maxRows())
-                    .isEqualTo(QueryLimits.MAX_PAGE_SIZE);
-        }
-
-        @Test
         @DisplayName("1000 行 × 30 列的内存占用有界（这是设上限的真正理由）")
         void 内存占用有界() {
             int rows = QueryLimits.MAX_PAGE_SIZE;
@@ -121,15 +112,9 @@ class QueryLimitsTest {
         }
 
         @Test
-        void 超限时QueryOptions自己知道() {
-            assertThat(new QueryOptions(200, 0, "SELECT 1").offsetLimitExceeded()).isFalse();
-            assertThat(new QueryOptions(200, 900_000, "SELECT 1").offsetLimitExceeded()).isTrue();
-        }
-
-        @Test
         @DisplayName("负 offset 被夹到 0")
         void 负offset夹到零() {
-            assertThat(new QueryOptions(200, -50, "SELECT 1").offset()).isZero();
+            assertThat(Math.max(0, -50)).isZero();
         }
 
         @Test

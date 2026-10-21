@@ -3,7 +3,6 @@ package io.agenticdb.ui.shell;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
-import javafx.scene.control.RadioMenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.ToggleGroup;
 
@@ -31,6 +30,8 @@ public final class MenuBarFactory {
     private Menu fileMenu() {
         return new Menu("文件", null,
                 actions.menuItem("new-connection"),
+                // 4.5-10：这两个动作以前只注册、没有任何菜单入口，只能靠 ⌘K 找。
+                actions.menuItem("connections.manage"),
                 actions.menuItem("new-query"),
                 actions.menuItem("open-sql"),
                 new SeparatorMenuItem(),
@@ -41,13 +42,13 @@ public final class MenuBarFactory {
     }
 
     private Menu editMenu() {
+        // 撤销 / 重做 / 复制委托给当前活动页；剪切 / 粘贴在数据库客户端没有语义，
+        // 按 TODO §12「占位要么接要么删」删除，不留永久禁用项。
         return new Menu("编辑", null,
-                disabled("撤销"),
-                disabled("重做"),
+                actions.menuItem("edit.undo"),
+                actions.menuItem("edit.redo"),
                 new SeparatorMenuItem(),
-                disabled("剪切"),
-                disabled("复制"),
-                disabled("粘贴"),
+                actions.menuItem("edit.copy"),
                 new SeparatorMenuItem(),
                 actions.menuItem("focus-search"),
                 actions.menuItem("query.comment"),
@@ -55,18 +56,15 @@ public final class MenuBarFactory {
     }
 
     private Menu viewMenu() {
-        Menu density = new Menu("密度");
         ToggleGroup group = new ToggleGroup();
-        density.getItems().addAll(
-                densityItem("紧凑", "density-compact", group),
-                densityItem("标准", "density-normal", group),
-                densityItem("宽松", "density-comfort", group));
 
         return new Menu("视图", null,
                 actions.menuItem("sidebar.toggle"),
                 new SeparatorMenuItem(),
                 actions.menuItem("theme.toggle"),
-                density,
+                actions.radioMenuItem("density-compact", group),
+                actions.radioMenuItem("density-normal", group),
+                actions.radioMenuItem("density-comfort", group),
                 new SeparatorMenuItem(),
                 actions.menuItem("window.zoom"));
     }
@@ -74,6 +72,8 @@ public final class MenuBarFactory {
     private Menu databaseMenu() {
         return new Menu("数据库", null,
                 actions.menuItem("refresh"),
+                // 4.5-10：以前只注册、没有任何菜单入口。
+                actions.menuItem("connection.reconnect"),
                 actions.menuItem("demo.open"),
                 actions.menuItem("new-query"),
                 new SeparatorMenuItem(),
@@ -107,18 +107,5 @@ public final class MenuBarFactory {
                 actions.menuItem("shortcuts"),
                 new SeparatorMenuItem(),
                 actions.menuItem("about"));
-    }
-
-    private RadioMenuItem densityItem(String label, String actionId, ToggleGroup group) {
-        RadioMenuItem item = new RadioMenuItem(label);
-        item.setToggleGroup(group);
-        item.setOnAction(event -> actions.run(actionId));
-        return item;
-    }
-
-    private static MenuItem disabled(String label) {
-        MenuItem item = new MenuItem(label);
-        item.setDisable(true);
-        return item;
     }
 }

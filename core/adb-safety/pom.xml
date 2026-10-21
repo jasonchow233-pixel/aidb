@@ -16,6 +16,12 @@
 
   <dependencies>
     <dependency><groupId>io.agenticdb</groupId><artifactId>adb-model</artifactId></dependency>
+    <!--
+      危险分级必须用词法内核切分语句：裸 String.split(";") 会把
+      "INSERT INTO t VALUES ('a;b')" 里的字符串分号当成语句边界。
+      adb-sql 是纯 Java、不依赖 UI 与 JDBC，向下依赖它不违反分层。
+    -->
+    <dependency><groupId>io.agenticdb</groupId><artifactId>adb-sql</artifactId></dependency>
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><scope>test</scope></dependency>
   </dependencies>

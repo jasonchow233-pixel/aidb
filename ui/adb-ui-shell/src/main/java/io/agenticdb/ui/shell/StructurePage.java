@@ -9,7 +9,6 @@ import io.agenticdb.introspect.TriggerDef;
 import io.agenticdb.introspect.ForeignKeyDef;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.ColumnDef;
-import io.agenticdb.model.Danger;
 import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
@@ -21,6 +20,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.event.ActionEvent;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
@@ -195,10 +195,13 @@ public final class StructurePage extends VBox implements AutoCloseable {
         addColumn(columns, "可空", value -> new ReadOnlyStringWrapper(value.nullable() ? "YES" : "NO"));
         addColumn(columns, "默认值", value -> new ReadOnlyStringWrapper(
                 value.defaultValue() == null ? "" : value.defaultValue()));
-        addColumn(columns, "主键", value -> new ReadOnlyStringWrapper(value.primaryKey() ? "🔑" : ""));
+        addColumn(columns, "主键", value -> new ReadOnlyStringWrapper(value.primaryKey() ? "PK" : ""));
         addColumn(columns, "唯一", value -> new ReadOnlyStringWrapper(value.unique() ? "✓" : ""));
-        addColumn(columns, "注释", value -> new ReadOnlyStringWrapper(
-                value.comment() == null ? "" : value.comment()));
+        // 注释列只在方言真支持时出现：SQLite 没有列注释，恒为空列就是死 UI（4.5-22）。
+        if (session.dialect().supportsColumnComment()) {
+            addColumn(columns, "注释", value -> new ReadOnlyStringWrapper(
+                    value.comment() == null ? "" : value.comment()));
+        }
         columns.setRowFactory(view -> {
             TableRow<ColumnDef> row = new TableRow<>();
             row.setOnContextMenuRequested(event -> {
@@ -379,10 +382,25 @@ public final class StructurePage extends VBox implements AutoCloseable {
                 initial == null ? "" : (initial.comment() == null ? "" : initial.comment()));
         comment.setId("structure-dialog-comment");
         comment.setPromptText("注释（可空）");
+        // SQLite 没有列注释：输入框可打字但存不住、读不回，是「数据丢失幻觉」。
+        // 按能力禁用并说明，而不是留一个骗人的输入框（4.5-22）。
+        boolean commentSupported = session.dialect().supportsColumnComment();
+        comment.setDisable(!commentSupported);
+        if (!commentSupported) {
+            comment.setPromptText(session.dialect().displayName() + " 不支持列注释");
+        }
 
         CheckBox unique = new CheckBox("唯一");
         unique.setId("structure-dialog-unique");
         unique.setSelected(initial != null && initial.unique());
+
+        Label error = new Label();
+        error.setId("structure-dialog-error");
+        error.getStyleClass().add("adb-error");
+        error.setWrapText(true);
+        error.setMaxWidth(360);
+        error.setVisible(false);
+        error.setManaged(false);
 
         GridPane grid = new GridPane();
         grid.setHgap(10);
@@ -392,11 +410,27 @@ public final class StructurePage extends VBox implements AutoCloseable {
         grid.addRow(2, new Label("默认值"), defaultValue);
         grid.addRow(3, new Label("注释"), comment);
         grid.addRow(4, nullable, unique);
+        grid.add(error, 0, 5, 2, 1);
         dialog.getDialogPane().setContent(grid);
 
         ButtonType ok = new ButtonType("确定", ButtonBar.ButtonData.OK_DONE);
         ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
         dialog.getDialogPane().getButtonTypes().setAll(ok, cancel);
+        // ⭐ 校验失败必须把对话框留在原地：用户改一个字符就能继续，
+        //    关掉再重开等于把刚才填的四五个字段全丢了（4.5-12 / 4.5-16）。
+        Button okButton = (Button) dialog.getDialogPane().lookupButton(ok);
+        okButton.addEventFilter(ActionEvent.ACTION, event -> {
+            String problem = columnSpecProblem(name.getText(), type.getValue(),
+                    initial == null ? null : initial.name(),
+                    structure == null ? List.of() : structure.columns());
+            if (problem != null) {
+                error.setText(problem);
+                error.setVisible(true);
+                error.setManaged(true);
+                feedback.status(problem);
+                event.consume();
+            }
+        });
         dialog.setResultConverter(button -> {
             if (button != ok) {
                 return null;
@@ -424,12 +458,60 @@ public final class StructurePage extends VBox implements AutoCloseable {
         });
     }
 
+    /**
+     * 列名 / 类型的校验。返回 {@code null} 表示通过，否则返回给人看的原因。
+     *
+     * <p>包级可见是为了让单测直接断言规则，不必真的弹出对话框。
+     */
+    static String columnSpecProblem(String rawName, String rawType,
+                                    String selfName, List<ColumnDef> existing) {
+        String name = rawName == null ? "" : rawName.trim();
+        if (name.isEmpty()) {
+            return "列名不能为空";
+        }
+        if (!VALID_COLUMN_NAME.matcher(name).matches()) {
+            return "列名只能以字母或下划线开头，且只能包含字母、数字、下划线和 $";
+        }
+        String type = rawType == null ? "" : rawType.trim();
+        if (type.isEmpty()) {
+            return "列类型不能为空";
+        }
+        for (ColumnDef column : existing) {
+            // 改名时自己那个旧名字不算冲突。
+            if (selfName != null && column.name().equalsIgnoreCase(selfName)) {
+                continue;
+            }
+            if (column.name().equalsIgnoreCase(name)) {
+                return "列名 " + name + " 已存在";
+            }
+        }
+        return null;
+    }
+
+    /** 列名合法性：与 {@code StructureSqlBuilder} 的生成规则保持一致。 */
+    private static final java.util.regex.Pattern VALID_COLUMN_NAME =
+            java.util.regex.Pattern.compile("[A-Za-z_][A-Za-z0-9_$]*");
+
     private void renameColumn(ColumnDef column) {
         TextInputDialog dialog = new TextInputDialog(column.name());
         dialog.setTitle("重命名列");
         dialog.setHeaderText("重命名 " + column.name());
         dialog.initOwner(sceneWindow());
         dialog.getEditor().setId("structure-rename-field");
+        // ⭐ 同上：空名字或非法的名字不能静默放过，更不能把对话框关掉。
+        Button okButton = (Button) dialog.getDialogPane().lookupButton(ButtonType.OK);
+        okButton.addEventFilter(ActionEvent.ACTION, event -> {
+            String value = dialog.getEditor().getText();
+            boolean unchanged = value != null && value.trim().equals(column.name());
+            String problem = unchanged
+                    ? null
+                    : columnSpecProblem(value, "TEXT", column.name(),
+                            structure == null ? List.of() : structure.columns());
+            if (problem != null) {
+                feedback.status(problem);
+                event.consume();
+            }
+        });
         dialog.showAndWait().ifPresent(newName -> {
             if (newName.isBlank() || newName.equals(column.name())) {
                 return;

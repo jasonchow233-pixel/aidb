@@ -39,6 +39,29 @@ class DeclarationLoaderTest {
                     DeclarationLoader.load(declarationsRoot()));
         }
 
+        /**
+         * A3：classpath 加载路径以前是<b>坏的</b> ——
+         * 它把 {@code /declarations/<子目录>} 当成「换行分隔的文件名索引」去读，
+         * 而那其实是个目录：爆炸 classpath 下抛 IOException，
+         * jar 下读出空字符串 → <b>静默返回空模型</b>。
+         * 这条测试守的是「classpath 与源码目录解析结果完全一致」。
+         */
+        @Test
+        void classpathAndPathAgree() {
+            DeclaredModel fromClasspath = DeclarationLoader.loadFromClasspath();
+
+            assertThat(fromClasspath.connections())
+                    .as("classpath 加载不能静默返回空模型（A3）")
+                    .hasSameSizeAs(model.connections());
+            assertThat(fromClasspath.families()).hasSameSizeAs(model.families());
+            assertThat(fromClasspath.dialects()).hasSameSizeAs(model.dialects());
+
+            assertThat(fromClasspath.connections())
+                    .extracting(ConnectionDescriptor::id)
+                    .containsExactlyInAnyOrderElementsOf(
+                            model.connections().stream().map(ConnectionDescriptor::id).toList());
+        }
+
         @Test
         void 数量对得上() {
             assertThat(model.connections()).hasSize(4);

@@ -122,7 +122,7 @@ class DangerClassifierTest {
     }
 
     @Nested
-    @DisplayName("边界与降级")
+    @DisplayName("边界输入")
     class EdgeCases {
 
         @Test
@@ -135,12 +135,179 @@ class DangerClassifierTest {
         }
 
         @Test
-        @DisplayName("未知语句降级为只读")
-        void 未知语句failOpen() {
+        @DisplayName("只有注释的输入返回只读")
+        void 只有注释的输入返回只读() {
+            assertThat(DangerClassifier.classify("-- 什么都没有")).isEqualTo(Danger.READ_ONLY);
+            assertThat(DangerClassifier.classify("/* 什么都没有 */")).isEqualTo(Danger.READ_ONLY);
+        }
+    }
+
+    @Nested
+    @DisplayName("未知语句必须 fail-closed")
+    class UnknownHead {
+
+        @Test
+        @DisplayName("未知语句头按「管理操作」处理，不得静默执行")
+        void 未知语句failClosed() {
+            assertThat(DangerClassifier.classify("SET search_path TO public"))
+                    .as("SET 改的是会话状态，不是只读；旧版判成 READ_ONLY 等于不拦")
+                    .isNotEqualTo(Danger.READ_ONLY);
+            assertThat(DangerClassifier.classify("MERGE INTO t USING s ON (1=1) WHEN MATCHED THEN UPDATE SET a=1"))
+                    .isEqualTo(Danger.MUTATING);
+            assertThat(DangerClassifier.classify("UPSERT INTO t VALUES (1)"))
+                    .isEqualTo(Danger.MUTATING);
+            assertThat(DangerClassifier.classify("COPY t FROM '/tmp/x.csv'"))
+                    .isEqualTo(Danger.MUTATING);
+            assertThat(DangerClassifier.classify("LOCK TABLE t"))
+                    .isEqualTo(Danger.MUTATING);
+        }
+
+        @ParameterizedTest(name = "{0}")
+        @ValueSource(strings = {
+                "CALL do_something()",
+                "DO $$ BEGIN PERFORM 1; END $$",
+                "CALL some_schema.some_proc(1)",
+        })
+        @DisplayName("能执行任意代码的语句按「管理操作」处理")
+        void 可执行任意代码的语句按管理操作处理(String sql) {
+            assertThat(DangerClassifier.classify(sql))
+                    .as("CALL / DO 能跑任意代码，必须走最重的确认")
+                    .isEqualTo(Danger.ADMIN);
+        }
+
+        @Test
+        @DisplayName("完全认不出来的语句头也是管理操作，不能是只读")
+        void 完全认不出来的语句头也是管理操作() {
+            assertThat(DangerClassifier.classify("FLUSHALL"))
+                    .isEqualTo(Danger.ADMIN);
+            assertThat(DangerClassifier.classify("WHATEVER SOMETHING"))
+                    .isEqualTo(Danger.ADMIN);
+        }
+
+        @Test
+        @DisplayName("EXPLAIN ANALYZE 会真的执行语句，必须按内层语句分级")
+        void explainAnalyze按内层语句分级() {
             assertThat(DangerClassifier.classify("EXPLAIN ANALYZE SELECT 1"))
                     .isEqualTo(Danger.READ_ONLY);
-            assertThat(DangerClassifier.classify("SET search_path TO public"))
+            assertThat(DangerClassifier.classify("EXPLAIN ANALYZE DELETE FROM t"))
+                    .as("PostgreSQL 的 EXPLAIN ANALYZE 真的执行 DELETE")
+                    .isEqualTo(Danger.DESTRUCTIVE);
+            assertThat(DangerClassifier.classify("EXPLAIN ANALYZE DELETE FROM t WHERE id=1"))
+                    .isEqualTo(Danger.MUTATING);
+        }
+
+        @Test
+        @DisplayName("普通 EXPLAIN 只解释不执行，是只读")
+        void 普通explain是只读() {
+            assertThat(DangerClassifier.classify("EXPLAIN SELECT * FROM users"))
                     .isEqualTo(Danger.READ_ONLY);
+            assertThat(DangerClassifier.classify("EXPLAIN QUERY PLAN SELECT * FROM users"))
+                    .isEqualTo(Danger.READ_ONLY);
+        }
+    }
+
+    @Nested
+    @DisplayName("WITH 体内可能藏着写语句")
+    class WithBody {
+
+        @Test
+        @DisplayName("WITH 后面跟 DELETE 不能判只读")
+        void with后面跟delete不能判只读() {
+            assertThat(DangerClassifier.classify("WITH cte AS (SELECT 1) DELETE FROM t"))
+                    .as("语句头是 WITH，但它删数据 —— 旧版漏判成只读，直接执行")
+                    .isEqualTo(Danger.DESTRUCTIVE);
+            assertThat(DangerClassifier.classify("WITH cte AS (SELECT 1) DELETE FROM t WHERE id=1"))
+                    .isEqualTo(Danger.MUTATING);
+        }
+
+        @Test
+        @DisplayName("WITH 后面跟 UPDATE 也不能判只读")
+        void with后面跟update不能判只读() {
+            assertThat(DangerClassifier.classify("WITH cte AS (SELECT 1) UPDATE t SET a=1"))
+                    .isEqualTo(Danger.MUTATING);
+        }
+
+        @Test
+        @DisplayName("CTE 自身带写语句同样要拦")
+        void cte自身带写语句同样要拦() {
+            assertThat(DangerClassifier.classify(
+                    "WITH moved AS (DELETE FROM old_t RETURNING *) SELECT * FROM moved"))
+                    .isEqualTo(Danger.DESTRUCTIVE);
+        }
+
+        @Test
+        @DisplayName("纯读的 WITH 仍然是只读")
+        void 纯读的with仍然是只读() {
+            assertThat(DangerClassifier.classify("WITH x AS (SELECT 1) SELECT * FROM x"))
+                    .isEqualTo(Danger.READ_ONLY);
+            assertThat(DangerClassifier.classify(
+                    "WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n<10) SELECT * FROM c"))
+                    .isEqualTo(Danger.READ_ONLY);
+        }
+
+        @Test
+        @DisplayName("字符串里的写语句关键字不算数")
+        void 字符串里的写语句关键字不算数() {
+            assertThat(DangerClassifier.classify(
+                    "WITH x AS (SELECT 1) SELECT 'delete from t' AS note"))
+                    .as("字面量里的 delete 不是语句")
+                    .isEqualTo(Danger.READ_ONLY);
+        }
+    }
+
+    @Nested
+    @DisplayName("切分必须用词法内核")
+    class SafeSplit {
+
+        @Test
+        @DisplayName("字符串字面量里的分号不切碎语句")
+        void 字符串字面量里的分号不切碎语句() {
+            assertThat(DangerClassifier.classify("INSERT INTO t VALUES ('a;b')"))
+                    .as("裸 split(\";\") 会把后半截 b') 当成未知语句")
+                    .isEqualTo(Danger.MUTATING);
+        }
+
+        @Test
+        @DisplayName("注释里的分号不切碎语句")
+        void 注释里的分号不切碎语句() {
+            assertThat(DangerClassifier.classify("SELECT 1 -- ; DROP TABLE t"))
+                    .isEqualTo(Danger.READ_ONLY);
+            assertThat(DangerClassifier.classify("/* ; DROP TABLE t */ SELECT 1"))
+                    .isEqualTo(Danger.READ_ONLY);
+        }
+
+        @Test
+        @DisplayName("分号后仍是危险语句时要取最危险")
+        void 分号后仍是危险语句时要取最危险() {
+            assertThat(DangerClassifier.classify("INSERT INTO t VALUES ('a;b'); DROP TABLE t"))
+                    .isEqualTo(Danger.DESTRUCTIVE);
+        }
+    }
+
+    @Nested
+    @DisplayName("PRAGMA 读写要分开")
+    class Pragma {
+
+        @ParameterizedTest(name = "{0}")
+        @ValueSource(strings = {
+                "PRAGMA table_info(users)",
+                "PRAGMA foreign_key_list(t)",
+                "PRAGMA database_list",
+        })
+        @DisplayName("读型 PRAGMA 是只读")
+        void 读型pragma是只读(String sql) {
+            assertThat(DangerClassifier.classify(sql)).isEqualTo(Danger.READ_ONLY);
+        }
+
+        @ParameterizedTest(name = "{0}")
+        @ValueSource(strings = {
+                "PRAGMA journal_mode = WAL",
+                "PRAGMA foreign_keys = OFF",
+                "PRAGMA user_version = 3",
+        })
+        @DisplayName("赋值型 PRAGMA 会改库，不能当只读")
+        void 赋值型pragma会改库(String sql) {
+            assertThat(DangerClassifier.classify(sql)).isEqualTo(Danger.MUTATING);
         }
     }
 

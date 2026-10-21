@@ -10,7 +10,7 @@ import java.util.List;
  */
 public final class Tokens {
 
-    public static final int COUNT = 120;
+    public static final int COUNT = 112;
 
     /** bg-canvas (color) */
     public static final String BG_CANVAS_DARK = "#0d1117";
@@ -139,38 +139,6 @@ public final class Tokens {
     /** risk-3-border (color) */
     public static final String RISK_3_BORDER_DARK = "rgba(188,76,255,.30)";
     public static final String RISK_3_BORDER_LIGHT = "rgba(188,76,255,.30)";
-
-    /** env-dev (color) */
-    public static final String ENV_DEV_DARK = "#388bfd";
-    public static final String ENV_DEV_LIGHT = "#0969da";
-
-    /** env-dev-bg (color) */
-    public static final String ENV_DEV_BG_DARK = "rgba(56,139,253,.10)";
-    public static final String ENV_DEV_BG_LIGHT = "rgba(56,139,253,.10)";
-
-    /** env-test (color) */
-    public static final String ENV_TEST_DARK = "#8b949e";
-    public static final String ENV_TEST_LIGHT = "#656d76";
-
-    /** env-test-bg (color) */
-    public static final String ENV_TEST_BG_DARK = "rgba(139,148,158,.10)";
-    public static final String ENV_TEST_BG_LIGHT = "rgba(139,148,158,.10)";
-
-    /** env-staging (color) */
-    public static final String ENV_STAGING_DARK = "#d29922";
-    public static final String ENV_STAGING_LIGHT = "#9a6700";
-
-    /** env-staging-bg (color) */
-    public static final String ENV_STAGING_BG_DARK = "rgba(210,153,34,.10)";
-    public static final String ENV_STAGING_BG_LIGHT = "rgba(210,153,34,.10)";
-
-    /** env-prod (color) */
-    public static final String ENV_PROD_DARK = "#f85149";
-    public static final String ENV_PROD_LIGHT = "#cf222e";
-
-    /** env-prod-bg (color) */
-    public static final String ENV_PROD_BG_DARK = "rgba(248,81,73,.10)";
-    public static final String ENV_PROD_BG_LIGHT = "rgba(248,81,73,.10)";
 
     /** success (color) */
     public static final String SUCCESS_DARK = "#3fb950";
@@ -498,21 +466,20 @@ public final class Tokens {
             "text-secondary", "text-tertiary", "text-disabled", "text-inverse", "text-link", "accent",
             "accent-hover", "accent-subtle", "risk-0-read", "risk-1-write", "risk-2-structure", "risk-3-admin",
             "risk-0-bg", "risk-0-border", "risk-1-bg", "risk-1-border", "risk-2-bg", "risk-2-border",
-            "risk-3-bg", "risk-3-border", "env-dev", "env-dev-bg", "env-test", "env-test-bg",
-            "env-staging", "env-staging-bg", "env-prod", "env-prod-bg", "success", "success-bg",
-            "warning", "warning-bg", "error", "error-bg", "info", "info-bg",
-            "trust-confirmed", "trust-learned", "trust-inferred", "syn-keyword", "syn-string", "syn-number",
-            "syn-comment", "syn-function", "syn-type", "syn-ident", "syn-param", "syn-error",
-            "fs-xs", "fs-sm", "fs-base", "fs-md", "fs-lg", "fs-xl",
-            "fs-2xl", "lh-tight", "lh-normal", "lh-dense", "fw-normal", "fw-medium",
-            "fw-bold", "sp-1", "sp-2", "sp-3", "sp-4", "sp-5",
-            "sp-6", "sp-8", "sp-10", "r-sm", "r-md", "r-lg",
-            "r-xl", "r-full", "h-titlebar", "h-toolbar", "h-tabbar", "h-statusbar",
-            "h-input", "h-input-md", "h-btn-sm", "h-btn", "h-btn-md", "w-sidebar-min",
-            "w-sidebar", "w-sidebar-max", "w-ai-panel", "row-compact", "row-normal", "row-comfort",
-            "shadow-sm", "shadow-md", "shadow-lg", "bw", "bw-focus", "z-dropdown",
-            "z-drawer", "z-dialog", "z-toast", "z-tooltip", "dur-instant", "dur-fast",
-            "dur-base", "dur-slow", "ease-out", "ease-in-out", "sidebar-width", "sidebar-width-collapsed"
+            "risk-3-bg", "risk-3-border", "success", "success-bg", "warning", "warning-bg",
+            "error", "error-bg", "info", "info-bg", "trust-confirmed", "trust-learned",
+            "trust-inferred", "syn-keyword", "syn-string", "syn-number", "syn-comment", "syn-function",
+            "syn-type", "syn-ident", "syn-param", "syn-error", "fs-xs", "fs-sm",
+            "fs-base", "fs-md", "fs-lg", "fs-xl", "fs-2xl", "lh-tight",
+            "lh-normal", "lh-dense", "fw-normal", "fw-medium", "fw-bold", "sp-1",
+            "sp-2", "sp-3", "sp-4", "sp-5", "sp-6", "sp-8",
+            "sp-10", "r-sm", "r-md", "r-lg", "r-xl", "r-full",
+            "h-titlebar", "h-toolbar", "h-tabbar", "h-statusbar", "h-input", "h-input-md",
+            "h-btn-sm", "h-btn", "h-btn-md", "w-sidebar-min", "w-sidebar", "w-sidebar-max",
+            "w-ai-panel", "row-compact", "row-normal", "row-comfort", "shadow-sm", "shadow-md",
+            "shadow-lg", "bw", "bw-focus", "z-dropdown", "z-drawer", "z-dialog",
+            "z-toast", "z-tooltip", "dur-instant", "dur-fast", "dur-base", "dur-slow",
+            "ease-out", "ease-in-out", "sidebar-width", "sidebar-width-collapsed"
     );
 
     private Tokens() { }

@@ -188,19 +188,19 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
     }
 
     private boolean confirmDelete(ConnectionProfile profile) {
-        ButtonType ok = new ButtonType("删除", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setTitle("删除连接");
-        alert.setHeaderText("删除 " + profile.name() + "？");
-        alert.setContentText("这会移除连接元数据与钥匙串口令，不会删除数据库中的数据。");
-        alert.getDialogPane().getButtonTypes().setAll(ok, cancel);
+        // ⛔ 同 AppShell：破坏性按钮不能是默认按钮（回车即删），统一走 DestructiveConfirm。
+        DestructiveConfirm confirm = DestructiveConfirm.of(
+                "删除连接",
+                "删除 " + profile.name() + "？",
+                "这会移除连接元数据与钥匙串口令，不会删除数据库中的数据。",
+                "删除");
+        Alert alert = confirm.alert();
         if (getScene() != null) {
             alert.getDialogPane().getStylesheets().addAll(getScene().getStylesheets());
             alert.getDialogPane().getStyleClass().add("adb-dialog");
             alert.initOwner(getScene().getWindow());
         }
-        return alert.showAndWait().orElse(cancel) == ok;
+        return confirm.confirmed();
     }
 
     public void focusSearch() {

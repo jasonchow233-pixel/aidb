@@ -73,7 +73,53 @@ public record ConnectionProfile(
 
     public ConnectionSpec spec(String password) {
         return new ConnectionSpec(kind, host, port, database, username,
-                password == null || password.isBlank() ? null : password, options);
+                password == null || password.isBlank() ? null : password,
+                sanitizedOptions(options));
+    }
+
+    /**
+     * 会话级敏感键：A14 / R4。
+     *
+     * <p>这些键<b>不允许</b>出现在 {@code options} 里：
+     * <ul>
+     *   <li>落盘时它们会明文进 {@code connections.json}；</li>
+     *   <li>连接时它们会<b>覆盖</b>钥匙串里的口令（options 后于 password 应用）。</li>
+     * </ul>
+     * 敏感值只能走 {@link CredentialStore}。
+     */
+    private static final java.util.Set<String> SENSITIVE_OPTION_KEYS = java.util.Set.of(
+            "password", "passwd", "pwd", "pass", "secret", "token", "apikey", "api_key",
+            "access_token", "accesstoken", "private_key", "privatekey",
+            "sslpassword", "sslkeypassword", "keystorepassword", "truststorepassword",
+            "sslkey", "sslcertificate");
+
+    /** 判断某个 options 键是不是敏感键（大小写不敏感）。 */
+    public static boolean isSensitiveOption(String key) {
+        if (key == null) {
+            return false;
+        }
+        String normalized = key.toLowerCase(Locale.ROOT).replace("-", "").replace("_", "");
+        return SENSITIVE_OPTION_KEYS.stream()
+                .map(value -> value.replace("-", "").replace("_", ""))
+                .anyMatch(normalized::equals);
+    }
+
+    /**
+     * 剔除敏感键后的 options（A14）。
+     *
+     * <p>落盘与建立连接都走这里 —— 敏感值一个都不许留下。
+     */
+    public static Map<String, String> sanitizedOptions(Map<String, String> value) {
+        if (value == null || value.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> safe = new LinkedHashMap<>();
+        value.forEach((key, item) -> {
+            if (!isSensitiveOption(key)) {
+                safe.put(key, item);
+            }
+        });
+        return Map.copyOf(safe);
     }
 
     public String displayTarget() {
