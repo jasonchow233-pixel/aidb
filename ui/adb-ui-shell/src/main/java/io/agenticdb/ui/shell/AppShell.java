@@ -43,6 +43,7 @@ import java.sql.SQLException;
 import java.time.LocalTime;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -452,6 +453,13 @@ public final class AppShell extends StackPane {
         if (height >= 600) {
             stage.setHeight(height);
         }
+        // ⭐ S7：窗口**位置**也记住（以前只记宽高 —— 每次打开都跑到屏幕正中）。
+        int x = settings.getInt("ui.window.x", -1);
+        int y = settings.getInt("ui.window.y", -1);
+        if (x > -2000 && y > -2000) {
+            stage.setX(x);
+            stage.setY(y);
+        }
         stage.setOnCloseRequest(event -> {
             if (!confirmDiscardAll()) {
                 event.consume();
@@ -464,8 +472,13 @@ public final class AppShell extends StackPane {
     public void afterShown(Stage stage) {
         this.stage = stage;
         workspace.requestFocus();
-        String connection = System.getProperty("adb.connection",
+        String requested = System.getProperty("adb.connection",
                 System.getenv().getOrDefault("ADB_CONNECTION", "")).trim();
+        if (requested.isEmpty()) {
+            // ⭐ S7：没指定连接就用上次用的那个
+            requested = settings.get("ui.lastConnection", "");
+        }
+        final String connection = requested;
         if (!connection.isEmpty()) {
             ConnectionProfile selected = connections.stream()
                     .filter(profile -> profile.id().equals(connection)
@@ -505,6 +518,10 @@ public final class AppShell extends StackPane {
             }
             Platform.runLater(workspace::runQuery);
         }
+        // ⭐ S7：恢复上次打开的对象。命令行显式指定时不让它覆盖。
+        if (initial.isEmpty() && structure.isEmpty() && initialQuery.isEmpty()) {
+            restoreLastTabs();
+        }
     }
 
     /** 窗口关闭时调用：先停掉在途查询，再关连接。 */
@@ -521,14 +538,79 @@ public final class AppShell extends StackPane {
         sessions.close();
     }
 
+    /**
+     * ⭐ S7：记住「上次是怎么用这个应用的」。
+     *
+     * <p>以前只记宽高 / 侧栏宽 / 折叠态；现在补上
+     * <b>窗口位置</b>、<b>上次用的连接</b>、<b>上次打开的对象</b>（标签页）。
+     */
     private void saveWindowState() {
         if (stage == null) {
             return;
         }
         settings.setInt("ui.window.width", (int) Math.round(stage.getWidth()));
         settings.setInt("ui.window.height", (int) Math.round(stage.getHeight()));
+        // ⭐ S7：窗口位置
+        settings.setInt("ui.window.x", (int) Math.round(stage.getX()));
+        settings.setInt("ui.window.y", (int) Math.round(stage.getY()));
         settings.setInt("ui.sidebar.width", sidebarWidth);
         settings.setBoolean("ui.sidebar.collapsed", sidebarCollapsed);
+        // ⭐ S7：上次用的连接
+        if (activeProfile != null) {
+            settings.set("ui.lastConnection", activeProfile.id());
+        }
+        // ⭐ S7：上次打开的对象（标签页）—— 重开后接着用
+        StringBuilder tabs = new StringBuilder();
+        for (TabItem tab : tabBar.openTabs()) {
+            if (tabs.length() > 0) {
+                tabs.append('\n');
+            }
+            tabs.append(tab.kind().name()).append('\t')
+                    .append(tab.connectionId() == null ? "" : tab.connectionId())
+                    .append('\t')
+                    .append(tab.target() == null ? "" : tab.target().replace('\t', ' '))
+                    .append('\t')
+                    .append(tab.title().replace('\t', ' '));
+        }
+        settings.set("ui.lastTabs", tabs.toString());
+    }
+
+    /**
+     * 恢复上次打开的标签页（S7）。
+     *
+     * <p>只在「上次退出时没有未保存修改」的情况下恢复 —— 否则会把用户
+     * 以为还在的脏数据悄悄换掉。
+     */
+    private void restoreLastTabs() {
+        String raw = settings.get("ui.lastTabs", "");
+        if (raw == null || raw.isBlank()) {
+            return;
+        }
+        for (String line : raw.split("\n")) {
+            if (line.isBlank()) {
+                continue;
+            }
+            String[] parts = line.split("\t", -1);
+            if (parts.length < 4) {
+                continue;
+            }
+            TabKind kind;
+            try {
+                kind = TabKind.valueOf(parts[0]);
+            } catch (IllegalArgumentException e) {
+                continue;
+            }
+            String connectionId = parts[1].isBlank() ? null : parts[1];
+            String target = parts[2].isBlank() ? null : parts[2];
+            String title = parts[3].isBlank() ? target : parts[3];
+            if (kind != TabKind.GRID && kind != TabKind.STRUCTURE && kind != TabKind.QUERY) {
+                continue;
+            }
+            String id = kind.name().toLowerCase(Locale.ROOT) + ":"
+                    + (connectionId == null ? activeProfileId() : connectionId) + ":"
+                    + (target == null ? System.nanoTime() : target);
+            openTab(new TabItem(id, title, kind, target, connectionId));
+        }
     }
 
     // ─────────────────────────── 动作 ───────────────────────────

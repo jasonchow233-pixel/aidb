@@ -100,6 +100,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private IntConsumer dirtyListener = count -> { };
     /** 「存为命名查询」的回调（名字, SQL）。 */
     private java.util.function.BiConsumer<String, String> onSaveNamed = (name, sql) -> { };
+    /** 偏好存储（列宽持久化）。 */
+    private final SettingsStore settings;
     private long requestSequence;
     private Future<?> inFlight;
     private boolean running;
@@ -141,6 +143,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         this.connectionName = connectionName;
         this.dbExecutor = dbExecutor;
         this.feedback = feedback;
+        this.settings = settings;
         this.history = new QueryHistory(settings);
 
         getStyleClass().addAll("adb-page", "adb-query-page");
@@ -778,6 +781,26 @@ public final class QueryPage extends VBox implements AutoCloseable {
         feedback.readonly(false);
     }
 
+    /**
+     * ⭐ Q4：结果列宽的持久化。
+     *
+     * <p>键带连接名，避免两个连接的结果表互相覆盖。
+     */
+    private double savedColumnWidth(String key, double fallback) {
+        if (settings == null || connectionName == null) {
+            return fallback;
+        }
+        return settings.getInt("ui.query.colwidth." + connectionName + "." + key,
+                (int) fallback);
+    }
+
+    private void saveColumnWidth(String key, double width) {
+        if (settings == null || connectionName == null || width <= 0) {
+            return;
+        }
+        settings.setInt("ui.query.colwidth." + connectionName + "." + key, (int) width);
+    }
+
     private String explainSql(String sql) {
         // ⭐ 执行计划语句由方言给 —— 以前这里是 switch，加一种库要改这里。
         return session.dialect().explainSql(sql);
@@ -815,11 +838,16 @@ public final class QueryPage extends VBox implements AutoCloseable {
             TableColumn<java.util.Map<String, Object>, Object> column = new TableColumn<>();
             column.setText(definition.name());
             column.setUserData(key);
-            column.setSortable(false);
+            // ⭐ Q3：结果集可以排序（以前写死 setSortable(false) —— 点表头没反应）。
+            column.setSortable(true);
             column.setPrefWidth(140);
             column.setCellValueFactory(data ->
                     new ReadOnlyObjectWrapper<>(data.getValue().get(key)));
             column.setCellFactory(cell -> new ResultCell(definition));
+            // ⭐ Q4：列宽持久化（以前每次都固定 140px，改完就没了）。
+            column.setPrefWidth(savedColumnWidth(key, 140));
+            column.widthProperty().addListener((obs, old, width) ->
+                    saveColumnWidth(key, width.doubleValue()));
             table.getColumns().add(column);
         }
 

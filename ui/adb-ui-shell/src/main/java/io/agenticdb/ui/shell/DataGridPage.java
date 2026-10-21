@@ -2590,6 +2590,16 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 if (event.getCode() == KeyCode.ESCAPE) {
                     cancelEdit();
                     event.consume();
+                    return;
+                }
+                // ⭐ G5：编辑完直接跳到下一格 —— Tab 右移一格、↓ 下一行同列、
+                //    Shift+Tab 左移一格。这是所有数据库客户端的基本操作。
+                if (event.getCode() == KeyCode.TAB
+                        || event.getCode() == KeyCode.DOWN
+                        || event.getCode() == KeyCode.UP) {
+                    commitEditor();
+                    moveAfterEdit(event.getCode(), event.isShiftDown());
+                    event.consume();
                 }
             });
             editor.focusedProperty().addListener((observable, wasFocused, focused) -> {
@@ -2611,6 +2621,49 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             editor = null;
             setGraphic(null);
             updateItem(getItem(), isEmpty());
+        }
+
+        /**
+         * ⭐ G5：提交后把焦点移到下一格。
+         *
+         * <p>Tab → 右边一格；Shift+Tab → 左边一格；↓ → 下一行同一列；↑ → 上一行同一列。
+         */
+        private void moveAfterEdit(KeyCode code, boolean shift) {
+            int columnIndex = -1;
+            List<TableColumn<Map<String, Object>, ?>> columns = grid.getColumns();
+            for (int i = 0; i < columns.size(); i++) {
+                if (columns.get(i) == getTableColumn()) {
+                    columnIndex = i;
+                    break;
+                }
+            }
+            if (columnIndex < 0) {
+                return;
+            }
+            int rowIndex = grid.getSelectionModel().getSelectedIndex();
+            int targetColumn = columnIndex;
+            int targetRow = rowIndex;
+            switch (code) {
+                case TAB -> targetColumn = shift ? columnIndex - 1 : columnIndex + 1;
+                case DOWN -> targetRow = rowIndex + 1;
+                case UP -> targetRow = rowIndex - 1;
+                default -> {
+                    return;
+                }
+            }
+            if (targetColumn < 0 || targetColumn >= columns.size()) {
+                // 到头了就停在原格，不做无意义的移动。
+                return;
+            }
+            if (targetRow < 0 || targetRow >= grid.getItems().size()) {
+                return;
+            }
+            TableColumn<Map<String, Object>, ?> column = columns.get(targetColumn);
+            grid.getSelectionModel().clearAndSelect(targetRow, column);
+            grid.scrollTo(targetRow);
+            grid.requestFocus();
+            // 直接开始编辑下一格 —— 连续录入不用再点一次。
+            grid.edit(targetRow, column);
         }
 
         private void commitEditor() {

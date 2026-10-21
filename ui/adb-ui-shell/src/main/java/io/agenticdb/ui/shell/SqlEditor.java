@@ -1,12 +1,15 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.sql.SqlBrackets;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
 import javafx.scene.layout.StackPane;
 import org.fxmisc.richtext.CodeArea;
+import org.fxmisc.richtext.model.StyleSpans;
 import org.fxmisc.richtext.LineNumberFactory;
 
+import java.util.Collection;
 import java.util.function.Consumer;
 
 /**
@@ -30,7 +33,11 @@ public final class SqlEditor extends StackPane {
         area.textProperty().addListener((observable, oldText, newText) -> {
             area.setStyleSpans(0, SqlHighlighter.compute(newText));
             updateHint();
+            updateBracketHighlight();
         });
+        // ⭐ Q1：光标移动时高亮配对的括号。
+        area.caretPositionProperty().addListener(
+                (observable, oldPosition, newPosition) -> updateBracketHighlight());
 
         hint.getStyleClass().add("adb-query__hint");
         hint.setMouseTransparent(true);
@@ -77,6 +84,29 @@ public final class SqlEditor extends StackPane {
 
     public void addTextListener(Consumer<String> listener) {
         area.textProperty().addListener((observable, oldText, newText) -> listener.accept(newText));
+    }
+
+    /**
+     * ⭐ Q1：高亮配对的括号。
+     *
+     * <p>RichTextFX 0.11 没有 {@code addInlineStyle}，
+     * 所以走 {@link SqlHighlighter#withBracket}：把高亮类的样式段拆开、
+     * 把新类加进去 —— SQL 的语法配色不受影响。
+     */
+    private void updateBracketHighlight() {
+        String text = area.getText();
+        if (text == null || text.isEmpty()) {
+            area.setStyleSpans(0, SqlHighlighter.compute(text == null ? "" : text));
+            return;
+        }
+        StyleSpans<Collection<String>> base = SqlHighlighter.compute(text);
+        SqlBrackets.Match match = SqlBrackets.matchAt(text, area.getCaretPosition());
+        if (match == null) {
+            area.setStyleSpans(0, base);
+            return;
+        }
+        area.setStyleSpans(0, SqlHighlighter.withBracket(
+                SqlHighlighter.withBracket(base, match.start()), match.end()));
     }
 
     private void updateHint() {

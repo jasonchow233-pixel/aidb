@@ -1319,6 +1319,12 @@
     -fx-padding: 0 8 0 6;
 }
 
+/* ⭐ Q1：配对括号的高亮 */
+.adb-bracket-match {
+    -fx-fill: -adb-accent;
+    -fx-font-weight: bold;
+}
+
 .adb-sql-editor .caret {
     -fx-stroke: -adb-accent;
 }
