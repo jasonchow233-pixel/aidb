@@ -278,7 +278,7 @@ public final class SideBar extends VBox {
 
         search.setPromptText("搜索表、视图");
         search.getStyleClass().add("adb-sidebar__search");
-        search.setPrefHeight(28);
+        search.setPrefHeight(io.agenticdb.ui.Tokens.H_INPUT_LIGHT);
         search.textProperty().addListener((observable, oldValue, newValue) -> refreshTree());
 
         Button manageConnections = new Button("◈  连接管理");

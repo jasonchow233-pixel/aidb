@@ -63,7 +63,7 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**38 个测试类、344 条测试用例，0 失败**。统一命令：`./mvnw -B clean verify`。
+当前门禁：**40 个测试类、358 条测试用例，0 失败**。统一命令：`./mvnw -B clean verify`。
 
 统计口径用工具兜底（`@Nested` 的测试类在 surefire XML 里会写成 `tests="0"`）：
 
@@ -179,7 +179,7 @@ bootstrap/
 
 - 危险分级**第三层（驱动侧复查）仍不存在**：`DbSession.execute(sql)` 没有 `danger`
   参数。前两层（fail-closed 分类 + UI 确认）已落地。→ §10 A6
-- 令牌体系里还有 60 个非颜色令牌没有用起来（JavaFX 的 looked-up color 只支持颜色）。→ 4.5-14
+- 设计令牌已收敛到 60 个且全部被用到；`TokenParityTest` 门禁守着不会再长回摆设。
 - 保存反向撤销对“无主键/主键为空的新增行”不完整；UI 会明确提示。
 - 反向撤销只覆盖最近一次保存；发生新编辑后不再提供。
 - 转置视图只读，不参与批量选择。

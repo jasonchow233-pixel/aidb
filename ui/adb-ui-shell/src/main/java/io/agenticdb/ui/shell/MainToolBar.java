@@ -29,9 +29,10 @@ public final class MainToolBar extends HBox {
         getStyleClass().add("adb-toolbar");
         setAlignment(Pos.CENTER_LEFT);
         setSpacing(6);
-        setPrefHeight(36);
-        setMinHeight(36);
-        setMaxHeight(36);
+        int height = io.agenticdb.ui.Tokens.H_TOOLBAR_LIGHT;
+        setPrefHeight(height);
+        setMinHeight(height);
+        setMaxHeight(height);
 
         Button connect = actions.button("new-connection");
         connect.getStyleClass().add("adb-button--primary");

@@ -36,9 +36,10 @@ public final class StatusBar extends HBox {
     public StatusBar() {
         getStyleClass().add("adb-statusbar");
         setAlignment(Pos.CENTER_LEFT);
-        setPrefHeight(26);
-        setMinHeight(26);
-        setMaxHeight(26);
+        int height = io.agenticdb.ui.Tokens.H_STATUSBAR_LIGHT;
+        setPrefHeight(height);
+        setMinHeight(height);
+        setMaxHeight(height);
         dirty.setVisible(false);
         dirty.setManaged(false);
 

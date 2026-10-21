@@ -12,7 +12,7 @@
 
 | 指标 | 值 |
 |---|---|
-| 门禁 | **38 个测试类 / 345 条测试用例 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`） |
+| 门禁 | **40 个测试类 / 358 条测试用例 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`） |
 | 进度 | P0–P4 完成；**P4.5 的 B0–B4 已全部落地**；P5 🟡；P6/P7 ⬜ |
 | 截图 | `docs/screenshots/` 6 张**已按当前代码重拍**（亮 / 暗两套主题） |
 | 未提交 | P4/P4.5 全部改动尚未 commit（见 §5） |
@@ -38,7 +38,7 @@ A23（死代码清理）、侧栏「查询历史」「诊断」接真功能。
 
 | 项 | 内容 | 验收 |
 |---|---|---|
-| 4.5-14 | 令牌收敛：剩余 **60 个非颜色令牌**（`fs-*` `sp-*` `r-*` `h-*` `z-*` `dur-*` …）要么从 `tokens.json` 移除，要么在 Java 代码里用起来 | `TokenParityTest` 增加「令牌不得有未引用项」断言 |
+| ~~4.5-14~~ ✅ | ~~令牌收敛~~ **已做**：112 → 60 个，全部被用到 | `TokenParityTest.everyTokenIsActuallyUsed` |
 | ~~A1~~ ✅ | ~~方言抽象层~~ **已做**（见 §2） | `DialectBranchAuditTest` 扫源码禁止方言分支散落 |
 | ~~A6~~ ✅ | ~~危险分级第三层~~ **已做**：`DbSession.execute(sql, danger)` / `update(sql, params, danger)` 强制声明等级，驱动侧再判一次 | `JdbcSessionTest.driverSideCheckRejectsUnderDeclaredDanger` |
 | — | `core/adb-declarations` 是否接进运行时（**决策点**：先做 A1 方言抽象层，还是先删模块） | 书面决策，写进 `NAVICAT-TODO.md` §10 A2 |
@@ -117,10 +117,11 @@ TODO §7.2 已列细项，本文件定**顺序**：
 按 §1 → §2 顺序：
 
 ```
-1) 4.5-14  令牌收敛（剩余 60 个非颜色令牌）
-2) ~~A6~~    危险分级第三层 —— ✅ 已做
-3) A2      declarations 去留决策（A1 已完成，声明层可以接进运行时了）
-4) C-3     catalog 树（schema 那一半已做；MySQL 多库要重连）
+1) ~~4.5-14~~ ✅ 令牌收敛 —— 已做
+2) ~~A6~~ ✅    危险分级第三层 —— 已做
+3) A2           declarations 去留决策（A1 已完成，声明层可以接进运行时了）
+4) C-3          catalog 树（schema 那一半已做；MySQL 多库要重连）
+5) C-1          多连接并行（P5 的根，改外壳状态模型）
 ```
 
 每项做完跑一次 `./mvnw -B clean verify` + `java tools/TestCount.java`，全绿再进下一项。

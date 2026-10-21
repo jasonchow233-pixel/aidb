@@ -118,7 +118,7 @@
 | **D18** | `core/adb-declarations` 的 `DeclarationLoader.java:36` javadoc 写「两者的解析结果必须完全相同，这本身要有一条测试守着」——**没有这条测试**，且 `loadFromClasspath()` 实际是坏的 | `DeclarationLoader.java:119-151` |
 | **D19** | `DeclarationLoader.java:27` 的 `{@link DeclarationCheckMojo}` **指向一个不存在的类** | 全仓 0 命中 |
 
-### 0.3 本轮关闭的差距（23 项）
+### 0.3 本轮关闭的差距（26 项）
 
 第四轮复核后，**B0–B4 批次全部落地**，下列差距已经关掉：
 
@@ -144,7 +144,10 @@
 | **架构** | `loadFromClasspath()` 修好：爆炸 classpath 与打包 jar 两条路径都能加载 | `DeclarationLoader` |
 | **架构** | **方言抽象层（A1）**：加一种数据库从「改 5 个文件」变成「写一个 Dialect 实现」；`SchemaService` / `StructureSqlBuilder` 里一行方言专属 SQL 都没有 | `Dialect` + 3 实现 + `DialectBranchAuditTest` |
 | **图标** | `⚙` 撞车彻底拆开；新增「符号 → 语义唯一」门禁 | `IconAuditTest` |
+| **方言** | **方言抽象层（A1）**：加一种数据库从「改 5 个文件」变成「写一个 Dialect 实现」；`SchemaService` / `StructureSqlBuilder` 里没有方言专属 SQL | `Dialect` + 3 实现 + `DialectBranchAuditTest` |
+| **方言** | **第三层危险门禁（驱动侧复查）**：调用方必须声明危险等级，驱动侧再判一次，实际更危险就拒绝 | `DbSession.requireDeclared` |
 | **统计** | surefire 统计口径失真已修（`tools/TestCount.java` 按 `<testcase>` 计数 + 下限断言） | `tools/TestCount.java` |
+| **设计令牌** | **令牌体系收敛**：112 → 60 个，全部被用到（CSS 引用或 Java 常量消费）；`risk-*` 家族终于用上了（四级风险各一套配色）；侧栏宽度 / 栏高 / Toast 时长的魔数换成令牌 | `tokens.json` + `TokenParityTest.everyTokenIsActuallyUsed` |
 | **文档** | 6 张截图已重拍（补上 `⇤/⇥/跳至页`、去掉多余的「注释」列） | `docs/screenshots/` |
 
 **仍然开放**的差距见 §7.2。

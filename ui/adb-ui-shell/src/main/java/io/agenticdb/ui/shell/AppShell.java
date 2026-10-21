@@ -58,10 +58,13 @@ import java.util.concurrent.TimeUnit;
  */
 public final class AppShell extends StackPane {
 
-    private static final int SIDEBAR_MIN = 180;
-    private static final int SIDEBAR_MAX = 420;
-    private static final int SIDEBAR_DEFAULT = 240;
-    private static final int SIDEBAR_COLLAPSED = 48;
+    // ⭐ 侧栏宽度来自设计令牌，不再是魔数。
+    //    以前是 180/420/240/48，与 tokens.json 的 160/480/240/48 还不一致 ——
+    //    令牌是唯一真相，代码向令牌对齐。
+    private static final int SIDEBAR_MIN = io.agenticdb.ui.Tokens.W_SIDEBAR_MIN_LIGHT;
+    private static final int SIDEBAR_MAX = io.agenticdb.ui.Tokens.W_SIDEBAR_MAX_LIGHT;
+    private static final int SIDEBAR_DEFAULT = io.agenticdb.ui.Tokens.W_SIDEBAR_LIGHT;
+    private static final int SIDEBAR_COLLAPSED = io.agenticdb.ui.Tokens.W_SIDEBAR_COLLAPSED_LIGHT;
 
     private final SettingsStore settings;
     private final ThemeManager themeManager;
@@ -1194,7 +1197,7 @@ public final class AppShell extends StackPane {
         });
         toast.setVisible(true);
         toast.setManaged(true);
-        startToast(action == null ? 1.8 : 6.0);
+        startToast(action == null ? TOAST_MILLIS : TOAST_ACTION_MILLIS);
     }
 
     /** 「结果不可撤销」类提示：没有撤销按钮，但用户需要更长时间反应过来（4.5-21 第三档）。 */
@@ -1204,17 +1207,22 @@ public final class AppShell extends StackPane {
         toastAction.setManaged(false);
         toast.setVisible(true);
         toast.setManaged(true);
-        startToast(4.0);
+        startToast(TOAST_RESULT_MILLIS);
     }
 
-    private void startToast(double seconds) {
+    private void startToast(long millis) {
         if (toastTimer != null) {
             toastTimer.stop();
         }
-        toastTimer = new PauseTransition(Duration.seconds(seconds));
+        toastTimer = new PauseTransition(Duration.millis(millis));
         toastTimer.setOnFinished(event -> hideToast());
         toastTimer.play();
     }
+
+    // ⭐ Toast 时长来自设计令牌（4.5-14）：三档分级是产品决策，不该散成魔数。
+    private static final long TOAST_MILLIS = io.agenticdb.ui.Tokens.DUR_TOAST_LIGHT;
+    private static final long TOAST_ACTION_MILLIS = io.agenticdb.ui.Tokens.DUR_TOAST_ACTION_LIGHT;
+    private static final long TOAST_RESULT_MILLIS = io.agenticdb.ui.Tokens.DUR_TOAST_RESULT_LIGHT;
 
     /** 当前 Toast 的停留时长（毫秒）——供 4.5-21 的门禁断言三档分级。 */
     long toastDelayMillis() {

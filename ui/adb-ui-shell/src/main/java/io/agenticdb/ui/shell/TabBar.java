@@ -36,9 +36,10 @@ public final class TabBar extends HBox {
         this.actions = actions;
         getStyleClass().add("adb-tabbar");
         setAlignment(Pos.CENTER_LEFT);
-        setPrefHeight(36);
-        setMinHeight(36);
-        setMaxHeight(36);
+        int height = io.agenticdb.ui.Tokens.H_TABBAR_LIGHT;
+        setPrefHeight(height);
+        setMinHeight(height);
+        setMaxHeight(height);
         setVisible(false);
         setManaged(false);
 
