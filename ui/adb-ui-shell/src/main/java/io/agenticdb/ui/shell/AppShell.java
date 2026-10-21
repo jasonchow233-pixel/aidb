@@ -82,6 +82,8 @@ public final class AppShell extends StackPane {
     private final TabBar tabBar = new TabBar(actions);
     private final SideBar sideBar;
     private final WorkspaceView workspace;
+    /** ⭐ S5：常驻的「对象」首页。 */
+    private ObjectHomePage objectHome;
     private final CommandPalette palette;
     private final ConnectionStore connectionStore;
     private final SavedQueries savedQueries;
@@ -130,7 +132,7 @@ public final class AppShell extends StackPane {
         this.sideBar.setOnLoadObjects(this::loadObjectsFor);
         this.workspace = new WorkspaceView(actions, connectionName,
                 this::createGridPage, this::createQueryPage, this::createStructurePage,
-                this::createConnectionsPage);
+                this::createConnectionsPage, tab -> objectHomePage());
         this.palette = new CommandPalette(actions);
         // 侧栏「查询历史」接真实功能：QueryHistory 本来就可用，只是侧栏开错了页面。
         this.workspace.setHistory(new QueryHistory(settings), this::openQueryWith);
@@ -157,6 +159,8 @@ public final class AppShell extends StackPane {
         updateTabCloseEnabled();
 
         refreshProfiles();
+        // ⭐ S5：常驻的「对象」标签 —— 永远排第一、不可关闭。
+        tabBar.openPermanent(new TabItem("object-home", "对象", TabKind.OBJECT));
         ConnectionProfile demo = profileById("demo");
         if (demo != null) {
             connectProfile(demo, false);
@@ -190,6 +194,39 @@ public final class AppShell extends StackPane {
     }
 
     /** 激活一个连接：打开（或复用）会话、读取对象树、同步侧栏与工具栏。 */
+    /**
+     * ⭐ S5：常驻的「对象」首页。
+     *
+     * <p>Navicat 的标签栏第一个就是常驻的「对象」标签（实拍见
+     * {@code docs/NAVICAT-COMPARE.md} §2.2 C1）——
+     * 它是浏览的起点，点它回到对象总览，而不是回到一片空白。
+     */
+    private Node objectHomePage() {
+        if (objectHome == null) {
+            objectHome = new ObjectHomePage(() -> session, schemaService, dbExecutor,
+                    this::openObject, this::status);
+        }
+        // 每次切到对象首页都重新读一遍 —— 对象可能刚被别处改了。
+        objectHome.reload();
+        return objectHome;
+    }
+
+    /** 连接就绪后刷新对象首页的内容。 */
+    private void refreshObjectHome() {
+        if (objectHome != null) {
+            objectHome.reload();
+        }
+    }
+
+    /** 打开对象首页里的某个对象（表 / 视图）。 */
+    private void openObject(String name) {
+        if (name == null || name.isBlank()) {
+            return;
+        }
+        openTab(new TabItem("grid:" + activeProfileId() + ":" + name, name,
+                TabKind.GRID, name, activeProfileId()));
+    }
+
     private void connectProfile(ConnectionProfile profile, boolean touch) {
         if (profile == null) {
             return;
@@ -211,6 +248,7 @@ public final class AppShell extends StackPane {
                 connections.add(touched);
                 connectionStore.save(touched);
             }
+            refreshObjectHome();
         } catch (Exception e) {
             session = null;
             status("连接失败：" + readable(e));
@@ -933,8 +971,14 @@ public final class AppShell extends StackPane {
     private void tabClosed(TabItem tab) {
         workspace.closeTab(tab.id());
         status("已关闭：" + tab.title());
-        if (tabBar.count() == 0) {
-            workspace.showWelcome();
+        if (tabBar.closableCount() == 0) {
+            // ⭐ S5：常驻的「对象」标签是落点 —— 不再回��一片空白。
+            String permanent = tabBar.permanentId();
+            if (permanent != null) {
+                tabBar.activate(permanent);
+            } else {
+                workspace.showWelcome();
+            }
             statusBar.setRange("—");
             statusBar.setDuration(-1);
             statusBar.setDirty(0);
@@ -944,8 +988,10 @@ public final class AppShell extends StackPane {
     }
 
     private void updateTabCloseEnabled() {
+        // ⭐ 常驻的「对象」标签不可关 —— 停在它上面时「关闭标签」要禁用，
+        //    而不是让用户点了没反应。
         actions.find("tab.close").ifPresent(action ->
-                action.setEnabled(tabBar.count() > 0));
+                action.setEnabled(!tabBar.isPermanent(tabBar.activeId())));
     }
 
     private void openTab(TabItem tab) {

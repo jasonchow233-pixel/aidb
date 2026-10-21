@@ -31,6 +31,57 @@ public final class RealDatabaseContract {
     private RealDatabaseContract() {
     }
 
+    /**
+     * 通信失败时重试。
+     *
+     * <p>⚠️ 为什么要重试：实测这台 MySQL 的 **TLS 握手会间歇性卡住**
+     * （6 次连接里挂了 2 次，报 {@code Communications link failure}）。
+     * 那是**服务端 / 网络**的问题，不是我们生成的 SQL 有问题 ——
+     * 但它会让门禁变成「随机红」。
+     *
+     * <p>所以：只对**通信类**失败重试（最多 3 次），
+     * 其它异常（SQL 语法错、断言错）**一律立刻失败**，不掩盖真问题。
+     */
+    private static void withRetry(String what, ThrowingRunnable body) throws Exception {
+        Exception last = null;
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            try {
+                body.run();
+                return;
+            } catch (SQLException e) {
+                if (!isCommunications(e)) {
+                    throw e;
+                }
+                last = e;
+                System.out.println("[真库契约] " + what + " 第 " + attempt
+                        + " 次通信失败（服务端 / 网络问题），重试：" + e.getMessage());
+                // 退避一下，别连着撞上同一个卡顿
+                Thread.sleep(500L * attempt);
+            }
+        }
+        throw last;
+    }
+
+    /** 是通信类失败吗（而不是 SQL / 断言问题）？ */
+    private static boolean isCommunications(SQLException e) {
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            String message = String.valueOf(cause.getMessage());
+            if (message.contains("Communications link failure")
+                    || message.contains("CommunicationsException")
+                    || message.contains("socketTimeout")
+                    || message.contains("Read timed out")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 会抛异常的动作。 */
+    @FunctionalInterface
+    private interface ThrowingRunnable {
+        void run() throws Exception;
+    }
+
     // ─────────────────────────── 契约 1：生成的 DDL 跑得通 ───────────────────────────
 
     /**
@@ -40,6 +91,10 @@ public final class RealDatabaseContract {
      * 由方言负责，我们只验「生成的东西能不能跑」。
      */
     public static void generatedColumnDdlRuns(ExternalDatabase target) throws Exception {
+        withRetry("生成的 DDL", () -> generatedColumnDdlRunsOnce(target));
+    }
+
+    private static void generatedColumnDdlRunsOnce(ExternalDatabase target) throws Exception {
         try (JdbcSession session = JdbcSession.open(target.spec())) {
             Dialect dialect = session.dialect();
             String table = "adb_contract_ddl_" + System.nanoTime();
@@ -102,6 +157,10 @@ public final class RealDatabaseContract {
      */
     public static void dangerGateRejectsUnderDeclaredDanger(ExternalDatabase target)
             throws Exception {
+        withRetry("危险门禁", () -> dangerGateOnce(target));
+    }
+
+    private static void dangerGateOnce(ExternalDatabase target) throws Exception {
         try (JdbcSession session = JdbcSession.open(target.spec())) {
             Dialect dialect = session.dialect();
             String table = "adb_contract_dg_" + System.nanoTime();
@@ -133,6 +192,10 @@ public final class RealDatabaseContract {
      * <p>不提供这些查询的方言（SQLite 没有大小与创建时间）跳过对应项。
      */
     public static void metadataQueriesRun(ExternalDatabase target) throws Exception {
+        withRetry("元信息查询", () -> metadataQueriesOnce(target));
+    }
+
+    private static void metadataQueriesOnce(ExternalDatabase target) throws Exception {
         try (JdbcSession session = JdbcSession.open(target.spec())) {
             Dialect dialect = session.dialect();
             String table = "adb_contract_md_" + System.nanoTime();
@@ -185,6 +248,10 @@ public final class RealDatabaseContract {
      * </ul>
      */
     public static void schemaSwitchSemantics(ExternalDatabase target) throws Exception {
+        withRetry("schema 切换", () -> schemaSwitchOnce(target));
+    }
+
+    private static void schemaSwitchOnce(ExternalDatabase target) throws Exception {
         try (JdbcSession session = JdbcSession.open(target.spec())) {
             Dialect dialect = session.dialect();
             String switchSql = dialect.setSchemaSql("adb_contract_schema");
@@ -232,6 +299,10 @@ public final class RealDatabaseContract {
 
     /** 方言的标识符引用必须在真库上真的能防注入 / 不撞语法。 */
     public static void quotedIdentifiersWork(ExternalDatabase target) throws Exception {
+        withRetry("标识符引用", () -> quotedIdentifiersOnce(target));
+    }
+
+    private static void quotedIdentifiersOnce(ExternalDatabase target) throws Exception {
         try (JdbcSession session = JdbcSession.open(target.spec())) {
             Dialect dialect = session.dialect();
             // 带空格与中文的列名 —— 引用对了才建得出来。

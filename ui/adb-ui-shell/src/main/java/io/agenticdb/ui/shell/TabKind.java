@@ -14,6 +14,8 @@ public enum TabKind {
     STRUCTURE(Icons.Icon.STRUCTURE, "结构"),
     CONNECTIONS(Icons.Icon.CONNECT, "连接"),
     TOOL(Icons.Icon.DIAGNOSTICS, "工具"),
+    /** ⭐ S5：常驻的「对象」首页标签（Navicat 形态，不可关闭）。 */
+    OBJECT(Icons.Icon.DATABASE, "对象"),
     SETTINGS(Icons.Icon.SETTINGS, "设置");
 
     private final Icons.Icon icon;

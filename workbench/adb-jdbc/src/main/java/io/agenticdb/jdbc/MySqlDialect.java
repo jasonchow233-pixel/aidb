@@ -34,10 +34,26 @@ public final class MySqlDialect implements Dialect {
         return "`" + identifier.replace("`", "``") + "`";
     }
 
+    /**
+     * 连接超时（毫秒）。
+     *
+     * <p>⭐ <b>必须有超时</b>：没有超时的话，服务端在 TLS 握手时卡住，
+     * 客户端会<b>无限期</b>阻塞在 socket 读上 —— 界面直接冻住，
+     * 而且没有任何报错可看。
+     * 实测踩过：真库联调时服务端 TLS 握手停顿，测试挂死，
+     * 线程栈停在 {@code performTlsHandshake} 读 socket。
+     */
+    public static final int CONNECT_TIMEOUT_MS = 10_000;
+
+    /** 读超时（毫秒）—— 一条语句跑太久就断掉。 */
+    public static final int SOCKET_TIMEOUT_MS = 30_000;
+
     @Override
     public String jdbcUrl(String host, int port, String database) {
         return "jdbc:mysql://" + host + ":" + port + "/" + database
-                + "?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC";
+                + "?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC"
+                + "&connectTimeout=" + CONNECT_TIMEOUT_MS
+                + "&socketTimeout=" + SOCKET_TIMEOUT_MS;
     }
 
     @Override

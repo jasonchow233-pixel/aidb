@@ -73,9 +73,15 @@ class DialectTest {
         assertThat(DialectKind.SQLITE.dialect().jdbcUrl("", 0, "/tmp/a.db"))
                 .isEqualTo("jdbc:sqlite:/tmp/a.db");
         assertThat(DialectKind.POSTGRESQL.dialect().jdbcUrl("h", 5432, "db"))
-                .isEqualTo("jdbc:postgresql://h:5432/db");
+                .as("PostgreSQL：带超时的 URL（没有超时会冻住界面）")
+                .startsWith("jdbc:postgresql://h:5432/db?")
+                .contains("connectTimeout=")
+                .contains("socketTimeout=");
         assertThat(DialectKind.MYSQL.dialect().jdbcUrl("h", 3306, "db"))
-                .startsWith("jdbc:mysql://h:3306/db");
+                .as("MySQL：带超时的 URL（没有超时会冻住界面）")
+                .startsWith("jdbc:mysql://h:3306/db?")
+                .contains("connectTimeout=")
+                .contains("socketTimeout=");
     }
 
     @Test

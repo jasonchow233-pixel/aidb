@@ -811,6 +811,30 @@
     -fx-background-radius: 3px;
 }
 
+/* ── 对象首页（S5：常驻的「对象」标签）─────────────────────────────── */
+
+.adb-object-home__scroll {
+    -fx-background-color: -adb-bg-canvas;
+    -fx-border-color: transparent;
+}
+
+.adb-object-home__groups {
+    -fx-padding: 4px 0px 16px 0px;
+}
+
+.adb-object-home__group {
+    -fx-padding: 0px 0px 8px 0px;
+}
+
+.adb-object-home__flow {
+    -fx-background-color: transparent;
+}
+
+.adb-object-home__chip {
+    -fx-padding: 4px 12px;
+    -fx-background-radius: 5px;
+}
+
 /* ── 记录导航条（Navicat 形态）─────────────────────────────────────── */
 
 .adb-record-nav {

@@ -6,10 +6,10 @@
 > **阶段规划（批次 / 顺序 / 门禁）见 `docs/NEXT-STEPS.md`**；
 > **与 Navicat 的实拍对比见 `docs/NAVICAT-COMPARE.md`**（本机装了 Navicat Premium Lite 15）。
 >
-> 最后更新：**2026-10-21（第五轮：UI/UX 重做 U-B1…U-B5 已落地 + Navicat 实拍对比）**
+> 最后更新：**2026-10-21（第五轮：UI/UX 重做 U-B1…U-B5 + S5「对象」首页标签 已落地）**
 > 当前基线：**P0–P4 完成，P4.5 收尾中，P5 🟡**；
-> **下一动作 = S5「对象」首页标签**（Navicat 实拍把它顶到 P0），见 §6.4 与
-> `docs/NAVICAT-COMPARE.md`。
+> **下一动作 = U-B6**（G2 列拖拽 / G1 冻结列 / U1 catalog 树 / U2 多连接并行 …），
+> 见 §13.6 与 `docs/NAVICAT-COMPARE.md`。
 
 ---
 
@@ -48,10 +48,10 @@
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **SQLite（默认）** | **430** | 30 | 0 |
-| **MySQL 5.7 真库**（环境变量接入） | **444** | 16 | 0 |
+| **SQLite（默认）** | **437** | 30 | 0 |
+| **MySQL 5.7 真库**（环境变量接入） | **451** | 16 | 0 |
 
-**55 个测试类**。跳过的是「本机没有的外部依赖」：Testcontainers 的 PG/MySQL 容器
+**57 个测试类**。跳过的是「本机没有的外部依赖」：Testcontainers 的 PG/MySQL 容器
 （无 Docker）与未配置的 PG 真库 —— **跳过不算通过**，门禁统计里单列一行。
 
 统计口径用工具兜底：
@@ -303,8 +303,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | ~~S2~~ ✅ | ~~表清单元数据列~~ **已完成**：「表清单」页有 名称 / 行数 / 数据长度 / 引擎 / 创建日期；PG 走 pg_class、MySQL 走 information_schema，SQLite 没有大小与创建时间 → 诚实显示「—」 | ✅ | `Dialect.tableMetaSql` + `TableListPage` |
 | ~~S3~~ ✅ | ~~对象树补视图 / 函数 / 其它分组节点~~ **已完成**：对象树现在有 表 / 视图 / **过程 / 函数 / 触发器** 五类分组；过程与函数走 JDBC 元数据，触发器各方言给 SQL；演示库带一个触发器，演示环境里看得见 | ✅ | `SchemaService.listObjects` + `Dialect.triggersListSql` + `SideBar.buildTreeModel` |
 | ~~S4~~ ✅ | ~~侧栏搜索框移到底部~~ **已完成**：与 ★（只看收藏）、« 折叠同一行 | ✅ | `SideBar.buildExpanded` |
-| **S5** | 标签栏第一个是**「对象」首页标签**（不可关闭） | ⬜ | `TabBar` + `WorkspaceView` | 打开对象首页后可关闭其它标签 |
-| ↑ **P0** | ⭐ **Navicat 实拍证实**：Navicat 的标签栏最左边就是常驻的「对象」标签 —— **它把 S5 顶到 P0** | | |
+| ~~S5~~ ✅ | ~~标签栏第一个是**「对象」首页标签**（不可关闭）~~ **已完成**：常驻标签永远排第一、**没有关闭钮**（不是藏起来，是根本不放进场景图）、右键菜单里也没有「关闭」；关掉其它标签后**落回它**而不是空白；内容是**按类型分组的对象总览**（表/视图/过程/函数/触发器），点一下就打开 | ✅ | `TabBar.openPermanent` + `ObjectHomePage` | `ObjectHomeTabTest`（4 例） |
 | ~~S6~~ ✅ | ~~菜单栏加「收藏夹」顶级菜单~~ **已完成**：文件/编辑/视图/数据库/**收藏夹**/工具/窗口/帮助；收藏夹面板可打开 | ✅ | `MenuBarFactory` + `FavoritesPage` |
 | ~~S7~~ ✅ | ~~窗口状态记忆补齐剩余项~~ **已完成**：窗口位置 x/y、上次用的连接、**上次打开的标签页**（重开后接着用） | ✅ | `AppShell.saveWindowState` / `restoreLastTabs` |
 | ~~S8~~ ✅ | ~~标签栏右键菜单补齐~~ **已完成**：加「复制表名 / 复制 SELECT」 | ✅ | `TabBar.buildTab` |
@@ -340,7 +339,13 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 - [ ] **连接重命名 / 分组 / 标签**
 - [ ] **最近使用排序**：列表按 `lastUsedAt` 倒序
 - [ ] **连接属性测试**：连接超时、取消、重连、错误归类（连接断开 / 权限不足 / 死锁 / 超时）
-- [ ] **PG / MySQL 真实联调**：Testcontainers 集成测试（`postgresql` + `mysql` 模块进父 POM）
+- [x] **PG / MySQL 真实联调**：✅ Testcontainers 集成测试 + **环境变量驱动的外部真库**
+      （`MySqlIntegrationTest` 9 例 / `ExternalRealDatabaseTest` 6 例真跑）
+- [x] ⭐ **连接 URL 必须带超时**（`connectTimeout` / `socketTimeout`）——
+      没有超时的话，服务端 TLS 握手一卡，客户端会**无限期**阻塞在 socket 读上，
+      界面直接冻住、连报错都没有。实测这台 MySQL 的握手就会**间歇性卡住**
+      （6 次里挂 2 次），所以还加了**通信失败重试**（只重试通信类失败，
+      SQL / 断言错一律立刻失败，不掩盖真问题）
 - [ ] **PG / MySQL 内省补齐**：DEFAULT、COMMENT、序列、CHECK、`getExportedKeys`
 - [x] **方言抽象层**：✅ 已做 —— `Dialect` 接口 + 三个实现；`SchemaService` / `StructureSqlBuilder` 里没有方言专属 SQL；`DialectBranchAuditTest` 扫源码守着
 - [ ] **`declarations/` 接入运行时或删除**（见 §9 A2/A3）
@@ -651,6 +656,25 @@ hover 规则不得被删、focus 规则不得少于 10 条；
 **门禁**：`DataGridPageTest`（工具栏分组 / 记录导航条 / 列头筛选悬停才可见）·
 `ConnectionsPageTest`（表格列与排序）· `DensityCoverageTest`（🆕，断言密度同时改 4 张表的行高）。
 
+### 13.5.1 S5「对象」首页标签 —— ✅ 已完成（Navicat 实拍推上来的 P0）
+
+- [x] 标签栏第一个是**常驻的「对象」标签**，永远排第一
+- [x] **不可关闭**：`close()` 直接拒绝；标签节点**根本没有关闭钮**
+      （不是 `setVisible(false)` —— 留在场景图里会干扰「查找可见节点」这类操作）
+- [x] 右键菜单里**不出现**「关闭」项（不是「点了没反应」）
+- [x] 关掉其它标签后**落回对象首页**，不是一片空白
+- [x] 停在它上面时，「关闭标签」动作**禁用**
+- [x] 内容页 `ObjectHomePage`：按类型分组列出当前连接的**全部对象**
+      （表 / 视图 / 过程 / 函数 / 触发器），点一下打开对应数据页
+- [x] 启动时它就是**默认活动标签**（Navicat 启动时也停在「对象」上）
+
+**门禁**：`ObjectHomeTabTest`（🆕 4 例：永远排第一 / 不可关闭 / 没有关闭钮 /
+关掉其它的后它还在 / 右键菜单无「关闭」）。
+
+> 💡 顺带修掉三个被新特性**改变预期**的旧测试（`AppShellTest`）：
+> 标签栏现在永远可见、关掉数据页后落回对象首页、脏标记要**按标签**找
+> （对象标签排在前面，它的脏标记是不可见的）。
+
 ### 13.6 U-B6 功能补齐层（与前 5 批并行）
 
 | # | 任务 | 门禁 | 状态 |
@@ -665,7 +689,7 @@ hover 规则不得被删、focus 规则不得少于 10 条；
 | **U2** | **多连接并行**（`AppShell` 单 `activeProfile`/单 `session` → 按连接 id 取） | `SessionManagerTest` 扩用例 | ⬜ |
 | **U3** | 连接属性页（超时 / SSL / 字符集 / 连接池 / 附加参数） | `ConnectionWizardTest.propertiesStep` | ⬜ |
 | **U4** | 索引 / 外键 / 触发器**可编辑**（当前只读） | `StructurePageTest.indexEditor` | ⬜ |
-| **U5** | 对象首页标签（S5，见 §6.4） | `TabBarTest.objectHomeTabIsPermanent` | ⬜ |
+| ~~U5~~ ✅ | ~~对象首页标签（S5，见 §6.4）~~ **已完成** | `ObjectHomeTabTest`（4 例） | ✅ |
 | **U6** | 状态栏补：当前用户 / 服务器版本 / 延迟 | `ActionRegistryConvergenceTest.statusBar*` | ⬜ |
 
 ### 13.7 本节新增门禁汇总

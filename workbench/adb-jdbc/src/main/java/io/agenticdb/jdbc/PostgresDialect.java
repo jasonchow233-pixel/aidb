@@ -33,9 +33,21 @@ public final class PostgresDialect implements Dialect {
         return "\"" + identifier.replace("\"", "\"\"") + "\"";
     }
 
+    /**
+     * 连接 / 读超时（毫秒）。
+     *
+     * <p>⭐ 同 MySQL：<b>没有超时，卡住的握手会把界面冻死</b>。
+     * PostgreSQL 驱动的参数名是 {@code connectTimeout}（秒）与 {@code socketTimeout}（秒）。
+     */
+    public static final int CONNECT_TIMEOUT_SECONDS = 10;
+
+    public static final int SOCKET_TIMEOUT_SECONDS = 30;
+
     @Override
     public String jdbcUrl(String host, int port, String database) {
-        return "jdbc:postgresql://" + host + ":" + port + "/" + database;
+        return "jdbc:postgresql://" + host + ":" + port + "/" + database
+                + "?connectTimeout=" + CONNECT_TIMEOUT_SECONDS
+                + "&socketTimeout=" + SOCKET_TIMEOUT_SECONDS;
     }
 
     @Override

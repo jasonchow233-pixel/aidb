@@ -29,6 +29,8 @@ public final class TabBar extends HBox {
     private final Map<String, Node> nodes = new LinkedHashMap<>();
 
     private String activeId;
+    /** ⭐ S5：常驻标签（「对象」首页）—— 不可关闭，永远排第一。 */
+    private String permanentId;
     private ContextMenu lastContextMenu;
     private Consumer<TabItem> onActivate = tab -> { };
     private Consumer<TabItem> onClose = tab -> { };
@@ -100,6 +102,50 @@ public final class TabBar extends HBox {
         activate(tab.id());
     }
 
+    /**
+     * ⭐ 打开**常驻标签**（S5 的「对象」首页）。
+     *
+     * <p>常驻标签永远排第一、**不可关闭** —— 它是浏览的起点
+     * （Navicat 的标签栏最左边就是常驻的「对象」标签，实拍见
+     * {@code docs/NAVICAT-COMPARE.md} §2.2 C1）。
+     */
+    public void openPermanent(TabItem tab) {
+        permanentId = tab.id();
+        if (items.containsKey(tab.id())) {
+            return;
+        }
+        items.put(tab.id(), tab);
+        Node node = buildTab(tab);
+        nodes.put(tab.id(), node);
+        tabs.getChildren().add(0, node);
+        setVisible(true);
+        setManaged(true);
+        // ⭐ 常驻标签就是**默认落点** —— 启动时它应该是活动标签
+        //    （Navicat 启动时停在「对象」标签上）。
+        activate(tab.id());
+    }
+
+    /**
+     * 标签节点的 DOM id。
+     *
+     * <p>⚠️ CSS 的 id 选择器里 {@code :} 是伪类分隔符、{@code .} 是类分隔符 ——
+     * 标签 id 形如 {@code grid:demo:users}，直接用会查不到节点。
+     * 统一换成短横线（同 {@code MainToolBar} 对动作 id 的处理）。
+     */
+    public static String nodeId(String tabId) {
+        return "tab-" + (tabId == null ? "" : tabId.replaceAll("[^a-zA-Z0-9_-]", "-"));
+    }
+
+    /** 常驻标签的 id（没有则 null）。 */
+    public String permanentId() {
+        return permanentId;
+    }
+
+    /** 这个标签是常驻的（不可关闭）吗？ */
+    public boolean isPermanent(String id) {
+        return id != null && id.equals(permanentId);
+    }
+
     public void activate(String id) {
         if (!items.containsKey(id)) {
             return;
@@ -125,6 +171,10 @@ public final class TabBar extends HBox {
         if (tab == null) {
             return false;
         }
+        if (isPermanent(id)) {
+            // ⭐ 常驻标签不可关闭 —— 没有任何标签时，它就是落点。
+            return false;
+        }
         if (!closeGuard.test(tab)) {
             return false;
         }
@@ -145,11 +195,13 @@ public final class TabBar extends HBox {
             setVisible(false);
             setManaged(false);
         }
-        actions.require("tab.close").setEnabled(!items.isEmpty());
+        // ⭐ 常驻标签不参与「关闭」类动作的可用性 ——
+        //    否则在「对象」标签上点「关闭标签」会是「点了没反应」。
+        actions.require("tab.close").setEnabled(!isPermanent(activeId));
         actions.find("tab.close-others").ifPresent(action ->
-                action.setEnabled(items.size() > 1));
+                action.setEnabled(closableCount() > 1));
         actions.find("tab.close-all").ifPresent(action ->
-                action.setEnabled(!items.isEmpty()));
+                action.setEnabled(closableCount() > 0));
         onClose.accept(tab);
         return true;
     }
@@ -167,6 +219,11 @@ public final class TabBar extends HBox {
     public void closeAll() {
         List<String> ids = List.copyOf(items.keySet());
         ids.forEach(this::close);
+    }
+
+    /** 除常驻标签外还剩几个标签（用于「关闭全部」的可用性）。 */
+    public int closableCount() {
+        return (int) items.keySet().stream().filter(id -> !isPermanent(id)).count();
     }
 
     public int count() {
@@ -202,6 +259,9 @@ public final class TabBar extends HBox {
         dirty.visibleProperty().bind(tab.dirtyProperty());
         dirty.managedProperty().bind(tab.dirtyProperty());
 
+        // ⭐ 常驻标签**根本没有关闭钮** —— 不是「藏起来」，
+        //    而是不放进场景图：界面上不该出现一个点了没反应的 ×，
+        //    留在树里还会干扰「查找可见节点」这类操作。
         Button close = IconButtons.icon(Icons.Icon.CLOSE, "关闭标签");
         close.setAccessibleText("关闭");
         close.getStyleClass().add("adb-tab__close");
@@ -211,8 +271,13 @@ public final class TabBar extends HBox {
             close(tab.id());
         });
 
-        HBox node = new HBox(6, icon, title, dirty, close);
+        HBox node = new HBox(6, icon, title, dirty);
+        if (!isPermanent(tab.id())) {
+            node.getChildren().add(close);
+        }
         node.getStyleClass().add("adb-tab");
+        // 给标签节点一个 id —— 门禁要能按 id 找到某个标签（常驻标签尤其需要）。
+        node.setId(nodeId(tab.id()));
         node.setAlignment(Pos.CENTER_LEFT);
         node.setOnMouseClicked(event -> {
             if (event.getButton() == javafx.scene.input.MouseButton.MIDDLE) {
@@ -227,6 +292,10 @@ public final class TabBar extends HBox {
         // ⭐ 右键菜单走 ActionRegistry（4.5-29）：和菜单栏、命令面板同源，
         //    enabled 状态统一，也能在 ⌘K 里搜到。
         MenuItem closeItem = actions.menuItem("tab.close", "关闭");
+        if (isPermanent(tab.id())) {
+            // ⭐ 常驻标签不能关 —— 菜单项直接不出现，而不是「点了没反应」。
+            closeItem.setVisible(false);
+        }
         MenuItem closeOthers = actions.menuItem("tab.close-others", "关闭其他");
         MenuItem closeAll = actions.menuItem("tab.close-all", "全部关闭");
         // ⭐ S8：补「复制表名 / 复制 SELECT」—— Navicat 的标签右键也有。

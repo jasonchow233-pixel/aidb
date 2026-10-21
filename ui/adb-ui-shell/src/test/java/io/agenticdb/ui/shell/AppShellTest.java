@@ -109,7 +109,9 @@ class AppShellTest {
         assertThat(robot.lookup(".adb-sidebar").tryQuery()).isPresent();
         assertThat(robot.lookup(".adb-workspace").tryQuery()).isPresent();
         assertThat(robot.lookup(".adb-statusbar").tryQuery()).isPresent();
-        assertThat(robot.lookup(".adb-welcome").tryQuery()).isPresent();
+        // ⭐ S5：启动时停在**常驻的「对象」首页**（Navicat 同形），
+        //    不再是空白欢迎页。
+        assertThat(robot.lookup(".adb-object-home").tryQuery()).isPresent();
 
         javafx.scene.control.MenuBar menuBar =
                 robot.lookup(".menu-bar").queryAs(javafx.scene.control.MenuBar.class);
@@ -118,8 +120,12 @@ class AppShellTest {
         assertThat(menuBar.getMenus().stream().map(javafx.scene.control.Menu::getText))
                 .contains("收藏夹");
 
-        // 无标签时标签栏按规范隐藏；打开标签后由下一个测试验证它出现。
-        assertThat(robot.lookup(".adb-tabbar").queryAs(TabBar.class).isVisible()).isFalse();
+        // ⭐ S5：标签栏**永远可见** —— 第一个标签是常驻的「对象」标签，
+        //    它是浏览的起点（Navicat 同形）。
+        assertThat(robot.lookup(".adb-tabbar").queryAs(TabBar.class).isVisible()).isTrue();
+        assertThat(robot.lookup("#" + TabBar.nodeId("object-home")).tryQuery())
+                .as("常驻的「对象」标签")
+                .isPresent();
     }
 
     @Test
@@ -168,8 +174,12 @@ class AppShellTest {
 
         robot.clickOn(".adb-tab__close");
         WaitForAsyncUtils.waitForFxEvents();
-        assertThat(robot.lookup(".adb-tab").tryQuery()).isEmpty();
-        assertThat(robot.lookup(".adb-welcome").tryQuery()).isPresent();
+        // ⭐ S5：关掉数据页后落回**常驻的「对象」标签**（不是空白欢迎页）。
+        assertThat(robot.lookup(".adb-tab").queryAs(javafx.scene.layout.HBox.class).getId())
+                .isEqualTo(TabBar.nodeId("object-home"));
+        assertThat(robot.lookup(".adb-object-home").tryQuery())
+                .as("对象首页")
+                .isPresent();
     }
 
     @Test
@@ -242,11 +252,13 @@ class AppShellTest {
 
         assertThat(robot.lookup("#data-save").queryAs(javafx.scene.control.Button.class)
                 .isDisabled()).isFalse();
-        assertThat(robot.lookup(".adb-tab__dirty").queryAs(Label.class).isVisible()).isTrue();
+        // ⚠️ 脏标记要按**标签**找 —— 常驻的「对象」标签排在前面，
+        //    它的脏标记是不可见的，直接 lookup 会找错节点。
+        assertThat(dirtyMarkerOf(robot, "grid:demo:users").isVisible()).isTrue();
 
         robot.clickOn("#data-undo");
         WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> page.dirtyCount() == 0);
-        assertThat(robot.lookup(".adb-tab__dirty").queryAs(Label.class).isVisible()).isFalse();
+        assertThat(dirtyMarkerOf(robot, "grid:demo:users").isVisible()).isFalse();
 
         robot.clickOn("#data-redo");
         WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> page.dirtyCount() == 1);
@@ -294,6 +306,12 @@ class AppShellTest {
                 .isEqualTo("第 0 / 0 页");
         assertThat(robot.lookup(".adb-grid .placeholder .label").queryAs(Label.class).getText())
                 .isEqualTo("没有数据");
+    }
+
+    /** 某个标签里的脏标记。 */
+    private static Label dirtyMarkerOf(FxRobot robot, String tabId) {
+        return robot.lookup("#" + TabBar.nodeId(tabId) + " .adb-tab__dirty")
+                .queryAs(Label.class);
     }
 
     private static void openTable(FxRobot robot, String name) {

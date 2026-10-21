@@ -72,11 +72,18 @@ public record ExternalDatabase(
         }
     }
 
-    /** 拼出连接档案。 */
+    /**
+     * 拼出连接档案。
+     *
+     * <p>⭐ 这里用**更短的超时**（5s / 8s）：外部真库是**第三方依赖**，
+     * 服务器卡一下不该让测试干等 30 秒。
+     * 应用本身的超时是 10s / 30s（见 {@code MySqlDialect}）。
+     */
     public ConnectionSpec spec() {
-        return kind == DialectKind.POSTGRESQL
-                ? ConnectionSpec.postgres(host, port, database, user, password)
-                : ConnectionSpec.mysql(host, port, database, user, password);
+        java.util.Map<String, String> options = java.util.Map.of(
+                "connectTimeout", "5000",
+                "socketTimeout", "8000");
+        return ConnectionSpec.server(kind, host, port, database, user, password, options);
     }
 
     /** 日志里用的名字（**不含口令**）。 */

@@ -37,6 +37,19 @@ public record ConnectionSpec(
         return new ConnectionSpec(kind, host, port, database, username, password, Map.of());
     }
 
+    /**
+     * 带附加 JDBC 参数的连接。
+     *
+     * <p>例如真库联调时用更短的超时：外部服务器卡一下，
+     * 不该让测试干等 30 秒。
+     */
+    public static ConnectionSpec server(DialectKind kind, String host, int port,
+                                        String database, String username, String password,
+                                        Map<String, String> options) {
+        return new ConnectionSpec(kind, host, port, database, username, password,
+                options == null ? Map.of() : Map.copyOf(options));
+    }
+
     /** PostgreSQL 连接。 */
     public static ConnectionSpec postgres(String host, int port, String database,
                                           String username, String password) {

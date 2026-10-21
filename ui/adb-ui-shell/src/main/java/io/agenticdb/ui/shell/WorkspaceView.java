@@ -29,6 +29,8 @@ public final class WorkspaceView extends StackPane {
     private final Function<TabItem, QueryPage> queryPageFactory;
     private final Function<TabItem, StructurePage> structurePageFactory;
     private final Function<TabItem, ConnectionsPage> connectionsPageFactory;
+    /** ⭐ S5：常驻的「对象」首页。 */
+    private final Function<TabItem, Node> objectHomeFactory;
     private final Map<String, DataGridPage> gridPages = new LinkedHashMap<>();
     private final Map<String, QueryPage> queryPages = new LinkedHashMap<>();
     private final Map<String, StructurePage> structurePages = new LinkedHashMap<>();
@@ -83,13 +85,15 @@ public final class WorkspaceView extends StackPane {
                          Function<TabItem, Node> gridPageFactory,
                          Function<TabItem, QueryPage> queryPageFactory,
                          Function<TabItem, StructurePage> structurePageFactory,
-                         Function<TabItem, ConnectionsPage> connectionsPageFactory) {
+                         Function<TabItem, ConnectionsPage> connectionsPageFactory,
+                         Function<TabItem, Node> objectHomeFactory) {
         this.actions = actions;
         this.connectionName = connectionName;
         this.gridPageFactory = gridPageFactory;
         this.queryPageFactory = queryPageFactory;
         this.structurePageFactory = structurePageFactory;
         this.connectionsPageFactory = connectionsPageFactory;
+        this.objectHomeFactory = objectHomeFactory;
         getStyleClass().add("adb-workspace");
         showWelcome();
     }
@@ -154,6 +158,18 @@ public final class WorkspaceView extends StackPane {
     }
 
     public void showTab(TabItem tab) {
+        if (tab.kind() == TabKind.OBJECT) {
+            // ⭐ S5：常驻的「对象」首页。
+            Node page = objectHomeFactory.apply(tab);
+            activeGrid = null;
+            activeQuery = null;
+            activeStructure = null;
+            activeConnections = null;
+            if (page != null) {
+                getChildren().setAll(page);
+            }
+            return;
+        }
         if (tab.kind() == TabKind.GRID) {
             DataGridPage page = gridPages.get(tab.id());
             if (page == null) {
@@ -422,6 +438,7 @@ public final class WorkspaceView extends StackPane {
             case CONNECTIONS -> "多连接管理";
             case TOOL -> "工具";
             case SETTINGS -> "本地设置";
+            case OBJECT -> connectionName;
         });
         context.getStyleClass().add("adb-muted");
 
