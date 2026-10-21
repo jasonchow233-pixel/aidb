@@ -1,19 +1,29 @@
 package io.agenticdb.ui.shell;
 
-import javafx.geometry.Pos;
 import io.agenticdb.session.ConnectionProfile;
+import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.VBox;
 
 import java.util.List;
 import java.util.function.Consumer;
 
-/** 主工具栏：只放最高频动作，其余进菜单与命令面板。 */
+/**
+ * 主工具栏 —— ⭐ **大图标 + 文字的功能栏**（Navicat 的形态）。
+ *
+ * <p>旧版是一排小按钮（连接 / 刷新 / SQL / 下拉 / 伪搜索框），
+ * 功能入口全藏在二级菜单里 —— 新手根本不知道「建表」「导入」在哪。
+ * 现在把高频入口摆到台面上：<b>连接 / 查询 / 表 / 导入导出 / 工具</b>。
+ *
+ * <p>每个入口 = 一个大图标 + 一行文字（图标在上、文字在下，和 Navicat 一致）。
+ */
 public final class MainToolBar extends HBox {
 
     private final ComboBox<ConnectionProfile> connections = new ComboBox<>();
@@ -29,26 +39,25 @@ public final class MainToolBar extends HBox {
         getStyleClass().add("adb-toolbar");
         setAlignment(Pos.CENTER_LEFT);
         setSpacing(6);
-        int height = io.agenticdb.ui.Tokens.H_TOOLBAR_LIGHT;
-        setPrefHeight(height);
-        setMinHeight(height);
-        setMaxHeight(height);
+        setPrefHeight(52);
+        setMinHeight(52);
+        setMaxHeight(52);
 
-        Button connect = actions.button("new-connection");
-        connect.getStyleClass().add("adb-button--primary");
-        connect.setText("＋ 连接");
+        // ⭐ 大图标功能入口。图标与文字的语义必须和全应用一致
+        //    （见 IconAuditTest 的「符号 → 语义唯一」门禁）。
+        feature(actions, "connections.manage", "◈", "连接", "打开连接管理");
+        feature(actions, "new-query", "⌨", "查询", "新建查询 (⇧⌘N)");
+        feature(actions, "object.tables", "▦", "表", "打开表清单");
+        feature(actions, "import-export", "⇅", "导入导出", "导入 / 导出数据");
+        feature(actions, "diagnostics", "◆", "工具", "诊断与运维工具");
 
-        Button refresh = actions.iconButton("refresh", "↻", "刷新 (F5)", "刷新");
-        refresh.setId("refresh-button");
+        Region featureSpacer = new Region();
+        HBox.setHgrow(featureSpacer, Priority.ALWAYS);
 
-        Button query = actions.button("new-query");
-        query.setText("SQL");
-        query.setTooltip(new Tooltip("新建查询 (⇧⌘N)"));
-        query.setId("new-query-button");
-
+        connections.setId("toolbar-connection-picker");
         connections.getStyleClass().add("adb-connection-picker");
-        connections.setPrefWidth(230);
-        connections.setMaxWidth(230);
+        connections.setPrefWidth(220);
+        connections.setMaxWidth(220);
         connections.setCellFactory(view -> new ConnectionCell());
         connections.setButtonCell(new ConnectionCell());
         setConnections(profiles, activeConnectionId);
@@ -59,32 +68,54 @@ public final class MainToolBar extends HBox {
             }
         });
 
-        Region leftSpacer = new Region();
-        HBox.setHgrow(leftSpacer, Priority.ALWAYS);
-
         Button search = new Button("⌘K   搜索对象或命令");
+        search.setId("toolbar-search");
         search.getStyleClass().add("adb-search-trigger");
-        search.setPrefWidth(320);
-        search.setMaxWidth(320);
+        search.setPrefWidth(240);
+        search.setMaxWidth(240);
         search.setOnAction(event -> actions.run("command-palette"));
 
-        Region rightSpacer = new Region();
-        HBox.setHgrow(rightSpacer, Priority.ALWAYS);
-
-        // ⭐ 图标按钮走 actions.iconButton：enabled 与动作同步，
-        //    动作禁用时按钮会真的变灰，而不是「看起来能点、点了没反应」。
         Button theme = actions.iconButton("theme.toggle", "◐", "切换主题", "切换主题");
         theme.setId("theme-toggle-button");
         Button settings = actions.iconButton("settings", "⚙", "设置 (⌘,)", "设置");
         settings.setId("settings-button");
 
-        getChildren().addAll(
-                connect, refresh, query, separator(), connections,
-                leftSpacer, search, rightSpacer,
-                theme, settings);
+        getChildren().addAll(featureSpacer, connections, search, theme, settings);
         this.onSelectConnection = onSelectConnection == null ? profile -> { } : onSelectConnection;
+    }
 
-        setConnections(profiles, activeConnectionId);
+    /**
+     * 一个大图标功能入口。
+     *
+     * <p>用 {@link VBox}（图标在上、文字在下）而不是普通 Button ——
+     * 普通 Button 的文字和图标没法分两行，而这是 Navicat 那种「看得见的功能栏」的关键。
+     */
+    private void feature(ActionRegistry actions, String actionId, String symbol, String label,
+                         String tooltip) {
+        Label icon = new Label(symbol);
+        icon.getStyleClass().add("adb-feature__icon");
+        icon.setAccessibleText(label);
+        // 图标要**居中**在文字上方：Label 默认按内容宽度摆，会偏左。
+        icon.setMaxWidth(Double.MAX_VALUE);
+        icon.setAlignment(Pos.CENTER);
+        // ⚠️ setTooltip 在 Control 上，不在 Node 上 —— 纯 VBox 挂不了 Tooltip，
+        //    所以挂在图标 Label 上。
+        icon.setTooltip(new Tooltip(tooltip));
+
+        Label text = new Label(label);
+        text.getStyleClass().add("adb-feature__label");
+        text.setMaxWidth(Double.MAX_VALUE);
+        text.setAlignment(Pos.CENTER);
+
+        VBox box = new VBox(1, icon, text);
+        // ⚠️ CSS 的 id 选择器里「.」是类选择器分隔符 —— 动作 id 带点的话
+        //    lookup("#feature-object.tables") 会找不到节点。统一换成短横线。
+        box.setId("feature-" + actionId.replace('.', '-'));
+        box.getStyleClass().add("adb-feature");
+        box.setAlignment(Pos.CENTER);
+        box.setOnMouseClicked(event -> actions.run(actionId));
+
+        getChildren().add(box);
     }
 
     public void setConnections(List<ConnectionProfile> profiles, String activeConnectionId) {
@@ -96,12 +127,6 @@ public final class MainToolBar extends HBox {
         if (active != null) {
             connections.getSelectionModel().select(active);
         }
-    }
-
-    private static Region separator() {
-        Region region = new Region();
-        region.getStyleClass().add("adb-toolbar__separator");
-        return region;
     }
 
     private static final class ConnectionCell extends ListCell<ConnectionProfile> {

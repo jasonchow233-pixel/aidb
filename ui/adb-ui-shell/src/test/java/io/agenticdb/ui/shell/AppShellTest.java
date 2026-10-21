@@ -113,7 +113,10 @@ class AppShellTest {
 
         javafx.scene.control.MenuBar menuBar =
                 robot.lookup(".menu-bar").queryAs(javafx.scene.control.MenuBar.class);
-        assertThat(menuBar.getMenus()).hasSize(7);
+        // 8 个顶级菜单：文件 / 编辑 / 视图 / 数据库 / **收藏夹** / 工具 / 窗口 / 帮助
+        assertThat(menuBar.getMenus()).hasSize(8);
+        assertThat(menuBar.getMenus().stream().map(javafx.scene.control.Menu::getText))
+                .contains("收藏夹");
 
         // 无标签时标签栏按规范隐藏；打开标签后由下一个测试验证它出现。
         assertThat(robot.lookup(".adb-tabbar").queryAs(TabBar.class).isVisible()).isFalse();
@@ -313,7 +316,7 @@ class AppShellTest {
 
     @Test
     void opensQueryPageRunsSqlAndShowsResultTab(FxRobot robot) throws Exception {
-        robot.clickOn("#new-query-button");
+        robot.clickOn("#feature-new-query");
         WaitForAsyncUtils.waitForFxEvents();
 
         CodeArea editor = robot.lookup("#query-editor").queryAs(CodeArea.class);
@@ -425,7 +428,7 @@ class AppShellTest {
         AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
 
         // 1) 普通提示：1.8 秒（刷新对象走的就是这一档）
-        robot.clickOn("#refresh-button");
+        WaitForAsyncUtils.asyncFx(() -> shell.actionRegistry().run("refresh")).get();
         WaitForAsyncUtils.waitForFxEvents();
         assertThat(shell.toastDelayMillis()).isEqualTo(1_800);
 

@@ -23,7 +23,7 @@ public final class MenuBarFactory {
         bar.setUseSystemMenuBar(true);
         bar.getMenus().addAll(
                 fileMenu(), editMenu(), viewMenu(),
-                databaseMenu(), toolsMenu(), windowMenu(), helpMenu());
+                databaseMenu(), favoritesMenu(), toolsMenu(), windowMenu(), helpMenu());
         return bar;
     }
 
@@ -84,6 +84,14 @@ public final class MenuBarFactory {
                 new SeparatorMenuItem(),
                 actions.menuItem("query.format"),
                 actions.menuItem("query.save"));
+    }
+
+    /**
+     * ⭐ S6：独立的「收藏夹」顶级菜单（Navicat 的菜单栏就是
+     * 文件 / 编辑 / 查看 / 表 / **收藏夹** / 工具 / 窗口 / 帮助）。
+     */
+    private Menu favoritesMenu() {
+        return new Menu("收藏夹", null, actions.menuItem("favorites.open"));
     }
 
     private Menu toolsMenu() {

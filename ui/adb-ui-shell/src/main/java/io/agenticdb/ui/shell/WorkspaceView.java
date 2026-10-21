@@ -220,7 +220,8 @@ public final class WorkspaceView extends StackPane {
         activeQuery = null;
         activeStructure = null;
         activeConnections = null;
-        getChildren().setAll(buildStaticPage(tab));
+        // ⭐ 标签自带页面（表清单）时直接用它，不再走静态占位页。
+        getChildren().setAll(tab.view() != null ? tab.view() : buildStaticPage(tab));
     }
 
     /** 标签关闭时释放页面与在途查询；同一页可能还有另一个标签引用，所以按 id 精确移除。 */

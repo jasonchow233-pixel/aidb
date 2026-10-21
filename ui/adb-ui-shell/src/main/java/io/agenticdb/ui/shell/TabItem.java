@@ -13,6 +13,12 @@ public final class TabItem {
     private final TabKind kind;
     private final String target;
     private final String connectionId;
+    /**
+     * 已经构建好的页面（表清单这类「自己带内容」的标签页）。
+     *
+     * <p>平时是 {@code null} —— 由 {@code WorkspaceView} 按 {@code target} 现建。
+     */
+    private final javafx.scene.Node view;
     private final BooleanProperty dirty = new SimpleBooleanProperty(false);
     private final IntegerProperty dirtyCount = new SimpleIntegerProperty(0);
 
@@ -33,11 +39,23 @@ public final class TabItem {
      *                     多连接下页面工厂按它取会话，避免不同连接的页共享一个全局 session。
      */
     public TabItem(String id, String title, TabKind kind, String target, String connectionId) {
+        this(id, title, kind, target, connectionId, null);
+    }
+
+    /** 带现成页面的标签页（内容不由 WorkspaceView 构建）。 */
+    public TabItem(String id, String title, TabKind kind, String target, String connectionId,
+                   javafx.scene.Node view) {
         this.id = id;
         this.title = title;
         this.kind = kind;
         this.target = target == null ? title : target;
         this.connectionId = connectionId;
+        this.view = view;
+    }
+
+    /** 现成的页面；没有就是 {@code null}。 */
+    public javafx.scene.Node view() {
+        return view;
     }
 
     public String id() {

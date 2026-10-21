@@ -224,7 +224,11 @@ public final class TabBar extends HBox {
         MenuItem closeItem = actions.menuItem("tab.close", "关闭");
         MenuItem closeOthers = actions.menuItem("tab.close-others", "关闭其他");
         MenuItem closeAll = actions.menuItem("tab.close-all", "全部关闭");
-        menu.getItems().addAll(closeItem, closeOthers, new SeparatorMenuItem(), closeAll);
+        // ⭐ S8：补「复制表名 / 复制 SELECT」—— Navicat 的标签右键也有。
+        MenuItem copyName = actions.menuItem("tab.copy-name", "复制表名");
+        MenuItem copySelect = actions.menuItem("tab.copy-select", "复制 SELECT");
+        menu.getItems().addAll(copyName, copySelect, new SeparatorMenuItem(),
+                closeItem, closeOthers, new SeparatorMenuItem(), closeAll);
         node.setOnContextMenuRequested(event -> {
             // 右键先激活该标签：这样菜单里的「关闭 / 关闭其他」作用的就是
             // 用户右键的那个标签，而不是上一次激活的那个。

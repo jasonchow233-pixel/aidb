@@ -151,6 +151,13 @@ public final class SqliteDialect implements Dialect {
     }
 
     @Override
+    public String tableMetaSql() {
+        // SQLite 没有表大小与创建时间（要 dbstat 虚拟表，还不一定编进来）——
+        // 诚实地说「没有」，让上层退化成只算行数。
+        return null;
+    }
+
+    @Override
     public String setSchemaSql(String schema) {
         // SQLite 没有 schema 概念。
         return null;

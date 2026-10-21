@@ -118,6 +118,17 @@ public interface Dialect {
     String readDdl(Connection connection, String table, boolean view) throws SQLException;
 
     /**
+     * 表元信息查询：一次取出 名称 / 行数 / 大小 / 引擎 / 创建时间。
+     *
+     * <p>返回 {@code null} 表示这个库不提供这些元信息
+     * （SQLite 没有表大小与创建时间），调用方会退化成「只算行数」。
+     *
+     * <p>列名固定为：{@code name} / {@code rows} / {@code size_bytes} /
+     * {@code engine} / {@code created_at}。
+     */
+    String tableMetaSql();
+
+    /**
      * 切换当前 schema 的语句。
      *
      * <p>PostgreSQL 用 {@code SET search_path}；其它方言返回 {@code null}

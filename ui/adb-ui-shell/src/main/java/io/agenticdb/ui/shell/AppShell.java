@@ -121,7 +121,8 @@ public final class AppShell extends StackPane {
                 ? DemoDatabase.DEFAULT_FILE_NAME : demoPath.getFileName().toString();
 
         this.sideBar = new SideBar(actions, List.of(), connectionName,
-                this::openTab, statusBar::setMessage, "demo", connections, this::selectConnection);
+                this::openTab, statusBar::setMessage, "demo", connections,
+                this::selectConnection, settings);
         this.sideBar.setOnRefreshObjects(this::reloadObjects);
         this.sideBar.setOnSelectSchema(this::switchSchema);
         // ⭐ 多连接对象树：展开一个没读过的连接时，去连它、读它的对象。
@@ -549,6 +550,11 @@ public final class AppShell extends StackPane {
                 null, () -> tabBar.closeOthers(tabBar.activeId()));
         actions.register("tab.close-all", "全部关闭", "文件",
                 null, () -> tabBar.closeAll());
+        // ⭐ S8：标签栏右键补「复制表名 / 复制 SELECT」
+        actions.register("tab.copy-name", "复制表名", "文件",
+                null, () -> copyActiveTabTarget(false));
+        actions.register("tab.copy-select", "复制 SELECT", "文件",
+                null, () -> copyActiveTabTarget(true));
         actions.register("window.close", "关闭窗口", "文件",
                 key("Shift+Shortcut+W"), () -> {
                     if (stage != null) {
@@ -656,6 +662,12 @@ public final class AppShell extends StackPane {
                 null, () -> openTab(new TabItem("grid:" + activeProfileId() + ":users",
                         "users", TabKind.GRID, "users", activeProfileId())));
 
+        // ⭐ S2：表清单（Navicat 的「表清单」那一层）
+        actions.register("object.tables", "表清单", "对象",
+                null, this::openTableList);
+        // ⭐ S6：顶级「收藏夹」菜单的入口
+        actions.register("favorites.open", "打开收藏夹…", "收藏夹",
+                null, this::openFavorites);
         actions.register("diagnostics", "诊断", "工具",
                 null, () -> actions.run("object.diagnostics"));
         // P6 的「导入 / 导出」向导还没做：入口先从侧栏撤掉，
@@ -1024,6 +1036,34 @@ public final class AppShell extends StackPane {
     }
 
     /**
+     * 打开表清单（Navicat 的「表清单」那一层）。
+     *
+     * <p>以前对象树里只有表名 —— 用户想知道「这张表有多少行、多大」只能自己去查。
+     */
+    private void openTableList() {
+        DbSession current = session;
+        if (current == null) {
+            status("请先连接一个数据库");
+            return;
+        }
+        TableListPage page = new TableListPage(current, schemaService, dbExecutor,
+                name -> openTab(new TabItem("grid:" + activeProfileId() + ":" + name, name,
+                        TabKind.GRID, name, activeProfileId())),
+                this::status);
+        openTab(new TabItem("tables:" + activeProfileId(), "表清单", TabKind.TOOL,
+                null, activeProfileId(), page));
+    }
+
+    /**
+     * 打开收藏夹（菜单栏的顶级「收藏夹」入口）。
+     */
+    private void openFavorites() {
+        FavoritesPage page = new FavoritesPage(sideBar.starredNames(),
+                name -> sideBar.openStarred(name), this::status);
+        page.show(stage);
+    }
+
+    /**
      * 打开「已保存查询」。
      *
      * <p>侧栏的「已保存查询」以前是空壳页 —— 现在它真的能用。
@@ -1054,6 +1094,27 @@ public final class AppShell extends StackPane {
                 .toList();
         TransferHub hub = new TransferHub(current, tables, dbExecutor, this::status);
         hub.show(stage);
+    }
+
+    /**
+     * 复制当前标签的目标对象名（可选复制成 SELECT 语句）。
+     *
+     * <p>只对有表目标的标签（数据页 / 结构页）有意义。
+     */
+    private void copyActiveTabTarget(boolean asSelect) {
+        TabItem tab = tabBar.active();
+        if (tab == null || tab.target() == null || tab.target().isBlank()) {
+            status("当前标签没有可复制的表名");
+            return;
+        }
+        String target = tab.target();
+        String text = asSelect
+                ? "SELECT * FROM \"" + target + "\" LIMIT 200;"
+                : target;
+        javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+        content.putString(text);
+        javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
+        status("已复制：" + text);
     }
 
     private void openNewQuery() {

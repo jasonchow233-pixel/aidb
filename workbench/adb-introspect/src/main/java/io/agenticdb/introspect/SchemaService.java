@@ -153,6 +153,52 @@ public final class SchemaService {
         return value == null ? "" : value.trim();
     }
 
+    /**
+     * 表清单的元信息（Navicat「表清单」那一行的内容）。
+     *
+     * <p>方言能一条 SQL 取全就取（PG / MySQL）；取不到（SQLite 没有表大小与创建时间）
+     * 就退化成「逐表 COUNT(*)」—— 一次全表扫描，所以**不要**在对象树展开时顺带调用。
+     */
+    public List<TableMeta> listTableMeta(DbSession session) throws SQLException {
+        List<TableMeta> result = new ArrayList<>();
+        String sql = session.dialect().tableMetaSql();
+        if (sql != null) {
+            try (Statement statement = session.connection().createStatement();
+                 ResultSet rs = statement.executeQuery(sql)) {
+                while (rs.next()) {
+                    result.add(new TableMeta(rs.getString("name"),
+                            longOrNull(rs, "rows"), longOrNull(rs, "size_bytes"),
+                            rs.getString("engine"), rs.getString("created_at")));
+                }
+            } catch (SQLException ignored) {
+                // 取不到就退化成只算行数。
+                result.clear();
+            }
+        }
+        if (result.isEmpty()) {
+            // 退路：只算行数。演示库表少，代价可以接受；大库要靠调用方限流。
+            for (SchemaObject object : listObjects(session)) {
+                if (object.kind() != ObjectKind.TABLE) {
+                    continue;
+                }
+                Long rows = null;
+                try {
+                    rows = count(session, object.name());
+                } catch (SQLException ignored) {
+                    rows = null;
+                }
+                result.add(new TableMeta(object.name(), rows, null, null, null));
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    /** 读一个可能为 NULL 的 BIGINT 列。 */
+    private static Long longOrNull(ResultSet rs, String column) throws SQLException {
+        long value = rs.getLong(column);
+        return rs.wasNull() ? null : value;
+    }
+
     /** 用 {@code SELECT * FROM t LIMIT 0} 拿结果集元数据，表与视图共用。 */
     public TableSchema describe(DbSession session, String name) throws SQLException {
         String sql = "SELECT * FROM " + session.dialect().quote(name) + " LIMIT 0";

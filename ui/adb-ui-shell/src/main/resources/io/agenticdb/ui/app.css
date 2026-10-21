@@ -66,6 +66,30 @@
     -fx-border-width: 1 0 0 0;
 }
 
+/* ⭐ S1：大图标功能栏（Navicat 形态）—— 图标在上、文字在下 */
+.adb-feature {
+    -fx-padding: 5 10 4 10;
+    -fx-background-radius: 8;
+    -fx-cursor: hand;
+    -fx-min-width: 52;
+}
+
+.adb-feature:hover {
+    -fx-background-color: -adb-bg-hover;
+}
+
+.adb-feature__icon {
+    -fx-font-size: 17px;
+    -fx-text-fill: -adb-text-primary;
+    -fx-alignment: center;
+}
+
+.adb-feature__label {
+    -fx-font-size: 10px;
+    -fx-text-fill: -adb-text-secondary;
+    -fx-alignment: center;
+}
+
 .adb-toolbar {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent transparent -adb-border transparent;

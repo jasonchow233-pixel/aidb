@@ -42,7 +42,7 @@ class MenuBarFactoryTest {
             "refresh", "connection.reconnect", "demo.open",
             "query.run", "query.run-all", "query.cancel", "query.explain",
             "query.format", "query.save",
-            "diagnostics", "import-export", "settings",
+            "favorites.open", "diagnostics", "import-export", "settings",
             "window.minimize", "shortcuts", "about");
 
     @Start

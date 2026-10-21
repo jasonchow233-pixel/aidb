@@ -136,6 +136,16 @@ public final class MySqlDialect implements Dialect {
     }
 
     @Override
+    public String tableMetaSql() {
+        return "SELECT table_name AS name, table_rows AS rows, "
+                + "(data_length + index_length) AS size_bytes, engine AS engine, "
+                + "create_time AS created_at "
+                + "FROM information_schema.tables "
+                + "WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' "
+                + "ORDER BY table_name";
+    }
+
+    @Override
     public String setSchemaSql(String schema) {
         // MySQL 的 schema 就是数据库；切换要重连，不是一条 SET。
         return null;

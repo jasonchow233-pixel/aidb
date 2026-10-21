@@ -128,6 +128,20 @@ public final class PostgresDialect implements Dialect {
     }
 
     @Override
+    public String tableMetaSql() {
+        return "SELECT c.relname AS name, "
+                + "c.reltuples::bigint AS rows, "
+                + "pg_total_relation_size(c.oid) AS size_bytes, "
+                + "CASE c.reltablespace WHEN 0 THEN 'default' "
+                + "ELSE ts.spcname END AS engine, "
+                + "NULL AS created_at "
+                + "FROM pg_class c "
+                + "LEFT JOIN pg_tablespace ts ON ts.oid = c.reltablespace "
+                + "WHERE c.relkind = 'r' AND c.relnamespace = current_schema()::regnamespace "
+                + "ORDER BY c.relname";
+    }
+
+    @Override
     public String setSchemaSql(String schema) {
         if (schema == null || schema.isBlank()) {
             return null;

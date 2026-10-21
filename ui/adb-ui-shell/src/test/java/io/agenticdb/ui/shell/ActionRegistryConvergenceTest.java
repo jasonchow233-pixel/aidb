@@ -141,14 +141,14 @@ class ActionRegistryConvergenceTest {
 
         Boolean ok = onFx(() -> {
             AppShell shell = shell(robot);
-            Button refresh = (Button) shell.lookup("#refresh-button");
-            if (refresh == null) {
+            Button theme = (Button) shell.lookup("#theme-toggle-button");
+            if (theme == null) {
                 return null;
             }
-            boolean before = refresh.isDisable();
-            shell.actionRegistry().require("refresh").setEnabled(false);
-            boolean after = refresh.isDisable();
-            shell.actionRegistry().require("refresh").setEnabled(true);
+            boolean before = theme.isDisable();
+            shell.actionRegistry().require("theme.toggle").setEnabled(false);
+            boolean after = theme.isDisable();
+            shell.actionRegistry().require("theme.toggle").setEnabled(true);
             return before == false && after == true;
         });
 

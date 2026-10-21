@@ -69,6 +69,9 @@ public final class SideBar extends VBox {
     private Runnable onRefreshObjects = () -> { };
 
     private final Set<String> starred = new LinkedHashSet<>();
+    /** 收藏的持久化位置（以前只在内存里 —— 退出即丢）。 */
+    private final SettingsStore settings;
+    private static final String STARRED_KEY = "sidebar.starred";
     private DemoNode selectedNode;
     private String dialectName = "—";
     private final VBox expanded = new VBox(8);
@@ -101,7 +104,22 @@ public final class SideBar extends VBox {
                    String connectionId,
                    List<ConnectionProfile> connections,
                    Consumer<ConnectionProfile> onSelectConnection) {
+        this(actions, objects, connectionName, openTab, status, connectionId, connections,
+                onSelectConnection, null);
+    }
+
+    public SideBar(ActionRegistry actions,
+                   List<SchemaObject> objects,
+                   String connectionName,
+                   Consumer<TabItem> openTab,
+                   Consumer<String> status,
+                   String connectionId,
+                   List<ConnectionProfile> connections,
+                   Consumer<ConnectionProfile> onSelectConnection,
+                   SettingsStore settings) {
         this.actions = actions;
+        this.settings = settings;
+        loadStarred();
         this.connectionName = connectionName;
         this.connectionId = connectionId;
         this.openTab = openTab;
@@ -246,6 +264,8 @@ public final class SideBar extends VBox {
         }
     }
 
+    /** 只看收藏（底部 ★ 按钮切换）。 */
+    private boolean showOnlyFavorites;
     /** 当前选中的 schema。 */
     public String activeSchema() {
         return activeSchema;
@@ -316,24 +336,52 @@ public final class SideBar extends VBox {
         collapse.setTooltip(new Tooltip("折叠侧栏 (⌘\\)"));
         collapse.setOnAction(event -> actions.run("sidebar.toggle"));
 
-        HBox header = new HBox(6, title, headerSpacer, collapse);
+        HBox header = new HBox(6, title, headerSpacer);
         header.setAlignment(Pos.CENTER_LEFT);
 
         search.setPromptText("搜索表、视图");
         search.getStyleClass().add("adb-sidebar__search");
         search.setPrefHeight(io.agenticdb.ui.Tokens.H_INPUT_LIGHT);
+        search.setMinWidth(120);
         search.textProperty().addListener((observable, oldValue, newValue) -> refreshTree());
 
-        Button manageConnections = new Button("◈  连接管理");
+        // ⭐ S4：搜索框在**底部**（Navicat 就是这个位置），
+        //    和 ★ 收藏、« 折叠按钮同一行 —— 不是在顶上单独占一行。
+        Button onlyFavorites = new Button("★");
+        onlyFavorites.setId("sidebar-favorites-filter");
+        onlyFavorites.setAccessibleText("只看收藏");
+        onlyFavorites.getStyleClass().add("adb-icon-button");
+        onlyFavorites.setTooltip(new Tooltip("只看收藏"));
+        onlyFavorites.setOnAction(event -> {
+            showOnlyFavorites = !showOnlyFavorites;
+            if (showOnlyFavorites) {
+                onlyFavorites.getStyleClass().add("adb-icon-button--active");
+            } else {
+                onlyFavorites.getStyleClass().remove("adb-icon-button--active");
+            }
+            refreshTree();
+            status.accept(showOnlyFavorites ? "只看收藏" : "显示全部对象");
+        });
+
+        HBox bottomBar = new HBox(6, search, onlyFavorites, collapse);
+        HBox.setHgrow(search, Priority.ALWAYS);
+        bottomBar.setAlignment(Pos.CENTER_LEFT);
+        bottomBar.getStyleClass().add("adb-sidebar__bottom");
+
+        // ⭐ 紧凑成图标按钮：侧栏只有 240px，文字按钮会被连接下拉挤没
+        //    （以前整颗按钮被压成「..」两个字，截图里能看见）。
+        Button manageConnections = new Button("◈");
         manageConnections.setId("sidebar-connections");
-        manageConnections.getStyleClass().add("adb-sidebar__nav");
-        manageConnections.setMaxWidth(Double.MAX_VALUE);
-        manageConnections.setAlignment(Pos.CENTER_LEFT);
+        manageConnections.setAccessibleText("连接管理");
+        manageConnections.getStyleClass().addAll("adb-icon-button", "adb-sidebar__nav");
+        manageConnections.setTooltip(new Tooltip("连接管理"));
+        manageConnections.setMinWidth(Region.USE_PREF_SIZE);
         manageConnections.setOnAction(event -> openConnections());
 
         connectionPicker.setId("sidebar-connection-picker");
         connectionPicker.getStyleClass().add("adb-connection-picker");
         connectionPicker.setMaxWidth(Double.MAX_VALUE);
+        connectionPicker.setMinWidth(90);
         connectionPicker.setCellFactory(view -> new ConnectionCell());
         connectionPicker.setButtonCell(new ConnectionCell());
         connectionPicker.setItems(javafx.collections.FXCollections.observableArrayList(connections));
@@ -353,6 +401,7 @@ public final class SideBar extends VBox {
         schemaPicker.setId("sidebar-schema-picker");
         schemaPicker.getStyleClass().add("adb-schema-picker");
         schemaPicker.setMaxWidth(Double.MAX_VALUE);
+        schemaPicker.setMinWidth(90);
         schemaPicker.setVisible(false);
         schemaPicker.setManaged(false);
         schemaPicker.setOnAction(event -> {
@@ -445,8 +494,8 @@ public final class SideBar extends VBox {
                 navButton("⇅  导入 / 导出", "导入导出", () -> actions.run("import-export")),
                 navButton("⚙  设置", "设置", () -> openTab.accept(new TabItem("settings", "设置", TabKind.SETTINGS))));
 
-        expanded.getChildren().addAll(header, search, connectionBar, favorites, connections,
-                workbench, tools);
+        expanded.getChildren().addAll(header, connectionBar, favorites, connections,
+                workbench, tools, bottomBar);
         VBox.setVgrow(connections, Priority.ALWAYS);
 
         refreshFavorites();
@@ -560,6 +609,12 @@ public final class SideBar extends VBox {
             connectionNode.setExpanded(active);
 
             List<SchemaObject> objects = objectsByConnection.getOrDefault(id, List.of());
+            if (showOnlyFavorites) {
+                // ⭐ 底部 ★ 按钮：只看收藏的对象
+                objects = objects.stream()
+                        .filter(object -> starred.contains(object.name()))
+                        .toList();
+            }
             List<SchemaObject> profileTables = objects.stream()
                     .filter(object -> object.kind() == ObjectKind.TABLE).toList();
             List<SchemaObject> profileViews = objects.stream()
@@ -636,10 +691,50 @@ public final class SideBar extends VBox {
         }
     }
 
+    /** 收藏的对象名（供「收藏夹」菜单用）。 */
+    public List<String> starredNames() {
+        return List.copyOf(starred);
+    }
+
+    /** 打开一个收藏的对象（走正常的开表路径）。 */
+    public void openStarred(String name) {
+        openGrid(connectionId, name);
+    }
+
+    /** 读回上次收藏（以前退出就没了）。 */
+    private void loadStarred() {
+        if (settings == null) {
+            return;
+        }
+        String raw = settings.get(STARRED_KEY, "");
+        if (raw == null || raw.isBlank()) {
+            return;
+        }
+        try {
+            for (String name : raw.split("\n")) {
+                String trimmed = name.trim();
+                if (!trimmed.isEmpty()) {
+                    starred.add(trimmed);
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // 存坏了就当没有收藏。
+        }
+    }
+
+    /** 收藏落盘。 */
+    private void saveStarred() {
+        if (settings == null) {
+            return;
+        }
+        settings.set(STARRED_KEY, String.join("\n", starred));
+    }
+
     private void toggleStar(String name) {
         if (!starred.remove(name)) {
             starred.add(name);
         }
+        saveStarred();
         refreshFavorites();
         refreshTree();
         status.accept(starred.contains(name) ? "已收藏 " + name : "已取消收藏 " + name);
