@@ -39,6 +39,7 @@ workbench/
                       ＋ 凭据（CredentialStore / Keychain / SecretTool）
                       ＋ 连接池（HikariCP 包装）
   adb-editing        RowIdentity / CellKey / EditBuffer / EditSqlBuilder
+  adb-transfer       导入导出引擎：流式 CSV/TSV 编解码、四种导出格式、字段映射与坏行报告
 
 ui/
   adb-ui-core        tokens.json → Tokens.java + theme-dark/light.css；主题管理

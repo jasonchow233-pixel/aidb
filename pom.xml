@@ -102,6 +102,11 @@
       </dependency>
       <dependency>
         <groupId>io.agenticdb</groupId>
+        <artifactId>adb-transfer</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.agenticdb</groupId>
         <artifactId>adb-fixtures</artifactId>
         <version>${project.version}</version>
       </dependency>
@@ -301,6 +306,7 @@
     <module>workbench/adb-introspect</module>
     <module>workbench/adb-session</module>
     <module>workbench/adb-editing</module>
+    <module>workbench/adb-transfer</module>
 
     <!-- ui：JavaFX -->
     <module>ui/adb-ui-core</module>

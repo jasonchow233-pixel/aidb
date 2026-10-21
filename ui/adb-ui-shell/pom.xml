@@ -20,6 +20,7 @@
     <dependency><groupId>io.agenticdb</groupId><artifactId>adb-introspect</artifactId></dependency>
     <dependency><groupId>io.agenticdb</groupId><artifactId>adb-session</artifactId></dependency>
     <dependency><groupId>io.agenticdb</groupId><artifactId>adb-editing</artifactId></dependency>
+    <dependency><groupId>io.agenticdb</groupId><artifactId>adb-transfer</artifactId></dependency>
     <dependency><groupId>io.agenticdb</groupId><artifactId>adb-sql</artifactId></dependency>
     <dependency><groupId>io.agenticdb</groupId><artifactId>adb-safety</artifactId></dependency>
     <dependency><groupId>io.agenticdb</groupId><artifactId>adb-fixtures</artifactId></dependency>

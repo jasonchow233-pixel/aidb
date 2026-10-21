@@ -388,6 +388,8 @@ public final class SideBar extends VBox {
         VBox tools = section("工具",
                 // 诊断接真实功能：诊断对象树里当前选中的表。
                 navButton("◆  诊断", "诊断", () -> actions.run("object.diagnostics")),
+                // 导入 / 导出接真实功能（P6）。
+                navButton("⇅  导入 / 导出", "导入导出", () -> actions.run("import-export")),
                 navButton("⚙  设置", "设置", () -> openTab.accept(new TabItem("settings", "设置", TabKind.SETTINGS))));
 
         expanded.getChildren().addAll(header, search, connectionBar, favorites, connections,

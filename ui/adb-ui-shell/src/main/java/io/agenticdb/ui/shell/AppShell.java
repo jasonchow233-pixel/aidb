@@ -629,7 +629,7 @@ public final class AppShell extends StackPane {
         // P6 的「导入 / 导出」向导还没做：入口先从侧栏撤掉，
         // 不留「点了只有一句提示」的死 UI（TODO §12.1「要么接要么删」）。
         actions.register("import-export", "导入 / 导出", "工具",
-                null, () -> status("导入 / 导出向导在 P6 接入，现在还没有可用的向导"));
+                null, this::openTransferHub);
         actions.register("settings", "设置…", "工具",
                 key("Shortcut+Comma"),
                 () -> openTab(new TabItem("settings", "设置", TabKind.SETTINGS)));
@@ -982,6 +982,28 @@ public final class AppShell extends StackPane {
                 AppShell.this.toastUnreversible(message);
             }
         };
+    }
+
+    /**
+     * 打开导入 / 导出入口（P6）。
+     *
+     * <p>侧栏的「导入 / 导出」以前是空壳页 —— 现在它真的能干活：
+     * 选表 → 导出（CSV/TSV/JSON/SQL，流式）或导入（CSV/TSV，批量提交 + 坏行报告）。
+     */
+    private void openTransferHub() {
+        DbSession current = session;
+        if (current == null) {
+            status("请先连接一个数据库");
+            return;
+        }
+        List<String> tables = objectsByConnection.getOrDefault(activeProfileId(), List.of())
+                .stream()
+                .filter(object -> object.kind()
+                        == io.agenticdb.introspect.SchemaService.ObjectKind.TABLE)
+                .map(io.agenticdb.introspect.SchemaService.SchemaObject::name)
+                .toList();
+        TransferHub hub = new TransferHub(current, tables, dbExecutor, this::status);
+        hub.show(stage);
     }
 
     private void openNewQuery() {

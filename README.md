@@ -38,6 +38,7 @@
 | 行内编辑、类型转换、按主键定位 | ✅ | `ValueCell` + `RowIdentity` |
 | NULL / 空串独立操作 | ✅ | 单元格右键 + 批量条 |
 | `EditBuffer`、撤销/重做、脏标记、关闭确认 | ✅ | `adb-editing` |
+| 导入导出向导（流式 CSV/TSV/JSON/SQL，字段映射，坏行报告） | ✅ | `adb-transfer` |
 | 新增行 / 删除 / 克隆（草稿行、一次撤销） | ✅ | 淡绿新增、淡红删除、`●` 脏行 |
 | 多选 + 批量条：TSV / INSERT / 克隆 / 设 NULL / 设空串 / 删除 | ✅ | 表头全选仅当前页 |
 | SQL 预览 → 单事务保存 → 刷新 → Toast 反向撤销 | ✅ | `EditSqlBuilder` + `DataGridPage` |
@@ -63,7 +64,7 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**40 个测试类、358 条测试用例，0 失败**。统一命令：`./mvnw -B clean verify`。
+当前门禁：**42 个测试类、377 条测试用例，0 失败**。统一命令：`./mvnw -B clean verify`。
 
 统计口径用工具兜底（`@Nested` 的测试类在 surefire XML 里会写成 `tests="0"`）：
 
@@ -143,6 +144,7 @@ workbench/
   adb-introspect     对象列表、列定义、主键、行数、分页/筛选/排序 SQL、结构内省与结构变更 SQL
   adb-session        连接档案、凭据存储、连接池、会话生命周期
   adb-editing        编辑缓冲、撤销/重做、SQL 计划、反向撤销
+  adb-transfer       导入导出引擎：流式 CSV/TSV/JSON/SQL 读写、字段映射、坏行报告
 
 ui/
   adb-ui-core        设计令牌（tokens.json → Tokens.java + theme CSS）
@@ -187,7 +189,7 @@ bootstrap/
 - 数据页加载 / 保存无法真正取消 JDBC 语句（`⌘.` 只作用于查询页，见 4.5-13）。
 - 连接建立与内省跑在 JavaFX 线程；全局单线程执行器会让一个连接的慢查询阻塞其它连接。
 - 结构页只能改列；索引、外键、触发器只读；不能建表 / 改表名。
-- 导入 / 导出向导尚未实现，侧栏入口目前是空壳（P6）。
+- 导入导出已实现（CSV/TSV/JSON/SQL 导出 + CSV/TSV 导入）；**xlsx 还没有**；导入暂按字符串绑列，类型不匹配的行会跳过并报告。
 - 诊断、查询历史、已保存查询三个侧栏入口目前是空壳
   （**「查询历史」是特例：功能已存在且可用，只是侧栏开错了页面**）。
 - PostgreSQL / MySQL 尚未真实联调（无 Testcontainers），PG 的 DEFAULT / COMMENT 不内省。

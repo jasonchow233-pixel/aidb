@@ -703,13 +703,18 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         MenuItem exportCsv = new MenuItem("导出当前页为 CSV…");
         exportCsv.setId("data-export-csv");
         exportCsv.setOnAction(event -> exportCsv());
+        // ⭐ 导出向导：能导**整表**（不是只有当前页），格式可选 CSV/TSV/JSON/SQL。
+        MenuItem exportWizard = new MenuItem("导出向导（整表 / 多种格式）…");
+        exportWizard.setId("data-export-wizard");
+        exportWizard.setOnAction(event -> openExportWizard());
         MenuItem copyPage = new MenuItem("复制当前页 TSV");
         copyPage.setId("data-export-tsv");
         copyPage.setOnAction(event -> copyRowsAsTsv(List.copyOf(grid.getItems()), "当前页"));
         MenuItem copyPageSql = new MenuItem("复制当前页为 SQL");
         copyPageSql.setId("data-export-sql");
         copyPageSql.setOnAction(event -> copyRowsAsSql(List.copyOf(grid.getItems()), "当前页"));
-        exportButton.getItems().addAll(exportCsv, copyPage, copyPageSql);
+        exportButton.getItems().addAll(exportWizard, new SeparatorMenuItem(),
+                exportCsv, copyPage, copyPageSql);
 
         searchField.setId("data-search");
         searchField.getStyleClass().add("adb-grid__search");
@@ -2368,6 +2373,20 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         content.putString(sql.toString());
         Clipboard.getSystemClipboard().setContent(content);
         feedback.status("已复制 " + scope + " " + rows.size() + " 行 INSERT");
+    }
+
+    /** 打开导出向导：整表 / 当前页 / 选中行，CSV/TSV/JSON/SQL。 */
+    private void openExportWizard() {
+        if (tableSchema == null) {
+            return;
+        }
+        List<String> names = tableSchema.columns().stream().map(ColumnDef::name).toList();
+        ExportWizard.Scope scope = grid.getSelectionModel().getSelectedItems().isEmpty()
+                ? ExportWizard.Scope.WHOLE_TABLE : ExportWizard.Scope.SELECTED;
+        Path target = Path.of(System.getProperty("user.home"), tableName + ".csv");
+        ExportWizard wizard = new ExportWizard(session, tableName, names, scope, target,
+                dbExecutor, message -> feedback.status(message));
+        wizard.show(getScene() == null ? null : getScene().getWindow());
     }
 
     private void exportCsv() {
