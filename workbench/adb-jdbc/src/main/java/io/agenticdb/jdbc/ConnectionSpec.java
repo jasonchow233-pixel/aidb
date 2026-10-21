@@ -37,6 +37,18 @@ public record ConnectionSpec(
         return new ConnectionSpec(kind, host, port, database, username, password, Map.of());
     }
 
+    /** PostgreSQL 连接。 */
+    public static ConnectionSpec postgres(String host, int port, String database,
+                                          String username, String password) {
+        return server(DialectKind.POSTGRESQL, host, port, database, username, password);
+    }
+
+    /** MySQL 连接。 */
+    public static ConnectionSpec mysql(String host, int port, String database,
+                                       String username, String password) {
+        return server(DialectKind.MYSQL, host, port, database, username, password);
+    }
+
     public String jdbcUrl() {
         return kind.jdbcUrl(host, port, database);
     }
