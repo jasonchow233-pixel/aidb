@@ -49,8 +49,10 @@ public final class StructureSqlBuilder {
         if (oldName == null || oldName.isBlank()) {
             throw new IllegalArgumentException("请选择要重命名的列");
         }
+        // ⭐ 把旧列的定义传下去 —— MySQL 5.7 只能用 CHANGE COLUMN（要带定义）。
+        ColumnDef old = table.column(oldName);
         String sql = session.dialect().renameColumnSql(table.name(), oldName,
-                newName.trim());
+                newName.trim(), old);
         return new StructurePlan("重命名列 " + oldName + " → " + newName.trim(),
                 List.of(sql), Danger.DESTRUCTIVE, false, false);
     }
@@ -240,20 +242,8 @@ public final class StructureSqlBuilder {
     }
 
     private static String defaultRawType(ColumnDef column) {
-        if (column.rawType() != null && !column.rawType().isBlank()) {
-            return column.rawType();
-        }
-        return switch (column.type()) {
-            case NUMBER -> "NUMERIC";
-            case BOOLEAN -> "BOOLEAN";
-            case DATE -> "DATE";
-            case TIME -> "TIME";
-            case TIMESTAMP -> "TIMESTAMP";
-            case BINARY -> "BLOB";
-            case JSON -> "JSON";
-            case UUID -> "UUID";
-            default -> "TEXT";
-        };
+        // ⭐ ddlType() 会把长度 / 精度补上（MySQL 的 JDBC 类型名不带长度）。
+        return column.ddlType();
     }
 
     private static ColumnDef toColumnDef(ColumnSpec column) {

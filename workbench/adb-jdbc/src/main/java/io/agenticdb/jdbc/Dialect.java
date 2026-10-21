@@ -187,7 +187,14 @@ public interface Dialect {
     List<String> alterColumnStatements(String table, String columnName, ColumnSpec next,
                                        String oldRawType);
 
-    String renameColumnSql(String table, String oldName, String newName);
+    /**
+     * 重命名列。
+     *
+     * @param oldColumn 旧列的定义。MySQL 5.7 没有 {@code RENAME COLUMN}，
+     *                   只能用 {@code CHANGE COLUMN}（要带完整定义），所以方言需要它。
+     */
+    String renameColumnSql(String table, String oldName, String newName,
+                           io.agenticdb.model.ColumnDef oldColumn);
 
     String dropColumnSql(String table, String columnName);
 

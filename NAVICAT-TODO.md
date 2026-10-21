@@ -40,7 +40,7 @@
 ./mvnw -B clean verify
 ```
 
-当前结果：**47 个测试类 / 403 条测试用例，0 失败 / 0 错误 / 0 跳过**（2026-10-21 实测）。
+当前结果：**48 个测试类 / 412 条测试用例，0 失败 / 0 错误 / 0 跳过**（2026-10-21 实测）。
 
 统计口径用工具兜底：
 
@@ -55,9 +55,9 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `core/adb-declarations` | 40 | 声明校验、快照一致性、**classpath 与源码目录对拍** |
 | `core/adb-safety` | 59 | 危险分级四档、**fail-closed**、WITH 体内扫描、PRAGMA 读写、词法切分 |
 | `core/adb-sql` | 31 | 词法 / 分句 / 格式化 / **括号配对** / **参数检测** |
-| `workbench/adb-jdbc` | 48 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为** |
+| `workbench/adb-jdbc` | 50 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为** |
 | `testing/adb-fixtures` | 3 | 演示库固定种子 |
-| `workbench/adb-introspect` | 25 | 内省、分页排序筛选 SQL、结构变更 |
+| `workbench/adb-introspect` | 27 | 内省、分页排序筛选 SQL、结构变更 |
 | `workbench/adb-session` | 11 | 连接档案、凭据、连接池、**敏感项脱敏** |
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `workbench/adb-transfer` | 15 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告 |

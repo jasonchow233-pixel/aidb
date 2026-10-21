@@ -120,7 +120,7 @@
 | **D18** | `core/adb-declarations` 的 `DeclarationLoader.java:36` javadoc 写「两者的解析结果必须完全相同，这本身要有一条测试守着」——**没有这条测试**，且 `loadFromClasspath()` 实际是坏的 | `DeclarationLoader.java:119-151` |
 | **D19** | `DeclarationLoader.java:27` 的 `{@link DeclarationCheckMojo}` **指向一个不存在的类** | 全仓 0 命中 |
 
-### 0.3 本轮关闭的差距（40 项）
+### 0.3 本轮关闭的差距（42 项）
 
 第四轮复核后，**B0–B4 批次全部落地**，下列差距已经关掉：
 
@@ -152,11 +152,27 @@
 | **窗口骨架** | **S1 大图标功能栏 / S2 表清单 / S4 底部搜索 / S6 收藏夹菜单 / S7 窗口状态 / S8 标签右键**全部落地 | `MainToolBar` / `TableListPage` / `SideBar` / `MenuBarFactory` |
 | **网格 / 编辑器** | **G3 本页统计 / G5 编辑后跳格 / Q1 括号匹配 / Q3 结果排序 / Q4 列宽持久化**落地 | `DataGridPage` / `SqlBrackets` / `QueryPage` |
 | **对象树** | **多连接对象树**：所有连接在同一棵树里（Navicat 的「我的连接」模型），展开懒加载；打开表按节点所属连接建标签 | `SideBar.buildTreeModel` + `SideBarTreeTest` |
+| **真库 bug** | ⭐ **MySQL 5.7 真库联调发现并修掉两个真 bug**（详见 §0.4） | `MySqlDialect` / `ColumnDef.ddlType` |
 | **工具** | **已保存查询库**：查询页「存为命名查询」+ 侧栏列表（打开/重命名/删除），落本地偏好 | `SavedQueries` + `SavedQueriesTest` |
 | **设计令牌** | **令牌体系收敛**：112 → 60 个，全部被用到（CSS 引用或 Java 常量消费）；`risk-*` 家族终于用上了（四级风险各一套配色）；侧栏宽度 / 栏高 / Toast 时长的魔数换成令牌 | `tokens.json` + `TokenParityTest.everyTokenIsActuallyUsed` |
 | **文档** | 6 张截图已重拍（补上 `⇤/⇥/跳至页`、去掉多余的「注释」列） | `docs/screenshots/` |
 
 **仍然开放**的差距见 §7.2。
+
+### 0.4 ⭐ MySQL 5.7 真库联调发现的两个真 bug
+
+在真实 MySQL（**5.7.44**，开二进制日志）上跑真库联调，发现两个**在 SQLite 上永远看不到**的 bug：
+
+| # | 症状 | 原因 | 修法 |
+|---|---|---|---|
+| **B1** | 重命名列生成 `ALTER TABLE t RENAME COLUMN old TO new` → MySQL **语法错误** | `RENAME COLUMN` 是 **MySQL 8.0** 才有的；5.7 只能用 `CHANGE COLUMN`，而它**要求带上完整列定义** | `Dialect.renameColumnSql` 改成带旧列定义；MySQL 走 `CHANGE COLUMN`，PG/SQLite 走 `RENAME COLUMN` |
+| **B2** | 改列生成 `ALTER TABLE t MODIFY COLUMN c VARCHAR NOT NULL` → MySQL **语法错误** | JDBC 的 `getColumnTypeName()` 给的是**不带长度**的类型名（MySQL 是 `VARCHAR`，不是 `VARCHAR(120)`） | 新增 `ColumnDef.ddlType()`：按类型补长度 / 精度（`TEXT` 之类不补 —— 补了反而非法） |
+
+两个 bug 的共同点：**在 SQLite 上「看起来对」**（SQLite 宽松接受 `VARCHAR`），
+只有在真 MySQL 上才暴露。这就是为什么真库联调不可省。
+
+> 真库联调还确认了一件好事：危险分级在**真实 MySQL 语法**上是对的 ——
+> `CALL`/`SET`/`LOCK TABLES` 都不再被判成只读（以前会静默执行）。
 
 ---
 

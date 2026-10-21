@@ -118,7 +118,8 @@ class DialectSqlConformanceTest {
     void renameAndDropUseEachDialectsQuotes() {
         assertThat(StructureSqlBuilder.renameColumn(session(DialectKind.MYSQL),
                 table(), "old", "new").statements())
-                .containsExactly("ALTER TABLE `users` RENAME COLUMN `old` TO `new`");
+                .as("⭐ MySQL 5.7 没有 RENAME COLUMN（8.0 才有）—— 用 CHANGE COLUMN 且带完整定义")
+                .containsExactly("ALTER TABLE `users` CHANGE COLUMN `old` `new` VARCHAR(64) NOT NULL");
         assertThat(StructureSqlBuilder.renameColumn(session(DialectKind.POSTGRESQL),
                 table(), "old", "new").statements())
                 .containsExactly("ALTER TABLE \"users\" RENAME COLUMN \"old\" TO \"new\"");
@@ -171,7 +172,10 @@ class DialectSqlConformanceTest {
     private static TableStructure table(String emailRawType) {
         return new TableStructure("users", false,
                 List.of(new ColumnDef("email", ColumnType.TEXT, true, false, null, null,
-                        null, null, null, null, false, emailRawType)),
+                                null, null, null, null, false, emailRawType),
+                        // ⭐ MySQL 5.7 的 CHANGE COLUMN 要带完整定义 —— 所以表里要有 old 列
+                        new ColumnDef("old", ColumnType.TEXT, false, false, null, null,
+                                null, 64, null, null, false, "VARCHAR")),
                 List.of("id"), List.of(), List.of(), List.of(), "");
     }
 

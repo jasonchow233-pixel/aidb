@@ -229,7 +229,8 @@ public final class SqliteDialect implements Dialect {
     }
 
     @Override
-    public String renameColumnSql(String table, String oldName, String newName) {
+    public String renameColumnSql(String table, String oldName, String newName,
+                                  io.agenticdb.model.ColumnDef oldColumn) {
         return "ALTER TABLE " + quote(table)
                 + " RENAME COLUMN " + quote(oldName) + " TO " + quote(newName);
     }

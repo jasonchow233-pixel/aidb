@@ -212,10 +212,42 @@ public final class MySqlDialect implements Dialect {
                 + columnDefinition(next, true));
     }
 
+    /**
+     * MySQL 5.7 <b>没有</b> {@code RENAME COLUMN}（8.0 才有），
+     * 只能用 {@code CHANGE COLUMN} —— 而它要求带上完整列定义。
+     *
+     * <p>⚠️ 这是真库联调才发现的：生成的 DDL 在 MySQL 5.7 上直接报语法错误。
+     */
     @Override
-    public String renameColumnSql(String table, String oldName, String newName) {
-        return "ALTER TABLE " + quote(table)
-                + " RENAME COLUMN " + quote(oldName) + " TO " + quote(newName);
+    public String renameColumnSql(String table, String oldName, String newName,
+                                  io.agenticdb.model.ColumnDef oldColumn) {
+        String definition = oldColumn == null ? "" : columnDefinition(oldColumn);
+        if (definition.isBlank()) {
+            // 拿不到定义时只能退回 CHANGE 的最小形式（会丢属性）——
+            // 宁可让数据库报错，也不要静默丢列属性。
+            throw new IllegalArgumentException(
+                    "重命名列需要旧列的定义，但没能读到：" + oldName);
+        }
+        return "ALTER TABLE " + quote(table) + " CHANGE COLUMN "
+                + quote(oldName) + " " + quote(newName) + " " + definition;
+    }
+
+    /** MySQL 的列定义（CHANGE COLUMN 要用）。 */
+    private String columnDefinition(io.agenticdb.model.ColumnDef column) {
+        StringBuilder definition = new StringBuilder();
+        // ⭐ 用 ddlType() —— 它会把长度 / 精度补上。
+        //    直接用 rawType 会得到 "VARCHAR"（MySQL 的 JDBC 类型名不带长度）→ 语法错误。
+        definition.append(column.ddlType());
+        if (!column.nullable()) {
+            definition.append(" NOT NULL");
+        }
+        if (column.defaultValue() != null && !column.defaultValue().isBlank()) {
+            definition.append(" DEFAULT ").append(column.defaultValue());
+        }
+        if (column.unique() && !column.primaryKey()) {
+            definition.append(" UNIQUE");
+        }
+        return definition.toString();
     }
 
     @Override
