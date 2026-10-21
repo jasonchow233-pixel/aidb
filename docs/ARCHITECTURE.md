@@ -66,10 +66,31 @@ RichTextFX 的样式映射在 `ui-shell` 的 `SqlHighlighter` 中完成。
 - `adb-declarations` **不是任何模块的 Maven 依赖**；
 - `Dialect.keywordSet()` / `TransferFamily.typeMapping()` / `ConnectionDescriptor.Capabilities` 从未被读取；
 - `SqlLexer` 用的是硬编码关键字表，不是 YAML 里的词表；
-- `loadFromClasspath()` 的 jar 读取路径也不可用（把目录内容当换行分隔索引解析）。
+- `loadFromClasspath()` 的 jar 读取路径也不可用（把目录内容当换行分隔索引解析）：
+  - 爆炸 classpath 下 `url.openStream()` 读目录 → `IOException` → 抛 `DeclarationException`；
+  - jar 下读到 0 字节目录条目 → **静默返回空 `DeclaredModel`**（不报错、不告警）。
+- `DeclarationLoader` 的 javadoc 写「两者的解析结果必须完全相同，这本身要有一条测试守着」——
+  **没有这条测试**；javadoc 里 `{@link DeclarationCheckMojo}` 指向一个**不存在的类**。
 
-结论：**要么在 P5 把它接进运行时（驱动解析、方言词表、能力矩阵驱动 UI 显隐），要么整模块删除。**
-当前状态下它会误导后续开发。详见 `NAVICAT-TODO.md` §7.2 与 §10 A2/A3。
+**2026-10-21 决策**：不删，也不急着接运行时 —— 先把它**变成真功能**：
+
+1. **修好 `loadFromClasspath()`**（A3）。旧实现把 `/declarations/<子目录>` 当成
+   「换行分隔的文件名索引」去读，而那其实是个**目录**：爆炸 classpath 下抛
+   `IOException`，jar 下读出空字符串 → **静默返回空模型**。
+   现在分两条路：爆炸 classpath 枚举目录、打包 jar 枚举 jar 条目。
+   两条路径实测一致（`DeclarationLoaderTest.classpathAndPathAgree`）。
+2. **补上 javadoc 承诺的那条对拍测试**（以前只有注释，没有测试）。
+3. **修掉悬空的 `{@link DeclarationCheckMojo}`**（那个类根本不存在）。
+
+**它现在的角色**：声明的**加载 + 校验 + 快照**层，是 YAML 的唯一真相与防线
+（每次 CI 都验一遍 14 个 YAML 合法、解析结果符合快照）。
+**它还不是运行时的驱动来源** —— 运行时方言仍然是 `DialectKind` 枚举 + 散落的
+`switch`。要让它驱动运行时，得先做 A1（真方言抽象层）。
+
+详见 `NAVICAT-TODO.md` §7.2 与 §10 A2/A3/A25。
+
+另外它与运行时**不一致**：`declarations/connections/dameng.yaml` 声明了达梦，
+而 `DialectKind` 枚举里**没有** `DAMENG`（A25）。
 
 ---
 
@@ -118,6 +139,15 @@ Launcher
 - `JdbcSession.activeStatement` **只在 `execute()` 里赋值**，`query()` / `update()` 不赋值 ——
   因此数据页的加载与保存**无法真正取消 JDBC 语句**，只能逻辑放弃。
 - 全局只有一个 `adb-db` 线程：A 连接上的慢查询会阻塞 B 连接。
+- `AppShell.connectProfile` 打开新会话时**不关闭旧会话** → 每切换一次连接就多留一条活连接。
+
+### 3.1 线程模型的整改方向
+
+1. 连接建立与内省移出 JavaFX 线程，改为 `adb-db` 任务 + 回主线程刷新。
+2. `adb-db` 从全局单线程改为**每连接一个执行器**，避免跨连接头阻塞。
+3. `query()` / `update()` 也记录 `activeStatement`，让 `⌘.` 能真正中断数据页的加载与保存。
+4. `Statement.setQueryTimeout` 落到 `JdbcSession`（当前全仓 0 命中），长查询不至于挂死。
+5. `connectProfile` 切换连接前显式关闭旧会话，或复用同一 `id` 的会话。
 
 ---
 
@@ -186,9 +216,18 @@ CHECK 约束不内省；PG 的 DEFAULT / COMMENT 丢失（`TypeMapper` 不读 `g
 | `ConnectionPool` | HikariCP 包装，池大小固定 1（保持单连接串行语义）；SQLite 直连不池化 |
 | `SessionManager` | 按 id 管理多个会话；SQLite → `JdbcSession`，PG/MySQL → `ConnectionPool` |
 
-**已知缺口**：macOS 写钥匙串时口令经 `-w <password>` 进 argv（`ps` 可见）；
-Windows 无凭据后端；`AppShell` 只有单一 `activeProfile` / `session`，多连接尚未并行；
-连接与内省跑在 UI 线程。
+**已知缺口**：
+
+- macOS 写钥匙串时口令经 `-w <password>` 进 argv（`ps` 可见）。
+- Windows 无凭据后端。
+- `AppShell` 只有单一 `activeProfile` / `session`，多连接尚未并行。
+- 连接与内省跑在 UI 线程。
+- ⚠️ **`options` 能覆盖钥匙串口令**：`JdbcSession` 先 `setProperty("password", …)`，
+  再 `spec.options().forEach(props::setProperty)` —— 落盘的明文 options 反而赢。
+- ⚠️ **`ConnectionProfile.withPasswordlessOptions` 零调用** —— 脱敏 helper 写了但没接线。
+- ⚠️ **`ConnectionPool` 不是池**：`getConnection()` 借出后全程不归还，`idleTimeout` /
+  `maxLifetime` 形同虚设；每个连接档案一个 `HikariDataSource`。
+- ⚠️ **切连接泄漏会话**：`AppShell.connectProfile` 开新会话不关旧会话。
 
 ---
 
@@ -197,15 +236,70 @@ Windows 无凭据后端；`AppShell` 只有单一 `activeProfile` / `session`，
 六区：菜单栏、主工具栏、侧栏、标签栏、内容区、状态栏。
 
 - `ActionRegistry` 是菜单、工具栏、右键、命令面板的唯一动作来源，统一 enabled/快捷键。
-  **已知例外**：侧栏树的右键菜单、侧栏导航按钮、工具栏图标按钮三处仍走独立路径
-  （→ `NAVICAT-TODO.md` 4.5-8 / 4.5-9 / 4.5-10）。
+  **已知例外（4 处）**：侧栏树的右键菜单、侧栏导航按钮、工具栏图标按钮、
+  标签栏右键菜单仍走独立路径（→ `NAVICAT-TODO.md` 4.5-8 / 4.5-9 / 4.5-10 / 4.5-29）。
 - `AppShell` 负责窗口、会话、标签、状态栏、Toast；页面只通过 `Feedback` 回报。
 - 设计令牌：`ui/adb-ui-core/src/main/resources/tokens/tokens.json` 是唯一真相。
   生成器：`java tools/GenTokens.java`。
-  **已知缺口**：生成器只导出颜色类型令牌，65 个非颜色令牌永远不会进 CSS；
-  120 个令牌里只有 41 个被 `app.css` 引用。
+  **已知缺口**：生成器只导出颜色类型令牌，**60 个非颜色令牌永远不会进 CSS**
+  （JavaFX 的 looked-up color 只支持颜色，数值令牌只能走 Java 常量 ——
+  `row-*` 已经这么用起来了，见 `DataGridPage.setDensity`）；
+  112 个令牌里只有 **41 个**被 `app.css` 引用。
 - 业务 CSS 只允许引用 `-adb-*` looked-up colors；`TokenParityTest` 会扫描颜色字面量。
 - 原生窗口：`StageStyle.DECORATED`；macOS 使用系统菜单栏。
+
+### 7.0 危险分级的三层门禁 —— 前两层已落地，第三层仍缺
+
+`Danger` 的 javadoc 宣称「三层写门禁」：
+
+| 层 | 承诺 | 实现 |
+|---|---|---|
+| 1 | 语句分类 | `DangerClassifier.classify` ✅ **fail-closed**（2026-10-21 修） |
+| 2 | UI 二次确认 | `QueryPage.confirmDanger` + `DataGridPage.planDanger` ✅（查询页 + 数据页保存都有） |
+| 3 | **驱动侧复查** | ❌ **仍不存在**：`DbSession.execute(String)` 没有 `danger` 参数 |
+
+**第 1 层以前是 fail-open**，本轮已收紧（`NAVICAT-TODO.md` 4.5-24 / 4.5-25）：
+
+| 以前 | 现在 |
+|---|---|
+| 未知语句头 → `READ_ONLY`（不拦） | 未知语句头 → `ADMIN`（最重的确认） |
+| 裸 `String.split(";")` 切分 | 复用 `adb-sql` 的 `SqlSplitter`（跳过字符串 / 注释 / `BEGIN…END`） |
+| `WITH` 在只读白名单 | `WITH` 体内扫写语句：`WITH … DELETE` 按 `DESTRUCTIVE` 处理 |
+| `EXPLAIN ANALYZE` 判只读 | `EXPLAIN ANALYZE` 会**真的执行**语句，按内层语句分级 |
+| `PRAGMA x = y` 判只读 | 赋值型 `PRAGMA` 判 `MUTATING`（它会改库的持久化设置） |
+
+**第 3 层（驱动侧复查）还没有**：`DbSession.execute(sql)` 不带 `danger` 参数，
+驱动侧不做任何复查。第 1、2 层现在足以挡住「用户手打 SQL」这条路，
+但**程序化执行路径（未来的传输 / 计划任务）没有纵深防御** —— 那是 P7 的事。
+
+### 7.1 主题机制：类选择器，不是换样式表
+
+两套主题 CSS **一直都在**样式表列表里，切换主题只改根节点的 style class：
+
+```
+theme-dark.css   →  .theme-dark { -adb-bg-canvas: #0d1117; ... }
+theme-light.css  →  .theme-light { -adb-bg-canvas: #ffffff; ... }
+app.css          →  业务样式，引用 -adb-* 令牌
+```
+
+根节点同时带 `theme-dark` 或 `theme-light`，后代通过 looked-up color 继承。
+
+**为什么不用 `scene.getStylesheets().setAll(...)` 换样式表**（旧实现）：
+换掉样式表列表会让 JavaFX 对**整棵场景图**重做 CSS 计算，紧随其后的
+`scene.snapshot()` 会拿到「样式表已换、像素还没重画」的**空白帧**
+（真实窗口复现过：中央密度 0.000、109 色）。改成类选择器后，
+切换主题只触发根节点的局部重算，**问题从根上消失**（4.5-23 已关闭）。
+
+### 7.2 图标体系
+
+当前全部使用 Unicode 符号，无图标字体、无 SVG 资源。已知问题：
+
+- `⚙` 一符两义**只拆了一半**：`TabKind.STRUCTURE` 已改 `☰`，但数据页「结构」按钮
+  仍是 `⚙`，与 `TabKind.SETTINGS` 撞车。
+- `IconAuditTest` 只断言「Tooltip + accessible text」，**不检查符号的语义唯一性**。
+- `⚙ ▤ ▦ ⌕ ▇ ⬢ ⇅ ⌷ ◈` 属 Miscellaneous Technical / Geometric Shapes，
+  Windows 上常见字体可能替换或缺失。
+- 长期方向是内嵌 SVG 图标集（JavaFX 原生支持，无需图标字体、无缺字风险）。
 
 ### 7.1 JavaFX Dialog 的两个坑（已踩）
 
@@ -228,6 +322,7 @@ Windows 无凭据后端；`AppShell` 只有单一 `activeProfile` / `session`，
 | 数据 | 演示库固定种子；分页/排序/筛选 SQL 断言；保存/反向撤销真实 SQLite；结构变更真实 SQLite；`DbSession.execute` 多语句/错误/行上限 |
 | UI | TestFX + Monocle Headless：外壳、标签、数据页、批量条、详情抽屉、查询页执行/取消/多结果、结构页、连接页、连接向导 |
 | 样式 | `TokenParityTest`：JSON 键、`Tokens.ALL_KEYS`、亮暗 CSS 一致；禁止颜色字面量 |
+| 图标 | `IconAuditTest`：图标控件同时具备 Tooltip 与 accessible text |
 
 统一命令：
 
@@ -235,7 +330,19 @@ Windows 无凭据后端；`AppShell` 只有单一 `activeProfile` / `session`，
 ./mvnw -B clean verify
 ```
 
-当前：**30 个测试类 / 246 条测试，0 失败**。
+当前：**36 个测试类 / 313 条测试用例，0 失败 / 0 错误 / 0 跳过**。
+
+统计用工具兜底（口径问题见 4.5-28）：
+
+```bash
+./mvnw -B clean verify
+java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
+```
+
+> ⚠️ **统计口径**：用 `@Nested` 的 4 个测试类（`QueryLimitsTest`、`DangerClassifierTest`、
+> `DeclarationLoaderTest`、`DeclarationValidationTest`）在 surefire XML 里写成 `tests="0"`，
+> 真实用例在**内层类**条目里。按 XML 的 `tests=` 属性统计会**少算一百多条**。
+> CI 与覆盖率工具一律按 `<testcase>` 元素计数。
 
 ---
 
@@ -245,7 +352,11 @@ Windows 无凭据后端；`AppShell` 只有单一 `activeProfile` / `session`，
 |---|---|
 | P0–P3 ✅ | 外壳、竖线、数据页、查询页 |
 | P4 ✅ | 结构页：列/索引/外键/触发器/DDL 查看与安全的列级编辑 |
-| P4.5 ⬜ | 契约修复：快捷键补齐、结果截断提示、危险分级收紧、图标统一、动作注册表收口 |
+| P4.5 🟡 | 契约修复：快捷键补齐、结果截断提示、危险分级收紧、图标统一、动作注册表收口 |
 | P5 ⬜ | 连接管理收尾：多连接并行、凭据后端、属性页、方言抽象层、PG/MySQL 真联调、声明层去留 |
 | P6 ⬜ | 导入/导出向导：CSV / JSON / Excel、字段映射、预览、批处理 |
 | P7 ⬜ | 打包分发、jlink / jpackage、自动更新、性能与可访问性收尾 |
+
+> **P4.5 的真实状态**（2026-10-21 第四轮逐文件复核）：
+> 4.5-4（危险分级 fail-closed）**从未实现**，4.5-2（截断）**只做了查询页**，
+> 4.5-5（图标统一）**只拆了一半**。完整清单见 `NAVICAT-TODO.md` §6.3。

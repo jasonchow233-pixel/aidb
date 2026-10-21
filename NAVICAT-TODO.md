@@ -2,10 +2,11 @@
 
 > **唯一执行清单。** 记录当前状态、下一步、验收门禁。
 > 架构见 `docs/ARCHITECTURE.md`；UI 规则见 `docs/UI-GUIDE.md`；
-> 组件选型见 `docs/COMPONENT-SELECTION.md`；**Navicat 对标差距见 `docs/NAVICAT-GAP.md`**。
+> 组件选型见 `docs/COMPONENT-SELECTION.md`；**Navicat 对标差距见 `docs/NAVICAT-GAP.md`**；
+> **阶段规划（批次 / 顺序 / 门禁）见 `docs/NEXT-STEPS.md`**。
 >
-> 最后更新：2026-10-20
-> 当前基线：**P0–P4 完成，P5 进行中**；下一阶段 **P4.5 契约修复**（详见 §6）。
+> 最后更新：**2026-10-21（第四轮：逐文件代码复核 + B0–B5 全部落地）**
+> 当前基线：**P0–P4 完成，P4.5 收尾中，P5 🟡**；下一动作见 `docs/NEXT-STEPS.md` §1 批次 B2。
 
 ---
 
@@ -18,14 +19,16 @@
 | P2 数据页 | ✅ 完成 | 排序/筛选/条件构造器、列布局、行内编辑、撤销重做、SQL 预览保存、批量操作、详情抽屉、搜索/转置/隐藏、CSV 导出、保存反向撤销 |
 | P3 查询页 | ✅ 完成 | SQL 词法/分句/格式化、RichTextFX 编辑器、查找替换、多语句结果页签、取消、错误定位、执行计划、历史 |
 | P4 结构页 | ✅ 完成 | 列/索引/外键/触发器/DDL 五页签、加列/改列/重命名列/删列、两级危险确认、单事务、结构变更联动刷新 |
-| P5 连接管理 | 🟡 进行中 | 连接管理页、三步向导、测试连接、钥匙串 / Secret Service 凭据、连接档案落盘、HikariCP 连接池（PG/MySQL） |
+| P4.5 契约修复 | 🟡 收尾中 | **B0–B4 已全部落地**（安全语义 / 数据正确性 / 注册表收口 / 并发 / 图标令牌）；剩 4.5-3 已做、4.5-14 收尾、4.5-23 已做 |
+| P5 连接管理 | 🟡 进行中 | 连接管理页、三步向导、测试连接、钥匙串 / Secret Service 凭据、连接档案落盘、HikariCP 连接池（PG/MySQL）；**本轮补上：凭据脱敏 + 口令走 stdin + 孤儿会话回收** |
 | P6 导入导出 | ⬜ 计划 | CSV / JSON / Excel 向导、字段映射、预览 |
 | P7 分发 | ⬜ 计划 | jlink / jpackage、自动更新、性能与可访问性收尾 |
 
 首版明确不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务、传输同步。
 
-> **提交状态提醒**：P4 结构页与 P5 连接管理的代码目前只在工作区，尚未提交。
-> 提交前先跑 `./mvnw -B clean verify`。
+> **截图验收**：`docs/screenshots/` 6 张真实窗口图（外壳 / 数据页 / 查询页 / 结构页 / 连接页 / 暗色），
+> 由 `ScreenshotSession`（`ADB_SHOTS` 等环境变量）可复现生成，用法见 §12.2。
+> ⚠️ **当前 6 张图已过期**（缺 `⇤/⇥/跳至页`、多一列 `注释`），需按 §12.2 重拍。
 
 ---
 
@@ -37,21 +40,33 @@
 ./mvnw -B clean verify
 ```
 
-当前结果：**30 个测试类 / 246 条测试，0 失败**。
+当前结果：**36 个测试类 / 313 条测试用例，0 失败 / 0 错误 / 0 跳过**（2026-10-21 实测）。
 
-| 模块 | 测试数 | 覆盖 |
+统计口径用工具兜底：
+
+```bash
+./mvnw -B clean verify
+java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 ≥ 300
+```
+
+| 模块 | 用例数 | 覆盖 |
 |---|---|---|
-| `core/adb-model` | 32 | 分页/行数上限契约 |
-| `core/adb-declarations` | 39 | 声明校验、快照一致性 |
-| `core/adb-safety` | 38 | 危险分级四档、多语句取最危险 |
+| `core/adb-model` | 30 | 分页/行数上限契约 |
+| `core/adb-declarations` | 40 | 声明校验、快照一致性、**classpath 与源码目录对拍** |
+| `core/adb-safety` | 59 | 危险分级四档、**fail-closed**、WITH 体内扫描、PRAGMA 读写、词法切分 |
 | `core/adb-sql` | 17 | 词法 / 分句 / 格式化 |
-| `workbench/adb-jdbc` | 9 | 参数化、事务、类型映射 |
+| `workbench/adb-jdbc` | 14 | 参数化、事务、类型映射、截断探测、**取消语义** |
 | `testing/adb-fixtures` | 3 | 演示库固定种子 |
 | `workbench/adb-introspect` | 24 | 内省、分页排序筛选 SQL、结构变更 |
-| `workbench/adb-session` | 8 | 连接档案、凭据、连接池 |
+| `workbench/adb-session` | 11 | 连接档案、凭据、连接池、**敏感项脱敏** |
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `ui/adb-ui-core` | 4 | 令牌键一致 / 亮暗一致 / 无颜色字面量 |
-| `ui/adb-ui-shell` | 53 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV |
+| `ui/adb-ui-shell` | 92 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**图标语义唯一**、**注册表收口**、**保存守卫**、**工具页** |
+
+> ⚠️ **统计口径（4.5-28）**：用 `@Nested` 的 4 个测试类（`QueryLimitsTest`、
+> `DangerClassifierTest`、`DeclarationLoaderTest`、`DeclarationValidationTest`）在 surefire XML 里
+> 写成 `tests="0"`，真实用例在**内层类**条目里。按 XML `tests=` 属性统计会**少算一百多条**。
+> `tools/TestCount.java` 一律按 `<testcase>` 元素计数，并断言总数 ≥ 300。
 
 ---
 
@@ -61,11 +76,11 @@
 |---|---|
 | 原生窗口 + 六区布局 | `AppShell` / `MainToolBar` / `SideBar` / `TabBar` / `StatusBar` |
 | 原生窗口装饰 + macOS 系统菜单栏 | `StageStyle.DECORATED` + `MenuBar.setUseSystemMenuBar(true)` |
-| 统一动作注册表 | `ActionRegistry` 驱动菜单、工具栏、右键、命令面板 |
+| 统一动作注册表 | `ActionRegistry` 驱动菜单、工具栏、右键、命令面板（**4 处漏网，见 4.5-8/9/10/29**） |
 | 侧栏 240 / 48px、可拖动 | `SideBar` + `AppShell` |
 | 双主题 + 跟随系统 + 本地记忆 | `ThemeManager` + `tokens.json` |
 | 命令面板 ⌘K | `CommandPalette` |
-| 密度档位（紧凑 / 标准 / 宽松） | `AppShell.applyDensity` + `app.css` |
+| 密度档位（紧凑 / 标准 / 宽松） | `AppShell.applyDensity` + `app.css`（**只影响对象树，见 A19**） |
 | 旧引擎/旧入口/旧规划清理 | 旧 Rust/Vue/Python 实现、脚手架、过期文档已删除 |
 
 ---
@@ -79,7 +94,7 @@
 | SQLite 会话 | `JdbcSession`：参数化查询、事务、类型映射、NULL 绑定 |
 | 服务端分页/排序/筛选 | `DataSqlBuilder` + `DataQuery` |
 | 对象树 → 标签 → 数据页 | `SideBar` + `TabBar` + `WorkspaceView` |
-| 三态 + 状态栏 | 空态/加载/错误；连接、范围、耗时、脏计数 |
+| 三态 + 状态栏 | 空态/加载/错误（错误态带「重试」）；连接、范围、耗时、脏计数 |
 | 标签独立数据 | `WorkspaceView` 按 tab id 缓存页面 |
 | TestFX 冒烟 | `AppShellTest`（Monocle Headless） |
 
@@ -94,7 +109,7 @@
 - [x] 条件构造器 + 可删除 chip + 全部清除
 - [x] 列宽/顺序/显隐 + `java.util.prefs` 持久化
 - [x] 首次打开按当前页内容估算列宽；列数变化时重新自适应
-- [x] 主键 `🔑`、NOT NULL `•`、类型行、Tooltip
+- [x] 主键 `[PK]`、NOT NULL `•`、类型行、Tooltip
 - [x] 列头双击自适应宽度
 
 ### 4.2 编辑
@@ -165,18 +180,19 @@
 - [x] 查询历史：最近 50 条，去重，落 `java.util.prefs`
 - [x] 结果表格复用 P2 单元格渲染器；只读、支持复制 TSV/SQL、导出 CSV
 - [x] 查询写操作沿用 `DangerClassifier` 危险分级 + 执行前二次确认；`EXPLAIN` 不触发确认
-      （⛔ 第三层「驱动侧复查」未实现，数据页保存路径也不分类 → 见 §10 A6）
+      （⛔ 第三层「驱动侧复查」未实现 → 见 §10 A6；⛔ **分类器本身仍是 fail-open → 见 4.5-24**）
 
 ### 5.4 P3 已知限制
 
-- 括号匹配未做（P3.1）。
+- 括号匹配 / 代码折叠未做（→ P4.6 Q1）。
 - 结果列宽不持久化；结果集不可排序。
-- 结果集超过 1000 行会被截断，**当前不给提示**（→ P4.5 修）。
+- 结果集超过 1000 行**会**提示「已截断」（4.5-2 已修，仅查询页路径）。
 - 多语句逐条自动提交；失败会保留已完成语句的结果，不提供整批回滚。
 
 ---
 
-## 6. P4 结构页（已完成）+ P4.5 契约修复（⬜ 下一阶段）
+## 6. P4 结构页（已完成）+ P4.5 契约修复（🟡 下一阶段）
+
 ### 6.1 P4 已完成项
 
 - [x] 五个页签：列 / 索引 / 外键 / 触发器 / DDL
@@ -198,37 +214,85 @@
 - PostgreSQL 的 DEFAULT / COMMENT 不内省（`TypeMapper` 不读 `getColumns()`）。
 - PostgreSQL 无 `SHOW CREATE TABLE`，DDL 由内省生成，UI 已标注「等价 DDL」。
 
-### 6.3 P4.5 契约修复（⬜ **下一阶段，优先级最高**）
+### 6.3 P4.5 契约修复（🟡 收尾中）
 
 > 这一组全是**已经对外承诺、但实现缺失**或**正确性缺陷**，不是新功能。
+>
+> ✅ = 已实现且有门禁断言 · 🟡 = 部分完成 · ⬜ = 未做
+>
+> **2026-10-21 第四轮：B0–B4 批次已全部落地**（安全语义 / 数据正确性 /
+> 注册表收口 / 并发 / 图标令牌）。下面是逐条的实际状态。
+
+| # | 任务 | 状态 | 落点 | 验收门禁 |
+|---|---|---|---|---|
+| ~~4.5-1~~ ✅ | ~~数据页补 `⌘C` 复制值 / `⌥⌘C` 复制 TSV / `⇧⌘C` 复制 INSERT / `⌘A` 全选当前页~~ **已完成** | ✅ | `DataGridPage.installShortcuts` | `DataGridPageTest.copyShortcutsAndSelectAllWork` |
+| ~~4.5-2~~ ✅ | ~~结果集超过 1000 行时提示「已截断」~~ **已完成**：`RowPage` 新增 `rowsTruncated`，`JdbcSession.query()` 不再丢弃标记；数据页与候选值面板都能看到 | ✅ | `RowPage` / `JdbcSession.query` / `ColumnFilterPanel` | `JdbcSessionTest.queryPreservesTheTruncationFlag` |
+| ~~4.5-3~~ ✅ | ~~数据页保存路径接入 `DangerClassifier`~~ **已完成**：`planDanger()` 取计划里最危险的一条，保存弹窗显示风险徽标，高风险额外走一级 `DestructiveConfirm` | ✅ | `DataGridPage.planDanger` | `DataGridSaveGuardTest.savePathClassifiesThePlan` |
+| **4.5-24** ✅ | **`DangerClassifier` fail-open → fail-closed**：未知语句头按「管理操作」处理；`WITH` 体内扫描写语句；`MERGE`/`UPSERT`/`CALL`/`COPY`/`SET`/`DO` 不再判只读 | ✅ | `core/adb-safety/DangerClassifier` | `DangerClassifierTest.未知语句failClosed` 等 3 例 |
+| **4.5-25** ✅ | **`DangerClassifier` 复用 `SqlSplitter`** 做字符串/注释安全切分（`core/adb-safety` 依赖 `adb-sql`） | ✅ | `core/adb-safety/pom.xml` | `DangerClassifierTest.字符串字面量里的分号不切碎语句` |
+| **4.5-26** ✅ | **批量「设空串 / 设 NULL」不得改主键列**（补主键守卫，按钮同步禁用） | ✅ | `DataGridPage.applyColumnValue` | `DataGridSaveGuardTest.batchEditRefusesToTouchPrimaryKeyColumn` |
+| **4.5-27** ✅ | **保存预览弹窗的默认按钮不得是「执行」**（`ButtonData.OTHER` + `pinCancelAsDefault`） | ✅ | `DataGridPage.buildSavePreviewDialog` | `DataGridSaveGuardTest.executeButtonIsNeverDefault` |
+| ~~4.5-5~~ ✅ | ~~图标统一~~ **已完成**：`TabKind.STRUCTURE` 与数据页「结构」按钮都改 `☰`；新增「符号 → 语义唯一」门禁 | ✅ | `TabKind` / `DataGridPage` / `IconAuditTest` | `IconAuditTest.managedSymbolsMeanExactlyOneThing` |
+| ~~4.5-6~~ ✅ | ~~所有图标按钮补 `setAccessibleText`~~ **已完成**（抽屉关闭按钮本轮补上） | ✅ | `SideBar` / `MainToolBar` / `CellDetailsDrawer` | `IconAuditTest.everyIconCarriesTooltipAndAccessibleText` |
+| ~~4.5-7~~ ✅ | ~~危险确认弹窗的默认按钮不得是破坏性动作~~ **已完成**（含数据页保存预览） | ✅ | `DestructiveConfirm` / `DataGridPage` | `DestructiveConfirmTest` + `DataGridSaveGuardTest` |
+| 4.5-8 | 侧栏树右键菜单并入 `ActionRegistry` | ✅ | `SideBar.registerObjectActions` | `ActionRegistryConvergenceTest.objectTreeContextMenuItemsComeFromTheRegistry` |
+| 4.5-9 | 工具栏图标按钮绑定动作 `enabled` | ✅ | `ActionRegistry.iconButton` | `ActionRegistryConvergenceTest.toolbarIconButtonsFollowActionEnabledState` |
+| 4.5-10 | `connections.manage` / `connection.reconnect` 进菜单 | ✅ | `MenuBarFactory` | `ActionRegistryConvergenceTest.previouslyOrphanActionsNowHaveMenuEntries` |
+| 4.5-11 | 状态栏 `DEV` / `未选择` / `自动提交` 三个假字段接上真实数据 | ✅ | `StatusBar.setDialect/setSelection/setTransaction` | `ActionRegistryConvergenceTest.statusBar*` 3 例 |
+| ~~4.5-12~~ ✅ | ~~结构页「新增列」非法输入时不关闭对话框~~ **已完成** | ✅ | `StructurePage.showColumnDialog` | `StructurePageTest` |
+| 4.5-13 | `⌘.` 取消要能真正取消数据页加载 / 保存 | ✅ | `JdbcSession.query/update` + `DataGridPage.cancel()` | `JdbcSessionTest.queryRegistersTheStatementSoCancelCanInterruptIt` |
+| 4.5-14 | 令牌体系收敛 | 🟡 | 已删 8 个死令牌（`env-*`）；`row-*` 已真正用起来（密度覆盖网格行高）。**剩余 60 个非颜色令牌仍未进 CSS** —— JavaFX 的 looked-up color 只支持颜色，数值令牌只能走 Java 常量 | `TokenParityTest` 增加「令牌不得有未引用项」断言 |
+| ~~4.5-15~~ ✅ | ~~图标按钮 Tooltip 全覆盖~~ **已完成** | ✅ | 全 UI | `IconAuditTest` |
+| ~~4.5-16~~ ✅ | ~~结构页对话框补校验~~ **已完成** | ✅ | `StructurePage` | `StructurePageTest` |
+| ~~4.5-17~~ ✅ | ~~破坏性默认按钮扩展到 `AppShell`~~ **已完成** | ✅ | `AppShell` | `DestructiveConfirmTest` |
+| ~~4.5-18~~ ✅ | ~~「编辑」菜单 5 个占位项~~ **已完成** | ✅ | `MenuBarFactory.editMenu` | `MenuBarFactoryTest` |
+| ~~4.5-19~~ ✅ | ~~密度三档菜单走 `ActionRegistry`~~ **已完成** | ✅ | `Action` / `ActionRegistry.radioMenuItem` | `MenuBarFactoryTest` |
+| ~~4.5-20~~ ✅ | ~~分页补「首页 / 末页 / 跳页」~~ **已完成** | ✅ | `DataGridPage.buildPager` | `DataGridPageTest.firstLastAndJumpPaginationWork` |
+| ~~4.5-21~~ ✅ | ~~Toast 时长分级~~ **已完成**（1.8s / 6s / 4s） | ✅ | `AppShell.startToast` | `AppShellTest.toastDurationsComeInThreeTiers` |
+| ~~4.5-22~~ ✅ | ~~列注释永远不显示~~ **已完成**（按方言条件显示） | ✅ | `DialectKind.supportsColumnComment()` | `StructurePageTest` |
+| 4.5-23 | **主题热切换后 `scene.snapshot()` 返回空白帧** | ✅ | **从根上解决**：主题 CSS 改成**类选择器**（`.theme-dark` / `.theme-light`），切换主题只改根节点 style class，**不再换样式表列表**，整棵场景图的 CSS 重算被消除 | `AppShellTest.themeHotSwitchKeepsSnapshotPixels` + 6 张真实窗口截图 |
+| 4.5-28 | **surefire 统计口径失真** | ✅ | 新增 `tools/TestCount.java`：按 `<testcase>` 计数并断言总数 ≥ 300 | `java tools/TestCount.java` |
+| 4.5-29 | **标签栏右键菜单并入 `ActionRegistry`** | ✅ | `TabBar.buildTab` | `ActionRegistryConvergenceTest.tabContextMenuItemsComeFromTheRegistry` |
+| 4.5-30 | **动作禁用时给出反馈** | ✅ | `Action.setOnDisabled` + `ActionRegistry.setFeedback` | `ActionRegistryConvergenceTest.disabledActionExplainsItselfInsteadOfSilentlyDoingNothing` |
+| 4.5-31 | **重拍 6 张截图** | ✅ | `ScreenshotSession`（6 张已重拍，含亮/暗两套主题） | `docs/screenshots/` |
+
+### 6.3.1 本轮新增的架构整改（✅ 已落地）
 
 | # | 任务 | 落点 | 验收门禁 |
 |---|---|---|---|
-| 4.5-1 | 数据页补 `⌘C` 复制值 / `⌥⌘C` 复制 TSV / `⇧⌘C` 复制 INSERT / `⌘A` 全选当前页 | `DataGridPage.installShortcuts` | `DataGridPageTest`：按快捷键后剪贴板内容正确、`⌘A` 后勾选列全选 |
-| 4.5-2 | 结果集 / 查询页超过 1000 行时明确提示「已截断」 | `JdbcSession.readResultSet` + `RowPage` + `QueryPage` | 断言 `RowPage` 带截断标记，查询页状态栏出现提示 |
-| 4.5-3 | 数据页保存路径接入 `DangerClassifier`（批量 DELETE 至少升到「写数据」级并提示） | `DataGridPage.saveChanges` + `EditSqlBuilder` | 单测断言删除行的保存会弹风险确认 |
-| 4.5-4 | `DangerClassifier` 收紧 fail-open：未知语句头按「管理操作」处理；多语句切分改为字符串/注释安全 | `core/adb-safety` | 新增单测：`MERGE` / `UPSERT` / `CALL` / `COPY` / `SET` 不再判为只读；字符串内分号不切碎 |
-| 4.5-5 | 图标统一：`⚙` 结构/设置拆开；刷新统一 `↻`；关闭统一 `✕`；放大镜统一一个码位 | `TabKind` / `MainToolBar` / `DataGridPage` / `SideBar` | 截图核对 + `TabKind` 图标唯一性单测 |
-| 4.5-6 | 所有图标按钮补 `setAccessibleText` | 全 UI | 读屏标签单测：工具栏与标签页图标按钮均有 accessible text |
-| 4.5-7 | 危险确认弹窗的默认按钮不得是破坏性动作 | `ConnectionsPage.confirmDelete` / `AppShell.confirmDeleteConnection` | 单测断言默认按钮不是「删除」 |
-| 4.5-8 | 侧栏树右键菜单并入 `ActionRegistry`（可进命令面板、enabled 统一） | `SideBar.menuFor` + `AppShell.registerActions` | 命令面板能搜到「复制 SELECT」 |
-| 4.5-9 | 工具栏图标按钮绑定动作 `enabled` | `MainToolBar.iconButton` | 动作禁用时按钮同步禁用 |
-| 4.5-10 | `connections.manage` / `connection.reconnect` 进菜单 | `MenuBarFactory` | 菜单树单测 |
-| 4.5-11 | 状态栏 `DEV` / `未选择` / `自动提交` 三个假字段接上真实数据或删除 | `StatusBar` + `AppShell` | 单测断言选中行数实时更新 |
-| 4.5-12 | 结构页「新增列」非法输入时不关闭对话框 | `StructurePage.showColumnDialog` | 非法列名时对话框仍在且提示可见 |
-| 4.5-13 | `⌘.` 取消要能真正取消数据页加载 / 保存 | `JdbcSession.query/update` 也记录 `activeStatement` | 单测：长查询按 `⌘.` 后 `Statement.cancel()` 被调用 |
-| 4.5-14 | 令牌体系收敛：`fs-*` `sp-*` `r-*` `h-*` `z-*` `dur-*` 要么真正用起来、要么从 `tokens.json` 移除 | `tokens.json` + `GenTokens` + `app.css` | `TokenParityTest` 增加「令牌不得有未引用项」断言 |
+| **A19** | **密度档位覆盖数据网格行高**（以前只影响对象树）。行高取自 `row-*` 令牌，不写死在 CSS | `DataGridPage.setDensity` + `WorkspaceView.applyDensity` | `ActionRegistryConvergenceTest.densityChangesTheGridRowHeight` |
+| **A21** | **切连接不泄漏会话**：没有标签页引用的会话被回收 | `AppShell.closeOrphanSessions` + `SessionManager.openIds` | 手工核对 + 现有连接测试 |
+| **A13** | **macOS 钥匙串口令走 stdin**，不再进 argv（`ps` 可见） | `KeychainCredentialStore.runWithInput` | 手工核对（`ps` 不应出现口令） |
+| **A14** | **`options` 敏感键落盘前剔除**（password / token / apikey …） | `ConnectionProfile.sanitizedOptions` + `ConnectionStore.write` | `ConnectionStoreTest.sensitiveOptionsNeverReachTheDisk` |
+| **R4** | **`options` 不得覆盖钥匙串口令**（options 先应用，user/password 后设） | `JdbcSession.open` + `ConnectionPool.open` | `ConnectionStoreTest.optionsCannotOverrideTheKeychainPassword` |
+| **A3** | **`loadFromClasspath()` 修好**：枚举目录 / jar 条目，而不是把目录当索引文件读 | `DeclarationLoader.readFromJar` / `readFromDirectory` | `DeclarationLoaderTest.classpathAndPathAgree` + jar 内实测 |
+| **A23** | **死代码清理**：删 `QueryOptions`（只有测试在用）、`MainToolBar.activeConnectionId`（只写不读）、`StructurePage` 未用的 `Danger` import；`PageSize` 改为 UI 的档位来源 | `adb-model` / `MainToolBar` / `StructurePage` / `DataGridPage` | 编译无警告 + `QueryLimitsTest` |
+| — | **侧栏占位接真功能**：「查询历史」接已有的 `QueryHistory`（列表 / 载入到新查询 / 清空）；「诊断」接真实表健康概览；「已保存查询」「导入导出」（P6）从侧栏撤掉，不留死 UI | `HistoryPage` / `DiagnosticsPage` / `WorkspaceView` / `SideBar` | `WorkspaceToolsPageTest` 2 例 |
+
+
+### 6.3.2 连接向导按钮重构（2026-10-21，✅ 已完成）
+
+`ConnectionWizard` 原来把 back/next/test/save 放在 Dialog 按钮栏：DialogPane 会给每个按钮挂
+`setResultAndClose`（点「下一步」曾把整个向导关掉），且按钮栏按钮无法在无头测试里稳定挂载
+（JavaFX 会把 DialogPane 的场景归属修正回 Dialog 内部 Scene）。现已全部挪进每一步的**内容区**，
+按钮栏只留「取消」；`stepContent()` / `goNext()` / `goBack()` / `runTest()` / `commit()` /
+`dialogResult()` 供测试直接驱动。校验失败时错误写在每一步都有的常驻错误行
+（`#wizard-save-error`，早期只写第 3 步才有的 `review`，第 1、2 步填错用户什么都看不到）。
+
+门禁：`ConnectionWizardTest` 5 例（三步流转 / 服务器参数 / 不关向导 / 校验留步 / 编辑回填）。
 
 ### 6.4 P4.5 附带的窗口骨架差距（源自 Navicat 实测，详见 `docs/NAVICAT-GAP.md` §0.1）
 
-| # | 任务 | 落点 | 验收门禁 |
-|---|---|---|---|
-| S1 | 顶部改成**大图标 + 文字的功能栏**（连接 / 新建查询 / 表 / 视图 / 查询 / 导入导出 / 工具） | `MainToolBar` | 截图核对；功能入口不再藏在二级菜单里 |
-| S2 | **表清单元数据列**：行数 / 数据长度 / 引擎 / 创建日期 / 注释 | `SchemaService` + `SideBar` | 表清单能显示行数与大小 |
-| S3 | 对象树补 **视图 / 函数 / 其它** 分组节点 | `SideBar.buildTreeModel` + `SchemaService.listObjects` | 树上有三类分组，节点可展开 |
-| S4 | 侧栏搜索框移到**底部**，与 ★ 收藏、折叠按钮同一行 | `SideBar.buildExpanded` | 截图核对 |
-| S5 | 标签栏第一个是**「对象」首页标签**（不可关闭） | `TabBar` + `WorkspaceView` | 打开对象首页后可关闭其它标签 |
-| S6 | 菜单栏加 **「收藏夹」顶级菜单** | `MenuBarFactory` | 菜单树单测 |
+| # | 任务 | 状态 | 落点 | 验收门禁 |
+|---|---|---|---|---|
+| S1 | 顶部改成**大图标 + 文字的功能栏**（连接 / 新建查询 / 表 / 视图 / 查询 / 导入导出 / 工具） | ⬜ | `MainToolBar` | 截图核对；功能入口不再藏在二级菜单里 |
+| S2 | **表清单元数据列**：行数 / 数据长度 / 引擎 / 创建日期 / 注释 | ⬜ | `SchemaService` + `SideBar` | 表清单能显示行数与大小 |
+| S3 | 对象树补 **视图 / 函数 / 其它** 分组节点 | ⬜ | `SideBar.buildTreeModel` + `SchemaService.listObjects` | 树上有三类分组，节点可展开 |
+| S4 | 侧栏搜索框移到**底部**，与 ★ 收藏、折叠按钮同一行 | ⬜ | `SideBar.buildExpanded` | 截图核对 |
+| S5 | 标签栏第一个是**「对象」首页标签**（不可关闭） | ⬜ | `TabBar` + `WorkspaceView` | 打开对象首页后可关闭其它标签 |
+| S6 | 菜单栏加 **「收藏夹」顶级菜单** | ⬜ | `MenuBarFactory` | 菜单树单测 |
+| S7 | **窗口状态记忆补齐剩余项**：宽高 / 侧栏宽度 / 折叠态**已实现**；还缺 **窗口位置 x/y、上次使用的连接、最近打开的对象** | ⬜ | `AppShell.saveWindowState` + `restoreWindow` | 单测：写入后重启动复现上次位置与连接 |
+| S8 | **标签栏右键菜单补齐**：关闭 / 关闭其他 / 全部关闭**已实现**；还缺 **复制表名 / 复制 SELECT** | ⬜ | `TabBar.buildTab` | 单测：右键菜单能复制表名到剪贴板 |
 
 ---
 
@@ -249,17 +313,19 @@
 ### 7.2 待办
 
 - [ ] **多连接并行**：去掉 `AppShell` 单一 `activeProfile` / `session`，改为按连接 id 取会话
+- [x] **切连接不泄漏会话**（✅ A21）：`AppShell.closeOrphanSessions` 回收没有标签页引用的会话
 - [ ] **Windows 凭据**：WinCred / DPAPI 后端（`CredentialStore.platform()` 补分支）
 - [ ] **连接属性页**：读超时、SSL、字符集、连接池大小、附加参数（`options` 要有 UI）
-- [ ] **口令不落 argv**：macOS 改用 `security -w` 从 stdin 读，或换 `security` 的 `-X` 交互模式
-- [ ] **`options` 敏感字段脱敏**：`~/.agenticdb/connections.json` 落盘前剔除口令类键
+- [x] **口令不落 argv**：macOS 改用 `security -w` 从 stdin 读（`KeychainCredentialStore.runWithInput`）
+- [x] **`options` 敏感字段脱敏**：落盘前剔除口令类键（`ConnectionProfile.sanitizedOptions`）
+- [x] **`options` 不得覆盖钥匙串口令**（✅ R4）：`JdbcSession` / `ConnectionPool` 改成 options 先应用、user/password 后设
 - [ ] **schema / catalog 树**：对象树按 schema 分组，可切换
 - [ ] **连接重命名 / 分组 / 标签**
 - [ ] **最近使用排序**：列表按 `lastUsedAt` 倒序
 - [ ] **连接属性测试**：连接超时、取消、重连、错误归类（连接断开 / 权限不足 / 死锁 / 超时）
 - [ ] **PG / MySQL 真实联调**：Testcontainers 集成测试（`postgresql` + `mysql` 模块进父 POM）
 - [ ] **PG / MySQL 内省补齐**：DEFAULT、COMMENT、序列、CHECK、`getExportedKeys`
-- [ ] **方言抽象层**：抽 `Dialect` 接口，消灭 6 个文件里的 `switch (kind)`
+- [ ] **方言抽象层**：抽 `Dialect` 接口，消灭 5 个文件里的 6 个 `switch` + 13 个 `if` 方言分支
 - [ ] **`declarations/` 接入运行时或删除**（见 §9 A2/A3）
 
 ---
@@ -274,6 +340,9 @@
 - [ ] 大文件流式处理，不一次性进内存
 - [ ] 导出前提示行数上限（`QueryLimits.exportRequiresConfirmation`）
 - [ ] 侧栏「导入 / 导出」空壳入口接上真实向导
+- [ ] **整表导出**（🆕）：数据页导出现在只有「当前页」，没有「整表 / 条件结果」
+- [ ] **已保存查询库**（🆕）：侧栏「已保存查询」空壳要接真实功能（命名 + 落盘 + 载入）
+- [ ] **查询历史侧栏入口**（🆕）：侧栏「查询历史」现在开的是空壳页，而真正的 `QueryHistory` 已有且可用 —— 接线即可
 
 ---
 
@@ -288,39 +357,75 @@
 - [ ] 安装包签名与公证
 - [ ] 主题「跟随系统」覆盖 Windows / Linux
 - [ ] 密度档位覆盖数据网格行高（当前只影响对象树）
+- [ ] **主题探测缓存**（🆕 A22）：`ThemeManager.systemPrefersDark()` 每次应用主题都 shell out 一次 `defaults`（400ms 超时）
 
 ---
 
 ## 10. 架构整改清单
 
-> 来源：`docs/NAVICAT-GAP.md` §5.2。每条都要有单测或门禁。
+> 来源：`docs/NAVICAT-GAP.md` §6.2。每条都要有单测或门禁。
 
-| # | 问题 | 整改方向 | 阶段 |
-|---|---|---|---|
-| A1 | 无 Dialect 抽象层，SQL 生成散落 6 处 `switch` | 抽 `Dialect` 接口：quote / limitOffset / explain / catalogSchema / typeMap | P5 |
-| A2 | `declarations/` 1500 行是死代码 | 接到运行时（驱动、方言词表、能力矩阵驱动 UI 显隐）**或**整模块删除 | P5 |
-| A3 | `loadFromClasspath()` 不可用（jar 索引解析错误） | 修 jar 资源读取，或随 A2 一起删 | P5 |
-| A4 | `paramStyle` / `identifierQuote` 被硬编码 | 随 A1 统一到 `Dialect` | P5 |
-| A5 | 元数据只读当前 schema | 引入 `getSchemas()` / `getCatalogs()` / `getExportedKeys()` / `getColumns()` | P5 |
-| A6 | 危险分级第三层门禁不存在；数据页保存不分类 | `DbSession.execute(sql, danger)` 驱动侧复查 | P4.5 |
-| A7 | 危险分级 fail-open（未知 → 只读） | 未知语句头按管理操作处理 | P4.5 |
-| A8 | 多语句切分不看字符串/注释 | 复用 `adb-sql` 的 `SqlSplitter` | P4.5 |
-| A9 | 取消只覆盖查询页 | `query()` / `update()` 也记录 `activeStatement` | P4.5 |
-| A10 | 没有语句超时 | `Statement.setQueryTimeout` | P5 |
-| A11 | 结果截断静默 | `RowPage` 带截断标记 + UI 提示 | P4.5 |
-| A12 | 连接池是 1 槽装饰器，连接不归还 | 真正归还连接，或明确改名 `SingleConnectionHolder` | P5 |
-| A13 | macOS 钥匙串口令经 argv 泄漏 | 改 stdin 传入 | P5 |
-| A14 | `options` 明文落盘 | 落盘前脱敏 | P5 |
-| A15 | 连接与内省跑在 UI 线程 | 移到 `adb-db` 执行器 | P5 |
-| A16 | 全局单线程执行器 | 每连接一个执行器 | P5 |
-| A17 | 79/120 令牌未被引用 | 收敛令牌集或真正用起来 | P4.5 |
-| A18 | 「跟随系统」只探测 macOS | 跨平台探测 | P7 |
-| A19 | 密度档位只影响对象树 | 覆盖网格行高 | P7 |
-| A20 | `MAX_CELL_BYTES` 声明未用 | 真正限制单元格体积，或删常量 | P4.5 |
+| # | 问题 | 整改方向 | 阶段 | 状态 |
+|---|---|---|---|---|
+| A1 | 无 Dialect 抽象层，SQL 生成散落 6 个 `switch` + 13 个 `if` | 抽 `Dialect` 接口：quote / limitOffset / explain / catalogSchema / typeMap | P5 | ⬜ |
+| A2 | `declarations/` 1500 行是死代码 | **决策**：本轮先把它**变成真功能**（loader 修好 + classpath/jar 双路径 + 对拍测试），运行时驱动它留给 A1 方言抽象层 | P5 | 🟡 |
+| A3 | `loadFromClasspath()` 不可用（jar 索引解析错误） | **已修**：枚举目录（爆炸 classpath）/ jar 条目（打包），两条路径实测一致 | P4.5 | ✅ |
+| A4 | `paramStyle` / `identifierQuote` 被硬编码 | 随 A1 统一到 `Dialect` | P5 | ⬜ |
+| A5 | 元数据只读当前 schema | 引入 `getSchemas()` / `getCatalogs()` / `getExportedKeys()` / `getColumns()` | P5 | ⬜ |
+| A6 | 危险分级第三层门禁不存在；数据页保存不分类 | `DbSession.execute(sql, danger)` 驱动侧复查 | P4.5 | 🟡 |
+| A7 | 危险分级 fail-open（未知 → 只读） | **已做**：未知语句头按管理操作处理；`WITH` 体内扫描写语句 | P4.5 | ✅ |
+| A8 | 多语句切分不看字符串/注释 | **已做**：复用 `adb-sql` 的 `SqlSplitter` | P4.5 | ✅ |
+| A9 | 取消只覆盖查询页 | **已做**：`query()` / `update()` 也记录 `activeStatement` | P4.5 | ✅ |
+| A10 | 没有语句超时 | `Statement.setQueryTimeout` | P5 | ⬜ |
+| A11 | 结果截断静默 | **已做**：`RowPage` 带 `rowsTruncated` + UI 提示 | P4.5 | ✅ |
+| A12 | 连接池是 1 槽装饰器，连接不归还 | 真正归还连接，或明确改名 `SingleConnectionHolder` | P5 | ⬜ |
+| A13 | macOS 钥匙串口令经 argv 泄漏 | **已做**：改 stdin 传入 | P5 | ✅ |
+| A14 | `options` 明文落盘 | **已做**：落盘前剔除敏感键；且不得覆盖钥匙串口令 | P5 | ✅ |
+| A15 | 连接与内省跑在 UI 线程 | 移到 `adb-db` 执行器 | P5 | ⬜ |
+| A16 | 全局单线程执行器 | 每连接一个执行器 | P5 | ⬜ |
+| A17 | 79/120 令牌未被引用（其中 60 个非颜色令牌从未进 CSS） | 收敛令牌集或真正用起来 | P4.5 | 🟡 **（删了 8 个死令牌；`row-*` 已用起来）** |
+| A18 | 「跟随系统」只探测 macOS | 跨平台探测 | P7 | ⬜ |
+| A19 | 密度档位只影响对象树 | **已做**：覆盖网格行高（行高取自 `row-*` 令牌） | P4.5 | ✅ |
+| A20 | `MAX_CELL_BYTES` 声明未用 | 真正限制单元格体积，或删常量 | P4.5 | ⬜ |
+| **A21** 🆕 | **切连接泄漏会话** | **已做**：回收没有标签页引用的会话 | P5 | ✅ |
+| **A22** 🆕 | **主题探测每次 shell out** | 缓存系统主题探测结果 | P7 | ⬜ |
+| **A23** 🆕 | **死代码 / 死引用** | **已做**：删 `QueryOptions`、修 `DeclarationCheckMojo` 悬空引用、`PageSize` 改为 UI 档位来源、清 `MainToolBar` 只写字段与未用 import | P4.5 | ✅ |
+| **A24** 🆕 | **surefire 统计口径失真** | CI 按 `<testcase>` 计数 + 断言总数下限 | P4.5 | ⬜ **（4.5-28）** |
+| **A25** 🆕 | **`declarations` 与运行时方言不一致**（`dameng.yaml` 有达梦，`DialectKind` 没有） | 随 A1 一起处理 | P5 | ⬜ |
 
 ---
 
-## 11. 门禁与完成定义
+## 11. P4.6 数据网格与查询页进阶（⬜ 新增，Navicat 对标）
+
+> 不属于「契约修复」，是**功能差距**。按收益排序；每项一个门禁。
+
+### 11.1 数据网格
+
+| # | 任务 | 说明 |
+|---|---|---|
+| G1 | **冻结 / 固定列** | 前 N 列固定，不随横向滚动移走 |
+| G2 | **列头拖拽重排** | 顺序**已经能持久化**，但没有任何运行时改序入口 |
+| G3 | **列汇总脚注行** | SUM / AVG / COUNT / MIN / MAX |
+| G4 | **单元格区域选择** | 拖选矩形 / Shift 范围选 / 复制矩形区 |
+| G5 | **编辑后跳到下一格** | Tab → 右一格，↓ → 下一行同列 |
+| G6 | **自增列插入** | 新增行时主键列留空交给数据库自增 |
+| G7 | **行级导航** | 首行 / 末行 / 跳到第 N 行（现在只有页级） |
+| G8 | **批量条加「导出选中行」** | 现在批量条只有复制 |
+
+### 11.2 查询页
+
+| # | 任务 | 说明 |
+|---|---|---|
+| Q1 | **括号匹配 / 代码折叠** | RichTextFX 已有能力，未接 |
+| Q2 | **变量 / 参数替换** | `?` / `:name` 绑定面板 |
+| Q3 | **结果集排序** | 现在 `column.setSortable(false)` |
+| Q4 | **结果列宽持久化** | 现在固定 140px |
+| Q5 | **结果集分页** | 现在一次性装进 `ObservableList`，硬上限 1000 |
+| Q6 | **代码片段 / 模板库** | 与 P6「已保存查询库」合并做 |
+
+---
+
+## 12. 门禁与完成定义
 
 统一命令：
 
@@ -331,12 +436,54 @@
 | 门禁 | 要求 |
 |---|---|
 | 编译 | Java 25，父 POM 统一版本，子模块不带 `<version>` |
-| 单元 | 编辑、SQL、渲染、CSV、词法器、结构变更、连接档案必须有断言 |
+| 计数 | `java tools/TestCount.java` 按 `<testcase>` 计数并断言总数 ≥ 300 |
+| 单元 | 编辑、SQL、渲染、CSV、词法器、结构变更、连接档案、菜单门禁必须有断言 |
 | 数据 | 演示库固定种子；SQL 下推与事务保存有真实 SQLite 断言 |
 | UI | TestFX + Monocle；外壳、数据页、批量条、详情抽屉、查询页、结构页、连接页、连接向导 |
 | 样式 | `TokenParityTest`：键一致、亮暗一致、无颜色字面量、令牌无未引用项 |
-| 文档 | README、本清单、架构、UI 指南、对标文档与实际实现同步 |
+| 图标 / 无障碍 | `IconAuditTest`：图标控件同时具备 Tooltip 与 accessible text + **符号语义唯一** |
+| 菜单 | `MenuBarFactoryTest`：菜单项全部来自 `ActionRegistry`，无永久禁用死项 |
+| 文档 | README、本清单、架构、UI 指南、对标文档、NEXT-STEPS 与实际实现同步 |
 | 对标 | `docs/NAVICAT-GAP.md` 的差距项要么进清单，要么写明「明确不做」 |
+| **计数** | **测试总数 ≥ 300**（防止 surefire 口径少算，见 4.5-28；工具 `tools/TestCount.java`） |
 
 **完成定义**：功能可用 + 门禁断言 + 文档同步 + 无旧架构残留。
 写不出断言的功能视为未完成。
+
+### 12.1 「要么接要么删」原则
+
+侧栏的「查询历史 / 已保存查询 / 诊断 / 导入导出」四个入口、
+`StatusBar` 的 `DEV` / `未选择` / `自动提交` 三个字段、
+`core/adb-declarations` 整个模块 —— 都是**只有位置没有内容**的占位。
+按本项目规则：**占位要么接上真功能，要么删掉**。
+
+其中「查询历史」是特例：**功能已经存在且可用**（`QueryHistory`，prefs 持久化），
+只是侧栏按钮开错了页面 —— 接线即可，不需要新写。
+
+### 12.2 真实窗口截图验收（2026-10-21 新增，✅ 可用）
+
+TestFX 冒烟只证明「控件树正确」；**像素对不对**要真实窗口截图。`ScreenshotSession`
+挂在 `App.start()` 末尾，由环境变量驱动，可脚本化复现：
+
+| 变量 | 作用 |
+|---|---|
+| `ADB_SHOTS` | 输出目录（**用绝对路径**，相对路径会落到模块工作目录） |
+| `ADB_SHOTS_NAME` | 文件名（小写 + `.png`） |
+| `ADB_SHOTS_WAIT` | 显示后等待毫秒数（数据页 / 查询页 / 结构页要 5000–6000） |
+| `ADB_SHOTS_CLICK` | 截图前要点掉的节点 id（如 `sidebar-connections`） |
+| `ADB_OPEN` / `ADB_QUERY=1` / `ADB_STRUCTURE` | 预置页面 |
+| `ADB_THEME_FORCE` | `light` / `dark`，启动时强制主题且不写偏好 |
+
+```bash
+ADB_THEME_FORCE=light ADB_SHOTS=$PWD/docs/screenshots \
+  ADB_SHOTS_NAME=p2-users ADB_OPEN=users ADB_SHOTS_WAIT=5000 \
+  ./mvnw -B -pl bootstrap/adb-desktop javafx:run
+```
+
+**已知坑（都踩过）**：
+1. **主题热切换后 `scene.snapshot()` 会拿到空白帧**（4.5-23，未修）——截图一律用
+   `ADB_THEME_FORCE` 在启动时定主题，不要靠点击切换。
+2. 主题偏好会持久化，**暗色截图要第一个拍**，否则后续全是暗色。
+3. macOS 没有 `timeout` 命令，长跑用工具自带超时。
+4. 拍完用像素密度自检（PIL：非背景像素占比），空白帧 / 主题错误一眼可见。
+5. **⚠️ 现有 6 张图已过期**（缺 `⇤/⇥/跳至页`、多一列 `注释`）—— 按 4.5-31 重拍。

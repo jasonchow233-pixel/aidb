@@ -6,9 +6,17 @@
 
 ---
 
-## 当前状态（2026-10-20）
+## 当前状态（2026-10-21）
 
 **P0 外壳 + P1 竖线 + P2 数据页 + P3 查询页 + P4 结构页已完成。P5 连接管理进行中。下一阶段是 P4.5 契约修复。**
+
+> **本轮（第四轮）逐文件复核 + B0–B4 批次全部落地**：
+> 纠正了三项「虚假完成」（4.5-4 危险分级 fail-closed **从未实现**、
+> 4.5-2 截断提示**只做了查询页**、4.5-5 图标统一**只拆了一半**），
+> 并把它们的缺口全部补上：
+> `WITH … DELETE` 现在弹确认框、数据页保存路径已接入分级、
+> 批量操作不再能改主键列、保存预览的回车落在「取消」上。
+> 详见 `docs/NAVICAT-GAP.md` §0.2 / §0.3 与 `NAVICAT-TODO.md` §6.3。
 
 | 能力 | 状态 | 证据 |
 |---|---|---|
@@ -55,12 +63,22 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**30 个测试类、246 条测试，0 失败**。统一命令：`./mvnw -B clean verify`。
+当前门禁：**36 个测试类、313 条测试用例，0 失败**。统一命令：`./mvnw -B clean verify`。
+
+统计口径用工具兜底（`@Nested` 的测试类在 surefire XML 里会写成 `tests="0"`）：
+
+```bash
+java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
+```
+
+> ⚠️ **统计口径**：4 个测试类用 `@Nested`，surefire XML 里写成 `tests="0"`（真实用例在内层类条目里）。
+> 按 XML 的 `tests=` 属性统计只有 159，**少算 109 条**。CI 与覆盖率工具按 `<testcase>` 计数。
 
 演示库首次启动自动生成：4 张表（`users` 200 行、`orders` 500 行、`products` 80 行、`notes` 空表）+ 1 个视图。
 已有有效演示库不会被覆盖；`-Dadb.demo.db=/path/to/file.db` 可指定其他文件。
 
-真实窗口截图：`docs/screenshots/p0-shell.png`、`docs/screenshots/p2-users.png`、`docs/screenshots/p3-query.png`。
+真实窗口截图：`docs/screenshots/p0-shell.png`、`p2-users.png`、`p3-query.png`、`p4-structure.png`、
+`p5-connections.png`、`p5-dark.png`（⚠️ 已过期，需按 `NAVICAT-TODO.md` §12.2 重拍）。
 
 ---
 
@@ -100,10 +118,11 @@ TestFX 默认用 Monocle 无头模式；在本机想看真实窗口，去掉父 
 
 | 文档 | 回答什么问题 |
 |---|---|
-| **`NAVICAT-TODO.md`** | ⭐ **唯一执行清单**：当前状态、P0–P4 完成项、P4.5 契约修复、P5–P7 路线与门禁 |
-| **`docs/NAVICAT-GAP.md`** | ⭐ **对标分析**：与 Navicat 逐域对比，列出功能/交互/按钮/弹窗/图标/架构的差距与优先级 |
+| **`NAVICAT-TODO.md`** | ⭐ **唯一执行清单**：当前状态、P0–P4 完成项、P4.5 契约修复、P4.6 网格/查询进阶、P5–P7 路线与门禁 |
+| **`docs/NAVICAT-GAP.md`** | ⭐ **对标分析**：与 Navicat 逐域对比，列出功能/交互/按钮/弹窗/图标/架构的差距与优先级；含**逐文件复核发现的 16 处文档失真** |
 | `docs/ARCHITECTURE.md` | 模块、数据流、线程模型、编辑/SQL/撤销不变量、结构页与连接层模型 |
-| `docs/UI-GUIDE.md` | 视觉基线、六区、组件与交互规则、令牌生成、图标约定 |
+| `docs/UI-GUIDE.md` | 视觉基线、六区、组件与交互规则、令牌生成、图标约定、弹窗规范 |
+| `docs/NEXT-STEPS.md` | 阶段规划：批次划分、依赖顺序、提交策略 |
 | `docs/COMPONENT-SELECTION.md` | 开源组件选型、版本、许可证、禁入清单 |
 
 旧 Rust / Vue / Python 实现、构建产物和过时规划已删除；git 历史仍可追溯。
@@ -158,17 +177,22 @@ bootstrap/
 
 ## 已知限制
 
+- 危险分级**第三层（驱动侧复查）仍不存在**：`DbSession.execute(sql)` 没有 `danger`
+  参数。前两层（fail-closed 分类 + UI 确认）已落地。→ §10 A6
+- 令牌体系里还有 60 个非颜色令牌没有用起来（JavaFX 的 looked-up color 只支持颜色）。→ 4.5-14
 - 保存反向撤销对“无主键/主键为空的新增行”不完整；UI 会明确提示。
 - 反向撤销只覆盖最近一次保存；发生新编辑后不再提供。
 - 转置视图只读，不参与批量选择。
 - 本页搜索/隐藏只作用于当前页，不改变服务端分页。
-- 查询结果超过 1000 行会被静默截断（正在补提示，见 `NAVICAT-TODO.md` 4.5-2）。
 - 数据页加载 / 保存无法真正取消 JDBC 语句（`⌘.` 只作用于查询页，见 4.5-13）。
+- 连接建立与内省跑在 JavaFX 线程；全局单线程执行器会让一个连接的慢查询阻塞其它连接。
 - 结构页只能改列；索引、外键、触发器只读；不能建表 / 改表名。
 - 导入 / 导出向导尚未实现，侧栏入口目前是空壳（P6）。
-- 诊断、查询历史、已保存查询三个侧栏入口目前是空壳。
+- 诊断、查询历史、已保存查询三个侧栏入口目前是空壳
+  （**「查询历史」是特例：功能已存在且可用，只是侧栏开错了页面**）。
 - PostgreSQL / MySQL 尚未真实联调（无 Testcontainers），PG 的 DEFAULT / COMMENT 不内省。
 - `core/adb-declarations` 声明层当前是死代码，待 P5 决定接入或删除。
 - 主题“跟随系统”目前只探测 macOS；Windows/Linux 默认亮色。
 - 令牌体系里 79/120 个令牌未被 CSS 引用；密度档位只影响对象树。
+- `docs/screenshots/` 的 6 张图已按当前代码重拍。
 - 首版不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务。
