@@ -40,7 +40,7 @@
 ./mvnw -B clean verify
 ```
 
-当前结果：**38 个测试类 / 344 条测试用例，0 失败 / 0 错误 / 0 跳过**（2026-10-21 实测）。
+当前结果：**38 个测试类 / 345 条测试用例，0 失败 / 0 错误 / 0 跳过**（2026-10-21 实测）。
 
 统计口径用工具兜底：
 
@@ -55,9 +55,9 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `core/adb-declarations` | 40 | 声明校验、快照一致性、**classpath 与源码目录对拍** |
 | `core/adb-safety` | 59 | 危险分级四档、**fail-closed**、WITH 体内扫描、PRAGMA 读写、词法切分 |
 | `core/adb-sql` | 17 | 词法 / 分句 / 格式化 |
-| `workbench/adb-jdbc` | 45 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为** |
+| `workbench/adb-jdbc` | 46 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为** |
 | `testing/adb-fixtures` | 3 | 演示库固定种子 |
-| `workbench/adb-introspect` | 24 | 内省、分页排序筛选 SQL、结构变更 |
+| `workbench/adb-introspect` | 25 | 内省、分页排序筛选 SQL、结构变更 |
 | `workbench/adb-session` | 11 | 连接档案、凭据、连接池、**敏感项脱敏** |
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `ui/adb-ui-core` | 4 | 令牌键一致 / 亮暗一致 / 无颜色字面量 |
@@ -320,7 +320,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 - [x] **口令不落 argv**：macOS 改用 `security -w` 从 stdin 读（`KeychainCredentialStore.runWithInput`）
 - [x] **`options` 敏感字段脱敏**：落盘前剔除口令类键（`ConnectionProfile.sanitizedOptions`）
 - [x] **`options` 不得覆盖钥匙串口令**（✅ R4）：`JdbcSession` / `ConnectionPool` 改成 options 先应用、user/password 后设
-- [ ] **schema / catalog 树**：对象树按 schema 分组，可切换
+- [x] **schema 切换器**：✅ 已落地 —— `SchemaService.listSchemas` + 侧栏下拉（>1 个 schema 才显示）；PG 走 `SET search_path`。**catalog 树仍未做**（MySQL 的多库场景）
 - [ ] **连接重命名 / 分组 / 标签**
 - [ ] **最近使用排序**：列表按 `lastUsedAt` 倒序
 - [ ] **连接属性测试**：连接超时、取消、重连、错误归类（连接断开 / 权限不足 / 死锁 / 超时）
@@ -372,7 +372,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | A2 | `declarations/` 1500 行是死代码 | **决策**：本轮先把它**变成真功能**（loader 修好 + classpath/jar 双路径 + 对拍测试），运行时驱动它留给 A1 方言抽象层 | P5 | 🟡 |
 | A3 | `loadFromClasspath()` 不可用（jar 索引解析错误） | **已修**：枚举目录（爆炸 classpath）/ jar 条目（打包），两条路径实测一致 | P4.5 | ✅ |
 | ~~A4~~ | ~~`paramStyle` / `identifierQuote` 被硬编码~~ **标识符引用已进 `Dialect`**；**参数风格仍固定 `?`**（`paramStyle: numbered` 未实现） | P5 | 🟡 |
-| A5 | 元数据只读当前 schema | 引入 `getSchemas()` / `getCatalogs()` / `getExportedKeys()` / `getColumns()` | P5 | ⬜ |
+| ~~A5~~ | ~~元数据只读当前 schema~~ **schema 已落地**：`getSchemas()` 接上了，侧栏有 **schema 切换器**（>1 个才显示），PG 用 `SET search_path` 切。**catalog 仍未接**；`getExportedKeys()` / `getColumns()` 也没有 | P5 | 🟡 |
 | ~~A6~~ | ~~危险分级第三层门禁不存在；数据页保存不分类~~ **已做**：数据页保存已接入分级；**第三层（驱动侧复查）已落地** —— `DbSession.execute(sql, danger)` / `update(sql, params, danger)` 强制声明等级，驱动侧再判一次，实际更危险就拒绝 | P4.5 | ✅ |
 | A7 | 危险分级 fail-open（未知 → 只读） | **已做**：未知语句头按管理操作处理；`WITH` 体内扫描写语句 | P4.5 | ✅ |
 | A8 | 多语句切分不看字符串/注释 | **已做**：复用 `adb-sql` 的 `SqlSplitter` | P4.5 | ✅ |

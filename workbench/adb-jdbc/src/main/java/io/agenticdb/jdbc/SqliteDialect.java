@@ -151,6 +151,12 @@ public final class SqliteDialect implements Dialect {
     }
 
     @Override
+    public String setSchemaSql(String schema) {
+        // SQLite 没有 schema 概念。
+        return null;
+    }
+
+    @Override
     public List<String> dependentViews(Connection connection, String table) throws SQLException {
         // 整表重建前要先拆掉引用了这张表的视图，否则重建后视图定义会失效。
         List<String> names = new ArrayList<>();

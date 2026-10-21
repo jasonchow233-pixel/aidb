@@ -118,6 +118,7 @@ public final class AppShell extends StackPane {
         this.sideBar = new SideBar(actions, List.of(), connectionName,
                 this::openTab, statusBar::setMessage, "demo", connections, this::selectConnection);
         this.sideBar.setOnRefreshObjects(this::reloadObjects);
+        this.sideBar.setOnSelectSchema(this::switchSchema);
         this.workspace = new WorkspaceView(actions, connectionName,
                 this::createGridPage, this::createQueryPage, this::createStructurePage,
                 this::createConnectionsPage);
@@ -210,6 +211,13 @@ public final class AppShell extends StackPane {
         refreshProfiles();
         sideBar.setObjects(objects);
         sideBar.setConnection(profile.id(), profile.name());
+        // ⭐ schema 切换器：列出这个连接能看到的 schema。
+        //    多于一个才显示（SQLite 没有、单 schema 不添乱）。
+        try {
+            sideBar.setSchemas(schemaService.listSchemas(session));
+        } catch (SQLException e) {
+            sideBar.setSchemas(List.of());
+        }
         statusBar.setConnection(profile.name());
         // 侧栏「诊断」接真实功能：表结构 + 行数的健康概览。会话变了要跟着换。
         workspace.setDiagnostics(session, schemaService, dbExecutor);
@@ -243,6 +251,29 @@ public final class AppShell extends StackPane {
                 sessions.close(id);
                 objectsByConnection.remove(id);
             }
+        }
+    }
+
+    /**
+     * 切换当前 schema。
+     *
+     * <p>PostgreSQL 用 {@code SET search_path} 切；MySQL 的 schema 就是数据库（切换要重连），
+     * SQLite 没有 schema 概念 —— 这些情况下不切，只是重新内省一次。
+     */
+    private void switchSchema(String schema) {
+        if (session == null || schema == null || schema.isBlank()) {
+            return;
+        }
+        try {
+            String sql = session.dialect().setSchemaSql(schema);
+            if (sql != null) {
+                session.execute(sql);
+            }
+            List<SchemaObject> objects = schemaService.listObjects(session, schema);
+            sideBar.setObjects(objects);
+            status("当前 schema：" + schema + " · " + objects.size() + " 个对象");
+        } catch (SQLException e) {
+            status("切换 schema 失败：" + readable(e));
         }
     }
 

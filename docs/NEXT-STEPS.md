@@ -53,9 +53,9 @@ TODO §7.2 已列细项，本文件定**顺序**：
    切标签即切连接。改法是每个 `TabItem` 持有自己的 session，工具栏显示**当前标签**的连接。
    （**会话泄漏已修**，这一条是剩下的根。）
 2. **连接属性页**：`ConnectionProfile.options` 自由 Map 向导化（读超时 / SSL / 字符集 / 连接池）。
-3. **schema / catalog 树**：`getSchemas()` / `getCatalogs()` 已存在但没人调用；
-   接到对象树上做二级分组。**方言层已经铺好路**（`Dialect.hasCatalog()` / `hasSchema()`），
-   这一步只剩把分组渲染出来。
+3. **schema / catalog 树**：**schema 那一半已做**（`listSchemas` + 侧栏切换器 +
+   PG 的 `SET search_path`）。**catalog 那一半还缺** —— MySQL 的多库场景要靠它，
+   涉及 `getCatalogs()` 与切换后重连（MySQL 的 schema 就是数据库，`USE` 不管用）。
 4. **收藏落盘**：`SideBar.starred` 只在内存，退出即丢（用户明确感受过的缺陷）。
 5. ~~**方言抽象层**（A1）~~ **已做**：`Dialect` 接口 + 三个实现已落地，
    `SchemaService` / `StructureSqlBuilder` 里没有方言专属 SQL，源码审计门禁守着。
@@ -120,7 +120,7 @@ TODO §7.2 已列细项，本文件定**顺序**：
 1) 4.5-14  令牌收敛（剩余 60 个非颜色令牌）
 2) ~~A6~~    危险分级第三层 —— ✅ 已做
 3) A2      declarations 去留决策（A1 已完成，声明层可以接进运行时了）
-4) C-3     schema / catalog 树（方言层已铺好路）
+4) C-3     catalog 树（schema 那一半已做；MySQL 多库要重连）
 ```
 
 每项做完跑一次 `./mvnw -B clean verify` + `java tools/TestCount.java`，全绿再进下一项。

@@ -52,6 +52,20 @@ class SchemaServiceTest {
         assertThat(objects).noneMatch(object -> object.name().startsWith("sqlite_"));
     }
 
+    /**
+     * SQLite 没有 schema 概念 —— schema 列表为空，切换器不该出现。
+     * 有 schema 的库（PostgreSQL / MySQL）才会有多个。
+     */
+    @Test
+    void sqliteHasNoSchemas() throws Exception {
+        assertThat(schema.listSchemas(session))
+                .as("SQLite 没有 schema 概念")
+                .isEmpty();
+        assertThat(schema.listObjects(session))
+                .as("对象带上的 schema 应当是空串（不是 null）")
+                .allMatch(object -> object.schema().isEmpty());
+    }
+
     @Test
     void describesColumnsAndTypes() throws Exception {
         TableSchema table = schema.describe(session, "users");

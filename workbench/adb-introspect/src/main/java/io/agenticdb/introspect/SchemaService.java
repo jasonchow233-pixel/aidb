@@ -43,7 +43,24 @@ public final class SchemaService {
         }
     }
 
-    public record SchemaObject(String name, ObjectKind kind) {
+    /**
+     * 一个数据库对象。
+     *
+     * @param name   对象名
+     * @param kind   对象类型
+     * @param schema 所属 schema。SQLite 没有这个概念 → 空串。
+     *                PostgreSQL 是 {@code public}，MySQL 是当前数据库名。
+     */
+    public record SchemaObject(String name, ObjectKind kind, String schema) {
+
+        public SchemaObject {
+            name = name == null ? "" : name;
+            schema = schema == null ? "" : schema;
+        }
+
+        public SchemaObject(String name, ObjectKind kind) {
+            this(name, kind, "");
+        }
     }
 
     public record TableSchema(String name, List<ColumnDef> columns, List<String> primaryKeys) {
@@ -66,12 +83,28 @@ public final class SchemaService {
         }
     }
 
-    /** 表/视图列表，表在前、视图在后，组内按名称排序。 */
+    /**
+     * 表/视图列表，表在前、视图在后，组内按名称排序。
+     *
+     * <p>⭐ 每个对象带上它所属的 schema —— 对象树要按 schema 分组，
+     * 用户才知道自己看到的是哪个 schema 里的东西。
+     */
     public List<SchemaObject> listObjects(DbSession session) throws SQLException {
+        return listObjects(session, null);
+    }
+
+    /**
+     * 表/视图列表，可限定 schema。
+     *
+     * @param schemaPattern schema 名；{@code null} 表示当前 schema
+     */
+    public List<SchemaObject> listObjects(DbSession session, String schemaPattern)
+            throws SQLException {
         DatabaseMetaData meta = session.connection().getMetaData();
         List<SchemaObject> objects = new ArrayList<>();
         String catalog = currentCatalog(session);
-        String schema = currentSchema(session);
+        String schema = schemaPattern == null || schemaPattern.isBlank()
+                ? currentSchema(session) : schemaPattern;
 
         try (ResultSet rs = meta.getTables(catalog, schema, "%", new String[]{"TABLE", "VIEW"})) {
             while (rs.next()) {
@@ -82,13 +115,42 @@ public final class SchemaService {
                 }
                 ObjectKind kind = type != null && type.toUpperCase(Locale.ROOT).contains("VIEW")
                         ? ObjectKind.VIEW : ObjectKind.TABLE;
-                objects.add(new SchemaObject(name, kind));
+                objects.add(new SchemaObject(name, kind, safeSchema(rs.getString("TABLE_SCHEM"))));
             }
         }
 
         objects.sort(Comparator.comparing(SchemaObject::kind)
                 .thenComparing(SchemaObject::name, String.CASE_INSENSITIVE_ORDER));
         return List.copyOf(objects);
+    }
+
+    /**
+     * 连接可见的 schema 列表。
+     *
+     * <p>SQLite 没有 schema 概念 → 返回空列表。
+     * PostgreSQL 返回 {@code public} 等；MySQL 返回当前数据库名。
+     */
+    public List<String> listSchemas(DbSession session) throws SQLException {
+        if (!session.dialect().hasSchema()) {
+            return List.of();
+        }
+        List<String> schemas = new ArrayList<>();
+        try (ResultSet rs = session.connection().getMetaData()
+                .getSchemas(currentCatalog(session), "%")) {
+            while (rs.next()) {
+                String schema = safeSchema(rs.getString("TABLE_SCHEM"));
+                if (!schema.isBlank()) {
+                    schemas.add(schema);
+                }
+            }
+        }
+        schemas.sort(String.CASE_INSENSITIVE_ORDER);
+        return List.copyOf(schemas);
+    }
+
+    /** JDBC 的 schema 名可能是 null 或空白（SQLite 恒为 null）。 */
+    private static String safeSchema(String value) {
+        return value == null ? "" : value.trim();
     }
 
     /** 用 {@code SELECT * FROM t LIMIT 0} 拿结果集元数据，表与视图共用。 */

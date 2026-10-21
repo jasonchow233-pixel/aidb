@@ -118,6 +118,14 @@ public interface Dialect {
     String readDdl(Connection connection, String table, boolean view) throws SQLException;
 
     /**
+     * 切换当前 schema 的语句。
+     *
+     * <p>PostgreSQL 用 {@code SET search_path}；其它方言返回 {@code null}
+     * （MySQL 的 schema 就是数据库，切换要重连；SQLite 没有 schema 概念）。
+     */
+    String setSchemaSql(String schema);
+
+    /**
      * 列出引用了指定对象的视图。
      *
      * <p>只有整表重建需要它（SQLite 重建表前要先拆掉依赖它的视图），

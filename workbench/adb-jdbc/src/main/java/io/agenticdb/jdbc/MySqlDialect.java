@@ -136,6 +136,12 @@ public final class MySqlDialect implements Dialect {
     }
 
     @Override
+    public String setSchemaSql(String schema) {
+        // MySQL 的 schema 就是数据库；切换要重连，不是一条 SET。
+        return null;
+    }
+
+    @Override
     public List<String> dependentViews(Connection connection, String table) throws SQLException {
         // 只有 SQLite 的整表重建需要拆视图。
         return List.of();

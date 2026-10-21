@@ -51,6 +51,8 @@ public final class SideBar extends VBox {
     private List<ConnectionProfile> connections = List.of();
     private List<SchemaObject> tables = List.of();
     private List<SchemaObject> views = List.of();
+    /** 出现的 schema 个数；> 1 时对象树按 schema 分组。 */
+    private int schemaCount;
     private Runnable onRefreshObjects = () -> { };
 
     private final Set<String> starred = new LinkedHashSet<>();
@@ -62,6 +64,10 @@ public final class SideBar extends VBox {
     private final TextField search = new TextField();
     private final TreeView<DemoNode> tree = new TreeView<>();
     private final ComboBox<ConnectionProfile> connectionPicker = new ComboBox<>();
+    private final ComboBox<String> schemaPicker = new ComboBox<>();
+    /** 切换 schema 的回调（AppShell 负责改会话并重新内省）。 */
+    private Consumer<String> onSelectSchema = schema -> { };
+    private String activeSchema;
 
     private Consumer<Boolean> onCollapsed = value -> { };
     private boolean collapsed;
@@ -175,6 +181,33 @@ public final class SideBar extends VBox {
         setObjects(objects, true);
     }
 
+    /** schema 切换的回调（AppShell 改会话的 search_path 并重新内省）。 */
+    public void setOnSelectSchema(Consumer<String> onSelectSchema) {
+        this.onSelectSchema = onSelectSchema == null ? schema -> { } : onSelectSchema;
+    }
+
+    /**
+     * 设置可选的 schema 列表。
+     *
+     * <p>只有<b>多于一个</b> schema 时才显示切换器；单 schema 的库不添乱。
+     */
+    public void setSchemas(List<String> schemas) {
+        List<String> safe = schemas == null ? List.of() : List.copyOf(schemas);
+        schemaPicker.getItems().setAll(safe);
+        boolean visible = safe.size() > 1;
+        schemaPicker.setVisible(visible);
+        schemaPicker.setManaged(visible);
+        if (!safe.isEmpty()) {
+            activeSchema = safe.getFirst();
+            schemaPicker.getSelectionModel().select(activeSchema);
+        }
+    }
+
+    /** 当前选中的 schema。 */
+    public String activeSchema() {
+        return activeSchema;
+    }
+
     private void setObjects(List<SchemaObject> objects, boolean refresh) {
         List<SchemaObject> safe = objects == null ? List.of() : List.copyOf(objects);
         tables = safe.stream()
@@ -183,6 +216,13 @@ public final class SideBar extends VBox {
         views = safe.stream()
                 .filter(object -> object.kind() == ObjectKind.VIEW)
                 .toList();
+        // ⭐ schema 分组：只有「存在多个 schema」时才加这一层，
+        //    否则常见的单 schema 连接会凭空多一次点击。
+        schemaCount = (int) safe.stream()
+                .map(SchemaObject::schema)
+                .filter(value -> value != null && !value.isBlank())
+                .distinct()
+                .count();
         if (refresh && !getChildren().isEmpty()) {
             refreshTree();
             refreshFavorites();
@@ -264,8 +304,24 @@ public final class SideBar extends VBox {
             }
         });
 
-        HBox connectionBar = new HBox(6, manageConnections, connectionPicker);
+        // ⭐ schema 切换器（Navicat / DBeaver 都有）：
+        //    只在真的有多个 schema 时才出现 —— SQLite 没有 schema 概念，
+        //    单 schema 的库也没必要多一次点击。
+        schemaPicker.setId("sidebar-schema-picker");
+        schemaPicker.getStyleClass().add("adb-schema-picker");
+        schemaPicker.setMaxWidth(Double.MAX_VALUE);
+        schemaPicker.setVisible(false);
+        schemaPicker.setManaged(false);
+        schemaPicker.setOnAction(event -> {
+            String selected = schemaPicker.getValue();
+            if (selected != null && !selected.equals(activeSchema)) {
+                onSelectSchema.accept(selected);
+            }
+        });
+
+        HBox connectionBar = new HBox(6, manageConnections, connectionPicker, schemaPicker);
         HBox.setHgrow(connectionPicker, Priority.ALWAYS);
+        HBox.setHgrow(schemaPicker, Priority.ALWAYS);
         connectionBar.getStyleClass().add("adb-sidebar__connection");
 
         VBox favorites = section("收藏", favoriteBox);
@@ -423,33 +479,26 @@ public final class SideBar extends VBox {
                 new DemoNode(connectionName, NodeKind.CONNECTION, "◈"));
         root.setExpanded(true);
 
-        TreeItem<DemoNode> tableGroup = new TreeItem<>(
-                new DemoNode("表", NodeKind.GROUP, "▤"));
-        tableGroup.setExpanded(true);
-        for (SchemaObject table : tables) {
-            if (matches(table.name(), needle)) {
-                tableGroup.getChildren().add(new TreeItem<>(
-                        new DemoNode(table.name(), NodeKind.TABLE, table.kind().icon())));
-            }
-        }
-
-        TreeItem<DemoNode> viewGroup = new TreeItem<>(
-                new DemoNode("视图", NodeKind.GROUP, "◇"));
-        viewGroup.setExpanded(true);
-        for (SchemaObject view : views) {
-            if (matches(view.name(), needle)) {
-                viewGroup.getChildren().add(new TreeItem<>(
-                        new DemoNode(view.name(), NodeKind.VIEW, view.kind().icon())));
-            }
-        }
-
-        if (!tableGroup.getChildren().isEmpty()) {
-            root.getChildren().add(tableGroup);
-        }
-        if (!viewGroup.getChildren().isEmpty()) {
-            root.getChildren().add(viewGroup);
-        }
+        root.getChildren().addAll(
+                kindGroup("表", NodeKind.TABLE, tables, needle),
+                kindGroup("视图", NodeKind.VIEW, views, needle));
         return root;
+    }
+
+
+    /** 一个分组节点（表 / 视图）。 */
+    private TreeItem<DemoNode> kindGroup(String label, NodeKind kind,
+                                        List<SchemaObject> objects, String needle) {
+        TreeItem<DemoNode> group = new TreeItem<>(
+                new DemoNode(label, NodeKind.GROUP, kind == NodeKind.TABLE ? "▤" : "◇"));
+        group.setExpanded(true);
+        for (SchemaObject object : objects) {
+            if (matches(object.name(), needle)) {
+                group.getChildren().add(new TreeItem<>(
+                        new DemoNode(object.name(), kind, object.kind().icon(), object.schema())));
+            }
+        }
+        return group;
     }
 
     private static boolean matches(String value, String needle) {
@@ -649,7 +698,16 @@ public final class SideBar extends VBox {
         CONNECTION, GROUP, TABLE, VIEW
     }
 
-    private record DemoNode(String name, NodeKind kind, String icon) {
+    /**
+     * 树节点。
+     *
+     * @param schema 所属 schema（表/视图节点用；其它节点为空串）
+     */
+    private record DemoNode(String name, NodeKind kind, String icon, String schema) {
+
+        private DemoNode(String name, NodeKind kind, String icon) {
+            this(name, kind, icon, "");
+        }
     }
 
     private final class ConnectionCell extends ListCell<ConnectionProfile> {

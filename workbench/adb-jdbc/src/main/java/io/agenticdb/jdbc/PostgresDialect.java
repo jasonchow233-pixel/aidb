@@ -128,6 +128,15 @@ public final class PostgresDialect implements Dialect {
     }
 
     @Override
+    public String setSchemaSql(String schema) {
+        if (schema == null || schema.isBlank()) {
+            return null;
+        }
+        // search_path 决定了未限定表名解析到哪个 schema —— 切 schema 就是切它。
+        return "SET search_path TO " + quote(schema);
+    }
+
+    @Override
     public List<String> dependentViews(Connection connection, String table) throws SQLException {
         // 只有 SQLite 的整表重建需要拆视图。
         return List.of();
