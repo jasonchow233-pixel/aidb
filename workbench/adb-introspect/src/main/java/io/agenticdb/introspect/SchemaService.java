@@ -30,7 +30,11 @@ public final class SchemaService {
 
     public enum ObjectKind {
         TABLE("▦"),
-        VIEW("◇");
+        VIEW("◇"),
+        /** ⭐ S3：过程 / 函数 / 触发器也进对象树（Navicat 的对象浏览层）。 */
+        PROCEDURE("ⓟ"),
+        FUNCTION("ƒ"),
+        TRIGGER("⚡");
 
         private final String icon;
 
@@ -119,9 +123,73 @@ public final class SchemaService {
             }
         }
 
+        // ⭐ S3：过程与函数走 JDBC 元数据（可移植），触发器各方言自己给 SQL。
+        addProcedures(meta, catalog, schema, objects);
+        addFunctions(meta, catalog, schema, objects);
+        addTriggers(session, objects);
+
         objects.sort(Comparator.comparing(SchemaObject::kind)
                 .thenComparing(SchemaObject::name, String.CASE_INSENSITIVE_ORDER));
         return List.copyOf(objects);
+    }
+
+    /** 过程。驱动不支持时安静跳过 —— 不该因为一个可选能力让整个对象树失败。 */
+    private static void addProcedures(DatabaseMetaData meta, String catalog, String schema,
+                                      List<SchemaObject> objects) {
+        try (ResultSet rs = meta.getProcedures(catalog, schema, "%")) {
+            while (rs.next()) {
+                String name = rs.getString("PROCEDURE_NAME");
+                if (isUsableObjectName(name)) {
+                    objects.add(new SchemaObject(name, ObjectKind.PROCEDURE));
+                }
+            }
+        } catch (SQLException | RuntimeException ignored) {
+            // 驱动不支持 getProcedures（很多驱动不支持）。
+        }
+    }
+
+    /** 函数。 */
+    private static void addFunctions(DatabaseMetaData meta, String catalog, String schema,
+                                     List<SchemaObject> objects) {
+        try (ResultSet rs = meta.getFunctions(catalog, schema, "%")) {
+            while (rs.next()) {
+                String name = rs.getString("FUNCTION_NAME");
+                if (isUsableObjectName(name)) {
+                    objects.add(new SchemaObject(name, ObjectKind.FUNCTION));
+                }
+            }
+        } catch (SQLException | RuntimeException ignored) {
+            // 同上。
+        }
+    }
+
+    /** 触发器。 */
+    private void addTriggers(DbSession session, List<SchemaObject> objects) {
+        String sql = session.dialect().triggersListSql();
+        if (sql == null) {
+            return;
+        }
+        try (Statement statement = session.connection().createStatement();
+             ResultSet rs = statement.executeQuery(sql)) {
+            while (rs.next()) {
+                String name = rs.getString(1);
+                if (isUsableObjectName(name)) {
+                    objects.add(new SchemaObject(name, ObjectKind.TRIGGER));
+                }
+            }
+        } catch (SQLException | RuntimeException ignored) {
+            // 没有触发器权限 / 驱动不支持时安静跳过。
+        }
+    }
+
+    /** 过滤系统内置对象（pg_ 开头、information_schema 之类）。 */
+    private static boolean isUsableObjectName(String name) {
+        if (name == null || name.isBlank()) {
+            return false;
+        }
+        String lower = name.toLowerCase(Locale.ROOT);
+        return !lower.startsWith("pg_") && !lower.startsWith("sys")
+                && !lower.startsWith("information_") && !lower.startsWith("sqlite_");
     }
 
     /**

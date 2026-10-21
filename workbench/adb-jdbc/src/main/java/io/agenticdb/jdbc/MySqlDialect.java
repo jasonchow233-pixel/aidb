@@ -146,6 +146,12 @@ public final class MySqlDialect implements Dialect {
     }
 
     @Override
+    public String triggersListSql() {
+        return "SELECT TRIGGER_NAME FROM information_schema.TRIGGERS "
+                + "WHERE TRIGGER_SCHEMA = DATABASE() ORDER BY TRIGGER_NAME";
+    }
+
+    @Override
     public String setSchemaSql(String schema) {
         // MySQL 的 schema 就是数据库；切换要重连，不是一条 SET。
         return null;

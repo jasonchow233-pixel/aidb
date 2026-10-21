@@ -158,6 +158,11 @@ public final class SqliteDialect implements Dialect {
     }
 
     @Override
+    public String triggersListSql() {
+        return "SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name";
+    }
+
+    @Override
     public String setSchemaSql(String schema) {
         // SQLite 没有 schema 概念。
         return null;

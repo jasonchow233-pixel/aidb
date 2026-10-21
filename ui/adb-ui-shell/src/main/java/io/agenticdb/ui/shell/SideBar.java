@@ -53,6 +53,10 @@ public final class SideBar extends VBox {
     private List<ConnectionProfile> connections = List.of();
     private List<SchemaObject> tables = List.of();
     private List<SchemaObject> views = List.of();
+    /** ⭐ S3：过程 / 函数 / 触发器。 */
+    private List<SchemaObject> procedures = List.of();
+    private List<SchemaObject> functions = List.of();
+    private List<SchemaObject> triggers = List.of();
     /**
      * ⭐ 每个连接各自的对象（多连接对象树）。
      *
@@ -278,6 +282,15 @@ public final class SideBar extends VBox {
                 .toList();
         views = safe.stream()
                 .filter(object -> object.kind() == ObjectKind.VIEW)
+                .toList();
+        procedures = safe.stream()
+                .filter(object -> object.kind() == ObjectKind.PROCEDURE)
+                .toList();
+        functions = safe.stream()
+                .filter(object -> object.kind() == ObjectKind.FUNCTION)
+                .toList();
+        triggers = safe.stream()
+                .filter(object -> object.kind() == ObjectKind.TRIGGER)
                 .toList();
         // ⭐ schema 分组：只有「存在多个 schema」时才加这一层，
         //    否则常见的单 schema 连接会凭空多一次点击。
@@ -619,10 +632,20 @@ public final class SideBar extends VBox {
                     .filter(object -> object.kind() == ObjectKind.TABLE).toList();
             List<SchemaObject> profileViews = objects.stream()
                     .filter(object -> object.kind() == ObjectKind.VIEW).toList();
+            List<SchemaObject> profileProcedures = objects.stream()
+                    .filter(object -> object.kind() == ObjectKind.PROCEDURE).toList();
+            List<SchemaObject> profileFunctions = objects.stream()
+                    .filter(object -> object.kind() == ObjectKind.FUNCTION).toList();
+            List<SchemaObject> profileTriggers = objects.stream()
+                    .filter(object -> object.kind() == ObjectKind.TRIGGER).toList();
 
             connectionNode.getChildren().addAll(
                     kindGroup("表", NodeKind.TABLE, profileTables, needle, id),
-                    kindGroup("视图", NodeKind.VIEW, profileViews, needle, id));
+                    kindGroup("视图", NodeKind.VIEW, profileViews, needle, id),
+                    // ⭐ S3：过程 / 函数 / 触发器（Navicat 的对象浏览层）
+                    kindGroup("过程", NodeKind.PROCEDURE, profileProcedures, needle, id),
+                    kindGroup("函数", NodeKind.FUNCTION, profileFunctions, needle, id),
+                    kindGroup("触发器", NodeKind.TRIGGER, profileTriggers, needle, id));
 
             // 空分组不显示（没读到对象的连接只留一个可展开的连接节点）。
             connectionNode.getChildren().removeIf(TreeItem::isLeaf);
@@ -648,6 +671,18 @@ public final class SideBar extends VBox {
             }
         }
         return group;
+    }
+
+    /** 分组节点的图标。 */
+    private static String groupIcon(NodeKind kind) {
+        return switch (kind) {
+            case TABLE -> "▤";
+            case VIEW -> "◇";
+            case PROCEDURE -> "ⓟ";
+            case FUNCTION -> "ƒ";
+            case TRIGGER -> "⚡";
+            default -> "▤";
+        };
     }
 
     /** 该连接的对象还没读过就去读（懒加载）。 */
@@ -771,6 +806,14 @@ public final class SideBar extends VBox {
                     actions.menuItem("object.new-query", "新建查询"));
             case GROUP -> menu.getItems().add(
                     actions.menuItem("object.refresh-objects", "刷新对象"));
+            // ⭐ S3：过程 / 函数 / 触发器没有数据页，也没有结构页 ——
+            //    只给「复制名称 / 新建查询」（调用它）/ 收藏。
+            case PROCEDURE, FUNCTION, TRIGGER -> menu.getItems().addAll(
+                    actions.menuItem("object.new-query", "新建查询"),
+                    new SeparatorMenuItem(),
+                    actions.menuItem("object.favorite",
+                            starred.contains(node.name()) ? "取消收藏" : "收藏"),
+                    actions.menuItem("object.copy-name", "复制名称"));
             default -> menu.getItems().add(
                     actions.menuItem("object.open-data", "打开"));
         }
@@ -838,6 +881,9 @@ public final class SideBar extends VBox {
         DemoNode node = selectedNode;
         boolean isObject = node != null
                 && (node.kind() == NodeKind.TABLE || node.kind() == NodeKind.VIEW);
+        boolean isCallable = node != null
+                && (node.kind() == NodeKind.PROCEDURE || node.kind() == NodeKind.FUNCTION
+                || node.kind() == NodeKind.TRIGGER);
         boolean isConnection = node != null && node.kind() == NodeKind.CONNECTION;
         setObjectActionEnabled("object.open-data", isObject);
         setObjectActionEnabled("object.open-structure", isObject);
@@ -846,6 +892,11 @@ public final class SideBar extends VBox {
         setObjectActionEnabled("object.copy-name", isObject);
         setObjectActionEnabled("object.copy-select", isObject);
         setObjectActionEnabled("object.diagnostics", isObject);
+        // 过程 / 函数 / 触发器没有数据页 —— 相应动作要变灰并解释为什么。
+        setObjectActionEnabled("object.open-data", isObject);
+        setObjectActionEnabled("object.open-structure", isObject);
+        setObjectActionEnabled("object.copy-select", isObject);
+        setObjectActionEnabled("object.new-query", isObject || isCallable);
         setObjectActionEnabled("object.refresh-objects", node != null);
     }
 
@@ -912,7 +963,9 @@ public final class SideBar extends VBox {
     }
 
     private enum NodeKind {
-        ROOT, CONNECTION, GROUP, TABLE, VIEW
+        ROOT, CONNECTION, GROUP, TABLE, VIEW,
+        /** ⭐ S3：过程 / 函数 / 触发器。 */
+        PROCEDURE, FUNCTION, TRIGGER
     }
 
     /**

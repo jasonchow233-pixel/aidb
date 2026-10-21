@@ -59,7 +59,7 @@
 |---|---|---|---|---|
 | S1 | 顶部是**大图标功能栏**（12 个带文字的功能入口） | ✅ 顶部是**大图标 + 文字的功能栏**：连接 / 查询 / 表 / 导入导出 / 工具 | ~~信息密度与可发现性：Navicat 的功能入口一眼可见，我们的藏进菜单~~ | `MainToolBar.feature` |
 | S2 | **表清单是带元数据列的表格**（行数 / 数据长度 / 引擎 / 创建日期 / 注释） | ✅ 有「表清单」页：名称 / 行数 / 数据长度 / 引擎 / 创建日期（SQLite 没有大小与创建时间 → 显示「—」） | ~~少了「一眼看清表有多大」这一层~~ | `TableListPage` + `Dialect.tableMetaSql` |
-| S3 | 对象树有 **表 / 视图 / 函数 / 用户 / 其它** 五类分组 | 只有 **表 / 视图** 两类 | 内省能力直接反映在树骨架上 | `SchemaService.ObjectKind` 只有 2 个值 |
+| S3 | 对象树有 **表 / 视图 / 函数 / 用户 / 其它** 五类分组 | ✅ 有 **表 / 视图 / 过程 / 函数 / 触发器** 五类分组 | ~~内省能力直接反映在树骨架上~~ | `SchemaService.ObjectKind` 5 个值 |
 | S4 | 左面板底部有**搜索框 + 过滤 + ★ + 折叠** | ✅ 搜索框在**底部**，与 ★（只看收藏）、« 折叠同一行 | ~~布局与 Navicat 不一致~~ | `SideBar.buildExpanded` |
 | S5 | 标签栏第一个是**「对象」首页标签**（不可关闭） | 首页是内容区的欢迎卡片 | 导航模型不同：Navicat 用标签，我们用卡片 | `TabKind` 只有 6 个常量，无 HOME |
 | S7 | 窗口状态记忆 | ✅ 宽高/侧栏/折叠 + 窗口位置 x/y、上次用的连接、上次打开的标签页 | — | `AppShell.saveWindowState` |
@@ -120,7 +120,7 @@
 | **D18** | `core/adb-declarations` 的 `DeclarationLoader.java:36` javadoc 写「两者的解析结果必须完全相同，这本身要有一条测试守着」——**没有这条测试**，且 `loadFromClasspath()` 实际是坏的 | `DeclarationLoader.java:119-151` |
 | **D19** | `DeclarationLoader.java:27` 的 `{@link DeclarationCheckMojo}` **指向一个不存在的类** | 全仓 0 命中 |
 
-### 0.3 本轮关闭的差距（36 项）
+### 0.3 本轮关闭的差距（39 项）
 
 第四轮复核后，**B0–B4 批次全部落地**，下列差距已经关掉：
 
@@ -188,7 +188,7 @@
 | 右键菜单 | 🟡 | 表/视图节点 7 项、连接节点 3 项、组节点 1 项；**没有重命名、没有新建表、没有导出、没有表属性**；**且不经过 `ActionRegistry`**（→ 4.5-8） |
 | 收藏 | 🟡 | `SideBar.starred` **只在内存**（`SideBar.java:56`），退出即丢；`ConnectionProfile.favorite` 才落盘 —— **两套互不相干的收藏系统** |
 | 过滤搜索 | ✅ | 侧栏搜索框，子串匹配（**位置在顶部，与 Navicat 相反**，见 S4） |
-| **过程 / 函数 / 触发器 / 序列 / 事件节点** | ⛔ | `SchemaService.listObjects` 只查 `{"TABLE","VIEW"}`（`:76`）；`ObjectKind` 只有 2 个值 |
+| **过程 / 函数 / 触发器节点** | ✅ | 过程与函数走 JDBC 元数据，触发器由方言给 SQL（`Dialect.triggersListSql`）；`ObjectKind` 5 个值 |
 | **拖拽建表 / 拖拽改字段类型** | ⛔ | 全仓 `DragDrop` 0 命中 |
 | **多选 + 批量操作** | ⛔ | `TreeView` 保持默认 `SelectionMode.SINGLE` |
 | **对象树按 schema 展开** | 🟡 | 侧栏有 **schema 切换器**（`Sidebar.setSchemas`，>1 个 schema 才显示）；PG 用 `SET search_path` 切。**catalog（MySQL 多库）仍未接** |
@@ -221,7 +221,7 @@
 | **编辑后跳到下一格（Tab / ↓）** | ✅ | Tab / Shift+Tab / ↓ / ↑，跳过去直接开始编辑 |
 | **自增列插入 / 主键批量改** | ⛔ | 全仓 `autoIncrement`/`AUTO_INCREMENT` 只在死代码模块命中 |
 | **整表导出（不限当前页）** | ⛔ | 导出菜单 3 项全部是「当前页」 |
-| **行级导航（首行 / 末行 / 跳到第 N 行）** | ⛔ | 只有页级导航 |
+| **行级导航（跳到第 N 行）** | ✅ | 分页条加「跳至行」（跨页也能跳）+ `⌘↓`/`⌘↑` |
 | **列注释显示** | 🟡 | UI 位置都在，但 SQLite 无列注释（`DialectKind.supportsColumnComment()`）；PG 的 COMMENT 因 `TypeMapper` 不读 `getColumns()` 而恒丢 |
 
 ### 1.4 查询编辑器
@@ -370,7 +370,7 @@
 
 - `保存` 按钮文案随脏计数变宽（`保存` → `保存 3`），按钮宽度跳动（`:369-370`）；不脏时 disabled（`:368`）✅
 - 「结构」按钮仍用 `⚙`，与设置页撞车（见 D14）
-- **批量条没有「导出选中行」入口**（只有复制）
+- ~~批量条没有「导出选中行」入口~~ → ✅ 已加「导出选中」
 - 「导出」菜单 3 项全是「当前页」
 
 ### 3.3 结构页工具栏（`StructurePage`，7 个元素）

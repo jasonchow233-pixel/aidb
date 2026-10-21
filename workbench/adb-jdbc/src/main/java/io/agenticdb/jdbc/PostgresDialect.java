@@ -142,6 +142,12 @@ public final class PostgresDialect implements Dialect {
     }
 
     @Override
+    public String triggersListSql() {
+        return "SELECT trigger_name FROM information_schema.triggers "
+                + "WHERE event_object_schema = current_schema() ORDER BY trigger_name";
+    }
+
+    @Override
     public String setSchemaSql(String schema) {
         if (schema == null || schema.isBlank()) {
             return null;

@@ -100,6 +100,37 @@ class SideBarTreeTest {
         assertThat(opened.getFirst().connectionId()).isEqualTo("other");
     }
 
+    /**
+     * ⭐ S3：过程 / 函数 / 触发器也进对象树。
+     *
+     * <p>触发器用真 SQLite 建一个 —— JDBC 元数据没有触发器列表，
+     * 这条路径走的是方言给的 {@code triggersListSql}。
+     */
+    @Test
+    void triggersShowUpInTheTree() throws Exception {
+        io.agenticdb.jdbc.DbSession session = io.agenticdb.jdbc.JdbcSession.open(
+                io.agenticdb.jdbc.ConnectionSpec.sqliteMemory());
+        try (java.sql.Statement statement = session.connection().createStatement()) {
+            statement.execute("CREATE TABLE t (id INTEGER)");
+            statement.execute("CREATE TRIGGER trg_after_insert AFTER INSERT ON t BEGIN"
+                    + " SELECT 1; END");
+        }
+        ActionRegistry actions = new ActionRegistry();
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "内存库",
+                tab -> { }, message -> { }, "demo", List.of(profile("demo", "内存库")),
+                p -> { }));
+        onFxRun(() -> sideBar.setObjects("demo", List.of(
+                new SchemaService.SchemaObject("t", SchemaService.ObjectKind.TABLE),
+                new SchemaService.SchemaObject("trg_after_insert",
+                        SchemaService.ObjectKind.TRIGGER))));
+
+        List<String> names = new ArrayList<>();
+        collect(rootOf(treeOf(sideBar)), names);
+        assertThat(String.join(" | ", names))
+                .contains("name=trg_after_insert")
+                .contains("name=触发器");
+    }
+
     // ───────────────────────────── 工具 ─────────────────────────────
 
     private static ConnectionProfile profile(String id, String name) {

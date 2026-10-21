@@ -140,6 +140,13 @@ public final class DemoDatabase {
                 statement.execute("""
                         CREATE VIEW v_active_users AS
                         SELECT id, name, email FROM users WHERE active = 1""");
+                // ⭐ S3：演示库里带一个触发器 —— 对象树要能看到「触发器」分组，
+                //    不然这个功能在演示环境里根本看不见。
+                //    它**不改数据**（只做一次空操作）—— 演示库的数据必须是确定的。
+                statement.execute("CREATE TRIGGER trg_users_audit AFTER UPDATE ON users"
+                        + " BEGIN"
+                        + " SELECT 1;"
+                        + " END");
                 statement.execute("CREATE INDEX idx_users_email ON users(email)");
                 statement.execute("CREATE INDEX idx_orders_user ON orders(user_id)");
                 statement.execute("CREATE INDEX idx_products_sku ON products(sku)");

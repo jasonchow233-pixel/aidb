@@ -37,6 +37,13 @@ class DemoDatabaseTest {
                     "SELECT metadata FROM products WHERE id = 1", 1);
             assertThat(metadata.rows().getFirst().get("metadata"))
                     .isEqualTo("{\"color\":\"red\",\"weight\":1}");
+
+            // ⭐ S3：演示库带一个触发器（对象树要能看到「触发器」分组）
+            RowPage triggers = session.query(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger'", 10);
+            assertThat(triggers.rows()).hasSize(1);
+            assertThat(triggers.rows().getFirst().get("name"))
+                    .isEqualTo("trg_users_audit");
         }
     }
 

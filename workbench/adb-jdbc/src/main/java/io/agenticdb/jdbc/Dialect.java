@@ -129,6 +129,14 @@ public interface Dialect {
     String tableMetaSql();
 
     /**
+     * 触发器列表查询（只取名字）。
+     *
+     * <p>JDBC 的 {@code DatabaseMetaData} <b>没有</b>触发器列表，
+     * 所以只能各方言自己给一条 SQL。返回 {@code null} 表示不提供。
+     */
+    String triggersListSql();
+
+    /**
      * 切换当前 schema 的语句。
      *
      * <p>PostgreSQL 用 {@code SET search_path}；其它方言返回 {@code null}

@@ -29,8 +29,11 @@ class StructureServiceTest {
         Path file = DemoDatabase.create(temp.resolve("demo.db"));
         session = JdbcSession.open(ConnectionSpec.sqlite(file));
         schema = new SchemaService();
-        session.update("CREATE TRIGGER trg_users_touch AFTER UPDATE ON users "
-                + "BEGIN SELECT 1; END");
+        // 用 Statement 而不是 session.update() —— DDL 走 update() 不可靠。
+        try (java.sql.Statement statement = session.connection().createStatement()) {
+            statement.execute("CREATE TRIGGER trg_users_touch AFTER UPDATE ON users "
+                    + "BEGIN SELECT 1; END");
+        }
     }
 
     @AfterEach

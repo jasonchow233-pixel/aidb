@@ -44,11 +44,13 @@ class SchemaServiceTest {
     void listsTablesBeforeViewsWithoutSystemObjects() throws Exception {
         List<SchemaObject> objects = schema.listObjects(session);
 
+        // ⭐ S3：对象树里现在还有触发器（演示库自带一个）。
         assertThat(objects).extracting(SchemaObject::name)
-                .containsExactly("notes", "orders", "products", "users", "v_active_users");
+                .containsExactly("notes", "orders", "products", "users", "v_active_users",
+                        "trg_users_audit");
         assertThat(objects).extracting(SchemaObject::kind)
                 .containsExactly(ObjectKind.TABLE, ObjectKind.TABLE, ObjectKind.TABLE,
-                        ObjectKind.TABLE, ObjectKind.VIEW);
+                        ObjectKind.TABLE, ObjectKind.VIEW, ObjectKind.TRIGGER);
         assertThat(objects).noneMatch(object -> object.name().startsWith("sqlite_"));
     }
 

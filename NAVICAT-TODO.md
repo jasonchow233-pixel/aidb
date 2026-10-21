@@ -40,7 +40,7 @@
 ./mvnw -B clean verify
 ```
 
-当前结果：**45 个测试类 / 392 条测试用例，0 失败 / 0 错误 / 0 跳过**（2026-10-21 实测）。
+当前结果：**46 个测试类 / 395 条测试用例，0 失败 / 0 错误 / 0 跳过**（2026-10-21 实测）。
 
 统计口径用工具兜底：
 
@@ -62,7 +62,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `workbench/adb-transfer` | 15 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告 |
 | `ui/adb-ui-core` | 5 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** |
-| `ui/adb-ui-shell` | 104 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**图标语义唯一**、**注册表收口**、**保存守卫**、**工具页** |
+| `ui/adb-ui-shell` | 108 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**图标语义唯一**、**注册表收口**、**保存守卫**、**工具页** |
 
 > ⚠️ **统计口径（4.5-28）**：用 `@Nested` 的 4 个测试类（`QueryLimitsTest`、
 > `DangerClassifierTest`、`DeclarationLoaderTest`、`DeclarationValidationTest`）在 surefire XML 里
@@ -289,7 +289,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 |---|---|---|---|---|
 | ~~S1~~ ✅ | ~~顶部改成**大图标 + 文字的功能栏**~~ **已完成**：连接 / 查询 / 表 / 导入导出 / 工具（图标在上、文字在下，Navicat 同形） | ✅ | `MainToolBar` + 6 张截图 |
 | ~~S2~~ ✅ | ~~表清单元数据列~~ **已完成**：「表清单」页有 名称 / 行数 / 数据长度 / 引擎 / 创建日期；PG 走 pg_class、MySQL 走 information_schema，SQLite 没有大小与创建时间 → 诚实显示「—」 | ✅ | `Dialect.tableMetaSql` + `TableListPage` |
-| S3 | 对象树补 **视图 / 函数 / 其它** 分组节点 | ⬜ | `SideBar.buildTreeModel` + `SchemaService.listObjects` | 树上有三类分组，节点可展开 |
+| ~~S3~~ ✅ | ~~对象树补视图 / 函数 / 其它分组节点~~ **已完成**：对象树现在有 表 / 视图 / **过程 / 函数 / 触发器** 五类分组；过程与函数走 JDBC 元数据，触发器各方言给 SQL；演示库带一个触发器，演示环境里看得见 | ✅ | `SchemaService.listObjects` + `Dialect.triggersListSql` + `SideBar.buildTreeModel` |
 | ~~S4~~ ✅ | ~~侧栏搜索框移到底部~~ **已完成**：与 ★（只看收藏）、« 折叠同一行 | ✅ | `SideBar.buildExpanded` |
 | S5 | 标签栏第一个是**「对象」首页标签**（不可关闭） | ⬜ | `TabBar` + `WorkspaceView` | 打开对象首页后可关闭其它标签 |
 | ~~S6~~ ✅ | ~~菜单栏加「收藏夹」顶级菜单~~ **已完成**：文件/编辑/视图/数据库/**收藏夹**/工具/窗口/帮助；收藏夹面板可打开 | ✅ | `MenuBarFactory` + `FavoritesPage` |
@@ -429,8 +429,8 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | G4 | **单元格区域选择** | 拖选矩形 / Shift 范围选 / 复制矩形区 |
 | ~~G5~~ ✅ | ~~编辑后跳到下一格~~ **已完成**：Tab / Shift+Tab / ↓ / ↑，跳过去直接开始编辑下一格 | ✅ | `DataGridPage.moveAfterEdit` |
 | G6 | **自增列插入** | 新增行时主键列留空交给数据库自增 |
-| G7 | **行级导航** | 首行 / 末行 / 跳到第 N 行（现在只有页级） |
-| G8 | **批量条加「导出选中行」** | 现在批量条只有复制 |
+| ~~G7~~ ✅ | ~~行级导航~~ **已完成**：分页条加「跳至行」（**跨页也能跳**，行号是绝对行号）+ `⌘↓`/`⌘↑` 跳本页首末行 | ✅ | `DataGridPage.jumpToRow` |
+| ~~G8~~ ✅ | ~~批量条加「导出选中行」~~ **已完成** | ✅ | `DataGridPage.exportSelectedCsv` |
 
 ### 11.2 查询页
 

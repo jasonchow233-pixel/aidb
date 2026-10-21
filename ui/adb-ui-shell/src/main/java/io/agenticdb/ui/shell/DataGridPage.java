@@ -159,6 +159,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final Button firstPageButton = new Button("⇤");
     private final Button lastPageButton = new Button("⇥");
     private final TextField jumpField = new TextField();
+    /** ⭐ G7：行级导航（跳到第 N 行）。 */
+    private final TextField jumpRowField = new TextField();
     private final ComboBox<Integer> pageSizeBox = new ComboBox<>();
     private final Button filterButton = new Button("筛选");
     private final Button clearQueryButton = new Button("清除条件");
@@ -314,6 +316,16 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                     && event.getCode() == KeyCode.A) {
                 // ⌘A 全选当前页
                 selectAllCurrentPage();
+                event.consume();
+            } else if (event.isShortcutDown() && !event.isShiftDown() && !event.isAltDown()
+                    && event.getCode() == KeyCode.DOWN) {
+                // ⌘↓ 跳到当前页最后一行（G7：行级导航）
+                selectRowIndex(grid.getItems().size() - 1);
+                event.consume();
+            } else if (event.isShortcutDown() && !event.isShiftDown() && !event.isAltDown()
+                    && event.getCode() == KeyCode.UP) {
+                // ⌘↑ 跳到当前页第一行
+                selectRowIndex(0);
                 event.consume();
             } else if (event.getCode() == KeyCode.ESCAPE
                     && searchField.isFocused() && !searchField.getText().isEmpty()) {
@@ -873,6 +885,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         batchDelete.getStyleClass().addAll("adb-button", "adb-button--danger");
         batchDelete.setOnAction(event -> deleteSelectedRows());
 
+        // ⭐ G8：导出选中行（以前批量条只有复制，没有导出）
+        Button export = new Button("导出选中");
+        export.setId("data-batch-export");
+        export.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        export.setTooltip(new Tooltip("把选中的行导出为 CSV 文件"));
+        export.setOnAction(event -> exportSelectedCsv());
+
         Button clear = new Button("清除选择");
         clear.setId("data-batch-clear");
         clear.getStyleClass().addAll("adb-button", "adb-button--ghost");
@@ -880,7 +899,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        batchBar.getChildren().addAll(batchLabel, copy, copySql, batchClone,
+        batchBar.getChildren().addAll(batchLabel, copy, copySql, export, batchClone,
                 batchNull, batchEmpty, batchDelete, spacer, clear);
     }
 
@@ -926,6 +945,15 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         jumpField.setPrefWidth(72);
         jumpField.setOnAction(event -> jumpToPage(jumpField.getText()));
 
+        // ⭐ G7：行级导航 —— 页码之上还有行号。
+        jumpRowField.setId("data-jump-row");
+        jumpRowField.getStyleClass().add("adb-grid__jump");
+        jumpRowField.setPromptText("跳至行");
+        jumpRowField.setTooltip(new Tooltip("输入行号后回车跳到该行（跨页也能跳）"));
+        jumpRowField.setAccessibleText("跳至指定行");
+        jumpRowField.setPrefWidth(72);
+        jumpRowField.setOnAction(event -> jumpToRow(jumpRowField.getText()));
+
         Label perPage = new Label("每页");
         perPage.getStyleClass().add("adb-muted");
 
@@ -947,7 +975,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         });
 
         pager.getChildren().addAll(rangeLabel, spacer, firstPageButton, previous, pageLabel,
-                next, lastPageButton, jumpField,
+                next, lastPageButton, jumpField, jumpRowField,
                 new Separator(javafx.geometry.Orientation.VERTICAL), perPage, pageSizeBox);
         return pager;
     }
@@ -1029,6 +1057,69 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         offset = target;
         jumpField.clear();
         load(false);
+    }
+
+    /**
+     * ⭐ G7：跳到第 N 行（跨页也能跳）。
+     *
+     * <p>行号是**绝对行号**（跟网格左侧的 # 一致），所以先算出目标行所在的页，
+     * 必要时翻页，再把焦点落到那一行。
+     */
+    void jumpToRow(String raw) {
+        if (loading) {
+            return;
+        }
+        String text = raw == null ? "" : raw.trim();
+        if (text.isEmpty()) {
+            return;
+        }
+        long row;
+        try {
+            row = Long.parseLong(text);
+        } catch (NumberFormatException e) {
+            feedback.status("跳行失败：「" + text + "」不是行号");
+            return;
+        }
+        if (row < 1) {
+            feedback.status("跳行失败：行号从 1 开始");
+            return;
+        }
+        if (total >= 0 && row > total) {
+            feedback.status("跳行失败：最大行号 " + total);
+            return;
+        }
+        long targetOffset = ((row - 1) / pageSize) * pageSize;
+        if (QueryLimits.exceedsOffsetLimit(targetOffset)) {
+            showError("已到达 OFFSET 上限 " + QueryLimits.MAX_OFFSET
+                    + "，请改用筛选条件而不是继续翻页。");
+            return;
+        }
+        jumpRowField.clear();
+        if (targetOffset != offset) {
+            offset = targetOffset;
+            load(false);
+            return;
+        }
+        selectRowIndex((int) ((row - 1) % pageSize));
+    }
+
+    /** 门禁用：设置每页行数并重新加载。 */
+    void setPageSizeForTest(int size) {
+        this.pageSize = Math.max(1, size);
+        offset = 0;
+        load(false);
+    }
+
+    /** 选中当前页里的第 index 行（0 起）并滚到它。 */
+    private void selectRowIndex(int index) {
+        List<Map<String, Object>> items = grid.getItems();
+        if (index < 0 || index >= items.size()) {
+            return;
+        }
+        grid.getSelectionModel().clearAndSelect(index);
+        grid.scrollTo(index);
+        grid.requestFocus();
+        feedback.status("已跳到第 " + (offset + index + 1) + " 行");
     }
 
     private void nextPage() {
@@ -2486,7 +2577,21 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     private void exportCsv() {
-        List<Map<String, Object>> rows = List.copyOf(grid.getItems());
+        writeCsv(List.copyOf(grid.getItems()), "当前页");
+    }
+
+    /** ⭐ G8：导出选中行。 */
+    private void exportSelectedCsv() {
+        List<Map<String, Object>> selected =
+                List.copyOf(grid.getSelectionModel().getSelectedItems());
+        if (selected.isEmpty()) {
+            feedback.status("没有选中的行");
+            return;
+        }
+        writeCsv(selected, "选中行");
+    }
+
+    private void writeCsv(List<Map<String, Object>> rows, String scope) {
         if (rows.isEmpty()) {
             feedback.status("没有可导出的行");
             return;
@@ -2497,7 +2602,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             return;
         }
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("导出当前页为 CSV");
+        chooser.setTitle("导出" + scope + "为 CSV");
         chooser.setInitialFileName(tableName + ".csv");
         chooser.getExtensionFilters().add(
                 new FileChooser.ExtensionFilter("CSV 文件", "*.csv"));
@@ -2524,8 +2629,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             Path path = file.toPath();
             Files.writeString(path, "\uFEFF" + CsvExporter.csv(columns, values),
                     StandardCharsets.UTF_8);
-            feedback.status("已导出 " + rows.size() + " 行 → " + path);
-            feedback.toast("已导出 " + rows.size() + " 行 CSV");
+            feedback.status("已导出" + scope + " " + rows.size() + " 行 → " + path);
+            feedback.toast("已导出" + scope + " " + rows.size() + " 行 CSV");
         } catch (IOException e) {
             showErrorDialog("导出失败", readable(e));
             feedback.status("导出失败：" + readable(e));
