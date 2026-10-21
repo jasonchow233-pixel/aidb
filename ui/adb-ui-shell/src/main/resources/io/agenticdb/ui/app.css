@@ -33,7 +33,7 @@
 .menu-bar {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent transparent -adb-border transparent;
-    -fx-padding: 0 4;
+    -fx-padding: 0px 4px;
 }
 
 .menu-bar .label {
@@ -56,9 +56,9 @@
 .context-menu {
     -fx-background-color: -adb-bg-elevated;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6;
-    -fx-background-radius: 6;
-    -fx-padding: 4;
+    -fx-border-radius: 5px;
+    -fx-background-radius: 5px;
+    -fx-padding: 4px;
 }
 
 .separator .line {
@@ -68,8 +68,9 @@
 
 /* ⭐ S1：大图标功能栏（Navicat 形态）—— 图标在上、文字在下 */
 .adb-feature {
-    -fx-padding: 5 10 4 10;
-    -fx-background-radius: 8;
+    -fx-padding: 4px 8px 4px 8px;
+    -fx-border-color: transparent;
+    -fx-background-radius: 5px;
     -fx-cursor: hand;
     -fx-min-width: 52;
 }
@@ -79,13 +80,13 @@
 }
 
 .adb-feature__icon {
-    -fx-font-size: 17px;
+    -fx-font-size: 16px;
     -fx-text-fill: -adb-text-primary;
     -fx-alignment: center;
 }
 
 .adb-feature__label {
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
     -fx-text-fill: -adb-text-secondary;
     -fx-alignment: center;
 }
@@ -93,7 +94,7 @@
 .adb-toolbar {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent transparent -adb-border transparent;
-    -fx-padding: 0 8;
+    -fx-padding: 0px 8px;
 }
 
 .adb-toolbar__separator {
@@ -112,9 +113,9 @@
     -fx-background-color: -adb-bg-elevated;
     -fx-text-fill: -adb-text-primary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6;
-    -fx-background-radius: 6;
-    -fx-padding: 4 10;
+    -fx-border-radius: 5px;
+    -fx-background-radius: 5px;
+    -fx-padding: 4px 12px;
     -fx-font-size: 12px;
 }
 
@@ -127,8 +128,39 @@
 }
 
 .adb-button:disabled {
+    /* ⭐ 不用 opacity 表达禁用 —— 整个节点一起淡会把文字和图标都稀释掉，
+     *   禁用按钮变得几乎看不见，和「点了没反应」分不开。
+     *   改成：底色变灰 + 文字变灰 + **边框保留**（形状还在）。 */
     -fx-background-color: -adb-bg-disabled;
-    -fx-opacity: 0.45;
+    -fx-text-fill: -adb-text-disabled;
+    -fx-border-color: -adb-border;
+}
+
+/* ⭐⭐ Modena 给**所有** :disabled 控件加 -fx-opacity: 0.4
+ *   （javafx-controls 的 modena.css「DISABLED THINGS」段）。
+ *   那一行会让禁用的文字只剩 40% 不透明度 —— 在浅色底上等于消失。
+ *   实测踩过：数据页的「保存」按钮整个看不见（白字 + 40% 透明度）。
+ *   所以这里把透明度**显式还原成 1**，禁用感完全由颜色表达。 */
+.adb-button:disabled,
+.adb-icon-button:disabled,
+.adb-menu-item:disabled,
+.adb-tree__star:disabled,
+.adb-sidebar__nav:disabled,
+.adb-favorite:disabled,
+.adb-filter-panel__value-cell .check-box:disabled {
+    -fx-opacity: 1;
+}
+
+.adb-button--primary:disabled {
+    -fx-background-color: -adb-bg-disabled;
+    -fx-text-fill: -adb-text-disabled;
+    -fx-border-color: -adb-border;
+}
+
+.adb-button--ghost:disabled {
+    -fx-background-color: transparent;
+    -fx-text-fill: -adb-text-disabled;
+    -fx-border-color: transparent;
 }
 
 .adb-button--primary {
@@ -155,8 +187,9 @@
 .adb-icon-button {
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-secondary;
-    -fx-background-radius: 6;
-    -fx-padding: 4 7;
+    -fx-border-color: transparent;
+    -fx-background-radius: 5px;
+    -fx-padding: 4px 8px;
     -fx-font-size: 14px;
 }
 
@@ -169,10 +202,10 @@
     -fx-background-color: -adb-bg-inset;
     -fx-text-fill: -adb-text-tertiary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6;
-    -fx-background-radius: 6;
+    -fx-border-radius: 5px;
+    -fx-background-radius: 5px;
     -fx-alignment: center-left;
-    -fx-padding: 4 10;
+    -fx-padding: 4px 12px;
     -fx-font-size: 12px;
 }
 
@@ -184,8 +217,8 @@
 .adb-connection-picker {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6;
-    -fx-background-radius: 6;
+    -fx-border-radius: 5px;
+    -fx-background-radius: 5px;
 }
 
 .adb-connection-picker .list-cell {
@@ -202,8 +235,8 @@
 .adb-schema-picker {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6;
-    -fx-background-radius: 6;
+    -fx-border-radius: 5px;
+    -fx-background-radius: 5px;
 }
 
 .adb-schema-picker .list-cell {
@@ -216,16 +249,60 @@
     -fx-background-color: -adb-text-secondary;
 }
 
+/* ── 焦点环（键盘可见）─────────────────────────────────────────────────
+ * ⭐ 以前只有 3 处 :focused（菜单 + 两个搜索框）——
+ *   **鼠标能看见焦点，键盘看不见**。纯键盘操作用户无法知道自己在哪。
+ *
+ *   做法：边框换成主色 + 一圈光晕。
+ *   刻意**不改边框宽度**：宽度一变，获得焦点时控件会大 1px 抖一下。
+ * ─────────────────────────────────────────────────────────────────── */
+
+.adb-button:focused,
+.adb-icon-button:focused,
+.adb-search-trigger:focused,
+.adb-feature:focused,
+.adb-rail__button:focused,
+.adb-sidebar__nav:focused,
+.adb-favorite:focused,
+.adb-tab:focused,
+.adb-toast__action:focused,
+.adb-grid__filter-button:focused {
+    -fx-border-color: -adb-border-focus;
+    -fx-effect: dropshadow(gaussian, -adb-border-focus, 4, 0, 0, 0);
+}
+
+/* 树与表格的选中焦点：JavaFX 把焦点画在控件上，这里补一圈可见边框 */
+.adb-object-tree .tree-cell:focused,
+.adb-grid .table-cell:focused {
+    -fx-border-color: -adb-border-focus;
+    -fx-effect: dropshadow(gaussian, -adb-border-focus, 3, 0, 0, 0);
+}
+
+/* 输入类控件 */
+.text-field:focused,
+.text-area:focused,
+.combo-box:focused,
+.list-view:focused,
+.tree-view:focused,
+.table-view:focused,
+.check-box:focused,
+.radio-button:focused,
+.scroll-bar:focused,
+.slider:focused {
+    -fx-border-color: -adb-border-focus;
+    -fx-effect: dropshadow(gaussian, -adb-border-focus, 3, 0, 0, 0);
+}
+
 /* ── 侧栏 ───────────────────────────────────────────────────────────── */
 
 .adb-sidebar {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent -adb-border transparent transparent;
-    -fx-padding: 8;
+    -fx-padding: 8px;
 }
 
 .adb-sidebar--collapsed {
-    -fx-padding: 0;
+    -fx-padding: 0px;
 }
 
 .adb-sidebar__expanded {
@@ -240,9 +317,9 @@
 
 .adb-sidebar__section-title {
     -fx-text-fill: -adb-text-tertiary;
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
     -fx-font-weight: bold;
-    -fx-padding: 2 4;
+    -fx-padding: 2px 4px;
 }
 
 .adb-sidebar__section {
@@ -254,9 +331,9 @@
     -fx-text-fill: -adb-text-primary;
     -fx-prompt-text-fill: -adb-text-tertiary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6;
-    -fx-background-radius: 6;
-    -fx-padding: 4 8;
+    -fx-border-radius: 5px;
+    -fx-background-radius: 5px;
+    -fx-padding: 4px 8px;
     -fx-font-size: 12px;
 }
 
@@ -267,9 +344,9 @@
 .adb-sidebar__nav {
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-secondary;
-    -fx-padding: 4 6;
+    -fx-padding: 4px 8px;
     -fx-font-size: 12px;
-    -fx-background-radius: 6;
+    -fx-background-radius: 5px;
 }
 
 .adb-sidebar__nav:hover {
@@ -280,14 +357,14 @@
 .adb-object-tree {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
-    -fx-padding: 0;
+    -fx-padding: 0px;
 }
 
 .adb-object-tree > .virtual-flow > .clipped-container > .sheet > .tree-cell {
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-primary;
-    -fx-padding: 2 4;
-    -fx-background-radius: 5;
+    -fx-padding: 2px 4px;
+    -fx-background-radius: 5px;
 }
 
 .adb-object-tree .tree-cell:hover {
@@ -330,9 +407,9 @@
 .adb-favorite {
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-secondary;
-    -fx-padding: 2 4;
+    -fx-padding: 2px 4px;
     -fx-font-size: 12px;
-    -fx-background-radius: 5;
+    -fx-background-radius: 3px;
 }
 
 .adb-favorite:hover {
@@ -353,8 +430,8 @@
     -fx-min-height: 32;
     -fx-pref-width: 32;
     -fx-pref-height: 32;
-    -fx-background-radius: 6;
-    -fx-font-size: 15px;
+    -fx-background-radius: 5px;
+    -fx-font-size: 16px;
 }
 
 .adb-rail__button:hover {
@@ -364,7 +441,7 @@
 
 .adb-rail__dialect {
     -fx-text-fill: -adb-text-secondary;
-    -fx-font-size: 9px;
+    -fx-font-size: 10px;
     -fx-font-weight: bold;
 }
 
@@ -381,7 +458,7 @@
 .adb-tabbar {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent transparent -adb-border transparent;
-    -fx-padding: 0 6;
+    -fx-padding: 0px 8px;
 }
 
 .adb-tabbar__scroll,
@@ -396,12 +473,12 @@
 
 .adb-tab {
     -fx-background-color: transparent;
-    -fx-padding: 0 8;
+    -fx-padding: 0px 8px;
     -fx-min-height: 35;
     -fx-pref-height: 35;
     -fx-border-width: 0 0 2 0;
     -fx-border-color: transparent;
-    -fx-background-radius: 6 6 0 0;
+    -fx-background-radius: 5px 5px 0px 0px;
 }
 
 .adb-tab:hover {
@@ -433,14 +510,14 @@
 
 .adb-tab__dirty {
     -fx-text-fill: -adb-risk-1-write;
-    -fx-font-size: 9px;
+    -fx-font-size: 10px;
 }
 
 .adb-tab__close {
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-tertiary;
-    -fx-padding: 0 3;
-    -fx-font-size: 9px;
+    -fx-padding: 0px 4px;
+    -fx-font-size: 10px;
 }
 
 .adb-tab__close:hover {
@@ -455,17 +532,17 @@
 /* ── 内容区 ─────────────────────────────────────────────────────────── */
 
 .adb-welcome {
-    -fx-padding: 32;
+    -fx-padding: 32px;
 }
 
 .adb-welcome__logo {
     -fx-text-fill: -adb-accent;
-    -fx-font-size: 60px;
+    -fx-font-size: 40px;
 }
 
 .adb-welcome__title {
     -fx-text-fill: -adb-text-primary;
-    -fx-font-size: 26px;
+    -fx-font-size: 20px;
     -fx-font-weight: bold;
 }
 
@@ -480,26 +557,26 @@
 }
 
 .adb-page__header {
-    -fx-padding: 12 16 8 16;
+    -fx-padding: 12px 16px 8px 16px;
 }
 
 .adb-page__title {
     -fx-text-fill: -adb-text-primary;
-    -fx-font-size: 18px;
+    -fx-font-size: 16px;
     -fx-font-weight: bold;
 }
 
 .adb-page__body {
-    -fx-padding: 12 16 16 16;
+    -fx-padding: 12px 16px 16px 16px;
 }
 
 .adb-inline-toolbar {
-    -fx-padding: 0 0 4 0;
+    -fx-padding: 0px 0px 4px 0px;
 }
 
 .adb-badge {
-    -fx-padding: 1 7;
-    -fx-background-radius: 10;
+    -fx-padding: 2px 8px;
+    -fx-background-radius: 999px;
     -fx-font-size: 10px;
 }
 
@@ -511,9 +588,9 @@
 .adb-card {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 8;
-    -fx-background-radius: 8;
-    -fx-padding: 16;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-padding: 16px;
 }
 
 .adb-section-title {
@@ -525,38 +602,38 @@
 .adb-empty {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 10;
-    -fx-background-radius: 10;
-    -fx-padding: 48;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-padding: 32px;
 }
 
 .adb-empty__icon {
     -fx-text-fill: -adb-text-tertiary;
-    -fx-font-size: 34px;
+    -fx-font-size: 32px;
 }
 
 .adb-empty__title {
     -fx-text-fill: -adb-text-primary;
-    -fx-font-size: 15px;
+    -fx-font-size: 16px;
     -fx-font-weight: bold;
 }
 
 /* ── 数据页 ─────────────────────────────────────────────────────────── */
 
 .adb-grid-page .adb-inline-toolbar {
-    -fx-padding: 0 16 6 16;
+    -fx-padding: 0px 16px 8px 16px;
 }
 
 .adb-grid__body {
-    -fx-padding: 0 16;
+    -fx-padding: 0px 16px;
 }
 
 .adb-grid {
     -fx-background-color: -adb-bg-canvas;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 8;
-    -fx-background-radius: 8;
-    -fx-padding: 0;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-padding: 0px;
     -fx-table-cell-border-color: transparent;
     -fx-selection-bar: -adb-bg-selected;
     -fx-selection-bar-non-focused: -adb-bg-selected;
@@ -571,13 +648,13 @@
 .adb-grid .column-header-background {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent transparent -adb-border transparent;
-    -fx-background-radius: 8 8 0 0;
+    -fx-background-radius: 8px 8px 0px 0px;
 }
 
 .adb-grid .column-header {
     -fx-background-color: transparent;
     -fx-border-color: transparent -adb-border transparent transparent;
-    -fx-padding: 5 8;
+    -fx-padding: 4px 8px;
 }
 
 .adb-grid .column-header .label {
@@ -591,7 +668,7 @@
 .adb-grid .table-row-cell {
     -fx-background-color: -adb-bg-canvas;
     -fx-border-color: transparent transparent -adb-border transparent;
-    -fx-padding: 0;
+    -fx-padding: 0px;
 }
 
 .adb-grid .table-row-cell:odd {
@@ -605,7 +682,7 @@
 .adb-grid .table-cell {
     -fx-text-fill: -adb-text-primary;
     -fx-font-size: 12px;
-    -fx-padding: 3 8;
+    -fx-padding: 4px 8px;
     -fx-border-color: transparent;
     -fx-alignment: center-left;
 }
@@ -619,7 +696,7 @@
 .adb-grid__summary {
     -fx-font-size: 11px;
     -fx-text-fill: -adb-text-secondary;
-    -fx-padding: 4 2 0 2;
+    -fx-padding: 4px 2px 0px 2px;
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent transparent -adb-border transparent;
 }
@@ -632,7 +709,7 @@
 
 .adb-grid__column-type {
     -fx-text-fill: -adb-text-tertiary;
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
 }
 
 .adb-grid__row-number {
@@ -648,36 +725,36 @@
     -fx-text-fill: -adb-accent;
     -fx-font-size: 10px;
     -fx-font-weight: bold;
-    -fx-padding: 0 2;
+    -fx-padding: 0px 2px;
 }
 
 .adb-grid__filter-button {
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-tertiary;
     -fx-font-size: 12px;
-    -fx-padding: 0 2;
+    -fx-padding: 0px 2px;
     -fx-cursor: hand;
 }
 
 .adb-grid__filter-button:hover {
     -fx-background-color: -adb-bg-hover;
     -fx-text-fill: -adb-text-primary;
-    -fx-background-radius: 4;
+    -fx-background-radius: 3px;
 }
 
 /* ── 查询条件 chips ─────────────────────────────────────────────────── */
 
 .adb-query-chips {
-    -fx-padding: 0 16 6 16;
+    -fx-padding: 0px 16px 8px 16px;
 }
 
 .adb-chip {
     -fx-background-color: -adb-bg-elevated;
     -fx-text-fill: -adb-text-primary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 10;
-    -fx-background-radius: 10;
-    -fx-padding: 2 8;
+    -fx-border-radius: 999px;
+    -fx-background-radius: 999px;
+    -fx-padding: 2px 8px;
     -fx-font-size: 11px;
     -fx-cursor: hand;
 }
@@ -703,28 +780,28 @@
 
 .adb-filter-panel {
     -fx-background-color: -adb-bg-surface;
-    -fx-padding: 12;
+    -fx-padding: 12px;
     -fx-spacing: 8;
 }
 
 .adb-filter-panel__search {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 5;
-    -fx-background-radius: 5;
-    -fx-padding: 4 8;
+    -fx-border-radius: 5px;
+    -fx-background-radius: 5px;
+    -fx-padding: 4px 8px;
 }
 
 .adb-filter-panel__list {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 5;
-    -fx-background-radius: 5;
+    -fx-border-radius: 5px;
+    -fx-background-radius: 5px;
 }
 
 .adb-filter-panel__list .list-cell {
     -fx-background-color: transparent;
-    -fx-padding: 3 6;
+    -fx-padding: 4px 8px;
 }
 
 .adb-filter-panel__list .list-cell:hover {
@@ -742,7 +819,7 @@
 }
 
 .adb-filter-panel__high-cardinality {
-    -fx-padding: 8 0 0 0;
+    -fx-padding: 8px 0px 0px 0px;
 }
 
 .adb-filter-panel__spinner {
@@ -792,14 +869,14 @@
 }
 
 .adb-grid__boolean {
-    -fx-padding: 0;
+    -fx-padding: 0px;
 }
 
 .adb-grid__boolean .box {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 3;
-    -fx-background-radius: 3;
+    -fx-border-radius: 3px;
+    -fx-background-radius: 3px;
 }
 
 .adb-grid__search {
@@ -807,9 +884,9 @@
     -fx-text-fill: -adb-text-primary;
     -fx-prompt-text-fill: -adb-text-tertiary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6;
-    -fx-background-radius: 6;
-    -fx-padding: 3 8;
+    -fx-border-radius: 5px;
+    -fx-background-radius: 5px;
+    -fx-padding: 4px 8px;
     -fx-font-size: 12px;
 }
 
@@ -837,9 +914,9 @@
     -fx-background-color: -adb-bg-surface;
     -fx-text-fill: -adb-text-primary;
     -fx-border-color: -adb-border-focus;
-    -fx-border-radius: 3;
-    -fx-background-radius: 3;
-    -fx-padding: 1 4;
+    -fx-border-radius: 3px;
+    -fx-background-radius: 3px;
+    -fx-padding: 2px 4px;
     -fx-font-size: 12px;
 }
 
@@ -894,7 +971,7 @@
 }
 
 .adb-grid__select-column .check-box {
-    -fx-padding: 0;
+    -fx-padding: 0px;
 }
 
 /* ── 批量操作条 ─────────────────────────────────────────────────────── */
@@ -902,7 +979,7 @@
 .adb-batch-bar {
     -fx-background-color: -adb-bg-elevated;
     -fx-border-color: -adb-border transparent transparent transparent;
-    -fx-padding: 6 16;
+    -fx-padding: 8px 16px;
 }
 
 .adb-batch-bar__count {
@@ -922,7 +999,7 @@
 .adb-grid__pager {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: -adb-border transparent transparent transparent;
-    -fx-padding: 6 16 8 16;
+    -fx-padding: 8px 16px 8px 16px;
 }
 
 .adb-grid__range {
@@ -938,15 +1015,15 @@
 .adb-page-size {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 5;
-    -fx-background-radius: 5;
+    -fx-border-radius: 5px;
+    -fx-background-radius: 5px;
 }
 
 .adb-page-size .list-cell {
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-primary;
     -fx-font-size: 11px;
-    -fx-padding: 2 6;
+    -fx-padding: 2px 8px;
 }
 
 .adb-page-size .arrow {
@@ -956,9 +1033,9 @@
 .adb-grid__state {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 10;
-    -fx-background-radius: 10;
-    -fx-padding: 18 28;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-padding: 16px 24px;
 }
 
 .adb-grid__state-text {
@@ -980,24 +1057,24 @@
 .adb-statusbar {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: -adb-border transparent transparent transparent;
-    -fx-padding: 0 8;
+    -fx-padding: 0px 8px;
     -fx-spacing: 6;
 }
 
 .adb-statusbar .label {
     -fx-text-fill: -adb-text-secondary;
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
 }
 
 .adb-status__dialect {
-    -fx-padding: 1 6;
-    -fx-background-radius: 8;
+    -fx-padding: 2px 8px;
+    -fx-background-radius: 999px;
     -fx-font-weight: bold;
     -fx-background-color: -adb-bg-elevated;
     -fx-text-fill: -adb-text-secondary;
     -fx-border-color: -adb-border;
     -fx-border-width: 1;
-    -fx-border-radius: 8;
+    -fx-border-radius: 999px;
 }
 
 .adb-status__separator {
@@ -1040,14 +1117,14 @@
 .adb-palette {
     -fx-background-color: -adb-bg-elevated;
     -fx-border-color: -adb-border-strong;
-    -fx-border-radius: 10;
-    -fx-background-radius: 10;
-    -fx-padding: 12;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-padding: 12px;
 }
 
 .adb-palette__hint {
     -fx-text-fill: -adb-text-tertiary;
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
     -fx-font-weight: bold;
 }
 
@@ -1056,9 +1133,9 @@
     -fx-text-fill: -adb-text-primary;
     -fx-prompt-text-fill: -adb-text-tertiary;
     -fx-border-color: -adb-border-focus;
-    -fx-border-radius: 6;
-    -fx-background-radius: 6;
-    -fx-padding: 7 10;
+    -fx-border-radius: 5px;
+    -fx-background-radius: 5px;
+    -fx-padding: 8px 12px;
     -fx-font-size: 14px;
 }
 
@@ -1069,8 +1146,8 @@
 
 .adb-palette__list .list-cell {
     -fx-background-color: transparent;
-    -fx-padding: 0;
-    -fx-background-radius: 6;
+    -fx-padding: 0px;
+    -fx-background-radius: 5px;
 }
 
 .adb-palette__list .list-cell:filled:selected {
@@ -1079,7 +1156,7 @@
 
 .adb-palette__category {
     -fx-text-fill: -adb-text-tertiary;
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
 }
 
 .adb-palette__label {
@@ -1097,12 +1174,12 @@
 .adb-details {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: -adb-border-strong;
-    -fx-border-radius: 10;
-    -fx-background-radius: 10;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
 }
 
 .adb-details__header {
-    -fx-padding: 10 12;
+    -fx-padding: 12px 12px;
     -fx-border-color: transparent transparent -adb-border transparent;
 }
 
@@ -1127,7 +1204,7 @@
 
 .adb-details .tab-pane .tab {
     -fx-background-color: transparent;
-    -fx-padding: 4 10;
+    -fx-padding: 4px 12px;
 }
 
 .adb-details .tab-pane .tab:selected {
@@ -1179,9 +1256,9 @@
     -fx-background-color: -adb-bg-elevated;
     -fx-text-fill: -adb-text-primary;
     -fx-border-color: -adb-border-strong;
-    -fx-border-radius: 8;
-    -fx-background-radius: 8;
-    -fx-padding: 6 14;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-padding: 8px 12px;
     -fx-font-size: 12px;
 }
 
@@ -1194,9 +1271,9 @@
     -fx-background-color: transparent;
     -fx-text-fill: -adb-accent;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 5;
-    -fx-background-radius: 5;
-    -fx-padding: 2 8;
+    -fx-border-radius: 5px;
+    -fx-background-radius: 5px;
+    -fx-padding: 2px 8px;
     -fx-font-size: 11px;
 }
 
@@ -1214,11 +1291,11 @@
 /* ── 密度 ───────────────────────────────────────────────────────────── */
 
 .density-compact .adb-object-tree .tree-cell {
-    -fx-padding: 0 4;
+    -fx-padding: 0px 4px;
 }
 
 .density-comfort .adb-object-tree .tree-cell {
-    -fx-padding: 5 4;
+    -fx-padding: 4px 4px;
 }
 
 /* ── 对话框 ─────────────────────────────────────────────────────────── */
@@ -1235,8 +1312,8 @@
     -fx-background-color: -adb-bg-elevated;
     -fx-text-fill: -adb-text-primary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6;
-    -fx-background-radius: 6;
+    -fx-border-radius: 5px;
+    -fx-background-radius: 5px;
 }
 
 /* ── 查询页 ─────────────────────────────────────────────────────────── */
@@ -1246,16 +1323,16 @@
 }
 
 .adb-query__header {
-    -fx-padding: 12 16 6 16;
+    -fx-padding: 12px 16px 8px 16px;
 }
 
 .adb-query__toolbar {
-    -fx-padding: 0 16 8 16;
+    -fx-padding: 0px 16px 8px 16px;
     -fx-border-color: transparent transparent -adb-border transparent;
 }
 
 .adb-query__find {
-    -fx-padding: 6 16;
+    -fx-padding: 8px 16px;
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent transparent -adb-border transparent;
 }
@@ -1265,14 +1342,14 @@
     -fx-text-fill: -adb-text-primary;
     -fx-prompt-text-fill: -adb-text-disabled;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6;
-    -fx-background-radius: 6;
+    -fx-border-radius: 5px;
+    -fx-background-radius: 5px;
 }
 
 .adb-query__risk {
     -fx-border-width: 1;
-    -fx-border-radius: 10;
-    -fx-background-radius: 10;
+    -fx-border-radius: 999px;
+    -fx-background-radius: 999px;
 }
 
 /* ⭐ 风险徽标用 risk-* 家族：四级风险各有一套配色。
@@ -1310,7 +1387,7 @@
 .adb-sql-editor {
     -fx-background-color: -adb-bg-inset;
     -fx-font-family: "SF Mono", "Menlo", "Consolas", monospace;
-    -fx-font-size: 12.5px;
+    -fx-font-size: 12px;
 }
 
 .adb-sql-editor .text {
@@ -1325,7 +1402,7 @@
     -fx-background-color: -adb-bg-surface;
     -fx-text-fill: -adb-text-disabled;
     -fx-font-size: 11px;
-    -fx-padding: 0 8 0 6;
+    -fx-padding: 0px 8px;
 }
 
 /* ⭐ Q1：配对括号的高亮 */
@@ -1385,7 +1462,7 @@
 
 .adb-query__split > .split-pane-divider {
     -fx-background-color: -adb-border;
-    -fx-padding: 0 0 0 0;
+    -fx-padding: 0px 0px 0px 0px;
     -fx-pref-height: 1;
 }
 
@@ -1400,7 +1477,7 @@
 
 .adb-query__results .tab {
     -fx-background-color: transparent;
-    -fx-padding: 4 10;
+    -fx-padding: 4px 12px;
 }
 
 .adb-query__results .tab:selected {
@@ -1420,11 +1497,11 @@
 
 .adb-query__result-box {
     -fx-background-color: -adb-bg-canvas;
-    -fx-padding: 6 10 10 10;
+    -fx-padding: 8px 12px 12px 12px;
 }
 
 .adb-query__result-toolbar {
-    -fx-padding: 2 2 4 2;
+    -fx-padding: 2px 2px 4px 2px;
 }
 
 .adb-query__result-meta,
@@ -1454,7 +1531,7 @@
 }
 
 .adb-query__statusbar {
-    -fx-padding: 4 16;
+    -fx-padding: 4px 16px;
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: -adb-border transparent transparent transparent;
 }

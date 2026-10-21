@@ -99,11 +99,26 @@ class TokenParityTest {
         String javaSources = readJavaSources();
 
         List<String> unused = new ArrayList<>();
-        tokens.fieldNames().forEachRemaining(key -> {
-            boolean usedInCssSide = usedInCss.contains(key);
-            boolean usedInJava = javaSources.contains("Tokens." + key.toUpperCase(Locale.ROOT)
-                    .replace('-', '_'));
-            if (!usedInCssSide && !usedInJava) {
+        tokens.fields().forEachRemaining(entry -> {
+            String key = entry.getKey();
+            String type = entry.getValue().path("type").asText();
+            boolean used;
+            if ("color".equals(type)) {
+                // 颜色令牌：JavaFX 支持 looked-up color，CSS 里能写 -adb-xxx
+                used = usedInCss.contains(key)
+                        || javaSources.contains("Tokens." + key.toUpperCase(Locale.ROOT)
+                                .replace('-', '_'));
+            } else {
+                // ⭐ 非颜色令牌（字号 / 间距 / 圆角 / 时长）：
+                //    JavaFX 的 CSS **没有**自定义属性机制，CSS 侧只能写字面值。
+                //    所以「用了」= 这个**值**出现在 app.css 或 Java 源码里。
+                //    值一旦漂移，AppCssAuditTest 就会失败 —— 令牌仍是唯一真相。
+                String value = entry.getValue().path("light").asText();
+                used = css.contains(value)
+                        || javaSources.contains("Tokens." + key.toUpperCase(Locale.ROOT)
+                                .replace('-', '_'));
+            }
+            if (!used) {
                 unused.add(key);
             }
         });

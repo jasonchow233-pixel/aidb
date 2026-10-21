@@ -5,9 +5,9 @@
 > 组件选型见 `docs/COMPONENT-SELECTION.md`；**Navicat 对标差距见 `docs/NAVICAT-GAP.md`**；
 > **阶段规划（批次 / 顺序 / 门禁）见 `docs/NEXT-STEPS.md`**。
 >
-> 最后更新：**2026-10-21（第五轮：界面专项重做计划定稿）**
+> 最后更新：**2026-10-21（第五轮：UI/UX 重做 U-B1/B2/B3 已落地）**
 > 当前基线：**P0–P4 完成，P4.5 收尾中，P5 🟡**；
-> **下一动作 = UI/UX 重做 U-B1（排版层）**，见 §13 与 `docs/UI-ROADMAP.md`。
+> **下一动作 = UI/UX 重做 U-B4（矢量图标）**，见 §13 与 `docs/UI-ROADMAP.md`。
 
 ---
 
@@ -42,7 +42,15 @@
 ./mvnw -B clean verify
 ```
 
-当前结果：**48 个测试类 / 412 条测试用例，0 失败 / 0 错误 / 0 跳过**（2026-10-21 实测）。
+当前结果（2026-10-21 实测）：
+
+| 场景 | 执行 | 跳过 | 失败 |
+|---|---|---|---|
+| **SQLite（默认）** | **416** | 30 | 0 |
+| **MySQL 5.7 真库**（环境变量接入） | **430** | 16 | 0 |
+
+**52 个测试类**。跳过的是「本机没有的外部依赖」：Testcontainers 的 PG/MySQL 容器
+（无 Docker）与未配置的 PG 真库 —— **跳过不算通过**，门禁统计里单列一行。
 
 统计口径用工具兜底：
 
@@ -63,8 +71,8 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `workbench/adb-session` | 11 | 连接档案、凭据、连接池、**敏感项脱敏** |
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `workbench/adb-transfer` | 15 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告 |
-| `ui/adb-ui-core` | 5 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** |
-| `ui/adb-ui-shell` | 108 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**图标语义唯一**、**注册表收口**、**保存守卫**、**工具页** |
+| `ui/adb-ui-core` | 17 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** / **CSS 尺度审计** / **焦点环审计** |
+| `ui/adb-ui-shell` | 113 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**图标语义唯一**、**注册表收口**、**保存守卫**、**工具页**、**禁用按钮可见性** |
 
 > ⚠️ **统计口径（4.5-28）**：用 `@Nested` 的 4 个测试类（`QueryLimitsTest`、
 > `DangerClassifierTest`、`DeclarationLoaderTest`、`DeclarationValidationTest`）在 surefire XML 里
@@ -500,10 +508,19 @@ TestFX 冒烟只证明「控件树正确」；**像素对不对**要真实窗口
 | `ADB_THEME_FORCE` | `light` / `dark`，启动时强制主题且不写偏好 |
 
 ```bash
+# ⚠️⚠️ 必须先 install —— 否则拍到的是**旧代码**！
+#    `javafx:run -pl bootstrap/adb-desktop`（不带 -am）会从 ~/.m2 取
+#    adb-ui-shell 的**已安装 jar**，不重新构建它。
+#    实测踩过：改了半天的 CSS，截图里一点没变 —— 因为 jar 还是两小时前的。
+./mvnw -B install -DskipTests
+
 ADB_THEME_FORCE=light ADB_SHOTS=$PWD/docs/screenshots \
   ADB_SHOTS_NAME=p2-users ADB_OPEN=users ADB_SHOTS_WAIT=5000 \
   ./mvnw -B -pl bootstrap/adb-desktop javafx:run
 ```
+
+> 拍完**核对 jar 时间戳**：`ls -la ~/.m2/repository/io/agenticdb/adb-ui-shell/1.0.0-SNAPSHOT/*.jar`
+> —— 必须是刚才那次 install 的时间。
 
 **已知坑（都踩过）**：
 1. **主题热切换后 `scene.snapshot()` 会拿到空白帧**（4.5-23，未修）——截图一律用
@@ -512,6 +529,10 @@ ADB_THEME_FORCE=light ADB_SHOTS=$PWD/docs/screenshots \
 3. macOS 没有 `timeout` 命令，长跑用工具自带超时。
 4. 拍完用像素密度自检（PIL：非背景像素占比），空白帧 / 主题错误一眼可见。
 5. **⚠️ 现有 6 张图已过期**（缺 `⇤/⇥/跳至页`、多一列 `注释`）—— 按 4.5-31 重拍。
+6. ⚠️⚠️ **拍之前必须 `./mvnw -B install -DskipTests`** —— `javafx:run -pl`（不带 `-am`）
+   会用 `~/.m2` 里的**旧 jar**，拍出来的是旧界面（实测踩过，浪费了一轮排查）。
+7. **环境变量要真的 export** —— 写成 shell 函数参数是不会传给 java 进程的；
+   用 `env ADB_OPEN=users ./mvnw …` 或直接前置赋值。
 
 ---
 
@@ -541,42 +562,54 @@ ADB_THEME_FORCE=light ADB_SHOTS=$PWD/docs/screenshots \
 | UX-10 | 连接管理页是 **ListView** | `ConnectionsPage.list = new ListView<>()` | U-B5 |
 | UX-11 | **每列常显**筛选按钮 | `Button funnel = new Button("▽")` | U-B5 |
 
-### 13.1 U-B1 排版层
+### 13.1 U-B1 排版层 —— ✅ 已完成
 
-- [ ] 令牌新增 **7 级字号**：`fs-2xs` 10 / `fs-xs` 11 / `fs-sm` 12 / `fs-md` 13 / `fs-lg` 14 / `fs-xl` 16 / `fs-2xl` 20
-- [ ] `GenTokens` 生成字号令牌（暗色同值 —— 字号不随主题变）
-- [ ] `app.css` 全部字面量字号改引用令牌（**32 处 12px** 起步）
-- [ ] **9px 全面废除**（`.adb-rail__dialect` / `.adb-tab__dirty` / `.adb-tab__close`）
-- [ ] 10px 只允许留在**单字符徽标**（`.adb-badge`）；状态栏 / 列类型行 / 功能栏文字 **升到 11px**
-- [ ] 删掉 **12.5px 孤例**
-- [ ] 字体族统一 `-fx-font-family: "System"`，不硬编码 `"SF Pro"` / `"Segoe UI"`
-- [ ] 空状态 60px 大标题降到 34px（对照 Navicat）
+- [x] 令牌新增 **9 级字号**：`fs-2xs` 10 / `fs-xs` 11 / `fs-sm` 12 / `fs-md` 13 / `fs-lg` 14 /
+      `fs-xl` 16 / `fs-2xl` 20 / `fs-3xl` 32 / `fs-4xl` 40
+- [x] `GenTokens` 生成字号令牌（暗色同值 —— 字号不随主题变）；令牌总数 60 → **80**
+- [x] `app.css` 全部字面量字号改走阶梯（**79 处声明、13 种 → 9 种**）
+- [x] **9px 全面废除**（`.adb-rail__dialect` / `.adb-tab__dirty` / `.adb-tab__close`）
+- [x] 10px 只允许留在**单字符徽标 / 角标**；状态栏 / 列类型行 / 功能栏文字 / 分组标题 **升到 11px**
+- [x] 删掉 **12.5px 孤例**
+- [x] 字体族统一 `-fx-font-family: "System"`（本来就是，已核对）
+- [x] 欢迎页大标题 60px → 40px；页面标题 18px → 16px；空状态图标 34px → 32px
 
-**门禁**：`AppCssAuditTest`（🆕，见 §12.3）断言 `app.css` 内无字面量字号、字号只允许 7 档、`9px` 出现 0 次；
-`TokenParityTest` 断言 7 个字号令牌全部被引用。
+**门禁**：`AppCssAuditTest`（🆕）7 例 —— 字号必须落在 9 档阶梯上、无 10px 以下、
+阶梯与 `tokens.json` 逐字一致。
 
-### 13.2 U-B2 间距 + 圆角层
+### 13.2 U-B2 间距 + 圆角层 —— ✅ 已完成
 
-- [ ] 令牌新增 **7 档间距**：`sp-1` 2 / `sp-2` 4 / `sp-3` 8 / `sp-4` 12 / `sp-5` 16 / `sp-6` 24 / `sp-7` 32
-- [ ] 令牌新增 **3 档圆角**：`r-sm` 3 / `r-md` 5 / `r-lg` 8（+ `r-full` 999 备用）
-- [ ] `app.css` 的 **47 种**硬编码 padding（68 处声明）全部换成 `sp-*`
-- [ ] `app.css` 的 **3 / 5 / 6 / 8 / 10** 圆角（26 处声明）换成 `r-*`，并遵守**外层圆角 ≥ 内层圆角**
-- [ ] 按钮内边距统一 `5 12`；图标按钮 `4 6`；输入框 `6 10`；面板 `12`
+- [x] 令牌新增 **7 档间距**：`sp-1` 2 / `sp-2` 4 / `sp-3` 8 / `sp-4` 12 / `sp-5` 16 / `sp-6` 24 / `sp-7` 32
+- [x] 令牌新增 **3 档圆角 + pill**：`r-sm` 3 / `r-md` 5 / `r-lg` 8 / `r-full` 999
+- [x] `app.css` 的 **47 种**硬编码 padding（68 处声明）→ **31 种组合、全部落在 7 档上**
+- [x] `app.css` 的 **3 / 5 / 6 / 8 / 10** 圆角（26 处声明）→ **3 / 5 / 8 / 999**，
+      按**角色**分派：控件 5、面板 8、小元素 3、徽标与标签片 999（药丸形）
+- [x] 按钮内边距统一 `4px 12px`；图标按钮 `4px 8px`；输入框 `4px 12px`；面板 `12px`
+- [x] CSS 的 padding / radius **全部补上 `px` 单位**（原来是无单位的 `4 10`），
+      否则和令牌对不上、门禁也判不了
 
-**门禁**：`AppCssAuditTest` 断言 `app.css` 内无字面量 padding / border-radius；圆角只有 3 个值、间距只有 7 个值。
+**门禁**：`AppCssAuditTest` 断言间距 / 圆角都落在阶梯上，且阶梯与 `tokens.json` 逐字一致。
 
-### 13.3 U-B3 焦点与交互态层
+### 13.3 U-B3 焦点与交互态层 —— ✅ 已完成
 
-- [ ] 新增 `-adb-focus-ring` 令牌（= `accent`）与焦点样式：边框 `accent` 2px + 1px 外扩
-- [ ] 补 focus 规则的组件：`adb-button` / `adb-icon-button` / `adb-feature` / `.tree-cell` / `.table-cell` / `.adb-tab` / 通用 `.text-field`
-- [ ] 焦点环在**暗色主题**下同样可见
-- [ ] 禁用态改用 `text-disabled` + `bg-disabled` + **保留边框**，去掉 `-fx-opacity`
-- [ ] `-fx-opacity` 在 `app.css` 中只允许剩 **1 处**（带注释说明用途）
-- [ ] 加载中按钮：内嵌 spinner + 禁用 + **保持原宽度**（不跳动）
+- [x] focus 规则 **3 条 → 26 条**：按钮 / 图标钮 / 搜索触发器 / 功能项 / 侧栏导航 / 收藏 /
+      标签 / Toast 动作 / 筛选钮 / 树 / 表格 / 文本框 / 文本域 / 下拉 / 列表 / 树视图 /
+      表视图 / 复选框 / 单选钮 / 滚动条 / 滑块
+- [x] 焦点环 = 边框换 `-adb-border-focus` + 一圈 `dropshadow` 光晕；
+      **刻意不改边框宽度**（宽度一变，获得焦点时控件会大 1px 抖一下）
+- [x] 焦点环在**暗色主题**下同样可见（`-adb-border-focus` 两套主题都是亮蓝）
+- [x] 禁用态改用 `text-disabled` + `bg-disabled` + **保留边框**
+- [x] ⭐ **显式把禁用态的透明度还原成 1** —— Modena 给所有 `:disabled` 控件加了
+      `-fx-opacity: 0.4`，不抵消的话禁用的按钮会「整个消失」
+      （实测：数据页的「保存」按钮在截图里是一片空白）
+- [x] `-fx-opacity` 只在命令面板遮罩用一次；别处要么不写，要么显式写 `1`
+- [ ] 加载中按钮：内嵌 spinner + 禁用 + **保持原宽度**（不跳动）—— 留到 U-B5
 
-**门禁**：`FocusRingAuditTest`（🆕）扫描 `app.css` 断言每个可聚焦组件类都有 `:focused` 规则，
-并断言 `-fx-opacity` 只出现 1 次；
-`AppShellTest` 键盘 Tab 遍历断言焦点节点每步都有可见边框。
+**门禁**：`FocusRingAuditTest`（🆕）6 例 —— 每个可聚焦组件类都有 `:focused`、
+输入类与表格 / 树也有、opacity 不得用来压暗内容、禁用控件必须抵消 Modena 的透明度、
+hover 规则不得被删、focus 规则不得少于 10 条；
+`DisabledButtonVisibilityTest`（🆕）3 例 —— 禁用的主按钮 / ghost 按钮文字不能是白色、
+透明度必须是 1。**已验证能抓到回归**（故意删掉抵消规则 → 门禁失败）。
 
 ### 13.4 U-B4 图标层
 

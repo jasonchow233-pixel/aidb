@@ -10,7 +10,7 @@ import java.util.List;
  */
 public final class Tokens {
 
-    public static final int COUNT = 60;
+    public static final int COUNT = 80;
 
     /** bg-canvas (color) */
     public static final String BG_CANVAS_DARK = "#0d1117";
@@ -240,6 +240,86 @@ public final class Tokens {
     public static final int ROW_COMFORT_DARK = 40;
     public static final int ROW_COMFORT_LIGHT = 40;
 
+    /** fs-2xs (size) */
+    public static final int FS_2XS_DARK = 10;
+    public static final int FS_2XS_LIGHT = 10;
+
+    /** fs-xs (size) */
+    public static final int FS_XS_DARK = 11;
+    public static final int FS_XS_LIGHT = 11;
+
+    /** fs-sm (size) */
+    public static final int FS_SM_DARK = 12;
+    public static final int FS_SM_LIGHT = 12;
+
+    /** fs-md (size) */
+    public static final int FS_MD_DARK = 13;
+    public static final int FS_MD_LIGHT = 13;
+
+    /** fs-lg (size) */
+    public static final int FS_LG_DARK = 14;
+    public static final int FS_LG_LIGHT = 14;
+
+    /** fs-xl (size) */
+    public static final int FS_XL_DARK = 16;
+    public static final int FS_XL_LIGHT = 16;
+
+    /** fs-2xl (size) */
+    public static final int FS_2XL_DARK = 20;
+    public static final int FS_2XL_LIGHT = 20;
+
+    /** fs-3xl (size) */
+    public static final int FS_3XL_DARK = 32;
+    public static final int FS_3XL_LIGHT = 32;
+
+    /** fs-4xl (size) */
+    public static final int FS_4XL_DARK = 40;
+    public static final int FS_4XL_LIGHT = 40;
+
+    /** sp-1 (size) */
+    public static final int SP_1_DARK = 2;
+    public static final int SP_1_LIGHT = 2;
+
+    /** sp-2 (size) */
+    public static final int SP_2_DARK = 4;
+    public static final int SP_2_LIGHT = 4;
+
+    /** sp-3 (size) */
+    public static final int SP_3_DARK = 8;
+    public static final int SP_3_LIGHT = 8;
+
+    /** sp-4 (size) */
+    public static final int SP_4_DARK = 12;
+    public static final int SP_4_LIGHT = 12;
+
+    /** sp-5 (size) */
+    public static final int SP_5_DARK = 16;
+    public static final int SP_5_LIGHT = 16;
+
+    /** sp-6 (size) */
+    public static final int SP_6_DARK = 24;
+    public static final int SP_6_LIGHT = 24;
+
+    /** sp-7 (size) */
+    public static final int SP_7_DARK = 32;
+    public static final int SP_7_LIGHT = 32;
+
+    /** r-sm (size) */
+    public static final int R_SM_DARK = 3;
+    public static final int R_SM_LIGHT = 3;
+
+    /** r-md (size) */
+    public static final int R_MD_DARK = 5;
+    public static final int R_MD_LIGHT = 5;
+
+    /** r-lg (size) */
+    public static final int R_LG_DARK = 8;
+    public static final int R_LG_LIGHT = 8;
+
+    /** r-full (size) */
+    public static final int R_FULL_DARK = 999;
+    public static final int R_FULL_LIGHT = 999;
+
     /** dur-toast (duration) */
     public static final int DUR_TOAST_DARK = 1800;
     public static final int DUR_TOAST_LIGHT = 1800;
@@ -262,7 +342,11 @@ public final class Tokens {
             "info", "syn-keyword", "syn-string", "syn-number", "syn-comment", "syn-function",
             "syn-type", "syn-ident", "syn-param", "syn-error", "h-toolbar", "h-tabbar",
             "h-statusbar", "h-input", "w-sidebar-min", "w-sidebar", "w-sidebar-max", "w-sidebar-collapsed",
-            "row-compact", "row-normal", "row-comfort", "dur-toast", "dur-toast-action", "dur-toast-result"
+            "row-compact", "row-normal", "row-comfort", "fs-2xs", "fs-xs", "fs-sm",
+            "fs-md", "fs-lg", "fs-xl", "fs-2xl", "fs-3xl", "fs-4xl",
+            "sp-1", "sp-2", "sp-3", "sp-4", "sp-5", "sp-6",
+            "sp-7", "r-sm", "r-md", "r-lg", "r-full", "dur-toast",
+            "dur-toast-action", "dur-toast-result"
     );
 
     private Tokens() { }
