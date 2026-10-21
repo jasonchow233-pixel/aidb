@@ -1,11 +1,13 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.Icons;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
+import javafx.scene.shape.SVGPath;
 import javafx.scene.control.ListView;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -46,7 +48,12 @@ final class FavoritesPage extends VBox {
                     setText(null);
                     return;
                 }
-                setText("★  " + item);
+                // ⭐ 收藏项用矢量实心星 + 文字。
+                setText(item);
+                SVGPath star = Icons.of(Icons.Icon.STAR_FILLED, 12);
+                star.setAccessibleText("收藏");
+                setGraphic(star);
+                setGraphicTextGap(6);
             }
         });
         list.setOnMouseClicked(event -> {

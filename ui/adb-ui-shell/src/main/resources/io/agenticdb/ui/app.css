@@ -293,6 +293,60 @@
     -fx-effect: dropshadow(gaussian, -adb-border-focus, 3, 0, 0, 0);
 }
 
+/* ── 矢量图标 ───────────────────────────────────────────────────────────
+ * ⭐ 统一 16×16 视框、1.5px 描边（数据见 io.agenticdb.ui.Icons）。
+ *    颜色走令牌 → 切主题时图标自动跟着变。
+ *    以前用的是 Unicode 符号（✕ ▽ ⇤ ⇥ ★ ◈ ↻ …）——
+ *    字形随系统字体变、有的机器上根本没有那个字，
+ *    而且和中文词混排时宽度忽宽忽窄。
+ * ─────────────────────────────────────────────────────────────────── */
+
+.adb-icon {
+    -fx-fill: transparent;
+    -fx-stroke: -adb-text-secondary;
+}
+
+/* 实心图标（收藏星、状态点）—— 少数几个需要实心才看得出状态 */
+.adb-icon--filled {
+    -fx-fill: -adb-text-secondary;
+    -fx-stroke: transparent;
+}
+
+.adb-button:hover .adb-icon,
+.adb-icon-button:hover .adb-icon,
+.adb-feature:hover .adb-icon {
+    -fx-stroke: -adb-text-primary;
+}
+
+.adb-button:hover .adb-icon--filled,
+.adb-icon-button:hover .adb-icon--filled,
+.adb-feature:hover .adb-icon--filled {
+    -fx-fill: -adb-text-primary;
+}
+
+.adb-button--primary .adb-icon {
+    -fx-stroke: -adb-text-inverse;
+}
+
+.adb-button--primary .adb-icon--filled {
+    -fx-fill: -adb-text-inverse;
+}
+
+.adb-button:disabled .adb-icon,
+.adb-icon-button:disabled .adb-icon {
+    -fx-stroke: -adb-text-disabled;
+}
+
+.adb-button:disabled .adb-icon--filled,
+.adb-icon-button:disabled .adb-icon--filled {
+    -fx-fill: -adb-text-disabled;
+}
+
+/* 功能栏的大图标：更粗一点，视觉重量与大字标一致 */
+.adb-feature__icon {
+    -fx-stroke: -adb-text-primary;
+}
+
 /* ── 侧栏 ───────────────────────────────────────────────────────────── */
 
 .adb-sidebar {

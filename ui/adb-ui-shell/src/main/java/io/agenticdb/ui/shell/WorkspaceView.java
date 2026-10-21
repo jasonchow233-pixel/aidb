@@ -4,6 +4,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import io.agenticdb.ui.Icons;
 import javafx.scene.control.Label;
 import javafx.scene.control.Separator;
 import javafx.scene.layout.HBox;
@@ -11,6 +12,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.shape.SVGPath;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -103,7 +105,8 @@ public final class WorkspaceView extends StackPane {
         activeStructure = null;
         activeConnections = null;
 
-        Label logo = new Label("◈");
+        // ⭐ 矢量图标（数据库），不是 Unicode 符号 —— 欢迎页是门面。
+        SVGPath logo = Icons.of(Icons.Icon.DATABASE, 40);
         logo.setAccessibleText("连接");
         logo.getStyleClass().add("adb-welcome__logo");
 
@@ -116,7 +119,7 @@ public final class WorkspaceView extends StackPane {
         Label hint = new Label("从左侧双击一张表，或按 ⇧⌘N 新建查询");
         hint.getStyleClass().add("adb-muted");
 
-        Button connect = new Button("新建连接");
+        Button connect = IconButtons.of(Icons.Icon.ADD, "新建连接");
         connect.getStyleClass().addAll("adb-button", "adb-button--primary");
         connect.setOnAction(event -> actions.run("new-connection"));
 
@@ -412,13 +415,13 @@ public final class WorkspaceView extends StackPane {
 
         switch (tab.kind()) {
             case QUERY -> body.getChildren().add(emptyState(
-                    "⌨", "查询页不可用",
+                    Icons.Icon.QUERY, "查询页不可用",
                     "演示数据库未连接，查询页无法创建。请重启应用后重试。"));
             case STRUCTURE -> body.getChildren().add(emptyState(
-                    "☰", "结构页不可用",
+                    Icons.Icon.STRUCTURE, "结构页不可用",
                     "连接未打开时无法读取表结构。请重新连接后再试。"));
             case CONNECTIONS -> body.getChildren().add(emptyState(
-                    "◈", "连接管理不可用",
+                    Icons.Icon.CONNECT, "连接管理不可用",
                     "连接配置不可用时无法管理连接。请重启应用后重试。"));
             case TOOL -> {
                 // ⭐ 查询历史与诊断有真功能可接，不再是空壳。
@@ -431,12 +434,13 @@ public final class WorkspaceView extends StackPane {
                             diagnosticSchemaService, table, diagnosticExecutor));
                 } else {
                     body.getChildren().add(emptyState(
-                            "◆", tab.title(),
+                            Icons.Icon.DIAGNOSTICS, tab.title(),
                             "该工具只保留入口；功能按 NAVICAT-TODO 的 P5/P6 接入。"));
                 }
             }
             case SETTINGS -> body.getChildren().add(settingsSkeleton());
-            default -> body.getChildren().add(emptyState("◇", tab.title(), ""));
+            default -> body.getChildren().add(emptyState(Icons.Icon.VIEW_OBJECT,
+                    tab.title(), ""));
         }
 
         page.getChildren().addAll(header, new Separator(), body);
@@ -451,11 +455,11 @@ public final class WorkspaceView extends StackPane {
         Label mode = new Label("主题跟随系统，可在工具栏 ◐ 切换（⌘K 搜索「主题」也可）");
         mode.getStyleClass().add("adb-muted");
 
-        Button toggle = new Button("切换主题");
+        Button toggle = IconButtons.of(Icons.Icon.THEME, "切换主题");
         toggle.getStyleClass().addAll("adb-button", "adb-button--ghost");
         toggle.setOnAction(event -> actions.run("theme.toggle"));
 
-        Button palette = new Button("打开命令面板");
+        Button palette = IconButtons.of(Icons.Icon.PALETTE, "打开命令面板");
         palette.getStyleClass().addAll("adb-button", "adb-button--ghost");
         palette.setOnAction(event -> actions.run("command-palette"));
 
@@ -465,8 +469,8 @@ public final class WorkspaceView extends StackPane {
         return card;
     }
 
-    private VBox emptyState(String iconText, String titleText, String description) {
-        Label icon = new Label(iconText);
+    private VBox emptyState(Icons.Icon iconType, String titleText, String description) {
+        SVGPath icon = Icons.of(iconType, 32);
         icon.getStyleClass().add("adb-empty__icon");
 
         Label title = new Label(titleText);

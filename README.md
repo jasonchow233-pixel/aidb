@@ -64,7 +64,7 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**52 个测试类、416 条执行（SQLite）/ 430 条执行（含 MySQL 5.7 真库），0 失败**。统一命令：`./mvnw -B clean verify`。
+当前门禁：**54 个测试类、421 条执行（SQLite）/ 435 条执行（含 MySQL 5.7 真库），0 失败**。统一命令：`./mvnw -B clean verify`。
 
 统计口径用工具兜底（`@Nested` 的测试类在 surefire XML 里会写成 `tests="0"`）：
 

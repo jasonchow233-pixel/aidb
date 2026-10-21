@@ -9,6 +9,7 @@ import io.agenticdb.introspect.FilterCondition;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.SchemaService.TableSchema;
 import io.agenticdb.introspect.SortSpec;
+import io.agenticdb.ui.Icons;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnType;
@@ -151,26 +152,26 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final VBox stateBox = new VBox(10);
     private final ProgressIndicator spinner = new ProgressIndicator();
     private final Label stateText = new Label();
-    private final Button retry = new Button("重试");
+    private final Button retry = IconButtons.of(Icons.Icon.REFRESH, "重试");
     private final Label rangeLabel = new Label("—");
     private final Label pageLabel = new Label("—");
-    private final Button previous = new Button("‹ 上一页");
-    private final Button next = new Button("下一页 ›");
-    private final Button firstPageButton = new Button("⇤");
-    private final Button lastPageButton = new Button("⇥");
+    private final Button previous = IconButtons.icon(Icons.Icon.PREVIOUS, "上一页");
+    private final Button next = IconButtons.icon(Icons.Icon.NEXT, "下一页");
+    private final Button firstPageButton = IconButtons.icon(Icons.Icon.FIRST, "首页");
+    private final Button lastPageButton = IconButtons.icon(Icons.Icon.LAST, "末页");
     private final TextField jumpField = new TextField();
     /** ⭐ G7：行级导航（跳到第 N 行）。 */
     private final TextField jumpRowField = new TextField();
     private final ComboBox<Integer> pageSizeBox = new ComboBox<>();
-    private final Button filterButton = new Button("筛选");
-    private final Button clearQueryButton = new Button("清除条件");
-    private final Button undoButton = new Button("↶ 撤销");
-    private final Button redoButton = new Button("↷ 重做");
-    private final Button saveButton = new Button("保存");
-    private final Button addRowButton = new Button("＋ 新增");
-    private final MenuButton columnsButton = new MenuButton("列");
-    private final MenuButton viewButton = new MenuButton("视图");
-    private final MenuButton exportButton = new MenuButton("导出");
+    private final Button filterButton = IconButtons.icon(Icons.Icon.FILTER, "筛选");
+    private final Button clearQueryButton = IconButtons.icon(Icons.Icon.CLEAR, "清除条件");
+    private final Button undoButton = IconButtons.icon(Icons.Icon.UNDO, "撤销");
+    private final Button redoButton = IconButtons.icon(Icons.Icon.REDO, "重做");
+    private final Button saveButton = IconButtons.of(Icons.Icon.SAVE, "保存");
+    private final Button addRowButton = IconButtons.icon(Icons.Icon.ADD, "新增行");
+    private final MenuButton columnsButton = IconButtons.iconMenu(new MenuButton(), Icons.Icon.COLUMNS, "列");
+    private final MenuButton viewButton = IconButtons.iconMenu(new MenuButton(), Icons.Icon.VIEW, "视图");
+    private final MenuButton exportButton = IconButtons.iconMenu(new MenuButton(), Icons.Icon.EXPORT, "导出");
     private final TextField searchField = new TextField();
     private final CheckMenuItem hideNullItem = new CheckMenuItem("隐藏含 NULL 行");
     private final CheckMenuItem hideEmptyItem = new CheckMenuItem("隐藏含空串行");
@@ -186,8 +187,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final Label batchLabel = new Label();
     private final Button batchNull = new Button("设 NULL");
     private final Button batchEmpty = new Button("设空串");
-    private final Button batchDelete = new Button("删除");
-    private final Button batchClone = new Button("克隆");
+    private final Button batchDelete = IconButtons.of(Icons.Icon.DELETE, "删除");
+    private final Button batchClone = IconButtons.of(Icons.Icon.COPY, "克隆");
     private final CheckBox selectAllBox = new CheckBox();
     private final Map<String, HeaderView> headers = new LinkedHashMap<>();
     private final Map<String, TableColumn<Map<String, Object>, Object>> columnByDefinition =
@@ -652,13 +653,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         toolbar.getStyleClass().add("adb-inline-toolbar");
         toolbar.setAlignment(Pos.CENTER_LEFT);
 
-        Button refresh = new Button("↻ 刷新");
+        Button refresh = IconButtons.icon(Icons.Icon.REFRESH, "重新统计总数并拉取当前页 (F5)");
         refresh.setId("data-refresh");
         refresh.getStyleClass().addAll("adb-button", "adb-button--ghost");
         refresh.setTooltip(new Tooltip("重新统计总数并拉取当前页 (F5)"));
         refresh.setOnAction(event -> refresh());
 
-        Button structure = new Button("☰ 结构");
+        Button structure = IconButtons.icon(Icons.Icon.STRUCTURE, "打开表结构");
         structure.setId("data-structure");
         structure.getStyleClass().addAll("adb-button", "adb-button--ghost");
         structure.setOnAction(event -> openStructure.accept(tableName));
@@ -738,7 +739,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
         searchField.setId("data-search");
         searchField.getStyleClass().add("adb-grid__search");
-        searchField.setPromptText("⌕ 本页搜索");
+        searchField.setPromptText("本页搜索");
         searchField.setPrefWidth(168);
         searchField.setTooltip(new Tooltip("只在当前页内过滤 (⌘F)"));
         searchField.textProperty().addListener((observable, previous, value) -> rebuildItems());
@@ -856,7 +857,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         batchLabel.setId("data-batch-label");
         batchLabel.getStyleClass().add("adb-batch-bar__count");
 
-        Button copy = new Button("复制");
+        Button copy = IconButtons.of(Icons.Icon.COPY, "复制");
         copy.setId("data-batch-copy");
         copy.getStyleClass().addAll("adb-button", "adb-button--ghost");
         copy.setOnAction(event -> copySelectedAsTsv());
@@ -886,7 +887,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         batchDelete.setOnAction(event -> deleteSelectedRows());
 
         // ⭐ G8：导出选中行（以前批量条只有复制，没有导出）
-        Button export = new Button("导出选中");
+        Button export = IconButtons.of(Icons.Icon.EXPORT, "导出选中");
         export.setId("data-batch-export");
         export.getStyleClass().addAll("adb-button", "adb-button--ghost");
         export.setTooltip(new Tooltip("把选中的行导出为 CSV 文件"));
@@ -1624,12 +1625,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         sortBadge.setVisible(false);
         sortBadge.setManaged(false);
 
-        Button funnel = new Button("▽");
-        funnel.setAccessibleText("筛选");
+        // ⭐ 只有图标的按钮：Tooltip（鼠标）+ accessibleText（读屏）都要有。
+        Button funnel = IconButtons.icon(Icons.Icon.FILTER, "按候选值筛选 " + definition.name());
         funnel.setId("data-filter-" + definition.name());
         funnel.setFocusTraversable(false);
         funnel.getStyleClass().add("adb-grid__filter-button");
-        funnel.setTooltip(new Tooltip("按候选值筛选 " + definition.name()));
         funnel.setOnAction(event -> showFilterPanel(definition, funnel));
         funnel.setOnMouseClicked(javafx.event.Event::consume);
 
@@ -1852,8 +1852,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     private Button chip(String text, Runnable action) {
-        Button button = new Button(text + "  ✕");
+        // ⭐ 条件 chip：文字 + 一个「×」图标（矢量，不是字符）。
+        Button button = new Button(text);
         button.setMnemonicParsing(false);
+        button.setGraphic(Icons.of(Icons.Icon.CLOSE, 12));
+        button.setGraphicTextGap(4);
         button.getStyleClass().add("adb-chip");
         button.setOnAction(event -> action.run());
         return button;

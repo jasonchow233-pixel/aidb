@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.Icons;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
 import javafx.scene.layout.HBox;
@@ -93,7 +94,9 @@ public final class StatusBar extends HBox {
     }
 
     public void setDirty(int count) {
-        dirty.setText("● " + count + " 待提交");
+        // ⭐ 状态点用矢量实心圆（不是 Unicode 的 ●）。
+        dirty.setGraphic(Icons.of(Icons.Icon.DOT, 8));
+        dirty.setText("  " + count + " 待提交");
         dirty.setVisible(count > 0);
         dirty.setManaged(count > 0);
     }

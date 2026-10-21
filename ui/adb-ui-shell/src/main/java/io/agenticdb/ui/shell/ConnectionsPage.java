@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.Icons;
 import io.agenticdb.session.ConnectionProfile;
 import javafx.beans.binding.Bindings;
 import javafx.collections.FXCollections;
@@ -19,6 +20,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.shape.SVGPath;
 import javafx.scene.layout.VBox;
 
 import java.util.function.Consumer;
@@ -37,7 +39,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
     private final Button edit = new Button("编辑");
     private final Button duplicate = new Button("复制");
     private final Button delete = new Button("删除");
-    private final Button refresh = new Button("↻ 刷新");
+    private final Button refresh = IconButtons.of(Icons.Icon.REFRESH, "刷新");
 
     private Predicate<ConnectionProfile> deleteConfirmation = this::confirmDelete;
     private Consumer<ConnectionProfile> onOpen;
@@ -84,7 +86,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         header.getStyleClass().add("adb-page__header");
         header.setAlignment(Pos.CENTER_LEFT);
 
-        Button newConnection = new Button("＋ 新建连接");
+        Button newConnection = IconButtons.of(Icons.Icon.ADD, "新建连接");
         newConnection.setId("connections-new");
         newConnection.getStyleClass().add("adb-button--primary");
         newConnection.setOnAction(event -> onNew.run());
@@ -220,7 +222,14 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
                 setGraphic(null);
                 return;
             }
-            Label name = new Label(item.name() + (item.favorite() ? "   ★" : ""));
+            Label name = new Label(item.name());
+            if (item.favorite()) {
+                // ⭐ 收藏标记用矢量实心星。
+                SVGPath star = Icons.of(Icons.Icon.STAR_FILLED, 12);
+                star.setAccessibleText("已收藏");
+                name.setGraphic(star);
+                name.setGraphicTextGap(6);
+            }
             name.getStyleClass().add("adb-connections__name");
             Label target = new Label(item.kindLabel() + " · " + item.displayTarget()
                     + (connected.test(item) ? " · 已连接" : ""));

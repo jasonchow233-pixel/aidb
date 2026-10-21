@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import javafx.beans.binding.Bindings;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import io.agenticdb.ui.Icons;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
@@ -10,6 +11,7 @@ import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.layout.HBox;
+import javafx.scene.shape.SVGPath;
 import javafx.scene.layout.Priority;
 
 import java.util.LinkedHashMap;
@@ -54,7 +56,7 @@ public final class TabBar extends HBox {
         scroll.setPannable(true);
         HBox.setHgrow(scroll, Priority.ALWAYS);
 
-        Button add = new Button("＋");
+        Button add = IconButtons.icon(Icons.Icon.ADD, "新建标签");
         add.setAccessibleText("新建标签");
         add.getStyleClass().addAll("adb-icon-button", "adb-tabbar__add");
         add.setTooltip(new javafx.scene.control.Tooltip("新建查询 ⇧⌘N"));
@@ -185,7 +187,8 @@ public final class TabBar extends HBox {
     }
 
     private Node buildTab(TabItem tab) {
-        Label icon = new Label(tab.kind().icon());
+        // ⭐ 矢量图标（16×16）；标签栏是用户一直在看的地方，不能靠 Unicode 符号的字形运气。
+        SVGPath icon = Icons.of(tab.kind().icon());
         icon.getStyleClass().add("adb-tab__icon");
 
         Label title = new Label(tab.title());
@@ -193,11 +196,13 @@ public final class TabBar extends HBox {
 
         Label dirty = new Label();
         dirty.getStyleClass().add("adb-tab__dirty");
-        dirty.textProperty().bind(Bindings.concat("●", tab.dirtyCountProperty()));
+        // ⭐ 状态点用矢量实心圆（不是 Unicode 的 ●）。
+        dirty.setGraphic(Icons.of(Icons.Icon.DOT, 8));
+        dirty.textProperty().bind(Bindings.convert(tab.dirtyCountProperty()));
         dirty.visibleProperty().bind(tab.dirtyProperty());
         dirty.managedProperty().bind(tab.dirtyProperty());
 
-        Button close = new Button("✕");
+        Button close = IconButtons.icon(Icons.Icon.CLOSE, "关闭标签");
         close.setAccessibleText("关闭");
         close.getStyleClass().add("adb-tab__close");
         close.setFocusTraversable(false);

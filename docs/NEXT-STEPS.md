@@ -4,7 +4,7 @@
 > `NAVICAT-TODO.md` 是唯一执行清单（逐条勾选）；本文件是**阶段规划**（批次 + 依赖 + 门禁）。
 > **界面专项的详细分析与规范见 `docs/UI-ROADMAP.md`**。
 >
-> 最后更新：**2026-10-21（第五轮：界面专项 U-B1/B2/B3 已落地）**
+> 最后更新：**2026-10-21（第五轮：界面专项 U-B1/B2/B3/B4 已落地）**
 
 ---
 
@@ -12,11 +12,11 @@
 
 | 指标 | 值 |
 |---|---|
-| 门禁 | **52 个测试类 / 416 条执行（SQLite）/ 430 条执行（含 MySQL 真库）/ 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`） |
+| 门禁 | **54 个测试类 / 421 条执行（SQLite）/ 435 条执行（含 MySQL 真库）/ 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`） |
 | 真库验证 | ✅ SQLite（演示库）· ✅ **MySQL 5.7.44 真库**（9 例全绿）· ⬜ PostgreSQL（**暂无测试库**） |
 | 截图 | `docs/screenshots/` 6 张已按当前代码重拍（亮 / 暗两套主题） |
 | 工作区 | 干净（HEAD `e5e1eb7`） |
-| **下一动作** | **U-B4 矢量图标**（见 §2） |
+| **下一动作** | **U-B5 布局与组件**（见 §2） |
 
 ### 上一轮做完了什么
 
@@ -58,14 +58,15 @@
 | **U-B1** | **排版层**：9 级字号阶梯，消灭 9px 与 12.5px 孤例 | `AppCssAuditTest`（7 例） | ✅ **已完成** |
 | **U-B2** | **间距 + 圆角层**：4px 阶梯 7 档 + 圆角 3 档 + pill | `AppCssAuditTest` | ✅ **已完成** |
 | **U-B3** | **焦点与交互态层**：26 条 focus 规则；禁用态不再被整体压暗 | `FocusRingAuditTest`（6 例）+ `DisabledButtonVisibilityTest`（3 例） | ✅ **已完成** |
+| **U-B4** | **图标层**：38 个 SVGPath 矢量图标；按钮里一个 Unicode 符号都不剩 | `IconSystemAuditTest`（4 例） | ✅ **已完成** |
 | **U-B4** | **图标层**：32 个 SVGPath 矢量图标，消灭「符号 + 中文词」混用 | `IconAuditTest`（扩展） | 1.5 天 |
 | **U-B5** | **布局与组件层**：工具栏分组、记录导航条、列头筛选悬停浮现、连接列表改表格、密度全局生效 | `DataGridPageTest` + `ConnectionsPageTest` + `DensityCoverageTest` | 2 天 |
 | **U-B6** | **功能补齐层**：G1/G2/G4/G6/Q5/Q6/U1–U6（见 `NAVICAT-TODO.md` §13） | 各项目标单测 | 分散 |
 
-**进度**：U-B1 / U-B2 / U-B3 **已完成**（三个纯 CSS 批次 —— 改完整个界面立刻「齐」了：
+**进度**：U-B1 / U-B2 / U-B3 / U-B4 **已完成**（界面立刻「齐」了：
 字号从 13 种收到 9 档、间距从 47 种收到 7 档、圆角从 5 种收到 3 档、focus 规则 3 → 26 条、
-禁用按钮不再消失）。
-**下一批：U-B4（矢量图标，工作量最大但视觉收益最大）→ U-B5（要动 Java）→ U-B6（分散穿插）。**
+禁用按钮不再消失、**按钮里一个 Unicode 符号都不剩** —— 38 个手绘 SVGPath 顶上）。
+**下一批：U-B5（布局与组件，要动 Java）→ U-B6（分散穿插）。**
 
 > ⚠️ **踩过的坑（已写进 `NAVICAT-TODO.md` §12.2）**：
 > ① Modena 给**所有** `:disabled` 控件加 `-fx-opacity: 0.4` —— 删掉我们自己的

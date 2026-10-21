@@ -4,6 +4,7 @@ import io.agenticdb.session.ConnectionProfile;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
+import io.agenticdb.ui.Icons;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.Tooltip;
@@ -45,11 +46,11 @@ public final class MainToolBar extends HBox {
 
         // ⭐ 大图标功能入口。图标与文字的语义必须和全应用一致
         //    （见 IconAuditTest 的「符号 → 语义唯一」门禁）。
-        feature(actions, "connections.manage", "◈", "连接", "打开连接管理");
-        feature(actions, "new-query", "⌨", "查询", "新建查询 (⇧⌘N)");
-        feature(actions, "object.tables", "▦", "表", "打开表清单");
-        feature(actions, "import-export", "⇅", "导入导出", "导入 / 导出数据");
-        feature(actions, "diagnostics", "◆", "工具", "诊断与运维工具");
+        feature(actions, "connections.manage", Icons.Icon.CONNECT, "连接", "打开连接管理");
+        feature(actions, "new-query", Icons.Icon.QUERY, "查询", "新建查询 (⇧⌘N)");
+        feature(actions, "object.tables", Icons.Icon.TABLE, "表", "打开表清单");
+        feature(actions, "import-export", Icons.Icon.TRANSFER, "导入导出", "导入 / 导出数据");
+        feature(actions, "diagnostics", Icons.Icon.DIAGNOSTICS, "工具", "诊断与运维工具");
 
         Region featureSpacer = new Region();
         HBox.setHgrow(featureSpacer, Priority.ALWAYS);
@@ -75,9 +76,9 @@ public final class MainToolBar extends HBox {
         search.setMaxWidth(240);
         search.setOnAction(event -> actions.run("command-palette"));
 
-        Button theme = actions.iconButton("theme.toggle", "◐", "切换主题", "切换主题");
+        Button theme = actions.iconButton("theme.toggle", Icons.Icon.THEME, "切换主题", "切换主题");
         theme.setId("theme-toggle-button");
-        Button settings = actions.iconButton("settings", "⚙", "设置 (⌘,)", "设置");
+        Button settings = actions.iconButton("settings", Icons.Icon.SETTINGS, "设置 (⌘,)", "设置");
         settings.setId("settings-button");
 
         getChildren().addAll(featureSpacer, connections, search, theme, settings);
@@ -90,24 +91,20 @@ public final class MainToolBar extends HBox {
      * <p>用 {@link VBox}（图标在上、文字在下）而不是普通 Button ——
      * 普通 Button 的文字和图标没法分两行，而这是 Navicat 那种「看得见的功能栏」的关键。
      */
-    private void feature(ActionRegistry actions, String actionId, String symbol, String label,
-                         String tooltip) {
-        Label icon = new Label(symbol);
+    private void feature(ActionRegistry actions, String actionId, Icons.Icon iconType,
+                         String label, String tooltip) {
+        // ⭐ 用矢量图标（Icons）而不是 Unicode 符号 ——
+        //    符号的字形随系统字体变，有的机器上根本没有那个字。
+        // ⚠️ setTooltip 只在 Control 上，SVGPath 挂不了 —— 套一层 Label。
+        Label icon = IconButtons.iconLabel(iconType, 20, tooltip, label);
         icon.getStyleClass().add("adb-feature__icon");
-        icon.setAccessibleText(label);
-        // 图标要**居中**在文字上方：Label 默认按内容宽度摆，会偏左。
-        icon.setMaxWidth(Double.MAX_VALUE);
-        icon.setAlignment(Pos.CENTER);
-        // ⚠️ setTooltip 在 Control 上，不在 Node 上 —— 纯 VBox 挂不了 Tooltip，
-        //    所以挂在图标 Label 上。
-        icon.setTooltip(new Tooltip(tooltip));
 
         Label text = new Label(label);
         text.getStyleClass().add("adb-feature__label");
         text.setMaxWidth(Double.MAX_VALUE);
         text.setAlignment(Pos.CENTER);
 
-        VBox box = new VBox(1, icon, text);
+        VBox box = new VBox(2, icon, text);
         // ⚠️ CSS 的 id 选择器里「.」是类选择器分隔符 —— 动作 id 带点的话
         //    lookup("#feature-object.tables") 会找不到节点。统一换成短横线。
         box.setId("feature-" + actionId.replace('.', '-'));

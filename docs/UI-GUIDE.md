@@ -15,7 +15,9 @@
 - **主题**：亮色是评审基准；暗色与亮色共享同一组语义令牌。
 - **颜色**：业务 CSS 不写 `#rrggbb` / `rgba(...)`，只引用 `-adb-*` looked-up colors。
 - **圆角/间距**：控件 6–8px，面板 8–10px；页面外边距 16px，工具栏 8px。
-- **图标**：首版使用系统可显示的 Unicode 符号，避免额外图标字体依赖。
+- **图标**：**矢量图标**（`io.agenticdb.ui.Icons`，38 个手绘 SVGPath）。
+  统一 16×16 视框、1.5px 描边；颜色由 CSS 的 `.adb-icon` 接管 → 切主题自动跟着变。
+  ⛔ **按钮里不许再出现 Unicode 符号**（`IconSystemAuditTest` 守着）。
 
 > ⚠️ **本节部分条目已被 `docs/UI-ROADMAP.md` §4–§8 取代**（第五轮实测发现现状与本节不符）。
 > 其中**字号 / 间距 / 圆角三条已落地**，「图标」一条仍在计划中：
@@ -25,7 +27,7 @@
 > | 圆角 6–8px / 面板 8–10px | **3 档令牌 + pill**：`r-sm` 3 / `r-md` 5 / `r-lg` 8 / `r-full` 999，外层 ≥ 内层 | ✅ 已落地 |
 > | 间距未成体系 | **4px 阶梯 7 档** `sp-1`…`sp-7`，CSS 全部带 `px` 单位 | ✅ 已落地 |
 > | 「默认 13px 字体」但 CSS 实际 12px | **9 级字号阶梯** `fs-2xs`…`fs-4xl`，**9px 禁止** | ✅ 已落地 |
-> | 「图标用 Unicode 符号」 | → **改为 32 个 SVGPath 矢量图标**（`Icons` 类） | ⬜ 待做 |
+> | 「图标用 Unicode 符号」 | → **38 个 SVGPath 矢量图标**（`io.agenticdb.ui.Icons`） | ✅ 已落地 |
 >
 > 门禁：`AppCssAuditTest`（尺度）+ `FocusRingAuditTest`（焦点与交互态）。
 >

@@ -29,22 +29,12 @@ import java.util.Set;
 public final class SchemaService {
 
     public enum ObjectKind {
-        TABLE("▦"),
-        VIEW("◇"),
+        TABLE,
+        VIEW,
         /** ⭐ S3：过程 / 函数 / 触发器也进对象树（Navicat 的对象浏览层）。 */
-        PROCEDURE("ⓟ"),
-        FUNCTION("ƒ"),
-        TRIGGER("⚡");
-
-        private final String icon;
-
-        ObjectKind(String icon) {
-            this.icon = icon;
-        }
-
-        public String icon() {
-            return icon;
-        }
+        PROCEDURE,
+        FUNCTION,
+        TRIGGER
     }
 
     /**

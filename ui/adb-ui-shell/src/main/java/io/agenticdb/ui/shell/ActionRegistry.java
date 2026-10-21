@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.Icons;
 import javafx.scene.control.Button;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.RadioMenuItem;
@@ -116,9 +117,11 @@ public final class ActionRegistry {
      * <p>⛔ 以前图标按钮不走 enabled 绑定 —— 动作禁用时按钮<b>看起来仍可点</b>，
      * 只是点了没反应。现在 enabled 与动作同步。
      */
-    public Button iconButton(String id, String symbol, String tooltip, String accessibleText) {
+    public Button iconButton(String id, Icons.Icon icon, String tooltip, String accessibleText) {
         Action action = require(id);
-        Button button = new Button(symbol);
+        // ⭐ 矢量图标（不是 Unicode 符号 —— 符号的字形随系统字体变）。
+        Button button = new Button();
+        button.setGraphic(Icons.of(icon));
         button.getStyleClass().addAll("adb-icon-button");
         button.setId(id);
         button.setTooltip(new javafx.scene.control.Tooltip(tooltip));

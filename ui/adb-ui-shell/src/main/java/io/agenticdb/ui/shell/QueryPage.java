@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.Icons;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.ExecutionResult;
 import io.agenticdb.model.ColumnDef;
@@ -85,10 +86,10 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private final Label range = new Label("—");
     private final Label duration = new Label("— ms");
     private final MenuButton historyButton = new MenuButton("历史");
-    private final Button run = new Button("▶ 执行");
-    private final Button runAll = new Button("▶▶ 全部执行");
-    private final Button cancel = new Button("停止");
-    private final Button explain = new Button("执行计划");
+    private final Button run = IconButtons.of(Icons.Icon.RUN, "执行");
+    private final Button runAll = IconButtons.of(Icons.Icon.RUN_ALL, "全部执行");
+    private final Button cancel = IconButtons.of(Icons.Icon.STOP, "停止");
+    private final Button explain = IconButtons.of(Icons.Icon.EXPLAIN, "执行计划");
     private final Button format = new Button("格式化");
     private final Button save = new Button("保存");
     private final HBox findBar = new HBox(6);
@@ -327,8 +328,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         replaceAll.getStyleClass().add("adb-button");
         replaceAll.setOnAction(event -> replaceAll());
 
-        Button close = new Button("✕");
-        close.setAccessibleText("关闭");
+        Button close = IconButtons.icon(Icons.Icon.CLOSE, "关闭");
         close.getStyleClass().add("adb-icon-button");
         close.setOnAction(event -> hideFind());
 

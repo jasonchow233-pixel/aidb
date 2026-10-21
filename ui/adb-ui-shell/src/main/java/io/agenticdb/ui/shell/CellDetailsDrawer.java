@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.Icons;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnType;
 import javafx.geometry.Insets;
@@ -34,8 +35,8 @@ final class CellDetailsDrawer extends VBox {
 
     private final Label title = new Label("单元格详情");
     private final Label subtitle = new Label();
-    private final Button close = new Button("✕");
-    private final Button copy = new Button("复制");
+    private final Button close = IconButtons.icon(Icons.Icon.CLOSE, "关闭");
+    private final Button copy = IconButtons.of(Icons.Icon.COPY, "复制");
     private final TabPane tabs = new TabPane();
     private final TextArea textArea = new TextArea();
     private final TextArea jsonArea = new TextArea();

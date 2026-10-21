@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.Icons;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.ColumnDef;
 import javafx.geometry.Insets;
@@ -36,8 +37,8 @@ final class TransferHub {
     private final Dialog<Void> dialog = new Dialog<>();
     private final VBox content = new VBox(10);
     private final ComboBox<String> tableBox = new ComboBox<>();
-    private final Button exportButton = new Button("导出…");
-    private final Button importButton = new Button("导入…");
+    private final Button exportButton = IconButtons.of(Icons.Icon.EXPORT, "导出…");
+    private final Button importButton = IconButtons.of(Icons.Icon.IMPORT, "导入…");
     private final Button closeButton = new Button("关闭");
 
     TransferHub(DbSession session, List<String> tables, Executor dbExecutor,

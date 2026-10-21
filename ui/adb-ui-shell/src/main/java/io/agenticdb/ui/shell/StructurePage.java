@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.Icons;
 import io.agenticdb.introspect.IndexDef;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.StructurePlan;
@@ -83,11 +84,11 @@ public final class StructurePage extends VBox implements AutoCloseable {
     private final Label kind = new Label("—");
     private final Label summary = new Label("—");
     private final Label ddlNote = new Label("");
-    private final Button add = new Button("＋ 新增列");
-    private final Button edit = new Button("修改列");
+    private final Button add = IconButtons.of(Icons.Icon.ADD, "新增列");
+    private final Button edit = IconButtons.of(Icons.Icon.EDIT, "修改列");
     private final Button rename = new Button("重命名");
-    private final Button drop = new Button("删除列");
-    private final Button refresh = new Button("↻ 刷新");
+    private final Button drop = IconButtons.of(Icons.Icon.DELETE, "删除列");
+    private final Button refresh = IconButtons.of(Icons.Icon.REFRESH, "刷新");
     private final Button copyDdl = new Button("复制 DDL");
     private final Button copySelect = new Button("复制 SELECT");
 

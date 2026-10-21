@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import io.agenticdb.ui.Icons;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
@@ -18,6 +19,7 @@ import javafx.scene.control.TreeView;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.HBox;
+import javafx.scene.shape.SVGPath;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
@@ -342,7 +344,7 @@ public final class SideBar extends VBox {
         Region headerSpacer = new Region();
         HBox.setHgrow(headerSpacer, Priority.ALWAYS);
 
-        Button collapse = new Button("«");
+        Button collapse = IconButtons.icon(Icons.Icon.CHEVRON_LEFT, "折叠侧栏");
         collapse.setAccessibleText("折叠侧栏");
         collapse.setId("sidebar-collapse");
         collapse.getStyleClass().add("adb-icon-button");
@@ -360,7 +362,7 @@ public final class SideBar extends VBox {
 
         // ⭐ S4：搜索框在**底部**（Navicat 就是这个位置），
         //    和 ★ 收藏、« 折叠按钮同一行 —— 不是在顶上单独占一行。
-        Button onlyFavorites = new Button("★");
+        Button onlyFavorites = IconButtons.icon(Icons.Icon.STAR, "只看收藏");
         onlyFavorites.setId("sidebar-favorites-filter");
         onlyFavorites.setAccessibleText("只看收藏");
         onlyFavorites.getStyleClass().add("adb-icon-button");
@@ -383,7 +385,7 @@ public final class SideBar extends VBox {
 
         // ⭐ 紧凑成图标按钮：侧栏只有 240px，文字按钮会被连接下拉挤没
         //    （以前整颗按钮被压成「..」两个字，截图里能看见）。
-        Button manageConnections = new Button("◈");
+        Button manageConnections = IconButtons.icon(Icons.Icon.CONNECT, "连接管理");
         manageConnections.setId("sidebar-connections");
         manageConnections.setAccessibleText("连接管理");
         manageConnections.getStyleClass().addAll("adb-icon-button", "adb-sidebar__nav");
@@ -496,16 +498,16 @@ public final class SideBar extends VBox {
         });
 
         VBox workbench = section("工作台",
-                navButton("◷  查询历史", "查询历史", () -> openTool("查询历史")),
+                navButton(Icons.Icon.HISTORY, "查询历史", () -> openTool("查询历史")),
                 // 已保存查询接真实功能（命名 + 落盘 + 一键打开）。
-                navButton("★  已保存查询", "已保存查询", () -> actions.run("saved-queries")));
+                navButton(Icons.Icon.STAR, "已保存查询", () -> actions.run("saved-queries")));
 
         VBox tools = section("工具",
                 // 诊断接真实功能：诊断对象树里当前选中的表。
-                navButton("◆  诊断", "诊断", () -> actions.run("object.diagnostics")),
+                navButton(Icons.Icon.DIAGNOSTICS, "诊断", () -> actions.run("object.diagnostics")),
                 // 导入 / 导出接真实功能（P6）。
-                navButton("⇅  导入 / 导出", "导入导出", () -> actions.run("import-export")),
-                navButton("⚙  设置", "设置", () -> openTab.accept(new TabItem("settings", "设置", TabKind.SETTINGS))));
+                navButton(Icons.Icon.TRANSFER, "导入 / 导出", () -> actions.run("import-export")),
+                navButton(Icons.Icon.SETTINGS, "设置", () -> openTab.accept(new TabItem("settings", "设置", TabKind.SETTINGS))));
 
         expanded.getChildren().addAll(header, connectionBar, favorites, connections,
                 workbench, tools, bottomBar);
@@ -523,9 +525,10 @@ public final class SideBar extends VBox {
         return box;
     }
 
-    private Button navButton(String text, String accessible, Runnable handler) {
-        Button button = new Button(text);
-        button.setAccessibleText(accessible);
+    /** 侧栏导航项：图标 + 文字。 */
+    private Button navButton(Icons.Icon icon, String text, Runnable handler) {
+        Button button = IconButtons.of(icon, text);
+        button.setAccessibleText(text);
         button.getStyleClass().add("adb-sidebar__nav");
         button.setMaxWidth(Double.MAX_VALUE);
         button.setAlignment(Pos.CENTER_LEFT);
@@ -540,22 +543,22 @@ public final class SideBar extends VBox {
         rail.setAlignment(Pos.TOP_CENTER);
         rail.setPadding(new Insets(8, 0, 8, 0));
 
-        Button expand = railButton("»", "展开侧栏 (⌘\\)", () -> actions.run("sidebar.toggle"));
+        Button expand = railButton(Icons.Icon.CHEVRON_RIGHT, "展开侧栏 (⌘\\)", () -> actions.run("sidebar.toggle"));
         expand.setId("sidebar-expand");
-        Button connection = railButton("◈", connectionName,
+        Button connection = railButton(Icons.Icon.CONNECT, connectionName,
                 () -> status.accept("连接：" + connectionName));
-        Button favorites = railButton("★", "收藏", () -> {
+        Button favorites = railButton(Icons.Icon.STAR, "收藏", () -> {
             setCollapsed(false);
             refreshFavorites();
         });
         String firstTable = tables.isEmpty() ? "表" : tables.getFirst().name();
-        Button users = railButton("▦", firstTable, () -> {
+        Button users = railButton(Icons.Icon.TABLE, firstTable, () -> {
             if (!tables.isEmpty()) {
                 openGrid(tables.getFirst().name());
             }
         });
-        Button find = railButton("⌕", "搜索 (⌘F)", this::focusSearch);
-        Button tools = railButton("◆", "工具", () -> openTool("诊断"));
+        Button find = railButton(Icons.Icon.SEARCH, "搜索 (⌘F)", this::focusSearch);
+        Button tools = railButton(Icons.Icon.DIAGNOSTICS, "工具", () -> openTool("诊断"));
 
         Region spacer = new Region();
         VBox.setVgrow(spacer, Priority.ALWAYS);
@@ -578,11 +581,10 @@ public final class SideBar extends VBox {
         }
     }
 
-    private Button railButton(String text, String tooltip, Runnable handler) {
-        Button button = new Button(text);
+    /** 折叠态的竖排按钮：只有图标。 */
+    private Button railButton(Icons.Icon icon, String tooltip, Runnable handler) {
+        Button button = IconButtons.icon(icon, tooltip);
         button.getStyleClass().add("adb-rail__button");
-        button.setTooltip(new Tooltip(tooltip));
-        button.setAccessibleText(tooltip);
         button.setOnAction(event -> handler.run());
         return button;
     }
@@ -611,14 +613,14 @@ public final class SideBar extends VBox {
         }
 
         TreeItem<DemoNode> root = new TreeItem<>(
-                new DemoNode("我的连接", NodeKind.ROOT, "◈"));
+                new DemoNode("我的连接", NodeKind.ROOT, Icons.Icon.DATABASE));
         root.setExpanded(true);
 
         for (String[] entry : entries) {
             String id = entry[0];
             boolean active = id.equals(connectionId);
             TreeItem<DemoNode> connectionNode = new TreeItem<>(
-                    new DemoNode(entry[1], NodeKind.CONNECTION, "◈", id));
+                    new DemoNode(entry[1], NodeKind.CONNECTION, Icons.Icon.CONNECT, id));
             connectionNode.setExpanded(active);
 
             List<SchemaObject> objects = objectsByConnection.getOrDefault(id, List.of());
@@ -660,28 +662,41 @@ public final class SideBar extends VBox {
                                         List<SchemaObject> objects, String needle,
                                         String connectionId) {
         TreeItem<DemoNode> group = new TreeItem<>(
-                new DemoNode(label, NodeKind.GROUP, kind == NodeKind.TABLE ? "▤" : "◇",
-                        connectionId));
+                new DemoNode(label, NodeKind.GROUP, groupIcon(kind), connectionId));
         group.setExpanded(true);
         for (SchemaObject object : objects) {
             if (matches(object.name(), needle)) {
                 group.getChildren().add(new TreeItem<>(
-                        new DemoNode(object.name(), kind, object.kind().icon(), object.schema(),
+                        new DemoNode(object.name(), kind, iconOf(object.kind()), object.schema(),
                                 connectionId)));
             }
         }
         return group;
     }
 
-    /** 分组节点的图标。 */
-    private static String groupIcon(NodeKind kind) {
+    /**
+     * 分组节点的图标。
+     *
+     * <p>⭐ 图标是 UI 的事 —— 领域层（{@code ObjectKind}）不该知道图标长什么样，
+     * 所以映射放在这里。
+     */
+    private static Icons.Icon groupIcon(NodeKind kind) {
         return switch (kind) {
-            case TABLE -> "▤";
-            case VIEW -> "◇";
-            case PROCEDURE -> "ⓟ";
-            case FUNCTION -> "ƒ";
-            case TRIGGER -> "⚡";
-            default -> "▤";
+            case TABLE -> Icons.Icon.TABLE;
+            case VIEW -> Icons.Icon.VIEW_OBJECT;
+            case PROCEDURE, FUNCTION -> Icons.Icon.FUNCTION;
+            case TRIGGER -> Icons.Icon.TRIGGER;
+            default -> Icons.Icon.TABLE;
+        };
+    }
+
+    /** 对象的图标（按领域类型映射）。 */
+    private static Icons.Icon iconOf(ObjectKind kind) {
+        return switch (kind) {
+            case TABLE -> Icons.Icon.TABLE;
+            case VIEW -> Icons.Icon.VIEW_OBJECT;
+            case PROCEDURE, FUNCTION -> Icons.Icon.FUNCTION;
+            case TRIGGER -> Icons.Icon.TRIGGER;
         };
     }
 
@@ -717,7 +732,10 @@ public final class SideBar extends VBox {
             return;
         }
         for (String name : starred) {
-            Button button = new Button("★  " + name);
+            // ⭐ 收藏项：矢量实心星 + 名字。
+            Button button = new Button(name);
+            button.setGraphic(Icons.of(Icons.Icon.STAR_FILLED, 12));
+            button.setGraphicTextGap(6);
             button.getStyleClass().add("adb-favorite");
             button.setMaxWidth(Double.MAX_VALUE);
             button.setAlignment(Pos.CENTER_LEFT);
@@ -974,14 +992,14 @@ public final class SideBar extends VBox {
      * @param schema       所属 schema（表/视图节点用；其它节点为空串）
      * @param connectionId 所属连接（连接节点与其下的对象用；其它节点为空串）
      */
-    private record DemoNode(String name, NodeKind kind, String icon, String schema,
+    private record DemoNode(String name, NodeKind kind, Icons.Icon icon, String schema,
                             String connectionId) {
 
-        private DemoNode(String name, NodeKind kind, String icon) {
+        private DemoNode(String name, NodeKind kind, Icons.Icon icon) {
             this(name, kind, icon, "", "");
         }
 
-        private DemoNode(String name, NodeKind kind, String icon, String connectionId) {
+        private DemoNode(String name, NodeKind kind, Icons.Icon icon, String connectionId) {
             this(name, kind, icon, "", connectionId);
         }
     }
@@ -1010,7 +1028,8 @@ public final class SideBar extends VBox {
                 return;
             }
 
-            Label icon = new Label(item.icon());
+            // ⭐ 矢量图标（不是 Unicode 符号）。
+            SVGPath icon = Icons.of(item.icon(), 14);
             icon.getStyleClass().add("adb-tree__icon");
 
             Label name = new Label(item.name());
@@ -1021,7 +1040,7 @@ public final class SideBar extends VBox {
 
             if ((item.kind() == NodeKind.TABLE || item.kind() == NodeKind.VIEW)
                     && starred.contains(item.name())) {
-                Label star = new Label("★");
+                SVGPath star = Icons.of(Icons.Icon.STAR, 12);
                 star.setAccessibleText("收藏");
                 star.getStyleClass().add("adb-tree__star");
                 box.getChildren().add(star);
