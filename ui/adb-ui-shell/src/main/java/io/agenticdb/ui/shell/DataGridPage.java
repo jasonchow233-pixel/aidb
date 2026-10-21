@@ -184,6 +184,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final Label contextLabel = new Label();
     private final FlowPane chipBar = new FlowPane(6, 6);
     private final HBox batchBar = new HBox(8);
+    /** ⭐ 记录导航条（Navicat 形态）：首 / 上 / 下 / 末 + 当前行号。 */
+    private final HBox recordNav = new HBox(4);
+    private final Label recordPosition = new Label("—");
     private final Label batchLabel = new Label();
     private final Button batchNull = new Button("设 NULL");
     private final Button batchEmpty = new Button("设空串");
@@ -744,9 +747,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         searchField.setTooltip(new Tooltip("只在当前页内过滤 (⌘F)"));
         searchField.textProperty().addListener((observable, previous, value) -> rebuildItems());
 
-        toolbar.getChildren().addAll(refresh, structure, addRowButton,
+        // ⭐ 按语义分三组（Navicat 形态），组间一条分隔线：
+        //    浏览（刷新·结构） | 编辑（新增·撤销·重做·保存） | 视图（筛选·清除·列·视图·导出）
+        toolbar.getChildren().addAll(refresh, structure,
                 new Separator(javafx.geometry.Orientation.VERTICAL),
-                undoButton, redoButton, saveButton,
+                addRowButton, undoButton, redoButton, saveButton,
                 new Separator(javafx.geometry.Orientation.VERTICAL),
                 filterButton, clearQueryButton, columnsButton, viewButton, exportButton,
                 new Separator(javafx.geometry.Orientation.VERTICAL), searchField);
@@ -841,10 +846,79 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         VBox.setVgrow(body, Priority.ALWAYS);
 
         HBox pager = buildPager();
+        HBox nav = buildRecordNav();
 
         buildBatchBar();
-        getChildren().addAll(header, new Separator(), toolbar, chipBar, body, batchBar, pager);
+        getChildren().addAll(header, new Separator(), toolbar, chipBar, nav, body, batchBar, pager);
         VBox.setVgrow(body, Priority.ALWAYS);
+    }
+
+    /**
+     * ⭐ 记录导航条（Navicat 形态）。
+     *
+     * <p>在网格**上方左侧**：首行 / 上一行 / 下一行 / 末行 + 当前行号。
+     * 底部的分页器管的是「翻页」，这条管的是「翻行」—— 两者互补。
+     */
+    private HBox buildRecordNav() {
+        recordNav.setId("data-record-nav");
+        recordNav.getStyleClass().add("adb-record-nav");
+        recordNav.setAlignment(Pos.CENTER_LEFT);
+
+        Button first = IconButtons.icon(Icons.Icon.FIRST, "第一行");
+        first.setId("data-record-first");
+        first.getStyleClass().add("adb-icon-button");
+        first.setOnAction(event -> selectRow(0));
+
+        Button previous = IconButtons.icon(Icons.Icon.PREVIOUS, "上一行");
+        previous.setId("data-record-prev");
+        previous.getStyleClass().add("adb-icon-button");
+        previous.setOnAction(event -> selectRow(currentRow() - 1));
+
+        Button next = IconButtons.icon(Icons.Icon.NEXT, "下一行");
+        next.setId("data-record-next");
+        next.getStyleClass().add("adb-icon-button");
+        next.setOnAction(event -> selectRow(currentRow() + 1));
+
+        Button last = IconButtons.icon(Icons.Icon.LAST, "最后一行");
+        last.setId("data-record-last");
+        last.getStyleClass().add("adb-icon-button");
+        last.setOnAction(event -> selectRow(grid.getItems().size() - 1));
+
+        recordPosition.setId("data-record-position");
+        recordPosition.getStyleClass().add("adb-record-nav__position");
+
+        recordNav.getChildren().addAll(first, previous, next, last, recordPosition);
+
+        grid.getSelectionModel().selectedIndexProperty().addListener(
+                (observable, oldValue, newValue) -> updateRecordPosition());
+        updateRecordPosition();
+        return recordNav;
+    }
+
+    /** 当前选中的行号（-1 表示没选）。 */
+    private int currentRow() {
+        return grid.getSelectionModel().getSelectedIndex();
+    }
+
+    /** 选中指定行并滚动到可见。 */
+    private void selectRow(int index) {
+        int size = grid.getItems().size();
+        if (size == 0) {
+            return;
+        }
+        int target = Math.max(0, Math.min(index, size - 1));
+        grid.getSelectionModel().clearAndSelect(target);
+        grid.scrollTo(target);
+        updateRecordPosition();
+    }
+
+    /** 刷新「第 N 行 / 共 M 行」。 */
+    private void updateRecordPosition() {
+        int size = grid.getItems().size();
+        int index = currentRow();
+        recordPosition.setText(index < 0
+                ? "共 " + size + " 行"
+                : "第 " + (index + 1) + " / " + size + " 行");
     }
 
     private void buildBatchBar() {
@@ -1826,6 +1900,16 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
     private void renderQueryState() {
         chipBar.getChildren().clear();
+        // ⭐ 有筛选条件的列，筛选钮要**一直**看得见（那是状态，不是装饰）。
+        java.util.Set<String> filtered = query.filters().stream()
+                .map(FilterCondition::column)
+                .collect(java.util.stream.Collectors.toSet());
+        headers.forEach((column, header) -> header.filter().getStyleClass()
+                .remove("adb-grid__filter-button--active"));
+        headers.keySet().stream()
+                .filter(filtered::contains)
+                .forEach(column -> headers.get(column).filter().getStyleClass()
+                        .add("adb-grid__filter-button--active"));
         for (FilterCondition filter : query.filters()) {
             Button chip = chip(filter.summary(), () -> removeFilter(filter));
             chip.getStyleClass().add("adb-chip--filter");
@@ -1938,6 +2022,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         items.addAll(pageRows);
         List<Map<String, Object>> visible = applyViewFilters(items);
         grid.setItems(FXCollections.observableArrayList(visible));
+        // ⭐ 行数变了，记录导航条上的「第 N / 共 M 行」要跟着更新。
+        updateRecordPosition();
         // ⭐ G3：行变了，统计要跟着重算。
         updateSummary();
         grid.setVisible(!transpose);

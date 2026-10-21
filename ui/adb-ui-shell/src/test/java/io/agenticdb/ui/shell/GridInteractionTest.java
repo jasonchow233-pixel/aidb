@@ -1,0 +1,177 @@
+package io.agenticdb.ui.shell;
+
+import io.agenticdb.fixtures.DemoDatabase;
+import io.agenticdb.introspect.SchemaService;
+import io.agenticdb.jdbc.ConnectionSpec;
+import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.jdbc.JdbcSession;
+import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TableView;
+import javafx.stage.Stage;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
+import org.testfx.framework.junit5.ApplicationExtension;
+import org.testfx.framework.junit5.Start;
+import org.testfx.util.WaitForAsyncUtils;
+
+import java.nio.file.Path;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * ⭐ U-B5 门禁：数据网格的**交互细节**。
+ *
+ * <ol>
+ *   <li><b>记录导航条</b>（首 / 上 / 下 / 末 + 行号）—— Navicat 形态；</li>
+ *   <li><b>列头筛选钮悬停才浮现</b> —— 以前每列常显一个漏斗，
+ *       12 列就挂 12 个，噪音压过列名本身。</li>
+ * </ol>
+ */
+@ExtendWith(ApplicationExtension.class)
+class GridInteractionTest {
+
+    @TempDir
+    Path temp;
+
+    private DbSession session;
+    private ExecutorService executor;
+    private DataGridPage page;
+    private Stage stage;
+
+    @Start
+    void start(Stage stage) throws Exception {
+        this.stage = stage;
+        session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("demo.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        page = new DataGridPage(session, new SchemaService(), "users",
+                "test.db", noOpFeedback(), name -> { }, executor);
+        Scene scene = new Scene(page, 1200, 700);
+        // ⚠️ 必须把样式表挂上 —— 否则 CSS 规则一条都不生效
+        //    （App 里是由 ThemeManager 挂的，测试里要自己挂）。
+        java.net.URL appCss = getClass().getResource("/io/agenticdb/ui/app.css");
+        java.net.URL theme = getClass().getResource("/io/agenticdb/ui/theme-light.css");
+        scene.getStylesheets().add(theme.toExternalForm());
+        scene.getStylesheets().add(appCss.toExternalForm());
+        page.getStyleClass().add("theme-light");
+        stage.setScene(scene);
+        stage.show();
+    }
+
+    /**
+     * 等表格加载完。
+     *
+     * <p>⚠️ 这个等待**不能**放在 {@code @Start} 里 ——
+     * {@code WaitForAsyncUtils.waitFor} 会阻塞 FX 线程，
+     * 而表格的加载结果恰恰要靠 FX 线程派发 → 死锁 → 超时。
+     */
+    @BeforeEach
+    void waitForTheTable() throws Exception {
+        WaitForAsyncUtils.waitFor(10, TimeUnit.SECONDS, () ->
+                page.lookup("#data-table") != null
+                        && ((TableView<?>) page.lookup("#data-table")).getItems().size() == 200);
+    }
+
+    @AfterEach
+    void tearDown() {
+        executor.shutdownNow();
+        try {
+            session.close();
+        } catch (Exception ignored) {
+            // 清理失败不影响结论。
+        }
+    }
+
+    @Test
+    void theRecordNavigatorWalksTheRows() {
+        assertThat(page.lookup("#data-record-nav")).as("记录导航条").isNotNull();
+        assertThat(page.lookup("#data-record-first")).as("首行").isNotNull();
+        assertThat(page.lookup("#data-record-prev")).as("上一行").isNotNull();
+        assertThat(page.lookup("#data-record-next")).as("下一行").isNotNull();
+        assertThat(page.lookup("#data-record-last")).as("末行").isNotNull();
+
+        TableView<?> table = (TableView<?>) page.lookup("#data-table");
+
+        click("#data-record-next");
+        int afterNext = table.getSelectionModel().getSelectedIndex();
+
+        click("#data-record-next");
+        assertThat(table.getSelectionModel().getSelectedIndex())
+                .as("「下一行」要把选中行往下挪")
+                .isEqualTo(afterNext + 1);
+
+        click("#data-record-last");
+        assertThat(table.getSelectionModel().getSelectedIndex())
+                .as("「末行」要跳到本页最后一行")
+                .isEqualTo(table.getItems().size() - 1);
+
+        click("#data-record-first");
+        assertThat(table.getSelectionModel().getSelectedIndex()).isZero();
+
+        Label position = (Label) page.lookup("#data-record-position");
+        assertThat(position.getText())
+                .as("行数要在数据加载后更新（不能停在「共 0 行」）")
+                .contains("200 行");
+    }
+
+    @Test
+    void theColumnFilterButtonOnlyShowsOnHover() {
+        Button funnel = (Button) page.lookup("#data-filter-name");
+        assertThat(funnel).as("列头筛选钮").isNotNull();
+        assertThat(funnel.getStyleClass())
+                .as("常态没有筛选条件时不该常显")
+                .doesNotContain("adb-grid__filter-button--active");
+        assertThat(funnel.getOpacity())
+                .as("常态隐藏 —— 悬停列头才浮现")
+                .isEqualTo(0.0);
+    }
+
+    @Test
+    void aFilteredColumnKeepsItsFilterButtonVisible() throws Exception {
+        WaitForAsyncUtils.asyncFx(() -> page.applyQuery(io.agenticdb.introspect.DataQuery.empty()
+                .withFilter(io.agenticdb.introspect.FilterCondition.of(
+                        "active", io.agenticdb.introspect.FilterOperator.EQ, 1)))).get();
+        WaitForAsyncUtils.waitFor(5, java.util.concurrent.TimeUnit.SECONDS,
+                () -> page.lastSql().contains("WHERE"));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        Button funnel = (Button) page.lookup("#data-filter-active");
+        assertThat(funnel).as("被筛选的列的筛选钮").isNotNull();
+        assertThat(funnel.getStyleClass())
+                .as("该列**有**筛选条件时，筛选钮要一直看得见 —— 那是状态，不是装饰")
+                .contains("adb-grid__filter-button--active");
+        assertThat(funnel.getOpacity()).isEqualTo(1.0);
+    }
+
+    /** 在 FX 线程上点一个按钮。 */
+    private void click(String id) {
+        Button button = (Button) page.lookup(id);
+        assertThat(button).as("按钮 %s", id).isNotNull();
+        WaitForAsyncUtils.asyncFx(button::fire);
+        WaitForAsyncUtils.waitForFxEvents();
+    }
+
+    private static DataGridPage.Feedback noOpFeedback() {
+        return new DataGridPage.Feedback() {
+            @Override
+            public void status(String message) {
+            }
+
+            @Override
+            public void range(String text) {
+            }
+
+            @Override
+            public void duration(long millis) {
+            }
+        };
+    }
+}

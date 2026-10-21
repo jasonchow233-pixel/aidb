@@ -788,12 +788,40 @@
     -fx-font-size: 12px;
     -fx-padding: 0px 2px;
     -fx-cursor: hand;
+    /* ⭐ 常态隐藏 —— 12 列就挂 12 个漏斗，噪音压过列名本身。
+       悬停列头才浮现（Navicat 形态）。用 opacity 而不是 visible，
+       按钮仍然占位，浮现时不会把列名顶来顶去。 */
+    -fx-opacity: 0;
+}
+
+/* 悬停列头才浮现筛选钮 */
+.adb-grid .column-header:hover .adb-grid__filter-button {
+    -fx-opacity: 1;
+}
+
+/* 该列**有**筛选条件时必须一直看得见 —— 那是当前状态，不是装饰 */
+.adb-grid__filter-button--active {
+    -fx-opacity: 1;
+    -fx-text-fill: -adb-accent;
 }
 
 .adb-grid__filter-button:hover {
     -fx-background-color: -adb-bg-hover;
     -fx-text-fill: -adb-text-primary;
     -fx-background-radius: 3px;
+}
+
+/* ── 记录导航条（Navicat 形态）─────────────────────────────────────── */
+
+.adb-record-nav {
+    -fx-padding: 0px 0px 4px 0px;
+    -fx-alignment: center-left;
+}
+
+.adb-record-nav__position {
+    -fx-font-size: 11px;
+    -fx-text-fill: -adb-text-secondary;
+    -fx-padding: 0px 8px 0px 4px;
 }
 
 /* ── 查询条件 chips ─────────────────────────────────────────────────── */
@@ -1044,6 +1072,17 @@
 
 .adb-button--danger {
     -fx-text-fill: -adb-error;
+}
+
+/* ⭐ 危险按钮里的**图标**也要是危险色 ——
+   否则会出现「红色的「删除」文字 + 灰色的垃圾桶图标」这种自相矛盾的画面。
+   （对照 Navicat：删除 / 新增 / 编辑 的图标各带语义色。） */
+.adb-button--danger .adb-icon {
+    -fx-stroke: -adb-error;
+}
+
+.adb-button--danger:hover .adb-icon {
+    -fx-stroke: -adb-error;
 }
 
 .adb-button--danger:hover {

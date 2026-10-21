@@ -41,6 +41,12 @@ public class App extends Application {
         stage.setTitle(APP_TITLE);
         stage.setMinWidth(960);
         stage.setMinHeight(600);
+        // ⭐ 应用图标（标签栏 / 窗口标题栏 / 程序坞）。
+        //    以前是纯文字标题，窗口和 Dock 上没有辨识度。
+        java.net.URL icon = App.class.getResource("/io/agenticdb/ui/app-icon.png");
+        if (icon != null) {
+            stage.getIcons().add(new javafx.scene.image.Image(icon.toExternalForm()));
+        }
         stage.setScene(scene);
         shell.restoreWindow(stage);
         stage.show();

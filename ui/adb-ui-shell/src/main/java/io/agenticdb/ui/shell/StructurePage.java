@@ -80,6 +80,8 @@ public final class StructurePage extends VBox implements AutoCloseable {
     private final TableView<IndexDef> indexes = new TableView<>();
     private final TableView<ForeignKeyDef> foreignKeys = new TableView<>();
     private final TableView<TriggerDef> triggers = new TableView<>();
+    /** 密度档位 → 行高（结构页有四张表，都要跟）。 */
+    private int rowHeight = io.agenticdb.ui.RowHeights.of("normal");
     private final TextArea ddl = new TextArea();
     private final Label kind = new Label("—");
     private final Label summary = new Label("—");
@@ -91,6 +93,22 @@ public final class StructurePage extends VBox implements AutoCloseable {
     private final Button refresh = IconButtons.of(Icons.Icon.REFRESH, "刷新");
     private final Button copyDdl = new Button("复制 DDL");
     private final Button copySelect = new Button("复制 SELECT");
+
+    /**
+     * 密度档位 —— 结构页有<b>四张</b>表，都要跟。
+     */
+    public void setDensity(String density) {
+        rowHeight = io.agenticdb.ui.RowHeights.of(density);
+        columns.setFixedCellSize(rowHeight);
+        indexes.setFixedCellSize(rowHeight);
+        foreignKeys.setFixedCellSize(rowHeight);
+        triggers.setFixedCellSize(rowHeight);
+    }
+
+    /** 结构页的四张表（供门禁断言密度作用到了**每一张**）。 */
+    java.util.List<TableView<?>> tables() {
+        return java.util.List.of(columns, indexes, foreignKeys, triggers);
+    }
 
     private TableStructure structure;
     private ProgressIndicator loading;
@@ -139,7 +157,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
         rename.getStyleClass().add("adb-button");
         rename.setId("structure-rename");
         rename.setOnAction(event -> selectedColumn().ifPresent(this::renameColumn));
-        drop.getStyleClass().add("adb-button");
+        drop.getStyleClass().addAll("adb-button", "adb-button--danger");
         drop.setId("structure-drop");
         drop.setOnAction(event -> selectedColumn().ifPresent(this::dropColumn));
         refresh.getStyleClass().add("adb-button");
@@ -185,6 +203,11 @@ public final class StructurePage extends VBox implements AutoCloseable {
         loading.setVisible(false);
         loading.setManaged(false);
 
+        // ⭐ 四张表都跟密度。
+        columns.setFixedCellSize(rowHeight);
+        indexes.setFixedCellSize(rowHeight);
+        foreignKeys.setFixedCellSize(rowHeight);
+        triggers.setFixedCellSize(rowHeight);
         getChildren().addAll(header, body, loading);
     }
 

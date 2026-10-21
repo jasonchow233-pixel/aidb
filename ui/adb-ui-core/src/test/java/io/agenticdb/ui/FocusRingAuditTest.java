@@ -77,10 +77,15 @@ class FocusRingAuditTest {
         int allowed = 0;
         while (matcher.find()) {
             double value = Double.parseDouble(matcher.group(1));
+            if (value == 0.0) {
+                // 0 = **藏起来**（例如列头筛选钮常态隐藏），不是压暗。
+                continue;
+            }
             if (value >= 1.0) {
                 // 显式写 1 = 抵消 Modena 的「所有禁用控件 0.4 透明度」，不是压暗。
                 continue;
             }
+            // 0 与 1 之间的值 = 半透明。整份 CSS 里只允许命令面板遮罩这一处。
             allowed++;
             if (allowed > 1) {
                 dimming.add(matcher.group(1));
@@ -88,7 +93,8 @@ class FocusRingAuditTest {
         }
         assertThat(dimming)
                 .as("-fx-opacity 只允许用在命令面板遮罩这一处；"
-                        + "别处用它压暗会把文字和图标一起稀释掉")
+                        + "别处用它压暗会把文字和图标一起稀释掉"
+                        + "（0 = 藏起来、1 = 抵消 Modena，这两种是允许的）")
                 .isEmpty();
     }
 

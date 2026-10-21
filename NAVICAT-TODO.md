@@ -3,11 +3,13 @@
 > **唯一执行清单。** 记录当前状态、下一步、验收门禁。
 > 架构见 `docs/ARCHITECTURE.md`；UI 规则见 `docs/UI-GUIDE.md`；
 > 组件选型见 `docs/COMPONENT-SELECTION.md`；**Navicat 对标差距见 `docs/NAVICAT-GAP.md`**；
-> **阶段规划（批次 / 顺序 / 门禁）见 `docs/NEXT-STEPS.md`**。
+> **阶段规划（批次 / 顺序 / 门禁）见 `docs/NEXT-STEPS.md`**；
+> **与 Navicat 的实拍对比见 `docs/NAVICAT-COMPARE.md`**（本机装了 Navicat Premium Lite 15）。
 >
-> 最后更新：**2026-10-21（第五轮：UI/UX 重做 U-B1/B2/B3/B4 已落地）**
+> 最后更新：**2026-10-21（第五轮：UI/UX 重做 U-B1…U-B5 已落地 + Navicat 实拍对比）**
 > 当前基线：**P0–P4 完成，P4.5 收尾中，P5 🟡**；
-> **下一动作 = UI/UX 重做 U-B5（布局与组件）**，见 §13 与 `docs/UI-ROADMAP.md`。
+> **下一动作 = S5「对象」首页标签**（Navicat 实拍把它顶到 P0），见 §6.4 与
+> `docs/NAVICAT-COMPARE.md`。
 
 ---
 
@@ -46,10 +48,10 @@
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **SQLite（默认）** | **421** | 30 | 0 |
-| **MySQL 5.7 真库**（环境变量接入） | **435** | 16 | 0 |
+| **SQLite（默认）** | **430** | 30 | 0 |
+| **MySQL 5.7 真库**（环境变量接入） | **444** | 16 | 0 |
 
-**54 个测试类**。跳过的是「本机没有的外部依赖」：Testcontainers 的 PG/MySQL 容器
+**55 个测试类**。跳过的是「本机没有的外部依赖」：Testcontainers 的 PG/MySQL 容器
 （无 Docker）与未配置的 PG 真库 —— **跳过不算通过**，门禁统计里单列一行。
 
 统计口径用工具兜底：
@@ -72,7 +74,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `workbench/adb-transfer` | 15 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告 |
 | `ui/adb-ui-core` | 17 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** / **CSS 尺度审计** / **焦点环审计** |
-| `ui/adb-ui-shell` | 118 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**图标语义唯一**、**图标系统审计**、**注册表收口**、**保存守卫**、**工具页**、**禁用按钮可见性** |
+| `ui/adb-ui-shell` | 126 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**图标语义唯一**、**图标系统审计**、**注册表收口**、**保存守卫**、**工具页**、**禁用按钮可见性**、**网格交互**、**密度覆盖** |
 
 > ⚠️ **统计口径（4.5-28）**：用 `@Nested` 的 4 个测试类（`QueryLimitsTest`、
 > `DangerClassifierTest`、`DeclarationLoaderTest`、`DeclarationValidationTest`）在 surefire XML 里
@@ -301,7 +303,8 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | ~~S2~~ ✅ | ~~表清单元数据列~~ **已完成**：「表清单」页有 名称 / 行数 / 数据长度 / 引擎 / 创建日期；PG 走 pg_class、MySQL 走 information_schema，SQLite 没有大小与创建时间 → 诚实显示「—」 | ✅ | `Dialect.tableMetaSql` + `TableListPage` |
 | ~~S3~~ ✅ | ~~对象树补视图 / 函数 / 其它分组节点~~ **已完成**：对象树现在有 表 / 视图 / **过程 / 函数 / 触发器** 五类分组；过程与函数走 JDBC 元数据，触发器各方言给 SQL；演示库带一个触发器，演示环境里看得见 | ✅ | `SchemaService.listObjects` + `Dialect.triggersListSql` + `SideBar.buildTreeModel` |
 | ~~S4~~ ✅ | ~~侧栏搜索框移到底部~~ **已完成**：与 ★（只看收藏）、« 折叠同一行 | ✅ | `SideBar.buildExpanded` |
-| S5 | 标签栏第一个是**「对象」首页标签**（不可关闭） | ⬜ | `TabBar` + `WorkspaceView` | 打开对象首页后可关闭其它标签 |
+| **S5** | 标签栏第一个是**「对象」首页标签**（不可关闭） | ⬜ | `TabBar` + `WorkspaceView` | 打开对象首页后可关闭其它标签 |
+| ↑ **P0** | ⭐ **Navicat 实拍证实**：Navicat 的标签栏最左边就是常驻的「对象」标签 —— **它把 S5 顶到 P0** | | |
 | ~~S6~~ ✅ | ~~菜单栏加「收藏夹」顶级菜单~~ **已完成**：文件/编辑/视图/数据库/**收藏夹**/工具/窗口/帮助；收藏夹面板可打开 | ✅ | `MenuBarFactory` + `FavoritesPage` |
 | ~~S7~~ ✅ | ~~窗口状态记忆补齐剩余项~~ **已完成**：窗口位置 x/y、上次用的连接、**上次打开的标签页**（重开后接着用） | ✅ | `AppShell.saveWindowState` / `restoreLastTabs` |
 | ~~S8~~ ✅ | ~~标签栏右键菜单补齐~~ **已完成**：加「复制表名 / 复制 SELECT」 | ✅ | `TabBar.buildTab` |

@@ -1,37 +1,46 @@
 package io.agenticdb.ui.shell;
 
-import io.agenticdb.ui.Icons;
 import io.agenticdb.session.ConnectionProfile;
+import io.agenticdb.ui.Icons;
+import io.agenticdb.ui.RowHeights;
 import javafx.beans.binding.Bindings;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
-import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
-import javafx.scene.control.ButtonBar;
-import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
-import javafx.scene.control.ListCell;
-import javafx.scene.control.ListView;
+import javafx.scene.control.TableCell;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
-import javafx.scene.shape.SVGPath;
 import javafx.scene.layout.VBox;
+import javafx.scene.shape.SVGPath;
 
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
-/** 连接管理页：搜索、收藏、打开/编辑/复制/删除，全部操作经回调交给 AppShell。 */
+/**
+ * 连接管理页：搜索、收藏、打开 / 编辑 / 复制 / 删除，全部操作经回调交给 AppShell。
+ *
+ * <p>⭐ <b>用表格而不是列表</b>（Navicat 形态）：
+ * 以前每个连接占一行，名称与目标挤在两行文字里 —— 用户要点开每个连接才知道连的什么。
+ * 现在拆成 <b>名称 / 类型 / 主机 / 端口 / 数据库 / 用户 / 状态</b> 七列，
+ * 每列独立、**可排序、可拖列宽**，一眼扫完。
+ */
 public final class ConnectionsPage extends VBox implements AutoCloseable {
 
     private final ObservableList<ConnectionProfile> profiles;
     private final FilteredList<ConnectionProfile> visible;
-    private final ListView<ConnectionProfile> list = new ListView<>();
+    private final TableView<ConnectionProfile> table = new TableView<>();
+    /** 密度档位 → 行高（不写死）。 */
+    private int rowHeight = RowHeights.of("normal");
     private final TextField search = new TextField();
     private final CheckBox favoritesOnly = new CheckBox("只看收藏");
     private final Label status = new Label("—");
@@ -47,7 +56,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
     private Consumer<ConnectionProfile> onDuplicate;
     private Consumer<ConnectionProfile> onDelete;
     private Runnable onNew;
-    private java.util.function.Predicate<ConnectionProfile> connected = profile -> false;
+    private Predicate<ConnectionProfile> connected = profile -> false;
 
     public ConnectionsPage(ObservableList<ConnectionProfile> profiles,
                            Runnable onNew,
@@ -55,7 +64,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
                            Consumer<ConnectionProfile> onEdit,
                            Consumer<ConnectionProfile> onDuplicate,
                            Consumer<ConnectionProfile> onDelete,
-                           java.util.function.Predicate<ConnectionProfile> connected,
+                           Predicate<ConnectionProfile> connected,
                            DataGridPage.Feedback feedback) {
         this.profiles = profiles;
         this.visible = new FilteredList<>(profiles, profile -> true);
@@ -118,18 +127,92 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         HBox filter = new HBox(10, search, favoritesOnly);
         filter.setAlignment(Pos.CENTER_LEFT);
 
-        list.setId("connections-list");
-        list.setCellFactory(view -> new ConnectionCell());
-        list.setPlaceholder(new Label("没有匹配的连接"));
-        VBox.setVgrow(list, Priority.ALWAYS);
+        buildColumns();
+
+        table.setId("connections-table");
+        table.getStyleClass().addAll("adb-grid", "adb-connections__table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label("没有匹配的连接"));
+        table.setFixedCellSize(rowHeight);
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        // 双击一行 = 打开（Navicat 的习惯）。
+        table.setOnMouseClicked(event -> {
+            if (event.getClickCount() == 2) {
+                selected().ifPresent(onOpen);
+            }
+        });
 
         status.getStyleClass().add("adb-muted");
-        VBox body = new VBox(8, toolbar, filter, list, status);
+        VBox body = new VBox(8, toolbar, filter, table, status);
         body.getStyleClass().add("adb-page__body");
-        VBox.setVgrow(list, Priority.ALWAYS);
+        VBox.setVgrow(table, Priority.ALWAYS);
 
         getChildren().addAll(header, body);
-        updateButtons();
+    }
+
+    /** 七列：名称 / 类型 / 主机 / 端口 / 数据库 / 用户 / 状态。 */
+    private void buildColumns() {
+        TableColumn<ConnectionProfile, String> name = column("名称", "name", 200);
+        name.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
+                data.getValue().name()));
+        // 收藏标记放进「名称」列的前面 —— 一列一个信息，不另开一列。
+        name.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                    return;
+                }
+                setText(item);
+                if (getTableRow() != null && getTableRow().getItem() != null
+                        && getTableRow().getItem().favorite()) {
+                    SVGPath star = Icons.of(Icons.Icon.STAR_FILLED, 12);
+                    star.setAccessibleText("已收藏");
+                    setGraphic(star);
+                    setGraphicTextGap(4);
+                } else {
+                    setGraphic(null);
+                }
+            }
+        });
+
+        TableColumn<ConnectionProfile, String> kind = column("类型", "kind", 90);
+        kind.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
+                data.getValue().kindLabel()));
+
+        TableColumn<ConnectionProfile, String> host = column("主机", "host", 180);
+        host.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
+                data.getValue().host()));
+
+        TableColumn<ConnectionProfile, Number> port = column("端口", "port", 80);
+        port.setCellValueFactory(data -> new javafx.beans.property.SimpleIntegerProperty(
+                data.getValue().port()));
+
+        TableColumn<ConnectionProfile, String> database = column("数据库", "database", 180);
+        database.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
+                data.getValue().database()));
+
+        TableColumn<ConnectionProfile, String> user = column("用户", "user", 130);
+        user.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
+                data.getValue().username()));
+
+        TableColumn<ConnectionProfile, String> state = column("状态", "state", 100);
+        state.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
+                connected.test(data.getValue()) ? "已连接" : "—"));
+
+        table.getColumns().addAll(name, kind, host, port, database, user, state);
+    }
+
+    private static <T> TableColumn<ConnectionProfile, T> column(String title, String id,
+                                                                  double width) {
+        TableColumn<ConnectionProfile, T> column = new TableColumn<>(title);
+        column.setId("connections-column-" + id);
+        column.setPrefWidth(width);
+        column.setSortable(true);
+        return column;
     }
 
     private void bind() {
@@ -139,12 +222,12 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
             applyFilter();
             updateButtons();
         });
-        list.getSelectionModel().selectedItemProperty().addListener(
+        table.getSelectionModel().selectedItemProperty().addListener(
                 (observable, oldValue, newValue) -> updateButtons());
-        open.disableProperty().bind(Bindings.isEmpty(list.getSelectionModel().getSelectedItems()));
-        edit.disableProperty().bind(Bindings.isEmpty(list.getSelectionModel().getSelectedItems()));
-        duplicate.disableProperty().bind(Bindings.isEmpty(list.getSelectionModel().getSelectedItems()));
-        delete.disableProperty().bind(Bindings.isEmpty(list.getSelectionModel().getSelectedItems()));
+        open.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
+        edit.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
+        duplicate.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
+        delete.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
     }
 
     public void refresh() {
@@ -165,7 +248,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
             return (profile.name() + " " + profile.host() + " " + profile.database() + " "
                     + profile.username()).toLowerCase().contains(needle);
         });
-        list.setItems(visible);
+        table.setItems(visible);
     }
 
     private void updateButtons() {
@@ -173,8 +256,19 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         // 这里不重复刷新，避免与 refresh() 互相调用。
     }
 
-    private java.util.Optional<ConnectionProfile> selected() {
-        return java.util.Optional.ofNullable(list.getSelectionModel().getSelectedItem());
+    /** 密度档位。 */
+    public void setDensity(String density) {
+        rowHeight = RowHeights.of(density);
+        table.setFixedCellSize(rowHeight);
+    }
+
+    /** 连接表格（供门禁断言列数与排序）。 */
+    TableView<ConnectionProfile> table() {
+        return table;
+    }
+
+    private Optional<ConnectionProfile> selected() {
+        return Optional.ofNullable(table.getSelectionModel().getSelectedItem());
     }
 
     public void setDeleteConfirmation(Predicate<ConnectionProfile> confirmation) {
@@ -211,32 +305,5 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
 
     @Override
     public void close() {
-    }
-
-    private final class ConnectionCell extends ListCell<ConnectionProfile> {
-        @Override
-        protected void updateItem(ConnectionProfile item, boolean empty) {
-            super.updateItem(item, empty);
-            if (empty || item == null) {
-                setText(null);
-                setGraphic(null);
-                return;
-            }
-            Label name = new Label(item.name());
-            if (item.favorite()) {
-                // ⭐ 收藏标记用矢量实心星。
-                SVGPath star = Icons.of(Icons.Icon.STAR_FILLED, 12);
-                star.setAccessibleText("已收藏");
-                name.setGraphic(star);
-                name.setGraphicTextGap(6);
-            }
-            name.getStyleClass().add("adb-connections__name");
-            Label target = new Label(item.kindLabel() + " · " + item.displayTarget()
-                    + (connected.test(item) ? " · 已连接" : ""));
-            target.getStyleClass().add("adb-connections__target");
-            VBox box = new VBox(2, name, target);
-            setGraphic(box);
-            setText(null);
-        }
     }
 }

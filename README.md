@@ -64,7 +64,7 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**54 个测试类、421 条执行（SQLite）/ 435 条执行（含 MySQL 5.7 真库），0 失败**。统一命令：`./mvnw -B clean verify`。
+当前门禁：**55 个测试类、430 条执行（SQLite）/ 444 条执行（含 MySQL 5.7 真库），0 失败**。统一命令：`./mvnw -B clean verify`。
 
 统计口径用工具兜底（`@Nested` 的测试类在 surefire XML 里会写成 `tests="0"`）：
 
@@ -124,6 +124,7 @@ TestFX 默认用 Monocle 无头模式；在本机想看真实窗口，去掉父 
 | `docs/ARCHITECTURE.md` | 模块、数据流、线程模型、编辑/SQL/撤销不变量、结构页与连接层模型 |
 | `docs/UI-GUIDE.md` | 视觉基线、六区、组件与交互规则、令牌生成、图标约定、弹窗规范 |
 | **`docs/UI-ROADMAP.md`** | ⭐ **界面专项**：实测 11 个界面问题（字号 / 间距 / 圆角 / 焦点环 / 按钮层级 / 图标 / 密度 / 列头 / 连接列表）+ 6 个批次计划 + 排版 / 间距 / 圆角 / 配色 / 交互规范 |
+| **`docs/NAVICAT-COMPARE.md`** | ⭐ **与 Navicat 的实拍对比**（本机装了 Navicat Premium Lite 15）：逐项对照 + 6 个真差距 + 由此重排的优先级 |
 | `docs/NEXT-STEPS.md` | 阶段规划：批次划分、依赖顺序、提交策略 |
 | `docs/COMPONENT-SELECTION.md` | 开源组件选型、版本、许可证、禁入清单 |
 

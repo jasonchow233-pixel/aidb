@@ -33,6 +33,8 @@ public final class WorkspaceView extends StackPane {
     private final Map<String, QueryPage> queryPages = new LinkedHashMap<>();
     private final Map<String, StructurePage> structurePages = new LinkedHashMap<>();
     private final Map<String, ConnectionsPage> connectionsPages = new LinkedHashMap<>();
+    /** 表清单页（自己带内容的标签页，按 tab id 缓存，好让密度能下发给它）。 */
+    private final Map<String, TableListPage> tableListPages = new LinkedHashMap<>();
 
     private DataGridPage activeGrid;
     private QueryPage activeQuery;
@@ -61,6 +63,18 @@ public final class WorkspaceView extends StackPane {
      */
     public void applyDensity(String density) {
         for (DataGridPage page : gridPages.values()) {
+            page.setDensity(density);
+        }
+        for (QueryPage page : queryPages.values()) {
+            page.setDensity(density);
+        }
+        for (StructurePage page : structurePages.values()) {
+            page.setDensity(density);
+        }
+        for (ConnectionsPage page : connectionsPages.values()) {
+            page.setDensity(density);
+        }
+        for (TableListPage page : tableListPages.values()) {
             page.setDensity(density);
         }
     }
@@ -224,6 +238,10 @@ public final class WorkspaceView extends StackPane {
         activeStructure = null;
         activeConnections = null;
         // ⭐ 标签自带页面（表清单）时直接用它，不再走静态占位页。
+        if (tab.view() instanceof TableListPage tableList) {
+            // ⭐ 缓存一份，密度才能下发给它（表清单页是「自己带内容」的标签页）。
+            tableListPages.put(tab.id(), tableList);
+        }
         getChildren().setAll(tab.view() != null ? tab.view() : buildStaticPage(tab));
     }
 
@@ -470,6 +488,20 @@ public final class WorkspaceView extends StackPane {
     }
 
     private VBox emptyState(Icons.Icon iconType, String titleText, String description) {
+        return emptyState(iconType, titleText, description, null, null);
+    }
+
+    /**
+     * 空状态。
+     *
+     * <p>⭐ 带一个**明确的下一步按钮** —— 以前只有一段文字，
+     * 用户看着空页面不知道能干什么。
+     *
+     * @param actionText 下一步按钮的文字（{@code null} = 不放按钮）
+     * @param action     下一步按钮的动作（{@code null} = 不放按钮）
+     */
+    private VBox emptyState(Icons.Icon iconType, String titleText, String description,
+                            String actionText, Runnable action) {
         SVGPath icon = Icons.of(iconType, 32);
         icon.getStyleClass().add("adb-empty__icon");
 
@@ -482,6 +514,12 @@ public final class WorkspaceView extends StackPane {
         desc.setMaxWidth(460);
 
         VBox box = new VBox(10, icon, title, desc);
+        if (actionText != null && action != null) {
+            Button button = new Button(actionText);
+            button.getStyleClass().addAll("adb-button", "adb-button--primary");
+            button.setOnAction(event -> action.run());
+            box.getChildren().add(button);
+        }
         box.getStyleClass().add("adb-empty");
         box.setAlignment(Pos.CENTER);
         box.setPadding(new Insets(48));

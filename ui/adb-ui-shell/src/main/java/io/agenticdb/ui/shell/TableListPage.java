@@ -37,6 +37,19 @@ final class TableListPage extends VBox {
     private final Consumer<String> status;
 
     private final TableView<TableMeta> table = new TableView<>();
+    /** 密度档位 → 行高（不写死）。 */
+    private int rowHeight = io.agenticdb.ui.RowHeights.of("normal");
+
+    /** 密度档位 —— 表清单也要跟。 */
+    public void setDensity(String density) {
+        rowHeight = io.agenticdb.ui.RowHeights.of(density);
+        table.setFixedCellSize(rowHeight);
+    }
+
+    /** 表格（供门禁断言密度作用到了它）。 */
+    TableView<TableMeta> table() {
+        return table;
+    }
     private final ProgressIndicator spinner = new ProgressIndicator();
     private final Label summary = new Label();
 
@@ -81,6 +94,7 @@ final class TableListPage extends VBox {
         HBox actions = new HBox(8, refresh, spacer, spinner);
         actions.setAlignment(Pos.CENTER_LEFT);
 
+        table.setFixedCellSize(rowHeight);
         getChildren().addAll(summary, table, actions);
         setPadding(new Insets(12));
         getStyleClass().add("adb-page__body");

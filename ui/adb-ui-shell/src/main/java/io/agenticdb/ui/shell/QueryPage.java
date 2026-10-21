@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.RowHeights;
 import io.agenticdb.ui.Icons;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.ExecutionResult;
@@ -81,6 +82,11 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
     private final SqlEditor editor = new SqlEditor();
     private final TabPane results = new TabPane();
+    /** ⭐ 结果网格也要跟密度 —— 否则「紧凑」在查询页看起来没生效。 */
+    private final java.util.List<TableView<java.util.Map<String, Object>>> resultTables =
+            new java.util.ArrayList<>();
+    /** 密度档位 → 行高。 */
+    private int rowHeight = RowHeights.of("normal");
     private final Label status = new Label("就绪");
     private final Label risk = new Label("只读");
     private final Label range = new Label("—");
@@ -854,8 +860,26 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
     // ─────────────────────────── 结果页 ───────────────────────────
 
+    /**
+     * 密度档位。
+     *
+     * <p>⭐ 结果网格以前**完全不看密度** —— 用户在数据页调到「紧凑」，
+     * 切到查询结果页行高没变，密度设置看起来时灵时不灵。
+     */
+    public void setDensity(String density) {
+        rowHeight = RowHeights.of(density);
+        resultTables.forEach(table -> table.setFixedCellSize(rowHeight));
+    }
+
+    /** 结果网格当前的行高（供门禁断言密度作用到了它）。 */
+    int resultRowHeight() {
+        return rowHeight;
+    }
+
     private Tab resultTab(ExecutionResult result, int index) {
         TableView<java.util.Map<String, Object>> table = new TableView<>();
+        resultTables.add(table);
+        table.setFixedCellSize(rowHeight);
         table.setId("query-result-table");
         table.getStyleClass().addAll("adb-grid", "adb-query__result-table");
         table.setItems(FXCollections.observableArrayList(result.rows()));
