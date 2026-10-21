@@ -96,9 +96,9 @@
 
 | # | 文档声称 | 代码实际 | 证据 |
 |---|---|---|---|
-| **D9** | README「30 个测试类 / 246 条测试」 | **33 个测试类 / 268 条测试用例**（0 失败） | 见 §7.1 |
-| **D10** | `NAVICAT-TODO.md`「32 个测试类 / 291 条测试」 | 同上（291 不存在） | 见 §7.1 |
-| **D11** | `docs/NEXT-STEPS.md`「32 个测试类 / 275 条测试」 | 同上（275 不存在） | 见 §7.1 |
+| **D9** | README「30 个测试类 / 246 条测试」 | **已纠正**（当前 38 类 / 345 条，0 失败） | 见 §7.1 |
+| **D10** | `NAVICAT-TODO.md`「32 个测试类 / 291 条测试」 | **已纠正**（291 从不存在） | 见 §7.1 |
+| **D11** | `docs/NEXT-STEPS.md`「32 个测试类 / 275 条测试」 | **已纠正**（275 从不存在） | 见 §7.1 |
 | **D12** | `docs/ARCHITECTURE.md`「65 个非颜色令牌永远不会进 CSS」 | 是 **60** 个（`size` 40 + `number` 11 + `duration` 4 + `font` 3 + `easing` 2） | `tokens.json` `meta` |
 | **D13** | `NAVICAT-GAP.md` §3.1「工具栏（`MainToolBar`，10 个元素）」，表里只列了 8 个 | 代码是 **10 个直接子节点**（8 个可见 + 2 个 `Region` 弹性占位） | `MainToolBar.java:62-63, 71-72, 79-82` |
 
@@ -527,8 +527,8 @@ ui/adb-ui-shell → workbench/{adb-session, adb-introspect, adb-editing, adb-jdb
 
 | 项 | 值 |
 |---|---|
-| 测试类 | **33** |
-| 测试用例 | **268**（`@Test` + `@ParameterizedTest`） |
+| 测试类 | **38** |
+| 测试用例 | **345**（`@Test` + `@ParameterizedTest`） |
 | 失败 / 错误 / 跳过 | **0 / 0 / 0** |
 | 命令 | `./mvnw -B clean verify` |
 
@@ -539,16 +539,16 @@ ui/adb-ui-shell → workbench/{adb-session, adb-introspect, adb-editing, adb-jdb
 
 | 模块 | 用例数 |
 |---|---|
-| `core/adb-model` | 32 |
-| `core/adb-declarations` | 39 |
-| `core/adb-safety` | 38 |
+| `core/adb-model` | 30 |
+| `core/adb-declarations` | 40 |
+| `core/adb-safety` | 59 |
 | `core/adb-sql` | 17 |
-| `workbench/adb-jdbc` | 11 |
-| `workbench/adb-introspect` | 24 |
-| `workbench/adb-session` | 8 |
+| `workbench/adb-jdbc` | 46 |
+| `workbench/adb-introspect` | 25 |
+| `workbench/adb-session` | 11 |
 | `workbench/adb-editing` | 19 |
 | `ui/adb-ui-core` | 4 |
-| `ui/adb-ui-shell` | 73 |
+| `ui/adb-ui-shell` | 92 |
 | `testing/adb-fixtures` | 3 |
 
 ### 7.2 优先级
