@@ -194,6 +194,14 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final Button batchClone = IconButtons.of(Icons.Icon.COPY, "克隆");
     private final CheckBox selectAllBox = new CheckBox();
     private final Map<String, HeaderView> headers = new LinkedHashMap<>();
+    /** ⭐ G2：正在被拖动的列。 */
+    private TableColumn<Map<String, Object>, ?> draggedColumn;
+    /** 拖动起点（场景坐标）与累计位移。 */
+    private double dragStartSceneX;
+    private double dragLastSceneX;
+    /** 拖动超过这个位移就算「拖」而不是「点」—— 点列头是排序。 */
+    private static final double DRAG_THRESHOLD = 6;
+
     private final Map<String, TableColumn<Map<String, Object>, Object>> columnByDefinition =
             new LinkedHashMap<>();
     private final EditBuffer editBuffer;
@@ -1463,7 +1471,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             TableColumn<Map<String, Object>, Object> column = new TableColumn<>();
             column.setText(null);
             column.setUserData(definition.name());
-            column.setGraphic(columnHeader(definition));
+            column.setGraphic(columnHeader(column, definition));
             column.setSortable(false);
             column.setEditable(schema.editable());
             column.setPrefWidth(savedWidth(definition));
@@ -1653,6 +1661,117 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         columnsButton.getItems().addAll(showAll, reset);
     }
 
+    // ─────────────────────────── G2：列拖拽重排 ───────────────────────────
+
+    /** 可见的**数据列**（排除选择列与行号列 —— 那两列固定在左边）。 */
+    private List<TableColumn<Map<String, Object>, ?>> dataColumns() {
+        List<TableColumn<Map<String, Object>, ?>> result = new ArrayList<>();
+        for (TableColumn<Map<String, Object>, ?> column : grid.getColumns()) {
+            if (column.getUserData() instanceof String) {
+                result.add(column);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 场景坐标落在哪个数据列上。
+     *
+     * @return 数据列的序号；落在固定列（选择列 / 行号列）上或不在网格里时返回 -1
+     */
+    private int dataColumnIndexAtSceneX(double sceneX) {
+        double x = grid.localToScene(0, 0).getX();
+        int index = -1;
+        for (TableColumn<Map<String, Object>, ?> column : grid.getColumns()) {
+            if (!column.isVisible()) {
+                continue;
+            }
+            double width = Math.max(1, column.getWidth());
+            if (sceneX < x + width) {
+                // 落在固定列上 → 不参与重排
+                return column.getUserData() instanceof String ? index : -1;
+            }
+            x += width;
+            if (column.getUserData() instanceof String) {
+                index++;
+            }
+        }
+        return index;
+    }
+
+    /**
+     * 把某列挪到数据列的第 target 位。
+     *
+     * <p>选择列与行号列**固定在左边**，不参与重排 —— 和 Navicat 一致。
+     */
+    private void moveColumnTo(TableColumn<Map<String, Object>, ?> column, int target) {
+        List<TableColumn<Map<String, Object>, ?>> all = new ArrayList<>(grid.getColumns());
+        int from = all.indexOf(column);
+        if (from < 0) {
+            return;
+        }
+        all.remove(from);
+
+        // 目标在「数据列」序列里的位置 → 换算回 all 里的插入点
+        int insertAt = all.size();
+        int seen = 0;
+        for (int i = 0; i < all.size(); i++) {
+            if (all.get(i).getUserData() instanceof String) {
+                if (seen == target) {
+                    insertAt = i;
+                    break;
+                }
+                seen++;
+            }
+        }
+        all.add(insertAt, column);
+        grid.getColumns().setAll(all);
+    }
+
+    /** 把某列挪到数据列的第 target 位（按列名）。 */
+    private void moveColumnTo(String name, int target) {
+        TableColumn<Map<String, Object>, Object> column = columnByDefinition.get(name);
+        if (column == null) {
+            return;
+        }
+        moveColumnTo(column, target);
+        scheduleLayoutSave();
+    }
+
+    /**
+     * 把某列挪到数据列的第 target 位。
+     *
+     * <p>右键菜单与拖拽走的是**同一条**路；这个方法是给门禁用的精确入口
+     * （真实鼠标轨迹在无头环境里不稳）。
+     */
+    void reorderColumn(String name, int target) {
+        moveColumnTo(name, target);
+    }
+
+    /** 当前落盘的列顺序（逗号分隔；供门禁断言）。 */
+    String savedColumnOrder() {
+        return settings == null ? "" : settings.get(layoutKey("order"), "");
+    }
+
+    /** 把某列往左 / 往右挪一格（右键菜单用；拖不动的场景也能用）。 */
+    private void nudgeColumn(String name, int delta) {
+        TableColumn<Map<String, Object>, Object> column = columnByDefinition.get(name);
+        if (column == null) {
+            return;
+        }
+        List<TableColumn<Map<String, Object>, ?>> data = dataColumns();
+        int index = data.indexOf(column);
+        if (index < 0) {
+            return;
+        }
+        int target = Math.max(0, Math.min(data.size() - 1, index + delta));
+        if (target == index) {
+            return;
+        }
+        moveColumnTo(column, target);
+        scheduleLayoutSave();
+    }
+
     private void resetColumnLayout() {
         if (settings != null) {
             settings.set(layoutKey("order"), "");
@@ -1676,7 +1795,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         scheduleLayoutSave();
     }
 
-    private javafx.scene.Node columnHeader(ColumnDef definition) {
+    private javafx.scene.Node columnHeader(TableColumn<Map<String, Object>, Object> column,
+                                       ColumnDef definition) {
         Label name = new Label(definition.name()
                 + (definition.primaryKey() ? "  [PK]" : definition.nullable() ? "" : "  •"));
         name.setId("data-header-" + definition.name());
@@ -1716,8 +1836,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         HBox box = new HBox(4, labels, spacer, sortBadge, funnel);
         box.getStyleClass().add("adb-grid__header");
         box.setAlignment(Pos.CENTER_LEFT);
+        // ⭐ G2 的可发现性：告诉用户列头能拖。
+        name.setTooltip(new Tooltip(
+                (name.getTooltip() == null || name.getTooltip().getText() == null
+                        ? "" : name.getTooltip().getText() + " · ")
+                        + "拖动列头可调整顺序；双击可自适应宽度"));
         box.setOnMouseClicked(event -> {
-            if (event.isSecondaryButtonDown()) {
+            if (event.isSecondaryButtonDown() || event.isConsumed()) {
                 return;
             }
             if (event.getClickCount() == 2) {
@@ -1725,8 +1850,39 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 event.consume();
                 return;
             }
-            applySort(definition.name(), event.isShiftDown());
+            // ⭐ 拖过就不算「点」—— 点列头是排序，拖列头是换顺序。
+            if (Math.abs(event.getSceneX() - dragStartSceneX) < DRAG_THRESHOLD) {
+                applySort(definition.name(), event.isShiftDown());
+            }
             event.consume();
+        });
+        // ⭐ G2：列头**拖拽重排**。顺序本来就能持久化，只是没有运行时入口。
+        box.setOnMousePressed(event -> {
+            if (event.isSecondaryButtonDown()) {
+                return;
+            }
+            draggedColumn = column;
+            dragStartSceneX = event.getSceneX();
+            dragLastSceneX = event.getSceneX();
+        });
+        box.setOnMouseDragged(event -> {
+            if (draggedColumn == null) {
+                return;
+            }
+            dragLastSceneX = event.getSceneX();
+            int target = dataColumnIndexAtSceneX(dragLastSceneX);
+            if (target >= 0) {
+                moveColumnTo(draggedColumn, target);
+            }
+            event.consume();
+        });
+        box.setOnMouseReleased(event -> {
+            if (draggedColumn == null) {
+                return;
+            }
+            draggedColumn = null;
+            // 落盘：新顺序要记住。
+            scheduleLayoutSave();
         });
         box.setOnContextMenuRequested(event -> {
             ContextMenu menu = new ContextMenu();
@@ -1737,6 +1893,21 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 renderQueryState();
                 load(false);
             });
+            // ⭐ G2：右键也能改顺序 —— 拖不动的场景（触控板 / 窄列）有精确入口。
+            MenuItem moveLeft = new MenuItem("向左移动一列");
+            moveLeft.setId("data-move-left");
+            moveLeft.setOnAction(action -> nudgeColumn(definition.name(), -1));
+            MenuItem moveRight = new MenuItem("向右移动一列");
+            moveRight.setId("data-move-right");
+            moveRight.setOnAction(action -> nudgeColumn(definition.name(), 1));
+            MenuItem moveFirst = new MenuItem("移到最前");
+            moveFirst.setId("data-move-first");
+            moveFirst.setOnAction(action -> moveColumnTo(definition.name(), 0));
+            MenuItem moveLast = new MenuItem("移到最后");
+            moveLast.setId("data-move-last");
+            moveLast.setOnAction(action -> moveColumnTo(definition.name(),
+                    dataColumns().size() - 1));
+
             MenuItem descending = new MenuItem("按此列降序");
             descending.setOnAction(action -> {
                 query = query.withSorts(List.of(new SortSpec(definition.name(), false)));
@@ -1761,6 +1932,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 feedback.status("已复制列名 " + definition.name());
             });
             menu.getItems().addAll(ascending, descending, clearSort,
+                    new SeparatorMenuItem(),
+                    moveLeft, moveRight, moveFirst, moveLast,
                     new SeparatorMenuItem(), filter, hide, fit, copyName);
             menu.show(box, event.getScreenX(), event.getScreenY());
             event.consume();

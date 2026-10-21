@@ -12,11 +12,11 @@
 
 | 指标 | 值 |
 |---|---|
-| 门禁 | **57 个测试类 / 437 条执行（SQLite）/ 451 条执行（含 MySQL 真库）/ 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`） |
+| 门禁 | **57 个测试类 / 440 条执行（SQLite）/ 454 条执行（含 MySQL 真库）/ 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`） |
 | 真库验证 | ✅ SQLite（演示库）· ✅ **MySQL 5.7.44 真库**（9 例全绿）· ⬜ PostgreSQL（**暂无测试库**） |
 | 截图 | `docs/screenshots/` 6 张已按当前代码重拍（亮 / 暗两套主题） |
 | 工作区 | 干净（HEAD `e5e1eb7`） |
-| **下一动作** | **U-B6**（G2 列拖拽 / G1 冻结列 / U1 catalog 树 / U2 多连接并行 …） |
+| **下一动作** | **U-B6 剩余**（G1 冻结列 / G4 区域选择 / U1 catalog 树 / U2 多连接并行 …） |
 
 ### 上一轮做完了什么
 

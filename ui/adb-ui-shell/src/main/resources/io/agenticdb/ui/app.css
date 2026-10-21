@@ -772,7 +772,16 @@
 }
 
 .adb-grid__header {
+    /* ⭐ G2：列头可拖 → 光标给「抓手」；列名区用普通手型（它是可点的）。 */
     -fx-cursor: hand;
+}
+
+.adb-grid__header .adb-grid__column-name {
+    -fx-cursor: grab;
+}
+
+.adb-grid__header:active .adb-grid__column-name {
+    -fx-cursor: grabbing;
 }
 
 .adb-grid__sort-badge {

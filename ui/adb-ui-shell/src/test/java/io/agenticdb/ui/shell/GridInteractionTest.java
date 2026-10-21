@@ -15,11 +15,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.testfx.api.FxRobot;
 import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.framework.junit5.Start;
 import org.testfx.util.WaitForAsyncUtils;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -52,8 +54,9 @@ class GridInteractionTest {
         session = JdbcSession.open(ConnectionSpec.sqlite(
                 DemoDatabase.create(temp.resolve("demo.db"))));
         executor = Executors.newSingleThreadExecutor();
+        // ⭐ 带 SettingsStore —— 列顺序要能落盘（没有它 persistLayout 直接返回）。
         page = new DataGridPage(session, new SchemaService(), "users",
-                "test.db", noOpFeedback(), name -> { }, executor);
+                "test.db", noOpFeedback(), name -> { }, executor, new SettingsStore());
         Scene scene = new Scene(page, 1200, 700);
         // ⚠️ 必须把样式表挂上 —— 否则 CSS 规则一条都不生效
         //    （App 里是由 ThemeManager 挂的，测试里要自己挂）。
@@ -82,6 +85,11 @@ class GridInteractionTest {
 
     @AfterEach
     void tearDown() {
+        // 清掉测试写进用户偏好的列顺序，别影响下一次跑。
+        java.util.prefs.Preferences.userNodeForPackage(SettingsStore.class)
+                .remove("ui.grid.test.db.users.order");
+        java.util.prefs.Preferences.userNodeForPackage(SettingsStore.class)
+                .remove("ui.grid.test.db.users.hidden");
         executor.shutdownNow();
         try {
             session.close();
@@ -149,6 +157,93 @@ class GridInteractionTest {
                 .as("该列**有**筛选条件时，筛选钮要一直看得见 —— 那是状态，不是装饰")
                 .contains("adb-grid__filter-button--active");
         assertThat(funnel.getOpacity()).isEqualTo(1.0);
+    }
+
+    @Test
+    void columnsCanBeReorderedAtRuntime() {
+        TableView<?> table = (TableView<?>) page.lookup("#data-table");
+        List<String> before = columnOrder(table);
+        assertThat(before)
+                .as("先确认有可重排的数据列")
+                .hasSizeGreaterThan(2);
+
+        // ⭐ G2：列头**拖拽**重排 —— 顺序本来就能持久化，只是没有运行时入口。
+        //    这里用「向右移动一列」这条精确入口验证同一套重排逻辑
+        //    （拖拽要用真实的鼠标轨迹，测试里不稳）。
+        int from = before.indexOf("score");
+        assertThat(from).as("score 列存在").isGreaterThan(0);
+        WaitForAsyncUtils.asyncFx(() -> {
+            page.reorderColumn("score", from + 1);
+            return null;
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        List<String> after = columnOrder(table);
+        assertThat(after)
+                .as("列顺序要真的变了")
+                .isNotEqualTo(before);
+        assertThat(after)
+                .as("只是换了位置，列本身一个不能少")
+                .containsExactlyInAnyOrderElementsOf(before);
+        assertThat(after.get(from + 1))
+                .as("被移动的列要落到目标位置")
+                .isEqualTo("score");
+    }
+
+    @Test
+    void draggingAHeaderReordersTheColumns(FxRobot robot) {
+        TableView<?> table = (TableView<?>) page.lookup("#data-table");
+        List<String> before = columnOrder(table);
+        int from = before.indexOf("score");
+        assertThat(from).as("score 列存在").isGreaterThan(0);
+
+        // ⭐ 真正的**拖拽手势**：抓住「score」的列头，拖到它左边那列的头上。
+        javafx.scene.Node source = page.lookup("#data-header-score");
+        javafx.scene.Node target = page.lookup("#data-header-" + before.get(from - 1));
+        assertThat(source).as("score 列头").isNotNull();
+        assertThat(target).as("目标列头").isNotNull();
+
+        // TestFX 4.x：drag(源) + dropTo(目标)
+        robot.drag(source);
+        robot.dropTo(target);
+        WaitForAsyncUtils.waitForFxEvents();
+
+        List<String> after = columnOrder(table);
+        assertThat(after)
+                .as("拖拽后列顺序要变")
+                .isNotEqualTo(before);
+        assertThat(after)
+                .as("只是换了位置，列本身一个不能少")
+                .containsExactlyInAnyOrderElementsOf(before);
+    }
+
+    @Test
+    void theReorderedColumnsArePersisted() {
+        TableView<?> table = (TableView<?>) page.lookup("#data-table");
+        List<String> before = columnOrder(table);
+        int from = before.indexOf("score");
+        WaitForAsyncUtils.asyncFx(() -> {
+            page.reorderColumn("score", from + 1);
+            return null;
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        String saved = page.savedColumnOrder();
+        assertThat(saved)
+                .as("新顺序要落盘 —— 下次打开还是这个顺序")
+                .isNotBlank()
+                .contains("score");
+    }
+
+    /** 网格里可见的数据列顺序（列名）。 */
+    private static List<String> columnOrder(TableView<?> table) {
+        List<String> names = new java.util.ArrayList<>();
+        table.getColumns().forEach(column -> {
+            if (column.getUserData() instanceof String name) {
+                names.add(name);
+            }
+        });
+        return names;
     }
 
     /** 在 FX 线程上点一个按钮。 */
