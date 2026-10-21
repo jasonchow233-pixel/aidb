@@ -98,6 +98,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private Predicate<Danger> confirmation = this::confirmDanger;
     private Runnable stateListener = () -> { };
     private IntConsumer dirtyListener = count -> { };
+    /** 「存为命名查询」的回调（名字, SQL）。 */
+    private java.util.function.BiConsumer<String, String> onSaveNamed = (name, sql) -> { };
     private long requestSequence;
     private Future<?> inFlight;
     private boolean running;
@@ -105,6 +107,32 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private boolean dirty;
     private boolean activated;
     private File currentFile;
+    private int saveCounter;
+
+    /** 接上「存为命名查询」的落点。 */
+    public void setOnSaveNamed(java.util.function.BiConsumer<String, String> onSaveNamed) {
+        this.onSaveNamed = onSaveNamed == null ? (name, sql) -> { } : onSaveNamed;
+    }
+
+    /** 给当前 SQL 起个名字存起来（已保存查询库）。 */
+    private void saveNamed() {
+        String sql = editor.text();
+        if (sql == null || sql.isBlank()) {
+            feedback.status("编辑器是空的，没什么可存");
+            return;
+        }
+        javafx.scene.control.TextInputDialog dialog =
+                new javafx.scene.control.TextInputDialog("查询 " + (++saveCounter));
+        dialog.setTitle("存为命名查询");
+        dialog.setHeaderText("给这条 SQL 起个名字");
+        dialog.setContentText(sql.length() > 120 ? sql.substring(0, 120) + "…" : sql);
+        java.util.Optional<String> name = dialog.showAndWait();
+        if (name.isEmpty() || name.get().isBlank()) {
+            return;
+        }
+        onSaveNamed.accept(name.get().trim(), sql);
+        feedback.status("已保存查询：" + name.get().trim());
+    }
 
     public QueryPage(DbSession session, String connectionName, String initialSql,
                      Executor dbExecutor, SettingsStore settings,
@@ -180,6 +208,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
         save.setTooltip(new Tooltip("保存为 .sql 文件 (⌘S)"));
         save.setOnAction(event -> save());
 
+        Button saveNamed = new Button("存为命名查询");
+        saveNamed.setId("query-save-named");
+        saveNamed.getStyleClass().add("adb-button");
+        saveNamed.setTooltip(new Tooltip("给当前 SQL 起个名字，之后从「已保存查询」一键打开"));
+        saveNamed.setOnAction(event -> saveNamed());
+
         Button clear = new Button("清空");
         clear.getStyleClass().add("adb-button");
         clear.setOnAction(event -> editor.setText(""));
@@ -191,7 +225,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         Region toolbarSpacer = new Region();
         HBox.setHgrow(toolbarSpacer, Priority.ALWAYS);
 
-        HBox toolbar = new HBox(6, run, runAll, cancel, explain, format, save, clear,
+        HBox toolbar = new HBox(6, run, runAll, cancel, explain, format, save, saveNamed, clear,
                 risk, toolbarSpacer);
         toolbar.getStyleClass().add("adb-query__toolbar");
         toolbar.setAlignment(Pos.CENTER_LEFT);

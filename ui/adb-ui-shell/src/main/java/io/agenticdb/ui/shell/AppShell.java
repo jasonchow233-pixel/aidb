@@ -83,6 +83,7 @@ public final class AppShell extends StackPane {
     private final WorkspaceView workspace;
     private final CommandPalette palette;
     private final ConnectionStore connectionStore;
+    private final SavedQueries savedQueries;
     private final CredentialStore credentials;
     private final ObservableList<ConnectionProfile> connections = FXCollections.observableArrayList();
     private final Map<String, List<SchemaObject>> objectsByConnection = new HashMap<>();
@@ -112,6 +113,7 @@ public final class AppShell extends StackPane {
         Path demoPath = DemoDatabase.defaultPath();
         DemoDatabase.ensure(demoPath);
         this.connectionStore = ConnectionStore.defaultStore();
+        this.savedQueries = new SavedQueries(settings);
         this.credentials = connectionStore.credentials();
         this.connectionStore.ensureDemo(demoPath);
         this.connections.setAll(connectionStore.load());
@@ -660,6 +662,8 @@ public final class AppShell extends StackPane {
         // 不留「点了只有一句提示」的死 UI（TODO §12.1「要么接要么删」）。
         actions.register("import-export", "导入 / 导出", "工具",
                 null, this::openTransferHub);
+        actions.register("saved-queries", "已保存查询", "工具",
+                null, this::openSavedQueries);
         actions.register("settings", "设置…", "工具",
                 key("Shortcut+Comma"),
                 () -> openTab(new TabItem("settings", "设置", TabKind.SETTINGS)));
@@ -899,6 +903,11 @@ public final class AppShell extends StackPane {
         File file = initialQueryFile.remove(tab.id());
         QueryPage page = new QueryPage(pageSession, profile.name(), initial, dbExecutor, settings,
                 pageFeedback());
+        // 「存为命名查询」落到已保存查询库。
+        page.setOnSaveNamed((name, sql) -> {
+            savedQueries.save(name, sql);
+            status("已保存查询：" + name);
+        });
         if (file != null) {
             page.setCurrentFile(file);
             page.markClean();
@@ -1012,6 +1021,17 @@ public final class AppShell extends StackPane {
                 AppShell.this.toastUnreversible(message);
             }
         };
+    }
+
+    /**
+     * 打开「已保存查询」。
+     *
+     * <p>侧栏的「已保存查询」以前是空壳页 —— 现在它真的能用。
+     */
+    private void openSavedQueries() {
+        SavedQueriesPage page = new SavedQueriesPage(savedQueries,
+                sql -> openQueryWith(sql), this::status);
+        page.show(stage);
     }
 
     /**

@@ -64,7 +64,7 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**43 个测试类、380 条测试用例，0 失败**。统一命令：`./mvnw -B clean verify`。
+当前门禁：**44 个测试类、385 条测试用例，0 失败**。统一命令：`./mvnw -B clean verify`。
 
 统计口径用工具兜底（`@Nested` 的测试类在 surefire XML 里会写成 `tests="0"`）：
 
@@ -190,7 +190,7 @@ bootstrap/
 - 连接建立与内省跑在 JavaFX 线程；全局单线程执行器会让一个连接的慢查询阻塞其它连接。
 - 结构页只能改列；索引、外键、触发器只读；不能建表 / 改表名。
 - 导入导出已实现（CSV/TSV/JSON/SQL 导出 + CSV/TSV 导入）；**xlsx 还没有**；导入暂按字符串绑列，类型不匹配的行会跳过并报告。
-- 诊断、查询历史、已保存查询三个侧栏入口目前是空壳
+- 侧栏的查询历史 / 诊断 / 导入导出 / 已保存查询四个入口都已接真功能
   （**「查询历史」是特例：功能已存在且可用，只是侧栏开错了页面**）。
 - PostgreSQL / MySQL 尚未真实联调（无 Testcontainers），PG 的 DEFAULT / COMMENT 不内省。
 - `core/adb-declarations` 声明层当前是死代码，待 P5 决定接入或删除。

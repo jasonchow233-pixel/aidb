@@ -434,7 +434,9 @@ public final class SideBar extends VBox {
         });
 
         VBox workbench = section("工作台",
-                navButton("◷  查询历史", "查询历史", () -> openTool("查询历史")));
+                navButton("◷  查询历史", "查询历史", () -> openTool("查询历史")),
+                // 已保存查询接真实功能（命名 + 落盘 + 一键打开）。
+                navButton("★  已保存查询", "已保存查询", () -> actions.run("saved-queries")));
 
         VBox tools = section("工具",
                 // 诊断接真实功能：诊断对象树里当前选中的表。
