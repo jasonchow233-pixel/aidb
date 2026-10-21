@@ -417,7 +417,11 @@ public final class AppShell extends StackPane {
         String structure = System.getProperty("adb.structure",
                 System.getenv().getOrDefault("ADB_STRUCTURE", "")).trim();
         if (!structure.isEmpty()) {
-            openStructure(activeProfileId(), structure);
+            // ⭐ 与 ADB_QUERY 一致：「1 / true」表示「用演示表的 users」，
+            //    否则会被当成表名 "1"，于是报「no such table: 1」。
+            String table = structure.equals("1") || structure.equalsIgnoreCase("true")
+                    ? "users" : structure;
+            openStructure(activeProfileId(), table);
         }
         String initialQuery = System.getProperty("adb.query",
                 System.getenv().getOrDefault("ADB_QUERY", "")).trim();
