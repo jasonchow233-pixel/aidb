@@ -615,6 +615,15 @@
     -fx-font-size: 12px;
 }
 
+/* ⭐ G3：本页统计条 */
+.adb-grid__summary {
+    -fx-font-size: 11px;
+    -fx-text-fill: -adb-text-secondary;
+    -fx-padding: 4 2 0 2;
+    -fx-background-color: -adb-bg-surface;
+    -fx-border-color: transparent transparent -adb-border transparent;
+}
+
 .adb-grid__column-name {
     -fx-text-fill: -adb-text-primary;
     -fx-font-size: 12px;

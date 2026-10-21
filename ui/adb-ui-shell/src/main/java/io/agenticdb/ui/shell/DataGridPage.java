@@ -173,6 +173,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final CheckMenuItem hideNullItem = new CheckMenuItem("隐藏含 NULL 行");
     private final CheckMenuItem hideEmptyItem = new CheckMenuItem("隐藏含空串行");
     private final CheckMenuItem transposeItem = new CheckMenuItem("转置（只读）");
+    /** ⭐ G3：本页统计（行数与数值列的汇总）。 */
+    private final CheckMenuItem summaryItem = new CheckMenuItem("本页统计");
+    private final Label summaryLabel = new Label();
     private final TableView<Map<String, Object>> transposeTable = new TableView<>();
     private final CellDetailsDrawer detailsDrawer = new CellDetailsDrawer();
     private final Label contextLabel = new Label();
@@ -210,6 +213,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private boolean activated;
     private boolean hideNullRows;
     private boolean hideEmptyRows;
+    /** ⭐ G3：是否显示本页统计。 */
+    private boolean summaryVisible;
     private boolean transpose;
     private EditSqlBuilder.Plan saveUndoPlan;
     private String lastSql = "";
@@ -693,8 +698,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         hideEmptyItem.setOnAction(event -> setHideEmptyRows(hideEmptyItem.isSelected()));
         transposeItem.setId("data-transpose-toggle");
         transposeItem.setOnAction(event -> setTranspose(transposeItem.isSelected()));
+        summaryItem.setId("data-summary-toggle");
+        summaryItem.setOnAction(event -> setSummaryVisible(summaryItem.isSelected()));
+
         viewButton.getItems().addAll(hideNullItem, hideEmptyItem,
-                new SeparatorMenuItem(), transposeItem);
+                new SeparatorMenuItem(), summaryItem, transposeItem);
 
         exportButton.setId("data-export");
         exportButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
@@ -738,6 +746,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
         grid.setId("data-table");
         grid.getStyleClass().add("adb-grid");
+
         grid.setPlaceholder(new Label("没有数据"));
         grid.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         grid.setFocusTraversable(true);
@@ -810,7 +819,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         StackPane.setMargin(detailsDrawer, new javafx.geometry.Insets(8));
 
         body.getStyleClass().add("adb-grid__body");
-        body.getChildren().addAll(grid, transposeTable, stateBox, detailsDrawer);
+        summaryLabel.setId("data-summary");
+        summaryLabel.getStyleClass().add("adb-grid__summary");
+        summaryLabel.setVisible(false);
+        summaryLabel.setManaged(false);
+
+        body.getChildren().addAll(grid, transposeTable, stateBox, summaryLabel, detailsDrawer);
         VBox.setVgrow(body, Priority.ALWAYS);
 
         HBox pager = buildPager();
@@ -1318,6 +1332,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             }
         }
         ordered.addAll(byName.values());
+        // ⭐ 自愈：保存的顺序必须**恰好覆盖**这张表的全部列。
+        //    否则就是一次不完整的保存（比如列渲染到一半时落了盘），
+        //    会把列顺序搅乱 —— 宁可退回表结构顺序，也不能显示一个错乱的网格。
+        if (ordered.size() != schema.columns().size()) {
+            return schema.columns();
+        }
         return ordered;
     }
 
@@ -1413,6 +1433,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         }
         StringBuilder order = new StringBuilder();
         StringBuilder hidden = new StringBuilder();
+        int expected = tableSchema.columns().size();
+        int seen = 0;
         for (TableColumn<Map<String, Object>, ?> item : grid.getColumns()) {
             if (!(item.getUserData() instanceof String name) || name.isBlank()) {
                 continue;
@@ -1428,6 +1450,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 hidden.append(name);
             }
             settings.setInt(layoutKey("width." + name), (int) Math.round(item.getWidth()));
+            seen++;
+        }
+        // ⭐ 只在**列齐了**的时候落盘 —— 半截的顺序会搅乱网格（见 orderedColumns）。
+        if (seen != expected) {
+            return;
         }
         settings.set(layoutKey("order"), order.toString());
         settings.set(layoutKey("hidden"), hidden.toString());
@@ -1817,6 +1844,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         items.addAll(pageRows);
         List<Map<String, Object>> visible = applyViewFilters(items);
         grid.setItems(FXCollections.observableArrayList(visible));
+        // ⭐ G3：行变了，统计要跟着重算。
+        updateSummary();
         grid.setVisible(!transpose);
         grid.setManaged(!transpose);
         transposeTable.setVisible(transpose);
@@ -1946,6 +1975,73 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         transposeItem.setSelected(value);
         rebuildItems();
         feedback.status(value ? "转置视图 · 只读" : "已恢复表格视图");
+    }
+
+    /** ⭐ G3：显示 / 隐藏「本页统计」。 */
+    void setSummaryVisible(boolean value) {
+        summaryVisible = value;
+        summaryItem.setSelected(value);
+        summaryLabel.setVisible(value);
+        summaryLabel.setManaged(value);
+        updateSummary();
+    }
+
+    /**
+     * ⭐ G3：算本页的汇总 —— 行数 + 数值列的合计 / 平均 / 最小 / 最大。
+     *
+     * <p>算的是<b>当前页</b>（不是整表），所以标题里写明「本页」——
+     * 整表统计要走 SQL 聚合，是另一件事。
+     */
+    private void updateSummary() {
+        if (!summaryVisible) {
+            summaryLabel.setText("");
+            return;
+        }
+        List<Map<String, Object>> rows = grid.getItems();
+        if (rows.isEmpty()) {
+            summaryLabel.setText("本页 0 行");
+            return;
+        }
+        StringBuilder text = new StringBuilder("本页 ").append(rows.size()).append(" 行");
+        if (tableSchema != null) {
+            for (ColumnDef definition : tableSchema.columns()) {
+                if (definition.type() != ColumnType.NUMBER) {
+                    continue;
+                }
+                double sum = 0;
+                double min = Double.MAX_VALUE;
+                double max = -Double.MAX_VALUE;
+                int count = 0;
+                for (Map<String, Object> row : rows) {
+                    Object value = row.get(definition.name());
+                    if (!(value instanceof Number number)) {
+                        continue;
+                    }
+                    double d = number.doubleValue();
+                    sum += d;
+                    min = Math.min(min, d);
+                    max = Math.max(max, d);
+                    count++;
+                }
+                if (count == 0) {
+                    continue;
+                }
+                text.append(" · ").append(definition.name())
+                        .append(" 合计 ").append(formatNumber(sum))
+                        .append(" 平均 ").append(formatNumber(sum / count))
+                        .append(" 最小 ").append(formatNumber(min))
+                        .append(" 最大 ").append(formatNumber(max));
+            }
+        }
+        summaryLabel.setText(text.toString());
+    }
+
+    private static String formatNumber(double value) {
+        if (value == Math.floor(value) && !Double.isInfinite(value)
+                && Math.abs(value) < 1e15) {
+            return String.valueOf((long) value);
+        }
+        return String.format("%.2f", value);
     }
 
     private void updateViewControls() {

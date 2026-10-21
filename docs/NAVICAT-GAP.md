@@ -57,12 +57,14 @@
 
 | # | Navicat 的做法 | 我们的做法 | 差距性质 | 证据 |
 |---|---|---|---|---|
-| S1 | 顶部是**大图标功能栏**（12 个带文字的功能入口） | 顶部是 36px 的**按钮行**（4 个按钮 + 1 个下拉 + 1 个伪搜索框 + 2 个图标） | 信息密度与可发现性：Navicat 的功能入口一眼可见，我们的藏进菜单 | `MainToolBar.java:33-35, 79-82` |
-| S2 | **表清单是带元数据列的表格**（行数 / 数据长度 / 引擎 / 创建日期 / 注释） | 表清单**只有表名**，点开就是数据网格 | 少了「一眼看清表有多大、什么时候建的」这一层 | `SchemaService.java:31-33, 76` |
+| S1 | 顶部是**大图标功能栏**（12 个带文字的功能入口） | ✅ 顶部是**大图标 + 文字的功能栏**：连接 / 查询 / 表 / 导入导出 / 工具 | ~~信息密度与可发现性：Navicat 的功能入口一眼可见，我们的藏进菜单~~ | `MainToolBar.feature` |
+| S2 | **表清单是带元数据列的表格**（行数 / 数据长度 / 引擎 / 创建日期 / 注释） | ✅ 有「表清单」页：名称 / 行数 / 数据长度 / 引擎 / 创建日期（SQLite 没有大小与创建时间 → 显示「—」） | ~~少了「一眼看清表有多大」这一层~~ | `TableListPage` + `Dialect.tableMetaSql` |
 | S3 | 对象树有 **表 / 视图 / 函数 / 用户 / 其它** 五类分组 | 只有 **表 / 视图** 两类 | 内省能力直接反映在树骨架上 | `SchemaService.ObjectKind` 只有 2 个值 |
-| S4 | 左面板底部有**搜索框 + 过滤 + ★ + 折叠** | 搜索框在**顶部**（第 2 块），★ 在「收藏」区 | 布局与 Navicat 不一致，收藏入口位置不同 | `SideBar.java:288-289` |
+| S4 | 左面板底部有**搜索框 + 过滤 + ★ + 折叠** | ✅ 搜索框在**底部**，与 ★（只看收藏）、« 折叠同一行 | ~~布局与 Navicat 不一致~~ | `SideBar.buildExpanded` |
 | S5 | 标签栏第一个是**「对象」首页标签**（不可关闭） | 首页是内容区的欢迎卡片 | 导航模型不同：Navicat 用标签，我们用卡片 | `TabKind` 只有 6 个常量，无 HOME |
-| S6 | 菜单栏有独立的**「收藏夹」顶级菜单** | 收藏只有侧栏星标（**且不落盘**） | 收藏缺少全局入口 | 全仓 `收藏夹` 只出现在文档里，0 处 Java 代码 |
+| S7 | 窗口状态记忆 | ✅ 宽高/侧栏/折叠 + 窗口位置 x/y、上次用的连接、上次打开的标签页 | — | `AppShell.saveWindowState` |
+| S8 | 标签栏右键补「复制表名 / 复制 SELECT」 | ✅ 已补 | — | `TabBar.buildTab` |
+| S6 | 菜单栏有独立的**「收藏夹」顶级菜单** | ✅ 菜单栏有「收藏夹」顶级菜单 + 收藏夹面板；收藏**落盘**（以前退出即丢） | ~~收藏缺少全局入口~~ | `MenuBarFactory.favoritesMenu` + `FavoritesPage` |
 
 **结论**：功能清单之外，Navicat 的**窗口骨架**本身也是产品力的一部分。
 我们的骨架在「数据页 / 查询页」上已经接近，但「对象浏览」这一层还差 S1–S6 这一整套。
@@ -118,7 +120,7 @@
 | **D18** | `core/adb-declarations` 的 `DeclarationLoader.java:36` javadoc 写「两者的解析结果必须完全相同，这本身要有一条测试守着」——**没有这条测试**，且 `loadFromClasspath()` 实际是坏的 | `DeclarationLoader.java:119-151` |
 | **D19** | `DeclarationLoader.java:27` 的 `{@link DeclarationCheckMojo}` **指向一个不存在的类** | 全仓 0 命中 |
 
-### 0.3 本轮关闭的差距（28 项）
+### 0.3 本轮关闭的差距（36 项）
 
 第四轮复核后，**B0–B4 批次全部落地**，下列差距已经关掉：
 
@@ -147,6 +149,8 @@
 | **方言** | **方言抽象层（A1）**：加一种数据库从「改 5 个文件」变成「写一个 Dialect 实现」；`SchemaService` / `StructureSqlBuilder` 里没有方言专属 SQL | `Dialect` + 3 实现 + `DialectBranchAuditTest` |
 | **方言** | **第三层危险门禁（驱动侧复查）**：调用方必须声明危险等级，驱动侧再判一次，实际更危险就拒绝 | `DbSession.requireDeclared` |
 | **统计** | surefire 统计口径失真已修（`tools/TestCount.java` 按 `<testcase>` 计数 + 下限断言） | `tools/TestCount.java` |
+| **窗口骨架** | **S1 大图标功能栏 / S2 表清单 / S4 底部搜索 / S6 收藏夹菜单 / S7 窗口状态 / S8 标签右键**全部落地 | `MainToolBar` / `TableListPage` / `SideBar` / `MenuBarFactory` |
+| **网格 / 编辑器** | **G3 本页统计 / G5 编辑后跳格 / Q1 括号匹配 / Q3 结果排序 / Q4 列宽持久化**落地 | `DataGridPage` / `SqlBrackets` / `QueryPage` |
 | **对象树** | **多连接对象树**：所有连接在同一棵树里（Navicat 的「我的连接」模型），展开懒加载；打开表按节点所属连接建标签 | `SideBar.buildTreeModel` + `SideBarTreeTest` |
 | **工具** | **已保存查询库**：查询页「存为命名查询」+ 侧栏列表（打开/重命名/删除），落本地偏好 | `SavedQueries` + `SavedQueriesTest` |
 | **设计令牌** | **令牌体系收敛**：112 → 60 个，全部被用到（CSS 引用或 Java 常量消费）；`risk-*` 家族终于用上了（四级风险各一套配色）；侧栏宽度 / 栏高 / Toast 时长的魔数换成令牌 | `tokens.json` + `TokenParityTest.everyTokenIsActuallyUsed` |
@@ -173,7 +177,7 @@
 | **schema / catalog 树** | 🟡 | **schema 有了**：切换器 + `SET search_path`；**catalog 仍缺**（MySQL 的多库场景），`getCatalogs()` 没调用 |
 | **连接分组 / 标签** | ⛔ | — |
 | **最近连接排序** | ⛔ | `ConnectionProfile.lastUsedAt` 字段存在且会写，但列表不按它排序 |
-| **`options` 脱敏** | ⚠️ | `ConnectionProfile.withPasswordlessOptions`（`:90`）**零调用**；`options` 明文落盘，且**能覆盖钥匙串口令**（`JdbcSession.java:60` 在设置 `password` **之后**才 apply options） |
+| **`options` 脱敏** | ✅ | 落盘前剔除口令类键（`ConnectionProfile.sanitizedOptions`）；且 options **不再能覆盖**钥匙串口令（options 先 apply，user/password 后设） |
 
 ### 1.2 对象树
 
@@ -210,11 +214,11 @@
 | 快捷键 `⌘C`/`⌥⌘C`/`⇧⌘C`/`⌘A` | ✅ | `DataGridPage.java:273-292`（上一版文档记为 ⛔，见 D5） |
 | 分页 `⇤`/`⇥`/`跳至页` | ✅ | `DataGridPage.java:766-795`（上一版文档记为 ⛔，见 D16） |
 | 三态 + 重试 | ✅ | `showLoading`/`showError`/`hideState`，错误态有「重试」按钮（`:134, 2628-2629`） |
-| **冻结 / 固定列** | ⛔ | 全仓 `freeze`/`frozen`/`pinned` 0 命中 |
-| **列汇总（SUM / AVG / COUNT 脚注行）** | ⛔ | 没有脚注行 |
+| **冻结 / 固定列** | ⛔ | JavaFX 没有原生冻结列，要两个 TableView 并排（选中/滚动/排序/编辑四路同步）。本轮试过又撤回：同步没做全会就等于半成品 |
+| **列汇总（SUM / AVG / COUNT 脚注行）** | ✅ | 「视图 → 本页统计」：行数 + 数值列的合计/平均/最小/最大 |
 | **列头拖拽重排** | ⛔ | 顺序**能持久化**（`layoutKey("order")`）但**没有任何运行时改序入口**，读回来恒等于写进去的顺序 |
 | **单元格区域选择（拖选 / Shift 范围选）** | ⛔ | 只有行选择（`SelectionMode.MULTIPLE`）+ 勾选列 |
-| **编辑后跳到下一格（Tab / ↓）** | ⛔ | `commitEditor` 只提交 + 刷新，不移动焦点 |
+| **编辑后跳到下一格（Tab / ↓）** | ✅ | Tab / Shift+Tab / ↓ / ↑，跳过去直接开始编辑 |
 | **自增列插入 / 主键批量改** | ⛔ | 全仓 `autoIncrement`/`AUTO_INCREMENT` 只在死代码模块命中 |
 | **整表导出（不限当前页）** | ⛔ | 导出菜单 3 项全部是「当前页」 |
 | **行级导航（首行 / 末行 / 跳到第 N 行）** | ⛔ | 只有页级导航 |
@@ -233,8 +237,8 @@
 | 查询历史 | ✅ | 最近 50 条，去重，落 `java.util.prefs` |
 | 查找替换 / 格式化 / 注释 | ✅ | `⌘F` / `⌥⇧F` / `⌘/` |
 | 结果截断提示 | ✅ | 「⚠ 结果已截断，上限 1000 行」（`:807-814`） |
-| **括号匹配 / 代码折叠** | ⛔ | `SqlEditor` 只挂了行号 + 高亮 |
-| **结果集排序 / 列宽持久化** | ⛔ | `column.setSortable(false)`（`:784`）；`QueryPage` 收了 `SettingsStore` 但只用于 `QueryHistory`，列宽固定 140 |
+| **括号匹配 / 代码折叠** | 🟡 | **括号匹配已做**（`SqlBrackets`：字符串与注释里的括号不算）；代码折叠未做 |
+| **结果集排序 / 列宽持久化** | ✅ | 结果列可排序；列宽按「连接名 + 列名」落盘 |
 | **结果集分页** | ⛔ | 一次性装进 `ObservableList`，硬上限 1000 |
 | **变量 / 参数替换** | ⛔ | — |
 | **代码片段 / 模板库 / 已保存查询** | ⛔ | 侧栏「已保存查询」是空壳；`query.save` 只存 `.sql` 文件 |
@@ -274,7 +278,7 @@
 | 诊断（表/索引健康） | ⛔ | 空壳 |
 | **侧栏「查询历史」入口** | ⚠️ | 侧栏按钮开的是**空壳 TOOL 页**；真正的 `QueryHistory`（prefs 持久化、可用）只挂在 `QueryPage` 上 —— **有能用的功能没入口，有入口不能用** |
 | 计划任务 / 自动运行 | ⛔ | 明确不做 |
-| 事务管理（显式 BEGIN/COMMIT） | 🟡 | `StatusBar.setTransaction` **零调用**，永远显示「自动提交」 |
+| 事务管理（显式 BEGIN/COMMIT） | 🟡 | 状态栏会显示真实事务状态（保存期间「事务中」），但**没有让用户手动 BEGIN/COMMIT** 的入口 |
 | 表 / 字段级权限 | ⛔ | 明确不做 |
 | ER 图 | ⛔ | 明确不做 |
 | 数据同步 | ⛔ | 明确不做 |
@@ -316,9 +320,9 @@
 
 | 字段 | 状态 | 证据 |
 |---|---|---|
-| `DEV` 环境标记 | `setEnv` **零调用**，永远是 `DEV` | `StatusBar.java:46` |
-| `未选择` | `setSelection` **零调用**，永远显示「未选择」 | `StatusBar.java:64` |
-| `自动提交` | `setTransaction` **零调用**，永远显示「自动提交」 | `StatusBar.java:72` |
+| `DEV` 环境标记 | ✅ 改成**当前方言** | `StatusBar.setDialect` |
+| `未选择` | ✅ 接了**真实选中行数** | `StatusBar.setSelection` |
+| `自动提交` | ✅ 接了**真实事务状态** | `StatusBar.setTransaction` |
 
 ### 2.4 线程与取消语义
 
@@ -503,7 +507,7 @@ ui/adb-ui-shell → workbench/{adb-session, adb-introspect, adb-editing, adb-jdb
 | A11 | **结果截断静默（数据页路径）** | `query()` 丢掉 `truncated`；`RowPage` 无该字段 | `JdbcSession.java:119-121`；`RowPage.java:17-30` |
 | A12 | **连接池是 1 槽装饰器** | 池大小 1，连接**借出后从不归还**；每个连接档案一个 `HikariDataSource` | `ConnectionPool.java:38-52` |
 | A13 | **macOS 钥匙串口令经 argv 泄漏** | `security add-generic-password -w <password>` → `ps` 可见 | `KeychainCredentialStore.java:40-41` |
-| A14 | **`options` 明文落盘 + 可覆盖口令** | `withPasswordlessOptions` 零调用；options 在 password **之后** apply | `ConnectionProfile.java:90`；`JdbcSession.java:57-60` |
+| ~~A14~~ | ~~`options` 明文落盘 + 可覆盖口令~~ **已做**：落盘前脱敏；options 改成先 apply | `ConnectionProfile.sanitizedOptions`；`JdbcSession.open` |
 | A15 | **连接与内省跑在 UI 线程** | `connectProfile` / `testConnection` 同步 | `AppShell.java:177-211, 255-256` |
 | A16 | **全局单线程执行器** | A 连接的慢查询阻塞 B 连接 | `AppShell.java:69-73` |
 | A17 | **令牌体系名义与实现脱节** | 120 个令牌只有 **41** 个被 `app.css` 引用；**60 个非颜色令牌永远不会进 CSS**（生成器只导出 color） | `GenTokens.java:132-134` |

@@ -12,7 +12,7 @@
 
 | 指标 | 值 |
 |---|---|
-| 门禁 | **44 个测试类 / 385 条测试用例 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`） |
+| 门禁 | **45 个测试类 / 392 条测试用例 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`） |
 | 进度 | P0–P4 完成；**P4.5 的 B0–B4 已全部落地**；P5 🟡；P6/P7 ⬜ |
 | 截图 | `docs/screenshots/` 6 张**已按当前代码重拍**（亮 / 暗两套主题） |
 | 未提交 | P4/P4.5 全部改动尚未 commit（见 §5） |
