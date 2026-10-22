@@ -217,6 +217,58 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /** 拖动超过这个位移就算「拖」而不是「点」—— 点列头是排序。 */
     private static final double DRAG_THRESHOLD = 6;
 
+    // ─────────────── G4：单元格区域选择 ───────────────
+    /**
+     * ⭐ G4：矩形选区。列下标是「可见数据列」的下标（行号列 / 选择列不算），
+     * 行下标是当前页 {@code items} 的下标 —— 都取用户眼睛看到的坐标，
+     * 不被「列被隐藏」「列被拖到别处」这些内部顺序干扰。
+     */
+    private GridRectangle rectangle;
+    /** 拖选的锚点（矩形的起点）。 */
+    private GridCell rectangleAnchor;
+    /** 是否正在拖选（决定鼠标拖动要不要扩展矩形）。 */
+    private boolean rectangleDragging;
+
+    /** 一个单元格坐标（行 + 可见数据列下标）。 */
+    private record GridCell(int row, int column) {
+    }
+
+    /** 一个矩形选区（两个对角即可，取 min/max 消掉方向）。 */
+    private record GridRectangle(int fromRow, int fromColumn, int toRow, int toColumn) {
+        private int minRow() {
+            return Math.min(fromRow, toRow);
+        }
+
+        private int maxRow() {
+            return Math.max(fromRow, toRow);
+        }
+
+        private int minColumn() {
+            return Math.min(fromColumn, toColumn);
+        }
+
+        private int maxColumn() {
+            return Math.max(fromColumn, toColumn);
+        }
+
+        private int rowCount() {
+            return maxRow() - minRow() + 1;
+        }
+
+        private int columnCount() {
+            return maxColumn() - minColumn() + 1;
+        }
+
+        private boolean isSingleCell() {
+            return rowCount() == 1 && columnCount() == 1;
+        }
+
+        private boolean contains(int row, int column) {
+            return row >= minRow() && row <= maxRow()
+                    && column >= minColumn() && column <= maxColumn();
+        }
+    }
+
     private final Map<String, TableColumn<Map<String, Object>, Object>> columnByDefinition =
             new LinkedHashMap<>();
     private final EditBuffer editBuffer;
@@ -247,6 +299,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private boolean transpose;
     private EditSqlBuilder.Plan saveUndoPlan;
     private String lastSql = "";
+    /** ⭐ 最近一次复制出去的文本。headless 下单测读不回系统剪贴板，门禁断言这个。 */
+    private String lastCopiedText = "";
     private List<Map<String, Object>> pageRows = List.of();
 
     public DataGridPage(DbSession session,
@@ -307,6 +361,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 event.consume();
                 return;
             }
+            // ⭐ G4：Esc 取消矩形选区（在输入框里按 Esc 不该动选区，所以放在上面那条之后）
+            if (event.getCode() == KeyCode.ESCAPE && hasRectangleSelection()) {
+                clearRectangleSelection();
+                event.consume();
+                return;
+            }
             if (event.getTarget() instanceof javafx.scene.control.TextInputControl) {
                 return;
             }
@@ -326,8 +386,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 event.consume();
             } else if (event.isShortcutDown() && !event.isShiftDown() && !event.isAltDown()
                     && event.getCode() == KeyCode.C) {
-                // ⌘C 复制当前单元格的值
-                copyFocusedCellValue();
+                // ⌘C：框了区域就复制这块区域（Excel 的直觉），没框才复制当前单元格
+                if (hasRectangleSelection()) {
+                    copyRectangleAsTsv();
+                } else {
+                    copyFocusedCellValue();
+                }
                 event.consume();
             } else if (event.isShortcutDown() && event.isAltDown()
                     && event.getCode() == KeyCode.C) {
@@ -2391,6 +2455,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         items.addAll(pageRows);
         List<Map<String, Object>> visible = applyViewFilters(items);
         grid.setItems(FXCollections.observableArrayList(visible));
+        // ⭐ G4：换了一页数据，旧矩形的行下标就指向另一批行了 —— 必须清掉，
+        //   否则用户会复制到一个「看着像选区、其实是新页数据」的矩形。
+        if (rectangle != null) {
+            rectangle = null;
+            rectangleAnchor = null;
+            rectangleDragging = false;
+        }
         // ⭐ 行数变了，记录导航条上的「第 N / 共 M 行」要跟着更新。
         updateRecordPosition();
         // ⭐ G3：行变了，统计要跟着重算。
@@ -2943,10 +3014,149 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         Object value = column.getCellObservableValue(row) == null
                 ? null
                 : column.getCellObservableValue(row).getValue();
+        String text = value == null ? "" : String.valueOf(value);
         ClipboardContent content = new ClipboardContent();
-        content.putString(value == null ? "" : String.valueOf(value));
+        content.putString(text);
         Clipboard.getSystemClipboard().setContent(content);
+        lastCopiedText = text;
         feedback.status("已复制单元格值");
+    }
+
+    // ─────────────── G4：单元格区域选择 ───────────────
+
+    /**
+     * 参与矩形选区的列 = 可见的**数据列**。
+     *
+     * <p>行号列与勾选列没有 {@code userData}，天然被排除 —— 框选时用户框的是数据，
+     * 不是行号。用「可见」而不是「全部」是因为隐藏的列用户根本看不到，
+     * 若按全部列算下标，隐藏一列就会让矩形整体错位。
+     */
+    private List<TableColumn<Map<String, Object>, ?>> rectangleColumns() {
+        List<TableColumn<Map<String, Object>, ?>> columns = new ArrayList<>();
+        for (TableColumn<Map<String, Object>, ?> column : grid.getVisibleLeafColumns()) {
+            if (column.getUserData() != null) {
+                columns.add(column);
+            }
+        }
+        return columns;
+    }
+
+    /** 这一列在「可见数据列」里的下标；不是数据列、或不可见 → -1（不参与矩形）。 */
+    private int rectangleColumnIndex(TableColumn<?, ?> column) {
+        if (column == null || column.getUserData() == null || !column.isVisible()) {
+            return -1;
+        }
+        List<TableColumn<Map<String, Object>, ?>> columns = rectangleColumns();
+        for (int i = 0; i < columns.size(); i++) {
+            if (columns.get(i) == column) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** 这个坐标是否落在矩形选区内。 */
+    private boolean inRectangle(int row, int column) {
+        return rectangle != null && row >= 0 && column >= 0 && rectangle.contains(row, column);
+    }
+
+    /**
+     * 框选一个矩形（两个对角，行列自动取 min/max，越界夹到表格内）。
+     *
+     * <p>公开是为了两件事：Shift 扩展选区，以及门禁能**不依赖像素坐标**地构造矩形
+     * （headless 下模拟鼠标拖选既慢又脆，而这里要验的是「复制的内容对不对」）。
+     */
+    public void selectRectangle(int fromRow, int fromColumn, int toRow, int toColumn) {
+        int rows = grid.getItems().size();
+        int columns = rectangleColumns().size();
+        if (rows == 0 || columns == 0) {
+            clearRectangleSelection();
+            return;
+        }
+        rectangle = new GridRectangle(
+                Math.max(0, Math.min(rows - 1, fromRow)),
+                Math.max(0, Math.min(columns - 1, fromColumn)),
+                Math.max(0, Math.min(rows - 1, toRow)),
+                Math.max(0, Math.min(columns - 1, toColumn)));
+        refreshRectangle();
+    }
+
+    /** 取消矩形选区（翻页、重载、Esc 都会走这里）。 */
+    public void clearRectangleSelection() {
+        boolean had = rectangle != null;
+        rectangle = null;
+        rectangleAnchor = null;
+        rectangleDragging = false;
+        if (had) {
+            refreshRectangle();
+        }
+    }
+
+    public boolean hasRectangleSelection() {
+        return rectangle != null;
+    }
+
+    /** 矩形尺寸（行 × 列）；没有选区返回 0。 */
+    public String rectangleSize() {
+        return rectangle == null ? "" : rectangle.rowCount() + " × " + rectangle.columnCount();
+    }
+
+    /**
+     * 矩形里的文本（TSV），**不含表头**。
+     *
+     * <p>不含表头是刻意的：用户框住的就是那块数据，粘到 Excel 里要的就是那块数据；
+     * 复制整行的那条路径（⌥⌘C）才带表头，两者用途不同。
+     */
+    public String rectangleText() {
+        if (rectangle == null) {
+            return "";
+        }
+        List<TableColumn<Map<String, Object>, ?>> columns = rectangleColumns();
+        StringBuilder text = new StringBuilder();
+        for (int row = rectangle.minRow(); row <= rectangle.maxRow(); row++) {
+            Map<String, Object> data = grid.getItems().get(row);
+            for (int column = rectangle.minColumn();
+                 column <= rectangle.maxColumn(); column++) {
+                if (column > rectangle.minColumn()) {
+                    text.append('\t');
+                }
+                text.append(cellText(data, columns.get(column)));
+            }
+            text.append('\n');
+        }
+        return text.toString();
+    }
+
+    /** 单元格的显示文本 —— 走 {@link #cellValue}，草稿值 / 渲染规则与表格里看到的保持一致。 */
+    private String cellText(Map<String, Object> row,
+                            TableColumn<Map<String, Object>, ?> column) {
+        String name = String.valueOf(column.getUserData());
+        ColumnDef definition = columnDef(name);
+        Object value = definition == null ? row.get(name) : cellValue(row, definition);
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    /** ⭐ G4：把矩形复制成 TSV。⌘C 在存在矩形选区时走这里。 */
+    private void copyRectangleAsTsv() {
+        if (rectangle == null) {
+            return;
+        }
+        String text = rectangleText();
+        ClipboardContent content = new ClipboardContent();
+        content.putString(text);
+        Clipboard.getSystemClipboard().setContent(content);
+        lastCopiedText = text;
+        feedback.status("已复制 " + rectangle.rowCount() + " × "
+                + rectangle.columnCount() + " 区域");
+    }
+
+    /** 矩形变了要重算 cell 样式（{@code TableView} 不会自己重画）。 */
+    private void refreshRectangle() {
+        grid.refresh();
+        if (rectangle != null) {
+            feedback.status("已选 " + rectangle.rowCount() + " × "
+                    + rectangle.columnCount() + " 区域 · ⌘C 复制");
+        }
     }
 
     private void copySelectedAsTsv() {
@@ -2975,6 +3185,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         ClipboardContent content = new ClipboardContent();
         content.putString(text.toString());
         Clipboard.getSystemClipboard().setContent(content);
+        lastCopiedText = text.toString();
         feedback.status("已复制 " + scope + " " + rows.size() + " 行为 TSV");
     }
 
@@ -3020,6 +3231,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         ClipboardContent content = new ClipboardContent();
         content.putString(sql.toString());
         Clipboard.getSystemClipboard().setContent(content);
+        lastCopiedText = sql.toString();
         feedback.status("已复制 " + scope + " " + rows.size() + " 行 INSERT");
     }
 
@@ -3163,7 +3375,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 "adb-grid__cell--null", "adb-grid__cell--empty", "adb-grid__cell--number",
                 "adb-grid__cell--boolean", "adb-grid__cell--binary", "adb-grid__cell--dirty",
                 "adb-grid__cell--json", "adb-grid__cell--enum", "adb-grid__cell--date",
-                "adb-grid__cell--long-text");
+                "adb-grid__cell--long-text", "adb-grid__cell--rect");
 
         private final ColumnDef definition;
         private TextField editor;
@@ -3179,6 +3391,38 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                         this, event.getScreenX(), event.getScreenY());
                 event.consume();
             });
+            // ⭐ G4：按下定锚点、拖动扩展矩形、松开收尾。
+            //   每个 cell 自己知道 (行, 可见数据列下标)，拖动经过时这里就会触发 ——
+            //   不需要去算像素坐标，那是 「坐标一变测试就红」 的老路。
+            setOnMousePressed(event -> {
+                int row = getIndex();
+                int column = rectangleColumnIndex(getTableColumn());
+                if (isEmpty() || row < 0 || column < 0) {
+                    return;
+                }
+                if (event.isShiftDown() && rectangleAnchor != null) {
+                    // Shift + 点击 = 从锚点扩展到这一格（Excel 的选区语义）
+                    selectRectangle(rectangleAnchor.row(), rectangleAnchor.column(),
+                            row, column);
+                    return;
+                }
+                rectangleAnchor = new GridCell(row, column);
+                rectangleDragging = true;
+                selectRectangle(row, column, row, column);
+            });
+            setOnMouseDragged(event -> {
+                if (!rectangleDragging || rectangleAnchor == null) {
+                    return;
+                }
+                int row = getIndex();
+                int column = rectangleColumnIndex(getTableColumn());
+                if (isEmpty() || row < 0 || column < 0) {
+                    return;
+                }
+                selectRectangle(rectangleAnchor.row(), rectangleAnchor.column(),
+                        row, column);
+            });
+            setOnMouseReleased(event -> rectangleDragging = false);
         }
 
         @Override
@@ -3192,6 +3436,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             if (empty) {
                 setText(null);
                 return;
+            }
+            // ⭐ G4：矩形选区高亮。放在所有 return 分支**之前** ——
+            //   布尔列会渲染成 CheckBox 并提前 return，晚加就漏掉那一格。
+            if (inRectangle(getIndex(), rectangleColumnIndex(getTableColumn()))) {
+                getStyleClass().add("adb-grid__cell--rect");
             }
             Map<String, Object> row = getTableRow() == null ? null : getTableRow().getItem();
             Object value = row == null ? item : cellValue(row, definition);
@@ -3581,6 +3830,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /** 最近一次下发的分页 SQL；用于状态复盘与 TestFX 的 ORDER BY / WHERE 断言。 */
     public String lastSql() {
         return lastSql;
+    }
+
+    /** 最近一次复制出去的文本（矩形复制 / 整行复制都会记）。 */
+    public String lastCopiedText() {
+        return lastCopiedText;
     }
 
     public DataQuery query() {

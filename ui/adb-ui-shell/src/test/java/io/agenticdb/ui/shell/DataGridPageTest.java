@@ -529,6 +529,80 @@ class DataGridPageTest {
         }
     }
 
+    @Test
+    void rectangleSelectionCopies() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("rect.db"))));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
+                    "rect.db", noOpFeedback(), name -> { }, executor);
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                    page.lookup("#data-table") != null && tableItems(page).size() == 200);
+            WaitForAsyncUtils.waitForFxEvents();
+
+            List<Map<String, Object>> rows = tableItems(page);
+
+            // ⭐ G4：框住 3 行 × 2 列（可见数据列前两列 = id / name）
+            WaitForAsyncUtils.asyncFx(() -> page.selectRectangle(0, 0, 2, 1)).get();
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(page.hasRectangleSelection()).isTrue();
+            assertThat(page.rectangleSize()).isEqualTo("3 × 2");
+
+            // ⌘C 在有矩形时复制的是**这块区域**
+            pressShortcut(page, javafx.scene.input.KeyCode.C, false, false);
+            WaitForAsyncUtils.waitForFxEvents();
+
+            String text = page.lastCopiedText();
+            assertThat(text).endsWith("\n");
+            String[] lines = text.split("\n", -1);
+            // 3 行数据 + 末尾换行产生的空串；**不含表头**（复制整行那条路径才带表头）
+            assertThat(lines).hasSize(4);
+            for (int i = 0; i < 3; i++) {
+                String[] fields = lines[i].split("\t", -1);
+                assertThat(fields).as("第 %d 行应只有框住的 2 列", i).hasSize(2);
+                assertThat(fields[0]).isEqualTo(String.valueOf(rows.get(i).get("id")));
+                assertThat(fields[1]).isEqualTo(String.valueOf(rows.get(i).get("name")));
+            }
+            // 真的进了系统剪贴板（lastCopiedText 只是断言用的镜像）
+            assertThat(clipboardText()).isEqualTo(text);
+
+            // 矩形之外的列不该出现在复制结果里 —— 这是「复制矩形」与「复制整行」的分界
+            assertThat(text).doesNotContain("@");
+
+            // Esc 取消矩形
+            WaitForAsyncUtils.asyncFx(() -> page.fireEvent(new javafx.scene.input.KeyEvent(
+                    javafx.scene.input.KeyEvent.KEY_PRESSED, "", "",
+                    javafx.scene.input.KeyCode.ESCAPE, false, false, false, false))).get();
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(page.hasRectangleSelection()).as("Esc 应取消矩形选区").isFalse();
+
+            // 没有矩形时 ⌘C 仍复制**单个单元格**（旧行为不回归）。
+            // 必须 focus 到具体的 (行, 列) —— 只 focus 行的话焦点列是 null，
+            // copyFocusedCellValue 会直接 return，那就什么都没复制到。
+            WaitForAsyncUtils.asyncFx(() -> {
+                javafx.scene.control.TableView<Map<String, Object>> table = tableOf(page);
+                javafx.scene.control.TableColumn<Map<String, Object>, ?> column =
+                        table.getVisibleLeafColumns().stream()
+                                .filter(item -> item.getUserData() != null)
+                                .findFirst().orElse(null);
+                table.getSelectionModel().clearAndSelect(5);
+                table.getFocusModel().focus(5, column);
+            }).get();
+            WaitForAsyncUtils.waitForFxEvents();
+            pressShortcut(page, javafx.scene.input.KeyCode.C, false, false);
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(page.lastCopiedText())
+                    .as("无矩形时 ⌘C 复制的是单个单元格，不该有行列分隔符")
+                    .doesNotContain("\t").doesNotContain("\n");
+
+            page.close();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
     private static void pressShortcut(DataGridPage page, javafx.scene.input.KeyCode code,
                                       boolean shift, boolean alt) throws Exception {
         javafx.scene.input.KeyEvent event = new javafx.scene.input.KeyEvent(

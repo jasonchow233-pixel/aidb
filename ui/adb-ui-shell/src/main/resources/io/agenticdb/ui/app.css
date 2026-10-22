@@ -1537,6 +1537,16 @@
     -fx-border-width: 0 0 0 2;
 }
 
+/* ⭐ G4：矩形选区。必须和「选中整行」区分得开 —— 否则用户分不清
+   「选中了整行」和「框住了一块」，这正是区域选择最容易看错的地方。
+   用 accent 描边 + accent 淡底（-adb-bg-active），不动文字色：
+   底色是半透明的，NULL / 脏值那两条语义色不会被盖掉。 */
+.adb-grid .table-cell.adb-grid__cell--rect {
+    -fx-background-color: -adb-bg-active;
+    -fx-border-color: -adb-border-focus;
+    -fx-border-width: 1px;
+}
+
 .adb-grid__editor {
     -fx-background-color: -adb-bg-surface;
     -fx-text-fill: -adb-text-primary;
