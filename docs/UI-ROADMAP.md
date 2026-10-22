@@ -312,7 +312,7 @@ Button funnel = new Button("▽");   // 每个列头都挂一个，永远可见
 | 结果集分页 | ✅ | ❌（硬上限 1000） | 中 |
 | 表清单元数据 | ✅ 行数/大小/引擎/时间 | ✅ 已做 | 无差距 |
 | 连接列表表格 | ✅ 可排序 | ❌ ListView | 中 |
-| catalog（多库） | ✅ | ❌ | 中 |
+| catalog（多库） | ✅ | ✅ **已做（第十四轮 U1）**：对象树库一层 + 切库换虚拟连接 | 无差距 |
 | 索引 / 外键 / 触发器可编辑 | ✅ | ❌ 只读 | 中 |
 
 ### 2.7 布局
@@ -395,8 +395,8 @@ Button funnel = new Button("▽");   // 每个列头都挂一个，永远可见
 | **G6** | 自增列插入（新增行时主键留空） | `DataGridSaveGuardTest.autoIncrementColumnStaysEmpty` |
 | **Q5** | 查询结果分页（现在硬上限 1000） | `QueryPageTest.resultPagination` |
 | **Q6** | 代码片段库（与已保存查询合并） | `SavedQueriesPageTest.snippetLibrary` |
-| **U1** | catalog 树（MySQL 多库；MySQL 的 schema = 数据库，`USE` 不管用） | `SchemaServiceTest.catalogSwitch` |
-| **U2** | 多连接并行（`AppShell` 单 `activeProfile` / 单 `session` → 按连接 id 取） | `SessionManagerTest` 扩用例 |
+| ~~**U1**~~ | ~~catalog 树（MySQL 多库；MySQL 的 schema = 数据库，`USE` 不管用）~~ ✅ **第十四轮已完成**：切库 = 换虚拟连接（`父id@库名`） | `CatalogTreeTest`(5) + `CatalogVariantProfileTest`(5) + `SideBarTreeTest`(+5) |
+| **U2** | 多连接并行（`AppShell` 单 `activeProfile` / 单 `session` → 按连接 id 取） | `SessionManagerTest` 扩用例 | ✅ **第十二轮已完成** |
 | **U3** | 连接属性页（超时 / SSL / 字符集 / 连接池 / 附加参数） | `ConnectionWizardTest.propertiesStep` |
 | **U4** | 索引 / 外键 / 触发器**可编辑**（当前只读） | `StructurePageTest.indexEditor` |
 | **U5** | 对象首页标签（S5） | `TabBarTest.objectHomeTabIsPermanent` |

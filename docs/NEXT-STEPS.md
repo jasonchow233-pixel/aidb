@@ -4,7 +4,7 @@
 > `NAVICAT-TODO.md` 是唯一执行清单（逐条勾选）；本文件是**阶段规划**（批次 + 依赖 + 门禁）。
 > **界面专项的详细分析与规范见 `docs/UI-ROADMAP.md`**。
 >
-> 最后更新：**2026-10-21（第五轮：界面专项 U-B1…U-B5 已落地 + Navicat 实拍对比）**
+> 最后更新：**2026-10-22（第十四轮：U1 catalog 树已完成，下一批 Q5+V-9 → G4 → G1）**
 
 ---
 
@@ -12,11 +12,11 @@
 
 | 指标 | 值 |
 |---|---|
-| 门禁 | **631 条 / 84 类 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`；35 条跳过） |
+| 门禁 | **662 条 / 86 类 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`；35 条跳过） |
 | 真库验证 | ✅ SQLite（演示库）· ✅ **MySQL 5.7.44 真库**（9 例全绿）· ⬜ PostgreSQL（**暂无测试库**） |
 | 截图 | `docs/screenshots/` **9 张**已按当前代码重拍（亮 / 暗两套主题 + 表清单 + 新建表/索引弹窗） |
-| 工作区 | 干净（HEAD `e5e1eb7`） |
-| **下一动作** | ⭐ **D3（CHECK 约束丢失）→ B5-S2/S3（外键/触发器可编辑）→ B5-S4/O1/O2（表注释/事件/函数定义体）→ U-B6 剩余（G1/G4/Q5/U1-U3）→ 界面剩余（V-5/V-6/V-9/V-11/V-12）**。见 `NAVICAT-TODO.md` §16.4 / §18 |
+| 工作区 | 干净 |
+| **下一动作** | ⭐ **Q5+V-9（查询结果分页 + 表格规格统一）→ G4 区域选择 → G1 冻结列**。U1 catalog 树已于第十四轮完成（见 `NAVICAT-TODO.md` §24）。见 `NAVICAT-TODO.md` §21 / §24 |
 
 > 🔴 **第六轮全量核查改变了优先级排序**：门禁 443 条全绿，但逐文件核对发现
 > **4 个真实缺陷**（其中 D2「改列抹注释」与 D3「改列丢 CHECK」会**丢数据且无撤销**），
@@ -45,7 +45,7 @@
 |---|---|---|---|
 | **A. 界面品质** | 字号阶梯、焦点环、图标统一、工具栏层级、密度全局生效 | **高**（每一次使用都在看） | **低–中**（大部分是 CSS + 少量 Java） |
 | **B. 网格/查询进阶** | 冻结列、列拖拽、区域选择、结果分页 | 中高 | 中 |
-| **C. 连接管理收尾** | 多连接并行、catalog 树、连接属性页 | 中 | 中高（要动外壳状态模型） |
+| **C. 连接管理收尾** | ~~多连接并行~~ ✅ · ~~catalog 树~~ ✅（第十四轮）· ~~连接属性页~~ ✅ | 中 | 中高（要动外壳状态模型） |
 
 > ⚠️ **A 类被长期低估**：实测发现界面有 **11 个具体问题**（见 `docs/UI-ROADMAP.md` §1），
 > 其中「只有 3 处 focus 环」「9px 小字」「10 个按钮 9 个一样」这类问题**每次打开都在发生**，
@@ -64,7 +64,7 @@
 | **U-B3** | **焦点与交互态层**：26 条 focus 规则；禁用态不再被整体压暗 | `FocusRingAuditTest`（6 例）+ `DisabledButtonVisibilityTest`（3 例） | ✅ **已完成** |
 | **U-B4** | **图标层**：38 个 SVGPath 矢量图标；按钮里一个 Unicode 符号都不剩 | `IconSystemAuditTest`（4 例） | ✅ **已完成** |
 | **U-B5** | **布局与组件**：工具栏 3 组 / 记录导航条 / 列头筛选悬停浮现 / **连接列表改 7 列表格** / **密度全局 4 处** / 空状态按钮 / 应用图标 | `GridInteractionTest`（3）+ `DensityCoverageTest`（4）+ `ConnectionsPageTest`（+3） | ✅ **已完成** |
-| **U-B6** | **功能补齐层**：G1/G2/G4/G6/Q5/Q6/U1–U6（见 `NAVICAT-TODO.md` §13） | 各项目标单测 | 🟡 **进行中**（G2 ✅ / G6 ✅ / G5 ✅；**G1 冻结列 · G4 区域选择 仍为零**） |
+| **U-B6** | **功能补齐层**：G1/G2/G4/G6/Q5/Q6/U1–U6（见 `NAVICAT-TODO.md` §13） | 各项目标单测 | 🟡 **进行中**（G2 ✅ / G6 ✅ / G5 ✅ / **U1 ✅ catalog 树（第十四轮）**；**G1 冻结列 · G4 区域选择 仍为零**） |
 | **—** | 🆕 **第六轮全量核查**：4 个真实缺陷 + 表级生命周期空白 + 一键脚本 | 见 `NAVICAT-TODO.md` §14 | ✅ **核查完成** |
 
 > ⚠️ 本表上一版把 U-B4 / U-B5 各写了两遍（一遍标工期、一遍标完成），本轮已去重。
@@ -99,9 +99,9 @@
 
 | 顺序 | 项 | 说明 | 门禁 |
 |---|---|---|---|
-| 1 | **多连接并行** | `AppShell` 现在是单 `activeProfile` / 单 `session`，切标签即切连接。改为按连接 id 取会话，工具栏显示**当前标签**的连接 | `SessionManagerTest` 扩用例 |
-| 2 | **catalog 树** | schema 那一半已做；**catalog 那一半还缺** —— MySQL 的 schema 就是数据库，`USE` 不管用，要靠 catalog 切换后重连 | `SchemaServiceTest.catalogSwitch` |
-| 3 | **连接属性页** | `ConnectionProfile.options` 自由 Map 向导化（读超时 / SSL / 字符集 / 连接池） | `ConnectionWizardTest.propertiesStep` |
+| 1 | **多连接并行** | `AppShell` 现在是单 `activeProfile` / 单 `session`，切标签即切连接。改为按连接 id 取会话，工具栏显示**当前标签**的连接 | `SessionManagerTest` 扩用例 | ✅ **已完成（第十二轮）** |
+| 2 | ~~**catalog 树**~~ | ~~schema 那一半已做；**catalog 那一半还缺**~~ | `CatalogTreeTest`(5) + `CatalogVariantProfileTest`(5) + `SideBarTreeTest`(+5) | ✅ **已完成（第十四轮 U1，见 `NAVICAT-TODO.md` §24）** |
+| 3 | **连接属性页** | `ConnectionProfile.options` 自由 Map 向导化（读超时 / SSL / 字符集 / 连接池） | `ConnectionWizardTest.propertiesStep` | ✅ **已完成（第十二轮·续三）** |
 | 4 | **Windows 凭据** | WinCred / DPAPI 后端（当前落内存） | `CredentialStoreTest.windowsBackend` |
 
 ---
@@ -159,7 +159,7 @@ P1  3) T1     新建表 —— 生成器已就绪，只差 UI 入口（投产比
 P1  4) D3     CHECK 约束 —— 内省 + 重建 SQL 搬运，改列不再丢约束
 P1  5) S1     索引可编辑 + X1/X2 两处最弱空态（复用现成 emptyState()）
 P2  6) T2/T3/T4 清空 / 重命名 / 删除表 —— 表级生命周期收口
-P2  7) U-B6 剩余：G1 冻结列 · G4 区域选择 · Q5 结果分页 · U1 catalog · U2 多连接
+P2  7) U-B6 剩余：G1 冻结列 · G4 区域选择 · Q5 结果分页（U1 catalog · U2 多连接 已完成）
 ```
 
 每项做完跑一次 `./scripts/build.sh`（= clean verify + 用例计数）+ `./scripts/shots.sh` 重拍截图，

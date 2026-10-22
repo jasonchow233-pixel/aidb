@@ -26,7 +26,8 @@
 > A15/A16 线程模型 ✅ · P7（jpackage + 崩溃日志）✅ · 并修掉「同一连接被两个线程共用」
 > 与「窗口尺寸不夹到屏幕内」两个真实缺陷。
 > **第十二轮·续三已完成 U3 ✅ 连接属性页**（弹窗套 TabPane）。
-> **下一动作 = N1–N3（表清单工具条 / 右键菜单 / 多选批量）→ U1 catalog 树 → Q5+V-9 → G4 → G1**。
+> **第十四轮已完成 U1 ✅ catalog 树**（MySQL 多库：虚拟连接 + 对象树库一层 + 双击切库）。
+> **下一动作 = Q5+V-9（查询结果分页 + 表格规格统一）→ G4 区域选择 → G1 冻结列**。
 > 详见 §22 与 `docs/NAVICAT-PARITY-2026-10-V5.md` §5。
 >
 > 📦 **新增 `scripts/`**：`dev.sh`（一键编译启动）· `build.sh`（门禁）· `shots.sh`（重拍截图）。
@@ -67,18 +68,18 @@
 ./mvnw -B clean verify
 ```
 
-当前结果（2026-10-22 末实测）：
+当前结果（2026-10-22 末 · 第十四轮 U1 后实测）：
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **SQLite（默认，2026-10-22 第十三轮后）** | **631** | 35 | 0 |
+| **SQLite（默认，2026-10-22 第十四轮后）** | **662** | 35 | 0 |
 | **MySQL 5.7 真库**（需环境变量） | 单独跑，不在默认门禁 | — | — |
 
-**84 个测试类**。跳过的是「本机没有的外部依赖」：Testcontainers 的 PG/MySQL 容器
+**86 个测试类**。跳过的是「本机没有的外部依赖」：Testcontainers 的 PG/MySQL 容器
 （无 Docker）与未配置的 PG / MySQL 真库 —— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-22，第十三轮后）**：**631 条 / 84 类 / 0 失败**（`./mvnw -B clean verify`
-> 全绿 + `java tools/TestCount.java`；另有 35 条跳过，不计入 631）。
+> 📌 **最新口径（2026-10-22，第十四轮 U1 后）**：**662 条 / 86 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 35 条跳过，不计入 662）。
 
 统计口径用工具兜底：
 
@@ -95,12 +96,12 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `core/adb-sql` | 31 | 词法 / 分句 / 格式化 / **括号配对** / **参数检测** |
 | `workbench/adb-jdbc` | 57 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为** |
 | `testing/adb-fixtures` | 3 | 演示库固定种子 |
-| `workbench/adb-introspect` | 109 | 内省、表元数据 8 列、分页排序筛选 SQL、结构变更、**真库契约（跳过 14）** |
-| `workbench/adb-session` | 14 | 连接档案、凭据、连接池、**敏感项脱敏** |
+| `workbench/adb-introspect` | 116 | 内省、表元数据 8 列、分页排序筛选 SQL、结构变更、**catalog 列表与系统库过滤**、**真库契约（跳过 14）** |
+| `workbench/adb-session` | 19 | 连接档案、凭据、连接池、**敏感项脱敏**、**catalog 虚拟连接约定** |
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `workbench/adb-transfer` | 15 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告 |
 | `ui/adb-ui-core` | 24 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** / **CSS 尺度审计** / **焦点环审计** |
-| `ui/adb-ui-shell` | 221 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖** |
+| `ui/adb-ui-shell` | 240 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派** |
 
 > ⚠️ **统计口径（4.5-28）**：用 `@Nested` 的 4 个测试类（`QueryLimitsTest`、
 > `DangerClassifierTest`、`DeclarationLoaderTest`、`DeclarationValidationTest`）在 surefire XML 里
@@ -361,7 +362,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 - [x] **口令不落 argv**：macOS 改用 `security -w` 从 stdin 读（`KeychainCredentialStore.runWithInput`）
 - [x] **`options` 敏感字段脱敏**：落盘前剔除口令类键（`ConnectionProfile.sanitizedOptions`）
 - [x] **`options` 不得覆盖钥匙串口令**（✅ R4）：`JdbcSession` / `ConnectionPool` 改成 options 先应用、user/password 后设
-- [x] **schema 切换器**：✅ 已落地 —— `SchemaService.listSchemas` + 侧栏下拉（>1 个 schema 才显示）；PG 走 `SET search_path`。**catalog 树仍未做**（MySQL 的多库场景）
+- [x] **schema 切换器**：✅ 已落地 —— `SchemaService.listSchemas` + 侧栏下拉（>1 个 schema 才显示）；PG 走 `SET search_path`。**catalog 树也已完成（第十四轮 U1）** —— MySQL 的 schema 就是数据库，走对象树的 catalog 层（切库 = 换虚拟连接，见 §24）
 - [ ] **连接重命名 / 分组 / 标签**
 - [ ] **最近使用排序**：列表按 `lastUsedAt` 倒序
 - [ ] **连接属性测试**：连接超时、取消、重连、错误归类（连接断开 / 权限不足 / 死锁 / 超时）
@@ -438,7 +439,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | A2 | `declarations/` 1500 行是死代码 | **决策**：本轮先把它**变成真功能**（loader 修好 + classpath/jar 双路径 + 对拍测试），运行时驱动它留给 A1 方言抽象层 | P5 | 🟡 |
 | A3 | `loadFromClasspath()` 不可用（jar 索引解析错误） | **已修**：枚举目录（爆炸 classpath）/ jar 条目（打包），两条路径实测一致 | P4.5 | ✅ |
 | ~~A4~~ | ~~`paramStyle` / `identifierQuote` 被硬编码~~ **标识符引用已进 `Dialect`**；**参数风格仍固定 `?`**（`paramStyle: numbered` 未实现） | P5 | 🟡 |
-| ~~A5~~ | ~~元数据只读当前 schema~~ **schema 已落地**：`getSchemas()` 接上了，侧栏有 **schema 切换器**（>1 个才显示），PG 用 `SET search_path` 切。**catalog 仍未接**；`getExportedKeys()` / `getColumns()` 也没有 | P5 | 🟡 |
+| ~~A5~~ | ~~元数据只读当前 schema~~ **schema 已落地**：`getSchemas()` 接上了，侧栏有 **schema 切换器**（>1 个才显示），PG 用 `SET search_path` 切。**catalog 也已落地（第十四轮 U1，见 §24）**：MySQL 走对象树 catalog 层（切库 = 换虚拟连接）；`getExportedKeys()` / `getColumns()` 也已接上 | P5 | ✅ |
 | ~~A6~~ | ~~危险分级第三层门禁不存在；数据页保存不分类~~ **已做**：数据页保存已接入分级；**第三层（驱动侧复查）已落地** —— `DbSession.execute(sql, danger)` / `update(sql, params, danger)` 强制声明等级，驱动侧再判一次，实际更危险就拒绝 | P4.5 | ✅ |
 | A7 | 危险分级 fail-open（未知 → 只读） | **已做**：未知语句头按管理操作处理；`WITH` 体内扫描写语句 | P4.5 | ✅ |
 | A8 | 多语句切分不看字符串/注释 | **已做**：复用 `adb-sql` 的 `SqlSplitter` | P4.5 | ✅ |
@@ -714,7 +715,7 @@ hover 规则不得被删、focus 规则不得少于 10 条；
 | ~~G6~~ ✅ | ~~自增列插入（新增行时主键留空交给数据库）~~ **已完成** | `GridInteractionTest` + `MySqlIntegrationTest`（真库） | ✅ |
 | **Q5** | 查询结果**分页**（现在硬上限 1000） | `QueryPageTest.resultPagination` | ⬜ |
 | **Q6** | 代码片段库（与已保存查询合并） | ✅ **已完成（第十二轮）**：`SavedQueries` 加 `kind`（查询/片段）· 查询页「存为片段 / 插入片段」 | `SavedQueriesTest`（+2 例） |
-| **U1** | **catalog 树**（MySQL 多库；MySQL 的 schema = 数据库，`USE` 不管用，需切后重连） | `SchemaServiceTest.catalogSwitch` | ⬜ |
+| ~~**U1**~~ ✅ | ~~**catalog 树**（MySQL 多库；MySQL 的 schema = 数据库，`USE` 不管用，需切后重连）~~ **✅ 已完成（第十四轮）**：`Dialect.switchesCatalogByReconnect()` + `catalogsSql()`（information_schema.SCHEMATA，过滤系统库）· `SchemaService.listCatalogs` · `ConnectionProfile.catalogVariant`（虚拟连接 `父id@库名`，不落盘）· 侧栏 catalog 层（懒加载 / 当前库加粗 / 双击或右键切库）· `TableDdl` 全部入口按连接 id 分派 | `CatalogTreeTest`(5) + `CatalogVariantProfileTest`(5) + `SideBarTreeTest`(+5) + `AppShellTest`(+1) |
 | **U2** | **多连接并行** | ✅ **已完成（第十二轮）**：页面早就按标签取会话；**真正的堵点**是 `SessionManager.open` 会「关掉重开」→ 改成**复用**（新增 `reopen` 给「重新连接」） | `SessionManagerTest`（3 例：复用 / 重开 / 两连接并存） |
 | **U3** | 连接属性页（超时 / SSL / 字符集 / 附加参数） | ✅ **已完成（第十二轮·续三）**：`ConnectionPropertiesDialog` = **弹窗里套 TabPane**（常规/SSL/高级，形态依 §4 裁定）；值进 `ConnectionProfile.options`（`queryTimeout` 由 JdbcSession 消费，其余作 JDBC 属性） | `ConnectionPropertiesDialogTest`（4 例） |
 | **U4** | 索引 / 外键 / 触发器**可编辑**（当前只读） | `StructurePageTest.indexEditor` | ⬜ |
@@ -1099,7 +1100,7 @@ Navicat 对象树右键菜单里最高频的四个动作，我们**一个都没�
 - **D3**：SQLite 改列丢失 CHECK 约束（P0 —— 改列不再丢约束；内省 + 重建 SQL 搬运）
 - ~~**B5-S4**：表注释~~ ✅ **已做**（第十一轮·续）：读 + 写/清空 + 结构页展示与编辑
 - **U6**：状态栏补充（当前用户 / 服务器版本 / 延迟）— `NAVICAT-TODO.md` §13.6 U6
-- **U-B6 剩余**：G1 冻结列 / G4 区域选择 / Q5 结果分页 / U1 catalog 树（U2/U3/U6/Q6 已完成）
+- **U-B6 剩余**：G1 冻结列 / G4 区域选择 / Q5 结果分页（**U1 catalog 树已完成**，见 §24；U2/U3/U6/Q6 已完成）
 - **X3–X7**：入口与一致性打磨（状态栏版本号 M1 / X4–X7）
 - **A10 / A12 / A15 / A16 / A18 / A22 / A25**：架构收尾（超时 / 线程池 / 线程 / 主题探测 / 声明层）
 - **P7**：分发与收尾（jlink / jpackage / 崩溃 / 可访问性）
@@ -1342,7 +1343,7 @@ Navicat 对象树右键菜单里最高频的四个动作，我们**一个都没�
 | **G4** | **单元格区域选择**（矩形选区 + 复制矩形） | 🟠 中 | JavaFX `TableView` 没有原生选区，要自绘 cell 渲染。价值中等（批量复制整块数据） |
 | **Q5** | **查询结果分页** | 🟠 中 | 现在结果集一次性装进 `ObservableList`（上限 1000 行）。改成服务端分页要重写「结果集 → 表格」这一层的取数逻辑（数据页已经是服务端分页，查询页还没跟上） |
 | ~~**Q6**~~ ✅ | ~~**代码片段库**~~ | — | ✅ **已完成（第十二轮）** |
-| **U1** | **catalog 树**（MySQL 多库） | 🟠 中 | MySQL 的 schema 就是数据库，切换 catalog 要**重连**（不能像 PG 那样 `SET search_path`）。要与「多连接并存」一起设计：切库 = 换连接 |
+| ~~**U1**~~ ✅ | ~~**catalog 树**（MySQL 多库）~~ | — | ✅ **已完成（第十四轮，见 §24）**：切库 = 换虚拟连接（`父id@库名`，只活在内存）；对象树多出库一层，SQLite / PG 形态不变 |
 | ~~**U3**~~ ✅ | ~~**连接属性页**~~ | — | ✅ **已完成（第十二轮·续三）**：弹窗套 TabPane（常规/SSL/高级）+ `options` 映射 |
 | **X3 / X4** | 状态栏剩余项 / 仍为半孤儿的动作 | 🟢 低 | X5 已把对象动作收进顶级菜单，孤儿动作大幅减少；剩下的多为一���性动作 |
 
@@ -1438,10 +1439,70 @@ java tools/TestCount.java
 
 ---
 
+## 24. 第十四轮：U1 catalog 树 —— MySQL 多数据库浏览与切换（2026-10-22）
+
+> 触发：U1 是 U-B6 剩余清单里**唯一一个「用户每天都会撞上」**的功能项 ——
+> MySQL 实例上通常不止一个库，而旧版只能看到连接时指定的那一个，
+> 看另一个库必须去改连接档案、重连。Navicat 的对象树是「连接 → 数据库 → 表」。
+
+### 24.1 设计：为什么切库 = 换「虚拟连接」
+
+MySQL 的 schema 就是数据库：一条连接绑定一个库。`USE other_db` 对**单条**
+连接有效，但服务端有连接池（HikariCP），随时可能换一条连接还回来，
+「当前库」这个会话状态管不住 —— 所以切库必须**重连**。
+
+落点选在第十二轮已经铺好的「多连接并存」模型上，不新造机制：
+
+```
+连接档案 srv-1（database=orders）
+├── catalog 节点 orders   → 由 srv-1 自己 Serve（复用现成会话）
+└── catalog 节点 audit    → 虚拟连接 srv-1@audit（同主机/同口令/不同库）
+                             只活在内存（AppShell.catalogVariants），不进 connections.json
+```
+
+- `ConnectionProfile.catalogVariant(catalog)` 派生虚拟档案；
+  `catalogVariantId / isCatalogVariantId / parentOfCatalogVariant / catalogOfCatalogVariant`
+  五个静态工具收口 id 约定（分隔符 `@`）。
+- 凭据仍走**父连接**的钥匙串条目（`specOf` 按 variant id 反查父 id）——
+  不会因为切库重新问一次口令。
+- 「切换到此数据库」= 激活虚拟连接（双击 / 右键 / 菜单同一个动作），
+  顶栏下拉里能看到它，但连接管理页不出现（不是用户档案）。
+
+### 24.2 分层落地
+
+| 层 | 改动 |
+|---|---|
+| 方言 | `Dialect.switchesCatalogByReconnect()`（默认 false）+ `catalogsSql()`（默认 null）；MySQL 覆写为 `information_schema.SCHEMATA`（要 `SHOW DATABASES` 权限更大，前者只要看得见 information_schema） |
+| 内省 | `SchemaService.listCatalogs`（第 1 列 = 库名，**过滤 `mysql`/`information_schema`/`performance_schema`/`sys`**，排序） |
+| 会话 | `ConnectionProfile.catalogVariant(...)` + 五个 id 工具（§24.1） |
+| 侧栏 | `catalogsByConnection` + `CatalogEntry(catalog, servingConnectionId)`：有 catalog 的连接节点下先出**库一层**，对象分组挂库下；没有的连接（SQLite/PG）**形态与以前完全一样**；当前库加粗 + 淡底；库节点永远保留（懒加载不断链） |
+| 外壳 | `loadCatalogsFor`（选中未开连接时不标记「已读」，由 `loadObjectsFor` 开好会话后补触发——修掉竞态）· `switchCatalog` · `connectCatalog`（不落盘）· `refreshProfiles` 登记虚拟连接 · schema 切换器在 MySQL 上让位（两个入口管同一件事必然打架） |
+| 表级 DDL | `TableDdl` 全部入口带 `connectionId`：会话 / 执行器 / 重名校验全按它取 —— **修掉「对非当前连接的节点做 DDL 会落到当前库」**（等于把 db2 的表建进 db1，用户还看不出来） |
+| 刷新 | 侧栏「刷新对象」回调改为带连接 id —— 在非活跃库节点上右键刷新，刷的是**那个库** |
+
+### 24.3 门禁
+
+| 测试 | 例数 | 守的规则 |
+|---|---|---|
+| `CatalogTreeTest`（introspect） | 5 | 库列表 SQL 三方言（只有 MySQL 有）· 系统库过滤 · 排序 · 空方言不假装有 |
+| `CatalogVariantProfileTest`（session） | 5 | variant id 约定（父 id 原样 / `@库名` / 反解 / SQLite 不假装） |
+| `SideBarTreeTest`（ui-shell） | +5 | 库层在连接与对象之间 · 无 catalog 连接保持老形态 · **选中库节点懒加载那个库** · 切库动作带 Serve 连接 · 切库动作只在库节点放行 |
+| `AppShellTest` | +1 | 演示库（SQLite）树里**不许出现**库节点 |
+| `TableDdlTest` | 12 | 按连接分派后全部原规则仍成立（取消不执行 / 方言 SQL / 重名拒绝 / 逐表删） |
+
+修掉的两个真 bug：① 没加载对象的库节点被 `removeIf(isLeaf)` 当空分组摘掉
+（懒加载链断掉，用户永远点不到那个库）；② `treeOf()` 在 FX 线程内二次走
+队列往返返回 null（测试侧，但也说明这个 helper 不能嵌套用）。
+
+门禁：**662 条 / 86 类 / 0 失败**（`./mvnw -B clean verify` 全绿）。
+
+---
+
 ## 23. 变更记录
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-22 | 第十四轮 | **U1 ✅ catalog 树**（§24）：`Dialect.switchesCatalogByReconnect()` + `catalogsSql()` · `SchemaService.listCatalogs`（过滤系统库）· `ConnectionProfile.catalogVariant`（虚拟连接 `父id@库名`，不落盘、凭据走父连接）· 侧栏 catalog 层（懒加载 / 当前库加粗 / 双击或右键切库）· `TableDdl` 全部入口按连接 id 分派（修掉「DDL 落到当前库」）· 修两个真 bug（库节点被当空分组摘掉 / 选中未开连接的 catalog 竞态）· 新门禁 `CatalogTreeTest`(5) + `CatalogVariantProfileTest`(5) + `SideBarTreeTest`(+5) + `AppShellTest`(+1)；门禁 **662 条 / 86 类 / 0 失败** |
 | 2026-10-22 | 第十三轮 | **Navicat 表清单/观感对齐**：`TableMeta` 8 字段（+修改时间/排序规则/注释）· 表清单 8 列 · 对象首页 9 列 · 密度 **24/28/34** · 应用栏 46 / 标签栏 36 / 工具栏 38 · `bg-sidebar` 灰底 · 去斑马纹/空行假线 · 表头 12px · `ADB_TABLES` + 9 张截图 · 等比例并排图 · 新增 **`docs/NAVICAT-PARITY-2026-10-V5.md`** |
 | 2026-10-22 | 第九轮 | 新增 `docs/EXEC-SUMMARY.md`、`docs/GITHUB-COMPARE.md`；`NAVICAT-TODO.md` 状态基线（512/64）、§13.5 U-B5 漂移纠正、§16.4 下一步补齐；`README.md` / `docs/NEXT-STEPS.md` / 记忆同步 |
 | 2026-10-22 | 第十轮 | 新增 **`docs/UI-VISUAL-SPEC.md`**（UI 规格书）；修 `row-tree` / `kind-index` 两个摆设令牌 + `.adb-error` 缺样式；实测发现 **43 个未定义样式类**；`NAVICAT-TODO.md` 新增 §18（V-1…V-12 + S-1…S-7）；门禁 **585 条 / 77 类 / 0 失败** |

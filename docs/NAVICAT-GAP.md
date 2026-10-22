@@ -193,7 +193,7 @@
 | **多连接同时打开** | 🟡 | `SessionManager` 按 id 存多会话，`TabItem.connectionId` 也支持，但 `AppShell` 只有**一个 `activeProfile` / 一个 `session` 字段**（`AppShell.java:89-91`），切标签会切当前连接 |
 | **会话泄漏** | ⚠️ | `AppShell.connectProfile()` 打开新会话（`:187`）却**从不关闭旧会话** → 每切一次连接就多一条活连接 |
 | **连接属性页**（读超时/SSL/字符集/连接池） | ⛔ | `ConnectionProfile.options` 是自由 Map，向导里没有 UI 编辑它 |
-| **schema / catalog 树** | 🟡 | **schema 有了**：切换器 + `SET search_path`；**catalog 仍缺**（MySQL 的多库场景），`getCatalogs()` 没调用 |
+| **schema / catalog 树** | ✅ | **schema**：切换器 + `SET search_path`；**catalog（第十四轮 U1）**：MySQL 走对象树库一层，切库 = 换虚拟连接（`ConnectionProfile.catalogVariant`，`SchemaService.listCatalogs` 读 `information_schema.SCHEMATA` 并过滤系统库） |
 | **连接分组 / 标签** | ⛔ | — |
 | **最近连接排序** | ⛔ | `ConnectionProfile.lastUsedAt` 字段存在且会写，但列表不按它排序 |
 | **`options` 脱敏** | ✅ | 落盘前剔除口令类键（`ConnectionProfile.sanitizedOptions`）；且 options **不再能覆盖**钥匙串口令（options 先 apply，user/password 后设） |
@@ -210,7 +210,7 @@
 | **过程 / 函数 / 触发器节点** | ✅ | 过程与函数走 JDBC 元数据，触发器由方言给 SQL（`Dialect.triggersListSql`）；`ObjectKind` 5 个值 |
 | **拖拽建表 / 拖拽改字段类型** | ⛔ | 全仓 `DragDrop` 0 命中 |
 | **多选 + 批量操作** | ⛔ | `TreeView` 保持默认 `SelectionMode.SINGLE` |
-| **对象树按 schema 展开** | 🟡 | 侧栏有 **schema 切换器**（`Sidebar.setSchemas`，>1 个 schema 才显示）；PG 用 `SET search_path` 切。**catalog（MySQL 多库）仍未接** |
+| **对象树按 schema / catalog 展开** | ✅ | 侧栏有 **schema 切换器**（`Sidebar.setSchemas`，>1 个 schema 才显示），PG 用 `SET search_path` 切；**catalog（MySQL 多库）也已接**（第十四轮：库一层挂在连接节点下，切库换虚拟连接） |
 | **表清单（带元数据列的表格）** | ⛔ | 骨架 S2，见 §0.1 |
 
 ### 1.3 数据网格
@@ -517,7 +517,7 @@ ui/adb-ui-shell → workbench/{adb-session, adb-introspect, adb-editing, adb-jdb
 | A2 | **`declarations/` 是死代码** | 4 连接声明 + 4 方言词表 + 5 传输家族 + JSON Schema ≈ 1500 行，**运行时一次都没读**，且**不是任何模块的 Maven 依赖** | 全仓 `io.agenticdb.declarations` 只在模块内部命中 |
 | A3 | **`loadFromClasspath()` 不可用** | 爆炸 classpath 下抛 `DeclarationException`；jar 下**静默返回空模型**（0 字节目录条目） | `DeclarationLoader.java:119-151` |
 | ~~A4~~ | ~~参数风格 / 标识符引用被硬编码~~ **标识符引用已进方言层**（`Dialect.quote`）；**参数风格仍固定 `?`** —— 声明里的 `paramStyle: numbered` 无效 | `JdbcSession.bind` 永远用 `?` |
-| ~~A5~~ | ~~元数据只读当前 schema~~ **schema 已落地**：`getSchemas()` 接上，侧栏有 **schema 切换器**（>1 个才显示），PG 走 `SET search_path` 切。**catalog 仍未接**（MySQL 多库场景）；`getExportedKeys()` / `getColumns()` 也没有 → PG 的 DEFAULT / COMMENT 仍丢 | `SchemaService.listSchemas` / `Dialect.setSchemaSql` |
+| ~~A5~~ | ~~元数据只读当前 schema~~ **schema 已落地**：`getSchemas()` 接上，侧栏有 **schema 切换器**（>1 个才显示），PG 走 `SET search_path` 切。**catalog 也已落地（第十四轮 U1）**：MySQL 走对象树 catalog 层（`Dialect.catalogsSql` + `SchemaService.listCatalogs`），切库 = 换虚拟连接；`getExportedKeys()` / `getColumns()` 也已接上 | `SchemaService.listSchemas` / `Dialect.setSchemaSql` / `SchemaService.listCatalogs` |
 | ~~A6~~ | ~~危险分级第三层门禁不存在；数据页保存不分类~~ **已做** | 三层门禁全部落地：`DbSession.requireDeclared` 做驱动侧复查；`DataGridPage.planDanger` 做保存路径分级 |
 | A7 | **危险分级 fail-open** | `MERGE`/`UPSERT`/`CALL`/`COPY`/`SET`/`LOCK`/`ANALYZE`/`BEGIN`/`DO` 全部判为只读不拦；`WITH` 在只读白名单 → `WITH … DELETE` **无确认框** | `DangerClassifier.java:39, 104-105` |
 | A8 | **多语句切分不看字符串/注释** | 裸 `String.split(";")` | `DangerClassifier.java:65` |
