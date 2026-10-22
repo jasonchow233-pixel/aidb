@@ -67,13 +67,37 @@ public final class SideBar extends VBox {
      * 没法同时浏览两个库。Navicat 的对象树是**所有连接都在同一棵树里**。
      */
     private final Map<String, List<SchemaObject>> objectsByConnection = new LinkedHashMap<>();
+    /**
+     * ⭐ U1：每个连接的 catalog（数据库）清单。
+     *
+     * <p>只有「切 catalog 要重连」的方言有（MySQL）：连接节点下先出库一层，
+     * 库节点下才是表 / 视图分组。没有 catalog 的连接（SQLite / PG）
+     * 这个 map 里没有条目 → 分组直接挂在连接节点下（老形态）。
+     *
+     * <p>{@link CatalogEntry#connectionId()} 是**Serve 这个库的连接 id**：
+     * 父连接自己的库就是父 id，别的库是虚拟连接 id（{@code 父id@库名}）——
+     * 于是「当前库高亮」「懒加载对象」「切库」全都按连接 id 一把搞定。
+     */
+    private final Map<String, List<CatalogEntry>> catalogsByConnection = new LinkedHashMap<>();
     /** 需要某个连接的对象时调用（AppShell 负责连上去读）。 */
     private Consumer<String> onLoadObjects = connectionId -> { };
+    /** 需要某个连接的 catalog 清单时调用（AppShell 负责读）。 */
+    private Consumer<String> onLoadCatalogs = connectionId -> { };
+    /** 已经尝试读过 catalog 的连接（读失败也不反复试）。 */
+    private final Set<String> attemptedCatalogs = new LinkedHashSet<>();
+    /** 双击 / 右键「切换到此数据库」（AppShell 负责重连）。 */
+    private Consumer<CatalogSwitch> onSwitchCatalog = request -> { };
     /** 已经尝试过读取的对象（读失败也不反复试）。 */
     private final Set<String> attempted = new LinkedHashSet<>();
     /** 出现的 schema 个数；> 1 时对象树按 schema 分组。 */
     private int schemaCount;
-    private Runnable onRefreshObjects = () -> { };
+    /**
+     * 「刷新对象」的回调。
+     *
+     * <p>⭐ 带连接 id：多连接对象树 + catalog 树之后，用户右键的节点可能属于
+     * 另一个连接 / 另一个库 —— 刷新必须刷**那个**连接，不是当前活跃的。
+     */
+    private Consumer<String> onRefreshObjects = id -> { };
     private Consumer<TableRequest> onTableDdl = request -> { };
 
     private final Set<String> starred = new LinkedHashSet<>();
@@ -176,6 +200,9 @@ public final class SideBar extends VBox {
                 () -> onSelected(SideBarObject.DIAGNOSTICS));
         actions.register("object.refresh-objects", "刷新对象", "对象", null,
                 () -> onSelected(SideBarObject.REFRESH_OBJECTS));
+        // ⭐ U1：切换数据库（catalog 节点专用；其它节点上这个动作是禁用的）。
+        actions.register("object.switch-catalog", "切换到此数据库", "对象", null,
+                () -> onSelected(SideBarObject.SWITCH_CATALOG));
         // ⭐ X6：收藏夹菜单只有一项 → 顶级菜单资源被浪费。补「清空收藏」。
         actions.register("favorites.clear", "清空收藏", "收藏夹", null, this::clearStarred);
         // ── T1–T4 表级生命周期 ──
@@ -202,7 +229,9 @@ public final class SideBar extends VBox {
         NEW_TABLE,
         TRUNCATE_TABLE,
         RENAME_TABLE,
-        DROP_TABLE
+        DROP_TABLE,
+        /** ⭐ U1：把当前连接切到这个库（重连）。 */
+        SWITCH_CATALOG
     }
 
     /**
@@ -214,12 +243,58 @@ public final class SideBar extends VBox {
     record TableRequest(SideBarObject action, String tableName, String connectionId) {
     }
 
+    /**
+     * ⭐ U1：一个 catalog（数据库）节点。
+     *
+     * @param catalog     库名（节点上显示的文字）
+     * @param connectionId **Serve 这个库的连接 id** —— 父连接自己的库用父 id，
+     *                     其它库用虚拟连接 id（{@code 父id@库名}，见
+     *                     {@link ConnectionProfile#catalogVariantId}）
+     */
+    public record CatalogEntry(String catalog, String connectionId) {
+    }
+
+    /**
+     * ⭐ U1：一次「切换到这个数据库」的请求。
+     *
+     * @param connectionId 用户点的库当前由哪个连接 Serve（父 id 或虚拟 id）
+     * @param catalog      目标库名
+     */
+    public record CatalogSwitch(String connectionId, String catalog) {
+    }
+
+    /** 设置某个连接的 catalog 清单（U1；空清单 = 这个连接没有库一层）。 */
+    public void setCatalogs(String connectionId, List<CatalogEntry> entries) {
+        if (connectionId == null) {
+            return;
+        }
+        catalogsByConnection.put(connectionId,
+                entries == null ? List.of() : List.copyOf(entries));
+        attemptedCatalogs.add(connectionId);
+        refreshTree();
+    }
+
+    /** 需要某个连接的 catalog 清单时调用（AppShell 负责读）。 */
+    public void setOnLoadCatalogs(Consumer<String> onLoadCatalogs) {
+        this.onLoadCatalogs = onLoadCatalogs == null ? id -> { } : onLoadCatalogs;
+    }
+
+    /** 双击 / 右键「切换到此数据库」（AppShell 负责重连）。 */
+    public void setOnSwitchCatalog(Consumer<CatalogSwitch> onSwitchCatalog) {
+        this.onSwitchCatalog = onSwitchCatalog == null ? request -> { } : onSwitchCatalog;
+    }
+
+    /** 这个连接的 catalog 读过了吗（供外壳判断要不要再去读）。 */
+    boolean catalogsAttempted(String connectionId) {
+        return attemptedCatalogs.contains(connectionId);
+    }
+
     public void setOnCollapsed(Consumer<Boolean> onCollapsed) {
         this.onCollapsed = onCollapsed;
     }
 
-    public void setOnRefreshObjects(Runnable onRefreshObjects) {
-        this.onRefreshObjects = onRefreshObjects == null ? () -> { } : onRefreshObjects;
+    public void setOnRefreshObjects(Consumer<String> onRefreshObjects) {
+        this.onRefreshObjects = onRefreshObjects == null ? id -> { } : onRefreshObjects;
     }
 
     /** 表级生命周期（T1–T4）交给外壳执行。 */
@@ -231,7 +306,9 @@ public final class SideBar extends VBox {
     public void setConnections(List<ConnectionProfile> connections) {
         this.connections = connections == null ? List.of() : List.copyOf(connections);
         connectionPicker.setItems(javafx.collections.FXCollections.observableArrayList(this.connections));
-        if (connectionId != null) {
+        // ⚠️ 当前连接可能不在列表里（catalog 虚拟连接）—— 找不到就不选，
+        //    别把用户的下拉选择清成空白。
+        if (connectionId != null && findActiveProfile() != null) {
             connectionPicker.getSelectionModel().select(findActiveProfile());
         }
     }
@@ -242,7 +319,9 @@ public final class SideBar extends VBox {
         refreshTree();
         refreshFavorites();
         loadObjectsIfNeeded(id);
-        if (id != null) {
+        // ⚠️ select(null) 会把下拉清空 —— 当前连接不在列表里时
+        //    （catalog 虚拟连接）保持原样，别动用户的下拉选择。
+        if (id != null && findActiveProfile() != null) {
             connectionPicker.getSelectionModel().select(findActiveProfile());
         }
     }
@@ -502,6 +581,12 @@ public final class SideBar extends VBox {
                 DemoNode node = item.getValue();
                 if (node.kind() == NodeKind.CONNECTION && !node.connectionId().isBlank()) {
                     loadObjectsIfNeeded(node.connectionId());
+                    // ⭐ U1：顺便读这个连接的库清单（没有库的连接什么都不发生）。
+                    loadCatalogsIfNeeded(node.connectionId());
+                } else if (node.kind() == NodeKind.CATALOG
+                        && !node.connectionId().isBlank()) {
+                    // ⭐ U1：选中一个库 → 读这个库的对象（Serve 它的可能是虚拟连接）。
+                    loadObjectsIfNeeded(node.connectionId());
                 }
             }
         });
@@ -514,6 +599,9 @@ public final class SideBar extends VBox {
                 DemoNode node = selected.getValue();
                 if (node.kind() == NodeKind.TABLE || node.kind() == NodeKind.VIEW) {
                     openGrid(node.connectionId(), node.name());
+                } else if (node.kind() == NodeKind.CATALOG) {
+                    // ⭐ U1：双击一个库 = 把当前连接切到它（MySQL 要重连）。
+                    onSwitchCatalog.accept(new CatalogSwitch(node.connectionId(), node.name()));
                 } else if (node.kind() == NodeKind.CONNECTION) {
                     selected.setExpanded(!selected.isExpanded());
                 }
@@ -522,9 +610,15 @@ public final class SideBar extends VBox {
         tree.setOnKeyPressed(event -> {
             if (event.getCode() == javafx.scene.input.KeyCode.ENTER) {
                 TreeItem<DemoNode> selected = tree.getSelectionModel().getSelectedItem();
-                if (selected != null && (selected.getValue().kind() == NodeKind.TABLE
-                        || selected.getValue().kind() == NodeKind.VIEW)) {
-                    openGrid(selected.getValue().name());
+                if (selected == null) {
+                    return;
+                }
+                DemoNode node = selected.getValue();
+                if (node.kind() == NodeKind.TABLE || node.kind() == NodeKind.VIEW) {
+                    openGrid(node.connectionId(), node.name());
+                    event.consume();
+                } else if (node.kind() == NodeKind.CATALOG) {
+                    onSwitchCatalog.accept(new CatalogSwitch(node.connectionId(), node.name()));
                     event.consume();
                 }
             }
@@ -676,47 +770,96 @@ public final class SideBar extends VBox {
 
         for (String[] entry : entries) {
             String id = entry[0];
-            boolean active = id.equals(connectionId);
-            TreeItem<DemoNode> connectionNode = new TreeItem<>(
-                    new DemoNode(entry[1], NodeKind.CONNECTION, Icons.Icon.CONNECT, id));
-            connectionNode.setExpanded(active);
-
-            List<SchemaObject> objects = objectsByConnection.getOrDefault(id, List.of());
-            if (showOnlyFavorites) {
-                // ⭐ 底部 ★ 按钮：只看收藏的对象
-                objects = objects.stream()
-                        .filter(object -> starred.contains(object.name()))
-                        .toList();
-            }
-            List<SchemaObject> profileTables = objects.stream()
-                    .filter(object -> object.kind() == ObjectKind.TABLE).toList();
-            List<SchemaObject> profileViews = objects.stream()
-                    .filter(object -> object.kind() == ObjectKind.VIEW).toList();
-            List<SchemaObject> profileProcedures = objects.stream()
-                    .filter(object -> object.kind() == ObjectKind.PROCEDURE).toList();
-            List<SchemaObject> profileFunctions = objects.stream()
-                    .filter(object -> object.kind() == ObjectKind.FUNCTION).toList();
-            List<SchemaObject> profileTriggers = objects.stream()
-                    .filter(object -> object.kind() == ObjectKind.TRIGGER).toList();
-            // ⭐ O1：调度事件（只有 MySQL 有；其它方言这一组是空的 → 自动摘除）。
-            List<SchemaObject> profileEvents = objects.stream()
-                    .filter(object -> object.kind() == ObjectKind.EVENT).toList();
-
-            connectionNode.getChildren().addAll(
-                    kindGroup("表", NodeKind.TABLE, profileTables, needle, id),
-                    kindGroup("视图", NodeKind.VIEW, profileViews, needle, id),
-                    // ⭐ S3：过程 / 函数 / 触发器（Navicat 的对象浏览层）
-                    kindGroup("过程", NodeKind.PROCEDURE, profileProcedures, needle, id),
-                    kindGroup("函数", NodeKind.FUNCTION, profileFunctions, needle, id),
-                    kindGroup("触发器", NodeKind.TRIGGER, profileTriggers, needle, id),
-                    // ⭐ O1：事件分组（空分组会被摘掉，所以非 MySQL 看不到它）。
-                    kindGroup("事件", NodeKind.EVENT, profileEvents, needle, id));
-
-            // 空分组不显示（没读到对象的连接只留一个可展开的连接节点）。
-            connectionNode.getChildren().removeIf(TreeItem::isLeaf);
-            root.getChildren().add(connectionNode);
+            connectionNode(root, id, entry[1], needle);
         }
         return root;
+    }
+
+    /** 一个连接节点：有 catalog 的连接先出库一层，否则分组直接挂连接下。 */
+    private void connectionNode(TreeItem<DemoNode> root, String id, String name, String needle) {
+        boolean active = isActiveConnection(id);
+        TreeItem<DemoNode> connectionNode = new TreeItem<>(
+                new DemoNode(name, NodeKind.CONNECTION, Icons.Icon.CONNECT, id));
+        connectionNode.setExpanded(active);
+
+        List<CatalogEntry> catalogs = catalogsByConnection.getOrDefault(id, List.of());
+        if (!catalogs.isEmpty()) {
+            // ⭐ U1：MySQL 这类「切库要重连」的方言 —— 每个库一个节点，
+            //    表 / 视图分组挂在**库**下面（库才是对象的归属）。
+            for (CatalogEntry catalog : catalogs) {
+                TreeItem<DemoNode> catalogNode = new TreeItem<>(new DemoNode(
+                        catalog.catalog(), NodeKind.CATALOG, Icons.Icon.DATABASE,
+                        "", catalog.connectionId()));
+                // 当前正在用的库默认展开，一眼能看到自己在哪个库里。
+                catalogNode.setExpanded(catalog.connectionId().equals(connectionId));
+                // ⚠️ 库节点**永远保留** —— 它的对象可能还没读（懒加载）。
+                //    以前在下面统一 removeIf(isLeaf)，对象没读到的库会被
+                //    当成「空分组」摘掉：连接下看起来什么都没有，用户也就
+                //    永远点不到那个库去触发加载 —— 懒加载链就此断掉。
+                catalogNode.getChildren().addAll(nonEmptyGroups(catalog.connectionId(), needle));
+                connectionNode.getChildren().add(catalogNode);
+            }
+        } else {
+            connectionNode.getChildren().addAll(nonEmptyGroups(id, needle));
+        }
+
+        root.getChildren().add(connectionNode);
+    }
+
+    /** 空分组不占位（没读到对象的连接只留一个可展开的节点）。 */
+    private List<TreeItem<DemoNode>> nonEmptyGroups(String servingConnectionId, String needle) {
+        List<TreeItem<DemoNode>> groups = new ArrayList<>(groupsOf(servingConnectionId, needle));
+        groups.removeIf(TreeItem::isLeaf);
+        return groups;
+    }
+
+    /**
+     * 这个连接是不是「当前活跃」的。
+     *
+     * <p>⭐ U1：当前活跃的可能是一条 catalog 虚拟连接（{@code 父id@库名}）——
+     * 它爹（父连接）也要跟着展开，否则用户看不到自己切到哪个库了。
+     */
+    private boolean isActiveConnection(String id) {
+        if (id == null) {
+            return false;
+        }
+        return id.equals(connectionId)
+                || (connectionId != null
+                && connectionId.startsWith(id + ConnectionProfile.CATALOG_VARIANT_SEPARATOR));
+    }
+
+    /** 某个连接（或 catalog 虚拟连接）下的对象分组。 */
+    private List<TreeItem<DemoNode>> groupsOf(String servingConnectionId, String needle) {
+        List<SchemaObject> objects = objectsByConnection.getOrDefault(servingConnectionId, List.of());
+        if (showOnlyFavorites) {
+            // ⭐ 底部 ★ 按钮：只看收藏的对象
+            objects = objects.stream()
+                    .filter(object -> starred.contains(object.name()))
+                    .toList();
+        }
+        List<SchemaObject> profileTables = objects.stream()
+                .filter(object -> object.kind() == ObjectKind.TABLE).toList();
+        List<SchemaObject> profileViews = objects.stream()
+                .filter(object -> object.kind() == ObjectKind.VIEW).toList();
+        List<SchemaObject> profileProcedures = objects.stream()
+                .filter(object -> object.kind() == ObjectKind.PROCEDURE).toList();
+        List<SchemaObject> profileFunctions = objects.stream()
+                .filter(object -> object.kind() == ObjectKind.FUNCTION).toList();
+        List<SchemaObject> profileTriggers = objects.stream()
+                .filter(object -> object.kind() == ObjectKind.TRIGGER).toList();
+        // ⭐ O1：调度事件（只有 MySQL 有；其它方言这一组是空的 → 自动摘除）。
+        List<SchemaObject> profileEvents = objects.stream()
+                .filter(object -> object.kind() == ObjectKind.EVENT).toList();
+
+        return List.of(
+                kindGroup("表", NodeKind.TABLE, profileTables, needle, servingConnectionId),
+                kindGroup("视图", NodeKind.VIEW, profileViews, needle, servingConnectionId),
+                // ⭐ S3：过程 / 函数 / 触发器（Navicat 的对象浏览层）
+                kindGroup("过程", NodeKind.PROCEDURE, profileProcedures, needle, servingConnectionId),
+                kindGroup("函数", NodeKind.FUNCTION, profileFunctions, needle, servingConnectionId),
+                kindGroup("触发器", NodeKind.TRIGGER, profileTriggers, needle, servingConnectionId),
+                // ⭐ O1：事件分组（空分组会被摘掉，所以非 MySQL 看不到它）。
+                kindGroup("事件", NodeKind.EVENT, profileEvents, needle, servingConnectionId));
     }
 
 
@@ -783,6 +926,7 @@ public final class SideBar extends VBox {
             case PROCEDURE -> "adb-tree__icon--procedure";
             case FUNCTION -> "adb-tree__icon--function";
             case EVENT -> "adb-tree__icon--event";
+            case CATALOG -> "adb-tree__icon--catalog";
             default -> "adb-tree__icon--connection";
         };
     }
@@ -794,6 +938,15 @@ public final class SideBar extends VBox {
         }
         attempted.add(id);
         onLoadObjects.accept(id);
+    }
+
+    /** ⭐ U1：该连接的库清单还没读过就去读（懒加载；没有库的连接读不到就不显示）。 */
+    private void loadCatalogsIfNeeded(String id) {
+        if (id == null || attemptedCatalogs.contains(id)) {
+            return;
+        }
+        attemptedCatalogs.add(id);
+        onLoadCatalogs.accept(id);
     }
 
     private static boolean matches(String value, String needle) {
@@ -974,6 +1127,13 @@ public final class SideBar extends VBox {
                     new SeparatorMenuItem(),
                     actions.menuItem("object.new-table", "新建表…"),
                     actions.menuItem("object.new-query", "新建查询"));
+            // ⭐ U1：库节点 —— 切过去 / 在里面建表 / 查数据。
+            case CATALOG -> menu.getItems().addAll(
+                    actions.menuItem("object.switch-catalog", "切换到此数据库"),
+                    new SeparatorMenuItem(),
+                    actions.menuItem("object.new-query", "新建查询"),
+                    actions.menuItem("object.new-table", "新建表…"),
+                    actions.menuItem("object.refresh-objects", "刷新对象"));
             case GROUP -> menu.getItems().addAll(
                     actions.menuItem("object.refresh-objects", "刷新对象"),
                     new SeparatorMenuItem(),
@@ -1042,8 +1202,9 @@ public final class SideBar extends VBox {
                 }
             }
             case REFRESH_OBJECTS -> {
-                onRefreshObjects.run();
-                status.accept("已刷新 " + connectionName);
+                // ⭐ 刷节点所属的连接（可能是虚拟连接），不是当前活跃连接。
+                onRefreshObjects.accept(owner);
+                status.accept("已刷新 " + node.name());
             }
             // ⭐ 表级生命周期：侧栏只负责把「点的是谁」说清楚，执行在 TableDdl。
             case NEW_TABLE ->
@@ -1053,6 +1214,14 @@ public final class SideBar extends VBox {
                     onTableDdl.accept(new TableRequest(action, node.name(), owner));
                 } else {
                     status.accept("只有表能" + labelOf(action));
+                }
+            }
+            // ⭐ U1：切库（重连由外壳做）。
+            case SWITCH_CATALOG -> {
+                if (node.kind() == NodeKind.CATALOG) {
+                    onSwitchCatalog.accept(new CatalogSwitch(owner, node.name()));
+                } else {
+                    status.accept("只有数据库节点能切换");
                 }
             }
         }
@@ -1076,10 +1245,15 @@ public final class SideBar extends VBox {
                 && (node.kind() == NodeKind.PROCEDURE || node.kind() == NodeKind.FUNCTION
                 || node.kind() == NodeKind.TRIGGER);
         boolean isConnection = node != null && node.kind() == NodeKind.CONNECTION;
+        // ⭐ U1：库节点 —— 能切库、能建表、能新建查询，但没有数据页 / 结构页。
+        boolean isCatalog = node != null && node.kind() == NodeKind.CATALOG;
         boolean isTable = node != null && node.kind() == NodeKind.TABLE;
         setObjectActionEnabled("object.open-data", isObject);
         setObjectActionEnabled("object.open-structure", isObject);
-        setObjectActionEnabled("object.new-query", isObject || isConnection);
+        // ⚠️ 这条以前写了两遍（先 isObject||isConnection 再 isObject||isCallable），
+        //     后一条覆盖前一条 → 连接节点上的「新建查询」其实是灰的，
+        //     而连接节点的右键菜单里又有这一项。合成一条，四种节点都放行。
+        setObjectActionEnabled("object.new-query", isObject || isCallable || isConnection || isCatalog);
         setObjectActionEnabled("object.favorite", isObject);
         setObjectActionEnabled("object.copy-name", isObject);
         setObjectActionEnabled("object.copy-select", isObject);
@@ -1088,14 +1262,15 @@ public final class SideBar extends VBox {
         setObjectActionEnabled("object.open-data", isObject);
         setObjectActionEnabled("object.open-structure", isObject);
         setObjectActionEnabled("object.copy-select", isObject);
-        setObjectActionEnabled("object.new-query", isObject || isCallable);
         setObjectActionEnabled("object.refresh-objects", node != null);
-        // ⭐ 表级生命周期：建表挂在连接 / 分组上，改表只挂在「表」上 ——
+        // ⭐ 表级生命周期：建表挂在连接 / 分组 / 库上，改表只挂在「表」上 ——
         //    视图没有 TRUNCATE，过程函数更没有，所以不能一律放行。
         setObjectActionEnabled("object.new-table", node != null);
         setObjectActionEnabled("object.truncate-table", isTable);
         setObjectActionEnabled("object.rename-table", isTable);
         setObjectActionEnabled("object.drop-table", isTable);
+        // ⭐ U1：切库只挂在库节点上。
+        setObjectActionEnabled("object.switch-catalog", isCatalog);
     }
 
     private void setObjectActionEnabled(String id, boolean enabled) {
@@ -1165,7 +1340,9 @@ public final class SideBar extends VBox {
         /** ⭐ S3：过程 / 函数 / 触发器。 */
         PROCEDURE, FUNCTION, TRIGGER,
         /** ⭐ O1：调度事件（只有 MySQL 有）。 */
-        EVENT
+        EVENT,
+        /** ⭐ U1：数据库（catalog）—— 只有「切库要重连」的方言有这一层。 */
+        CATALOG
     }
 
     /**
@@ -1210,7 +1387,8 @@ public final class SideBar extends VBox {
         protected void updateItem(DemoNode item, boolean empty) {
             super.updateItem(item, empty);
             getStyleClass().removeAll(
-                    "adb-tree-cell--group", "adb-tree-cell--connection", "adb-tree-cell--object");
+                    "adb-tree-cell--group", "adb-tree-cell--connection", "adb-tree-cell--object",
+                    "adb-tree-cell--catalog", "adb-tree-cell--current");
             if (empty || item == null) {
                 setText(null);
                 setGraphic(null);
@@ -1235,6 +1413,13 @@ public final class SideBar extends VBox {
                 box.getChildren().add(count);
             }
 
+            // ⭐ U1：当前正在用的库加粗标出（Navicat 也是这样标当前数据库的）。
+            if (item.kind() == NodeKind.CATALOG
+                    && item.connectionId().equals(connectionId)) {
+                getStyleClass().add("adb-tree-cell--current");
+                name.getStyleClass().add("adb-tree__name--current");
+            }
+
             if ((item.kind() == NodeKind.TABLE || item.kind() == NodeKind.VIEW)
                     && starred.contains(item.name())) {
                 SVGPath star = Icons.of(Icons.Icon.STAR, Icons.SIZE_BADGE);
@@ -1247,15 +1432,22 @@ public final class SideBar extends VBox {
                 case ROOT -> getStyleClass().add("adb-tree-cell--connection");
                 case GROUP -> getStyleClass().add("adb-tree-cell--group");
                 case CONNECTION -> getStyleClass().add("adb-tree-cell--connection");
+                case CATALOG -> getStyleClass().add("adb-tree-cell--catalog");
                 default -> getStyleClass().add("adb-tree-cell--object");
             }
 
             setOnMouseClicked(event -> {
-                if (event.getClickCount() == 2
-                        && (item.kind() == NodeKind.TABLE || item.kind() == NodeKind.VIEW)) {
-                    // ⭐ 按节点所属连接打开（多连接对象树）
-                    openGrid(item.connectionId(), item.name());
-                    event.consume();
+                if (event.getClickCount() == 2) {
+                    if (item.kind() == NodeKind.TABLE || item.kind() == NodeKind.VIEW) {
+                        // ⭐ 按节点所属连接打开（多连接对象树）
+                        openGrid(item.connectionId(), item.name());
+                        event.consume();
+                    } else if (item.kind() == NodeKind.CATALOG) {
+                        // ⭐ U1：双击一个库 = 切到它（外壳负责重连）。
+                        onSwitchCatalog.accept(
+                                new CatalogSwitch(item.connectionId(), item.name()));
+                        event.consume();
+                    }
                 }
             });
 

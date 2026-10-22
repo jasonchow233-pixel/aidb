@@ -45,6 +45,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
@@ -102,6 +103,16 @@ public final class AppShell extends StackPane {
     private final ObservableList<ConnectionProfile> connections = FXCollections.observableArrayList();
     private final Map<String, List<SchemaObject>> objectsByConnection = new HashMap<>();
     private final Map<String, ConnectionProfile> profilesById = new HashMap<>();
+    /**
+     * ⭐ U1：catalog 虚拟连接（{@code 父id@库名}）。
+     *
+     * <p>只活在内存里，<b>绝不落盘</b> —— 用户的连接档案保持原样
+     * （database 还是他保存时的那个库）。切库 = 激活一个虚拟连接，
+     * 它有自己的人会话、自己的标签，父连接一个字节都没改。
+     */
+    private final Map<String, ConnectionProfile> catalogVariants = new HashMap<>();
+    /** 已经读过 catalog 清单的连接（懒加载，读失败不反复试）。 */
+    private final Set<String> catalogsLoaded = new HashSet<>();
     private final BorderPane root = new BorderPane();
     private final Label toastLabel = new Label();
     private final Button toastAction = new Button("撤销");
@@ -139,6 +150,9 @@ public final class AppShell extends StackPane {
                 this::selectConnection, settings);
         this.sideBar.setOnRefreshObjects(this::reloadObjects);
         this.sideBar.setOnSelectSchema(this::switchSchema);
+        // ⭐ U1：catalog 树 —— 懒加载库清单 + 双击切库（重连）。
+        this.sideBar.setOnLoadCatalogs(this::loadCatalogsFor);
+        this.sideBar.setOnSwitchCatalog(this::switchCatalog);
         // ⭐ T1–T4 表级生命周期：右键菜单 / 数据库菜单 / 命令面板三条入口进同一个 TableDdl。
         this.sideBar.setOnTableDdl(this::runTableDdl);
         // ⭐ 多连接对象树：展开一个没读过的连接时，去连它、读它的对象。
@@ -197,10 +211,10 @@ public final class AppShell extends StackPane {
     private TableDdl tableDdl() {
         if (tableDdl == null) {
             tableDdl = new TableDdl(
-                    () -> session,
-                    executors.forConnection(activeProfileId()),
+                    this::sessionFor,
+                    this::executorFor,
                     this::status,
-                    this::existingTableNames,
+                    this::existingTablesFor,
                     this::afterTableChanged,
                     () -> stage,
                     () -> getScene() == null ? List.of()
@@ -209,9 +223,22 @@ public final class AppShell extends StackPane {
         return tableDdl;
     }
 
+    /** 按连接 id 取会话（catalog 虚拟连接也在内）。 */
+    private DbSession sessionFor(String connectionId) {
+        if (connectionId == null) {
+            return null;
+        }
+        return sessions.find(connectionId).orElse(null);
+    }
+
+    /** 按连接 id 取执行器（同一连接的库操作必须串行）。 */
+    private java.util.concurrent.Executor executorFor(String connectionId) {
+        return executors.forConnection(connectionId);
+    }
+
     /** 表级 DDL 完成后：对象树、对象首页、已打开的表清单都要重新读。 */
-    private void afterTableChanged() {
-        schemaChanged(activeProfileId());
+    private void afterTableChanged(String connectionId) {
+        reloadObjects(connectionId == null ? activeProfileId() : connectionId);
         workspace.refreshTableLists();
         refreshObjectHome();
     }
@@ -232,7 +259,8 @@ public final class AppShell extends StackPane {
         // ⚠️ 必须再包一层 runLater：showAndWait() 直接写在 Timeline 的帧事件里，
         //    对话框会被提前关掉（实测拍到的图里状态栏是「已取消新建表」）。
         //    包 runLater 之后走的是普通 FX 事件，与 IndexDialog 那条路径一致。
-        javafx.application.Platform.runLater(() -> tableDdl().createTable());
+        javafx.application.Platform.runLater(
+                () -> tableDdl().createTable(activeProfileId()));
     }
 
     /** 等到 session 就绪再读结构、弹「新建索引」。 */
@@ -299,23 +327,29 @@ public final class AppShell extends StackPane {
     /** 侧栏转来的一次表级请求。 */
     private void runTableDdl(SideBar.TableRequest request) {
         TableDdl ddl = tableDdl();
+        // ⭐ U1：请求自带连接 id（可能是 catalog 虚拟连接）——
+        //    DDL 必须落在用户点的那个库上，不是「当前连接」上。
+        String connectionId = request.connectionId();
         switch (request.action()) {
-            case NEW_TABLE -> ddl.createTable();
-            case TRUNCATE_TABLE -> ddl.truncateTable(request.tableName());
-            case RENAME_TABLE -> ddl.renameTable(request.tableName());
-            case DROP_TABLE -> ddl.dropTable(request.tableName());
+            case NEW_TABLE -> ddl.createTable(connectionId);
+            case TRUNCATE_TABLE -> ddl.truncateTable(connectionId, request.tableName());
+            case RENAME_TABLE -> ddl.renameTable(connectionId, request.tableName());
+            case DROP_TABLE -> ddl.dropTable(connectionId, request.tableName());
             default -> status("这个动作还没有接上");
         }
     }
 
-    /** 当前连接里已经存在的表名 —— 建表 / 重命名要用它拒绝重名。 */
-    private List<String> existingTableNames() {
-        List<SchemaObject> objects = objectsByConnection.get(activeProfileId());
-        if (objects == null && session != null) {
-            try {
-                objects = schemaService.listObjects(session);
-            } catch (Exception ignored) {
-                objects = List.of();
+    /** 某个连接里已经存在的表名 —— 建表 / 重命名要用它拒绝重名。 */
+    private List<String> existingTablesFor(String connectionId) {
+        List<SchemaObject> objects = objectsByConnection.get(connectionId);
+        if (objects == null) {
+            DbSession target = sessionFor(connectionId);
+            if (target != null) {
+                try {
+                    objects = schemaService.listObjects(target);
+                } catch (Exception ignored) {
+                    objects = List.of();
+                }
             }
         }
         if (objects == null) {
@@ -331,15 +365,27 @@ public final class AppShell extends StackPane {
         for (ConnectionProfile profile : connections) {
             profilesById.put(profile.id(), profile);
         }
+        // ⭐ U1：catalog 虚拟连接也登记进来 —— 标签页按连接 id 找档案时
+        //    （connectionFor）不能找不到它，否则切回父连接后，
+        //    挂在虚拟连接上的标签会全都解析到「当前连接」上。
+        profilesById.putAll(catalogVariants);
         if (appBar != null) {
-            appBar.setConnections(connections,
+            // ⭐ U1：当前活跃的可能是 catalog 虚拟连接 —— 它也要进胶囊下拉，
+            //    否则顶栏会显示「未连接」（下拉里按 id 找不到它）。
+            List<ConnectionProfile> shown = connections;
+            if (activeProfile != null && ConnectionProfile.isCatalogVariantId(activeProfile.id())) {
+                shown = new ArrayList<>(connections);
+                shown.add(activeProfile);
+            }
+            appBar.setConnections(shown,
                     activeProfile == null ? "demo" : activeProfile.id());
         }
         sideBar.setConnections(connections);
     }
 
     private ConnectionProfile profileById(String id) {
-        return profilesById.get(id);
+        ConnectionProfile saved = profilesById.get(id);
+        return saved != null ? saved : catalogVariants.get(id);
     }
 
     /** 激活一个连接：打开（或复用）会话、读取对象树、同步侧栏与工具栏。 */
@@ -537,10 +583,21 @@ public final class AppShell extends StackPane {
     private void applyConnectedUi(ConnectionProfile profile, List<SchemaObject> objects) {
         // ⭐ schema 切换器：列出这个连接能看到的 schema。
         //    多于一个才显示（SQLite 没有、单 schema 不添乱）。
-        try {
-            sideBar.setSchemas(schemaService.listSchemas(session));
-        } catch (SQLException e) {
+        // ⭐ U1：MySQL 这类「切 catalog 要重连」的方言不走 schema 切换器 ——
+        //    它的 schema 就是数据库，切换入口在对象树的 catalog 层。
+        //    两个入口管同一件事必然打架，只留一个。
+        if (session != null && session.dialect().switchesCatalogByReconnect()) {
             sideBar.setSchemas(List.of());
+            // 虚拟连接的库清单就是父连接的（父连接接入时已经读过）—— 不重复读。
+            if (!ConnectionProfile.isCatalogVariantId(profile.id())) {
+                loadCatalogsFor(profile.id());
+            }
+        } else {
+            try {
+                sideBar.setSchemas(schemaService.listSchemas(session));
+            } catch (SQLException e) {
+                sideBar.setSchemas(List.of());
+            }
         }
         statusBar.setConnection(profile.name());
         if (appBar != null) {
@@ -611,28 +668,196 @@ public final class AppShell extends StackPane {
      * 读取某个连接的对象（多连接对象树的懒加载）。
      *
      * <p>在后台线程做 —— 一个连不上的连接不能把界面卡住。
+     *
+     * <p>⭐ U1：{@code connectionId} 可能是 catalog 虚拟连接（{@code 父id@库名}）——
+     * 它的档案从父连接派生（口令也走父连接的钥匙串条目）。
      */
     private void loadObjectsFor(String connectionId) {
-        ConnectionProfile profile = profilesById.get(connectionId);
+        ConnectionProfile profile = profileFor(connectionId);
         if (profile == null) {
             return;
         }
         // ⭐ 按连接取执行器：同一连接的事务要串行。
         executors.forConnection(connectionId).execute(() -> {
             try {
-                String password = credentials.password(profile.id()).orElse(null);
-                DbSession session = sessions.open(profile.id(), profile.spec(password));
-                List<SchemaObject> objects = schemaService.listObjects(session);
+                DbSession opened = sessions.open(profile.id(), specOf(profile));
+                List<SchemaObject> objects = schemaService.listObjects(opened);
                 objectsByConnection.put(profile.id(), objects);
                 Platform.runLater(() -> {
                     sideBar.setObjects(profile.id(), objects);
                     status("已读取 " + profile.name() + " 的 " + objects.size() + " 个对象");
+                    // ⭐ U1：会话开好了 —— 补一次 catalog 清单。选中一个
+                    //    没连过的连接时，loadCatalogsFor 会因会话未开而跳过，
+                    //    这里补上，库一层才不会永远缺席。
+                    loadCatalogsFor(profile.id());
                 });
             } catch (Exception e) {
                 Platform.runLater(() ->
                         status("读取 " + profile.name() + " 的对象失败：" + readable(e)));
             }
         });
+    }
+
+    /**
+     * ⭐ U1：读某个连接的 catalog（数据库）清单，推进对象树。
+     *
+     * <p>只有「切 catalog 要重连」的方言读得到东西（MySQL）；其它方言
+     * 读到空清单 → 侧栏不会加库一层，形态与以前完全一样。
+     */
+    private void loadCatalogsFor(String connectionId) {
+        // ⭐ 虚拟连接本身就是一个库 —— 它下面不再套库一层。
+        if (connectionId == null || ConnectionProfile.isCatalogVariantId(connectionId)) {
+            return;
+        }
+        ConnectionProfile parent = profileById(connectionId);
+        if (parent == null || catalogsLoaded.contains(connectionId)) {
+            return;
+        }
+        DbSession target = sessionFor(connectionId);
+        if (target == null) {
+            // ⚠️ 会话还没开（选中一个没连过的连接时，对象正在后台读）——
+            //    这时候**不能**标记「读过了」，否则库一层永远不出来。
+            //    loadObjectsFor 把会话开好后会再叫一次。
+            return;
+        }
+        catalogsLoaded.add(connectionId);
+        executors.forConnection(connectionId).execute(() -> {
+            List<String> catalogs;
+            try {
+                catalogs = schemaService.listCatalogs(target);
+            } catch (Exception e) {
+                catalogs = List.of();
+            }
+            List<SideBar.CatalogEntry> entries = new ArrayList<>();
+            for (String catalog : catalogs) {
+                // 父连接自己的库直接由父连接 Serve；其它库用虚拟连接 id。
+                String serving = catalog.equals(parent.database())
+                        ? parent.id()
+                        : ConnectionProfile.catalogVariantId(parent.id(), catalog);
+                entries.add(new SideBar.CatalogEntry(catalog, serving));
+            }
+            Platform.runLater(() -> {
+                if (entries.isEmpty()) {
+                    status(parent.name() + " 没有可见的数据库");
+                } else {
+                    sideBar.setCatalogs(connectionId, entries);
+                }
+            });
+        });
+    }
+
+    /**
+     * ⭐ U1：切换当前数据库（catalog）。
+     *
+     * <p>MySQL 的 schema 就是数据库，{@code USE} 管不住连接池 ——
+     * 所以切库 = 激活一个**虚拟连接**（{@code 父id@库名}，见
+     * {@link ConnectionProfile#catalogVariant}）。父连接自己的库
+     * 直接复用它现成的会话，不另开一条。
+     */
+    private void switchCatalog(SideBar.CatalogSwitch request) {
+        if (request == null || request.catalog() == null || request.catalog().isBlank()) {
+            return;
+        }
+        String parentId = ConnectionProfile.isCatalogVariantId(request.connectionId())
+                ? ConnectionProfile.parentOfCatalogVariant(request.connectionId())
+                : request.connectionId();
+        ConnectionProfile parent = profileById(parentId);
+        if (parent == null) {
+            status("找不到连接：" + parentId);
+            return;
+        }
+        if (request.catalog().equals(parent.database())) {
+            // 点的就是父连接自己的库 —— 复用它的会话（selectConnection 会去重）。
+            selectConnection(parent);
+            return;
+        }
+        String variantId = ConnectionProfile.catalogVariantId(parent.id(), request.catalog());
+        if (activeProfile != null && activeProfile.id().equals(variantId)
+                && sessions.isOpen(variantId)) {
+            status("当前数据库：" + request.catalog());
+            return;
+        }
+        connectCatalog(variantProfile(variantId));
+    }
+
+    /**
+     * ⭐ U1：取（或就地创建）一个 catalog 虚拟连接档案。
+     *
+     * <p>创建时登记进 {@link #catalogVariants} —— 它只活在内存里，
+     * 不进 {@code connections.json}，刷新配置也不会丢。
+     */
+    private ConnectionProfile variantProfile(String variantId) {
+        ConnectionProfile existing = catalogVariants.get(variantId);
+        if (existing != null) {
+            return existing;
+        }
+        ConnectionProfile parent = profileById(
+                ConnectionProfile.parentOfCatalogVariant(variantId));
+        if (parent == null) {
+            return null;
+        }
+        ConnectionProfile variant = parent.catalogVariant(
+                ConnectionProfile.catalogOfCatalogVariant(variantId));
+        catalogVariants.put(variant.id(), variant);
+        return variant;
+    }
+
+    /**
+     * ⭐ U1：连接一个 catalog 虚拟连接。
+     *
+     * <p>与 {@link #connectProfile} 的差别只有两个：<b>不 touch、不落盘</b>
+     * （虚拟连接不是用户的档案），以及对象树按虚拟连接的 id 收对象。
+     */
+    private void connectCatalog(ConnectionProfile variant) {
+        if (variant == null) {
+            status("打不开这个数据库的连接");
+            return;
+        }
+        activeProfile = variant;
+        connectionName = variant.name();
+        session = null;
+        status("正在连接 " + variant.name() + "…");
+        executors.forConnection(variant.id()).execute(() -> {
+            DbSession opened = null;
+            List<SchemaObject> objects = List.of();
+            try {
+                opened = sessions.open(variant.id(), specOf(variant));
+                objects = schemaService.listObjects(opened);
+            } catch (Exception e) {
+                String reason = readable(e);
+                Platform.runLater(() -> {
+                    session = null;
+                    status("连接失败：" + reason);
+                    if (appBar != null) {
+                        appBar.setConnectionState(false, true);
+                    }
+                });
+                return;
+            }
+            DbSession ready = opened;
+            List<SchemaObject> loaded = objects;
+            Platform.runLater(() -> {
+                session = ready;
+                objectsByConnection.put(variant.id(), loaded);
+                sideBar.setObjects(variant.id(), loaded);
+                sideBar.setConnection(variant.id(), variant.name());
+                refreshProfiles();
+                refreshObjectHome();
+                applyConnectedUi(variant, loaded);
+            });
+        });
+    }
+
+    /** 按 id 找档案：先 saved，再 catalog 虚拟连接。 */
+    private ConnectionProfile profileFor(String connectionId) {
+        if (connectionId == null) {
+            return null;
+        }
+        ConnectionProfile direct = profileById(connectionId);
+        if (direct != null) {
+            return direct;
+        }
+        return variantProfile(connectionId);
     }
 
     /** 侧栏/工具栏切换连接。已打开的会话复用，不重开。 */
@@ -809,9 +1034,17 @@ public final class AppShell extends StackPane {
         connectProfile(activeProfile, false);
     }
 
-    /** 取连接的 spec（口令从凭据存储取）。 */
+    /**
+     * 取连接的 spec（口令从凭据存储取）。
+     *
+     * <p>⭐ U1：catalog 虚拟连接的口令在<b>父连接</b>的钥匙串条目里
+     * （虚拟连接不是档案，没有自己的凭据条目）。
+     */
     private io.agenticdb.jdbc.ConnectionSpec specOf(ConnectionProfile profile) {
-        String password = credentials.password(profile.id()).orElse(null);
+        String credentialId = ConnectionProfile.isCatalogVariantId(profile.id())
+                ? ConnectionProfile.parentOfCatalogVariant(profile.id())
+                : profile.id();
+        String password = credentials.password(credentialId).orElse(null);
         return profile.spec(password);
     }
 
@@ -1523,7 +1756,7 @@ public final class AppShell extends StackPane {
 
     private ConnectionProfile connectionFor(TabItem tab) {
         String id = tab == null ? null : tab.connectionId();
-        ConnectionProfile profile = id == null ? activeProfile : profilesById.get(id);
+        ConnectionProfile profile = id == null ? activeProfile : profileById(id);
         return profile == null ? activeProfile : profile;
     }
 
@@ -1623,42 +1856,45 @@ public final class AppShell extends StackPane {
             status("请先连接一个数据库");
             return;
         }
+        // ⭐ U1：这个清单页绑的是**当前连接**（可能是 catalog 虚拟连接）——
+        //    页面里的建表 / 删表全部落在它身上，不是别的库。
+        String pageConnection = activeProfileId();
         TableListPage page = new TableListPage(current, schemaService,
-                executors.forConnection(activeProfileId()),
-                name -> openTab(new TabItem("grid:" + activeProfileId() + ":" + name, name,
-                        TabKind.GRID, name, activeProfileId())),
+                executors.forConnection(pageConnection),
+                name -> openTab(new TabItem("grid:" + pageConnection + ":" + name, name,
+                        TabKind.GRID, name, pageConnection)),
                 this::status,
                 tableListActions(),
                 new TableListPage.Host() {
                     @Override
                     public void newTable() {
-                        tableDdl().createTable();
+                        tableDdl().createTable(pageConnection);
                     }
 
                     @Override
                     public void openTable(String name) {
-                        openTab(new TabItem("grid:" + activeProfileId() + ":" + name, name,
-                                TabKind.GRID, name, activeProfileId()));
+                        openTab(new TabItem("grid:" + pageConnection + ":" + name, name,
+                                TabKind.GRID, name, pageConnection));
                     }
 
                     @Override
                     public void designTable(String name) {
-                        openStructure(name);
+                        openStructure(pageConnection, name);
                     }
 
                     @Override
                     public void renameTable(String name) {
-                        tableDdl().renameTable(name);
+                        tableDdl().renameTable(pageConnection, name);
                     }
 
                     @Override
                     public void truncateTable(String name) {
-                        tableDdl().truncateTable(name);
+                        tableDdl().truncateTable(pageConnection, name);
                     }
 
                     @Override
                     public void dropTables(List<String> names) {
-                        tableDdl().dropTables(names);
+                        tableDdl().dropTables(pageConnection, names);
                     }
 
                     @Override
@@ -1670,8 +1906,8 @@ public final class AppShell extends StackPane {
                 view -> settings.set("ui.tableList.view", view));
         page.setDensity(currentDensity());
         activeTableListPage = page;
-        openTab(new TabItem("tables:" + activeProfileId(), "表清单", TabKind.TOOL,
-                null, activeProfileId(), page));
+        openTab(new TabItem("tables:" + pageConnection, "表清单", TabKind.TOOL,
+                null, pageConnection, page));
     }
 
     /** 表清单页共用注册表里的动作；页面只负责按选择改 enabled。 */
@@ -1884,13 +2120,9 @@ public final class AppShell extends StackPane {
         updateEditActions();
     }
 
-    private void reloadObjects() {
-        reloadObjects(activeProfileId());
-    }
-
     private void reloadObjects(String connectionId) {
-        ConnectionProfile profile = profileById(connectionId);
-        DbSession target = profile == null ? null : sessions.find(profile.id()).orElse(null);
+        ConnectionProfile profile = profileFor(connectionId);
+        DbSession target = profile == null ? null : sessionFor(profile.id());
         if (target == null) {
             status("连接未打开，无法刷新对象");
             return;
@@ -1901,9 +2133,8 @@ public final class AppShell extends StackPane {
                 List<SchemaObject> objects = schemaService.listObjects(target);
                 Platform.runLater(() -> {
                     objectsByConnection.put(profile.id(), objects);
-                    if (activeProfile != null && activeProfile.id().equals(profile.id())) {
-                        sideBar.setObjects(objects);
-                    }
+                    // ⭐ 侧栏按连接 id 收对象 —— 非当前连接也要更新它的那棵树。
+                    sideBar.setObjects(profile.id(), objects);
                     status("对象已刷新 · " + objects.size() + " 个");
                 });
             } catch (SQLException e) {

@@ -48,6 +48,49 @@ public record ConnectionProfile(
                 Map.of());
     }
 
+    // ─────────────────── catalog 虚拟连接（U1）───────────────────
+
+    /**
+     * catalog 虚拟连接的 id 分隔符：{@code 父id@库名}。
+     *
+     * <p>⭐ 为什么切库要造一个**新 id** 而不是原地改 database：
+     * <ul>
+     *   <li>标签页按 {@code connectionId} 缓存页面与会话 —— 同一个 id 下
+     *       两个库的「users」会撞进同一个标签页；</li>
+     *   <li>{@code SessionManager.open} 按 id 复用会话 —— 原地改库名后
+     *       复用回来的还是旧库的会话。</li>
+     * </ul>
+     * 带后缀的 id 让「切库 = 换连接」自然成立：每个库一条会话、
+     * 一套标签，互不串味。虚拟连接**只活在内存里**，绝不落盘。
+     */
+    public static final String CATALOG_VARIANT_SEPARATOR = "@";
+
+    /** 切库用的虚拟连接：同主机同账号，只换数据库。 */
+    public ConnectionProfile catalogVariant(String catalog) {
+        return new ConnectionProfile(catalogVariantId(id, catalog),
+                name + " · " + catalog, kind, host, port, catalog, username,
+                favorite, lastUsedAt, options);
+    }
+
+    public static String catalogVariantId(String parentId, String catalog) {
+        return parentId + CATALOG_VARIANT_SEPARATOR + catalog;
+    }
+
+    /** 这个 id 是不是 catalog 虚拟连接（注意：只能用来兜底推断，先用注册表查）。 */
+    public static boolean isCatalogVariantId(String id) {
+        return id != null && id.contains(CATALOG_VARIANT_SEPARATOR);
+    }
+
+    public static String parentOfCatalogVariant(String variantId) {
+        int at = variantId == null ? -1 : variantId.lastIndexOf(CATALOG_VARIANT_SEPARATOR);
+        return at < 0 ? variantId : variantId.substring(0, at);
+    }
+
+    public static String catalogOfCatalogVariant(String variantId) {
+        int at = variantId == null ? -1 : variantId.lastIndexOf(CATALOG_VARIANT_SEPARATOR);
+        return at < 0 ? "" : variantId.substring(at + 1);
+    }
+
     public static int defaultPort(DialectKind kind) {
         // ⭐ 端口由方言给 —— 以前这里是 switch，加一种库要改这里。
         return kind.dialect().defaultPort();

@@ -277,6 +277,33 @@ public interface Dialect {
     }
 
     /**
+     * 切换 catalog 是否必须**重连**。
+     *
+     * <p>MySQL 的 schema 就是数据库：一条连接绑定一个库，切库只能重连
+     * （{@code USE} 对连接池里的每条连接都要发，管不过来）。
+     * PostgreSQL 切 schema 走 {@link #setSchemaSql}（{@code SET search_path}），
+     * SQLite 没有 catalog 概念 —— 两者都返回 {@code false}。
+     *
+     * <p>UI 据此二选一：{@code true} → 对象树出 catalog 层（切库 = 换连接）；
+     * {@code false} → schema 切换器（{@link #setSchemaSql} 非空时）。
+     */
+    default boolean switchesCatalogByReconnect() {
+        return false;
+    }
+
+    /**
+     * catalog（数据库）列表查询：**第 1 列 = 库名**。
+     *
+     * <p>只有「切 catalog 要重连」的方言提供（MySQL，读
+     * {@code information_schema.SCHEMATA}）；其它方言返回 {@code null}
+     * （PG 的连接本身绑在一个库上，SQLite 没有库的概念）——
+     * 于是对象树里不会出现 catalog 层，不假装有。
+     */
+    default String catalogsSql() {
+        return null;
+    }
+
+    /**
      * 切换当前 schema 的语句。
      *
      * <p>PostgreSQL 用 {@code SET search_path}；其它方言返回 {@code null}

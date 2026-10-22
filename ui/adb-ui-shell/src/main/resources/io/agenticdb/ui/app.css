@@ -643,6 +643,29 @@
     -fx-stroke: -adb-text-secondary;
 }
 
+/* ── U1：catalog（数据库）节点 ─────────────────────────────────────
+ * 只有「切库要重连」的方言（MySQL）有这一层。库名与连接名同色系
+ * （都是容器），当前在用的库加粗标出 —— Navicat 也是这样标当前数据库的。
+ * ─────────────────────────────────────────────────────────────────── */
+
+.adb-tree__icon--catalog {
+    -fx-stroke: -adb-text-secondary;
+}
+
+.adb-tree-cell--catalog .adb-tree__name {
+    -fx-text-fill: -adb-text-primary;
+}
+
+.adb-tree__name--current {
+    -fx-font-weight: bold;
+}
+
+/* 当前在用的库：整行给一个淡底，扫树时一眼定位「我在哪个库里」。
+   作用域与 :selected 一致（都是 3 个类），同色所以谁覆盖谁看不出差别。 */
+.adb-object-tree .tree-cell.adb-tree-cell--current {
+    -fx-background-color: -adb-bg-selected;
+}
+
 /* 分组右侧的对象计数（「表 12」里的 12） */
 .adb-tree__count {
     -fx-text-fill: -adb-text-tertiary;

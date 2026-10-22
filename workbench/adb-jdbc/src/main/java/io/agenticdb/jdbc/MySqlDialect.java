@@ -240,6 +240,30 @@ public final class MySqlDialect implements Dialect {
         return null;
     }
 
+    /**
+     * ⭐ U1：MySQL 切库只能重连 —— 一条连接绑定一个数据库。
+     *
+     * <p>{@code USE db} 对单连接有效，但连接池里随时可能换一条连接，
+     * 「当前库」这个状态管不住。所以 UI 的做法是切库 = 换连接
+     * （对象树里每个库一个虚拟连接，各自持有自己的会话）。
+     */
+    @Override
+    public boolean switchesCatalogByReconnect() {
+        return true;
+    }
+
+    /**
+     * ⭐ U1：可见的数据库列表（catalog = MySQL 的 schema）。
+     *
+     * <p>走 {@code information_schema.SCHEMATA} 而不是 {@code SHOW DATABASES}：
+     * 后者要 SHOW 权限，前者只要能看到 information_schema。
+     * 系统库的过滤在 {@code SchemaService.listCatalogs} 里做（可测）。
+     */
+    @Override
+    public String catalogsSql() {
+        return "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME";
+    }
+
     @Override
     public List<String> dependentViews(Connection connection, String table) throws SQLException {
         // 只有 SQLite 的整表重建需要拆视图。

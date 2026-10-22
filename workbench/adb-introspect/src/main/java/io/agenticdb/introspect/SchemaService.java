@@ -264,6 +264,44 @@ public final class SchemaService {
     }
 
     /**
+     * ⭐ U1：连接可见的 catalog（数据库）列表。
+     *
+     * <p>只有「切 catalog 要重连」的方言有（MySQL，见
+     * {@link io.agenticdb.jdbc.Dialect#catalogsSql()}）；其它方言返回**空列表**
+     * —— 于是对象树里不会出现 catalog 层，不假装有。
+     *
+     * <p>系统库（{@code information_schema} / {@code mysql} /
+     * {@code performance_schema} / {@code sys}）被过滤掉：它们是服务本身，
+     * 不是用户的库（Navicat 也是把它们单独分组）。过滤放在 Java 而不是 SQL 里，
+     * 是为了能对着替身会话单测。
+     */
+    public List<String> listCatalogs(DbSession session) throws SQLException {
+        String sql = session.dialect().catalogsSql();
+        if (sql == null) {
+            return List.of();
+        }
+        List<String> catalogs = new ArrayList<>();
+        try (Statement statement = session.connection().createStatement();
+             ResultSet rs = statement.executeQuery(sql)) {
+            while (rs.next()) {
+                String name = rs.getString(1);
+                if (name != null && !name.isBlank() && isUserCatalog(name)) {
+                    catalogs.add(name);
+                }
+            }
+        }
+        catalogs.sort(String.CASE_INSENSITIVE_ORDER);
+        return List.copyOf(catalogs);
+    }
+
+    /** 系统库不进对象树（大小写不敏感）。 */
+    private static boolean isUserCatalog(String name) {
+        String lower = name.toLowerCase(Locale.ROOT);
+        return !lower.equals("information_schema") && !lower.equals("mysql")
+                && !lower.equals("performance_schema") && !lower.equals("sys");
+    }
+
+    /**
      * 表清单的元信息（Navicat「表清单」那一行的内容）。
      *
      * <p>方言能一条 SQL 取全就取（PG / MySQL）；取不到（SQLite 没有表大小与创建时间）

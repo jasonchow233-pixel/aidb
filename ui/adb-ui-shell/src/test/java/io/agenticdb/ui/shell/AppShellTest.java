@@ -9,6 +9,8 @@ import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.RadioMenuItem;
 import javafx.scene.control.TabPane;
+import javafx.scene.control.TreeItem;
+import javafx.scene.control.TreeView;
 import javafx.scene.control.TableView;
 import javafx.stage.Stage;
 import org.fxmisc.richtext.CodeArea;
@@ -365,6 +367,48 @@ class AppShellTest {
                 .queryAs(Button.class).getText())
                 .as("空表必须给用户一个出口，而不只是陈述事实")
                 .isEqualTo("新增一行");
+    }
+
+    /**
+     * ⭐ U1：SQLite 连接**没有** catalog 层 —— 表分组直接挂在连接节点下。
+     *
+     * <p>MySQL 这类「切库要重连」的方言才会多出库一层（见 SideBarTreeTest）。
+     * 这里守的是反面：别把演示库（SQLite）的形状也改了 ——
+     * 一旦 SQLite 也报出 catalog，用户就会在树里看到一层点不开的东西。
+     */
+    @Test
+    void sqliteConnectionHasNoCatalogLayer(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+
+        String tree = onFx(() -> {
+            StringBuilder text = new StringBuilder();
+            AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
+            appendNodes(sidebarTreeRoot(shell), text);
+            return text.toString();
+        });
+
+        assertThat(tree)
+                .as("演示库的表要出现在树里")
+                .contains("name=users");
+        assertThat(tree)
+                .as("SQLite 没有 catalog 概念 —— 树里不许出现库节点")
+                .doesNotContain("kind=CATALOG");
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static TreeItem sidebarTreeRoot(AppShell shell) {
+        TreeView view = (TreeView) shell.sideBar().lookup(".adb-object-tree");
+        return (TreeItem) view.getRoot();
+    }
+
+    private static void appendNodes(TreeItem item, StringBuilder text) {
+        if (item == null) {
+            return;
+        }
+        text.append(item.getValue()).append(" | ");
+        for (Object child : item.getChildren()) {
+            appendNodes((TreeItem) child, text);
+        }
     }
 
     /** 某个标签里的脏标记。 */

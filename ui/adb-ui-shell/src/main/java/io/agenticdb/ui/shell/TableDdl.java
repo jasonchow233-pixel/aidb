@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -26,31 +27,37 @@ import java.util.function.Supplier;
  * 收输入 → 生成计划 → 给用户看 SQL → 确认 → 后台事务执行 → 刷新对象树。
  * 侧栏右键、数据库菜单、命令面板三条入口都进同一个方法，
  * 于是「从菜单点」和「从右键点」不会有两套行为。
+ *
+ * <h2>⭐ U1：一切按「连接 id」分派</h2>
+ * 多连接对象树（U2）与 catalog 树（U1）之后，用户右键的节点可能属于
+ * <b>另一个连接 / 另一个库</b>。所以每个入口方法都带 {@code connectionId}：
+ * 会话、执行器、重名校验全部按它取 —— 绝不落到「当前连接」上
+ * （那等于把 db2 的表建到 db1 里，而且用户看不出来）。
  */
 final class TableDdl {
 
-    private final Supplier<DbSession> session;
-    private final Executor dbExecutor;
+    private final Function<String, DbSession> sessionFor;
+    private final Function<String, Executor> executorFor;
     private final Consumer<String> status;
-    private final Supplier<List<String>> existingTables;
-    private final Runnable onChanged;
+    private final Function<String, List<String>> existingTablesFor;
+    private final Consumer<String> onChanged;
     private final Supplier<Window> owner;
     private final Supplier<List<String>> stylesheets;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Predicate<StructurePlan> confirmation;
 
-    TableDdl(Supplier<DbSession> session,
-             Executor dbExecutor,
+    TableDdl(Function<String, DbSession> sessionFor,
+             Function<String, Executor> executorFor,
              Consumer<String> status,
-             Supplier<List<String>> existingTables,
-             Runnable onChanged,
+             Function<String, List<String>> existingTablesFor,
+             Consumer<String> onChanged,
              Supplier<Window> owner,
              Supplier<List<String>> stylesheets) {
-        this.session = session;
-        this.dbExecutor = dbExecutor;
+        this.sessionFor = sessionFor == null ? id -> null : sessionFor;
+        this.executorFor = executorFor == null ? id -> Runnable::run : executorFor;
         this.status = status == null ? message -> { } : status;
-        this.existingTables = existingTables == null ? List::of : existingTables;
-        this.onChanged = onChanged == null ? () -> { } : onChanged;
+        this.existingTablesFor = existingTablesFor == null ? id -> List.of() : existingTablesFor;
+        this.onChanged = onChanged == null ? id -> { } : onChanged;
         this.owner = owner == null ? () -> null : owner;
         this.stylesheets = stylesheets == null ? List::of : stylesheets;
         this.confirmation = plan -> StructurePlanRunner.confirm(
@@ -70,36 +77,45 @@ final class TableDdl {
     }
 
     /** T1 新建表。 */
-    void createTable() {
-        DbSession current = session.get();
+    void createTable(String connectionId) {
+        DbSession current = sessionFor.apply(connectionId);
         if (current == null) {
-            status.accept("请先连上一个数据库");
+            status.accept("这个连接还没打开，请先在对象树里点它一下");
             return;
         }
-        NewTableDialog dialog = NewTableDialog.create(current, existingTables.get());
+        NewTableDialog dialog = NewTableDialog.create(current,
+                existingTablesFor.apply(connectionId));
         Optional<StructurePlan> plan = dialog.show(owner.get(), stylesheets.get());
         if (plan.isEmpty()) {
             status.accept("已取消新建表");
             return;
         }
-        run(plan.get());
+        run(connectionId, plan.get());
     }
 
     /** T2 清空表。 */
-    void truncateTable(String table) {
-        DbSession current = session.get();
-        if (current == null || blank(table)) {
-            status.accept("请先连上数据库并选中一张表");
+    void truncateTable(String connectionId, String table) {
+        DbSession current = sessionFor.apply(connectionId);
+        if (current == null) {
+            status.accept("这个连接还没打开，请先在对象树里点它一下");
             return;
         }
-        run(StructureSqlBuilder.truncateTable(current, table));
+        if (blank(table)) {
+            status.accept("请先选中一张表");
+            return;
+        }
+        run(connectionId, StructureSqlBuilder.truncateTable(current, table));
     }
 
-    /** T3 重命名表 —— 弹输入框问新名字，然后走 {@link #renameTable(String, String)}。 */
-    void renameTable(String table) {
-        DbSession current = session.get();
-        if (current == null || blank(table)) {
-            status.accept("请先连上数据库并选中一张表");
+    /** T3 重命名表 —— 弹输入框问新名字，然后走 {@link #renameTable(String, String, String)}。 */
+    void renameTable(String connectionId, String table) {
+        DbSession current = sessionFor.apply(connectionId);
+        if (current == null) {
+            status.accept("这个连接还没打开，请先在对象树里点它一下");
+            return;
+        }
+        if (blank(table)) {
+            status.accept("请先选中一张表");
             return;
         }
         TextInputDialog dialog = new TextInputDialog(table);
@@ -115,7 +131,7 @@ final class TableDdl {
             return;
         }
         String next = answer.get() == null ? "" : answer.get().trim();
-        String problem = tableNameProblem(next, current, table);
+        String problem = tableNameProblem(connectionId, next, current, table);
         if (problem != null) {
             status.accept(problem);
             Alert alert = new Alert(Alert.AlertType.ERROR, problem, ButtonType.OK);
@@ -126,7 +142,7 @@ final class TableDdl {
             alert.showAndWait();
             return;
         }
-        renameTable(table, next);
+        renameTable(connectionId, table, next);
     }
 
     /**
@@ -135,28 +151,37 @@ final class TableDdl {
      * <p>拆出来是为了让「校验 + 执行」这段能被单测覆盖：
      * 弹框那层没法在单测里按住，但规则必须能守住。
      */
-    void renameTable(String table, String next) {
-        DbSession current = session.get();
-        if (current == null || blank(table)) {
-            status.accept("请先连上数据库并选中一张表");
+    void renameTable(String connectionId, String table, String next) {
+        DbSession current = sessionFor.apply(connectionId);
+        if (current == null) {
+            status.accept("这个连接还没打开，请先在对象树里点它一下");
             return;
         }
-        String problem = tableNameProblem(next, current, table);
+        if (blank(table)) {
+            status.accept("请先选中一张表");
+            return;
+        }
+        String problem = tableNameProblem(connectionId, next, current, table);
         if (problem != null) {
             status.accept(problem);
             return;
         }
-        run(StructureSqlBuilder.renameTable(current, table, next.trim(), existingTables.get()));
+        run(connectionId, StructureSqlBuilder.renameTable(current, table, next.trim(),
+                existingTablesFor.apply(connectionId)));
     }
 
     /** T4 删除表。 */
-    void dropTable(String table) {
-        DbSession current = session.get();
-        if (current == null || blank(table)) {
-            status.accept("请先连上数据库并选中一张表");
+    void dropTable(String connectionId, String table) {
+        DbSession current = sessionFor.apply(connectionId);
+        if (current == null) {
+            status.accept("这个连接还没打开，请先在对象树里点它一下");
             return;
         }
-        run(StructureSqlBuilder.dropTable(current, table));
+        if (blank(table)) {
+            status.accept("请先选中一张表");
+            return;
+        }
+        run(connectionId, StructureSqlBuilder.dropTable(current, table));
     }
 
     /**
@@ -169,10 +194,10 @@ final class TableDdl {
      *   <li>逐表执行仍然各自走单事务，失败的那张回滚，不会留下半张表。</li>
      * </ul>
      */
-    void dropTables(List<String> tables) {
-        DbSession current = session.get();
+    void dropTables(String connectionId, List<String> tables) {
+        DbSession current = sessionFor.apply(connectionId);
         if (current == null) {
-            status.accept("请先连上数据库并选中一张表");
+            status.accept("这个连接还没打开，请先在对象树里点它一下");
             return;
         }
         List<String> names = tables == null ? List.of() : tables.stream()
@@ -194,7 +219,7 @@ final class TableDdl {
             return;
         }
         status.accept("正在删除 " + names.size() + " 张表…");
-        dbExecutor.execute(() -> {
+        executorFor.apply(connectionId).execute(() -> {
             List<String> failures = new ArrayList<>();
             for (String name : names) {
                 try {
@@ -205,7 +230,7 @@ final class TableDdl {
             }
             Platform.runLater(() -> {
                 running.set(false);
-                onChanged.run();
+                onChanged.accept(connectionId);
                 int deleted = names.size() - failures.size();
                 if (failures.isEmpty()) {
                     status.accept("已删除 " + deleted + " 张表");
@@ -243,8 +268,9 @@ final class TableDdl {
     }
 
     /** 表名的校验（重命名时用；建表走 {@link StructureSqlBuilder#createTable}）。 */
-    private String tableNameProblem(String next, DbSession current, String oldName) {
-        List<String> others = new java.util.ArrayList<>(existingTables.get());
+    private String tableNameProblem(String connectionId, String next, DbSession current,
+                                    String oldName) {
+        List<String> others = new java.util.ArrayList<>(existingTablesFor.apply(connectionId));
         others.removeIf(name -> name.equalsIgnoreCase(oldName));
         try {
             StructureSqlBuilder.renameTable(current, oldName, next, others);
@@ -258,8 +284,8 @@ final class TableDdl {
         return running.get();
     }
 
-    private void run(StructurePlan plan) {
-        DbSession current = session.get();
+    private void run(String connectionId, StructurePlan plan) {
+        DbSession current = sessionFor.apply(connectionId);
         if (current == null) {
             status.accept("连接已断开");
             return;
@@ -273,13 +299,13 @@ final class TableDdl {
             return;
         }
         status.accept("正在执行：" + plan.title());
-        dbExecutor.execute(() -> {
+        executorFor.apply(connectionId).execute(() -> {
             try {
                 StructurePlanRunner.execute(current, plan);
                 Platform.runLater(() -> {
                     running.set(false);
                     status.accept(plan.title() + " 已完成");
-                    onChanged.run();
+                    onChanged.accept(connectionId);
                 });
             } catch (Exception e) {
                 Platform.runLater(() -> {

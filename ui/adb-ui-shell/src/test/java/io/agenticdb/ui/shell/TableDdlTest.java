@@ -43,7 +43,7 @@ class TableDdlTest {
     void dropTableRunsExactlyTheDialectsDropStatement() {
         TableDdl ddl = ddl(List.of(), true);
 
-        ddl.dropTable("orders");
+        ddl.dropTable("conn", "orders");
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(session.executed())
@@ -58,11 +58,11 @@ class TableDdlTest {
     void cancellingSendsNoSqlAtAll() {
         TableDdl ddl = ddl(List.of(), false);
 
-        ddl.dropTable("orders");
+        ddl.dropTable("conn", "orders");
         WaitForAsyncUtils.waitForFxEvents();
-        ddl.truncateTable("orders");
+        ddl.truncateTable("conn", "orders");
         WaitForAsyncUtils.waitForFxEvents();
-        ddl.renameTable("orders", "orders2");
+        ddl.renameTable("conn", "orders", "orders2");
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(session.executed())
@@ -75,7 +75,7 @@ class TableDdlTest {
     void truncateOnSqliteDeletesBecauseThereIsNoTruncate() {
         TableDdl ddl = ddl(List.of(), true);
 
-        ddl.truncateTable("orders");
+        ddl.truncateTable("conn", "orders");
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(session.executed()).containsExactly("DELETE FROM \"orders\"");
@@ -85,7 +85,7 @@ class TableDdlTest {
     void renameToAnExistingTableNameIsRefused() {
         TableDdl ddl = ddl(List.of("users"), true);
 
-        ddl.renameTable("orders", "users");
+        ddl.renameTable("conn", "orders", "users");
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(session.executed()).isEmpty();
@@ -96,7 +96,7 @@ class TableDdlTest {
     void renameRunsOnASqliteSession() {
         TableDdl ddl = ddl(List.of(), true);
 
-        ddl.renameTable("orders", "orders2");
+        ddl.renameTable("conn", "orders", "orders2");
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(session.executed())
@@ -105,15 +105,15 @@ class TableDdlTest {
 
     @Test
     void withoutAConnectionNothingIsSentAndTheUserIsTold() {
-        TableDdl ddl = new TableDdl(() -> null, Runnable::run, statuses::add,
-                List::of, changes::incrementAndGet, () -> null, List::of);
+        TableDdl ddl = new TableDdl(id -> null, id -> Runnable::run, statuses::add,
+                id -> List.of(), id -> changes.incrementAndGet(), () -> null, List::of);
         ddl.setConfirmation(plan -> true);
 
-        ddl.dropTable("orders");
+        ddl.dropTable("conn", "orders");
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(session.executed()).isEmpty();
-        assertThat(statuses).last().asString().contains("请先连上数据库");
+        assertThat(statuses).last().asString().contains("这个连接还没打开");
     }
 
     @Test
@@ -121,7 +121,7 @@ class TableDdlTest {
         TableDdl ddl = ddl(List.of("logs"), true);
         session.failOn("logs");
 
-        ddl.dropTables(List.of("orders", "logs", "audit"));
+        ddl.dropTables("conn", List.of("orders", "logs", "audit"));
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(session.executed())
@@ -141,7 +141,7 @@ class TableDdlTest {
     void cancellingABatchSendsNoSql() {
         TableDdl ddl = ddl(List.of(), false);
 
-        ddl.dropTables(List.of("orders", "logs"));
+        ddl.dropTables("conn", List.of("orders", "logs"));
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(session.executed()).isEmpty();
@@ -152,7 +152,7 @@ class TableDdlTest {
     void everyPlanGoesThroughASingleTransaction() {
         TableDdl ddl = ddl(List.of(), true);
 
-        ddl.dropTable("orders");
+        ddl.dropTable("conn", "orders");
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(session.inTransaction())
@@ -161,8 +161,8 @@ class TableDdlTest {
     }
 
     private TableDdl ddl(List<String> existingTables, boolean confirmed) {
-        TableDdl ddl = new TableDdl(() -> session, Runnable::run, statuses::add,
-                () -> existingTables, changes::incrementAndGet, () -> null, List::of);
+        TableDdl ddl = new TableDdl(id -> session, id -> Runnable::run, statuses::add,
+                id -> existingTables, id -> changes.incrementAndGet(), () -> null, List::of);
         ddl.setConfirmation(plan -> {
             assertThat(plan).as("确认框拿到的一定是一个非空计划").isNotNull();
             return confirmed;
@@ -170,18 +170,58 @@ class TableDdlTest {
         return ddl;
     }
 
+    /**
+     * ⭐ U1：DDL 必须落在**用户点的那个连接**上。
+     *
+     * <p>多连接对象树 / catalog 树之后，右键的节点可能属于另一个库。
+     * 以前 TableDdl 只认「当前会话」—— 在 db2 的节点上点删表，
+     * 删掉的是 db1 里同名的那张（如果存在的话）。用户根本看不出来。
+     */
+    @Test
+    void ddlOnAnotherConnectionUsesThatConnectionsSession() {
+        FakeDbSession other = FakeDbSession.of(DialectKind.SQLITE);
+        TableDdl ddl = new TableDdl(id -> "other".equals(id) ? other : null,
+                id -> Runnable::run, statuses::add,
+                id -> List.of(), id -> changes.incrementAndGet(), () -> null, List::of);
+        ddl.setConfirmation(plan -> true);
+
+        ddl.dropTable("other", "orders");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(session.executed())
+                .as("当前连接的会话一条 SQL 都不许收到").isEmpty();
+        assertThat(other.executed())
+                .containsExactly("DROP TABLE \"orders\"");
+    }
+
+    /** ⭐ U1：执行器也按连接取 —— 同一连接的库操作才需要串行。 */
+    @Test
+    void ddlRunsOnTheTargetConnectionsExecutor() {
+        List<String> used = new ArrayList<>();
+        TableDdl ddl = new TableDdl(id -> session, id -> {
+            used.add(id);
+            return Runnable::run;
+        }, statuses::add, id -> List.of(), id -> { }, () -> null, List::of);
+        ddl.setConfirmation(plan -> true);
+
+        ddl.dropTable("conn-b", "orders");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(used).containsExactly("conn-b");
+    }
+
     /** 顺带钉住：计划里的 SQL 是给人看的，不能是空字符串。 */
     @Test
     void planSqlIsNotEmpty() {
         List<StructurePlan> seen = new ArrayList<>();
-        TableDdl ddl = new TableDdl(() -> session, Runnable::run, statuses::add,
-                List::of, changes::incrementAndGet, () -> null, List::of);
+        TableDdl ddl = new TableDdl(id -> session, id -> Runnable::run, statuses::add,
+                id -> List.of(), id -> changes.incrementAndGet(), () -> null, List::of);
         ddl.setConfirmation(plan -> {
             seen.add(plan);
             return false;
         });
 
-        ddl.truncateTable("orders");
+        ddl.truncateTable("conn", "orders");
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(seen).hasSize(1);
