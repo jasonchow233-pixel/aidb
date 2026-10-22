@@ -124,6 +124,73 @@ public final class SqliteDialect implements Dialect {
                 + "WHERE type = 'trigger' AND tbl_name = ? ORDER BY name";
     }
 
+    /**
+     * ⭐ SQLite 驱动的外键动作码**与 JDBC 标准不一样**（实测 Xerial 3.45）：
+     * 0=CASCADE · 1=RESTRICT · 2=SET NULL · <b>3=NO ACTION</b> · 4=SET DEFAULT。
+     *
+     * <p>不翻译就会把「3」写进 {@code ON UPDATE 3} —— 语法错误，
+     * 于是**任何带外键的表一改列就失败**（以前没人发现，因为没人改过带外键的表）。
+     */
+    @Override
+    public String foreignKeyActionName(String rawCode) {
+        if (rawCode == null || rawCode.isBlank()) {
+            return "NO ACTION";
+        }
+        String code = rawCode.trim().toUpperCase(java.util.Locale.ROOT);
+        return switch (code) {
+            case "0" -> "CASCADE";
+            case "1" -> "RESTRICT";
+            case "2" -> "SET NULL";
+            case "3" -> "NO ACTION";
+            case "4" -> "SET DEFAULT";
+            default -> code;
+        };
+    }
+
+    /**
+     * SQLite 的函数 / 过程定义体就在 {@code sqlite_master.sql} 的原文里。
+     */
+    @Override
+    public String readRoutineDefinition(Connection connection, String name, boolean procedure)
+            throws SQLException {
+        try (var statement = connection.prepareStatement(
+                "SELECT sql FROM sqlite_master WHERE name = ? "
+                        + "AND type IN ('function', 'procedure')")) {
+            statement.setString(1, name);
+            try (var rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    String sql = rs.getString(1);
+                    return sql == null ? "" : sql;
+                }
+            }
+        }
+        return "";
+    }
+
+    /**
+     * ⭐ SQLite 的外键是 {@code CREATE TABLE} 的一部分 ——
+     * {@code ALTER TABLE} 改不了它，所以增删外键必须整表重建。
+     */
+    /** SQLite：版本有，用户概念没有（本地文件）。 */
+    @Override
+    public String serverInfoSql() {
+        return "SELECT sqlite_version(), ''";
+    }
+
+    @Override
+    public boolean rebuildsTableOnForeignKeyChange() {
+        return true;
+    }
+
+    /**
+     * ⭐ SQLite 的 CHECK 约束只能从 {@code CREATE TABLE} 原文里解析 ——
+     * 没有 PRAGMA、也没有 information_schema 能读它。
+     */
+    @Override
+    public boolean parsesChecksFromDdl() {
+        return true;
+    }
+
     @Override
     public boolean readsDdlFromDatabase() {
         return true;
@@ -243,6 +310,37 @@ public final class SqliteDialect implements Dialect {
     @Override
     public String addColumnSql(String table, ColumnSpec column) {
         return "ALTER TABLE " + quote(table) + " ADD COLUMN " + columnDefinition(column, true);
+    }
+
+    @Override
+    public String renameTableSql(String oldName, String newName) {
+        return "ALTER TABLE " + quote(oldName) + " RENAME TO " + quote(newName);
+    }
+
+    @Override
+    public String truncateTableSql(String table) {
+        // ⭐ SQLite 没有 TRUNCATE —— 只有 DELETE FROM。
+        //   写成 TRUNCATE 会在运行时才炸，所以这个差异必须在方言里兜住。
+        return "DELETE FROM " + quote(table);
+    }
+
+    @Override
+    public String dropTableSql(String table) {
+        return "DROP TABLE " + quote(table);
+    }
+
+    @Override
+    public String dropIndexSql(String table, String indexName) {
+        return "DROP INDEX " + quote(indexName);
+    }
+
+    /**
+     * SQLite 的主键索引叫 {@code sqlite_autoindex_*}，没有统一的 "PRIMARY"。
+     * 好在 {@code IndexDef.autoCreated()} 已经按 {@code origin} 判过了。
+     */
+    @Override
+    public String primaryIndexName() {
+        return "";
     }
 
     /**

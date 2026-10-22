@@ -20,13 +20,36 @@ public final class SessionManager implements AutoCloseable {
 
     private final Map<String, DbSession> sessions = new LinkedHashMap<>();
 
+    /**
+     * 打开（或**复用**）一个会话。
+     *
+     * <p>⭐ U2：以前这里是「<b>先关掉再重开</b>」——
+     * 于是切换到 B 连接时，**A 连接的会话被关掉了**，
+     * A 的标签页当场失效（用户会发现「切回来就报错」）。
+     * 两个连接**不能并存**，这正是 U2「多连接并行」一直做不了的原因。
+     *
+     * <p>现在：已开着就直接复用；确实要重开（用户点「重新连接」）用 {@link #reopen}。
+     */
     public synchronized DbSession open(String id, ConnectionSpec spec) throws SQLException {
-        closeQuietly(id);
+        DbSession existing = sessions.get(id);
+        if (existing != null && !existing.isClosed()) {
+            return existing;
+        }
         // ⭐ 是否池化由方言决定（SQLite 单文件直连，PG/MySQL 走池）。
         DbSession session = spec.kind().dialect().pooled()
                 ? ConnectionPool.open(spec) : JdbcSession.open(spec);
         sessions.put(id, session);
         return session;
+    }
+
+    /**
+     * ⭐ 强制重开（用户点「重新连接」时用）。
+     *
+     * <p>与 {@link #open} 的区别就在这里：open 复用已开的会话，reopen 一定换新的。
+     */
+    public synchronized DbSession reopen(String id, ConnectionSpec spec) throws SQLException {
+        closeQuietly(id);
+        return open(id, spec);
     }
 
     public synchronized Optional<DbSession> find(String id) {

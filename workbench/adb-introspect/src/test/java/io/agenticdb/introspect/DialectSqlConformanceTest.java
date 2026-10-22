@@ -106,10 +106,21 @@ class DialectSqlConformanceTest {
 
     @Test
     void sqliteAlterColumnFallsBackToTableRebuild() {
-        // SQLite 改不了列 —— 走整表重建（需要连接，所以这里只验证「不是就地改」）。
+        // SQLite 改不了列 —— 必须走**整表重建**（CREATE TABLE + 拷数据 + 改名），
+        // 而不是就地 ALTER。
+        //
+        // ⚠️ 这条断言以前写的是「expect 抛异常」—— 那是**借异常表达意图**，
+        // 很脆：重建路径一旦不再依赖真连接（读不到依赖视图时优雅降级），
+        // 异常就没了，测试却红了。现在直接断言 SQL 形态 —— 意图更准，也更稳。
         ColumnSpec next = new ColumnSpec("email", "TEXT", true, null, null, false, false);
-        assertThatThrownBy(() -> alterColumn(DialectKind.SQLITE, "email", next, "TEXT"))
-                .isInstanceOf(Exception.class);
+        StructurePlan plan = alterColumn(DialectKind.SQLITE, "email", next, "TEXT");
+
+        assertThat(plan.sql())
+                .as("SQLite 改列 = 整表重建")
+                .contains("CREATE TABLE")
+                .contains("INSERT INTO")
+                .doesNotContain("ALTER COLUMN")
+                .doesNotContain("MODIFY COLUMN");
     }
 
     // ─────────────────────────── 重命名 / 删列 ───────────────────────────
@@ -179,69 +190,8 @@ class DialectSqlConformanceTest {
                 List.of("id"), List.of(), List.of(), List.of(), "");
     }
 
-    /** 只关心方言的会话替身。 */
+    /** 只关心方言的会话替身（与表级生命周期测试共用一份）。 */
     private static DbSession session(DialectKind kind) {
-        return new FakeSession(kind.dialect());
-    }
-
-    private static final class FakeSession implements DbSession {
-
-        private final Dialect dialect;
-
-        private FakeSession(Dialect dialect) {
-            this.dialect = dialect;
-        }
-
-        @Override
-        public Connection connection() {
-            return null;
-        }
-
-        @Override
-        public String label() {
-            return "fake";
-        }
-
-        @Override
-        public Dialect dialect() {
-            return dialect;
-        }
-
-        @Override
-        public RowPage query(String sql, int maxRows, List<Object> params) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public int update(String sql, List<Object> params) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public ExecutionResult execute(String sql, io.agenticdb.model.Danger declared)
-                throws SQLException {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void close() {
-        }
-
-        @Override
-        public void begin() {
-        }
-
-        @Override
-        public void commit() {
-        }
-
-        @Override
-        public void rollback() {
-        }
-
-        @Override
-        public boolean inTransaction() {
-            return false;
-        }
+        return FakeDialectSession.of(kind);
     }
 }

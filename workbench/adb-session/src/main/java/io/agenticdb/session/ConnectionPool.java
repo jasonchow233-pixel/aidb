@@ -60,12 +60,18 @@ public final class ConnectionPool {
         }
     }
 
-    private static final class PooledSession implements DbSession {
+    /**
+     * 池化会话。
+     *
+     * <p>包级可见（不是 private）：门禁要能直接构造它，
+     * 验证「关闭会话时连接真的还回池子」（A12）。
+     */
+    static final class PooledSession implements DbSession {
 
         private final JdbcSession delegate;
         private final HikariDataSource dataSource;
 
-        private PooledSession(JdbcSession delegate, HikariDataSource dataSource) {
+        PooledSession(JdbcSession delegate, HikariDataSource dataSource) {
             this.delegate = delegate;
             this.dataSource = dataSource;
         }
@@ -73,6 +79,11 @@ public final class ConnectionPool {
         @Override
         public Connection connection() {
             return delegate.connection();
+        }
+
+        @Override
+        public boolean isClosed() {
+            return delegate.isClosed();
         }
 
         @Override
@@ -132,9 +143,27 @@ public final class ConnectionPool {
         }
 
         @Override
+        /**
+         * ⭐ A12：关闭会话 = **把借来的连接还回池子**，再关池子。
+         *
+         * <p>以前这里只 {@code delegate.close()}（那只关 statement，不关 connection）
+         * + {@code dataSource.close()} —— 于是那条借出来的连接**一直挂在池外**，
+         * 池子关不掉、连接不释放（长时间使用会打满数据库连接数）。
+         *
+         * <p>顺序很重要：<b>先还连接，再关池</b>（反过来 Hikari 会等连接归还而卡住）。
+         */
         public void close() throws SQLException {
             try {
-                delegate.close();
+                // delegate.close() 只关 statement —— 真正要还的是 connection。
+                try {
+                    delegate.close();
+                } finally {
+                    Connection borrowed = delegate.connection();
+                    if (borrowed != null && !borrowed.isClosed()) {
+                        // close() 会把连接归还给 Hikari（不是物理断连）。
+                        borrowed.close();
+                    }
+                }
             } finally {
                 dataSource.close();
             }

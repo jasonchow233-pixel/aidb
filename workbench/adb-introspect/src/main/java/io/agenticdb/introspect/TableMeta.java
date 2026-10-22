@@ -3,18 +3,38 @@ package io.agenticdb.introspect;
 /**
  * 表的元信息 —— Navicat「表清单」那一行的内容。
  *
- * @param name       表名
- * @param rows       行数；{@code null} 表示没统计出来
- * @param sizeBytes  数据长度（字节）；{@code null} 表示这个库不提供
- * @param engine     引擎（InnoDB / SQLite / tablespace…）；{@code null} 表示不提供
- * @param createdAt  创建时间文本；{@code null} 表示不提供
+ * <p>Navicat 的表清单是 8 列：**名称 / 行 / 数据长度 / 引擎 / 创建日期 /
+ * 修改日期 / 排序规则 / 注释**。本记录按这 8 列建模；方言拿不到的字段保持
+ * {@code null}，由 UI 显示「—」——**绝不编造一个看起来像真的值**。
+ *
+ * @param name        表名
+ * @param rows        行数；{@code null} 表示没统计出来
+ * @param sizeBytes   数据长度（字节）；{@code null} 表示这个库不提供
+ * @param engine      引擎（InnoDB / SQLite / tablespace…）；{@code null} 表示不提供
+ * @param createdAt   创建时间文本；{@code null} 表示不提供
+ * @param updatedAt   最后修改时间文本；{@code null} 表示不提供
+ * @param collation   排序规则；{@code null} 表示不提供
+ * @param comment     表注释；{@code null} 表示不提供
  */
 public record TableMeta(
         String name,
         Long rows,
         Long sizeBytes,
         String engine,
-        String createdAt) {
+        String createdAt,
+        String updatedAt,
+        String collation,
+        String comment) {
+
+    /**
+     * 兼容旧调用点的 5 参数构造器。
+     *
+     * <p>旧版本只知道前 5 列。保留这个构造器，避免为了补 3 列去改一堆
+     * 只关心行数 / 大小的测试与调用点。
+     */
+    public TableMeta(String name, Long rows, Long sizeBytes, String engine, String createdAt) {
+        this(name, rows, sizeBytes, engine, createdAt, null, null, null);
+    }
 
     public TableMeta {
         name = name == null ? "" : name;
@@ -39,10 +59,26 @@ public record TableMeta(
     }
 
     public String engineText() {
-        return engine == null || engine.isBlank() ? "—" : engine;
+        return textOrDash(engine);
     }
 
     public String createdText() {
-        return createdAt == null || createdAt.isBlank() ? "—" : createdAt;
+        return textOrDash(createdAt);
+    }
+
+    public String updatedText() {
+        return textOrDash(updatedAt);
+    }
+
+    public String collationText() {
+        return textOrDash(collation);
+    }
+
+    public String commentText() {
+        return textOrDash(comment);
+    }
+
+    private static String textOrDash(String value) {
+        return value == null || value.isBlank() ? "—" : value;
     }
 }

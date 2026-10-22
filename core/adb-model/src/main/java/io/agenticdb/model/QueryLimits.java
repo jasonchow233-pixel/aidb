@@ -77,6 +77,29 @@ public final class QueryLimits {
     /** 超过这个字节数，单元格内容在传输途中被截断，由详情面板按需再取。 */
     public static final int MAX_CELL_BYTES = 20 * 1024;
 
+    /**
+     * ⭐ A10：单条语句的**执行超时**（秒）。0 = 不限制。
+     *
+     * <p>为什么要有：以前只有「连接超时」（握手卡住会失败），
+     * 但**语句跑起来之后**没有任何时限 —— 一条全表扫描可以把界面挂到天荒地老，
+     * 用户除了强杀进程没有别的办法。
+     *
+     * <p>30 秒的依据：跨机房的普通查询（千万行级聚合）通常在几秒内；
+     * 超过 30 秒的查询，用户多半该改写成「带条件」或「分批」。
+     */
+    public static final int DEFAULT_QUERY_TIMEOUT_SECONDS = 30;
+
+    /** 超时上限：即便用户自己调，也不能超过 10 分钟。 */
+    public static final int MAX_QUERY_TIMEOUT_SECONDS = 600;
+
+    /** 夹一下超时值：非正数 = 不限制；上限 {@link #MAX_QUERY_TIMEOUT_SECONDS}。 */
+    public static int clampQueryTimeout(int seconds) {
+        if (seconds <= 0) {
+            return 0;
+        }
+        return Math.min(seconds, MAX_QUERY_TIMEOUT_SECONDS);
+    }
+
     // ──────────────────────────── 行为 ────────────────────────────
 
     /**

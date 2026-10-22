@@ -11,6 +11,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.SQLTimeoutException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -32,11 +33,37 @@ public final class JdbcSession implements DbSession {
     private final Dialect dialect;
     /** 查询页的「取消」从 JavaFX 线程调用，所以必须是 volatile。 */
     private volatile Statement activeStatement;
+    /** ⭐ A10：单条语句执行超时（秒）；0 = 不限制。 */
+    private final int queryTimeoutSeconds;
 
-    private JdbcSession(Connection connection, String label, Dialect dialect) {
+    private JdbcSession(Connection connection, String label, Dialect dialect,
+                        int queryTimeoutSeconds) {
         this.connection = connection;
         this.label = label;
         this.dialect = dialect;
+        this.queryTimeoutSeconds = QueryLimits.clampQueryTimeout(queryTimeoutSeconds);
+    }
+
+    /** 语句超时（秒）；0 = 不限制。 */
+    public int queryTimeoutSeconds() {
+        return queryTimeoutSeconds;
+    }
+
+    /**
+     * 给语句挂上超时。
+     *
+     * <p>驱动不支持 {@code setQueryTimeout} 时**静默忽略** ——
+     * 那属于「这个库不支持」，不该让整条查询失败。
+     */
+    private void applyTimeout(Statement statement) {
+        if (queryTimeoutSeconds <= 0) {
+            return;
+        }
+        try {
+            statement.setQueryTimeout(queryTimeoutSeconds);
+        } catch (SQLException | RuntimeException ignored) {
+            // 驱动不支持 → 不限时（而不是报错）。
+        }
     }
 
     public static JdbcSession open(ConnectionSpec spec) throws SQLException {
@@ -62,12 +89,33 @@ public final class JdbcSession implements DbSession {
 
         Connection connection = DriverManager.getConnection(spec.jdbcUrl(), props);
         connection.setAutoCommit(true);
+        // ⭐ A10：语句超时。默认 30 秒；可用 options 里的 queryTimeout 覆盖（秒）。
+        int timeout = QueryLimits.clampQueryTimeout(
+                integerOption(spec.options(), "queryTimeout",
+                        QueryLimits.DEFAULT_QUERY_TIMEOUT_SECONDS));
         return new JdbcSession(connection, spec.kind().displayName() + " · " + spec.database(),
-                spec.kind().dialect());
+                spec.kind().dialect(), timeout);
     }
 
     public static JdbcSession wrap(Connection connection, String label) {
-        return new JdbcSession(connection, label, inferDialect(connection));
+        return new JdbcSession(connection, label, inferDialect(connection),
+                QueryLimits.DEFAULT_QUERY_TIMEOUT_SECONDS);
+    }
+
+    /** 读一个整数型附加参数；没有或不是数字就用默认值。 */
+    private static int integerOption(Map<String, String> options, String key, int fallback) {
+        if (options == null) {
+            return fallback;
+        }
+        String value = options.get(key);
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     private static Dialect inferDialect(Connection connection) {
@@ -114,6 +162,7 @@ public final class JdbcSession implements DbSession {
             statement.setMaxRows(limit + 1);
             // 大结果集不要一次性从驱动拉全量
             statement.setFetchSize(Math.min(limit, 500));
+            applyTimeout(statement);
             bind(statement, params);
 
             // ⭐ 4.5-13：query() 也要记录 activeStatement ——
@@ -126,6 +175,11 @@ public final class JdbcSession implements DbSession {
                 return new RowPage(result.columns(), result.rows(), null, null,
                         result.durationMs(), List.of(), false, result.isTruncated());
             }
+        } catch (SQLTimeoutException e) {
+            // ⭐ A10：给用户一句能看懂的话 —— 驱动原文通常是干巴巴的
+            //    "query timeout" 或 "statement timeout"。
+            throw new SQLException("查询超时（" + queryTimeoutSeconds + " 秒）—— "
+                    + "试试加条件筛选，或改用「按主键跳转」", e);
         } finally {
             activeStatement = null;
         }
@@ -134,10 +188,16 @@ public final class JdbcSession implements DbSession {
     @Override
     public int update(String sql, List<Object> params) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            applyTimeout(statement);
             bind(statement, params);
             // ⭐ 4.5-13：update() 也要能被取消 —— 数据页的保存跑在 update() 里。
             activeStatement = statement;
             return statement.executeUpdate();
+        } catch (SQLTimeoutException e) {
+            // ⭐ A10：给用户一句能看懂的话 —— 驱动原文通常是干巴巴的
+            //    "query timeout" 或 "statement timeout"。
+            throw new SQLException("查询超时（" + queryTimeoutSeconds + " 秒）—— "
+                    + "试试加条件筛选，或改用「按主键跳转」", e);
         } finally {
             activeStatement = null;
         }
@@ -169,6 +229,7 @@ public final class JdbcSession implements DbSession {
         }
         long started = System.nanoTime();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            applyTimeout(statement);
             bind(statement, params);
             activeStatement = statement;
             statement.setMaxRows(QueryLimits.MAX_PAGE_SIZE + 1);
@@ -180,6 +241,11 @@ public final class JdbcSession implements DbSession {
             }
             return new ExecutionResult(sql, List.of(), List.of(), statement.getUpdateCount(),
                     (System.nanoTime() - started) / 1_000_000);
+        } catch (SQLTimeoutException e) {
+            // ⭐ A10：给用户一句能看懂的话 —— 驱动原文通常是干巴巴的
+            //    "query timeout" 或 "statement timeout"。
+            throw new SQLException("查询超时（" + queryTimeoutSeconds + " 秒）—— "
+                    + "试试加条件筛选，或改用「按主键跳转」", e);
         } finally {
             activeStatement = null;
         }
@@ -189,6 +255,7 @@ public final class JdbcSession implements DbSession {
     public ExecutionResult execute(String sql) throws SQLException {
         long started = System.nanoTime();
         try (Statement statement = connection.createStatement()) {
+            applyTimeout(statement);
             activeStatement = statement;
             statement.setMaxRows(QueryLimits.MAX_PAGE_SIZE + 1);
             statement.setFetchSize(Math.min(QueryLimits.MAX_PAGE_SIZE, 500));
@@ -204,8 +271,22 @@ public final class JdbcSession implements DbSession {
             int updateCount = statement.getUpdateCount();
             long durationMs = (System.nanoTime() - started) / 1_000_000;
             return new ExecutionResult(sql, List.of(), List.of(), updateCount, durationMs);
+        } catch (SQLTimeoutException e) {
+            // ⭐ A10：给用户一句能看懂的话 —— 驱动原文通常是干巴巴的
+            //    "query timeout" 或 "statement timeout"。
+            throw new SQLException("查询超时（" + queryTimeoutSeconds + " 秒）—— "
+                    + "试试加条件筛选，或改用「按主键跳转」", e);
         } finally {
             activeStatement = null;
+        }
+    }
+
+    @Override
+    public boolean isClosed() {
+        try {
+            return connection == null || connection.isClosed();
+        } catch (SQLException e) {
+            return true;
         }
     }
 

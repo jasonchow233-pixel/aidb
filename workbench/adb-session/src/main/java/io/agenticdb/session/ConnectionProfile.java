@@ -125,8 +125,22 @@ public record ConnectionProfile(
                 : host + ":" + port + "/" + database;
     }
 
+    /**
+     * 类型标签（全大写）—— 用在**表格的类型列**与紧凑徽标里。
+     *
+     * <p>全大写是刻意的：它是一个「类别标签」，不是句子。
+     */
     public String kindLabel() {
         return kind.displayName().toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * 类型显示名（正常大小写）—— 用在**句子语境**里（应用栏胶囊、菜单项）。
+     *
+     * <p>「SQLITE」出现在胶囊里像是拼写错误；「SQLite」才是产品名。
+     */
+    public String kindDisplay() {
+        return kind.displayName();
     }
 
     public ConnectionProfile withPasswordlessOptions(Map<String, String> value) {

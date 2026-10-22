@@ -140,6 +140,16 @@ public interface DbSession extends AutoCloseable {
 
     boolean inTransaction() throws SQLException;
 
+    /**
+     * 会话是否已关闭。
+     *
+     * <p>U2：{@code SessionManager.open} 要靠它判断「这个连接是不是还开着」——
+     * 开着的就**复用**（而不是关掉重开），两个连接才能并存。
+     */
+    default boolean isClosed() {
+        return false;
+    }
+
     @Override
     void close() throws SQLException;
 }

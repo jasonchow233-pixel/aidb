@@ -1,6 +1,7 @@
 package io.agenticdb.introspect;
 
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnType;
 import io.agenticdb.model.QueryLimits;
@@ -12,6 +13,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -34,7 +36,14 @@ public final class SchemaService {
         /** ⭐ S3：过程 / 函数 / 触发器也进对象树（Navicat 的对象浏览层）。 */
         PROCEDURE,
         FUNCTION,
-        TRIGGER
+        TRIGGER,
+        /**
+         * ⭐ O1：调度事件（MySQL EVENT）。
+         *
+         * <p>只有 MySQL 有这个概念（PostgreSQL 用 {@code pg_cron} 扩展、
+         * SQLite 完全没有）—— 所以**只有 MySQL 的对象树会出现「事件」分组**。
+         */
+        EVENT
     }
 
     /**
@@ -134,6 +143,8 @@ public final class SchemaService {
         addProcedures(meta, catalog, schema, objects);
         addFunctions(meta, catalog, schema, objects);
         addTriggers(session, objects);
+        // ⭐ O1：调度事件（只有 MySQL 有；其它方言安静跳过）。
+        addEvents(session, objects);
 
         objects.sort(Comparator.comparing(SchemaObject::kind)
                 .thenComparing(SchemaObject::name, String.CASE_INSENSITIVE_ORDER));
@@ -186,6 +197,30 @@ public final class SchemaService {
             }
         } catch (SQLException | RuntimeException ignored) {
             // 没有触发器权限 / 驱动不支持时安静跳过。
+        }
+    }
+
+    /**
+     * ⭐ O1：调度事件。
+     *
+     * <p>只有 MySQL 有 {@code information_schema.EVENTS}；其它方言返回 null →
+     * 对象树里**不会出现**「事件」分组（不假装有）。
+     */
+    private void addEvents(DbSession session, List<SchemaObject> objects) {
+        String sql = session.dialect().eventsListSql();
+        if (sql == null) {
+            return;
+        }
+        try (Statement statement = session.connection().createStatement();
+             ResultSet rs = statement.executeQuery(sql)) {
+            while (rs.next()) {
+                String name = rs.getString(1);
+                if (isUsableObjectName(name)) {
+                    objects.add(new SchemaObject(name, ObjectKind.EVENT));
+                }
+            }
+        } catch (SQLException | RuntimeException ignored) {
+            // 没权限 / 驱动不支持时安静跳过。
         }
     }
 
@@ -243,7 +278,9 @@ public final class SchemaService {
                 while (rs.next()) {
                     result.add(new TableMeta(rs.getString("name"),
                             longOrNull(rs, "rows"), longOrNull(rs, "size_bytes"),
-                            rs.getString("engine"), rs.getString("created_at")));
+                            rs.getString("engine"), rs.getString("created_at"),
+                            rs.getString("updated_at"), rs.getString("collation_name"),
+                            rs.getString("comment_text")));
                 }
             } catch (SQLException ignored) {
                 // 取不到就退化成只算行数。
@@ -351,6 +388,80 @@ public final class SchemaService {
                 column.unique(), column.rawType());
     }
 
+    private static ColumnDef withComment(ColumnDef column, String comment) {
+        return new ColumnDef(column.name(), column.type(), column.nullable(),
+                column.primaryKey(), column.defaultValue(), comment, column.enumValues(),
+                column.charMaxLength(), column.numericPrecision(), column.numericScale(),
+                column.unique(), column.rawType());
+    }
+
+    /**
+     * 把列注释并进列定义。
+     *
+     * <p>⭐ 为什么必须读回来：改列时 UI 拿内省结果当基底，只覆盖用户改过的字段。
+     * 基底里没有注释 → 生成的 {@code MODIFY COLUMN} / {@code COMMENT ON} 就没有
+     * {@code COMMENT} 子句 → <b>改一次列，注释被静默抹掉</b>。
+     * 这不是显示问题，是丢数据，且没有撤销路径。
+     *
+     * <p>读不到（方言不支持 / 权限不够 / 表是视图）就当没有 —— 探测是锦上添花，
+     * 不该让整张表的结构读不出来。
+     */
+    private static List<ColumnDef> withComments(DbSession session, String name,
+                                                List<ColumnDef> columns) {
+        String sql = session.dialect().columnCommentsSql(name);
+        if (sql == null || columns.isEmpty()) {
+            return columns;
+        }
+        try {
+            return applyComments(columns, session.query(sql, Math.max(64, columns.size() * 2)));
+        } catch (Exception e) {
+            return columns;
+        }
+    }
+
+    /**
+     * 纯函数版：给定「列名 → 注释」的查询结果，并进列定义。
+     *
+     * <p>单独抽出来是因为 {@code structure()} 要真连接、测不动；
+     * 而「注释有没有被并进去」恰恰是最该被门禁钉住的那条。
+     *
+     * @param page 两列结果集：第 1 列列名、第 2 列注释
+     */
+    static List<ColumnDef> applyComments(List<ColumnDef> columns, RowPage page) {
+        if (page == null || columns.isEmpty()) {
+            return columns;
+        }
+        List<ColumnDef> meta = page.columns();
+        if (meta.size() < 2) {
+            return columns;
+        }
+        // ⭐ 按元数据里的列标签取值，不要靠 Map 的迭代顺序。
+        String nameKey = meta.get(0).name();
+        String commentKey = meta.get(1).name();
+        Map<String, String> comments = new HashMap<>();
+        for (Map<String, Object> row : page.rows()) {
+            Object columnName = row.get(nameKey);
+            Object comment = row.get(commentKey);
+            if (columnName == null || comment == null) {
+                continue;
+            }
+            String text = String.valueOf(comment);
+            if (!text.isBlank()) {
+                comments.put(String.valueOf(columnName).toLowerCase(Locale.ROOT), text);
+            }
+        }
+        if (comments.isEmpty()) {
+            return columns;
+        }
+        return columns.stream()
+                .map(column -> {
+                    String comment = comments.get(column.name().toLowerCase(Locale.ROOT));
+                    return comment == null || comment.equals(column.comment())
+                            ? column : withComment(column, comment);
+                })
+                .toList();
+    }
+
     /**
      * 结构页完整快照：列、主键、索引、外键、触发器、DDL。
      *
@@ -367,11 +478,171 @@ public final class SchemaService {
         // ⭐ 列来源由方言决定（SQLite 的结果集元数据不带声明类型与默认值，要读 PRAGMA）。
         List<ColumnDef> baseColumns = session.dialect().readsColumnsViaJdbcMetadata()
                 ? table.columns() : sqliteColumns(session, name);
-        List<ColumnDef> columns = markUnique(baseColumns, indexes);
+        // ⭐ 注释在 markUnique 之后合并：markUnique 会重建 ColumnDef，先并会被丢掉。
+        List<ColumnDef> columns = withComments(session, name, markUnique(baseColumns, indexes));
         String ddl = ddl(session, name, view, columns, table.primaryKeys(),
                 indexes, foreignKeys, triggers);
+        // ⭐ CHECK 约束：以前根本不采 —— 于是 SQLite 改列整表重建时约束静默消失（D3）。
+        List<CheckDef> checks = checks(session, name);
+        // ⭐ 表注释（B5-S4）：以前**连看都看不了** —— 现在能读回来，结构页能显示。
+        String comment = tableComment(session, name);
         return new TableStructure(name, view, columns, table.primaryKeys(),
-                indexes, foreignKeys, triggers, ddl);
+                indexes, foreignKeys, triggers, checks, comment, ddl);
+    }
+
+    /**
+     * ⭐ 函数 / 存储过程的**定义体**（O2）。
+     *
+     * <p>以前对象树里只有**名字** —— 点开也看不到参数、返回类型、函数体。
+     * 现在三种方言都能读回来（来源见 {@code Dialect.readRoutineDefinition}）。
+     *
+     * @param procedure true = 存储过程
+     * @return 定义体原文；读不到时是空串
+     */
+    public String routineDefinition(DbSession session, String name, boolean procedure) {
+        if (name == null || name.isBlank()) {
+            return "";
+        }
+        try {
+            String body = session.dialect()
+                    .readRoutineDefinition(session.connection(), name, procedure);
+            return body == null ? "" : body;
+        } catch (SQLException | RuntimeException e) {
+            // 读不到就显示「读不到」，不该让整个页面打不开。
+            return "";
+        }
+    }
+
+    /**
+     * ⭐ U6：服务器信息（版本 + 当前用户）。
+     *
+     * @return 版本 / 用户；读不到时是空串
+     */
+    public String[] serverInfo(DbSession session) {
+        String sql = session.dialect().serverInfoSql();
+        if (sql == null) {
+            return new String[]{"", ""};
+        }
+        try (java.sql.Statement statement = session.connection().createStatement();
+             ResultSet rs = statement.executeQuery(sql)) {
+            if (rs.next()) {
+                String version = rs.getString(1);
+                String user = rs.getString(2);
+                return new String[]{version == null ? "" : version, user == null ? "" : user};
+            }
+        } catch (SQLException | RuntimeException ignored) {
+            // 读不到就显示「—」，不该让连接失败。
+        }
+        return new String[]{"", ""};
+    }
+
+    /**
+     * ⭐ O1：调度事件的定义体。
+     *
+     * <p>只有 MySQL 有事件 → 其它方言返回空串。
+     */
+    public String eventDefinition(DbSession session, String name) {
+        if (name == null || name.isBlank()) {
+            return "";
+        }
+        try {
+            String body = session.dialect().readEventDefinition(session.connection(), name);
+            return body == null ? "" : body;
+        } catch (SQLException | RuntimeException e) {
+            return "";
+        }
+    }
+
+    /**
+     * 表注释。
+     *
+     * <p>SQLite 没有表注释 → 返回空串（结构页显示「—」，不假装有）。
+     */
+    private String tableComment(DbSession session, String name) {
+        String sql = session.dialect().tableCommentQuery(name);
+        if (sql == null) {
+            return "";
+        }
+        try (java.sql.PreparedStatement statement =
+                     session.connection().prepareStatement(sql)) {
+            statement.setString(1, name);
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    String comment = rs.getString(1);
+                    return comment == null ? "" : comment;
+                }
+            }
+        } catch (SQLException | RuntimeException e) {
+            // 读不到就当没有 —— 注释不是关键路径，不该让整个结构页打不开。
+            return "";
+        }
+        return "";
+    }
+
+    /**
+     * CHECK 约束。
+     *
+     * <p>两条路：
+     * <ul>
+     *   <li><b>SQLite</b>：只能从 {@code CREATE TABLE} 原文里解析
+     *       （{@code CheckParser}）—— 没有 PRAGMA 能读；</li>
+     *   <li><b>PostgreSQL / MySQL</b>：走方言给的查询。</li>
+     * </ul>
+     * 查不到（权限不足 / 方言不支持 / MySQL 5.7）就返回空列表，
+     * **不让结构页整个挂掉**。
+     */
+    private List<CheckDef> checks(DbSession session, String name) {
+        Dialect dialect = session.dialect();
+        try {
+            if (dialect.parsesChecksFromDdl()) {
+                String ddl = dialect.readDdl(session.connection(), name, false);
+                return CheckParser.extract(ddl);
+            }
+            String sql = dialect.checksSql(name);
+            if (sql == null) {
+                return List.of();
+            }
+            List<CheckDef> checks = new ArrayList<>();
+            try (java.sql.Statement statement = session.connection().createStatement();
+                 ResultSet rs = statement.executeQuery(sql)) {
+                while (rs.next()) {
+                    checks.add(new CheckDef(rs.getString(1), stripOuterParens(rs.getString(2))));
+                }
+            }
+            return checks;
+        } catch (SQLException | RuntimeException e) {
+            // 读不到就当没有 —— 宁可少显示，也不要让整个结构页打不开。
+            return List.of();
+        }
+    }
+
+    /** 剥掉 {@code pg_get_constraintdef} 那种「外层多一圈括号」的写法。 */
+    private static String stripOuterParens(String expression) {
+        String text = expression == null ? "" : expression.trim();
+        if (text.toUpperCase(Locale.ROOT).startsWith("CHECK")) {
+            text = text.substring("CHECK".length()).trim();
+        }
+        if (text.startsWith("(") && text.endsWith(")") && balanced(text)) {
+            text = text.substring(1, text.length() - 1).trim();
+        }
+        return text;
+    }
+
+    /** 括号是否配对（外层那对是否真的包住全部内容）。 */
+    private static boolean balanced(String text) {
+        int depth = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                depth--;
+                if (depth == 0 && i < text.length() - 1) {
+                    return false;
+                }
+            }
+        }
+        return depth == 0;
     }
 
     /**
@@ -504,8 +775,10 @@ public final class SchemaService {
             while (rs.next()) {
                 String fkName = rs.getString("FK_NAME");
                 String refTable = rs.getString("PKTABLE_NAME");
-                String update = rs.getString("UPDATE_RULE");
-                String delete = rs.getString("DELETE_RULE");
+                // ⭐ 动作码必须按方言翻译（各驱动码表不同）——
+                //    不翻译就会把「3」写进 ON UPDATE 3，那是一条语法错误的 SQL。
+                String update = session.dialect().foreignKeyActionName(rs.getString("UPDATE_RULE"));
+                String delete = session.dialect().foreignKeyActionName(rs.getString("DELETE_RULE"));
                 if (refTable == null) {
                     continue;
                 }

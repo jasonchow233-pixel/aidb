@@ -237,7 +237,7 @@ class MySqlIntegrationTest {
     }
 
     @Test
-    void tableMetaCarriesRowCountSizeAndEngine() throws Exception {
+    void tableMetaCarriesAllEightNavicatColumns() throws Exception {
         SchemaService schemaService = new SchemaService();
         exec("INSERT INTO `" + table + "` VALUES (1, 'a', 1.0), (2, 'b', 2.0)");
 
@@ -259,6 +259,14 @@ class MySqlIntegrationTest {
                 .isPositive();
         assertThat(meta.createdAt())
                 .as("创建时间要有")
+                .isNotBlank();
+        // ⭐ 本轮补的三列。update_time 在 InnoDB 上允许为 NULL —— 不硬断言；
+        //    排序规则一定有（除非用户显式指定了非法 collation，那建表就会失败）。
+        assertThat(meta.collation())
+                .as("排序规则要有（information_schema.table_collation）")
+                .isNotBlank();
+        assertThat(meta.commentText())
+                .as("注释为空时也要给出占位符，不能是 null / 空白")
                 .isNotBlank();
     }
 
@@ -312,6 +320,93 @@ class MySqlIntegrationTest {
             assertThat(showColumns(temp)).contains("id", "label");
         } finally {
             exec("DROP TABLE IF EXISTS `" + temp + "`");
+        }
+    }
+
+    // ─────────────────────────── 表注释（B5-S4）───────────────────────────
+
+    @Test
+    void tableCommentIsWrittenAndReadBack() throws Exception {
+        // ⭐ B5-S4：表注释以前**只写不读** —— 填了以后再也看不见。
+        //    这条真库契约断言：写进去 → **读得回来** → 改掉 → 读回来是新值 → 清掉 → 读回来是空。
+        String temp = PREFIX + "cm" + System.nanoTime();
+        try {
+            StructureSqlBuilder.createTable(session, temp,
+                    List.of(new io.agenticdb.model.ColumnSpec("id", "INT", false, null,
+                            null, false, true)),
+                    "第一版注释", List.of()).statements()
+                    .forEach(statement -> {
+                        try {
+                            exec(statement);
+                        } catch (Exception e) {
+                            throw new IllegalStateException(e);
+                        }
+                    });
+
+            SchemaService schemaService = new SchemaService();
+            assertThat(schemaService.structure(session, temp).comment())
+                    .as("表注释要能读回来")
+                    .isEqualTo("第一版注释");
+
+            exec(StructureSqlBuilder.setTableComment(session,
+                    schemaService.structure(session, temp), "第二版注释").sql());
+            assertThat(schemaService.structure(session, temp).comment())
+                    .isEqualTo("第二版注释");
+
+            exec(StructureSqlBuilder.setTableComment(session,
+                    schemaService.structure(session, temp), "").sql());
+            assertThat(schemaService.structure(session, temp).comment())
+                    .as("清空注释后要读回空串")
+                    .isEmpty();
+        } finally {
+            exec("DROP TABLE IF EXISTS `" + temp + "`");
+        }
+    }
+
+    // ─────────────────────────── 调度事件（O1）───────────────────────────
+
+    @Test
+    void eventShowsUpInTheObjectListAndItsDefinitionIsReadable() throws Exception {
+        // ⭐ O1：以前**连枚举位都没有**（MySQL EVENT 完全没建模）——
+        //    现在：事件进对象树，定义体也读得回来。
+        String event = PREFIX + "ev" + System.nanoTime();
+        try {
+            exec("CREATE EVENT `" + event + "` ON SCHEDULE EVERY 1 HOUR "
+                    + "DO SELECT 1");
+            SchemaService schemaService = new SchemaService();
+
+            assertThat(schemaService.listObjects(session).stream()
+                    .filter(object -> object.kind() == SchemaService.ObjectKind.EVENT)
+                    .map(SchemaService.SchemaObject::name))
+                    .as("事件要出现在对象列表里")
+                    .contains(event);
+
+            assertThat(schemaService.eventDefinition(session, event))
+                    .as("事件定义体要能读回来")
+                    .contains(event);
+        } finally {
+            exec("DROP EVENT IF EXISTS `" + event + "`");
+        }
+    }
+
+    // ─────────────────────────── 函数定义体（O2）───────────────────────────
+
+    @Test
+    void functionDefinitionIsReadBack() throws Exception {
+        // ⭐ O2：以前对象树里只有函数**名字** —— 点开看不到函数体。
+        //    这条真库契约断言：建函数 → **读回定义体** → 内容对得上。
+        String function = PREFIX + "fn" + System.nanoTime();
+        try {
+            exec("CREATE FUNCTION `" + function + "`() RETURNS INT "
+                    + "DETERMINISTIC READS SQL DATA RETURN 42");
+            SchemaService schemaService = new SchemaService();
+            String definition = schemaService.routineDefinition(session, function, false);
+            assertThat(definition)
+                    .as("函数定义体要能读回来")
+                    .contains(function)
+                    .contains("42");
+        } finally {
+            exec("DROP FUNCTION IF EXISTS `" + function + "`");
         }
     }
 

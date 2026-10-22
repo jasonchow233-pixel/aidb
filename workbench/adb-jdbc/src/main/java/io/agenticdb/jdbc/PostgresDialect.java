@@ -128,6 +128,62 @@ public final class PostgresDialect implements Dialect {
                 + "ORDER BY trigger_name";
     }
 
+    /**
+     * ⭐ PostgreSQL 的 CHECK 约束：{@code pg_constraint} 里的 {@code contype = 'c'}。
+     *
+     * <p>表达式用 {@code pg_get_constraintdef} 取，它返回 {@code CHECK ((age >= 0))}
+     * 这种带外层括号的写法 —— 内省层会把外层括号剥掉。
+     */
+    @Override
+    public String addForeignKeySql(String table, String name, List<String> columns,
+                                    String referencedTable, List<String> referencedColumns,
+                                    String onUpdate, String onDelete) {
+        return "ALTER TABLE " + quote(table) + " ADD CONSTRAINT " + quote(name)
+                + " FOREIGN KEY (" + String.join(", ", columns) + ") REFERENCES "
+                + quote(referencedTable) + " (" + String.join(", ", referencedColumns) + ")"
+                + " ON UPDATE " + onUpdate + " ON DELETE " + onDelete;
+    }
+
+    @Override
+    public String dropForeignKeySql(String table, String constraintName) {
+        return "ALTER TABLE " + quote(table) + " DROP CONSTRAINT " + quote(constraintName);
+    }
+
+    /**
+     * PostgreSQL 的触发器 = 一个返回 trigger 的函数 + 一个绑在表上的触发器。
+     * 所以这里追加**两条**语句。
+     */
+    @Override
+    public String triggerBodyHint() {
+        return "PostgreSQL：写返回 trigger 的**函数体**（BEGIN … RETURN NEW; END）";
+    }
+
+    @Override
+    public void appendCreateTriggerSql(String table, String name, String timing, String event,
+                                        String body, List<String> statements) {
+        String function = name + "_fn";
+        statements.add("CREATE OR REPLACE FUNCTION " + quote(function)
+                + "() RETURNS trigger AS $$ " + body + " $$ LANGUAGE plpgsql");
+        statements.add("CREATE TRIGGER " + quote(name) + " " + timing + " " + event
+                + " ON " + quote(table) + " EXECUTE FUNCTION " + quote(function) + "()");
+    }
+
+    /** PostgreSQL：版本 + 当前用户。 */
+    @Override
+    public String serverInfoSql() {
+        return "SELECT version(), current_user";
+    }
+
+    @Override
+    public String checksSql(String table) {
+        return "SELECT c.conname, pg_get_constraintdef(c.oid) "
+                + "FROM pg_constraint c "
+                + "JOIN pg_class t ON t.oid = c.conrelid "
+                + "JOIN pg_namespace n ON n.oid = t.relnamespace "
+                + "WHERE c.contype = 'c' AND t.relname = ? AND n.nspname = current_schema() "
+                + "ORDER BY c.conname";
+    }
+
     @Override
     public boolean readsDdlFromDatabase() {
         // PostgreSQL 没有 SHOW CREATE TABLE —— DDL 只能由内省生成（UI 会标注「等价 DDL」）。
@@ -141,12 +197,17 @@ public final class PostgresDialect implements Dialect {
 
     @Override
     public String tableMetaSql() {
+        // PostgreSQL 没有「最后修改时间」这一列（relfilenode 变化不代表行变了），
+        // 与其拿一个容易误解的时间，不如诚实给 NULL（UI 显示「—」）。
         return "SELECT c.relname AS name, "
                 + "c.reltuples::bigint AS rows, "
                 + "pg_total_relation_size(c.oid) AS size_bytes, "
                 + "CASE c.reltablespace WHEN 0 THEN 'default' "
                 + "ELSE ts.spcname END AS engine, "
-                + "NULL AS created_at "
+                + "NULL AS created_at, NULL AS updated_at, "
+                + "(SELECT collname FROM pg_collation WHERE oid = c.relcollation) "
+                + "AS collation_name, "
+                + "obj_description(c.oid, 'pg_class') AS comment_text "
                 + "FROM pg_class c "
                 + "LEFT JOIN pg_tablespace ts ON ts.oid = c.reltablespace "
                 + "WHERE c.relkind = 'r' AND c.relnamespace = current_schema()::regnamespace "
@@ -225,6 +286,28 @@ public final class PostgresDialect implements Dialect {
     }
 
     @Override
+    public void appendColumnCommentReset(String table, String columnName,
+                                         List<String> statements) {
+        statements.add("COMMENT ON COLUMN " + quote(table) + "." + quote(columnName)
+                + " IS NULL");
+    }
+
+    @Override
+    public String dropIndexSql(String table, String indexName) {
+        return "DROP INDEX " + quote(indexName);
+    }
+
+    @Override
+    public String columnCommentsSql(String table) {
+        // regclass 会按 search_path 解析表名，跨 schema 也成立。
+        return "SELECT a.attname AS column_name,"
+                + " col_description(a.attrelid, a.attnum) AS column_comment"
+                + " FROM pg_attribute a"
+                + " WHERE a.attrelid = '" + table.replace("'", "''") + "'::regclass"
+                + " AND a.attnum > 0 AND NOT a.attisdropped";
+    }
+
+    @Override
     public List<String> alterColumnStatements(String table, String columnName, ColumnSpec next,
                                               String oldRawType) {
         List<String> statements = new ArrayList<>();
@@ -258,6 +341,72 @@ public final class PostgresDialect implements Dialect {
     @Override
     public String addColumnSql(String table, ColumnSpec column) {
         return "ALTER TABLE " + quote(table) + " ADD COLUMN " + columnDefinition(column, true);
+    }
+
+    @Override
+    public String renameTableSql(String oldName, String newName) {
+        return "ALTER TABLE " + quote(oldName) + " RENAME TO " + quote(newName);
+    }
+
+    @Override
+    public String truncateTableSql(String table) {
+        return "TRUNCATE TABLE " + quote(table);
+    }
+
+    @Override
+    public String dropTableSql(String table) {
+        return "DROP TABLE " + quote(table);
+    }
+
+    @Override
+    public boolean supportsTableComment() {
+        return true;
+    }
+
+    @Override
+    public String tableCommentSql(String table, String comment) {
+        return "COMMENT ON TABLE " + quote(table) + " IS '"
+                + comment.replace("'", "''") + "'";
+    }
+
+    /** ⭐ 清注释是 {@code IS NULL} —— 写成 {@code IS ''} 等于没清。 */
+    @Override
+    public String clearTableCommentSql(String table) {
+        return "COMMENT ON TABLE " + quote(table) + " IS NULL";
+    }
+
+    /**
+     * PostgreSQL 的函数 / 过程定义体：{@code pg_get_functiondef(oid)}。
+     *
+     * <p>⚠️ PostgreSQL 里「函数」与「过程」都是 {@code pg_proc} 的行，
+     * 区别只在 {@code prokind}（f=函数 / p=过程）。
+     */
+    @Override
+    public String readRoutineDefinition(Connection connection, String name, boolean procedure)
+            throws SQLException {
+        String sql = "SELECT pg_get_functiondef(p.oid) FROM pg_proc p "
+                + "JOIN pg_namespace n ON n.oid = p.pronamespace "
+                + "WHERE p.proname = ? AND n.nspname = current_schema() "
+                + (procedure ? "AND p.prokind = 'p' " : "AND p.prokind = 'f' ")
+                + "ORDER BY p.oid LIMIT 1";
+        try (var statement = connection.prepareStatement(sql)) {
+            statement.setString(1, name);
+            try (var rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    String body = rs.getString(1);
+                    return body == null ? "" : body;
+                }
+            }
+        }
+        return "";
+    }
+
+    /** 表注释在 {@code pg_class} 的 {@code obj_description} 里。
+    @Override
+    public String tableCommentQuery(String table) {
+        return "SELECT obj_description(c.oid) FROM pg_class c "
+                + "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                + "WHERE c.relname = ? AND n.nspname = current_schema()";
     }
 
     /**
