@@ -84,4 +84,43 @@ class SavedQueriesTest {
                 .extracting(SavedQueries.Entry::name)
                 .contains("持久");
     }
+
+    @Test
+    void snippetsAndQueriesAreDistinguishable() {
+        // ⭐ Q6：片段与查询的**用法不同**（插入 vs 执行）——
+        //    混在一个列表里用户永远不知道自己点开的是哪一种。
+        SettingsStore store = new SettingsStore();
+        {
+            SavedQueries saved = new SavedQueries(store, "query.saved.snippets");
+            saved.save("月度报表", "SELECT * FROM orders");
+            saved.saveSnippet("去重子句", "SELECT DISTINCT user_id FROM orders");
+
+            assertThat(saved.all()).hasSize(2);
+            assertThat(saved.snippets())
+                    .as("只有片段进 snippets()")
+                    .hasSize(1)
+                    .first()
+                    .satisfies(entry -> {
+                        assertThat(entry.name()).isEqualTo("去重子句");
+                        assertThat(entry.snippet()).isTrue();
+                        assertThat(entry.kind().label()).isEqualTo("片段");
+                    });
+            assertThat(saved.all().stream().filter(e -> !e.snippet()).count())
+                    .as("查询条目不是片段")
+                    .isEqualTo(1);
+        }
+    }
+
+    @Test
+    void savingASnippetWithTheSameNameReplacesTheOldOne() {
+        SettingsStore store = new SettingsStore();
+        {
+            SavedQueries saved = new SavedQueries(store, "query.saved.snippet.replace");
+            saved.saveSnippet("片段", "SELECT 1");
+            saved.saveSnippet("片段", "SELECT 2");
+
+            assertThat(saved.snippets()).hasSize(1);
+            assertThat(saved.snippets().getFirst().sql()).isEqualTo("SELECT 2");
+        }
+    }
 }

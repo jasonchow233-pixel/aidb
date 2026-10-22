@@ -16,6 +16,8 @@ public enum TabKind {
     TOOL(Icons.Icon.DIAGNOSTICS, "工具"),
     /** ⭐ S5：常驻的「对象」首页标签（Navicat 形态，不可关闭）。 */
     OBJECT(Icons.Icon.DATABASE, "对象"),
+    /** ⭐ O2：函数 / 存储过程的**定义体**（只读标签页）。 */
+    ROUTINE(Icons.Icon.FUNCTION, "定义"),
     SETTINGS(Icons.Icon.SETTINGS, "设置");
 
     private final Icons.Icon icon;

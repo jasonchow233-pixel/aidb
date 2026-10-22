@@ -135,6 +135,13 @@ final class ImportWizard {
         content.getStyleClass().add("adb-wizard__content");
 
         dialog.setTitle("导入数据");
+
+        // ⭐ V-11：弹窗宽度走三档规范（DialogSizes）。
+
+        dialog.getDialogPane().setPrefWidth(DialogSizes.WIDE);
+
+        dialog.getDialogPane().setMinWidth(DialogSizes.WIDE);
+
         dialog.setHeaderText("文件 → 目标表 → 字段映射 → 预览 → 执行");
         dialog.getDialogPane().getButtonTypes().clear();
         dialog.getDialogPane().setContent(content);
@@ -144,6 +151,7 @@ final class ImportWizard {
         if (owner != null) {
             dialog.initOwner(owner);
         }
+        DialogStyles.apply(dialog, owner);
         dialog.showAndWait();
     }
 

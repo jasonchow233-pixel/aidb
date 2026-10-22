@@ -22,12 +22,47 @@ final class SavedQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final TypeReference<List<Entry>> LIST_TYPE = new TypeReference<>() { };
 
-    /** 一条已保存的查询。 */
-    record Entry(String name, String sql, long savedAt) {
+    /**
+     * 条目类型。
+     *
+     * <p>⭐ Q6：<b>查询</b>与<b>片段</b>的用法完全不同 ——
+     * 查询是「整条执行」，片段是「插进当前编辑器」。
+     * 混在一个列表里，用户永远不知道自己点开的是哪一种。
+     */
+    enum Kind {
+        /** 完整查询：双击 → 新开查询页并载入。 */
+        QUERY("查询"),
+        /** 代码片段：双击 → **插入到当前查询页的光标处**。 */
+        SNIPPET("片段");
+
+        private final String label;
+
+        Kind(String label) {
+            this.label = label;
+        }
+
+        public String label() {
+            return label;
+        }
+    }
+
+    /** 一条已保存的查询或片段。 */
+    record Entry(String name, String sql, long savedAt, Kind kind) {
 
         Entry {
             name = name == null ? "" : name.trim();
             sql = sql == null ? "" : sql;
+            kind = kind == null ? Kind.QUERY : kind;
+        }
+
+        /** 兼容旧数据（没有 kind 的存成查询）。 */
+        Entry(String name, String sql, long savedAt) {
+            this(name, sql, savedAt, Kind.QUERY);
+        }
+
+        /** 是不是片段。 */
+        public boolean snippet() {
+            return kind == Kind.SNIPPET;
         }
     }
 
@@ -52,15 +87,30 @@ final class SavedQueries {
         return List.copyOf(sorted);
     }
 
-    /** 存一条。同名的覆盖（不产生重复项）。 */
+    /** 存一条查询。同名的覆盖（不产生重复项）。 */
     void save(String name, String sql) {
+        save(name, sql, Kind.QUERY);
+    }
+
+    /** ⭐ Q6：存一条代码片段（插入到光标处用）。 */
+    void saveSnippet(String name, String sql) {
+        save(name, sql, Kind.SNIPPET);
+    }
+
+    /** 存一条。同名的覆盖（不产生重复项）。 */
+    void save(String name, String sql, Kind kind) {
         if (name == null || name.isBlank() || sql == null || sql.isBlank()) {
             return;
         }
         List<Entry> items = new ArrayList<>(load());
         items.removeIf(entry -> entry.name().equalsIgnoreCase(name.trim()));
-        items.add(new Entry(name.trim(), sql, System.currentTimeMillis()));
+        items.add(new Entry(name.trim(), sql, System.currentTimeMillis(), kind));
         write(items);
+    }
+
+    /** 全部片段（Q6）。 */
+    List<Entry> snippets() {
+        return load().stream().filter(Entry::snippet).toList();
     }
 
     void delete(String name) {
@@ -77,7 +127,7 @@ final class SavedQueries {
         for (int i = 0; i < items.size(); i++) {
             Entry entry = items.get(i);
             if (entry.name().equalsIgnoreCase(oldName)) {
-                items.set(i, new Entry(newName.trim(), entry.sql(), entry.savedAt()));
+                items.set(i, new Entry(newName.trim(), entry.sql(), entry.savedAt(), entry.kind()));
             }
         }
         write(items);

@@ -132,7 +132,11 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         table.setId("connections-table");
         table.getStyleClass().addAll("adb-grid", "adb-connections__table");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        table.setPlaceholder(new Label("没有匹配的连接"));
+        // ⭐ 同一句话要同时cover「搜不到」和「压根没建过」两种情况，
+        //    所以说明里把两条出路都讲了（UI-AUDIT §8 E6）。
+        table.setPlaceholder(EmptyState.of(Icons.Icon.CONNECT, "没有匹配的连接",
+                "换一个关键词试试；如果还没建过连接，先新建第一个。",
+                "新建连接", onNew));
         table.setFixedCellSize(rowHeight);
         VBox.setVgrow(table, Priority.ALWAYS);
 
@@ -169,7 +173,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
                 setText(item);
                 if (getTableRow() != null && getTableRow().getItem() != null
                         && getTableRow().getItem().favorite()) {
-                    SVGPath star = Icons.of(Icons.Icon.STAR_FILLED, 12);
+                    SVGPath star = Icons.of(Icons.Icon.STAR_FILLED, Icons.SIZE_BADGE);
                     star.setAccessibleText("已收藏");
                     setGraphic(star);
                     setGraphicTextGap(4);
@@ -185,25 +189,37 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
 
         TableColumn<ConnectionProfile, String> host = column("主机", "host", 180);
         host.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
-                data.getValue().host()));
+                displayOrDash(data.getValue().host())));
 
-        TableColumn<ConnectionProfile, Number> port = column("端口", "port", 80);
-        port.setCellValueFactory(data -> new javafx.beans.property.SimpleIntegerProperty(
-                data.getValue().port()));
+        // ⭐ M3：端口列以前直接绑原值 —— SQLite 明明没有端口概念，却显示「0」，
+        //    和真的端口 0（异常值）长得一模一样。
+        //    「这个方言有没有端口」是**方言层的事**（`usesFilePath` = 走文件路径，
+        //    自然没有主机与端口）—— 这里不能按具体方言写分支，
+        //    否则就破了 A1 的承诺（加一种数据库只改 Dialect 实现）。
+        TableColumn<ConnectionProfile, String> port = column("端口", "port", 80);
+        port.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
+                data.getValue().kind().dialect().usesFilePath()
+                        ? "—"
+                        : String.valueOf(data.getValue().port())));
 
         TableColumn<ConnectionProfile, String> database = column("数据库", "database", 180);
         database.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
-                data.getValue().database()));
+                displayOrDash(data.getValue().database())));
 
         TableColumn<ConnectionProfile, String> user = column("用户", "user", 130);
         user.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
-                data.getValue().username()));
+                displayOrDash(data.getValue().username())));
 
         TableColumn<ConnectionProfile, String> state = column("状态", "state", 100);
         state.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
                 connected.test(data.getValue()) ? "已连接" : "—"));
 
         table.getColumns().addAll(name, kind, host, port, database, user, state);
+    }
+
+    /** 空值 / 空白 → 「—」。空白单元格看起来像「渲染坏了」，横线才读得出是「没有」。 */
+    private static String displayOrDash(String value) {
+        return value == null || value.isBlank() ? "—" : value;
     }
 
     private static <T> TableColumn<ConnectionProfile, T> column(String title, String id,
@@ -292,10 +308,9 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
                 "删除");
         Alert alert = confirm.alert();
         if (getScene() != null) {
-            alert.getDialogPane().getStylesheets().addAll(getScene().getStylesheets());
-            alert.getDialogPane().getStyleClass().add("adb-dialog");
             alert.initOwner(getScene().getWindow());
         }
+        DialogStyles.apply(alert, getScene() == null ? null : getScene().getWindow());
         return confirm.confirmed();
     }
 

@@ -1,5 +1,7 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.Icons;
+
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
@@ -28,7 +30,9 @@ public final class HistoryPage extends VBox {
     private final QueryHistory history;
     private final Consumer<String> onUse;
     private final ListView<String> list = new ListView<>();
-    private final Label empty = new Label("还没有执行过 SQL");
+    /** ⭐ E8：空态用统一的 {@link EmptyState}（图标 + 标题 + 说明），不再是一行字。 */
+    private final EmptyState empty = EmptyState.of(Icons.Icon.HISTORY, "还没有执行过 SQL",
+            "执行过的语句会出现在这里：最近 50 条，去重后落本地偏好，重启还在。");
     private final Button use = new Button("载入到新查询");
     private final Button clear = new Button("清空历史");
 
@@ -44,8 +48,16 @@ public final class HistoryPage extends VBox {
 
         list.setId("history-list");
         list.getStyleClass().add("adb-history__list");
-        list.setPlaceholder(empty);
         VBox.setVgrow(list, Priority.ALWAYS);
+
+        // ⭐ 空态**不放进 ListView 的 placeholder** ——
+        //    placeholder 会被垂直居中在「撑满整页」的列表框里，
+        //    渲染出来是一张巨大的白卡片（实测截图），而不是一个空态。
+        //    改成：空的时候收起列表，单独显示一张尺寸合理的空态卡片。
+        empty.getStyleClass().add("adb-empty");
+        empty.setMaxWidth(520);
+        empty.setVisible(false);
+        empty.setManaged(false);
 
         list.setCellFactory(view -> new ListCell<>() {
             @Override
@@ -85,7 +97,7 @@ public final class HistoryPage extends VBox {
         HBox actions = new HBox(8, use, clear, spacer);
         actions.setAlignment(Pos.CENTER_LEFT);
 
-        getChildren().addAll(hint, list, actions);
+        getChildren().addAll(hint, list, empty, actions);
         refresh();
     }
 
@@ -93,7 +105,11 @@ public final class HistoryPage extends VBox {
     public void refresh() {
         List<String> items = history.recent();
         list.getItems().setAll(items);
-        empty.setVisible(items.isEmpty());
+        boolean none = items.isEmpty();
+        list.setVisible(!none);
+        list.setManaged(!none);
+        empty.setVisible(none);
+        empty.setManaged(none);
         use.setDisable(true);
     }
 }

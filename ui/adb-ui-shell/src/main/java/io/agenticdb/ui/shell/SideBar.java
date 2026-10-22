@@ -4,6 +4,7 @@ import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import io.agenticdb.ui.Icons;
+import io.agenticdb.ui.Tokens;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
@@ -73,6 +74,7 @@ public final class SideBar extends VBox {
     /** 出现的 schema 个数；> 1 时对象树按 schema 分组。 */
     private int schemaCount;
     private Runnable onRefreshObjects = () -> { };
+    private Consumer<TableRequest> onTableDdl = request -> { };
 
     private final Set<String> starred = new LinkedHashSet<>();
     /** 收藏的持久化位置（以前只在内存里 —— 退出即丢）。 */
@@ -83,6 +85,8 @@ public final class SideBar extends VBox {
     private final VBox expanded = new VBox(8);
     private final VBox rail = new VBox(6);
     private final VBox favoriteBox = new VBox(4);
+    /** 「收藏」整段 —— 没有收藏时整段隐藏（Navicat 不会留一块空标题占地方）。 */
+    private VBox favoritesSection;
     private final TextField search = new TextField();
     private final TreeView<DemoNode> tree = new TreeView<>();
     private final ComboBox<ConnectionProfile> connectionPicker = new ComboBox<>();
@@ -172,10 +176,21 @@ public final class SideBar extends VBox {
                 () -> onSelected(SideBarObject.DIAGNOSTICS));
         actions.register("object.refresh-objects", "刷新对象", "对象", null,
                 () -> onSelected(SideBarObject.REFRESH_OBJECTS));
+        // ⭐ X6：收藏夹菜单只有一项 → 顶级菜单资源被浪费。补「清空收藏」。
+        actions.register("favorites.clear", "清空收藏", "收藏夹", null, this::clearStarred);
+        // ── T1–T4 表级生命周期 ──
+        actions.register("object.new-table", "新建表…", "对象", null,
+                () -> onSelected(SideBarObject.NEW_TABLE));
+        actions.register("object.truncate-table", "清空表…", "对象", null,
+                () -> onSelected(SideBarObject.TRUNCATE_TABLE));
+        actions.register("object.rename-table", "重命名表…", "对象", null,
+                () -> onSelected(SideBarObject.RENAME_TABLE));
+        actions.register("object.drop-table", "删除表…", "对象", null,
+                () -> onSelected(SideBarObject.DROP_TABLE));
     }
 
-    /** 对象树动作的种类。 */
-    private enum SideBarObject {
+    /** 对象树动作的种类（包级可见 —— 外壳要按它分派）。 */
+    enum SideBarObject {
         OPEN_DATA,
         OPEN_STRUCTURE,
         NEW_QUERY,
@@ -183,7 +198,20 @@ public final class SideBar extends VBox {
         COPY_NAME,
         COPY_SELECT,
         DIAGNOSTICS,
-        REFRESH_OBJECTS
+        REFRESH_OBJECTS,
+        NEW_TABLE,
+        TRUNCATE_TABLE,
+        RENAME_TABLE,
+        DROP_TABLE
+    }
+
+    /**
+     * 转发给外壳的一次表级请求。
+     *
+     * <p>侧栏不知道怎么执行 DDL（那是 {@link TableDdl} 的事），
+     * 只知道「用户在哪个连接上的哪个节点点了什么」。
+     */
+    record TableRequest(SideBarObject action, String tableName, String connectionId) {
     }
 
     public void setOnCollapsed(Consumer<Boolean> onCollapsed) {
@@ -192,6 +220,11 @@ public final class SideBar extends VBox {
 
     public void setOnRefreshObjects(Runnable onRefreshObjects) {
         this.onRefreshObjects = onRefreshObjects == null ? () -> { } : onRefreshObjects;
+    }
+
+    /** 表级生命周期（T1–T4）交给外壳执行。 */
+    public void setOnTableDdl(Consumer<TableRequest> onTableDdl) {
+        this.onTableDdl = onTableDdl == null ? request -> { } : onTableDdl;
     }
 
     /** 多连接切换：替换可选连接列表并保持当前选中项。 */
@@ -272,6 +305,13 @@ public final class SideBar extends VBox {
 
     /** 只看收藏（底部 ★ 按钮切换）。 */
     private boolean showOnlyFavorites;
+    /**
+     * ⭐ E7：侧栏搜索**没结果**时的说明。
+     *
+     * <p>以前搜不到就是「一棵树消失了」—— 用户不知道是搜索没命中，还是连接真的没东西。
+     */
+    private final Label searchEmpty = new Label();
+
     /** 当前选中的 schema。 */
     public String activeSchema() {
         return activeSchema;
@@ -431,12 +471,24 @@ public final class SideBar extends VBox {
         HBox.setHgrow(schemaPicker, Priority.ALWAYS);
         connectionBar.getStyleClass().add("adb-sidebar__connection");
 
-        VBox favorites = section("收藏", favoriteBox);
-        VBox connections = section("连接", tree);
+        searchEmpty.setId("sidebar-search-empty");
+        searchEmpty.getStyleClass().add("adb-muted");
+        searchEmpty.setPadding(new Insets(4, 4, 4, 4));
+        searchEmpty.setWrapText(true);
+        searchEmpty.setVisible(false);
+
+        favoritesSection = section("收藏", favoriteBox);
+        VBox favorites = favoritesSection;
+        VBox connections = section("连接", tree, searchEmpty);
         VBox.setVgrow(tree, Priority.ALWAYS);
 
         tree.getStyleClass().add("adb-object-tree");
         tree.setShowRoot(true);
+        // ⭐ 行高固定 22px（Navicat 密度）。默认行高由字体 + 内边距撑到 26px 以上，
+        //    同样是 480px 高的侧栏，能看见的对象少 4 行 —— 而侧栏存在的意义
+        //    就是「一屏扫完这个库有什么」。
+        //    22px 来自 `row-tree` 令牌（唯一真相），不写死 —— 改密度只改令牌。
+        tree.setFixedCellSize(Tokens.ROW_TREE_LIGHT);
         tree.setCellFactory(view -> new DemoCell());
         tree.setRoot(buildTreeModel(""));
         // ⭐ 记住当前选中的节点：对象树的动作（打开数据 / 复制 SELECT …）
@@ -498,16 +550,21 @@ public final class SideBar extends VBox {
         });
 
         VBox workbench = section("工作台",
-                navButton(Icons.Icon.HISTORY, "查询历史", () -> openTool("查询历史")),
+                navButton("sidebar-nav-history", Icons.Icon.HISTORY, "查询历史",
+                        () -> openTool("查询历史")),
                 // 已保存查询接真实功能（命名 + 落盘 + 一键打开）。
-                navButton(Icons.Icon.STAR, "已保存查询", () -> actions.run("saved-queries")));
+                navButton("sidebar-nav-saved", Icons.Icon.STAR, "已保存查询",
+                        () -> actions.run("saved-queries")));
 
         VBox tools = section("工具",
                 // 诊断接真实功能：诊断对象树里当前选中的表。
-                navButton(Icons.Icon.DIAGNOSTICS, "诊断", () -> actions.run("object.diagnostics")),
+                navButton("sidebar-nav-diagnostics", Icons.Icon.DIAGNOSTICS, "诊断",
+                        () -> actions.run("object.diagnostics")),
                 // 导入 / 导出接真实功能（P6）。
-                navButton(Icons.Icon.TRANSFER, "导入 / 导出", () -> actions.run("import-export")),
-                navButton(Icons.Icon.SETTINGS, "设置", () -> openTab.accept(new TabItem("settings", "设置", TabKind.SETTINGS))));
+                navButton("sidebar-nav-transfer", Icons.Icon.TRANSFER, "导入 / 导出",
+                        () -> actions.run("import-export")),
+                navButton("sidebar-nav-settings", Icons.Icon.SETTINGS, "设置",
+                        () -> openTab.accept(new TabItem("settings", "设置", TabKind.SETTINGS))));
 
         expanded.getChildren().addAll(header, connectionBar, favorites, connections,
                 workbench, tools, bottomBar);
@@ -526,8 +583,9 @@ public final class SideBar extends VBox {
     }
 
     /** 侧栏导航项：图标 + 文字。 */
-    private Button navButton(Icons.Icon icon, String text, Runnable handler) {
+    private Button navButton(String id, Icons.Icon icon, String text, Runnable handler) {
         Button button = IconButtons.of(icon, text);
+        button.setId(id);
         button.setAccessibleText(text);
         button.getStyleClass().add("adb-sidebar__nav");
         button.setMaxWidth(Double.MAX_VALUE);
@@ -640,6 +698,9 @@ public final class SideBar extends VBox {
                     .filter(object -> object.kind() == ObjectKind.FUNCTION).toList();
             List<SchemaObject> profileTriggers = objects.stream()
                     .filter(object -> object.kind() == ObjectKind.TRIGGER).toList();
+            // ⭐ O1：调度事件（只有 MySQL 有；其它方言这一组是空的 → 自动摘除）。
+            List<SchemaObject> profileEvents = objects.stream()
+                    .filter(object -> object.kind() == ObjectKind.EVENT).toList();
 
             connectionNode.getChildren().addAll(
                     kindGroup("表", NodeKind.TABLE, profileTables, needle, id),
@@ -647,7 +708,9 @@ public final class SideBar extends VBox {
                     // ⭐ S3：过程 / 函数 / 触发器（Navicat 的对象浏览层）
                     kindGroup("过程", NodeKind.PROCEDURE, profileProcedures, needle, id),
                     kindGroup("函数", NodeKind.FUNCTION, profileFunctions, needle, id),
-                    kindGroup("触发器", NodeKind.TRIGGER, profileTriggers, needle, id));
+                    kindGroup("触发器", NodeKind.TRIGGER, profileTriggers, needle, id),
+                    // ⭐ O1：事件分组（空分组会被摘掉，所以非 MySQL 看不到它）。
+                    kindGroup("事件", NodeKind.EVENT, profileEvents, needle, id));
 
             // 空分组不显示（没读到对象的连接只留一个可展开的连接节点）。
             connectionNode.getChildren().removeIf(TreeItem::isLeaf);
@@ -661,15 +724,19 @@ public final class SideBar extends VBox {
     private TreeItem<DemoNode> kindGroup(String label, NodeKind kind,
                                         List<SchemaObject> objects, String needle,
                                         String connectionId) {
+        // ⭐ 先按搜索词过滤，再建节点 —— 这样分组标题上的计数是
+        //    「当前可见的数量」，而不是总数（搜 `user` 时显示 3 而不是 12）。
+        List<SchemaObject> visible = objects.stream()
+                .filter(object -> matches(object.name(), needle))
+                .toList();
         TreeItem<DemoNode> group = new TreeItem<>(
-                new DemoNode(label, NodeKind.GROUP, groupIcon(kind), connectionId));
+                new DemoNode(label, NodeKind.GROUP, groupIcon(kind), "", connectionId,
+                        visible.size()));
         group.setExpanded(true);
-        for (SchemaObject object : objects) {
-            if (matches(object.name(), needle)) {
-                group.getChildren().add(new TreeItem<>(
-                        new DemoNode(object.name(), kind, iconOf(object.kind()), object.schema(),
-                                connectionId)));
-            }
+        for (SchemaObject object : visible) {
+            group.getChildren().add(new TreeItem<>(
+                    new DemoNode(object.name(), kind, iconOf(object.kind()), object.schema(),
+                            connectionId)));
         }
         return group;
     }
@@ -686,6 +753,7 @@ public final class SideBar extends VBox {
             case VIEW -> Icons.Icon.VIEW_OBJECT;
             case PROCEDURE, FUNCTION -> Icons.Icon.FUNCTION;
             case TRIGGER -> Icons.Icon.TRIGGER;
+            case EVENT -> Icons.Icon.HISTORY;
             default -> Icons.Icon.TABLE;
         };
     }
@@ -697,6 +765,25 @@ public final class SideBar extends VBox {
             case VIEW -> Icons.Icon.VIEW_OBJECT;
             case PROCEDURE, FUNCTION -> Icons.Icon.FUNCTION;
             case TRIGGER -> Icons.Icon.TRIGGER;
+            case EVENT -> Icons.Icon.HISTORY;
+        };
+    }
+
+    /**
+     * 图标着色用的样式类。
+     *
+     * <p>⭐ 颜色只在**图标**上，不在文字上：整棵树都用彩色文字会变成调色盘，
+     * 而用户扫视时靠的是「形状 + 颜色」这一对线索，文字保持正文色最易读。
+     */
+    private static String iconStyleClass(NodeKind kind) {
+        return switch (kind) {
+            case TABLE -> "adb-tree__icon--table";
+            case VIEW -> "adb-tree__icon--view";
+            case TRIGGER -> "adb-tree__icon--trigger";
+            case PROCEDURE -> "adb-tree__icon--procedure";
+            case FUNCTION -> "adb-tree__icon--function";
+            case EVENT -> "adb-tree__icon--event";
+            default -> "adb-tree__icon--connection";
         };
     }
 
@@ -720,21 +807,63 @@ public final class SideBar extends VBox {
             tree.getRoot().setExpanded(true);
             tree.getRoot().getChildren().forEach(item -> item.setExpanded(true));
         }
+        updateSearchEmpty(filter);
+        // ⚠️ 重建模型后视口要回到顶部 —— 否则上一次留下的滚动偏移会让
+        //    第一行（连接组）被切掉一半，看起来像「上面少了一行」。
+        tree.scrollTo(0);
+    }
+
+    /**
+     * ⭐ E7：搜索没命中时给一句说明。
+     *
+     * <p>「搜不到」和「库里没有」是两回事，界面必须分开说。
+     */
+    private void updateSearchEmpty(String filter) {
+        boolean searching = filter != null && !filter.isBlank();
+        boolean nothing = searching && countObjects(tree.getRoot()) == 0;
+        searchEmpty.setVisible(nothing);
+        if (nothing) {
+            searchEmpty.setText("没有匹配「" + filter.trim() + "」的对象");
+        }
+    }
+
+    /** 树里真正的对象节点数（分组 / 连接节点不算）。 */
+    private static int countObjects(TreeItem<DemoNode> item) {
+        if (item == null) {
+            return 0;
+        }
+        int count = isObjectNode(item.getValue()) ? 1 : 0;
+        for (TreeItem<DemoNode> child : item.getChildren()) {
+            count += countObjects(child);
+        }
+        return count;
+    }
+
+    private static boolean isObjectNode(DemoNode node) {
+        if (node == null) {
+            return false;
+        }
+        return switch (node.kind()) {
+            case TABLE, VIEW, PROCEDURE, FUNCTION, TRIGGER -> true;
+            default -> false;
+        };
     }
 
     private void refreshFavorites() {
         favoriteBox.getChildren().clear();
+        // 没有收藏时整段隐藏：空标题 + 「右键对象 → 收藏」占掉侧栏最宝贵的前两行，
+        // 而用户第一次看到它时并没有任何可操作的收藏项（Navicat 同位置不占位）。
+        if (favoritesSection != null) {
+            favoritesSection.setVisible(!starred.isEmpty());
+            favoritesSection.setManaged(!starred.isEmpty());
+        }
         if (starred.isEmpty()) {
-            Label empty = new Label("右键对象 → 收藏");
-            empty.getStyleClass().add("adb-muted");
-            empty.setPadding(new Insets(2, 4, 2, 4));
-            favoriteBox.getChildren().add(empty);
             return;
         }
         for (String name : starred) {
             // ⭐ 收藏项：矢量实心星 + 名字。
             Button button = new Button(name);
-            button.setGraphic(Icons.of(Icons.Icon.STAR_FILLED, 12));
+            button.setGraphic(Icons.of(Icons.Icon.STAR_FILLED, Icons.SIZE_BADGE));
             button.setGraphicTextGap(6);
             button.getStyleClass().add("adb-favorite");
             button.setMaxWidth(Double.MAX_VALUE);
@@ -745,6 +874,24 @@ public final class SideBar extends VBox {
     }
 
     /** 收藏的对象名（供「收藏夹」菜单用）。 */
+    /**
+     * ⭐ X6：清空收藏。
+     *
+     * <p>以前收藏只能一个一个取消（「收藏 / 取消收藏」是切换动作）——
+     * 收藏多了以后没法一键清空。
+     */
+    public void clearStarred() {
+        if (starred.isEmpty()) {
+            status.accept("没有收藏");
+            return;
+        }
+        int count = starred.size();
+        starred.clear();
+        settings.set(STARRED_KEY, "");
+        refreshFavorites();
+        status.accept("已清空 " + count + " 个收藏");
+    }
+
     public List<String> starredNames() {
         return List.copyOf(starred);
     }
@@ -816,14 +963,21 @@ public final class SideBar extends VBox {
                     actions.menuItem("object.copy-name", "复制名称"),
                     actions.menuItem("object.copy-select", "复制 SELECT"),
                     new SeparatorMenuItem(),
-                    actions.menuItem("object.diagnostics", "诊断"));
+                    actions.menuItem("object.diagnostics", "诊断"),
+                    new SeparatorMenuItem(),
+                    actions.menuItem("object.truncate-table", "清空表…"),
+                    actions.menuItem("object.rename-table", "重命名表…"),
+                    actions.menuItem("object.drop-table", "删除表…"));
             case CONNECTION -> menu.getItems().addAll(
                     actions.menuItem("new-connection", "编辑连接"),
                     actions.menuItem("object.refresh-objects", "刷新对象"),
                     new SeparatorMenuItem(),
+                    actions.menuItem("object.new-table", "新建表…"),
                     actions.menuItem("object.new-query", "新建查询"));
-            case GROUP -> menu.getItems().add(
-                    actions.menuItem("object.refresh-objects", "刷新对象"));
+            case GROUP -> menu.getItems().addAll(
+                    actions.menuItem("object.refresh-objects", "刷新对象"),
+                    new SeparatorMenuItem(),
+                    actions.menuItem("object.new-table", "新建表…"));
             // ⭐ S3：过程 / 函数 / 触发器没有数据页，也没有结构页 ——
             //    只给「复制名称 / 新建查询」（调用它）/ 收藏。
             case PROCEDURE, FUNCTION, TRIGGER -> menu.getItems().addAll(
@@ -891,7 +1045,26 @@ public final class SideBar extends VBox {
                 onRefreshObjects.run();
                 status.accept("已刷新 " + connectionName);
             }
+            // ⭐ 表级生命周期：侧栏只负责把「点的是谁」说清楚，执行在 TableDdl。
+            case NEW_TABLE ->
+                    onTableDdl.accept(new TableRequest(SideBarObject.NEW_TABLE, null, owner));
+            case TRUNCATE_TABLE, RENAME_TABLE, DROP_TABLE -> {
+                if (isObject) {
+                    onTableDdl.accept(new TableRequest(action, node.name(), owner));
+                } else {
+                    status.accept("只有表能" + labelOf(action));
+                }
+            }
         }
+    }
+
+    private static String labelOf(SideBarObject action) {
+        return switch (action) {
+            case TRUNCATE_TABLE -> "清空";
+            case RENAME_TABLE -> "重命名";
+            case DROP_TABLE -> "删除";
+            default -> "操作";
+        };
     }
 
     /** 按当前选中节点刷新对象动作的 enabled 状态。 */
@@ -903,6 +1076,7 @@ public final class SideBar extends VBox {
                 && (node.kind() == NodeKind.PROCEDURE || node.kind() == NodeKind.FUNCTION
                 || node.kind() == NodeKind.TRIGGER);
         boolean isConnection = node != null && node.kind() == NodeKind.CONNECTION;
+        boolean isTable = node != null && node.kind() == NodeKind.TABLE;
         setObjectActionEnabled("object.open-data", isObject);
         setObjectActionEnabled("object.open-structure", isObject);
         setObjectActionEnabled("object.new-query", isObject || isConnection);
@@ -916,6 +1090,12 @@ public final class SideBar extends VBox {
         setObjectActionEnabled("object.copy-select", isObject);
         setObjectActionEnabled("object.new-query", isObject || isCallable);
         setObjectActionEnabled("object.refresh-objects", node != null);
+        // ⭐ 表级生命周期：建表挂在连接 / 分组上，改表只挂在「表」上 ——
+        //    视图没有 TRUNCATE，过程函数更没有，所以不能一律放行。
+        setObjectActionEnabled("object.new-table", node != null);
+        setObjectActionEnabled("object.truncate-table", isTable);
+        setObjectActionEnabled("object.rename-table", isTable);
+        setObjectActionEnabled("object.drop-table", isTable);
     }
 
     private void setObjectActionEnabled(String id, boolean enabled) {
@@ -983,7 +1163,9 @@ public final class SideBar extends VBox {
     private enum NodeKind {
         ROOT, CONNECTION, GROUP, TABLE, VIEW,
         /** ⭐ S3：过程 / 函数 / 触发器。 */
-        PROCEDURE, FUNCTION, TRIGGER
+        PROCEDURE, FUNCTION, TRIGGER,
+        /** ⭐ O1：调度事件（只有 MySQL 有）。 */
+        EVENT
     }
 
     /**
@@ -991,16 +1173,23 @@ public final class SideBar extends VBox {
      *
      * @param schema       所属 schema（表/视图节点用；其它节点为空串）
      * @param connectionId 所属连接（连接节点与其下的对象用；其它节点为空串）
+     * @param count        分组节点下的可见对象数（非分组节点为 0）——
+     *                     用来在「表」后面显示计数徽标
      */
     private record DemoNode(String name, NodeKind kind, Icons.Icon icon, String schema,
-                            String connectionId) {
+                            String connectionId, int count) {
 
         private DemoNode(String name, NodeKind kind, Icons.Icon icon) {
-            this(name, kind, icon, "", "");
+            this(name, kind, icon, "", "", 0);
         }
 
         private DemoNode(String name, NodeKind kind, Icons.Icon icon, String connectionId) {
-            this(name, kind, icon, "", connectionId);
+            this(name, kind, icon, "", connectionId, 0);
+        }
+
+        private DemoNode(String name, NodeKind kind, Icons.Icon icon, String schema,
+                         String connectionId) {
+            this(name, kind, icon, schema, connectionId, 0);
         }
     }
 
@@ -1029,18 +1218,26 @@ public final class SideBar extends VBox {
             }
 
             // ⭐ 矢量图标（不是 Unicode 符号）。
-            SVGPath icon = Icons.of(item.icon(), 14);
-            icon.getStyleClass().add("adb-tree__icon");
+            SVGPath icon = Icons.of(item.icon(), Icons.SIZE_LABEL);
+            icon.getStyleClass().addAll("adb-tree__icon", iconStyleClass(item.kind()));
 
             Label name = new Label(item.name());
             name.getStyleClass().add("adb-tree__name");
 
-            HBox box = new HBox(7, icon, name);
+            HBox box = new HBox(6, icon, name);
             box.setAlignment(Pos.CENTER_LEFT);
+
+            // ⭐ 分组标题右侧的对象计数 —— 让用户不用展开就知道这个库里
+            //    有多少张表（Navicat 也是这个形态）。
+            if (item.kind() == NodeKind.GROUP && item.count() > 0) {
+                Label count = new Label(String.valueOf(item.count()));
+                count.getStyleClass().add("adb-tree__count");
+                box.getChildren().add(count);
+            }
 
             if ((item.kind() == NodeKind.TABLE || item.kind() == NodeKind.VIEW)
                     && starred.contains(item.name())) {
-                SVGPath star = Icons.of(Icons.Icon.STAR, 12);
+                SVGPath star = Icons.of(Icons.Icon.STAR, Icons.SIZE_BADGE);
                 star.setAccessibleText("收藏");
                 star.getStyleClass().add("adb-tree__star");
                 box.getChildren().add(star);

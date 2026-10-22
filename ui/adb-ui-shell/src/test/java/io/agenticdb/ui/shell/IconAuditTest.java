@@ -77,7 +77,7 @@ class IconAuditTest {
         List<String> gridViolations = onFx(() -> audit(stage.getScene().getRoot()));
 
         // 查询页：工具栏新建查询。
-        robot.clickOn("#feature-new-query");
+        robot.clickOn("#appbar-new-query");
         WaitForAsyncUtils.waitForFxEvents();
         List<String> queryViolations = onFx(() -> audit(stage.getScene().getRoot()));
 

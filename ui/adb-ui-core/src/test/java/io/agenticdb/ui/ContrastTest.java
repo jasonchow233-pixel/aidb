@@ -1,0 +1,200 @@
+package io.agenticdb.ui;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * 对比度门禁（V-8）。
+ *
+ * <h2>为什么要有它</h2>
+ * 颜色是**唯一真相**（{@code tokens.json}），但「令牌本身」不能保证可读 ——
+ * 改一个色值，某个文字与背景的对比度可能悄悄掉到 4.5:1 以下，
+ * 而**没有任何人会看出来**（要肉眼盯着两处颜色比对）。
+ *
+ * <p>这条门禁把「对比度」变成可执行的断言：改色 → 门禁红 → 改回来或调整色值。
+ *
+ * <h2>阈值</h2>
+ * WCAG AA：正常文字 <b>4.5:1</b>；大号文字（≥24px，或 ≥18.66px 粗体）3:1。
+ * 本项目正文是 12px，所以一律按 4.5:1 要求。
+ *
+ * <h2>半透明色怎么处理</h2>
+ * 风险徽标的底色是 {@code rgba(..., .08)} —— 它**叠在页面底色上**才是真正的底色。
+ * 所以算法是：<b>先把半透明底色合成到页面底上，再算对比度</b>。
+ * （早期版本忽略 alpha，直接把 8% 的底色当成实色 → 算出来全是 1.00:1，结论是假的。）
+ */
+class ContrastTest {
+
+    /** WCAG AA：正常文字的最低对比度。 */
+    private static final double MIN_NORMAL = 4.5;
+
+    /**
+     * 必须达标的「文字 / 背景」配对 —— 每一对都是**实际用到的**组合（见 {@code app.css}）。
+     *
+     * <p>第三项是「底色叠在谁上面」（半透明底色用），默认叠在页面底色上。
+     */
+    private static final Map<String, String[]> PAIRS = new LinkedHashMap<>();
+
+    static {
+        // ── 亮色主题 ──
+        PAIRS.put("正文 / 页面底", new String[]{"text-primary", "bg-canvas", "bg-canvas"});
+        PAIRS.put("正文 / 面板", new String[]{"text-primary", "bg-surface", "bg-canvas"});
+        PAIRS.put("正文 / 浮层", new String[]{"text-primary", "bg-elevated", "bg-canvas"});
+        PAIRS.put("正文 / 凹陷区", new String[]{"text-primary", "bg-inset", "bg-canvas"});
+        PAIRS.put("次要文字 / 页面底", new String[]{"text-secondary", "bg-canvas", "bg-canvas"});
+        PAIRS.put("次要文字 / 面板", new String[]{"text-secondary", "bg-surface", "bg-canvas"});
+        PAIRS.put("三级文字 / 页面底", new String[]{"text-tertiary", "bg-canvas", "bg-canvas"});
+        PAIRS.put("三级文字 / 浮层", new String[]{"text-tertiary", "bg-elevated", "bg-canvas"});
+        PAIRS.put("三级文字 / 凹陷区", new String[]{"text-tertiary", "bg-inset", "bg-canvas"});
+        PAIRS.put("反色文字 / 主色", new String[]{"text-inverse", "accent", "bg-canvas"});
+        PAIRS.put("错误文字 / 页面底", new String[]{"error", "bg-canvas", "bg-canvas"});
+        PAIRS.put("错误文字 / 面板", new String[]{"error", "bg-surface", "bg-canvas"});
+        PAIRS.put("警告文字 / 页面底", new String[]{"warning", "bg-canvas", "bg-canvas"});
+        PAIRS.put("成功文字 / 页面底", new String[]{"success", "bg-canvas", "bg-canvas"});
+        PAIRS.put("信息文字 / 页面底", new String[]{"info", "bg-canvas", "bg-canvas"});
+        // ── 风险徽标：文字是实色，底是 8% 半透明，叠在页面底上 ──
+        PAIRS.put("风险 0 文字 / 风险 0 底", new String[]{"risk-0-read", "risk-0-bg", "bg-canvas"});
+        PAIRS.put("风险 1 文字 / 风险 1 底", new String[]{"risk-1-write", "risk-1-bg", "bg-canvas"});
+        PAIRS.put("风险 2 文字 / 风险 2 底", new String[]{"risk-2-structure", "risk-2-bg", "bg-canvas"});
+        PAIRS.put("风险 3 文字 / 风险 3 底", new String[]{"risk-3-admin", "risk-3-bg", "bg-canvas"});
+        // ── 对象类型色（图标颜色，图形按 3:1 要求）──
+        PAIRS.put("类型色 表 / 页面底", new String[]{"kind-table", "bg-canvas", "bg-canvas"});
+        PAIRS.put("类型色 视图 / 页面底", new String[]{"kind-view", "bg-canvas", "bg-canvas"});
+        PAIRS.put("类型色 函数 / 页面底", new String[]{"kind-function", "bg-canvas", "bg-canvas"});
+        PAIRS.put("类型色 触发器 / 页面底", new String[]{"kind-trigger", "bg-canvas", "bg-canvas"});
+        PAIRS.put("类型色 过程 / 页面底", new String[]{"kind-procedure", "bg-canvas", "bg-canvas"});
+    }
+
+    @Test
+    void everyTextOnBackgroundPairMeetsWcagAa() throws IOException {
+        JsonNode tokens = new ObjectMapper()
+                .readTree(readResource("/tokens/tokens.json")).path("tokens");
+
+        List<String> failures = new ArrayList<>();
+        for (String theme : new String[]{"light", "dark"}) {
+            for (Map.Entry<String, String[]> pair : PAIRS.entrySet()) {
+                String[] keys = pair.getValue();
+                double ratio = contrast(tokens, keys[0], keys[1], keys[2], theme);
+                if (ratio < MIN_NORMAL) {
+                    failures.add(String.format("%s / %s：%.2f:1（要求 ≥ %.1f:1）",
+                            theme, pair.getKey(), ratio, MIN_NORMAL));
+                }
+            }
+        }
+
+        assertThat(failures)
+                .as("文字与背景的对比度必须达到 WCAG AA（4.5:1）——\n  %s",
+                        String.join("\n  ", failures))
+                .isEmpty();
+    }
+
+    @Test
+    void focusRingStandsOutAgainstTheBackground() throws IOException {
+        // 焦点环是「键盘用户能不能看见自己在哪」的唯一依据。
+        //
+        // ⚠️ 判据是「**与背景**的对比度」，不是「比正文亮」：
+        // 暗色主题里正文是接近白的 #e6edf3，而焦点环是亮蓝 —— 焦点环必然比正文**暗**，
+        // 但它与深色背景的对比度很高，照样清晰可见。
+        // （非文字元素的 WCAG AA 要求是 3:1。）
+        JsonNode tokens = new ObjectMapper()
+                .readTree(readResource("/tokens/tokens.json")).path("tokens");
+        for (String theme : new String[]{"light", "dark"}) {
+            double ratio = contrast(tokens, "border-focus", "bg-canvas", "bg-canvas", theme);
+            assertThat(ratio)
+                    .as("%s 主题：焦点环与页面底的对比度必须 ≥ 3:1（否则键盘用户看不见焦点）", theme)
+                    .isGreaterThanOrEqualTo(3.0);
+        }
+    }
+
+    // ─────────────────────────── 颜色计算 ───────────────────────────
+
+    /** 对比度：前景文字 vs 背景（背景先合成到 base 上）。 */
+    private static double contrast(JsonNode tokens, String fg, String bg, String base, String theme) {
+        double[] baseRgb = rgb(tokens, base, theme);
+        double[] bgRgb = composite(rgb(tokens, bg, theme), baseRgb);
+        double[] fgRgb = composite(rgb(tokens, fg, theme), bgRgb);
+        double a = relativeLuminance(fgRgb);
+        double b = relativeLuminance(bgRgb);
+        double lighter = Math.max(a, b);
+        double darker = Math.min(a, b);
+        return (lighter + 0.05) / (darker + 0.05);
+    }
+
+    /** 解析颜色令牌 → {r, g, b, a}（0..1）。 */
+    private static double[] rgb(JsonNode tokens, String key, String theme) {
+        String value = tokens.path(key).path(theme).asText("").trim();
+        if (value.isEmpty()) {
+            return new double[]{0, 0, 0, 1};
+        }
+        if (value.startsWith("rgba")) {
+            String body = value.substring(value.indexOf('(') + 1, value.lastIndexOf(')'));
+            String[] parts = body.split(",");
+            return new double[]{
+                    parse(parts[0]), parse(parts[1]), parse(parts[2]),
+                    parts.length > 3 ? parse(parts[3]) : 1};
+        }
+        int hex = parseHex(value);
+        return new double[]{
+                ((hex >> 16) & 0xFF) / 255.0,
+                ((hex >> 8) & 0xFF) / 255.0,
+                (hex & 0xFF) / 255.0,
+                1};
+    }
+
+    /** 半透明色叠在底色上。 */
+    private static double[] composite(double[] fg, double[] bg) {
+        double alpha = fg[3];
+        return new double[]{
+                fg[0] * alpha + bg[0] * (1 - alpha),
+                fg[1] * alpha + bg[1] * (1 - alpha),
+                fg[2] * alpha + bg[2] * (1 - alpha),
+                1};
+    }
+
+    private static double parse(String value) {
+        String text = value.trim();
+        if (text.endsWith("%")) {
+            return Double.parseDouble(text.substring(0, text.length() - 1)) / 100.0;
+        }
+        return Double.parseDouble(text);
+    }
+
+    private static int parseHex(String hex) {
+        String value = hex.trim();
+        if (value.startsWith("#")) {
+            value = value.substring(1);
+        }
+        if (value.length() == 3) {
+            value = value.charAt(0) + "" + value.charAt(0)
+                    + value.charAt(1) + "" + value.charAt(1)
+                    + value.charAt(2) + "" + value.charAt(2);
+        }
+        return Integer.parseInt(value, 16);
+    }
+
+    /** WCAG 相对亮度。 */
+    private static double relativeLuminance(double[] rgb) {
+        return 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);
+    }
+
+    private static double channel(double value) {
+        return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+    }
+
+    private static String readResource(String path) throws IOException {
+        try (InputStream stream = ContrastTest.class.getResourceAsStream(path)) {
+            assertThat(stream).as("缺少资源 %s", path).isNotNull();
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+}

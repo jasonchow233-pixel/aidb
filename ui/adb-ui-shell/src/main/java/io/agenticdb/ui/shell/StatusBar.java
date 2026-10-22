@@ -8,9 +8,13 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 
 /**
- * 状态栏：10 个固定位置。
+ * 状态栏：左 / 中 / 右三段。
  *
  * <p>⛔ 不要用「一条长消息」代替分段 —— 用户需要一眼定位是连接、事务还是选中行出了问题。
+ *
+ * <p>⭐ 2026-10 版式对齐 Navicat：**选中行数与耗时居中**，
+ * 左边是「现在连着什么库、在看哪几行、刚发生了什么」，右边是事务 / 权限 / 版本。
+ * 选中信息是操作时的即时反馈，放正中比缩在右侧更容易被扫到。
  *
  * <p>⚠️ 4.5-11：以前 {@code setEnv} / {@code setSelection} / {@code setTransaction}
  * <b>零调用</b>，所以「DEV」「未选择」「自动提交」永远是这三个字。
@@ -32,7 +36,9 @@ public final class StatusBar extends HBox {
     private final Label transaction = segment("自动提交", "adb-status__transaction");
     private final Label dirty = segment("", "adb-status__dirty");
     private final Label readonly = segment("只读", "adb-status__readonly");
-    private final Label version = segment("v0.1.0 · P3", "adb-status__version");
+    private final Label version = segment(io.agenticdb.ui.AppVersion.DISPLAY, "adb-status__version");
+    /** ⭐ U6：服务器信息（版本 · 当前用户）。 */
+    private final Label server = segment("—", "adb-status__server");
 
     public StatusBar() {
         getStyleClass().add("adb-statusbar");
@@ -44,14 +50,27 @@ public final class StatusBar extends HBox {
         dirty.setVisible(false);
         dirty.setManaged(false);
 
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox left = new HBox(6, dialect, separator(), connection, separator(), range,
+                separator(), message, dirty);
+        left.setAlignment(Pos.CENTER_LEFT);
+        left.getStyleClass().add("adb-statusbar__left");
 
-        getChildren().addAll(
-                dialect, separator(), connection, separator(), range, separator(), message,
-                spacer,
-                dirty, separator(), selection, separator(), duration, separator(),
-                transaction, separator(), readonly, separator(), version);
+        HBox center = new HBox(6, selection, separator(), duration);
+        center.setAlignment(Pos.CENTER);
+        center.getStyleClass().add("adb-statusbar__center");
+
+        HBox right = new HBox(6, transaction, separator(), readonly, separator(), server,
+                separator(), version);
+        right.setAlignment(Pos.CENTER_RIGHT);
+        right.getStyleClass().add("adb-statusbar__right");
+
+        // 左右各一个弹性空隙：中间段始终落在窗口正中。
+        Region leftSpacer = new Region();
+        Region rightSpacer = new Region();
+        HBox.setHgrow(leftSpacer, Priority.ALWAYS);
+        HBox.setHgrow(rightSpacer, Priority.ALWAYS);
+
+        getChildren().addAll(left, leftSpacer, center, rightSpacer, right);
     }
 
     /**
@@ -80,6 +99,16 @@ public final class StatusBar extends HBox {
         selection.setText(count <= 0 ? "未选择" : "已选 " + count + " 行");
     }
 
+    /**
+     * ⭐ N5：由页面直接给出选中项文案（表清单是「对象」不是「行」）。
+     *
+     * <p>数据页说「已选 7 行」；表清单说「已选 users · 200 行」/「已选 3 个项目」。
+     * 两处含义不同，不能都塞进「行」这一个量词里。
+     */
+    public void setSelectionText(String text) {
+        selection.setText(text == null || text.isBlank() ? "未选择" : text);
+    }
+
     public void setDuration(long millis) {
         duration.setText(millis < 0 ? "— ms" : millis + " ms");
     }
@@ -95,10 +124,24 @@ public final class StatusBar extends HBox {
 
     public void setDirty(int count) {
         // ⭐ 状态点用矢量实心圆（不是 Unicode 的 ●）。
-        dirty.setGraphic(Icons.of(Icons.Icon.DOT, 8));
+        dirty.setGraphic(Icons.of(Icons.Icon.DOT, Icons.SIZE_DOT));
         dirty.setText("  " + count + " 待提交");
         dirty.setVisible(count > 0);
         dirty.setManaged(count > 0);
+    }
+
+    /**
+     * ⭐ U6：服务器信息（版本 · 用户）。
+     *
+     * <p>「连的是哪个版本的什么库、以什么身份连的」是排查行为差异时最先要看的信息 ——
+     * 以前状态栏里根本没有这一项。
+     */
+    public void setServerInfo(String version, String user) {
+        String text = version == null ? "" : version.trim();
+        if (user != null && !user.isBlank()) {
+            text = text.isEmpty() ? user.trim() : text + " · " + user.trim();
+        }
+        server.setText(text.isEmpty() ? "—" : text);
     }
 
     public void setReadonly(boolean value) {

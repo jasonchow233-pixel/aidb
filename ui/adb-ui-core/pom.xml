@@ -22,4 +22,28 @@
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><scope>test</scope></dependency>
   </dependencies>
+
+  <build>
+    <resources>
+      <!--
+        只有 version.properties 走资源过滤：里面要把 ${project.version} 换成真实版本号。
+        其余资源（tokens.json / 主题 CSS）**不过滤** —— 它们里可能有 ${} 字面量，
+        被误替换会直接坏掉。
+      -->
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>false</filtering>
+        <excludes>
+          <exclude>io/agenticdb/ui/version.properties</exclude>
+        </excludes>
+      </resource>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>io/agenticdb/ui/version.properties</include>
+        </includes>
+      </resource>
+    </resources>
+  </build>
 </project>

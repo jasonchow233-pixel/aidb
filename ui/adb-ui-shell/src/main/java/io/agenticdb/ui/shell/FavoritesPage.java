@@ -40,6 +40,9 @@ final class FavoritesPage extends VBox {
         this.status = status == null ? message -> { } : status;
 
         list.setId("favorites-list");
+        // ⭐ E9：收藏为空时给一句「怎么收藏」的引导，而不是空白列表。
+        list.setPlaceholder(EmptyState.of(Icons.Icon.STAR, "还没有收藏任何对象",
+                "在左侧对象树里点 ★ 就能收藏；收藏会落盘，重启还在。"));
         list.setCellFactory(view -> new ListCell<>() {
             @Override
             protected void updateItem(String item, boolean empty) {
@@ -50,7 +53,7 @@ final class FavoritesPage extends VBox {
                 }
                 // ⭐ 收藏项用矢量实心星 + 文字。
                 setText(item);
-                SVGPath star = Icons.of(Icons.Icon.STAR_FILLED, 12);
+                SVGPath star = Icons.of(Icons.Icon.STAR_FILLED, Icons.SIZE_BADGE);
                 star.setAccessibleText("收藏");
                 setGraphic(star);
                 setGraphicTextGap(6);
@@ -97,6 +100,7 @@ final class FavoritesPage extends VBox {
         if (owner != null) {
             dialog.initOwner(owner);
         }
+        DialogStyles.apply(dialog, owner);
         dialog.showAndWait();
     }
 
@@ -108,6 +112,11 @@ final class FavoritesPage extends VBox {
 
     VBox content() {
         return content;
+    }
+
+    /** 供门禁断言弹窗内容（例如空态是否真的在弹窗里）。 */
+    Dialog<Void> dialog() {
+        return dialog;
     }
 
     private void refresh() {

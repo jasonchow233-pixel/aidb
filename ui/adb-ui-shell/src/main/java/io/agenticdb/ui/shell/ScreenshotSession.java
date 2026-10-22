@@ -9,7 +9,9 @@ import javafx.scene.image.PixelReader;
 import javafx.scene.image.WritableImage;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
+import javafx.stage.Modality;
 import javafx.stage.Stage;
+import javafx.stage.Window;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -62,7 +64,7 @@ public final class ScreenshotSession {
 
     private static void capture(Stage stage, Path dir, String name) {
         try {
-            Scene scene = stage.getScene();
+            Scene scene = targetScene(stage);
             // 样式表切换后强制走一遍 CSS + 布局，避免快照落在重排中途。
             scene.getRoot().applyCss();
             scene.getRoot().layout();
@@ -81,6 +83,31 @@ public final class ScreenshotSession {
         } finally {
             Platform.exit();
         }
+    }
+
+    /**
+     * 有模态弹窗时拍弹窗，否则拍主窗口。
+     *
+     * <p>⭐ JavaFX 的 {@code Dialog} 是<b>独立的 Stage</b>，不是主场景的子节点 ——
+     * 直接 {@code stage.getScene().snapshot()} 只会拍到主窗口，弹窗整个消失。
+     * 实测踩过：拍了张「新建索引」弹窗，结果和结构页的图 MD5 完全一样。
+     */
+    private static Scene targetScene(Stage stage) {
+        for (Window window : Window.getWindows()) {
+            if (!(window instanceof Stage candidate) || candidate == stage) {
+                continue;
+            }
+            if (!candidate.isShowing() || candidate.getScene() == null) {
+                continue;
+            }
+            if (candidate.getModality() != Modality.NONE) {
+                System.out.println("[screenshot] 拍到模态窗口：" + candidate.getTitle());
+                return candidate.getScene();
+            }
+        }
+        System.out.println("[screenshot] 没有模态窗口，拍主窗口"
+                + "（窗口总数=" + Window.getWindows().size() + "）");
+        return stage.getScene();
     }
 
     /** 手写像素循环把 WritableImage 编码为 PNG，避免引入 javafx.swing 模块。 */

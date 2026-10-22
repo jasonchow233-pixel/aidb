@@ -20,6 +20,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.control.Alert;
+import org.fxmisc.richtext.CodeArea;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
@@ -107,6 +108,10 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private IntConsumer dirtyListener = count -> { };
     /** 「存为命名查询」的回调（名字, SQL）。 */
     private java.util.function.BiConsumer<String, String> onSaveNamed = (name, sql) -> { };
+    /** ⭐ Q6：存为代码片段（存的是**选中的文本**，插入时用）。 */
+    private java.util.function.BiConsumer<String, String> onSaveSnippet = (name, sql) -> { };
+    /** ⭐ Q6：片段库（插入用）。 */
+    private java.util.function.Supplier<List<SavedQueries.Entry>> snippetSource = List::of;
     /** 偏好存储（列宽持久化）。 */
     private final SettingsStore settings;
     private long requestSequence;
@@ -121,6 +126,65 @@ public final class QueryPage extends VBox implements AutoCloseable {
     /** 接上「存为命名查询」的落点。 */
     public void setOnSaveNamed(java.util.function.BiConsumer<String, String> onSaveNamed) {
         this.onSaveNamed = onSaveNamed == null ? (name, sql) -> { } : onSaveNamed;
+    }
+
+    /** 接上「存为代码片段」的落点（Q6）。 */
+    public void setOnSaveSnippet(java.util.function.BiConsumer<String, String> onSaveSnippet) {
+        this.onSaveSnippet = onSaveSnippet == null ? (name, sql) -> { } : onSaveSnippet;
+    }
+
+    /** 接上片段库来源（Q6）。 */
+    public void setSnippetSource(java.util.function.Supplier<List<SavedQueries.Entry>> source) {
+        this.snippetSource = source == null ? List::of : source;
+    }
+
+    /**
+     * ⭐ Q6：把**选中的文本**存成代码片段。
+     *
+     * <p>没有选区就存整段（用户可能就是想存整条）。
+     */
+    public void saveSnippet() {
+        String selected = editor.area().getSelectedText();
+        String text = selected == null || selected.isBlank() ? editor.text() : selected;
+        if (text == null || text.isBlank()) {
+            feedback.status("编辑器是空的，没什么可存");
+            return;
+        }
+        javafx.scene.control.TextInputDialog dialog =
+                new javafx.scene.control.TextInputDialog("片段 " + (++saveCounter));
+        dialog.setTitle("存为代码片段");
+        dialog.setHeaderText("给这段 SQL 起个名字（之后可插入到光标处）");
+        dialog.setContentText(text.length() > 120 ? text.substring(0, 120) + "…" : text);
+        java.util.Optional<String> name = dialog.showAndWait();
+        if (name.isEmpty() || name.get().isBlank()) {
+            return;
+        }
+        onSaveSnippet.accept(name.get().trim(), text);
+        feedback.status("已保存片段：" + name.get().trim());
+    }
+
+    /**
+     * ⭐ Q6：把一个片段**插入到光标处**。
+     *
+     * <p>插入而不是覆盖 —— 片段的价值就在「拼装」。
+     */
+    public void insertSnippet(SavedQueries.Entry entry) {
+        if (entry == null) {
+            return;
+        }
+        CodeArea area = editor.area();
+        int caret = area.getCaretPosition();
+        String text = entry.sql();
+        area.replaceSelection(text);
+        area.moveTo(Math.min(caret + text.length(), area.getText().length()));
+        editor.requestEditorFocus();
+        feedback.status("已插入片段：" + entry.name());
+    }
+
+    /** ⭐ Q6：片段列表（供弹窗与命令面板用）。 */
+    public List<SavedQueries.Entry> snippets() {
+        List<SavedQueries.Entry> items = snippetSource.get();
+        return items == null ? List.of() : items;
     }
 
     /** 给当前 SQL 起个名字存起来（已保存查询库）。 */
@@ -653,13 +717,17 @@ public final class QueryPage extends VBox implements AutoCloseable {
         updateButtons();
     }
 
+    /** 当前页所属的窗口（弹窗要继承它的主题）。 */
+    private javafx.stage.Window ownerWindow() {
+        return getScene() == null ? null : getScene().getWindow();
+    }
+
     /**
      * ⭐ Q2：带变量执行。
      *
      * <p>先问用户要参数的值，再**参数化绑定**执行 —— 值不进 SQL 文本。
      */
-    private void runWithVariables() {
-        if (running) {
+    private void runWithVariables() {        if (running) {
             return;
         }
         List<SqlStatement> statements = SqlSplitter.statementAt(editor.text(), editor.caret())
@@ -669,7 +737,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             return;
         }
         String sql = statements.getFirst().text();
-        VariableDialog.Bound bound = VariableDialog.prompt(sql);
+        VariableDialog.Bound bound = VariableDialog.prompt(sql, ownerWindow());
         if (bound == null) {
             return;
         }
@@ -884,7 +952,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
         table.getStyleClass().addAll("adb-grid", "adb-query__result-table");
         table.setItems(FXCollections.observableArrayList(result.rows()));
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        table.setPlaceholder(new Label("查询成功，但没有返回行"));
+        // ⭐ E5：0 行结果以前只有一行字。空态要说清「这是正常结果」+ 下一步怎么办。
+        table.setPlaceholder(EmptyState.of(Icons.Icon.TABLE, "查询成功，但没有返回行",
+                "这是正常的空结果 —— 检查 WHERE 条件，或确认目标表里确实没有数据。"));
 
         TableColumn<java.util.Map<String, Object>, Void> number = new TableColumn<>("#");
         number.setSortable(false);
@@ -1172,25 +1242,15 @@ public final class QueryPage extends VBox implements AutoCloseable {
         alert.getButtonTypes().setAll(execute, cancelType);
         if (getScene() != null) {
             alert.initOwner(getScene().getWindow());
-            alert.getDialogPane().getStylesheets().addAll(getScene().getStylesheets());
-            alert.getDialogPane().getStyleClass().add("adb-dialog");
         }
+        DialogStyles.apply(alert, getScene() == null ? null : getScene().getWindow());
         return alert.showAndWait().orElse(cancelType) == execute;
     }
 
     private static String readable(Throwable error) {
-        if (error == null) {
-            return "未知错误";
-        }
-        Throwable cursor = error;
-        String message = null;
-        while (cursor != null) {
-            if (cursor.getMessage() != null && !cursor.getMessage().isBlank()) {
-                message = cursor.getMessage();
-            }
-            cursor = cursor.getCause();
-        }
-        return message == null ? error.getClass().getSimpleName() : message;
+        // ⭐ V-12：统一走错误归类 —— 给出「发生了什么 + 建议怎么办」，
+        //    而不是把驱动的英文原文直接甩给用户。
+        return io.agenticdb.safety.ErrorClassifier.classify(error).message();
     }
 
     private static final class ResultCell

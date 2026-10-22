@@ -93,6 +93,13 @@ final class VariableDialog {
         content.getStyleClass().add("adb-wizard__content");
 
         dialog.setTitle("变量");
+
+        // ⭐ V-11：弹窗宽度走三档规范（DialogSizes）。
+
+        dialog.getDialogPane().setPrefWidth(DialogSizes.FORM);
+
+        dialog.getDialogPane().setMinWidth(DialogSizes.FORM);
+
         dialog.setHeaderText("共 " + parameters.size() + " 个参数");
         dialog.getDialogPane().getButtonTypes().clear();
         dialog.getDialogPane().setContent(content);
@@ -104,12 +111,13 @@ final class VariableDialog {
      * @param sql 当前语句
      * @return 用户填好的值；没有参数或用户取消 → {@code null}
      */
-    static Bound prompt(String sql) {
+    static Bound prompt(String sql, javafx.stage.Window owner) {
         List<SqlParameters.Parameter> parameters = SqlParameters.detect(sql);
         if (parameters.isEmpty()) {
             return null;
         }
         VariableDialog panel = new VariableDialog(parameters);
+        DialogStyles.apply(panel.dialog, owner);
         panel.dialog.showAndWait();
         if (!panel.confirmed) {
             return null;

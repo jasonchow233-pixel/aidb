@@ -6,6 +6,7 @@ import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnType;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.sql.Date;
 import java.sql.Time;
@@ -33,6 +34,12 @@ import java.util.Map;
 final class CellRenderer {
 
     static final int TEXT_LIMIT = 80;
+
+    /**
+     * 浮点**展示**的最大小数位数，见 {@link #doubleText(double)}。
+     * 12 远超业务精度（金额最多 6 位），又远低于噪声出现的位次（第 15 位后）。
+     */
+    static final int MAX_FRACTION_DIGITS = 12;
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd");
@@ -84,7 +91,11 @@ final class CellRenderer {
         }
         if (definition.type() == ColumnType.NUMBER || value instanceof Number) {
             String text = numberText(value);
-            return new Rendered(text, "adb-grid__cell--number", text, false);
+            String raw = String.valueOf(value);
+            // 展示值被收敛过时（浮点噪声），tooltip 给出原值 ——
+            // 显示可以更干净，但不能瞒着用户真实值是什么。
+            return new Rendered(text, "adb-grid__cell--number",
+                    text.equals(raw) ? text : "原值 " + raw, false);
         }
         if (definition.type() == ColumnType.DATE
                 || definition.type() == ColumnType.TIME
@@ -213,11 +224,71 @@ final class CellRenderer {
         return text.toString();
     }
 
-    private static String numberText(Object value) {
+    static String numberText(Object value) {
+        // BigDecimal 保留声明的 scale —— DECIMAL(10,2) 的 100 就该显示 "100.00"，
+        // 那是业务精度，不是噪声，stripTrailingZeros 会把它抹掉。
         if (value instanceof BigDecimal decimal) {
             return decimal.toPlainString();
         }
+        if (value instanceof Double || value instanceof Float) {
+            return doubleText(((Number) value).doubleValue());
+        }
         return String.valueOf(value);
+    }
+
+    /**
+     * IEEE754 浮点数的展示文本 —— **只影响显示，永远不改值**。
+     *
+     * <h2>为什么需要它</h2>
+     * {@code REAL / DOUBLE / FLOAT} 列读出来是 {@code double}，直接
+     * {@code String.valueOf(double)} 会把二进制无法精确表示的尾数整段暴露出来，
+     * 金额列显示成 {@code 22.990000000000002}。用户第一反应不是"浮点精度"，
+     * 而是"这工具把我的数据显示坏了"。
+     *
+     * <h2>关键事实（实测，别想当然）</h2>
+     * {@code 22.990000000000002 == 22.99} 是 **false** —— 它们是两个不同的 double。
+     * 所以这不是"最短往返表示"能解决的：{@code Double.toString} 已经是最短表示了，
+     * 它如实输出 22.990000000000002。
+     * 真正要做的，是把**超出业务精度的小数位**收敛掉。
+     *
+     * <h2>收敛规则</h2>
+     * double 只有约 15–17 位有效十进制数字。业务数据（金额 / 评分 / 比率）的小数位
+     * 从不超过 6 位；噪声恒定出现在第 15 位之后。取
+     * {@value #MAX_FRACTION_DIGITS} 位作分界：
+     * <ul>
+     *   <li>小数位 ≤ 12 → **原样输出**，真实精度一个字都不动。</li>
+     *   <li>小数位 > 12 → 四舍五入到 12 位并去掉尾随零。
+     *       {@code 22.990000000000002 → 22.99}，{@code 0.1+0.2 → 0.3}。</li>
+     * </ul>
+     *
+     * <h2>⚠ 边界</h2>
+     * 极小值（如 {@code 1e-20}）收敛到 12 位会变成 {@code 0} —— 那是**丢数据**。
+     * 所以收敛结果为 0 而原值非 0 时，退回原样输出。
+     * {@code NaN / ±Infinity} 无十进制表示，直接原样。
+     *
+     * <p>本方法**只**服务于展示。编辑回填走 {@code String.valueOf}、
+     * 导出走 {@code csvValue}，两者都不经过这里 —— 因此格式化字符串
+     * **不可能**被写回数据库（有 {@code NumberFormattingTest} 守着）。
+     */
+    static String doubleText(double value) {
+        if (!Double.isFinite(value)) {
+            return String.valueOf(value);          // NaN / ±Infinity
+        }
+        if (value == 0.0d) {
+            return "0";                            // 顺带消掉 "-0.0"
+        }
+        // BigDecimal.valueOf(double) ≡ new BigDecimal(Double.toString(v))：
+        // 拿到的是 double 的**精确**十进制展开，不再引入新的舍入误差。
+        BigDecimal exact = BigDecimal.valueOf(value);
+        if (exact.scale() <= MAX_FRACTION_DIGITS) {
+            return exact.stripTrailingZeros().toPlainString();
+        }
+        BigDecimal rounded = exact.setScale(MAX_FRACTION_DIGITS, RoundingMode.HALF_UP)
+                .stripTrailingZeros();
+        if (rounded.signum() == 0) {
+            return exact.toPlainString();          // 极小值不能被收敛成 0
+        }
+        return rounded.toPlainString();
     }
 
     private static String enumLabel(ColumnDef definition, Object value) {

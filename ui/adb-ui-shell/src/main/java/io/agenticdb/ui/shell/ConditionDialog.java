@@ -30,6 +30,10 @@ final class ConditionDialog {
                                           Collection<String> stylesheets) {
         Dialog<FilterCondition> dialog = new Dialog<>();
         dialog.setTitle("添加筛选条件");
+        // ⭐ V-11：弹窗宽度走三档规范（DialogSizes）。
+        dialog.getDialogPane().setPrefWidth(DialogSizes.FORM);
+        dialog.getDialogPane().setMinWidth(DialogSizes.FORM);
+
         dialog.setHeaderText("按列构造条件");
         if (owner != null) {
             dialog.initOwner(owner);
@@ -78,10 +82,9 @@ final class ConditionDialog {
         GridPane.setHgrow(value, javafx.scene.layout.Priority.ALWAYS);
         GridPane.setHgrow(second, javafx.scene.layout.Priority.ALWAYS);
         dialog.getDialogPane().setContent(grid);
-        dialog.getDialogPane().getStyleClass().add("adb-dialog");
-        if (stylesheets != null && !stylesheets.isEmpty()) {
-            dialog.getDialogPane().getStylesheets().addAll(stylesheets);
-        }
+        // ⭐ 主题类必须抄到 DialogPane 上 —— 否则弹窗里所有 -adb-* 查找落空，
+        //    弹窗会退回 JavaFX 默认皮肤（没有边框、按钮全是默认灰钮）。
+        DialogStyles.apply(dialog, owner);
 
         operatorBox.setOnAction(event -> updateValueFields(operatorBox.getValue(), value, second));
         columnBox.setOnAction(event -> updatePrompt(columnBox.getValue(), schema, value));

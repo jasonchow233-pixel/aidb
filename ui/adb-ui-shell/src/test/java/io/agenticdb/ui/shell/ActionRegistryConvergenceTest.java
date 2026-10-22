@@ -141,7 +141,7 @@ class ActionRegistryConvergenceTest {
 
         Boolean ok = onFx(() -> {
             AppShell shell = shell(robot);
-            Button theme = (Button) shell.lookup("#theme-toggle-button");
+            Button theme = (Button) shell.lookup("#appbar-theme");
             if (theme == null) {
                 return null;
             }

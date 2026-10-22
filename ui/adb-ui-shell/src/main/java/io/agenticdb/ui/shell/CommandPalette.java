@@ -34,6 +34,7 @@ public final class CommandPalette extends StackPane {
 
     public CommandPalette(ActionRegistry actions) {
         this.actions = actions;
+        setId("command-palette-overlay");
         getStyleClass().add("adb-palette-overlay");
         setVisible(false);
         setManaged(false);
@@ -147,8 +148,11 @@ public final class CommandPalette extends StackPane {
 
     private void filter(String text) {
         String needle = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
+        // ⭐ X5：**不要**把禁用的动作过滤掉。
+        //    以前只显示 enabled 的动作 → 「复制 SELECT」这类只在选中对象时才有意义的动作
+        //    **在 ⌘K 里根本搜不到** —— 用户不知道这个能力存在。
+        //    现在：禁用的也显示（灰掉），点它会给出解释（Action.onDisabled）。
         List<Action> matches = actions.all().stream()
-                .filter(Action::isEnabled)
                 .filter(action -> needle.isEmpty()
                         || action.label().toLowerCase(Locale.ROOT).contains(needle)
                         || action.id().toLowerCase(Locale.ROOT).contains(needle)
@@ -186,6 +190,10 @@ public final class CommandPalette extends StackPane {
 
             Label label = new Label(action.label());
             label.getStyleClass().add("adb-palette__label");
+            if (!action.isEnabled()) {
+                // ⭐ 禁用项在面板里**灰掉但仍可见**（可发现性 > 好看）。
+                label.getStyleClass().add("adb-palette__label--disabled");
+            }
 
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);

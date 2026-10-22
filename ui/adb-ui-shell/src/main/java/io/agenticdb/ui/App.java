@@ -23,6 +23,8 @@ public class App extends Application {
 
     @Override
     public void start(Stage stage) {
+        // ⭐ P7：崩溃日志兜底（写 ~/.agenticdb/logs/crash-*.log）。
+        io.agenticdb.ui.CrashLog.install();
         SettingsStore settings = new SettingsStore();
         ThemeManager themeManager = new ThemeManager(settings);
 

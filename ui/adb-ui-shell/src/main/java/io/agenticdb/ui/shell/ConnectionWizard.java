@@ -24,6 +24,8 @@ import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
 
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -52,6 +54,8 @@ public final class ConnectionWizard {
     private final Label review = new Label();
     private final Label testResult = new Label("尚未测试");
     private final TextArea summary = new TextArea();
+    /** ⭐ U3：连接属性（超时 / 字符集 / SSL / 附加参数）。 */
+    private Map<String, String> options = new LinkedHashMap<>();
     /** 第 3 步的常驻错误行：校验失败时保存不关窗，原因写在这里（4.5-12）。 */
     private final Label saveError = new Label();
 
@@ -68,6 +72,10 @@ public final class ConnectionWizard {
         this.tester = tester == null ? spec -> "未配置测试器" : tester;
         dialog.initOwner(owner);
         dialog.setTitle("连接向导");
+        // ⭐ V-11：弹窗宽度走三档规范（DialogSizes）。
+        dialog.getDialogPane().setPrefWidth(DialogSizes.FORM);
+        dialog.getDialogPane().setMinWidth(DialogSizes.FORM);
+
         dialog.setHeaderText("选择数据库类型并命名连接");
         build();
         if (initial != null) {
@@ -256,6 +264,12 @@ public final class ConnectionWizard {
         grid.addRow(2, new Label("数据库"), database);
         grid.addRow(3, new Label("用户名"), username);
         grid.addRow(4, new Label("密码"), password);
+        // ⭐ U3：连接属性（超时 / 字符集 / SSL / 附加 JDBC 参数）。
+        Button properties = new Button("连接属性…");
+        properties.setId("wizard-properties");
+        properties.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        properties.setOnAction(event -> editProperties());
+        grid.addRow(5, new Label("高级"), properties);
         return withNav(grid,
                 navButton("wizard-back", "← 上一步", this::goBack),
                 navButton("wizard-next", "下一步 →", this::goNext));
@@ -368,7 +382,7 @@ public final class ConnectionWizard {
     private ConnectionProfile buildProfile() {
         DialectKind kind = type.getValue();
         String id = initial == null ? UUID.randomUUID().toString() : initial.id();
-        Map<String, String> options = initial == null ? Map.of() : initial.options();
+        Map<String, String> loaded = initial == null ? Map.of() : initial.options();
         String connectionName = name.getText() == null ? kind.displayName() : name.getText().trim();
         if (kind.dialect().usesFilePath()) {
             return new ConnectionProfile(id, connectionName, kind, "", 0, file.getText().trim(),
@@ -380,6 +394,33 @@ public final class ConnectionWizard {
                 database.getText().trim(), username.getText().trim(),
                 initial != null && initial.favorite(),
                 initial == null ? 0 : initial.lastUsedAt(), options);
+    }
+
+    /**
+     * ⭐ U3：打开连接属性弹窗（**弹窗里套 TabPane** —— 形态见
+     * {@code docs/UI-FORMS-AND-STATES.md} §4）。
+     */
+    private void editProperties() {
+        ConnectionProfile draft = new ConnectionProfile(
+                initial == null ? "draft" : initial.id(),
+                name.getText() == null ? type.getValue().displayName() : name.getText().trim(),
+                type.getValue(), host.getText() == null ? "" : host.getText().trim(),
+                parsePort(port.getText(), ConnectionProfile.defaultPort(type.getValue())),
+                database.getText() == null ? "" : database.getText().trim(),
+                username.getText() == null ? "" : username.getText().trim(),
+                false, 0, Map.copyOf(options));
+        ConnectionPropertiesDialog properties = ConnectionPropertiesDialog.create(draft);
+        properties.show(dialog.getOwner(), ownerStylesheets())
+                .ifPresent(collected -> options = new LinkedHashMap<>(collected));
+    }
+
+    /** 主窗口的样式表（子弹窗要继承主题）。 */
+    private List<String> ownerStylesheets() {
+        Window owner = dialog.getOwner();
+        if (owner instanceof javafx.stage.Stage stage && stage.getScene() != null) {
+            return List.copyOf(stage.getScene().getStylesheets());
+        }
+        return List.of();
     }
 
     private int parsePort(String value, int fallback) {
@@ -397,11 +438,13 @@ public final class ConnectionWizard {
 
     public void show() {
         dialog.setOnHidden(event -> onFinished.accept(Optional.ofNullable(dialog.getResult())));
+        DialogStyles.apply(dialog, dialog.getOwner());
         dialog.show();
     }
 
     public Optional<ConnectionProfile> showAndWait() {
         dialog.setOnHidden(event -> onFinished.accept(Optional.ofNullable(dialog.getResult())));
+        DialogStyles.apply(dialog, dialog.getOwner());
         return dialog.showAndWait();
     }
 

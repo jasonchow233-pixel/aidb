@@ -55,10 +55,21 @@ class TokenParityTest {
 
     @Test
     void coreDimensionsMatchSpec() {
-        assertThat(Tokens.H_TOOLBAR_DARK).isEqualTo(36);
+        // ⭐ 2026-10 密度对齐 Navicat（实拍量得：标题栏 20px 行高、列头约 24px）：
+        //    应用栏 46 / 工作区标签栏 36 / 主工具栏 38 / 状态栏 26 / 左侧导航默认 250。
+        assertThat(Tokens.H_APPBAR_DARK).isEqualTo(46);
+        assertThat(Tokens.H_TOOLBAR_DARK).isEqualTo(38);
         assertThat(Tokens.H_STATUSBAR_DARK).isEqualTo(26);
         assertThat(Tokens.H_TABBAR_DARK).isEqualTo(36);
-        assertThat(Tokens.W_SIDEBAR_DARK).isEqualTo(240);
+        assertThat(Tokens.W_SIDEBAR_DARK).isEqualTo(250);
+        // 可调整范围 200–360。
+        assertThat(Tokens.W_SIDEBAR_MIN_DARK).isEqualTo(200);
+        assertThat(Tokens.W_SIDEBAR_MAX_DARK).isEqualTo(360);
+        // 表格行高：紧凑 24 / 常规 28 / 宽松 34（Navicat 实测数据行 20px，
+        // 我们保留一点余量给 13px 中文正文）。
+        assertThat(Tokens.ROW_COMPACT_DARK).isEqualTo(24);
+        assertThat(Tokens.ROW_NORMAL_DARK).isEqualTo(28);
+        assertThat(Tokens.ROW_COMFORT_DARK).isEqualTo(34);
     }
 
     @Test

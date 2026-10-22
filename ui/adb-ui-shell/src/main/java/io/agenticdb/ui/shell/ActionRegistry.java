@@ -74,15 +74,33 @@ public final class ActionRegistry {
      * （比如标签栏右键写「关闭」，菜单栏写「关闭标签」）。
      */
     public MenuItem menuItem(String id, String labelOverride) {
-        Action action = require(id);
+        return menuItemFor(require(id), labelOverride);
+    }
+
+    /**
+     * 由一个动作实例直接生成菜单项。
+     *
+     * <p>表清单页拿到的是注册表里的 Action（不是 id），但菜单项的启用态、
+     * 样式钩子与快捷键必须和其它入口完全一致 —— 所以收口到这里，
+     * 不让页面再手搓一份 {@link MenuItem}。
+     */
+    public static MenuItem menuItemFor(Action action, String labelOverride) {
+        Objects.requireNonNull(action, "action");
         MenuItem item = new MenuItem(labelOverride == null ? action.label() : labelOverride);
-        item.setId(id);
+        item.setId(action.id());
+        // ⭐ 统一的菜单项样式钩子：`.adb-menu-item` 让禁用态的透明度还原规则
+        //    真正作用到菜单项上（以前这个类在 CSS 里定义着，却没有任何节点用它）。
+        item.getStyleClass().add("adb-menu-item");
         if (action.accelerator() != null) {
             item.setAccelerator(action.accelerator());
         }
         item.setOnAction(event -> action.run());
         item.disableProperty().bind(action.enabledProperty().not());
         return item;
+    }
+
+    public static MenuItem menuItemFor(Action action) {
+        return menuItemFor(action, null);
     }
 
     /**
@@ -101,11 +119,16 @@ public final class ActionRegistry {
     }
 
     public Button button(String id) {
-        Action action = require(id);
+        return buttonFor(require(id));
+    }
+
+    /** 由一个动作实例生成文字按钮（表清单页拿到的是 Action，不是 id）。 */
+    public static Button buttonFor(Action action) {
+        Objects.requireNonNull(action, "action");
         Button button = new Button(action.label());
         button.getStyleClass().add("adb-button");
         // 与 menuItem 一致：CSS id 就是动作 id，方便测试与样式定位。
-        button.setId(id);
+        button.setId(action.id());
         button.setOnAction(event -> action.run());
         button.disableProperty().bind(action.enabledProperty().not());
         return button;
@@ -118,12 +141,18 @@ public final class ActionRegistry {
      * 只是点了没反应。现在 enabled 与动作同步。
      */
     public Button iconButton(String id, Icons.Icon icon, String tooltip, String accessibleText) {
-        Action action = require(id);
+        return iconButtonFor(require(id), icon, tooltip, accessibleText);
+    }
+
+    /** 由一个动作实例生成纯图标按钮（Tooltip + accessibleText 由调用方给）。 */
+    public static Button iconButtonFor(Action action, Icons.Icon icon,
+                                       String tooltip, String accessibleText) {
+        Objects.requireNonNull(action, "action");
         // ⭐ 矢量图标（不是 Unicode 符号 —— 符号的字形随系统字体变）。
         Button button = new Button();
         button.setGraphic(Icons.of(icon));
         button.getStyleClass().addAll("adb-icon-button");
-        button.setId(id);
+        button.setId(action.id());
         button.setTooltip(new javafx.scene.control.Tooltip(tooltip));
         button.setAccessibleText(accessibleText);
         button.setOnAction(event -> action.run());

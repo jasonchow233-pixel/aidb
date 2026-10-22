@@ -130,7 +130,7 @@ public final class TabBar extends HBox {
      *
      * <p>⚠️ CSS 的 id 选择器里 {@code :} 是伪类分隔符、{@code .} 是类分隔符 ——
      * 标签 id 形如 {@code grid:demo:users}，直接用会查不到节点。
-     * 统一换成短横线（同 {@code MainToolBar} 对动作 id 的处理）。
+     * 统一换成短横线（同 {@code AppBar} 对动作 id 的处理）。
      */
     public static String nodeId(String tabId) {
         return "tab-" + (tabId == null ? "" : tabId.replaceAll("[^a-zA-Z0-9_-]", "-"));
@@ -144,6 +144,18 @@ public final class TabBar extends HBox {
     /** 这个标签是常驻的（不可关闭）吗？ */
     public boolean isPermanent(String id) {
         return id != null && id.equals(permanentId);
+    }
+
+    /**
+     * ⭐ X7：激活**常驻标签**（「对象」首页）。
+     *
+     * <p>恢复上次打开的标签之后，活动标签是「最后恢复的那个」——
+     * 用户看到的不是浏览的起点。恢复完把落点交回常驻标签。
+     */
+    public void activatePermanent() {
+        if (permanentId != null && items.containsKey(permanentId)) {
+            activate(permanentId);
+        }
     }
 
     public void activate(String id) {
@@ -245,7 +257,7 @@ public final class TabBar extends HBox {
 
     private Node buildTab(TabItem tab) {
         // ⭐ 矢量图标（16×16）；标签栏是用户一直在看的地方，不能靠 Unicode 符号的字形运气。
-        SVGPath icon = Icons.of(tab.kind().icon());
+        SVGPath icon = Icons.of(tab.kind().icon(), Icons.SIZE_LABEL);
         icon.getStyleClass().add("adb-tab__icon");
 
         Label title = new Label(tab.title());
@@ -254,7 +266,7 @@ public final class TabBar extends HBox {
         Label dirty = new Label();
         dirty.getStyleClass().add("adb-tab__dirty");
         // ⭐ 状态点用矢量实心圆（不是 Unicode 的 ●）。
-        dirty.setGraphic(Icons.of(Icons.Icon.DOT, 8));
+        dirty.setGraphic(Icons.of(Icons.Icon.DOT, Icons.SIZE_DOT));
         dirty.textProperty().bind(Bindings.convert(tab.dirtyCountProperty()));
         dirty.visibleProperty().bind(tab.dirtyProperty());
         dirty.managedProperty().bind(tab.dirtyProperty());

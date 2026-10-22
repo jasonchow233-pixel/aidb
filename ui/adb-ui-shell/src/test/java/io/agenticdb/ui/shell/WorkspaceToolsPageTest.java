@@ -76,7 +76,7 @@ class WorkspaceToolsPageTest {
         WaitForAsyncUtils.waitForFxEvents();
 
         // 先跑一条 SQL，让它进历史。
-        robot.clickOn("#feature-new-query");
+        robot.clickOn("#appbar-new-query");
         WaitForAsyncUtils.waitForFxEvents();
         CodeArea editor = robot.lookup("#query-editor").queryAs(CodeArea.class);
         WaitForAsyncUtils.waitForAsyncFx(5_000,

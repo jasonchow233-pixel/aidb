@@ -41,6 +41,14 @@ final class SavedQueriesPage extends VBox {
         this.status = status == null ? message -> { } : status;
 
         list.setId("saved-list");
+        // ⚠️ ListView 的默认首选高度很大 —— 弹窗会被撑成一张巨大的空框。
+        list.setFixedCellSize(30);
+        list.setPrefHeight(240);
+        list.setMinHeight(120);
+        // 与历史页同一套列表外观（否则弹窗里是一块默认皮肤的白框）。
+        list.getStyleClass().add("adb-history__list");
+        list.setPlaceholder(new javafx.scene.control.Label("还没有保存的查询 —— "
+                + "在查询页写好 SQL 后按「存为命名查询」"));
         list.setCellFactory(view -> new ListCell<>() {
             @Override
             protected void updateItem(SavedQueries.Entry item, boolean empty) {
@@ -49,7 +57,8 @@ final class SavedQueriesPage extends VBox {
                     setText(null);
                     return;
                 }
-                setText(item.name());
+                // ⭐ Q6：显示类型（查询 / 片段）—— 用户要知道自己点开的是哪一种。
+                setText(item.name() + "  · " + item.kind().label());
                 setTooltip(new javafx.scene.control.Tooltip(item.sql()));
             }
         });
@@ -102,6 +111,7 @@ final class SavedQueriesPage extends VBox {
         if (owner != null) {
             dialog.initOwner(owner);
         }
+        DialogStyles.apply(dialog, owner);
         dialog.showAndWait();
     }
 

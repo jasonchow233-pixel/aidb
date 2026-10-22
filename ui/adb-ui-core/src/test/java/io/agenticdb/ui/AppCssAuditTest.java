@@ -48,11 +48,15 @@ class AppCssAuditTest {
     private static final Set<String> TOKEN_SPACING = Set.of("2px", "4px", "8px",
             "12px", "16px", "24px", "32px");
 
-    /** CSS 里允许的圆角（含 0 —— 直角也是合法圆角）。 */
-    private static final Set<String> RADII = Set.of("0px", "3px", "5px", "8px", "999px");
+    /**
+     * CSS 里允许的圆角（含 0 —— 直角也是合法圆角）。
+     *
+     * <p>r-sm 4 / r-md 6 / r-lg 8 / r-xl 12（弹窗）+ r-full 999。
+     */
+    private static final Set<String> RADII = Set.of("0px", "4px", "6px", "8px", "12px", "999px");
 
     /** 令牌里的圆角。 */
-    private static final Set<String> TOKEN_RADII = Set.of("3px", "5px", "8px", "999px");
+    private static final Set<String> TOKEN_RADII = Set.of("4px", "6px", "8px", "12px", "999px");
 
     // ─────────────────────────── 字号 ───────────────────────────
 

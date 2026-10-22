@@ -39,10 +39,17 @@ class MenuBarFactoryTest {
             "command-palette",
             "sidebar.toggle", "theme.toggle",
             "density-compact", "density-normal", "density-comfort", "window.zoom",
-            "refresh", "connection.reconnect", "demo.open",
+            "refresh", "connection.reconnect", "connection.disconnect", "demo.open",
+            // T1–T4 表级生命周期（注册在 SideBar，菜单里补入口，避免成为孤儿动作）
+            "object.new-table", "object.truncate-table", "object.rename-table",
+            "object.drop-table",
+            // ⭐ X5：顶级「对象」菜单（对象动作不再只存在于右键菜单）
+            "object.tables", "object.open-data", "object.open-structure", "object.new-query",
+            "object.favorite", "object.copy-name", "object.copy-select",
+            "object.refresh-objects",
             "query.run", "query.run-all", "query.cancel", "query.explain",
-            "query.format", "query.save",
-            "favorites.open", "diagnostics", "import-export", "settings",
+            "query.format", "query.save", "query.save-snippet", "query.insert-snippet",
+            "favorites.open", "favorites.clear", "diagnostics", "import-export", "settings",
             "window.minimize", "shortcuts", "about");
 
     @Start

@@ -124,7 +124,7 @@ public final class WorkspaceView extends StackPane {
         activeConnections = null;
 
         // ⭐ 矢量图标（数据库），不是 Unicode 符号 —— 欢迎页是门面。
-        SVGPath logo = Icons.of(Icons.Icon.DATABASE, 40);
+        SVGPath logo = Icons.of(Icons.Icon.DATABASE, Icons.SIZE_BRAND);
         logo.setAccessibleText("连接");
         logo.getStyleClass().add("adb-welcome__logo");
 
@@ -288,6 +288,9 @@ public final class WorkspaceView extends StackPane {
         if (connections != null) {
             connections.close();
         }
+        // 表清单页没有 close()，但缓存必须一起移除 —— 否则关掉的标签页会永远留在
+        // applyDensity 的遍历里（关 20 个表清单就多 20 个对象）。
+        tableListPages.remove(id);
     }
 
     public boolean hasDirtyChanges(String id) {
@@ -330,6 +333,13 @@ public final class WorkspaceView extends StackPane {
             page.refresh();
         }
         for (StructurePage page : structurePages.values()) {
+            page.reload();
+        }
+    }
+
+    /** ⭐ N1：建表 / 删表 / 改名后，已打开的表清单页要重新统计。 */
+    public void refreshTableLists() {
+        for (TableListPage page : tableListPages.values()) {
             page.reload();
         }
     }
@@ -427,6 +437,11 @@ public final class WorkspaceView extends StackPane {
 
         Label badge = new Label(tab.kind().label());
         badge.getStyleClass().addAll("adb-badge", "adb-badge--muted");
+        // ⚠️ 标题与徽标同文时（「设置 设置」）徽标是纯噪音 —— 藏掉。
+        if (tab.kind().label() != null && tab.kind().label().equals(tab.title())) {
+            badge.setVisible(false);
+            badge.setManaged(false);
+        }
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -439,8 +454,14 @@ public final class WorkspaceView extends StackPane {
             case TOOL -> "工具";
             case SETTINGS -> "本地设置";
             case OBJECT -> connectionName;
+            case ROUTINE -> connectionName + " · 定义体";
         });
         context.getStyleClass().add("adb-muted");
+        // ⚠️ 徽标与右侧说明同文时（「工具」/「工具」）右侧那份是纯噪音 —— 藏掉。
+        if (tab.kind().label() != null && tab.kind().label().equals(context.getText())) {
+            context.setVisible(false);
+            context.setManaged(false);
+        }
 
         header.getChildren().addAll(title, badge, spacer, context);
 
@@ -487,21 +508,62 @@ public final class WorkspaceView extends StackPane {
         Label theme = new Label("外观");
         theme.getStyleClass().add("adb-section-title");
 
-        Label mode = new Label("主题跟随系统，可在工具栏 ◐ 切换（⌘K 搜索「主题」也可）");
+        Label mode = new Label("主题跟随系统，可在应用栏 ◐ 切换（⌘K 搜索「主题」也可）");
         mode.getStyleClass().add("adb-muted");
 
         Button toggle = IconButtons.of(Icons.Icon.THEME, "切换主题");
-        toggle.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        toggle.getStyleClass().addAll("adb-button");
         toggle.setOnAction(event -> actions.run("theme.toggle"));
 
+        // ⭐ 密度也是**真实设置**（行高令牌），放在设置页比只留在菜单里好找。
+        Label density = new Label("密度");
+        density.getStyleClass().add("adb-section-title");
+
+        Label densityHint = new Label("影响数据网格、对象树、查询结果与表清单的行高");
+        densityHint.getStyleClass().add("adb-muted");
+
+        HBox densityRow = new HBox(6);
+        densityRow.getStyleClass().add("adb-toolbar__group");
+        densityRow.getChildren().addAll(
+                densityButton("density-compact", "紧凑"),
+                densityButton("density-normal", "标准"),
+                densityButton("density-comfort", "宽松"));
+
+        Label shortcuts = new Label("快捷键");
+        shortcuts.getStyleClass().add("adb-section-title");
+
         Button palette = IconButtons.of(Icons.Icon.PALETTE, "打开命令面板");
-        palette.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        palette.getStyleClass().addAll("adb-button");
         palette.setOnAction(event -> actions.run("command-palette"));
 
-        VBox card = new VBox(10, theme, mode, toggle, palette);
+        Button sheet = IconButtons.of(Icons.Icon.HISTORY, "快捷键速查");
+        sheet.getStyleClass().addAll("adb-button");
+        sheet.setOnAction(event -> actions.run("shortcuts"));
+
+        VBox card = new VBox(10, theme, mode, toggle);
         card.getStyleClass().add("adb-card");
         card.setMaxWidth(520);
-        return card;
+
+        VBox densityCard = new VBox(10, density, densityHint, densityRow);
+        densityCard.getStyleClass().add("adb-card");
+        densityCard.setMaxWidth(520);
+
+        VBox shortcutCard = new VBox(10, shortcuts, palette, sheet);
+        shortcutCard.getStyleClass().add("adb-card");
+        shortcutCard.setMaxWidth(520);
+
+        VBox all = new VBox(16, card, densityCard, shortcutCard);
+        all.setAlignment(Pos.TOP_CENTER);
+        return all;
+    }
+
+    /** 密度按钮：点击后由动作本身切换（ActionRegistry 是唯一真相）。 */
+    private Button densityButton(String actionId, String label) {
+        Button button = new Button(label);
+        button.setId("settings-density-" + actionId.substring("density-".length()));
+        button.getStyleClass().addAll("adb-button");
+        button.setOnAction(event -> actions.run(actionId));
+        return button;
     }
 
     private VBox emptyState(Icons.Icon iconType, String titleText, String description) {
@@ -519,7 +581,7 @@ public final class WorkspaceView extends StackPane {
      */
     private VBox emptyState(Icons.Icon iconType, String titleText, String description,
                             String actionText, Runnable action) {
-        SVGPath icon = Icons.of(iconType, 32);
+        SVGPath icon = Icons.of(iconType, Icons.SIZE_EMPTY);
         icon.getStyleClass().add("adb-empty__icon");
 
         Label title = new Label(titleText);

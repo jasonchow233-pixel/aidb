@@ -41,11 +41,12 @@ class DensityCoverageTest {
 
     @Test
     void theRowHeightsComeFromTheTokens() {
-        assertThat(RowHeights.of("compact")).isEqualTo(26);
-        assertThat(RowHeights.of("normal")).isEqualTo(32);
-        assertThat(RowHeights.of("comfort")).isEqualTo(40);
-        assertThat(RowHeights.of(null)).isEqualTo(32);
-        assertThat(RowHeights.of("不存在的档位")).isEqualTo(32);
+        // ⭐ 2026-10 密度对齐 Navicat 后的行高令牌：紧凑 24 / 常规 28 / 宽松 34。
+        assertThat(RowHeights.of("compact")).isEqualTo(24);
+        assertThat(RowHeights.of("normal")).isEqualTo(28);
+        assertThat(RowHeights.of("comfort")).isEqualTo(34);
+        assertThat(RowHeights.of(null)).isEqualTo(28);
+        assertThat(RowHeights.of("不存在的档位")).isEqualTo(28);
     }
 
     @Test

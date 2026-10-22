@@ -1,9 +1,11 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.ui.Icons;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
+import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.Tooltip;
 
 /**
@@ -77,6 +79,41 @@ final class IconButtons {
     static <T extends MenuButton> T withIcon(T button, Icons.Icon icon) {
         button.setGraphic(Icons.of(icon));
         button.setGraphicTextGap(GAP);
+        return button;
+    }
+
+    /**
+     * ⭐ 让按钮进入「加载中」：图标换成小转圈，**宽度不变**。
+     *
+     * <p>为什么强调宽度：加载前是 16px 图标，加载后是 14px 转圈，
+     * 如果不固定宽度，按钮会**变窄**，整排工具栏跟着往左抽一下 ——
+     * 用户正在点的按钮会「跑掉」。
+     *
+     * <p>禁用状态由调用方决定（不同操作的前置条件不一样），
+     * 这里只管**图形与宽度**。
+     */
+    static <T extends Button> T loading(T button, boolean loading) {
+        if (loading) {
+            if (button.getUserData() == null) {
+                button.setUserData(button.getGraphic());
+            }
+            ProgressIndicator spinner = new ProgressIndicator();
+            spinner.setMaxSize(14, 14);
+            spinner.setPrefSize(14, 14);
+            spinner.getStyleClass().add("adb-button__spinner");
+            button.setGraphic(spinner);
+            double width = Math.max(button.getPrefWidth(), button.getWidth());
+            if (width > 0) {
+                button.setMinWidth(width);
+                button.setPrefWidth(width);
+            }
+        } else {
+            Object graphic = button.getUserData();
+            if (graphic instanceof Node node) {
+                button.setGraphic(node);
+            }
+            button.setUserData(null);
+        }
         return button;
     }
 }

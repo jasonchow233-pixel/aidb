@@ -89,6 +89,7 @@ final class TransferHub {
         content.getStyleClass().add("adb-wizard__content");
 
         dialog.setTitle("导入 / 导出");
+        // ⚠️ 标题与题头同文时（「导入 / 导出」/「导入 / 导出」）题头是纯噪音。
         dialog.setHeaderText("选一张表");
         dialog.getDialogPane().getButtonTypes().clear();
         dialog.getDialogPane().setContent(content);
@@ -98,6 +99,7 @@ final class TransferHub {
         if (owner != null) {
             dialog.initOwner(owner);
         }
+        DialogStyles.apply(dialog, owner);
         dialog.showAndWait();
     }
 

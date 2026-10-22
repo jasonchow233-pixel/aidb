@@ -138,6 +138,13 @@ final class ExportWizard {
         content.getStyleClass().add("adb-wizard__content");
 
         dialog.setTitle("导出 " + tableName);
+
+        // ⭐ V-11：弹窗宽度走三档规范（DialogSizes）。
+
+        dialog.getDialogPane().setPrefWidth(DialogSizes.WIDE);
+
+        dialog.getDialogPane().setMinWidth(DialogSizes.WIDE);
+
         dialog.setHeaderText("选择范围与格式");
         // ⛔ 不放任何按钮到按钮栏 —— 放了会被 setResultAndClose 一键关掉。
         dialog.getDialogPane().getButtonTypes().clear();
@@ -149,6 +156,7 @@ final class ExportWizard {
         if (owner != null) {
             dialog.initOwner(owner);
         }
+        DialogStyles.apply(dialog, owner);
         dialog.showAndWait();
     }
 

@@ -1,6 +1,8 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.introspect.TableMeta;
 import io.agenticdb.ui.App;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
@@ -27,6 +29,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import java.util.prefs.Preferences;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,6 +77,14 @@ class AppShellTest {
         preferences.put("ui.density", "normal");
         preferences.putBoolean("ui.sidebar.collapsed", false);
         preferences.putInt("ui.sidebar.width", 240);
+        // ⭐ 固定窗口尺寸：窗口大小是**记住**的（本地偏好），
+        //    不固定的话测试会受上一次运行留下的尺寸影响 ——
+        //    窗口比屏幕大时，底部的分页条会落在可视区之外，点击根本落不到。
+        preferences.putInt("ui.window.width", 1280);
+        preferences.putInt("ui.window.height", 800);
+        preferences.putInt("ui.window.x", 0);
+        preferences.putInt("ui.window.y", 0);
+        preferences.put("ui.tableList.view", "list");
         new App().start(stage);
     }
 
@@ -105,7 +117,7 @@ class AppShellTest {
 
         assertThat(robot.lookup(".app-shell").tryQuery()).isPresent();
         assertThat(robot.lookup(".adb-top").tryQuery()).isPresent();
-        assertThat(robot.lookup(".adb-toolbar").tryQuery()).isPresent();
+        assertThat(robot.lookup(".adb-appbar").tryQuery()).isPresent();
         assertThat(robot.lookup(".adb-sidebar").tryQuery()).isPresent();
         assertThat(robot.lookup(".adb-workspace").tryQuery()).isPresent();
         assertThat(robot.lookup(".adb-statusbar").tryQuery()).isPresent();
@@ -115,10 +127,11 @@ class AppShellTest {
 
         javafx.scene.control.MenuBar menuBar =
                 robot.lookup(".menu-bar").queryAs(javafx.scene.control.MenuBar.class);
-        // 8 个顶级菜单：文件 / 编辑 / 视图 / 数据库 / **收藏夹** / 工具 / 窗口 / 帮助
-        assertThat(menuBar.getMenus()).hasSize(8);
+        // 9 个顶级菜单：文件 / 编辑 / 视图 / 数据库 / **对象** / **收藏夹** / 工具 / 窗口 / 帮助
+        // （X5：新增「对象」顶级菜单 —— 对象动作不再只藏在右键菜单里。）
+        assertThat(menuBar.getMenus()).hasSize(9);
         assertThat(menuBar.getMenus().stream().map(javafx.scene.control.Menu::getText))
-                .contains("收藏夹");
+                .contains("收藏夹", "对象");
 
         // ⭐ S5：标签栏**永远可见** —— 第一个标签是常驻的「对象」标签，
         //    它是浏览的起点（Navicat 同形）。
@@ -148,7 +161,7 @@ class AppShellTest {
     void themeToggles(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
 
-        robot.clickOn("#theme-toggle-button");
+        robot.clickOn("#appbar-theme");
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(robot.lookup(".theme-dark").tryQuery()).isPresent();
@@ -267,6 +280,45 @@ class AppShellTest {
     }
 
     @Test
+    void windowSizeIsClampedToTheScreen() throws Exception {
+        // ⭐ 真实缺陷：窗口尺寸是**记住**的。换个分辨率更小的屏幕（或拔掉外接屏），
+        //    窗口会比屏幕还大 —— 底部的分页条 / 状态栏被顶到可视区之外，
+        //    用户点不到「下一页」，也看不到状态栏（实测分页条落在 y=800..826，
+        //    而窗口只有 800 高）。
+        javafx.stage.Screen screen = javafx.stage.Screen.getPrimary();
+        javafx.geometry.Rectangle2D bounds = screen == null ? null : screen.getVisualBounds();
+        org.junit.jupiter.api.Assumptions.assumeTrue(bounds != null,
+                "无头环境拿不到屏幕信息，跳过");
+
+        Preferences preferences = Preferences.userNodeForPackage(SettingsStore.class);
+        int oldWidth = preferences.getInt("ui.window.width", 0);
+        int oldHeight = preferences.getInt("ui.window.height", 0);
+        try {
+            preferences.putInt("ui.window.width", (int) (bounds.getWidth() * 2));
+            preferences.putInt("ui.window.height", (int) (bounds.getHeight() * 2));
+            java.util.concurrent.atomic.AtomicReference<javafx.stage.Stage> holder =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+            org.testfx.util.WaitForAsyncUtils.asyncFx(() -> {
+                javafx.stage.Stage stage = new javafx.stage.Stage();
+                AppShell shell = new AppShell(new SettingsStore(),
+                        new io.agenticdb.ui.shell.ThemeManager(new SettingsStore()));
+                shell.restoreWindow(stage);
+                holder.set(stage);
+            }).get();
+            javafx.stage.Stage stage = holder.get();
+            assertThat(stage.getWidth())
+                    .as("窗口宽度不能超过屏幕宽度（否则底部控件点不到）")
+                    .isLessThanOrEqualTo(bounds.getWidth());
+            assertThat(stage.getHeight())
+                    .as("窗口高度不能超过屏幕高度")
+                    .isLessThanOrEqualTo(bounds.getHeight());
+        } finally {
+            preferences.putInt("ui.window.width", oldWidth);
+            preferences.putInt("ui.window.height", oldHeight);
+        }
+    }
+
+    @Test
     void pagesOrdersWithoutLosingTabState(FxRobot robot) throws Exception {
         openTable(robot, "orders");
 
@@ -304,8 +356,15 @@ class AppShellTest {
         assertThat(table(robot).getItems()).isEmpty();
         assertThat(robot.lookup("#data-page").queryAs(Label.class).getText())
                 .isEqualTo("第 0 / 0 页");
-        assertThat(robot.lookup(".adb-grid .placeholder .label").queryAs(Label.class).getText())
-                .isEqualTo("没有数据");
+        // ⭐ 空表不再是「没有数据」四个字 —— 要有图标 + 说明 + 一个真能点的出口。
+        //    （UI-AUDIT X1 / UI-FORMS-AND-STATES §7.2 E4）
+        assertThat(robot.lookup(".adb-grid .placeholder .adb-empty__title")
+                .queryAs(Label.class).getText())
+                .isEqualTo("这张表还是空的");
+        assertThat(robot.lookup(".adb-grid .placeholder .button")
+                .queryAs(Button.class).getText())
+                .as("空表必须给用户一个出口，而不只是陈述事实")
+                .isEqualTo("新增一行");
     }
 
     /** 某个标签里的脏标记。 */
@@ -334,7 +393,7 @@ class AppShellTest {
 
     @Test
     void opensQueryPageRunsSqlAndShowsResultTab(FxRobot robot) throws Exception {
-        robot.clickOn("#feature-new-query");
+        robot.clickOn("#appbar-new-query");
         WaitForAsyncUtils.waitForFxEvents();
 
         CodeArea editor = robot.lookup("#query-editor").queryAs(CodeArea.class);
@@ -362,7 +421,7 @@ class AppShellTest {
     void commandPaletteOpensAndFilters(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
 
-        robot.clickOn(".adb-search-trigger");
+        robot.clickOn(".adb-appbar__search");
         WaitForAsyncUtils.waitForFxEvents();
         assertThat(robot.lookup(".adb-palette-overlay").queryAs(javafx.scene.layout.StackPane.class).isVisible()).isTrue();
 
@@ -478,7 +537,7 @@ class AppShellTest {
         double before = nonBackgroundRatio(robot);
         assertThat(before).as("初始快照就必须有内容").isGreaterThan(0.01);
 
-        robot.clickOn("#theme-toggle-button");
+        robot.clickOn("#appbar-theme");
         WaitForAsyncUtils.waitForFxEvents();
         WaitForAsyncUtils.waitForFxEvents();
 
@@ -486,6 +545,84 @@ class AppShellTest {
         assertThat(after)
                 .as("主题热切换后快照不得变空白（当前 before=%.3f after=%.3f）", before, after)
                 .isGreaterThan(0.01);
+    }
+
+    // ─────────────────── N1–N5 表清单动作接线 ───────────────────
+
+    @Test
+    void tableListActionsAreRegisteredAndWired(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
+
+        assertThat(onFx(() -> List.of(
+                "table-list.new", "table-list.open", "table-list.design",
+                "table-list.rename", "table-list.truncate", "table-list.drop",
+                "table-list.refresh", "table-list.select-all",
+                "table-list.view-list", "table-list.view-grid")
+                .stream().allMatch(id -> shell.actionRegistry().find(id).isPresent())))
+                .as("表清单动作必须全部进注册表（工具条 / 右键 / 命令面板同一份）")
+                .isTrue();
+
+        onFxRun(() -> shell.actionRegistry().run("object.tables"));
+        WaitForAsyncUtils.waitForFxEvents();
+        WaitForAsyncUtils.waitFor(10, TimeUnit.SECONDS,
+                () -> onFx(() -> robot.lookup("#table-row-users").tryQuery().isPresent()));
+
+        assertThat(onFx(() -> shell.lookup("#table-list"))).isNotNull();
+    }
+
+    @Test
+    void tableListSelectionDrivesTheStatusBarAndViewToggle(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
+
+        onFxRun(() -> shell.actionRegistry().run("object.tables"));
+        WaitForAsyncUtils.waitForFxEvents();
+        WaitForAsyncUtils.waitFor(10, TimeUnit.SECONDS,
+                () -> onFx(() -> robot.lookup("#table-row-users").tryQuery().isPresent()));
+
+        onFxRun(() -> {
+            @SuppressWarnings("unchecked")
+            TableView<TableMeta> table = (TableView<TableMeta>) shell.lookup("#table-list");
+            int index = -1;
+            for (int i = 0; i < table.getItems().size(); i++) {
+                if ("users".equals(table.getItems().get(i).name())) {
+                    index = i;
+                    break;
+                }
+            }
+            table.getSelectionModel().select(index);
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(onFx(() -> shell.statusBar().selectionText()))
+                .as("N5：选中表后状态栏要说「已选 users · 200 行」")
+                .isEqualTo("已选 users · 200 行");
+
+        onFxRun(() -> shell.actionRegistry().run("table-list.view-grid"));
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(onFx(() -> shell.lookup("#table-card-users")))
+                .as("N4：视图切换动作要真的切到卡片")
+                .isNotNull();
+        assertThat(onFx(() -> shell.lookup("#table-list").isVisible()))
+                .as("切到网格后表格应隐藏")
+                .isFalse();
+
+        onFxRun(() -> shell.actionRegistry().run("table-list.view-list"));
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(onFx(() -> shell.lookup("#table-list").isVisible())).isTrue();
+    }
+
+    private static void onFxRun(Runnable action) {
+        javafx.application.Platform.runLater(action);
+        WaitForAsyncUtils.waitForFxEvents();
+    }
+
+    private static <T> T onFx(Supplier<T> supplier) {
+        AtomicReference<T> ref = new AtomicReference<>();
+        javafx.application.Platform.runLater(() -> ref.set(supplier.get()));
+        WaitForAsyncUtils.waitForFxEvents();
+        return ref.get();
     }
 
     /** 快照里与四角背景色差异超过阈值的像素占比。 */
