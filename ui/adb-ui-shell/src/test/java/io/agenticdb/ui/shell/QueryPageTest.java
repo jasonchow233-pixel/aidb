@@ -130,8 +130,15 @@ class QueryPageTest {
         waitForTabs(1);
 
         TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        // ⭐ 两列都该取到，且值可区分。重复列的具体键名由驱动决定
+        //   （SQLite 给第二列命名为 n:1，而不是 n_2），所以这里只校验「两列值都能取到」，
+        //   不绑定具体键名 —— 否则换个驱动这个断言就假红。
         assertThat(table.getColumns()).hasSize(3);
-        assertThat(table.getItems().getFirst().toString()).contains("n=1", "n_2=2");
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> row =
+                (java.util.Map<String, Object>) table.getItems().getFirst();
+        assertThat(row).hasSize(2);
+        assertThat(row.values()).containsExactlyInAnyOrder(1, 2);
     }
 
     @Test
@@ -145,6 +152,98 @@ class QueryPageTest {
         assertThat(page.statusText()).contains("执行计划");
         TabPane results = (TabPane) page.lookup("#query-results");
         assertThat(results.getTabs().getFirst().getText()).contains("结果");
+    }
+
+    @Test
+    void paginatesSelectResultsAndShowsPager() {
+        seedRows(250);
+        interact(() -> {
+            page.setSql("SELECT * FROM users ORDER BY id;");
+            page.runAll();
+        });
+        waitForTabs(1);
+
+        // ⭐ Q5：可分页 SELECT 必须出现分页条，且默认页大小 200 → 250 行分 2 页。
+        TabPane results = (TabPane) page.lookup("#query-results");
+        assertThat(page.lookup("#query-result-pager")).isNotNull();
+        TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        waitFor(() -> table.getItems().size() == 200);
+        assertThat(pageLabel()).isEqualTo("第 1 / 2 页");
+        assertThat(rangeLabel()).isEqualTo("250 行");
+        // 第 1 页装的应是前 200 行（id 1..200），绝对行号从 1 开始。
+        assertThat(firstRowText(table)).contains("1");
+    }
+
+    @Test
+    void navigatingToNextPageLoadsTheFollowingRows() {
+        seedRows(250);
+        interact(() -> {
+            page.setSql("SELECT * FROM users ORDER BY id;");
+            page.runAll();
+        });
+        waitForTabs(1);
+
+        TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        waitFor(() -> table.getItems().size() == 200);
+
+        interact(() -> ((javafx.scene.control.Button) page.lookup("#query-result-next")).fire());
+        waitFor(() -> "第 2 / 2 页".equals(pageLabel()));
+        // 第 2 页只有剩下的 50 行，且按 ORDER BY id 应为 id 201..250。
+        assertThat(table.getItems()).hasSize(50);
+        assertThat(firstRowText(table)).contains("201");
+    }
+
+    @Test
+    void singleRowSelectShowsOnePagePager() {
+        interact(() -> {
+            page.setSql("SELECT 1 AS n;");
+            page.runAll();
+        });
+        waitForTabs(1);
+        TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        waitFor(() -> table.getItems().size() == 1);
+        // 单行结果也走分页路径：分页条仍在，只是只有 1 页 —— 行为一致、无回归。
+        assertThat(page.lookup("#query-result-pager")).isNotNull();
+        assertThat(pageLabel()).isEqualTo("第 1 / 1 页");
+    }
+
+    private void seedRows(int count) {
+        try {
+            // @Start 已预置 (1,'Ada'),(2,'Bob')，先清空避免主键冲突。
+            session.execute("DELETE FROM users");
+        } catch (java.sql.SQLException ignored) {
+        }
+        StringBuilder sql = new StringBuilder("INSERT INTO users (id, name) VALUES ");
+        for (int i = 1; i <= count; i++) {
+            sql.append("(").append(i).append(", 'u").append(i).append("')")
+                    .append(i < count ? "," : "");
+        }
+        try {
+            session.execute(sql.toString());
+        } catch (java.sql.SQLException e) {
+            throw new AssertionError("seed 失败", e);
+        }
+    }
+
+    private String pageLabel() {
+        return ((javafx.scene.control.Label) page.lookup("#query-result-page-label")).getText();
+    }
+
+    private String rangeLabel() {
+        return ((javafx.scene.control.Label) page.lookup("#query-result-range")).getText();
+    }
+
+    private String firstRowText(TableView<?> table) {
+        return table.getItems().getFirst().toString();
+    }
+
+    private void waitFor(java.util.function.BooleanSupplier condition) {
+        try {
+            WaitForAsyncUtils.waitFor(10, TimeUnit.SECONDS, condition::getAsBoolean);
+        } catch (java.util.concurrent.TimeoutException e) {
+            throw new AssertionError("条件超时；状态：" + page.statusText(), e);
+        }
+        WaitForAsyncUtils.waitForFxEvents();
     }
 
     @Test

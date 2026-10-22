@@ -8,8 +8,8 @@
 > **界面规格书见 `docs/UI-VISUAL-SPEC.md`**（第十轮：字号/颜色/图标/布局/组件/弹窗/交互态/键盘）；
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
-> 最后更新：**2026-10-22（第十三轮：表清单 8 列 + 密度 24/28/34 + 去斑马纹/假行线 + 等比例并排图）**
-> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **631 条 / 84 类 / 0 失败**（2026-10-22 末实测，35 条跳过）。
+> 最后更新：**2026-10-22（第十五轮：Q5 结果分页 + V-9 表格规格统一）**
+> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **673 条 / 87 类 / 0 失败**（2026-10-22 末实测，35 条跳过）。
 >
 > ⭐ **本轮（第十三轮）是「对齐 Navicat 观感」的一轮，不是功能扩张。**
 > 逐像素量了 Navicat 的表清单：8 列、19px 行高、纯白行、1px 行线、灰色侧栏。
@@ -27,7 +27,8 @@
 > 与「窗口尺寸不夹到屏幕内」两个真实缺陷。
 > **第十二轮·续三已完成 U3 ✅ 连接属性页**（弹窗套 TabPane）。
 > **第十四轮已完成 U1 ✅ catalog 树**（MySQL 多库：虚拟连接 + 对象树库一层 + 双击切库）。
-> **下一动作 = Q5+V-9（查询结果分页 + 表格规格统一）→ G4 区域选择 → G1 冻结列**。
+> **第十五轮已完成 Q5 ✅ 结果分页 + V-9 ✅ 表格规格统一**（服务端分页 + 翻页条 + 列类型条，与数据页 record-nav / 类型行同一套视觉）。
+> **下一动作 = G4 区域选择 → G1 冻结列**。
 > 详见 §22 与 `docs/NAVICAT-PARITY-2026-10-V5.md` §5。
 >
 > 📦 **新增 `scripts/`**：`dev.sh`（一键编译启动）· `build.sh`（门禁）· `shots.sh`（重拍截图）。
@@ -68,18 +69,18 @@
 ./mvnw -B clean verify
 ```
 
-当前结果（2026-10-22 末 · 第十四轮 U1 后实测）：
+当前结果（2026-10-22 末 · 第十五轮 Q5+V-9 后实测）：
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **SQLite（默认，2026-10-22 第十四轮后）** | **662** | 35 | 0 |
+| **SQLite（默认，2026-10-22 第十五轮后）** | **673** | 35 | 0 |
 | **MySQL 5.7 真库**（需环境变量） | 单独跑，不在默认门禁 | — | — |
 
-**86 个测试类**。跳过的是「本机没有的外部依赖」：Testcontainers 的 PG/MySQL 容器
+**87 个测试类**。跳过的是「本机没有的外部依赖」：Testcontainers 的 PG/MySQL 容器
 （无 Docker）与未配置的 PG / MySQL 真库 —— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-22，第十四轮 U1 后）**：**662 条 / 86 类 / 0 失败**（`./mvnw -B clean verify`
-> 全绿 + `java tools/TestCount.java`；另有 35 条跳过，不计入 662）。
+> 📌 **最新口径（2026-10-22，第十五轮 Q5+V-9 后）**：**673 条 / 87 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 35 条跳过，不计入 673）。
 
 统计口径用工具兜底：
 
@@ -488,7 +489,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | ~~Q2~~ ✅ | ~~变量 / 参数替换~~ **已完成**：查询页「变量」按钮列出语句里的 `?` 与 `:name`，填值后**参数化绑定**执行（值不进 SQL 文本） | ✅ | `SqlParameters` + `VariableDialog` + `DbSession.execute(sql, params, danger)` |
 | ~~Q3~~ ✅ | ~~结果集排序~~ **已完成**：结果列可排序 | ✅ | `QueryPage.resultTab` |
 | ~~Q4~~ ✅ | ~~结果列宽持久化~~ **已完成**：按「连接名 + 列名」记住 | ✅ | `QueryPage.savedColumnWidth` |
-| Q5 | **结果集分页** | 现在一次性装进 `ObservableList`，硬上限 1000 |
+| ~~Q5~~ ✅ | ~~**结果集分页**~~ **已完成（第十五轮）**：`QueryPaginator` 把任意 SELECT 改写成 `SELECT * FROM (<原句>) AS _p LIMIT ? OFFSET ?` + `COUNT(*)` 套同一层；查询页可分页结果走 `PagedLoader`（首/上/下/末 + 页码 + 每页下拉 + 跳页 + 绝对行号），非分页与截断逻辑保留 | ✅ | `QueryPaginatorTest`(8) + `QueryPageTest`(+3 分页用例) |
 | Q6 | **代码片段 / 模板库** | 与 P6「已保存查询库」合并做 |
 
 ---
@@ -713,7 +714,7 @@ hover 规则不得被删、focus 规则不得少于 10 条；
 | **G1** | **冻结列**（两表四路同步：滚动 / 选择 / 排序 / 编辑） | `DataGridPageTest.frozenColumnsStayPut` | ⬜ |
 | **G4** | 单元格**区域选择**（拖选 / Shift 范围 / 复制矩形） | `DataGridPageTest.rectangleSelectionCopies` | ⬜ |
 | ~~G6~~ ✅ | ~~自增列插入（新增行时主键留空交给数据库）~~ **已完成** | `GridInteractionTest` + `MySqlIntegrationTest`（真库） | ✅ |
-| **Q5** | 查询结果**分页**（现在硬上限 1000） | `QueryPageTest.resultPagination` | ⬜ |
+| ~~**Q5**~~ ✅ | ~~查询结果**分页**（现在硬上限 1000）~~ **✅ 已完成（第十五轮）**：`QueryPaginator` 服务端分页改写 + `PagedLoader` 翻页条 | `QueryPageTest`（分页 3 例） | ✅ |
 | **Q6** | 代码片段库（与已保存查询合并） | ✅ **已完成（第十二轮）**：`SavedQueries` 加 `kind`（查询/片段）· 查询页「存为片段 / 插入片段」 | `SavedQueriesTest`（+2 例） |
 | ~~**U1**~~ ✅ | ~~**catalog 树**（MySQL 多库；MySQL 的 schema = 数据库，`USE` 不管用，需切后重连）~~ **✅ 已完成（第十四轮）**：`Dialect.switchesCatalogByReconnect()` + `catalogsSql()`（information_schema.SCHEMATA，过滤系统库）· `SchemaService.listCatalogs` · `ConnectionProfile.catalogVariant`（虚拟连接 `父id@库名`，不落盘）· 侧栏 catalog 层（懒加载 / 当前库加粗 / 双击或右键切库）· `TableDdl` 全部入口按连接 id 分派 | `CatalogTreeTest`(5) + `CatalogVariantProfileTest`(5) + `SideBarTreeTest`(+5) + `AppShellTest`(+1) |
 | **U2** | **多连接并行** | ✅ **已完成（第十二轮）**：页面早就按标签取会话；**真正的堵点**是 `SessionManager.open` 会「关掉重开」→ 改成**复用**（新增 `reopen` 给「重新连接」） | `SessionManagerTest`（3 例：复用 / 重开 / 两连接并存） |
@@ -1171,7 +1172,7 @@ Navicat 对象树右键菜单里最高频的四个动作，我们**一个都没�
 | **V-6** | **应用图标**（窗口标题 / 标签栏） | P3 | ⬜ **暂缓** | 需要出图资源 | 截图 |
 | **V-7** | 图标尺寸三档统一（标签 14 / 工具栏 16 / 空态 32） | P2 | ✅ **已完成** | `Icons.SIZE_DOT/BADGE/LABEL/TOOLBAR/EMPTY/BRAND` 六个常量，全部调用点改引用 | `IconSystemAuditTest` |
 | **V-8** | **对比度自动检查**（正文/次要/三级 ≥ 4.5:1） | P2 | ✅ **已完成**（并**改了 6 个色值**） | 🆕 `ContrastTest`（2 例）· 亮色 `text-tertiary` #8b95a3→#6A717C、`success` #1f8a4c→#1E8549、`kind-table`、`kind-trigger`；暗色 `text-tertiary` #6e7681→#86909D、`text-secondary` | `ContrastTest` |
-| **V-9** | 表格规格统一（类型行 / 记录导航条 / 结果区） | P2 | ⬜ **暂缓** | 牵动数据页与查询页两套网格，单独一轮做 | 截图 |
+| **V-9** | 表格规格统一（类型行 / 记录导航条 / 结果区） | P2 | ✅ **已完成（第十五轮，随 Q5 一起做）** | 查询页结果加「列类型条」`adb-query__result-types`（与数据页类型行同一套视觉）+ 翻页条复用 `adb-record-nav` / `adb-page-size`；绝对行号与数据页对齐 | `QueryPageTest`(+3) |
 | **V-10** | 剩余空白态 E5 / E7 / E8 / E9 | P2 | ✅ **已完成** | E5 查询页 0 行 · E7 侧栏搜索无结果 · E8 查询历史 · E9 收藏夹 | 🆕 `EmptyStateTest`（4 例） |
 | **V-11** | 弹窗宽度三档（表单 480 / 宽表 720 / 长文本 560） | P3 | ⬜ **暂缓** | 各弹窗宽度现值差异不大，先统一规范再改实现 | 截图 |
 | **V-12** | 错误详情弹窗 / 批量确认汇总页 / **错误归类** | P2 | ⬜ **暂缓** | 工作量大，单独一轮（与 B5 对象能力一起排） | 新测试 |
@@ -1341,7 +1342,7 @@ Navicat 对象树右键菜单里最高频的四个动作，我们**一个都没�
 |---|---|---|---|
 | **G1** | **冻结列**（前 N 列固定） | 🔴 高 | JavaFX 没有原生冻结列，要两个 TableView 并排 + 滚动/选择/排序/编辑**四路同步**。上一轮试过又整体回滚（半成品比没有更糟）。**建议最后做，且必须一次性做全** |
 | **G4** | **单元格区域选择**（矩形选区 + 复制矩形） | 🟠 中 | JavaFX `TableView` 没有原生选区，要自绘 cell 渲染。价值中等（批量复制整块数据） |
-| **Q5** | **查询结果分页** | 🟠 中 | 现在结果集一次性装进 `ObservableList`（上限 1000 行）。改成服务端分页要重写「结果集 → 表格」这一层的取数逻辑（数据页已经是服务端分页，查询页还没跟上） |
+| ~~**Q5**~~ ✅ | ~~**查询结果分页**~~ | — | ✅ **已完成（第十五轮）**：`QueryPaginator` 服务端分页改写 + `PagedLoader` 翻页条；查询页与数据页共用 LIMIT/OFFSET 模型 |
 | ~~**Q6**~~ ✅ | ~~**代码片段库**~~ | — | ✅ **已完成（第十二轮）** |
 | ~~**U1**~~ ✅ | ~~**catalog 树**（MySQL 多库）~~ | — | ✅ **已完成（第十四轮，见 §24）**：切库 = 换虚拟连接（`父id@库名`，只活在内存）；对象树多出库一层，SQLite / PG 形态不变 |
 | ~~**U3**~~ ✅ | ~~**连接属性页**~~ | — | ✅ **已完成（第十二轮·续三）**：弹窗套 TabPane（常规/SSL/高级）+ `options` 映射 |
@@ -1361,7 +1362,7 @@ Navicat 对象树右键菜单里最高频的四个动作，我们**一个都没�
 |---|---|---|---|
 | **V-5** | 工具栏按宽度折叠（≤7 常显 + 更多） | 🟡 中 | **实测 1280 宽下 12 个图标按钮放得下** —— 现在做是过度设计。建议等真出现窄屏问题再做 |
 | **V-6** | 应用图标 | 🟢 低 | 需要出图资源（PNG / ICNS）。工程上没问题，缺的是设计稿 |
-| **V-9** | 表格规格统一（类型行 / 记录导航条） | 🟠 中 | 数据页与查询页两套网格规格不同。与 Q5 一起做最省事（都要动结果区） |
+| ~~**V-9**~~ ✅ | ~~表格规格统一（类型行 / 记录导航条）~~ | — | ✅ **已完成（第十五轮，随 Q5 一起做）**：查询结果加列类型条 `adb-query__result-types` + 翻页条复用 `adb-record-nav`/`adb-page-size`，与数据页同一套视觉 |
 | **V-12 剩余** | 错误**详情弹窗** / 批量确认汇总页 | 🟠 中 | 错误**归类**已做（第十二轮 `ErrorClassifier`）；剩下的是「详情弹窗」与「批量汇总页」 |
 
 ### 21.4 分发类
@@ -1494,7 +1495,53 @@ MySQL 的 schema 就是数据库：一条连接绑定一个库。`USE other_db` 
 （懒加载链断掉，用户永远点不到那个库）；② `treeOf()` 在 FX 线程内二次走
 队列往返返回 null（测试侧，但也说明这个 helper 不能嵌套用）。
 
-门禁：**662 条 / 86 类 / 0 失败**（`./mvnw -B clean verify` 全绿）。
+门禁：**662 条 / 86 类 / 0 失败**（`./mvnw -B clean verify` 全绿，第十四轮 U1 时）。
+
+> 第十五轮 Q5+V-9 后门禁已升到 **673 条 / 87 类 / 0 失败**（见 §25）。
+
+---
+
+## 25. 第十五轮：Q5 结果分页 + V-9 表格规格统一（2026-10-22）
+
+> 触发：Q5 与 V-9 排在一起是因为「两者都要动结果区」——
+> 查询页以前把结果一次性塞进 `ObservableList`（硬上限 1000 行），
+> 而数据页早就是服务端分页，两套网格规格还不一样。分页做出来，顺手统一规格。
+
+### 25.1 Q5：查询结果服务端分页
+
+| 层 | 改动 |
+|---|---|
+| SQL 改写 | 新增 `QueryPaginator`（introspect）：`isPaginable` 保守判定（单条 / select·with 开头 / 无 `for update`·`into`）· `pageSql` → `SELECT * FROM (<原句>) AS _p LIMIT ? OFFSET ?` · `countSql` → `SELECT COUNT(*) AS adb_count FROM (<原句>) AS _p`。**不分方言** —— 三种方言都支持派生表 + `LIMIT/OFFSET`，与 `DataSqlBuilder` 写法一致 |
+| 末尾分号 | ⭐ `SqlSplitter` 保留语句末尾 `;`，判定与改写都**剥离单个末尾分号**；中间含分号仍判不可分页。**这是本轮踩到的真坑**：不剥离则 `isPaginable` 恒 false，所有查询都进不了分页路径 |
+| 参数顺序 | `pageSql` 参数 = 原句占位符在前、limit / offset 在后（与驱动按出现顺序绑定一致）；offset 显式转 `int`，避免与 limit 的 `Integer` 装箱类型不一致 |
+| UI | `QueryPage.PagedLoader`：首/上/下/末 + 页码 + 每页下拉 + 跳页 + 「N 行」范围；`#` 列改为**绝对行号**；翻页/跳页受 `QueryLimits.MAX_OFFSET`（500 000）约束；每个结果页签各自独立翻页，页签标题带总行数 |
+| 保留原逻辑 | DML/DDL、`for update`、含 `into`、0 行结果仍走原「整段取回 + 截断提示」，不强行分页 |
+
+### 25.2 V-9：表格规格统一（类型行 / 记录导航条 / 结果区）
+
+- **列类型条**：JavaFX 21 的 `TableColumn` **不是 `Control`，没有 `setTooltip`**，
+  列头挂不了 tooltip —— 改为表格下方一条 `adb-query__result-types` 类型行
+  （`列名 类型` 用 `·` 连接），与数据页「类型行」同一套视觉。
+- **翻页条复用数据页规格**：`adb-record-nav` + `adb-page-size`，
+  不另起一套样式，避免查询页与数据页看起来不是同一款产品。
+- **绝对行号**：翻到第 N 页时行号仍是全局序号，而不是每页从 1 重来。
+
+### 25.3 门禁
+
+| 测试 | 例数 | 守的规则 |
+|---|---|---|
+| `QueryPaginatorTest`（introspect） | 8 | select/with 可分页 · 非 select / `for update` / `into` / 多语句不可分页 · **末尾分号剥离后仍可分页且改写正确** · count/page 参数顺序 · limit·offset 夹取 |
+| `QueryPageTest`（ui-shell） | +3 | 250 行 SELECT 出分页条且默认 200 → `第 1 / 2 页` + `250 行` · 点「下页」加载第 2 页 50 行且首行是 201 · 单行 SELECT 也走分页路径（1 页） |
+
+修掉的三个问题：① `isPaginable` 不认末尾分号导致分页整条路径**永不生效**（真 bug）；
+② `pageSql` 的 offset 装箱成 `Long` 与 limit 的 `Integer` 类型不一致（真 bug）；
+③ 重复列断言硬编码 `n_2`，而 SQLite 驱动把第二列命名成 `n:1` ——
+键名由驱动决定，改成断言「两列值都能取到」，不绑死具体键名。
+
+顺带补齐两个 CSS 规则（`.adb-query__result-pager` / `.adb-query__result-types`），
+被 `StyleClassCoverageTest` 抓出来 —— 这正是该门禁的价值：新写的 `adb-*` 类必须同时落地 CSS。
+
+门禁：**673 条 / 87 类 / 0 失败**（`./mvnw -B clean verify` 全绿）。
 
 ---
 
@@ -1502,6 +1549,7 @@ MySQL 的 schema 就是数据库：一条连接绑定一个库。`USE other_db` 
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-22 | 第十五轮 | **Q5 ✅ 结果分页**（§25）：新增 `QueryPaginator`（`isPaginable` / `pageSql` / `countSql`，不分方言，`SELECT * FROM (<原句>) AS _p LIMIT ? OFFSET ?` + `COUNT(*)` 套同一层）· `QueryPage.PagedLoader` 翻页条（首/上/下/末 + 页码 + 每页下拉 + 跳页 + 绝对行号 + `MAX_OFFSET` 约束）· **V-9 ✅ 表格规格统一**：列类型条 `adb-query__result-types`（JavaFX `TableColumn` 无 `setTooltip`）+ 翻页条复用 `adb-record-nav`/`adb-page-size` · 修三个问题（`isPaginable` 不认末尾分号致分页路径永不生效 / `pageSql` offset 装箱类型不一致 / 重复列断言硬编码 `n_2` 而 SQLite 驱动命名 `n:1`）· 补 2 条 CSS 规则（被 `StyleClassCoverageTest` 抓出）· 新门禁 `QueryPaginatorTest`(8) + `QueryPageTest`(+3)；门禁 **673 条 / 87 类 / 0 失败** |
 | 2026-10-22 | 第十四轮 | **U1 ✅ catalog 树**（§24）：`Dialect.switchesCatalogByReconnect()` + `catalogsSql()` · `SchemaService.listCatalogs`（过滤系统库）· `ConnectionProfile.catalogVariant`（虚拟连接 `父id@库名`，不落盘、凭据走父连接）· 侧栏 catalog 层（懒加载 / 当前库加粗 / 双击或右键切库）· `TableDdl` 全部入口按连接 id 分派（修掉「DDL 落到当前库」）· 修两个真 bug（库节点被当空分组摘掉 / 选中未开连接的 catalog 竞态）· 新门禁 `CatalogTreeTest`(5) + `CatalogVariantProfileTest`(5) + `SideBarTreeTest`(+5) + `AppShellTest`(+1)；门禁 **662 条 / 86 类 / 0 失败** |
 | 2026-10-22 | 第十三轮 | **Navicat 表清单/观感对齐**：`TableMeta` 8 字段（+修改时间/排序规则/注释）· 表清单 8 列 · 对象首页 9 列 · 密度 **24/28/34** · 应用栏 46 / 标签栏 36 / 工具栏 38 · `bg-sidebar` 灰底 · 去斑马纹/空行假线 · 表头 12px · `ADB_TABLES` + 9 张截图 · 等比例并排图 · 新增 **`docs/NAVICAT-PARITY-2026-10-V5.md`** |
 | 2026-10-22 | 第九轮 | 新增 `docs/EXEC-SUMMARY.md`、`docs/GITHUB-COMPARE.md`；`NAVICAT-TODO.md` 状态基线（512/64）、§13.5 U-B5 漂移纠正、§16.4 下一步补齐；`README.md` / `docs/NEXT-STEPS.md` / 记忆同步 |

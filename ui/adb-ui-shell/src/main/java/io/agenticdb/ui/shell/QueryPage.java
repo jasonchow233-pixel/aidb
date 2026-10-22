@@ -4,8 +4,12 @@ import io.agenticdb.ui.RowHeights;
 import io.agenticdb.ui.Icons;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.ExecutionResult;
+import io.agenticdb.introspect.QueryPaginator;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.Danger;
+import io.agenticdb.model.PageSize;
+import io.agenticdb.model.QueryLimits;
+import io.agenticdb.model.RowPage;
 import io.agenticdb.safety.DangerClassifier;
 import io.agenticdb.safety.ErrorLocator;
 import io.agenticdb.sql.SqlFormatter;
@@ -14,6 +18,8 @@ import io.agenticdb.sql.SqlSplitter.SqlStatement;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyObjectWrapper;
+import javafx.beans.property.LongProperty;
+import javafx.beans.property.SimpleLongProperty;
 import javafx.collections.FXCollections;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
@@ -24,6 +30,7 @@ import org.fxmisc.richtext.CodeArea;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
@@ -54,6 +61,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executor;
@@ -72,7 +80,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
     private record RunResult(List<ExecutionResult> results, java.sql.SQLException error,
                              SqlStatement failed, int failedIndex, long durationMs,
-                             String executedText) {
+                             String executedText, List<String> texts,
+                             List<List<Object>> bound) {
     }
 
     private final DbSession session;
@@ -784,6 +793,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
             protected RunResult call() {
                 long started = System.nanoTime();
                 List<ExecutionResult> completed = new ArrayList<>();
+                List<String> texts = new ArrayList<>();
+                List<List<Object>> bound = new ArrayList<>();
                 for (int i = 0; i < snapshot.size(); i++) {
                     SqlStatement statement = snapshot.get(i);
                     String sql = explainPlan ? explainSql(statement.text()) : statement.text();
@@ -792,15 +803,18 @@ public final class QueryPage extends VBox implements AutoCloseable {
                         //    驱动层会自己再判一次 —— 声明比实际低就会被拒绝。
                         Danger statementDanger = DangerClassifier.classify(statement.text());
                         // ⭐ Q2：有参数时走参数化绑定（值不进 SQL 文本）。
-                        List<Object> bound = i == 0 ? new ArrayList<>(params) : List.of();
-                        completed.add(session.execute(sql, bound, statementDanger));
+                        List<Object> boundParams = i == 0 ? new ArrayList<>(params) : List.of();
+                        completed.add(session.execute(sql, boundParams, statementDanger));
+                        texts.add(statement.text());
+                        bound.add(boundParams);
                     } catch (java.sql.SQLException e) {
                         long elapsed = (System.nanoTime() - started) / 1_000_000;
-                        return new RunResult(completed, e, statement, i, elapsed, joined);
+                        return new RunResult(completed, e, statement, i, elapsed, joined,
+                                texts, bound);
                     }
                 }
                 long elapsed = (System.nanoTime() - started) / 1_000_000;
-                return new RunResult(completed, null, null, -1, elapsed, joined);
+                return new RunResult(completed, null, null, -1, elapsed, joined, texts, bound);
             }
         };
         task.setOnSucceeded(event -> {
@@ -852,8 +866,10 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private void apply(RunResult result, boolean explainPlan) {
         for (int i = 0; i < result.results().size(); i++) {
             ExecutionResult execution = result.results().get(i);
+            String sql = result.texts().get(i);
+            List<Object> bound = result.bound().get(i);
             results.getTabs().add(execution.hasRows()
-                    ? resultTab(execution, i + 1)
+                    ? resultTab(execution, i + 1, sql, bound)
                     : messageTab(execution, i + 1));
         }
         if (result.error() != null) {
@@ -944,17 +960,19 @@ public final class QueryPage extends VBox implements AutoCloseable {
         return rowHeight;
     }
 
-    private Tab resultTab(ExecutionResult result, int index) {
+    private Tab resultTab(ExecutionResult result, int index, String sql, List<Object> params) {
         TableView<java.util.Map<String, Object>> table = new TableView<>();
         resultTables.add(table);
         table.setFixedCellSize(rowHeight);
         table.setId("query-result-table");
         table.getStyleClass().addAll("adb-grid", "adb-query__result-table");
-        table.setItems(FXCollections.observableArrayList(result.rows()));
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         // ⭐ E5：0 行结果以前只有一行字。空态要说清「这是正常结果」+ 下一步怎么办。
         table.setPlaceholder(EmptyState.of(Icons.Icon.TABLE, "查询成功，但没有返回行",
                 "这是正常的空结果 —— 检查 WHERE 条件，或确认目标表里确实没有数据。"));
+
+        // ⭐ Q5：绝对行号 = 当前页偏移 + 行内序号 + 1（非分页时偏移恒为 0）。
+        LongProperty rowOffset = new SimpleLongProperty(0);
 
         TableColumn<java.util.Map<String, Object>, Void> number = new TableColumn<>("#");
         number.setSortable(false);
@@ -965,7 +983,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             @Override
             protected void updateItem(Void item, boolean empty) {
                 super.updateItem(item, empty);
-                setText(empty ? null : Long.toString(getIndex() + 1));
+                setText(empty ? null : Long.toString(rowOffset.get() + getIndex() + 1));
                 setAlignment(Pos.CENTER_RIGHT);
             }
         });
@@ -991,6 +1009,22 @@ public final class QueryPage extends VBox implements AutoCloseable {
             table.getColumns().add(column);
         }
 
+        Tab tab = new Tab("结果 " + index);
+        tab.setClosable(false);
+
+        // ⭐ Q5：可分页的 SELECT 走服务端分页；其余保留「整段取回 + 截断提示」。
+        if (QueryPaginator.isPaginable(sql) && result.hasRows()) {
+            PagedLoader loader = new PagedLoader(tab, index, table, rowOffset,
+                    sql, params, result.columns());
+            VBox box = new VBox(6, loader.node(), table, typeStrip(result.columns()));
+            VBox.setVgrow(table, Priority.ALWAYS);
+            box.getStyleClass().add("adb-query__result-box");
+            tab.setContent(box);
+            loader.start();
+            return tab;
+        }
+
+        table.setItems(FXCollections.observableArrayList(result.rows()));
         Label meta = new Label(result.rowCount() + " 行 · " + result.durationMs() + " ms");
         meta.getStyleClass().add("adb-query__result-meta");
 
@@ -1020,13 +1054,305 @@ public final class QueryPage extends VBox implements AutoCloseable {
         toolbar.getStyleClass().add("adb-query__result-toolbar");
         toolbar.setAlignment(Pos.CENTER_LEFT);
 
-        VBox box = new VBox(6, toolbar, table);
+        VBox box = new VBox(6, toolbar, table, typeStrip(result.columns()));
         VBox.setVgrow(table, Priority.ALWAYS);
         box.getStyleClass().add("adb-query__result-box");
-
-        Tab tab = new Tab("结果 " + index + " · " + result.rowCount() + " 行", box);
-        tab.setClosable(false);
+        tab.setContent(box);
         return tab;
+    }
+
+    /**
+     * ⭐ V-9：列类型条（与数据页「类型行」同一套规格）。
+     *
+     * <p>JavaFX 的 {@code TableColumn} 不是 {@code Control}，没有 {@code setTooltip}，
+     * 所以类型信息不塞进列头悬停，而是单独一行展示，用户一眼能看到这张结果有哪些列、各是什么类型。
+     */
+    private Label typeStrip(List<ColumnDef> columns) {
+        String text = columns.stream()
+                .map(column -> column.name() + " " + column.displayType())
+                .collect(java.util.stream.Collectors.joining("   ·   "));
+        Label strip = new Label(text);
+        strip.setId("query-result-types");
+        strip.getStyleClass().add("adb-query__result-types");
+        strip.setTooltip(new Tooltip(text));
+        return strip;
+    }
+
+    /**
+     * ⭐ Q5：单个可分页结果集的服务端分页器。
+     *
+     * <p>与数据页共用一套 LIMIT/OFFSET 模型（{@link QueryPaginator} 负责把
+     * 任意 SELECT 改写成分页 SQL）。每翻页只取一页 + 一次 COUNT，
+     * 不再把整张结果集塞进 {@code ObservableList}。
+     */
+    private final class PagedLoader {
+        private final Tab tab;
+        private final int index;
+        private final TableView<java.util.Map<String, Object>> table;
+        private final LongProperty rowOffset;
+        private final String sql;
+        private final List<Object> params;
+        private final List<ColumnDef> columns;
+
+        private int pageSize = QueryLimits.DEFAULT_PAGE_SIZE;
+        private long offset;
+        private long total = -1;
+        private boolean loading;
+        private RowPage lastPage;
+
+        private final HBox bar = new HBox(6);
+        private final Label rangeLabel = new Label();
+        private final Label pageLabel = new Label();
+        private final ComboBox<Integer> pageSizeBox = new ComboBox<>();
+        private final Button first = IconButtons.of(Icons.Icon.FIRST, "第一页");
+        private final Button previous = IconButtons.of(Icons.Icon.PREVIOUS, "上一页");
+        private final Button next = IconButtons.of(Icons.Icon.NEXT, "下一页");
+        private final Button last = IconButtons.of(Icons.Icon.LAST, "最后一页");
+        private final TextField jumpField = new TextField();
+        private final Button jump = new Button("跳转");
+        private final Button copy = new Button("复制本页");
+        private final Button export = new Button("导出本页");
+        private final Region spacer = new Region();
+
+        PagedLoader(Tab tab, int index, TableView<java.util.Map<String, Object>> table,
+                    LongProperty rowOffset, String sql, List<Object> params,
+                    List<ColumnDef> columns) {
+            this.tab = tab;
+            this.index = index;
+            this.table = table;
+            this.rowOffset = rowOffset;
+            this.sql = sql;
+            this.params = params == null ? List.of() : List.copyOf(params);
+            this.columns = columns;
+            buildBar();
+        }
+
+        /** 分页条节点（V-9：复用数据页的 {@code adb-record-nav} / {@code adb-page-size} 规格）。 */
+        HBox node() {
+            return bar;
+        }
+
+        void start() {
+            load();
+        }
+
+        private void buildBar() {
+            bar.setId("query-result-pager");
+            bar.getStyleClass().addAll("adb-query__result-pager", "adb-record-nav");
+            bar.setAlignment(Pos.CENTER_LEFT);
+
+            rangeLabel.getStyleClass().add("adb-muted");
+            rangeLabel.setId("query-result-range");
+            rangeLabel.setMinWidth(Region.USE_PREF_SIZE);
+            pageLabel.getStyleClass().add("adb-muted");
+            pageLabel.setId("query-result-page-label");
+            pageLabel.setMinWidth(Region.USE_PREF_SIZE);
+
+            HBox recordNav = new HBox(4, first, previous, next, last, pageLabel);
+            recordNav.getStyleClass().add("adb-record-nav");
+            recordNav.setAlignment(Pos.CENTER_LEFT);
+            for (Button button : new Button[]{first, previous, next, last}) {
+                button.getStyleClass().add("adb-icon-button");
+            }
+            first.setId("query-result-first");
+            previous.setId("query-result-prev");
+            next.setId("query-result-next");
+            last.setId("query-result-last");
+            first.setOnAction(event -> goTo(0));
+            previous.setOnAction(event -> goTo(offset - pageSize));
+            next.setOnAction(event -> goTo(offset + pageSize));
+            last.setOnAction(event ->
+                    goTo(total > 0 ? (total - 1) / pageSize * pageSize : 0));
+
+            pageSizeBox.setId("query-result-page-size");
+            pageSizeBox.getStyleClass().add("adb-page-size");
+            pageSizeBox.getItems().setAll(Arrays.stream(PageSize.values())
+                    .map(PageSize::value).toList());
+            pageSizeBox.getSelectionModel().select(PageSize.nearest(pageSize).value());
+            pageSizeBox.setPrefWidth(78);
+            pageSizeBox.setOnAction(event -> {
+                Integer value = pageSizeBox.getValue();
+                if (value == null || value == pageSize) {
+                    return;
+                }
+                pageSize = value;
+                offset = 0;
+                load();
+            });
+
+            Label perPage = new Label("每页");
+            perPage.getStyleClass().add("adb-muted");
+            jumpField.setId("query-result-jump");
+            jumpField.setPrefWidth(56);
+            jumpField.setOnAction(event -> jumpToPage(jumpField.getText()));
+            jump.getStyleClass().add("adb-button");
+
+            copy.getStyleClass().add("adb-button");
+            copy.setOnAction(event -> copyResultTsv(currentResult()));
+            export.getStyleClass().add("adb-button");
+            export.setOnAction(event -> exportCsv(currentResult()));
+
+            HBox.setHgrow(spacer, Priority.ALWAYS);
+            bar.getChildren().setAll(rangeLabel, recordNav, spacer, perPage,
+                    pageSizeBox, jumpField, jump, copy, export);
+        }
+
+        private void load() {
+            if (loading) {
+                return;
+            }
+            loading = true;
+            long request = requestSequence;
+            updateButtons();
+            Task<PagedData> task = new Task<>() {
+                @Override
+                protected PagedData call() throws Exception {
+                    QueryPaginator.PagedSql pageQ =
+                            QueryPaginator.pageSql(sql, params, pageSize, offset);
+                    RowPage page = session.query(pageQ.sql(), pageSize, pageQ.params());
+                    QueryPaginator.PagedSql countQ = QueryPaginator.countSql(sql, params);
+                    RowPage count = session.query(countQ.sql(), 1, countQ.params());
+                    return new PagedData(page, extractTotal(count));
+                }
+            };
+            task.setOnSucceeded(event -> {
+                if (request != requestSequence) {
+                    return;
+                }
+                PagedData data = task.getValue();
+                lastPage = data.page();
+                total = data.total();
+                rowOffset.set(offset);
+                table.setItems(FXCollections.observableArrayList(data.page().rows()));
+                loading = false;
+                updatePager();
+            });
+            task.setOnFailed(event -> {
+                if (request != requestSequence) {
+                    return;
+                }
+                loading = false;
+                String message = "分页查询失败：" + readable(task.getException());
+                status.setText(message);
+                feedback.status(message);
+                updateButtons();
+            });
+            submit(task);
+        }
+
+        private void updateButtons() {
+            previous.setDisable(loading || offset == 0);
+            first.setDisable(loading || offset == 0);
+            boolean atEnd = total >= 0 && offset + pageSize >= total;
+            next.setDisable(loading || atEnd
+                    || QueryLimits.exceedsOffsetLimit(offset + pageSize));
+            long lastOffset = total > 0 ? (total - 1) / pageSize * pageSize : 0;
+            last.setDisable(loading || total < 0 || lastOffset == offset
+                    || QueryLimits.exceedsOffsetLimit(lastOffset));
+            pageSizeBox.setDisable(loading);
+            jump.setDisable(loading);
+        }
+
+        private void updatePager() {
+            long pages = QueryLimits.totalPages(total, pageSize);
+            long current = QueryLimits.pageNumberOf(offset, pageSize);
+            pageLabel.setText(pages < 0 ? "第 " + current + " 页"
+                    : "第 " + current + " / " + pages + " 页");
+            rangeLabel.setText(total < 0 ? "总行数未知" : (total + " 行"));
+            tab.setText("结果 " + index + " · " + (total < 0 ? "?" : total) + " 行");
+            updateButtons();
+        }
+
+        private void goTo(long target) {
+            if (loading) {
+                return;
+            }
+            if (target < 0) {
+                target = 0;
+            }
+            if (QueryLimits.exceedsOffsetLimit(target)) {
+                String message = "已到达 OFFSET 上限 " + QueryLimits.MAX_OFFSET
+                        + "，请改用筛选条件而不是继续翻页";
+                status.setText(message);
+                feedback.status(message);
+                return;
+            }
+            if (target == offset) {
+                return;
+            }
+            offset = target;
+            load();
+        }
+
+        private void jumpToPage(String raw) {
+            if (loading) {
+                return;
+            }
+            String text = raw == null ? "" : raw.trim();
+            if (text.isEmpty()) {
+                return;
+            }
+            long page;
+            try {
+                page = Long.parseLong(text);
+            } catch (NumberFormatException e) {
+                feedback.status("跳页失败：「" + text + "」不是页码");
+                return;
+            }
+            if (page < 1) {
+                feedback.status("跳页失败：页码从 1 开始");
+                return;
+            }
+            long pages = QueryLimits.totalPages(total, pageSize);
+            if (pages >= 0 && page > pages) {
+                feedback.status("跳页失败：最大页码 " + pages);
+                return;
+            }
+            long target = (page - 1) * pageSize;
+            if (QueryLimits.exceedsOffsetLimit(target)) {
+                String message = "已到达 OFFSET 上限 " + QueryLimits.MAX_OFFSET
+                        + "，请改用筛选条件而不是继续翻页";
+                status.setText(message);
+                feedback.status(message);
+                return;
+            }
+            if (target == offset) {
+                jumpField.clear();
+                return;
+            }
+            offset = target;
+            jumpField.clear();
+            load();
+        }
+
+        private ExecutionResult currentResult() {
+            RowPage page = lastPage;
+            if (page == null) {
+                return new ExecutionResult(sql, columns, List.of(), 0, 0);
+            }
+            return new ExecutionResult(sql, page.columns(), page.rows(), 0, 0);
+        }
+    }
+
+    private record PagedData(RowPage page, long total) {
+    }
+
+    private static long extractTotal(RowPage count) {
+        if (count.rows().isEmpty()) {
+            return 0;
+        }
+        Object value = count.rows().get(0).get("adb_count");
+        if (value == null) {
+            return 0;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return Long.parseLong(value.toString());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private Tab messageTab(ExecutionResult result, int index) {
