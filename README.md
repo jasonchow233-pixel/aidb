@@ -6,24 +6,33 @@
 
 ---
 
-## 当前状态（2026-10-21）
+## 当前状态（2026-10-22）
 
-**P0 外壳 + P1 竖线 + P2 数据页 + P3 查询页 + P4 结构页已完成。P5 连接管理进行中。下一阶段是 P4.5 契约修复。**
+**P0–P4 已完成、P5/P6 进行中、界面专项 U-B1–U-B5 已落地（U-B6 进行中）。**
+门禁 **631 条 / 84 类 / 0 失败**（2026-10-22 末实测）。
 
-> **本轮（第四轮）逐文件复核 + B0–B4 批次全部落地**：
-> 纠正了三项「虚假完成」（4.5-4 危险分级 fail-closed **从未实现**、
-> 4.5-2 截断提示**只做了查询页**、4.5-5 图标统一**只拆了一半**），
-> 并把它们的缺口全部补上：
-> `WITH … DELETE` 现在弹确认框、数据页保存路径已接入分级、
-> 批量操作不再能改主键列、保存预览的回车落在「取消」上。
-> 详见 `docs/NAVICAT-GAP.md` §0.2 / §0.3 与 `NAVICAT-TODO.md` §6.3。
+> **第八轮之后**：D2+D4（MySQL/PG 列注释读回）已修；B5-S1（索引可编辑）已落地；
+> **T1–T4（建表 / 清空 / 重命名 / 删表）已落地**（T1=弹窗，按形态裁定）；9 张验收截图完成。
+> **第九轮**：新增对外汇报版 `docs/EXEC-SUMMARY.md` + GitHub 开源对标 `docs/GITHUB-COMPARE.md`。
+>
+> - ✅ **D3「SQLite 改列丢失 CHECK 约束」已修**（第十一轮）：CHECK 现在能内省、展示，
+>   而且**改列整表重建时会搬运** —— 并且门禁断言「改列后约束**仍然拦得住违规数据**」。
+> - ✅ **外键 / 触发器可增删**（第十一轮，B5-S2/S3）：结构页新增「外键」「检查」页签的增删入口 + 两个弹窗。
+> - ⭐ 顺带修掉一个**潜伏很久的真 bug**：外键的 ON UPDATE/ON DELETE 动作码没翻译
+>   （各驱动码表不同）→ **带外键的表改列必失败**（`ON UPDATE 3` 语法错误）。
+> - 其余遗留：B5-S2/S3、B5-S4/O1/O2、U-B6、空白态 E5–E9、架构收尾 A10/A12/A15/A16。
+>
+> 完整清单见 `NAVICAT-TODO.md`；逐域对比见 `docs/NAVICAT-GAP.md` §7。
 
 | 能力 | 状态 | 证据 |
 |---|---|---|
-| 六区布局（菜单/工具栏/侧栏/标签栏/内容区/状态栏） | ✅ | `AppShell` |
+| 五区布局（应用栏/标签栏/侧栏/内容区/状态栏） | ✅ | `AppShell` + `AppBar` |
 | 原生窗口装饰 + macOS 系统菜单栏 | ✅ | `StageStyle.DECORATED` + `MenuBar.setUseSystemMenuBar(true)` |
 | 统一动作注册表（菜单/工具栏/右键/命令面板） | ✅ | `ActionRegistry` |
-| 侧栏 240px / 折叠 48px / 拖动改宽 | ✅ | `SideBar` + `AppShell` |
+| 侧栏 250px / 折叠 48px / 拖动改宽 200–360 | ✅ | `SideBar` + `AppShell` |
+| 对象切面条（数据/结构/索引/外键/触发器/SQL，真实内省） | ✅ | `ObjectTabBar` + `ObjectSectionsPanel` |
+| 对象标题栏（类型图标 / 名称 / 类型 / 真实行数 / 动作） | ✅ | `ObjectHeader` |
+| 弹窗统一主题（`-adb-*` 令牌在 DialogPane 上真正生效） | ✅ | `DialogStyles` |
 | 真实 SQLite 对象树（表/视图，**多连接同树**） | ✅ | `SchemaService` + `SideBar` |
 | 演示库（固定种子，可重建） | ✅ | `~/.agenticdb/agenticdb-demo.db`，`DemoDatabase` |
 | 数据页：服务端分页、选择列、行号、类型行 | ✅ | `DataGridPage` |
@@ -54,7 +63,22 @@
 | 多语句结果页签：结果集 / 消息 / 错误 | ✅ | `QueryPage` |
 | 执行计划、错误定位、查询历史（最近 50 条） | ✅ | `QueryPage` / `ErrorLocator` / `QueryHistory` |
 | 查询结果只读表格、复制 TSV/SQL、CSV 导出 | ✅ | `CellRenderer` / `CsvExporter` |
-| 结构页五页签：列 / 索引 / 外键 / 触发器 / DDL | ✅ | `StructurePage` + `TableStructure` |
+| 结构页六页签：列 / 索引 / 外键 / 检查 / 触发器 / DDL | ✅ | `StructurePage` + `TableStructure` |
+| **CHECK 约束**：内省 + 展示 + **整表重建时搬运** | ✅ | `CheckDef` / `CheckParser` / `CheckConstraintTest` |
+| **外键增删**（SQLite 重建 / PG·MySQL ALTER） | ✅ | `ForeignKeyDialog` / `ForeignKeyTriggerDdlTest` |
+| **触发器增删**（PG = 函数 + 触发器两条） | ✅ | `TriggerDialog` / `ForeignKeyTriggerDdlTest` |
+| **表注释**：读得回 / 改得了 / 清得掉（SQLite 无 → 按钮禁用） | ✅ | `TableCommentDialog` / `TableCommentDdlTest` |
+| **函数 / 过程定义体**（只读标签页，三方言来源不同） | ✅ | `RoutinePage` / `Dialect.readRoutineDefinition` / `RoutineDefinitionTest` |
+| **MySQL 调度事件**（对象树「事件」分组 + 定义体） | ✅ | `ObjectKind.EVENT` / `Dialect.eventsListSql` |
+| **多连接并存**（切连接不关掉另一个的会话） | ✅ | `SessionManager.open` 复用 / `reopen` |
+| **语句超时**（30s，超时给建议）+ **连接池归还** | ✅ | `QueryLimits` / `JdbcSession` / `ConnectionPool` |
+| **错误归类**（连接断开/权限/不存在/超时/锁/约束/语法） | ✅ | `ErrorClassifier` / `ErrorClassifierTest` |
+| **代码片段库**（存选中的 SQL → 插入到光标处） | ✅ | `SavedQueries`（查询/片段两种类型） |
+| **多连接并存**（每连接一条执行器，同连接串行、跨连接不互堵） | ✅ | `DbExecutors` / `SessionManager` |
+| **连接建立移出 UI 线程**（连接慢不再冻窗口） | ✅ | `AppShell.connectProfile` |
+| **崩溃日志**（`~/.agenticdb/logs/crash-*.log`） | ✅ | `CrashLog` |
+| **一键出包**（jpackage：app-image / dmg / msi / deb） | ✅ | `scripts/package.sh` |
+| **连接属性页**（弹窗里套 TabPane：常规/SSL/高级） | ✅ | `ConnectionPropertiesDialog` |
 | 结构安全编辑：加列 / 改列 / 重命名列 / 删列 + 两级危险确认 | ✅ | `StructureSqlBuilder` + `StructurePlan` |
 | 结构变更单事务 + 失败回滚 + 全页面联动刷新 | ✅ | `StructurePage.applyPlan` |
 | 连接管理页：列表 / 搜索 / 收藏 / 打开 / 编辑 / 复制 / 删除 | ✅ | `ConnectionsPage` |
@@ -64,7 +88,7 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**57 个测试类、443 条执行（SQLite）/ 458 条执行（含 MySQL 5.7 真库），0 失败**。统一命令：`./mvnw -B clean verify`。
+当前门禁：**631 条 / 84 类 / 0 失败**（2026-10-22 末实测；`./mvnw -B clean verify` + `java tools/TestCount.java`）。统一命令：`./mvnw -B clean verify`。
 
 统计口径用工具兜底（`@Nested` 的测试类在 surefire XML 里会写成 `tests="0"`）：
 
@@ -79,7 +103,11 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 已有有效演示库不会被覆盖；`-Dadb.demo.db=/path/to/file.db` 可指定其他文件。
 
 真实窗口截图：`docs/screenshots/p0-shell.png`、`p2-users.png`、`p3-query.png`、`p4-structure.png`、
-`p5-connections.png`、`p5-dark.png`（⚠️ 已过期，需按 `NAVICAT-TODO.md` §12.2 重拍）。
+`p5-connections.png`、`p5-dark.png`、`p6-tables.png`、`p6-new-table.png`、`p7-new-index.png`
+（共 **9 张**；`docs/screenshots/navicat/` 另存 Navicat Premium Lite 15 实拍 3 张 + 等比例并排图：
+`navicat-tablelist.png` / `navicat-toolbar.png` / `side-by-side-2026-10.png`），
+由 `ScreenshotSession`（`ADB_SHOTS` 等环境变量）可复现生成，用法见 §12.2。
+弹窗两张靠 `ADB_NEW_TABLE=1` / `ADB_INDEX=1` 启动开关（§16.3）。
 
 ---
 
@@ -87,22 +115,47 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 
 要求：JDK 25、Maven 3.9+（或直接用仓库自带 `./mvnw`）。
 
+> ⭐ **用 `scripts/` 下的脚本，不要手工敲命令** —— 启动流程里有两个坑：
+> JDK 版本不对时报错埋在日志深处；**不先 `install` 会跑 `~/.m2` 里的旧 jar**
+> （实测踩过：改了半天 CSS 界面一点没变）。脚本把这两个都挡在前面了。
+
 ```bash
-# 1. 编译 + 跑全部测试
+# 1. ⭐ 一键编译 + 启动（最常用）
+./scripts/dev.sh
+
+# 2. 启动并直接打开某张表（验收时用）
+./scripts/dev.sh users
+
+# 3. 完整门禁：编译 + 全部测试 + 用例计数
+./scripts/build.sh
+
+# 4. 重拍 docs/screenshots/ 的 9 张验收截图
+./scripts/shots.sh
+
+# 5. 出包（jpackage；产物在 bootstrap/adb-desktop/target/dist/，实测可启动）
+./scripts/package.sh            # 当前平台默认类型
+./scripts/package.sh app-image  # 只出免安装目录
+```
+
+### 手工命令（脚本的内部实现，供排查用）
+
+```bash
+# 编译 + 跑全部测试
 ./mvnw -B clean verify
 
-# 2. 安装模块到本地仓库（javafx:run 需要）
+# 安装模块到本地仓库（javafx:run 需要）
 ./mvnw -B -DskipTests install
 
-# 3. 启动桌面端
+# 启动桌面端
 ./mvnw -pl bootstrap/adb-desktop javafx:run
 
-# 4. 验收时直接打开某张表
+# 打开某张表 / 查询页 / 结构页
 ADB_OPEN=users ./mvnw -pl bootstrap/adb-desktop javafx:run
-
-# 5. 验收查询页：打开示例 SQL 并自动执行
-ADB_QUERY=1 ./mvnw -pl bootstrap/adb-desktop javafx:run
+ADB_QUERY=1    ./mvnw -pl bootstrap/adb-desktop javafx:run
+ADB_STRUCTURE=users ./mvnw -pl bootstrap/adb-desktop javafx:run
 ```
+
+> ⚠️ 两个脚本**不要并发跑** —— 都做 `clean install`，会互相删 jar。
 
 只跑 UI 门禁：
 
@@ -119,14 +172,29 @@ TestFX 默认用 Monocle 无头模式；在本机想看真实窗口，去掉父 
 
 | 文档 | 回答什么问题 |
 |---|---|
-| **`NAVICAT-TODO.md`** | ⭐ **唯一执行清单**：当前状态、P0–P4 完成项、P4.5 契约修复、P4.6 网格/查询进阶、P5–P7 路线与门禁 |
+| **`NAVICAT-TODO.md`** | ⭐ **唯一执行清单**：当前状态、P0–P4 完成项、P4.5 契约修复、P4.6 网格/查询进阶、P5–P7 路线与门禁、**§14 第六轮全量核查（4 个缺陷 + 表级生命周期空白）** |
 | **`docs/NAVICAT-GAP.md`** | ⭐ **对标分析**：与 Navicat 逐域对比，列出功能/交互/按钮/弹窗/图标/架构的差距与优先级；含**逐文件复核发现的 16 处文档失真** |
 | `docs/ARCHITECTURE.md` | 模块、数据流、线程模型、编辑/SQL/撤销不变量、结构页与连接层模型 |
-| `docs/UI-GUIDE.md` | 视觉基线、六区、组件与交互规则、令牌生成、图标约定、弹窗规范 |
+| `docs/UI-GUIDE.md` | 视觉基线、五区、组件与交互规则、令牌生成、图标约定、弹窗规范 |
+| **`docs/UI-VISUAL-SPEC.md`** | ⭐ **可照着实现的 UI 规格书**：9 档字号落到哪个角色 · 97 个令牌语义 · 42 图标清单 · 间距/圆角/固定尺寸 · 五区与四种页面骨架 · 组件规格 · 弹窗骨架与按钮区规则 · 交互态矩阵 · 键盘表 · 文案措辞 |
+| **`docs/NAVICAT-PARITY-2026-10-V5.md`** | ⭐ **Navicat 对齐报告 V5**（2026-10-22）：8 个维度逐像素对照 · 已落地 13 项改动 · 4 处刻意不追 · P0/P1/P2 剩余清单 · 等比例并排图说明 |
+| **`docs/UI-COMPARISON-2026-10.md`** | 与 Navicat 的像素级对拍（**上一版**，并排图存在缩放不一致；最新结论以 `NAVICAT-PARITY-2026-10-V5.md` 为准） |
 | **`docs/UI-ROADMAP.md`** | ⭐ **界面专项**：实测 11 个界面问题（字号 / 间距 / 圆角 / 焦点环 / 按钮层级 / 图标 / 密度 / 列头 / 连接列表）+ 6 个批次计划 + 排版 / 间距 / 圆角 / 配色 / 交互规范 |
 | **`docs/NAVICAT-COMPARE.md`** | ⭐ **与 Navicat 的实拍对比**（本机装了 Navicat Premium Lite 15）：逐项对照 + 6 个真差距 + 由此重排的优先级 |
+| **`docs/GITHUB-COMPARE.md`** | ⭐ **GitHub 上开源数据库管理软件**扫描（DBeaver / Chat2DB / Beekeeper Studio / TablePro / sqlpad / SQLTools…）：与 AgenticDB 的可比性、独特定位、借鉴项 |
+| **`docs/EXEC-SUMMARY.md`** | ⭐ **对外汇报版**（2026-10-22）：架构 / Todolist / 截图 / Navicat / GitHub / 六维 / 还缺什么 / 本轮交付物 / 汇报要点 |
+| **`docs/UI-AUDIT.md`** | ⭐ **截图实测审计（2026-10-21）**：4 张真实窗口截图逐项挑问题 + 代码定位 + 修法 + 验收标准；含**3 个已排除的误判**与分批执行计划 |
+| **`docs/UI-FORMS-AND-STATES.md`** | ⭐ **形态与状态规范**：新能力该做**弹窗还是标签页**（含待建能力的裁定表，防「新建表做成标签页」这类错误）+ 默认态 8 项 + 空白态 9 处清单 + `EmptyState` 组件约定 |
 | `docs/NEXT-STEPS.md` | 阶段规划：批次划分、依赖顺序、提交策略 |
 | `docs/COMPONENT-SELECTION.md` | 开源组件选型、版本、许可证、禁入清单 |
+
+> 📌 **对外汇报**：`docs/EXEC-SUMMARY.md`（一句话结论 + 六维全景 + 还缺什么）与
+> `docs/GITHUB-COMPARE.md`（GitHub 开源数据库管理软件对照）于 2026-10-22 新增。
+
+**脚本**（`scripts/`，2026-10-21 新增）：`dev.sh` 一键编译启动 ·
+`build.sh` 门禁 · `shots.sh` 重拍截图 · `package.sh` **一键出包**（jpackage）·
+`_env.sh` 公共环境预检。
+用法见上文「快速开始」，设计取舍见 `NAVICAT-TODO.md` §14.7。
 
 旧 Rust / Vue / Python 实现、构建产物和过时规划已删除；git 历史仍可追溯。
 
@@ -150,7 +218,7 @@ workbench/
 
 ui/
   adb-ui-core        设计令牌（tokens.json → Tokens.java + theme CSS）
-  adb-ui-shell       JavaFX 六区外壳、菜单、命令面板、数据页、查询页、结构页、连接页
+  adb-ui-shell       JavaFX 五区外壳、应用栏、命令面板、数据页、查询页、结构页、连接页
 
 testing/
   adb-fixtures       演示库与测试夹具（固定种子）
@@ -163,7 +231,7 @@ bootstrap/
 
 ## 工程约束
 
-1. **设计令牌唯一真相**：`ui/adb-ui-core/src/main/resources/tokens/tokens.json`（120 个，60 个颜色）。
+1. **设计令牌唯一真相**：`ui/adb-ui-core/src/main/resources/tokens/tokens.json`（97 个：59 颜色 / 35 尺寸 / 3 时长）。
    改完运行 `java tools/GenTokens.java` 重新生成 `Tokens.java` 与 `theme-dark/light.css`。
 2. **业务代码禁止颜色字面量**：只能引用 `-adb-*` looked-up colors。
    `TokenParityTest` 会扫描 `app.css`，出现 `#rrggbb` / `rgba(...)` 直接失败。
@@ -183,20 +251,34 @@ bootstrap/
 
 - 危险分级**第三层（驱动侧复查）仍不存在**：`DbSession.execute(sql)` 没有 `danger`
   参数。前两层（fail-closed 分类 + UI 确认）已落地。→ §10 A6
-- 设计令牌已收敛到 60 个且全部被用到；`TokenParityTest` 门禁守着不会再长回摆设。
+- 设计令牌已收敛到 97 个且全部被用到；`TokenParityTest` 门禁守着不会再长回摆设。
 - 保存反向撤销对“无主键/主键为空的新增行”不完整；UI 会明确提示。
 - 反向撤销只覆盖最近一次保存；发生新编辑后不再提供。
 - 转置视图只读，不参与批量选择。
 - 本页搜索/隐藏只作用于当前页，不改变服务端分页。
 - 数据页加载 / 保存无法真正取消 JDBC 语句（`⌘.` 只作用于查询页，见 4.5-13）。
 - 连接建立与内省跑在 JavaFX 线程；全局单线程执行器会让一个连接的慢查询阻塞其它连接。
-- 结构页只能改列；索引、外键、触发器只读；不能建表 / 改表名。
+- ✅ **表级生命周期已落地**（T1–T4）：建表（弹窗 + 实时 SQL 预览）/ 清空 / 重命名 / 删除，
+  入口为对象树右键、数据库菜单、⌘K；三种方言各走自己的语法
+  （SQLite 没有 `TRUNCATE` 走 `DELETE FROM`；MySQL 用 `RENAME TABLE`）。→ §15.4d
+  - 仍缺：建表后自动打开该表；视图不能增删改。
+- ✅ **列注释已能读回**（D2/D4 已修）：改列不再抹掉注释；PG 也能清空注释。→ §16.1
+- ✅ **索引可增删**（S1）：结构页「索引」页签右键 + 按钮，弹窗录入、实时 SQL 预览；
+  数据库自动建的索引（`sqlite_autoindex_*` / MySQL `PRIMARY`）拒绝删除。→ §16.2
+- ⚠️ **建表暂不支持外键 / 索引**（生成器支持，弹窗里还没有录入区）→ §14.5 S2/S3
+- ✅ **CHECK 约束已能内省 / 展示 / 重建搬运**（第十一轮）；⚠️ 但**建表 UI 里还不能录入 CHECK**。
+- ✅ **表注释可读可改**（第十一轮·续）；⚠️ SQLite 没有表注释（按钮禁用）。
+- ✅ **函数 / 过程定义体可看**（第十一轮·续二，只读标签页）；⚠️ SQLite 没有 SQL 层函数。
+- ⚠️ **点对象首页的「函数 / 过程 / 触发器」会被告知暂不支持**（D1 已修，不再报错，
+  但还不能看定义体）。
+- 结构页的索引已可编辑；**外键、触发器仍只读**（且没有右键菜单）。
+- 表注释 / 外键 / 触发器 / CHECK / 函数·过程定义体均已支持；MySQL EVENT 已建模；
+  剩余的是视图增删改（V1）与表清单工具条的新建/删除/设计入口（N1–N3）。
 - 导入导出已实现（CSV/TSV/JSON/SQL 导出 + CSV/TSV 导入）；**xlsx 还没有**；导入暂按字符串绑列，类型不匹配的行会跳过并报告。
-- 侧栏的查询历史 / 诊断 / 导入导出 / 已保存查询四个入口都已接真功能
-  （**「查询历史」是特例：功能已存在且可用，只是侧栏开错了页面**）。
-- PostgreSQL / MySQL 尚未真实联调（无 Testcontainers），PG 的 DEFAULT / COMMENT 不内省。
-- `core/adb-declarations` 声明层当前是死代码，待 P5 决定接入或删除。
+- 侧栏的查询历史 / 诊断 / 导入导出 / 已保存查询四个入口都已接真功能。
+- **MySQL 5.7.44 真库已联调**（9 例）；**PostgreSQL 仍缺测试库**（未配置，跳过）。
+- `core/adb-declarations` 声明层目前只做**声明校验 + 白名单门禁**，尚未驱动运行时。
 - 主题“跟随系统”目前只探测 macOS；Windows/Linux 默认亮色。
-- 令牌体系里 79/120 个令牌未被 CSS 引用；密度档位只影响对象树。
-- `docs/screenshots/` 的 6 张图已按当前代码重拍。
+- 令牌体系 97 个全部被用到；密度档位已覆盖数据网格 / 查询结果 / 对象清单 / 结构页。
+- `docs/screenshots/` 的 9 张图已按当前代码重拍。
 - 首版不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务。

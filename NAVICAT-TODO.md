@@ -4,12 +4,34 @@
 > 架构见 `docs/ARCHITECTURE.md`；UI 规则见 `docs/UI-GUIDE.md`；
 > 组件选型见 `docs/COMPONENT-SELECTION.md`；**Navicat 对标差距见 `docs/NAVICAT-GAP.md`**；
 > **阶段规划（批次 / 顺序 / 门禁）见 `docs/NEXT-STEPS.md`**；
-> **与 Navicat 的实拍对比见 `docs/NAVICAT-COMPARE.md`**（本机装了 Navicat Premium Lite 15）。
+> **与 Navicat 的实拍对比见 `docs/NAVICAT-COMPARE.md`**（本机装了 Navicat Premium Lite 15）；
+> **界面规格书见 `docs/UI-VISUAL-SPEC.md`**（第十轮：字号/颜色/图标/布局/组件/弹窗/交互态/键盘）；
+> **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
-> 最后更新：**2026-10-21（第五轮：UI/UX 重做 U-B1…U-B5 + S5「对象」首页标签 已落地）**
-> 当前基线：**P0–P4 完成，P4.5 收尾中，P5 🟡**；
-> **下一动作 = U-B6 剩余**（G1 冻结列 / G4 区域选择 / U1 catalog 树 / U2 多连接并行 …），
-> 见 §13.6 与 `docs/NAVICAT-COMPARE.md`。
+> 最后更新：**2026-10-22（第十三轮：表清单 8 列 + 密度 24/28/34 + 去斑马纹/假行线 + 等比例并排图）**
+> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **631 条 / 84 类 / 0 失败**（2026-10-22 末实测，35 条跳过）。
+>
+> ⭐ **本轮（第十三轮）是「对齐 Navicat 观感」的一轮，不是功能扩张。**
+> 逐像素量了 Navicat 的表清单：8 列、19px 行高、纯白行、1px 行线、灰色侧栏。
+> 已落地：表清单 8 列、对象首页 9 列、密度 24/28/34、去斑马纹/空行假线、表头 12px。
+> 完整报告见 **`docs/NAVICAT-PARITY-2026-10-V5.md`**。
+>
+> 📌 第六轮（历史）做过一次全量核查：4 处文档失真 + 4 个真实缺陷（含 2 个丢数据）+ 1 整块能力空白，
+> 完整清单见 **§14**；与 Navicat 的逐域对比见 `docs/NAVICAT-GAP.md`。
+>
+> **第十一轮已完成：D3（CHECK 约束）✅ · B5-S2（外键可增删）✅ · B5-S3（触发器可增删）✅ · B5-S4（表注释可读可改）✅**，
+> 并顺带修掉一个**潜伏很久的真 bug**（带外键的表改列必失败）。
+> **O2 ✅（函数/过程定义体，只读标签页）**；
+> **第十二轮已完成**：Q6 代码片段 ✅ · A25 声明/运行时一致（白名单 + 门禁）✅ ·
+> A15/A16 线程模型 ✅ · P7（jpackage + 崩溃日志）✅ · 并修掉「同一连接被两个线程共用」
+> 与「窗口尺寸不夹到屏幕内」两个真实缺陷。
+> **第十二轮·续三已完成 U3 ✅ 连接属性页**（弹窗套 TabPane）。
+> **下一动作 = N1–N3（表清单工具条 / 右键菜单 / 多选批量）→ U1 catalog 树 → Q5+V-9 → G4 → G1**。
+> 详见 §22 与 `docs/NAVICAT-PARITY-2026-10-V5.md` §5。
+>
+> 📦 **新增 `scripts/`**：`dev.sh`（一键编译启动）· `build.sh`（门禁）· `shots.sh`（重拍截图）。
+> 它们把 §12.2 记录的三个坑（不 install 拍到旧界面 / JDK 版本错埋在日志深处 / macOS 无 timeout）
+> 固化进了脚本。见 §12.3。
 
 ---
 
@@ -21,18 +43,19 @@
 | P1 竖线 | ✅ 完成 | SQLite 会话、演示库、内省、对象树、分页数据页、三态、标签隔离 |
 | P2 数据页 | ✅ 完成 | 排序/筛选/条件构造器、列布局、行内编辑、撤销重做、SQL 预览保存、批量操作、详情抽屉、搜索/转置/隐藏、CSV 导出、保存反向撤销 |
 | P3 查询页 | ✅ 完成 | SQL 词法/分句/格式化、RichTextFX 编辑器、查找替换、多语句结果页签、取消、错误定位、执行计划、历史 |
-| P4 结构页 | ✅ 完成 | 列/索引/外键/触发器/DDL 五页签、加列/改列/重命名列/删列、两级危险确认、单事务、结构变更联动刷新 |
+| P4 结构页 | ✅ 完成 | 列/索引/外键/触发器/DDL 五页签、加列/改列/重命名列/删列、**索引可增删（§16.2）**、**列注释读回（§16.1）**、两级危险确认、单事务、结构变更联动刷新 |
 | P4.5 契约修复 | 🟡 收尾中 | **B0–B4 已全部落地**（安全语义 / 数据正确性 / 注册表收口 / 并发 / 图标令牌）；剩 4.5-3 已做、4.5-14 收尾、4.5-23 已做 |
 | P5 连接管理 | 🟡 进行中 | 连接管理页、三步向导、测试连接、钥匙串 / Secret Service 凭据、连接档案落盘、HikariCP 连接池（PG/MySQL）；**本轮补上：凭据脱敏 + 口令走 stdin + 孤儿会话回收** |
 | P6 导入导出 | 🟡 进行中 | CSV / TSV / JSON Lines / SQL 导出 + CSV / TSV 导入、字段映射、坏行报告、导入导出向导；**本轮补上：MySQL 5.7 真库联调**（`MySqlIntegrationTest` 9 例，抓出两个真 bug） |
-| P7 分发 | ⬜ 计划 | jlink / jpackage、自动更新、性能与可访问性收尾 |
-| **UI/UX 专项** | ⬜ **待开工** | **§13**：实测 11 个界面问题（字号 / 间距 / 圆角 / 焦点环 / 按钮层级 / 图标 / 密度 / 列头 / 连接列表）；批次 U-B1–U-B6 |
+| P7 分发 | 🟡 进行中 | ✅ jpackage（`scripts/package.sh`）+ 崩溃日志（`CrashLog`）；⬜ jlink（自动模块暂不可行）/ 自动更新 / 性能 |
+| **UI/UX 专项** | ✅ **U-B1–U-B5 已完成，U-B6 进行中** | **§13–§16 / §22**：U-B1–U-B5 全落地；S1 数值展示 / S2 刷新按钮 / D1 函数报错 / X1–X2 空态 / **T1–T4 表级生命周期** / **D2·D4 注释读回** / **B5-S1 索引可编辑**；**第十三轮 Navicat 表清单 8 列 + 密度 24/28/34**；U-B6（G1/G4/Q5/…）进行中 |
 
 首版明确不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务、传输同步。
 
-> **截图验收**：`docs/screenshots/` 6 张真实窗口图（外壳 / 数据页 / 查询页 / 结构页 / 连接页 / 暗色），
+> **截图验收**：`docs/screenshots/` 9 张真实窗口图（外壳 / 数据页 / 查询页 / 结构页 /
+> 连接页 / 暗色 / 表清单 / **新建表弹窗** / **新建索引弹窗**），
 > 由 `ScreenshotSession`（`ADB_SHOTS` 等环境变量）可复现生成，用法见 §12.2。
-> ⚠️ **当前 6 张图已过期**（缺 `⇤/⇥/跳至页`、多一列 `注释`），需按 §12.2 重拍。
+> 弹窗两张靠 `ADB_NEW_TABLE=1` / `ADB_INDEX=1` 启动开关（§16.3）。
 
 ---
 
@@ -44,15 +67,18 @@
 ./mvnw -B clean verify
 ```
 
-当前结果（2026-10-21 实测）：
+当前结果（2026-10-22 末实测）：
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **SQLite（默认）** | **443** | 32 | 0 |
-| **MySQL 5.7 真库**（环境变量接入） | **458** | 17 | 0 |
+| **SQLite（默认，2026-10-22 第十三轮后）** | **631** | 35 | 0 |
+| **MySQL 5.7 真库**（需环境变量） | 单独跑，不在默认门禁 | — | — |
 
-**57 个测试类**。跳过的是「本机没有的外部依赖」：Testcontainers 的 PG/MySQL 容器
-（无 Docker）与未配置的 PG 真库 —— **跳过不算通过**，门禁统计里单列一行。
+**84 个测试类**。跳过的是「本机没有的外部依赖」：Testcontainers 的 PG/MySQL 容器
+（无 Docker）与未配置的 PG / MySQL 真库 —— **跳过不算通过**，门禁统计里单列一行。
+
+> 📌 **最新口径（2026-10-22，第十三轮后）**：**631 条 / 84 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 35 条跳过，不计入 631）。
 
 统计口径用工具兜底：
 
@@ -65,16 +91,16 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 |---|---|---|
 | `core/adb-model` | 30 | 分页/行数上限契约 |
 | `core/adb-declarations` | 40 | 声明校验、快照一致性、**classpath 与源码目录对拍** |
-| `core/adb-safety` | 59 | 危险分级四档、**fail-closed**、WITH 体内扫描、PRAGMA 读写、词法切分 |
+| `core/adb-safety` | 68 | 危险分级四档、**fail-closed**、WITH 体内扫描、PRAGMA 读写、词法切分 |
 | `core/adb-sql` | 31 | 词法 / 分句 / 格式化 / **括号配对** / **参数检测** |
-| `workbench/adb-jdbc` | 50 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为** |
+| `workbench/adb-jdbc` | 57 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为** |
 | `testing/adb-fixtures` | 3 | 演示库固定种子 |
-| `workbench/adb-introspect` | 27 | 内省、分页排序筛选 SQL、结构变更 |
-| `workbench/adb-session` | 11 | 连接档案、凭据、连接池、**敏感项脱敏** |
+| `workbench/adb-introspect` | 109 | 内省、表元数据 8 列、分页排序筛选 SQL、结构变更、**真库契约（跳过 14）** |
+| `workbench/adb-session` | 14 | 连接档案、凭据、连接池、**敏感项脱敏** |
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `workbench/adb-transfer` | 15 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告 |
-| `ui/adb-ui-core` | 17 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** / **CSS 尺度审计** / **焦点环审计** |
-| `ui/adb-ui-shell` | 126 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**图标语义唯一**、**图标系统审计**、**注册表收口**、**保存守卫**、**工具页**、**禁用按钮可见性**、**网格交互**、**密度覆盖** |
+| `ui/adb-ui-core` | 24 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** / **CSS 尺度审计** / **焦点环审计** |
+| `ui/adb-ui-shell` | 221 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖** |
 
 > ⚠️ **统计口径（4.5-28）**：用 `@Nested` 的 4 个测试类（`QueryLimitsTest`、
 > `DangerClassifierTest`、`DeclarationLoaderTest`、`DeclarationValidationTest`）在 surefire XML 里
@@ -224,7 +250,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 
 - 索引、外键、触发器**只读**，不能新建 / 修改 / 删除。
 - 不能新建 / 重命名 / 删除表。
-- CHECK 约束不内省、不展示。
+- ✅ CHECK 约束已能**内省 + 展示 + 重建搬运**（第十一轮）。
 - PostgreSQL 的 DEFAULT / COMMENT 不内省（`TypeMapper` 不读 `getColumns()`）。
 - PostgreSQL 无 `SHOW CREATE TABLE`，DDL 由内省生成，UI 已标注「等价 DDL」。
 
@@ -386,12 +412,15 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 
 ## 9. P7 分发与收尾（⬜）
 
-- [ ] jlink 自定义运行时
-- [ ] jpackage：macOS `.app` / `.dmg`，Windows `.msi`，Linux `.deb`
+- [x] jpackage：**`scripts/package.sh`**（一键出包：app-image / dmg / msi / deb）
+      —— **实测通过**：产出 `AgenticDB.app`（167 MB，含运行时），**能真正启动**（进程存活、无启动崩溃）
+- [x] 崩溃日志：`CrashLog` → `~/.agenticdb/logs/crash-*.log`
+- [ ] jlink 自定义运行时 —— ⛔ **暂不可行**：RichTextFX / ControlFX 是**自动模块**，jlink 收不进去；
+      等它们模块化（或换成不带自动模块的编辑器）再加 jlink profile
 - [ ] 自动更新与版本检查（可选）
 - [ ] 启动性能：冷启动 < 2s，首屏不阻塞
 - [ ] 可访问性：焦点顺序、屏幕阅读器标签、对比度
-- [ ] 崩溃日志与用户可读诊断
+- [x] 崩溃日志与用户可读诊断（`CrashLog`）
 - [ ] 安装包签名与公证
 - [ ] 主题「跟随系统」覆盖 Windows / Linux
 - [ ] 密度档位覆盖数据网格行高（当前只影响对象树）
@@ -414,22 +443,22 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | A7 | 危险分级 fail-open（未知 → 只读） | **已做**：未知语句头按管理操作处理；`WITH` 体内扫描写语句 | P4.5 | ✅ |
 | A8 | 多语句切分不看字符串/注释 | **已做**：复用 `adb-sql` 的 `SqlSplitter` | P4.5 | ✅ |
 | A9 | 取消只覆盖查询页 | **已做**：`query()` / `update()` 也记录 `activeStatement` | P4.5 | ✅ |
-| A10 | 没有语句超时 | `Statement.setQueryTimeout` | P5 | ⬜ |
+| A10 | ~~没有语句超时~~ | ✅ **已完成（第十二轮）**：`QueryLimits.DEFAULT_QUERY_TIMEOUT_SECONDS=30`（上限 600）+ 每条语句 `setQueryTimeout` + 超时转人话 | P5 | ✅ |
 | A11 | 结果截断静默 | **已做**：`RowPage` 带 `rowsTruncated` + UI 提示 | P4.5 | ✅ |
-| A12 | 连接池是 1 槽装饰器，连接不归还 | 真正归还连接，或明确改名 `SingleConnectionHolder` | P5 | ⬜ |
+| A12 | ~~连接池是 1 槽装饰器，连接不归还~~ | ✅ **已完成（第十二轮）**：`PooledSession.close()` 先归还连接再关池 | P5 | ✅ |
 | A13 | macOS 钥匙串口令经 argv 泄漏 | **已做**：改 stdin 传入 | P5 | ✅ |
 | A14 | `options` 明文落盘 | **已做**：落盘前剔除敏感键；且不得覆盖钥匙串口令 | P5 | ✅ |
-| A15 | 连接与内省跑在 UI 线程 | 移到 `adb-db` 执行器 | P5 | ⬜ |
-| A16 | 全局单线程执行器 | 每连接一个执行器 | P5 | ⬜ |
+| A15 | ~~连接与内省跑在 UI 线程~~ | ✅ **已完成（第十二轮）**：`connectProfile` 改为后台连接 + `Platform.runLater` 刷新 | P5 | ✅ |
+| A16 | ~~全局单线程执行器~~ | ✅ **已完成（第十二轮）**：`DbExecutors` 每连接一条执行器 | P5 | ✅ |
 | ~~A17~~ | ~~79/120 令牌未被引用~~ **已做**：120 → **60 个，全部被用到**（app.css 引用或 Java 常量消费），并有门禁守着 | P4.5 | ✅ |
-| A18 | 「跟随系统」只探测 macOS | 跨平台探测 | P7 | ⬜ |
+| A18 | ~~「跟随系统」只探测 macOS~~ | ✅ **已完成（第十二轮）**：Windows 注册表 / Linux gsettings·kdeglobals | P7 | ✅ |
 | A19 | 密度档位只影响对象树 | **已做**：覆盖网格行高（行高取自 `row-*` 令牌） | P4.5 | ✅ |
 | A20 | `MAX_CELL_BYTES` 声明未用 | 真正限制单元格体积，或删常量 | P4.5 | ⬜ |
 | **A21** 🆕 | **切连接泄漏会话** | **已做**：回收没有标签页引用的会话 | P5 | ✅ |
-| **A22** 🆕 | **主题探测每次 shell out** | 缓存系统主题探测结果 | P7 | ⬜ |
+| **A22** 🆕 | ~~**主题探测每次 shell out**~~ | ✅ **已完成（第十二轮）**：探测结果缓存，只探一次 | P7 | ✅ |
 | **A23** 🆕 | **死代码 / 死引用** | **已做**：删 `QueryOptions`、修 `DeclarationCheckMojo` 悬空引用、`PageSize` 改为 UI 档位来源、清 `MainToolBar` 只写字段与未用 import | P4.5 | ✅ |
 | **A24** 🆕 | **surefire 统计口径失真** | CI 按 `<testcase>` 计数 + 断言总数下限 | P4.5 | ⬜ **（4.5-28）** |
-| **A25** 🆕 | **`declarations` 与运行时方言不一致**（`dameng.yaml` 有达梦，`DialectKind` 没有） | 随 A1 一起处理 | P5 | ⬜ |
+| **A25** 🆕 | ~~**`declarations` 与运行时方言不一致**~~ | ✅ **已完成（第十二轮）**：不删声明，改为**显式白名单 + 门禁**（`DeclaredDialectConsistencyTest`） | P5 | ✅ |
 
 ---
 
@@ -442,7 +471,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | # | 任务 | 说明 |
 |---|---|---|
 | G1 | **冻结 / 固定列** | 前 N 列固定，不随横向滚动移走 |
-| G2 | **列头拖拽重排** | 顺序**已经能持久化**，但没有任何运行时改序入口 |
+| ~~G2~~ ✅ | ~~列头拖拽重排~~ **已完成**（`f1334cf`，见 §13.6） |
 | ~~G3~~ ✅ | ~~列汇总脚注行~~ **已完成**：「视图 → 本页统计」显示行数与数值列的合计/平均/最小/最大（算的是**当前页**） | ✅ | `DataGridPage.updateSummary` |
 | G4 | **单元格区域选择** | 拖选矩形 / Shift 范围选 / 复制矩形区 |
 | ~~G5~~ ✅ | ~~编辑后跳到下一格~~ **已完成**：Tab / Shift+Tab / ↓ / ↑，跳过去直接开始编辑下一格 | ✅ | `DataGridPage.moveAfterEdit` |
@@ -600,7 +629,7 @@ ADB_THEME_FORCE=light ADB_SHOTS=$PWD/docs/screenshots \
 
 ### 13.3 U-B3 焦点与交互态层 —— ✅ 已完成
 
-- [x] focus 规则 **3 条 → 26 条**：按钮 / 图标钮 / 搜索触发器 / 功能项 / 侧栏导航 / 收藏 /
+- [x] focus 规则 **3 条 → 30 条**：按钮 / 图标钮 / 搜索触发器 / 功能项 / 侧栏导航 / 收藏 /
       标签 / Toast 动作 / 筛选钮 / 树 / 表格 / 文本框 / 文本域 / 下拉 / 列表 / 树视图 /
       表视图 / 复选框 / 单选钮 / 滚动条 / 滑块
 - [x] 焦点环 = 边框换 `-adb-border-focus` + 一圈 `dropshadow` 光晕；
@@ -644,14 +673,14 @@ hover 规则不得被删、focus 规则不得少于 10 条；
 
 ### 13.5 U-B5 布局与组件层
 
-- [ ] 数据网格工具栏**按语义分 3 组**（浏览 / 编辑 / 视图），组间加分隔线
-- [ ] 工具栏**最多 7 个常显**，其余收进「更多」菜单
-- [ ] 新增**记录导航条**（首 / 上 / 下 / 末 记录 + 记录号输入），放在网格**上方左侧**
-- [ ] 列头筛选按钮 `▽` 改为**悬停列头才浮现**（常态只有列名 + 排序角标）
-- [ ] `ConnectionsPage` 由 `ListView` 改 **`TableView`**（名称 / 主机 / 端口 / 数据库 / 用户 / 状态），可排序、可拖列宽
-- [ ] **密度全局生效**：数据网格 / 查询结果网格 / 表清单 / 结构页三张表 **4 处**同步行高
-- [ ] 空状态补**一个明确的下一步按钮**（primary）+ 说明
-- [ ] 应用图标（标签栏 / 窗口标题）
+- [x] ✅ **数据网格工具栏按语义分 3 组**（浏览 / 编辑 / 视图），组间加分隔线
+- [x] ✅ **记录导航条**（首 / 上 / 下 / 末 + 记录号输入），放在网格**上方左侧**
+- [x] ✅ **列头筛选按钮 `▽` 悬停列头才浮现**（常态只有列名 + 排序角标；被筛选的列常显）
+- [x] ✅ **`ConnectionsPage` 改 **`TableView`**（名称 / 主机 / 端口 / 数据库 / 用户 / 状态），可排序、可拖列宽
+- [x] ✅ **密度全局生效**：数据网格 / 查询结果网格 / 表清单 / 结构页四张表同步行高
+- [ ] ⬜ **工具栏「最多 7 个常显，其余收进更多」** — 关键规则 ①，未逐项验收
+- [ ] ⬜ **空状态**补「明确的下一步按钮（primary）+ 说明」 — E1–E6 已用 `EmptyState` 五参版补齐主按钮；仅剩 E5–E9 待补
+- [ ] ⬜ **应用图标**（标签栏 / 窗口标题）— 未做（`UI-ROADMAP.md` §1.12 「附带发现」）
 
 **门禁**：`DataGridPageTest`（工具栏分组 / 记录导航条 / 列头筛选悬停才可见）·
 `ConnectionsPageTest`（表格列与排序）· `DensityCoverageTest`（🆕，断言密度同时改 4 张表的行高）。
@@ -679,18 +708,18 @@ hover 规则不得被删、focus 规则不得少于 10 条；
 
 | # | 任务 | 门禁 | 状态 |
 |---|---|---|---|
-| **G2** | 列头**拖拽重排**（顺序已能持久化，只缺运行时入口） | `DataGridPageTest.columnDragReorderPersists` | ⬜ |
+| ~~G2~~ ✅ | ~~列头**拖拽重排**（顺序已能持久化，只缺运行时入口）~~ **已完成**（commit `f1334cf`；`DataGridPage` 按下/拖动/松开三段 + 右键 nudge + 落盘。**上一版文档误标为 ⬜，本轮核查纠正**） | `GridInteractionTest` | ✅ |
 | **G1** | **冻结列**（两表四路同步：滚动 / 选择 / 排序 / 编辑） | `DataGridPageTest.frozenColumnsStayPut` | ⬜ |
 | **G4** | 单元格**区域选择**（拖选 / Shift 范围 / 复制矩形） | `DataGridPageTest.rectangleSelectionCopies` | ⬜ |
 | ~~G6~~ ✅ | ~~自增列插入（新增行时主键留空交给数据库）~~ **已完成** | `GridInteractionTest` + `MySqlIntegrationTest`（真库） | ✅ |
 | **Q5** | 查询结果**分页**（现在硬上限 1000） | `QueryPageTest.resultPagination` | ⬜ |
-| **Q6** | 代码片段库（与已保存查询合并） | `SavedQueriesPageTest.snippetLibrary` | ⬜ |
+| **Q6** | 代码片段库（与已保存查询合并） | ✅ **已完成（第十二轮）**：`SavedQueries` 加 `kind`（查询/片段）· 查询页「存为片段 / 插入片段」 | `SavedQueriesTest`（+2 例） |
 | **U1** | **catalog 树**（MySQL 多库；MySQL 的 schema = 数据库，`USE` 不管用，需切后重连） | `SchemaServiceTest.catalogSwitch` | ⬜ |
-| **U2** | **多连接并行**（`AppShell` 单 `activeProfile`/单 `session` → 按连接 id 取） | `SessionManagerTest` 扩用例 | ⬜ |
-| **U3** | 连接属性页（超时 / SSL / 字符集 / 连接池 / 附加参数） | `ConnectionWizardTest.propertiesStep` | ⬜ |
+| **U2** | **多连接并行** | ✅ **已完成（第十二轮）**：页面早就按标签取会话；**真正的堵点**是 `SessionManager.open` 会「关掉重开」→ 改成**复用**（新增 `reopen` 给「重新连接」） | `SessionManagerTest`（3 例：复用 / 重开 / 两连接并存） |
+| **U3** | 连接属性页（超时 / SSL / 字符集 / 附加参数） | ✅ **已完成（第十二轮·续三）**：`ConnectionPropertiesDialog` = **弹窗里套 TabPane**（常规/SSL/高级，形态依 §4 裁定）；值进 `ConnectionProfile.options`（`queryTimeout` 由 JdbcSession 消费，其余作 JDBC 属性） | `ConnectionPropertiesDialogTest`（4 例） |
 | **U4** | 索引 / 外键 / 触发器**可编辑**（当前只读） | `StructurePageTest.indexEditor` | ⬜ |
 | ~~U5~~ ✅ | ~~对象首页标签（S5，见 §6.4）~~ **已完成** | `ObjectHomeTabTest`（4 例） | ✅ |
-| **U6** | 状态栏补：当前用户 / 服务器版本 / 延迟 | `ActionRegistryConvergenceTest.statusBar*` | ⬜ |
+| **U6** | 状态栏补：当前用户 / 服务器版本 / 延迟 | ✅ **已完成（第十二轮）**：`Dialect.serverInfoSql()`（三方言）+ 状态栏「服务器」段（版本 · 用户），后台读不阻塞 | `StatusBarTest` |
 
 ### 13.7 本节新增门禁汇总
 
@@ -701,3 +730,725 @@ hover 规则不得被删、focus 规则不得少于 10 条；
 | `DensityCoverageTest` | 🆕 | 密度同时改 4 张表的行高 |
 | `IconAuditTest`（扩展） | 改 | 无中文词图标；图标均来自 `Icons`；`Icons` 无死常量 |
 | `TokenParityTest`（扩展） | 改 | 字号 / 间距 / 圆角令牌全部被引用 |
+
+---
+
+## 14. 第六轮全量核查（2026-10-21）— 缺陷、空白与文档失真
+
+> ⭐ **本节的来源**：逐文件核对「文档说了什么」与「代码实际做了什么」，
+> 覆盖对象能力、入口、页面、空态、状态栏、脚本六条线。
+> 门禁基线当时是 **443 条 / 57 类 / 0 失败** —— **全绿不代表没洞**，
+> 下面 D1–D4 四个缺陷全都活在「测试没覆盖的路径」上。
+>
+> 逐域的 Navicat 对比见 `docs/NAVICAT-GAP.md` §7。
+>
+> **编号约定**：`D` = 真实缺陷（会报错或丢数据）· `T` = 表级生命周期 ·
+> `O` = 对象类型 · `S` = 结构页对象 · `X` = 空态与入口。
+
+### 14.1 先纠正 4 处文档失真
+
+文档本身在骗人，这比功能缺失更危险 —— 它让人以为做过了。
+
+| # | 失真 | 真相 | 证据 |
+|---|---|---|---|
+| **F1** | §11.1 / §13.6 把 **G2 列头拖拽重排**标为 ⬜ 未完成 | **已完成**：按下 / 拖动 / 松开三段 + 右键 nudge + 落盘全在 | commit `f1334cf`；`DataGridPage` 按下 1867-1874、拖动 1875-1885、松开 1886-1893、`moveColumnTo` 1707、`reorderColumn` 1747、落盘 1604。**已在本轮改回 ✅** |
+| **F2** | §6.2 说「不能新建/重命名/删除表」只是「已知限制」 | 实际是**整块能力空白**，且底层生成器是现成的 | `StructureSqlBuilder.createTableSql`（:178-224）已处理单/复合主键、UNIQUE、DEFAULT、FK、ON UPDATE/DELETE —— **只差 UI 入口和一个 `StructurePlan`**。见 §14.3 |
+| **F3** | §9 P7 与 §7 未提**任何脚本** | 启动要 4 步手工敲，且有两个必踩的坑 | 见 §14.7（本轮已补 `scripts/`） |
+| **F4** | §13.6 把 **U4 索引可编辑**列为「待办」 | 不只是「没做」—— `createIndexSql` 是 **private**，唯一调用方是 SQLite 重建的索引恢复，**MySQL/PG 用户永远碰不到** | `StructureSqlBuilder.java:226`（private）· 唯一调用点在 `:136` 的 `rebuildPlan()` 内，而 `rebuildPlan()` 仅 `dialect.rebuildsTableOnColumnChange()` 为真时进入（:69），**只 SQLite** |
+
+---
+
+### 14.2 🔴 D 类：四个真实缺陷（**优先于任何新功能**）
+
+> 这四个的共同点：**用户点一下就会出错或丢东西**，而且没有任何提示。
+
+| # | 缺陷 | 触发路径（用户视角） | 根因 | 验收门禁 |
+|---|---|---|---|---|
+| **D1** | 点对象首页的「函数 / 过程 / 触发器」**必然报错** | 对象首页 → 点 `函数` 分组里任意一个 chip → 开出一个数据页 → `SELECT * FROM <函数名>` → 「对象不存在」 | `ObjectHomePage.java:177` 的 `onOpen.accept(object.name())` **只传名字、不传 kind**；`AppShell.openObject()`（:222-228）无条件开 `TabKind.GRID`，注释里还写着「（表 / 视图）」 | `ObjectHomePageTest.openingACallableDoesNotOpenAGrid`（🆕） |
+| **D2** | ⭐ MySQL 上「修改列」会**静默抹掉该列的注释** | 结构页 → 选中一列 → 「修改」→ **不动任何输入框** → 确定 | ① `TypeMapper.java:50` 构造 `ColumnDef` 时 comment 硬编码 `null`，**从不读 `REMARKS`** → 结构页「注释」列恒空、对话框恒预填空；② `MySqlDialect.columnDefinition`（:211）因 `comment == null` 不拼 `COMMENT '...'` → 生成的 `MODIFY COLUMN` 直接抹掉原注释 | `ColumnCommentRoundTripTest`（🆕）：MySQL 上 `写注释 → 读回 → 改列 → 再读回`，断言注释仍在 |
+| ~~**D3**~~ ✅ | ~~SQLite 改一次列，**该表所有 CHECK 约束静默消失**~~ **已完成（第十一轮）** | — | **已修**：`CheckDef` + `CheckParser`（从 CREATE TABLE 原文解析，SQLite 只有这一条路）+ `Dialect.parsesChecksFromDdl/checksSql` + 重建时搬运 CHECK + 结构页「检查」页签 | `CheckConstraintTest`（🆕 7 例，含「改列后约束**仍然拦得住违规数据**」） |
+| **D4** | PostgreSQL 上**无法清空列注释** | 结构页 → 改列 → 把注释框清空 → 确定 | `PostgresDialect.java:220` 在 `comment == null` 时**直接 return**，不生成 `COMMENT ON COLUMN ... IS NULL` | 并入 `ColumnCommentRoundTripTest` |
+
+> **为什么 D2 最要紧**：它是「改了 A 却丢了 B」型缺陷，用户不会立刻察觉，
+> 等发现时注释已经没了、且**没有撤销路径**（结构变更不在 `EditBuffer` 里）。
+> 修法是**先把注释读回来**（`TypeMapper` 读 `REMARKS` + `SchemaService:394` 的 SQLite 路径），
+> 读回来了 D2/D4 同时消失。
+
+**修复顺序建议**：`D2+D4`（改 `TypeMapper` 一处，两个缺陷同消）→ `D1`（加 kind 分流，半天）→ `D3`（要动内省 + `TableStructure` + 重建 SQL，最大）。
+
+---
+
+### 14.3 🔴 T 类：表级生命周期 —— 与 Navicat 最大的一块差距
+
+Navicat 对象树右键菜单里最高频的四个动作，我们**一个都没有**。
+
+| # | 能力 | 状态 | 说明 | 验收门禁 |
+|---|---|---|---|---|
+| **T1** | **新建表** | ⬜ | ⭐ **生成器已就绪**（`StructureSqlBuilder.createTableSql`，含主键/UNIQUE/DEFAULT/FK/ON UPDATE-DELETE），**只缺 UI**：一个列编辑表格 + `StructurePlan`。这是投入产出比最高的一项 | `CreateTableWizardTest`（🆕）+ 三方言 SQL 断言 |
+| **T2** | **清空表（TRUNCATE）** | ⬜ | `TRUNCATE` 目前只作为**危险等级关键字**存在于 `DangerClassifier:76,85,232` —— 能识别用户输入，但不提供功能 | `TableLifecycleTest.truncate` |
+| **T3** | **重命名表** | ⬜ | 代码库里唯一的 `RENAME TO` 在 `StructureSqlBuilder:129`（SQLite 重建的内部步骤），用户不可触发 | `TableLifecycleTest.rename` |
+| **T4** | **删除表** | ⬜ | 同上，只有 `StructureSqlBuilder:128` 的内部 `DROP`。用户现在只能去查询页手敲 `DROP TABLE` | `TableLifecycleTest.drop`（必须走两级危险确认） |
+
+> ⚠️ T2/T3/T4 是**不可逆操作**，必须复用已有的两级危险确认 + SQL 预览
+> （`DestructiveConfirm` + `StructurePlan`），并且默认按钮**不得**是破坏性动作
+> （4.5-27 的门禁已经守着这条）。
+
+---
+
+### 14.4 🟠 O 类：对象类型缺失
+
+`ObjectKind` 枚举（`SchemaService.java:31-38`）只有 **5 个值**：`TABLE` / `VIEW` / `PROCEDURE` / `FUNCTION` / `TRIGGER`。
+
+| # | 缺失 | 现状 | 说明 |
+|---|---|---|---|
+| **O1** | **MySQL 事件（EVENT）** | 连枚举位都没有 | 全库 `EVENT` 只出现在触发器的 `EVENT_MANIPULATION` 列名里（`MySqlDialect:131`、`PostgresDialect:125`），与事件调度器无关。接入方式：给 `Dialect` 加 `eventsListSql()` / `eventsSql(name)`，SQLite/PG 返回 null 即可沿用现有「方言不支持就安静跳过」模式（`SchemaService:176-178`） |
+| ~~**O2**~~ ✅ | ~~**函数 / 过程的定义体**~~ **已完成（第十一轮·续）** | — | **已做**：`Dialect.readRoutineDefinition()`（SQLite→`sqlite_master` / PG→`pg_get_functiondef` / MySQL→`SHOW CREATE FUNCTION`）+ `RoutinePage` **只读标签页**（形态依 §4 裁定）+ 复制按钮 |
+| **O3** | **用户 / 序列 / 物化视图** | 无 | Navicat 常见节点，本首版可明确不做（见 §14.8） |
+| **O4** | **视图的增删改** | 无，只能看定义 | `CREATE VIEW` / `DROP VIEW` 生产代码零命中；唯一的 `DROP VIEW` 在 `StructureSqlBuilder:119`（SQLite 重建前的内部拆依赖） |
+
+---
+
+### 14.5 🟠 S 类：结构页三个页签是「死表格」
+
+`StructurePage` 只给 `columns` 装了 `setRowFactory` + 右键菜单（:230-242、:258-277）；
+`indexes` / `foreignKeys` / `triggers` 三张表（:292-320）**只做 `addColumn` + `setItems`** ——
+连「复制索引名」都做不到，更不用说 Navicat 的「删除索引 / 设为唯一」。
+
+| # | 对象 | 只读 | 缺 | 门禁 |
+|---|---|---|---|---|
+| **S1** | 索引 | ✅ 能看（名称/唯一/列 三列） | 新建 / 删除 / 重命名；**页面连右键菜单都没有** | `StructurePageTest.indexEditor`（U4 已有编号） |
+| **S2** | 外键 | ✅ 能看 | ✅ **新建 / 删除已落地**（第十一轮）：`ForeignKeyDialog` 弹窗 + 三方言 DDL（SQLite 整表重建 / PG·MySQL ALTER） | `ForeignKeyTriggerDdlTest`（🆕 11 例） |
+| **S3** | 触发器 | ✅ 能看见触发器体 | ✅ **新建 / 删除已落地**（第十一轮）：`TriggerDialog` 弹窗 + 实时 SQL 预览（PG 是「函数 + 触发器」两条） | 同上 |
+| **S4** | 表注释 | ⬜ **连看都看不了** | `TableStructure` record 无 comment 字段；无 `COMMENT ON TABLE` | `TableStructureTest.tableComment` |
+| **S5** | CHECK 约束 | ✅ **已落地**（第十一轮） | 内省 + 展示（结构页「检查」页签）+ 重建搬运 | `CheckConstraintTest` |
+
+---
+
+### 14.6 🟡 X 类：空态与入口（能力已存在，只是没接上）
+
+| # | 问题 | 现状 | 说明 |
+|---|---|---|---|
+| **X1** | 空表打开后只有一行「没有数据」 | `DataGridPage.java:776` → `grid.setPlaceholder(new Label("没有数据"))` | ⭐ `WorkspaceView.emptyState()`（:520-544）明明支持「图标 + 标题 + 描述 + 主按钮」四件套，欢迎页（:121-158）也确实用上了 —— **同一个方法没复用过来**。这是全应用最弱的一处空态 |
+| **X2** | 对象首页「未连接」时**完全空白** | `ObjectHomePage.java:104-105`：`groups.clear()` + `summary.setText("未连接")` | **倒挂**：连上了但对象数为 0 时反而有提示（:140-144「这个连接还没有可浏览的对象」）——「没连」比「连了没对象」还空 |
+| **X3** | 状态栏版本号硬编码 | `StatusBar.java:35` 「v0.1.0 · P3」，**无 setter** | 10 个字段里 9 个都被真实数据驱动，只有它永不变。随版本迭代必然失真 |
+| **X4** | **13/49 个动作是「半孤儿」**（27%） | 只能靠右键菜单 / 侧栏按钮够到 | `tab.close-others` / `tab.close-all` / `tab.copy-name` / `tab.copy-select` / `saved-queries` / `object.*`（8 个） |
+| ~~**X5** ⭐~~ ✅ | ~~`object.*` 这 8 个动作在未选中树节点时**连 ⌘K 都搜不到**~~ | — | ✅ **已完成（第十二轮）**：命令面板**不再过滤禁用项**（灰掉但可见，点击给解释）+ 新增顶级「**对象**」菜单 |
+| ~~**X6**~~ ✅ | ~~「收藏夹」顶级菜单只有 1 项~~ | — | ✅ **已完成（第十二轮）**：新增「清空收藏」（收藏落盘） |
+| ~~**X7**~~ ✅ | ~~恢复上次标签会盖掉「对象」首页~~ | — | ✅ **已完成（第十二轮）**：`TabBar.activatePermanent()` —— 恢复完落回常驻标签 |
+
+---
+
+### 14.7 ✅ 本轮已完成：一键脚本 `scripts/`
+
+启动这件事原本要手工敲 4 步，且**两个坑必踩一次**。现已固化进脚本：
+
+| 脚本 | 作用 | 用法 |
+|---|---|---|
+| **`scripts/dev.sh`** | ⭐ **一键编译 + 启动**（用户点名的那个） | `./scripts/dev.sh` · `./scripts/dev.sh users`（直达某表）· `--fast` 增量 |
+| `scripts/build.sh` | 完整门禁（verify + 用例计数） | `./scripts/build.sh` · `--quick` · `--no-tests` |
+| `scripts/shots.sh` | 重拍 6 张验收截图 | `./scripts/shots.sh` · `./scripts/shots.sh p2-users` |
+| `scripts/_env.sh` | 公共：环境预检 + 工具函数 | 被上面三个 source |
+
+**它替你绕开的坑**：
+
+1. **JDK 版本守卫**（实测踩过）：JDK 21 直接跑只会得到埋在日志深处的一句
+   `Detected JDK version 21.0.12-1 ... is not in the allowed range [25,26)`。
+   现在编译**之前**就说清楚，并给出修正命令：
+   ```
+   ✗ JDK 版本不对：当前 21，pom.xml 要求 >= 25（区间 [25,26)）。
+      修正示例：export JAVA_HOME=$(/usr/libexec/java_home -v 25)
+   ```
+   要求版本从 `pom.xml` 的 `requireJavaVersion` **解析**得来，不硬编码 —— 改了 pom 脚本自动跟上。
+2. **必须先 install**（实测踩过，最贵的一个）：`javafx:run -pl` 不带 `-am` 会从 `~/.m2`
+   取**旧 jar**，改了半天 CSS 界面一点没变。`dev.sh` / `shots.sh` 强制 install 在前。
+3. **macOS 没有 `timeout`**：`shots.sh` 用 `perl -e 'alarm ...; exec @ARGV'` 兜底，
+   保证单张截图异常时不会把整轮挂死。
+4. `shots.sh` 固定「暗色最先拍」（主题偏好会持久化），并用 `ADB_THEME_FORCE` 钉住主题，
+   绕开「主题热切换后 snapshot 拿到空白帧」。
+
+**实测记录（2026-10-21）**：JDK 21 拦截 ✅ · JDK 25 放行 ✅ ·
+`build.sh --no-tests` 3.0s BUILD SUCCESS ✅ · `dev.sh users` 参数解析 + 编译 + 启动 ✅。
+> ⚠️ 两个脚本**不要并发跑** —— 都做 `clean install`，会互相删 jar
+> （实测得到过 `adb-model-1.0.0-SNAPSHOT.jar -> [Help 1]`）。这是并发问题，不是脚本缺陷。
+
+---
+
+### 14.8 本轮明确「不做」（写下来，免得反复讨论）
+
+沿用首版范围（§0）：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务、传输同步。
+**本节新增明确不做**：
+
+| 项 | 理由 |
+|---|---|
+| 用户 / 序列 / 物化视图 / 同义词（O3） | 首版对象模型聚焦表与可执行对象；方言差异大，收益低 |
+| Navicat 的图标语义色（编辑=蓝、新增=绿…） | 实拍对比 C5 已判定**不追** —— 单色是更现代的做法 |
+| 顶栏功能数对齐 Navicat 的 11 个（C6） | 随 P5/P6 功能自然增长，不为了对齐而凑数 |
+
+---
+
+### 14.9 更新后的优先级（本轮重排）
+
+| 档 | 项 | 理由 |
+|---|---|---|
+| **P0** | **D2 + D4**（`TypeMapper` 读 `REMARKS`） | 用户改一下列就丢注释，且无撤销路径。**改一处修两个** |
+| **P0** | **D1**（对象首页打开函数/过程） | 点一下就报错，是 bug 不是缺口 |
+| **P1** | **T1 新建表** | 生成器现成，只差 UI。**这是从「能看」到「能建」的分界线** |
+| **P1** | **D3**（CHECK 约束） | 改列丢约束，属数据丢失 |
+| **P1** | **S1 索引可编辑** + **X1 / X2 空态引导** | 索引建不了；两处最弱的空态复用现成 `emptyState()` 即可 |
+| **P2** | T2/T3/T4（清空 / 重命名 / 删除表）、S2/S3/S4、O1、O2 | 表生命周期收口 + 对象能力补齐 |
+| **P2** | G1 冻结列 · G4 区域选择 · Q5 结果分页 · U1 catalog 树 · U2 多连接并行 | 沿用 §13.6 |
+| **P3** | X3 / X4 / X5 / X6 / X7 | 入口与一致性打磨 |
+| **P3** | A10 语句超时 · A12 连接池归还 · A15 UI 线程 · A16 单执行器 | 架构整改，用户不直接感知但会卡界面 |
+
+---
+
+## 15. 第七轮：截图实测审计（2026-10-21 23:43）
+
+> 基于 **4 张真实窗口截图**（对象首页 / 数据页 / 连接管理 / 查询页）。
+> **完整审计、代码证据、修法与验收标准见 `docs/UI-AUDIT.md`** —— 本节只做索引与排期。
+>
+> 与 §14 的区别：§14 是**读代码**找出的缺陷（D/T/O/S/X 编号）；
+> §15 是**看界面**找出的问题（S/M/L 编号）。两批有交叉，但视角不同 ——
+> 有些问题只有截图才看得见（`22.990000000000002` 就是这么暴露的）。
+
+### 15.1 新增问题索引
+
+| 编号 | 问题 | 性质 | 来源 |
+|---|---|---|---|
+| **S1** | `amount` 显示成 **`22.990000000000002`**（REAL/DOUBLE 长尾小数） | 🔴 数据可信度 | `CellRenderer.numberText:216-221` |
+| **S2** | 对象页「刷新」按钮**从未加入场景图** | 🔴 死 UI | `ObjectHomePage:52/81-83`（**本轮已修 + 已加门禁**） |
+| **S3** | 对象页无「新建表」入口 | 🔴 同 §14.3 T1 | 截图右上只有标签栏的「+」 |
+| **M1** | 状态栏 `v0.1.0 · P3` 硬编码无 setter | 🟡 | `StatusBar:35` + `AppShell:820` |
+| **M2/M11** | 状态栏耗时**显示两次** | 🟡 | `range` 自带 `· 12 ms` + `duration` 独立字段 |
+| **M3** | 连接表端口显示 `0`、主机/用户空白 | 🟡 | `ConnectionsPage:186-200`，只有 `状态` 列做了 `—` |
+| **M4** | 连接表 1 行数据画出 12 个空行撑满 480px | 🟡 视觉 | `setFixedCellSize` + `Vgrow ALWAYS` |
+| **M5** | 「对象」在标签 / 页标题 / 侧栏标题**重复三次** | 🟡 | `ObjectHomePage:69-72` |
+| **M6** | 顶部「共 200 行」与底部「1-200 / 500」**措辞矛盾** | 🟡 | 本页行数 vs 总行数 |
+| **M7** | 「每页」下拉看不见当前值 | 🟡 | 被挤到边缘 |
+| **M8** | 表头 `id [PK] number · 自增` 三类信息挤一格 | 🟡 | 扫视困难 |
+| **M9/M10** | 查询结果无记录导航条、无类型行，与数据页不一致 | 🟡 | 同一份数据两种规格 |
+| **M12** | 查询页编辑器/结果区比例固定，无可拖分隔条 | 🟡 | 一行 SQL 也占 45% 高度 |
+| **L2** | 「连接管理」插头图标在 16px 下**与放大镜高度相似** | 🟢 语义 | `Icons:150`（子代理与我都误读成搜索） |
+| **L7** | 查询页「只读」是蓝色填充 pill，看起来像按钮 | 🟢 | 实际不可点 |
+
+### 15.2 ⚠️ 已排除的三个误判（防止照着错的改）
+
+| 初判 | 代码事实 |
+|---|---|
+| 「侧栏有两个搜索框」 | `SideBar` 的 `search` **只有一个**（:86），在底部 `bottomBar`；顶部是插头图标按钮 + 连接下拉 |
+| 「记录导航条用 Unicode 符号」 | `DataGridPage:875-885` 用 `Icons.FIRST/PREVIOUS/NEXT`，**是 SVGPath** |
+| 「score 显示逗号小数（locale bug）」 | `String.valueOf(7.5d)` = `"7.5"`，`numberText` 无 locale 格式化。**数字问题只有一个：S1** |
+
+### 15.3 排期
+
+| 批次 | 内容 | 门禁 |
+|---|---|---|
+| **B1（P0）** ✅ **已完成** | **S1** 数值展示（只改展示、不改值、导出走原值） | `NumberFormattingTest`（🆕 6 例，已验证能抓回退） |
+| **B2（P0）** ✅ **已完成** | **S2** ✅ 已修 / **D1** 函数点开报错 / **X1·X2·E1–E4·E6** 空态 | `ObjectHomePageTest` ✅（5 例）· `AppShellTest.showsEmptyStateForEmptyTable`（升级断言） |
+| **B3（P1）** | M1–M12 一致性打磨（一次做完） | `StatusBarTest`（🆕）· `ConnectionsPageTest.blankCellsUseDash`（🆕） |
+| **B4（P1）** ✅ **已完成** | **T1–T4 表级生命周期**（投产比最高） | `TableLifecycleSqlTest`（🆕 17 例）· `TableDdlTest`（🆕 8 例）· `NewTableDialogTest`（🆕 7 例）—— 三处均已实测能抓回退 |
+| **B5（P2）** | 索引/外键/触发器可编辑 · 表注释 · 事件 · 函数定义体 | 见 §14.5 |
+| **B6（P2）** | G1 冻结列 · G4 区域选择 · Q5 结果分页 · U1 catalog · U2 多连接 | 见 §13.6 |
+
+### 15.4 ✅ 本轮已完成的实际改动（代码 + 门禁）
+
+| 改动 | 文件 | 门禁 |
+|---|---|---|
+| `refresh` 按钮进入 `header` | `ObjectHomePage.java` | `ObjectHomePageTest.refreshButtonIsActuallyInTheScene` |
+| `summary` 补 id（便于呈现断言） | `ObjectHomePage.java` | 同上 |
+
+> **门禁有效性已验证**：手动把 `refresh` 从 `header` 移除，测试立即失败并指出原因
+> （`ObjectHomePageTest:40`）；恢复后转绿。这条断言不是摆设。
+
+### 15.4b ✅ 第八轮追加：B1 + B2 落地（2026-10-22）
+
+| 编号 | 改动 | 文件 | 门禁 |
+|---|---|---|---|
+| **S1** | `numberText` 对 `Double`/`Float` 走新的 `doubleText`：小数位 ≤ 12 原样，> 12 收敛并去掉尾随零；极小值不收敛成 0；tooltip 补「原值」 | `CellRenderer.java` | `NumberFormattingTest`（6 例） |
+| **S1** | 编辑回填 / 导出抽成可测方法并**强制走原值** | `DataGridPage.editorText` / `csvValue` | 同上（含 `isNotEqualTo(展示值)` 反向断言） |
+| **D1** | `onOpen` 从 `Consumer<String>` 改为 `Consumer<SchemaObject>`；新增 `unsupportedReason(kind,name)` 单一判据，`AppShell.openObject` 据此分派 | `ObjectHomePage.java` / `AppShell.java` | `ObjectHomePageTest`（`onlyTablesAndViewsAreBrowsableAsRows` + chip 传整对象） |
+| **X2/E1–E3** | 对象首页三处空态（未连接 / 无对象 / 读取失败） | `ObjectHomePage.java` | `ObjectHomePageTest` |
+| **E4/E6** | 空表 placeholder、连接列表 placeholder | `DataGridPage.java` / `ConnectionsPage.java` | `AppShellTest.showsEmptyStateForEmptyTable`（断言升级） |
+| — | 🆕 共享空态组件（原本是 `WorkspaceView` 的 private 方法，别处复用不了） | `EmptyState.java` | — |
+
+> **两个实测发现，推翻了审计时的假设**（都写进了代码注释）：
+> 1. `22.990000000000002 == 22.99` 是 **false** —— 它们是两个不同的 double。
+>    所以这不是"最短往返表示"能解决的：`Double.toString` 已经是最短表示了。
+>    真正的修法是**按业务精度收敛小数位**（12 位分界）。
+> 2. 编辑回填（:3059）与导出（:2919）**本来就走 `String.valueOf`**，不经过展示层 ——
+>    所以我担心过的"格式化字符串被写回数据库"这个陷阱，**当前并不存在**。
+>    但仍把它抽成方法 + 加反向断言钉死，防止将来有人图省事改回去。
+
+### 15.4c 形态与状态规范（🆕 `docs/UI-FORMS-AND-STATES.md`）
+
+用户提出「判断哪些是弹窗、哪些是多标签，别写错了；默认态和空白态也规划一下」，
+因此新增该文档并**在动手前把形态裁定死**：
+
+- **判定规则**：改已存在的东西→弹窗；要长期停留/并排比较/有状态→标签页；
+  不确定→弹窗（弹窗做错关掉就行，标签页做错会一直杵着）。
+- **待建能力裁定表**（§4，动手前先查）：
+  **T1 新建表 = 弹窗**（❌ 不是新标签页，否则会留下关不掉的"空表"标签）；
+  T2/T3/T4/S1/S2/S3/S4 = 弹窗；**U3 连接属性 = 弹窗里套 TabPane**；
+  O1 事件 / O2 函数定义体 = 标签页。
+
+### 15.4d ✅ 第八轮：B4 表级生命周期落地（T1–T4，2026-10-22）
+
+> 形态严格按 §15.4c 的裁定实现：**T1 弹窗、T2/T3/T4 弹窗**，没有一个是标签页。
+> 完整记录（分层图 / 方言差异表 / 默认态 / 门禁）见 `docs/UI-FORMS-AND-STATES.md` §10。
+
+| 编号 | 改动 | 文件 | 门禁 |
+|---|---|---|---|
+| **T1** | 🆕 建表弹窗：列表格 + **实时 SQL 预览** + 表注释（SQLite 下禁用） | `NewTableDialog.java`（🆕） | `NewTableDialogTest`（7 例，含形态源码扫描） |
+| **T2** | 清空表 —— SQLite 走 `DELETE FROM`（**没有 TRUNCATE**） | `SqliteDialect` / `PostgresDialect` / `MySqlDialect` | `TableLifecycleSqlTest` |
+| **T3** | 重命名表 —— MySQL 走 `RENAME TABLE`，其余 `ALTER TABLE … RENAME TO` | 三个 Dialect + `TableDdl` | 同上 |
+| **T4** | 删除表 | 三个 Dialect + `TableDdl` | 同上 |
+| — | 🆕 建表 / 清空 / 重命名 / 删表计划构造器 + 表名校验 | `StructureSqlBuilder.java` | `TableLifecycleSqlTest`（17 例） |
+| — | 🆕 表级 DDL 协调者（唯一知道"怎么跑完一次表级变更"的地方） | `TableDdl.java`（🆕） | `TableDdlTest`（8 例） |
+| — | 🆕 计划执行/确认**抽出来与列级变更共用**（避免两份事务语义跑偏） | `StructurePlanRunner.java`（🆕） | `StructurePage` 改为委托 |
+| — | 表注释（PG/MySQL 支持，SQLite 禁用） | `Dialect.supportsTableComment` / `tableCommentSql` | `TableLifecycleSqlTest` |
+| — | 侧栏右键 + 数据库菜单 + ⌘K 三条入口 | `SideBar.java` / `MenuBarFactory.java` / `AppShell.java` | `MenuBarFactoryTest`（补 4 个 action id） |
+
+> **本轮唯一的隐藏坑（值得记住）**：MySQL 的 `PRIMARY KEY` 必须写在 `COMMENT` **之前**。
+> `columnDefinition` 把 COMMENT 拼在末尾，直接追加 `PRIMARY KEY` 会得到
+> `` `id` INTEGER COMMENT 'x' PRIMARY KEY `` —— **语法错误**。
+> 修法是新增 `Dialect.createTableColumnDefinition(column, inlinePrimaryKey)`，
+> 让方言自己决定插在哪（默认追加末尾，MySQL 覆写插到 COMMENT 前）。
+>
+> **另一个坑**：`MenuBarFactoryTest` 里菜单引用的 action 必须先在 `MENU_ACTION_IDS` 注册，
+> 否则表现为 `Cannot invoke "MenuBar.getMenus()" because "bar" is null` ——
+> 报错完全指不到真因（其实是 `menuItem(...)` 返回 null 让 `build()` 抛了异常）。
+
+**门禁 486 条 / 62 类 / 0 失败**（原 454/59，+32）。
+- **默认态 8 项**：已全部完备（常驻对象标签 / 演示库 / 跟随系统主题 / 200 行分页 / 示例 SQL…）。
+- **空白态 9 处**：本轮修完 E1–E4、E6；剩 E5（查询 0 行）/ E7（侧栏搜不到）/
+  E8（历史为空）/ E9（收藏为空）待补。
+
+### 15.5 门禁体系的结构性缺口
+
+本轮 4 个缺陷（S1 / S2 / D1 / M1）**全部活在 443 条全绿的门禁之外**。
+说明现有门禁只覆盖「行为」，不覆盖「呈现」与「格式化」。
+
+需补三类（成本都很低，都是几行断言）：
+
+| 类型 | 断言 |
+|---|---|
+| **呈现门禁** | 控件被创建**且**在场景图里（`lookup("#id") != null`） |
+| **格式化门禁** | 展示值 / 编辑回填 / 导出值三者的一致性 |
+| **文案门禁** | 状态栏字段不重复；版本号来自单例、无硬编码阶段代号 |
+
+---
+
+## 16. 第八轮（2026-10-22）— D2/D4 注释读回 + B5 索引可编辑
+
+### 16.1 D2 / D4：注释「只写不读」——两个丢数据路径一次消掉
+
+| 缺陷 | 根因 | 修法 |
+|---|---|---|
+| **D2** MySQL 改一次列，**该列注释被静默抹掉** | `SchemaService.structure()` 从 JDBC 元数据读列，**没有任何一处读列注释**；改列时 UI 拿内省结果当基底，基底里 comment 恒为 null → 生成的 `MODIFY COLUMN` 不带 `COMMENT` 子句 | 新增 `Dialect.columnCommentsSql(table)`，`withComments()` 把注释并回基底；读不到（权限/视图）就当没有 |
+| **D4** PostgreSQL 清不掉列注释 | `appendColumnComment` 无条件拼 `IS '...'`，comment 为 null 时拼出 `IS 'null'` | 拆成 `appendColumnComment`（有值才写）+ `appendColumnCommentReset`（无值发 `IS NULL`） |
+
+> ⚠️ 修 D2 前先核实过：`TypeMapper.java:50` 那个「comment 硬编码 null」是
+> **结果集元数据**（`ResultSetMetaData` 根本没有 `getRemarks`），不是结构内省路径。
+> 上轮把它当成根因是**误判**，真正的根因在 `SchemaService.structure()`。
+
+改动：`Dialect.columnCommentsSql` / `appendColumnCommentReset` ·
+`SchemaService.withComments` · `StructureSqlBuilder` 改列分支。
+
+门禁：`ColumnCommentTest`（12 例）——**实测验证过能抓回退**（把 MySQL 的
+`columnCommentsSql` 改成 return null、PG 的 reset 改成空实现，3 条立刻失败）。
+
+### 16.2 B5-S1：索引可编辑（结构页「索引」页签）
+
+| 能力 | 实现 |
+|---|---|
+| 新建索引 | `IndexDialog` 弹窗：索引名 / 唯一 / 多列（顺序可调）/ **实时 SQL 预览** |
+| 删除索引 | 结构页索引页签右键 + 按钮，二次确认后单事务执行 |
+| 拒绝规则 | 自动索引（`sqlite_autoindex_*` / MySQL `PRIMARY`）**不许删**；索引名重名（不分大小写）拒绝；空名 / 零列 / 不存在的列拒绝 |
+
+三方言差异（`IndexDdlTest` 14 例锁死）：
+
+| 动作 | SQLite | PostgreSQL | MySQL |
+|---|---|---|---|
+| 建 | `CREATE INDEX "i" ON "t" ("c")` | 同左 | `` CREATE INDEX `i` ON `t` (`c`) `` |
+| 删 | `DROP INDEX "i"` | `DROP INDEX "i"` | `` DROP INDEX `i` ON `t` `` |
+
+> ⭐ `IndexDialog` 的预览与真正执行**共用** `StructureSqlBuilder.createIndexSql`
+> （已改成 public）—— 各写一份的话，预览会慢慢变成谎言。
+>
+> ⚠️ 踩坑记录：`StructurePlan.sql()` 是**展示串**（会主动补分号），
+> `statements()` 的单条才是真正交给 JDBC 逐条 execute 的。
+> 测试必须断言后者 —— SQLite 的 execute 遇到 `;` 直接语法错误。
+> 本轮第一版测试断言错了对象，6 条假失败；另外 2 条因为 `.as(...)` 夹在中间
+> 没被批量替换到，是逐条看出来的。
+
+### 16.3 截图入口（`scripts/shots.sh` 9 张）
+
+新增 `ADB_NEW_TABLE=1` / `ADB_INDEX=1` 两个启动开关，让**模态弹窗**也能被拍到
+（`ScreenshotSession` 的 click 只能点页面内的 id，点不到弹窗）。
+沿用既有 `ADB_OPEN` / `ADB_STRUCTURE` / `ADB_QUERY` 的模式，抽了 `flag()` 辅助方法。
+第十三轮又补了 `ADB_TABLES=1`（表清单页，`p6-tables`）。
+
+**门禁 512 条 / 64 类 / 0 失败**（原 486/62，+26）。
+
+### 16.4 下一步
+
+- **S2 外键可编辑** / **S3 触发器可编辑**（同为结构页弹窗，裁定见
+  `docs/UI-FORMS-AND-STATES.md` §4）
+- 剩余空白态 E5（查询 0 行）/ E7（侧栏搜不到）/ E8（历史为空）/ E9（收藏为空）
+- 函数 / 过程 / 事件的**定义体**标签页（O1 / O2）
+- **D3**：SQLite 改列丢失 CHECK 约束（P0 —— 改列不再丢约束；内省 + 重建 SQL 搬运）
+- ~~**B5-S4**：表注释~~ ✅ **已做**（第十一轮·续）：读 + 写/清空 + 结构页展示与编辑
+- **U6**：状态栏补充（当前用户 / 服务器版本 / 延迟）— `NAVICAT-TODO.md` §13.6 U6
+- **U-B6 剩余**：G1 冻结列 / G4 区域选择 / Q5 结果分页 / U1 catalog 树（U2/U3/U6/Q6 已完成）
+- **X3–X7**：入口与一致性打磨（状态栏版本号 M1 / X4–X7）
+- **A10 / A12 / A15 / A16 / A18 / A22 / A25**：架构收尾（超时 / 线程池 / 线程 / 主题探测 / 声明层）
+- **P7**：分发与收尾（jlink / jpackage / 崩溃 / 可访问性）
+
+## 17. GitHub 开源数据库管理软件对照与对外汇报（2026-10-22）
+
+- 🆕 **`docs/GITHUB-COMPARE.md`**：GitHub 上开源数据库管理软件扫描
+  （DBeaver / Chat2DB / Beekeeper Studio / TablePro / sqlpad / SQLTools / Adminer…）。
+- 🆕 **`docs/EXEC-SUMMARY.md`**：对外汇报版 —— 架构 / Todolist / 截图 / Navicat /
+  GitHub / 六维 / 还缺什么 / 本轮交付物 / 汇报要点。
+- **AgenticDB 独特位**：开源界「Java + 纯原生桌面（JavaFX，不内嵌 WebView、不启 HTTP）」的
+  竞品几乎没有（DBeaver 是 Eclipse RCP、Beekeeper/TablePro 是 Electron）——这是差异化叙事的核心。
+
+---
+
+## 18. 第十轮：UI/UX 细化规格（2026-10-22）
+
+> 本轮目标：把「界面」从「做过一轮重做」推进到「**有可照着实现的规格**」。
+> 产出 **`docs/UI-VISUAL-SPEC.md`** —— `ObjectHomePage` 的 javadoc 早就引用了它
+> （「见 `docs/UI-VISUAL-SPEC.md` §3.4」），但这份文档一直**不存在**。
+>
+> 方法：源码 + `tokens.json` + `app.css` + **样式类覆盖审计**
+> （Java 里用到的 `adb-*` 类 vs `app.css` 里的选择器求差集）。
+
+### 19.1 本轮实测发现（此前没有人统计过的东西）
+
+| # | 发现 | 数据 | 影响 |
+|---|---|---|---|
+| **D-1** | Java 里用到的样式类，CSS 里**没有对应规则** | **43 个** | 结构页 / 连接页 / 5 个向导 / 详情抽屉都没有专属样式；`.adb-error`（表单校验错误）也没有 → **错误文字不是红色** |
+| **D-2** | 两个令牌是**摆设** | `row-tree` / `kind-index` | `TokenParityTest.everyTokenIsActuallyUsed` **直接失败**（门禁红） |
+| **D-3** | 状态栏版本号仍**硬编码** | `StatusBar.java:35` = `v0.1.0 · P3` | B3 / M1 未做；与实际版本脱节 |
+| **D-4** | 数字列**不右对齐** | 数据页 / 对象清单 | 金额、行数、数据长度无法竖向比较 |
+
+### 19.2 本轮已修（3 项，随手但都是真缺陷）
+
+| # | 改动 | 文件 | 门禁 |
+|---|---|---|---|
+| **R-1** | `tree.setFixedCellSize(22)` → `Tokens.ROW_TREE_LIGHT`（令牌才是唯一真相） | `SideBar` | `TokenParityTest` |
+| **R-2** | 新增 `INDEX` 钥匙图标 + 结构页「索引」页签行首图标 + `.adb-structure__index-icon` 规则（用上 `kind-index`） | `Icons` / `StructurePage` / `app.css` | `TokenParityTest` + `IconSystemAuditTest` |
+| **R-3** | 补 `.adb-error` 规则（表单校验错误显红） | `app.css` | 截图验收 |
+| **R-4** | 删死样式：对象首页 chip→表格后遗留的 `.adb-object-home__group/__groups/__scroll` | `app.css` | `StyleClassCoverageTest` |
+| **R-5** | `.adb-menu-item` 从死规则变成真钩子（菜单项统一加上，禁用态透明度还原真正生效） | `ActionRegistry` | 同上 |
+| **R-6** | 工具栏分组分隔线改用 `.adb-toolbar__separator`（1px 竖线） | `DataGridPage` | 同上 |
+| **R-7** | 对象清单数字列去内联样式 → 走 `.adb-object-list__number` 样式类 | `ObjectHomePage` | 同上 |
+| **R-8** | 🆕 **新门禁 `StyleClassCoverageTest`**（4 例）：① Java 用到的 `adb-*` 必须在 CSS 有规则（已知 43 个进白名单）② CSS 死样式 ③ 白名单不得留已修条目 | `ui/adb-ui-core` | 本门禁自己 |
+| **R-9** | **S-1…S-6 全部补齐**：43 个未定义样式类 → 0（结构页 / 连接页 / 5 个向导 / 表单 / 抽屉 / 状态栏 / 侧栏 / 网格 / 空态…） | `app.css` | `StyleClassCoverageTest`（白名单清空） |
+| **R-10** | 状态栏**版本号**取自构建产物（Maven 资源过滤 → `version.properties` → `AppVersion`），删掉写死的 `v0.1.0 · P3` | `AppVersion` / `version.properties` / `StatusBar` / `AppShell` | `StatusBarTest`（4 例） |
+| **R-11** | 状态栏**耗时只出现一次**（消息里不再带「· 12 ms」） | `DataGridPage` | `StatusBarTest` |
+| **R-12** | 连接表「不适用」显示 `—`（端口 / 主机 / 用户 / 数据库），且**方言判断走方言层**（`usesFilePath`）—— 写了具体方言分支会被 `DialectBranchAuditTest` 拦下 | `ConnectionsPage` | `DialectBranchAuditTest` + 截图 |
+| **R-13** | **数字 / 日期右对齐**（数据页 + 对象清单），行号列右对齐；对象清单去内联样式 | `app.css` / `ObjectHomePage` | `StyleClassCoverageTest` + 截图 |
+| **R-14** | **图标尺寸统一成 6 档常量**（8/12/14/16/32/40），调用点不再写裸数字 | `Icons` | `IconSystemAuditTest` |
+| **R-15** | **加载态按钮**：保存时图标换转圈且**宽度不变** | `IconButtons.loading()` / `DataGridPage` | 截图 |
+| **R-16** | **空态补齐 4 处**（E5 查询 0 行 / E7 侧栏搜索无结果 / E8 查询历史 / E9 收藏夹） | `QueryPage` / `SideBar` / `HistoryPage` / `FavoritesPage` | `EmptyStateTest`（4 例） |
+| **R-17** | 🆕 **对比度门禁 `ContrastTest`**（2 例）**并据此改了 6 个色值** —— 亮色三级文字原来只有 3.03:1 | `ContrastTest` / `tokens.json` | 本门禁自己 |
+
+> **门禁实测**：修之前 `./mvnw -B clean verify` 在 `adb-ui-core` **失败**（1 条）；
+> 修之后 **585 条 / 77 类 / 0 失败**（`java tools/TestCount.java`）。
+
+### 19.3 视觉与交互缺口（`V-*`，来源：`docs/UI-VISUAL-SPEC.md` §13.2）
+
+| # | 任务 | 优先级 | 状态 | 落点 | 验收门禁 |
+|---|---|---|---|---|---|
+| **V-1** | **数字列右对齐**（数据页 / 对象清单；含等宽字体） | P1 | ✅ **已完成** | `app.css`（`.adb-grid .table-cell.adb-grid__cell--number/--date`、`.adb-grid__row-number`）+ `ObjectHomePage.numberCell()` | `StyleClassCoverageTest` + 截图 |
+| **V-2** | 补 `overlay` / `shadow-1` / `shadow-2` 三个令牌（弹窗遮罩与投影） | P2 | ✅ **已完成** | `tokens.json`（87 → **90**）→ `GenTokens` → `app.css`（命令面板遮罩 / 弹窗 / toast / 抽屉投影） | `TokenParityTest` + `ContrastTest` |
+| **V-3** | **状态栏版本号取自构建产物**（删掉 `P3` 阶段代号） | P1 | ✅ **已完成** | 新增 `AppVersion` + `version.properties`（Maven 资源过滤）+ `StatusBar` / 「关于」共用 | `StatusBarTest`（🆕 4 例） |
+| **V-4** | 加载中按钮：内嵌 spinner + 禁用 + **宽度不跳** | P2 | ✅ **已完成** | `IconButtons.loading()` + 数据页保存路径 | `IconAuditTest` + 截图 |
+| **V-5** | 工具栏「最多 7 个常显，其余收进更多菜单」 | P2 | ⬜ **暂缓** | 1280 宽下 12 个图标按钮**放得下**；按宽度折叠要先做响应式，收益低于成本 | — |
+| **V-6** | **应用图标**（窗口标题 / 标签栏） | P3 | ⬜ **暂缓** | 需要出图资源 | 截图 |
+| **V-7** | 图标尺寸三档统一（标签 14 / 工具栏 16 / 空态 32） | P2 | ✅ **已完成** | `Icons.SIZE_DOT/BADGE/LABEL/TOOLBAR/EMPTY/BRAND` 六个常量，全部调用点改引用 | `IconSystemAuditTest` |
+| **V-8** | **对比度自动检查**（正文/次要/三级 ≥ 4.5:1） | P2 | ✅ **已完成**（并**改了 6 个色值**） | 🆕 `ContrastTest`（2 例）· 亮色 `text-tertiary` #8b95a3→#6A717C、`success` #1f8a4c→#1E8549、`kind-table`、`kind-trigger`；暗色 `text-tertiary` #6e7681→#86909D、`text-secondary` | `ContrastTest` |
+| **V-9** | 表格规格统一（类型行 / 记录导航条 / 结果区） | P2 | ⬜ **暂缓** | 牵动数据页与查询页两套网格，单独一轮做 | 截图 |
+| **V-10** | 剩余空白态 E5 / E7 / E8 / E9 | P2 | ✅ **已完成** | E5 查询页 0 行 · E7 侧栏搜索无结果 · E8 查询历史 · E9 收藏夹 | 🆕 `EmptyStateTest`（4 例） |
+| **V-11** | 弹窗宽度三档（表单 480 / 宽表 720 / 长文本 560） | P3 | ⬜ **暂缓** | 各弹窗宽度现值差异不大，先统一规范再改实现 | 截图 |
+| **V-12** | 错误详情弹窗 / 批量确认汇总页 / **错误归类** | P2 | ⬜ **暂缓** | 工作量大，单独一轮（与 B5 对象能力一起排） | 新测试 |
+
+### 19.4 样式类覆盖（43 个）—— 分批补
+
+| 批 | 范围 | 缺失的类 | 状态 |
+|---|---|---|---|
+| **S-1** | 结构页 | `adb-structure` `adb-structure__table` `__tabs` `__overview` `__ddl` `__loading` | ✅ **已补**（结构页终于和其它页面同一套外观） |
+| **S-2** | 连接页 | `adb-connections` `adb-connections__table` `__favorites` `__search` | ✅ **已补** |
+| **S-3** | 5 个向导（导入/导出/收藏/已保存查询/传输入口） | `adb-wizard__content` | ✅ **已补** |
+| **S-4** | 表单 | `adb-form` `adb-form__label`（`adb-error` ✅ 已补） | ✅ **已补** |
+| **S-5** | 侧栏 / 网格 / 抽屉 / 状态栏 / 对象首页 / 空态 | 其余 22 个 | ✅ **已补** |
+| **S-6** | 纯命名类（`adb-body` `adb-main` `adb-table-list` `adb-history__list` → 补样式；`adb-db` `adb-screenshot` → **线程名，不是样式类**，进 `NOT_STYLE_CLASSES`） | 逐个判定「补样式 or 删类」 | ✅ **已判定** |
+| **S-7** | 🆕 **新门禁 `StyleClassCoverageTest`**（4 例） | 「Java 用到的 `adb-*` 必须在 `app.css` 有规则」＋「CSS 死样式」＋「白名单不得留已修条目」 | ✅ **已落地，白名单已清空**（43 → 0） |
+
+> ⭐ **S-1…S-6 已在本轮全部补齐**：43 个已知缺口 → **0**，
+> `StyleClassCoverageTest` 的白名单**已清空** —— 现在门禁是「**一个都不许缺**」。
+> 顺带修掉的：`.adb-grid__number-column` 是挂在 `TableColumn` 上的**无效样式类**
+> （Column 不在场景图里）→ 已从 Java 删掉；`adb-db` / `adb-screenshot` 是**线程名**，
+> 进了 `NOT_STYLE_CLASSES`（不是样式类，别去 CSS 里找它们）。
+
+### 19.5 本轮新增文档
+
+| 文档 | 回答什么问题 |
+|---|---|
+| **`docs/UI-VISUAL-SPEC.md`** | ⭐ **可照着实现的 UI 规格书**：9 档字号落到哪个角色 · 87 个颜色的语义 · 44 个图标的清单 · 间距/圆角/固定尺寸 · 六区与四种页面骨架 · 组件规格 · 弹窗骨架与按钮区规则 · 交互态矩阵 · 键盘表 · 文案措辞 · **缺口清单（43 个样式类 + 12 条 V-\*）** |
+
+---
+
+---
+
+## 19. 第十一轮：对象能力 —— CHECK / 外键 / 触发器（2026-10-22）
+
+> 主线：把「能看」补成「**能改结构**」。D3 是 P0（丢数据），B5-S2/S3 是 Navicat 对标里
+> 结构页剩下的两块只读页签。
+
+### 19.1 D3：CHECK 约束（✅ 丢数据缺陷已修）
+
+| 环节 | 实现 |
+|---|---|
+| 模型 | `CheckDef`（名字 + 表达式）· `TableStructure` 新增 `checks` 列表（带兼容构造器） |
+| 解析 | `CheckParser` —— 从 `CREATE TABLE` 原文里抽 CHECK（**跳过字符串字面量**、认单词边界、认 `CONSTRAINT <名>`） |
+| 方言 | `Dialect.checksSql(table)`（PG 走 `pg_constraint`、MySQL 走 `information_schema`）· `Dialect.parsesChecksFromDdl()`（SQLite = true） |
+| 内省 | `SchemaService.checks(...)` —— 读不到就当没有，**不让结构页整个挂掉** |
+| **重建** | ⭐ `createTableSqlWithChecks(...)` —— SQLite 改列整表重建时**搬运 CHECK**（以前只搬列/主键/UNIQUE/DEFAULT/FK） |
+| 展示 | 结构页新增「**检查**」页签（名称 + 表达式），概览摘要加「检查 N」 |
+
+> ⭐ 门禁不只断言「约束还在」，还断言「**约束仍然拦得住违规数据**」——
+> 只「看得见」不算修好。
+
+### 19.2 B5-S2/S3：外键与触发器可增删
+
+| 能力 | 形态 | 实现 | 方言差异 |
+|---|---|---|---|
+| 新建/删除**外键** | 🔵 弹窗（`ForeignKeyDialog`） | 约束名 + 本表列（有序）+ 被引用表 + 被引用列（有序）+ ON UPDATE/DELETE | SQLite **整表重建** · PG/MySQL `ALTER TABLE` |
+| 新建/删除**触发器** | 🔵 弹窗（`TriggerDialog`） | 名字 + 时机 + 事件 + 触发器体 + **实时 SQL 预览** | SQLite/MySQL `BEGIN … END` · PG **函数 + 触发器两条语句** |
+
+> 形态依据 `docs/UI-FORMS-AND-STATES.md` §4：两者都是「改已存在的东西」→ **弹窗**，不是标签页。
+
+### 19.3 ⭐ 顺带挖出的潜伏 bug：带外键的表改列必失败
+
+| 项 | 内容 |
+|---|---|
+| 症状 | 任何**带外键**的表，改列时重建语句里出现 `ON UPDATE 3` —— **语法错误**，操作直接失败 |
+| 根因 | `getImportedKeys()` 返回的是**数字动作码**，`ForeignKeyDef` 原样透传；而**各驱动码表不同**（JDBC 标准 3=SET NULL，SQLite 驱动 3=NO ACTION） |
+| 修法 | 翻译收进**方言层**：`Dialect.foreignKeyActionName(code)`（默认 JDBC 标准码表，SQLite 覆写） |
+| 为什么没被发现 | 演示库的 `orders` 正好有外键，但**从没有测试改过它** |
+| 门禁 | `ForeignKeyTriggerDdlTest.alteringAColumnOnATableWithForeignKeyUsedToFail` |
+
+### 19.3b B5-S4：表注释（✅ 从「只写不读」到「读得回、改得了」）
+
+| 环节 | 实现 |
+|---|---|
+| 读 | `Dialect.tableCommentQuery(table)`（PG → `obj_description`、MySQL → `information_schema.TABLES.TABLE_COMMENT`；SQLite 无 → 空串）· `SchemaService.tableComment(...)` |
+| 模型 | `TableStructure` 新增 `comment`（带两个兼容构造器，老调用方不用改） |
+| 写 | `StructureSqlBuilder.setTableComment(...)` —— 清空走 `Dialect.clearTableCommentSql()`（⭐ PG 是 `IS NULL`，写成 `IS ''` 等于没清） |
+| 展示 | 结构页概览区显示「表注释：…」；工具栏新增「表注释」按钮（**SQLite 直接禁用**，不假装有） |
+| 交互 | `TableCommentDialog` 弹窗 + **实时 SQL 预览**（形态依 `UI-FORMS-AND-STATES.md` §4） |
+
+> 以前表注释是「**只写不读**」：建表时能填，`TableStructure` 里连字段都没有 ——
+> 填了以后界面上再也看不见、也改不了。**填了等于没填。**
+
+### 19.3c O2：函数 / 过程定义体（✅ 从「只有名字」到「能读代码」）
+
+| 环节 | 实现 |
+|---|---|
+| 读 | `Dialect.readRoutineDefinition(connection, name, procedure)` —— SQLite `sqlite_master.sql` / PG `pg_get_functiondef` / MySQL `SHOW CREATE FUNCTION`（结果集第 3 列才是定义体） |
+| 服务 | `SchemaService.routineDefinition(session, name, procedure)` —— 读不到返回**空串**（不抛异常、不让页面打不开） |
+| 展示 | 🆕 `RoutinePage` —— **只读标签页**（形态依 `UI-FORMS-AND-STATES.md` §4：定义体要长期停留读代码 → 标签页，不是弹窗）+ 复制定义体 |
+| 入口 | 对象树 / 对象首页点函数或过程 → 开「定义」标签（`TabKind.ROUTINE`） |
+
+> ⚠️ **SQLite 没有 SQL 层函数**（用户自定义函数只能走 C API）→ SQLite 上「读不到」是**正确结果**；
+> 门禁守住「读不到要优雅」。真正的函数定义体由**真库契约**（MySQL）验证。
+
+### 19.4 本轮新增门禁
+
+| 门禁 | 例数 | 守什么 |
+|---|---|---|
+| `CheckConstraintTest` | 7 | 解析器（命名/匿名/字符串里的括号/`CHECKED` 不是 CHECK）· 内省看得见 · **改列后约束还在且仍生效** · 建表语句带 CHECK |
+| `ForeignKeyTriggerDdlTest` | 11 | 三方言外键/触发器 SQL 逐字 · **带外键改列不再失败** · 真库往返（外键拦得住违规行、触发器真的执行、触发器可删） |
+| `TableCommentDdlTest` | 5 | 表注释三方言逐字 · **清空注释**（PG `IS NULL` / MySQL 空串）· 单引号转义 · SQLite **明确拒绝** · 建表注释不退化 |
+| `MySqlIntegrationTest.tableCommentIsWrittenAndReadBack` | 1（真库） | 写 → **读回** → 改 → 读回 → 清空 → 读回空串（真 MySQL 契约） |
+| `RoutineDefinitionTest` | 3 | SQLite「读不到要优雅」· 未知对象返回空串 · 空名返回空串 |
+| `MySqlIntegrationTest.functionDefinitionIsReadBack` | 1（真库） | 真 MySQL 上函数定义体**读得回** |
+
+---
+
+## 20. 第十二轮：多连接并行 / 架构收尾 / 入口一致性（2026-10-22）
+
+> 这一轮做的是**「地基」类改动**：多连接能不能并存、语句会不会挂死、连接会不会泄漏、
+> 以及「用户根本不知道这个能力存在」的入口问题。
+
+### 20.1 ⭐ U2 多连接并行 —— 真正的堵点在会话管理
+
+| 项 | 现状 |
+|---|---|
+| 页面取会话 | 早就按 `tab.connectionId()` 取（`createGridPage` → `connectionFor(tab)` → `sessions.find(...)`）—— **页面层早就支持多连接** |
+| **真正的堵点** | ⭐ `SessionManager.open(id, spec)` 是「**先关掉再重开**」→ 切到 B 连接时 **A 的会话被关掉了**，A 的标签页当场失效 |
+| 修法 | `open` 改成**复用**已开的会话；新增 `reopen` 给「重新连接」用（用户点重连就是要换新的） |
+| 附带 | `DbSession.isClosed()` 新增（`JdbcSession` / `PooledSession` 实现） |
+
+> 门禁：`SessionManagerTest` 升级断言 + 新增「两个连接并存」一例。
+
+### 20.2 架构收尾
+
+| # | 项 | 修法 |
+|---|---|---|
+| **A10** | **语句超时**（以前只有连接超时，语句跑起来后没有时限） | `QueryLimits.DEFAULT_QUERY_TIMEOUT_SECONDS = 30`（上限 600）+ `JdbcSession` 每条语句 `setQueryTimeout` + 超时转成**人话**（「查询超时（30 秒）—— 试试加条件筛选」） |
+| **A12** | **连接池归还**（借出的连接一直没还，池子关不掉） | `PooledSession.close()` 先 `connection.close()`（归还 Hikari）再 `dataSource.close()`；门禁断言关会话后池里**没有在借的连接** |
+| **A18** | 「跟随系统」跨平台 | Windows 读注册表 `AppsUseLightTheme`、Linux 读 `gsettings` / `kdeglobals` |
+| **A22** | 主题探测每次 shell out（400ms 超时） | 探测结果**缓存**，只探一次 |
+
+### 20.3 入口与一致性
+
+| # | 项 | 修法 |
+|---|---|---|
+| **X5** | `object.*` 动作在 ⌘K 里**搜不到**（未选中时禁用 → 被过滤掉） | 命令面板**不再过滤禁用项**（灰掉但可见，点击给出解释）；新增顶级「**对象**」菜单（Navicat 形态） |
+| **U6** | 状态栏没有**服务器版本 / 当前用户** | `Dialect.serverInfoSql()`（三方言）+ 状态栏新增「服务器」段（版本 · 用户），后台读不阻塞连接 |
+| **V-11** | 弹窗宽度随手写 | 新增 `DialogSizes` 三档（表单 480 / 长文本 560 / 宽表格 720），10 个弹窗统一 |
+| **X6** | 「收藏夹」顶级菜单只有 1 项（顶级菜单资源被浪费） | 新增「清空收藏」动作（`SideBar.clearStarred()`，收藏落盘）+ 菜单补项 |
+| **X7** | 恢复上次标签后，活动标签是「最后恢复的那个」 | `TabBar.activatePermanent()` —— 恢复完落回**常驻的「对象」标签** |
+| **V-12** | 错误只把驱动英文原文甩给用户 | 🆕 `ErrorClassifier`（8 类：连接断开/权限/不存在/超时/锁冲突/约束/语法/其它），每类给「说明 + **建议动作**」；**5 处重复的 `readable()` 统一走它** |
+| **Q6** | **代码片段库**（与已保存查询同源，但用法不同：插入 vs 执行） | `SavedQueries.Entry` 加 `kind`（查询/片段）· 查询页「存为代码片段」（存**选中的文本**）·「插入代码片段…」（弹窗选片段 → 插到光标处）· 已保存查询页显示类型 |
+| **A25** | 声明层有「达梦」而运行时方言没有 | **不删声明**（不可逆），而是**显式登记 + 门禁**：`DeclaredDialectConsistencyTest` 断言「声明里有的连接必须要么有运行时实现、要么进白名单并写明原因」，反向也断言「运行时有的方言声明层必须有」 |
+| **A15 / A16** | 连接建立与内省跑在 **UI 线程**；所有连接共用**一条**执行器 | 🆕 `DbExecutors`：**每连接一条单线程执行器**（同连接仍串行、跨连接互不阻塞）+ 连接建立/内省**移出 UI 线程**（界面先回话，结果到了再刷新） |
+| **P7** | **分发**（jlink / jpackage / 崩溃日志） | ✅ 崩溃日志：`CrashLog`（未捕获异常 → `~/.agenticdb/logs/crash-*.log`，含版本/系统/堆栈）· ✅ 一键出包：`scripts/package.sh`（jpackage：app-image / dmg / msi / deb）· ⚠️ **jlink 暂不可用**：RichTextFX / ControlFX 是**自动模块**（无 module-info），jlink 收不进去 —— 等它们模块化后再加 jlink profile |
+| ⭐ 顺带修掉的**两个真实缺陷** | ① 同一连接的事务被拆到**两个线程**（服务器信息查询走了全局执行器）→ SQLite 这类「一连接一线程」的库互相卡住，数据页一直转圈；② **窗口尺寸不夹到屏幕内** → 换小屏后分页条/状态栏被顶到可视区外，**点不到「下一页」** | 全部连接相关的工作统一走 `executors.forConnection(id)`；`restoreWindow` 把宽高与位置夹到 `Screen.getVisualBounds()` |
+
+### 20.4 O1 调度事件（MySQL EVENT）
+
+`ObjectKind.EVENT` + `Dialect.eventsListSql()`（MySQL `information_schema.EVENTS`）+
+`Dialect.readEventDefinition()`（`SHOW CREATE EVENT`）→ 对象树多一个「事件」分组（**只有 MySQL 有**，
+其它方言这一组是空的 → 自动摘除，不假装有）；事件也走「定义体」只读标签页。
+
+---
+
+## 21. 剩余清单（2026-10-22 末 · 如实）
+
+> 前面十二轮把「能信 / 能改结构 / 能安全写 / 多连接并存 / 界面有规格」都做到了。
+> 下面这些**确实还没做** —— 每条都写清「为什么现在不做 / 做了值不值」，
+> 免得它们在清单里躺着又被当成「快好了」。
+
+### 21.1 功能类
+
+| # | 项 | 难度 | 为什么现在不做 / 建议顺序 |
+|---|---|---|---|
+| **G1** | **冻结列**（前 N 列固定） | 🔴 高 | JavaFX 没有原生冻结列，要两个 TableView 并排 + 滚动/选择/排序/编辑**四路同步**。上一轮试过又整体回滚（半成品比没有更糟）。**建议最后做，且必须一次性做全** |
+| **G4** | **单元格区域选择**（矩形选区 + 复制矩形） | 🟠 中 | JavaFX `TableView` 没有原生选区，要自绘 cell 渲染。价值中等（批量复制整块数据） |
+| **Q5** | **查询结果分页** | 🟠 中 | 现在结果集一次性装进 `ObservableList`（上限 1000 行）。改成服务端分页要重写「结果集 → 表格」这一层的取数逻辑（数据页已经是服务端分页，查询页还没跟上） |
+| ~~**Q6**~~ ✅ | ~~**代码片段库**~~ | — | ✅ **已完成（第十二轮）** |
+| **U1** | **catalog 树**（MySQL 多库） | 🟠 中 | MySQL 的 schema 就是数据库，切换 catalog 要**重连**（不能像 PG 那样 `SET search_path`）。要与「多连接并存」一起设计：切库 = 换连接 |
+| ~~**U3**~~ ✅ | ~~**连接属性页**~~ | — | ✅ **已完成（第十二轮·续三）**：弹窗套 TabPane（常规/SSL/高级）+ `options` 映射 |
+| **X3 / X4** | 状态栏剩余项 / 仍为半孤儿的动作 | 🟢 低 | X5 已把对象动作收进顶级菜单，孤儿动作大幅减少；剩下的多为一���性动作 |
+
+### 21.2 架构类
+
+| # | 项 | 难度 | 建议 |
+|---|---|---|---|
+| ~~**A15 / A16**~~ ✅ | ~~连接建立与内省移出 UI 线程 + 每连接一个执行器~~ | — | ✅ **已完成（第十二轮）**：`DbExecutors` + 后台连接 |
+| ~~**A25**~~ ✅ | ~~`declarations/` 与运行时方言不一致（达梦）~~ | — | ✅ **已完成（第十二轮）**：显式白名单 + 门禁（不删声明） |
+| **A20** | `MAX_CELL_BYTES` 声明未用 | 🟢 低 | 详情抽屉已按需取数，单元格不再全量传输 —— 那就把常量删掉 |
+
+### 21.3 界面类
+
+| # | 项 | 难度 | 建议 |
+|---|---|---|---|
+| **V-5** | 工具栏按宽度折叠（≤7 常显 + 更多） | 🟡 中 | **实测 1280 宽下 12 个图标按钮放得下** —— 现在做是过度设计。建议等真出现窄屏问题再做 |
+| **V-6** | 应用图标 | 🟢 低 | 需要出图资源（PNG / ICNS）。工程上没问题，缺的是设计稿 |
+| **V-9** | 表格规格统一（类型行 / 记录导航条） | 🟠 中 | 数据页与查询页两套网格规格不同。与 Q5 一起做最省事（都要动结果区） |
+| **V-12 剩余** | 错误**详情弹窗** / 批量确认汇总页 | 🟠 中 | 错误**归类**已做（第十二轮 `ErrorClassifier`）；剩下的是「详情弹窗」与「批量汇总页」 |
+
+### 21.4 分发类
+
+| # | 项 | 难度 | 建议 |
+|---|---|---|---|
+| ~~**P7**~~ ✅ | ~~jlink / jpackage / 崩溃日志~~ | — | ✅ **jpackage + 崩溃日志已完成**（第十二轮）；**jlink 暂不可行**（自动模块）；剩：自动更新、可访问性对比度检查（V-8 已做对比度门禁） |
+
+---
+
+## 22. 第十三轮：Navicat 表清单与观感对齐（2026-10-22）
+
+> 触发：用户给出 `docs/screenshots/navicat/side-by-side-2026-10.png`，要求按
+> **功能 / 字体 / 布局 / 颜色 / 数据 / 字号 / 菜单 / 状态栏** 八个维度逐项对比，
+> 并「做到和 Navicat 一样的体验」。
+>
+> 完整像素测量、刻意不追的四项、下一批优先级见
+> **`docs/NAVICAT-PARITY-2026-10-V5.md`**。
+
+### 22.1 已完成
+
+| # | 改动 | 证据 |
+|---|---|---|
+| **N0-1** | `TableMeta` **5 → 8 字段**：补修改时间 / 排序规则 / 注释；保留 5 参兼容构造器 | `TableMeta.java` · `TableMetaTest`（6 例） |
+| **N0-2** | MySQL / PostgreSQL 补 3 列内省；SQLite 保持 `null` → 「—」 | `SchemaService` · `Dialect.tableMetaSql()` · `MySqlIntegrationTest` |
+| **N0-3** | 重建**表清单页**：8 列、类型图标、数值右对齐/数值排序、搜索、打开、刷新、防重入 | `TableListPage` · `TableListPageTest`（9 例） |
+| **N0-4** | **对象首页 9 列**（多「类型」）+ 3 列元数据 + 密度 + 搜索 | `ObjectHomePage` · `ObjectHomePageTest` |
+| **N0-5** | 菜单补 `object.tables`（对象 → 表清单） | `MenuBarFactory` · `MenuBarFactoryTest` |
+| **N0-6** | 密度收紧为 **24 / 28 / 34**；应用栏 46 / 标签栏 36 / 工具栏 38 | `tokens.json` · `Tokens.java` · `RowHeights` · `DensityCoverageTest` |
+| **N0-7** | 新增 `bg-sidebar`（亮 `#F1F3F5` / 暗 `#172033`），侧栏/状态栏使用；内容区纯白 | `tokens.json` · `app.css` · `TokenParityTest` |
+| **N0-8** | 表清单/对象首页**去斑马纹**；四张表**空行不画线、不铺色**（显式覆盖 Modena） | `app.css` · 重拍截图 |
+| **N0-9** | 表头 11 → **12px bold**，与 Navicat 一致；弹窗列编辑器同样白底 | `app.css` |
+| **N0-10** | 空收藏区不再显示「右键对象 → 收藏」占位 | `SideBar` |
+| **N0-11** | 关闭标签时回收表清单页缓存 | `WorkspaceView` |
+| **N0-12** | 新增 `ADB_TABLES=1` 截图开关；`shots.sh` 扩到 **10 张**（含 `p6-tables-grid`） | `AppShell` · `scripts/shots.sh` |
+| **N0-13** | 重做**等比例**并排图（两边 1×，不再把 1280 拉伸到 1920） | `docs/screenshots/navicat/side-by-side-2026-10.png` |
+
+### 22.2 本轮验收
+
+```bash
+./mvnw -B clean verify
+java tools/TestCount.java
+./scripts/shots.sh
+```
+
+**实测：644 条 / 84 类 / 0 失败，35 条跳过**（2026-10-22，含 N1–N5）。
+
+| 门禁 | 覆盖 |
+|---|---|
+| `TableMetaTest` | 8 字段格式、5 参兼容、方言 SQL 别名 |
+| `TableListPageTest` | 8 列、数值排序、搜索、打开、禁用态、多选批量删除、视图切换、选中文案 |
+| `ObjectHomePageTest` | 9 列、类型筛选、密度 |
+| `DensityCoverageTest` | 4 张表跟随 24/28/34 |
+| `TokenParityTest` / `AppCssAuditTest` | 令牌亮暗一致、无颜色字面量、无阶梯外字号 |
+| `AppShellTest` / `MenuBarFactoryTest` | 新入口、截图开关、对象菜单 |
+
+### 22.3 ✅ N1–N5 已完成（2026-10-22）
+
+| # | 改动 | 证据 |
+|---|---|---|
+| **N1** | 表清单工具条补「新建表 / 删除表 / 设计表」；删除与设计按选择启用，危险动作仍走 SQL 预览 + 二次确认 | `TableListPage` · `TableDdl` · `TableListPageTest`（禁用态 / 设计动作） |
+| **N2** | 表清单右键菜单：打开 / 设计 / 新建 / 重命名 / 清空 / 删除 / 刷新；菜单项与工具条共用 `ActionRegistry` 里的同一组 `Action` | `ActionRegistry.menuItemFor` · `TableListPageTest.contextMenuComesFromTheSameActionSet` |
+| **N3** | 表格 `MULTIPLE` 多选；删除 N 张表时给一张汇总确认页，逐表执行并报告失败行（成功的不回滚） | `StructureSqlBuilder.dropTables` · `TableDdl.dropTables` · `TableDdlTest`（2 例） |
+| **N4** | 工具条右侧列表 / 网格两个图标钮；网格为卡片（行数 / 大小 / 引擎 / 修改时间 / 注释）；双向同步选择；`ui.tableList.view` 记忆 | `TableListPage` · `Icons.LIST/GRID` · `app.css` · `TableListPageTest`（2 例） |
+| **N5** | 状态栏选中项文案：单表「已选 users · 200 行」，多选「已选 3 个项目」，清空「未选择」 | `StatusBar.setSelectionText` · `StatusBarTest` · `AppShellTest`（状态栏接线） |
+
+截图新增 **`p6-tables-grid`**（`ADB_TABLE_VIEW=grid`），`shots.sh` 现为 **10 张**。
+
+### 22.4 剩余（P2）
+
+| # | 项 | 说明 |
+|---|---|---|
+| **N6** | 列宽记忆 / 长注释 Tooltip / MySQL 数据长度 B/KB/MB/GB 联调 | 需要真库验证；不与 N1–N5 混做 |
+| — | 表头文字颜色是否升到 `text-primary` | 对比度已达标，先观察一轮 |
+
+---
+
+## 23. 变更记录
+
+| 日期 | 轮次 | 内容 |
+|---|---|---|
+| 2026-10-22 | 第十三轮 | **Navicat 表清单/观感对齐**：`TableMeta` 8 字段（+修改时间/排序规则/注释）· 表清单 8 列 · 对象首页 9 列 · 密度 **24/28/34** · 应用栏 46 / 标签栏 36 / 工具栏 38 · `bg-sidebar` 灰底 · 去斑马纹/空行假线 · 表头 12px · `ADB_TABLES` + 9 张截图 · 等比例并排图 · 新增 **`docs/NAVICAT-PARITY-2026-10-V5.md`** |
+| 2026-10-22 | 第九轮 | 新增 `docs/EXEC-SUMMARY.md`、`docs/GITHUB-COMPARE.md`；`NAVICAT-TODO.md` 状态基线（512/64）、§13.5 U-B5 漂移纠正、§16.4 下一步补齐；`README.md` / `docs/NEXT-STEPS.md` / 记忆同步 |
+| 2026-10-22 | 第十轮 | 新增 **`docs/UI-VISUAL-SPEC.md`**（UI 规格书）；修 `row-tree` / `kind-index` 两个摆设令牌 + `.adb-error` 缺样式；实测发现 **43 个未定义样式类**；`NAVICAT-TODO.md` 新增 §18（V-1…V-12 + S-1…S-7）；门禁 **585 条 / 77 类 / 0 失败** |
+| 2026-10-22 | 第十二轮 | **U2 ✅ 多连接并存**（`SessionManager.open` 改为复用会话 + `reopen`）· **A10 ✅ 语句超时**（30s + 人话提示）· **A12 ✅ 连接池归还** · **A18/A22 ✅ 跨平台主题探测 + 缓存** · **O1 ✅ MySQL 事件**（对象树 + 定义体）· **X5 ✅ ⌘K 能搜到对象动作 + 顶级「对象」菜单** · **X6 ✅ 清空收藏** · **X7 ✅ 恢复后落回对象首页** · **U6 ✅ 状态栏服务器信息** · **V-11 ✅ 弹窗宽度三档** · **V-12 ✅ 错误归类**（`ErrorClassifier`，5 处 `readable()` 统一）；门禁 **585 条 / 77 类 / 0 失败**；并新增 **§21 剩余清单**（如实列出未做项与理由） |
+| 2026-10-22 | 第十一轮·续二 | **O2 ✅ 函数/过程定义体**：`Dialect.readRoutineDefinition`（SQLite/PG/MySQL 三种来源）+ `RoutinePage` **只读标签页** + 复制按钮 + 对象树入口；新门禁 `RoutineDefinitionTest`(3) + MySQL 真库函数定义体契约(1) |
+| 2026-10-22 | 第十一轮·续 | **B5-S4 ✅ 表注释**：读（`tableCommentQuery` + `SchemaService`）· 写/清空（`setTableComment` + `clearTableCommentSql`）· 结构页展示 + 弹窗编辑（SQLite 禁用）· 新门禁 `TableCommentDdlTest`(5) + MySQL 真库往返契约(1) |
+| 2026-10-22 | 第十一轮 | **D3 ✅**（CHECK：模型+解析器+方言+内省+重建搬运+结构页「检查」页签）· **B5-S2 ✅**（外键可增删，弹窗）· **B5-S3 ✅**（触发器可增删，弹窗）· ⭐ 修掉**带外键的表改列必失败**的潜伏 bug（动作码没翻译，翻译收进方言层）· 新门禁 `CheckConstraintTest`(7) + `ForeignKeyTriggerDdlTest`(11) |
+| 2026-10-22 | 第十轮·收尾 | **S-1…S-6 全部补齐**（43 → 0，白名单清空）；**V-1/V-2/V-3/V-4/V-7/V-8/V-10 完成**；新门禁 `ContrastTest` / `StatusBarTest` / `EmptyStateTest`（+10 条 / +3 类）；对比度不足的 **6 个色值**已调；门禁 **585 条 / 77 类 / 0 失败** |
+
+---
