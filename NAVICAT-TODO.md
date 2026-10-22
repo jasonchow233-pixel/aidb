@@ -9,7 +9,7 @@
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
 > 最后更新：**2026-10-22（第十五轮：Q5 结果分页 + V-9 表格规格统一）**
-> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **674 条 / 87 类 / 0 失败**（2026-10-22 末实测，35 条跳过）。
+> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **675 条 / 87 类 / 0 失败**（2026-10-22 末实测，35 条跳过）。
 >
 > ⭐ **本轮（第十三轮）是「对齐 Navicat 观感」的一轮，不是功能扩张。**
 > 逐像素量了 Navicat 的表清单：8 列、19px 行高、纯白行、1px 行线、灰色侧栏。
@@ -28,7 +28,8 @@
 > **第十二轮·续三已完成 U3 ✅ 连接属性页**（弹窗套 TabPane）。
 > **第十四轮已完成 U1 ✅ catalog 树**（MySQL 多库：虚拟连接 + 对象树库一层 + 双击切库）。
 > **第十五轮已完成 Q5 ✅ 结果分页 + V-9 ✅ 表格规格统一**（服务端分页 + 翻页条 + 列类型条，与数据页 record-nav / 类型行同一套视觉）。
-> **下一动作 = G1 冻结列**（U-B6 最后一项；G4 区域选择已于第十五轮·续完成）。
+> **U-B6 功能补齐层已全部收官**（G1–G7 / Q5 / Q6 / U1–U6 全部 ✅）。
+> **下一动作 = P5/P6 收尾**（连接管理 / 导入导出剩余项）。
 > 详见 §22 与 `docs/NAVICAT-PARITY-2026-10-V5.md` §5。
 >
 > 📦 **新增 `scripts/`**：`dev.sh`（一键编译启动）· `build.sh`（门禁）· `shots.sh`（重拍截图）。
@@ -73,14 +74,14 @@
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **SQLite（默认，2026-10-22 第十五轮后）** | **674** | 35 | 0 |
+| **SQLite（默认，2026-10-22 第十五轮后）** | **675** | 35 | 0 |
 | **MySQL 5.7 真库**（需环境变量） | 单独跑，不在默认门禁 | — | — |
 
 **87 个测试类**。跳过的是「本机没有的外部依赖」：Testcontainers 的 PG/MySQL 容器
 （无 Docker）与未配置的 PG / MySQL 真库 —— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-22，第十五轮 Q5+V-9 后）**：**674 条 / 87 类 / 0 失败**（`./mvnw -B clean verify`
-> 全绿 + `java tools/TestCount.java`；另有 35 条跳过，不计入 674）。
+> 📌 **最新口径（2026-10-22，第十五轮 Q5+V-9 后）**：**675 条 / 87 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 35 条跳过，不计入 675）。
 
 统计口径用工具兜底：
 
@@ -472,7 +473,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 
 | # | 任务 | 说明 |
 |---|---|---|
-| G1 | **冻结 / 固定列** | 前 N 列固定，不随横向滚动移走 |
+| ~~G1~~ ✅ | ~~**冻结 / 固定列**~~ **已完成（第十五轮·续二）**：左表（选择列 + 行号列 + 前 N 个数据列）+ 右表并排，移动的是**同一批列实例**；滚动 / 选择双向同步，行高与 items 共享；视图菜单「冻结左侧列」1–3 档 + 取消 | ✅ | `DataGridPage.setFrozenColumnCount` + `DataGridPageTest.frozenColumnsStayPut` |
 | ~~G2~~ ✅ | ~~列头拖拽重排~~ **已完成**（`f1334cf`，见 §13.6） |
 | ~~G3~~ ✅ | ~~列汇总脚注行~~ **已完成**：「视图 → 本页统计」显示行数与数值列的合计/平均/最小/最大（算的是**当前页**） | ✅ | `DataGridPage.updateSummary` |
 | ~~G4~~ ✅ | ~~**单元格区域选择**~~ **已完成（第十五轮·续）**：`GridRectangle` 矩形选区（按下定锚点 / 拖动扩展 / Shift 点击扩展）+ 矩形内 cell 高亮 `adb-grid__cell--rect` + ⌘C 有矩形时复制这块区域为 TSV（不含表头）+ Esc 取消 + 翻页自动清除 | ✅ | `DataGridPage.selectRectangle` / `rectangleText` + `DataGridPageTest.rectangleSelectionCopies` |
@@ -711,7 +712,7 @@ hover 规则不得被删、focus 规则不得少于 10 条；
 | # | 任务 | 门禁 | 状态 |
 |---|---|---|---|
 | ~~G2~~ ✅ | ~~列头**拖拽重排**（顺序已能持久化，只缺运行时入口）~~ **已完成**（commit `f1334cf`；`DataGridPage` 按下/拖动/松开三段 + 右键 nudge + 落盘。**上一版文档误标为 ⬜，本轮核查纠正**） | `GridInteractionTest` | ✅ |
-| **G1** | **冻结列**（两表四路同步：滚动 / 选择 / 排序 / 编辑） | `DataGridPageTest.frozenColumnsStayPut` | ⬜ |
+| ~~**G1**~~ ✅ | ~~**冻结列**（两表四路同步：滚动 / 选择 / 排序 / 编辑）~~ **✅ 已完成（第十五轮·续二）**：左/右两表并排，滚动与选择双向同步 | `DataGridPageTest.frozenColumnsStayPut` | ✅ |
 | ~~**G4**~~ ✅ | ~~单元格**区域选择**（拖选 / Shift 范围 / 复制矩形）~~ **✅ 已完成（第十五轮·续）**：`GridRectangle` + 拖选 / Shift 扩展 + ⌘C 复制矩形 TSV | `DataGridPageTest.rectangleSelectionCopies` | ✅ |
 | ~~G6~~ ✅ | ~~自增列插入（新增行时主键留空交给数据库）~~ **已完成** | `GridInteractionTest` + `MySqlIntegrationTest`（真库） | ✅ |
 | ~~**Q5**~~ ✅ | ~~查询结果**分页**（现在硬上限 1000）~~ **✅ 已完成（第十五轮）**：`QueryPaginator` 服务端分页改写 + `PagedLoader` 翻页条 | `QueryPageTest`（分页 3 例） | ✅ |
@@ -1101,7 +1102,7 @@ Navicat 对象树右键菜单里最高频的四个动作，我们**一个都没�
 - **D3**：SQLite 改列丢失 CHECK 约束（P0 —— 改列不再丢约束；内省 + 重建 SQL 搬运）
 - ~~**B5-S4**：表注释~~ ✅ **已做**（第十一轮·续）：读 + 写/清空 + 结构页展示与编辑
 - **U6**：状态栏补充（当前用户 / 服务器版本 / 延迟）— `NAVICAT-TODO.md` §13.6 U6
-- **U-B6 剩余**：G1 冻结列（**U1 catalog 树已完成**，见 §24；G4 区域选择 / Q5 结果分页已完成，见 §25；U2/U3/U6/Q6 已完成）
+- **U-B6 已全部完成**：G1 冻结列 ✅（见 §25.5）· U1 catalog 树 ✅（§24）· G4 区域选择 / Q5 结果分页 ✅（§25）· U2/U3/U6/Q6 ✅
 - **X3–X7**：入口与一致性打磨（状态栏版本号 M1 / X4–X7）
 - **A10 / A12 / A15 / A16 / A18 / A22 / A25**：架构收尾（超时 / 线程池 / 线程 / 主题探测 / 声明层）
 - **P7**：分发与收尾（jlink / jpackage / 崩溃 / 可访问性）
@@ -1340,7 +1341,7 @@ Navicat 对象树右键菜单里最高频的四个动作，我们**一个都没�
 
 | # | 项 | 难度 | 为什么现在不做 / 建议顺序 |
 |---|---|---|---|
-| **G1** | **冻结列**（前 N 列固定） | 🔴 高 | JavaFX 没有原生冻结列，要两个 TableView 并排 + 滚动/选择/排序/编辑**四路同步**。上一轮试过又整体回滚（半成品比没有更糟）。**建议最后做，且必须一次性做全** |
+| ~~**G1**~~ ✅ | ~~**冻结列**（前 N 列固定）~~ | — | ✅ **已完成（第十五轮·续二，U-B6 收官）**：两表并排，移动的是同一批 `TableColumn` 实例（列宽/可见性/cellFactory 不丢）；滚动条双向绑定（skin 就绪后才拿得到，headless 下安静跳过）；选择用防循环标志双向同步；**排序无需同步** —— 项目是服务端排序（`setSortable(false)` + `DataQuery` 重查），两边列头触发的是同一次重查；编辑后两边都 refresh。默认 0 列 = 不冻结，布局与旧版完全等价 |
 | ~~**G4**~~ ✅ | ~~**单元格区域选择**（矩形选区 + 复制矩形）~~ | — | ✅ **已完成（第十五轮·续）**：不切换 `cellSelectionEnabled`（会破坏行级批量操作），改为**独立的矩形选区模型** —— 按下定锚点 / 拖动扩展 / Shift 点击扩展，矩形内 cell 加 `adb-grid__cell--rect`，⌘C 有矩形时复制这块区域。翻页自动清除，Esc 取消 |
 | ~~**Q5**~~ ✅ | ~~**查询结果分页**~~ | — | ✅ **已完成（第十五轮）**：`QueryPaginator` 服务端分页改写 + `PagedLoader` 翻页条；查询页与数据页共用 LIMIT/OFFSET 模型 |
 | ~~**Q6**~~ ✅ | ~~**代码片段库**~~ | — | ✅ **已完成（第十二轮）** |
@@ -1541,7 +1542,23 @@ MySQL 的 schema 就是数据库：一条连接绑定一个库。`USE other_db` 
 顺带补齐两个 CSS 规则（`.adb-query__result-pager` / `.adb-query__result-types`），
 被 `StyleClassCoverageTest` 抓出来 —— 这正是该门禁的价值：新写的 `adb-*` 类必须同时落地 CSS。
 
-门禁：**674 条 / 87 类 / 0 失败**（`./mvnw -B clean verify` 全绿；G4 落地后 +1）。
+门禁：**675 条 / 87 类 / 0 失败**（`./mvnw -B clean verify` 全绿；G1 落地后 +1）。
+
+### 25.5 同轮续二：G1 冻结列（U-B6 收官）
+
+| 层 | 改动 |
+|---|---|
+| 结构 | 左表 `frozenGrid`（选择列 + 行号列 + 前 N 个数据列）+ 右表 `grid` 并排放进 `HBox`；**N=0 时左表 managed=false，布局与旧版完全等价**（这是「不冻结就零风险」的关键） |
+| 列归属 | 移动的是**同一批 `TableColumn` 实例**，不是复制 —— 列宽 / 可见性 / cellFactory / userData 全部跟着走，不会「左表改了右表没改」。`applyFrozenColumns()` 先把两表的列合并再重分，**幂等**，反复冻结/解冻不丢列、不乱序 |
+| 滚动同步 | 两表垂直滚动条双向绑定。滚动条在 skin 里，所以挂在 `skinProperty` 上等就绪；**headless 下拿不到就安静跳过**（拿不到 ≠ 坏了，只是这个环境渲染不了） |
+| 选择同步 | 双向跟随 + `syncingSelection` 防循环标志（两表互相监听，不加会无限来回） |
+| 排序 | **不需要同步** —— 项目是服务端排序（`setSortable(false)` + `DataQuery` 重查），两边列头触发的是同一次重查，结果一致 |
+| 编辑 | 编辑后两表都 refresh；行高两表同设 `setFixedCellSize`（不一致的话同一行左右会错开半格）；`items` 翻页时两表一起换（否则左右指向不同页的行） |
+| 入口 | 视图菜单「冻结左侧列」1/2/3 档 + 取消冻结。做成子菜单而不是循环按钮 —— 「现在冻了几列」要一眼看得到 |
+
+门禁：`DataGridPageTest.frozenColumnsStayPut`（默认不冻结时左表隐藏 · 冻结后两表列数之和不变（不丢列）·
+左表正是 id/name、右表不再有它们 · 两表 **共享同一 items 实例** · 行高一致 ·
+选择双向同步 · 解冻后列数与原顺序完全复原）。
 
 ### 25.4 同轮续做：G4 单元格区域选择
 
@@ -1563,8 +1580,9 @@ Esc 能取消；无矩形时 ⌘C 仍是单单元格）。
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
-| 2026-10-22 | 第十五轮·续 | **G4 ✅ 单元格区域选择**（§25.4）：`GridRectangle` + `GridCell` 锚点（列下标按**可见数据列**算）· 按下定锚点 / 拖动扩展 / **Shift + 点击扩展** · 矩形内 cell 高亮 `adb-grid__cell--rect`（accent 淡底 + 描边） · ⌘C 有矩形时复制这块区域为 TSV（**不含表头**），无矩形仍复制单元格（旧行为不回归） · Esc 取消 · 翻页自动清除（行下标会指向新页的另一批行） · **关键取舍：不开 `cellSelectionEnabled`**（会让 `getSelectedItems()` 出重复行，破坏批量删除/设 NULL/导出），矩形是独立于行选择的模型 · 新门禁 `DataGridPageTest.rectangleSelectionCopies`(1)；门禁 **674 条 / 87 类 / 0 失败** |
-| 2026-10-22 | 第十五轮 | **Q5 ✅ 结果分页**（§25）：新增 `QueryPaginator`（`isPaginable` / `pageSql` / `countSql`，不分方言，`SELECT * FROM (<原句>) AS _p LIMIT ? OFFSET ?` + `COUNT(*)` 套同一层）· `QueryPage.PagedLoader` 翻页条（首/上/下/末 + 页码 + 每页下拉 + 跳页 + 绝对行号 + `MAX_OFFSET` 约束）· **V-9 ✅ 表格规格统一**：列类型条 `adb-query__result-types`（JavaFX `TableColumn` 无 `setTooltip`）+ 翻页条复用 `adb-record-nav`/`adb-page-size` · 修三个问题（`isPaginable` 不认末尾分号致分页路径永不生效 / `pageSql` offset 装箱类型不一致 / 重复列断言硬编码 `n_2` 而 SQLite 驱动命名 `n:1`）· 补 2 条 CSS 规则（被 `StyleClassCoverageTest` 抓出）· 新门禁 `QueryPaginatorTest`(8) + `QueryPageTest`(+3)；门禁 **674 条 / 87 类 / 0 失败** |
+| 2026-10-22 | 第十五轮·续二 | **G1 ✅ 冻结列**（§25.5，**U-B6 功能补齐层收官**）：左表 `frozenGrid` + 右表 `grid` 并排，移动**同一批 `TableColumn` 实例**（列宽/可见性/cellFactory 不丢，`applyFrozenColumns` 幂等）· 垂直滚动条双向绑定（等 skin 就绪，headless 安静跳过）· 选择双向同步 + 防循环标志 · **排序无需同步**（服务端排序，两边列头触发同一次重查）· 两表共享 items、同设 `setFixedCellSize` · 视图菜单「冻结左侧列」1/2/3 档 + 取消 · **N=0 时布局与旧版完全等价** · 新门禁 `DataGridPageTest.frozenColumnsStayPut`(1)；门禁 **675 条 / 87 类 / 0 失败** |
+| 2026-10-22 | 第十五轮·续 | **G4 ✅ 单元格区域选择**（§25.4）：`GridRectangle` + `GridCell` 锚点（列下标按**可见数据列**算）· 按下定锚点 / 拖动扩展 / **Shift + 点击扩展** · 矩形内 cell 高亮 `adb-grid__cell--rect`（accent 淡底 + 描边） · ⌘C 有矩形时复制这块区域为 TSV（**不含表头**），无矩形仍复制单元格（旧行为不回归） · Esc 取消 · 翻页自动清除（行下标会指向新页的另一批行） · **关键取舍：不开 `cellSelectionEnabled`**（会让 `getSelectedItems()` 出重复行，破坏批量删除/设 NULL/导出），矩形是独立于行选择的模型 · 新门禁 `DataGridPageTest.rectangleSelectionCopies`(1)；门禁 **675 条 / 87 类 / 0 失败** |
+| 2026-10-22 | 第十五轮 | **Q5 ✅ 结果分页**（§25）：新增 `QueryPaginator`（`isPaginable` / `pageSql` / `countSql`，不分方言，`SELECT * FROM (<原句>) AS _p LIMIT ? OFFSET ?` + `COUNT(*)` 套同一层）· `QueryPage.PagedLoader` 翻页条（首/上/下/末 + 页码 + 每页下拉 + 跳页 + 绝对行号 + `MAX_OFFSET` 约束）· **V-9 ✅ 表格规格统一**：列类型条 `adb-query__result-types`（JavaFX `TableColumn` 无 `setTooltip`）+ 翻页条复用 `adb-record-nav`/`adb-page-size` · 修三个问题（`isPaginable` 不认末尾分号致分页路径永不生效 / `pageSql` offset 装箱类型不一致 / 重复列断言硬编码 `n_2` 而 SQLite 驱动命名 `n:1`）· 补 2 条 CSS 规则（被 `StyleClassCoverageTest` 抓出）· 新门禁 `QueryPaginatorTest`(8) + `QueryPageTest`(+3)；门禁 **675 条 / 87 类 / 0 失败** |
 | 2026-10-22 | 第十四轮 | **U1 ✅ catalog 树**（§24）：`Dialect.switchesCatalogByReconnect()` + `catalogsSql()` · `SchemaService.listCatalogs`（过滤系统库）· `ConnectionProfile.catalogVariant`（虚拟连接 `父id@库名`，不落盘、凭据走父连接）· 侧栏 catalog 层（懒加载 / 当前库加粗 / 双击或右键切库）· `TableDdl` 全部入口按连接 id 分派（修掉「DDL 落到当前库」）· 修两个真 bug（库节点被当空分组摘掉 / 选中未开连接的 catalog 竞态）· 新门禁 `CatalogTreeTest`(5) + `CatalogVariantProfileTest`(5) + `SideBarTreeTest`(+5) + `AppShellTest`(+1)；门禁 **662 条 / 86 类 / 0 失败** |
 | 2026-10-22 | 第十三轮 | **Navicat 表清单/观感对齐**：`TableMeta` 8 字段（+修改时间/排序规则/注释）· 表清单 8 列 · 对象首页 9 列 · 密度 **24/28/34** · 应用栏 46 / 标签栏 36 / 工具栏 38 · `bg-sidebar` 灰底 · 去斑马纹/空行假线 · 表头 12px · `ADB_TABLES` + 9 张截图 · 等比例并排图 · 新增 **`docs/NAVICAT-PARITY-2026-10-V5.md`** |
 | 2026-10-22 | 第九轮 | 新增 `docs/EXEC-SUMMARY.md`、`docs/GITHUB-COMPARE.md`；`NAVICAT-TODO.md` 状态基线（512/64）、§13.5 U-B5 漂移纠正、§16.4 下一步补齐；`README.md` / `docs/NEXT-STEPS.md` / 记忆同步 |

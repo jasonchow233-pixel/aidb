@@ -530,6 +530,98 @@ class DataGridPageTest {
     }
 
     @Test
+    void frozenColumnsStayPut() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("frozen.db"))));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
+                    "frozen.db", noOpFeedback(), name -> { }, executor);
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                    page.lookup("#data-table") != null && tableItems(page).size() == 200);
+            WaitForAsyncUtils.waitForFxEvents();
+
+            javafx.scene.control.TableView<Map<String, Object>> right = tableOf(page);
+            javafx.scene.control.TableView<Map<String, Object>> frozen =
+                    (javafx.scene.control.TableView<Map<String, Object>>)
+                            page.lookup("#data-frozen-table");
+            assertThat(frozen).as("冻结表应存在").isNotNull();
+            assertThat(frozen.isVisible()).as("默认不冻结，左表应隐藏").isFalse();
+
+            int columnsBefore = right.getColumns().size();
+            List<String> namesBefore = WaitForAsyncUtils.asyncFx(() ->
+                    right.getColumns().stream()
+                            .map(column -> String.valueOf(column.getUserData()))
+                            .toList()).get();
+
+            // ⭐ G1：冻结左侧 2 个数据列 → 选择列 + 行号列 + 2 列进左表，其余留在右表
+            WaitForAsyncUtils.asyncFx(() -> page.setFrozenColumnCount(2)).get();
+            WaitForAsyncUtils.waitForFxEvents();
+
+            assertThat(page.frozenColumnCount()).isEqualTo(2);
+            assertThat(frozen.isVisible()).as("冻结后左表应显示").isTrue();
+            // 移走的是**同一批列实例**，总列数不变，一列都不能丢
+            assertThat(frozen.getColumns().size() + right.getColumns().size())
+                    .as("冻结不该丢列")
+                    .isEqualTo(columnsBefore);
+            // 左表 = 选择列 + 行号列 + id + name
+            List<String> frozenNames = WaitForAsyncUtils.asyncFx(() ->
+                    frozen.getColumns().stream()
+                            .filter(column -> column.getUserData() != null)
+                            .map(column -> String.valueOf(column.getUserData()))
+                            .toList()).get();
+            assertThat(frozenNames).containsExactly("id", "name");
+            List<String> rightNames = WaitForAsyncUtils.asyncFx(() ->
+                    right.getColumns().stream()
+                            .filter(column -> column.getUserData() != null)
+                            .map(column -> String.valueOf(column.getUserData()))
+                            .toList()).get();
+            assertThat(rightNames).as("冻结的列不该还留在右表")
+                    .doesNotContain("id", "name");
+            assertThat(frozenNames).as("两表列名合起来应与冻结前一致")
+                    .isEqualTo(namesBefore.stream()
+                            .filter(name -> !"null".equals(name)).toList().subList(0, 2));
+
+            // 两表必须共享同一份 items，否则翻页后左右会指向不同的行
+            assertThat(frozen.getItems()).isSameAs(right.getItems());
+            // 行高必须一致 —— 不一致的话同一行在左右两半会错开
+            assertThat(frozen.getFixedCellSize()).isEqualTo(right.getFixedCellSize());
+
+            // ⭐ 四路同步之「选择」：在右表选一行，左表应跟着选中同一行
+            WaitForAsyncUtils.asyncFx(() -> right.getSelectionModel().select(3)).get();
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(frozen.getSelectionModel().getSelectedIndices())
+                    .as("选中行应同步到冻结表").containsExactly(3);
+            // 反向也要成立（在左表点选，右表跟随）。
+            // ⚠️ MULTIPLE 模式下 select(i) 是**追加**不是替换 —— 真实点击会先清空，
+            //   所以这里显式 clearSelection，否则期望值会变成 [3, 7]。
+            WaitForAsyncUtils.asyncFx(() -> {
+                frozen.getSelectionModel().clearSelection();
+                frozen.getSelectionModel().select(7);
+            }).get();
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(right.getSelectionModel().getSelectedIndices())
+                    .as("在冻结表选择应同步回主表").containsExactly(7);
+
+            // 解冻：列全部回到右表，顺序不变
+            WaitForAsyncUtils.asyncFx(() -> page.setFrozenColumnCount(0)).get();
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(page.frozenColumnCount()).isZero();
+            assertThat(frozen.isVisible()).as("解冻后左表应隐藏").isFalse();
+            assertThat(right.getColumns()).hasSize(columnsBefore);
+            assertThat(WaitForAsyncUtils.asyncFx(() -> right.getColumns().stream()
+                    .map(column -> String.valueOf(column.getUserData())).toList()).get())
+                    .as("解冻后列顺序应与冻结前完全一致")
+                    .isEqualTo(namesBefore);
+
+            page.close();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    @Test
     void rectangleSelectionCopies() throws Exception {
         DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
                 DemoDatabase.create(temp.resolve("rect.db"))));

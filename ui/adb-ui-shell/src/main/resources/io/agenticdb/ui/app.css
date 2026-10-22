@@ -1547,6 +1547,19 @@
     -fx-border-width: 1px;
 }
 
+/* ⭐ G1：冻结区（左半张表）。右表能横向滚动，左表不能 —— 所以右边界要有
+   一条分隔线，否则用户看不出「这两块其实是一张表」。
+   注意：不能给左表加纵向滚动条，两表共用一个滚动位置。 */
+.adb-grid--frozen {
+    -fx-background-color: -adb-bg-canvas;
+    -fx-border-color: transparent -adb-border-strong transparent transparent;
+    -fx-border-width: 0 1px 0 0;
+}
+
+.adb-grid__row {
+    -fx-background-color: -adb-bg-canvas;
+}
+
 .adb-grid__editor {
     -fx-background-color: -adb-bg-surface;
     -fx-text-fill: -adb-text-primary;

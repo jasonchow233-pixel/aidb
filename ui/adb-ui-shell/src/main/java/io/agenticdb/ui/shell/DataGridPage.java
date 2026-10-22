@@ -279,6 +279,21 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private record HeaderView(Label name, Label sortBadge, Button filter) {
     }
 
+    // ─────────────── G1：冻结列 ───────────────
+    /**
+     * ⭐ G1：冻结在左侧的**数据列**个数（不含选择列与行号列，那两列天然跟着冻结）。
+     * 0 = 不冻结 —— 此时左表整体隐藏，布局和以前完全一样。
+     */
+    private int frozenColumnCount;
+    /** 左半张表：选择列 + 行号列 + 前 N 个数据列。 */
+    private final TableView<Map<String, Object>> frozenGrid = new TableView<>();
+    /** 两张表并排的容器（左表不冻结时宽度为 0）。 */
+    private final HBox gridRow = new HBox();
+    /** 垂直滚动是否已绑定 —— skin 就绪后才拿得到滚动条，只能绑一次。 */
+    private boolean scrollBound;
+    /** 选择同步中的防循环标志（两表互相监听，不加会无限来回）。 */
+    private boolean syncingSelection;
+
     private TableSchema tableSchema;
     private DataQuery query = DataQuery.empty();
     private int pageSize = QueryLimits.DEFAULT_PAGE_SIZE;
@@ -865,8 +880,25 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         summaryItem.setId("data-summary-toggle");
         summaryItem.setOnAction(event -> setSummaryVisible(summaryItem.isSelected()));
 
+        // ⭐ G1：冻结列入口。做成子菜单而不是一个循环按钮 ——
+        //   「现在冻结了几列」必须一眼看得到，循环点会让用户数不清自己在第几档。
+        javafx.scene.control.Menu freezeMenu = new javafx.scene.control.Menu("冻结左侧列");
+        freezeMenu.setId("data-freeze-menu");
+        for (int count = 1; count <= 3; count++) {
+            MenuItem item = new MenuItem("冻结 " + count + " 列");
+            item.setId("data-freeze-" + count);
+            int frozen = count;
+            item.setOnAction(event -> setFrozenColumnCount(frozen));
+            freezeMenu.getItems().add(item);
+        }
+        MenuItem unfreeze = new MenuItem("取消冻结");
+        unfreeze.setId("data-freeze-0");
+        unfreeze.setOnAction(event -> setFrozenColumnCount(0));
+        freezeMenu.getItems().add(unfreeze);
+
         viewButton.getItems().addAll(hideNullItem, hideEmptyItem,
-                new SeparatorMenuItem(), summaryItem, transposeItem);
+                new SeparatorMenuItem(), summaryItem, transposeItem,
+                new SeparatorMenuItem(), freezeMenu);
 
         exportButton.setId("data-export");
         exportButton.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-button--icon");
@@ -909,6 +941,17 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
         grid.setId("data-table");
         grid.getStyleClass().add("adb-grid");
+
+        // ⭐ G1：左表（冻结列）。两张表共享同一份 items，靠索引对齐。
+        //   列宽用 UNCONSTRAINED —— 冻结区宽度就是各列 prefWidth 之和，
+        //   不能让最后一列被拉伸，否则右表起点会随窗口宽度抖动。
+        frozenGrid.setId("data-frozen-table");
+        frozenGrid.getStyleClass().addAll("adb-grid", "adb-grid--frozen");
+        frozenGrid.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
+        frozenGrid.setFocusTraversable(true);
+        frozenGrid.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+        frozenGrid.setVisible(false);
+        frozenGrid.setManaged(false);
 
         // ⭐ 空表不是"没有数据"四个字 —— 用户看到空白不知道下一步能干什么。
         //   给图标 + 说明 + 一个真能点的出口（UI-AUDIT X1 / §8 E4）。
@@ -993,8 +1036,16 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         summaryLabel.setVisible(false);
         summaryLabel.setManaged(false);
 
-        body.getChildren().addAll(grid, transposeTable, stateBox, summaryLabel, detailsDrawer);
+        // ⭐ G1：左表 + 右表并排。不冻结时左表 managed=false，宽度归零 ——
+        //   右表 Hgrow 占满，和「只有一张表」的旧布局完全等价。
+        gridRow.getStyleClass().add("adb-grid__row");
+        HBox.setHgrow(grid, Priority.ALWAYS);
+        grid.setMaxWidth(Double.MAX_VALUE);
+        gridRow.getChildren().addAll(frozenGrid, grid);
+        body.getChildren().addAll(gridRow, transposeTable, stateBox, summaryLabel, detailsDrawer);
         VBox.setVgrow(body, Priority.ALWAYS);
+        bindFrozenSelection();
+        bindFrozenScroll();
 
         // 记录导航先建（分页器里要用它），再成分页器。
         buildRecordNav();
@@ -1580,6 +1631,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             default -> io.agenticdb.ui.Tokens.ROW_NORMAL_LIGHT;
         };
         grid.setFixedCellSize(rowHeight);
+        // ⭐ G1：两表行高必须一致，否则同一行在左右两半会错开半格。
+        frozenGrid.setFixedCellSize(rowHeight);
         transposeTable.setFixedCellSize(rowHeight);
     }
 
@@ -1601,6 +1654,151 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     // ─────────────────────────── 表格 ───────────────────────────
+
+    // ─────────────── G1：冻结列 ───────────────
+
+    /** 冻结前 N 个数据列（不含选择列 / 行号列，那两列天然跟着冻结）。0 = 解冻。 */
+    public void setFrozenColumnCount(int count) {
+        int next = Math.max(0, count);
+        if (next == frozenColumnCount) {
+            return;
+        }
+        frozenColumnCount = next;
+        applyFrozenColumns();
+        feedback.status(next == 0 ? "已取消冻结列" : "已冻结左侧 " + next + " 列");
+    }
+
+    public int frozenColumnCount() {
+        return frozenColumnCount;
+    }
+
+    /**
+     * 按当前冻结列数重新分配两张表的列。
+     *
+     * <p>移动的是<b>同一批 {@code TableColumn} 实例</b>（不是复制一份），
+     * 所以列宽、可见性、cellFactory、userData 全都跟着走 ——
+     * 不用在两处各维护一份状态，也就不会出现「左表改了右表没改」。
+     */
+    private void applyFrozenColumns() {
+        // ⭐ 列可能已经分散在两表里（上一次冻结留下的），先合并再重分，保证幂等。
+        List<TableColumn<Map<String, Object>, ?>> all = new ArrayList<>();
+        all.addAll(frozenGrid.getColumns());
+        all.addAll(grid.getColumns());
+        frozenGrid.setItems(grid.getItems());
+
+        if (frozenColumnCount <= 0) {
+            frozenGrid.getColumns().clear();
+            grid.getColumns().clear();
+            grid.getColumns().addAll(all);
+            frozenGrid.setVisible(false);
+            frozenGrid.setManaged(false);
+            return;
+        }
+        // 前 2 列是选择列 + 行号列，它们永远跟着冻结区走；
+        // 至少给右表留一列，否则「冻结」就变成把整张表搬走了。
+        int move = Math.min(2 + frozenColumnCount, all.size() - 1);
+        if (move <= 2) {
+            frozenColumnCount = 0;
+            frozenGrid.getColumns().clear();
+            grid.getColumns().clear();
+            grid.getColumns().addAll(all);
+            frozenGrid.setVisible(false);
+            frozenGrid.setManaged(false);
+            return;
+        }
+        frozenGrid.getColumns().clear();
+        grid.getColumns().clear();
+        frozenGrid.getColumns().addAll(all.subList(0, move));
+        grid.getColumns().addAll(all.subList(move, all.size()));
+        frozenGrid.setVisible(true);
+        frozenGrid.setManaged(true);
+        frozenGrid.setPrefWidth(visibleColumnsWidth(frozenGrid));
+    }
+
+    /** 可见列宽度之和 —— 冻结区就按这个宽度占住，右表起点才不会抖。 */
+    private static double visibleColumnsWidth(TableView<Map<String, Object>> table) {
+        double width = 0;
+        for (TableColumn<Map<String, Object>, ?> column : table.getColumns()) {
+            if (column.isVisible()) {
+                width += column.getPrefWidth();
+            }
+        }
+        return width;
+    }
+
+    /** 两表选择互相跟随（共享同一份 items，按索引对齐即可）。 */
+    private void bindFrozenSelection() {
+        grid.getSelectionModel().getSelectedIndices().addListener(
+                (javafx.collections.ListChangeListener<Number>) change ->
+                        syncSelection(frozenGrid, grid));
+        frozenGrid.getSelectionModel().getSelectedIndices().addListener(
+                (javafx.collections.ListChangeListener<Number>) change ->
+                        syncSelection(grid, frozenGrid));
+    }
+
+    private void syncSelection(TableView<Map<String, Object>> target,
+                               TableView<Map<String, Object>> source) {
+        if (syncingSelection || frozenColumnCount <= 0) {
+            return;
+        }
+        syncingSelection = true;
+        try {
+            List<Integer> indices = new ArrayList<>();
+            for (Integer index : source.getSelectionModel().getSelectedIndices()) {
+                indices.add(index);
+            }
+            target.getSelectionModel().clearSelection();
+            for (Integer index : indices) {
+                if (index >= 0 && index < target.getItems().size()) {
+                    target.getSelectionModel().select(index);
+                }
+            }
+        } finally {
+            syncingSelection = false;
+        }
+    }
+
+    /**
+     * 垂直滚动同步。
+     *
+     * <p>滚动条在 skin 里，skin 就绪前 lookup 不到 —— 所以挂在 skinProperty 上，
+     * 两边都就绪再绑。headless 下单测拿不到滚动条，这里会安静跳过：
+     * <b>没有滚动条不等于功能坏了</b>，只是这个环境渲染不了。
+     */
+    private void bindFrozenScroll() {
+        Runnable attempt = () -> {
+            if (scrollBound || frozenColumnCount <= 0) {
+                return;
+            }
+            javafx.scene.control.ScrollBar main = verticalBar(grid);
+            javafx.scene.control.ScrollBar frozen = verticalBar(frozenGrid);
+            if (main == null || frozen == null) {
+                return;
+            }
+            main.valueProperty().bindBidirectional(frozen.valueProperty());
+            scrollBound = true;
+        };
+        grid.skinProperty().addListener((obs, oldSkin, newSkin) -> {
+            if (newSkin != null) {
+                attempt.run();
+            }
+        });
+        frozenGrid.skinProperty().addListener((obs, oldSkin, newSkin) -> {
+            if (newSkin != null) {
+                attempt.run();
+            }
+        });
+    }
+
+    private static javafx.scene.control.ScrollBar verticalBar(TableView<?> table) {
+        for (javafx.scene.Node node : table.lookupAll(".scroll-bar")) {
+            if (node instanceof javafx.scene.control.ScrollBar bar
+                    && bar.getOrientation() == javafx.geometry.Orientation.VERTICAL) {
+                return bar;
+            }
+        }
+        return null;
+    }
 
     private void renderColumns(TableSchema schema) {
         grid.getColumns().clear();
@@ -1716,6 +1914,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         }
         columnsButton.setDisable(false);
         refreshColumnMenu();
+        // ⭐ G1：列重建后按当前冻结数重新分配两表（解冻时是空操作）。
+        applyFrozenColumns();
     }
 
     private List<ColumnDef> orderedColumns(TableSchema schema) {
@@ -2455,6 +2655,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         items.addAll(pageRows);
         List<Map<String, Object>> visible = applyViewFilters(items);
         grid.setItems(FXCollections.observableArrayList(visible));
+        // ⭐ G1：翻页换的是新的 items 实例，左表必须跟着换 ——
+        //   否则左表还指着上一页那批行，两表就错位了。
+        frozenGrid.setItems(grid.getItems());
         // ⭐ G4：换了一页数据，旧矩形的行下标就指向另一批行了 —— 必须清掉，
         //   否则用户会复制到一个「看着像选区、其实是新页数据」的矩形。
         if (rectangle != null) {
@@ -2468,6 +2671,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         updateSummary();
         grid.setVisible(!transpose);
         grid.setManaged(!transpose);
+        // ⭐ G1：转置视图下不该露出冻结区（那是另一套列，冻了也没意义）。
+        frozenGrid.setVisible(!transpose && frozenColumnCount > 0);
+        frozenGrid.setManaged(!transpose && frozenColumnCount > 0);
         transposeTable.setVisible(transpose);
         transposeTable.setManaged(transpose);
         if (transpose) {
@@ -3153,6 +3359,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /** 矩形变了要重算 cell 样式（{@code TableView} 不会自己重画）。 */
     private void refreshRectangle() {
         grid.refresh();
+        // ⭐ G1：冻结区里的格子也要重画，否则框选高亮只出现在右半张表。
+        frozenGrid.refresh();
         if (rectangle != null) {
             feedback.status("已选 " + rectangle.rowCount() + " × "
                     + rectangle.columnCount() + " 区域 · ⌘C 复制");
