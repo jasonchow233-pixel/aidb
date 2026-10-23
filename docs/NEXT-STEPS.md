@@ -12,11 +12,11 @@
 
 | 指标 | 值 |
 |---|---|
-| 门禁 | **675 条 / 87 类 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`；35 条跳过） |
-| 真库验证 | ✅ SQLite（演示库）· ✅ **MySQL 5.7.44 真库**（9 例全绿）· ⬜ PostgreSQL（**暂无测试库**） |
+| 门禁 | **691 条 / 87 类 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`；24 条跳过；比上轮 +16 全部来自 Docker 解锁后容器契约真正执行） |
+| 真库验证 | ✅ SQLite（演示库）· ✅ **MySQL 5.7.44 真库**（9 例全绿）· ✅ **PostgreSQL 16 + MySQL 8.4 Testcontainers**（11 例全绿，本轮 Docker 解锁；抓出 2 个跨方言 bug，见 `NAVICAT-TODO.md` §26） |
 | 截图 | `docs/screenshots/` **9 张**已按当前代码重拍（亮 / 暗两套主题 + 表清单 + 新建表/索引弹窗） |
 | 工作区 | 干净 |
-| **下一动作** | ⭐ **P5/P6 收尾** —— U-B6 已全部完成（G1 冻结列 / G4 区域选择 / Q5 结果分页 / U1 catalog 树 / U2 多连接 均 ✅）。见 `NAVICAT-TODO.md` §21 / §25 |
+| **下一动作** | ⭐ **P5/P6 收尾** —— U-B6 已全部完成（G1 冻结列 / G4 区域选择 / Q5 结果分页 / U1 catalog 树 / U2 多连接 均 ✅），**U-B7 侧栏 Navicat 模型 + 按钮规格统一亦已完成**（第十六轮，§26–§27）。见 `NAVICAT-TODO.md` §21 / §26 / §27 |
 
 > 🔴 **第六轮全量核查改变了优先级排序**：门禁 443 条全绿，但逐文件核对发现
 > **4 个真实缺陷**（其中 D2「改列抹注释」与 D3「改列丢 CHECK」会**丢数据且无撤销**），
@@ -127,13 +127,14 @@ jlink 自定义运行时 → jpackage（macOS `.app`/`.dmg`、Windows `.msi`、L
 
 | 项 | 状态 | 解除条件 |
 |---|---|---|
-| **PostgreSQL 真库联调** | ⬜ **当前无 PG 测试库** | 拿到一台 PG 实例后，按 MySQL 的模式接入（环境变量 + 跳过式清理 + 逐条 try 的清理策略） |
+| **PostgreSQL 真库联调** | ✅ **已解除**（第十六轮）：Docker 解锁后用 `postgres:16-alpine` 跑通 11 例；外部实例走 `ADB_TEST_PG_*` 环境变量 | 已完成；aliCloud RDS 只需填环境变量凭据，**无需改代码** |
 | **Windows 凭据 / 分发** | ⬜ | 需要 Windows 机器或 CI |
 
 > ⚠️ MySQL 真库联调已经证明了这条路的价值：**一次真库就抓出两个 SQLite 上永远看不到的 bug**
 > （`RENAME COLUMN` 版本差异、JDBC 类型名不带长度）。
-> PG 的方言分支（`ALTER COLUMN` / `COMMENT ON` / `pg_class` 元信息 / `SET search_path`）
-> **大概率藏着同类问题** —— 有条件时优先做这个。
+> **PostgreSQL 16 + MySQL 8.4 这一轮又抓到两个**（`rows` 是 MySQL 8.0 保留字；
+> `pg_class` 没有 `relcollation` 列 —— 排序规则是每列的，不是每表的）。
+> 结论不变：**真库联调是抓跨方言 bug 唯一有效的手段**，SQLite 覆盖不到这一层。
 
 ---
 

@@ -49,9 +49,9 @@
 | P4 结构页 | ✅ 完成 | 列/索引/外键/触发器/DDL 五页签、加列/改列/重命名列/删列、**索引可增删（§16.2）**、**列注释读回（§16.1）**、两级危险确认、单事务、结构变更联动刷新 |
 | P4.5 契约修复 | 🟡 收尾中 | **B0–B4 已全部落地**（安全语义 / 数据正确性 / 注册表收口 / 并发 / 图标令牌）；剩 4.5-3 已做、4.5-14 收尾、4.5-23 已做 |
 | P5 连接管理 | 🟡 进行中 | 连接管理页、三步向导、测试连接、钥匙串 / Secret Service 凭据、连接档案落盘、HikariCP 连接池（PG/MySQL）；**本轮补上：凭据脱敏 + 口令走 stdin + 孤儿会话回收** |
-| P6 导入导出 | 🟡 进行中 | CSV / TSV / JSON Lines / SQL 导出 + CSV / TSV 导入、字段映射、坏行报告、导入导出向导；**本轮补上：MySQL 5.7 真库联调**（`MySqlIntegrationTest` 9 例，抓出两个真 bug） |
+| P6 导入导出 | 🟡 进行中 | CSV / TSV / JSON Lines / SQL 导出 + CSV / TSV 导入、字段映射、坏行报告、导入导出向导；**真库联调：MySQL 5.7（9 例）→ 本轮 Docker 解锁后 PostgreSQL 16 + MySQL 8.4 Testcontainers（11 例全绿），累计抓出 4 个真 bug**（`RENAME COLUMN` 版本差异 / JDBC 类型名不带长度 / `rows` 是 MySQL 8.0 保留字 / `pg_class` 无 `relcollation` 列） |
 | P7 分发 | 🟡 进行中 | ✅ jpackage（`scripts/package.sh`）+ 崩溃日志（`CrashLog`）；⬜ jlink（自动模块暂不可行）/ 自动更新 / 性能 |
-| **UI/UX 专项** | ✅ **U-B1–U-B5 已完成，U-B6 进行中** | **§13–§16 / §22**：U-B1–U-B5 全落地；S1 数值展示 / S2 刷新按钮 / D1 函数报错 / X1–X2 空态 / **T1–T4 表级生命周期** / **D2·D4 注释读回** / **B5-S1 索引可编辑**；**第十三轮 Navicat 表清单 8 列 + 密度 24/28/34**；U-B6（G1/G4/Q5/…）进行中 |
+| **UI/UX 专项** | ✅ **U-B1–U-B6 已完成** | **§13–§16 / §22 / §27**：U-B1–U-B6 全落地；S1 数值展示 / S2 刷新按钮 / D1 函数报错 / X1–X2 空态 / **T1–T4 表级生命周期** / **D2·D4 注释读回** / **B5-S1 索引可编辑**；第十三轮 Navicat 表清单 8 列 + 密度 24/28/34；**本轮 U-B7：侧栏改 Navicat 模型（无「工作台」，单棵「我的连接」树，查询跟着连接走）+ 按钮规格统一（§27）** |
 
 首版明确不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务、传输同步。
 
@@ -70,18 +70,20 @@
 ./mvnw -B clean verify
 ```
 
-当前结果（2026-10-22 末 · 第十五轮 Q5+V-9 后实测）：
+当前结果（2026-10-23 · 第十六轮 U-B7 + Docker 解锁后实测）：
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **SQLite（默认，2026-10-22 第十五轮后）** | **675** | 35 | 0 |
-| **MySQL 5.7 真库**（需环境变量） | 单独跑，不在默认门禁 | — | — |
+| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **691** | 24 | 0 |
+| **外部 PG / MySQL 真库**（aliCloud RDS 等，需环境变量） | 单独跑，不在默认门禁 | — | — |
 
-**87 个测试类**。跳过的是「本机没有的外部依赖」：Testcontainers 的 PG/MySQL 容器
-（无 Docker）与未配置的 PG / MySQL 真库 —— **跳过不算通过**，门禁统计里单列一行。
+**87 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
+（Testcontainers 容器**已随 Docker 解锁而执行**，不再计入跳过）—— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-22，第十五轮 Q5+V-9 后）**：**675 条 / 87 类 / 0 失败**（`./mvnw -B clean verify`
-> 全绿 + `java tools/TestCount.java`；另有 35 条跳过，不计入 675）。
+> 📌 **最新口径（2026-10-23，第十六轮后）**：**691 条 / 87 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 24 条跳过，不计入 691）。
+> 比上一轮 675 多 16 条 —— **全部来自 Docker 解锁后 Testcontainers 真库契约真正跑起来了**
+> （`adb-jdbc` 57→68、`adb-introspect` 116→124），不是新增用例。
 
 统计口径用工具兜底：
 
@@ -96,14 +98,14 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `core/adb-declarations` | 40 | 声明校验、快照一致性、**classpath 与源码目录对拍** |
 | `core/adb-safety` | 68 | 危险分级四档、**fail-closed**、WITH 体内扫描、PRAGMA 读写、词法切分 |
 | `core/adb-sql` | 31 | 词法 / 分句 / 格式化 / **括号配对** / **参数检测** |
-| `workbench/adb-jdbc` | 57 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为** |
+| `workbench/adb-jdbc` | 68 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为**、**真库契约（跳过 10）** |
 | `testing/adb-fixtures` | 3 | 演示库固定种子 |
-| `workbench/adb-introspect` | 116 | 内省、表元数据 8 列、分页排序筛选 SQL、结构变更、**catalog 列表与系统库过滤**、**真库契约（跳过 14）** |
-| `workbench/adb-session` | 19 | 连接档案、凭据、连接池、**敏感项脱敏**、**catalog 虚拟连接约定** |
+| `workbench/adb-introspect` | 124 | 内省、表元数据 8 列、分页排序筛选 SQL、结构变更、**catalog 列表与系统库过滤**、**真库契约（跳过 14）** |
+| `workbench/adb-session` | 20 | 连接档案、凭据、连接池、**敏感项脱敏**、**catalog 虚拟连接约定** |
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `workbench/adb-transfer` | 15 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告 |
 | `ui/adb-ui-core` | 24 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** / **CSS 尺度审计** / **焦点环审计** |
-| `ui/adb-ui-shell` | 240 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派** |
+| `ui/adb-ui-shell` | 249 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派**、**侧栏工具可达性** |
 
 > ⚠️ **统计口径（4.5-28）**：用 `@Nested` 的 4 个测试类（`QueryLimitsTest`、
 > `DangerClassifierTest`、`DeclarationLoaderTest`、`DeclarationValidationTest`）在 surefire XML 里
@@ -1576,10 +1578,99 @@ Esc 能取消；无矩形时 ⌘C 仍是单单元格）。
 
 ---
 
+## 26. 第十六轮（2026-10-23）：Docker 解锁 + PostgreSQL / MySQL 真库联调
+
+> 上游条件：本机装好 Docker Desktop。`PostgresMySqlIntegrationTest` 由
+> `DockerAvailability.isAvailable()` 把门，容器一到位就自动跑，**不需要改任何代码**。
+
+| 项 | 结果 |
+|---|---|
+| 容器 | `postgres:16-alpine` + `mysql:8.4`（Testcontainers） |
+| 契约 | `RealDatabaseContract` 共享断言，两方言都过同一套表元数据 / 结构变更 / 类型往返 |
+| 用例 | 集成 **11 例全绿** |
+
+**又抓到两个 SQLite 上永远看不到的跨方言 bug**（延续 MySQL 5.7 那轮的价值）：
+
+| # | 方言 | 现象 | 根因 | 修法 |
+|---|---|---|---|---|
+| 1 | MySQL | `tableMetaSql()` 语法错误（`near 'rows, ...'`） | `rows` 是 **MySQL 8.0 保留字**（窗口帧 `ROWS BETWEEN …`），当别名必须转义 | `MySqlDialect` 里写成 `` table_rows AS `rows` ``（反引号只在 MySQL 合法，故只在该方言内加） |
+| 2 | PostgreSQL | `column c.relcollation does not exist` | `pg_class` **没有** `relcollation` 列 —— 排序规则是**每列**落在 `pg_attribute`，不是每表 | 改取所在库的默认排序规则：`(SELECT datcollate FROM pg_database WHERE datname = current_database()) AS collation_name` |
+
+> ⚠️ 两处都**保住了列名契约**（`rows` / `collation_name`）—— `SchemaService.listTableMeta()`
+> 是按列名读的，改名会静默变成 null。
+
+**aliCloud RDS 怎么接**：协议层与容器完全一致，**无需改代码**，用环境变量指向真实例即可 ——
+`ADB_TEST_PG_HOST / _PORT / _DB / _USER / _PASSWORD`（`ExternalRealDatabaseTest`）。
+拿到凭据后同一批契约直接跑在阿里云 RDS 上。
+
+---
+
+## 27. 第十六轮·续（2026-10-23）：U-B7 侧栏 Navicat 模型 + 按钮规格统一
+
+### 27.1 侧栏改 Navicat 模型（不再是「工作台」）
+
+用户对照 Navicat 后指出的核心差异：**Navicat 没有「工作台」，查询是跟着数据库走的**。
+`SideBar` 已重构为单棵「我的连接」树：
+
+- 去掉「工作台」分段、「收藏」独立区、顶部连接下拉（`adb-connection-picker` 已删）；
+- 标题改「我的连接」+ 搜索 + 折叠，头部右侧是「新建查询」按钮；
+- ⭐ **查询跟着连接走** —— `queryTargetConnectionId()`：落在当前选中的连接节点上，
+  没选中具体连接时落到当前激活连接（而不是一个全局「工作台」）；
+- 收藏筛选改用「★ 只看收藏」图标按钮（`adb-icon-button--active`），不再是独立区；
+- 底部保留一条**平铺的工具行**（查询历史 / 诊断 / 导入导出，**不加分段标题**）——
+  这三个都是真功能，去掉分段 ≠ 删掉入口（详见 §27.4）。
+
+### 27.2 按钮 / 交互态规格统一（「很多不一样」的根因）
+
+用户反馈 hover、字体、灰度不统一。核查后确认 **hover 底色早已统一走 `-adb-bg-hover`**、
+文字色全部令牌化；真正不一致的是**三套按钮规格**：
+
+| 类 | 修前 | 修后 |
+|---|---|---|
+| `.adb-button` | 32px / 6px / 13px / `-adb-border` | （作为基准，不变） |
+| `.adb-dialog .button` | **无固定高** / **4px** / **12px** / `-adb-border-strong` | **32px / 6px / 13px / `-adb-border`** |
+| `.adb-icon-button` | **28px** / 6px / 14px | **32px** / 6px / 14px |
+
+- 弹窗按钮此前没有 `min/pref-height`，靠 JavaFX 默认高度，和页面按钮并排时**矮一截**、圆角也更方；
+- 图标按钮 28px 与同工具栏文字按钮 32px **基线不齐**，视觉上就是「不一样」。
+- 侧栏 / 状态栏早已共用 `-adb-bg-sidebar` 灰底，标签栏保持白色（贴合 Navicat：内容区白、侧栏灰），**无需改**。
+
+### 27.3 顺带修掉门禁抓出的样式类漂移
+
+`StyleClassCoverageTest` 抓到重构遗留的 4 处 Java ⇄ CSS 不一致（**这正是「样式类对拍」的价值**）：
+
+| 类型 | 类 | 处理 |
+|---|---|---|
+| Java 用了、CSS 没有 | `adb-sidebar__header` | **补规则**（对齐 + 间距，防以后被改成 VBox 跑位） |
+| CSS 定义了、Java 不用 | `adb-connection-picker` | **删规则**（旧连接下拉） |
+| CSS 定义了、Java 不用 | `adb-favorite` | **删规则** + 从 `FocusRingAuditTest.FOCUSABLE` 摘掉 |
+| CSS 定义了、Java 不用 | `adb-sidebar__connection` | **删规则** |
+
+门禁：`StyleClassCoverageTest`(4) + `FocusRingAuditTest`(3) + `AppCssAuditTest`(7) 全绿。
+
+### 27.4 门禁抓出的三处**功能回归**（重构改过头了）
+
+重构把「工作台 / 工具」分段整个删掉时，**连入口一起删了**，被三个既有门禁当场抓住 ——
+这正是「占位要么接要么删」与门禁的价值：
+
+| # | 症状 | 根因 | 修法 |
+|---|---|---|---|
+| 1 | `WorkspaceToolsPageTest` 3 例 `EmptyNodeQuery` | 侧栏不再有「查询历史」「诊断」按钮，测试点不到 | 底部补回平铺工具行（`adb-sidebar__tools`），复用 `navButton` |
+| 2 | 🔴 **查询历史变成不可达功能** | 全项目**没有任何地方**调 `openTool("查询历史")`，但 `WorkspaceView` 仍会渲染它 | 同上，补回入口；页面是真功能，不能只留渲染分支 |
+| 3 | 🔴 折叠栏「工具」按钮**必崩** | 它 `openTool("诊断")`，而 `WorkspaceView` 解析诊断页会做 `title.substring("诊断 · ".length())` —— 标题只有「诊断」两字 → **越界异常** | 改走 `actions.run("object.diagnostics")`，由它按当前选中对象拼出「诊断 · `<表名>`」；没选中只给提示 |
+| 4 | `IconSystemAuditTest` 报 `TRANSFER` 是死代码 | 删掉「导入 / 导出」按钮后没人用这个图标了 | 工具行补回「导入 / 导出」（菜单与工具栏也有入口，这里补齐让三个工具成一行） |
+
+> 📌 **教训**：结构性重构（合并/删除分段）很容易**连带删掉入口**。
+> 门禁里凡是「点侧栏按钮」的用例，都是在保护可达性 —— 这次三条一起报警，
+> 说明「删分段」和「删功能」必须分开判断。
+
+---
+
 ## 23. 变更记录
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-23 | 第十六轮 | **U-B7 侧栏 Navicat 模型 + 按钮规格统一**（§27）：侧栏去「工作台」分段、单棵「我的连接」树、**查询跟着连接走**（`queryTargetConnectionId()`）、★ 收藏改图标筛选 · **按钮规格统一**：`.adb-dialog .button` 对齐 `.adb-button`（6px/13px/**32px**/`-adb-border`）、`.adb-icon-button` 28→32px · **修 4 处门禁抓出的功能回归**（§27.4：查询历史不可达 / 折叠栏诊断按钮越界崩溃 / TRANSFER 死图标 / WorkspaceToolsPageTest 3 例）+ 4 处样式类漂移；**Docker 解锁 + PG16/MySQL8.4 真库 11 例**（§26，抓出 `rows` 保留字 / `pg_class.relcollation` 两个跨方言 bug）；门禁 **691 条 / 87 类 / 0 失败**（比上轮 +16 全部来自容器契约真正执行） |
 | 2026-10-22 | 第十五轮·续二 | **G1 ✅ 冻结列**（§25.5，**U-B6 功能补齐层收官**）：左表 `frozenGrid` + 右表 `grid` 并排，移动**同一批 `TableColumn` 实例**（列宽/可见性/cellFactory 不丢，`applyFrozenColumns` 幂等）· 垂直滚动条双向绑定（等 skin 就绪，headless 安静跳过）· 选择双向同步 + 防循环标志 · **排序无需同步**（服务端排序，两边列头触发同一次重查）· 两表共享 items、同设 `setFixedCellSize` · 视图菜单「冻结左侧列」1/2/3 档 + 取消 · **N=0 时布局与旧版完全等价** · 新门禁 `DataGridPageTest.frozenColumnsStayPut`(1)；门禁 **675 条 / 87 类 / 0 失败** |
 | 2026-10-22 | 第十五轮·续 | **G4 ✅ 单元格区域选择**（§25.4）：`GridRectangle` + `GridCell` 锚点（列下标按**可见数据列**算）· 按下定锚点 / 拖动扩展 / **Shift + 点击扩展** · 矩形内 cell 高亮 `adb-grid__cell--rect`（accent 淡底 + 描边） · ⌘C 有矩形时复制这块区域为 TSV（**不含表头**），无矩形仍复制单元格（旧行为不回归） · Esc 取消 · 翻页自动清除（行下标会指向新页的另一批行） · **关键取舍：不开 `cellSelectionEnabled`**（会让 `getSelectedItems()` 出重复行，破坏批量删除/设 NULL/导出），矩形是独立于行选择的模型 · 新门禁 `DataGridPageTest.rectangleSelectionCopies`(1)；门禁 **675 条 / 87 类 / 0 失败** |
 | 2026-10-22 | 第十五轮 | **Q5 ✅ 结果分页**（§25）：新增 `QueryPaginator`（`isPaginable` / `pageSql` / `countSql`，不分方言，`SELECT * FROM (<原句>) AS _p LIMIT ? OFFSET ?` + `COUNT(*)` 套同一层）· `QueryPage.PagedLoader` 翻页条（首/上/下/末 + 页码 + 每页下拉 + 跳页 + 绝对行号 + `MAX_OFFSET` 约束）· **V-9 ✅ 表格规格统一**：列类型条 `adb-query__result-types`（JavaFX `TableColumn` 无 `setTooltip`）+ 翻页条复用 `adb-record-nav`/`adb-page-size` · 修三个问题（`isPaginable` 不认末尾分号致分页路径永不生效 / `pageSql` offset 装箱类型不一致 / 重复列断言硬编码 `n_2` 而 SQLite 驱动命名 `n:1`）· 补 2 条 CSS 规则（被 `StyleClassCoverageTest` 抓出）· 新门禁 `QueryPaginatorTest`(8) + `QueryPageTest`(+3)；门禁 **675 条 / 87 类 / 0 失败** |
