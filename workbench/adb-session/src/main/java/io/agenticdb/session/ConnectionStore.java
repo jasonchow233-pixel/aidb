@@ -142,11 +142,21 @@ public final class ConnectionStore {
     }
 
     private static List<ConnectionProfile> sort(List<ConnectionProfile> profiles) {
-        return profiles.stream()
-                .sorted(Comparator
-                        .comparing((ConnectionProfile profile) -> !profile.favorite())
-                        .thenComparing(ConnectionProfile::lastUsedAt, Comparator.reverseOrder())
-                        .thenComparing(ConnectionProfile::name, String.CASE_INSENSITIVE_ORDER))
-                .toList();
+        return profiles.stream().sorted(displayOrder()).toList();
+    }
+
+    /**
+     * 连接列表的展示顺序：收藏 → 最近使用倒序 → 名称。
+     *
+     * <p>⭐ 抽成公开的，是因为<b>界面和落盘必须用同一个顺序</b> ——
+     * 以前落盘按这个排、界面却把刚用过的连接追加到末尾，
+     * 同一份数据「重启前后顺序不一样」。UI 那边（{@code AppShell}）
+     * 改完列表要用这个比较器重排，不能自己拼顺序。
+     */
+    public static Comparator<ConnectionProfile> displayOrder() {
+        return Comparator
+                .comparing((ConnectionProfile profile) -> !profile.favorite())
+                .thenComparing(ConnectionProfile::lastUsedAt, Comparator.reverseOrder())
+                .thenComparing(ConnectionProfile::name, String.CASE_INSENSITIVE_ORDER);
     }
 }

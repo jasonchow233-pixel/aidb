@@ -125,6 +125,33 @@ class ConnectionStoreTest {
         assertThat(copy.displayTarget()).isEqualTo("db.local:5432/app");
     }
 
+    /**
+     * ⭐ 界面顺序必须与落盘顺序一致 —— 这条守的是「同一份数据不能有两种顺序」。
+     *
+     * <p>以前 UI（{@code AppShell}）把刚连过的连接追加到列表末尾，
+     * 而这里是「收藏 → 最近使用倒序」，重启之后顺序就变了。
+     * 现在两边共用 {@link ConnectionStore#displayOrder()}。
+     */
+    @Test
+    void displayOrderIsFavoriteThenMostRecentlyUsedThenName() {
+        ConnectionProfile old = ConnectionProfile.newProfile("Old", DialectKind.POSTGRESQL,
+                "db.local", 5432, "app", "app").withLastUsed(1000L);
+        ConnectionProfile fresh = ConnectionProfile.newProfile("Fresh", DialectKind.POSTGRESQL,
+                "db.local", 5432, "app", "app").withLastUsed(9000L);
+        ConnectionProfile star = ConnectionProfile.newProfile("Star", DialectKind.POSTGRESQL,
+                "db.local", 5432, "app", "app").withLastUsed(1L).withFavorite(true);
+        ConnectionProfile alpha = ConnectionProfile.newProfile("alpha", DialectKind.POSTGRESQL,
+                "db.local", 5432, "app", "app").withLastUsed(9000L);
+
+        List<ConnectionProfile> ordered = java.util.List.of(old, alpha, fresh, star).stream()
+                .sorted(ConnectionStore.displayOrder()).toList();
+
+        assertThat(ordered).extracting(ConnectionProfile::name)
+                .containsExactly("Star", "alpha", "Fresh", "Old");
+        // 最近使用的排前面 —— 这是「刚连过的连接跑到末尾」那条 bug 的正面断言。
+        assertThat(ordered.indexOf(fresh)).isLessThan(ordered.indexOf(old));
+    }
+
     @Test
     void profileToStringNeverContainsPassword() {
         ConnectionProfile profile = ConnectionProfile.newProfile("PG", DialectKind.POSTGRESQL,

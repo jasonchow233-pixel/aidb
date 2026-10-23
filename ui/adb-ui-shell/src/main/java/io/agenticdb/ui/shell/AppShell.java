@@ -360,6 +360,22 @@ public final class AppShell extends StackPane {
 
     // ─────────────────────────── 连接管理 ───────────────────────────
 
+    /**
+     * ⭐ 界面顺序必须与落盘顺序一致。
+     *
+     * <p>以前这里是直接 {@code add} 到末尾 —— 于是<b>刚连过的连接反而排到最后</b>，
+     * 而磁盘上是「收藏 → 最近使用倒序」，重启之后顺序又变回来。
+     * 同一份数据两种顺序，是这条待办（最近使用排序）真正没闭环的地方。
+     */
+    private void resortConnections() {
+        FXCollections.sort(connections, ConnectionStore.displayOrder());
+    }
+
+    /** 供门禁核对顺序（与界面同一份列表，不是副本）。 */
+    javafx.collections.ObservableList<ConnectionProfile> connectionsList() {
+        return connections;
+    }
+
     private void refreshProfiles() {
         profilesById.clear();
         for (ConnectionProfile profile : connections) {
@@ -541,6 +557,7 @@ public final class AppShell extends StackPane {
             ConnectionProfile touched = profile.withLastUsed(System.currentTimeMillis());
             connections.removeIf(existing -> existing.id().equals(touched.id()));
             connections.add(touched);
+            resortConnections();
             connectionStore.save(touched);
         }
         status("正在连接 " + profile.name() + "…");
@@ -890,6 +907,7 @@ public final class AppShell extends StackPane {
                 sessions.close(existing.id());
             }
             connections.add(profile);
+            resortConnections();
             connectionStore.save(profile);
             String password = wizard.password();
             if (password != null && !password.isBlank()) {
@@ -932,6 +950,7 @@ public final class AppShell extends StackPane {
         credentials.password(profile.id()).ifPresent(password ->
                 credentials.save(copy.id(), password));
         connections.add(copy);
+        resortConnections();
         connectionStore.save(copy);
         refreshProfiles();
         status("已复制连接：" + copy.name());
