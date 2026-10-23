@@ -10,14 +10,14 @@ import javafx.scene.Scene;
 import javafx.stage.Stage;
 
 /**
- * AgenticDB 桌面入口。
+ * AIDB（AgenticDB）桌面入口。
  *
  * <p>P0：原生窗口 + 六区外壳（菜单/工具栏/侧栏/标签栏/内容区/状态栏）。
  * 不启动任何 HTTP 端口，不依赖浏览器。
  */
 public class App extends Application {
 
-    static final String APP_TITLE = "AgenticDB";
+    static final String APP_TITLE = "AIDB";
 
     private AppShell shell;
 
@@ -44,10 +44,15 @@ public class App extends Application {
         stage.setMinWidth(960);
         stage.setMinHeight(600);
         // ⭐ 应用图标（标签栏 / 窗口标题栏 / 程序坞）。
-        //    以前是纯文字标题，窗口和 Dock 上没有辨识度。
-        java.net.URL icon = App.class.getResource("/io/agenticdb/ui/app-icon.png");
-        if (icon != null) {
-            stage.getIcons().add(new javafx.scene.image.Image(icon.toExternalForm()));
+        //    品牌图标由 tools/GenLogo.java 生成，从 1024 到 16 多尺寸；
+        //    macOS/Windows 会在不同位置用不同分辨率，全部注册以避免糊边。
+        for (String icon : new String[]{
+                "app-icon-1024.png", "app-icon-512.png", "app-icon.png",
+                "app-icon-256.png", "app-icon-128.png", "app-icon-64.png"}) {
+            java.net.URL url = App.class.getResource("/io/agenticdb/ui/" + icon);
+            if (url != null) {
+                stage.getIcons().add(new javafx.scene.image.Image(url.toExternalForm()));
+            }
         }
         stage.setScene(scene);
         shell.restoreWindow(stage);

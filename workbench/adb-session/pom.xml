@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>adb-session</artifactId>
-  <name>AgenticDB :: Session</name>
+  <name>AIDB :: Session</name>
   <description>连接注册表、生命周期、健康检查。</description>
 
   <dependencies>

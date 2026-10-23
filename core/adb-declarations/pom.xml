@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>adb-declarations</artifactId>
-  <name>AgenticDB :: Declarations</name>
+  <name>AIDB :: Declarations</name>
   <description>声明层加载与语义校验。新增一个数据库 = 1 个 YAML，0 行代码。</description>
 
   <dependencies>

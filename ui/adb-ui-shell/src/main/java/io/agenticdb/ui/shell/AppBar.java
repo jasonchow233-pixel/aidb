@@ -85,7 +85,7 @@ public final class AppBar extends HBox {
         glyph.getStyleClass().add("adb-appbar__mark-glyph");
         mark.getChildren().add(glyph);
 
-        Label wordmark = new Label("AgenticDB");
+        Label wordmark = new Label("AIDB");
         wordmark.setId("appbar-brand-name");
         wordmark.getStyleClass().add("adb-appbar__title");
 

@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>adb-editing</artifactId>
-  <name>AgenticDB :: Editing</name>
+  <name>AIDB :: Editing</name>
   <description>行内编辑缓冲、撤销/重做与按主键生成 UPDATE 计划。</description>
 
   <dependencies>

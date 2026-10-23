@@ -8,12 +8,12 @@
 > **界面规格书见 `docs/UI-VISUAL-SPEC.md`**（第十轮：字号/颜色/图标/布局/组件/弹窗/交互态/键盘）；
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
-> 最后更新：**2026-10-23（第十七轮：规格 §6 右侧对象详情面板 + §13 新建表弹窗重构 + §9.7 底部导航标签）**
-> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **721 条 / 89 类 / 0 失败**（2026-10-23 第十七轮实测，另有 29 条跳过）。
+> 最后更新：**2026-10-23（第十七轮：规格 §6 右侧对象详情面板 + §13 新建表弹窗重构 + §9.7 底部导航标签 + AIDB 品牌改造 + Logo 设计）**
+> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **721 条 / 89 类 / 0 失败**（2026-10-23 第十七轮实测，另有 29 条跳过，其中 +5 条来自未提交的多版本真库矩阵 WIP，§28.7）。
 >
 > ⭐ **本轮（第十三轮）是「对齐 Navicat 观感」的一轮，不是功能扩张。**
 > 逐像素量了 Navicat 的表清单：8 列、19px 行高、纯白行、1px 行线、灰色侧栏。
-> 已落地：表清单 8 列、对象首页 9 列、密度 24/28/34、去斑马纹/空行假线、表头 12px。
+> 已落地：表清单 8 列、对象首页 9 列、密度 24/28/34、去斑马纹/空行假线、表头 12px、右键菜单、视图切换、状态栏文案、N1–N5 全部功能。
 > 完整报告见 **`docs/NAVICAT-PARITY-2026-10-V5.md`**。
 >
 > 📌 第六轮（历史）做过一次全量核查：4 处文档失真 + 4 个真实缺陷（含 2 个丢数据）+ 1 整块能力空白，
@@ -1766,12 +1766,26 @@ java tools/TestCount.java
 > 📌 **去重是必须的**：刷新、切视图、标签切回来都会重跑 `updateSelectionState()`；
 > 不去重就会拿同一个表名反复触发一次元数据查询 + 一次面板重绘。
 
+### 28.9 AIDB 品牌改造 + Logo 落地（同轮续三）
+
+| # | 改动 | 证据 |
+|---|---|---|
+| 1 | **Logo 设计**：数据库三层圆柱 + AI 四角星芒。语义 = DB + AI，16px 下仍可辨 | `brand/aidb-mark.svg`（纯图标）· `brand/aidb-logo-horizontal.svg`（横版字标） |
+| 2 | **PNG 生成器**：`tools/GenLogo.java`（Java2D，4× 超采样抗锯齿）。**与 SVG 几何一致**，改一个必须改两个；JDK 自带，无新依赖 | `java tools/GenLogo.java` → `app-icon-{16..1024}.png` |
+| 3 | **多尺寸图标注册**：`App.java` 注册 1024/512/256/128/64 六张，系统按位置自动选最合适的一张（避免 Dock/标签页糊边） | `App.java` 图标加载循环 |
+| 4 | **用户可见文案统一为 AIDB**：窗口标题、应用栏字标、欢迎页标题、`退出`/`关于` 菜单、Toast、崩溃日志、SQL 导出注释头、secret-tool label、jpackage `--name`/`--vendor`、14 个 pom `<name>` | `App.java` `APP_TITLE` · `AppBar` · `WorkspaceView` · `AppShell` · `CrashLog` · `TableExporter` · `SecretToolCredentialStore` · `scripts/package.sh` · 各 `pom.xml` |
+| 5 | **品牌约束写进文档**：包名 `io.agenticdb` 与 groupId **不改**（会波及 200+ 文件、14 个模块坐标、`~/.agenticdb` 历史数据，收益为零风险极高） | `brand/README.md`「命名空间约束」 |
+| 6 | **测试同步**：`AppBarTest.theBrandShowsTheProductName` 断言改为 `"AIDB"` | `AppBarTest`（10 例仍全绿） |
+
+**本轮验收**：`./mvnw -B clean verify` → **721 条 / 89 类 / 0 失败**（品牌改造零回归）。
+
 ---
 
 ## 23. 变更记录
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-23 | 第十七轮·续三 | **AIDB 品牌改造 + Logo 落地**（§28.9）：`brand/aidb-mark.svg` + `aidb-logo-horizontal.svg`（数据库三层圆柱 + AI 四角星芒）· `tools/GenLogo.java`（Java2D 4× 超采样，产出 16–1024 七档 PNG）· `App.java` 注册 6 张多尺寸图标 · 用户可见文案全量改 **AIDB**（窗口标题 / 应用栏字标 / 欢迎页 / `退出`·`关于` 菜单 / 崩溃日志 / SQL 导出头 / secret-tool label / jpackage / 14 个 pom `<name>`）· **包名 `io.agenticdb` 与 groupId 刻意不改**（写进 `brand/README.md`）· `AppBarTest` 断言同步；门禁 **721 条 / 89 类 / 0 失败** |
 | 2026-10-23 | 第十七轮 | **规格书 §6/§13/§9.7/§6.3/§11.2 五项落地**（§28）：新增 `ObjectDetailsPanel` 右侧对象详情面板（纯展示 + `Loader` 回调喂数据，宽 300 可拖 220–420，`details.toggle` ⌥⌘D，默认隐藏）· `NewTableDialog` 重构（宽 640→**900**，标题带真实库名/方言/关闭钮，SQL 预览 `TextArea`→**只读 `SqlEditor`**（等宽+行号+高亮）可折叠可复制，列网格高度自适应）· 数据页底部「记录/页面」常驻标签（两组同图标方向键不再靠猜）· **§6.3** 详情面板接表清单选中项（`inspectTable` 按值去重）· **§11.2** 结构页 DDL 页 `TextArea`→只读 `SqlEditor`（`SqlEditor.setHint`）· **门禁抓出 3 个真 bug**（§28.4：`facts` VBox 从未挂场景图 / 详情面板跨线程渲染违反 JavaFX 单线程规则 / PG 真库回报 `character varying` 断言写死 `varchar`）+ 1 处样式类回归 · 新门禁 `ObjectDetailsPanelTest`(14) + `NewTableDialogTest`(+6) + `AppShellTest`(+3) + `DataGridPageTest`(+1) + `TableListPageTest`(+2) + `StructurePageTest`(+1)；截图 9→**11 张**（新增 `p2-details`，`ADB_DETAILS=1`）；门禁 **721 条 / 89 类 / 0 失败**（另 29 跳过，其中 +5 条来自未提交的多版本矩阵 WIP，§28.7） |
 | 2026-10-23 | 第十六轮 | **U-B7 侧栏 Navicat 模型 + 按钮规格统一**（§27）：侧栏去「工作台」分段、单棵「我的连接」树、**查询跟着连接走**（`queryTargetConnectionId()`）、★ 收藏改图标筛选 · **按钮规格统一**：`.adb-dialog .button` 对齐 `.adb-button`（6px/13px/**32px**/`-adb-border`）、`.adb-icon-button` 28→32px · **修 4 处门禁抓出的功能回归**（§27.4：查询历史不可达 / 折叠栏诊断按钮越界崩溃 / TRANSFER 死图标 / WorkspaceToolsPageTest 3 例）+ 4 处样式类漂移；**Docker 解锁 + PG16/MySQL8.4 真库 11 例**（§26，抓出 `rows` 保留字 / `pg_class.relcollation` 两个跨方言 bug）；门禁 **691 条 / 87 类 / 0 失败**（比上轮 +16 全部来自容器契约真正执行） |
 | 2026-10-22 | 第十五轮·续二 | **G1 ✅ 冻结列**（§25.5，**U-B6 功能补齐层收官**）：左表 `frozenGrid` + 右表 `grid` 并排，移动**同一批 `TableColumn` 实例**（列宽/可见性/cellFactory 不丢，`applyFrozenColumns` 幂等）· 垂直滚动条双向绑定（等 skin 就绪，headless 安静跳过）· 选择双向同步 + 防循环标志 · **排序无需同步**（服务端排序，两边列头触发同一次重查）· 两表共享 items、同设 `setFixedCellSize` · 视图菜单「冻结左侧列」1/2/3 档 + 取消 · **N=0 时布局与旧版完全等价** · 新门禁 `DataGridPageTest.frozenColumnsStayPut`(1)；门禁 **675 条 / 87 类 / 0 失败** |

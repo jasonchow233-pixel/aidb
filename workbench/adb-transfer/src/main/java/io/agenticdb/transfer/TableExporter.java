@@ -106,7 +106,7 @@ public final class TableExporter {
 
     private static void writeSqlPreamble(Writer out, Dialect dialect, String table,
                                          List<String> names) throws IOException {
-        out.write("-- 导出自 AgenticDB\n");
+        out.write("-- 导出自 AIDB\n");
         out.write("INSERT INTO " + dialect.quote(table) + " (");
         for (int i = 0; i < names.size(); i++) {
             if (i > 0) {

@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>adb-introspect</artifactId>
-  <name>AgenticDB :: Introspect</name>
+  <name>AIDB :: Introspect</name>
   <description>元数据内省：表、列、索引、外键、约束、DDL。</description>
 
   <dependencies>

@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>adb-ui-shell</artifactId>
-  <name>AgenticDB :: UI Shell</name>
+  <name>AIDB :: UI Shell</name>
   <description>JavaFX 五区外壳、应用栏、命令面板、状态栏。</description>
 
   <dependencies>

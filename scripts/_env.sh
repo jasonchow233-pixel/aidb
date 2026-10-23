@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AgenticDB —— 所有 scripts/ 下脚本共用的环境预检与工具函数。
+# AIDB —— 所有 scripts/ 下脚本共用的环境预检与工具函数。
 #
 # 这个文件不直接执行，由 dev.sh / build.sh / shots.sh 通过
 #   source "$(dirname "$0")/_env.sh"

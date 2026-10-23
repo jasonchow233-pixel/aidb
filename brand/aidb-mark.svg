@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="AIDB">
+  <!--
+    AIDB mark —— 数据库圆柱 + AI 星芒
+    语义：三条数据盘叠成圆柱（DB），右上角四角星芒（AI）。
+    16px 下圆柱退化为三条横带 + 一个点，仍然可辨。
+    渐变与 tokens.json 的 accent（亮 #2563EB / 暗 #3B82F6）同源。
+  -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 底板：圆角方，圆角率 22% -->
+  <rect x="64" y="64" width="896" height="896" rx="216" fill="url(#tile)"/>
+
+  <!-- 数据库圆柱：顶盘 + 盘身，盘身用两条同色弧线切成三段 -->
+  <g fill="#FFFFFF">
+    <!-- 顶盘 -->
+    <ellipse cx="470" cy="360" rx="230" ry="86"/>
+    <!-- 盘身 -->
+    <path d="M240 360 V660 a230 86 0 0 0 460 0 V360"/>
+  </g>
+  <!-- 分隔弧（与底板同色，做出三张盘的层次） -->
+  <g fill="none" stroke="url(#tile)" stroke-width="34" stroke-linecap="round">
+    <path d="M240 480 a230 86 0 0 0 460 0"/>
+    <path d="M240 570 a230 86 0 0 0 460 0"/>
+  </g>
+
+  <!-- AI 星芒：四角 sparkle（四条二次贝塞尔，控制点贴近中心 → 内凹收尖） -->
+  <path d="M760 170
+           Q786 270 886 296
+           Q786 322 760 422
+           Q734 322 634 296
+           Q734 270 760 170 Z"
+        fill="#FFFFFF"/>
+</svg>

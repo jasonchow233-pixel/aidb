@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>adb-transfer</artifactId>
-  <name>AgenticDB :: Transfer</name>
+  <name>AIDB :: Transfer</name>
   <description>数据导入导出：流式 CSV/TSV/JSON 读写。</description>
 
   <dependencies>

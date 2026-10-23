@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>adb-jdbc</artifactId>
-  <name>AgenticDB :: JDBC</name>
+  <name>AIDB :: JDBC</name>
   <description>统一的 JDBC 会话、方言与行映射。</description>
 
   <dependencies>

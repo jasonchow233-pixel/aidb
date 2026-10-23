@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>adb-safety</artifactId>
-  <name>AgenticDB :: Safety</name>
+  <name>AIDB :: Safety</name>
   <description>危险分级与错误定位。</description>
 
   <dependencies>

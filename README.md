@@ -1,6 +1,9 @@
-# AgenticDB
+# AIDB (AgenticDB)
 
-跨平台数据库管理桌面客户端。**Java 25 + JavaFX 25 原生桌面**，不内嵌 WebView，不启动 HTTP 端口。
+> 跨平台数据库管理桌面客户端 · **AI 原生数据库工作台**
+> **Java 25 + JavaFX 25 原生桌面**，不内嵌 WebView，不启动 HTTP 端口。
+
+![AIDB logo](ui/adb-ui-shell/src/main/resources/io/agenticdb/ui/app-icon-128.png)
 
 目标是 Navicat 级的交互顺手程度：对象树 → 双击表 → 数据页 → 编辑/保存，全程键盘可达。
 
@@ -185,7 +188,7 @@ TestFX 默认用 Monocle 无头模式；在本机想看真实窗口，去掉父 
 | **`docs/UI-COMPARISON-2026-10.md`** | 与 Navicat 的像素级对拍（**上一版**，并排图存在缩放不一致；最新结论以 `NAVICAT-PARITY-2026-10-V5.md` 为准） |
 | **`docs/UI-ROADMAP.md`** | ⭐ **界面专项**：实测 11 个界面问题（字号 / 间距 / 圆角 / 焦点环 / 按钮层级 / 图标 / 密度 / 列头 / 连接列表）+ 6 个批次计划 + 排版 / 间距 / 圆角 / 配色 / 交互规范 |
 | **`docs/NAVICAT-COMPARE.md`** | ⭐ **与 Navicat 的实拍对比**（本机装了 Navicat Premium Lite 15）：逐项对照 + 6 个真差距 + 由此重排的优先级 |
-| **`docs/GITHUB-COMPARE.md`** | ⭐ **GitHub 上开源数据库管理软件**扫描（DBeaver / Chat2DB / Beekeeper Studio / TablePro / sqlpad / SQLTools…）：与 AgenticDB 的可比性、独特定位、借鉴项 |
+| **`docs/GITHUB-COMPARE.md`** | ⭐ **GitHub 上开源数据库管理软件**扫描（DBeaver / Chat2DB / Beekeeper Studio / TablePro / sqlpad / SQLTools…）：与 AIDB 的可比性、独特定位、借鉴项 |
 | **`docs/EXEC-SUMMARY.md`** | ⭐ **对外汇报版**（2026-10-22）：架构 / Todolist / 截图 / Navicat / GitHub / 六维 / 还缺什么 / 本轮交付物 / 汇报要点 |
 | **`docs/UI-AUDIT.md`** | ⭐ **截图实测审计（2026-10-21）**：4 张真实窗口截图逐项挑问题 + 代码定位 + 修法 + 验收标准；含**3 个已排除的误判**与分批执行计划 |
 | **`docs/UI-FORMS-AND-STATES.md`** | ⭐ **形态与状态规范**：新能力该做**弹窗还是标签页**（含待建能力的裁定表，防「新建表做成标签页」这类错误）+ 默认态 8 项 + 空白态 9 处清单 + `EmptyState` 组件约定 |

@@ -33,7 +33,7 @@ public final class CrashLog {
         Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
             write(error);
             // 交给默认行为（打印到 stderr），别把原始信息吞掉。
-            System.err.println("[AgenticDB] 未捕获异常（已写入崩溃日志）：" + error);
+            System.err.println("[AIDB] 未捕获异常（已写入崩溃日志）：" + error);
         });
     }
 
@@ -44,7 +44,7 @@ public final class CrashLog {
             Files.createDirectories(directory);
             Path file = directory.resolve("crash-" + STAMP.format(LocalDateTime.now()) + ".log");
             StringBuilder text = new StringBuilder();
-            text.append("AgenticDB 崩溃日志\n");
+            text.append("AIDB 崩溃日志\n");
             text.append("时间: ").append(LocalDateTime.now()).append('\n');
             text.append("版本: ").append(AppVersion.VERSION).append('\n');
             text.append("Java : ").append(System.getProperty("java.version"))

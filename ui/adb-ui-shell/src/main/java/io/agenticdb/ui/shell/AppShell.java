@@ -1418,7 +1418,7 @@ public final class AppShell extends StackPane {
                         Platform.exit();
                     }
                 });
-        actions.register("app.quit", "退出 AgenticDB", "文件",
+        actions.register("app.quit", "退出 AIDB", "文件",
                 key("Shortcut+Q"), () -> {
                     if (stage != null) {
                         stage.close();
@@ -1595,9 +1595,9 @@ public final class AppShell extends StackPane {
 
         actions.register("shortcuts", "快捷键…", "帮助",
                 key("F1"), this::showShortcuts);
-        actions.register("about", "关于 AgenticDB", "帮助",
-                null, () -> showInfo("关于 AgenticDB",
-                        "AgenticDB " + io.agenticdb.ui.AppVersion.DISPLAY
+        actions.register("about", "关于 AIDB", "帮助",
+                null, () -> showInfo("关于 AIDB",
+                        "AIDB " + io.agenticdb.ui.AppVersion.DISPLAY
                                 + "\nJavaFX 25 · 原生桌面\n\n"
                                 + "SQLite 演示库 · 真实内省 · 分页数据页 · SQL 编辑器\n"
                                 + "执行清单：NAVICAT-TODO.md\n"

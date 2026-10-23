@@ -37,7 +37,7 @@ public final class SecretToolCredentialStore implements CredentialStore {
             return;
         }
         try {
-            Process process = new ProcessBuilder(executable, "store", "--label=AgenticDB",
+            Process process = new ProcessBuilder(executable, "store", "--label=AIDB",
                     "service", SERVICE, "account", profileId).start();
             process.getOutputStream().write(password.getBytes(StandardCharsets.UTF_8));
             process.getOutputStream().close();

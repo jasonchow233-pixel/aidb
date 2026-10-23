@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>adb-fixtures</artifactId>
-  <name>AgenticDB :: Fixtures</name>
+  <name>AIDB :: Fixtures</name>
   <description>演示库与测试夹具（固定种子，可重建）。</description>
 
   <dependencies>

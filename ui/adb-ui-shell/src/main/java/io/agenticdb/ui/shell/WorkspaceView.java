@@ -138,7 +138,7 @@ public final class WorkspaceView extends StackPane {
         logo.setAccessibleText("连接");
         logo.getStyleClass().add("adb-welcome__logo");
 
-        Label title = new Label("AgenticDB");
+        Label title = new Label("AIDB");
         title.getStyleClass().add("adb-welcome__title");
 
         Label subtitle = new Label("原生数据库工作台 · SQLite 演示库已连接");

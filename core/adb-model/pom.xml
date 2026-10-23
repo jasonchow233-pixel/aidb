@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>adb-model</artifactId>
-  <name>AgenticDB :: Model</name>
+  <name>AIDB :: Model</name>
   <description>领域模型与查询限额。零 UI 依赖。</description>
 
   <dependencies>

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 一键编译并启动 AgenticDB 桌面端。
+# 一键编译并启动 AIDB 桌面端。
 #
 # 用法：
 #   ./scripts/dev.sh                 # 编译 + 启动（停在「对象」首页）

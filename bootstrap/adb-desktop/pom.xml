@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>adb-desktop</artifactId>
-  <name>AgenticDB :: Desktop</name>
+  <name>AIDB :: Desktop</name>
   <description>应用入口、jlink 裁剪、jpackage 出包。</description>
 
   <dependencies>

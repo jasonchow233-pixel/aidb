@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>adb-sql</artifactId>
-  <name>AgenticDB :: SQL</name>
+  <name>AIDB :: SQL</name>
   <description>SQL 词法内核：分句、高亮、格式化。</description>
 
   <dependencies>

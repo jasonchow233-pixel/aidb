@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 一键出包（jpackage）—— 把 AgenticDB 打成可分发的安装包 / 应用镜像。
+# 一键出包（jpackage）—— 把 AIDB 打成可分发的安装包 / 应用镜像。
 #
 # 用法：
 #   ./scripts/package.sh              # 当前平台默认类型（macOS=app-image，Windows=msi，Linux=deb）
@@ -65,9 +65,9 @@ DIST_DIR="$MODULE_DIR/target/dist"
 mkdir -p "$DIST_DIR"
 
 JPACKAGE_ARGS=(
-  --name "AgenticDB"
+  --name "AIDB"
   --app-version "${APP_VERSION}"
-  --vendor "AgenticDB"
+  --vendor "AIDB"
   --description "跨平台多数据库管理桌面客户端"
   --input "$INPUT_DIR"
   --main-jar "adb-desktop-$VERSION.jar"

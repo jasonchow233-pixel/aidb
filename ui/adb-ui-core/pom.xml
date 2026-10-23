@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>adb-ui-core</artifactId>
-  <name>AgenticDB :: UI Core</name>
+  <name>AIDB :: UI Core</name>
   <description>设计令牌、主题、图标。颜色字面量只允许出现在生成产物里。</description>
 
   <dependencies>

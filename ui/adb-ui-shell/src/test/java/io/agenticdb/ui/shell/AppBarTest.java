@@ -83,7 +83,7 @@ class AppBarTest {
     void theBrandShowsTheProductName(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
         assertThat(robot.lookup("#appbar-brand-name").queryAs(Label.class).getText())
-                .isEqualTo("AgenticDB");
+                .isEqualTo("AIDB");
     }
 
     @Test
