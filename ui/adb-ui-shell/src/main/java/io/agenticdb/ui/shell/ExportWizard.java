@@ -1,14 +1,19 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.introspect.DataQuery;
+import io.agenticdb.introspect.DataSqlBuilder;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.QueryLimits;
+import io.agenticdb.model.RowPage;
 import io.agenticdb.transfer.ExportFormat;
 import io.agenticdb.transfer.ExportOptions;
 import io.agenticdb.transfer.TableExporter;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
@@ -24,6 +29,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.text.NumberFormat;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -59,6 +65,27 @@ final class ExportWizard {
         }
     }
 
+    /**
+     * 行数来源：给定导出范围，返回「将读取多少行」。
+     *
+     * <p>抽出来是为了门禁能注入一个超阈值的大数 —— 否则要造一百万行才能测到这条路径。
+     */
+    @FunctionalInterface
+    interface RowCounter {
+        long count(Scope scope) throws Exception;
+    }
+
+    /**
+     * 超限确认：拿到提示文案，返回 {@code true} 才继续导出。
+     *
+     * <p>默认实现在 FX 线程上弹模态框阻塞等用户 —— 这是 JavaFX 的正常用法，
+     * 且调用点本来就在 FX 线程上（见 {@link #start()}）。
+     */
+    @FunctionalInterface
+    interface Confirmation {
+        boolean confirm(String message);
+    }
+
     private final DbSession session;
     private final String tableName;
     private final List<String> columns;
@@ -76,15 +103,27 @@ final class ExportWizard {
     private final Button exportButton = new Button("开始导出");
     private final Button closeButton = new Button("关闭");
 
+    private final RowCounter counter;
+    private final Confirmation confirmation;
+
     private volatile boolean running;
 
     ExportWizard(DbSession session, String tableName, List<String> columns, Scope defaultScope,
                  Path defaultTarget, Executor dbExecutor, Consumer<String> status) {
+        this(session, tableName, columns, defaultScope, defaultTarget, dbExecutor, status,
+                null, null);
+    }
+
+    ExportWizard(DbSession session, String tableName, List<String> columns, Scope defaultScope,
+                 Path defaultTarget, Executor dbExecutor, Consumer<String> status,
+                 RowCounter counter, Confirmation confirmation) {
         this.session = session;
         this.tableName = tableName;
         this.columns = columns;
         this.dbExecutor = dbExecutor;
         this.status = status == null ? message -> { } : status;
+        this.counter = counter == null ? this::countRows : counter;
+        this.confirmation = confirmation == null ? ExportWizard::askUser : confirmation;
 
         scopeBox.getItems().setAll(Scope.values());
         scopeBox.getSelectionModel().select(defaultScope);
@@ -197,9 +236,41 @@ final class ExportWizard {
         running = true;
         exportButton.setDisable(true);
         spinner.setVisible(true);
-        summary.setText("正在导出 " + tableName + " …");
+        summary.setText("正在统计 " + tableName + " 的行数 …");
 
         ExportOptions options = new ExportOptions(format, true, 500, 0, true);
+        // ⭐ 行数统计在后台线程跑：整表 COUNT(*) 是一次全表扫描，
+        //    大表上可能要几十秒 —— 不能因为它把界面卡住。
+        dbExecutor.execute(() -> {
+            long rows;
+            try {
+                rows = counter.count(scope);
+            } catch (Exception e) {
+                // 数不出来就按「不知道」处理：不因此拦住用户，但也不假装知道行数。
+                rows = -1;
+            }
+            if (rows > 0 && QueryLimits.exportRequiresConfirmation(rows)) {
+                String message = "将读取 " + NumberFormat.getInstance().format(rows) + " 行"
+                        + "（超过 " + NumberFormat.getInstance().format(QueryLimits.MAX_EXPORT_ROWS)
+                        + " 行的确认阈值）。确定继续吗？";
+                Platform.runLater(() -> {
+                    if (confirmation.confirm(message)) {
+                        runExport(target, options);
+                    } else {
+                        finish("已取消导出：" + message);
+                    }
+                });
+                return;
+            }
+            if (rows < 0) {
+                Platform.runLater(() ->
+                        summary.setText("无法统计行数，仍继续导出 " + tableName + " …"));
+            }
+            runExport(target, options);
+        });
+    }
+
+    private void runExport(Path target, ExportOptions options) {
         dbExecutor.execute(() -> {
             String message;
             try {
@@ -209,15 +280,47 @@ final class ExportWizard {
                 message = "导出失败：" + (e.getMessage() == null ? e.toString() : e.getMessage());
             }
             String finalMessage = message;
-            Platform.runLater(() -> {
-                running = false;
-                exportButton.setDisable(false);
-                spinner.setVisible(false);
-                summary.setText(finalMessage);
-                log.appendText(finalMessage + "\n");
-                status.accept(finalMessage);
-            });
+            Platform.runLater(() -> finish(finalMessage));
         });
+    }
+
+    /** 收尾：解锁按钮、写日志。必须在 FX 线程上调用。 */
+    private void finish(String message) {
+        running = false;
+        exportButton.setDisable(false);
+        spinner.setVisible(false);
+        summary.setText(message);
+        log.appendText(message + "\n");
+        status.accept(message);
+    }
+
+    /**
+     * 默认的行数来源。
+     *
+     * <p>⭐ 只有<b>整表</b>可能过百万 —— 「当前页」和「选中行」都受页大小约束
+     * （{@code QueryLimits.MAX_PAGE_SIZE}），永远不该触发确认。
+     * 所以这两档直接返回 0，表示「不用问」。
+     */
+    long countRows(Scope scope) throws Exception {
+        if (scope != Scope.WHOLE_TABLE) {
+            return 0;
+        }
+        DataSqlBuilder.Sql sql = DataSqlBuilder.count(session, tableName, DataQuery.empty());
+        RowPage page = session.query(sql.text(), 1, sql.params());
+        if (page.rows().isEmpty()) {
+            return 0;
+        }
+        Object value = page.rows().get(0).get("adb_count");
+        return value instanceof Number number ? number.longValue() : 0;
+    }
+
+    /** 默认的确认方式：模态框，且把真实行数写出来（不抽象的「确定吗」）。 */
+    private static boolean askUser(String message) {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION, message,
+                ButtonType.OK, ButtonType.CANCEL);
+        alert.setTitle("导出确认");
+        alert.setHeaderText("这张表很大");
+        return alert.showAndWait().filter(button -> button == ButtonType.OK).isPresent();
     }
 
     private long run(Path target, ExportOptions options) throws Exception {

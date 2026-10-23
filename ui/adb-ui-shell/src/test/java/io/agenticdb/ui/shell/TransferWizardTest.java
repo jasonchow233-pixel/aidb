@@ -66,13 +66,135 @@ class TransferWizardTest {
             });
             onFxRun(() -> clickButton(wizard, "export-start"));
 
-            assertThat(waitForFile(target, 200)).as("导出文件应当被写出来").isTrue();
+            // 导出前多了一次 COUNT(*)，等文件的时间放宽（原来 200ms 已经不够）。
+            assertThat(waitForFile(target, 5000)).as("导出文件应当被写出来").isTrue();
             String csv = Files.readString(target, StandardCharsets.UTF_8);
             assertThat(csv).startsWith("id,name");
             assertThat(csv).contains("User 001");
 
             Label summary = onFx(() -> (Label) wizard.content().lookup("#export-summary"));
             assertThat(summary.getText()).contains("已导出");
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    @Test
+    void exportWizardAsksBeforeDumpingMoreThanTheLimit() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("demo5.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            Path target = temp.resolve("huge.csv");
+            AtomicReference<String> asked = new AtomicReference<>();
+            ExportWizard wizard = onFx(() -> new ExportWizard(session, "users",
+                    List.of("id", "name"), ExportWizard.Scope.WHOLE_TABLE, target,
+                    executor, message -> { },
+                    scope -> 2_000_000L,
+                    message -> {
+                        asked.set(message);
+                        return false;              // 用户点了「取消」
+                    }));
+
+            onFxRun(() -> {
+                TextField field = (TextField) wizard.content().lookup("#export-target");
+                field.setText(target.toString());
+                clickButton(wizard, "export-start");
+            });
+
+            assertThat(waitForSummary(wizard, "已取消", 5000))
+                    .as("超过阈值必须先问，用户取消就不该写文件").isTrue();
+            assertThat(asked.get())
+                    .as("提示里必须写出真实行数，不能只问一个抽象的「确定吗」")
+                    .contains("2,000,000");
+            assertThat(Files.exists(target)).as("取消了就不该有文件").isFalse();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    @Test
+    void exportWizardProceedsWhenTheUserConfirms() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("demo6.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            Path target = temp.resolve("confirmed.csv");
+            AtomicReference<String> asked = new AtomicReference<>();
+            ExportWizard wizard = onFx(() -> new ExportWizard(session, "users",
+                    List.of("id", "name"), ExportWizard.Scope.WHOLE_TABLE, target,
+                    executor, message -> { },
+                    scope -> 2_000_000L,
+                    message -> {
+                        asked.set(message);
+                        return true;               // 用户点了「确定」
+                    }));
+
+            onFxRun(() -> {
+                TextField field = (TextField) wizard.content().lookup("#export-target");
+                field.setText(target.toString());
+                clickButton(wizard, "export-start");
+            });
+
+            assertThat(waitForFile(target, 5000)).as("确认之后应当真的导出").isTrue();
+            assertThat(asked.get()).isNotNull();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    @Test
+    void exportWizardDoesNotAskWhenTheRowCountIsSmall() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("demo7.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            Path target = temp.resolve("small.csv");
+            AtomicReference<String> asked = new AtomicReference<>();
+            ExportWizard wizard = onFx(() -> new ExportWizard(session, "users",
+                    List.of("id"), ExportWizard.Scope.WHOLE_TABLE, target,
+                    executor, message -> { },
+                    scope -> 10L,
+                    message -> {
+                        asked.set(message);
+                        return false;
+                    }));
+
+            onFxRun(() -> {
+                TextField field = (TextField) wizard.content().lookup("#export-target");
+                field.setText(target.toString());
+                clickButton(wizard, "export-start");
+            });
+
+            assertThat(waitForFile(target, 5000)).as("没超阈值就不该拦").isTrue();
+            assertThat(asked.get()).as("没超阈值不该弹确认").isNull();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    @Test
+    void exportWizardCountsOnlyTheWholeTable() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("demo8.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            ExportWizard wizard = onFx(() -> new ExportWizard(session, "users",
+                    List.of("id"), ExportWizard.Scope.WHOLE_TABLE, null,
+                    executor, message -> { }));
+
+            long whole = wizard.countRows(ExportWizard.Scope.WHOLE_TABLE);
+            Object direct = session.query("SELECT COUNT(*) AS c FROM users", 1)
+                    .rows().get(0).get("c");
+            assertThat(whole).isEqualTo(((Number) direct).longValue()).isPositive();
+
+            // 当前页 / 选中行都受页大小约束（≤1000），永远不该触发确认。
+            assertThat(wizard.countRows(ExportWizard.Scope.CURRENT_PAGE)).isZero();
+            assertThat(wizard.countRows(ExportWizard.Scope.SELECTED)).isZero();
         } finally {
             executor.shutdownNow();
             session.close();
@@ -157,6 +279,22 @@ class TransferWizardTest {
         javafx.scene.control.Button button =
                 (javafx.scene.control.Button) wizard.content().lookup("#" + id);
         button.fire();
+    }
+
+    private static boolean waitForSummary(ExportWizard wizard, String fragment, long millis)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + millis;
+        while (System.currentTimeMillis() < deadline) {
+            AtomicReference<String> text = new AtomicReference<>();
+            Platform.runLater(() -> text.set(
+                    ((Label) wizard.content().lookup("#export-summary")).getText()));
+            WaitForAsyncUtils.waitForFxEvents();
+            if (text.get() != null && text.get().contains(fragment)) {
+                return true;
+            }
+            Thread.sleep(50);
+        }
+        return false;
     }
 
     private static boolean waitForFile(Path path, long millis)
