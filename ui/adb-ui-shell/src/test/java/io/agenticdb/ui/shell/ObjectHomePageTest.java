@@ -144,6 +144,73 @@ class ObjectHomePageTest {
                         "修改时间", "排序规则", "注释");
     }
 
+    // ─────────────────────── 第十九轮 S-1 列可见性 ───────────────────────
+
+    /** 当前**可见**的列标题（顺序同 getColumns()）。 */
+    private List<String> visibleTitles(FxRobot robot) {
+        AtomicReference<List<String>> titles = new AtomicReference<>();
+        robot.interact(() -> titles.set(page.table().getColumns().stream()
+                .filter(column -> column.isVisible())
+                .map(column -> column.getText())
+                .toList()));
+        return titles.get();
+    }
+
+    /**
+     * SQLite 形态：表没有引擎 / 日期 / 排序规则 / 注释 / 长度，
+     * 函数 / 触发器更是连元数据都没有 → 6 个可选列全是「—」→ 整列隐藏。
+     *
+     * <p>实测 SQLite 演示库上对象首页 9 列有 6 列是「—」墙
+     * （{@code AIDB-UIUX-ANALYSIS.md} §10.3 C1）。
+     */
+    @Test
+    void sqliteLikeObjectsHideTheAllPlaceholderColumns(FxRobot robot) {
+        robot.interact(() -> page.render(
+                List.of(
+                        new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE),
+                        new SchemaService.SchemaObject("orders", SchemaService.ObjectKind.TABLE),
+                        new SchemaService.SchemaObject("trg_audit",
+                                SchemaService.ObjectKind.TRIGGER)),
+                // 表只有行数；触发器连 meta 都没有（byName 查不到 → meta = null）。
+                List.of(
+                        new TableMeta("users", 200L, null, null, null, null, null, null),
+                        new TableMeta("orders", 3L, null, null, null, null, null, null))));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(visibleTitles(robot))
+                .as("SQLite 拿不到长度/引擎/日期/排序规则/注释 → 全「—」的列整列隐藏，"
+                        + "核心列「名称 / 类型 / 行数」必须留着")
+                .containsExactly("名称", "类型", "行数");
+    }
+
+    /**
+     * 混合场景：只要有**一行**有真值，整列就留着。
+     *
+     * <p>对象首页比表清单更容易踩到这个：同一个清单里有表（有引擎）
+     * 也有视图 / 触发器（没有引擎）。白名单式的「这个方言没这列」会把
+     * 引擎列连累藏掉；看数据的规则不会。
+     */
+    @Test
+    void oneObjectWithRealMetadataKeepsTheColumnVisible(FxRobot robot) {
+        robot.interact(() -> page.render(
+                List.of(
+                        new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE),
+                        new SchemaService.SchemaObject("v_users", SchemaService.ObjectKind.VIEW),
+                        new SchemaService.SchemaObject("trg_audit",
+                                SchemaService.ObjectKind.TRIGGER)),
+                // 表有引擎 + 注释；视图 / 触发器没有 meta。
+                List.of(new TableMeta("users", 200L, 3072L, "InnoDB",
+                        "2026-01-01 09:00:00", "2026-02-01 10:00:00",
+                        "utf8mb4_0900_ai_ci", "用户表"))));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(visibleTitles(robot))
+                .as("混合场景：表有引擎/注释 → 这些列要留着；但没有任何行给出"
+                        + "「创建/修改/排序规则」以外真值的列仍按数据判定")
+                .containsExactly("名称", "类型", "行数", "数据长度", "引擎",
+                        "创建时间", "修改时间", "排序规则", "注释");
+    }
+
     @Test
     void densityChangesTheObjectListRowHeight(FxRobot robot) {
         robot.interact(() -> {

@@ -9,7 +9,7 @@
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
 > 最后更新：**2026-10-23（第十八轮：截图当证据的第二轮 Navicat 对标 —— 6 个真缺陷修复 + 7 条变异验证门禁 + 合并待办 §29）**
-> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **717 条 / 91 类 / 0 失败**（2026-10-23 第十八轮实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
+> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **731 条 / 92 类 / 0 失败**（2026-10-23 第十九轮实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
 >
 > 📌 **关于门禁数字的口径（第十八轮勘误）**：第十七轮记的「721 / 29 跳过」是在 **Docker 可用**时测的；
 > 本轮 `adb-ui-shell` 单模块 **278 → 285（+7 = 本轮 7 条新门禁）**、测试类 **89 → 91（+2 = 两个静态审计门禁）**，
@@ -1863,8 +1863,8 @@ java tools/TestCount.java
 
 | # | 项 | 证据 / 来源 | 难度 | 建议门禁 |
 |---|---|---|---|---|
-| **S-1** | **C1 方言感知列**：SQLite 下表清单 8 列里 **6 列恒为「—」= 首选宽度 810/1120px（72%）**；对象首页 9 列里 6 列同样 | `p6-tables.png` / `p5-connections.png`；`TableListPage:239-250` 无条件建全列（`ObjectHomePage:218` 还把这写成了既定策略） | 🟡 中 | `TableListPageTest`：SQLite 连接下 `引擎/排序规则/创建日期/修改日期` 不在 `getColumns()` 里；MySQL 连接下**全在**（不能一刀切砍掉） |
-| **S-2** | **C2 卡片视图去破折号**：`notes / 0行 · — / — · — / —`，220px 卡片 2/3 是标点 | `p6-tables-grid.png` | 🟢 低 | `TableListPageTest`：卡片只渲染**非空**字段行 |
+| **S-1** ✅ **DONE (R19 批次 A)** | **C1 方言感知列**：SQLite 下表清单 8 列里 **6 列恒为「—」= 首选宽度 810/1120px（72%）**；对象首页 9 列里 6 列同样 | `p6-tables.png` / `p5-connections.png`；`TableListPage:239-250` 无条件建全列（`ObjectHomePage:218` 还把这写成了既定策略） | 🟡 中 | ✅ **落地为「看数据不看方言」的规则**（不是方言白名单，故无需给页面塞 `Dialect`）：新共享纯助手 `MetadataColumns.hasAnyValue(rows, text)` —— 只有**每一行都渲染成占位符**时整列隐藏，有一行有真值就留着（混合场景：MySQL 表有引擎、视图没有 → 引擎列保留）；核心列「名称 / 行 / 类型」永不隐藏。判定必须基于**整批已加载 `rows`**（不是 `filtered`），否则搜索会让列凭空出现/消失。门禁：`MetadataColumnsTest`(6) + `TableListPageTest`+3 + `ObjectHomePageTest`+2，**全部做过变异验证** |
+| **S-2** ✅ **DONE (R19 批次 A)** | **C2 卡片视图去破折号**：`notes / 0行 · — / — · — / —`，220px 卡片 2/3 是标点 | `p6-tables-grid.png` | 🟢 低 | ✅ 新 `cardLine(...)` 只拼**非占位符**片段；整行全占位符则**不渲染这一行**（不留空占位）。注意 `rowsText()` 为「—」时不能拼成「— 行」（那就不是占位符了）。门禁：`TableListPageTest.cardViewOmitsPlaceholderLinesOnSqliteLikeData`（变异验证）+ MySQL 形态仍显示真值的反向门禁 |
 | **S-3** | **C5 对象树表节点可展开出列**：Navicat 每个表节点都有 `>`（裁图核对），AIDB 对象节点是叶子 | `SideBar.kindGroup()` 建的子 `TreeItem` 无 children | 🟠 中高 | `SideBarTreeTest`：展开表节点出现列子节点（假会话喂列清单），且**懒加载**（未展开不查库） |
 | **S-4** | **列网格键盘导航**（Tab / 方向键在整张网格内移动 + 单元格编辑焦点） | §28.6 遗留；硬规则「一切键盘可达」；§28.10 已把**布尔三态一格**做成可键盘切换 | 🟡 中 | `NewTableDialogTest`：直接驱动抽出来的 `focusMove(...)` 纯方法（**沿用 §28.10 的教训：headless 下不靠 `fireEvent`**） |
 | **S-5** | **C7 欢迎页用 AIDB mark**：现在还是通用 `Icons.Icon.DATABASE`；品牌改造只注册了 OS 窗口图标 | `WorkspaceView:137`；全仓无 `ImageView(app-icon-*)` | 🟢 低 | 截图重拍 `p0-shell` + 断言欢迎页 logo 来源（PNG 或 `Icons.Icon.BRAND`） |
@@ -1902,7 +1902,7 @@ java tools/TestCount.java
 
 | 批 | 内容 | 验收 |
 |---|---|---|
-| **A（先做，同一根因）** | S-1 + S-2：清单类页面把「没有数据」渲染成标点的问题一次清掉 | 新门禁 2 条（各做过变异）+ **重拍 `p6-tables` / `p6-tables-grid` 并逐张核对** |
+| **A（先做，同一根因）** ✅ **DONE (R19)** | S-1 + S-2：清单类页面把「没有数据」渲染成标点的问题一次清掉 | ✅ 新门禁 6+3+2 条（`MetadataColumnsTest` / `TableListPageTest` / `ObjectHomePageTest`）**各做过变异**（改坏必红：MUTATION-1 强制 `hasAnyValue` 恒真 → 6 门禁红；MUTATION-2 让 `cardLine` 全渲染 → 卡片门禁红；MUTATION-3 空转 `ObjectHomePage.applyColumnVisibility` → 该页门禁红，失败原文逐条记录）+ **重拍 `p6-tables` / `p6-tables-grid` 并逐张核对** |
 | **B（交互补强）** | S-3 树展开出列 | `SideBarTreeTest` +1；展开不触发多余查询的断言 |
 | **C（品牌闭环）** | S-5 欢迎页 mark | 重拍 `p0-shell` |
 | **D（a11y 硬规则）** | S-4 列网格键盘导航 | 沿用 §28.10 的「纯方法抽取」做法，不靠 `fireEvent` |
@@ -1916,6 +1916,7 @@ java tools/TestCount.java
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-23 | **第十九轮** | **⭐ §29 批次 A：清单类页面「没有数据」不再渲染成标点**（S-1 方言感知列 + S-2 卡片去破折号，同一根因）：新增共享纯助手 `MetadataColumns`（`isPlaceholder` / `hasAnyValue`）——**判定「看数据不看方言」**，只有**每一行都渲染成占位符**时整列隐藏，有一行有真值就留着（混合场景：MySQL 表有引擎、视图没有 → 引擎列保留），核心列「名称/行/类型」永不隐藏；判定基于**整批已加载 `rows`**（不是 `filtered`），故搜索不会让列凭空出现/消失 · `TableListPage` 6 个可选列留引用 + `applyColumnVisibility()`，`ObjectHomePage` 同规则复用（无需给页面塞 `Dialect`，避免动构造器与一堆测试）· **S-2**：新 `cardLine(...)` 只拼非占位符片段，整行全占位符则**不渲染这一行**（并修掉「`rowsText()` 为「—」会拼成「— 行」就不算占位符了」的坑）· **14 条新门禁全部做过变异验证**（MUTATION-1 强制 `hasAnyValue` 恒真 → 6 门禁红；MUTATION-2 让 `cardLine` 全渲染 → 卡片门禁红；MUTATION-3 空转 `ObjectHomePage.applyColumnVisibility` → 该页门禁红，失败原文逐条记录）· **4 张截图重拍并逐张核对**：表清单 8→**2 列**、对象首页 9→**3 列**、卡片只剩「图标+名字+N 行」· 门禁 **731 条 / 92 类 / 0 失败**（`adb-ui-shell` 285→**299** +14 = `MetadataColumnsTest`6 + `TableListPageTest`6 + `ObjectHomePageTest`2；测试类 91→**92** +1 = `MetadataColumnsTest`；44 跳过全为环境门控） |
 | 2026-10-23 | **第十八轮** | **⭐ 把截图当证据的第二轮 Navicat 对标**（§28.11）+ **合并待办 §29**：12 张实拍 + 4 张 Navicat 参考**逐张并排核对**（不再「对着规格想」），只记录图上能直接证伪的东西 → **6 个真缺陷**：①`p5-connections` 拍的是对象总览（`shots.sh` 点了个已被重构删掉的 id，`ScreenshotSession` 找不到节点**只打 stderr 就照常截图**）②「每页」下拉**永远空框**（`select(int index)` vs `select(Integer)` 重载决议选错，`javap -c` 实锤，**既有测试还写了绕过它的断言**）+ **返工续集**：修完选中后截图放大看仍是「2…」（逐像素量出右侧还剩 23px 空白，是 ComboBox 按钮单元格吃宽度）→ `prefWidth` 78→**96**，两门禁各补 `prefWidth>=90` 渲染底线③只读 SQL 预览教用户「⌘↵ 执行」④`App` 要的 `app-icon-512.png` **从未生成**（`if (url != null)` 静默跳过）⑤状态栏悬空「— ms」⑥查询页跳页框「三无」空白框 · **五个同根：失败被设计成静默降级** → 新增**两个静态审计门禁**（`ScreenshotScriptAuditTest` 校验脚本点击目标 / `AppIconResourceAuditTest` 校验图标资源名）· **7 条新门禁全部做过变异验证**（改坏必红、改回必绿，失败原文逐条记录）· **逐像素实测**：AIDB 网格 **28px** vs Navicat **19px**（侧栏树 24 vs 22 持平）· 勘误：§28.6 的 §6.1/§6.2/§13.3 是**悬空引用**（grep 全 `docs/` 无对应小节）→ 改按条目名记录；§21.1 的 **X3 早已完成**（第十轮 V-3）· 门禁 **717 条 / 91 类 / 0 失败**（`adb-ui-shell` 278→**285** +7 逐条对得上；44 跳过全为环境门控） |
 | 2026-10-23 | 第十七轮·续四 | **规格 §13.3 新建表布尔列键盘可达**（§28.10）：`CheckBoxTableCell` 复选框 `focusTraversable=false` 只认鼠标 → 新增包级 `BooleanCell`（焦点留单元格 / 复选框只作图形）· 可测逻辑抽成纯方法 `isToggleKey` / `toggle(ColumnRow)` / `handleKey`（headless 下不靠 `fireEvent`，门禁直接驱动生产逻辑）· 新样式 `.adb-table__bool-cell`·`__bool-box`（令牌无硬编码色）· `NewTableDialogTest` +4；门禁 **278 条 / 0 失败**（全 14 模块 SUCCESS） |
 | 2026-10-23 | 第十七轮·续三 | **AIDB 品牌改造 + Logo 落地**（§28.9）：`brand/aidb-mark.svg` + `aidb-logo-horizontal.svg`（数据库三层圆柱 + AI 四角星芒）· `tools/GenLogo.java`（Java2D 4× 超采样，产出 16–1024 七档 PNG）· `App.java` 注册 6 张多尺寸图标 · 用户可见文案全量改 **AIDB**（窗口标题 / 应用栏字标 / 欢迎页 / `退出`·`关于` 菜单 / 崩溃日志 / SQL 导出头 / secret-tool label / jpackage / 14 个 pom `<name>`）· **包名 `io.agenticdb` 与 groupId 刻意不改**（写进 `brand/README.md`）· `AppBarTest` 断言同步；门禁 **721 条 / 89 类 / 0 失败** |

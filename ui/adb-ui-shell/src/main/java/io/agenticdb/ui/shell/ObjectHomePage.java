@@ -84,6 +84,16 @@ final class ObjectHomePage extends VBox {
     private final Button refresh = IconButtons.of(Icons.Icon.REFRESH, "刷新");
     private final VBox content = new VBox();
 
+    // ─────────── 可选列（方言相关）的引用 ───────────
+    // ⭐ 第十九轮 S-1：与 TableListPage 同一套规则 —— 这 6 列在数据里全是
+    //    占位符时整列隐藏；「名称 / 类型 / 行」是核心列，永远显示。
+    private TableColumn<ObjectRow, String> sizeColumn;
+    private TableColumn<ObjectRow, String> engineColumn;
+    private TableColumn<ObjectRow, String> createdColumn;
+    private TableColumn<ObjectRow, String> updatedColumn;
+    private TableColumn<ObjectRow, String> collationColumn;
+    private TableColumn<ObjectRow, String> commentColumn;
+
     /** 当前类型过滤；{@code null} = 全部。 */
     private SchemaService.ObjectKind filter;
     /** 当前搜索词（小写）。 */
@@ -215,22 +225,31 @@ final class ObjectHomePage extends VBox {
         table.setFixedCellSize(rowHeight);
 
         // ⭐ 列与 Navicat 的「表清单」对齐：名称 / 类型 / 行 / 数据长度 / 引擎 /
-        //    创建时间 / 修改时间 / 排序规则 / 注释。方言拿不到的列显示「—」。
+        //    创建时间 / 修改时间 / 排序规则 / 注释。方言拿不到的字段保持「—」。
+        // ⭐ 第十九轮 S-1：可选列（数据长度/引擎/创建/修改/排序规则/注释）留引用，
+        //    按已加载数据决定显不显示 —— 全是占位符就整列隐藏（见 applyColumnVisibility）。
+        sizeColumn = sizeColumn();
+        engineColumn = textColumn("引擎", 90, row -> row.meta() == null
+                ? "—" : row.meta().engineText());
+        createdColumn = textColumn("创建时间", 130, row -> row.meta() == null
+                ? "—" : row.meta().createdText());
+        updatedColumn = textColumn("修改时间", 130, row -> row.meta() == null
+                ? "—" : row.meta().updatedText());
+        collationColumn = textColumn("排序规则", 110, row -> row.meta() == null
+                ? "—" : row.meta().collationText());
+        commentColumn = textColumn("注释", 160, row -> row.meta() == null
+                ? "—" : row.meta().commentText());
+
         table.getColumns().setAll(List.of(
                 nameColumn(),
                 textColumn("类型", 64, row -> typeLabel(row.object().kind())),
                 rowsColumn(),
-                sizeColumn(),
-                textColumn("引擎", 90, row -> row.meta() == null
-                        ? "—" : row.meta().engineText()),
-                textColumn("创建时间", 130, row -> row.meta() == null
-                        ? "—" : row.meta().createdText()),
-                textColumn("修改时间", 130, row -> row.meta() == null
-                        ? "—" : row.meta().updatedText()),
-                textColumn("排序规则", 110, row -> row.meta() == null
-                        ? "—" : row.meta().collationText()),
-                textColumn("注释", 160, row -> row.meta() == null
-                        ? "—" : row.meta().commentText())));
+                sizeColumn,
+                engineColumn,
+                createdColumn,
+                updatedColumn,
+                collationColumn,
+                commentColumn));
 
         // ⭐ 行 id：单测与截图脚本要能按「类型 + 名称」点中某一行，
         //    和以前的 object-chip-* 一一对应（D1 回归门禁要靠它）。
@@ -475,6 +494,7 @@ final class ObjectHomePage extends VBox {
         });
 
         rows.setAll(all);
+        applyColumnVisibility();
         rebuildFilterChips();
         applyFilter();
 
@@ -500,6 +520,30 @@ final class ObjectHomePage extends VBox {
             }
         }
         return text.toString();
+    }
+
+    /**
+     * ⭐ 第十九轮 S-1：按**已加载的数据**决定 6 个可选列显不显示。
+     *
+     * <p>规则与 {@code TableListPage} 完全一致：只在「每一行都是占位符」时整列隐藏，
+     * 有一行有真值就留着（混合场景：MySQL 的表有引擎、视图没有 → 引擎列保留）。
+     * 判定依据是 {@link #rows}（全部已加载），不是过滤后的子集。
+     * 核心列「名称 / 类型 / 行」不参与判定。
+     */
+    private void applyColumnVisibility() {
+        List<ObjectRow> all = List.copyOf(rows);
+        sizeColumn.setVisible(MetadataColumns.hasAnyValue(all,
+                row -> row.meta() == null ? "—" : row.meta().sizeText()));
+        engineColumn.setVisible(MetadataColumns.hasAnyValue(all,
+                row -> row.meta() == null ? "—" : row.meta().engineText()));
+        createdColumn.setVisible(MetadataColumns.hasAnyValue(all,
+                row -> row.meta() == null ? "—" : row.meta().createdText()));
+        updatedColumn.setVisible(MetadataColumns.hasAnyValue(all,
+                row -> row.meta() == null ? "—" : row.meta().updatedText()));
+        collationColumn.setVisible(MetadataColumns.hasAnyValue(all,
+                row -> row.meta() == null ? "—" : row.meta().collationText()));
+        commentColumn.setVisible(MetadataColumns.hasAnyValue(all,
+                row -> row.meta() == null ? "—" : row.meta().commentText()));
     }
 
     /** 过滤 chip 的标签带上数量 —— 「视图 1」比「视图」有用得多。 */

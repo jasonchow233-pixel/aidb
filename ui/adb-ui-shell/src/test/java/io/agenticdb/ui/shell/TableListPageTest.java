@@ -92,6 +92,149 @@ class TableListPageTest {
                         "创建日期", "修改日期", "排序规则", "注释");
     }
 
+    // ─────────────────────── 第十九轮 S-1 列可见性 ───────────────────────
+
+    /** 当前**可见**的列标题（顺序同 getColumns()）。 */
+    private List<String> visibleTitles() {
+        return page.table().getColumns().stream()
+                .filter(column -> column.isVisible())
+                .map(column -> column.getText())
+                .toList();
+    }
+
+    /**
+     * MySQL 形态（每列都有真值）→ 8 列一个都不能少。
+     *
+     * <p>这是「不能一刀切砍列」的反向门禁：S-1 只在**全空**时才藏列。
+     */
+    @Test
+    void mysqlLikeDataKeepsEveryColumnVisible() {
+        assertThat(visibleTitles())
+                .as("MySQL 连接下 8 列全有值 → 一列都不能藏")
+                .containsExactly("名称", "行", "数据长度", "引擎",
+                        "创建日期", "修改日期", "排序规则", "注释");
+    }
+
+    /**
+     * SQLite 形态（只有行数）→ 6 个方言相关列全是「—」→ 整列隐藏，只留「名称 / 行」。
+     *
+     * <p>逐像素实测：SQLite 演示库 8 列有 6 列恒为「—」，占首选宽度 72%，
+     * 横向滚动才看得到有内容的「名称」（{@code AIDB-UIUX-ANALYSIS.md} §10.3 C1）。
+     */
+    @Test
+    void sqliteLikeDataHidesTheAllPlaceholderColumns(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        robot.interact(() -> page.render(List.of(
+                new TableMeta("users", 200L, null, null, null, null, null, null),
+                new TableMeta("logs", 1000L, null, null, null, null, null, null),
+                new TableMeta("audit", 0L, null, null, null, null, null, null))));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(visibleTitles())
+                .as("SQLite 拿不到引擎/日期/排序规则/注释/长度 → 全是「—」的列整列隐藏")
+                .containsExactly("名称", "行");
+    }
+
+    /**
+     * 混合场景：只要有一行有真值，整列就留着。
+     *
+     * <p>这是「看数据不看方言」比白名单稳的地方 —— 一个没填注释的表，
+     * 不该连累整个注释列被藏掉。
+     */
+    @Test
+    void oneRowWithARealValueKeepsTheColumnVisible(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        robot.interact(() -> page.render(List.of(
+                new TableMeta("plain", 1L, null, null, null, null, null, null),
+                new TableMeta("documented", 1L, null, "InnoDB", null, null, null, "有注释"))));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(visibleTitles())
+                .as("混合场景：有行有引擎/注释 → 这两列要留着，其余全空的列仍然隐藏")
+                .containsExactly("名称", "行", "引擎", "注释");
+    }
+
+    /**
+     * 判定必须基于**整批已加载数据**，不是搜索后的子集。
+     *
+     * <p>否则用户一搜「users」（唯一有引擎的表），引擎列就会凭空出现，
+     * 清空搜索又消失 —— 界面在脚下动。
+     */
+    @Test
+    void searchDoesNotChangeColumnVisibility(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        robot.interact(() -> page.render(List.of(
+                new TableMeta("users", 1L, null, "InnoDB", null, null, null, null),
+                new TableMeta("logs", 1L, null, null, null, null, null, null))));
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(visibleTitles()).contains("引擎");
+
+        robot.interact(() -> page.searchField().setText("logs"));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(visibleTitles())
+                .as("搜索只过滤行，不许动列布局")
+                .containsExactly("名称", "行", "引擎");
+    }
+
+    // ─────────────────────── 第十九轮 S-2 卡片不摆「—」 ───────────────────────
+
+    /** 一张卡片下所有 Label 的文本（含嵌套的标题行）。 */
+    private List<String> cardLabelTextures(String cardId) {
+        Node card = page.lookup(cardId);
+        assertThat(card).as("卡片 " + cardId + " 应当存在").isNotNull();
+        return card.lookupAll(".label").stream()
+                .map(node -> ((javafx.scene.control.Label) node).getText())
+                .filter(text -> text != null)
+                .toList();
+    }
+
+    /**
+     * SQLite 卡片不能出现纯破折号片段。
+     *
+     * <p>实测 SQLite 演示库上一张卡片 3 行里 2 行是「— · —」和「—」
+     * （{@code AIDB-UIUX-ANALYSIS.md} §10.3 C2）。
+     */
+    @Test
+    void cardViewOmitsPlaceholderLinesOnSqliteLikeData(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        robot.interact(() -> page.render(List.of(
+                new TableMeta("users", 200L, null, null, null, null, null, null))));
+        robot.interact(() -> page.showView("grid"));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        List<String> labels = cardLabelTextures("#table-card-users");
+
+        assertThat(labels)
+                .as("事实行只留有值的片段：「200 行」而不是「200 行 · —」")
+                .anyMatch(text -> text.equals("200 行"));
+        assertThat(labels)
+                .as("整行都是占位符就不渲染这一行 —— 卡片里不许出现「—」")
+                .noneMatch(text -> text.contains("—"));
+        assertThat(labels)
+                .as("引擎行 / 注释行全空 → 干脆不出现（连空占位都不留）")
+                .hasSize(2); // 标题行的 name + 事实行
+    }
+
+    /** MySQL 形态：卡片照常显示引擎 / 日期 / 注释，S-2 不许误伤有值的行。 */
+    @Test
+    void cardViewStillShowsRealMetadataWhenItExists(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        robot.interact(() -> page.render(List.of(new TableMeta("users", 200L, 3072L, "InnoDB",
+                "2026-01-01 09:00:00", "2026-02-01 10:00:00",
+                "utf8mb4_0900_ai_ci", "用户表"))));
+        robot.interact(() -> page.showView("grid"));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        List<String> labels = cardLabelTextures("#table-card-users");
+
+        assertThat(labels)
+                .as("有值的引擎 / 修改日期 / 注释都要照常显示")
+                .anyMatch(text -> text.contains("InnoDB"))
+                .anyMatch(text -> text.contains("2026-02-01"))
+                .anyMatch(text -> text.equals("用户表"));
+    }
+
     @Test
     void searchFiltersByTableName(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();

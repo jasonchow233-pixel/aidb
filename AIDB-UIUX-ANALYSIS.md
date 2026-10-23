@@ -475,12 +475,15 @@ runs into text rows, take the mode of inter-peak gaps. Threshold 200/765 so 1px 
 > (`ScreenshotScriptAuditTest`, `AppIconResourceAuditTest`) assert *"the thing you reference exists"*.
 > All **7 new gates were mutation-tested** (break it → red, restore → green).
 
-### 10.3 Remaining visual gaps found this round (not yet fixed)
+### 10.3 Remaining visual gaps found this round
+
+> **Round-19 update:** **C1 and C2 are fixed** — see the ✅ notes in their rows.
+> The remaining items (C3/C4/C5/C7) are still open and tracked in `NAVICAT-TODO.md` §29.
 
 | ID | Finding | Evidence | Suggested direction |
 |---|---|---|---|
-| **C1** | **Wall of em-dashes**: on the default SQLite demo, 6 of 8 table-list columns are always `—` — **810 of 1120px preferred width (72%)**; object home likewise 6 of 9 | `p6-tables.png`, `p5-connections.png`; `TableListPage:239-250` creates all columns unconditionally. Note `ObjectHomePage:218` **documents this as deliberate** ("方言拿不到的列显示「—」") | Deliberate ≠ optimal: hide columns with no data source for the dialect, or expose a 「列」 toggle. Keep full set for MySQL where it fills |
-| **C2** | **Card view is 2/3 dashes** — `notes / 0行 · — / — · — / —` in a 220px card | `p6-tables-grid.png` + `TableListPage` card builder | render only populated lines (icon + name + rows + comment) |
+| **C1** ✅ **FIXED (R19 S-1)** | **Wall of em-dashes**: on the default SQLite demo, 6 of 8 table-list columns are always `—` — **810 of 1120px preferred width (72%)**; object home likewise 6 of 9 | `p6-tables.png`, `p5-connections.png`; `TableListPage:239-250` creates all columns unconditionally. Note `ObjectHomePage:218` **documents this as deliberate** ("方言拿不到的列显示「—」") | ~~Deliberate ≠ optimal: hide columns with no data source for the dialect, or expose a 「列」 toggle.~~ **Done via a data-driven rule** (not a dialect whitelist): a column is hidden only when *every loaded row* renders the placeholder for it — auto-adapts to new dialects, and a single row with a real value keeps the column (mixed MySQL tables/views). Core columns (名称/行/类型) are never hidden. Gates: `MetadataColumnsTest`(6), `TableListPageTest`+3, `ObjectHomePageTest`+2 — all mutation-tested. |
+| **C2** ✅ **FIXED (R19 S-2)** | **Card view is 2/3 dashes** — `notes / 0行 · — / — · — / —` in a 220px card | `p6-tables-grid.png` + `TableListPage` card builder | ~~render only populated lines (icon + name + rows + comment)~~ **Done**: each card line joins only non-placeholder fragments, and a line whose fragments are all placeholders is not rendered at all (no empty placeholder row left behind). Gate: `TableListPageTest.cardViewOmitsPlaceholderLinesOnSqliteLikeData` (mutation-tested) + a MySQL-shaped case asserting real metadata still shows. |
 | **C3** | **Detail panel squeezes the grid** — headers truncate to `na… em… acti… sco… creat…` | `p2-details.png`; `ObjectDetailsPanel.WIDTH_DEFAULT=300` | overlay instead of push, or auto-collapse below a grid-width threshold, or per-column min-width before truncating |
 | **C4** | **Row pitch** (see 10.1): 28 vs 19 | measured | decide with product owner: optional `dense` tier (~20px), or default list pages to `compact`; keep `normal` for reading |
 | **C5** | **Tree tables can't expand to columns** — every Navicat table node carries a `>` chevron (crop-verified); AIDB object nodes are leaves | `SideBar.kindGroup()` builds child `TreeItem`s with no children; Navicat crop vs AIDB crop | lazy-load columns under table nodes. (AIDB already shows columns in the details panel/structure page — this is about *inline scanning*, Navicat's fastest gesture) |
@@ -488,13 +491,13 @@ runs into text rows, take the mode of inter-peak gaps. Threshold 200/765 so 1px 
 
 ### 10.4 Recommended order (senior eng + designer view)
 
-1. **C1 + C2 together** — same root cause (list surfaces rendering "nothing to show" as punctuation);
+1. ~~**C1 + C2 together**~~ ✅ **Done in round 19** (Batch A) — same root cause (list surfaces rendering "nothing to show" as punctuation);
    biggest visible win on the *default first-run experience*, which is SQLite.
 2. **C5** — the single most-used Navicat gesture AIDB lacks; medium effort (lazy tree children + a gate).
 3. **C3** — real pain when the details panel is open; needs a layout decision first.
 4. **C7** — cheap, and closes the branding loop.
 5. **C4** — a product call, not an engineering one; ask before building.
-6. Non-visual backlog stays as-is: spec §6.1/§6.2, N6 (列宽记忆 + MySQL 字节单位联调),
+6. Non-visual backlog stays as-is: N6 (列宽记忆 + MySQL 字节单位联调),
    import/export wizard, grid/card toggle polish (§29 in `NAVICAT-TODO.md`).
 
 ---

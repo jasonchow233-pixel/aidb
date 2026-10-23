@@ -39,6 +39,7 @@ import javafx.scene.layout.VBox;
 import javafx.scene.shape.SVGPath;
 
 import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -134,6 +135,17 @@ final class TableListPage extends VBox {
     private final ScrollPane gridScroll = new ScrollPane(cards);
     private final Set<String> gridSelection = new LinkedHashSet<>();
     private final BooleanProperty listView = new SimpleBooleanProperty(true);
+
+    // ─────────── 可选列（方言相关）的引用 ───────────
+    // ⭐ 第十九轮 S-1：这 6 列是「方言拿不到就显示 —」的可选列。留引用是为了
+    //    在数据加载后按内容决定整列显不显示（见 applyColumnVisibility）。
+    //    「名称 / 行」是核心列，不参与判定、永远显示。
+    private TableColumn<TableMeta, String> sizeColumn;
+    private TableColumn<TableMeta, String> engineColumn;
+    private TableColumn<TableMeta, String> createdColumn;
+    private TableColumn<TableMeta, String> updatedColumn;
+    private TableColumn<TableMeta, String> collationColumn;
+    private TableColumn<TableMeta, String> commentColumn;
 
     private Button listButton;
     private Button gridButton;
@@ -238,16 +250,25 @@ final class TableListPage extends VBox {
         table.setFixedCellSize(rowHeight);
         table.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 
+        // ⭐ 第十九轮 S-1：可选列要留引用，才能按数据决定显不显示。
+        //    「名称 / 行」是核心列，永远显示；其余 6 列是方言相关的可选列。
+        sizeColumn = sizeColumn();
+        engineColumn = textColumn("引擎", 100, TableMeta::engineText);
+        createdColumn = textColumn("创建日期", 150, TableMeta::createdText);
+        // ⭐ 本轮补的三列：Navicat 的表清单有「修改日期 / 排序规则 / 注释」。
+        updatedColumn = textColumn("修改日期", 150, TableMeta::updatedText);
+        collationColumn = textColumn("排序规则", 120, TableMeta::collationText, true);
+        commentColumn = textColumn("注释", 180, TableMeta::commentText, true);
+
         table.getColumns().setAll(List.of(
                 nameColumn(),
                 rowsColumn(),
-                sizeColumn(),
-                textColumn("引擎", 100, TableMeta::engineText),
-                textColumn("创建日期", 150, TableMeta::createdText),
-                // ⭐ 本轮补的三列：Navicat 的表清单有「修改日期 / 排序规则 / 注释」。
-                textColumn("修改日期", 150, TableMeta::updatedText),
-                textColumn("排序规则", 120, TableMeta::collationText, true),
-                textColumn("注释", 180, TableMeta::commentText, true)));
+                sizeColumn,
+                engineColumn,
+                createdColumn,
+                updatedColumn,
+                collationColumn,
+                commentColumn));
 
         table.getSelectionModel().getSelectedIndices().addListener(
                 (ListChangeListener<Integer>) change -> updateSelectionState());
@@ -492,17 +513,30 @@ final class TableListPage extends VBox {
         HBox title = new HBox(6, icon, name);
         title.setAlignment(Pos.CENTER_LEFT);
 
-        Label facts = new Label(meta.rowsText() + " 行 · " + meta.sizeText());
-        facts.getStyleClass().add("adb-table-card__facts");
+        // ⭐ 第十九轮 S-2：卡片不摆「—」。每一行只留真有值的片段；
+        //    整行都是占位符就不渲染这一行（也不留空占位）。
+        //    实测 SQLite 演示库上一张卡片 3 行有 2 行是纯破折号（§10.3 C2）。
+        //    注意 rowsText() 为「—」时不能拼成「— 行」——那不是占位符了。
+        String rowsFact = MetadataColumns.isPlaceholder(meta.rowsText())
+                ? null : meta.rowsText().trim() + " 行";
+        Label facts = cardLine("adb-table-card__facts", rowsFact, meta.sizeText());
+        Label engine = cardLine("adb-table-card__detail",
+                meta.engineText(), meta.updatedText());
+        Label comment = cardLine("adb-table-card__comment", meta.commentText());
 
-        Label engine = new Label(meta.engineText() + " · " + meta.updatedText());
-        engine.getStyleClass().add("adb-table-card__detail");
+        List<Node> lines = new ArrayList<>();
+        lines.add(title);
+        if (facts != null) {
+            lines.add(facts);
+        }
+        if (engine != null) {
+            lines.add(engine);
+        }
+        if (comment != null) {
+            lines.add(comment);
+        }
 
-        Label comment = new Label(meta.commentText());
-        comment.getStyleClass().add("adb-table-card__comment");
-        comment.setMaxWidth(Double.MAX_VALUE);
-
-        VBox card = new VBox(4, title, facts, engine, comment);
+        VBox card = new VBox(4, lines.toArray(new Node[0]));
         card.setId("table-card-" + meta.name());
         card.setUserData(meta.name());
         card.getStyleClass().add("adb-table-card");
@@ -548,6 +582,33 @@ final class TableListPage extends VBox {
             }
         });
         return card;
+    }
+
+    /**
+     * ⭐ 第十九轮 S-2：拼卡片里的一行，只留真有值的片段。
+     *
+     * <p>Navicat 的卡片只显示这个库**真提供**的字段；我们上一版把拿不到的字段
+     * 渲染成「—」照样拼进这一行，于是在 SQLite 上出现「— · —」「—」这种纯破折号行。
+     *
+     * @return 这一行的标签；如果所有片段都是占位符则返回 {@code null}（调用方
+     *         直接跳过，<b>不</b>渲染空行、也不留占位）
+     */
+    private static Label cardLine(String styleClass, String... parts) {
+        List<String> real = new ArrayList<>();
+        for (String part : parts) {
+            if (!MetadataColumns.isPlaceholder(part)) {
+                real.add(part.trim());
+            }
+        }
+        if (real.isEmpty()) {
+            return null;
+        }
+        Label label = new Label(String.join(" · ", real));
+        label.getStyleClass().add(styleClass);
+        if (styleClass.equals("adb-table-card__comment")) {
+            label.setMaxWidth(Double.MAX_VALUE);
+        }
+        return label;
     }
 
     /** 卡片点击：普通点击单选，⌘/Ctrl 切换，Shift 选区间。 */
@@ -856,7 +917,25 @@ final class TableListPage extends VBox {
     /** 直接喂数据（单测用；真实路径走 {@link #reload()} 的后台读取）。 */
     void render(List<TableMeta> metas) {
         rows.setAll(metas == null ? List.of() : metas);
+        applyColumnVisibility();
         updateSelectionState();
+    }
+
+    /**
+     * ⭐ 第十九轮 S-1：按**已加载的数据**决定 6 个可选列显不显示。
+     *
+     * <p>只在「每一行都是占位符」时整列隐藏；有一行有真值就留着。
+     * 判定依据是 {@link #rows}（全部已加载），不是 {@link #filtered}，
+     * 所以搜索时列不会凭空消失/出现。核心列「名称 / 行」不参与判定。
+     */
+    private void applyColumnVisibility() {
+        List<TableMeta> all = List.copyOf(rows);
+        sizeColumn.setVisible(MetadataColumns.hasAnyValue(all, TableMeta::sizeText));
+        engineColumn.setVisible(MetadataColumns.hasAnyValue(all, TableMeta::engineText));
+        createdColumn.setVisible(MetadataColumns.hasAnyValue(all, TableMeta::createdText));
+        updatedColumn.setVisible(MetadataColumns.hasAnyValue(all, TableMeta::updatedText));
+        collationColumn.setVisible(MetadataColumns.hasAnyValue(all, TableMeta::collationText));
+        commentColumn.setVisible(MetadataColumns.hasAnyValue(all, TableMeta::commentText));
     }
 
     /** 搜索框（供门禁验证过滤真的生效）。 */
@@ -909,6 +988,7 @@ final class TableListPage extends VBox {
                 loading = false;
                 spinner.setVisible(false);
                 rows.setAll(finalMetas);
+                applyColumnVisibility();
                 updateSummary();
                 updateSelectionState();
                 if (finalError != null) {
