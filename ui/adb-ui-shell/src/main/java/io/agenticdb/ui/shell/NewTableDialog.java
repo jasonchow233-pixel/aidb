@@ -147,6 +147,11 @@ final class NewTableDialog {
         previewEditor = new SqlEditor();
         previewEditor.area().setEditable(false);
         previewEditor.area().setId("new-table-preview");
+        // ⭐ 预览是**只读的**、也**不能执行** —— 沿用 SqlEditor 默认那句
+        //    「输入 SQL，⌘↵ 执行当前语句」是误导（用户会去敲键盘、按 ⌘↵，
+        //    然后什么都没发生）。setHint 是 §11.2/§28.8 为只读视图加的口子，
+        //    这里必须用上（结构页 DDL 已经用了）。
+        previewEditor.setHint("填写表名后，这里会显示将要执行的建表语句");
         previewEditor.setPrefHeight(168);
         VBox.setVgrow(previewEditor, Priority.ALWAYS);
 

@@ -32,7 +32,17 @@ public final class StatusBar extends HBox {
     private final Label range = segment("0 行", "adb-status__range");
     private final Label message = segment("就绪", "adb-status__message");
     private final Label selection = segment("未选择", "adb-status__selection");
+    /**
+     * ⭐ 第十八轮：耗时段在「没有计时」时**整段隐藏**（连同它前面的分隔符）。
+     *
+     * <p>以前 {@code setDuration(-1)} 写的是占位文字 {@code "— ms"} —— 而这个方法
+     * 在三处的调用意图都是「清掉计时」（未连接 / 非查询页）。于是在表清单页的状态栏上
+     * 出现「<b>未选择 — ms</b>」：悬空的破折号读起来像界面坏了，Navicat 在此处只说
+     * 「已选择 1 个项目」，没有计时就什么都不显示。
+     */
     private final Label duration = segment("— ms", "adb-status__duration");
+    /** 耗时段的分隔符 —— 必须与 {@link #duration} 同进退，否则会剩一个孤零零的「·」。 */
+    private final Region durationSeparator = separator();
     private final Label transaction = segment("自动提交", "adb-status__transaction");
     private final Label dirty = segment("", "adb-status__dirty");
     private final Label readonly = segment("只读", "adb-status__readonly");
@@ -49,13 +59,18 @@ public final class StatusBar extends HBox {
         setMaxHeight(height);
         dirty.setVisible(false);
         dirty.setManaged(false);
+        // 起步没有计时（还没跑过任何语句）→ 耗时段连同分隔符一起不占位。
+        duration.setVisible(false);
+        duration.setManaged(false);
+        durationSeparator.setVisible(false);
+        durationSeparator.setManaged(false);
 
         HBox left = new HBox(6, dialect, separator(), connection, separator(), range,
                 separator(), message, dirty);
         left.setAlignment(Pos.CENTER_LEFT);
         left.getStyleClass().add("adb-statusbar__left");
 
-        HBox center = new HBox(6, selection, separator(), duration);
+        HBox center = new HBox(6, selection, durationSeparator, duration);
         center.setAlignment(Pos.CENTER);
         center.getStyleClass().add("adb-statusbar__center");
 
@@ -109,8 +124,19 @@ public final class StatusBar extends HBox {
         selection.setText(text == null || text.isBlank() ? "未选择" : text);
     }
 
+    /**
+     * @param millis 本次语句耗时；**负数表示「没有计时」**（未连接 / 非查询页），
+     *               此时整段连同分隔符隐藏 —— 不留「— ms」这种悬空占位。
+     */
     public void setDuration(long millis) {
-        duration.setText(millis < 0 ? "— ms" : millis + " ms");
+        boolean present = millis >= 0;
+        duration.setVisible(present);
+        duration.setManaged(present);
+        durationSeparator.setVisible(present);
+        durationSeparator.setManaged(present);
+        if (present) {
+            duration.setText(millis + " ms");
+        }
     }
 
     /**

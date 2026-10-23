@@ -433,4 +433,69 @@ AIDB positions itself as **"the developer's database client"** - prioritizing:
 **Verdict**: AIDB v1.0 (2026-10) is feature-par with Navicat Premium Lite 15 for core DB management tasks (browse, query, edit structure), with superior safety mechanisms and modern design token architecture. The remaining gaps are primarily in **wizard-driven workflows** (import/export, DDL design) rather than core capability.
 
 ---
+
+## 10. Second-Round Navicat Comparison — Evidence From Screenshots (Round 18, 2026-10-23)
+
+### Method (this round differs from §5)
+
+Round 1 compared *feature lists*. Round 18 treated the **12 AIDB screenshots in `docs/screenshots/`
+plus the 4 Navicat references in `docs/screenshots/navicat/` as evidence**: every claim had to be
+(a) visible in a pixel, (b) measured programmatically, or (c) traceable to a line of source.
+Anything that could not be nailed down all three ways was dropped.
+
+Row pitch was measured with a small Java2D harness (no image libraries are available in this
+environment): count non-background pixels per scanline inside a fixed column band, group contiguous
+runs into text rows, take the mode of inter-peak gaps. Threshold 200/765 so 1px grid separators
+(`≈78/765` from white) are excluded — otherwise separator lines get counted as rows and halve the pitch.
+
+### 10.1 Measured parity
+
+| Surface | AIDB | Navicat Premium Lite 15 | Verdict |
+|---|---|---|---|
+| Data / object **grid row pitch** | **28.0 px** (default `normal`; 4 consecutive gaps all exactly 28) | **19.0 px** (19 of 26 gaps = 19) | 🔴 AIDB is **+47% looser** — ~32% fewer rows per screen (500px band: 17 vs 26 rows) |
+| Sidebar **object-tree pitch** | **24 px** | **22 px** | ✅ parity |
+| Table-list columns | 8: `名称220 / 行90 / 数据长度110 / 引擎100 / 创建日期150 / 修改日期150 / 排序规则120 / 注释180` = 1120px preferred | 8, **identical titles, same order** | ✅ at parity (round-13 work holds) |
+| Object home columns | 9, same titles as Navicat's object list | 9 | ✅ at parity |
+| Density tiers offered | 3 (`24 / 28 / 34`, `RowHeights`, gated by `DensityCoverageTest` on 4 tables) | none exposed (effectively 19) | 🟡 even the **tightest** tier (24) is 26% looser than Navicat |
+
+### 10.2 Six defects the screenshots proved (all fixed this round — detail in `NAVICAT-TODO.md` §28.11)
+
+| ID | What the picture showed | Root cause | Fix |
+|---|---|---|---|
+| **R18-1** | `p5-connections.png` shows the *objects overview*, not connections | `shots.sh` clicked `#sidebar-connections`, deleted by U-B7 refactor `a353dc1`; `ScreenshotSession.click()` **prints to stderr and keeps shooting**; orphan `SideBar.openConnections()` left behind (0 callers) | retargeted to `#appbar-manage-connections`; dead method removed |
+| **R18-2** | 「每页」 box renders **empty** on query + data pages — and, after the first fix, renders as **「2…」** | `select(PageSize.nearest(...).value())` passes a primitive `int` → binds `select(int index)`, not `select(Integer)`. Proven via `javap -c`: `select:(I)V`. Index 200 vs 4 items → no selection. Existing test at `DataGridPageTest:471` **worked around it**. *Continuation:* even with the value selected, pixel-measuring the re-shot image showed text stopping 23px short of the arrow — the ComboBox **button cell** was eating the width, so `prefWidth` 78 → **96** | `select(Integer.valueOf(...))` in `QueryPage` + `DataGridPage` **+ `setPrefWidth(96)`**; both gates gained a `prefWidth >= 90` rendering fence (mutation: back to 78 → red) |
+| **R18-3** | Read-only SQL preview says *「输入 SQL，⌘↵ 执行当前语句」* | `setHint()` added in §28.8 for read-only views but only wired into `StructurePage` | `NewTableDialog.previewEditor.setHint(...)` |
+| **R18-4** | Window registers 6 icons, only 5 exist | `App.java` asks for `app-icon-512.png`; `GenLogo` writes 512 as `app-icon.png` (by `brand/README.md` convention); `if (url != null)` **silently skips** | removed dead literal |
+| **R18-5** | status bar reads **「未选择 — ms」** | `setDuration(-1)` (called in 3 places meaning *"clear"*) rendered a placeholder instead of hiding; the `·` separator would have been stranded | hide segment **and** its separator; hidden by default |
+| **R18-6** | query jump field is a bare white box | same control, two implementations: `#data-jump` has prompt+tooltip+accessibleText+`adb-grid__jump`; `#query-result-jump` had only id+width | brought to parity |
+
+> ⭐ **The pattern**: 5 of 6 are *failure designed as silent degradation* — skip the click, skip the
+> resource, fail the selection silently, write a placeholder, leave it unconfigured. Runtime tests
+> can never catch these (nothing throws). Two new **static audit gates**
+> (`ScreenshotScriptAuditTest`, `AppIconResourceAuditTest`) assert *"the thing you reference exists"*.
+> All **7 new gates were mutation-tested** (break it → red, restore → green).
+
+### 10.3 Remaining visual gaps found this round (not yet fixed)
+
+| ID | Finding | Evidence | Suggested direction |
+|---|---|---|---|
+| **C1** | **Wall of em-dashes**: on the default SQLite demo, 6 of 8 table-list columns are always `—` — **810 of 1120px preferred width (72%)**; object home likewise 6 of 9 | `p6-tables.png`, `p5-connections.png`; `TableListPage:239-250` creates all columns unconditionally. Note `ObjectHomePage:218` **documents this as deliberate** ("方言拿不到的列显示「—」") | Deliberate ≠ optimal: hide columns with no data source for the dialect, or expose a 「列」 toggle. Keep full set for MySQL where it fills |
+| **C2** | **Card view is 2/3 dashes** — `notes / 0行 · — / — · — / —` in a 220px card | `p6-tables-grid.png` + `TableListPage` card builder | render only populated lines (icon + name + rows + comment) |
+| **C3** | **Detail panel squeezes the grid** — headers truncate to `na… em… acti… sco… creat…` | `p2-details.png`; `ObjectDetailsPanel.WIDTH_DEFAULT=300` | overlay instead of push, or auto-collapse below a grid-width threshold, or per-column min-width before truncating |
+| **C4** | **Row pitch** (see 10.1): 28 vs 19 | measured | decide with product owner: optional `dense` tier (~20px), or default list pages to `compact`; keep `normal` for reading |
+| **C5** | **Tree tables can't expand to columns** — every Navicat table node carries a `>` chevron (crop-verified); AIDB object nodes are leaves | `SideBar.kindGroup()` builds child `TreeItem`s with no children; Navicat crop vs AIDB crop | lazy-load columns under table nodes. (AIDB already shows columns in the details panel/structure page — this is about *inline scanning*, Navicat's fastest gesture) |
+| **C7** | **Welcome page still shows a generic `DATABASE` vector**, not the AIDB mark | `WorkspaceView:137`; the brand round only registered OS window icons (`stage.getIcons()`) | put the brand mark on the welcome page (PNG at 128/256, or an `Icons.Icon.BRAND` path) — the app's front door should say AIDB |
+
+### 10.4 Recommended order (senior eng + designer view)
+
+1. **C1 + C2 together** — same root cause (list surfaces rendering "nothing to show" as punctuation);
+   biggest visible win on the *default first-run experience*, which is SQLite.
+2. **C5** — the single most-used Navicat gesture AIDB lacks; medium effort (lazy tree children + a gate).
+3. **C3** — real pain when the details panel is open; needs a layout decision first.
+4. **C7** — cheap, and closes the branding loop.
+5. **C4** — a product call, not an engineering one; ask before building.
+6. Non-visual backlog stays as-is: spec §6.1/§6.2, N6 (列宽记忆 + MySQL 字节单位联调),
+   import/export wizard, grid/card toggle polish (§29 in `NAVICAT-TODO.md`).
+
+---
 *Analysis generated 2026-10-23, based on codebase state after 17th wheel (U-B7) completion. All technical details verified against source code and test results.*

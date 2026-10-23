@@ -29,7 +29,7 @@ ONLY="${1:-}"
 # name|click-id|wait-ms|预置页面环境变量
 # 顺序即拍摄顺序：暗色必须最先。
 SHOTS=(
-  "p5-dark|sidebar-connections|5000|ADB_THEME_FORCE=dark"
+  "p5-dark|appbar-manage-connections|5000|ADB_THEME_FORCE=dark"
   "p0-shell||2500|ADB_THEME_FORCE=light"
   "p2-users||5000|ADB_OPEN=users ADB_THEME_FORCE=light"
   "p2-details||7000|ADB_OPEN=users ADB_DETAILS=1 ADB_THEME_FORCE=light"
@@ -38,7 +38,7 @@ SHOTS=(
   "p3-query||6000|ADB_QUERY=1 ADB_THEME_FORCE=light"
   "p4-structure||5000|ADB_STRUCTURE=users ADB_THEME_FORCE=light"
   "p4-ddl||7000|ADB_DDL=1 ADB_THEME_FORCE=light"
-  "p5-connections|sidebar-connections|4000|ADB_THEME_FORCE=light"
+  "p5-connections|appbar-manage-connections|4000|ADB_THEME_FORCE=light"
   "p6-new-table||5000|ADB_NEW_TABLE=1 ADB_THEME_FORCE=light"
   "p7-new-index||6000|ADB_INDEX=1 ADB_THEME_FORCE=light"
 )

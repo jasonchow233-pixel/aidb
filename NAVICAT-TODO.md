@@ -8,8 +8,13 @@
 > **界面规格书见 `docs/UI-VISUAL-SPEC.md`**（第十轮：字号/颜色/图标/布局/组件/弹窗/交互态/键盘）；
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
-> 最后更新：**2026-10-23（第十七轮：规格 §6 右侧对象详情面板 + §13 新建表弹窗重构 + §9.7 底部导航标签 + AIDB 品牌改造 + Logo 设计 + §13.3 布尔列键盘可达）**
-> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **721 条 / 89 类 / 0 失败**（2026-10-23 第十七轮实测，另有 29 条跳过，其中 +5 条来自未提交的多版本真库矩阵 WIP，§28.7）。
+> 最后更新：**2026-10-23（第十八轮：截图当证据的第二轮 Navicat 对标 —— 6 个真缺陷修复 + 7 条变异验证门禁 + 合并待办 §29）**
+> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **717 条 / 91 类 / 0 失败**（2026-10-23 第十八轮实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
+>
+> 📌 **关于门禁数字的口径（第十八轮勘误）**：第十七轮记的「721 / 29 跳过」是在 **Docker 可用**时测的；
+> 本轮 `adb-ui-shell` 单模块 **278 → 285（+7 = 本轮 7 条新门禁）**、测试类 **89 → 91（+2 = 两个静态审计门禁）**，
+> 这两处是**逐条对得上**的。总数从 721 降到 717、跳过从 29 升到 44，**全部来自外部真库矩阵的环境开关**
+> （`adb-jdbc` 跳过 30、`adb-introspect` 跳过 14），**不是任何测试变红**。硬门禁始终是「**0 失败**」，不是总数。
 >
 > ⭐ **本轮（第十三轮）是「对齐 Navicat 观感」的一轮，不是功能扩张。**
 > 逐像素量了 Navicat 的表清单：8 列、19px 行高、纯白行、1px 行线、灰色侧栏。
@@ -1356,7 +1361,8 @@ Navicat 对象树右键菜单里最高频的四个动作，我们**一个都没�
 | ~~**Q6**~~ ✅ | ~~**代码片段库**~~ | — | ✅ **已完成（第十二轮）** |
 | ~~**U1**~~ ✅ | ~~**catalog 树**（MySQL 多库）~~ | — | ✅ **已完成（第十四轮，见 §24）**：切库 = 换虚拟连接（`父id@库名`，只活在内存）；对象树多出库一层，SQLite / PG 形态不变 |
 | ~~**U3**~~ ✅ | ~~**连接属性页**~~ | — | ✅ **已完成（第十二轮·续三）**：弹窗套 TabPane（常规/SSL/高级）+ `options` 映射 |
-| **X3 / X4** | 状态栏剩余项 / 仍为半孤儿的动作 | 🟢 低 | X5 已把对象动作收进顶级菜单，孤儿动作大幅减少；剩下的多为一���性动作 |
+| ~~**X3**~~ ✅ | ~~状态栏版本号硬编码~~ | — | ✅ **已完成（第十轮 V-3）**：`AppVersion` + `version.properties`（Maven 资源过滤），状态栏与「关于」共用；门禁 `StatusBarTest`。**§21.1 原把它和 X4 挂在一起是漏记**，第十八轮勘误 |
+| **X4** | 仍为「半孤儿」的动作 | 🟢 低 | X5 已把对象动作收进 ⌘K + 顶级「对象」菜单，孤儿大幅减少；`ActionRegistryConvergenceTest` 守着「侧栏/标签栏右键必须走注册表」「曾孤儿的动作要有菜单入口」。剩下的多为一次性动作（`tab.copy-*` 等），**建议不再为它们单独造菜单，而是把「全部动作可搜」当成口径**（已有 ⌘K） |
 
 ### 21.2 架构类
 
@@ -1734,13 +1740,19 @@ java tools/TestCount.java
 
 ### 28.6 规格书仍未做（如实记录，不假装完成）
 
-| 规格条目 | 状态 | 备注 |
+> ⚠️ **编号勘误（第十八轮实测）**：下表原有的「§6.1 / §6.2 / §6.3 / §11.2 / §13.3」**在仓库里
+> 没有对应的规格小节** —— grep 全部 `docs/*.md`，这几条只出现在本清单与 `docs/NEXT-STEPS.md`，
+> 任何规格书里都搜不到同名条目（`docs/UI-VISUAL-SPEC.md` 的 §6 是「布局」、§13.3 是「本轮已顺手修掉的」，
+> 都不是这里说的东西）。**所以这里的「§」号是悬空引用**：条目本身有效（内容写得清楚），
+> 但别指望点进去。第十八轮起**按条目名记录，不再挂假章节号**。
+
+| 条目（按名称，不挂假号） | 状态 | 备注 / 落点 |
 |---|---|---|
-| §6.1 表详情「最近执行的相关操作」 | ⬜ 未做 | 需要查询历史与当前对象关联 |
-| §6.2 连接详情文件路径展示 | ⬜ 未做 | 连接档案落盘路径回显 |
-| ~~§6.3 详情面板与 `TableListPage` 对象列表选择联动~~ | ✅ **已完成（§28.8）** | — |
-| §13.3 字段网格键盘导航 | ⬜ 未做 | Tab / 方向键在列网格内移动 |
-| ~~§11.2 结构页 DDL 页复用 `SqlEditor`~~ | ✅ **已完成（§28.8）** | — |
+| 表详情「最近执行的相关操作」 | ⬜ 未做 | 需要把查询历史与当前对象关联（`QueryHistory` 已有，缺「按对象筛」） |
+| 连接详情文件路径展示 | ⬜ 未做 | 连接档案落盘路径回显（`~/.agenticdb/connections.json`） |
+| 详情面板与 `TableListPage` 选中联动 | ✅ **已完成（§28.8）** | — |
+| **列网格键盘导航（Tab / 方向键在格间移动）** | 🟡 **部分完成** | ✅ 布尔三态列已可键盘切换（§28.10 `BooleanCell`）；⬜ 剩「Tab / 方向键在**整张列网格**内移动 + 单元格级编辑焦点」，见 **§29.1 S-4** |
+| 结构页 DDL 页复用 `SqlEditor` | ✅ **已完成（§28.8）** | — |
 
 ### 28.7 顺带发现：工作区里有一份未提交的「多版本真库矩阵」WIP
 
@@ -1793,10 +1805,118 @@ java tools/TestCount.java
 
 ---
 
+## 28.11 第十八轮：把 12 张截图当证据逐张核对（2026-10-23）
+
+> ⭐ **本轮方法变了**：不再是「对着 Navicat 想还能做什么」，而是**把 `docs/screenshots/` 的 12 张实拍图
+> 与 `docs/screenshots/navicat/` 的 4 张参考图逐张并排看**，只记录「图上能直接证伪的东西」。
+> 结果：**6 个此前 721 条门禁全绿也漏掉的真缺陷** —— 它们全活在「代码能跑、断言能过、但用户看到的是错的」这条缝里，
+> 且**五个是同一类病：失败路径被设计成静默降级**（找不到节点就跳过、缺资源就跳过、选不中就没值、清计时就写占位、没配就留空白）。
+
+### 28.11.1 六个真缺陷（截图作证）
+
+| # | 缺陷 | 图上证据 | 根因（代码级） | 修复 |
+|---|---|---|---|---|
+| **R18-1** | **`p5-connections.png` 拍的根本不是连接页** —— 文件名叫连接，图上是对象总览 | `docs/screenshots/p5-connections.png`（左上「对象 / 总览 / 共 6 个对象」） | `shots.sh` 点 `#sidebar-connections`，但该 id 在源码里**已不存在**：U-B7 重构 `a353dc1` 删掉了那颗按钮与 `onAction` 接线，却把 `SideBar.openConnections()` 留成了**零调用者死代码**；`ScreenshotSession.click()` 找不到节点只往 stderr 打一行「找不到节点…跳过点击」，然后**照常截图**，脚本退出码 0、字节数正常 | ① `shots.sh` 两行（`p5-dark` / `p5-connections`）改点真实存在的 `#appbar-manage-connections`；② 删掉 `SideBar.openConnections()` 死方法（连接管理按 Navicat 模型走树右键菜单 + 应用栏，符合「占位要么接要么删」） |
+| **R18-2** | **「每页」下拉永远是空框** —— 查询页与数据页的分页条上，当前档位不显示 | `p3-query.png`、`p2-details.png`：`每页` 右侧是一个只有箭头、没有数字的白框 | `pageSizeBox.getSelectionModel().select(PageSize.nearest(pageSize).value())` —— `value()` 返回原生 `int`，Java 重载决议选中的是 **`select(int index)`（按下标选）** 而非 `select(Integer)`（按值选）。`javap -c` 实锤：`invokevirtual SingleSelectionModel.select:(I)V`。items 只有 `[100,200,500,1000]`（下标 0–3），`select(200)` 越界静默无效 → `getValue()==null` → 渲染空白。**既有 `DataGridPageTest` 第 471 行甚至写了 `if (!Integer.valueOf(100).equals(sizeBox.getValue()))` 去绕过它** —— 门禁在给 bug 打掩护 | `QueryPage` / `DataGridPage` 两处改 `select(Integer.valueOf(...))`，装箱把重载切回「按值选」 |
+| **R18-3** | **只读 SQL 预览里教用户「⌘↵ 执行」** —— 新建表弹窗的预览区提示是编辑器的执行提示 | `p6-new-table.png`：「将要执行的 SQL」区第一行就是「输入 SQL，⌘↵ 执行当前语句，⇧⌘↵ 执行全部」 | 预览区是 `previewEditor = new SqlEditor()` + `setEditable(false)`，空表名时 `createTable` 抛 `IllegalArgumentException` → `setText("")` → `SqlEditor` 默认 hint 露出。§28.8 已经为只读视图加了 `SqlEditor.setHint(...)`，但**只在 `StructurePage` 用了一处**，`NewTableDialog` 漏了 —— 用户会去敲键盘、按 ⌘↵，然后什么都不会发生 | `previewEditor.setHint("填写表名后，这里会显示将要执行的建表语句")` |
+| **R18-4** | **`App` 点名要的 `app-icon-512.png` 从来没被生成过** —— 注册 6 个图标，实际只加载 5 个 | 品牌改造（§28.9）后的资源目录只有 16/32/64/128/256/1024 + `app-icon.png`；`brand/README.md` 明写「`app-icon.png` = 512（主入口）」 | `App.java` 的图标列表同时写了 `app-icon-512.png` 与 `app-icon.png`，而 `tools/GenLogo.java` 对 512 这一档输出的正是 `app-icon.png`（`size == 512 ? "app-icon.png" : ...`）。`getResource` 返回 null 后被 `if (url != null)` **静默跳过** —— 少一张图零报错 | 从 `App.java` 列表删掉 `app-icon-512.png`（512 这档按约定就叫 `app-icon.png`），并在注释里写明这个坑 |
+| **R18-5** | **状态栏悬空「— ms」** —— 没跑过任何语句的页面上，选中段旁边挂着一个破折号计时 | `p6-tables.png` / `p5-connections.png` / `p0-shell.png` 底部状态栏：「未选择 **— ms**」 | `StatusBar.setDuration(-1)` 的写法是 `millis < 0 ? "— ms" : ...`，而 `AppShell` 在**未连接 / 非查询页**三处调 `-1` 的意图都是「清掉计时」。文字占位代替了「不显示」，Navicat 在此只说「已选 1 个项目」 | `setDuration` 负数时**整段连同它前面的分隔符一起 `setVisible/setManaged(false)`**（分隔符必须同进退，否则剩一个孤零零的「·」）；构造时默认即隐藏 |
+| **R18-6** | **查询页跳页框是个「三无」空白框** —— 没占位、没 tooltip、没读屏名 | `p3-query.png`：`每页` 后面跟一个纯白空框再接「跳转」按钮 | 同一个控件两页两套实现：`DataGridPage.#data-jump` 有 `setPromptText("跳至页")` + tooltip + `accessibleText` + 样式类 `adb-grid__jump`；`QueryPage.#query-result-jump` **只有 id + 宽度 + onAction** | 查询页补齐四样（prompt / tooltip / accessibleText / `adb-grid__jump`），宽度 56→64 与数据页一致 |
+
+> 📌 **R18-2 最值得记**：一个「静默失败的 API 误用」在代码评审里极难被看见（`select(...)` 拼写完全合理），
+> 单元测试还主动绕过它，**只有把界面拍下来放大看，才能发现框是空的**。
+> 这正是本轮「截图当证据」方法的价值 —— 也说明**门禁必须覆盖「渲染结果」而不只是「模型状态」**。
+>
+> 🔁 **R18-2 的续集（同轮返工）**：修完 `select(Integer)` 后重拍，框**确实选中了 200 —— 但渲染成「2…」**。
+> 逐像素量了截图：框宽 74px、文字在 x=909 就断了、**右侧还剩 23px 空白**才到箭头 —— 不是框太窄，
+> 是 **ComboBox 的按钮单元格吃掉了宽度**。`prefWidth` 从 78 提到 **96**（够渲染最宽档位「1000」）才完整。
+> 教训：**「选中了」不等于「显示得出来」** —— 模型断言（`getValue()==200`）抓不到省略号，
+> 所以两个门禁各补了一条 `prefWidth >= 90` 的**渲染底线**（变异验证：改回 78 必红）。
+
+### 28.11.2 本轮新增门禁（7 条，**全部做过变异验证**：改坏必红、改回必绿）
+
+| 门禁 | 守什么 | 变异验证 |
+|---|---|---|
+| `DataGridPageTest.pageSizeSelectorShowsTheConfiguredValueInsteadOfAnEmptyBox` | 数据页「每页」必须显示 200 且下标落在 items 内 | 回退 `select(Integer.valueOf(...))` → 失败：**「每页」必须显示当前档位（DEFAULT_PAGE_SIZE=200），不能是空框** ✅ |
+| `QueryPageTest.resultPagerShowsThePageSizeInsteadOfAnEmptyBox` | 查询结果分页条同上 | 同一变异 → 失败 ✅ |
+| `NewTableDialogTest.readOnlySqlPreviewDoesNotTellTheUserToExecute` | 只读预览的 hint 不许含「执行当前语句 / 执行全部」，且 `previewArea().isEditable()==false` | 注释掉 `setHint(...)` → 失败：**预览是只读、不可执行的 —— 沿用「⌘↵ 执行当前语句」是误导** ✅ |
+| `ScreenshotScriptAuditTest.everyClickTargetInShotScriptExistsInTheUiSource`（新文件） | 解析 `scripts/shots.sh` 每行 `名称\|点击id\|…`，逐个断言 id 在 UI 源码里出现过 `setId("...")` | 把 `appbar-manage-connections` 改成不存在的 id → 失败：**shots.sh 引用的节点在 UI 源码里不存在 —— 这些截图会拍到错误的页面** ✅ |
+| `AppIconResourceAuditTest.everyReferencedIconLiteralResolvesToARealResourceFile`（新文件） | 主源码里每个 `app-icon*.png` 字面量都要在 `src/main/resources` 找得到 | 把 `app-icon-512.png` 加回列表 → 失败：**代码点名要的图标在资源目录里不存在 —— getResource 返回 null 后会被 `if (url != null)` 静默跳过** ✅ |
+| `StatusBarTest.durationSegmentHidesEntirelyWhenThereIsNoTiming` | 无计时时耗时段不可见**且**中格分隔符归零；有计时能回来（隐藏不能变成永久消失） | 把 `setDuration` 退回「写占位文字但不隐藏」+ 删掉构造时的隐藏 → 失败：**还没跑过语句时，耗时段不该占位（表清单页实测显示「未选择 — ms」）** ✅ |
+| `QueryPageTest.resultPagerJumpFieldCarriesTheSameAffordancesAsTheDataPage` | 跳页框必须有非空 prompt + accessibleText + `adb-grid__jump` 样式类（与数据页同规格） | 删掉 `setPromptText("跳至页")` → 失败：**跳页框必须有占位提示（数据页 #data-jump 是「跳至页」，两页要一致）** ✅ |
+
+> 📌 **两条静态审计门禁（脚本点击目标 / 图标资源名）解决的是同一类问题**：
+> `ScreenshotSession.click()` 与 `App` 的 `if (url != null)` 都把失败设计成「跳过并继续」，
+> 这类**静默降级不会让任何运行时测试变红**。要堵住它，只能在**静态侧**断言「引用必须存在」。
+
+**本轮验收**：`./mvnw -B clean verify` → 全 14 模块 SUCCESS、0 失败（见 §23 变更记录行）；**7 条新门禁逐一做过变异**（改坏必红、改回必绿）。
+
+---
+
+## 29. 第十九轮起：合并后的待办与建议顺序（2026-10-23 · 第十八轮末）
+
+> 本节把散在 **§16.4 / §19.3 / §21 / §22.4 / §28.6 / §28.11 / `AIDB-UIUX-ANALYSIS.md` §10** 的剩余项
+> **合并成一份带优先级、带证据、带建议门禁的清单**。历史小节原样保留（它们是当时的记录），
+> **冲突时以本节为准**。每条都回答三件事：*证据在哪 / 做完拿什么验收 / 为什么是这个顺序*。
+
+### 29.1 S 级 —— 第十九轮就该做（有截图证据 + 有明确落点）
+
+| # | 项 | 证据 / 来源 | 难度 | 建议门禁 |
+|---|---|---|---|---|
+| **S-1** | **C1 方言感知列**：SQLite 下表清单 8 列里 **6 列恒为「—」= 首选宽度 810/1120px（72%）**；对象首页 9 列里 6 列同样 | `p6-tables.png` / `p5-connections.png`；`TableListPage:239-250` 无条件建全列（`ObjectHomePage:218` 还把这写成了既定策略） | 🟡 中 | `TableListPageTest`：SQLite 连接下 `引擎/排序规则/创建日期/修改日期` 不在 `getColumns()` 里；MySQL 连接下**全在**（不能一刀切砍掉） |
+| **S-2** | **C2 卡片视图去破折号**：`notes / 0行 · — / — · — / —`，220px 卡片 2/3 是标点 | `p6-tables-grid.png` | 🟢 低 | `TableListPageTest`：卡片只渲染**非空**字段行 |
+| **S-3** | **C5 对象树表节点可展开出列**：Navicat 每个表节点都有 `>`（裁图核对），AIDB 对象节点是叶子 | `SideBar.kindGroup()` 建的子 `TreeItem` 无 children | 🟠 中高 | `SideBarTreeTest`：展开表节点出现列子节点（假会话喂列清单），且**懒加载**（未展开不查库） |
+| **S-4** | **列网格键盘导航**（Tab / 方向键在整张网格内移动 + 单元格编辑焦点） | §28.6 遗留；硬规则「一切键盘可达」；§28.10 已把**布尔三态一格**做成可键盘切换 | 🟡 中 | `NewTableDialogTest`：直接驱动抽出来的 `focusMove(...)` 纯方法（**沿用 §28.10 的教训：headless 下不靠 `fireEvent`**） |
+| **S-5** | **C7 欢迎页用 AIDB mark**：现在还是通用 `Icons.Icon.DATABASE`；品牌改造只注册了 OS 窗口图标 | `WorkspaceView:137`；全仓无 `ImageView(app-icon-*)` | 🟢 低 | 截图重拍 `p0-shell` + 断言欢迎页 logo 来源（PNG 或 `Icons.Icon.BRAND`） |
+| **S-6** | **C3 详情面板挤压网格**：列头截成 `na… em… acti… sco…` | `p2-details.png`；`ObjectDetailsPanel.WIDTH_DEFAULT=300` | 🟡 中 | **先定方案**（覆盖式 vs 推挤式 vs 窄宽自动收起），定完再加布局断言 —— 没有裁定就不动手 |
+
+### 29.2 P2 —— 排期内（来源清楚、收益中等）
+
+| # | 项 | 来源 | 难度 / 前置 |
+|---|---|---|---|
+| **N6** | 列宽记忆 / 长注释 Tooltip / MySQL 数据长度 `B·KB·MB·GB` 联调 | §22.4 | 🟡 **需要真库**（不与 N1–N5 混做） |
+| **V-12 剩余** | 错误**详情弹窗** + 批量确认**汇总页**（错误**归类**已做） | §19.3 / §21.3 | 🟠 单独一轮 |
+| **表详情「最近执行的相关操作」** | 查询历史按当前对象筛（`QueryHistory` 已有，缺关联） | §28.6 | 🟡 |
+| **连接档案路径回显** | `~/.agenticdb/connections.json` 路径展示 | §28.6 | 🟢 低 |
+| **C4 密度第四档** | 实测 AIDB 网格 **28px** vs Navicat **19px**；现有最紧档 24px 仍松 26% | `AIDB-UIUX-ANALYSIS.md` §10.1 | **先问产品再做**（可读性 vs 扫表效率的产品判断，不是工程判断） |
+| **V-5** 工具栏按宽度折叠 / **V-11** 弹窗宽度三档 | §19.3 | ⏸ **暂缓有理由**：1280 宽实测 12个图标放得下 |
+
+### 29.3 P3 —— 结构性收尾
+
+| # | 项 | 来源 | 说明 |
+|---|---|---|---|
+| **A20** | `QueryLimits.MAX_CELL_BYTES` 声明后**零引用** → 删掉 | §21.2（第十八轮复核仍成立：全仓仅 `QueryLimits.java:78` 一处） | 🟢 |
+| **V-6 应用图标** | 实际**已大半完成**：`stage.getIcons()` 6 档 PNG 已注册（§28.9），R18-4 又修了死引用；**剩「界面内使用」= S-5** | §19.3 | 🟢 |
+| **X4 收口** | 不再为半孤儿动作单独造菜单；口径改成「**⌘K 能搜到即可达**」（`ActionRegistryConvergenceTest` 已守右键走注册表） | §21.1（第十八轮勘误：X3 早已完成，别再列它） | 🟢 |
+| **导入 / 导出向导** | Navicat 的强项之一，AIDB 只有入口没有分步引导 | `AIDB-UIUX-ANALYSIS.md` §9 | 🟠 大，值得单独一轮 |
+| **P7 剩余** | 自动更新；jlink 仍不可行（自动模块） | §21.4 | 🟠 |
+
+### 29.4 明确**不建议**现在做的（防过度设计）
+
+- **工具栏按宽度折叠（V-5）** —— 1280 宽实测放得下，先做响应式是倒着来。
+- **为每个半孤儿动作造菜单项** —— ⌘K 已经是「全动作可达」的口径，再造一遍菜单是双份维护。
+- **jlink** —— 自动模块阻塞，§21.4 已记录，别再排期。
+- **改包名 / groupId `io.agenticdb`** —— 会动 200+ 文件并打断 `~/.agenticdb`，`brand/README.md` 已裁定**永久不做**。
+
+### 29.5 建议的下一轮批次（每批都自带验收）
+
+| 批 | 内容 | 验收 |
+|---|---|---|
+| **A（先做，同一根因）** | S-1 + S-2：清单类页面把「没有数据」渲染成标点的问题一次清掉 | 新门禁 2 条（各做过变异）+ **重拍 `p6-tables` / `p6-tables-grid` 并逐张核对** |
+| **B（交互补强）** | S-3 树展开出列 | `SideBarTreeTest` +1；展开不触发多余查询的断言 |
+| **C（品牌闭环）** | S-5 欢迎页 mark | 重拍 `p0-shell` |
+| **D（a11y 硬规则）** | S-4 列网格键盘导航 | 沿用 §28.10 的「纯方法抽取」做法，不靠 `fireEvent` |
+| **E（需先裁定）** | S-6 详情面板布局 | 先出方案对比，再动手 |
+
+**统一验收口径**：`./mvnw -B clean verify` 0 失败 · **新增门禁必须做过变异验证**（改坏必红、改回必绿）· 截图重拍后**逐张与 Navicat 参考图并排核对**（第十八轮的方法，不是只看文件生成了）。
+
+---
+
 ## 23. 变更记录
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-23 | **第十八轮** | **⭐ 把截图当证据的第二轮 Navicat 对标**（§28.11）+ **合并待办 §29**：12 张实拍 + 4 张 Navicat 参考**逐张并排核对**（不再「对着规格想」），只记录图上能直接证伪的东西 → **6 个真缺陷**：①`p5-connections` 拍的是对象总览（`shots.sh` 点了个已被重构删掉的 id，`ScreenshotSession` 找不到节点**只打 stderr 就照常截图**）②「每页」下拉**永远空框**（`select(int index)` vs `select(Integer)` 重载决议选错，`javap -c` 实锤，**既有测试还写了绕过它的断言**）+ **返工续集**：修完选中后截图放大看仍是「2…」（逐像素量出右侧还剩 23px 空白，是 ComboBox 按钮单元格吃宽度）→ `prefWidth` 78→**96**，两门禁各补 `prefWidth>=90` 渲染底线③只读 SQL 预览教用户「⌘↵ 执行」④`App` 要的 `app-icon-512.png` **从未生成**（`if (url != null)` 静默跳过）⑤状态栏悬空「— ms」⑥查询页跳页框「三无」空白框 · **五个同根：失败被设计成静默降级** → 新增**两个静态审计门禁**（`ScreenshotScriptAuditTest` 校验脚本点击目标 / `AppIconResourceAuditTest` 校验图标资源名）· **7 条新门禁全部做过变异验证**（改坏必红、改回必绿，失败原文逐条记录）· **逐像素实测**：AIDB 网格 **28px** vs Navicat **19px**（侧栏树 24 vs 22 持平）· 勘误：§28.6 的 §6.1/§6.2/§13.3 是**悬空引用**（grep 全 `docs/` 无对应小节）→ 改按条目名记录；§21.1 的 **X3 早已完成**（第十轮 V-3）· 门禁 **717 条 / 91 类 / 0 失败**（`adb-ui-shell` 278→**285** +7 逐条对得上；44 跳过全为环境门控） |
 | 2026-10-23 | 第十七轮·续四 | **规格 §13.3 新建表布尔列键盘可达**（§28.10）：`CheckBoxTableCell` 复选框 `focusTraversable=false` 只认鼠标 → 新增包级 `BooleanCell`（焦点留单元格 / 复选框只作图形）· 可测逻辑抽成纯方法 `isToggleKey` / `toggle(ColumnRow)` / `handleKey`（headless 下不靠 `fireEvent`，门禁直接驱动生产逻辑）· 新样式 `.adb-table__bool-cell`·`__bool-box`（令牌无硬编码色）· `NewTableDialogTest` +4；门禁 **278 条 / 0 失败**（全 14 模块 SUCCESS） |
 | 2026-10-23 | 第十七轮·续三 | **AIDB 品牌改造 + Logo 落地**（§28.9）：`brand/aidb-mark.svg` + `aidb-logo-horizontal.svg`（数据库三层圆柱 + AI 四角星芒）· `tools/GenLogo.java`（Java2D 4× 超采样，产出 16–1024 七档 PNG）· `App.java` 注册 6 张多尺寸图标 · 用户可见文案全量改 **AIDB**（窗口标题 / 应用栏字标 / 欢迎页 / `退出`·`关于` 菜单 / 崩溃日志 / SQL 导出头 / secret-tool label / jpackage / 14 个 pom `<name>`）· **包名 `io.agenticdb` 与 groupId 刻意不改**（写进 `brand/README.md`）· `AppBarTest` 断言同步；门禁 **721 条 / 89 类 / 0 失败** |
 | 2026-10-23 | 第十七轮 | **规格书 §6/§13/§9.7/§6.3/§11.2 五项落地**（§28）：新增 `ObjectDetailsPanel` 右侧对象详情面板（纯展示 + `Loader` 回调喂数据，宽 300 可拖 220–420，`details.toggle` ⌥⌘D，默认隐藏）· `NewTableDialog` 重构（宽 640→**900**，标题带真实库名/方言/关闭钮，SQL 预览 `TextArea`→**只读 `SqlEditor`**（等宽+行号+高亮）可折叠可复制，列网格高度自适应）· 数据页底部「记录/页面」常驻标签（两组同图标方向键不再靠猜）· **§6.3** 详情面板接表清单选中项（`inspectTable` 按值去重）· **§11.2** 结构页 DDL 页 `TextArea`→只读 `SqlEditor`（`SqlEditor.setHint`）· **门禁抓出 3 个真 bug**（§28.4：`facts` VBox 从未挂场景图 / 详情面板跨线程渲染违反 JavaFX 单线程规则 / PG 真库回报 `character varying` 断言写死 `varchar`）+ 1 处样式类回归 · 新门禁 `ObjectDetailsPanelTest`(14) + `NewTableDialogTest`(+6) + `AppShellTest`(+3) + `DataGridPageTest`(+1) + `TableListPageTest`(+2) + `StructurePageTest`(+1)；截图 9→**11 张**（新增 `p2-details`，`ADB_DETAILS=1`）；门禁 **721 条 / 89 类 / 0 失败**（另 29 跳过，其中 +5 条来自未提交的多版本矩阵 WIP，§28.7） |

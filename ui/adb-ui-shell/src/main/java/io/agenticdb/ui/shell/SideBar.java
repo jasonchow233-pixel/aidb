@@ -1320,11 +1320,6 @@ public final class SideBar extends VBox {
         return connectionId;
     }
 
-    private void openConnections() {
-        openTab.accept(new TabItem("connections", "连接管理", TabKind.CONNECTIONS));
-        status.accept("打开连接管理");
-    }
-
     private void openTool(String title) {
         openTab.accept(new TabItem("tool:" + title, title, TabKind.TOOL));
         status.accept("打开工具：" + title);

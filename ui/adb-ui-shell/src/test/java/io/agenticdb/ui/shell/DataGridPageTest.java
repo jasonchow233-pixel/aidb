@@ -737,6 +737,47 @@ class DataGridPageTest {
         }
     }
 
+    // ───────────────── 第十八轮：每页档位必须真的选中 ─────────────────
+
+    @Test
+    void pageSizeSelectorShowsTheConfiguredValueInsteadOfAnEmptyBox() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("pagesize.db"))));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
+                    "pagesize.db", noOpFeedback(), name -> { }, executor);
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                    page.lookup("#data-page-size") != null);
+
+            @SuppressWarnings("unchecked")
+            javafx.scene.control.ComboBox<Integer> box =
+                    (javafx.scene.control.ComboBox<Integer>) page.lookup("#data-page-size");
+            WaitForAsyncUtils.waitForFxEvents();
+
+            // ⚠️ 回归守卫：`select(int)` 是按下标选（items 只有 0–3 四项），
+            //    传原生 int 会静默失败，「每页」框渲染成空白 —— 截图里就是空的。
+            assertThat(box.getValue())
+                    .as("「每页」必须显示当前档位（DEFAULT_PAGE_SIZE=200），不能是空框")
+                    .isNotNull()
+                    .isEqualTo(200);
+            assertThat(box.getSelectionModel().getSelectedIndex())
+                    .as("按值选中后下标应当落在 items 范围内")
+                    .isBetween(0, box.getItems().size() - 1);
+
+            // ⚠️ 第十八轮实测补的回归守卫：**选中了不等于显示得出来**。
+            //    78px 时截图里「200」被截成「2…」（按钮单元格吃掉宽度，右侧还剩 23px
+            //    空白却已经出省略号）；96px 才完整渲染。这里锁住「至少够渲染最宽的
+            //    档位 1000」这条底线，防止有人再把宽度改小。
+            assertThat(box.getPrefWidth())
+                    .as("「每页」框要够渲染最宽档位「1000」—— 实测 78px 会把「200」截成「2…」")
+                    .isGreaterThanOrEqualTo(90);
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
     private static void pressShortcut(DataGridPage page, javafx.scene.input.KeyCode code,
                                       boolean shift, boolean alt) throws Exception {
         javafx.scene.input.KeyEvent event = new javafx.scene.input.KeyEvent(

@@ -11,8 +11,8 @@
 
 ## 当前状态（2026-10-22）
 
-**P0–P4 已完成、P5/P6 进行中、界面专项 U-B1–U-B5 已落地（U-B6 进行中）。**
-门禁 **675 条 / 87 类 / 0 失败**（2026-10-22 末 · 第十五轮 Q5+V-9 后实测）。
+**P0–P4 已完成、P5/P6 进行中、界面专项 U-B1–U-B7 已落地。**
+门禁 **717 条 / 91 类 / 0 失败**（2026-10-23 · 第十八轮实测；另有 44 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
 
 > **第八轮之后**：D2+D4（MySQL/PG 列注释读回）已修；B5-S1（索引可编辑）已落地；
 > **T1–T4（建表 / 清空 / 重命名 / 删表）已落地**（T1=弹窗，按形态裁定）；9 张验收截图完成。
@@ -95,7 +95,7 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**675 条 / 87 类 / 0 失败**（2026-10-22 末 · 第十五轮 Q5+V-9 后实测；`./mvnw -B clean verify` + `java tools/TestCount.java`）。统一命令：`./mvnw -B clean verify`。
+当前门禁：**717 条 / 91 类 / 0 失败**（2026-10-23 · 第十八轮实测；`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
 
 统计口径用工具兜底（`@Nested` 的测试类在 surefire XML 里会写成 `tests="0"`）：
 

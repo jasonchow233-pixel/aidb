@@ -99,6 +99,67 @@ class StatusBarTest {
         assertThat(bar.transactionText()).isEqualTo("事务中");
     }
 
+    // ───────────────── 第十八轮：没有计时就不许出现「— ms」 ─────────────────
+
+    @Test
+    void durationSegmentHidesEntirelyWhenThereIsNoTiming() throws Exception {
+        StatusBar bar = new StatusBar();
+
+        // 起步没有任何计时 → 用户什么都看不见，而不是看见一个悬空的「— ms」。
+        assertThat(visibleDurationText(bar))
+                .as("还没跑过语句时，耗时段不该占位（表清单页实测显示「未选择 — ms」）")
+                .isEmpty();
+        assertThat(managedSeparatorsInCenter(bar))
+                .as("段隐藏后不许剩下孤零零的分隔符「·」")
+                .isZero();
+
+        WaitForAsyncUtils.asyncFx(() -> bar.setDuration(12)).get();
+        assertThat(visibleDurationText(bar)).isEqualTo("12 ms");
+        assertThat(managedSeparatorsInCenter(bar)).isEqualTo(1);
+
+        // AppShell 在「未连接 / 非查询页」会调 setDuration(-1) —— 意图是清掉计时。
+        WaitForAsyncUtils.asyncFx(() -> bar.setDuration(-1)).get();
+        assertThat(visibleDurationText(bar))
+                .as("清计时后整段必须消失，不能退回占位文字")
+                .isEmpty();
+        assertThat(managedSeparatorsInCenter(bar)).isZero();
+
+        // 再次有计时时要能回来（隐藏不能变成永久消失）。
+        WaitForAsyncUtils.asyncFx(() -> bar.setDuration(3)).get();
+        assertThat(visibleDurationText(bar)).isEqualTo("3 ms");
+        assertThat(managedSeparatorsInCenter(bar)).isEqualTo(1);
+    }
+
+    /** 中间那格里真正参与布局的分隔符数量 —— 隐藏耗时段时必须跟着清零。 */
+    private static int managedSeparatorsInCenter(StatusBar bar) {
+        int n = 0;
+        for (javafx.scene.Node box : bar.lookupAll(".adb-statusbar__center")) {
+            if (box instanceof javafx.scene.layout.HBox center) {
+                for (javafx.scene.Node child : center.getChildren()) {
+                    if (child.getStyleClass().contains("adb-status__separator")
+                            && child.isManaged()) {
+                        n++;
+                    }
+                }
+            }
+        }
+        return n;
+    }
+
+    /** 用户此刻真正看得见的耗时文本；隐藏时返回空串。 */
+    private static String visibleDurationText(StatusBar bar) {
+        for (javafx.scene.Node node : bar.lookupAll(".adb-status__duration")) {
+            if (node instanceof Label label) {
+                return label.isVisible() && label.isManaged() ? orEmpty(label.getText()) : "";
+            }
+        }
+        return "";
+    }
+
+    private static String orEmpty(String text) {
+        return text == null ? "" : text;
+    }
+
     private static String versionText(StatusBar bar) {
         return segmentText(bar, "adb-status__version");
     }

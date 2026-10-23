@@ -1168,8 +1168,14 @@ public final class QueryPage extends VBox implements AutoCloseable {
             pageSizeBox.getStyleClass().add("adb-page-size");
             pageSizeBox.getItems().setAll(Arrays.stream(PageSize.values())
                     .map(PageSize::value).toList());
-            pageSizeBox.getSelectionModel().select(PageSize.nearest(pageSize).value());
-            pageSizeBox.setPrefWidth(78);
+            // ⚠️ 必须装箱：`select(int)` 是**按下标**选（items 只有 0–3 四项），
+            //    传原生 int 会静默选中失败，「每页」框渲染成空白 —— 实测截图就是空的。
+            //    `select(Integer)` 才是「按值选」这条重载。
+            pageSizeBox.getSelectionModel()
+                    .select(Integer.valueOf(PageSize.nearest(pageSize).value()));
+            // ⚠️ 宽度要够渲染最宽的档位「1000」—— 实测截图里 78px 会把「200」截成「2…」
+            //    （按钮单元格吃掉宽度，框右侧还剩 23px 空白却已经省略号了）。
+            pageSizeBox.setPrefWidth(96);
             pageSizeBox.setOnAction(event -> {
                 Integer value = pageSizeBox.getValue();
                 if (value == null || value == pageSize) {
@@ -1183,7 +1189,15 @@ public final class QueryPage extends VBox implements AutoCloseable {
             Label perPage = new Label("每页");
             perPage.getStyleClass().add("adb-muted");
             jumpField.setId("query-result-jump");
-            jumpField.setPrefWidth(56);
+            // ⭐ 第十八轮：与数据页 `#data-jump` 同一规格 —— 以前这里只有 id + 宽度，
+            //    没有占位文字、没有 tooltip、也没有 accessibleText：截图上就是**一个空白框**，
+            //    读屏只念得出「编辑框」。同一种控件在两页必须长得一样、能读的一样。
+            jumpField.getStyleClass().add("adb-grid__jump");
+            jumpField.setPromptText("跳至页");
+            jumpField.setTooltip(new javafx.scene.control.Tooltip("输入页码后回车跳转"));
+            jumpField.setAccessibleText("跳至指定页");
+            jumpField.setPrefWidth(64);
+            jumpField.setMinWidth(56);
             jumpField.setOnAction(event -> jumpToPage(jumpField.getText()));
             jump.getStyleClass().add("adb-button");
 

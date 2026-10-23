@@ -1311,8 +1311,14 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         // ⭐ 档位来自 PageSize 枚举（唯一真相），不再在 UI 里写死一份数组。
         pageSizeBox.getItems().setAll(Arrays.stream(PageSize.values())
                 .map(PageSize::value).toList());
-        pageSizeBox.getSelectionModel().select(PageSize.nearest(pageSize).value());
-        pageSizeBox.setPrefWidth(78);
+        // ⚠️ 必须装箱：`select(int)` 是**按下标**选（items 只有 0–3 四项），
+        //    传原生 int 会静默选中失败，「每页」框渲染成空白 —— 实测截图就是空的。
+        //    `select(Integer)` 才是「按值选」这条重载。
+        pageSizeBox.getSelectionModel()
+                .select(Integer.valueOf(PageSize.nearest(pageSize).value()));
+        // ⚠️ 宽度要够渲染最宽的档位「1000」—— 实测截图里 78px 会把「200」截成「2…」
+            //    （按钮单元格吃掉宽度，框右侧还剩 23px 空白却已经省略号了）。
+            pageSizeBox.setPrefWidth(96);
         pageSizeBox.setOnAction(event -> {
             Integer value = pageSizeBox.getValue();
             if (value == null || value == pageSize) {

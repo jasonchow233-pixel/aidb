@@ -254,6 +254,28 @@ class NewTableDialogTest {
                 false, primaryKey);
     }
 
+    // ───────────────── 第十八轮：只读预览不许教人「执行」 ─────────────────
+
+    @Test
+    void readOnlySqlPreviewDoesNotTellTheUserToExecute() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+
+        javafx.scene.Node hint = onFx(() ->
+                dialog.dialog().getDialogPane().lookup(".adb-query__hint"));
+        assertThat(hint).as("空态提示要真的挂上场景图").isNotNull();
+
+        String text = onFx(() -> ((javafx.scene.control.Label) hint).getText());
+        assertThat(text)
+                .as("预览是只读、不可执行的 —— 沿用「⌘↵ 执行当前语句」是误导")
+                .isNotNull()
+                .doesNotContain("执行当前语句")
+                .doesNotContain("执行全部");
+
+        // 预览本身必须不可编辑（只读这条是前提）。
+        Boolean editable = onFx(() -> dialog.previewArea().isEditable());
+        assertThat(editable).isFalse();
+    }
+
     // ───────────────── 规格 §13.3：布尔单元格键盘可达 ─────────────────
 
     @Test

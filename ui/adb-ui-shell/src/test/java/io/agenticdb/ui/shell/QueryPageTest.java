@@ -286,6 +286,62 @@ class QueryPageTest {
         assertThat(page.lookup("#query-replace").isFocused()).isTrue();
     }
 
+    // ───────────────── 第十八轮：每页档位必须真的选中 ─────────────────
+
+    @Test
+    void resultPagerShowsThePageSizeInsteadOfAnEmptyBox() {
+        interact(() -> {
+            page.setSql("SELECT id FROM users;");
+            page.editor().moveTo(0);
+            page.runAll();
+        });
+        waitForTabs(1);
+
+        @SuppressWarnings("unchecked")
+        javafx.scene.control.ComboBox<Integer> box =
+                (javafx.scene.control.ComboBox<Integer>) page.lookup("#query-result-page-size");
+        assertThat(box).as("结果分页条要有「每页」下拉").isNotNull();
+
+        // ⚠️ 回归守卫：`select(int)` 是按下标选（items 只有 0–3 四项），
+        //    传原生 int 会静默失败，「每页」框渲染成空白 —— 截图里就是空的。
+        assertThat(box.getValue())
+                .as("「每页」必须显示当前档位（DEFAULT_PAGE_SIZE=200），不能是空框")
+                .isNotNull()
+                .isEqualTo(200);
+
+        // ⚠️ 第十八轮实测补的回归守卫：**选中了不等于显示得出来**。
+        //    78px 时截图里「200」被截成「2…」，96px 才完整渲染。
+        assertThat(box.getPrefWidth())
+                .as("「每页」框要够渲染最宽档位「1000」—— 实测 78px 会把「200」截成「2…」")
+                .isGreaterThanOrEqualTo(90);
+    }
+
+    // ─────────────── 第十八轮：跳页框必须与数据页同规格 ───────────────
+
+    @Test
+    void resultPagerJumpFieldCarriesTheSameAffordancesAsTheDataPage() {
+        interact(() -> {
+            page.setSql("SELECT id FROM users;");
+            page.editor().moveTo(0);
+            page.runAll();
+        });
+        waitForTabs(1);
+
+        TextField jump = (TextField) page.lookup("#query-result-jump");
+        assertThat(jump).as("结果分页条要有跳页框").isNotNull();
+
+        // 以前这里只有 id + 宽度 —— 截图上是一个**没有占位、读屏念不出用途**的空白框。
+        assertThat(jump.getPromptText())
+                .as("跳页框必须有占位提示（数据页 #data-jump 是「跳至页」，两页要一致）")
+                .isNotEmpty();
+        assertThat(jump.getAccessibleText())
+                .as("跳页框必须有 accessibleText（同数据页）")
+                .isNotEmpty();
+        assertThat(jump.getStyleClass())
+                .as("同一控件要走同一个样式类 adb-grid__jump")
+                .contains("adb-grid__jump");
+    }
+
     private static KeyEvent key(KeyCode code, boolean control, boolean alt, boolean meta) {
         return new KeyEvent(KeyEvent.KEY_PRESSED, "", "", code,
                 false, control, alt, meta);

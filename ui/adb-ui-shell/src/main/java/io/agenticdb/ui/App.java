@@ -46,8 +46,11 @@ public class App extends Application {
         // ⭐ 应用图标（标签栏 / 窗口标题栏 / 程序坞）。
         //    品牌图标由 tools/GenLogo.java 生成，从 1024 到 16 多尺寸；
         //    macOS/Windows 会在不同位置用不同分辨率，全部注册以避免糊边。
+        // ⚠️ 列表里每个名字都必须真实存在：下面 `url != null` 会把缺文件**静默跳过**，
+        //    少一张图没人报错（踩过：`app-icon-512.png` 从未生成 —— 512 这一档按
+        //    `brand/README.md` 约定就叫 `app-icon.png`）。AppIconResourceAuditTest 守着。
         for (String icon : new String[]{
-                "app-icon-1024.png", "app-icon-512.png", "app-icon.png",
+                "app-icon-1024.png", "app-icon.png",
                 "app-icon-256.png", "app-icon-128.png", "app-icon-64.png"}) {
             java.net.URL url = App.class.getResource("/io/agenticdb/ui/" + icon);
             if (url != null) {
