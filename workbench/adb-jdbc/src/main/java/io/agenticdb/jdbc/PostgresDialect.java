@@ -205,7 +205,11 @@ public final class PostgresDialect implements Dialect {
                 + "CASE c.reltablespace WHEN 0 THEN 'default' "
                 + "ELSE ts.spcname END AS engine, "
                 + "NULL AS created_at, NULL AS updated_at, "
-                + "(SELECT collname FROM pg_collation WHERE oid = c.relcollation) "
+                // ⚠️ pg_class 没有 relcollation 列（排序规则是「每列」落在 pg_attribute，
+                //    不是「每表」）—— 直接引用 c.relcollation 在 PG 16 上直接报
+                //    「column c.relcollation does not exist」。PG 的表继承所在库的默认排序规则，
+                //    所以这里取库的 datcollate（常见情况下就是这张表的有效排序规则）。
+                + "(SELECT datcollate FROM pg_database WHERE datname = current_database()) "
                 + "AS collation_name, "
                 + "obj_description(c.oid, 'pg_class') AS comment_text "
                 + "FROM pg_class c "

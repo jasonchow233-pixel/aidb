@@ -219,7 +219,9 @@ public final class MySqlDialect implements Dialect {
     public String tableMetaSql() {
         // ⭐ Navicat 表清单的 8 列。update_time / table_collation / table_comment
         //    在 information_schema.tables 里都有，不用逐表再查一次。
-        return "SELECT table_name AS name, table_rows AS rows, "
+        // ⚠️ `rows` 是 MySQL 8.0 的保留字（窗口帧 ROWS BETWEEN …），
+        //    不转义直接当别名会语法错误。反引号只在 MySQL 合法，本方法属 MySqlDialect。
+        return "SELECT table_name AS name, table_rows AS `rows`, "
                 + "(data_length + index_length) AS size_bytes, engine AS engine, "
                 + "create_time AS created_at, update_time AS updated_at, "
                 + "table_collation AS collation_name, table_comment AS comment_text "

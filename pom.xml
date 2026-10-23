@@ -44,7 +44,7 @@
     <assertj.version>3.27.6</assertj.version>
     <testfx.version>4.0.18</testfx.version>
     <monocle.version>21.0.2</monocle.version>
-    <testcontainers.version>1.21.3</testcontainers.version>
+    <testcontainers.version>1.21.4</testcontainers.version>
 
     <sqlite.version>3.45.1.0</sqlite.version>
     <postgresql.version>42.7.14</postgresql.version>
