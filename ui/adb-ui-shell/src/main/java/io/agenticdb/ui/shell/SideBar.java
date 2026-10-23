@@ -9,7 +9,6 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
-import javafx.scene.control.ListCell;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TextField;
@@ -108,12 +107,8 @@ public final class SideBar extends VBox {
     private String dialectName = "—";
     private final VBox expanded = new VBox(8);
     private final VBox rail = new VBox(6);
-    private final VBox favoriteBox = new VBox(4);
-    /** 「收藏」整段 —— 没有收藏时整段隐藏（Navicat 不会留一块空标题占地方）。 */
-    private VBox favoritesSection;
     private final TextField search = new TextField();
     private final TreeView<DemoNode> tree = new TreeView<>();
-    private final ComboBox<ConnectionProfile> connectionPicker = new ComboBox<>();
     private final ComboBox<String> schemaPicker = new ComboBox<>();
     /** 切换 schema 的回调（AppShell 负责改会话并重新内省）。 */
     private Consumer<String> onSelectSchema = schema -> { };
@@ -305,25 +300,14 @@ public final class SideBar extends VBox {
     /** 多连接切换：替换可选连接列表并保持当前选中项。 */
     public void setConnections(List<ConnectionProfile> connections) {
         this.connections = connections == null ? List.of() : List.copyOf(connections);
-        connectionPicker.setItems(javafx.collections.FXCollections.observableArrayList(this.connections));
-        // ⚠️ 当前连接可能不在列表里（catalog 虚拟连接）—— 找不到就不选，
-        //    别把用户的下拉选择清成空白。
-        if (connectionId != null && findActiveProfile() != null) {
-            connectionPicker.getSelectionModel().select(findActiveProfile());
-        }
+        refreshTree();
     }
 
     public void setConnection(String id, String name) {
         this.connectionId = id;
         this.connectionName = name;
         refreshTree();
-        refreshFavorites();
         loadObjectsIfNeeded(id);
-        // ⚠️ select(null) 会把下拉清空 —— 当前连接不在列表里时
-        //    （catalog 虚拟连接）保持原样，别动用户的下拉选择。
-        if (id != null && findActiveProfile() != null) {
-            connectionPicker.getSelectionModel().select(findActiveProfile());
-        }
     }
 
     /** 用新的内省结果替换对象树；对象在数据库里被增删后调用。 */
@@ -422,7 +406,6 @@ public final class SideBar extends VBox {
                 .count();
         if (refresh && !getChildren().isEmpty()) {
             refreshTree();
-            refreshFavorites();
         }
     }
 
@@ -439,8 +422,6 @@ public final class SideBar extends VBox {
         getStyleClass().remove("adb-sidebar--collapsed");
         if (value) {
             getStyleClass().add("adb-sidebar--collapsed");
-        } else {
-            refreshFavorites();
         }
         onCollapsed.accept(value);
     }
@@ -457,21 +438,42 @@ public final class SideBar extends VBox {
     private void buildExpanded() {
         expanded.getStyleClass().add("adb-sidebar__expanded");
 
-        Label title = new Label("对象");
+        // ⭐ Navicat 的侧栏只有**一棵树**：标题「我的连接」下面直接是连接，
+        //    没有「收藏 / 连接 / 工作台 / 工具」这些分段标题，也没有连接下拉。
+        //    连接切换在顶部应用栏与树里都能做；查询入口跟着连接走（右键 / ⌘K）。
+        Label title = new Label("我的连接");
+        title.setId("sidebar-title");
         title.getStyleClass().add("adb-sidebar__title");
 
         Region headerSpacer = new Region();
         HBox.setHgrow(headerSpacer, Priority.ALWAYS);
 
-        Button collapse = IconButtons.icon(Icons.Icon.CHEVRON_LEFT, "折叠侧栏");
-        collapse.setAccessibleText("折叠侧栏");
-        collapse.setId("sidebar-collapse");
-        collapse.getStyleClass().add("adb-icon-button");
-        collapse.setTooltip(new Tooltip("折叠侧栏 (⌘\\)"));
-        collapse.setOnAction(event -> actions.run("sidebar.toggle"));
+        Button newQuery = IconButtons.icon(Icons.Icon.QUERY, "新建查询");
+        newQuery.setId("sidebar-new-query");
+        newQuery.setAccessibleText("新建查询");
+        newQuery.getStyleClass().add("adb-icon-button");
+        newQuery.setTooltip(new Tooltip("在该连接上新建查询"));
+        newQuery.setOnAction(event -> openQuery(queryTargetConnectionId(), null));
 
-        HBox header = new HBox(6, title, headerSpacer);
+        HBox header = new HBox(6, title, headerSpacer, newQuery);
         header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("adb-sidebar__header");
+
+        // ⭐ schema 切换器（Navicat / DBeaver 都有）：
+        //    只在真的有多个 schema 时才出现 —— SQLite 没有 schema 概念，
+        //    单 schema 的库也没必要多一次点击。
+        schemaPicker.setId("sidebar-schema-picker");
+        schemaPicker.getStyleClass().add("adb-schema-picker");
+        schemaPicker.setMaxWidth(Double.MAX_VALUE);
+        schemaPicker.setMinWidth(90);
+        schemaPicker.setVisible(false);
+        schemaPicker.setManaged(false);
+        schemaPicker.setOnAction(event -> {
+            String selected = schemaPicker.getValue();
+            if (selected != null && !selected.equals(activeSchema)) {
+                onSelectSchema.accept(selected);
+            }
+        });
 
         search.setPromptText("搜索表、视图");
         search.getStyleClass().add("adb-sidebar__search");
@@ -497,58 +499,33 @@ public final class SideBar extends VBox {
             status.accept(showOnlyFavorites ? "只看收藏" : "显示全部对象");
         });
 
+        Button collapse = IconButtons.icon(Icons.Icon.CHEVRON_LEFT, "折叠侧栏");
+        collapse.setAccessibleText("折叠侧栏");
+        collapse.setId("sidebar-collapse");
+        collapse.getStyleClass().add("adb-icon-button");
+        collapse.setTooltip(new Tooltip("折叠侧栏 (⌘\\)"));
+        collapse.setOnAction(event -> actions.run("sidebar.toggle"));
+
         HBox bottomBar = new HBox(6, search, onlyFavorites, collapse);
         HBox.setHgrow(search, Priority.ALWAYS);
         bottomBar.setAlignment(Pos.CENTER_LEFT);
         bottomBar.getStyleClass().add("adb-sidebar__bottom");
 
-        // ⭐ 紧凑成图标按钮：侧栏只有 240px，文字按钮会被连接下拉挤没
-        //    （以前整颗按钮被压成「..」两个字，截图里能看见）。
-        Button manageConnections = IconButtons.icon(Icons.Icon.CONNECT, "连接管理");
-        manageConnections.setId("sidebar-connections");
-        manageConnections.setAccessibleText("连接管理");
-        manageConnections.getStyleClass().addAll("adb-icon-button", "adb-sidebar__nav");
-        manageConnections.setTooltip(new Tooltip("连接管理"));
-        manageConnections.setMinWidth(Region.USE_PREF_SIZE);
-        manageConnections.setOnAction(event -> openConnections());
-
-        connectionPicker.setId("sidebar-connection-picker");
-        connectionPicker.getStyleClass().add("adb-connection-picker");
-        connectionPicker.setMaxWidth(Double.MAX_VALUE);
-        connectionPicker.setMinWidth(90);
-        connectionPicker.setCellFactory(view -> new ConnectionCell());
-        connectionPicker.setButtonCell(new ConnectionCell());
-        connectionPicker.setItems(javafx.collections.FXCollections.observableArrayList(connections));
-        if (connectionId != null) {
-            connectionPicker.getSelectionModel().select(findActiveProfile());
-        }
-        connectionPicker.setOnAction(event -> {
-            ConnectionProfile selected = connectionPicker.getValue();
-            if (selected != null) {
-                onSelectConnection.accept(selected);
-            }
-        });
-
-        // ⭐ schema 切换器（Navicat / DBeaver 都有）：
-        //    只在真的有多个 schema 时才出现 —— SQLite 没有 schema 概念，
-        //    单 schema 的库也没必要多一次点击。
-        schemaPicker.setId("sidebar-schema-picker");
-        schemaPicker.getStyleClass().add("adb-schema-picker");
-        schemaPicker.setMaxWidth(Double.MAX_VALUE);
-        schemaPicker.setMinWidth(90);
-        schemaPicker.setVisible(false);
-        schemaPicker.setManaged(false);
-        schemaPicker.setOnAction(event -> {
-            String selected = schemaPicker.getValue();
-            if (selected != null && !selected.equals(activeSchema)) {
-                onSelectSchema.accept(selected);
-            }
-        });
-
-        HBox connectionBar = new HBox(6, manageConnections, connectionPicker, schemaPicker);
-        HBox.setHgrow(connectionPicker, Priority.ALWAYS);
-        HBox.setHgrow(schemaPicker, Priority.ALWAYS);
-        connectionBar.getStyleClass().add("adb-sidebar__connection");
+        // ⭐ U-B7：去掉「工作台 / 工具」分段**不等于**把入口一起删掉。
+        //    查询历史与诊断是**真功能**（HistoryPage / DiagnosticsPage），项目规则是
+        //    「占位要么接要么删」—— 这里接的是真功能，就必须留入口，否则功能变成不可达。
+        //    Navicat 模型是「一棵树 + 底部工具」，所以这里**不加分段标题**，平铺在底栏上方。
+        Button history = navButton("sidebar-history", Icons.Icon.HISTORY, "查询历史",
+                () -> openTool("查询历史"));
+        // 诊断对象树里当前选中的表；没选中时 onSelected 会给提示而不是崩。
+        Button diagnostics = navButton("sidebar-diagnostics", Icons.Icon.DIAGNOSTICS, "诊断",
+                () -> actions.run("object.diagnostics"));
+        // 导入 / 导出（P6）：菜单与工具栏也有入口，这里补回侧栏让三个工具成一行，
+        // 同时让 TRANSFER 图标重新被使用（否则 IconSystemAuditTest 判它是死代码）。
+        Button transfer = navButton("sidebar-transfer", Icons.Icon.TRANSFER, "导入 / 导出",
+                () -> actions.run("import-export"));
+        VBox tools = new VBox(2, history, diagnostics, transfer);
+        tools.getStyleClass().add("adb-sidebar__tools");
 
         searchEmpty.setId("sidebar-search-empty");
         searchEmpty.getStyleClass().add("adb-muted");
@@ -556,13 +533,10 @@ public final class SideBar extends VBox {
         searchEmpty.setWrapText(true);
         searchEmpty.setVisible(false);
 
-        favoritesSection = section("收藏", favoriteBox);
-        VBox favorites = favoritesSection;
-        VBox connections = section("连接", tree, searchEmpty);
-        VBox.setVgrow(tree, Priority.ALWAYS);
-
         tree.getStyleClass().add("adb-object-tree");
-        tree.setShowRoot(true);
+        // ⭐ 树根不显示：标题已经是「我的连接」，再显示一行同名根节点
+        //    就是重复占位（Navicat 的树直接从连接开始）。
+        tree.setShowRoot(false);
         // ⭐ 行高固定 22px（Navicat 密度）。默认行高由字体 + 内边距撑到 26px 以上，
         //    同样是 480px 高的侧栏，能看见的对象少 4 行 —— 而侧栏存在的意义
         //    就是「一屏扫完这个库有什么」。
@@ -643,28 +617,8 @@ public final class SideBar extends VBox {
             menu.show(tree, event.getScreenX(), event.getScreenY());
         });
 
-        VBox workbench = section("工作台",
-                navButton("sidebar-nav-history", Icons.Icon.HISTORY, "查询历史",
-                        () -> openTool("查询历史")),
-                // 已保存查询接真实功能（命名 + 落盘 + 一键打开）。
-                navButton("sidebar-nav-saved", Icons.Icon.STAR, "已保存查询",
-                        () -> actions.run("saved-queries")));
-
-        VBox tools = section("工具",
-                // 诊断接真实功能：诊断对象树里当前选中的表。
-                navButton("sidebar-nav-diagnostics", Icons.Icon.DIAGNOSTICS, "诊断",
-                        () -> actions.run("object.diagnostics")),
-                // 导入 / 导出接真实功能（P6）。
-                navButton("sidebar-nav-transfer", Icons.Icon.TRANSFER, "导入 / 导出",
-                        () -> actions.run("import-export")),
-                navButton("sidebar-nav-settings", Icons.Icon.SETTINGS, "设置",
-                        () -> openTab.accept(new TabItem("settings", "设置", TabKind.SETTINGS))));
-
-        expanded.getChildren().addAll(header, connectionBar, favorites, connections,
-                workbench, tools, bottomBar);
-        VBox.setVgrow(connections, Priority.ALWAYS);
-
-        refreshFavorites();
+        expanded.getChildren().addAll(header, schemaPicker, tree, searchEmpty, tools, bottomBar);
+        VBox.setVgrow(tree, Priority.ALWAYS);
     }
 
     private VBox section(String title, javafx.scene.Node... content) {
@@ -701,7 +655,7 @@ public final class SideBar extends VBox {
                 () -> status.accept("连接：" + connectionName));
         Button favorites = railButton(Icons.Icon.STAR, "收藏", () -> {
             setCollapsed(false);
-            refreshFavorites();
+            refreshTree();
         });
         String firstTable = tables.isEmpty() ? "表" : tables.getFirst().name();
         Button users = railButton(Icons.Icon.TABLE, firstTable, () -> {
@@ -710,7 +664,11 @@ public final class SideBar extends VBox {
             }
         });
         Button find = railButton(Icons.Icon.SEARCH, "搜索 (⌘F)", this::focusSearch);
-        Button tools = railButton(Icons.Icon.DIAGNOSTICS, "工具", () -> openTool("诊断"));
+        // ⚠️ 这里原来直接 openTool("诊断")，但 WorkspaceView 解析诊断页时会做
+        //    title.substring("诊断 · ".length()) —— 标题只有「诊断」两个字会越界崩溃。
+        //    统一走 object.diagnostics 动作，由它按「当前选中的对象」拼出
+        //    「诊断 · <表名>」，没有选中对象时只给提示。
+        Button tools = railButton(Icons.Icon.DIAGNOSTICS, "诊断", () -> actions.run("object.diagnostics"));
 
         Region spacer = new Region();
         VBox.setVgrow(spacer, Priority.ALWAYS);
@@ -1002,30 +960,6 @@ public final class SideBar extends VBox {
         };
     }
 
-    private void refreshFavorites() {
-        favoriteBox.getChildren().clear();
-        // 没有收藏时整段隐藏：空标题 + 「右键对象 → 收藏」占掉侧栏最宝贵的前两行，
-        // 而用户第一次看到它时并没有任何可操作的收藏项（Navicat 同位置不占位）。
-        if (favoritesSection != null) {
-            favoritesSection.setVisible(!starred.isEmpty());
-            favoritesSection.setManaged(!starred.isEmpty());
-        }
-        if (starred.isEmpty()) {
-            return;
-        }
-        for (String name : starred) {
-            // ⭐ 收藏项：矢量实心星 + 名字。
-            Button button = new Button(name);
-            button.setGraphic(Icons.of(Icons.Icon.STAR_FILLED, Icons.SIZE_BADGE));
-            button.setGraphicTextGap(6);
-            button.getStyleClass().add("adb-favorite");
-            button.setMaxWidth(Double.MAX_VALUE);
-            button.setAlignment(Pos.CENTER_LEFT);
-            button.setOnAction(event -> openGrid(name));
-            favoriteBox.getChildren().add(button);
-        }
-    }
-
     /** 收藏的对象名（供「收藏夹」菜单用）。 */
     /**
      * ⭐ X6：清空收藏。
@@ -1041,7 +975,7 @@ public final class SideBar extends VBox {
         int count = starred.size();
         starred.clear();
         settings.set(STARRED_KEY, "");
-        refreshFavorites();
+        refreshTree();
         status.accept("已清空 " + count + " 个收藏");
     }
 
@@ -1088,7 +1022,6 @@ public final class SideBar extends VBox {
             starred.add(name);
         }
         saveStarred();
-        refreshFavorites();
         refreshTree();
         status.accept(starred.contains(name) ? "已收藏 " + name : "已取消收藏 " + name);
     }
@@ -1312,6 +1245,21 @@ public final class SideBar extends VBox {
         status.accept("新建查询");
     }
 
+    /**
+     * 侧栏「新建查询」按钮的目标连接。
+     *
+     * <p>⭐ 侧栏现在是一棵「所有连接」的树（Navicat 模型）：新建查询应当落在
+     * <b>当前选中的连接节点</b>上；没选中具体连接时落在当前激活的连接。
+     * 查询跟着连接走，而不是一个全局「工作台」。
+     */
+    private String queryTargetConnectionId() {
+        DemoNode node = selectedNode;
+        if (node != null && node.connectionId() != null && !node.connectionId().isBlank()) {
+            return node.connectionId();
+        }
+        return connectionId;
+    }
+
     private void openConnections() {
         openTab.accept(new TabItem("connections", "连接管理", TabKind.CONNECTIONS));
         status.accept("打开连接管理");
@@ -1367,18 +1315,6 @@ public final class SideBar extends VBox {
         private DemoNode(String name, NodeKind kind, Icons.Icon icon, String schema,
                          String connectionId) {
             this(name, kind, icon, schema, connectionId, 0);
-        }
-    }
-
-    private final class ConnectionCell extends ListCell<ConnectionProfile> {
-        @Override
-        protected void updateItem(ConnectionProfile item, boolean empty) {
-            super.updateItem(item, empty);
-            if (empty || item == null) {
-                setText(null);
-                return;
-            }
-            setText(item.name() + "  ·  " + item.kindLabel() + "  ·  " + item.displayTarget());
         }
     }
 

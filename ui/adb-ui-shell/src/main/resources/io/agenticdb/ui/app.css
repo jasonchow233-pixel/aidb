@@ -263,7 +263,6 @@
 .adb-menu-item:disabled,
 .adb-tree__star:disabled,
 .adb-sidebar__nav:disabled,
-.adb-favorite:disabled,
 .adb-filter-panel__value-cell .check-box:disabled {
     -fx-opacity: 1;
 }
@@ -316,6 +315,8 @@
     -fx-pref-height: 14px;
 }
 
+/* ⭐ 高度对齐 .adb-button（32px），否则图标按钮和旁边的文字按钮在同一工具栏里
+ *   会矮 4px、基线不齐 —— 视觉上就是「很多不一样」的一种。圆角已统一 6px。 */
 .adb-icon-button {
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-secondary;
@@ -323,8 +324,8 @@
     -fx-background-radius: 6px;
     -fx-padding: 4px 8px;
     -fx-font-size: 14px;
-    -fx-min-height: 28;
-    -fx-pref-height: 28;
+    -fx-min-height: 32;
+    -fx-pref-height: 32;
 }
 
 .adb-icon-button:hover {
@@ -332,24 +333,7 @@
     -fx-text-fill: -adb-text-primary;
 }
 
-.adb-connection-picker {
-    -fx-background-color: -adb-bg-inset;
-    -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
-}
-
-.adb-connection-picker .list-cell {
-    -fx-background-color: transparent;
-    -fx-text-fill: -adb-text-primary;
-    -fx-font-size: 12px;
-}
-
-.adb-connection-picker .arrow {
-    -fx-background-color: -adb-text-secondary;
-}
-
-/* schema 切换器：与连接下拉同一套外观，但它是「次要」控件。 */
+/* schema 切换器：只在真的有多个 schema 时才出现（侧栏的次要控件）。 */
 .adb-schema-picker {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
@@ -382,7 +366,6 @@
 .adb-appbar__connection:focused,
 .adb-rail__button:focused,
 .adb-sidebar__nav:focused,
-.adb-favorite:focused,
 .adb-tab:focused,
 .adb-object-tab:focused,
 .adb-toast__action:focused,
@@ -530,6 +513,14 @@
     -fx-spacing: 8;
 }
 
+/* ⭐ 侧栏头部：标题「我的连接」+「新建查询」按钮同一行。
+   布局在 Java 里已经摆好（HBox + 撑开 spacer），这里只钉住对齐与间距，
+   避免以后有人改成 VBox 时左右两端跑位。 */
+.adb-sidebar__header {
+    -fx-alignment: center-left;
+    -fx-spacing: 6;
+}
+
 .adb-sidebar__title {
     -fx-text-fill: -adb-text-secondary;
     -fx-font-size: 11px;
@@ -545,6 +536,12 @@
 
 .adb-sidebar__section {
     -fx-spacing: 4;
+}
+
+/* 侧栏底部的工具行（查询历史 / 诊断）：Navicat 是「一棵树 + 底部工具」，
+   不再给它们套「工作台 / 工具」分段标题。 */
+.adb-sidebar__tools {
+    -fx-spacing: 2;
 }
 
 .adb-sidebar__search {
@@ -696,19 +693,6 @@
 .adb-tree__star {
     -fx-text-fill: -adb-risk-1-write;
     -fx-font-size: 11px;
-}
-
-.adb-favorite {
-    -fx-background-color: transparent;
-    -fx-text-fill: -adb-text-secondary;
-    -fx-padding: 2px 4px;
-    -fx-font-size: 12px;
-    -fx-background-radius: 4px;
-}
-
-.adb-favorite:hover {
-    -fx-background-color: -adb-bg-hover;
-    -fx-text-fill: -adb-text-primary;
 }
 
 /* ── 折叠图标栏 ─────────────────────────────────────────────────────── */
@@ -2052,14 +2036,18 @@
     -fx-border-color: -adb-border transparent transparent transparent;
 }
 
+/* ⭐ 与标准 .adb-button 完全对齐规格（6px 圆角 / 13px 字 / 32px 高 /
+ *   -adb-border 描边），消除「弹窗按钮和页面按钮长得不一样」的问题。 */
 .adb-dialog .button {
     -fx-background-color: -adb-bg-elevated;
     -fx-text-fill: -adb-text-primary;
-    -fx-border-color: -adb-border-strong;
-    -fx-border-radius: 4px;
-    -fx-background-radius: 4px;
+    -fx-border-color: -adb-border;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-padding: 4px 16px;
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
+    -fx-min-height: 32;
+    -fx-pref-height: 32;
 }
 
 .adb-dialog .button:hover {
@@ -2678,11 +2666,6 @@
 /* ── 侧栏 ───────────────────────────────────────────────────────────── */
 
 .adb-sidebar__bottom {
-    -fx-spacing: 4px;
-    -fx-alignment: center-left;
-}
-
-.adb-sidebar__connection {
     -fx-spacing: 4px;
     -fx-alignment: center-left;
 }
