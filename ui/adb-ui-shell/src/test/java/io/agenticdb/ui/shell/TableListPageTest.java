@@ -37,6 +37,8 @@ class TableListPageTest {
     private final List<List<String>> dropped = new ArrayList<>();
     private final List<String> messages = new ArrayList<>();
     private final List<String> selections = new ArrayList<>();
+    /** 报给右侧「对象详情面板」的表名；{@code null} = 没有单一对象可看。 */
+    private final List<String> inspected = new ArrayList<>();
 
     private final TableListPage.Host host = new TableListPage.Host() {
         @Override
@@ -57,6 +59,11 @@ class TableListPageTest {
         @Override
         public void selectionChanged(String text) {
             selections.add(text);
+        }
+
+        @Override
+        public void inspectTable(String name) {
+            inspected.add(name);
         }
     };
 
@@ -233,6 +240,41 @@ class TableListPageTest {
         assertThat(selections).last().asString()
                 .as("行数未知时不要编一个 0")
                 .isEqualTo("已选 audit");
+    }
+
+    // ─────────────────────── §6.3 详情面板联动 ───────────────────────
+
+    @Test
+    void selectingATableFeedsTheDetailsPanel(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        robot.interact(() -> page.table().getSelectionModel().select(0));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(inspected)
+                .as("单选一张表时要把表名报给右侧详情面板（规格 §6.3）")
+                .containsExactly("users");
+
+        robot.interact(() -> page.table().getSelectionModel().selectAll());
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(inspected)
+                .as("多选 = 没有单一对象可看，要报 null 让面板回空态")
+                .containsNull();
+    }
+
+    @Test
+    void theSameSelectionIsNotReportedTwice(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        robot.interact(() -> page.table().getSelectionModel().select(0));
+        WaitForAsyncUtils.waitForFxEvents();
+        int afterFirst = inspected.size();
+
+        // 标签切回来 / 刷新都会重跑 updateSelectionState()。
+        robot.interact(() -> page.refreshSelectionStatus());
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(inspected).hasSize(afterFirst)
+                .as("同一个表名反复上报 = 每次都触发一次元数据查询 + 一次面板重绘");
     }
 
     private Button button(String selector) {

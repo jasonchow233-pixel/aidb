@@ -1133,7 +1133,15 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         recordPosition.setId("data-record-position");
         recordPosition.getStyleClass().add("adb-record-nav__position");
 
-        recordNav.getChildren().addAll(first, previous, next, last, recordPosition);
+        // ⭐ 记录导航必须带「记录」两个字。
+        //     实测（2026-10-23 截图复查）：底部同时有两组 ◀◀ ◀ ▶ ▶▶，
+        //     一组翻**行**一组翻**页**，图标完全一样 —— 用户根本分不清
+        //     点哪一组会跳到哪。工具提示只在悬停时出现，而这两组按钮
+        //     是连在一起看的，不会逐个悬停。加一个常驻标签是最省的解法。
+        Label recordLabel = new Label("记录");
+        recordLabel.getStyleClass().add("adb-record-nav__label");
+
+        recordNav.getChildren().addAll(recordLabel, first, previous, next, last, recordPosition);
 
         grid.getSelectionModel().selectedIndexProperty().addListener(
                 (observable, oldValue, newValue) -> updateRecordPosition());
@@ -1315,8 +1323,14 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             load(false);
         });
 
-        pager.getChildren().addAll(rangeLabel, recordNav, spacer, firstPageButton, previous,
-                pageLabel, next, lastPageButton, jumpField, jumpRowField,
+        // ⭐ 与「记录」对称：翻页那一组也要有常驻标签。
+        //     没有它，两组图标相同的方向键并排放着，用户只能靠猜。
+        Label pageLabelText = new Label("页面");
+        pageLabelText.getStyleClass().add("adb-record-nav__label");
+
+        pager.getChildren().addAll(rangeLabel, recordNav, spacer, pageLabelText,
+                firstPageButton, previous, pageLabel, next, lastPageButton,
+                jumpField, jumpRowField,
                 new Separator(javafx.geometry.Orientation.VERTICAL), perPage, pageSizeBox);
         return pager;
     }

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（10 张）。
+# 重拍 docs/screenshots/ 的验收截图（12 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 9 张 + 暗色 1 张）
+#   ./scripts/shots.sh              # 全部重拍（亮色 11 张 + 暗色 1 张）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
 #
 # 为什么需要这个脚本（NAVICAT-TODO.md §12.2 记录的坑，全部在这里被绕开）：
@@ -32,10 +32,12 @@ SHOTS=(
   "p5-dark|sidebar-connections|5000|ADB_THEME_FORCE=dark"
   "p0-shell||2500|ADB_THEME_FORCE=light"
   "p2-users||5000|ADB_OPEN=users ADB_THEME_FORCE=light"
+  "p2-details||7000|ADB_OPEN=users ADB_DETAILS=1 ADB_THEME_FORCE=light"
   "p6-tables||5000|ADB_TABLES=1 ADB_THEME_FORCE=light"
   "p6-tables-grid||5000|ADB_TABLES=1 ADB_TABLE_VIEW=grid ADB_THEME_FORCE=light"
   "p3-query||6000|ADB_QUERY=1 ADB_THEME_FORCE=light"
   "p4-structure||5000|ADB_STRUCTURE=users ADB_THEME_FORCE=light"
+  "p4-ddl||7000|ADB_DDL=1 ADB_THEME_FORCE=light"
   "p5-connections|sidebar-connections|4000|ADB_THEME_FORCE=light"
   "p6-new-table||5000|ADB_NEW_TABLE=1 ADB_THEME_FORCE=light"
   "p7-new-index||6000|ADB_INDEX=1 ADB_THEME_FORCE=light"

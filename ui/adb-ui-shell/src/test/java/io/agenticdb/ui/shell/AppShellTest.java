@@ -79,6 +79,9 @@ class AppShellTest {
         preferences.put("ui.density", "normal");
         preferences.putBoolean("ui.sidebar.collapsed", false);
         preferences.putInt("ui.sidebar.width", 240);
+        // ⭐ §6：详情面板的显隐是**持久化**的偏好。不显式关掉的话，
+        //    上一次运行留下的 true 会让「默认关闭」这条断言随机失败。
+        preferences.putBoolean("ui.details.visible", false);
         // ⭐ 固定窗口尺寸：窗口大小是**记住**的（本地偏好），
         //    不固定的话测试会受上一次运行留下的尺寸影响 ——
         //    窗口比屏幕大时，底部的分页条会落在可视区之外，点击根本落不到。
@@ -655,6 +658,109 @@ class AppShellTest {
         onFxRun(() -> shell.actionRegistry().run("table-list.view-list"));
         WaitForAsyncUtils.waitForFxEvents();
         assertThat(onFx(() -> shell.lookup("#table-list").isVisible())).isTrue();
+    }
+
+    // ─────────────────────── §6 右侧对象详情面板 ───────────────────────
+
+    /**
+     * 详情面板**默认关闭**，且 ⌥⌘D / 动作能真的把它放出来。
+     *
+     * <p>守的是规格 §6.3：它是有用的补充，不是该常驻的第三栏。
+     * 默认开着的第三栏会在 1280×720 上吃掉 300px 主工作区 ——
+     * 而绝大多数时候用户并不需要它。
+     */
+    @Test
+    void detailsPanelIsHiddenByDefaultAndTogglesOn(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
+
+        assertThat(onFx(() -> Boolean.valueOf(
+                shell.lookup(".adb-details-panel").isVisible()))).isFalse();
+
+        onFxRun(() -> shell.actionRegistry().run("details.toggle"));
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(onFx(() -> Boolean.valueOf(
+                shell.lookup(".adb-details-panel").isVisible()))).isTrue();
+
+        onFxRun(() -> shell.actionRegistry().run("details.toggle"));
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(onFx(() -> Boolean.valueOf(
+                shell.lookup(".adb-details-panel").isVisible()))).isFalse();
+    }
+
+    /**
+     * 树里选中一张表 → 右侧出现该表的**真实**概况。
+     *
+     * <p>这是整条接线（SideBar 上报 → AppShell 读元数据 → 面板渲染）
+     * 唯一的端到端判据：任何一环断了，这里就只剩一个空面板。
+     *
+     * <p>⚠️ 选中走 {@code TreeView} 的选择模型，不用 {@code clickOn("users")}：
+     * 后者会点到对象首页那张同名的表行上，选中的根本不是树节点。
+     */
+    @Test
+    void selectingATableInTheTreeFillsTheDetailsPanel(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
+        onFxRun(() -> shell.actionRegistry().run("details.toggle"));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        onFxRun(() -> selectTreeNode(shell, "users"));
+
+        // ⭐ 元数据是异步读的（真实 SQLite 查询跑在自己的执行器上）——
+        //    固定等两拍在慢机器上会假失败，改成轮询直到真的出现内容。
+        List<String> items = awaitDetailsItems(shell);
+
+        assertThat(onFx(() -> {
+            javafx.scene.Node title = shell.lookup(".adb-details-panel__title");
+            return title == null ? null : ((javafx.scene.control.Labeled) title).getText();
+        })).isEqualTo("users");
+
+        // 字段摘要必须是真列名 —— 演示库的 users 表有这些列。
+        assertThat(items).isNotEmpty();
+        assertThat(items).anyMatch(text -> text.startsWith("id"));
+        assertThat(items).anyMatch(text -> text.startsWith("email"));
+        // 不许出现占位 / 编造内容。
+        assertThat(items).noneMatch(text -> text.contains("示例") || text.contains("TODO"));
+    }
+
+    /** 轮询等详情面板的字段摘要真的渲染出来（上限约 5 秒）。 */
+    private static List<String> awaitDetailsItems(AppShell shell) {
+        for (int attempt = 0; attempt < 50; attempt++) {
+            WaitForAsyncUtils.waitForFxEvents();
+            List<String> items = onFx(() -> shell.lookupAll(".adb-details-panel__list-item")
+                    .stream()
+                    .map(node -> ((javafx.scene.control.Labeled) node).getText())
+                    .toList());
+            if (!items.isEmpty()) {
+                return items;
+            }
+        }
+        return List.of();
+    }
+
+    /** 在对象树里按名字选中一个节点（DemoNode 是私有的，只能按 toString 找）。 */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void selectTreeNode(AppShell shell, String nodeName) {
+        TreeView view = (TreeView) shell.sideBar().lookup(".adb-object-tree");
+        TreeItem target = findNode((TreeItem) view.getRoot(), nodeName);
+        assertThat(target).as("对象树里要能找到 " + nodeName).isNotNull();
+        view.getSelectionModel().select(target);
+    }
+
+    private static TreeItem findNode(TreeItem item, String nodeName) {
+        if (item == null) {
+            return null;
+        }
+        if (String.valueOf(item.getValue()).contains("name=" + nodeName)) {
+            return item;
+        }
+        for (Object child : item.getChildren()) {
+            TreeItem found = findNode((TreeItem) child, nodeName);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
     }
 
     private static void onFxRun(Runnable action) {

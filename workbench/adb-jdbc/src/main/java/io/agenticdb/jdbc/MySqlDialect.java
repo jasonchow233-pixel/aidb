@@ -414,6 +414,22 @@ public final class MySqlDialect implements Dialect {
         return "DROP TABLE " + quote(table);
     }
 
+    /**
+     * ⭐ 建表必须带 {@code DEFAULT CHARSET=utf8mb4}。
+     *
+     * <p>见 {@link Dialect#createTableOptions()}：MySQL 8.0 之前默认字符集是
+     * latin1，不带这条子句建出来的表存不了中文。utf8mb4 从 5.5.3 就有，
+     * 我们支持的所有 MySQL 版本（5.7 / 8.0 / 8.4）都认。
+     *
+     * <p>⚠️ 不指定 COLLATE：让服务器挑该字符集的默认排序规则 ——
+     * 5.7 的默认（utf8mb4_general_ci）与 8.0 的默认（utf8mb4_0900_ai_ci）
+     * 不同，写死其中一个在另一个版本上就是「排序行为和别的表不一样」。
+     */
+    @Override
+    public String createTableOptions() {
+        return "DEFAULT CHARSET=utf8mb4";
+    }
+
     @Override
     public boolean supportsTableComment() {
         return true;

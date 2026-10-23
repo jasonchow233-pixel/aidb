@@ -695,6 +695,48 @@ class DataGridPageTest {
         }
     }
 
+    /**
+     * 底部两组方向键必须能分辨（2026-10-23 截图复查发现的问题）。
+     *
+     * <p>数据页底部有「翻行」与「翻页」两组 ◀◀ ◀ ▶ ▶▶，图标完全相同。
+     * 工具提示只在悬停时出现，而这两组按钮是连起来看的，用户不会逐个
+     * 悬停 —— 于是点错，而且**点错了不报错**，只是跳到了没想到的地方。
+     *
+     * <p>解法是给两组各配一个常驻标签。这里钉住的就是这两个标签：
+     * 少任何一个，用户就又回到「靠猜」的状态。
+     */
+    @Test
+    void recordAndPageNavigationAreDistinguishable() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("nav.db"))));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
+                    "nav.db", noOpFeedback(), name -> { }, executor);
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                    page.lookup("#data-table") != null && tableItems(page).size() == 200);
+            WaitForAsyncUtils.waitForFxEvents();
+
+            List<String> labels = WaitForAsyncUtils.asyncFx(() ->
+                    page.lookupAll(".adb-record-nav__label")
+                            .stream()
+                            .map(node -> ((Label) node).getText())
+                            .toList()).get();
+            assertThat(labels).containsExactly("记录", "页面");
+
+            // 两组按钮都得在 —— 这是「分辨」而不是「删掉一组」。
+            assertThat(WaitForAsyncUtils.asyncFx(() ->
+                    page.lookup("#data-record-first") != null).get()).isTrue();
+            assertThat(WaitForAsyncUtils.asyncFx(() ->
+                    page.lookup("#data-first") != null).get()).isTrue();
+
+            page.close();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
     private static void pressShortcut(DataGridPage page, javafx.scene.input.KeyCode code,
                                       boolean shift, boolean alt) throws Exception {
         javafx.scene.input.KeyEvent event = new javafx.scene.input.KeyEvent(

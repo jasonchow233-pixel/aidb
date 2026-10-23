@@ -89,6 +89,16 @@ final class TableListPage extends VBox {
         default void selectionChanged(String text) {
         }
 
+        /**
+         * 选择变化时同步右侧「对象详情面板」（规格 §6.3）。
+         *
+         * <p>{@code name} = 唯一选中的表名；多选 / 空选传 {@code null}
+         * （没有单一对象可看，外壳会把面板切回空态）。
+         * 默认空实现，老的门禁假 Host 不受影响。
+         */
+        default void inspectTable(String name) {
+        }
+
         default void activated() {
         }
     }
@@ -132,6 +142,8 @@ final class TableListPage extends VBox {
     private boolean loading;
     /** 同步表格与网格选择时不要来回报告状态。 */
     private boolean syncingSelection;
+    /** 上一次报给外壳「详情面板该看谁」的表名；{@code null} = 没有单一对象。 */
+    private String inspectReported;
 
     /** 密度档位 → 行高（不写死）。 */
     private int rowHeight = RowHeights.of("normal");
@@ -687,6 +699,22 @@ final class TableListPage extends VBox {
         } else {
             host.selectionChanged("已选 " + selected.size() + " 个项目");
         }
+        reportInspect(selected.size() == 1 ? selected.getFirst().name() : null);
+    }
+
+    /**
+     * 把当前选中项同步给右侧详情面板，并按值去重。
+     *
+     * <p>刷新、切视图、标签切回来都会重跑 {@link #updateSelectionState()} →
+     * {@link #reportSelection()}；不去重就会拿同一个表名反复打扰外壳
+     * （每次都触发一次元数据查询 + 一次面板重绘）。
+     */
+    private void reportInspect(String name) {
+        if (java.util.Objects.equals(inspectReported, name)) {
+            return;
+        }
+        inspectReported = name;
+        host.inspectTable(name);
     }
 
     /** 供外壳在标签切回来时刷新状态栏与动作启用态。 */

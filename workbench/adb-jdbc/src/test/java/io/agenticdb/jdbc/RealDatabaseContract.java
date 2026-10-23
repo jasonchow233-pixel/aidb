@@ -9,6 +9,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -143,6 +145,117 @@ public final class RealDatabaseContract {
                 assertThat(columnNames(session, table))
                         .as("删列之后列不在")
                         .doesNotContain("mail");
+            } finally {
+                dropQuietly(session, dialect, table);
+            }
+        }
+    }
+
+    // ─────────────────────────── 契约 6：重命名保真 ───────────────────────────
+
+    /**
+     * ⭐ 重命名列必须**保住列的完整定义**（类型 / 长度 / 可空性 / 默认值）。
+     *
+     * <p>为什么单列这条契约：MySQL 8.0 之前没有 {@code RENAME COLUMN}，
+     * 方言只能用 {@code CHANGE COLUMN 旧名 新名 <完整定义>} ——
+     * 定义少写一项，用户**当场看不出来**，但那项已经静默丢了
+     * （一个 {@code NOT NULL DEFAULT 'x'} 的列被改名后变成可空、无默认值，
+     * 数据库不报错，数据照常进，只是约束没了）。
+     *
+     * <p>PostgreSQL 的 {@code RENAME COLUMN} 根本不碰定义，这条对它同样成立 ——
+     * 于是同一条断言把两条路径都钉住。
+     */
+    public static void renameColumnPreservesDefinition(ExternalDatabase target) throws Exception {
+        withRetry("重命名保真", () -> renameColumnPreservesDefinitionOnce(target));
+    }
+
+    private static void renameColumnPreservesDefinitionOnce(ExternalDatabase target) throws Exception {
+        try (JdbcSession session = JdbcSession.open(target.spec())) {
+            Dialect dialect = session.dialect();
+            String table = "adb_contract_rn_" + System.nanoTime();
+            try {
+                session.execute("CREATE TABLE " + dialect.quote(table)
+                        + " (id INTEGER PRIMARY KEY, " + dialect.quote("原列")
+                        + " VARCHAR(50) NOT NULL DEFAULT 'x')");
+
+                // 生产路径上这个 ColumnDef 来自内省；这里按刚建出来的列手工对齐。
+                ColumnDef column = new ColumnDef("原列", ColumnType.TEXT, false, false,
+                        "'x'", null, null, 50, null, null, false, "VARCHAR");
+                session.execute(dialect.renameColumnSql(table, "原列", "新列", column));
+
+                String[] facts = columnFacts(session, table, "新列");
+                assertThat(canonicalTypeName(facts[0]))
+                        .as("重命名后类型要还在（CHANGE COLUMN 少写定义会变 TEXT）"
+                                + " —— PostgreSQL 回报 character varying，与 varchar 同族，先归一")
+                        .isEqualTo("varchar");
+                assertThat(facts[1])
+                        .as("重命名后长度要还在 —— MySQL 的 data_type 不带长度，"
+                                + "长度在 character_maximum_length（PostgreSQL 叫 character varying）")
+                        .isEqualTo("50");
+                assertThat(facts[2])
+                        .as("重命名后 NOT NULL 不能丢（丢了不报错，但约束没了）")
+                        .isEqualTo("NO");
+                assertThat(facts[3])
+                        .as("重命名后默认值不能丢")
+                        .contains("x");
+                assertThat(columnNames(session, table))
+                        .as("旧名字要真的没了")
+                        .doesNotContain("原列");
+            } finally {
+                dropQuietly(session, dialect, table);
+            }
+        }
+    }
+
+    // ─────────────────────────── 契约 7：新建表存得下中文 ───────────────────────────
+
+    /**
+     * ⭐ 用<b>方言自己的零件</b>拼出来的建表语句，必须存得下中文（数据 + 注释）。
+     *
+     * <p>这条契约抓的是一个只在特定版本上现形的 bug：MySQL 8.0 之前服务器的
+     * 默认字符集是 latin1，我们的建表语句以前不带字符集，表就继承 latin1 ——
+     * 中文一插就 {@code Incorrect string value}，而且是**驱动原文**报错。
+     * 多版本矩阵在 MySQL 5.7 上抓到（8.0 / 8.4 / PostgreSQL 全绿，
+     * 因为它们的默认字符集本来就是 UTF-8）。
+     *
+     * <p>修法是 {@link Dialect#createTableOptions()}（MySQL 带
+     * {@code DEFAULT CHARSET=utf8mb4}）。这里用方言零件拼表而不是手写 SQL ——
+     * 手写的建表语句测不出我们自己的 bug（这条契约自己的教训）。
+     */
+    public static void createdTablesAcceptUnicode(ExternalDatabase target) throws Exception {
+        withRetry("新建表存中文", () -> createdTablesAcceptUnicodeOnce(target));
+    }
+
+    private static void createdTablesAcceptUnicodeOnce(ExternalDatabase target) throws Exception {
+        try (JdbcSession session = JdbcSession.open(target.spec())) {
+            Dialect dialect = session.dialect();
+            String table = "adb_contract_cs_" + System.nanoTime();
+            try {
+                // 中文列名 + 中文注释：两个都要求表 / 列的字符集吃得下 UTF-8。
+                ColumnSpec column = new ColumnSpec("名称", "VARCHAR(50)", true, null,
+                        "中文注释", false, false);
+                String sql = "CREATE TABLE " + dialect.quote(table) + " ("
+                        + dialect.createTableColumnDefinition(column, false) + ")";
+                String options = dialect.createTableOptions();
+                if (options != null && !options.isBlank()) {
+                    sql += " " + options;
+                }
+                session.execute(sql);
+
+                session.execute("INSERT INTO " + dialect.quote(table) + " ("
+                        + dialect.quote("名称") + ") VALUES ('值')");
+
+                List<Map<String, Object>> rows = session.execute(
+                        "SELECT " + dialect.quote("名称") + " FROM " + dialect.quote(table)).rows();
+                assertThat(rows)
+                        .as("中文要存得进去也读得回来（字符集不对会在这里炸）")
+                        .isNotNull();
+                assertThat(rows)
+                        .as("刚插进去的那行要在")
+                        .hasSize(1);
+                assertThat(String.valueOf(rows.getFirst().get("名称")))
+                        .as("读回来的值不能变乱码")
+                        .isEqualTo("值");
             } finally {
                 dropQuietly(session, dialect, table);
             }
@@ -342,17 +455,61 @@ public final class RealDatabaseContract {
 
     private static String columnType(JdbcSession session, String table, String column)
             throws Exception {
+        String[] facts = columnFacts(session, table, column);
+        if (facts[0] == null) {
+            return null;
+        }
+        // 无长度概念的类型（TEXT / INTEGER…）不加括号 —— 保持与库里的原样一致。
+        return facts[1] == null ? facts[0] : facts[0] + "(" + facts[1] + ")";
+    }
+
+    /**
+     * 把 {@code information_schema.data_type} 的名字归一到同一族的名字。
+     *
+     * <p>同一个类型在两个库里叫两个名字：MySQL 报 {@code varchar}，
+     * PostgreSQL 报 {@code character varying}。不归一，就只能给两个库各写一条
+     * 断言 —— 而「同一套断言跑遍所有库」正是这个文件的立足点，所以归一在这里做。
+     *
+     * <p>只归一<b>同义异名</b>，不做类型推断：{@code text} 与 {@code varchar}
+     * 是两个类型，改名以后如果变成 {@code text}，这里照样抓得出来。
+     */
+    private static String canonicalTypeName(String dataType) {
+        if (dataType == null) {
+            return null;
+        }
+        return switch (dataType.toLowerCase(Locale.ROOT)) {
+            case "character varying" -> "varchar";
+            case "character", "nchar" -> "char";
+            case "timestamp without time zone", "timestamp with time zone" -> "timestamp";
+            case "integer" -> "int";
+            default -> dataType.toLowerCase(Locale.ROOT);
+        };
+    }
+
+    /**
+     * 列的四项事实：{@code data_type, character_maximum_length, is_nullable, column_default}。
+     *
+     * <p>两个库的 {@code information_schema.columns} 这几列同名同义 ——
+     * 于是一条查询同时伺候 MySQL 与 PostgreSQL。
+     */
+    private static String[] columnFacts(JdbcSession session, String table, String column)
+            throws Exception {
         try (Statement statement = session.connection().createStatement();
              var rs = statement.executeQuery(
-                     "SELECT data_type, character_maximum_length FROM information_schema.columns "
-                             + "WHERE table_name = '" + table + "' AND table_schema = "
-                             + schemaFilter(session) + " AND column_name = '" + column + "'")) {
+                     "SELECT data_type, character_maximum_length, is_nullable, column_default "
+                             + "FROM information_schema.columns WHERE table_name = '" + table
+                             + "' AND table_schema = " + schemaFilter(session)
+                             + " AND column_name = '" + column + "'")) {
             if (!rs.next()) {
-                return null;
+                return new String[] {null, null, null, null};
             }
-            String type = rs.getString(1);
             long length = rs.getLong(2);
-            return rs.wasNull() ? type : type + "(" + length + ")";
+            return new String[] {
+                    rs.getString(1),
+                    rs.wasNull() ? null : String.valueOf(length),
+                    rs.getString(3),
+                    rs.getString(4),
+            };
         }
     }
 

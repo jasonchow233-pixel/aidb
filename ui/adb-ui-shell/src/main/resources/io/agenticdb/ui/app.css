@@ -2479,15 +2479,17 @@
     -fx-background-radius: 8px;
 }
 
-/* DDL 文本区：等宽 + 凹陷底 */
+/* DDL 只读编辑器：等宽 + 凹陷底（规格 §11.2：与查询页同一套 SqlEditor，
+   只是包在外层的容器边框从「只有底线」改成四边） */
 .adb-structure__ddl {
-    -fx-font-family: "Menlo";
-    -fx-font-size: 12px;
-    -fx-text-fill: -adb-text-primary;
-    -fx-control-inner-background: -adb-bg-inset;
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
     -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+}
+
+/* 里面的编辑区跟着容器收圆角，否则 CodeArea 的方角会切出容器的圆框 */
+.adb-structure__ddl .adb-sql-editor {
     -fx-background-radius: 4px;
 }
 
@@ -2863,4 +2865,194 @@
 .adb-empty__hint {
     -fx-text-fill: -adb-text-tertiary;
     -fx-font-size: 11px;
+}
+
+/* ── 右侧对象详情面板（规格书 §6）──────────────────────────────────────
+ * 定位：**可选**的第三栏。默认关闭、按需打开，所以它必须
+ *   ① 有自己的背景与左边框（和主工作区区分开），
+ *   ② 窄（300px 左右）也不难看 —— 信息按「基本信息 / 摘要」分层。
+ * 只引用 -adb-* 令牌：主题切换时整栏跟着变，不会留一块白底。
+ * ─────────────────────────────────────────────────────────────────── */
+
+.adb-details-panel {
+    -fx-background-color: -adb-bg-surface;
+    -fx-border-color: transparent -adb-border transparent transparent;
+    -fx-border-width: 0 1 0 0;
+}
+
+.adb-details-panel__header {
+    -fx-padding: 12px 8px 12px 12px;
+    -fx-border-color: transparent transparent -adb-border transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.adb-details-panel__title {
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.adb-details-panel__subtitle {
+    -fx-text-fill: -adb-text-tertiary;
+    -fx-font-size: 11px;
+}
+
+.adb-details-panel__close {
+    -fx-min-height: 24;
+    -fx-pref-height: 24;
+}
+
+/* 焦点环与全局一致：主色边框 + 光晕，不改边框宽度（不抖）。 */
+.adb-details-panel__close:focused,
+.adb-details-panel__refresh:focused {
+    -fx-border-color: -adb-border-focus;
+    -fx-effect: dropshadow(gaussian, -adb-border-focus, 4, 0.4, 0, 0);
+}
+
+.adb-details-panel__scroll {
+    -fx-background-color: transparent;
+    -fx-background: transparent;
+    -fx-padding: 0px;
+}
+
+.adb-details-panel__scroll > .viewport {
+    -fx-background-color: transparent;
+}
+
+.adb-details-panel__facts {
+    -fx-padding: 12px 12px 4px 12px;
+}
+
+.adb-details-panel__sections {
+    -fx-padding: 4px 12px 12px 12px;
+}
+
+.adb-details-panel__fact {
+    -fx-padding: 2px 0px;
+}
+
+.adb-details-panel__fact-key {
+    -fx-text-fill: -adb-text-tertiary;
+    -fx-font-size: 11px;
+    -fx-min-width: 64;
+}
+
+.adb-details-panel__fact-value {
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 12px;
+}
+
+.adb-details-panel__section {
+    -fx-padding: 8px 0px 0px 0px;
+}
+
+.adb-details-panel__section-title {
+    -fx-text-fill: -adb-text-secondary;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-padding: 0px 0px 4px 0px;
+}
+
+.adb-details-panel__list {
+    -fx-padding: 0px;
+}
+
+.adb-details-panel__list-item {
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 12px;
+    -fx-padding: 2px 0px 2px 8px;
+    -fx-border-color: transparent transparent transparent -adb-border;
+    -fx-border-width: 0 0 0 2;
+}
+
+.adb-details-panel__note {
+    -fx-text-fill: -adb-text-tertiary;
+    -fx-font-size: 11px;
+    -fx-padding: 2px 12px;
+}
+
+.adb-details-panel__notes {
+    -fx-padding: 0px 0px 8px 0px;
+}
+
+.adb-details-panel__empty,
+.adb-details-panel__loading {
+    -fx-font-size: 12px;
+    -fx-padding: 16px 12px;
+    -fx-wrap-text: true;
+}
+
+.adb-details-panel__footer {
+    -fx-padding: 8px;
+    -fx-border-color: -adb-border transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+}
+
+.adb-details-panel__footer .adb-button {
+    -fx-font-size: 12px;
+    -fx-padding: 4px 8px;
+}
+
+/* ── 新建表弹窗（规格 §13）────────────────────────────────────────────
+ * 三段结构：表基本信息 / 字段网格 / SQL 预览。
+ * 与旧版的关键差别：标题栏带库名与关闭钮、SQL 预览是真编辑器、
+ * 表格高度随行数收缩（不再挂 170px 空白网格）。
+ * ─────────────────────────────────────────────────────────────────── */
+
+.adb-new-table__body {
+    -fx-background-color: -adb-bg-surface;
+}
+
+.adb-new-table__header {
+    -fx-padding: 0px 0px 8px 0px;
+    -fx-border-color: transparent transparent -adb-border transparent;
+    -fx-border-width: 0px 0px 1px 0px;
+}
+
+.adb-new-table__title {
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+}
+
+.adb-new-table__context {
+    -fx-text-fill: -adb-text-tertiary;
+    -fx-font-size: 12px;
+}
+
+.adb-new-table__close {
+    -fx-min-height: 24;
+    -fx-pref-height: 24;
+}
+
+.adb-new-table__section {
+    -fx-padding: 0px;
+}
+
+.adb-new-table__section-title {
+    -fx-text-fill: -adb-text-secondary;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}
+
+.adb-new-table__row-actions {
+    -fx-padding: 4px 0px 0px 0px;
+}
+
+.adb-new-table__row-actions .adb-button {
+    -fx-font-size: 12px;
+    -fx-padding: 4px 8px;
+}
+
+/* ── 底部两组方向键的常驻标签 ─────────────────────────────────────────
+ * 实测问题（2026-10-23 截图复查）：数据页底部同时有「翻行」与「翻页」
+ * 两组 ◀◀ ◀ ▶ ▶▶，图标完全一样。工具提示只在悬停时出现，而这两组
+ * 按钮是连起来看的，用户不会逐个悬停 —— 于是点错。
+ * 解法：给两组各配一个常驻小标签（记录 / 页面），不删任何功能。
+ * ─────────────────────────────────────────────────────────────────── */
+
+.adb-record-nav__label {
+    -fx-font-size: 11px;
+    -fx-text-fill: -adb-text-tertiary;
+    -fx-padding: 0px 4px 0px 0px;
 }

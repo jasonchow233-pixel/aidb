@@ -55,7 +55,10 @@ final class NewTableDialog {
 
     private final TextField name = new TextField();
     private final TextField tableComment = new TextField();
-    private final TextArea preview = new TextArea();
+    /** ⭐ 规格 §13.4：SQL 预览是只读的 SQL 编辑器（等宽 / 行号 / 高亮）。 */
+    private SqlEditor previewEditor;
+    private VBox sqlPreview;
+    private boolean sqlPreviewVisible = true;
     private final Label error = new Label();
     private final ObservableList<ColumnRow> rows = FXCollections.observableArrayList();
 
@@ -87,12 +90,15 @@ final class NewTableDialog {
     // ─────────────────────────── 界面 ───────────────────────────
 
     private void buildUi() {
-        dialog.setTitle("新建表");
-        // ⭐ V-11：弹窗宽度走三档规范（DialogSizes）。
-        dialog.getDialogPane().setPrefWidth(DialogSizes.WIDE);
-        dialog.getDialogPane().setMinWidth(DialogSizes.WIDE);
-
-        dialog.setHeaderText("在当前连接里新建一张表");
+        dialog.setTitle("新建数据表");
+        // ⭐ 规格 §13.1：850–1000px。720px 下「默认值 / 注释」两列会被压成
+        //    一个省略号，改一个默认值先得横向滚 —— 建表是高频操作，不能这样。
+        dialog.getDialogPane().setPrefWidth(DialogSizes.TABLE);
+        dialog.getDialogPane().setMinWidth(DialogSizes.TABLE);
+        dialog.getDialogPane().setMinHeight(600);
+        // 不用 setHeaderText：标题栏要同时放「新建数据表」+ 当前库名 + 关闭按钮
+        // （规格 §13.2），而 JavaFX 的标准 header 只给一行居中的小字。
+        dialog.setHeaderText(null);
 
         name.setId("new-table-name");
         name.setPromptText("表名");
@@ -110,12 +116,14 @@ final class NewTableDialog {
         // ⚠️ TableView 的默认首选高度很大（400+）—— 弹窗会被撑到比屏幕还高，
         //    底部的「创建 / 取消」跑到屏幕外，用户点不到。固定行高 + 限高。
         table.setFixedCellSize(30);
-        table.setPrefHeight(200);
-        table.setMinHeight(120);
+        fitTableHeight(table);
 
         Button add = IconButtons.of(Icons.Icon.ADD, "添加列");
         add.setId("new-table-add-column");
-        add.setOnAction(event -> addRow());
+        add.setOnAction(event -> {
+            addRow();
+            fitTableHeight(table);
+        });
         Button remove = IconButtons.of(Icons.Icon.DELETE, "删除列");
         remove.setId("new-table-remove-column");
         remove.setOnAction(event -> {
@@ -124,16 +132,33 @@ final class NewTableDialog {
                 return;
             }
             rows.remove(selected);
+            fitTableHeight(table);
             refreshPreview();
         });
         HBox rowButtons = new HBox(8, add, remove);
         rowButtons.setAlignment(Pos.CENTER_LEFT);
+        rowButtons.getStyleClass().add("adb-new-table__row-actions");
 
-        preview.setId("new-table-preview");
-        preview.setEditable(false);
-        preview.setWrapText(false);
-        preview.setPrefRowCount(8);
-        preview.setPromptText("这里会实时显示将要执行的 CREATE TABLE");
+        // ⭐ 规格 §13.4：SQL 预览要像编辑器（等宽 / 行号 / 高亮），
+        //    不是一个灰底的 TextArea。复用 SqlEditor —— 查询页那个本来就是它。
+        previewEditor = new SqlEditor();
+        previewEditor.area().setEditable(false);
+        previewEditor.area().setId("new-table-preview");
+        previewEditor.setPrefHeight(168);
+        VBox.setVgrow(previewEditor, Priority.ALWAYS);
+
+        Button copySql = IconButtons.of(Icons.Icon.COPY, "复制 SQL");
+        copySql.setId("new-table-copy-sql");
+        copySql.setOnAction(event -> copyPreview());
+        Button collapseSql = IconButtons.of(Icons.Icon.CHEVRON_RIGHT, "折叠 SQL 预览");
+        collapseSql.setId("new-table-collapse-sql");
+        collapseSql.setOnAction(event -> setSqlPreviewVisible(!sqlPreviewVisible, collapseSql));
+
+        Label sqlTitle = new Label("将要执行的 SQL");
+        sqlTitle.getStyleClass().add("adb-new-table__section-title");
+        HBox sqlHeader = new HBox(8, sqlTitle, copySql, collapseSql);
+        sqlHeader.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(sqlTitle, Priority.ALWAYS);
 
         error.setId("new-table-error");
         error.getStyleClass().add("adb-error");
@@ -141,20 +166,14 @@ final class NewTableDialog {
         error.setVisible(false);
         error.setManaged(false);
 
-        Label header = new Label("表名");
-        header.getStyleClass().add("adb-form__label");
-
-        VBox body = new VBox(10,
-                row(header, name),
-                row(new Label("表注释"), tableComment),
-                new Label("列"),
-                table,
-                rowButtons,
-                new Label("将要执行的 SQL"),
-                preview,
-                error);
-        body.setPadding(new Insets(16, 8, 8, 8));
-        VBox.setVgrow(table, Priority.ALWAYS);
+        VBox body = new VBox(12,
+                buildHeader(),
+                buildTableInfoSection(),
+                buildColumnsSection(table, rowButtons),
+                buildSqlSection(sqlHeader, previewEditor),
+                error);        body.getStyleClass().add("adb-new-table__body");
+        body.setPadding(new Insets(16, 16, 8, 16));
+        VBox.setVgrow(previewEditor, Priority.ALWAYS);
         dialog.getDialogPane().setContent(body);
         dialog.setResizable(true);
 
@@ -172,7 +191,97 @@ final class NewTableDialog {
         });
         dialog.setResultConverter(button -> button == ok ? buildPlan() : null);
 
-        rows.addListener((ListChangeListener<ColumnRow>) change -> refreshPreview());
+        rows.addListener((ListChangeListener<ColumnRow>) change -> {
+            refreshPreview();
+            fitTableHeight(table);
+        });
+    }
+
+    /**
+     * 字段网格的高度跟着行数走。
+     *
+     * <p>以前固定 200px：只有一行「id」时下面挂着 170px 空白网格，
+     * 看起来像「还有很多行没填」；加到 8 行时又开始内部滚动。
+     */
+    private void fitTableHeight(TableView<ColumnRow> table) {
+        double height = 34 + Math.max(1, rows.size()) * 30;
+        table.setPrefHeight(clamp(height, 120, 300));
+        table.setMinHeight(120);
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    /** 标题栏：新建数据表 + 当前库 / 方言 + 关闭按钮（规格 §13.2）。 */
+    private HBox buildHeader() {
+        Label title = new Label("新建数据表");
+        title.getStyleClass().add("adb-new-table__title");
+        // ⭐ 库名与方言都来自真实会话，不是写死的示例。
+        Label context = new Label(session.label() + " · " + session.dialect().displayName());
+        context.getStyleClass().add("adb-new-table__context");
+        Button close = IconButtons.icon(Icons.Icon.CLOSE, "关闭");
+        close.setId("new-table-close");
+        close.getStyleClass().addAll("adb-icon-button", "adb-new-table__close");
+        close.setOnAction(event -> dialog.setResult(null));
+        HBox header = new HBox(8, title, context, close);
+        header.getStyleClass().add("adb-new-table__header");
+        header.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(context, Priority.ALWAYS);
+        return header;
+    }
+
+    /** 表基本信息（规格 §13.2 第一部分）。 */
+    private VBox buildTableInfoSection() {
+        Label title = new Label("表基本信息");
+        title.getStyleClass().add("adb-new-table__section-title");
+        VBox box = new VBox(8,
+                row(formLabel("表名"), name),
+                row(formLabel("表注释"), tableComment));
+        box.getStyleClass().add("adb-new-table__section");
+        return new VBox(4, title, box);
+    }
+
+    /** 表单行的标签（复用全局的 adb-form__label，不为弹窗另立一套）。 */
+    private static Label formLabel(String text) {
+        Label label = new Label(text);
+        label.getStyleClass().add("adb-form__label");
+        return label;
+    }
+
+    /** 字段编辑网格（规格 §13.2 第二部分）。 */
+    private VBox buildColumnsSection(TableView<ColumnRow> table, HBox rowButtons) {
+        Label title = new Label("字段");
+        title.getStyleClass().add("adb-new-table__section-title");
+        VBox box = new VBox(8, table, rowButtons);
+        box.getStyleClass().add("adb-new-table__section");
+        return new VBox(4, title, box);
+    }
+
+    /** SQL 预览（规格 §13.2 第三部分，可折叠）。 */
+    private VBox buildSqlSection(HBox header, SqlEditor editor) {
+        VBox box = new VBox(8, header, editor);
+        box.getStyleClass().add("adb-new-table__section");
+        return box;
+    }
+
+    private void setSqlPreviewVisible(boolean visible, Button toggle) {
+        sqlPreviewVisible = visible;
+        previewEditor.setVisible(visible);
+        previewEditor.setManaged(visible);
+        toggle.setGraphic(Icons.of(visible ? Icons.Icon.CHEVRON_RIGHT : Icons.Icon.CHEVRON_LEFT));
+        toggle.setText(visible ? "折叠 SQL 预览" : "展开 SQL 预览");
+    }
+
+    private void copyPreview() {
+        String sql = previewEditor.text();
+        if (sql == null || sql.isBlank()) {
+            return;
+        }
+        javafx.scene.input.ClipboardContent content =
+                new javafx.scene.input.ClipboardContent();
+        content.putString(sql);
+        javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
     }
 
     private static HBox row(Label label, TextField field) {
@@ -187,14 +296,17 @@ final class NewTableDialog {
         TableView<ColumnRow> table = new TableView<>(rows);
         table.setEditable(true);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        // ⭐ 规格 §13.3：字段名 / 类型拿宽列，三个布尔约束列保持紧凑。
+        //    以前布尔列也是 60px，勾选框孤零零漂在格子中间；而「注释」
+        //    吃掉所有剩余宽度却常常是空的。
         table.getColumns().setAll(
-                textColumn("列名", "name", 150, row -> row.name),
-                textColumn("类型", "type", 130, row -> row.type),
-                booleanColumn("主键", 60, row -> row.primaryKey),
-                booleanColumn("可空", 60, row -> row.nullable),
-                booleanColumn("唯一", 60, row -> row.unique),
-                textColumn("默认值", "defaultValue", 110, row -> row.defaultValue),
-                textColumn("注释", "comment", 160, row -> row.comment));
+                textColumn("字段名", "name", 200, row -> row.name),
+                textColumn("类型", "type", 160, row -> row.type),
+                booleanColumn("主键", 52, row -> row.primaryKey),
+                booleanColumn("可空", 52, row -> row.nullable),
+                booleanColumn("唯一", 52, row -> row.unique),
+                textColumn("默认值", "defaultValue", 140, row -> row.defaultValue),
+                textColumn("注释", "comment", 120, row -> row.comment));
         return table;
     }
 
@@ -285,10 +397,10 @@ final class NewTableDialog {
             plan = StructureSqlBuilder.createTable(session, name.getText(), columns,
                     commentText(), existingTables);
         } catch (IllegalArgumentException e) {
-            preview.setText("");
+            previewEditor.setText("");
             return;
         }
-        preview.setText(plan.sql());
+        previewEditor.setText(plan.sql());
     }
 
     private void showError(String message) {
@@ -317,8 +429,21 @@ final class NewTableDialog {
         return name;
     }
 
-    TextArea previewArea() {
-        return preview;
+    /**
+     * SQL 预览的编辑区（供门禁断言内容）。
+     *
+     * <p>返回 {@link org.fxmisc.richtext.CodeArea} 而不是包一层：
+     * 它就是 {@link SqlEditor} 真正的编辑控件，断言
+     * {@code getText()} 与原来那个 TextArea 一字不差，
+     * 于是「预览内容」这条规则不需要跟着实现一起改。
+     */
+    org.fxmisc.richtext.CodeArea previewArea() {
+        return previewEditor.area();
+    }
+
+    /** SQL 预览是不是折叠状态（规格 §13.4：预览可折叠）。 */
+    boolean sqlPreviewCollapsed() {
+        return !sqlPreviewVisible;
     }
 
     // ─────────────────────────── 行模型 ───────────────────────────

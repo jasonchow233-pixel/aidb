@@ -58,6 +58,16 @@ public final class WorkspaceView extends StackPane {
     }
 
     /**
+     * 当前活动的结构页；不是结构页时为 {@code null}。
+     *
+     * <p>详情面板的「查看 DDL」要用它 —— 打开结构标签后直接把
+     * 子页签切到 DDL（规格 §11.1），而不是另开一个只读文本框。
+     */
+    public StructurePage activeStructure() {
+        return activeStructure;
+    }
+
+    /**
      * 把密度档位应用到所有已打开的数据页（A19）。
      *
      * <p>以前密度只改对象树的行内边距，<b>数据网格行高纹丝不动</b> ——

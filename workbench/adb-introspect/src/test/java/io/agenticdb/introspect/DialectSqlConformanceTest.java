@@ -163,6 +163,30 @@ class DialectSqlConformanceTest {
                 .contains("`id` INTEGER PRIMARY KEY NOT NULL");
     }
 
+    @Test
+    void createTablePinsTheCharsetOnMySql() {
+        List<ColumnDef> columns = List.of(
+                new ColumnDef("id", ColumnType.NUMBER, false, true, null, null,
+                        null, null, null, null, false, "INTEGER"));
+
+        assertThat(StructureSqlBuilder.createTableSql(session(DialectKind.MYSQL),
+                "users", columns, List.of("id"), List.of(), List.of()))
+                .as("⭐ MySQL 8.0 之前默认字符集是 latin1 —— 不带 utf8mb4，"
+                        + "建出来的表存不了中文（多版本矩阵在 5.7 上实测抓出）")
+                .endsWith("DEFAULT CHARSET=utf8mb4");
+
+        assertThat(StructureSqlBuilder.createTableSql(session(DialectKind.SQLITE),
+                "users", columns, List.of("id"), List.of(), List.of()))
+                .as("SQLite 只有 UTF-8，不用指定")
+                .doesNotContain("CHARSET");
+
+        assertThat(StructureSqlBuilder.createTableSql(session(DialectKind.POSTGRESQL),
+                "users", columns, List.of("id"), List.of(), List.of()))
+                .as("PostgreSQL 的字符集是建库时定的，表级没有 ENCODING 子句")
+                .doesNotContain("CHARSET")
+                .doesNotContain("ENCODING");
+    }
+
     // ─────────────────────────── 工具 ───────────────────────────
 
     private static StructurePlan addColumn(DialectKind kind, ColumnSpec column) {

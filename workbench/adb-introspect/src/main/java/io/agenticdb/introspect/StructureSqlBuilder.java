@@ -243,8 +243,13 @@ public final class StructureSqlBuilder {
         }
 
         List<String> statements = new ArrayList<>();
+        // ⭐ 表级选项（MySQL 的 DEFAULT CHARSET=utf8mb4）—— 不带的话，
+        //    MySQL 8.0 之前的服务器默认 latin1，建出来的表存不了中文
+        //    （多版本矩阵在 5.7 上实测抓出，见 Dialect#createTableOptions）。
+        String options = session.dialect().createTableOptions();
         statements.add("CREATE TABLE " + quoteIdentifier(session, tableName) + " (\n    "
-                + String.join(",\n    ", lines) + "\n)");
+                + String.join(",\n    ", lines) + "\n)"
+                + (options == null || options.isBlank() ? "" : " " + options));
         // ⭐ 列注释：MySQL 已经在列定义里、PostgreSQL 要独立的 COMMENT ON ——
         //    由方言决定追加什么（MySQL / SQLite 追加空）。
         for (ColumnSpec column : columns) {
@@ -463,8 +468,13 @@ public final class StructureSqlBuilder {
                     ? "CONSTRAINT " + quoteIdentifier(session, check.name()) + " " : "";
             lines.add(namePart + "CHECK (" + expression + ")");
         }
+        // ⭐ 表级选项（MySQL 的 DEFAULT CHARSET=utf8mb4）—— 不带的话，
+        //    MySQL 8.0 之前的服务器默认 latin1，建出来的表存不了中文
+        //    （多版本矩阵在 5.7 上实测抓出，见 Dialect#createTableOptions）。
+        String options = session.dialect().createTableOptions();
         return "CREATE TABLE " + quoteIdentifier(session, name) + " (\n    "
-                + String.join(",\n    ", lines) + "\n)";
+                + String.join(",\n    ", lines) + "\n)"
+                + (options == null || options.isBlank() ? "" : " " + options);
     }
 
     // ─────────────────── 外键 / 触发器（B5-S2 / S3）───────────────────

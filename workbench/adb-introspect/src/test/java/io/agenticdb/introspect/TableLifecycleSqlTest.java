@@ -47,7 +47,9 @@ class TableLifecycleSqlTest {
         assertThat(plan.statements()).containsExactly(
                 "CREATE TABLE `orders` (\n"
                         + "    `id` INTEGER NOT NULL PRIMARY KEY COMMENT '主键'\n"
-                        + ")");
+                        // ⭐ DEFAULT CHARSET=utf8mb4：MySQL 8.0 之前默认 latin1，
+                        //    不带这条建出来的表存不了中文（多版本矩阵在 5.7 上抓出）。
+                        + ") DEFAULT CHARSET=utf8mb4");
     }
 
     @Test

@@ -63,6 +63,7 @@ public final class MenuBarFactory {
 
         return new Menu("视图", null,
                 actions.menuItem("sidebar.toggle"),
+                actions.menuItem("details.toggle"),
                 new SeparatorMenuItem(),
                 actions.menuItem("theme.toggle"),
                 actions.radioMenuItem("density-compact", group),

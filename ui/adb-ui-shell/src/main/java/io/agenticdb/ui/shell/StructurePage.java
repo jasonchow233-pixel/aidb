@@ -37,7 +37,6 @@ import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
-import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextInputDialog;
 import javafx.stage.Window;
@@ -87,7 +86,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
     private final TableView<io.agenticdb.introspect.CheckDef> checks = new TableView<>();
     /** 密度档位 → 行高（结构页有四张表，都要跟）。 */
     private int rowHeight = io.agenticdb.ui.RowHeights.of("normal");
-    private final TextArea ddl = new TextArea();
+    private final SqlEditor ddlEditor = new SqlEditor();
     private final Label kind = new Label("—");
     private final Label summary = new Label("—");
     /** ⭐ B5-S4：表注释（B5-S4 之前**连看都看不了**）。 */
@@ -117,6 +116,22 @@ public final class StructurePage extends VBox implements AutoCloseable {
     /**
      * 密度档位 —— 结构页有<b>四张</b>表，都要跟。
      */
+    /**
+     * 直接跳到 DDL 子页签（规格 §11.1：选中表 → 看建表 SQL）。
+     *
+     * <p>详情面板的「查看 DDL」走这里 —— 与其新开一个只有一段文本的标签页，
+     * 不如复用结构页里那个已经会读真 DDL、能复制的页签。
+     */
+    public void showDdl() {
+        if (tabs == null) {
+            return;
+        }
+        tabs.getTabs().stream()
+                .filter(tab -> "DDL".equals(tab.getText()))
+                .findFirst()
+                .ifPresent(tab -> tabs.getSelectionModel().select(tab));
+    }
+
     public void setDensity(String density) {
         rowHeight = io.agenticdb.ui.RowHeights.of(density);
         columns.setFixedCellSize(rowHeight);
@@ -198,13 +213,16 @@ public final class StructurePage extends VBox implements AutoCloseable {
         toolbar.getStyleClass().add("adb-inline-toolbar");
         toolbar.setAlignment(Pos.CENTER_LEFT);
 
-        ddl.setEditable(false);
-        ddl.setWrapText(false);
-        ddl.getStyleClass().add("adb-structure__ddl");
-        ddl.setPrefRowCount(18);
+        // ⭐ 规格 §11.2：DDL 页复用 SqlEditor（等宽 + 行号 + 高亮），
+        //    不再是灰底 TextArea —— 和查询页、新建表预览是同一套编辑器。
+        //    只读：DDL 是内省/生成出来的，不允许在这里改。
+        ddlEditor.area().setEditable(false);
+        ddlEditor.getStyleClass().add("adb-structure__ddl");
+        ddlEditor.setHint("没有可显示的 DDL");
+        ddlEditor.setPrefHeight(340);
         ddlNote.getStyleClass().add("adb-muted");
-        VBox ddlBox = new VBox(4, ddl, ddlNote);
-        VBox.setVgrow(ddl, Priority.ALWAYS);
+        VBox ddlBox = new VBox(4, ddlEditor, ddlNote);
+        VBox.setVgrow(ddlEditor, Priority.ALWAYS);
 
         tabs.getStyleClass().add("adb-structure__tabs");
         tabs.setId("structure-tabs");
@@ -624,7 +642,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
                 + " · 外键 " + structure.foreignKeys().size()
                 + " · 检查 " + structure.checks().size()
                 + " · 触发器 " + structure.triggers().size());
-        ddl.setText(structure.ddl());
+        ddlEditor.setText(structure.ddl());
         // ⭐ 「没有 SHOW CREATE TABLE」是方言的事实，不是 PostgreSQL 的硬编码。
         ddlNote.setText(!session.dialect().readsDdlFromDatabase() && !structure.view()
                 ? session.dialect().displayName() + " 无 SHOW CREATE TABLE；以下为由内省生成的等价 DDL"

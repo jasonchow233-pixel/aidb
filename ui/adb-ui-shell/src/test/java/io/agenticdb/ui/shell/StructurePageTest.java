@@ -83,8 +83,31 @@ class StructurePageTest {
         assertThat(structure.ddl()).contains("CREATE TABLE users", "PRIMARY KEY");
         assertThat(robot.lookup("#structure-columns").queryAs(javafx.scene.control.TableView.class)
                 .getItems()).hasSize(3);
-        assertThat(robot.lookup(".adb-structure__ddl").queryAs(javafx.scene.control.TextArea.class)
+        assertThat(robot.lookup(".adb-structure__ddl .adb-sql-editor")
+                .queryAs(org.fxmisc.richtext.CodeArea.class)
                 .getText()).contains("CREATE TABLE users");
+    }
+
+    /**
+     * 规格 §11.2：DDL 页复用 SqlEditor（等宽 + 行号 + 高亮），且只读。
+     *
+     * <p>以前这里是个灰底 TextArea —— 没有行号、没有高亮，
+     * 长 DDL 读起来要一行行数字母。现在和查询页、新建表预览同一套编辑器。
+     */
+    @Test
+    void ddlTabIsAReadOnlyEditorWithLineNumbers(FxRobot robot) throws Exception {
+        waitForStructure();
+
+        org.fxmisc.richtext.CodeArea area = robot.lookup(".adb-structure__ddl .adb-sql-editor")
+                .queryAs(org.fxmisc.richtext.CodeArea.class);
+
+        assertThat(area.isEditable())
+                .as("DDL 是内省/生成出来的，只读")
+                .isFalse();
+        assertThat(area.getParagraphGraphicFactory())
+                .as("行号来自 ParagraphGraphicFactory —— 与查询页同一套编辑器")
+                .isNotNull();
+        assertThat(area.getText()).contains("CREATE TABLE users");
     }
 
     @Test

@@ -61,6 +61,17 @@ public final class SqlEditor extends StackPane {
         area.moveTo(area.getLength());
     }
 
+    /**
+     * 换掉空态提示。
+     *
+     * <p>默认那句是教用户「怎么执行 SQL」的，只读视图（DDL 页 / 新建表预览）
+     * 拿它当空态就是错的 —— 那里没有可执行的东西。
+     * 传 {@code null} 或空串等于清空提示。
+     */
+    public void setHint(String text) {
+        hint.setText(text == null ? "" : text);
+    }
+
     public int caret() {
         return area.getCaretPosition();
     }

@@ -37,7 +37,7 @@ class MenuBarFactoryTest {
             "tab.close", "window.close", "app.quit",
             "edit.undo", "edit.redo", "edit.copy", "focus-search", "query.comment",
             "command-palette",
-            "sidebar.toggle", "theme.toggle",
+            "sidebar.toggle", "theme.toggle", "details.toggle",
             "density-compact", "density-normal", "density-comfort", "window.zoom",
             "refresh", "connection.reconnect", "connection.disconnect", "demo.open",
             // T1–T4 表级生命周期（注册在 SideBar，菜单里补入口，避免成为孤儿动作）
@@ -195,11 +195,28 @@ class MenuBarFactoryTest {
         WaitForAsyncUtils.waitForFxEvents();
     }
 
-    /** JavaFX 控件只能在 FX 线程上创建。 */
+    /**
+     * JavaFX 控件只能在 FX 线程上创建。
+     *
+     * <p>⚠️ 异常必须**原样抛出**：早期版本把 {@code runLater} 里的异常吞掉，
+     * 于是「MenuBarFactory 引用了一个没注册的动作 id」这种真错误，
+     * 在现场只剩一句 {@code Cannot invoke "MenuBar.getMenus()" because "bar" is null} ——
+     * 排查方向整个被带偏。
+     */
     private static <T> T onFx(Supplier<T> supplier) {
         AtomicReference<T> ref = new AtomicReference<>();
-        Platform.runLater(() -> ref.set(supplier.get()));
+        AtomicReference<RuntimeException> failure = new AtomicReference<>();
+        Platform.runLater(() -> {
+            try {
+                ref.set(supplier.get());
+            } catch (RuntimeException thrown) {
+                failure.set(thrown);
+            }
+        });
         WaitForAsyncUtils.waitForFxEvents();
+        if (failure.get() != null) {
+            throw failure.get();
+        }
         return ref.get();
     }
 }

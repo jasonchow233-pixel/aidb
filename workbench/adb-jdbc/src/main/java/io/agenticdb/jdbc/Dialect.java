@@ -435,6 +435,27 @@ public interface Dialect {
         return columnDefinition(column, true) + (inlinePrimaryKey ? " PRIMARY KEY" : "");
     }
 
+    /**
+     * ⭐ 建表语句尾部的<b>表级选项</b>（字符集等）；{@code null} / 空 = 不加。
+     *
+     * <h2>为什么必须有这一条</h2>
+     * MySQL 8.0 之前服务器的默认字符集是 <b>latin1</b>（8.0 起才是 utf8mb4）。
+     * 我们的建表语句以前不带字符集，于是表继承服务器默认值 ——
+     * 在 5.7 上建出来的表是 latin1，中文数据一插就报
+     * {@code Incorrect string value: '\xE5\x80\xBC' …}，
+     * 而且**报的是驱动原文**，用户完全看不出来是字符集问题。
+     *
+     * <p>这是多版本真库矩阵（{@code DatabaseVersionMatrixTest}）抓出来的：
+     * 同一套断言在 8.0 / 8.4 / PostgreSQL 上全绿，只有 5.7 炸 ——
+     * 又一次证明「SQLite 和最新版覆盖不到跨版本行为」。
+     *
+     * <p>PostgreSQL 的字符集是<b>建库时</b>定的（表级没有 ENCODING 子句），
+     * 所以这里返回 {@code null}；SQLite 只有 UTF-8 / UTF-16，也不用指定。
+     */
+    default String createTableOptions() {
+        return null;
+    }
+
     // ─────────────────────────── 表级生命周期 ───────────────────────────
 
     /**

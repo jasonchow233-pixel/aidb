@@ -52,6 +52,13 @@ public final class SideBar extends VBox {
     private final Consumer<TabItem> openTab;
     private final Consumer<String> status;
     private Consumer<ConnectionProfile> onSelectConnection = profile -> { };
+    /**
+     * ⭐ §6：树里被选中的对象要报给右侧详情面板。
+     *
+     * <p>分组节点（「表」「视图」这类容器）不上报 —— 它们不是对象，
+     * 报上去只会让详情栏闪一下空态。
+     */
+    private Consumer<InspectTarget> onInspect = target -> { };
     private List<ConnectionProfile> connections = List.of();
     private List<SchemaObject> tables = List.of();
     private List<SchemaObject> views = List.of();
@@ -350,6 +357,30 @@ public final class SideBar extends VBox {
     }
 
     /**
+     * 设置「选中对象」的上报回调（右侧详情面板 §6）。
+     *
+     * <p>只在**对象节点**（表 / 视图 / 触发器 / 函数 / 过程 / 事件）
+     * 与**连接 / 库节点**上触发，分组容器不报。
+     */
+    public void setOnInspect(Consumer<InspectTarget> onInspect) {
+        this.onInspect = onInspect == null ? target -> { } : onInspect;
+    }
+
+    /**
+     * 树上被选中的目标 —— 详情面板的输入。
+     *
+     * @param topic 节点类别；{@link Topic#GROUP} / {@link Topic#ROOT} 不会出现
+     *              （容器节点不上报）
+     */
+    public record InspectTarget(String connectionId, String name, String schema, Topic topic) {
+
+        /** 与 {@code NodeKind} 对应的公开子集。 */
+        public enum Topic {
+            CONNECTION, CATALOG, TABLE, VIEW, TRIGGER, FUNCTION, PROCEDURE, EVENT
+        }
+    }
+
+    /**
      * 设置可选的 schema 列表。
      *
      * <p>只有<b>多于一个</b> schema 时才显示切换器；单 schema 的库不添乱。
@@ -549,6 +580,7 @@ public final class SideBar extends VBox {
         tree.getSelectionModel().selectedItemProperty().addListener((obs, old, item) -> {
             selectedNode = item == null ? null : item.getValue();
             updateObjectActionStates();
+            reportInspect();
             // ⭐ 选中一个还没读过的连接 → 去读它的对象（懒加载）。
             //    不这么做的话，多连接树里非当前连接的节点永远是空的。
             if (item != null) {
@@ -619,6 +651,34 @@ public final class SideBar extends VBox {
 
         expanded.getChildren().addAll(header, schemaPicker, tree, searchEmpty, tools, bottomBar);
         VBox.setVgrow(tree, Priority.ALWAYS);
+    }
+
+    /**
+     * 把当前选中的节点报给详情面板（§6）。
+     *
+     * <p>容器节点（根 / 「表」「视图」分组）不上报 —— 它们不是对象，
+     * 报上去只会让右侧栏反复闪空态。
+     */
+    private void reportInspect() {
+        DemoNode node = selectedNode;
+        if (node == null) {
+            return;
+        }
+        InspectTarget.Topic topic = switch (node.kind()) {
+            case CONNECTION -> InspectTarget.Topic.CONNECTION;
+            case CATALOG -> InspectTarget.Topic.CATALOG;
+            case TABLE -> InspectTarget.Topic.TABLE;
+            case VIEW -> InspectTarget.Topic.VIEW;
+            case TRIGGER -> InspectTarget.Topic.TRIGGER;
+            case FUNCTION -> InspectTarget.Topic.FUNCTION;
+            case PROCEDURE -> InspectTarget.Topic.PROCEDURE;
+            case EVENT -> InspectTarget.Topic.EVENT;
+            case ROOT, GROUP -> null;
+        };
+        if (topic == null) {
+            return;
+        }
+        onInspect.accept(new InspectTarget(node.connectionId(), node.name(), node.schema(), topic));
     }
 
     private VBox section(String title, javafx.scene.Node... content) {

@@ -72,6 +72,13 @@ public final class AppShell extends StackPane {
     private static final int SIDEBAR_DEFAULT = io.agenticdb.ui.Tokens.W_SIDEBAR_LIGHT;
     private static final int SIDEBAR_COLLAPSED = io.agenticdb.ui.Tokens.W_SIDEBAR_COLLAPSED_LIGHT;
 
+    // ⭐ 右侧详情面板（规格书 §6）：默认 300，夹在 220–420 之间。
+    //    与侧栏一样走「令牌给档位、设置记忆实际值」的模式，
+    //    不在这里另立一套魔数。
+    private static final int DETAILS_MIN = ObjectDetailsPanel.WIDTH_MIN;
+    private static final int DETAILS_MAX = ObjectDetailsPanel.WIDTH_MAX;
+    private static final int DETAILS_DEFAULT = ObjectDetailsPanel.WIDTH_DEFAULT;
+
     private final SettingsStore settings;
     private final ThemeManager themeManager;
     private final ActionRegistry actions = new ActionRegistry();
@@ -114,6 +121,7 @@ public final class AppShell extends StackPane {
     /** 已经读过 catalog 清单的连接（懒加载，读失败不反复试）。 */
     private final Set<String> catalogsLoaded = new HashSet<>();
     private final BorderPane root = new BorderPane();
+    private final ObjectDetailsPanel details = new ObjectDetailsPanel();
     private final Label toastLabel = new Label();
     private final Button toastAction = new Button("撤销");
     private final HBox toast = new HBox(10, toastLabel, toastAction);
@@ -127,8 +135,11 @@ public final class AppShell extends StackPane {
 
     private Stage stage;
     private Region resizer;
+    private Region detailsResizer;
     private int sidebarWidth;
     private boolean sidebarCollapsed;
+    private int detailsWidth;
+    private boolean detailsVisible;
     private PauseTransition toastTimer;
 
     public AppShell(SettingsStore settings, ThemeManager themeManager) {
@@ -157,6 +168,44 @@ public final class AppShell extends StackPane {
         this.sideBar.setOnTableDdl(this::runTableDdl);
         // ⭐ 多连接对象树：展开一个没读过的连接时，去连它、读它的对象。
         this.sideBar.setOnLoadObjects(this::loadObjectsFor);
+        // ⭐ §6：右侧详情面板。数据必须由外壳提供 —— 它才认识会话、
+        //    执行器和 SchemaService；面板自己一个数据库概念都没有，
+        //    于是「不编造数据」这条规则在类型上就成立了。
+        this.details.setLoader(this::loadObjectDetails);
+        this.details.setActions(new ObjectDetailsPanel.Actions() {
+            @Override
+            public void openData(ObjectDetailsPanel.Subject subject) {
+                if (subject.kind() == SchemaService.ObjectKind.TABLE
+                        || subject.kind() == SchemaService.ObjectKind.VIEW) {
+                    openTab(new TabItem("grid:" + subject.connectionId() + ":" + subject.name(),
+                            subject.name(), TabKind.GRID, subject.name(), subject.connectionId()));
+                }
+            }
+
+            @Override
+            public void openStructure(ObjectDetailsPanel.Subject subject) {
+                // ⚠️ 必须写 AppShell.this —— 匿名类自己的 openStructure 会把
+                //    外层同名方法遮住，直接调用会递归 / 签名不匹配。
+                AppShell.this.openStructure(subject.connectionId(), subject.name());
+            }
+
+            @Override
+            public void openDdl(ObjectDetailsPanel.Subject subject) {
+                // 不新开标签页：结构页里那个 DDL 子页签本来就会读真 DDL、
+                // 本来就能复制。再开一个只读文本框等于把同一个东西放两处。
+                AppShell.this.openStructure(subject.connectionId(), subject.name());
+                StructurePage page = workspace.activeStructure();
+                if (page != null) {
+                    page.showDdl();
+                }
+            }
+
+            @Override
+            public void refresh(ObjectDetailsPanel.Subject subject) {
+                details.reload();
+            }
+        });
+        this.sideBar.setOnInspect(this::inspectTarget);
         this.workspace = new WorkspaceView(actions, connectionName,
                 this::createGridPage, this::createQueryPage, this::createStructurePage,
                 this::createConnectionsPage, tab -> objectHomePage());
@@ -177,12 +226,17 @@ public final class AppShell extends StackPane {
         this.sidebarWidth = clamp(settings.getInt("ui.sidebar.width", SIDEBAR_DEFAULT),
                 SIDEBAR_MIN, SIDEBAR_MAX);
         this.sidebarCollapsed = settings.getBoolean("ui.sidebar.collapsed", false);
+        // ⭐ §6：详情面板默认**关闭**（它是有用的补充，不是该常驻的第三栏）。
+        this.detailsWidth = clamp(settings.getInt("ui.details.width", DETAILS_DEFAULT),
+                DETAILS_MIN, DETAILS_MAX);
+        this.detailsVisible = settings.getBoolean("ui.details.visible", false);
 
         getStyleClass().add("app-shell");
         buildUi();
         applyDensity(settings.get("ui.density", "normal"));
         sideBar.setCollapsed(sidebarCollapsed);
         applySidebarWidth();
+        applyDetailsVisibility();
         updateTabCloseEnabled();
 
         refreshProfiles();
@@ -303,6 +357,34 @@ public final class AppShell extends StackPane {
         Timeline timeline = new Timeline(new KeyFrame(Duration.millis(100), event -> next.run()));
         timeline.setCycleCount(1);
         timeline.play();
+    }
+
+    /** 截图用：等连接就绪后把详情面板指向某张表（连接是异步建立的，此刻可能还是 null）。 */
+    private void showDetailsWhenReady(String table, int attempt) {
+        if (session == null) {
+            if (attempt >= POP_READY_MAX_POLLS) {
+                return;
+            }
+            pollAgain(attempt, () -> showDetailsWhenReady(table, attempt + 1));
+            return;
+        }
+        Platform.runLater(() -> inspectTarget(
+                new SideBar.InspectTarget(activeProfileId(), table, null,
+                        SideBar.InspectTarget.Topic.TABLE)));
+    }
+
+    /** 截图用：等结构页真的建出来再跳到 DDL 子页签（页签是异步开的）。 */
+    private void showDdlWhenReady(int attempt) {
+        Platform.runLater(() -> {
+            StructurePage active = workspace.activeStructure();
+            if (active == null) {
+                if (attempt < POP_READY_MAX_POLLS) {
+                    pollAgain(attempt, () -> showDdlWhenReady(attempt + 1));
+                }
+                return;
+            }
+            active.showDdl();
+        });
     }
 
     /** 表清单动作的统一入口：没有打开的清单页时给一句人话，不静默 no-op。 */
@@ -1176,6 +1258,21 @@ public final class AppShell extends StackPane {
         if (flag("adb.tables", "ADB_TABLES")) {
             openTableListWhenReady(0);
         }
+        // ⭐ 截图 / 验收：启动即打开「对象详情面板」并选中 users 表（规格 §6）。
+        //    面板默认是关的（ui.details.visible=false），所以这里显式打开；
+        //    树节点没有公开的「选中」入口，于是直接喂一个 InspectTarget ——
+        //    走的仍是点击树节点那条 inspectTarget() 路径（只是不画树里的高亮）。
+        if (flag("adb.details", "ADB_DETAILS")) {
+            detailsVisible = true;
+            applyDetailsVisibility();
+            showDetailsWhenReady("users", 0);
+        }
+        // ⭐ 截图 / 验收：结构页直接落在 DDL 子页签（规格 §11.2 换成
+        //    只读 SqlEditor 之后，要能一眼看到行号与高亮）。
+        if (flag("adb.ddl", "ADB_DDL")) {
+            openStructure(activeProfileId(), "users");
+            showDdlWhenReady(0);
+        }
         String initialQuery = System.getProperty("adb.query",
                 System.getenv().getOrDefault("ADB_QUERY", "")).trim();        if (!initialQuery.isEmpty()) {
             String sql = initialQuery.equals("1") || initialQuery.equalsIgnoreCase("true")
@@ -1409,6 +1506,11 @@ public final class AppShell extends StackPane {
         actions.register("sidebar.toggle", "折叠 / 展开侧栏", "视图",
                 key("Shortcut+Backslash"),
                 () -> sideBar.setCollapsed(!sideBar.isCollapsed()));
+        // ⭐ §6：右侧对象详情面板。⌥⌘D 与 VS Code 的侧栏一致，
+        //    用户不用重新学。
+        actions.register("details.toggle", "显示 / 隐藏对象详情", "视图",
+                key("Shortcut+Alt+D"),
+                this::toggleDetails);
         actions.register("theme.toggle", "切换主题", "视图",
                 null, () -> {
                     themeManager.toggle();
@@ -1514,12 +1616,13 @@ public final class AppShell extends StackPane {
         top.getStyleClass().add("adb-top");
 
         resizer = buildResizer();
+        detailsResizer = buildDetailsResizer();
         VBox main = new VBox(tabBar, workspace);
         main.getStyleClass().add("adb-main");
         VBox.setVgrow(workspace, Priority.ALWAYS);
         HBox.setHgrow(main, Priority.ALWAYS);
 
-        HBox body = new HBox(sideBar, resizer, main);
+        HBox body = new HBox(sideBar, resizer, main, detailsResizer, details);
         body.getStyleClass().add("adb-body");
 
         root.getStyleClass().add("adb-root");
@@ -1575,7 +1678,6 @@ public final class AppShell extends StackPane {
     }
 
     // ─────────────────────────── 侧栏 / 标签 / 状态 ───────────────────────────
-
     private void sidebarCollapsedChanged(boolean collapsed) {
         this.sidebarCollapsed = collapsed;
         settings.setBoolean("ui.sidebar.collapsed", collapsed);
@@ -1591,6 +1693,272 @@ public final class AppShell extends StackPane {
             resizer.setVisible(!sidebarCollapsed);
             resizer.setManaged(!sidebarCollapsed);
         }
+    }
+
+    // ─────────────────────────── 右侧详情面板（§6） ───────────────────────────
+
+    /**
+     * 显隐 + 定宽。
+     *
+     * <p>用 {@code setManaged} 而不只是 {@code setVisible}：HBox 会把
+     * 不可见但仍受管理的节点算进布局，隐藏后中间会留一道缝。
+     */
+    private void applyDetailsVisibility() {
+        details.setVisible(detailsVisible);
+        details.setManaged(detailsVisible);
+        detailsResizer.setVisible(detailsVisible);
+        detailsResizer.setManaged(detailsVisible);
+        details.setMinWidth(detailsWidth);
+        details.setPrefWidth(detailsWidth);
+        details.setMaxWidth(detailsWidth);
+        if (detailsVisible) {
+            details.reload();
+        }
+    }
+
+    private void toggleDetails() {
+        detailsVisible = !detailsVisible;
+        settings.setBoolean("ui.details.visible", detailsVisible);
+        applyDetailsVisibility();
+        status("对象详情面板：" + (detailsVisible ? "已显示" : "已隐藏"));
+    }
+
+    /** 树里选中了新对象：面板关着就什么都不做（省掉一次白读的元数据查询）。 */
+    private void inspectTarget(SideBar.InspectTarget target) {
+        if (!detailsVisible || target == null) {
+            return;
+        }
+        ObjectDetailsPanel.Subject subject = toSubject(target);
+        if (subject == null) {
+            details.showEmpty();
+            return;
+        }
+        details.showObject(subject);
+    }
+
+    /**
+     * 把树的节点翻译成详情面板的主题。
+     *
+     * @return {@code null} = 这个节点没有详情可看（连接没连上之类）
+     */
+    private ObjectDetailsPanel.Subject toSubject(SideBar.InspectTarget target) {
+        String connectionId = target.connectionId();
+        String database = databaseNameOf(connectionId);
+        SchemaService.ObjectKind kind = switch (target.topic()) {
+            case TABLE -> SchemaService.ObjectKind.TABLE;
+            case VIEW -> SchemaService.ObjectKind.VIEW;
+            case TRIGGER -> SchemaService.ObjectKind.TRIGGER;
+            case FUNCTION -> SchemaService.ObjectKind.FUNCTION;
+            case PROCEDURE -> SchemaService.ObjectKind.PROCEDURE;
+            case EVENT -> SchemaService.ObjectKind.EVENT;
+            case CONNECTION, CATALOG -> null;
+        };
+        if (kind == null) {
+            // 连接 / 库节点 → §6.2 的数据库概览。
+            return ObjectDetailsPanel.Subject.connection(connectionId, database);
+        }
+        return new ObjectDetailsPanel.Subject(connectionId, database, target.name(),
+                kind, target.schema());
+    }
+
+    /** 连接 id 对应的库名（catalog 虚拟连接也在内）。 */
+    private String databaseNameOf(String connectionId) {
+        ConnectionProfile profile = profileById(connectionId);
+        return profile == null ? "" : profile.database();
+    }
+
+    /**
+     * ⭐ §6 的数据来源：<b>全部走真实元数据，一个值都不编</b>。
+     *
+     * <p>读不到的（SQLite 没有引擎 / 排序规则 / 创建时间）就在
+     * {@code notes} 里说明原因，或者干脆不进 facts ——
+     * 放一个 {@code "InnoDB"} 上去比空着更糟：用户会以为这是真的。
+     */
+    private void loadObjectDetails(ObjectDetailsPanel.Subject subject,
+                                   java.util.function.Consumer<ObjectDetailsPanel.Snapshot> onLoaded,
+                                   java.util.function.Consumer<String> onError) {
+        DbSession session = sessionFor(subject.connectionId());
+        if (session == null) {
+            onError.accept("连接未建立，读不到 " + subject.name() + " 的元数据");
+            return;
+        }
+        executorFor(subject.connectionId()).execute(() -> {
+            try {
+                ObjectDetailsPanel.Snapshot snapshot = readDetails(session, subject);
+                // ⭐ 必须回 FX 线程再渲染。读取跑在数据库执行器上，
+                //    直接调面板方法会在 FX 线程外改场景图 —— 轻则什么都不显示，
+                //    重则 IllegalStateException，而且异常还被执行器吞掉，
+                //    现场只剩一个「标题对了、内容空着」的面板。
+                Platform.runLater(() -> onLoaded.accept(snapshot));
+            } catch (Exception failure) {
+                String reason = failure.getMessage() == null
+                        ? failure.getClass().getSimpleName() : failure.getMessage();
+                Platform.runLater(() -> onError.accept(reason));
+            }
+        });
+    }
+
+    private ObjectDetailsPanel.Snapshot readDetails(DbSession session,
+                                                    ObjectDetailsPanel.Subject subject)
+            throws Exception {
+        if (subject.kind() == null) {
+            return connectionSnapshot(subject);
+        }
+        io.agenticdb.introspect.TableStructure structure =
+                schemaService.structure(session, subject.name());
+        io.agenticdb.introspect.TableMeta meta = tableMetaOf(session, subject.name());
+        Long rows = safeCount(session, subject.name());
+
+        List<ObjectDetailsPanel.Fact> facts = new ArrayList<>();
+        facts.add(new ObjectDetailsPanel.Fact("名称", subject.name()));
+        facts.add(new ObjectDetailsPanel.Fact("类型", structure.view() ? "视图" : "表"));
+        facts.add(new ObjectDetailsPanel.Fact("所属数据库", blankToNull(subject.database())));
+        if (subject.schema() != null && !subject.schema().isBlank()) {
+            facts.add(new ObjectDetailsPanel.Fact("Schema", subject.schema()));
+        }
+        facts.add(new ObjectDetailsPanel.Fact("行数", rows == null ? null : String.valueOf(rows)));
+        facts.add(new ObjectDetailsPanel.Fact("字段数",
+                String.valueOf(structure.columns().size())));
+        facts.add(new ObjectDetailsPanel.Fact("主键",
+                String.valueOf(structure.primaryKeys().size())));
+        facts.add(new ObjectDetailsPanel.Fact("索引",
+                String.valueOf(structure.indexes().size())));
+        facts.add(new ObjectDetailsPanel.Fact("外键",
+                String.valueOf(structure.foreignKeys().size())));
+        facts.add(new ObjectDetailsPanel.Fact("触发器",
+                String.valueOf(structure.triggers().size())));
+        if (meta != null) {
+            facts.add(new ObjectDetailsPanel.Fact("数据长度", meta.sizeText()));
+            facts.add(new ObjectDetailsPanel.Fact("引擎", blankToNull(meta.engine())));
+            facts.add(new ObjectDetailsPanel.Fact("排序规则", blankToNull(meta.collation())));
+            facts.add(new ObjectDetailsPanel.Fact("创建时间", blankToNull(meta.createdAt())));
+            facts.add(new ObjectDetailsPanel.Fact("修改时间", blankToNull(meta.updatedAt())));
+        }
+        if (!structure.comment().isBlank()) {
+            facts.add(new ObjectDetailsPanel.Fact("注释", structure.comment()));
+        }
+
+        List<String> columns = new ArrayList<>();
+        for (io.agenticdb.model.ColumnDef column : structure.columns()) {
+            columns.add(ObjectDetailsPanel.columnLine(column.name(), column.displayType(),
+                    column.primaryKey(), column.nullable()));
+        }
+        List<String> indexes = new ArrayList<>();
+        for (io.agenticdb.introspect.IndexDef index : structure.indexes()) {
+            indexes.add(index.name() + " · " + String.join(", ", index.columns()));
+        }
+        List<String> foreignKeys = new ArrayList<>();
+        for (io.agenticdb.introspect.ForeignKeyDef key : structure.foreignKeys()) {
+            foreignKeys.add(key.displayName() + "："
+                    + String.join(", ", key.columns()) + " → "
+                    + key.referencedTable() + "("
+                    + String.join(", ", key.referencedColumns()) + ")");
+        }
+        List<String> triggers = new ArrayList<>();
+        for (io.agenticdb.introspect.TriggerDef trigger : structure.triggers()) {
+            triggers.add(trigger.name());
+        }
+        List<String> notes = new ArrayList<>();
+        if (meta == null) {
+            notes.add("该数据库不提供「数据长度 / 引擎 / 排序规则 / 创建时间」，已省略对应项。");
+        }
+        if (structure.view()) {
+            notes.add("视图没有行数统计 —— 它取决于底层表的实时数据。");
+        }
+        return new ObjectDetailsPanel.Snapshot(subject, facts, columns, indexes,
+                foreignKeys, triggers, notes);
+    }
+
+    /** 连接 / 库一级的概览（§6.2）：只放主工作区没有的真实信息。 */
+    private ObjectDetailsPanel.Snapshot connectionSnapshot(
+            ObjectDetailsPanel.Subject subject) throws Exception {
+        DbSession session = sessionFor(subject.connectionId());
+        List<ObjectDetailsPanel.Fact> facts = new ArrayList<>();
+        facts.add(new ObjectDetailsPanel.Fact("数据库", subject.database()));
+        facts.add(new ObjectDetailsPanel.Fact("类型", session.dialect().displayName()));
+        facts.add(new ObjectDetailsPanel.Fact("连接状态", "已连接"));
+        List<SchemaObject> objects = schemaService.listObjects(session);
+        int tables = 0;
+        int views = 0;
+        int triggers = 0;
+        for (SchemaObject object : objects) {
+            switch (object.kind()) {
+                case TABLE -> tables++;
+                case VIEW -> views++;
+                case TRIGGER -> triggers++;
+                default -> {
+                }
+            }
+        }
+        facts.add(new ObjectDetailsPanel.Fact("对象总数", String.valueOf(objects.size())));
+        facts.add(new ObjectDetailsPanel.Fact("表", String.valueOf(tables)));
+        facts.add(new ObjectDetailsPanel.Fact("视图", String.valueOf(views)));
+        facts.add(new ObjectDetailsPanel.Fact("触发器", String.valueOf(triggers)));
+        return new ObjectDetailsPanel.Snapshot(subject, facts, List.of(), List.of(),
+                List.of(), List.of(), List.of());
+    }
+
+    private io.agenticdb.introspect.TableMeta tableMetaOf(DbSession session, String table) {
+        try {
+            return schemaService.listTableMeta(session).stream()
+                    .filter(meta -> meta.name().equalsIgnoreCase(table))
+                    .findFirst()
+                    .orElse(null);
+        } catch (Exception notProvided) {
+            // 方言不提供这 8 列元数据时返回 null，由 notes 说明，不编值。
+            return null;
+        }
+    }
+
+    private Long safeCount(DbSession session, String table) {
+        try {
+            return schemaService.count(session, table);
+        } catch (Exception notCountable) {
+            // 视图没有可靠行数 —— 返回 null 让 UI 显示「—」。
+            return null;
+        }
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    private Region buildDetailsResizer() {
+        Region handle = new Region();
+        handle.getStyleClass().add("adb-resizer");
+        handle.setCursor(Cursor.H_RESIZE);
+        handle.setMinWidth(4);
+        handle.setPrefWidth(4);
+        handle.setMaxWidth(4);
+
+        final double[] start = new double[2];
+        handle.setOnMousePressed(event -> {
+            start[0] = event.getScreenX();
+            start[1] = details.getWidth();
+        });
+        handle.setOnMouseDragged(event -> {
+            if (!detailsVisible) {
+                return;
+            }
+            // ⭐ 往左拖 = 面板变宽：起点在面板左边缘，所以是「减」。
+            int width = clamp((int) (start[1] - (event.getScreenX() - start[0])),
+                    DETAILS_MIN, DETAILS_MAX);
+            detailsWidth = width;
+            applyDetailsVisibility();
+        });
+        handle.setOnMouseReleased(event -> {
+            if (detailsVisible) {
+                settings.setInt("ui.details.width", detailsWidth);
+            }
+        });
+        handle.setOnMouseClicked(event -> {
+            if (event.getClickCount() == 2 && detailsVisible) {
+                detailsWidth = DETAILS_DEFAULT;
+                applyDetailsVisibility();
+                settings.setInt("ui.details.width", detailsWidth);
+            }
+        });
+        return handle;
     }
 
     private void showTab(TabItem tab) {
@@ -1919,6 +2287,25 @@ public final class AppShell extends StackPane {
                     @Override
                     public void selectionChanged(String text) {
                         statusBar.setSelectionText(text);
+                    }
+
+                    /**
+                     * 表清单里的选中项同步给右侧详情面板（规格 §6.3）。
+                     *
+                     * <p>面板关着就什么都不做（省一次白读的元数据查询）；
+                     * 多选 / 空选时页面传 {@code null}，此时切回空态。
+                     */
+                    @Override
+                    public void inspectTable(String name) {
+                        if (!detailsVisible) {
+                            return;
+                        }
+                        if (name == null || name.isBlank()) {
+                            details.showEmpty();
+                            return;
+                        }
+                        inspectTarget(new SideBar.InspectTarget(pageConnection, name, null,
+                                SideBar.InspectTarget.Topic.TABLE));
                     }
                 },
                 tableListInitialView(),

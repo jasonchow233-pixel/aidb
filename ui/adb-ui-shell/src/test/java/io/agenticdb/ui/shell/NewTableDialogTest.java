@@ -75,10 +75,9 @@ class NewTableDialogTest {
     void aTableWithoutColumnsCannotBeCreated() {
         NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
         onFxRun(() -> dialog.nameField().setText("orders"));
-        onFxRun(() -> {
-            dialog.rows().clear();
-            dialog.previewArea().setText("");
-        });
+        onFxRun(() -> dialog.rows().clear());
+        // 清空行数会触发 rows 监听 → refreshPreview 自己把预览清成空，
+        // 不需要（也不能）再手动 setText —— CodeArea 没有 setText。
 
         assertThat(onFx(dialog::buildPlan)).isNull();
     }
@@ -127,6 +126,114 @@ class NewTableDialogTest {
                 .doesNotContain("TabKind")
                 .doesNotContain("new Tab(")
                 .doesNotContain("openTab");
+    }
+
+    // ─────────────────────── §13 布局与规格 ───────────────────────
+
+    /**
+     * 规格 §13.1：弹窗 850–1000px。
+     *
+     * <p>720px 是实测出来的下限 —— 再窄，「默认值」和「注释」两列
+     * 会被压得只剩一个省略号，用户改一个默认值先得横向滚。
+     */
+    @Test
+    void dialogIsWideEnoughForTheColumnGrid() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        double width = onFx(() -> dialog.dialog().getDialogPane().getPrefWidth());
+        assertThat(width).isBetween(850.0, 1000.0);
+    }
+
+    /**
+     * 规格 §13.2：标题栏要有「新建数据表」+ <b>真实库名</b> + 关闭按钮。
+     *
+     * <p>库名来自会话标签，不是写死的示例串 —— 这条断言同时防
+     * 「标题栏退化成一句通用文案」和「拿假库名充数」两种回退。
+     */
+    @Test
+    void headerNamesTheRealDatabaseAndOffersClose() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        String label = onFx(session::label);
+
+        List<String> texts = onFx(() -> dialog.dialog().getDialogPane().getContent()
+                .lookupAll(".adb-new-table__context")
+                .stream()
+                .map(node -> ((javafx.scene.control.Labeled) node).getText())
+                .toList());
+        assertThat(texts).anyMatch(text -> text.contains(label));
+
+        assertThat(onFx(() -> dialog.dialog().getDialogPane().getContent()
+                .lookup("#new-table-close"))).isNotNull();
+    }
+
+    /**
+     * 规格 §13.4：SQL 预览是**只读的 SQL 编辑器**，不是 TextArea。
+     *
+     * <p>判据有三条，缺一条就是退化成灰底文本框：
+     * 等宽字体 / 行号 / 语法高亮样式段。
+     */
+    @Test
+    void sqlPreviewIsARealReadOnlyEditor() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        onFxRun(() -> dialog.nameField().setText("orders"));
+
+        org.fxmisc.richtext.CodeArea area = onFx(dialog::previewArea);
+        // ⚠️ 先落到局部变量再断言：`assertThat(onFx(area::getText))` 会让
+        //    编译器在 assertThat 的一堆重载里挑花眼（方法引用 vs lambda）。
+        String sql = onFx(area::getText);
+        assertThat(sql).contains("CREATE TABLE");
+        assertThat(onFx(() -> Boolean.valueOf(area.isEditable()))).isFalse();
+        // 行号：ParagraphGraphicFactory 挂了才会返回非 null。
+        assertThat(onFx(() -> area.getParagraphGraphicFactory())).isNotNull();
+        // 高亮：非空文本上必然有样式段（纯 TextArea 一条都没有）。
+        assertThat(onFx(() -> area.getStyleSpans(0).getSpanCount())).isPositive();
+    }
+
+    /** 规格 §13.2：SQL 预览可折叠，折叠后按钮文案翻转。 */
+    @Test
+    void sqlPreviewCollapses() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        assertThat(onFx(dialog::sqlPreviewCollapsed)).isFalse();
+        String before = onFx(() -> toggleText(dialog));
+        assertThat(before).isEqualTo("折叠 SQL 预览");
+
+        onFxRun(() -> {
+            javafx.scene.Node toggle = dialog.dialog().getDialogPane().getContent()
+                    .lookup("#new-table-collapse-sql");
+            ((javafx.scene.control.Button) toggle).fire();
+        });
+
+        assertThat(onFx(dialog::sqlPreviewCollapsed)).isTrue();
+        assertThat(onFx(() -> toggleText(dialog))).isEqualTo("展开 SQL 预览");
+    }
+
+    private static String toggleText(NewTableDialog dialog) {
+        javafx.scene.Node toggle = dialog.dialog().getDialogPane().getContent()
+                .lookup("#new-table-collapse-sql");
+        return ((javafx.scene.control.Button) toggle).getText();
+    }
+
+    /**
+     * 字段网格的高度跟着行数走 —— 只有一行时不许挂 170px 空白网格
+     * （规格 §13.3「字段较少时不要显示过高的空白表格」）。
+     */
+    @Test
+    void columnGridShrinksWhenThereAreFewColumns() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        double oneRow = onFx(() -> dialog.dialog().getDialogPane().getContent()
+                .lookup("#new-table-columns").prefHeight(-1));
+
+        onFxRun(() -> {
+            for (int i = 0; i < 5; i++) {
+                // onChange 传空实现：这条断言只看高度，不想顺带触发整表重算。
+                dialog.rows().add(new NewTableDialog.ColumnRow(() -> { }));
+            }
+        });
+        double sixRows = onFx(() -> dialog.dialog().getDialogPane().getContent()
+                .lookup("#new-table-columns").prefHeight(-1));
+
+        assertThat(sixRows).isGreaterThan(oneRow);
+        // 一行时：表头 ~34 + 一行 30 ≈ 64，夹在 [120, 300] 里就是下限 120。
+        assertThat(oneRow).isLessThanOrEqualTo(120.0);
     }
 
     /** JavaFX 控件只能在 FX 线程上创建。 */

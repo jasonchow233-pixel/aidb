@@ -62,6 +62,16 @@ class PostgresMySqlIntegrationTest {
     }
 
     @Test
+    void postgresRenameColumnPreservesDefinition() throws Exception {
+        RealDatabaseContract.renameColumnPreservesDefinition(postgresTarget());
+    }
+
+    @Test
+    void postgresCreatedTablesAcceptUnicode() throws Exception {
+        RealDatabaseContract.createdTablesAcceptUnicode(postgresTarget());
+    }
+
+    @Test
     void postgresDangerGateRejectsUnderDeclaredDanger() throws Exception {
         RealDatabaseContract.dangerGateRejectsUnderDeclaredDanger(postgresTarget());
     }
@@ -86,6 +96,16 @@ class PostgresMySqlIntegrationTest {
     @Test
     void mysqlGeneratedColumnDdlRuns() throws Exception {
         RealDatabaseContract.generatedColumnDdlRuns(mysqlTarget());
+    }
+
+    @Test
+    void mysqlRenameColumnPreservesDefinition() throws Exception {
+        RealDatabaseContract.renameColumnPreservesDefinition(mysqlTarget());
+    }
+
+    @Test
+    void mysqlCreatedTablesAcceptUnicode() throws Exception {
+        RealDatabaseContract.createdTablesAcceptUnicode(mysqlTarget());
     }
 
     @Test
