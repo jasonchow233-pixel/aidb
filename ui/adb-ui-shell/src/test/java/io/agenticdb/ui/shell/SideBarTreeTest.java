@@ -6,6 +6,7 @@ import io.agenticdb.session.ConnectionProfile;
 import javafx.application.Platform;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
+import javafx.scene.control.TextField;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.testfx.framework.junit5.ApplicationExtension;
@@ -272,6 +273,198 @@ class SideBarTreeTest {
                 .as("表节点上没有「切换到此数据库」").isFalse();
     }
 
+    // ───────────────────────────── S-3：展开出列 ─────────────────────
+
+    /**
+     * ⭐ S-3：没接「读列」回调的侧栏，表节点必须还是叶子。
+     *
+     * <p>JavaFX 只在节点<b>有子节点</b>时才画展开箭头 —— 换句话说，要让箭头
+     * 出来就得先塞一个子节点。没接回调就塞一个假的，用户展开后什么都不会发生：
+     * 那是一个「点开没反应」的箭头，比没有箭头更糟。
+     */
+    @Test
+    void tableIsALeafUntilAColumnLoaderIsWired() {
+        ActionRegistry actions = new ActionRegistry();
+        List<ConnectionProfile> profiles = List.of(profile("pg", "生产库"));
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "pg", profiles, p -> { }));
+        onFxRun(() -> sideBar.setObjects("pg", List.of(
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE))));
+
+        TreeView tree = treeOf(sideBar);
+        TreeItem users = findTable(rootOf(tree), "users");
+
+        assertThat(users.getChildren())
+                .as("没接回调 —— 表节点是叶子，不摆点开没反应的箭头")
+                .isEmpty();
+    }
+
+    /**
+     * ⭐ S-3：展开表节点才读列（懒加载），读到就把占位节点换成真的列。
+     *
+     * <p>「连上就查每张表的列」在几千张表的库上会把界面卡死；Navicat 也是展开才读。
+     * 这里守两件事：<b>展开之前一次都不查</b>，以及展开之后列真的出现。
+     */
+    @Test
+    void expandingATableReadsItsColumnsLazily() {
+        ActionRegistry actions = new ActionRegistry();
+        List<ConnectionProfile> profiles = List.of(profile("pg", "生产库"));
+        List<String> asked = new ArrayList<>();
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "pg", profiles, p -> { }));
+        onFxRun(() -> sideBar.setOnLoadColumns((connectionId, table) ->
+                asked.add(connectionId + "·" + table)));
+        onFxRun(() -> sideBar.setObjects("pg", List.of(
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE))));
+
+        TreeView tree = treeOf(sideBar);
+        TreeItem users = findTable(rootOf(tree), "users");
+
+        assertThat(asked)
+                .as("还没展开 —— 一次都不能查库")
+                .isEmpty();
+        assertThat(users.getChildren())
+                .as("箭头得先出得来：挂一个「读取列…」占位子节点")
+                .hasSize(1);
+        assertThat(String.valueOf(valueOf(users.getChildren().get(0))))
+                .as("占位节点要说自己正在读，而不是假装是某一列")
+                .contains("读取列");
+
+        onFxRun(() -> users.setExpanded(true));
+        assertThat(asked)
+                .as("展开的瞬间才真去读")
+                .containsExactly("pg·users");
+
+        onFxRun(() -> sideBar.setColumns("pg", "users", List.of("id", "email")));
+        assertThat(childNames(users))
+                .as("读到的列顶掉占位节点")
+                .containsExactly("id", "email");
+
+        onFxRun(() -> users.setExpanded(false));
+        onFxRun(() -> users.setExpanded(true));
+        assertThat(asked)
+                .as("列已经在手 —— 再展开一次不该重复查库")
+                .hasSize(1);
+    }
+
+    /**
+     * ⭐ S-3：读到的列要活过「重建树」。
+     *
+     * <p>搜索框每敲一个字都会重建整棵树 —— 列如果只挂在旧节点上就全没了，
+     * 用户打一半搜索词就再也看不到列。缓存要在重建时被重新挂上。
+     */
+    @Test
+    void columnsSurviveATreeRebuild() {
+        ActionRegistry actions = new ActionRegistry();
+        List<ConnectionProfile> profiles = List.of(profile("pg", "生产库"));
+        List<String> asked = new ArrayList<>();
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "pg", profiles, p -> { }));
+        onFxRun(() -> sideBar.setOnLoadColumns((connectionId, table) ->
+                asked.add(connectionId + "·" + table)));
+        onFxRun(() -> sideBar.setObjects("pg", List.of(
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE))));
+
+        TreeView tree = treeOf(sideBar);
+        // ⚠️ rootOf / findTable 自己会调度到 FX 线程 —— 不能在 onFxRun 的
+        //    lambda 里再调它们（FX 线程里等 FX 线程，拿回来是 null）。
+        TreeItem beforeSearch = findTable(rootOf(tree), "users");
+        onFxRun(() -> beforeSearch.setExpanded(true));
+        onFxRun(() -> sideBar.setColumns("pg", "users", List.of("id", "email")));
+
+        // 敲搜索词 → 整棵树重建（refreshTree）。
+        TextField search = searchFieldOf(sideBar);
+        onFxRun(() -> search.setText("use"));
+        TreeItem users = findTable(rootOf(tree), "users");
+
+        assertThat(childNames(users))
+                .as("重建之后列还在（不用再查一次）")
+                .containsExactly("id", "email");
+        assertThat(asked)
+                .as("重建不该触发新一轮查库")
+                .hasSize(1);
+    }
+
+    /**
+     * ⭐ S-3：列节点不是「对象」—— 它不能打开数据页。
+     *
+     * <p>选中一个列时，工具栏上「打开数据 / 打开结构 / 复制 SELECT」必须是灰的：
+     * 这些动作只对表 / 视图成立。反过来「复制名称」对列是成立的（复制列名）。
+     */
+    @Test
+    void columnNodesCannotOpenDataButCanCopyTheirName() {
+        ActionRegistry actions = new ActionRegistry();
+        List<ConnectionProfile> profiles = List.of(profile("pg", "生产库"));
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "pg", profiles, p -> { }));
+        onFxRun(() -> sideBar.setOnLoadColumns((connectionId, table) ->
+                sideBar.setColumns(connectionId, table, List.of("id", "email"))));
+        onFxRun(() -> sideBar.setObjects("pg", List.of(
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE))));
+
+        TreeView tree = treeOf(sideBar);
+        TreeItem users = findTable(rootOf(tree), "users");
+        onFxRun(() -> users.setExpanded(true));
+        TreeItem email = findTable(users, "email");
+        onFxRun(() -> tree.getSelectionModel().select(email));
+
+        assertThat(actions.find("object.open-data").orElseThrow().isEnabled())
+                .as("列没有数据页 —— 「打开数据」必须是灰的")
+                .isFalse();
+        assertThat(actions.find("object.copy-select").orElseThrow().isEnabled())
+                .as("列没有 SELECT 可复制")
+                .isFalse();
+        assertThat(actions.find("object.copy-name").orElseThrow().isEnabled())
+                .as("复制列名是真需求 —— 这一项要放行")
+                .isTrue();
+    }
+
+    /**
+     * ⭐ S-3：读列失败要留得住「失败」这个事实，并且允许再试。
+     *
+     * <p>读到空清单只可能是读失败了（表不可能没有列）。这时候<b>不能</b>
+     * 静默把占位节点删掉变成叶子 —— 用户会以为这张表没有列，
+     * 而且再也点不出重试。失败要说出来，且再展开一次要真去重试。
+     */
+    @Test
+    void aFailedColumnReadIsSaidOutLoudAndCanBeRetried() {
+        ActionRegistry actions = new ActionRegistry();
+        List<ConnectionProfile> profiles = List.of(profile("pg", "生产库"));
+        List<String> asked = new ArrayList<>();
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "pg", profiles, p -> { }));
+        onFxRun(() -> sideBar.setOnLoadColumns((connectionId, table) -> {
+            asked.add(connectionId + "·" + table);
+            // 第一次读失败（空清单），之后成功。
+            sideBar.setColumns(connectionId, table,
+                    asked.size() == 1 ? List.of() : List.of("id"));
+        }));
+        onFxRun(() -> sideBar.setObjects("pg", List.of(
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE))));
+
+        TreeView tree = treeOf(sideBar);
+        TreeItem users = findTable(rootOf(tree), "users");
+        onFxRun(() -> users.setExpanded(true));
+
+        assertThat(childNames(users))
+                .as("失败要说出来 —— 不是删掉占位节点装作这张表没有列")
+                .containsExactly("列读取失败（展开重试）");
+
+        onFxRun(() -> users.setExpanded(false));
+        onFxRun(() -> users.setExpanded(true));
+        assertThat(asked)
+                .as("失败不缓存 —— 再展开一次真去重试")
+                .hasSize(2);
+        assertThat(childNames(users))
+                .as("重试成功后列就出来了")
+                .containsExactly("id");
+    }
+
     // ───────────────────────────── 工具 ─────────────────────────────
 
     /** 原生 TreeItem 的 getChildren() 元素类型是 Object —— 统一在这里转。 */
@@ -310,6 +503,31 @@ class SideBarTreeTest {
         for (Object child : node.getChildren()) {
             collect((TreeItem) child, names);
         }
+    }
+
+    /** 一个节点的**直接子节点**的名字（S-3：看表节点下挂了哪些列）。 */
+    private static List<String> childNames(TreeItem node) {
+        List<String> names = new ArrayList<>();
+        for (Object child : node.getChildren()) {
+            names.add(nameOf(valueOf(child)));
+        }
+        return names;
+    }
+
+    /** 从 {@code name=xxx} 里取节点名（DemoNode 的 toString 形态）。 */
+    private static String nameOf(Object demoNode) {
+        String text = String.valueOf(demoNode);
+        int start = text.indexOf("name=");
+        if (start < 0) {
+            return text;
+        }
+        int from = start + "name=".length();
+        int to = text.indexOf(',', from);
+        return to < 0 ? text.substring(from) : text.substring(from, to);
+    }
+
+    private static TextField searchFieldOf(SideBar sideBar) {
+        return onFx(() -> (TextField) sideBar.lookup(".adb-sidebar__search"));
     }
 
     private static TreeItem findTable(TreeItem node, String name) {

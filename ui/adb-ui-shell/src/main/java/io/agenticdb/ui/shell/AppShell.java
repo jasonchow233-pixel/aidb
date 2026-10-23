@@ -168,6 +168,8 @@ public final class AppShell extends StackPane {
         this.sideBar.setOnTableDdl(this::runTableDdl);
         // ⭐ 多连接对象树：展开一个没读过的连接时，去连它、读它的对象。
         this.sideBar.setOnLoadObjects(this::loadObjectsFor);
+        // ⭐ S-3：展开表节点时才读它的列（懒加载，见 loadColumnsFor）。
+        this.sideBar.setOnLoadColumns(this::loadColumnsFor);
         // ⭐ §6：右侧详情面板。数据必须由外壳提供 —— 它才认识会话、
         //    执行器和 SchemaService；面板自己一个数据库概念都没有，
         //    于是「不编造数据」这条规则在类型上就成立了。
@@ -793,6 +795,40 @@ public final class AppShell extends StackPane {
             } catch (Exception e) {
                 Platform.runLater(() ->
                         status("读取 " + profile.name() + " 的对象失败：" + readable(e)));
+            }
+        });
+    }
+
+    /**
+     * ⭐ S-3：展开表节点时读它的列（懒加载）。
+     *
+     * <p>为什么懒：连上一个几千张表的库就查每张表的列，会把界面卡死 ——
+     * Navicat 同样是展开才读。数据来源是 {@link SchemaService#describe}
+     * （{@code SELECT * FROM t LIMIT 0}，表与视图共用），读不到的值一个都不编。
+     *
+     * <p>失败时侧栏会把占位节点换成「列读取失败（展开重试）」并清掉
+     * 「已尝试」标记 —— 用户再展开一次就重试，不静默降级成叶子。
+     */
+    private void loadColumnsFor(String connectionId, String table) {
+        DbSession session = sessionFor(connectionId);
+        if (session == null) {
+            sideBar.setColumns(connectionId, table, List.of());
+            status("连接未建立，读不到 " + table + " 的列");
+            return;
+        }
+        executorFor(connectionId).execute(() -> {
+            try {
+                List<String> columns = schemaService.describe(session, table).columns().stream()
+                        .map(column -> column.name())
+                        .toList();
+                // ⭐ 必须回 FX 线程再改树 —— 读取跑在数据库执行器上。
+                Platform.runLater(() -> sideBar.setColumns(connectionId, table, columns));
+            } catch (Exception e) {
+                String reason = readable(e);
+                Platform.runLater(() -> {
+                    sideBar.setColumns(connectionId, table, List.of());
+                    status("读取 " + table + " 的列失败：" + reason);
+                });
             }
         });
     }

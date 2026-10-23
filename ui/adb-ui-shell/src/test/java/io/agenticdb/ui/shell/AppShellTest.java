@@ -420,16 +420,53 @@ class AppShellTest {
                 .queryAs(Label.class);
     }
 
+    /**
+     * 双击对象树里叫这个名字的表 / 视图，并<b>等它真的打开</b>。
+     *
+     * <p>两个坑都踩过，写在这里免得有人再改回去：
+     * <ol>
+     *   <li>用 {@code contains(name)} 匹配会同时命中 {@code v_active_users} 和
+     *       {@code trg_users_audit} —— 取第一个的话，命中触发器时压根不会打开页面，
+     *       失败信息却是「标题还是上一张表」，看上去像分页 bug，其实是选错了节点。</li>
+     *   <li>双击之后直接断言标题，偶发读到<b>上一个标签</b>的标题（新标签还没渲染完），
+     *       表现是整条用例时红时绿。所以这里等标题真的变成目标名字再返回。</li>
+     * </ol>
+     */
     private static void openTable(FxRobot robot, String name) {
         WaitForAsyncUtils.waitForFxEvents();
-        javafx.scene.control.TreeCell<?> cell = robot.lookup(node ->
-                node instanceof javafx.scene.control.TreeCell<?> treeCell
-                        && treeCell.getTreeItem() != null
-                        && treeCell.getTreeItem().getValue() != null
-                        && String.valueOf(treeCell.getTreeItem().getValue()).contains(name))
-                .queryAs(javafx.scene.control.TreeCell.class);
+        javafx.scene.control.TreeCell<?> cell =
+                robot.lookup(node -> isTableOrViewCell(node, name))
+                        .queryAs(javafx.scene.control.TreeCell.class);
         robot.doubleClickOn(cell);
+        try {
+            WaitForAsyncUtils.waitFor(8, TimeUnit.SECONDS, () ->
+                    robot.lookup(".adb-page__title").queryAll().stream()
+                            .anyMatch(node -> node instanceof Label title
+                                    && name.equals(title.getText())));
+        } catch (java.util.concurrent.TimeoutException e) {
+            throw new AssertionError("双击对象树里的 " + name + " 之后，8 秒内没有打开叫 "
+                    + name + " 的页面", e);
+        }
         WaitForAsyncUtils.waitForFxEvents();
+    }
+
+    /**
+     * 树上「名字正好是 name」的表 / 视图单元格。
+     *
+     * <p>{@code DemoNode} 是侧栏的私有记录，测试里取不到 {@code name()}，
+     * 只能从 {@code toString()} 认 —— 所以按 {@code name=xxx,} 整字段匹配，
+     * 不是 {@code contains(name)}。
+     */
+    @SuppressWarnings("rawtypes")
+    private static boolean isTableOrViewCell(javafx.scene.Node node, String name) {
+        if (!(node instanceof javafx.scene.control.TreeCell cell)
+                || cell.getTreeItem() == null
+                || cell.getTreeItem().getValue() == null) {
+            return false;
+        }
+        String text = String.valueOf(cell.getTreeItem().getValue());
+        return text.contains("name=" + name + ",")
+                && (text.contains("kind=TABLE") || text.contains("kind=VIEW"));
     }
 
     @SuppressWarnings("unchecked")

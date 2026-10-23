@@ -77,19 +77,24 @@
 ./mvnw -B clean verify
 ```
 
-当前结果（2026-10-23 · 第十七轮 规格 §6/§13/§9.7/§6.3/§11.2 实测）：
+当前结果（2026-10-23 · 第十九轮批次 B · S-3 对象树展开出列 实测）：
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **721** | 29 | 0 |
+| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **736** | 44 | 0 |
 | **外部 PG / MySQL 真库**（aliCloud RDS 等，需环境变量） | 单独跑，不在默认门禁 | — | — |
 | **多版本矩阵**（MySQL 5.7/8.0 + PG 13/17，`ADB_TEST_VERSION_MATRIX=1`） | 默认不跑，需显式打开 | 1 | 0 |
 
-**89 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
-（Testcontainers 容器**已随 Docker 解锁而执行**，不再计入跳过）—— **跳过不算通过**，门禁统计里单列一行。
+**92 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
+（Testcontainers 容器**需 Docker**；本机 Docker 不可用时走跳过分支）—— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-23，第十七轮后）**：**721 条 / 89 类 / 0 失败**（`./mvnw -B clean verify`
-> 全绿 + `java tools/TestCount.java`；另有 29 条跳过，不计入 721）。
+> 📌 **最新口径（2026-10-23，第十九轮批次 B 后）**：**736 条 / 92 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 736）。
+> 比第十七轮 721 多 15 条：批次 A +14（`MetadataColumnsTest`6 + `TableListPageTest`6 + `ObjectHomePageTest`2）、
+> **批次 B +5**（`SideBarTreeTest` 9→14）；测试类 89→**92**。
+>
+> ⚠️ **本机环境**：`java` 默认是 **JDK 11**，门禁跑不起来；可用的 JDK 25 是 IntelliJ 自带那份 ——
+> `export JAVA_HOME="/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home"`（见 §30.3）。
 > 比上一轮 691 多 30 条，来源分两半：
 > **① 本 UI 轮 +25**（`ObjectDetailsPanelTest` 14 + `NewTableDialogTest` +6 + `AppShellTest` +3 +
 > `DataGridPageTest` +1 + `TableListPageTest` +2 + `StructurePageTest` +1，新增 1 个测试类）；
@@ -117,7 +122,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `workbench/adb-transfer` | 15 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告 |
 | `ui/adb-ui-core` | 24 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** / **CSS 尺度审计** / **焦点环审计** |
-| `ui/adb-ui-shell` | 271 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派**、**侧栏工具可达性**、**右侧对象详情面板**、**新建表弹窗（宽编辑器 SQL 预览）**、**表清单选中项联动详情面板**、**结构页 DDL 只读编辑器** |
+| `ui/adb-ui-shell` | 304 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派**、**侧栏工具可达性**、**右侧对象详情面板**、**新建表弹窗（宽编辑器 SQL 预览）**、**表清单选中项联动详情面板**、**结构页 DDL 只读编辑器**、**方言感知列与卡片去破折号**、**对象树表节点展开出列（懒加载 / 缓存 / 失败可重试 / 列不是对象）** |
 
 > ⚠️ **统计口径（4.5-28）**：用 `@Nested` 的 4 个测试类（`QueryLimitsTest`、
 > `DangerClassifierTest`、`DeclarationLoaderTest`、`DeclarationValidationTest`）在 surefire XML 里
@@ -1865,7 +1870,7 @@ java tools/TestCount.java
 |---|---|---|---|---|
 | **S-1** ✅ **DONE (R19 批次 A)** | **C1 方言感知列**：SQLite 下表清单 8 列里 **6 列恒为「—」= 首选宽度 810/1120px（72%）**；对象首页 9 列里 6 列同样 | `p6-tables.png` / `p5-connections.png`；`TableListPage:239-250` 无条件建全列（`ObjectHomePage:218` 还把这写成了既定策略） | 🟡 中 | ✅ **落地为「看数据不看方言」的规则**（不是方言白名单，故无需给页面塞 `Dialect`）：新共享纯助手 `MetadataColumns.hasAnyValue(rows, text)` —— 只有**每一行都渲染成占位符**时整列隐藏，有一行有真值就留着（混合场景：MySQL 表有引擎、视图没有 → 引擎列保留）；核心列「名称 / 行 / 类型」永不隐藏。判定必须基于**整批已加载 `rows`**（不是 `filtered`），否则搜索会让列凭空出现/消失。门禁：`MetadataColumnsTest`(6) + `TableListPageTest`+3 + `ObjectHomePageTest`+2，**全部做过变异验证** |
 | **S-2** ✅ **DONE (R19 批次 A)** | **C2 卡片视图去破折号**：`notes / 0行 · — / — · — / —`，220px 卡片 2/3 是标点 | `p6-tables-grid.png` | 🟢 低 | ✅ 新 `cardLine(...)` 只拼**非占位符**片段；整行全占位符则**不渲染这一行**（不留空占位）。注意 `rowsText()` 为「—」时不能拼成「— 行」（那就不是占位符了）。门禁：`TableListPageTest.cardViewOmitsPlaceholderLinesOnSqliteLikeData`（变异验证）+ MySQL 形态仍显示真值的反向门禁 |
-| **S-3** | **C5 对象树表节点可展开出列**：Navicat 每个表节点都有 `>`（裁图核对），AIDB 对象节点是叶子 | `SideBar.kindGroup()` 建的子 `TreeItem` 无 children | 🟠 中高 | `SideBarTreeTest`：展开表节点出现列子节点（假会话喂列清单），且**懒加载**（未展开不查库） |
+| **S-3** ✅ **DONE (R19 批次 B)** | **C5 对象树表节点可展开出列**：Navicat 每个表节点都有 `>`（裁图核对），AIDB 对象节点是叶子 | `SideBar.kindGroup()` 建的子 `TreeItem` 无 children | 🟠 中高 | ✅ **5 条新门禁，5 条全部做过变异验证**（MUTATION-1 去掉「没接回调就是叶子」→ `tableIsALeafUntilAColumnLoaderIsWired` 红；MUTATION-2 去掉「读过的不再读」闸 → `expandingATableReadsItsColumnsLazily` 红；MUTATION-3 失败后不摘「已尝试」标记 → `aFailedColumnReadIsSaidOutLoudAndCanBeRetried` 红；MUTATION-4 列的「复制名称」不放行 → `columnNodesCannotOpenDataButCanCopyTheirName` 红；MUTATION-5 重建树不认缓存 → `columnsSurviveATreeRebuild` 红，失败原文逐条记录）· 见 **§30** |
 | **S-4** | **列网格键盘导航**（Tab / 方向键在整张网格内移动 + 单元格编辑焦点） | §28.6 遗留；硬规则「一切键盘可达」；§28.10 已把**布尔三态一格**做成可键盘切换 | 🟡 中 | `NewTableDialogTest`：直接驱动抽出来的 `focusMove(...)` 纯方法（**沿用 §28.10 的教训：headless 下不靠 `fireEvent`**） |
 | **S-5** | **C7 欢迎页用 AIDB mark**：现在还是通用 `Icons.Icon.DATABASE`；品牌改造只注册了 OS 窗口图标 | `WorkspaceView:137`；全仓无 `ImageView(app-icon-*)` | 🟢 低 | 截图重拍 `p0-shell` + 断言欢迎页 logo 来源（PNG 或 `Icons.Icon.BRAND`） |
 | **S-6** | **C3 详情面板挤压网格**：列头截成 `na… em… acti… sco…` | `p2-details.png`；`ObjectDetailsPanel.WIDTH_DEFAULT=300` | 🟡 中 | **先定方案**（覆盖式 vs 推挤式 vs 窄宽自动收起），定完再加布局断言 —— 没有裁定就不动手 |
@@ -1903,7 +1908,7 @@ java tools/TestCount.java
 | 批 | 内容 | 验收 |
 |---|---|---|
 | **A（先做，同一根因）** ✅ **DONE (R19)** | S-1 + S-2：清单类页面把「没有数据」渲染成标点的问题一次清掉 | ✅ 新门禁 6+3+2 条（`MetadataColumnsTest` / `TableListPageTest` / `ObjectHomePageTest`）**各做过变异**（改坏必红：MUTATION-1 强制 `hasAnyValue` 恒真 → 6 门禁红；MUTATION-2 让 `cardLine` 全渲染 → 卡片门禁红；MUTATION-3 空转 `ObjectHomePage.applyColumnVisibility` → 该页门禁红，失败原文逐条记录）+ **重拍 `p6-tables` / `p6-tables-grid` 并逐张核对** |
-| **B（交互补强）** | S-3 树展开出列 | `SideBarTreeTest` +1；展开不触发多余查询的断言 |
+| **B（交互补强）** ✅ **DONE (R19)** | S-3 树展开出列 | ✅ `SideBarTreeTest` **+5**（`tableIsALeafUntilAColumnLoaderIsWired` / `expandingATableReadsItsColumnsLazily` / `columnsSurviveATreeRebuild` / `columnNodesCannotOpenDataButCanCopyTheirName` / `aFailedColumnReadIsSaidOutLoudAndCanBeRetried`）+ 展开不触发多余查询的断言 · **5 条全部变异验证通过**（改坏必红、改回必绿）· 顺带修掉 `AppShellTest.openTable` 的**选错节点**隐患（`contains("users")` 会同时命中 `v_active_users` / `trg_users_audit`，命中触发器时压根不开页面，失败信息却像分页 bug）与**读旧标签标题**的偶发红（改为等标题真的变成目标名字） |
 | **C（品牌闭环）** | S-5 欢迎页 mark | 重拍 `p0-shell` |
 | **D（a11y 硬规则）** | S-4 列网格键盘导航 | 沿用 §28.10 的「纯方法抽取」做法，不靠 `fireEvent` |
 | **E（需先裁定）** | S-6 详情面板布局 | 先出方案对比，再动手 |
@@ -1912,10 +1917,58 @@ java tools/TestCount.java
 
 ---
 
+## 30. 第十九轮批次 B：S-3 对象树表节点可展开出列（2026-10-23）
+
+> 来源：§29.1 S-3 / §29.5 批次 B。Navicat 实拍里每个表节点都有 `>`，点开是列；
+> AIDB 的表节点是叶子，想看一列有什么只能开结构页。
+
+### 30.1 落地
+
+| # | 改动 | 落点 |
+|---|---|---|
+| 1 | 新增 `NodeKind.COLUMN` + `SideBar.objectNode(...)`：**接了读列回调**的表 / 视图节点挂一个「读取列…」占位子节点（JavaFX 只在**有子节点**时才画展开箭头，所以这是箭头的由头），**展开时**才真正读列 | `SideBar.objectNode` |
+| 2 | **懒加载**：`loadColumnsIfNeeded` 只在 `expandedProperty()` 变 true 时触发；`columnsByTable` 缓存 + `attemptedColumns` 去重 → 连上几千张表的库不会一上来就查每张表的列 | `SideBar.loadColumnsIfNeeded` |
+| 3 | `AppShell.loadColumnsFor(...)`：读列跑在**数据库执行器**上（`schemaService.describe`，表与视图共用），结果 `Platform.runLater` 回填 | `AppShell` + `SideBar.setOnLoadColumns` |
+| 4 | **不重建整棵树**：`setColumns` 用 `findTableNode` 就地换掉占位节点 —— 重建会把用户刚展开的节点合上、丢掉选中态 | `SideBar.setColumns` |
+| 5 | **对象重新内省后作废列缓存**（`dropColumnsOf`）：表刚被 ALTER 过（加列 / 删列），留着旧列比没有列更糟 | `SideBar.setObjects` |
+| 6 | **失败要说出来**：读到空清单只可能是读失败（表不可能没有列）→ 换成「列读取失败（展开重试）」占位节点并**摘掉「已尝试」标记**，再展开一次真去重试；不静默降级成叶子 | `SideBar.setColumns` |
+| 7 | 列不是对象：右键菜单只有「复制名称」；`object.open-data` / `open-structure` / `copy-select` / `favorite` 在列上一律灰掉；不进「有多少个对象」的计数（否则 50 列的表会让搜索空态判断失真） | `SideBar.updateObjectActionStates` / `isObjectNode` |
+| 8 | 样式 `.adb-tree__icon--column` 用**正文次色**（已有令牌）—— 列是「细节叶子」不是对象类型，不给新的语义色 | `app.css` |
+
+### 30.2 顺带修掉的两个测试隐患（`AppShellTest.openTable`）
+
+| 隐患 | 症状 | 修法 |
+|---|---|---|
+| **选错节点** | `contains(name)` 匹配树节点 → `users` 同时命中 `v_active_users` 和 `trg_users_audit`；取第一个时若命中**触发器**，压根不会打开页面，失败信息却是「标题还是 orders」，看上去像分页 bug | 按 `name=xxx,` **整字段**精确匹配 + 只认 `kind=TABLE` / `kind=VIEW`（`DemoNode` 是侧栏私有记录，测试取不到 `name()`，只能从 `toString()` 认） |
+| **读到旧标签标题** | 双击后立刻断言标题，偶发读到**上一个标签**（新标签还没渲染完）→ 全模块跑时红、单跑绿 | 等 8 秒直到标题真的变成目标名字；超时抛 `AssertionError` 并说清「双击了谁、没打开谁」 |
+
+### 30.3 门禁与变异验证
+
+`SideBarTreeTest` **9 → 14**（+5）。**5 条全部做过变异验证**（改坏必红、改回必绿，失败原文逐条记录）：
+
+| 变异 | 预期红的用例 | 实测失败原文 |
+|---|---|---|
+| MUTATION-1：去掉「没接回调就是叶子」 | `tableIsALeafUntilAColumnLoaderIsWired` | `:300 [没接回调 —— 表节点是叶子，不摆点开没反应的箭头]` |
+| MUTATION-2：去掉「读过的不再读」闸 | `expandingATableReadsItsColumnsLazily` | `:349 [列已经在手 —— 再展开一次不该重复查库]` |
+| MUTATION-3：失败后不摘「已尝试」标记 | `aFailedColumnReadIsSaidOutLoudAndCanBeRetried` | `:462 [失败不缓存 —— 再展开一次真去重试]` |
+| MUTATION-4：列的「复制名称」不放行 | `columnNodesCannotOpenDataButCanCopyTheirName` | `:423 [复制列名是真需求 —— 这一项要放行]` |
+| MUTATION-5：重建树不认已缓存的列 | `columnsSurviveATreeRebuild` | `:385 [重建之后列还在（不用再查一次）]` |
+
+门禁：**736 条 / 92 类 / 0 失败**（`adb-ui-shell` 299→**304** +5；44 跳过全为环境门控 ——
+本机 **Docker 不可用**，Testcontainers 的 PG16 / MySQL8.4 真库契约走的是跳过分支，不计入 736）。
+
+> ⚠️ **环境提示**：本机默认 `java` 是 **JDK 11**，`/usr/libexec/java_home -V` 里也只有 11。
+> 能跑起来的是 **IntelliJ 自带的 JBR 25.0.4**：
+> `export JAVA_HOME="/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home"`。
+> `scripts/_env.sh` 会用它做预检，但不会帮你找 —— JDK 25 没装的话门禁直接起不来。
+
+---
+
 ## 23. 变更记录
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-23 | **第十九轮·批次 B** | **⭐ S-3 对象树表节点可展开出列**（§30）：表 / 视图节点接上「读列回调」后挂占位子节点（JavaFX 只在有子节点时才画箭头），**展开才读列**（懒加载 + 缓存去重，几千张表的库不会一上来就查爆）· `AppShell.loadColumnsFor` 走数据库执行器 + `Platform.runLater` 回填，`setColumns` **就地换节点不重建整棵树**（不丢展开态 / 选中态）· **重新内省后作废列缓存**（表刚被 ALTER 过，旧列比没有列更糟）· **空清单 = 读失败**，换成「列读取失败（展开重试）」并摘掉「已尝试」标记以便重试，不静默降级成叶子 · 列不是对象：右键只留「复制名称」，打开数据 / 结构 / 复制 SELECT / 收藏一律灰掉，且不进对象计数 · **顺带修 `AppShellTest.openTable` 两个隐患**：`contains("users")` 会同时命中 `v_active_users` / `trg_users_audit`（命中触发器时压根不开页面，报错却像分页 bug）→ 改按 `name=xxx,` 整字段 + 只认表/视图；双击后立刻断言标题会偶发读到**上一个标签** → 改成等标题真的变成目标名字（超时抛 `AssertionError` 说清双击了谁）· **5 条新门禁全部做过变异验证**（MUTATION-1…5 各红一条、失败原文逐条记录，改回必绿）· 门禁 **736 条 / 92 类 / 0 失败**（`adb-ui-shell` 299→**304** +5；44 跳过为环境门控 —— 本机 Docker 不可用）· ⚠️ 本机默认 JDK 是 11，**JDK 25 只有 IntelliJ 自带那份**（`JAVA_HOME=/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home`） |
 | 2026-10-23 | **第十九轮** | **⭐ §29 批次 A：清单类页面「没有数据」不再渲染成标点**（S-1 方言感知列 + S-2 卡片去破折号，同一根因）：新增共享纯助手 `MetadataColumns`（`isPlaceholder` / `hasAnyValue`）——**判定「看数据不看方言」**，只有**每一行都渲染成占位符**时整列隐藏，有一行有真值就留着（混合场景：MySQL 表有引擎、视图没有 → 引擎列保留），核心列「名称/行/类型」永不隐藏；判定基于**整批已加载 `rows`**（不是 `filtered`），故搜索不会让列凭空出现/消失 · `TableListPage` 6 个可选列留引用 + `applyColumnVisibility()`，`ObjectHomePage` 同规则复用（无需给页面塞 `Dialect`，避免动构造器与一堆测试）· **S-2**：新 `cardLine(...)` 只拼非占位符片段，整行全占位符则**不渲染这一行**（并修掉「`rowsText()` 为「—」会拼成「— 行」就不算占位符了」的坑）· **14 条新门禁全部做过变异验证**（MUTATION-1 强制 `hasAnyValue` 恒真 → 6 门禁红；MUTATION-2 让 `cardLine` 全渲染 → 卡片门禁红；MUTATION-3 空转 `ObjectHomePage.applyColumnVisibility` → 该页门禁红，失败原文逐条记录）· **4 张截图重拍并逐张核对**：表清单 8→**2 列**、对象首页 9→**3 列**、卡片只剩「图标+名字+N 行」· 门禁 **731 条 / 92 类 / 0 失败**（`adb-ui-shell` 285→**299** +14 = `MetadataColumnsTest`6 + `TableListPageTest`6 + `ObjectHomePageTest`2；测试类 91→**92** +1 = `MetadataColumnsTest`；44 跳过全为环境门控） |
 | 2026-10-23 | **第十八轮** | **⭐ 把截图当证据的第二轮 Navicat 对标**（§28.11）+ **合并待办 §29**：12 张实拍 + 4 张 Navicat 参考**逐张并排核对**（不再「对着规格想」），只记录图上能直接证伪的东西 → **6 个真缺陷**：①`p5-connections` 拍的是对象总览（`shots.sh` 点了个已被重构删掉的 id，`ScreenshotSession` 找不到节点**只打 stderr 就照常截图**）②「每页」下拉**永远空框**（`select(int index)` vs `select(Integer)` 重载决议选错，`javap -c` 实锤，**既有测试还写了绕过它的断言**）+ **返工续集**：修完选中后截图放大看仍是「2…」（逐像素量出右侧还剩 23px 空白，是 ComboBox 按钮单元格吃宽度）→ `prefWidth` 78→**96**，两门禁各补 `prefWidth>=90` 渲染底线③只读 SQL 预览教用户「⌘↵ 执行」④`App` 要的 `app-icon-512.png` **从未生成**（`if (url != null)` 静默跳过）⑤状态栏悬空「— ms」⑥查询页跳页框「三无」空白框 · **五个同根：失败被设计成静默降级** → 新增**两个静态审计门禁**（`ScreenshotScriptAuditTest` 校验脚本点击目标 / `AppIconResourceAuditTest` 校验图标资源名）· **7 条新门禁全部做过变异验证**（改坏必红、改回必绿，失败原文逐条记录）· **逐像素实测**：AIDB 网格 **28px** vs Navicat **19px**（侧栏树 24 vs 22 持平）· 勘误：§28.6 的 §6.1/§6.2/§13.3 是**悬空引用**（grep 全 `docs/` 无对应小节）→ 改按条目名记录；§21.1 的 **X3 早已完成**（第十轮 V-3）· 门禁 **717 条 / 91 类 / 0 失败**（`adb-ui-shell` 278→**285** +7 逐条对得上；44 跳过全为环境门控） |
 | 2026-10-23 | 第十七轮·续四 | **规格 §13.3 新建表布尔列键盘可达**（§28.10）：`CheckBoxTableCell` 复选框 `focusTraversable=false` 只认鼠标 → 新增包级 `BooleanCell`（焦点留单元格 / 复选框只作图形）· 可测逻辑抽成纯方法 `isToggleKey` / `toggle(ColumnRow)` / `handleKey`（headless 下不靠 `fireEvent`，门禁直接驱动生产逻辑）· 新样式 `.adb-table__bool-cell`·`__bool-box`（令牌无硬编码色）· `NewTableDialogTest` +4；门禁 **278 条 / 0 失败**（全 14 模块 SUCCESS） |

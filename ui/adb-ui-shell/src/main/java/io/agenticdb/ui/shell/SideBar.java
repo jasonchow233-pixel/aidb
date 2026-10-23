@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -95,6 +96,16 @@ public final class SideBar extends VBox {
     private Consumer<CatalogSwitch> onSwitchCatalog = request -> { };
     /** 已经尝试过读取的对象（读失败也不反复试）。 */
     private final Set<String> attempted = new LinkedHashSet<>();
+    /**
+     * ⭐ S-3：展开表节点时才读它的列（懒加载）。
+     *
+     * <p>为 null = 没接回调 —— 表节点保持叶子，不摆一个点不开的箭头骗人。
+     */
+    private BiConsumer<String, String> onLoadColumns;
+    /** ⭐ S-3：连接 + 表 → 列名（展开读到后缓存，刷新树不丢）。 */
+    private final Map<String, List<String>> columnsByTable = new LinkedHashMap<>();
+    /** ⭐ S-3：已发起过列读取的表（读失败时摘掉标记 → 再展开一次会重试）。 */
+    private final Set<String> attemptedColumns = new LinkedHashSet<>();
     /** 出现的 schema 个数；> 1 时对象树按 schema 分组。 */
     private int schemaCount;
     /**
@@ -334,6 +345,9 @@ public final class SideBar extends VBox {
         objectsByConnection.put(connectionId,
                 objects == null ? List.of() : List.copyOf(objects));
         attempted.add(connectionId);
+        // ⭐ S-3：对象重新内省过了 —— 该连接缓存的列清单一起作废。
+        //    表可能刚被 ALTER 过（加列 / 删列），留着旧列比没有列更糟。
+        dropColumnsOf(connectionId);
         if (connectionId.equals(this.connectionId)) {
             setObjects(objects, true);
         } else {
@@ -341,9 +355,32 @@ public final class SideBar extends VBox {
         }
     }
 
+    /** ⭐ S-3：作废某个连接下所有表的列缓存（对象重新内省后调用）。 */
+    private void dropColumnsOf(String connectionId) {
+        String prefix = (connectionId == null ? "" : connectionId) + '\u0000';
+        columnsByTable.keySet().removeIf(key -> key.startsWith(prefix));
+        attemptedColumns.removeIf(key -> key.startsWith(prefix));
+    }
+
     /** 需要某个连接的对象时调用（AppShell 连上去读）。 */
     public void setOnLoadObjects(Consumer<String> onLoadObjects) {
         this.onLoadObjects = onLoadObjects == null ? id -> { } : onLoadObjects;
+    }
+
+    /**
+     * ⭐ S-3：需要某个表的列时调用（AppShell 连上去读）。
+     *
+     * <p>回调只在**展开表节点时**触发一次（懒加载）—— 连上就查每张表的列，
+     * 在几千张表的库上会把界面卡死；Navicat 也是展开才读。
+     *
+     * <p>{@code onLoadColumns} 为 null 时表节点保持叶子（见 {@link #objectNode}），
+     * 所以接上回调后要重建一次树，箭头才长得出来。
+     */
+    public void setOnLoadColumns(BiConsumer<String, String> onLoadColumns) {
+        this.onLoadColumns = onLoadColumns;
+        if (!objectsByConnection.isEmpty()) {
+            refreshTree();
+        }
     }
 
     /** 供门禁触发对象树动作。 */
@@ -673,7 +710,7 @@ public final class SideBar extends VBox {
             case FUNCTION -> InspectTarget.Topic.FUNCTION;
             case PROCEDURE -> InspectTarget.Topic.PROCEDURE;
             case EVENT -> InspectTarget.Topic.EVENT;
-            case ROOT, GROUP -> null;
+            case ROOT, GROUP, COLUMN -> null;
         };
         if (topic == null) {
             return;
@@ -895,11 +932,116 @@ public final class SideBar extends VBox {
                         visible.size()));
         group.setExpanded(true);
         for (SchemaObject object : visible) {
-            group.getChildren().add(new TreeItem<>(
-                    new DemoNode(object.name(), kind, iconOf(object.kind()), object.schema(),
-                            connectionId)));
+            group.getChildren().add(objectNode(object, kind, connectionId));
         }
         return group;
+    }
+
+    /**
+     * 一个对象节点（表 / 视图 / 过程…）。
+     *
+     * <p>⭐ S-3：表 / 视图节点在**没读到列之前**也得能展开 —— JavaFX 的
+     * 展开箭头只在「有子节点」时才画出来（{@link TreeItem#isLeaf()} 就是
+     * 有没有 children），所以这里先挂一个占位子节点当箭头的由头，
+     * 展开时才真正去读列（读到就换成真的列节点）。
+     *
+     * <p>没接读列回调的侧栏（{@code onLoadColumns == null}）保持旧行为：
+     * 表节点是叶子 —— 不摆一个点开没反应的箭头骗人。
+     */
+    private TreeItem<DemoNode> objectNode(SchemaObject object, NodeKind kind,
+                                          String connectionId) {
+        TreeItem<DemoNode> item = new TreeItem<>(new DemoNode(
+                object.name(), kind, iconOf(object.kind()), object.schema(), connectionId));
+        if ((kind == NodeKind.TABLE || kind == NodeKind.VIEW) && onLoadColumns != null) {
+            List<String> cached = columnsByTable.get(columnKey(connectionId, object.name()));
+            if (cached != null) {
+                cached.forEach(name -> item.getChildren().add(columnNode(name, connectionId)));
+            } else {
+                // ⭐ 占位子节点：既是箭头的由头，也是诚实的「正在读」状态 ——
+                //    展开时加载会立刻开始，读到列就换掉它。
+                item.getChildren().add(new TreeItem<>(
+                        new DemoNode("读取列…", NodeKind.COLUMN, Icons.Icon.COLUMNS,
+                                "", connectionId)));
+                item.expandedProperty().addListener((obs, was, is) -> {
+                    if (is) {
+                        loadColumnsIfNeeded(connectionId, object.name());
+                    }
+                });
+            }
+        }
+        return item;
+    }
+
+    /** 列节点（展开表 / 视图后出现）。 */
+    private static TreeItem<DemoNode> columnNode(String name, String connectionId) {
+        return new TreeItem<>(new DemoNode(
+                name, NodeKind.COLUMN, Icons.Icon.COLUMNS, "", connectionId));
+    }
+
+    /** 连接 + 表 → 缓存键（表名在同一连接内唯一；schema 见 {@link #describeColumns}）。 */
+    private static String columnKey(String connectionId, String table) {
+        return (connectionId == null ? "" : connectionId) + '\u0000' + table;
+    }
+
+    /** 某个表的列还没读过就去读（只在展开节点时触发 —— 懒加载）。 */
+    private void loadColumnsIfNeeded(String connectionId, String table) {
+        String key = columnKey(connectionId, table);
+        if (columnsByTable.containsKey(key) || !attemptedColumns.add(key)) {
+            return;
+        }
+        onLoadColumns.accept(connectionId, table);
+    }
+
+    /**
+     * ⭐ S-3：AppShell 读完列后回填。
+     *
+     * <p>就地换掉占位子节点，**不重建整棵树** —— 重建会把用户刚展开的
+     * 节点合上，还会丢掉选中态（读一次列就把树重置一遍，体验很差）。
+     *
+     * <p>读到空清单：表不可能没有列，这说明读失败了 —— 保留一个说明性的
+     * 占位节点并摘掉「已尝试」标记，再展开一次会重试，不静默降级成叶子。
+     */
+    public void setColumns(String connectionId, String table, List<String> columns) {
+        List<String> safe = columns == null ? List.of() : List.copyOf(columns);
+        String key = columnKey(connectionId, table);
+        TreeItem<DemoNode> node = findTableNode(tree.getRoot(), connectionId, table);
+        if (safe.isEmpty()) {
+            attemptedColumns.remove(key);
+            if (node != null) {
+                node.getChildren().setAll(new TreeItem<>(new DemoNode(
+                        "列读取失败（展开重试）", NodeKind.COLUMN, Icons.Icon.COLUMNS,
+                        "", connectionId)));
+            }
+            return;
+        }
+        columnsByTable.put(key, safe);
+        if (node != null) {
+            List<TreeItem<DemoNode>> children = new ArrayList<>();
+            safe.forEach(name -> children.add(columnNode(name, connectionId)));
+            node.getChildren().setAll(children);
+        }
+    }
+
+    /** 深度优先找到某个表 / 视图节点（当前树里没有就返回 null —— 缓存仍生效）。 */
+    private static TreeItem<DemoNode> findTableNode(TreeItem<DemoNode> item, String connectionId,
+                                                    String table) {
+        if (item == null) {
+            return null;
+        }
+        DemoNode value = item.getValue();
+        if (value != null
+                && (value.kind() == NodeKind.TABLE || value.kind() == NodeKind.VIEW)
+                && String.valueOf(connectionId).equals(String.valueOf(value.connectionId()))
+                && value.name().equals(table)) {
+            return item;
+        }
+        for (TreeItem<DemoNode> child : item.getChildren()) {
+            TreeItem<DemoNode> found = findTableNode(child, connectionId, table);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
     }
 
     /**
@@ -945,6 +1087,9 @@ public final class SideBar extends VBox {
             case FUNCTION -> "adb-tree__icon--function";
             case EVENT -> "adb-tree__icon--event";
             case CATALOG -> "adb-tree__icon--catalog";
+            // ⭐ S-3：列是「细节叶子」，与表 / 视图的颜色区分开 ——
+            //    用正文次色（已有令牌），不新增一种语义色（列不属于对象类型）。
+            case COLUMN -> "adb-tree__icon--column";
             default -> "adb-tree__icon--connection";
         };
     }
@@ -1016,7 +1161,9 @@ public final class SideBar extends VBox {
         }
         return switch (node.kind()) {
             case TABLE, VIEW, PROCEDURE, FUNCTION, TRIGGER -> true;
-            default -> false;
+            // ⭐ S-3：列不是对象 —— 不进「有多少个对象」的计数，
+            //    否则一张 50 列的表会让搜索空态判断失真。
+            case COLUMN, ROOT, CONNECTION, GROUP, CATALOG, EVENT -> false;
         };
     }
 
@@ -1131,6 +1278,10 @@ public final class SideBar extends VBox {
                     actions.menuItem("object.refresh-objects", "刷新对象"),
                     new SeparatorMenuItem(),
                     actions.menuItem("object.new-table", "新建表…"));
+            // ⭐ S-3：列只有一件事可做 —— 复制列名。它没有数据页 / 结构页，
+            //    也不能收藏（收藏的是表），所以不复用对象那一整串。
+            case COLUMN -> menu.getItems().add(
+                    actions.menuItem("object.copy-name", "复制名称"));
             // ⭐ S3：过程 / 函数 / 触发器没有数据页，也没有结构页 ——
             //    只给「复制名称 / 新建查询」（调用它）/ 收藏。
             case PROCEDURE, FUNCTION, TRIGGER -> menu.getItems().addAll(
@@ -1153,6 +1304,8 @@ public final class SideBar extends VBox {
             return;
         }
         boolean isObject = node.kind() == NodeKind.TABLE || node.kind() == NodeKind.VIEW;
+        // ⭐ S-3：列节点只放行「复制名称」（见 updateObjectActionStates）。
+        boolean isColumn = node.kind() == NodeKind.COLUMN;
         // ⭐ 多连接对象树：动作作用在**节点所属的连接**上，不是当前激活的连接。
         String owner = node.connectionId() == null || node.connectionId().isBlank()
                 ? connectionId : node.connectionId();
@@ -1180,7 +1333,7 @@ public final class SideBar extends VBox {
                 }
             }
             case COPY_NAME -> {
-                if (isObject) {
+                if (isObject || isColumn) {
                     copy(node.name());
                 }
             }
@@ -1241,6 +1394,8 @@ public final class SideBar extends VBox {
         // ⭐ U1：库节点 —— 能切库、能建表、能新建查询，但没有数据页 / 结构页。
         boolean isCatalog = node != null && node.kind() == NodeKind.CATALOG;
         boolean isTable = node != null && node.kind() == NodeKind.TABLE;
+        // ⭐ S-3：列节点只能复制名称 —— 打开数据 / 结构 / 收藏都是表级动作。
+        boolean isColumn = node != null && node.kind() == NodeKind.COLUMN;
         setObjectActionEnabled("object.open-data", isObject);
         setObjectActionEnabled("object.open-structure", isObject);
         // ⚠️ 这条以前写了两遍（先 isObject||isConnection 再 isObject||isCallable），
@@ -1248,7 +1403,7 @@ public final class SideBar extends VBox {
         //     而连接节点的右键菜单里又有这一项。合成一条，四种节点都放行。
         setObjectActionEnabled("object.new-query", isObject || isCallable || isConnection || isCatalog);
         setObjectActionEnabled("object.favorite", isObject);
-        setObjectActionEnabled("object.copy-name", isObject);
+        setObjectActionEnabled("object.copy-name", isObject || isColumn);
         setObjectActionEnabled("object.copy-select", isObject);
         setObjectActionEnabled("object.diagnostics", isObject);
         // 过程 / 函数 / 触发器没有数据页 —— 相应动作要变灰并解释为什么。
@@ -1345,7 +1500,9 @@ public final class SideBar extends VBox {
         /** ⭐ O1：调度事件（只有 MySQL 有）。 */
         EVENT,
         /** ⭐ U1：数据库（catalog）—— 只有「切库要重连」的方言有这一层。 */
-        CATALOG
+        CATALOG,
+        /** ⭐ S-3：列（展开表 / 视图节点后出现的叶子）。 */
+        COLUMN
     }
 
     /**
