@@ -5,6 +5,8 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import io.agenticdb.ui.Icons;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.control.Label;
 import javafx.scene.control.Separator;
 import javafx.scene.layout.HBox;
@@ -22,6 +24,9 @@ import java.util.function.Function;
  * 内容区。GRID 页每个标签独立实例并缓存，切换标签不会重建表格、不会丢分页位置。
  */
 public final class WorkspaceView extends StackPane {
+
+    /** ⭐ S-5：欢迎页门面上的品牌 mark（与 OS 窗口图标同一套 PNG）。 */
+    static final String BRAND_MARK = "/io/agenticdb/ui/app-icon-128.png";
 
     private final ActionRegistry actions;
     private final String connectionName;
@@ -133,9 +138,11 @@ public final class WorkspaceView extends StackPane {
         activeStructure = null;
         activeConnections = null;
 
-        // ⭐ 矢量图标（数据库），不是 Unicode 符号 —— 欢迎页是门面。
-        SVGPath logo = Icons.of(Icons.Icon.DATABASE, Icons.SIZE_BRAND);
-        logo.setAccessibleText("连接");
+        // ⭐ S-5：门面用**自家 mark**（数据库三层圆柱 + AI 四角星芒），不是通用数据库图标 ——
+        //    品牌改造（§28.9）只注册了 OS 窗口图标，界面里还是那个谁都在用的圆柱，
+        //    看一眼分不出这是 AIDB。见 brandMark()。
+        Node logo = brandMark();
+        logo.setAccessibleText("AIDB");
         logo.getStyleClass().add("adb-welcome__logo");
 
         Label title = new Label("AIDB");
@@ -165,6 +172,33 @@ public final class WorkspaceView extends StackPane {
 
         getChildren().setAll(card);
         StackPane.setAlignment(card, Pos.CENTER);
+    }
+
+    /**
+     * ⭐ S-5：AIDB 的 mark —— 欢迎页门面上那张图。
+     *
+     * <p>用的是 {@code tools/GenLogo.java} 生成的品牌 PNG（与 OS 窗口图标同一套资源，
+     * 128 档在 40px、2x 屏下也够锐），不是 {@code Icons.Icon.DATABASE} 那个通用圆柱：
+     * 「所有数据库工具都画一个圆柱」正是别人一眼认不出我们的原因。
+     *
+     * <p><b>找不到图就抛异常，不静默换成通用图标</b> —— 第十八轮数过五个「失败被设计成
+     * 静默降级」的坑（缺图标、缺截图目标…），降级之后没人知道门面上挂的是替身。
+     * 打包缺资源应当在这一刻就炸出来；{@code AppIconResourceAuditTest} 还会在源码层
+     * 再查一遍名字，双保险。
+     */
+    static Node brandMark() {
+        java.net.URL url = WorkspaceView.class.getResource(BRAND_MARK);
+        if (url == null) {
+            throw new IllegalStateException("缺少品牌图标资源 " + BRAND_MARK
+                    + "（应由 tools/GenLogo.java 生成）。欢迎页不会拿通用图标顶替 —— "
+                    + "缺图说明打包坏了，必须在启动时就暴露");
+        }
+        ImageView mark = new ImageView(new Image(url.toExternalForm()));
+        mark.setFitWidth(Icons.SIZE_BRAND);
+        mark.setFitHeight(Icons.SIZE_BRAND);
+        mark.setPreserveRatio(true);
+        mark.setSmooth(true);
+        return mark;
     }
 
     public void showTab(TabItem tab) {

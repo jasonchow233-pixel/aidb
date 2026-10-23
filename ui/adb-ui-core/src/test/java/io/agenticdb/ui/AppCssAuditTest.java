@@ -32,13 +32,20 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>间距 **47 种**硬编码内边距；</li>
  *   <li>圆角 **5 种**（3/5/6/8/10）写死在 26 处。</li>
  * </ul>
- * 现在分别是 9 / 7 / 3 种。
+ * 现在分别是 8 / 7 / 3 种（字号 8 档：40px 那档随 S-5 移除，见 {@link #FONT_SIZES}）。
  */
 class AppCssAuditTest {
 
-    /** 允许的字号（= tokens.json 的 fs-*）。 */
+    /**
+     * 允许的字号（= tokens.json 的 fs-*）。
+     *
+     * <p>⚠️ 40px（fs-4xl）已于第十九轮批次 C 移除：它唯一的用处是欢迎页 logo 的
+     * `-fx-font-size`，而 S-5 把 logo 换成了品牌 PNG —— 尺寸改由
+     * `Icons.SIZE_BRAND` 在代码里定，字号阶梯里不再留一个没人用的档
+     * （`TokenParityTest.everyTokenIsActuallyUsed` 会红）。
+     */
     private static final Set<String> FONT_SIZES = Set.of(
-            "10px", "11px", "12px", "13px", "14px", "16px", "20px", "32px", "40px");
+            "10px", "11px", "12px", "13px", "14px", "16px", "20px", "32px");
 
     /** CSS 里允许的间距（含 0 —— 归零不是「另一个尺度」）。 */
     private static final Set<String> SPACING = Set.of("0px", "2px", "4px", "8px",
@@ -69,7 +76,7 @@ class AppCssAuditTest {
             }
         }
         assertThat(offenders)
-                .as("字号必须落在 9 档阶梯上（fs-2xs…fs-4xl）：\n  %s",
+                .as("字号必须落在 8 档阶梯上（fs-2xs…fs-3xl）：\n  %s",
                         String.join("\n  ", offenders))
                 .isEmpty();
     }

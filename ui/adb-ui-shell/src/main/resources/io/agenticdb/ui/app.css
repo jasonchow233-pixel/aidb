@@ -958,9 +958,11 @@
     -fx-padding: 32px;
 }
 
+/* ⭐ S-5：门面换成了品牌 PNG（ImageView）—— `-fx-fill` / `font-size` 对它都不生效，
+ * 尺寸在 `WorkspaceView.brandMark()` 里按 `Icons.SIZE_BRAND` 定（不在 CSS 里再定一份，
+ * 免得两边各写一个数）。样式类仍保留：它是「欢迎页门面那张图」的唯一定位符。 */
 .adb-welcome__logo {
-    -fx-text-fill: -adb-accent;
-    -fx-font-size: 40px;
+    -fx-opacity: 1;
 }
 
 .adb-welcome__title {

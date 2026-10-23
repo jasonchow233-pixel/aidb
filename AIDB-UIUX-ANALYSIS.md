@@ -135,7 +135,7 @@ bootstrap/         - Desktop startup entry (jpackage)
 - **35 sizes**: 38 dimension tokens (h-*, w-*, row-*, fs-*, sp-*, r-*, dur-*) minus 3 already counted
 - **3 durations**: toast durations (1.8s / 6s / 4s)
 
-### Font Scale (9 sizes: fs-2xs 10px through fs-4xl 40px)
+### Font Scale (8 sizes: fs-2xs 10px through fs-3xl 32px)
 ```
 fs-2xs: 10px - Single-char badges, sort markers
 fs-xs: 11px - Status bar, type badges, chip text
@@ -145,8 +145,10 @@ fs-lg: 14px - Section titles, dialog headers
 fs-xl: 16px - App name, object titles
 fs-2xl: 20px - Page titles, major headings
 fs-3xl: 32px - Empty state titles (with fs-2xl subtitle)
-fs-4xl: 40px - Welcome page logo
 ```
+_Note: `fs-4xl` (40px) was removed 2026-10-23 — its only consumer was the welcome-page
+logo's `font-size`, and S-5 replaced that logo with the brand PNG (sized by
+`Icons.SIZE_BRAND` in code)._
 
 ### Color Usage Hierarchy
 1. **Background**: Canvas (page), Surface (panels/headers), Elevated (popovers/toast), Inset (inputs/code)

@@ -77,21 +77,21 @@
 ./mvnw -B clean verify
 ```
 
-当前结果（2026-10-23 · 第十九轮批次 B · S-3 对象树展开出列 实测）：
+当前结果（2026-10-23 · 第十九轮批次 C · S-5 品牌闭环 实测）：
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **736** | 44 | 0 |
+| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **739** | 44 | 0 |
 | **外部 PG / MySQL 真库**（aliCloud RDS 等，需环境变量） | 单独跑，不在默认门禁 | — | — |
 | **多版本矩阵**（MySQL 5.7/8.0 + PG 13/17，`ADB_TEST_VERSION_MATRIX=1`） | 默认不跑，需显式打开 | 1 | 0 |
 
-**92 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
+**93 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
 （Testcontainers 容器**需 Docker**；本机 Docker 不可用时走跳过分支）—— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-23，第十九轮批次 B 后）**：**736 条 / 92 类 / 0 失败**（`./mvnw -B clean verify`
-> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 736）。
-> 比第十七轮 721 多 15 条：批次 A +14（`MetadataColumnsTest`6 + `TableListPageTest`6 + `ObjectHomePageTest`2）、
-> **批次 B +5**（`SideBarTreeTest` 9→14）；测试类 89→**92**。
+> 📌 **最新口径（2026-10-23，第十九轮批次 C 后）**：**739 条 / 93 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 739）。
+> 比第十七轮 721 多 18 条：批次 A +14（`MetadataColumnsTest`6 + `TableListPageTest`6 + `ObjectHomePageTest`2）、
+> 批次 B +5（`SideBarTreeTest` 9→14）、**批次 C +3**（`WelcomeBrandTest` 新建）；测试类 89→**93**。
 >
 > ⚠️ **本机环境**：`java` 默认是 **JDK 11**，门禁跑不起来；可用的 JDK 25 是 IntelliJ 自带那份 ——
 > `export JAVA_HOME="/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home"`（见 §30.3）。
@@ -122,7 +122,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `workbench/adb-transfer` | 15 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告 |
 | `ui/adb-ui-core` | 24 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** / **CSS 尺度审计** / **焦点环审计** |
-| `ui/adb-ui-shell` | 304 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派**、**侧栏工具可达性**、**右侧对象详情面板**、**新建表弹窗（宽编辑器 SQL 预览）**、**表清单选中项联动详情面板**、**结构页 DDL 只读编辑器**、**方言感知列与卡片去破折号**、**对象树表节点展开出列（懒加载 / 缓存 / 失败可重试 / 列不是对象）** |
+| `ui/adb-ui-shell` | 307 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派**、**侧栏工具可达性**、**右侧对象详情面板**、**新建表弹窗（宽编辑器 SQL 预览）**、**表清单选中项联动详情面板**、**结构页 DDL 只读编辑器**、**方言感知列与卡片去破折号**、**对象树表节点展开出列（懒加载 / 缓存 / 失败可重试 / 列不是对象）**、**欢迎页品牌 mark（矢量换位图 + 坏图不静默）** |
 
 > ⚠️ **统计口径（4.5-28）**：用 `@Nested` 的 4 个测试类（`QueryLimitsTest`、
 > `DangerClassifierTest`、`DeclarationLoaderTest`、`DeclarationValidationTest`）在 surefire XML 里
@@ -625,15 +625,18 @@ ADB_THEME_FORCE=light ADB_SHOTS=$PWD/docs/screenshots \
 
 - [x] 令牌新增 **9 级字号**：`fs-2xs` 10 / `fs-xs` 11 / `fs-sm` 12 / `fs-md` 13 / `fs-lg` 14 /
       `fs-xl` 16 / `fs-2xl` 20 / `fs-3xl` 32 / `fs-4xl` 40
+      （⚠️ **`fs-4xl` 40 已于第十九轮批次 C 移除** —— 它唯一的消费者是欢迎页 logo 的
+      `font-size`，S-5 把 logo 换成品牌 PNG 后尺寸改由 `Icons.SIZE_BRAND` 在代码里定，
+      留着就是摆设 → `TokenParityTest.everyTokenIsActuallyUsed` 会红。现在是 **8 档**。）
 - [x] `GenTokens` 生成字号令牌（暗色同值 —— 字号不随主题变）；令牌总数 60 → **80**
-- [x] `app.css` 全部字面量字号改走阶梯（**79 处声明、13 种 → 9 种**）
+- [x] `app.css` 全部字面量字号改走阶梯（**79 处声明、13 种 → 9 种**（现 8 种））
 - [x] **9px 全面废除**（`.adb-rail__dialect` / `.adb-tab__dirty` / `.adb-tab__close`）
 - [x] 10px 只允许留在**单字符徽标 / 角标**；状态栏 / 列类型行 / 功能栏文字 / 分组标题 **升到 11px**
 - [x] 删掉 **12.5px 孤例**
 - [x] 字体族统一 `-fx-font-family: "System"`（本来就是，已核对）
 - [x] 欢迎页大标题 60px → 40px；页面标题 18px → 16px；空状态图标 34px → 32px
 
-**门禁**：`AppCssAuditTest`（🆕）7 例 —— 字号必须落在 9 档阶梯上、无 10px 以下、
+**门禁**：`AppCssAuditTest`（🆕）7 例 —— 字号必须落在 8 档阶梯上（原 9 档，见上）、无 10px 以下、
 阶梯与 `tokens.json` 逐字一致。
 
 ### 13.2 U-B2 间距 + 圆角层 —— ✅ 已完成
@@ -1872,7 +1875,7 @@ java tools/TestCount.java
 | **S-2** ✅ **DONE (R19 批次 A)** | **C2 卡片视图去破折号**：`notes / 0行 · — / — · — / —`，220px 卡片 2/3 是标点 | `p6-tables-grid.png` | 🟢 低 | ✅ 新 `cardLine(...)` 只拼**非占位符**片段；整行全占位符则**不渲染这一行**（不留空占位）。注意 `rowsText()` 为「—」时不能拼成「— 行」（那就不是占位符了）。门禁：`TableListPageTest.cardViewOmitsPlaceholderLinesOnSqliteLikeData`（变异验证）+ MySQL 形态仍显示真值的反向门禁 |
 | **S-3** ✅ **DONE (R19 批次 B)** | **C5 对象树表节点可展开出列**：Navicat 每个表节点都有 `>`（裁图核对），AIDB 对象节点是叶子 | `SideBar.kindGroup()` 建的子 `TreeItem` 无 children | 🟠 中高 | ✅ **5 条新门禁，5 条全部做过变异验证**（MUTATION-1 去掉「没接回调就是叶子」→ `tableIsALeafUntilAColumnLoaderIsWired` 红；MUTATION-2 去掉「读过的不再读」闸 → `expandingATableReadsItsColumnsLazily` 红；MUTATION-3 失败后不摘「已尝试」标记 → `aFailedColumnReadIsSaidOutLoudAndCanBeRetried` 红；MUTATION-4 列的「复制名称」不放行 → `columnNodesCannotOpenDataButCanCopyTheirName` 红；MUTATION-5 重建树不认缓存 → `columnsSurviveATreeRebuild` 红，失败原文逐条记录）· 见 **§30** |
 | **S-4** | **列网格键盘导航**（Tab / 方向键在整张网格内移动 + 单元格编辑焦点） | §28.6 遗留；硬规则「一切键盘可达」；§28.10 已把**布尔三态一格**做成可键盘切换 | 🟡 中 | `NewTableDialogTest`：直接驱动抽出来的 `focusMove(...)` 纯方法（**沿用 §28.10 的教训：headless 下不靠 `fireEvent`**） |
-| **S-5** | **C7 欢迎页用 AIDB mark**：现在还是通用 `Icons.Icon.DATABASE`；品牌改造只注册了 OS 窗口图标 | `WorkspaceView:137`；全仓无 `ImageView(app-icon-*)` | 🟢 低 | 截图重拍 `p0-shell` + 断言欢迎页 logo 来源（PNG 或 `Icons.Icon.BRAND`） |
+| **S-5** ✅ **DONE (R19 批次 C)**（**但请看下面的 ⚠️**） | **C7 欢迎页用 AIDB mark**：现在还是通用 `Icons.Icon.DATABASE`；品牌改造只注册了 OS 窗口图标 | `WorkspaceView:137`；全仓无 `ImageView(app-icon-*)` | 🟢 低 | ✅ `WelcomeBrandTest`(3) 断言门面是品牌 PNG · **4 个变异全部验证通过**（含「坏 PNG」这一档）· ⚠️ **改完发现欢迎页当前不可达**（见 §31.2 / 新增 **S-7**）—— 所以这个改动**用户暂时看不到**，`p0-shell` 也拍不到它 |
 | **S-6** | **C3 详情面板挤压网格**：列头截成 `na… em… acti… sco…` | `p2-details.png`；`ObjectDetailsPanel.WIDTH_DEFAULT=300` | 🟡 中 | **先定方案**（覆盖式 vs 推挤式 vs 窄宽自动收起），定完再加布局断言 —— 没有裁定就不动手 |
 
 ### 29.2 P2 —— 排期内（来源清楚、收益中等）
@@ -1885,6 +1888,7 @@ java tools/TestCount.java
 | **连接档案路径回显** | `~/.agenticdb/connections.json` 路径展示 | §28.6 | 🟢 低 |
 | **C4 密度第四档** | 实测 AIDB 网格 **28px** vs Navicat **19px**；现有最紧档 24px 仍松 26% | `AIDB-UIUX-ANALYSIS.md` §10.1 | **先问产品再做**（可读性 vs 扫表效率的产品判断，不是工程判断） |
 | **V-5** 工具栏按宽度折叠 / **V-11** 弹窗宽度三档 | §19.3 | ⏸ **暂缓有理由**：1280 宽实测 12个图标放得下 |
+| **S-7** 🆕 **待裁定** | **欢迎页不可达**（2026-10-23 由要做 S-5 顺带挖出）：`AppShell` 构造器无条件 `openPermanent(object-home)` ⇒ `WorkspaceView.showWelcome()` 永远被盖掉 ⇒ 30 行欢迎页是**死代码**，S-5 的品牌改动用户看不到。三个出口：①**接** —— 新增矢量 `Icons.Icon.BRAND`（圆柱 + AI 星芒）换掉应用栏 26px 方块里的 `DATABASE`（⚠️ 不能上 PNG：`AppBarTest.theBrandMarkUsesTheVectorIconSystem` 明确要求矢量）②**删** —— 删掉 `showWelcome()` ③**留** —— 原样放着 | §31.2 | 🟢 低工量，**但属于产品判断**，先裁定再动手（§29.4 的规矩） |
 
 ### 29.3 P3 —— 结构性收尾
 
@@ -1909,7 +1913,7 @@ java tools/TestCount.java
 |---|---|---|
 | **A（先做，同一根因）** ✅ **DONE (R19)** | S-1 + S-2：清单类页面把「没有数据」渲染成标点的问题一次清掉 | ✅ 新门禁 6+3+2 条（`MetadataColumnsTest` / `TableListPageTest` / `ObjectHomePageTest`）**各做过变异**（改坏必红：MUTATION-1 强制 `hasAnyValue` 恒真 → 6 门禁红；MUTATION-2 让 `cardLine` 全渲染 → 卡片门禁红；MUTATION-3 空转 `ObjectHomePage.applyColumnVisibility` → 该页门禁红，失败原文逐条记录）+ **重拍 `p6-tables` / `p6-tables-grid` 并逐张核对** |
 | **B（交互补强）** ✅ **DONE (R19)** | S-3 树展开出列 | ✅ `SideBarTreeTest` **+5**（`tableIsALeafUntilAColumnLoaderIsWired` / `expandingATableReadsItsColumnsLazily` / `columnsSurviveATreeRebuild` / `columnNodesCannotOpenDataButCanCopyTheirName` / `aFailedColumnReadIsSaidOutLoudAndCanBeRetried`）+ 展开不触发多余查询的断言 · **5 条全部变异验证通过**（改坏必红、改回必绿）· 顺带修掉 `AppShellTest.openTable` 的**选错节点**隐患（`contains("users")` 会同时命中 `v_active_users` / `trg_users_audit`，命中触发器时压根不开页面，失败信息却像分页 bug）与**读旧标签标题**的偶发红（改为等标题真的变成目标名字） |
-| **C（品牌闭环）** | S-5 欢迎页 mark | 重拍 `p0-shell` |
+| **C（品牌闭环）** ✅ **DONE (R19)** | S-5 欢迎页 mark | ✅ `WelcomeBrandTest`(3) + 4 变异验证（C1 换回通用图标 / C2 关等比 / C3 指非图片 / C4 坏 PNG，失败原文逐条记录）· ⚠️ 截图只能证到 S-3（`p0-shell` 六节点带 `▶`）—— **欢迎页不可达，见 §31.2 与新增的 S-7** |
 | **D（a11y 硬规则）** | S-4 列网格键盘导航 | 沿用 §28.10 的「纯方法抽取」做法，不靠 `fireEvent` |
 | **E（需先裁定）** | S-6 详情面板布局 | 先出方案对比，再动手 |
 
@@ -1964,10 +1968,70 @@ java tools/TestCount.java
 
 ---
 
+## 31. 第十九轮批次 C：S-5 品牌闭环（2026-10-23）
+
+> 来源：§29.1 S-5 / §29.5 批次 C。原文是「欢迎页用 AIDB mark」——
+> **做完了才发现那页你现在根本看不到**，详见 §31.2。发现本身就是本轮最大的收获。
+
+### 31.1 落地
+
+| # | 改动 | 落点 |
+|---|---|---|
+| 1 | 欢迎页 logo 从通用矢量圆柱 `Icons.Icon.DATABASE` 换成**品牌 PNG**（`app-icon-128.png`，40px） | `WorkspaceView.brandMark()` |
+| 2 | **缺图不静默降级**：找不到资源就抛 `IllegalStateException` 说清缺的是哪个文件 —— 第十八轮数过五个「失败被设计成静默降级」的坑，这里是同一个坑的又一个入口 | `WorkspaceView.brandMark()` |
+| 3 | `app.css` 清掉对图像没意义的 `-fx-text-fill` / `-fx-font-size` 并写明原因 | `.adb-welcome__logo` |
+| 4 | ⚠️ **连带**：`fs-4xl`（40px）唯一的消费者就是上面那条 `-fx-font-size` → 令牌变摆设 → `TokenParityTest.everyTokenIsActuallyUsed` 红。按项目规则**删令牌**，不是把无用样式塞回去：tokens.json 97→**96**（59 色 / 34 尺寸 / 3 时长），`GenTokens` 重生成，`AppCssAuditTest.FONT_SIZES` 同步删档（9 档 → **8 档**），四份规格文档同步 | `tokens.json` / `Tokens.java` / `AppCssAuditTest` / `UI-VISUAL-SPEC` / `UI-ROADMAP` / `UI-GUIDE` / `AIDB-UIUX-ANALYSIS` |
+
+### 31.2 ⭐ 本轮真正的发现：欢迎页是一条**不可达**的路径
+
+改完欢迎页想去截图验收，才发现 `p0-shell.png` 拍的一直是「对象」首页 —— 欢迎页从来没露过面。
+查下去是这样：
+
+| 事实 | 证据 |
+|---|---|
+| `AppShell` 构造器**无条件**执行 `tabBar.openPermanent(object-home)`（X7「恢复后落回对象首页」） | `AppShell:246` |
+| `WorkspaceView` 构造器里那次 `showWelcome()` 随即被对象首页盖掉 | `WorkspaceView:108` |
+| 唯一的另一个调用点是「最后一个标签关闭时」，且有 permanent 标签时**优先回 permanent** | `AppShell:2073-2080` |
+| ⇒ permanent 标签永远存在 ⇒ **`showWelcome()` 永远不会被用户看到** | — |
+
+所以：**「欢迎页用 AIDB mark」这件事用户看不到**。按 §12.1「要么接要么删」的原则，这是欠账，
+但本轮不越权替产品做决定 —— 记成 **S-7（待裁定）**，三个选项见 §29.2 末尾：
+
+| 选项 | 代价 | 备注 |
+|---|---|---|
+| **A 接：给品牌找一个用户真看得见的落点** —— 比如应用栏那个 26px 圆角方块里的 `Icons.Icon.DATABASE` 换成 `Icons.Icon.BRAND`（圆柱 + AI 星芒，**矢量**，随主题换色） | 🟡 需要新增 `Icons.Icon.BRAND` 的路径数据 | ⚠️ 不能直接用 PNG 顶替：`AppBarTest.theBrandMarkUsesTheVectorIconSystem` 明确要求**矢量、不用位图**（这是有意的既有决定，不是随手写的门禁） |
+| **B 删：删掉 `showWelcome()`** | 🟢 顺带消掉 30 行死代码 | 对象首页已经是启动落点，欢迎页没地方退回来 |
+| **C 留：先原样放着** | 🟢 零改动 | 保持现状，等哪天真要「无连接时的引导页」再说 |
+
+> 📌 本轮**不做**应用栏替换：那会推翻一个带门禁的既有设计决定，属于产品判断，先问再做
+> （§29.4 的一贯做法）。
+
+### 31.3 门禁与变异验证
+
+`WelcomeBrandTest`（新建，**3 例**）：①欢迎页那张图是品牌 PNG（`ImageView` + `app-icon-*`）而不是
+`SVGPath` 通用图标 ②资源在 classpath 上 ③按 `Icons.SIZE_BRAND` 定成正方且等比。
+
+| 变异 | 红的用例 | 实测失败原文 |
+|---|---|---|
+| C1：换回通用圆柱 `Icons.Icon.DATABASE` | `welcomePageShowsTheBrandMarkNotAGenericDatabaseIcon` | `:51 [门面要用品牌 PNG —— 通用矢量圆柱（SVGPath）看一眼认不出这是 AIDB]` |
+| C2：`setPreserveRatio(false)` | `theBrandMarkIsSquareAtTheBrandSize` | `:86 [品牌 mark 是方的 —— 关掉等比会被拉变形]` |
+| C3：指着非图片资源 | `welcomePageShowsTheBrandMarkNotAGenericDatabaseIcon` | `:60 [用的是品牌 PNG，不是随便一张图]` |
+| C4：指着一个**坏掉的** PNG | `welcomePageShowsTheBrandMarkNotAGenericDatabaseIcon` | `:64 [品牌 PNG 解码失败（文件在，但是坏的）—— 界面上只是一块空白]` |
+
+> C4 是特意补的：只断言「URL 对」「资源存在」抓不到「文件在但是坏的」——
+> JavaFX 那时不报错，界面上只是一块空白，和第十八轮那五个坑同一个形状。
+
+**截图**：`p0-shell.png` 已重拍，但**拍不到**改动（§31.2）。图确实变了 ——
+变的是 S-3 的树：六对象节点（notes/orders/products/users/v_active_users/trg_users_audit）
+现在每个左边都有 `▶`，与 Navicat 一致；这条是这次唯一能用图证实的改动。
+
+---
+
 ## 23. 变更记录
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-23 | **第十九轮·批次 C** | **⭐ S-5 品牌闭环**（§31）：欢迎页 logo 从通用矢量圆柱换成**品牌 PNG**（`app-icon-128.png` @ `Icons.SIZE_BRAND`），**缺图抛异常而不是静默换回通用图标**（第十八轮那五个「失败被设计成静默降级」的坑，同名）· **连带**：`fs-4xl`（40px）唯一的消费者就是那条 `-fx-font-size` → 令牌变摆设 → `TokenParityTest` 红 → 按项目规则**删令牌**：tokens.json **97→96**，并重生成 `Tokens.java` + 同步 `AppCssAuditTest`（字号 **9→8 档**）与四份规格文档 · 新门禁 `WelcomeBrandTest`(3)，**4 个变异全部验证**（C1 换回通用图标 / C2 关等比 / C3 指非图片 / C4 **坏 PNG** —— 这档是特意补的：文件在但坏了时 JavaFX 不报错，界面只是一块空白）· ⭐ **本轮真正的发现**：**欢迎页是一条不可达路径**（`AppShell:246` 无条件 `openPermanent(object-home)` ⇒ `showWelcome()` 永远被盖掉）→ S-5 的改动**用户暂时看不到**，`p0-shell` 也拍不到它 → 记成 **S-7 待裁定**（接 / 删 / 留三选项写在 §29.2 末），本轮不越权改应用栏（那会推翻 `AppBarTest` 守着的「品牌标识必须矢量」既有决定）· `p0-shell.png` 已重拍，图上能证实的是 S-3（六对象节点每个都带 `▶`） |
 | 2026-10-23 | **第十九轮·批次 B** | **⭐ S-3 对象树表节点可展开出列**（§30）：表 / 视图节点接上「读列回调」后挂占位子节点（JavaFX 只在有子节点时才画箭头），**展开才读列**（懒加载 + 缓存去重，几千张表的库不会一上来就查爆）· `AppShell.loadColumnsFor` 走数据库执行器 + `Platform.runLater` 回填，`setColumns` **就地换节点不重建整棵树**（不丢展开态 / 选中态）· **重新内省后作废列缓存**（表刚被 ALTER 过，旧列比没有列更糟）· **空清单 = 读失败**，换成「列读取失败（展开重试）」并摘掉「已尝试」标记以便重试，不静默降级成叶子 · 列不是对象：右键只留「复制名称」，打开数据 / 结构 / 复制 SELECT / 收藏一律灰掉，且不进对象计数 · **顺带修 `AppShellTest.openTable` 两个隐患**：`contains("users")` 会同时命中 `v_active_users` / `trg_users_audit`（命中触发器时压根不开页面，报错却像分页 bug）→ 改按 `name=xxx,` 整字段 + 只认表/视图；双击后立刻断言标题会偶发读到**上一个标签** → 改成等标题真的变成目标名字（超时抛 `AssertionError` 说清双击了谁）· **5 条新门禁全部做过变异验证**（MUTATION-1…5 各红一条、失败原文逐条记录，改回必绿）· 门禁 **736 条 / 92 类 / 0 失败**（`adb-ui-shell` 299→**304** +5；44 跳过为环境门控 —— 本机 Docker 不可用）· ⚠️ 本机默认 JDK 是 11，**JDK 25 只有 IntelliJ 自带那份**（`JAVA_HOME=/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home`） |
 | 2026-10-23 | **第十九轮** | **⭐ §29 批次 A：清单类页面「没有数据」不再渲染成标点**（S-1 方言感知列 + S-2 卡片去破折号，同一根因）：新增共享纯助手 `MetadataColumns`（`isPlaceholder` / `hasAnyValue`）——**判定「看数据不看方言」**，只有**每一行都渲染成占位符**时整列隐藏，有一行有真值就留着（混合场景：MySQL 表有引擎、视图没有 → 引擎列保留），核心列「名称/行/类型」永不隐藏；判定基于**整批已加载 `rows`**（不是 `filtered`），故搜索不会让列凭空出现/消失 · `TableListPage` 6 个可选列留引用 + `applyColumnVisibility()`，`ObjectHomePage` 同规则复用（无需给页面塞 `Dialect`，避免动构造器与一堆测试）· **S-2**：新 `cardLine(...)` 只拼非占位符片段，整行全占位符则**不渲染这一行**（并修掉「`rowsText()` 为「—」会拼成「— 行」就不算占位符了」的坑）· **14 条新门禁全部做过变异验证**（MUTATION-1 强制 `hasAnyValue` 恒真 → 6 门禁红；MUTATION-2 让 `cardLine` 全渲染 → 卡片门禁红；MUTATION-3 空转 `ObjectHomePage.applyColumnVisibility` → 该页门禁红，失败原文逐条记录）· **4 张截图重拍并逐张核对**：表清单 8→**2 列**、对象首页 9→**3 列**、卡片只剩「图标+名字+N 行」· 门禁 **731 条 / 92 类 / 0 失败**（`adb-ui-shell` 285→**299** +14 = `MetadataColumnsTest`6 + `TableListPageTest`6 + `ObjectHomePageTest`2；测试类 91→**92** +1 = `MetadataColumnsTest`；44 跳过全为环境门控） |
 | 2026-10-23 | **第十八轮** | **⭐ 把截图当证据的第二轮 Navicat 对标**（§28.11）+ **合并待办 §29**：12 张实拍 + 4 张 Navicat 参考**逐张并排核对**（不再「对着规格想」），只记录图上能直接证伪的东西 → **6 个真缺陷**：①`p5-connections` 拍的是对象总览（`shots.sh` 点了个已被重构删掉的 id，`ScreenshotSession` 找不到节点**只打 stderr 就照常截图**）②「每页」下拉**永远空框**（`select(int index)` vs `select(Integer)` 重载决议选错，`javap -c` 实锤，**既有测试还写了绕过它的断言**）+ **返工续集**：修完选中后截图放大看仍是「2…」（逐像素量出右侧还剩 23px 空白，是 ComboBox 按钮单元格吃宽度）→ `prefWidth` 78→**96**，两门禁各补 `prefWidth>=90` 渲染底线③只读 SQL 预览教用户「⌘↵ 执行」④`App` 要的 `app-icon-512.png` **从未生成**（`if (url != null)` 静默跳过）⑤状态栏悬空「— ms」⑥查询页跳页框「三无」空白框 · **五个同根：失败被设计成静默降级** → 新增**两个静态审计门禁**（`ScreenshotScriptAuditTest` 校验脚本点击目标 / `AppIconResourceAuditTest` 校验图标资源名）· **7 条新门禁全部做过变异验证**（改坏必红、改回必绿，失败原文逐条记录）· **逐像素实测**：AIDB 网格 **28px** vs Navicat **19px**（侧栏树 24 vs 22 持平）· 勘误：§28.6 的 §6.1/§6.2/§13.3 是**悬空引用**（grep 全 `docs/` 无对应小节）→ 改按条目名记录；§21.1 的 **X3 早已完成**（第十轮 V-3）· 门禁 **717 条 / 91 类 / 0 失败**（`adb-ui-shell` 278→**285** +7 逐条对得上；44 跳过全为环境门控） |

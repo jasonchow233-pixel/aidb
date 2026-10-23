@@ -12,7 +12,7 @@
 ## 当前状态（2026-10-22）
 
 **P0–P4 已完成、P5/P6 进行中、界面专项 U-B1–U-B7 已落地。**
-门禁 **736 条 / 92 类 / 0 失败**（2026-10-23 · 第十九轮批次 B 实测；另有 44 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
+门禁 **739 条 / 93 类 / 0 失败**（2026-10-23 · 第十九轮批次 C 实测；另有 44 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
 
 > **第八轮之后**：D2+D4（MySQL/PG 列注释读回）已修；B5-S1（索引可编辑）已落地；
 > **T1–T4（建表 / 清空 / 重命名 / 删表）已落地**（T1=弹窗，按形态裁定）；9 张验收截图完成。
@@ -96,7 +96,7 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**736 条 / 92 类 / 0 失败**（2026-10-23 · 第十九轮批次 B 实测；`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
+当前门禁：**739 条 / 93 类 / 0 失败**（2026-10-23 · 第十九轮批次 C 实测；`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
 
 > ⚠️ **本机环境**：`java` 默认指向 **JDK 11**，门禁起不来。可用的 JDK 25 是 IntelliJ 自带那份：
 > `export JAVA_HOME="/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home"`。
@@ -187,7 +187,7 @@ TestFX 默认用 Monocle 无头模式；在本机想看真实窗口，去掉父 
 | **`docs/NAVICAT-GAP.md`** | ⭐ **对标分析**：与 Navicat 逐域对比，列出功能/交互/按钮/弹窗/图标/架构的差距与优先级；含**逐文件复核发现的 16 处文档失真** |
 | `docs/ARCHITECTURE.md` | 模块、数据流、线程模型、编辑/SQL/撤销不变量、结构页与连接层模型 |
 | `docs/UI-GUIDE.md` | 视觉基线、五区、组件与交互规则、令牌生成、图标约定、弹窗规范 |
-| **`docs/UI-VISUAL-SPEC.md`** | ⭐ **可照着实现的 UI 规格书**：9 档字号落到哪个角色 · 97 个令牌语义 · 42 图标清单 · 间距/圆角/固定尺寸 · 五区与四种页面骨架 · 组件规格 · 弹窗骨架与按钮区规则 · 交互态矩阵 · 键盘表 · 文案措辞 |
+| **`docs/UI-VISUAL-SPEC.md`** | ⭐ **可照着实现的 UI 规格书**：8 档字号落到哪个角色 · 96 个令牌语义 · 42 图标清单 · 间距/圆角/固定尺寸 · 五区与四种页面骨架 · 组件规格 · 弹窗骨架与按钮区规则 · 交互态矩阵 · 键盘表 · 文案措辞 |
 | **`docs/NAVICAT-PARITY-2026-10-V5.md`** | ⭐ **Navicat 对齐报告 V5**（2026-10-22）：8 个维度逐像素对照 · 已落地 13 项改动 · 4 处刻意不追 · P0/P1/P2 剩余清单 · 等比例并排图说明 |
 | **`docs/UI-COMPARISON-2026-10.md`** | 与 Navicat 的像素级对拍（**上一版**，并排图存在缩放不一致；最新结论以 `NAVICAT-PARITY-2026-10-V5.md` 为准） |
 | **`docs/UI-ROADMAP.md`** | ⭐ **界面专项**：实测 11 个界面问题（字号 / 间距 / 圆角 / 焦点环 / 按钮层级 / 图标 / 密度 / 列头 / 连接列表）+ 6 个批次计划 + 排版 / 间距 / 圆角 / 配色 / 交互规范 |
@@ -242,7 +242,7 @@ bootstrap/
 
 ## 工程约束
 
-1. **设计令牌唯一真相**：`ui/adb-ui-core/src/main/resources/tokens/tokens.json`（97 个：59 颜色 / 35 尺寸 / 3 时长）。
+1. **设计令牌唯一真相**：`ui/adb-ui-core/src/main/resources/tokens/tokens.json`（96 个：59 颜色 / 34 尺寸 / 3 时长）。
    改完运行 `java tools/GenTokens.java` 重新生成 `Tokens.java` 与 `theme-dark/light.css`。
 2. **业务代码禁止颜色字面量**：只能引用 `-adb-*` looked-up colors。
    `TokenParityTest` 会扫描 `app.css`，出现 `#rrggbb` / `rgba(...)` 直接失败。
@@ -262,7 +262,9 @@ bootstrap/
 
 - 危险分级**第三层（驱动侧复查）仍不存在**：`DbSession.execute(sql)` 没有 `danger`
   参数。前两层（fail-closed 分类 + UI 确认）已落地。→ §10 A6
-- 设计令牌已收敛到 97 个且全部被用到；`TokenParityTest` 门禁守着不会再长回摆设。
+- 设计令牌已收敛到 96 个且全部被用到；`TokenParityTest` 门禁守着不会再长回摆设
+  （40px 字号档 `fs-4xl` 于 2026-10-23 移除 —— 唯一消费者是欢迎页 logo 的 `font-size`，
+  S-5 换成品牌 PNG 后尺寸改由 `Icons.SIZE_BRAND` 在代码里定）。
 - 保存反向撤销对“无主键/主键为空的新增行”不完整；UI 会明确提示。
 - 反向撤销只覆盖最近一次保存；发生新编辑后不再提供。
 - 转置视图只读，不参与批量选择。
@@ -290,6 +292,6 @@ bootstrap/
 - **MySQL 5.7.44 真库已联调**（9 例）；**PostgreSQL 仍缺测试库**（未配置，跳过）。
 - `core/adb-declarations` 声明层目前只做**声明校验 + 白名单门禁**，尚未驱动运行时。
 - 主题“跟随系统”目前只探测 macOS；Windows/Linux 默认亮色。
-- 令牌体系 97 个全部被用到；密度档位已覆盖数据网格 / 查询结果 / 对象清单 / 结构页。
+- 令牌体系 96 个全部被用到；密度档位已覆盖数据网格 / 查询结果 / 对象清单 / 结构页。
 - `docs/screenshots/` 的 9 张图已按当前代码重拍。
 - 首版不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务。

@@ -10,7 +10,7 @@ import java.util.List;
  */
 public final class Tokens {
 
-    public static final int COUNT = 97;
+    public static final int COUNT = 96;
 
     /** bg-canvas (color) */
     public static final String BG_CANVAS_DARK = "#0F172A";
@@ -292,10 +292,6 @@ public final class Tokens {
     public static final int FS_3XL_DARK = 32;
     public static final int FS_3XL_LIGHT = 32;
 
-    /** fs-4xl (size) */
-    public static final int FS_4XL_DARK = 40;
-    public static final int FS_4XL_LIGHT = 40;
-
     /** sp-1 (size) */
     public static final int SP_1_DARK = 2;
     public static final int SP_1_LIGHT = 2;
@@ -412,12 +408,11 @@ public final class Tokens {
             "syn-error", "h-appbar", "h-toolbar", "h-tabbar", "h-statusbar", "h-input",
             "h-button", "w-sidebar-min", "w-sidebar", "w-sidebar-max", "w-sidebar-collapsed", "row-compact",
             "row-normal", "row-comfort", "fs-2xs", "fs-xs", "fs-sm", "fs-md",
-            "fs-lg", "fs-xl", "fs-2xl", "fs-3xl", "fs-4xl", "sp-1",
-            "sp-2", "sp-3", "sp-4", "sp-5", "sp-6", "sp-7",
-            "r-sm", "r-md", "r-lg", "r-xl", "r-full", "dur-toast",
-            "dur-toast-action", "dur-toast-result", "kind-table", "kind-view", "kind-function", "kind-trigger",
-            "kind-procedure", "overlay", "shadow-1", "shadow-2", "kind-index", "kind-event",
-            "row-tree"
+            "fs-lg", "fs-xl", "fs-2xl", "fs-3xl", "sp-1", "sp-2",
+            "sp-3", "sp-4", "sp-5", "sp-6", "sp-7", "r-sm",
+            "r-md", "r-lg", "r-xl", "r-full", "dur-toast", "dur-toast-action",
+            "dur-toast-result", "kind-table", "kind-view", "kind-function", "kind-trigger", "kind-procedure",
+            "overlay", "shadow-1", "shadow-2", "kind-index", "kind-event", "row-tree"
     );
 
     private Tokens() { }

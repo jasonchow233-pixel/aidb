@@ -55,7 +55,7 @@
 > ⚠️ **等宽字体的边界**：只给「需要按位对齐 / 需要看原始内容」的地方用。
 > 表格正文、按钮、菜单一律用界面字体 —— 全表格等宽会让「表名 + 说明」这类中文文案显得稀疏。
 
-### 2.2 9 档字号阶梯（唯一真相：`tokens.json` 的 `fs-*`）
+### 2.2 8 档字号阶梯（唯一真相：`tokens.json` 的 `fs-*`）
 
 | 令牌 | 值 | 允许出现的场景 | 禁止 |
 |---|---|---|---|
@@ -67,7 +67,11 @@
 | `fs-xl` | 16px | 应用名、对象标题、空状态标题 | — |
 | `fs-2xl` | 20px | 页面标题（对象名 / 页面名） | — |
 | `fs-3xl` | 32px | 空状态图标尺寸（配合 `fs-2xl` 标题） | — |
-| `fs-4xl` | 40px | 欢迎页 logo | — |
+
+> ⚠️ **40px（`fs-4xl`）已于 2026-10-23 移除**（第十九轮批次 C · S-5）：它唯一的用处是
+> 欢迎页 logo 的 `-fx-font-size`，而 S-5 把 logo 换成了**品牌 PNG** —— 尺寸改由
+> `Icons.SIZE_BRAND` 在代码里定（与全应用图标尺寸同一套），字号阶梯里不再留一个
+> 没有文字会用到的档（`TokenParityTest.everyTokenIsActuallyUsed` 会红）。
 
 > ⭐ 2026-10 重构：界面基准 **13px**；**清单页（对象 / 表清单）用 12px**，
 > 因为这两页是「扫读表名」而不是「逐格读数据」。12px 是 Navicat 的运维密度；
@@ -776,7 +780,7 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 | 门禁 | 断言 |
 |---|---|
 | `TokenParityTest` | 令牌键一致 / 亮暗一致 / CSS 无颜色字面量 / **每个令牌都被用到**（不许摆设） |
-| `AppCssAuditTest` | CSS 内无字面量字号·padding·radius；字号 9 档、圆角 3 档、间距 7 档；`9px` 0 次 |
+| `AppCssAuditTest` | CSS 内无字面量字号·padding·radius；字号 8 档、圆角 3 档、间距 7 档；`9px` 0 次 |
 | `FocusRingAuditTest` | 每个可聚焦组件类都有 `:focused`；`-fx-opacity` 只 1 处；禁用态抵消 Modena 透明度 |
 | `DensityCoverageTest` | 密度同时改 4 张表的行高 |
 | `IconAuditTest` | 图标控件同时有 Tooltip + accessible text；符号语义唯一 |
