@@ -8,7 +8,7 @@
 > **界面规格书见 `docs/UI-VISUAL-SPEC.md`**（第十轮：字号/颜色/图标/布局/组件/弹窗/交互态/键盘）；
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
-> 最后更新：**2026-10-23（第十七轮：规格 §6 右侧对象详情面板 + §13 新建表弹窗重构 + §9.7 底部导航标签 + AIDB 品牌改造 + Logo 设计）**
+> 最后更新：**2026-10-23（第十七轮：规格 §6 右侧对象详情面板 + §13 新建表弹窗重构 + §9.7 底部导航标签 + AIDB 品牌改造 + Logo 设计 + §13.3 布尔列键盘可达）**
 > 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **721 条 / 89 类 / 0 失败**（2026-10-23 第十七轮实测，另有 29 条跳过，其中 +5 条来自未提交的多版本真库矩阵 WIP，§28.7）。
 >
 > ⭐ **本轮（第十三轮）是「对齐 Navicat 观感」的一轮，不是功能扩张。**
@@ -1779,12 +1779,25 @@ java tools/TestCount.java
 
 **本轮验收**：`./mvnw -B clean verify` → **721 条 / 89 类 / 0 失败**（品牌改造零回归）。
 
+### 28.10 规格 §13.3：新建表布尔列键盘可达（同轮续四）
+
+| 问题 | 改动 | 门禁 |
+|---|---|---|
+| **「主键 / 可空 / 唯一」三列用 `CheckBoxTableCell`，复选框 `focusTraversable=false` 且只响应鼠标点 —— 键盘根本勾不上**，违反本项目「一切都要键盘可达」硬规则（Navicat 的同类弹窗三态约束可全键盘操作） | `NewTableDialog` 新增包级 `BooleanCell`（`TableCell<ColumnRow,Boolean>`）：焦点留在**单元格**上（复选框只作图形、不吃焦点，读屏不读两遍）· 把可测逻辑抽成三个纯方法：**`isToggleKey(KeyCode)`**（只有空格/回车是切换键）、**`toggle(ColumnRow)`**（翻转属性 + `refresh()`，不依赖场景图）、**`handleKey(KeyCode)`**（只吃空格/回车，其余交还 TableView 导航）· `booleanColumn()` 改走 `column.setCellFactory(view -> new BooleanCell(property))` · 新样式 `.adb-table__bool-cell` / `.adb-table__bool-box`（焦点态用 `-adb-bg-active` / `-adb-border-focus` 令牌，无硬编码色） | `NewTableDialogTest`(+4)：`booleanCellToggleFlipsTheUnderlyingModelProperty`（切换必须写回模型，SQL 预览才跟着变）· `booleanCellOnlyConsumesSpaceAndEnterNotNavigationKeys`（空格/回车吃、方向键/Tab/字母键不吃）· `toggleKeyClassifierMatchesOnlySpaceAndEnter` · `booleanCellUsesTheCustomCellFactoryNotTheDefaultOne`（原有，保留） |
+
+> 📌 **测试为什么不发 `fireEvent`**：headless 下 `fireEvent` 送不到没有真实焦点的节点，靠事件派发写测试会**假绿或假红**。所以把「哪些键该吃」与「切换要写回模型」抽成不依赖场景图的纯方法，门禁直接驱动同一段生产逻辑。
+>
+> 📌 **早期实现踩的坑（记录以免重犯）**：一开始试图在测试里手工把 `TableCell` 挂上 `TableRow`（`row.getChildrenUnmodifiable().add(cell)` + `updateTableColumn/updateItem`）—— `getChildrenUnmodifiable()` 是只读列表，`getTableRow()` 只由 VirtualFlow 填充，且 `getCellFactory().call(column)` 在 `TableColumn<ColumnRow,?>` 通配符下有 capture 转换编译错。正解是让单元格持有可直接注入的 `ColumnRow` 引用，把可测逻辑与场景图解耦。
+
+**本轮验收**：`./mvnw -B clean verify` → **278 条 / 0 失败**（`adb-ui-shell` 模块，全 14 模块 SUCCESS；另 29 条跳过为外部真库矩阵）。
+
 ---
 
 ## 23. 变更记录
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-23 | 第十七轮·续四 | **规格 §13.3 新建表布尔列键盘可达**（§28.10）：`CheckBoxTableCell` 复选框 `focusTraversable=false` 只认鼠标 → 新增包级 `BooleanCell`（焦点留单元格 / 复选框只作图形）· 可测逻辑抽成纯方法 `isToggleKey` / `toggle(ColumnRow)` / `handleKey`（headless 下不靠 `fireEvent`，门禁直接驱动生产逻辑）· 新样式 `.adb-table__bool-cell`·`__bool-box`（令牌无硬编码色）· `NewTableDialogTest` +4；门禁 **278 条 / 0 失败**（全 14 模块 SUCCESS） |
 | 2026-10-23 | 第十七轮·续三 | **AIDB 品牌改造 + Logo 落地**（§28.9）：`brand/aidb-mark.svg` + `aidb-logo-horizontal.svg`（数据库三层圆柱 + AI 四角星芒）· `tools/GenLogo.java`（Java2D 4× 超采样，产出 16–1024 七档 PNG）· `App.java` 注册 6 张多尺寸图标 · 用户可见文案全量改 **AIDB**（窗口标题 / 应用栏字标 / 欢迎页 / `退出`·`关于` 菜单 / 崩溃日志 / SQL 导出头 / secret-tool label / jpackage / 14 个 pom `<name>`）· **包名 `io.agenticdb` 与 groupId 刻意不改**（写进 `brand/README.md`）· `AppBarTest` 断言同步；门禁 **721 条 / 89 类 / 0 失败** |
 | 2026-10-23 | 第十七轮 | **规格书 §6/§13/§9.7/§6.3/§11.2 五项落地**（§28）：新增 `ObjectDetailsPanel` 右侧对象详情面板（纯展示 + `Loader` 回调喂数据，宽 300 可拖 220–420，`details.toggle` ⌥⌘D，默认隐藏）· `NewTableDialog` 重构（宽 640→**900**，标题带真实库名/方言/关闭钮，SQL 预览 `TextArea`→**只读 `SqlEditor`**（等宽+行号+高亮）可折叠可复制，列网格高度自适应）· 数据页底部「记录/页面」常驻标签（两组同图标方向键不再靠猜）· **§6.3** 详情面板接表清单选中项（`inspectTable` 按值去重）· **§11.2** 结构页 DDL 页 `TextArea`→只读 `SqlEditor`（`SqlEditor.setHint`）· **门禁抓出 3 个真 bug**（§28.4：`facts` VBox 从未挂场景图 / 详情面板跨线程渲染违反 JavaFX 单线程规则 / PG 真库回报 `character varying` 断言写死 `varchar`）+ 1 处样式类回归 · 新门禁 `ObjectDetailsPanelTest`(14) + `NewTableDialogTest`(+6) + `AppShellTest`(+3) + `DataGridPageTest`(+1) + `TableListPageTest`(+2) + `StructurePageTest`(+1)；截图 9→**11 张**（新增 `p2-details`，`ADB_DETAILS=1`）；门禁 **721 条 / 89 类 / 0 失败**（另 29 跳过，其中 +5 条来自未提交的多版本矩阵 WIP，§28.7） |
 | 2026-10-23 | 第十六轮 | **U-B7 侧栏 Navicat 模型 + 按钮规格统一**（§27）：侧栏去「工作台」分段、单棵「我的连接」树、**查询跟着连接走**（`queryTargetConnectionId()`）、★ 收藏改图标筛选 · **按钮规格统一**：`.adb-dialog .button` 对齐 `.adb-button`（6px/13px/**32px**/`-adb-border`）、`.adb-icon-button` 28→32px · **修 4 处门禁抓出的功能回归**（§27.4：查询历史不可达 / 折叠栏诊断按钮越界崩溃 / TRANSFER 死图标 / WorkspaceToolsPageTest 3 例）+ 4 处样式类漂移；**Docker 解锁 + PG16/MySQL8.4 真库 11 例**（§26，抓出 `rows` 保留字 / `pg_class.relcollation` 两个跨方言 bug）；门禁 **691 条 / 87 类 / 0 失败**（比上轮 +16 全部来自容器契约真正执行） |

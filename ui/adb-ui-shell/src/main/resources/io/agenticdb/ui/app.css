@@ -3044,6 +3044,30 @@
     -fx-padding: 4px 8px;
 }
 
+/* ── 新建表：可键盘操作的布尔单元格 ─────────────────────────────────
+ * CheckBoxTableCell 的复选框默认 focusTraversable=false 且只响应鼠标点，
+ * 「主键 / 可空 / 唯一」三列用键盘勾不上（违反 UI 硬规则「一切键盘可达」）。
+ * 自定义单元格把焦点留在单元格上，复选框只是图形，所以两者都不需要额外视觉。
+ * ─────────────────────────────────────────────────────────────────── */
+
+.adb-table__bool-cell {
+    -fx-alignment: center;
+    -fx-padding: 0px 8px;
+}
+
+.adb-table__bool-cell:focused {
+    -fx-background-color: -adb-bg-active;
+}
+
+.adb-table__bool-cell:focused:focused {
+    -fx-border-color: -adb-border-focus;
+    -fx-border-width: 0 0 0 2px;
+}
+
+.adb-table__bool-box {
+    -fx-background-color: transparent;
+}
+
 /* ── 底部两组方向键的常驻标签 ─────────────────────────────────────────
  * 实测问题（2026-10-23 截图复查）：数据页底部同时有「翻行」与「翻页」
  * 两组 ◀◀ ◀ ▶ ▶▶，图标完全一样。工具提示只在悬停时出现，而这两组

@@ -20,11 +20,11 @@ import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
-import javafx.scene.control.cell.CheckBoxTableCell;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -61,6 +61,8 @@ final class NewTableDialog {
     private boolean sqlPreviewVisible = true;
     private final Label error = new Label();
     private final ObservableList<ColumnRow> rows = FXCollections.observableArrayList();
+    /** 列网格的强引用 —— 门禁要直接驱动它的布尔单元格验证键盘可达。 */
+    private TableView<ColumnRow> columnsTable;
 
     private NewTableDialog(DbSession session, List<String> existingTables) {
         this.session = session;
@@ -113,6 +115,7 @@ final class NewTableDialog {
 
         TableView<ColumnRow> table = buildColumnsTable();
         table.setId("new-table-columns");
+        this.columnsTable = table;
         // ⚠️ TableView 的默认首选高度很大（400+）—— 弹窗会被撑到比屏幕还高，
         //    底部的「创建 / 取消」跑到屏幕外，用户点不到。固定行高 + 限高。
         table.setFixedCellSize(30);
@@ -332,9 +335,109 @@ final class NewTableDialog {
         TableColumn<ColumnRow, Boolean> column = new TableColumn<>(title);
         column.setPrefWidth(width);
         column.setCellValueFactory(cell -> property.apply(cell.getValue()));
-        column.setCellFactory(CheckBoxTableCell.forTableColumn(column));
+        // ⭐ 规格 §13.3 / UI 硬规则「一切都要键盘可达」：
+        //    CheckBoxTableCell 的复选框默认 focusTraversable=false 且只响应鼠标点 ——
+        //    「主键 / 可空 / 唯一」三列用键盘根本勾不上。这里自己做单元格工厂：
+        //    空格切换、Enter 切换、Tab 移到下一列（与文本列同一套节奏）。
+        column.setCellFactory(view -> new BooleanCell(property));
         column.setEditable(true);
         return column;
+    }
+
+    /**
+     * 可键盘操作的布尔单元格。
+     *
+     * <p>与 {@code CheckBoxTableCell} 的差别只有一件事：**空格 / 回车能切换**。
+     * 焦点留在单元格上（复选框本身不吃焦点），读屏软件不会读两遍；
+     * 样式类只用既有的 {@code adb-table__bool-cell}，不新增视觉。
+     */
+    static final class BooleanCell extends TableCell<ColumnRow, Boolean> {
+
+        private final javafx.scene.control.CheckBox box = new javafx.scene.control.CheckBox();
+        private final java.util.function.Function<ColumnRow, BooleanProperty> property;
+        /** 防止「把模型值同步进复选框」被当成用户点击，形成回环。 */
+        private boolean syncing;
+
+        BooleanCell(java.util.function.Function<ColumnRow, BooleanProperty> property) {
+            this.property = property;
+            getStyleClass().add("adb-table__bool-cell");
+            box.setFocusTraversable(false);
+            box.getStyleClass().add("adb-table__bool-box");
+            setContentDisplay(javafx.scene.control.ContentDisplay.GRAPHIC_ONLY);
+            setAlignment(javafx.geometry.Pos.CENTER);
+
+            box.selectedProperty().addListener((observable, was, now) -> {
+                ColumnRow row = currentRow();
+                if (syncing || row == null) {
+                    return;
+                }
+                // 用户点的：写回模型，SQL 预览立刻跟着变。
+                property.apply(row).set(now);
+            });
+
+            // 键盘：空格 / 回车切换 —— 这是本单元格存在的全部理由。
+            //    逻辑抽进 handleKey()/isToggleKey()，门禁可直接驱动（headless 下
+            //    fireEvent 送不到没有真实焦点的节点，靠事件派发写测试会假绿或假红）。
+            setOnKeyPressed(event -> {
+                if (handleKey(event.getCode())) {
+                    event.consume();
+                }
+            });
+        }
+
+        /** 当前绑定的数据行；单元格未上屏（无 TableRow）时为 null。 */
+        private ColumnRow currentRow() {
+            return getTableRow() == null ? null : getTableRow().getItem();
+        }
+
+        /**
+         * 这个键是不是「切换」键（空格 / 回车）。
+         *
+         * <p>方向键、Tab、字母键一律不是 —— 它们必须留给 TableView 的导航。
+         */
+        static boolean isToggleKey(javafx.scene.input.KeyCode code) {
+            return code == javafx.scene.input.KeyCode.SPACE
+                    || code == javafx.scene.input.KeyCode.ENTER;
+        }
+
+        /**
+         * 处理一个按键；返回 {@code true} 表示本单元格吃掉了这个键。
+         *
+         * <p>只吃空格 / 回车；其它键一律交给 TableView 的 Tab / 方向键导航 —— 不抢别人的键。
+         */
+        boolean handleKey(javafx.scene.input.KeyCode code) {
+            if (!isToggleKey(code)) {
+                return false;
+            }
+            ColumnRow row = currentRow();
+            if (row == null) {
+                return true; // 未上屏：吃掉键但无模型可改（避免空格意外触发表格全选）。
+            }
+            toggle(row);
+            return true;
+        }
+
+        /** 切换一行的某个布尔属性并刷新表格 —— 纯模型操作，门禁可脱离场景图直接驱动。 */
+        void toggle(ColumnRow row) {
+            BooleanProperty p = property.apply(row);
+            p.set(!p.get());
+            if (getTableView() != null) {
+                getTableView().refresh();
+            }
+        }
+
+        @Override
+        protected void updateItem(Boolean item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setGraphic(null);
+                return;
+            }
+            syncing = true;
+            box.setSelected(Boolean.TRUE.equals(item));
+            syncing = false;
+            setGraphic(box);
+        }
     }
 
     private void addDefaultRow() {
@@ -423,6 +526,16 @@ final class NewTableDialog {
 
     ObservableList<ColumnRow> rows() {
         return rows;
+    }
+
+    /**
+     * 列网格（供门禁断言键盘可达性）。
+     *
+     * <p>布尔单元格的空格 / 回车切换要能被直接驱动，
+     * 不能只靠「点一下鼠标」验证 —— 那正好漏掉了要守的东西。
+     */
+    TableView<ColumnRow> columnsTable() {
+        return columnsTable;
     }
 
     TextField nameField() {

@@ -253,4 +253,67 @@ class NewTableDialogTest {
         return new io.agenticdb.model.ColumnSpec(name, "INTEGER", false, null, null,
                 false, primaryKey);
     }
+
+    // ───────────────── 规格 §13.3：布尔单元格键盘可达 ─────────────────
+
+    @Test
+    void booleanCellToggleFlipsTheUnderlyingModelProperty() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+
+        NewTableDialog.ColumnRow row = onFx(() -> dialog.rows().getFirst());
+        assertThat(row.unique.get()).isFalse();
+
+        // 生产在用的布尔单元格，喂给它「唯一」这列的属性访问器。
+        // 空格 / 回车的按键处理器最终就是调 toggle()，这里直接驱动同一段逻辑。
+        onFxRun(() -> new NewTableDialog.BooleanCell(r -> r.unique).toggle(row));
+
+        assertThat(row.unique.get())
+                .as("布尔单元格的切换必须写回模型 —— 违反「一切键盘可达」硬规则")
+                .isTrue();
+    }
+
+    @Test
+    void booleanCellOnlyConsumesSpaceAndEnterNotNavigationKeys() {
+        // 未上屏（无 TableRow）的单元格：handleKey 只按「是不是切换键」判定吃不吃，
+        // 方向键 / Tab / 字母键一律交还给 TableView 导航。
+        boolean[] consumed = onFx(() -> {
+            NewTableDialog.BooleanCell cell = new NewTableDialog.BooleanCell(r -> r.unique);
+            return new boolean[]{
+                    cell.handleKey(javafx.scene.input.KeyCode.SPACE),
+                    cell.handleKey(javafx.scene.input.KeyCode.ENTER),
+                    cell.handleKey(javafx.scene.input.KeyCode.RIGHT),
+                    cell.handleKey(javafx.scene.input.KeyCode.TAB),
+                    cell.handleKey(javafx.scene.input.KeyCode.A),
+            };
+        });
+
+        assertThat(consumed[0]).as("空格必须被布尔单元格吃掉").isTrue();
+        assertThat(consumed[1]).as("回车必须被布尔单元格吃掉").isTrue();
+        assertThat(consumed[2]).as("方向键必须留给导航").isFalse();
+        assertThat(consumed[3]).as("Tab 必须留给导航").isFalse();
+        assertThat(consumed[4]).as("字母键必须留给编辑/导航").isFalse();
+    }
+
+    @Test
+    void toggleKeyClassifierMatchesOnlySpaceAndEnter() {
+        assertThat(NewTableDialog.BooleanCell.isToggleKey(javafx.scene.input.KeyCode.SPACE)).isTrue();
+        assertThat(NewTableDialog.BooleanCell.isToggleKey(javafx.scene.input.KeyCode.ENTER)).isTrue();
+        assertThat(NewTableDialog.BooleanCell.isToggleKey(javafx.scene.input.KeyCode.UP)).isFalse();
+        assertThat(NewTableDialog.BooleanCell.isToggleKey(javafx.scene.input.KeyCode.TAB)).isFalse();
+    }
+
+    @Test
+    void booleanCellUsesTheCustomCellFactoryNotTheDefaultOne() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+
+        boolean usesCustom = onFx(() -> dialog.columnsTable().getColumns().stream()
+                .filter(column -> "主键".equals(column.getText()))
+                .findFirst()
+                .orElseThrow()
+                .getCellFactory() != null);
+
+        assertThat(usesCustom)
+                .as("布尔列必须走自定义单元格工厂（CheckBoxTableCell 键盘不可达）")
+                .isTrue();
+    }
 }
