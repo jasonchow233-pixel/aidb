@@ -22,6 +22,7 @@ import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
+import javafx.scene.control.TablePosition;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
@@ -29,6 +30,7 @@ import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import javafx.scene.input.KeyCode;
 import javafx.stage.Window;
 
 import java.util.ArrayList;
@@ -48,6 +50,15 @@ import java.util.Optional;
  * 这里只收集输入并把生成的 SQL <b>实时</b>显示出来。
  */
 final class NewTableDialog {
+
+    /**
+     * ⭐ S-4：网格坐标（行下标 / 列下标）。
+     *
+     * <p>用 record 是为了让 {@link #move} / {@link #next} / {@link #previous} 能直接被
+     * 门禁驱动 —— 它们不碰 JavaFX，headless 下也不需要真实焦点（§28.10 的教训）。
+     */
+    record CellPos(int row, int column) {
+    }
 
     private final Dialog<StructurePlan> dialog = new Dialog<>();
     private final DbSession session;
@@ -315,7 +326,136 @@ final class NewTableDialog {
                 booleanColumn("唯一", 52, row -> row.unique),
                 textColumn("默认值", "defaultValue", 140, row -> row.defaultValue),
                 textColumn("注释", "comment", 120, row -> row.comment));
+        // ⭐ S-4：Tab / 方向键在整张网格里移动（装上去之前，7 列里有 4 列只能靠鼠标点准）。
+        installGridNavigation(table);
         return table;
+    }
+
+    // ─────────────────────── S-4：网格键盘导航 ───────────────────────
+
+    /**
+     * ⭐ S-4：Tab / 方向键在**整张列网格**里移动 + 落点可直接编辑。
+     *
+     * <p>没有这段时的样子：<b>方向键只换行不选列</b>（7 列里 4 列要编辑，每次都得用鼠标
+     * 点准那一格）；<b>Tab 直接跳出整张表格</b> —— 想把一列的 7 个属性挨个填完，
+     * 要来回点击。这违反本项目「一切键盘可达」的硬规则（Navicat 的同类网格全键盘可填）。
+     *
+     * <p><b>为什么判断逻辑全是纯静态方法</b>：headless 门禁里 {@code fireEvent} 送不到
+     * 没有真实焦点的单元格（§28.10 踩过：靠事件派发写的测试会假绿或假红）。
+     * 所以 {@link #move} / {@link #step} / {@link #next} / {@link #previous}
+     * 都是「给坐标、返回坐标」，测试直接驱动它们。
+     */
+    private void installGridNavigation(TableView<ColumnRow> table) {
+        table.setOnKeyPressed(event -> {
+            int rowCount = table.getItems().size();
+            int columnCount = table.getColumns().size();
+            if (rowCount == 0 || columnCount == 0) {
+                return;
+            }
+            CellPos from = currentCell(table);
+            boolean backwards = event.getCode() == KeyCode.TAB && event.isShiftDown();
+            CellPos to = backwards ? previous(from, rowCount, columnCount)
+                    : event.getCode() == KeyCode.TAB ? next(from, rowCount, columnCount)
+                    : step(from, event.getCode(), rowCount, columnCount);
+            if (to == null) {
+                // ⭐ 不吃这个键：最后一格还要让 Tab 能把焦点带出网格，
+                //    否则用户会被困在这张表里出不去（键盘可达的反面）。
+                return;
+            }
+            event.consume();
+            focusCell(table, to);
+            if (event.getCode() == KeyCode.TAB) {
+                // Tab 落到新格就进编辑态 —— 「连着往下填」才是 Tab 在这里的意义。
+                table.edit(to.row(), table.getColumns().get(to.column()));
+            }
+        });
+    }
+
+    /**
+     * ⭐ S-4：从 {@code from} 走一格；出界返回 {@code null}（=「这一步没有意义」）。
+     *
+     * <p>返回 null 而不是把坐标夹住是有意的：<b>走到头就该停在原处</b>，
+     * 不应该「按 ↓ 从最后一行绕回第一行」—— 那会让用户在表格里迷路。
+     */
+    static CellPos move(CellPos from, int dRow, int dColumn, int rowCount, int columnCount) {
+        if (from == null || rowCount <= 0 || columnCount <= 0) {
+            return null;
+        }
+        int row = from.row() + dRow;
+        int column = from.column() + dColumn;
+        if (row < 0 || row >= rowCount || column < 0 || column >= columnCount) {
+            return null;
+        }
+        return new CellPos(row, column);
+    }
+
+    /** ⭐ S-4：方向键各走一格；不是方向键则返回 {@code null}（键要留给别人）。 */
+    static CellPos step(CellPos from, KeyCode code, int rowCount, int columnCount) {
+        return switch (code) {
+            case UP -> move(from, -1, 0, rowCount, columnCount);
+            case DOWN -> move(from, 1, 0, rowCount, columnCount);
+            case LEFT -> move(from, 0, -1, rowCount, columnCount);
+            case RIGHT -> move(from, 0, 1, rowCount, columnCount);
+            default -> null;
+        };
+    }
+
+    /**
+     * ⭐ S-4：Tab 的顺序 —— 往右一格，走到行尾换行首。
+     *
+     * <p><b>最后一格返回 null</b>：那时候 Tab 不再吃键，焦点按系统默认走到网格外面。
+     * 一贯到此为止的 Tab 会把用户锁在这张表里。
+     */
+    static CellPos next(CellPos from, int rowCount, int columnCount) {
+        if (rowCount <= 0 || columnCount <= 0) {
+            return null;
+        }
+        if (from == null) {
+            return new CellPos(0, 0);
+        }
+        CellPos right = move(from, 0, 1, rowCount, columnCount);
+        if (right != null) {
+            return right;
+        }
+        if (from.row() + 1 < rowCount) {
+            return new CellPos(from.row() + 1, 0);
+        }
+        return null;
+    }
+
+    /** ⭐ S-4：⇧Tab 反过来走；回到第一格第一列时同样返回 {@code null}。 */
+    static CellPos previous(CellPos from, int rowCount, int columnCount) {
+        if (from == null || rowCount <= 0 || columnCount <= 0) {
+            return null;
+        }
+        CellPos left = move(from, 0, -1, rowCount, columnCount);
+        if (left != null) {
+            return left;
+        }
+        if (from.row() > 0) {
+            return new CellPos(from.row() - 1, columnCount - 1);
+        }
+        return null;
+    }
+
+    /** 当前 focus 的格子；还没有焦点时退回选中那一行的最左列。 */
+    private static CellPos currentCell(TableView<ColumnRow> table) {
+        TablePosition<ColumnRow, ?> focused = table.getFocusModel().getFocusedCell();
+        int row = focused.getRow();
+        if (row < 0) {
+            row = table.getSelectionModel().getSelectedIndex();
+        }
+        if (row < 0 || row >= table.getItems().size()) {
+            return null;
+        }
+        int column = focused.getColumn();
+        return new CellPos(row, Math.max(0, column));
+    }
+
+    private static void focusCell(TableView<ColumnRow> table, CellPos pos) {
+        table.getSelectionModel().clearAndSelect(pos.row());
+        table.getFocusModel().focus(pos.row(), table.getColumns().get(pos.column()));
+        table.scrollTo(pos.row());
     }
 
     private static TableColumn<ColumnRow, String> textColumn(

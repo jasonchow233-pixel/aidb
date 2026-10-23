@@ -236,6 +236,108 @@ class NewTableDialogTest {
         assertThat(oneRow).isLessThanOrEqualTo(120.0);
     }
 
+    // ─────────────────────── S-4：网格键盘导航 ───────────────────────
+
+    /**
+     * ⭐ S-4：方向键在网格里一格一格走（行、列都能走）。
+     *
+     * <p>没有这条之前，方向键只换行不选列 —— 7 列里有 4 列要手填，每次都得用鼠标点准。
+     */
+    @Test
+    void arrowKeysMoveOneCellAtATimeInBothDirections() {
+        NewTableDialog.CellPos middle = new NewTableDialog.CellPos(2, 3);
+
+        assertThat(NewTableDialog.step(middle, javafx.scene.input.KeyCode.UP, 5, 7))
+                .isEqualTo(new NewTableDialog.CellPos(1, 3));
+        assertThat(NewTableDialog.step(middle, javafx.scene.input.KeyCode.DOWN, 5, 7))
+                .isEqualTo(new NewTableDialog.CellPos(3, 3));
+        assertThat(NewTableDialog.step(middle, javafx.scene.input.KeyCode.LEFT, 5, 7))
+                .isEqualTo(new NewTableDialog.CellPos(2, 2));
+        assertThat(NewTableDialog.step(middle, javafx.scene.input.KeyCode.RIGHT, 5, 7))
+                .isEqualTo(new NewTableDialog.CellPos(2, 4));
+    }
+
+    /**
+     * ⭐ S-4：走到边界要<b>停住</b>，不能绕圈 —— 按 ↓ 从最后一行绕回第一行会让用户迷路。
+     * 出界返回 {@code null}，由调用方保持原地。
+     */
+    @Test
+    void movingStopsAtTheEdgesInsteadOfWrappingAround() {
+        NewTableDialog.CellPos topLeft = new NewTableDialog.CellPos(0, 0);
+        NewTableDialog.CellPos bottomRight = new NewTableDialog.CellPos(4, 6);
+
+        assertThat(NewTableDialog.move(topLeft, -1, 0, 5, 7)).isNull();
+        assertThat(NewTableDialog.move(topLeft, 0, -1, 5, 7)).isNull();
+        assertThat(NewTableDialog.move(bottomRight, 1, 0, 5, 7)).isNull();
+        assertThat(NewTableDialog.move(bottomRight, 0, 1, 5, 7)).isNull();
+        assertThat(NewTableDialog.move(null, 1, 0, 5, 7))
+                .as("没有当前格时无从起步")
+                .isNull();
+    }
+
+    /** ⭐ S-4：只有方向键在分管导航 —— 空格 / 回车留给 {@code BooleanCell} 切换。 */
+    @Test
+    void onlyArrowKeysDoNavigation() {
+        NewTableDialog.CellPos pos = new NewTableDialog.CellPos(1, 1);
+
+        assertThat(NewTableDialog.step(pos, javafx.scene.input.KeyCode.SPACE, 5, 7))
+                .as("空格是布尔列的切换键 —— 导航不许抢")
+                .isNull();
+        assertThat(NewTableDialog.step(pos, javafx.scene.input.KeyCode.ENTER, 5, 7))
+                .as("回车是布尔列的切换键")
+                .isNull();
+        assertThat(NewTableDialog.step(pos, javafx.scene.input.KeyCode.TAB, 5, 7))
+                .as("Tab 走的是 next/previous，不是 step")
+                .isNull();
+    }
+
+    /** ⭐ S-4：Tab 按阅读顺序走 —— 往右一格，行尾换行首。 */
+    @Test
+    void tabWalksTheWholeGridInReadingOrder() {
+        assertThat(NewTableDialog.next(new NewTableDialog.CellPos(0, 0), 5, 7))
+                .isEqualTo(new NewTableDialog.CellPos(0, 1));
+        assertThat(NewTableDialog.next(new NewTableDialog.CellPos(0, 6), 5, 7))
+                .as("行尾换行首")
+                .isEqualTo(new NewTableDialog.CellPos(1, 0));
+        assertThat(NewTableDialog.next(null, 5, 7))
+                .as("还没有焦点时从第一格起步")
+                .isEqualTo(new NewTableDialog.CellPos(0, 0));
+
+        assertThat(NewTableDialog.previous(new NewTableDialog.CellPos(1, 0), 5, 7))
+                .as("⇧Tab 反向：行首换行尾")
+                .isEqualTo(new NewTableDialog.CellPos(0, 6));
+        assertThat(NewTableDialog.previous(new NewTableDialog.CellPos(0, 1), 5, 7))
+                .isEqualTo(new NewTableDialog.CellPos(0, 0));
+    }
+
+    /**
+     * ⭐ S-4：最后一格必须把 Tab 让出去 —— 否则用户永远出不了这张网格，
+     * 那就是「键盘可达」的反面（能进来、出不去）。
+     */
+    @Test
+    void theLastCellLetsTabOutOfTheGrid() {
+        assertThat(NewTableDialog.next(new NewTableDialog.CellPos(4, 6), 5, 7))
+                .as("最后一行最后一格再按 Tab 就没有下一格了")
+                .isNull();
+        assertThat(NewTableDialog.previous(new NewTableDialog.CellPos(0, 0), 5, 7))
+                .as("第一格再按 ⇧Tab 也没有上一格了")
+                .isNull();
+    }
+
+    /**
+     * ⭐ S-4：逻辑算得对不等于装上了 —— 这条盯「那张网格真的挂了这个键处理器」。
+     *
+     * <p>纯方法全绿但忘了 {@code setOnKeyPressed} 是最容易溜过去的一种假绿。
+     */
+    @Test
+    void gridNavigationIsActuallyWiredToTheColumnsTable() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+
+        assertThat(dialog.columnsTable().getOnKeyPressed())
+                .as("字段网格必须挂着按键处理器，否则前面几条门禁测的是没人调用的逻辑")
+                .isNotNull();
+    }
+
     /** JavaFX 控件只能在 FX 线程上创建。 */
     private static <T> T onFx(java.util.function.Supplier<T> supplier) {
         AtomicReference<T> ref = new AtomicReference<>();

@@ -12,7 +12,7 @@
 ## 当前状态（2026-10-22）
 
 **P0–P4 已完成、P5/P6 进行中、界面专项 U-B1–U-B7 已落地。**
-门禁 **739 条 / 93 类 / 0 失败**（2026-10-23 · 第十九轮批次 C 实测；另有 44 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
+门禁 **745 条 / 93 类 / 0 失败**（2026-10-23 · 第十九轮批次 D 实测；另有 44 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
 
 > **第八轮之后**：D2+D4（MySQL/PG 列注释读回）已修；B5-S1（索引可编辑）已落地；
 > **T1–T4（建表 / 清空 / 重命名 / 删表）已落地**（T1=弹窗，按形态裁定）；9 张验收截图完成。
@@ -38,6 +38,7 @@
 | 弹窗统一主题（`-adb-*` 令牌在 DialogPane 上真正生效） | ✅ | `DialogStyles` |
 | 真实 SQLite 对象树（表/视图，**多连接同树**） | ✅ | `SchemaService` + `SideBar` |
 | 对象树表节点可展开出列（**懒加载** / 失败可重试） | ✅ | `SideBar.objectNode` + `AppShell.loadColumnsFor` |
+| 新建表列网格 Tab / 方向键导航 | ✅ | `NewTableDialog.installGridNavigation` |
 | 演示库（固定种子，可重建） | ✅ | `~/.agenticdb/agenticdb-demo.db`，`DemoDatabase` |
 | 数据页：服务端分页、选择列、行号、类型行 | ✅ | `DataGridPage` |
 | 底部分页条：100/200/500/1000 | ✅ | `DataGridPage` |
@@ -96,7 +97,7 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**739 条 / 93 类 / 0 失败**（2026-10-23 · 第十九轮批次 C 实测；`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
+当前门禁：**745 条 / 93 类 / 0 失败**（2026-10-23 · 第十九轮批次 D 实测；`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
 
 > ⚠️ **本机环境**：`java` 默认指向 **JDK 11**，门禁起不来。可用的 JDK 25 是 IntelliJ 自带那份：
 > `export JAVA_HOME="/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home"`。

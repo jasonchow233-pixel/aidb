@@ -77,21 +77,22 @@
 ./mvnw -B clean verify
 ```
 
-当前结果（2026-10-23 · 第十九轮批次 C · S-5 品牌闭环 实测）：
+当前结果（2026-10-23 · 第十九轮批次 D · S-4 列网格键盘导航 实测）：
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **739** | 44 | 0 |
+| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **745** | 44 | 0 |
 | **外部 PG / MySQL 真库**（aliCloud RDS 等，需环境变量） | 单独跑，不在默认门禁 | — | — |
 | **多版本矩阵**（MySQL 5.7/8.0 + PG 13/17，`ADB_TEST_VERSION_MATRIX=1`） | 默认不跑，需显式打开 | 1 | 0 |
 
 **93 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
 （Testcontainers 容器**需 Docker**；本机 Docker 不可用时走跳过分支）—— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-23，第十九轮批次 C 后）**：**739 条 / 93 类 / 0 失败**（`./mvnw -B clean verify`
-> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 739）。
-> 比第十七轮 721 多 18 条：批次 A +14（`MetadataColumnsTest`6 + `TableListPageTest`6 + `ObjectHomePageTest`2）、
-> 批次 B +5（`SideBarTreeTest` 9→14）、**批次 C +3**（`WelcomeBrandTest` 新建）；测试类 89→**93**。
+> 📌 **最新口径（2026-10-23，第十九轮批次 D 后）**：**745 条 / 93 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 745）。
+> 比第十七轮 721 多 24 条：批次 A +14（`MetadataColumnsTest`6 + `TableListPageTest`6 + `ObjectHomePageTest`2）、
+> 批次 B +5（`SideBarTreeTest` 9→14）、批次 C +3（`WelcomeBrandTest` 新建）、
+> **批次 D +6**（`NewTableDialogTest` 17→23）；测试类 89→**93**（新增 `MetadataColumnsTest` / `WelcomeBrandTest`）。
 >
 > ⚠️ **本机环境**：`java` 默认是 **JDK 11**，门禁跑不起来；可用的 JDK 25 是 IntelliJ 自带那份 ——
 > `export JAVA_HOME="/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home"`（见 §30.3）。
@@ -122,7 +123,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `workbench/adb-transfer` | 15 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告 |
 | `ui/adb-ui-core` | 24 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** / **CSS 尺度审计** / **焦点环审计** |
-| `ui/adb-ui-shell` | 307 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派**、**侧栏工具可达性**、**右侧对象详情面板**、**新建表弹窗（宽编辑器 SQL 预览）**、**表清单选中项联动详情面板**、**结构页 DDL 只读编辑器**、**方言感知列与卡片去破折号**、**对象树表节点展开出列（懒加载 / 缓存 / 失败可重试 / 列不是对象）**、**欢迎页品牌 mark（矢量换位图 + 坏图不静默）** |
+| `ui/adb-ui-shell` | 313 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派**、**侧栏工具可达性**、**右侧对象详情面板**、**新建表弹窗（宽编辑器 SQL 预览）**、**表清单选中项联动详情面板**、**结构页 DDL 只读编辑器**、**方言感知列与卡片去破折号**、**对象树表节点展开出列（懒加载 / 缓存 / 失败可重试 / 列不是对象）**、**欢迎页品牌 mark（矢量换位图 + 坏图不静默）**、**列网格 Tab / 方向键导航（边界不绕圈、最后一格放行 Tab）** |
 
 > ⚠️ **统计口径（4.5-28）**：用 `@Nested` 的 4 个测试类（`QueryLimitsTest`、
 > `DangerClassifierTest`、`DeclarationLoaderTest`、`DeclarationValidationTest`）在 surefire XML 里
@@ -1874,7 +1875,7 @@ java tools/TestCount.java
 | **S-1** ✅ **DONE (R19 批次 A)** | **C1 方言感知列**：SQLite 下表清单 8 列里 **6 列恒为「—」= 首选宽度 810/1120px（72%）**；对象首页 9 列里 6 列同样 | `p6-tables.png` / `p5-connections.png`；`TableListPage:239-250` 无条件建全列（`ObjectHomePage:218` 还把这写成了既定策略） | 🟡 中 | ✅ **落地为「看数据不看方言」的规则**（不是方言白名单，故无需给页面塞 `Dialect`）：新共享纯助手 `MetadataColumns.hasAnyValue(rows, text)` —— 只有**每一行都渲染成占位符**时整列隐藏，有一行有真值就留着（混合场景：MySQL 表有引擎、视图没有 → 引擎列保留）；核心列「名称 / 行 / 类型」永不隐藏。判定必须基于**整批已加载 `rows`**（不是 `filtered`），否则搜索会让列凭空出现/消失。门禁：`MetadataColumnsTest`(6) + `TableListPageTest`+3 + `ObjectHomePageTest`+2，**全部做过变异验证** |
 | **S-2** ✅ **DONE (R19 批次 A)** | **C2 卡片视图去破折号**：`notes / 0行 · — / — · — / —`，220px 卡片 2/3 是标点 | `p6-tables-grid.png` | 🟢 低 | ✅ 新 `cardLine(...)` 只拼**非占位符**片段；整行全占位符则**不渲染这一行**（不留空占位）。注意 `rowsText()` 为「—」时不能拼成「— 行」（那就不是占位符了）。门禁：`TableListPageTest.cardViewOmitsPlaceholderLinesOnSqliteLikeData`（变异验证）+ MySQL 形态仍显示真值的反向门禁 |
 | **S-3** ✅ **DONE (R19 批次 B)** | **C5 对象树表节点可展开出列**：Navicat 每个表节点都有 `>`（裁图核对），AIDB 对象节点是叶子 | `SideBar.kindGroup()` 建的子 `TreeItem` 无 children | 🟠 中高 | ✅ **5 条新门禁，5 条全部做过变异验证**（MUTATION-1 去掉「没接回调就是叶子」→ `tableIsALeafUntilAColumnLoaderIsWired` 红；MUTATION-2 去掉「读过的不再读」闸 → `expandingATableReadsItsColumnsLazily` 红；MUTATION-3 失败后不摘「已尝试」标记 → `aFailedColumnReadIsSaidOutLoudAndCanBeRetried` 红；MUTATION-4 列的「复制名称」不放行 → `columnNodesCannotOpenDataButCanCopyTheirName` 红；MUTATION-5 重建树不认缓存 → `columnsSurviveATreeRebuild` 红，失败原文逐条记录）· 见 **§30** |
-| **S-4** | **列网格键盘导航**（Tab / 方向键在整张网格内移动 + 单元格编辑焦点） | §28.6 遗留；硬规则「一切键盘可达」；§28.10 已把**布尔三态一格**做成可键盘切换 | 🟡 中 | `NewTableDialogTest`：直接驱动抽出来的 `focusMove(...)` 纯方法（**沿用 §28.10 的教训：headless 下不靠 `fireEvent`**） |
+| **S-4** ✅ **DONE (R19 批次 D)** | **列网格键盘导航**（Tab / 方向键在整张网格内移动 + 单元格编辑焦点） | §28.6 遗留；硬规则「一切键盘可达」；§28.10 已把**布尔三态一格**做成可键盘切换 | 🟡 中 | ✅ `NewTableDialogTest` **+6**（`NewTableDialog` 抽出四个静态纯方法 `move` / `step` / `next` / `previous` + record `CellPos`，headless 下不靠 `fireEvent`）· **4 个变异全部验证**（D1 不挂处理器 / D2 最后一格绕回 / D3 `step` 抢 Tab / D4 出界夹坐标，失败原文逐条记录）· 见 **§32** |
 | **S-5** ✅ **DONE (R19 批次 C)**（**但请看下面的 ⚠️**） | **C7 欢迎页用 AIDB mark**：现在还是通用 `Icons.Icon.DATABASE`；品牌改造只注册了 OS 窗口图标 | `WorkspaceView:137`；全仓无 `ImageView(app-icon-*)` | 🟢 低 | ✅ `WelcomeBrandTest`(3) 断言门面是品牌 PNG · **4 个变异全部验证通过**（含「坏 PNG」这一档）· ⚠️ **改完发现欢迎页当前不可达**（见 §31.2 / 新增 **S-7**）—— 所以这个改动**用户暂时看不到**，`p0-shell` 也拍不到它 |
 | **S-6** | **C3 详情面板挤压网格**：列头截成 `na… em… acti… sco…` | `p2-details.png`；`ObjectDetailsPanel.WIDTH_DEFAULT=300` | 🟡 中 | **先定方案**（覆盖式 vs 推挤式 vs 窄宽自动收起），定完再加布局断言 —— 没有裁定就不动手 |
 
@@ -1914,7 +1915,7 @@ java tools/TestCount.java
 | **A（先做，同一根因）** ✅ **DONE (R19)** | S-1 + S-2：清单类页面把「没有数据」渲染成标点的问题一次清掉 | ✅ 新门禁 6+3+2 条（`MetadataColumnsTest` / `TableListPageTest` / `ObjectHomePageTest`）**各做过变异**（改坏必红：MUTATION-1 强制 `hasAnyValue` 恒真 → 6 门禁红；MUTATION-2 让 `cardLine` 全渲染 → 卡片门禁红；MUTATION-3 空转 `ObjectHomePage.applyColumnVisibility` → 该页门禁红，失败原文逐条记录）+ **重拍 `p6-tables` / `p6-tables-grid` 并逐张核对** |
 | **B（交互补强）** ✅ **DONE (R19)** | S-3 树展开出列 | ✅ `SideBarTreeTest` **+5**（`tableIsALeafUntilAColumnLoaderIsWired` / `expandingATableReadsItsColumnsLazily` / `columnsSurviveATreeRebuild` / `columnNodesCannotOpenDataButCanCopyTheirName` / `aFailedColumnReadIsSaidOutLoudAndCanBeRetried`）+ 展开不触发多余查询的断言 · **5 条全部变异验证通过**（改坏必红、改回必绿）· 顺带修掉 `AppShellTest.openTable` 的**选错节点**隐患（`contains("users")` 会同时命中 `v_active_users` / `trg_users_audit`，命中触发器时压根不开页面，失败信息却像分页 bug）与**读旧标签标题**的偶发红（改为等标题真的变成目标名字） |
 | **C（品牌闭环）** ✅ **DONE (R19)** | S-5 欢迎页 mark | ✅ `WelcomeBrandTest`(3) + 4 变异验证（C1 换回通用图标 / C2 关等比 / C3 指非图片 / C4 坏 PNG，失败原文逐条记录）· ⚠️ 截图只能证到 S-3（`p0-shell` 六节点带 `▶`）—— **欢迎页不可达，见 §31.2 与新增的 S-7** |
-| **D（a11y 硬规则）** | S-4 列网格键盘导航 | 沿用 §28.10 的「纯方法抽取」做法，不靠 `fireEvent` |
+| **D（a11y 硬规则）** ✅ **DONE (R19)** | S-4 列网格键盘导航 | ✅ `NewTableDialogTest` **+6**，沿用 §28.10 的「纯方法抽取」做法（不靠 `fireEvent`）· **4 个变异全部验证**（失败原文逐条记录）·额外补了一条 `gridNavigationIsActuallyWiredToTheColumnsTable`（纯方法全绿但忘了 `setOnKeyPressed` 是最容易溜过去的假绿） |
 | **E（需先裁定）** | S-6 详情面板布局 | 先出方案对比，再动手 |
 
 **统一验收口径**：`./mvnw -B clean verify` 0 失败 · **新增门禁必须做过变异验证**（改坏必红、改回必绿）· 截图重拍后**逐张与 Navicat 参考图并排核对**（第十八轮的方法，不是只看文件生成了）。
@@ -2027,10 +2028,62 @@ java tools/TestCount.java
 
 ---
 
+## 32. 第十九轮批次 D：S-4 列网格键盘导航（2026-10-23）
+
+> 来源：§29.1 S-4 / §29.5 批次 D。硬规则「一切键盘可达」。
+
+### 32.1 之前是什么样
+
+| 动作 | 之前 | 之后 |
+|---|---|---|
+| ↑ ↓ | 只换行，**不选列**（默认 row selection） | 一行一列地走（`getFocusModel().focus(row, column)`） |
+| ← → | 只会被 TableView 吃掉用来滚列/换行 | 左右走列 |
+| Tab | **直接跳出整张表格** —— 想把一列的 7 个属性挨个填完得来回点鼠标 | 按阅读顺序走：右一格，行尾换行首；落到新格**直接进编辑态** |
+| 最后一格 | — | **把 Tab 让出去**，焦点按系统默认离开网格 |
+
+7 列里有 4 列要手填（字段名 / 类型 / 默认值 / 注释），没有这套导航等于强制用鼠标。
+
+### 32.2 落地与「为什么是纯方法」
+
+`NewTableDialog` 里四个**静态纯方法**（给坐标、返回坐标，不碰 JavaFX）：
+`move(from, dRow, dColumn, rowCount, columnCount)` / `step(from, KeyCode, …)` /
+`next(...)` / `previous(...)`，加上 record `CellPos(row, column)`。
+
+沿用 §28.10 的教训：headless 门禁里 `fireEvent` 送不到没有真实焦点的单元格 ——
+靠事件派发写的用例会假绿或假红。所以**情景判断全在纯方法里**，测试直接驱动它们；
+另外补了一条 `gridNavigationIsActuallyWiredToTheColumnsTable` 守「确实挂上了处理器」
+（纯方法全绿但忘了 `setOnKeyPressed` 是最容易溜过去的假绿）。
+
+两个刻意的选择：
+
+1. **出界返回 `null` 而不是夹住坐标** —— 走到头就该停在原处，
+   「按 ↓ 从最后一行绕回第一行」会让用户在网格里迷路。
+2. **最后一格不吃 Tab** —— 能进去却出不来是「键盘可达」的反面，
+   所以 `next()` 在最后一行最后一格返回 `null`，让系统默认的焦点遍历接手。
+
+`step()` 也只认四个方向键：空格 / 回车留给 §28.10 的 `BooleanCell` 切换，Tab 走 `next/previous`。
+
+### 32.3 门禁与变异验证
+
+`NewTableDialogTest` **17 → 23**（+6）：`arrowKeysMoveOneCellAtATimeInBothDirections` ·
+`movingStopsAtTheEdgesInsteadOfWrappingAround` · `onlyArrowKeysDoNavigation` ·
+`tabWalksTheWholeGridInReadingOrder` · `theLastCellLetsTabOutOfTheGrid` ·
+`gridNavigationIsActuallyWiredToTheColumnsTable`。
+
+| 变异 | 红的用例 | 实测失败原文 |
+|---|---|---|
+| D1：注释掉 `installGridNavigation(table)` | `gridNavigationIsActuallyWiredToTheColumnsTable` | `:338 [字段网格必须挂着按键处理器，否则前面几条门禁测的是没人调用的逻辑]` |
+| D2：最后一格绕回第一格 | `theLastCellLetsTabOutOfTheGrid` + `tabWalksTheWholeGridInReadingOrder` | `:321 [最后一行最后一格再按 Tab 就没有下一格了]` · `:301 [行尾换行首]` |
+| D3：`step` 里多接一个 `TAB` | `onlyArrowKeysDoNavigation` | `:291 [Tab 走的是 next/previous，不是 step]` |
+| D4：出界时夹住坐标 | `movingStopsAtTheEdgesInsteadOfWrappingAround` + 上面两条 | `:269`（边界该返回 null） |
+
+---
+
 ## 23. 变更记录
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-23 | **第十九轮·批次 D** | **⭐ S-4 列网格键盘导航**（§32）：新建表弹窗的 7 列网格以前只有鼠标能填 —— 方向键只换行不选列、Tab 直接跳出整张表格（7 列里 4 列要手填，等于强制用鼠标）· `NewTableDialog` 抽出四个静态纯方法 `move` / `step` / `next` / `previous` + record `CellPos`（**给坐标返回坐标**，headless 下不靠 `fireEvent` —— §28.10 的教训），`installGridNavigation` 挂到表上：方向键一格一格走、Tab 按阅读顺序走右一格换行首且**落到新格进编辑态** · 两个刻意的选择：**出界返回 null 而不是夹坐标**（走到头就该停住，绕圈会让用户迷路）、**最后一格不吃 Tab**（能进去却出不来是「键盘可达」的反面）· `step` 只认四个方向键（空格/回车留给 §28.10 的 `BooleanCell`，Tab 走 `next/previous`）· `NewTableDialogTest` **17→23**（+6），**4 个变异全部验证**（D1 不挂处理器 / D2 最后一格绕回 / D3 `step` 抢 Tab / D4 出界夹坐标，失败原文逐条记录）· 额外一条 `gridNavigationIsActuallyWiredToTheColumnsTable` 守「确实挂上了处理器」（纯方法全绿但忘了 `setOnKeyPressed` 是最容易溜过去的假绿）· 门禁 **745 条 / 93 类 / 0 失败** |
 | 2026-10-23 | **第十九轮·批次 C** | **⭐ S-5 品牌闭环**（§31）：欢迎页 logo 从通用矢量圆柱换成**品牌 PNG**（`app-icon-128.png` @ `Icons.SIZE_BRAND`），**缺图抛异常而不是静默换回通用图标**（第十八轮那五个「失败被设计成静默降级」的坑，同名）· **连带**：`fs-4xl`（40px）唯一的消费者就是那条 `-fx-font-size` → 令牌变摆设 → `TokenParityTest` 红 → 按项目规则**删令牌**：tokens.json **97→96**，并重生成 `Tokens.java` + 同步 `AppCssAuditTest`（字号 **9→8 档**）与四份规格文档 · 新门禁 `WelcomeBrandTest`(3)，**4 个变异全部验证**（C1 换回通用图标 / C2 关等比 / C3 指非图片 / C4 **坏 PNG** —— 这档是特意补的：文件在但坏了时 JavaFX 不报错，界面只是一块空白）· ⭐ **本轮真正的发现**：**欢迎页是一条不可达路径**（`AppShell:246` 无条件 `openPermanent(object-home)` ⇒ `showWelcome()` 永远被盖掉）→ S-5 的改动**用户暂时看不到**，`p0-shell` 也拍不到它 → 记成 **S-7 待裁定**（接 / 删 / 留三选项写在 §29.2 末），本轮不越权改应用栏（那会推翻 `AppBarTest` 守着的「品牌标识必须矢量」既有决定）· `p0-shell.png` 已重拍，图上能证实的是 S-3（六对象节点每个都带 `▶`） |
 | 2026-10-23 | **第十九轮·批次 B** | **⭐ S-3 对象树表节点可展开出列**（§30）：表 / 视图节点接上「读列回调」后挂占位子节点（JavaFX 只在有子节点时才画箭头），**展开才读列**（懒加载 + 缓存去重，几千张表的库不会一上来就查爆）· `AppShell.loadColumnsFor` 走数据库执行器 + `Platform.runLater` 回填，`setColumns` **就地换节点不重建整棵树**（不丢展开态 / 选中态）· **重新内省后作废列缓存**（表刚被 ALTER 过，旧列比没有列更糟）· **空清单 = 读失败**，换成「列读取失败（展开重试）」并摘掉「已尝试」标记以便重试，不静默降级成叶子 · 列不是对象：右键只留「复制名称」，打开数据 / 结构 / 复制 SELECT / 收藏一律灰掉，且不进对象计数 · **顺带修 `AppShellTest.openTable` 两个隐患**：`contains("users")` 会同时命中 `v_active_users` / `trg_users_audit`（命中触发器时压根不开页面，报错却像分页 bug）→ 改按 `name=xxx,` 整字段 + 只认表/视图；双击后立刻断言标题会偶发读到**上一个标签** → 改成等标题真的变成目标名字（超时抛 `AssertionError` 说清双击了谁）· **5 条新门禁全部做过变异验证**（MUTATION-1…5 各红一条、失败原文逐条记录，改回必绿）· 门禁 **736 条 / 92 类 / 0 失败**（`adb-ui-shell` 299→**304** +5；44 跳过为环境门控 —— 本机 Docker 不可用）· ⚠️ 本机默认 JDK 是 11，**JDK 25 只有 IntelliJ 自带那份**（`JAVA_HOME=/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home`） |
 | 2026-10-23 | **第十九轮** | **⭐ §29 批次 A：清单类页面「没有数据」不再渲染成标点**（S-1 方言感知列 + S-2 卡片去破折号，同一根因）：新增共享纯助手 `MetadataColumns`（`isPlaceholder` / `hasAnyValue`）——**判定「看数据不看方言」**，只有**每一行都渲染成占位符**时整列隐藏，有一行有真值就留着（混合场景：MySQL 表有引擎、视图没有 → 引擎列保留），核心列「名称/行/类型」永不隐藏；判定基于**整批已加载 `rows`**（不是 `filtered`），故搜索不会让列凭空出现/消失 · `TableListPage` 6 个可选列留引用 + `applyColumnVisibility()`，`ObjectHomePage` 同规则复用（无需给页面塞 `Dialect`，避免动构造器与一堆测试）· **S-2**：新 `cardLine(...)` 只拼非占位符片段，整行全占位符则**不渲染这一行**（并修掉「`rowsText()` 为「—」会拼成「— 行」就不算占位符了」的坑）· **14 条新门禁全部做过变异验证**（MUTATION-1 强制 `hasAnyValue` 恒真 → 6 门禁红；MUTATION-2 让 `cardLine` 全渲染 → 卡片门禁红；MUTATION-3 空转 `ObjectHomePage.applyColumnVisibility` → 该页门禁红，失败原文逐条记录）· **4 张截图重拍并逐张核对**：表清单 8→**2 列**、对象首页 9→**3 列**、卡片只剩「图标+名字+N 行」· 门禁 **731 条 / 92 类 / 0 失败**（`adb-ui-shell` 285→**299** +14 = `MetadataColumnsTest`6 + `TableListPageTest`6 + `ObjectHomePageTest`2；测试类 91→**92** +1 = `MetadataColumnsTest`；44 跳过全为环境门控） |
