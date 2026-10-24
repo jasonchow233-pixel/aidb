@@ -141,7 +141,7 @@ public final class AppShell extends StackPane {
     private int detailsWidth;
     private boolean detailsVisible;
     private PauseTransition toastTimer;
-    private String density = "normal";
+    private String density = "compact";
 
     public AppShell(SettingsStore settings, ThemeManager themeManager) {
         this.settings = settings;
@@ -1584,6 +1584,8 @@ public final class AppShell extends StackPane {
                     status("主题：" + themeManager.mode().label());
                     toast("主题：" + themeManager.mode().label());
                 });
+        actions.register("density-dense", "密集", "视图",
+                null, () -> changeDensity("dense"));
         actions.register("density-compact", "紧凑", "视图",
                 null, () -> changeDensity("compact"));
         actions.register("density-normal", "标准", "视图",
@@ -2680,12 +2682,13 @@ public final class AppShell extends StackPane {
 
     private String initialDensity() {
         String forced = forcedDensity();
-        return forced.isEmpty() ? settings.get("ui.density", "normal") : forced;
+        return forced.isEmpty() ? settings.get("ui.density", "compact") : forced;
     }
 
     private void changeDensity(String density) {
         String value = applyDensity(density);
         status("密度：" + switch (value) {
+            case "dense" -> "密集";
             case "compact" -> "紧凑";
             case "comfort" -> "宽松";
             default -> "标准";
@@ -2694,11 +2697,12 @@ public final class AppShell extends StackPane {
 
     private String applyDensity(String density) {
         String value = switch (density) {
-            case "compact", "comfort" -> density;
-            default -> "normal";
+            case "dense", "compact", "normal", "comfort" -> density;
+            default -> "compact";
         };
         this.density = value;
-        getStyleClass().removeAll("density-compact", "density-normal", "density-comfort");
+        getStyleClass().removeAll("density-dense", "density-compact", "density-normal",
+                "density-comfort");
         getStyleClass().add("density-" + value);
         if (forcedDensity().isEmpty()) {
             settings.set("ui.density", value);
@@ -2710,8 +2714,12 @@ public final class AppShell extends StackPane {
         if (objectHome != null) {
             objectHome.setDensity(value);
         }
+        if (sideBar != null) {
+            sideBar.setDensity(value);
+        }
         // 勾选态跟着动作走：菜单 / 命令面板读的都是同一份 selected。
-        for (String id : new String[]{"density-compact", "density-normal", "density-comfort"}) {
+        for (String id : new String[]{"density-dense", "density-compact",
+                "density-normal", "density-comfort"}) {
             actions.find(id).ifPresent(action ->
                     action.setSelected(id.endsWith(value)));
         }

@@ -494,6 +494,21 @@ public final class SideBar extends VBox {
         onCollapsed.accept(value);
     }
 
+    /**
+     * ⭐ UX-2：对象树也要跟密度档位走。
+     *
+     * <p>紧凑档沿用 {@code row-tree}（24px，与 Navicat 实测一致），
+     * 密集档 22px，标准 / 宽松分别 28 / 34 —— 行高只由令牌决定。
+     */
+    public void setDensity(String density) {
+        tree.setFixedCellSize(switch (density == null ? "compact" : density) {
+            case "dense" -> Tokens.ROW_DENSE_LIGHT;
+            case "comfort" -> Tokens.ROW_COMFORT_LIGHT;
+            case "normal" -> Tokens.ROW_NORMAL_LIGHT;
+            default -> Tokens.ROW_TREE_LIGHT;
+        });
+    }
+
     public void focusSearch() {
         if (collapsed) {
             setCollapsed(false);

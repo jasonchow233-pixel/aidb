@@ -436,8 +436,11 @@ Button funnel = new Button("▽");   // 每个列头都挂一个，永远可见
 | `sp-5` | 16px | 区块之间 |
 | `sp-6` | 24px | 大区块之间 |
 | `sp-7` | 32px | 空状态上下留白 |
+| `sp-1h` | 6px | **数据单元格水平内边距**（dense 档 `2 6`；1.5×`sp-2`） |
 
-**硬规则**：所有间距是 **4 的倍数**（`sp-1` 除外，仅用于图标微调）。
+**硬规则**：所有间距是 **4 的倍数**，仅两个已登记例外：
+`sp-1`（2px，图标微调）与 `sp-1h`（6px，dense 单元格内边距 ——
+Navicat 的密集行是 `2 6`，压到 4px 会让「2020-01-01」贴边）。
 
 ## 6. 圆角规范
 
@@ -612,17 +615,24 @@ java tools/TestCount.java      # 按 <testcase> 计数，断言总数 ≥ 300
 **变异**：对话框圆角改 12 → 圆角审计红；删暗色 `bg-subtle` → 令牌对拍红（`[dark theme 缺少 -adb-bg-subtle]`）；
 给 `.adb-card` 加投影 → 投影门禁红；`AppBar` 图标尺寸写 18 → 图标门禁红。四项改回必绿。
 
-#### UX-2 · 密度、排版与 chrome（L，收益最高）
+#### UX-2 · 密度、排版与 chrome（L，收益最高）—— ✅ 已完成（2026-10-24）
 
 | 项 | 改动 | 门禁 |
 |---|---|---|
-| 新增 `dense` 档 | `Tokens.ROW_DENSE_* = 22`；`RowHeights` 与 `DataGridPage` / `TableListPage` / `ObjectHomePage` 全部认这一档 | `DensityCoverageTest` 四档 × 三页 |
-| 默认改 compact | `ui.density` 默认 `compact`；菜单四项：紧凑 / 标准 / 宽松 / 密集（顺序按行高） | `AppShellTest` 默认值 + 切换后网格/清单/树同步 |
-| 字号/内边距 | 网格、清单、树、工具条标签用 `fs-sm`（12）；单元格 `2 6`/`4 8`；列头同步 | `AppCssAuditTest` 无字面量字号；截图逐张核对 |
-| chrome 收薄 | 标签 32→28、对象头 40→36、页工具条 44→34、状态栏 26→24 | 新 `ChromeMetricsTest`（lookup 后断言高度）；`p2-users` 765px 高可见 ≥22 行 |
+| 新增 `dense` 档 | `Tokens.ROW_DENSE_* = 22`；`RowHeights` 与 `DataGridPage` / `TableListPage` / `ObjectHomePage` / `StructurePage` / 查询结果全部认这一档 | `DensityCoverageTest` 四档 × 四页 |
+| 默认改 compact | `ui.density` 默认 `compact`；菜单四项：密集 / 紧凑 / 标准 / 宽松（按行高排序） | `AppShellTest.densityDefaultsToCompactWhenNoPreferenceIsStored` + 切换后网格/清单/树同步 |
+| 字号/内边距 | 数据面正文统一 `fs-sm`（12）：网格、清单、树、结构页、按钮；dense 单元格 `2 6`（`sp-1h`），列头同步 | `AppCssAuditTest.dataSurfacesUseTheCompactBodySize` |
+| chrome 收薄 | 标签栏 36→28、对象头 44→36、页工具条 44→34、分页器 44→36、状态栏 26→24；按钮/输入 32→28 | `ChromeMetricsTest`（lookup 后断言实际高度）；`p2-users` 765px 高可见 ≥22 行 |
 
+**落地**：令牌 97 → 99（`row-dense` 22 / `sp-1h` 6）；`Tokens.H_TABBAR=28`、
+`H_TOOLBAR=34`、`H_STATUSBAR=24`、`H_INPUT`/`H_BUTTON=28`；`AppShell.applyDensity`
+认四档并同步 `SideBar` / `Workspace` / `ObjectHome`；`MenuBarFactory` 四个单选。
 **验收**：`p2-users` 与 Navicat 数据图并排，行数差 ≤ 3；`p6-tables` 行高一致。
-**变异**：把默认值改回 `comfort` → 默认值门禁红；把网格字号改回 13 → CSS 审计红。
+**变异**（全部改坏必红、改回必绿）：
+网格正文改回 13px → `AppCssAuditTest` 红（`dataSurfacesUseTheCompactBodySize`）；
+默认密度改 `comfort` → 默认值门禁红；分页器 36 改回 44 → `ChromeMetricsTest` 红；
+`RowHeights` 的 dense 返回 24 → `DensityCoverageTest` 红；
+视图菜单删掉「密集」→ `MenuBarFactoryTest` 红（动作 id 未出现在菜单里）。
 
 #### UX-3 · 工具条与动作可发现性（L）
 
@@ -704,10 +714,10 @@ UX-6（功能缺口，独立，可最后做）
 | 两行列头 | 38px | 36px | 名称 12px 粗 + 类型 11px |
 | 单行列头 | 28px | 28px | 表清单 / 对象树面板 |
 | 树节点行 | 24px | 22px | 图标 16，左右内边距 6 |
-| 工具栏 | 34px | 32px | 主操作 28 高，图标 16 + 文字 12 |
-| 按钮 | 高 28 | 高 26 | 圆角 4，水平内边距 8；对话框主按钮 32 |
-| 图标按钮 | 28×28 | 26×26 | 命中区不小于 26 |
-| 输入框 / 下拉 | 高 28 | 高 26 | 圆角 4，内边距 `0 8` |
+| 工具栏 | 34px | 34px | 主操作 28 高，图标 16 + 文字 12（chrome 不随密度变） |
+| 按钮 | 高 28 | 高 28 | 圆角 4，水平内边距 12；对话框主按钮 32 |
+| 图标按钮 | 28×28 | 28×28 | 命中区不小于 28 |
+| 输入框 / 下拉 | 高 28 | 高 28 | 圆角 4，内边距 `0 8` |
 | 标签页 | 28px | 28px | 文字 12，活动项底部 2px 强调线 |
 | 状态栏 | 24px | 24px | 文字 11，左右内边距 8 |
 | 侧栏 | 260px | 260px | 可拖 200–420，宽度持久化 |

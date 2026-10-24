@@ -10,7 +10,7 @@ import java.util.List;
  */
 public final class Tokens {
 
-    public static final int COUNT = 97;
+    public static final int COUNT = 99;
 
     /** bg-canvas (color) */
     public static final String BG_CANVAS_DARK = "#0F172A";
@@ -221,24 +221,24 @@ public final class Tokens {
     public static final int H_APPBAR_LIGHT = 46;
 
     /** h-toolbar (size) */
-    public static final int H_TOOLBAR_DARK = 38;
-    public static final int H_TOOLBAR_LIGHT = 38;
+    public static final int H_TOOLBAR_DARK = 34;
+    public static final int H_TOOLBAR_LIGHT = 34;
 
     /** h-tabbar (size) */
-    public static final int H_TABBAR_DARK = 36;
-    public static final int H_TABBAR_LIGHT = 36;
+    public static final int H_TABBAR_DARK = 28;
+    public static final int H_TABBAR_LIGHT = 28;
 
     /** h-statusbar (size) */
-    public static final int H_STATUSBAR_DARK = 26;
-    public static final int H_STATUSBAR_LIGHT = 26;
+    public static final int H_STATUSBAR_DARK = 24;
+    public static final int H_STATUSBAR_LIGHT = 24;
 
     /** h-input (size) */
-    public static final int H_INPUT_DARK = 32;
-    public static final int H_INPUT_LIGHT = 32;
+    public static final int H_INPUT_DARK = 28;
+    public static final int H_INPUT_LIGHT = 28;
 
     /** h-button (size) */
-    public static final int H_BUTTON_DARK = 32;
-    public static final int H_BUTTON_LIGHT = 32;
+    public static final int H_BUTTON_DARK = 28;
+    public static final int H_BUTTON_LIGHT = 28;
 
     /** w-sidebar-min (size) */
     public static final int W_SIDEBAR_MIN_DARK = 200;
@@ -255,6 +255,10 @@ public final class Tokens {
     /** w-sidebar-collapsed (size) */
     public static final int W_SIDEBAR_COLLAPSED_DARK = 48;
     public static final int W_SIDEBAR_COLLAPSED_LIGHT = 48;
+
+    /** row-dense (size) */
+    public static final int ROW_DENSE_DARK = 22;
+    public static final int ROW_DENSE_LIGHT = 22;
 
     /** row-compact (size) */
     public static final int ROW_COMPACT_DARK = 24;
@@ -303,6 +307,10 @@ public final class Tokens {
     /** sp-1 (size) */
     public static final int SP_1_DARK = 2;
     public static final int SP_1_LIGHT = 2;
+
+    /** sp-1h (size) */
+    public static final int SP_1H_DARK = 6;
+    public static final int SP_1H_LIGHT = 6;
 
     /** sp-2 (size) */
     public static final int SP_2_DARK = 4;
@@ -411,13 +419,13 @@ public final class Tokens {
             "syn-keyword", "syn-string", "syn-number", "syn-comment", "syn-function", "syn-type",
             "syn-ident", "syn-param", "syn-error", "h-appbar", "h-toolbar", "h-tabbar",
             "h-statusbar", "h-input", "h-button", "w-sidebar-min", "w-sidebar", "w-sidebar-max",
-            "w-sidebar-collapsed", "row-compact", "row-normal", "row-comfort", "fs-2xs", "fs-xs",
-            "fs-sm", "fs-md", "fs-lg", "fs-xl", "fs-2xl", "fs-3xl",
-            "sp-1", "sp-2", "sp-3", "sp-4", "sp-5", "sp-6",
-            "sp-7", "r-xs", "r-sm", "r-md", "r-lg", "r-full",
-            "dur-toast", "dur-toast-action", "dur-toast-result", "kind-table", "kind-view", "kind-function",
-            "kind-trigger", "kind-procedure", "overlay", "shadow-1", "kind-index", "kind-event",
-            "row-tree"
+            "w-sidebar-collapsed", "row-dense", "row-compact", "row-normal", "row-comfort", "fs-2xs",
+            "fs-xs", "fs-sm", "fs-md", "fs-lg", "fs-xl", "fs-2xl",
+            "fs-3xl", "sp-1", "sp-1h", "sp-2", "sp-3", "sp-4",
+            "sp-5", "sp-6", "sp-7", "r-xs", "r-sm", "r-md",
+            "r-lg", "r-full", "dur-toast", "dur-toast-action", "dur-toast-result", "kind-table",
+            "kind-view", "kind-function", "kind-trigger", "kind-procedure", "overlay", "shadow-1",
+            "kind-index", "kind-event", "row-tree"
     );
 
     private Tokens() { }

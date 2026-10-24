@@ -14,12 +14,13 @@ public final class RowHeights {
     private RowHeights() {
     }
 
-    /** 密度名（{@code compact} / {@code normal} / {@code comfort}）→ 行高（像素）。 */
+    /** 密度名（{@code dense} / {@code compact} / {@code normal} / {@code comfort}）→ 行高（像素）。 */
     public static int of(String density) {
-        return switch (density == null ? "normal" : density) {
-            case "compact" -> Tokens.ROW_COMPACT_LIGHT;
+        return switch (density == null ? "compact" : density) {
+            case "dense" -> Tokens.ROW_DENSE_LIGHT;
+            case "normal" -> Tokens.ROW_NORMAL_LIGHT;
             case "comfort" -> Tokens.ROW_COMFORT_LIGHT;
-            default -> Tokens.ROW_NORMAL_LIGHT;
+            default -> Tokens.ROW_COMPACT_LIGHT;
         };
     }
 }

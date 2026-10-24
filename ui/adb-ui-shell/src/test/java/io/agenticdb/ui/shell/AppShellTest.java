@@ -609,6 +609,54 @@ class AppShellTest {
         }
     }
 
+    /**
+     * ⭐ UX-2：没有存过偏好时默认是 **compact（紧凑）**，不是标准。
+     *
+     * <p>Navicat 的默认密度偏紧；我们之前的 28px 标准行高在 800 高窗口里
+     * 只能看到 20 行。默认必须落在四档里的第二档，dense 才是用户主动选择。
+     */
+    @Test
+    void densityDefaultsToCompactWhenNoPreferenceIsStored() throws Exception {
+        String oldNode = System.getProperty("adb.prefs.node");
+        String oldDensity = System.getProperty("adb.density");
+        String node = "io/agenticdb/tests/density-default-" + System.nanoTime();
+        Preferences testNode = Preferences.userRoot().node(node.replace('.', '/'));
+        try {
+            System.setProperty("adb.prefs.node", node);
+            System.clearProperty("adb.density");
+            SettingsStore store = new SettingsStore();
+
+            AtomicReference<AppShell> holder = new AtomicReference<>();
+            WaitForAsyncUtils.asyncFx(() -> holder.set(
+                    new AppShell(store, new ThemeManager(new SettingsStore())))).get();
+            WaitForAsyncUtils.waitForFxEvents();
+
+            assertThat(holder.get().getStyleClass())
+                    .as("未存偏好时默认密度必须是 compact")
+                    .contains("density-compact")
+                    .doesNotContain("density-dense", "density-normal", "density-comfort");
+            assertThat(store.get("ui.density", ""))
+                    .as("首次启动要把默认密度落到偏好里，下次启动不变")
+                    .isEqualTo("compact");
+        } finally {
+            if (oldNode == null) {
+                System.clearProperty("adb.prefs.node");
+            } else {
+                System.setProperty("adb.prefs.node", oldNode);
+            }
+            if (oldDensity == null) {
+                System.clearProperty("adb.density");
+            } else {
+                System.setProperty("adb.density", oldDensity);
+            }
+            try {
+                testNode.removeNode();
+            } catch (Exception ignored) {
+                // 测试偏好节点清理失败不影响结论。
+            }
+        }
+    }
+
     private static MenuItem menuItem(FxRobot robot, String id) {
         return items(robot).stream()
                 .filter(item -> id.equals(item.getId()))

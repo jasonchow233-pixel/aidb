@@ -41,31 +41,33 @@ class DensityCoverageTest {
 
     @Test
     void theRowHeightsComeFromTheTokens() {
-        // ⭐ 2026-10 密度对齐 Navicat 后的行高令牌：紧凑 24 / 常规 28 / 宽松 34。
+        // ⭐ UX-2：四档行高令牌 —— 密集 22 / 紧凑 24 / 标准 28 / 宽松 34；默认紧凑。
+        assertThat(RowHeights.of("dense")).isEqualTo(22);
         assertThat(RowHeights.of("compact")).isEqualTo(24);
         assertThat(RowHeights.of("normal")).isEqualTo(28);
         assertThat(RowHeights.of("comfort")).isEqualTo(34);
-        assertThat(RowHeights.of(null)).isEqualTo(28);
-        assertThat(RowHeights.of("不存在的档位")).isEqualTo(28);
+        assertThat(RowHeights.of(null)).as("默认密度 = 紧凑").isEqualTo(24);
+        assertThat(RowHeights.of("不存在的档位")).as("未知档位回落到默认紧凑").isEqualTo(24);
     }
 
     @Test
     void theTableListFollowsTheDensity(FxRobot robot) throws Exception {
         try (Fixture fixture = Fixture.open()) {
-            int[] heights = new int[2];
+            List<Integer> heights = new ArrayList<>();
+            List<Integer> expected = new ArrayList<>();
             robot.interact((Callable<Void>) () -> {
                 TableListPage page = new TableListPage(fixture.session, fixture.schemaService,
                         fixture.executor, name -> { }, message -> { });
-                page.setDensity("normal");
-                heights[0] = (int) page.table().getFixedCellSize();
-                page.setDensity("compact");
-                heights[1] = (int) page.table().getFixedCellSize();
+                for (String density : DENSITIES) {
+                    page.setDensity(density);
+                    heights.add((int) page.table().getFixedCellSize());
+                    expected.add(RowHeights.of(density));
+                }
                 return null;
             });
-            assertThat(heights[1])
-                    .as("表清单要跟密度")
-                    .isLessThan(heights[0]);
-            assertThat(heights[1]).isEqualTo(RowHeights.of("compact"));
+            assertThat(heights)
+                    .as("表清单要跟全部四档密度")
+                    .containsExactlyElementsOf(expected);
         }
     }
 
@@ -76,35 +78,47 @@ class DensityCoverageTest {
             robot.interact((Callable<Void>) () -> {
                 StructurePage page = new StructurePage(fixture.session, fixture.schemaService,
                         "t", "demo", feedback(), fixture.executor, () -> { });
-                page.setDensity("compact");
-                for (TableView<?> table : page.tables()) {
-                    heights.add((int) table.getFixedCellSize());
+                for (String density : DENSITIES) {
+                    page.setDensity(density);
+                    for (TableView<?> table : page.tables()) {
+                        heights.add((int) table.getFixedCellSize());
+                    }
                 }
                 return null;
             });
+            List<Integer> expected = DENSITIES.stream()
+                    .flatMap(density -> java.util.stream.Stream.generate(
+                            () -> RowHeights.of(density)).limit(4))
+                    .toList();
             assertThat(heights)
-                    .as("结构页的每一张表都要跟密度")
-                    .hasSize(4)
-                    .allMatch(height -> height == RowHeights.of("compact"));
+                    .as("结构页的每一张表都要跟全部四档密度")
+                    .containsExactlyElementsOf(expected);
         }
     }
 
     @Test
     void theQueryResultFollowsTheDensity(FxRobot robot) throws Exception {
         try (Fixture fixture = Fixture.open()) {
-            int[] height = new int[1];
+            List<Integer> heights = new ArrayList<>();
+            List<Integer> expected = new ArrayList<>();
             robot.interact((Callable<Void>) () -> {
                 QueryPage page = new QueryPage(fixture.session, "demo", null,
                         fixture.executor, new SettingsStore(), feedback());
-                page.setDensity("compact");
-                height[0] = page.resultRowHeight();
+                for (String density : DENSITIES) {
+                    page.setDensity(density);
+                    heights.add(page.resultRowHeight());
+                    expected.add(RowHeights.of(density));
+                }
                 return null;
             });
-            assertThat(height[0])
-                    .as("查询结果网格要跟密度")
-                    .isEqualTo(RowHeights.of("compact"));
+            assertThat(heights)
+                    .as("查询结果网格要跟全部四档密度")
+                    .containsExactlyElementsOf(expected);
         }
     }
+
+    /** UX-2 的四档密度，按行高从密到松。 */
+    private static final List<String> DENSITIES = List.of("dense", "compact", "normal", "comfort");
 
     /** 一个空反馈（页面只是被构造出来，不会真去跑查询）。 */
     private static DataGridPage.Feedback feedback() {

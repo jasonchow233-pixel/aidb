@@ -66,6 +66,7 @@ public final class MenuBarFactory {
                 actions.menuItem("details.toggle"),
                 new SeparatorMenuItem(),
                 actions.menuItem("theme.toggle"),
+                actions.radioMenuItem("density-dense", group),
                 actions.radioMenuItem("density-compact", group),
                 actions.radioMenuItem("density-normal", group),
                 actions.radioMenuItem("density-comfort", group),

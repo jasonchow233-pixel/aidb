@@ -1650,11 +1650,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      * 对最费屏的地方不起作用。
      */
     public void setDensity(String density) {
-        int rowHeight = switch (density == null ? "normal" : density) {
-            case "compact" -> io.agenticdb.ui.Tokens.ROW_COMPACT_LIGHT;
-            case "comfort" -> io.agenticdb.ui.Tokens.ROW_COMFORT_LIGHT;
-            default -> io.agenticdb.ui.Tokens.ROW_NORMAL_LIGHT;
-        };
+        int rowHeight = io.agenticdb.ui.RowHeights.of(density);
         grid.setFixedCellSize(rowHeight);
         // ⭐ G1：两表行高必须一致，否则同一行在左右两半会错开半格。
         frozenGrid.setFixedCellSize(rowHeight);

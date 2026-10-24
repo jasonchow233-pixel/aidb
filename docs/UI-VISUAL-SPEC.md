@@ -61,8 +61,8 @@
 |---|---|---|---|
 | `fs-2xs` | 10px | **单字符**徽标 / 角标：排序角标、脏标记、快捷键角标 | 任何成句文字 |
 | `fs-xs` | 11px | 辅助信息：状态栏、列类型行、分组标题、树副标题、提示文字、chip、统计条 | 表格正文 |
-| `fs-sm` | 12px | **密集正文**：辅助标签、次级按钮文字、菜单 | 表格正文（会挤） |
-| `fs-md` | 13px | **界面基准**：表格正文、按钮、菜单、树节点、输入框、toast | — |
+| `fs-sm` | 12px | **数据面正文**：网格 / 清单 / 树 / 结构页 / 按钮 / 菜单 | 页面标题、空态标题 |
+| `fs-md` | 13px | **界面基准**（`.root`）：对话框标题、欢迎页、非数据面的说明文字 | 数据面正文 |
 | `fs-lg` | 14px | 区块标题、对话框标题 | — |
 | `fs-xl` | 16px | 应用名、对象标题、空状态标题 | — |
 | `fs-2xl` | 20px | 页面标题（对象名 / 页面名） | — |
@@ -73,10 +73,11 @@
 > `Icons.SIZE_BRAND` 在代码里定（与全应用图标尺寸同一套），字号阶梯里不再留一个
 > 没有文字会用到的档（`TokenParityTest.everyTokenIsActuallyUsed` 会红）。
 
-> ⭐ 2026-10 重构：界面基准 **13px**；**清单页（对象 / 表清单）用 12px**，
-> 因为这两页是「扫读表名」而不是「逐格读数据」。12px 是 Navicat 的运维密度；
-> 数据网格仍用 13px，连续读单元格更耐看。
-> 需要更密时用「视图 → 密度 → 紧凑」，而不是把全局字号压到 12px。
+> ⭐ 2026-10 UX-2 重构：**数据面正文统一 12px** —— 网格、清单、树、结构页、
+> 按钮与输入框都落到 `fs-sm`。表格正文 13px 会让 22px 的 dense 行发挤，
+> 而 Navicat 的运维密度就是 12px。13px 仍保留为 `.root` 的界面基准
+> （对话框标题、欢迎页等非数据面）。
+> 需要更密时用「视图 → 密度 → 密集」（22px 行），而不是继续压字号。
 
 **硬规则**：
 
@@ -91,17 +92,17 @@
 | 应用名 | 16px bold | `.adb-appbar__title` |
 | 页面标题 / 对象名 | 20px bold | `.adb-page__title`、`.adb-object-header__title` |
 | 分组标题（侧栏 / 表格页签区） | 11px bold | `.adb-sidebar__section-title`、`.adb-section-title` |
-| 表格正文 | 13px | `.adb-grid .table-cell` |
+| 表格正文 | 12px | `.adb-grid .table-cell` |
 | 清单正文（对象 / 表清单） | 12px | `.adb-object-list .table-cell`、`.adb-table-list .table-cell` |
 | 清单表头 | 12px bold | `.adb-object-list .column-header .label`、`.adb-table-list .column-header .label` |
-| 列名 | 13px bold | `.adb-grid__column-name` |
+| 列名 | 12px bold | `.adb-grid__column-name` |
 | 列类型行 | 11px | `.adb-grid__column-type` |
 | 行号 | 11px | `.adb-grid__row-number` |
 | 排序角标 | 10px bold | `.adb-grid__sort-badge` |
 | 状态栏 | 11px | `.adb-statusbar .label` |
 | 徽标 / chip | 10–11px | `.adb-badge`、`.adb-chip`、`.adb-filter-chip` |
 | 弹窗标题 | 14px bold | `.adb-dialog > .header-panel .label` |
-| 弹窗按钮 | 13px | `.adb-dialog .button` |
+| 弹窗按钮 | 12px | `.adb-dialog .button` |
 | 空状态标题 | 16px bold | `.adb-empty__title` |
 | 空状态说明 | 12px | `.adb-muted` |
 | Tooltip | 11px | `.tooltip` |
@@ -254,7 +255,7 @@
 
 ## 5. 间距、圆角与尺寸
 
-### 5.1 间距（7 档 4px 阶梯，`sp-*`）
+### 5.1 间距（7 档 4px 阶梯 + 1 档例外，`sp-*`）
 
 | 令牌 | 值 | 用途 |
 |---|---|---|
@@ -265,8 +266,10 @@
 | `sp-5` | 16px | 区块之间、页面 body 顶部留白、卡片内边距 |
 | `sp-6` | 24px | 大区块之间 |
 | `sp-7` | 32px | 空状态上下留白、欢迎页留白 |
+| `sp-1h` | 6px | **dense 档单元格水平内边距**（`2 6`；1.5×`sp-2` 的已登记例外） |
 
-**硬规则**：所有间距是 4 的倍数（`sp-1` 除外）。
+**硬规则**：所有间距是 4 的倍数，仅 `sp-1`（2px，图标微调）与
+`sp-1h`（6px，dense 单元格内边距）两个已登记例外。
 ⛔ CSS 里不得出现阶梯外的 padding（门禁：`AppCssAuditTest`）；**padding 必须带 `px` 单位**。
 
 ### 5.2 圆角（4 档 + pill，`r-*`）
@@ -288,17 +291,18 @@
 |---|---|---|
 | 菜单栏 | 系统默认（macOS 进系统菜单栏） | — |
 | **应用栏** | **46px** | `h-appbar`（`AppBar.setPrefHeight`） |
-| 标签栏 | **36px**（tab 高 34） | `h-tabbar` / `.adb-tab` |
-| 对象标题栏 | 44px | `.adb-object-header` |
-| 对象切面条 | 34px | `.adb-object-tabs` |
-| 工具栏（数据页） | 38px | `h-toolbar` |
-| **状态栏** | **26px** | `h-statusbar` |
+| 标签栏 | **28px**（tab 高 26 + 2px 活动线） | `h-tabbar` / `.adb-tab` |
+| 对象标题栏 | **36px** | `.adb-object-header` |
+| 对象切面条 | 随对象标题栏（36 内） | `.adb-object-tabs` |
+| 工具栏（数据页） | **34px** | `h-toolbar` |
+| **状态栏** | **24px** | `h-statusbar` |
 | 侧栏（展开） | **250px**，可拖 200–360 | `w-sidebar*` |
 | 侧栏（折叠 rail） | **48px** | `w-sidebar-collapsed` |
-| 输入框高 | 32px | `h-input` |
-| 按钮高 | 32px | `h-button` |
-| **网格行高** | 24 / **28** / 34（紧凑/标准/宽松） | `row-compact/normal/comfort` |
-| **对象树行高** | **24px** | `row-tree` |
+| 输入框高 | **28px** | `h-input` |
+| 按钮高 | **28px** | `h-button` |
+| **网格行高** | 22 / **24** / 28 / 34（密集/紧凑/标准/宽松，默认紧凑） | `row-dense/compact/normal/comfort` |
+| 分页器 | **36px** | `.adb-grid__pager` |
+| **对象树行高** | **24px**（密集 22） | `row-tree` / `row-dense` |
 | 侧栏 rail 按钮 | 32×32 | `.adb-rail__button` |
 | 详情抽屉宽 | 360–620（默认 480） | `CellDetailsDrawer` |
 | 命令面板宽 | ≤ 620 | `CommandPalette` |
@@ -316,6 +320,8 @@
 | 菜单项上下文菜单 | `4px` |
 | 页面 body | `12px 16px 16px 16px` |
 | 网格 body | `0 16px` |
+| 网格 / 清单 / 结构单元格（compact 及以上） | `4px 8px`（清单 `0 8px`） |
+| 网格 / 清单 / 结构单元格（dense） | `2px 6px`（清单 `0 6px`，使用 `sp-1h`） |
 | 面板 / 卡片 | `12px` / `16px` |
 
 ---
@@ -441,7 +447,7 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 | 筛选漏斗 | **常态 opacity 0（仍占位）**，悬停列头浮现；**该列有筛选条件时常显**（状态不是装饰） |
 | 行号列 | 宽 52，11px；脏行号加粗变色（黄/绿/红） |
 | 选择列 | 宽 36，表头全选**只作用于当前页** |
-| 正文 | 12px，`4px 8px`；NULL 斜体灰、空串浅灰、枚举绿粗体、JSON 蓝等宽、数字等宽 |
+| 正文 | 12px，`4px 8px`（dense `2px 6px`）；NULL 斜体灰、空串浅灰、枚举绿粗体、JSON 蓝等宽、数字等宽 |
 | 斑马纹 | 奇数行 `bg-inset`（很轻） |
 | 选中 | `bg-selected` + 正文色字（不蓝字） |
 | 脏单元格 | 左侧 2px 黄条 + `warning-bg` |
@@ -453,7 +459,7 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 
 | 元素 | 规格 |
 |---|---|
-| 行高 | **24px**（`row-tree` 令牌） |
+| 行高 | 24px（`row-tree`；dense 22） |
 | 选中 | **满行高亮**（`bg-selected`），不是圆角胶囊 |
 | 类型色 | 图标着色（`kind-*`），文字保持正文色 |
 | 计数 | 分组右侧 11px tertiary（「表 12」） |
@@ -515,7 +521,7 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 |---|---|
 | 列（表清单） | 名称 / 行 / 数据长度 / 引擎 / 创建日期 / 修改日期 / 排序规则 / 注释 |
 | 列（对象首页） | 名称 / **类型** / 行数 / 数据长度 / 引擎 / 创建时间 / 修改时间 / 排序规则 / 注释 |
-| 行高 | 24 / **28** / 34（跟随密度令牌） |
+| 行高 | 22 / **24** / 28 / 34（跟随密度令牌，默认紧凑） |
 | 表体 | 12px；**纯白行 + 1px `border` 下线，无斑马纹** |
 | 表头 | 12px bold，`text-secondary`，`bg-surface` |
 | 空行 | **不画线、不铺色**（避免看起来像还有数据） |
@@ -692,15 +698,17 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 
 ## 12. 密度与主题
 
-### 12.1 密度（三档，全局 4 处生效）
+### 12.1 密度（四档，全局 5 处生效）
 
-| 档 | 网格行高 | 树 cell padding | 适用 |
-|---|---|---|---|
-| 紧凑 | 24px | `0 4` | 笔记本 / 大表浏览 |
-| **标准** | **28px** | `0 4`（默认） | 日常 |
-| 宽松 | 34px | `4 4` | 演示 / 触屏 |
+| 档 | 网格行高 | 树行高 | cell padding | 适用 |
+|---|---|---|---|---|
+| 密集 | 22px | 22px | `2 6` / 清单 `0 6` | 与 Navicat 并排对标、大表扫读 |
+| **紧凑（默认）** | **24px** | **24px** | `4 8` / 清单 `0 8` | 笔记本 / 日常 |
+| 标准 | 28px | 28px | `4 8` | 宽松的桌面环境 |
+| 宽松 | 34px | 34px | `4 8` | 演示 / 触屏 |
 
-覆盖：数据网格 · 查询结果网格 · 对象清单 · 结构页四张表（`DensityCoverageTest` 守着）。
+覆盖：数据网格 · 查询结果网格 · 表清单 · 对象首页 · 结构页四张表 · 对象树
+（`DensityCoverageTest` 四档 × 各页面，`ChromeMetricsTest` 钉 chrome 高度与可见行数）。
 
 ### 12.2 主题
 
@@ -783,9 +791,10 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 | 门禁 | 断言 |
 |---|---|
 | `TokenParityTest` | 令牌键一致 / 亮暗一致 / CSS 无颜色字面量 / **每个令牌都被用到**（不许摆设） |
-| `AppCssAuditTest` | CSS 内无字面量字号·padding·radius；字号 8 档、圆角 3 档、间距 7 档；`9px` 0 次 |
+| `AppCssAuditTest` | CSS 内无字面量字号·padding·radius；字号 8 档、圆角 3 档、间距 `0/2/4/6/8/12/16/24/32`；`9px` 0 次；数据面正文必须 12px |
 | `FocusRingAuditTest` | 每个可聚焦组件类都有 `:focused`；`-fx-opacity` 只 1 处；禁用态抵消 Modena 透明度 |
-| `DensityCoverageTest` | 密度同时改 4 张表的行高 |
+| `DensityCoverageTest` | 密度四档同时改数据网格 / 查询结果 / 清单 / 结构页的行高；未知档回落 compact |
+| **`ChromeMetricsTest`**（✅ UX-2 新增） | 标签栏 28 / 对象头 36 / 页工具条 34 / 分页器 36 / 状态栏 24；dense 行高 22；1268×765 可见 ≥22 行 |
 | `IconAuditTest` | 图标控件同时有 Tooltip + accessible text；符号语义唯一 |
 | `IconSystemAuditTest` | 按钮无 Unicode 图标/中文词图标；`Icons` 无死常量；领域层不带图标 |
 | `MenuBarFactoryTest` | 菜单项全部来自 `ActionRegistry`，无永久禁用死项 |
@@ -802,5 +811,6 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-24 | 第二十一轮 · UX-2 | **密度/排版/chrome**：新增 dense 22（默认 compact）；数据面正文统一 12px；标签栏 28 / 对象头 36 / 工具栏 34 / 分页器 36 / 状态栏 24；按钮与输入 28；令牌 99（`row-dense` + `sp-1h`）；新增 `ChromeMetricsTest`（765px 高 ≥22 行） |
 | 2026-10-22 | 第十三轮 | **表清单 / 密度对齐**：尺寸更新为应用栏 46 / 标签栏 36 / 工具栏 38 / 网格 24·28·34 / 树 24；新增 §7.9 清单页规格（8 列 / 白行 / 12px 表头）；§7.6 补状态栏三区版式；§2.3 补清单字号 |
 | 2026-10-22 | 第十轮 | **建立本文**（`docs/UI-VISUAL-SPEC.md`）：字体 / 颜色 / 图标 / 间距 / 布局 / 组件 / 弹窗 / 交互态 / 键盘 / 文案规格 + 43 个未定义样式类等缺口清单；同时修掉 `row-tree` / `kind-index` 两个摆设令牌与 `.adb-error` 缺样式 |

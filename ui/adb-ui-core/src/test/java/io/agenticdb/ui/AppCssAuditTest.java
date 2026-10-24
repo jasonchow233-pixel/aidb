@@ -47,12 +47,16 @@ class AppCssAuditTest {
     private static final Set<String> FONT_SIZES = Set.of(
             "10px", "11px", "12px", "13px", "14px", "16px", "20px", "32px");
 
-    /** CSS 里允许的间距（含 0 —— 归零不是「另一个尺度」）。 */
-    private static final Set<String> SPACING = Set.of("0px", "2px", "4px", "8px",
+    /**
+     * CSS 里允许的间距（含 0 —— 归零不是「另一个尺度」）。
+     *
+     * <p>UX-2 新增 {@code sp-1h} 6px：唯一的半档，只给密集网格的水平内边距用。
+     */
+    private static final Set<String> SPACING = Set.of("0px", "2px", "4px", "6px", "8px",
             "12px", "16px", "24px", "32px");
 
     /** 令牌里的间距（不含 0 —— 0 不需要令牌）。 */
-    private static final Set<String> TOKEN_SPACING = Set.of("2px", "4px", "8px",
+    private static final Set<String> TOKEN_SPACING = Set.of("2px", "4px", "6px", "8px",
             "12px", "16px", "24px", "32px");
 
     /**
@@ -142,6 +146,39 @@ class AppCssAuditTest {
         assertThat(fromTokens).isEqualTo(TOKEN_SPACING);
     }
 
+    /**
+     * ⭐ UX-2：数据区正文必须是 12px（Navicat 实拍密度）。
+     *
+     * <p>只靠「字号落在阶梯上」不够 —— 13px 也是合法档位。这条门禁盯住
+     * **具体落点**：网格 / 清单 / 树 / 列头 / 工具条按钮 / 结构页 / 连接页。
+     * 变异：把网格单元格改回 13px → 红。
+     */
+    @Test
+    void dataSurfacesUseTheCompactBodySize() throws IOException {
+        String css = css();
+        assertThat(fontSizeOf(css, ".adb-grid .table-cell"))
+                .as("数据网格正文")
+                .isEqualTo("12px");
+        assertThat(fontSizeOf(css, ".adb-object-list .table-cell"))
+                .as("对象清单正文")
+                .isEqualTo("12px");
+        assertThat(fontSizeOf(css, ".adb-tree__name"))
+                .as("对象树名称")
+                .isEqualTo("12px");
+        assertThat(fontSizeOf(css, ".adb-grid__column-name"))
+                .as("单行列头")
+                .isEqualTo("12px");
+        assertThat(fontSizeOf(css, ".adb-button"))
+                .as("工具条主操作标签")
+                .isEqualTo("12px");
+        assertThat(fontSizeOf(css, ".adb-structure__table .table-cell"))
+                .as("结构页表格正文")
+                .isEqualTo("12px");
+        assertThat(fontSizeOf(css, ".adb-connections__table .table-cell"))
+                .as("连接页表格正文")
+                .isEqualTo("12px");
+    }
+
     // ─────────────────────────── 圆角 ───────────────────────────
 
     @Test
@@ -206,6 +243,23 @@ class AppCssAuditTest {
     }
 
     // ─────────────────────────── 工具 ───────────────────────────
+
+    /** 取某个选择器规则块里的字号；找不到规则 / 没写字号直接失败。 */
+    private static String fontSizeOf(String css, String selector) {
+        // ⚠️ 必须锚在行首：`.adb-tree__name {` 是 `.x .adb-tree__name {` 的
+        //    子串，不锚定会先匹配到子选择器那条规则（它只设颜色，没有字号）。
+        Matcher matcher = Pattern.compile("(?m)^" + Pattern.quote(selector) + "\\s*\\{([^}]*)\\}")
+                .matcher(css);
+        assertThat(matcher.find())
+                .as("app.css 里找不到选择器 %s", selector)
+                .isTrue();
+        Matcher font = Pattern.compile("-fx-font-size:\\s*([0-9.]+px)")
+                .matcher(matcher.group(1));
+        assertThat(font.find())
+                .as("选择器 %s 必须显式写字号", selector)
+                .isTrue();
+        return font.group(1);
+    }
 
     private static List<String> values(String text, String regex) {
         List<String> result = new ArrayList<>();

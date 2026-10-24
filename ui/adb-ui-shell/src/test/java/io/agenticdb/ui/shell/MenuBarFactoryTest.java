@@ -38,7 +38,8 @@ class MenuBarFactoryTest {
             "edit.undo", "edit.redo", "edit.copy", "focus-search", "query.comment",
             "command-palette",
             "sidebar.toggle", "theme.toggle", "details.toggle",
-            "density-compact", "density-normal", "density-comfort", "window.zoom",
+            "density-dense", "density-compact", "density-normal", "density-comfort",
+            "window.zoom",
             "refresh", "connection.reconnect", "connection.disconnect", "demo.open",
             // T1–T4 表级生命周期（注册在 SideBar，菜单里补入口，避免成为孤儿动作）
             "object.new-table", "object.truncate-table", "object.rename-table",
@@ -134,22 +135,33 @@ class MenuBarFactoryTest {
         ActionRegistry actions = registry();
         MenuBar menuBar = bar(actions);
 
+        RadioMenuItem dense = findRadio(menuBar, "label-density-dense");
         RadioMenuItem compact = findRadio(menuBar, "label-density-compact");
         RadioMenuItem normal = findRadio(menuBar, "label-density-normal");
         RadioMenuItem comfort = findRadio(menuBar, "label-density-comfort");
 
+        assertThat(dense.getToggleGroup()).isSameAs(normal.getToggleGroup());
         assertThat(compact.getToggleGroup()).isSameAs(normal.getToggleGroup());
         assertThat(comfort.getToggleGroup()).isSameAs(normal.getToggleGroup());
 
-        // 初始互斥：选中 compact 后 normal / comfort 自动取消。
+        // 初始互斥：选中 compact 后 dense / normal / comfort 自动取消。
         onFxRun(() -> actions.require("density-compact").setSelected(true));
         assertThat(compact.isSelected()).isTrue();
+        assertThat(dense.isSelected()).isFalse();
         assertThat(normal.isSelected()).isFalse();
         assertThat(comfort.isSelected()).isFalse();
 
         // 反向也通：改动作状态，菜单勾选跟着走（AppShell.applyDensity 的同步路径）。
         onFxRun(() -> actions.require("density-comfort").setSelected(true));
         assertThat(comfort.isSelected()).isTrue();
+        assertThat(compact.isSelected()).isFalse();
+        assertThat(dense.isSelected()).isFalse();
+
+        // ⭐ UX-2：四档里最密的一档也必须是「可选中、可互斥」的真选项。
+        onFxRun(() -> actions.require("density-dense").setSelected(true));
+        assertThat(dense.isSelected()).isTrue();
+        assertThat(comfort.isSelected()).isFalse();
+        assertThat(normal.isSelected()).isFalse();
         assertThat(compact.isSelected()).isFalse();
 
         // disabled 绑定同样生效。
