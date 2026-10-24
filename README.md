@@ -12,7 +12,10 @@
 ## 当前状态（2026-10-24）
 
 **P0–P4 已完成、P5/P6 进行中、界面专项 U-B1–U-B7 已落地。**
-门禁 **754 条 / 97 类 / 0 失败**（2026-10-24 · 第二十二轮 Windows 实机实测；另有 44 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
+门禁 **786 条 / 101 类 / 0 失败**（2026-10-24 · 第二十二轮实测；另有 44 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
+第二十二轮先把**门禁自己**修干净了：`java.util.prefs` 是进程级共享状态，
+同一个 JVM 里跑的测试会互相污染 —— 三个门禁在 `clean verify` 里红、单独跑却绿。
+现在**每个测试方法一个独立偏好节点**，跑测试也不再改动开发机上的真实 AIDB 偏好。
 
 > **第八轮之后**：D2+D4（MySQL/PG 列注释读回）已修；B5-S1（索引可编辑）已落地；
 > **T1–T4（建表 / 清空 / 重命名 / 删表）已落地**（T1=弹窗，按形态裁定）；9 张验收截图完成。
@@ -98,7 +101,7 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**754 条 / 97 类 / 0 失败**（2026-10-24 · 第二十二轮 Windows 实机实测；`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
+当前门禁：**786 条 / 101 类 / 0 失败**（2026-10-24 · 第二十二轮实测；`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
 
 > ⚠️ **本机环境**：`java` 默认不在 PATH。可用的 JDK：
 > - Windows 10：`~/.jdks/openjdk-27.0.1.0.2`（pom 的 enforcer 区间为 `[25,28)`）

@@ -1,5 +1,7 @@
 package io.agenticdb.introspect;
 
+import io.agenticdb.model.ByteSizes;
+
 /**
  * 表的元信息 —— Navicat「表清单」那一行的内容。
  *
@@ -45,17 +47,9 @@ public record TableMeta(
         return rows == null ? "—" : String.valueOf(rows);
     }
 
+    /** ⭐ 与数据网格的 {@code sizeLabel} 共用 {@link ByteSizes} —— 一份语义，两个入口。 */
     public String sizeText() {
-        if (sizeBytes == null) {
-            return "—";
-        }
-        if (sizeBytes < 1024) {
-            return sizeBytes + " B";
-        }
-        if (sizeBytes < 1024 * 1024) {
-            return (sizeBytes / 1024.0) + " KB";
-        }
-        return String.format("%.1f MB", sizeBytes / 1024.0 / 1024.0);
+        return sizeBytes == null ? "—" : ByteSizes.format(sizeBytes);
     }
 
     public String engineText() {

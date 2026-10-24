@@ -136,6 +136,11 @@ final class TableListPage extends VBox {
     private final Set<String> gridSelection = new LinkedHashSet<>();
     private final BooleanProperty listView = new SimpleBooleanProperty(true);
 
+    /** 列宽记忆的偏好根；没有它就不记（单测 / 无外壳照样能用）。 */
+    private SettingsStore preferences;
+    /** 表清单页的列宽存在这个前缀下。 */
+    private static final String COLUMN_WIDTH_PREFIX = "ui.list.tables";
+
     // ─────────── 可选列（方言相关）的引用 ───────────
     // ⭐ 第十九轮 S-1：这 6 列是「方言拿不到就显示 —」的可选列。留引用是为了
     //    在数据加载后按内容决定整列显不显示（见 applyColumnVisibility）。
@@ -436,6 +441,8 @@ final class TableListPage extends VBox {
                 box.setAlignment(Pos.CENTER_LEFT);
                 setText(null);
                 setGraphic(box);
+                // ⭐ P2-1：长表名截断后，Tooltip 是拿到全名的唯一出口。
+                ListColumns.applyTooltip(this, name);
             }
         });
         return column;
@@ -494,6 +501,8 @@ final class TableListPage extends VBox {
                     getStyleClass().add("adb-table-list__muted");
                 }
                 setText(empty || text == null ? null : text);
+                // ⭐ P2-1：长注释被截断时给全文（短值与「—」不给，那是噪音）。
+                ListColumns.applyTooltip(this, text);
             }
         });
         return column;
@@ -1078,6 +1087,33 @@ final class TableListPage extends VBox {
     public void setDensity(String density) {
         rowHeight = RowHeights.of(density);
         table.setFixedCellSize(rowHeight);
+    }
+
+    /**
+     * ⭐ P2-1：列宽记住 —— 拖过一次，下次打开还是那个宽度。
+     *
+     * <p>没有偏好存储时（单测 / 无外壳）就不记，功能不缺，只是不记。
+     */
+    void rememberColumnsIn(SettingsStore store) {
+        this.preferences = store;
+        ListColumns.installWidthMemory(table, COLUMN_WIDTH_PREFIX, store);
+    }
+
+    /** 测试用：跳过防抖直接落盘。 */
+    void persistColumnWidthsForTest() {
+        if (preferences != null) {
+            ListColumns.save(table, COLUMN_WIDTH_PREFIX, preferences);
+        }
+    }
+
+    /** 测试用：按列标题取列。 */
+    TableColumn<TableMeta, ?> columnTitled(String title) {
+        for (TableColumn<TableMeta, ?> column : table.getColumns()) {
+            if (title.equals(column.getText())) {
+                return column;
+            }
+        }
+        return null;
     }
 
     // ─────────────────────────── 默认动作（单测 / 无外壳） ───────────────────────────

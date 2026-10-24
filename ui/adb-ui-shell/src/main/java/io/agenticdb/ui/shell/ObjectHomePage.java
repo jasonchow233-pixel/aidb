@@ -107,6 +107,11 @@ final class ObjectHomePage extends VBox {
     private final Runnable onConnect;
     private final Host host;
 
+    /** 列宽记忆的偏好根；没有它就不记（单测 / 无外壳照样能用）。 */
+    private SettingsStore preferences;
+    /** 对象首页的列宽存在这个前缀下（与表清单页分开，两页列的集合不同）。 */
+    private static final String COLUMN_WIDTH_PREFIX = "ui.list.objects";
+
     private final Label summary = new Label();
     private final ObservableList<ObjectRow> rows = FXCollections.observableArrayList();
     private final FilteredList<ObjectRow> filtered = new FilteredList<>(rows, row -> true);
@@ -143,6 +148,33 @@ final class ObjectHomePage extends VBox {
     public void setDensity(String density) {
         rowHeight = io.agenticdb.ui.RowHeights.of(density);
         table.setFixedCellSize(rowHeight);
+    }
+
+    /**
+     * ⭐ P2-1：列宽记住 —— 拖过一次，下次打开还是那个宽度。
+     *
+     * <p>没有偏好存储时（单测 / 无外壳）就不记，功能不缺，只是不记。
+     */
+    void rememberColumnsIn(SettingsStore store) {
+        this.preferences = store;
+        ListColumns.installWidthMemory(table, COLUMN_WIDTH_PREFIX, store);
+    }
+
+    /** 测试用：跳过防抖直接落盘。 */
+    void persistColumnWidthsForTest() {
+        if (preferences != null) {
+            ListColumns.save(table, COLUMN_WIDTH_PREFIX, preferences);
+        }
+    }
+
+    /** 测试用：按列标题取列。 */
+    TableColumn<ObjectRow, ?> columnTitled(String title) {
+        for (TableColumn<ObjectRow, ?> column : table.getColumns()) {
+            if (title.equals(column.getText())) {
+                return column;
+            }
+        }
+        return null;
     }
 
     /** 表格（供门禁断言列集合与密度）。 */
@@ -469,6 +501,8 @@ final class ObjectHomePage extends VBox {
                         ? SchemaService.ObjectKind.TABLE : row.object().kind()));
                 Label label = new Label(name);
                 HBox box = new HBox(6, icon, label);
+                // ⭐ P2-1：长对象名截断后，Tooltip 是拿到全名的唯一出口。
+                ListColumns.applyTooltip(this, name);
                 box.setAlignment(Pos.CENTER_LEFT);
                 setText(null);
                 setGraphic(box);
@@ -531,6 +565,15 @@ final class ObjectHomePage extends VBox {
         column.setPrefWidth(width);
         column.setMinWidth(ColumnWidths.listColumnMin(title, minWidth));
         column.setCellValueFactory(cell -> new SimpleStringProperty(value.apply(cell.getValue())));
+        // ⭐ P2-1：长注释 / 长排序规则被截断时给全文（短值与「—」不给）。
+        column.setCellFactory(unused -> new TableCell<>() {
+            @Override
+            protected void updateItem(String text, boolean empty) {
+                super.updateItem(text, empty);
+                setText(empty || text == null ? null : text);
+                ListColumns.applyTooltip(this, text);
+            }
+        });
         return column;
     }
 

@@ -74,22 +74,25 @@ class AppShellTest {
 
     @Start
     void start(Stage stage) {
-        Preferences preferences = Preferences.userNodeForPackage(SettingsStore.class);
-        preferences.put("ui.theme", "light");
-        preferences.put("ui.density", "normal");
-        preferences.putBoolean("ui.sidebar.collapsed", false);
-        preferences.putInt("ui.sidebar.width", 240);
+        // ⭐ 走 SettingsStore 而不是直接拿 Preferences.userNodeForPackage：
+        //    后者是**开发机真实偏好**，往里写等于把测试状态灌进用户的 AIDB
+        //    （而且写完没人清理）。走 SettingsStore 就自动落到本测试的隔离节点里。
+        SettingsStore preferences = new SettingsStore();
+        preferences.set("ui.theme", "light");
+        preferences.set("ui.density", "normal");
+        preferences.setBoolean("ui.sidebar.collapsed", false);
+        preferences.setInt("ui.sidebar.width", 240);
         // ⭐ §6：详情面板的显隐是**持久化**的偏好。不显式关掉的话，
         //    上一次运行留下的 true 会让「默认关闭」这条断言随机失败。
-        preferences.putBoolean("ui.details.visible", false);
+        preferences.setBoolean("ui.details.visible", false);
         // ⭐ 固定窗口尺寸：窗口大小是**记住**的（本地偏好），
         //    不固定的话测试会受上一次运行留下的尺寸影响 ——
         //    窗口比屏幕大时，底部的分页条会落在可视区之外，点击根本落不到。
-        preferences.putInt("ui.window.width", 1280);
-        preferences.putInt("ui.window.height", 800);
-        preferences.putInt("ui.window.x", 0);
-        preferences.putInt("ui.window.y", 0);
-        preferences.put("ui.tableList.view", "list");
+        preferences.setInt("ui.window.width", 1280);
+        preferences.setInt("ui.window.height", 800);
+        preferences.setInt("ui.window.x", 0);
+        preferences.setInt("ui.window.y", 0);
+        preferences.set("ui.tableList.view", "list");
         new App().start(stage);
     }
 
@@ -349,32 +352,29 @@ class AppShellTest {
         org.junit.jupiter.api.Assumptions.assumeTrue(bounds != null,
                 "无头环境拿不到屏幕信息，跳过");
 
-        Preferences preferences = Preferences.userNodeForPackage(SettingsStore.class);
-        int oldWidth = preferences.getInt("ui.window.width", 0);
-        int oldHeight = preferences.getInt("ui.window.height", 0);
-        try {
-            preferences.putInt("ui.window.width", (int) (bounds.getWidth() * 2));
-            preferences.putInt("ui.window.height", (int) (bounds.getHeight() * 2));
-            java.util.concurrent.atomic.AtomicReference<javafx.stage.Stage> holder =
-                    new java.util.concurrent.atomic.AtomicReference<>();
-            org.testfx.util.WaitForAsyncUtils.asyncFx(() -> {
-                javafx.stage.Stage stage = new javafx.stage.Stage();
-                AppShell shell = new AppShell(new SettingsStore(),
-                        new io.agenticdb.ui.shell.ThemeManager(new SettingsStore()));
-                shell.restoreWindow(stage);
-                holder.set(stage);
-            }).get();
-            javafx.stage.Stage stage = holder.get();
-            assertThat(stage.getWidth())
-                    .as("窗口宽度不能超过屏幕宽度（否则底部控件点不到）")
-                    .isLessThanOrEqualTo(bounds.getWidth());
-            assertThat(stage.getHeight())
-                    .as("窗口高度不能超过屏幕高度")
-                    .isLessThanOrEqualTo(bounds.getHeight());
-        } finally {
-            preferences.putInt("ui.window.width", oldWidth);
-            preferences.putInt("ui.window.height", oldHeight);
-        }
+        // ⭐ 往**本测试的隔离节点**里写，不再直接动 Preferences.userNodeForPackage
+        //    （那是开发机的真实偏好；测试跑完由 IsolatedPreferencesExtension 整节点删掉，
+        //    所以这里也不用再手工还原）。
+        SettingsStore preferences = new SettingsStore();
+        preferences.setInt("ui.window.width", (int) (bounds.getWidth() * 2));
+        preferences.setInt("ui.window.height", (int) (bounds.getHeight() * 2));
+
+        java.util.concurrent.atomic.AtomicReference<javafx.stage.Stage> holder =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        org.testfx.util.WaitForAsyncUtils.asyncFx(() -> {
+            javafx.stage.Stage stage = new javafx.stage.Stage();
+            AppShell shell = new AppShell(new SettingsStore(),
+                    new io.agenticdb.ui.shell.ThemeManager(new SettingsStore()));
+            shell.restoreWindow(stage);
+            holder.set(stage);
+        }).get();
+        javafx.stage.Stage stage = holder.get();
+        assertThat(stage.getWidth())
+                .as("窗口宽度不能超过屏幕宽度（否则底部控件点不到）")
+                .isLessThanOrEqualTo(bounds.getWidth());
+        assertThat(stage.getHeight())
+                .as("窗口高度不能超过屏幕高度")
+                .isLessThanOrEqualTo(bounds.getHeight());
     }
 
     @Test
@@ -579,8 +579,14 @@ class AppShellTest {
         MenuItem editCopy = menuItem(robot, "edit.copy");
         RadioMenuItem densityNormal = radioItem(robot, "density-normal");
 
-        // 欢迎页：复制没有目标，禁用；密度默认标准且已勾选。
+        // 欢迎页：复制没有目标，禁用。
         assertThat(editCopy.isDisable()).isTrue();
+
+        // ⭐ 自己把密度扳到「标准」再往下走，不依赖 @Start 写进偏好的那个值。
+        //    这条测的是「勾选态跟着动作走」，不该顺手把一次状态也当成被测对象 ——
+        //    那样它会在别的类改了启动流程时莫名其妙地红。
+        WaitForAsyncUtils.asyncFx(densityNormal::fire).get();
+        WaitForAsyncUtils.waitForFxEvents();
         assertThat(densityNormal.isSelected()).isTrue();
 
         openTable(robot, "users");

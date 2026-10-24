@@ -8,9 +8,13 @@
 > **界面规格书见 `docs/UI-VISUAL-SPEC.md`**（第十轮：字号/颜色/图标/布局/组件/弹窗/交互态/键盘）；
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
-> 最后更新：**2026-10-24（第二十一轮执行中：已删 declarations + UX-0 / UX-1 / UX-2 / UX-3 / UX-4 已完成，见 §34）**
-> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **754 条 / 97 类 / 0 失败**（2026-10-24 第二十二轮 Windows 实机实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
-> 📌 **754 = 753 + S-7 的 1 条**（`AppBarTest` 品牌身份 +1、对比度 +1，新 `BrandMarkAuditTest` +2，删掉测不到真路径的 `WelcomeBrandTest` −3 → 净 **+1**）。
+> 最后更新：**2026-10-24（第二十二轮收尾：门禁隔离 §35.1 + P2-1 §35.2）**
+> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **786 条 / 101 类 / 0 失败**（2026-10-24 第二十二轮实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
+> 📌 **786 = 773 + 13**（隔离 5 + 两页各 2 + `TableMetaTest` 4；类 +1 = `PreferencesIsolationTest`）。
+> ⚠️ 上一行写着的「754 / 97 类」是 **S-7 当时的口径**，与 §34.2 UX-5 记的「773 / 100」
+> 是两个不同的时点 —— 以后只认**最近一次实测**，别再拿 S-7 的数当当前基线。
+> ⭐ **本轮最重要的不是加了 13 条，而是发现门禁自己随机器状态变**（§35.1）：
+> 在它之前，「0 失败」在干净工作区上是**不成立**的。
 > 753 = 728 + UX-4 的 25 条（**`SelectionStateTest` 8 条（新类）** / **`CellDisplayTest` 6 条（新类）** / **`CellEditorTest` 4 条（新类）** / `GridInteractionTest` +7：列头菜单全集、冻结到此列、取消冻结、冻结禁用态、双击自适应、行操作条状态、放弃修改与只读隐藏）；728 的构成见 §34.2 UX-3 落地记录。
 > 📌 **712 是删除 `declarations` 后的新口径**（-43 条 / -3 类：模块 40 + `DeclaredDialectConsistencyTest` 3），属**主动减面**不是回归。
 >
@@ -2584,7 +2588,7 @@ D 项写门禁时实测出来的：基线规则 `.adb-statusbar .label`（0,2,0�
 
 | 批 | 内容 | 门禁 / 验收 | 状态 |
 |---|---|---|---|
-| **P2-1** | 清单列宽记忆 + 长注释 Tooltip + `sizeText` 补 GB/舍入 | 两页各 +2、`TableMetaTest` +4；真 MySQL 契约 | ⬜ |
+| **P2-1** | 清单列宽记忆 + 长注释 Tooltip + `sizeText` 补 GB/舍入 | 两页各 +2、`TableMetaTest` +4；真 MySQL 契约 | ✅ **DONE (R22)** —— 见 §35.2 |
 | **P2-2** | 错误详情弹窗 + 批量汇总页通用化 | 纯格式化测试 + 三处接线；截图 | ⬜ |
 | **P2-3** | `QueryHistory` 带对象上下文 + 详情面板「最近操作」 | `QueryHistoryTest` +3、面板 +1 | ⬜ |
 | **P2-4** | S-7 欢迎页裁定（C4 已并入 UX-2） | 按裁定 | ✅ **DONE (R22)** —— 裁定＝接 + 删，见 §34.2 |
@@ -2602,8 +2606,10 @@ D 项写门禁时实测出来的：基线规则 `.adb-statusbar .label`（0,2,0�
 ```
 0) ✅ 文档对齐 + 删 declarations（已完成，基线 **712 / 92**）
 1) ✅ UX-0 → UX-1 → UX-2          （密度/令牌，P0；基线 720 / 93）
-2) ✅ UX-3 → ✅ UX-4 → ✅ S-7 → ⏭ UX-5（工具条/网格/品牌落点/侧栏，P1；S-7 后基线 754 / 97）
-3) P2-1 → P2-2                    （清单可读性 / 错误可诊断）
+2) ✅ UX-3 → ✅ UX-4 → ✅ S-7 → ✅ UX-5（工具条/网格/品牌落点/侧栏，P1；S-7 后基线 754 / 97）
+3) ✅ P2-1 → P2-2                 （清单可读性 / 错误可诊断；P2-1 见 §35.2）
+   0') ✅ **门禁隔离**（R22 §35.1）—— 排在最前：在它之前「0 失败」这条硬口径
+      是**随机器状态变的**，后面每一批的门禁都不成立。
 4) P5-2 → P5-1 → P5-3 → P5-4     （Windows 凭据先跑真机）
 5) P2-3                           （最近操作，UX-3 的「历史」依赖它）
 6) P6-1 → P6-2 → P6-3            （类型转换 → 查询导出 → xlsx）
@@ -2626,10 +2632,114 @@ D 项写门禁时实测出来的：基线规则 `.adb-statusbar .label`（0,2,0�
 
 ---
 
+## 35. 第二十二轮（2026-10-24）：门禁隔离 + P2-1 清单可读性
+
+### 35.1 ⭐ 门禁自身是脏的：偏好是进程级共享状态（最严重的一类）
+
+> **起因**：本机 `./mvnw -B clean verify` 在**干净工作区**上是红的（3 条失败）。
+> 而文档记录的是「754 / 97 类 / 0 失败」。查下去发现两边都没说谎 ——
+> **绿不绿取决于跑它的人上一次用过什么。**
+
+三条失败的共同根因：{@code java.util.prefs} 是**进程级**共享可变状态，
+而 surefire 把一整个模块的测试类都塞进同一个 JVM。{@code AppShell}
+在构造时读到的 {@code ui.density} / {@code ui.details.visible}
+取决于排在它前面跑过的测试留下过什么：
+
+| 失败的门禁 | 污染源 | 形态 |
+|---|---|---|
+| `ActionRegistryConvergenceTest.densityChangesTheGridRowHeight` | `DensityCoverageTest` 把四档走一遍、最后一档停在 `dense` | **跨类**：读到的「标准 28px」其实是 22px → `24 < 22` 不成立 |
+| `AppShellTest.detailsPanelIsHiddenByDefaultAndTogglesOn` | 同一个类里前一个方法 `details.toggle` 打开后没关 | **跨方法**：断言「默认关闭」读到「开着」 |
+| `AppShellTest.editMenuFollowsActivePageAndDensitySelectionTracksAction` | 同上 | 断言「标准已勾选」读到「紧凑已勾选」 |
+
+而记录 754 的那台机器是绿的，**只因为它的真实偏好里恰好存着
+{@code ui.density=normal} 与 {@code ui.details.visible=false}**
+（实测在本机 `io.agenticdb.ui.plist` 里就是这两个值）。
+
+**落地**：新增 `IsolatedPreferencesExtension`（`ui/adb-ui-shell` 测试侧），
+每个测试方法分一个独立节点 `io/agenticdb/tests/tN`，用完整节点删掉。
+
+- 选 `TestInstancePostProcessor` 而不是 `BeforeEachCallback`：TestFX 的
+  `ApplicationExtension` 在 `beforeEach` 里才 `@Start` 起应用，而应用一构造
+  就把偏好读进内存了 —— 晚一步等于没隔离。`postProcessTestInstance` 严格早于
+  所有 `beforeEach`，且**不受扩展注册顺序影响**。
+- ⭐⭐ **ServiceLoader 默认不生效**：写了
+  `META-INF/services/org.junit.jupiter.api.extension.Extension`、
+  直接 `ServiceLoader.load(Extension.class)` 也确实枚举得到它，
+  但 `postProcessTestInstance` **一次都不触发**（实测打印证实）。
+  要靠 `junit-platform.properties` 里
+  `junit.jupiter.extensions.autodetection.enabled=true` 显式打开。
+  **少了这一行，整套隔离静默失效而所有门禁照常绿** —— 所以这一行本身有门禁守着。
+
+**顺带修掉的两件真事**：
+
+1. **跑一次 `mvn verify` 会改掉开发机上的真实 AIDB 偏好**（侧栏宽度 / 密度 /
+   主题 / 详情面板显隐，每轮改好几遍）。五个测试直接写
+   `Preferences.userNodeForPackage`（真实节点）而不是走 `SettingsStore`；
+   已全部改走 `SettingsStore`，于是自动落到隔离节点、用完删除。
+2. **第三处假绿**：`GridInteractionTest.theReorderedColumnsArePersisted`
+   直接读 `savedColumnOrder()` 就能过 —— 读到的其实是**上一轮跑留在机器里的
+   旧顺序**，落盘本身根本没发生（防抖 400ms 没等到）。改为 `waitFor` 等它真写下去。
+
+**门禁** `PreferencesIsolationTest`（5 条，新类）：
+本测试跑在独立节点上 · 写进去的东西不落进真实用户偏好 ·
+连续两次拿到的节点名不同 · services 文件在 · **`junit-platform.properties`
+里那行开关在**。
+
+**变异验证（3 条，逐条红→改回绿，失败原文如下）**：
+M1 把 `junit-platform.properties` 里的开关删掉 → **3 条同时红**
+（`aTestRunsOnItsOwnPreferencesNode:36` / `whatATestWritesNeverReachesTheRealUserPreferences:48`
+/ `autoDetectionIsSwitchedOnExplicitly:92`）—— 这是最要紧的一条，证明整套隔离
+**靠的就是这一行**；
+M2 `freshNodeName()` 返回常量 → `consecutiveTestsGetFreshNodeNames:58` 红；
+M3 删掉 services 文件 → `theExtensionIsRegisteredForEveryTestInTheModule:72` 红。
+
+> ⚠️ **顺带纠正一处文档失真**：§34.2 UX-5 E 记的「侧栏宽度持久化本来就有，
+> 补两条门禁钉住」是对的；但**那两条门禁当时是靠真实节点里的残留值通过的**。
+> 隔离之后它们必须改走 `SettingsStore`，否则必然红。
+
+### 35.2 P2-1：清单列宽记忆 + 长文本 Tooltip + 大小四档
+
+**① 大小格式化合到一处（`ByteSizes`，新类放 `core/adb-model`）**
+以前有两份拷贝：`TableMeta.sizeText`（三档、KB 档直接拼 double）与
+`CellRenderer.sizeLabel`（四档）。各改各的后果：1365 字节显示成
+`1.3330078125 KB`；1.5 GB 的表显示成 `1536.0 MB`。
+现在两处都调 `ByteSizes.format`：四档 · 一位小数 · `Locale.ROOT`
+（默认 Locale 在逗号地区会输出 `1,5 KB`）· 字节档不补小数 ·
+**舍入后顶到 1024.0 就进一档**（1048575 B → `1.0 MB` 而不是 `1024.0 KB`）·
+负数不是「负的大小」而是来源不可信 → `—`。
+
+**② 列宽记住（`ListColumns`，新类）**：表清单页 / 对象首页各自记住列宽
+（两页列集合不同，分开存 `ui.list.tables.*` / `ui.list.objects.*`），
+防抖 400ms 落盘，只存 40–1200 之间的可用宽度（0 是「还没布局」，不是用户意图）。
+走 `rememberColumnsIn(SettingsStore)`，没有偏好存储时功能不缺、只是不记。
+
+**③ 长文本 Tooltip**：截断的那一格才给 Tooltip（CJK 按两个字宽估），
+短值完整显示着就不弹 —— 扫过每一行都冒泡是噪音，「—」也不是信息。
+判定用列的**配置宽度**而不是布局后的宽度，否则「窗口一拉宽，Tooltip 就消失」。
+
+**门禁（+8 = 两页各 2 + `TableMetaTest` 4）**：
+`TableListPageTest` 22（20→22）· `ObjectHomePageTest` 12（10→12）·
+`TableMetaTest` 10（6→10）。
+
+**变异验证（6 条，逐条红→改回绿）**：
+M1 删表清单页的 `applyTooltip` → 长注释那条红 ·
+M2 `installWidthMemory` 不还原 → 列宽那条红 ·
+M3 `save` 空转 → 列宽那条红 ·
+M4 删对象首页的 `applyTooltip` → 长注释那条红 ·
+M5 去掉「舍入后顶到 1024.0 就进一档」→ `aSizeRoundingUpToTheNextTierIsPromoted` 红 ·
+M6 去掉 GB 档 → `sizeTextsCoverFourTiers` + 进档那条红。
+
+> ⚠️ **脚手架教训**：`TableColumnBase.setWidth` **不是公开 API**。
+> 想直接把列宽摆成 320 是不行的；门禁改成用页面在场景里布局出来的
+> **真实宽度**做往返，并先断言这个宽度可用（0 就会当场红，不会假绿）。
+
+---
+
 ## 23. 变更记录
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-24 | **第二十二轮·收尾** | **⭐ §35.1 门禁隔离（最要紧的一轮）+ §35.2 P2-1**：本机 `clean verify` 在**干净工作区上就是红的**（3 条），而文档记着 754/0 失败 —— 根因是 `java.util.prefs` 是**进程级共享状态**，surefire 一个 JVM 里跑的测试互相污染（`DensityCoverageTest` 停在 `dense` → 后面的「标准 28px」读到 22px；同类的 `details.toggle` 打开没关 → 「默认关闭」读到「开着」），记录 754 的那台机器之所以绿，**只因它的真实偏好里恰好存着 `ui.density=normal`**。落地 `IsolatedPreferencesExtension`：每个测试方法一个独立节点、用完删掉；选 `TestInstancePostProcessor`（早于 TestFX 在 `beforeEach` 里起应用）；⭐⭐ **ServiceLoader 默认不生效** —— services 文件在、`ServiceLoader` 也枚举得到，但 `postProcessTestInstance` 一次都不触发，要靠 `junit-platform.properties` 里 `junit.jupiter.extensions.autodetection.enabled=true` 显式打开（**少了这行整套隔离静默失效而全绿**，所以这行本身有门禁）。**顺带修两件真事**：① 跑一次 `mvn verify` 会改掉开发机真实 AIDB 偏好 —— 五个测试直接写 `Preferences.userNodeForPackage`，全改走 `SettingsStore`；② 第三处假绿 `GridInteractionTest.theReorderedColumnsArePersisted` 读到的其实是**上一轮留在机器里的旧顺序**（防抖 400ms 没等到），改为 `waitFor`。**P2-1**：`ByteSizes`（新类入 `adb-model`）把 `TableMeta.sizeText`（三档、KB 档拼出 `1.3330078125 KB`）与 `CellRenderer.sizeLabel` 两份拷贝合成一处 —— 四档、`Locale.ROOT`、一位小数、**舍入顶到 1024.0 就进一档**、负数说「—」；`ListColumns`（新类）给表清单 / 对象首页做列宽记忆（分开存，防抖 400ms，只存 40–1200）与**截断才给**的 Tooltip（短值不弹、「—」不是信息、用配置宽度而非布局宽度判定，否则「窗口一拉宽 Tooltip 就消失」）。门禁 **+13 = 隔离 5 + 两页各 2 + `TableMetaTest` 4**；**9 个变异逐条红→改回绿**（M1 删 autodetect 那行 → 3 条同红；M2 节点名常量 → 1 红；M3 删 services → 1 红；M4 删表清单 `applyTooltip` → 1 红；M5 `save` 空转 → 1 红；M6 删对象首页 `applyTooltip` → 1 红；M7/M8 去掉进档 / 去掉 GB 档 → 各 1–2 红）。⚠️ 三处脚手架：`TableColumnBase.setWidth` 不是公开 API（改用场景里布局出的真实宽度做往返，并先断言它可用，0 就当场红）；`adb-tooltip` 这类**没有 CSS 规则**的样式类会被 `StyleClassCoverageTest` 挡下（app.css 已有全局 `.tooltip`，删类了事）；`tools/TestCount.java` 会把**已删模块滞留在磁盘上的 `target/`** 算进总数（实测 declarations 已删仍贡献 40 条），加了「模块目录里没有 pom.xml 就不计」。基线 **786 条 / 101 类 / 0 失败**（起点 773/100，不是文档上写的 754/97 —— 那个是 S-7 时点的旧数） |
 | 2026-10-24 | **第二十二轮·S-7** | **品牌落点 + 死代码清理**（裁定＝**接 + 删**，§34.2 / §31.2）：**接** —— 新增矢量 `Icons.Icon.BRAND`（数据圆柱 + 右上 AI 四角星芒，16 视框描边，随主题换色），应用栏 26px 方块里那个「谁都在画的」通用 `DATABASE` 换成它，并给字形加 `#appbar-brand-glyph` 定位符；**删** —— 不可达的欢迎页整条路径清掉：`WorkspaceView.showWelcome()`（30 行）+ `brandMark()` + `BRAND_MARK` 常量 + 构造器那次调用 + `AppShell.tabClosed` 的 `else` 分支（`AppShell` 无条件 `openPermanent(object-home)`，那条分支永远走不到）+ CSS 四条 `.adb-welcome*` + `Icons.SIZE_BRAND`。⭐ **连带删令牌**：`fs-2xl`（20px）唯一的消费者就是那张卡片的标题 → `TokenParityTest.everyTokenIsActuallyUsed` 在全量构建里抓到它变摆设，按 §31.1 第 4 行的规矩**删令牌、不给令牌硬造消费者**：`tokens.json` 99→**98**（60 色 / **35** 尺寸 / 3 时长），`GenTokens` 重生成，`AppCssAuditTest.FONT_SIZES` 8 档→**7 档**，规格文档同步。门禁**净 +1**（删 `WelcomeBrandTest` 3 条 —— 它三条全绿却测着一张用户永远看不到的页，因为测试直接 `new WorkspaceView(...)` 绕过启动路径；补 `AppBarTest` 2 条：方块里 `SVGPath` 的 `getContent()` 必须**等于** `BRAND.path()` 且**不等于** `DATABASE.path()`、字形计算后的 `getStroke()` 必须是 `text-inverse` 而非 `text-secondary`，新 `BrandMarkAuditTest` 2 条守「死代码不许回来」与「品牌必须挂在用户看得见的地方」）。⭐⭐ **像素对比抓出一个真生产 bug**：品牌 mark 挂上去以后方块里的星芒**几乎看不见** —— 通用 `.adb-icon { -fx-stroke: -adb-text-secondary }` 排在 `app.css` **后半段**，和 `.adb-appbar__mark-glyph`（应用栏段）**同为单类选择器**，JavaFX 按「同特异性后写胜」把灰字色盖在白字上；换成两颗 `DATABASE` 圆柱时代就是这么灰着的，只是那时没人盯着这个位。修法是提到两类 `.adb-appbar__mark .adb-appbar__mark-glyph`（0,2,0），并补上那条读**计算值**的门禁；不变量写进 `UI-VISUAL-SPEC.md` §4.3 第 6 条。**5 个变异逐条红→改回绿**（应用栏换回 `DATABASE` → 两条门禁同时红；`showWelcome` / `.adb-welcome` / `SIZE_BRAND` 各自复活 → 审计红，审计脚本**剥掉注释再扫**，否则解释「为什么删」的注释会被自己判红；选择器改回单类 → **只有**对比度门禁红，证明它守的正是这个坑）。⭐ **三条脚手架教训**：① 变异脚本去掉 `-am` 会拿 `~/.m2` 里的旧 `adb-ui-core` jar → 编译失败、surefire 报告根本没生成，`exit=1` 长得像「红了」其实是**没测**，现在脚本显式判「报告不存在＝无效运行」；② 删样式后**必须跑全量**，`TokenParityTest` 在 `adb-ui-core`，单跑 UI 门禁看不见；③ **CSS 断言必须先把样式表挂上场景**（`AppBarTest` 原来只 `new Scene(bar)`，`getStroke()` 拿到的是 `Shape` 默认色），否则这类门禁要么红得莫名其妙、要么根本守不住东西 —— 而这条 bug 全绿了三轮才被像素对比抓到：**绿门禁 ≠ 真看得见**。基线 **754 条 / 97 类 / 0 失败 / 44 跳过**（净 +1），**12 张截图全部重拍**（对比度修复前的那一批已作废 —— mark 是灰的，拍出来也看不出问题）—— 应用栏常驻每一帧，品牌 mark 第一次**拍得到且看得清**（S-5 当年拍不到正是这事的起因） |
 | 2026-10-24 | **第二十一轮·UX-4** | **网格交互**（§34.2）：选中行 = 强 tint + **左侧 2px `accent` 强调条**（`hover` 规则排在 `selected` 前，悬停已选行不被顶掉）；⭐ **槽位常留** —— 行 `-fx-border-width: 0 0 1 2`、格 `0 1 0 2` 由基础规则留透明空槽，选中条 / 脏值条 / 光标环 / 矩形选区**只上色不改宽度**（改宽度就抖：键盘走一格文字左右跳一次；行高 24px 上下各吃 2px 直接压掉 12px 正文）；单元格补**淡竖线**（同 `border-subtle`）、斑马纹 `bg-stripe` 再降一档（亮 `#F7F9FB→#FAFBFC`、暗 `.05→.035`，令牌值改动重生成 `Tokens.java` + 两套主题 CSS）；⭐ **当前格换成应用驱动**：`.table-cell:focused` 在行选模式下是**死选择器**（`TableCell.updateFocus()` 非 cell-selection 时主动 `setFocused(false)`，实测 `isFocused()=false`），改由 `bindFocusCursor()` 盯 `focusModel.focusedCellProperty()` 打样式类 `adb-grid__cell--cursor`（内描边 + `bg-active` 淡底，只有左右两条边），光标**按列名记不按 `TableColumn` 实例记**（冻结列是从右表搬过去的同一批实例，按下标比会标不上）；列头右键收齐排序升/降/清除、移到左/右/首/尾、筛选、隐藏、自适应、**冻结到此列 / 取消冻结**、复制列名，冻结算术走新 `dataColumnsOrdered()`（`dataColumns()` 只看得到 `grid`，冻结列在 `frozenGrid`）+ `isColumnFrozen()`，**做不到就禁用**（已冻列、右边剩不下两列的列，否则最后一列点冻结会偷偷少冻一列）；双击列头 = 自适应（与菜单项同一算法）；网格左下新增**行操作条** `+ / − / 应用 / 取消`（`#data-row-actions`，四个 `disableProperty` **bind** 工具条同一批、删除连 `visible/managed` 一起跟，只读表 `setManaged(false)` 整排消失）+ 新 `discardChanges()`（清缓冲 + 清撤销 + 重建 + 报数）；`NULL` 显示 **`(NULL)`**（灰斜体的 `NULL` 与内容为 "NULL" 的 TEXT 值分不开，两者处理方式完全不同）、抽屉文本页 NULL 说明对齐、`sizeLabel` 补 **GB 档**（不再 `1536.0 MB`）；长文本走**详情抽屉文本页就地编辑**（回填原始值、**Ctrl+Enter 应用**、**Esc 只退编辑不关抽屉**、写**同一个 `EditBuffer`**、主键列与只读表不出现编辑器，门禁走 `canEditTextCell`）。新门禁 **25 条 / 3 类**（`SelectionStateTest` 8 + `CellDisplayTest` 6 + `CellEditorTest` 4 + `GridInteractionTest` 7）逐条**变异红→改回绿**。⭐ 本轮第二个假绿：`primaryKeyAndReadOnlyTablesNeverOfferTheEditor` 删掉 `!definition.primaryKey()` 仍全绿 —— 演示库主键全是 INTEGER，`textual(type)` 先短路，规则根本没被检验 → 测试**自建 `codes (code TEXT PRIMARY KEY, note TEXT NOT NULL)`** 并补**正例**（可写文本列必须出现「编辑」，否则「编辑器永远不出现」这种改坏也能全绿）。另记两个脚手架坑：`WaitForAsyncUtils.waitFor` 放 `@Start` 会**阻塞 FX 线程导致死锁超时**（等加载要放 `@BeforeEach`）；变异脚本**不先删旧报告**会在「编译失败」时读到上一轮 green 报告。⚠️ **已知缺口**：选中态 / 光标环 / 抽屉编辑器是交互态，12 帧截图无一覆盖（靠 `SelectionStateTest` 算色与 x/y 断言兜底），补帧需给 `AppShell` 加 `ADB_CELL` 类启动开关，归 UX-5；门禁 **753 条 / 97 类 / 0 失败**（+25 / +3 类） |
 | 2026-10-24 | **第二十一轮·UX-3** | **工具条与动作可发现性**（§34.2）：新增 `IconButtons.labeled(...)`（图标 + 文字 + tooltip + accessibleText 一次装配，参数收在 `ButtonBase` 上，`Button`/`MenuButton` 通吃）；数据页六颗主操作**由纯图标改为带文字**（保存 / 筛选与排序 / 列 / 视图 / 导入 / 导出），「删除记录」标 `adb-button--danger`，「清除条件」保持纯图标；三页工具条按语义分组并插 `.adb-toolbar__separator`（数据页 4 组 / 清单页 4 组 / 对象首页 2 组）；**响应式收字** `TOOLBAR_LABEL_MIN_WIDTH = 1100`，量**窗口宽度**，窄档 `setText("")` + `adb-button--icon`、**提示与 accessibleText 任何档位都不丢**；补数据页导入入口 `#data-import`（候选表把当前表挪第一位 = 向导预选；启用条件与导出**刻意相反** —— 空表才最需要导入）、清单页 `#table-list-transfer`（`TransferHub`）；对象首页四颗主操作从裸 Modena 按钮升级为 `adb-button` + 文字 + danger；**9 个变异逐条验证全红→改回绿**（保存空白 / 筛选空白 / 删 accessibleText / 去分隔线 / 导入不预选 / 删除不 danger / 清单不预选 / 去掉响应式 / 对象首页改纯图标）。⭐ **两个真问题**：①新门禁第一版是**假绿** —— `robot.lookup(...).tryQuery()` 对不可见节点返回 empty，`findById(null,…)` 一路 null 让每条断言被跳过，M1 改坏仍绿 → 改从 `.adb-grid-page` 手写场景图遍历 + 找不到即 `assertNotNull`（「宁可抛异常，也不放行」；Monocle headless 窗口有 960px 下限，尺寸断言改「是否跨过阈值」）；②修好门禁后红的是**生产代码** —— `updateEditControls()`/保存路径直接 `saveButton.setText(...)` 绕过登记表，窄档收字后一变脏「保存 3」自己长回来、搜索框被挤 → 统一走 `setToolbarLabel(...)`。「历史」推迟到 **P2-3**（`QueryHistory` 只存 SQL，无表名/时间戳）、「单元格编辑器」归 **UX-4**；门禁 **728 条 / 94 类 / 0 失败**（+8 = `ToolbarDiscoverabilityTest` 5 + `TableListPageTest` 2 + `ObjectHomeToolbarTest` 1；类 +1） |

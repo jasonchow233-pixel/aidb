@@ -58,6 +58,56 @@ class TableMetaTest {
         assertThat(meta.sizeText()).isEqualTo("0 B");
     }
 
+    /**
+     * ⭐ 第二十二轮 P2-1：大小要有 GB 档，且**每档都只留一位小数**。
+     *
+     * <p>以前 KB 档是直接拼 double 的 —— 1365 字节会显示成
+     * {@code 1.3330078125 KB}；而三档到顶，1.5 GB 的表显示成
+     * {@code 1536.0 MB}。
+     */
+    @Test
+    void sizeTextsCoverFourTiers() {
+        assertThat(sizeOf(512)).isEqualTo("512 B");
+        assertThat(sizeOf(1024)).isEqualTo("1.0 KB");
+        assertThat(sizeOf(5 * 1024 * 1024)).isEqualTo("5.0 MB");
+        assertThat(sizeOf(2L * 1024 * 1024 * 1024))
+                .as("大表就是 GB 级，不能显示成 2048.0 MB")
+                .isEqualTo("2.0 GB");
+        assertThat(sizeOf(1_610_612_736L))
+                .as("1.5 GB 得说成 1.5 GB，不是 1536.0 MB")
+                .isEqualTo("1.5 GB");
+    }
+
+    @Test
+    void sizesAreRoundedToOneDecimalNotSpilledOutAsADouble() {
+        assertThat(sizeOf(1365))
+                .as("1365 / 1024 = 1.3330078125 —— 拼出来的原始 double 没法扫读")
+                .isEqualTo("1.3 KB");
+        assertThat(sizeOf(100_000)).isEqualTo("97.7 KB");
+    }
+
+    /**
+     * 1048575 B = 1023.999 KB，保留一位小数就顶成 1024.0 KB ——
+     * 而 1024 不是 KB 里该出现的数字，必须进一档。
+     */
+    @Test
+    void aSizeRoundingUpToTheNextTierIsPromoted() {
+        assertThat(sizeOf(1024 * 1024 - 1))
+                .as("1048575 B 要讲 1.0 MB，不是 1024.0 KB")
+                .isEqualTo("1.0 MB");
+        assertThat(sizeOf(1024L * 1024 * 1024 - 1)).isEqualTo("1.0 GB");
+    }
+
+    /** 负的字节数不是「负的大小」，是这来源不可信 —— 说「—」，别说「-1 B」。 */
+    @Test
+    void aNegativeSizeIsUnknownNotAMinusOne() {
+        assertThat(sizeOf(-1)).isEqualTo("—");
+    }
+
+    private static String sizeOf(long bytes) {
+        return new TableMeta("t", 0L, bytes, null, null).sizeText();
+    }
+
     @Test
     void mysqlSqlSelectsTheThreeNewColumns() {
         String sql = FakeDialectSession.of(DialectKind.MYSQL).dialect().tableMetaSql();

@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.TableMeta;
 import javafx.scene.Scene;
+import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.input.KeyCode;
@@ -276,5 +277,73 @@ class ObjectHomePageTest {
         assertThat(empties.get())
                 .as("连上了但一个对象都没有时，也要有图标+说明+出口")
                 .isNotEmpty();
+    }
+
+    // ───────────────────── 第二十二轮 P2-1：列宽记忆 + 长文本 Tooltip ─────────────────────
+
+    /**
+     * 长注释截断后 Tooltip 是拿到全文的唯一出口；短值完整显示就不该弹气泡。
+     *
+     * <p>与表清单页是同一套 {@link ListColumns}，但两页必须各自证明自己接上了。
+     */
+    @Test
+    void aTruncatedCommentCarriesTheFullTextButAShortValueStaysQuiet(FxRobot robot) {
+        String longComment = "这是一张存放全部历史审计记录的主表，按月分区保存，保留七年";
+        robot.interact(() -> page.render(
+                List.of(new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE)),
+                List.of(new TableMeta("users", 200L, 1024L, "InnoDB", "2026-01-01",
+                        null, null, longComment))));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        TableCell<?, ?> comment = cellShowing(robot, "历史审计记录");
+        assertThat(comment).as("注释那一格要真的渲染出来").isNotNull();
+        assertThat(comment.getTooltip())
+                .as("注释被截断时，Tooltip 是拿到全文的唯一出口")
+                .isNotNull();
+        assertThat(comment.getTooltip().getText()).isEqualTo(longComment);
+
+        TableCell<?, ?> engine = cellShowing(robot, "InnoDB");
+        assertThat(engine.getTooltip())
+                .as("完整显示着的短值不该弹气泡 —— 扫过每一行都冒泡是噪音")
+                .isNull();
+    }
+
+    /** 列宽记住：新页面拿到的宽度是本页真实的宽度，不是写死的那个。 */
+    @Test
+    void columnWidthsAreRememberedAcrossAReopen(FxRobot robot) throws Exception {
+        SettingsStore store = new SettingsStore();
+
+        // 本节 @Start 里那张页已经在场景中布局过 → 列宽是真实的（不是 0）。
+        // ⚠️ TableColumnBase.setWidth 不是公开 API，所以不手工摆宽度，
+        //    直接用布局出来的真实宽度做往返。
+        robot.interact(() -> {
+            page.rememberColumnsIn(store);
+            page.persistColumnWidthsForTest();
+        });
+        double actual = page.columnTitled("注释").getWidth();
+        assertThat(ListColumns.usable(actual))
+                .as("拿到的列宽必须是布局出来的真实宽度（0 说明还没布局，这条会假绿）")
+                .isTrue();
+
+        ObjectHomePage second = WaitForAsyncUtils.asyncFx(() -> {
+            ObjectHomePage created = new ObjectHomePage(() -> null, null, Runnable::run,
+                    opened::add, message -> { }, () -> { });
+            created.rememberColumnsIn(store);
+            return created;
+        }).get();
+        assertThat(second.columnTitled("注释").getPrefWidth())
+                .as("记住的宽度要还回来 —— 新页面退回写死的 160 就等于没记")
+                .isEqualTo(actual);
+    }
+
+    @SuppressWarnings("unchecked")
+    private TableCell<?, ?> cellShowing(FxRobot robot, String fragment) {
+        AtomicReference<TableCell<?, ?>> found = new AtomicReference<>();
+        robot.interact(() -> found.set(page.table().lookupAll(".table-cell").stream()
+                .map(node -> (TableCell<?, ?>) node)
+                .filter(cell -> cell.getText() != null && cell.getText().contains(fragment))
+                .findFirst()
+                .orElse(null)));
+        return found.get();
     }
 }

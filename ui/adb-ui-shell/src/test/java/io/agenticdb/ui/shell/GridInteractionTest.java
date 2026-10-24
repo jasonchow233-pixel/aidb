@@ -286,7 +286,7 @@ class GridInteractionTest {
     }
 
     @Test
-    void theReorderedColumnsArePersisted() {
+    void theReorderedColumnsArePersisted() throws Exception {
         TableView<?> table = (TableView<?>) page.lookup("#data-table");
         List<String> before = columnOrder(table);
         int from = before.indexOf("score");
@@ -295,6 +295,12 @@ class GridInteractionTest {
             return null;
         });
         WaitForAsyncUtils.waitForFxEvents();
+
+        // ⭐ 落盘是防抖的（400ms），必须等它真的写下去。
+        //    以前这条直接读 savedColumnOrder() 就能过 —— 因为读到的其实是
+        //    **上一轮跑留在偏好里的旧顺序**，落盘本身根本没发生。
+        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
+                () -> !page.savedColumnOrder().isBlank());
 
         String saved = page.savedColumnOrder();
         assertThat(saved)

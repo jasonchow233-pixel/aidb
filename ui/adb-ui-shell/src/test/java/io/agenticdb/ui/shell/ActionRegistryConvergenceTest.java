@@ -251,16 +251,23 @@ class ActionRegistryConvergenceTest {
         robot.doubleClickOn(treeCell(robot, "users"));
         WaitForAsyncUtils.waitForFxEvents();
 
-        Double normal = onFx(() -> shell(robot).workspace().activeGrid().rowHeight());
-        onFxRun(() -> shell(robot).applyDensityForTest("compact"));
-        Double compact = onFx(() -> shell(robot).workspace().activeGrid().rowHeight());
-        onFxRun(() -> shell(robot).applyDensityForTest("comfort"));
-        Double comfort = onFx(() -> shell(robot).workspace().activeGrid().rowHeight());
-        onFxRun(() -> shell(robot).applyDensityForTest("normal"));
+        // ⭐ 四档全部显式设定：起点不能是「机器上次留下的偏好」——
+        //    那样这条断言测的是跑它的人的历史，不是密度档位本身。
+        //    （以前它读到的「标准」其实是 22px 的 dense，于是 24 < 22 不成立。）
+        Double comfort = rowHeightAt(robot, "comfort");
+        Double normal = rowHeightAt(robot, "normal");
+        Double compact = rowHeightAt(robot, "compact");
+        Double dense = rowHeightAt(robot, "dense");
 
         assertThat(normal).isNotNull();
         assertThat(compact).isLessThan(normal);
+        assertThat(dense).isLessThan(compact);
         assertThat(comfort).isGreaterThan(normal);
+    }
+
+    private static Double rowHeightAt(FxRobot robot, String density) {
+        onFxRun(() -> shell(robot).applyDensityForTest(density));
+        return onFx(() -> shell(robot).workspace().activeGrid().rowHeight());
     }
 
     // ───────────────────────────── 工具 ─────────────────────────────

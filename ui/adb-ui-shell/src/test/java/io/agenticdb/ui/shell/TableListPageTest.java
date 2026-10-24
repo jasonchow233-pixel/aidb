@@ -6,6 +6,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.input.KeyCode;
@@ -477,5 +478,75 @@ class TableListPageTest {
 
     private Button button(String selector) {
         return (Button) page.lookup(selector);
+    }
+
+    // ───────────────────── 第二十二轮 P2-1：列宽记忆 + 长文本 Tooltip ─────────────────────
+
+    /**
+     * 长注释被列宽截断后，Tooltip 是拿到全文的**唯一**出口；
+     * 但短值明明完整显示着就不该弹气泡 —— 那是噪音。
+     */
+    @Test
+    void aTruncatedCommentCarriesTheFullTextButAShortValueStaysQuiet() throws Exception {
+        String longComment = "这是一张存放全部历史审计记录的主表，按月分区保存，保留七年";
+        WaitForAsyncUtils.asyncFx(() -> page.render(List.of(
+                new TableMeta("users", 1L, 1L, "InnoDB", "2026-01-01", null,
+                        "utf8mb4_0900_ai_ci", longComment)))).get();
+        WaitForAsyncUtils.waitForFxEvents();
+
+        TableCell<?, ?> comment = cellShowing("历史审计记录");
+        assertThat(comment).as("注释那一格要真的渲染出来").isNotNull();
+        assertThat(comment.getTooltip())
+                .as("注释被截断时，Tooltip 是拿到全文的唯一出口")
+                .isNotNull();
+        assertThat(comment.getTooltip().getText()).isEqualTo(longComment);
+
+        TableCell<?, ?> engine = cellShowing("InnoDB");
+        assertThat(engine.getTooltip())
+                .as("完整显示着的短值不该弹气泡 —— 扫过每一行都冒泡是噪音")
+                .isNull();
+    }
+
+    /** 列宽记住：新页面拿到的宽度是本页真实的宽度，不是写死的那个。 */
+    @Test
+    void columnWidthsAreRememberedAcrossAReopen() throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        SettingsStore store = new SettingsStore();
+
+        // 本节 @Start 里那张页已经在场景中布局过 → 列宽是真实的（不是 0）。
+        // ⚠️ TableColumnBase.setWidth 不是公开 API，所以这里不手工摆宽度，
+        //    直接用布局出来的真实宽度做往返。
+        WaitForAsyncUtils.asyncFx(() -> {
+            page.rememberColumnsIn(store);
+            page.persistColumnWidthsForTest();
+            return null;
+        }).get();
+        double actual = page.columnTitled("注释").getWidth();
+        assertThat(ListColumns.usable(actual))
+                .as("拿到的列宽必须是布局出来的真实宽度（0 说明还没布局，这条会假绿）")
+                .isTrue();
+
+        TableListPage second = newPageWithColumns(store);
+        assertThat(second.columnTitled("注释").getPrefWidth())
+                .as("记住的宽度要还回来 —— 新页面退回写死的 180 就等于没记")
+                .isEqualTo(actual);
+    }
+
+    private TableListPage newPageWithColumns(SettingsStore store) throws Exception {
+        return WaitForAsyncUtils.asyncFx(() -> {
+            TableListPage created = new TableListPage(null, null, command -> { },
+                    opened::add, messages::add, null, host, "list", null);
+            created.rememberColumnsIn(store);
+            return created;
+        }).get();
+    }
+
+    @SuppressWarnings("unchecked")
+    private TableCell<?, ?> cellShowing(String fragment) {
+        return page.table().lookupAll(".table-cell").stream()
+                .map(node -> (TableCell<?, ?>) node)
+                .filter(cell -> cell.getText() != null && cell.getText().contains(fragment))
+                .findFirst()
+                .orElse(null);
     }
 }
