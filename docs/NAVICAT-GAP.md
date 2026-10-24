@@ -511,11 +511,15 @@ ui/adb-ui-shell → workbench/{adb-session, adb-introspect, adb-editing, adb-jdb
 
 ### 6.2 缺口
 
+> ⚠️ **本节是 2026-10 上旬的缺口快照**，其中 A6–A18 等多条已在后续轮次完成；
+> 当前状态以 `NAVICAT-TODO.md` 为准。`declarations` 相关条目（A2/A3/A25）
+> 已于 2026-10-24 随模块删除而关闭。
+
 | # | 缺口 | 影响 | 证据 |
 |---|---|---|---|
 | ~~A1~~ | ~~没有 Dialect 抽象层~~ **已做**：`Dialect` 接口 + 三个实现（SQLite / PostgreSQL / MySQL）承担全部方言差异；`SchemaService` 与 `StructureSqlBuilder` 里一行方言专属 SQL 都没有 | 门禁 `DialectBranchAuditTest` 扫源码，禁止方言分支散落 |
-| A2 | **`declarations/` 是死代码** | 4 连接声明 + 4 方言词表 + 5 传输家族 + JSON Schema ≈ 1500 行，**运行时一次都没读**，且**不是任何模块的 Maven 依赖** | 全仓 `io.agenticdb.declarations` 只在模块内部命中 |
-| A3 | **`loadFromClasspath()` 不可用** | 爆炸 classpath 下抛 `DeclarationException`；jar 下**静默返回空模型**（0 字节目录条目） | `DeclarationLoader.java:119-151` |
+| ~~A2~~ | ~~**`declarations/` 是死代码**~~ **已删除（2026-10-24）**：模块 + 根目录 YAML + POM + 门禁全部移除 | 基线 755→712，属主动减面 |
+| ~~A3~~ | ~~**`loadFromClasspath()` 不可用**~~ **随模块删除而不再适用** | — |
 | ~~A4~~ | ~~参数风格 / 标识符引用被硬编码~~ **标识符引用已进方言层**（`Dialect.quote`）；**参数风格仍固定 `?`** —— 声明里的 `paramStyle: numbered` 无效 | `JdbcSession.bind` 永远用 `?` |
 | ~~A5~~ | ~~元数据只读当前 schema~~ **schema 已落地**：`getSchemas()` 接上，侧栏有 **schema 切换器**（>1 个才显示），PG 走 `SET search_path` 切。**catalog 也已落地（第十四轮 U1）**：MySQL 走对象树 catalog 层（`Dialect.catalogsSql` + `SchemaService.listCatalogs`），切库 = 换虚拟连接；`getExportedKeys()` / `getColumns()` 也已接上 | `SchemaService.listSchemas` / `Dialect.setSchemaSql` / `SchemaService.listCatalogs` |
 | ~~A6~~ | ~~危险分级第三层门禁不存在；数据页保存不分类~~ **已做** | 三层门禁全部落地：`DbSession.requireDeclared` 做驱动侧复查；`DataGridPage.planDanger` 做保存路径分级 |
@@ -537,7 +541,7 @@ ui/adb-ui-shell → workbench/{adb-session, adb-introspect, adb-editing, adb-jdb
 | **A22** | **主题探测每次都 shell out** | `defaults read -g AppleInterfaceStyle` 每次应用主题都跑一次（400ms 超时） | `ThemeManager.java:97-111` |
 | **A23** | **死代码/死引用** | `DeclarationCheckMojo`（不存在的类）、`QueryOptions`、`PageSize`（只被测试引用）、`AppShell.session`（只写不读）、`MainToolBar.activeConnectionId`（只写不读）、`StructurePage` 未使用的 `Danger` import | 见各处 |
 | **A24** | **surefire 统计口径失真** | 用 `@Nested` 的 4 个测试类，XML `<testsuite tests="0">`；按 `tests=` 属性统计会**少算 109 条** | `core/adb-model`、`adb-safety`、`adb-declarations` 的 XML |
-| **A25** | **`declarations` 与运行时方言不一致** | `dameng.yaml` 声明了达梦，`DialectKind` 里**没有** `DAMENG` | `DialectKind.java:9-11` |
+| ~~A25~~ | ~~**`declarations` 与运行时方言不一致**~~ **已随声明层删除而消失（2026-10-24）** | — |
 
 ### 6.3 已经做对、值得保持
 
@@ -551,7 +555,10 @@ ui/adb-ui-shell → workbench/{adb-session, adb-introspect, adb-editing, adb-jdb
 
 ## 7. 补齐清单（按投入产出排序）
 
-### 7.1 门禁基线（实测）
+### 7.1 门禁基线（第九轮快照）
+
+> ⚠️ 下表是第九轮的历史快照（那时还有 `declarations` 模块）。
+> **当前基线是 712 条 / 92 类 / 0 失败**，以 `NAVICAT-TODO.md` 表头为准。
 
 | 项 | 值 |
 |---|---|

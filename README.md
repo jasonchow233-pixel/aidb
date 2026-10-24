@@ -12,7 +12,7 @@
 ## 当前状态（2026-10-24）
 
 **P0–P4 已完成、P5/P6 进行中、界面专项 U-B1–U-B7 已落地。**
-门禁 **755 条 / 95 类 / 0 失败**（2026-10-24 · 第二十轮 Windows 实机实测；另有 44 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
+门禁 **712 条 / 92 类 / 0 失败**（2026-10-24 · 第二十一轮 Windows 实机实测；另有 44 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
 
 > **第八轮之后**：D2+D4（MySQL/PG 列注释读回）已修；B5-S1（索引可编辑）已落地；
 > **T1–T4（建表 / 清空 / 重命名 / 删表）已落地**（T1=弹窗，按形态裁定）；9 张验收截图完成。
@@ -98,7 +98,7 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**755 条 / 95 类 / 0 失败**（2026-10-24 · 第二十轮 Windows 实机实测；`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
+当前门禁：**712 条 / 92 类 / 0 失败**（2026-10-24 · 第二十一轮 Windows 实机实测；`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
 
 > ⚠️ **本机环境**：`java` 默认不在 PATH。可用的 JDK：
 > - Windows 10：`~/.jdks/openjdk-27.0.1.0.2`（pom 的 enforcer 区间为 `[25,28)`）
@@ -220,7 +220,6 @@ TestFX 默认用 Monocle 无头模式；在本机想看真实窗口，去掉父 
 ```
 core/
   adb-model          领域模型（ColumnDef / RowPage / Danger / QueryLimits）
-  adb-declarations   声明层加载与 Schema 校验（⛔ 当前运行时未引用，见架构文档 §2.1）
   adb-safety         危险分级与错误定位
   adb-sql            SQL 词法、分句、格式化内核
 
@@ -294,7 +293,8 @@ bootstrap/
 - 导入导出已实现（CSV/TSV/JSON/SQL 导出 + CSV/TSV 导入）；**xlsx 还没有**；导入暂按字符串绑列，类型不匹配的行会跳过并报告。
 - 侧栏的查询历史 / 诊断 / 导入导出 / 已保存查询四个入口都已接真功能。
 - **MySQL 5.7.44 真库已联调**（9 例）；**PostgreSQL 仍缺测试库**（未配置，跳过）。
-- `core/adb-declarations` 声明层目前只做**声明校验 + 白名单门禁**，尚未驱动运行时。
+- `core/adb-declarations` 与根目录 `declarations/` 已于 2026-10-24 删除（运行时从未引用；
+  方言差异现由 `Dialect` 抽象层承担），基线因此减少 43 条测试。
 - 主题“跟随系统”目前只探测 macOS；Windows/Linux 默认亮色。
 - 令牌体系 96 个全部被用到；密度档位已覆盖数据网格 / 查询结果 / 对象清单 / 结构页。
 - `docs/screenshots/` 的 9 张图已按当前代码重拍。

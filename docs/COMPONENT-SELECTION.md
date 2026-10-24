@@ -23,8 +23,6 @@ JavaFX 内置 `TableView` 底层是 `VirtualFlow`，只创建可见行的 Node�
 | 依赖 | 当前版本 | 许可 | 用途 |
 |---|---|---|---|
 | `com.fasterxml.jackson.core:jackson-databind` | 2.22.4（annotations 2.22） | Apache-2.0 | JSON 摘要/格式化、DTO 序列化 |
-| `org.yaml:snakeyaml` | 2.7 | Apache-2.0 | `declarations/` YAML 解析 |
-| `com.networknt:json-schema-validator` | 2.0.8 | Apache-2.0 | 连接声明 JSON Schema 校验 |
 | `com.zaxxer:HikariCP` | 6.3.1 | Apache-2.0 | P5 连接池 |
 
 ### 1.3 数据库与测试
@@ -50,9 +48,8 @@ CSV 首版由 `CsvExporter` 自写（RFC 4180 引号/换行转义），暂不引
 
 ### 1.5 已在 POM 里但运行时未使用的模块
 
-| 模块 | 现状 | 决定 |
-|---|---|---|
-| `core/adb-declarations` | 提供 YAML 连接 / 方言 / 传输家族声明 + JSON Schema 校验；**当前运行时一次都没引用**（不是任何模块的 Maven 依赖），`loadFromClasspath()` 的 jar 读取路径也不可用 | P5 二选一：接进运行时（驱动解析、方言词表、能力矩阵驱动 UI 显隐）**或**整模块删除。详见 `docs/ARCHITECTURE.md` §2.1 与 `NAVICAT-TODO.md` §10 A2/A3 |
+无。原 `core/adb-declarations` 已于 2026-10-24 删除（`snakeyaml` /
+`json-schema-validator` 同步移除），见 `docs/ARCHITECTURE.md` §2.1。
 
 ---
 

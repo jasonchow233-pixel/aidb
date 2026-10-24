@@ -37,8 +37,6 @@
     <jackson.version>2.22.4</jackson.version>
     <!-- Jackson 2.22 起 annotations 独立发版，版本号不带 patch。 -->
     <jackson-annotations.version>2.22</jackson-annotations.version>
-    <snakeyaml.version>2.7</snakeyaml.version>
-    <json-schema-validator.version>2.0.8</json-schema-validator.version>
 
     <junit.version>5.10.2</junit.version>
     <assertj.version>3.27.6</assertj.version>
@@ -64,11 +62,6 @@
       <dependency>
         <groupId>io.agenticdb</groupId>
         <artifactId>adb-model</artifactId>
-        <version>${project.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.agenticdb</groupId>
-        <artifactId>adb-declarations</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
@@ -162,16 +155,6 @@
         <groupId>com.fasterxml.jackson.core</groupId>
         <artifactId>jackson-databind</artifactId>
         <version>${jackson.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.yaml</groupId>
-        <artifactId>snakeyaml</artifactId>
-        <version>${snakeyaml.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>com.networknt</groupId>
-        <artifactId>json-schema-validator</artifactId>
-        <version>${json-schema-validator.version}</version>
       </dependency>
 
       <!-- ── JDBC ────────────────────────────────────────────────── -->
@@ -311,7 +294,6 @@
   <modules>
     <!-- core：纯 Java，零 UI 依赖 -->
     <module>core/adb-model</module>
-    <module>core/adb-declarations</module>
     <module>core/adb-safety</module>
     <module>core/adb-sql</module>
 

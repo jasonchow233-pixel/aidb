@@ -25,7 +25,6 @@
 ```
 core/
   adb-model          领域模型：ColumnDef / ColumnType / RowPage / QueryLimits / Danger
-  adb-declarations   连接与传输声明加载（YAML + JSON Schema）—— ⛔ 当前运行时未引用
   adb-safety         危险分级、错误定位
   adb-sql            SQL 词法内核：分句、高亮、格式化（不依赖 UI）
 
@@ -57,42 +56,18 @@ bootstrap/
 `adb-sql` 保持独立：只把 SQL 切成 token / 语句 / 格式化文本，不反向依赖 UI 或 JDBC。
 RichTextFX 的样式映射在 `ui-shell` 的 `SqlHighlighter` 中完成。
 
-### 2.1 声明层的现状（⚠️ 需要决策）
+### 2.1 声明层已删除（2026-10-24）
 
-`core/adb-declarations` 提供「加一种数据库 = 1 个 YAML，0 行代码」的能力：
-4 个连接声明、4 个方言词表、5 个传输家族、1 份 JSON Schema。
+`core/adb-declarations` 与根目录 `declarations/` 已整体删除：
 
-**但当前运行时完全不引用它**：
+- 运行时**从未读取**它（不是任何模块的 Maven 依赖），方言差异已由
+  `adb-jdbc` 的 `Dialect` 抽象层（`SqliteDialect` / `PostgresDialect` / `MySqlDialect`）承担；
+- 同时移除 `snakeyaml` / `json-schema-validator`、父 POM 的 module 与
+  dependencyManagement 条目，以及 `DeclaredDialectConsistencyTest`；
+- 基线 **755 → 712 条 / 95 → 92 类**，属主动减面，不是回归。
 
-- 全仓库 `io.agenticdb.declarations` 的引用只出现在该模块内部；
-- `adb-declarations` **不是任何模块的 Maven 依赖**；
-- `Dialect.keywordSet()` / `TransferFamily.typeMapping()` / `ConnectionDescriptor.Capabilities` 从未被读取；
-- `SqlLexer` 用的是硬编码关键字表，不是 YAML 里的词表；
-- `loadFromClasspath()` 的 jar 读取路径也不可用（把目录内容当换行分隔索引解析）：
-  - 爆炸 classpath 下 `url.openStream()` 读目录 → `IOException` → 抛 `DeclarationException`；
-  - jar 下读到 0 字节目录条目 → **静默返回空 `DeclaredModel`**（不报错、不告警）。
-- `DeclarationLoader` 的 javadoc 写「两者的解析结果必须完全相同，这本身要有一条测试守着」——
-  **没有这条测试**；javadoc 里 `{@link DeclarationCheckMojo}` 指向一个**不存在的类**。
-
-**2026-10-21 决策**：不删，也不急着接运行时 —— 先把它**变成真功能**：
-
-1. **修好 `loadFromClasspath()`**（A3）。旧实现把 `/declarations/<子目录>` 当成
-   「换行分隔的文件名索引」去读，而那其实是个**目录**：爆炸 classpath 下抛
-   `IOException`，jar 下读出空字符串 → **静默返回空模型**。
-   现在分两条路：爆炸 classpath 枚举目录、打包 jar 枚举 jar 条目。
-   两条路径实测一致（`DeclarationLoaderTest.classpathAndPathAgree`）。
-2. **补上 javadoc 承诺的那条对拍测试**（以前只有注释，没有测试）。
-3. **修掉悬空的 `{@link DeclarationCheckMojo}`**（那个类根本不存在）。
-
-**它现在的角色**：声明的**加载 + 校验 + 快照**层，是 YAML 的唯一真相与防线
-（每次 CI 都验一遍 14 个 YAML 合法、解析结果符合快照）。
-**它还不是运行时的驱动来源** —— 运行时方言仍然是 `DialectKind` 枚举 + 散落的
-`switch`。要让它驱动运行时，得先做 A1（真方言抽象层）。
-
-详见 `NAVICAT-TODO.md` §7.2 与 §10 A2/A3/A25。
-
-另外它与运行时**不一致**：`declarations/connections/dameng.yaml` 声明了达梦，
-而 `DialectKind` 枚举里**没有** `DAMENG`（A25）。
+> 若将来要做「YAML / 声明驱动方言」，应基于现有 `Dialect` 接口重新设计，
+> 不再恢复旧模块（理由与决策记录见 `NAVICAT-TODO.md` §34.1）。
 
 ---
 
@@ -389,7 +364,7 @@ app.css          →  业务样式，引用 -adb-* 令牌
 ./mvnw -B clean verify
 ```
 
-当前：**95 个测试类 / 755 条执行（SQLite，0 失败）/ 44 条跳过（需外部真库或 Docker）**
+当前：**92 个测试类 / 712 条执行（SQLite，0 失败）/ 44 条跳过（需外部真库或 Docker）**
 （2026-10-24 · 第二十轮 · Windows 10 + JDK 27 全量实测）。
 
 统计用工具兜底（口径问题见 4.5-28）：
