@@ -8,9 +8,9 @@
 > **界面规格书见 `docs/UI-VISUAL-SPEC.md`**（第十轮：字号/颜色/图标/布局/组件/弹窗/交互态/键盘）；
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
-> 最后更新：**2026-10-24（第二十一轮执行中：已删 declarations + UX-0 / UX-1 已完成，见 §34）**
-> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **716 条 / 92 类 / 0 失败**（2026-10-24 第二十一轮 Windows 实机实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
-> 📌 **716 = 删除 `declarations` 后的 712 + UX-0 的 2 条门禁 + UX-1 的 2 条门禁**（`AppShellTest.forcedDensityWins…` / `ScreenshotScriptAuditTest.shotsScriptPins…` / `AppCssAuditTest.shadowsAreLimited…` / `IconSystemAuditTest.iconSizesComeFrom…`）；712 的小口径见下。
+> 最后更新：**2026-10-24（第二十一轮执行中：已删 declarations + UX-0 / UX-1 / UX-2 已完成，见 §34）**
+> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **720 条 / 93 类 / 0 失败**（2026-10-24 第二十一轮 Windows 实机实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
+> 📌 **720 = 删除 `declarations` 后的 712 + UX-0 的 2 条 + UX-1 的 2 条 + UX-2 的 4 条**（`AppShellTest.forcedDensityWins…` / `ScreenshotScriptAuditTest.shotsScriptPins…` / `AppCssAuditTest.shadowsAreLimited…` / `IconSystemAuditTest.iconSizesComeFrom…` / **`ChromeMetricsTest` 2 条（新类）** / `AppShellTest.densityDefaultsToCompact…` / `AppCssAuditTest.dataSurfacesUseTheCompactBodySize`）；712 的小口径见下。
 > 📌 **712 是删除 `declarations` 后的新口径**（-43 条 / -3 类：模块 40 + `DeclaredDialectConsistencyTest` 3），属**主动减面**不是回归。
 >
 > 📌 **关于门禁数字的口径（第十八轮勘误）**：第十七轮记的「721 / 29 跳过」是在 **Docker 可用**时测的；
@@ -36,8 +36,8 @@
 > **第十四轮已完成 U1 ✅ catalog 树**（MySQL 多库：虚拟连接 + 对象树库一层 + 双击切库）。
 > **第十五轮已完成 Q5 ✅ 结果分页 + V-9 ✅ 表格规格统一**（服务端分页 + 翻页条 + 列类型条，与数据页 record-nav / 类型行同一套视觉）。
 > **U-B6 功能补齐层已全部收官**（G1–G7 / Q5 / Q6 / U1–U6 全部 ✅）。
-> **下一动作 = §34 / UX-2（密度、排版与 chrome）**；
-> UX-0 / UX-1 已完成（截图两次同哈希 + 强制密度不写回偏好 + 令牌收敛），`declarations` 已删除（基线 716/92），
+> **下一动作 = §34 / UX-3（工具条与动作可发现性）**；
+> UX-0 / UX-1 / UX-2 已完成（截图可复现 + 令牌收敛 + 四档密度与 chrome 收薄），`declarations` 已删除（基线 720/93），
 > P2/P5/P6 的批次已全部裁定（同意做），排在其后。
 > 详见 §34 与 `docs/UI-ROADMAP.md` §12。
 >
@@ -85,18 +85,19 @@
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **714** | 44 | 0 |
+| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **720** | 44 | 0 |
 | **外部 PG / MySQL 真库**（aliCloud RDS 等，需环境变量） | 单独跑，不在默认门禁 | — | — |
 | **多版本矩阵**（MySQL 5.7/8.0 + PG 13/17，`ADB_TEST_VERSION_MATRIX=1`） | 默认不跑，需显式打开 | 1 | 0 |
 
-**92 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
+**93 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
 （Testcontainers 容器**需 Docker**；本机 Docker 不可用时走跳过分支）—— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-24，第二十一轮 · Windows 实机）**：**716 条 / 92 类 / 0 失败**（`./mvnw -B clean verify`
-> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 716）。
+> 📌 **最新口径（2026-10-24，第二十一轮 · Windows 实机）**：**720 条 / 93 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 720）。
 > 相比第二十轮的 755 / 95，**减少的 43 条 / 3 类全部来自删除 `declarations`**
 > （模块 40 + `DeclaredDialectConsistencyTest` 3），**不是测试变红**；UX-0 +2 条（偏好不写回 + 截图脚本钉密度）、
-> UX-1 +2 条（投影收敛 + 图标尺寸档位），类数不变。
+> UX-1 +2 条（投影收敛 + 图标尺寸档位）、UX-2 +4 条 + 1 类（`ChromeMetricsTest` 框架高度与可见行数、
+> 默认密度 compact、数据面 12px 字号）。
 >
 > ⚠️ **本机环境（Windows）**：`java` 默认不在 PATH；可用的是 **JDK 27**（`~/.jdks/openjdk-27.0.1.0.2`），
 > pom 的 enforcer 区间已放到 `[25,28)` —— `export JAVA_HOME="$HOME/.jdks/openjdk-27.0.1.0.2"`。
@@ -2293,16 +2294,43 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 - **4 个变异全部验证**：对话框圆角改 12 → `everyRadiusComesFromTheScale` 红；删暗色 `bg-subtle` → `themesContainEveryColorToken` 红（`[dark theme 缺少 -adb-bg-subtle]`）；给 `.adb-card` 加投影 → 投影门禁红；`AppBar` 尺寸写 18 → 图标门禁红。改回全绿。
 - **截图重拍**：`./scripts/shots.sh` 12 张全部重拍（亮 11 + 暗 1），逐张核对：卡片 / 详情 / 对话框投影已消失（`p0-shell` / `p2-details` / `p6-new-table`），对话框 8px、控件 4px 圆角正常，暗色主题同步（`p5-dark`）。
 
-#### UX-2 · 密度、排版与 chrome（L，收益最高）
+#### UX-2 · 密度、排版与 chrome（L，收益最高）— ✅ 已完成（2026-10-24）
 
-- [ ] 新增 `row-dense = 22`；四档 dense/compact/normal/comfort 全页生效
-- [ ] 默认密度改 `compact`；菜单四项并能切换网格 / 清单 / 树
-- [ ] 网格/清单/树/工具条标签字号 **12px**；状态栏/类型行 11px
-- [ ] 单元格内边距 dense `2 6` / normal `4 8`；列头同步
-- [ ] chrome：标签 28 / 对象头 36 / 页工具条 34 / 状态栏 24
-- [ ] `p2-users` 在 765px 高窗口可见 **≥ 22 行**（当前 16）
-- [ ] `DensityCoverageTest` + 新 `ChromeMetricsTest`；变异验证
-- [ ] 重拍 `p2-users` / `p6-tables` / `p0-shell`，与 Navicat 并排核对
+- [x] 新增 `row-dense = 22`；四档 dense/compact/normal/comfort 全页生效（`DensityCoverageTest` 四档 × 网格/查询/清单/结构/树）
+- [x] 默认密度改 `compact`；菜单四项并能切换网格 / 清单 / 树（`AppShellTest.densityDefaultsToCompactWhenNoPreferenceIsStored`）
+- [x] 网格/清单/树/工具条标签字号 **12px**；状态栏/类型行 11px（`AppCssAuditTest.dataSurfacesUseTheCompactBodySize`）
+- [x] 单元格内边距 dense `2 6` / normal `4 8`；列头同步（`sp-1h` 令牌 + 间距规则登记例外）
+- [x] chrome：标签 28 / 对象头 36 / 页工具条 34 / 分页器 36 / 状态栏 24（`ChromeMetricsTest.chromeHeightsMatchTheDenseBudget`）
+- [x] `p2-users` 在 765px 高窗口可见 **≥ 22 行**（`ChromeMetricsTest.denseDensityShowsAtLeast22RowsAt765`：1268×765 + dense 实测通过；实拍 1280×800 + compact 也已到 22 行（第 22 行贴底裁半），改前 20 行）
+- [x] `DensityCoverageTest` + 新 `ChromeMetricsTest`；变异验证（5 处：字号 13 / 默认 comfort / 分页器 44 / dense→24 / 菜单删「密集」，全部红→改回绿）
+- [x] 重拍 `p2-users` / `p6-tables` / `p0-shell`（实际 12 张全重拍），与 Navicat 并排核对
+
+**落地记录**
+
+- `tokens.json` **97 → 99**：新增 `row-dense`（22px，亮暗同值）与 `sp-1h`（6px）；
+  尺寸令牌 34 → 36。`Tokens.H_TABBAR` 36→**28**、`H_TOOLBAR` 38→**34**、`H_STATUSBAR` 26→**24**、
+  `H_INPUT` / `H_BUTTON` 32→**28**（`GenTokens` 重生成，`TokenParityTest` 同步钉住新值）。
+- **四档密度**：`RowHeights.of` 认 `dense/compact/normal/comfort`，**未知值与 null 回落 `compact`**
+  （以前回落 `normal`，与「默认紧凑」矛盾）；`AppShell.applyDensity` 白名单四档并同步
+  `Workspace`（数据网格 / 查询结果 / 清单 / 结构页）· `ObjectHome` · `SideBar`（对象树 `setDensity`，以前树完全不跟密度）。
+- **排版**：`app.css` 数据面正文统一 **12px**（网格单元格、清单、对象树节点名、列名、结构页表、连接表、按钮、弹窗按钮）；
+  `.root` 保留 13px 作界面基准（`fs-md` 仍有使用点，否则 `TokenParityTest` 会红）。
+- **chrome**：标签栏 28（`.adb-tab` 26 + 2px 活动线）、对象头 44→36、页工具条 44→34、分页器 44→36、状态栏 26→24；
+  图标按钮与文字按钮统一 28 高（对话框按钮仍 32 —— 弹窗里要点准，不追密度）。
+- **dense 专属**：`.density-dense` 下网格 / 结构 / 连接表单元格与列头内边距 `2px 6px`，清单 `0px 6px`
+  （6px 走新令牌 `sp-1h`；`AppCssAuditTest` 的间距白名单同步放行并写明理由）。
+- **门禁**：新增 `ChromeMetricsTest`（2 条：五条框的实际高度 + 765px 高可见行数）、
+  `AppShellTest.densityDefaultsToCompactWhenNoPreferenceIsStored`、
+  `AppCssAuditTest.dataSurfacesUseTheCompactBodySize`；`DensityCoverageTest`（4 条）与
+  `MenuBarFactoryTest`（4 条）扩到四档。**+4 条 / +1 类 → 720 / 93 / 0**。
+- **5 个变异全部验证**：网格正文改回 13px → CSS 审计红；默认密度改 `comfort` → 默认值门禁红；
+  分页器 36 改回 44 → `ChromeMetricsTest` 红；`RowHeights` 的 dense 返回 24 → `DensityCoverageTest` 红；
+  视图菜单删「密集」→ `MenuBarFactoryTest` 红（1 失败 + 1 错误）。全部改回绿。
+- **顺带修掉两个开发期自伤**（新门禁当场抓出，提交前已修）：`applyDensity` 白名单漏 `normal`
+  导致「标准」被静默降级；`AppCssAuditTest.fontSizeOf` 未锚行首，把 `.x .adb-tree__name` 误当独立规则。
+- **截图重拍**：`./scripts/shots.sh` 12 张全部重拍（`ADB_DENSITY=compact` + 独立 prefs + `ADB_CONNECTION=demo`），
+  逐张核对：`p2-users` 22 行 / 12px 正文 / 两行列头不挤；`p6-tables` 清单行高与对象树一致；
+  `p0-shell`、`p5-dark` 暗色同步；分页器与状态栏收薄后底部不再被顶出可视区。
 
 #### UX-3 · 工具条与动作可发现性（L）
 
@@ -2391,6 +2419,8 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-24 | **第二十一轮·UX-2** | **密度、排版与 chrome**（§34.2）：密度**三档 → 四档**，新增 `row-dense = 22`（令牌 **97 → 99**：`row-dense` + `sp-1h 6px`），**默认档位由 `normal` 改 `compact`**；`RowHeights.of` / `AppShell.applyDensity` / `SideBar.setDensity` / `DataGridPage.setDensity` 全部认四档
+（**新门禁在开发过程中就抓到一次自伤**：改白名单时漏写 `normal`，「标准」被静默降级成 compact，`AppShellTest` 立刻红 —— 这正是四档白名单要显式列全的理由）；数据面正文统一 **12px**（网格 / 清单 / 对象树 / 结构页 / 按钮 / 弹窗按钮；`.root` 保留 13px 作界面基准）；chrome 收薄——标签栏 36→**28**、对象头 44→**36**、页工具条 44→**34**、分页器 44→**36**、状态栏 26→**24**、按钮/输入 32→**28**；dense 单元格内边距 `2 6`（`sp-1h`，间距「4 倍数」规则登记第二个例外）；新增 `ChromeMetricsTest`（框架实际高度 + **1268×765 可见 ≥22 行**）、`AppShellTest.densityDefaultsToCompactWhenNoPreferenceIsStored`、`AppCssAuditTest.dataSurfacesUseTheCompactBodySize`，`DensityCoverageTest` / `MenuBarFactoryTest` 扩到四档；**5 个变异全部验证**（字号 13 / 默认 comfort / 分页器 44 / dense 返回 24 / 菜单删「密集」均红，改回绿）；门禁 **720 条 / 93 类 / 0 失败** |
 | 2026-10-24 | **第二十一轮·UX-1** | **视觉令牌基线**（§34.2）：令牌 **96 → 97**（新增 `bg-subtle` / `border-subtle` / `r-xs`，删除 `r-xl` / `shadow-2`）→ `GenTokens` 重生成；`app.css` 圆角只剩 **0/3/4/6/8/999**（控件 4、卡片 6、对话框 8、连接状态去胶囊）；卡片/详情/对话框投影删除，仅命令面板与 toast 用 `shadow-1`；网格线与分区底改 subtle 层；图标尺寸收敛 `14/16/20`（新增 `SIZE_PRIMARY`，对象工具条使用），`AppBar` 字面量 `16` 改常量；新增 `AppCssAuditTest.shadowsAreLimitedToTheFloatingElevation` + `IconSystemAuditTest.iconSizesComeFromTheNamedScale`，**4 个变异全部验证**（圆角 12 / 缺暗色 `bg-subtle` / 卡片加投影 / 图标写 18 均红，改回绿）；门禁 **716 条 / 92 类 / 0 失败** |
 | 2026-10-24 | **第二十一轮·UX-0** | **截图与偏好可复现**（§34.2）：`SettingsStore` 支持 `ADB_PREFS_NODE`（独立 `Preferences.userRoot()` 节点）+ `ADB_PREFS_RESET`（仅显式给节点时才清空，避免误清真实用户偏好）；`AppShell` 的 `ADB_DENSITY` 优先于 prefs 且**强制值不写回**（原来每次启动光打开就写一次偏好）；`scripts/shots.sh` 默认钉住 `ADB_DENSITY=compact` / 独立 prefs 节点 / `ADB_PREFS_RESET=1` / `ADB_CONNECTION=demo`；**实测连跑两次 `p0-shell` SHA-256 完全一致**（`2ee03edb…f03e8`，50184 字节）；新增 `AppShellTest.forcedDensityWinsAndDoesNotWriteBackToPreferences` + 脚本审计断言，**两条均变异验证**（删 export → 红；去掉不写回守卫 → 红）；门禁 **714 条 / 92 类 / 0 失败** |
 | 2026-10-24 | **第二十一轮·执行** | **删除 `declarations` 声明层，基线 755→712**：移除 `core/adb-declarations` 模块、根目录 `declarations/` YAML（4 连接 + 4 方言 + 5 传输家族 + Schema）、父 POM 的 module / dependencyManagement、`snakeyaml` / `json-schema-validator`、`adb-jdbc` 测试依赖与 `DeclaredDialectConsistencyTest`；全量门禁 **712 条 / 92 类 / 0 失败**（-43 = 模块 40 + 一致性门禁 3，属主动减面）；同步更新 README / ARCHITECTURE / COMPONENT-SELECTION / NEXT-STEPS / EXEC-SUMMARY / NAVICAT-GAP 的模块表与计数口径；顺带修正文档里「当前圆角 3/5/8」的失真（实际令牌为 4/6/8/12 + 999） |
