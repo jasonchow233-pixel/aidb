@@ -148,7 +148,8 @@ class IconSystemAuditTest {
         List<Path> files = new ArrayList<>();
         try (Stream<Path> paths = Files.walk(root)) {
             for (Path path : paths.filter(Files::isRegularFile).toList()) {
-                String relative = root.relativize(path).toString();
+                // Windows 用 `\`：不归一化会一个文件都不扫，门禁静默变绿。
+                String relative = root.relativize(path).toString().replace('\\', '/');
                 if (relative.endsWith(".java")
                         && relative.contains("src/main/java")
                         && relative.contains("ui/")) {
@@ -156,6 +157,9 @@ class IconSystemAuditTest {
                 }
             }
         }
+        assertThat(files)
+                .as("没有扫到 UI 主源码 —— 路径过滤失效，这份审计是假绿")
+                .hasSizeGreaterThan(30);
         return files;
     }
 
@@ -165,7 +169,7 @@ class IconSystemAuditTest {
 
     private static String relative(Path path) {
         Path root = repositoryRoot();
-        return root.relativize(path).toString();
+        return root.relativize(path).toString().replace('\\', '/');
     }
 
     private static Path repositoryRoot() {

@@ -6,12 +6,14 @@ import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.ui.Icons;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
+import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.collections.transformation.SortedList;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.SelectionMode;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
@@ -68,12 +70,42 @@ final class ObjectHomePage extends VBox {
             // ⭐ O1：事件（只有 MySQL 会有这一组）。
             SchemaService.ObjectKind.EVENT);
 
+    /**
+     * 对象级动作的宿主（建表 / 设计 / 删表 / 同步详情面板）。
+     *
+     * <p>Navicat 的对象清单顶部有一条**对象级工具条**（打开 / 设计 / 新建 /
+     * 删除 / 刷新）。AIDB 以前只有双击打开：想设计或删除一张表，必须先开
+     * 表清单页或去侧栏右键 —— 默认落地页反而不是完整入口。
+     *
+     * <p>页面只负责「哪些动作对当前选择合法」，真正执行由外壳决定
+     * （它才知道当前连接、危险确认与结构页）。默认空实现 → 老调用方不受影响。
+     */
+    interface Host {
+
+        /** 新建表（打开建表弹窗）。 */
+        default void newTable() {
+        }
+
+        /** 设计选中的表 / 视图（打开结构页）。 */
+        default void design(SchemaService.SchemaObject object) {
+        }
+
+        /** 删除选中的表（带 SQL 预览与确认由宿主负责）。 */
+        default void dropTables(List<String> tables) {
+        }
+
+        /** 选择变化时同步右侧详情面板；{@code null} = 没有单一选中对象。 */
+        default void inspect(SchemaService.SchemaObject object) {
+        }
+    }
+
     private final Supplier<DbSession> session;
     private final SchemaService schemaService;
     private final Executor dbExecutor;
     private final Consumer<SchemaService.SchemaObject> onOpen;
     private final Consumer<String> status;
     private final Runnable onConnect;
+    private final Host host;
 
     private final Label summary = new Label();
     private final ObservableList<ObjectRow> rows = FXCollections.observableArrayList();
@@ -83,6 +115,12 @@ final class ObjectHomePage extends VBox {
     private final TextField search = new TextField();
     private final Button refresh = IconButtons.of(Icons.Icon.REFRESH, "刷新");
     private final VBox content = new VBox();
+
+    // 对象级工具条：随选择启停（Navicat 的对象清单同样如此）。
+    private Button openButton;
+    private Button designButton;
+    private Button createButton;
+    private Button dropButton;
 
     // ─────────── 可选列（方言相关）的引用 ───────────
     // ⭐ 第十九轮 S-1：与 TableListPage 同一套规则 —— 这 6 列在数据里全是
@@ -132,12 +170,23 @@ final class ObjectHomePage extends VBox {
                    Consumer<SchemaService.SchemaObject> onOpen,
                    Consumer<String> status,
                    Runnable onConnect) {
+        this(session, schemaService, dbExecutor, onOpen, status, onConnect, null);
+    }
+
+    ObjectHomePage(Supplier<DbSession> session,
+                   SchemaService schemaService,
+                   Executor dbExecutor,
+                   Consumer<SchemaService.SchemaObject> onOpen,
+                   Consumer<String> status,
+                   Runnable onConnect,
+                   Host host) {
         this.session = session;
         this.schemaService = schemaService;
         this.dbExecutor = dbExecutor;
         this.onOpen = onOpen == null ? object -> { } : onOpen;
         this.status = status == null ? message -> { } : status;
         this.onConnect = onConnect;
+        this.host = host == null ? new Host() { } : host;
         getStyleClass().addAll("adb-page", "adb-object-home");
         buildUi();
         applyFilter();
@@ -157,10 +206,10 @@ final class ObjectHomePage extends VBox {
         refresh.getStyleClass().add("adb-button");
         refresh.setOnAction(event -> reload());
 
-        // ⚠️ refresh 必须进 header —— 此前它只被 new 出来、绑了动作、设了 id，
+        // ⚠️ refresh 必须进场景图 —— 此前它只被 new 出来、绑了动作、设了 id，
         //    却从未加入任何容器，于是「刷新」按钮在界面上根本不存在
         //    （截图审计 S2，docs/UI-AUDIT.md §2.1）。
-        HBox header = new HBox(10, title, badge, spacer, summary, refresh);
+        HBox header = new HBox(10, title, badge, spacer, summary);
         header.getStyleClass().add("adb-page__header");
         header.setAlignment(Pos.CENTER_LEFT);
 
@@ -175,7 +224,97 @@ final class ObjectHomePage extends VBox {
         VBox.setVgrow(content, Priority.ALWAYS);
         VBox.setVgrow(body, Priority.ALWAYS);
 
-        getChildren().addAll(header, body);
+        getChildren().addAll(header, buildToolbar(), body);
+        updateToolbarState();
+    }
+
+    /**
+     * 对象级工具条（Navicat 形态）：打开 / 设计 / 新建 / 删除 / 刷新。
+     *
+     * <p>纯图标 + Tooltip，和工具栏、表清单保持同一套按钮规格。
+     * 启用态由 {@link #updateToolbarState()} 按「当前选择是什么」决定 ——
+     * 选函数时「删除」不该亮（宿主只会删表）。
+     */
+    private HBox buildToolbar() {
+        openButton = IconButtons.icon(Icons.Icon.TABLE, "打开");
+        openButton.setId("object-home-open");
+        openButton.setOnAction(event -> openSelected());
+
+        designButton = IconButtons.icon(Icons.Icon.STRUCTURE, "设计表 / 视图");
+        designButton.setId("object-home-design");
+        designButton.setOnAction(event -> {
+            SchemaService.SchemaObject selected = singleSelection();
+            if (selected == null) {
+                status.accept("先选一个表或视图");
+                return;
+            }
+            host.design(selected);
+        });
+
+        createButton = IconButtons.icon(Icons.Icon.ADD, "新建表…");
+        createButton.setId("object-home-new");
+        createButton.setOnAction(event -> host.newTable());
+
+        dropButton = IconButtons.icon(Icons.Icon.DELETE, "删除表…");
+        dropButton.setId("object-home-drop");
+        dropButton.getStyleClass().add("adb-button--danger");
+        dropButton.setOnAction(event -> {
+            List<String> tables = table.getSelectionModel().getSelectedItems().stream()
+                    .map(row -> row.object())
+                    .filter(object -> object.kind() == SchemaService.ObjectKind.TABLE)
+                    .map(SchemaService.SchemaObject::name)
+                    .toList();
+            if (tables.isEmpty()) {
+                status.accept("先选一张表");
+                return;
+            }
+            host.dropTables(tables);
+        });
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        HBox toolbar = new HBox(8, openButton, designButton, createButton, dropButton,
+                spacer, refresh);
+        toolbar.setId("object-home-toolbar");
+        toolbar.getStyleClass().add("adb-inline-toolbar");
+        toolbar.setAlignment(Pos.CENTER_LEFT);
+        return toolbar;
+    }
+
+    /** 当前唯一的选中对象；多选 / 空选为 {@code null}。 */
+    private SchemaService.SchemaObject singleSelection() {
+        List<ObjectRow> selected = table.getSelectionModel().getSelectedItems();
+        return selected.size() == 1 ? selected.getFirst().object() : null;
+    }
+
+    /**
+     * 按当前选择刷新工具条启用态。
+     *
+     * <p>规则（与 Navicat 的对象清单一致、也比「全亮」诚实）：
+     * <ul>
+     *   <li>打开：单选任意对象；</li>
+     *   <li>设计：单选表或视图（结构页对视图是只读的）；</li>
+     *   <li>删除：多选，但**每一行都必须是表** —— 删视图走别的路径；</li>
+     *   <li>未连接时全部禁用。</li>
+     * </ul>
+     */
+    private void updateToolbarState() {
+        boolean connected = session.get() != null;
+        List<ObjectRow> selected = List.copyOf(table.getSelectionModel().getSelectedItems());
+        boolean single = selected.size() == 1;
+        SchemaService.ObjectKind kind = single ? selected.getFirst().object().kind() : null;
+        boolean designable = kind == SchemaService.ObjectKind.TABLE
+                || kind == SchemaService.ObjectKind.VIEW;
+        boolean droppable = !selected.isEmpty() && selected.stream()
+                .allMatch(row -> row.object().kind() == SchemaService.ObjectKind.TABLE);
+
+        openButton.setDisable(!connected || !single);
+        designButton.setDisable(!connected || !designable);
+        dropButton.setDisable(!connected || !droppable);
+        createButton.setDisable(!connected);
+
+        host.inspect(single ? selected.getFirst().object() : null);
     }
 
     // ─────────────────────────── 过滤条 ───────────────────────────
@@ -220,7 +359,10 @@ final class ObjectHomePage extends VBox {
         table.setId("object-list");
         table.getStyleClass().add("adb-object-list");
         table.setEditable(false);
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        // ⭐ S-6：可读下限 + 约束策略 —— 宽屏填满，挤窄卡在 minWidth 并横向滚动
+        //    （为什么不是 UNCONSTRAINED：宽屏会留一大片空白，见 §33.5）。
+        table.setColumnResizePolicy(
+                TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.setPlaceholder(new Label("没有匹配的对象"));
         table.setFixedCellSize(rowHeight);
 
@@ -229,20 +371,20 @@ final class ObjectHomePage extends VBox {
         // ⭐ 第十九轮 S-1：可选列（数据长度/引擎/创建/修改/排序规则/注释）留引用，
         //    按已加载数据决定显不显示 —— 全是占位符就整列隐藏（见 applyColumnVisibility）。
         sizeColumn = sizeColumn();
-        engineColumn = textColumn("引擎", 90, row -> row.meta() == null
+        engineColumn = textColumn("引擎", 90, 80, row -> row.meta() == null
                 ? "—" : row.meta().engineText());
-        createdColumn = textColumn("创建时间", 130, row -> row.meta() == null
+        createdColumn = textColumn("创建时间", 130, 130, row -> row.meta() == null
                 ? "—" : row.meta().createdText());
-        updatedColumn = textColumn("修改时间", 130, row -> row.meta() == null
+        updatedColumn = textColumn("修改时间", 130, 130, row -> row.meta() == null
                 ? "—" : row.meta().updatedText());
-        collationColumn = textColumn("排序规则", 110, row -> row.meta() == null
+        collationColumn = textColumn("排序规则", 110, 110, row -> row.meta() == null
                 ? "—" : row.meta().collationText());
-        commentColumn = textColumn("注释", 160, row -> row.meta() == null
+        commentColumn = textColumn("注释", 160, 120, row -> row.meta() == null
                 ? "—" : row.meta().commentText());
 
         table.getColumns().setAll(List.of(
                 nameColumn(),
-                textColumn("类型", 64, row -> typeLabel(row.object().kind())),
+                textColumn("类型", 64, 72, row -> typeLabel(row.object().kind())),
                 rowsColumn(),
                 sizeColumn,
                 engineColumn,
@@ -277,13 +419,17 @@ final class ObjectHomePage extends VBox {
         SortedList<ObjectRow> sorted = new SortedList<>(filtered);
         sorted.comparatorProperty().bind(table.comparatorProperty());
         table.setItems(sorted);
+
+        table.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+        table.getSelectionModel().getSelectedItems().addListener(
+                (ListChangeListener<ObjectRow>) change -> updateToolbarState());
     }
 
     private TableColumn<ObjectRow, String> nameColumn() {
         TableColumn<ObjectRow, String> column = new TableColumn<>("名称");
         column.setId("object-column-name");
         column.setPrefWidth(200);
-        column.setMinWidth(120);
+        column.setMinWidth(140);
         column.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().object().name()));
         column.setCellFactory(unused -> new TableCell<>() {
             @Override
@@ -315,6 +461,7 @@ final class ObjectHomePage extends VBox {
         TableColumn<ObjectRow, String> column = new TableColumn<>("行数");
         column.setId("object-column-rows");
         column.setPrefWidth(80);
+        column.setMinWidth(72);
         column.setCellValueFactory(cell -> new SimpleStringProperty(
                 cell.getValue().meta() == null || cell.getValue().meta().rows() == null
                         ? "—"
@@ -329,6 +476,7 @@ final class ObjectHomePage extends VBox {
         TableColumn<ObjectRow, String> column = new TableColumn<>("数据长度");
         column.setId("object-column-size");
         column.setPrefWidth(90);
+        column.setMinWidth(88);
         column.setCellValueFactory(cell -> new SimpleStringProperty(
                 cell.getValue().meta() == null ? "—" : cell.getValue().meta().sizeText()));
         column.setComparator((left, right) -> Long.compare(bytesOf(left), bytesOf(right)));
@@ -356,9 +504,11 @@ final class ObjectHomePage extends VBox {
     }
 
     private static TableColumn<ObjectRow, String> textColumn(
-            String title, double width, java.util.function.Function<ObjectRow, String> value) {
+            String title, double width, double minWidth,
+            java.util.function.Function<ObjectRow, String> value) {
         TableColumn<ObjectRow, String> column = new TableColumn<>(title);
         column.setPrefWidth(width);
+        column.setMinWidth(ColumnWidths.listColumnMin(title, minWidth));
         column.setCellValueFactory(cell -> new SimpleStringProperty(value.apply(cell.getValue())));
         return column;
     }
@@ -443,6 +593,7 @@ final class ObjectHomePage extends VBox {
                     onConnect == null ? null : "新建连接",
                     onConnect));
             summary.setText("未连接");
+            updateToolbarState();
             return;
         }
         dbExecutor.execute(() -> {
@@ -505,10 +656,12 @@ final class ObjectHomePage extends VBox {
                             + "或从侧栏新建一个表。",
                     "打开查询页", () -> status.accept("用查询页执行 CREATE TABLE 建第一张表")));
             summary.setText("共 0 个对象");
+            updateToolbarState();
             return;
         }
         showContent();
         summary.setText(summaryText(all));
+        updateToolbarState();
     }
 
     private String summaryText(List<ObjectRow> all) {

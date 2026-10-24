@@ -959,7 +959,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 "表里没有数据行。可以新增一行，或到查询页执行 INSERT。",
                 "新增一行", this::addRow)
                 .hint("新增的行是草稿，要按「保存」才会真正写进数据库。"));
-        grid.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        // ⭐ S-6：CONSTRAINED 策略 + 每列可读下限（见 ColumnWidths）。
+        //    实测（第二十轮 WidthProbe）：宽屏时列会**填满**（按 pref 比例分），
+        //    挤窄时宽度**卡在 minWidth 不往下走**，总和超出视口就自动出横向滚动条。
+        //    所以既不会留一大片空白，也不会把列头压成 `na… em… acti…`。
+        grid.setColumnResizePolicy(
+                TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         grid.setFocusTraversable(true);
         grid.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
         selectAllBox.setId("data-select-all");
@@ -1919,8 +1924,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             column.setGraphic(columnHeader(column, definition));
             column.setSortable(false);
             column.setEditable(schema.editable());
-            column.setPrefWidth(savedWidth(definition));
-            column.setMinWidth(72);
+            double minWidth = readableMinWidth(definition);
+            column.setPrefWidth(Math.max(minWidth, savedWidth(definition)));
+            column.setMinWidth(minWidth);
             column.setVisible(!hidden.contains(definition.name()));
             column.setCellValueFactory(data ->
                     new ReadOnlyObjectWrapper<>(data.getValue().get(definition.name())));
@@ -1982,7 +1988,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         }
         int width = settings.getInt(layoutKey("width." + definition.name()),
                 (int) Math.round(fallback));
-        return Math.max(72, Math.min(width, 1200));
+        return Math.max(readableMinWidth(definition), Math.min(width, 1200));
     }
 
     /**
@@ -2016,20 +2022,29 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 case TIMESTAMP, DATE -> Math.max(158, Math.min(190, units * 7.2 + 30));
                 default -> Math.max(120, Math.min(280, units * 7.2 + 30));
             };
-            column.setPrefWidth(Math.round(width));
+            column.setPrefWidth(Math.max(readableMinWidth(definition), Math.round(width)));
         }
         settings.setInt(layoutKey("columns"), schema.columns().size());
     }
 
+    /**
+     * 这一列的表头至少要占多宽才能读出来。
+     *
+     * <p>列头是两行：列名（可能带 {@code [PK]} / NOT NULL 的 {@code •}）+ 类型
+     * （可能带 {@code · 自增}），右侧还有排序徽标与筛选漏斗。只按列名算会漏掉
+     * 这些固定装饰，于是又回到 72px 的老问题。
+     */
+    private double readableMinWidth(ColumnDef definition) {
+        boolean autoIncrement = tableSchema != null
+                && tableSchema.autoIncrement(definition.name());
+        String name = definition.name()
+                + (definition.primaryKey() ? "  [PK]" : definition.nullable() ? "" : "  •");
+        String type = typeLabel(definition) + (autoIncrement ? " · 自增" : "");
+        return ColumnWidths.dataColumnMin(name, type);
+    }
+
     private static int visualLength(String text) {
-        if (text == null) {
-            return 0;
-        }
-        int units = 0;
-        for (int i = 0; i < text.length(); i++) {
-            units += text.charAt(i) > 0x2E80 ? 2 : 1;
-        }
-        return units;
+        return ColumnWidths.visualLength(text);
     }
 
     private String layoutKey(String suffix) {
@@ -2441,13 +2456,16 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         if (column == null) {
             return;
         }
-        int max = name.length();
+        int max = visualLength(name);
         for (Map<String, Object> row : grid.getItems()) {
             Object value = row.get(name);
             String text = value == null ? "NULL" : String.valueOf(value);
-            max = Math.max(max, text.length());
+            max = Math.max(max, visualLength(text));
         }
-        column.setPrefWidth(Math.max(120, Math.min(420, max * 8.0 + 44)));
+        ColumnDef definition = columnDef(name);
+        double minWidth = definition == null ? ColumnWidths.DATA_MIN : readableMinWidth(definition);
+        column.setPrefWidth(Math.max(minWidth,
+                ColumnWidths.contentWidth(max, 44, minWidth, 420)));
         scheduleLayoutSave();
     }
 

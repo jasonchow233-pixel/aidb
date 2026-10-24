@@ -27,10 +27,16 @@ fatal() { printf '%s\n' "${C_RED}✗${C_RESET} $*" >&2; exit 1; }
 step()  { printf '\n%s\n' "${C_BOLD}── $* ──${C_RESET}"; }
 
 # ── 从 pom.xml 解析 enforcer 声明的 JDK 区间 ───────────────────────
-# pom.xml: <requireJavaVersion><version>[25,26)</version></requireJavaVersion>
+# pom.xml: <requireJavaVersion><version>[25,28)</version></requireJavaVersion>
 # 项目里 JDK 版本只此一处为真相，脚本不硬编码，避免改了 pom 忘了改脚本。
 required_jdk_min() {
   sed -n 's/.*<requireJavaVersion><version>\[\([0-9]*\),.*<\/version><\/requireJavaVersion>.*/\1/p' \
+      pom.xml | head -n 1
+}
+
+# 区间上界（开区间）。例如 [25,28) → 28。
+required_jdk_max() {
+  sed -n 's/.*<requireJavaVersion><version>\[[0-9]*,\([0-9]*\)).*<\/version><\/requireJavaVersion>.*/\1/p' \
       pom.xml | head -n 1
 }
 
@@ -62,9 +68,10 @@ current_maven_version() {
 # 这是脚本存在的头号理由：JDK 版本不对时，maven-enforcer-plugin 报的错
 # （"is not in the allowed range"）出现在 build 日志深处，很难一眼看出是环境问题。
 require_toolchain() {
-  local need_jdk need_mvn have_jdk have_mvn
+  local need_jdk need_jdk_max need_mvn have_jdk have_mvn
 
   need_jdk="$(required_jdk_min)"; [ -n "$need_jdk" ] || need_jdk=25
+  need_jdk_max="$(required_jdk_max)"
   need_mvn="$(required_maven_min)"; [ -n "$need_mvn" ] || need_mvn=3.9
 
   # 1) java 存在吗
@@ -77,22 +84,29 @@ require_toolchain() {
   if [ -z "$have_jdk" ]; then
     fatal "读不出 java 版本，请检查 JAVA_HOME（当前：${JAVA_HOME:-未设置}）。"
   fi
-  if [ "$have_jdk" -lt "$need_jdk" ]; then
-    fatal "JDK 版本不对：当前 ${have_jdk}，pom.xml 要求 >= ${need_jdk}（区间 [${need_jdk},$((need_jdk+1)))）。
+  if [ "$have_jdk" -lt "$need_jdk" ] \
+      || { [ -n "$need_jdk_max" ] && [ "$have_jdk" -ge "$need_jdk_max" ]; }; then
+    fatal "JDK 版本不对：当前 ${have_jdk}，pom.xml 要求 [${need_jdk},${need_jdk_max:-∞})。
    当前 JAVA_HOME = ${JAVA_HOME:-未设置}
-   修正示例：export JAVA_HOME=\$(/usr/libexec/java_home -v ${need_jdk})"
+   修正：让 JAVA_HOME 指向 [${need_jdk},${need_jdk_max:-∞}) 内的 JDK。
+   macOS 示例：export JAVA_HOME=\$(/usr/libexec/java_home -v 27)"
   fi
 
   # 3) maven wrapper 能用吗（mvnw 首次运行会自行下载 Maven，需要网络）
   if [ ! -x ./mvnw ]; then
     fatal "缺少 ./mvnw（项目根目录：${PROJECT_ROOT}）。"
   fi
+  # 让后续裸 `java`（TestCount / 截图）也用同一个 JDK。
+  if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    PATH="$JAVA_HOME/bin:$PATH"
+    export PATH
+  fi
   have_mvn="$(current_maven_version)"
   if [ -z "$have_mvn" ]; then
     warn "读不到 Maven 版本；./mvnw 可能在首次下载 Maven，需要网络。"
   fi
 
-  ok "环境就绪：JDK ${have_jdk}（要求 >= ${need_jdk}）· Maven ${have_mvn:-首次下载中} · ${PROJECT_ROOT}"
+  ok "环境就绪：JDK ${have_jdk}（要求 [${need_jdk},${need_jdk_max:-∞})）· Maven ${have_mvn:-首次下载中} · ${PROJECT_ROOT}"
 }
 
 # ── 把用户给的第一个位置参数翻译成 ADB_OPEN ────────────────────────

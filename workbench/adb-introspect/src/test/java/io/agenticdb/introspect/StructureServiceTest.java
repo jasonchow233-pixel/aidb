@@ -59,6 +59,24 @@ class StructureServiceTest {
     }
 
     @Test
+    void integerPrimaryKeyIsReportedAsNotNullable() throws Exception {
+        try (java.sql.Statement statement = session.connection().createStatement()) {
+            statement.execute("CREATE TABLE codes (code TEXT PRIMARY KEY, note TEXT)");
+        }
+
+        TableStructure users = schema.structure(session, "users");
+        assertThat(users.column("id").primaryKey()).isTrue();
+        assertThat(users.column("id").nullable())
+                .as("INTEGER PRIMARY KEY 是 rowid 的别名，SQLite 保证非空")
+                .isFalse();
+
+        TableStructure codes = schema.structure(session, "codes");
+        assertThat(codes.column("code").nullable())
+                .as("TEXT PRIMARY KEY 在 SQLite 里真的允许 NULL，不能一并改成非空")
+                .isTrue();
+    }
+
+    @Test
     void readsViewDdlWithoutTreatingItAsEditable() throws Exception {
         TableStructure view = schema.structure(session, "v_active_users");
 

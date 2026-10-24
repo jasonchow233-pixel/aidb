@@ -203,8 +203,10 @@ Launcher
   由 `AppShell.schemaChanged` 刷新对象树与所有已打开的数据页 / 结构页。
 - 视图（`TableStructure.editable() == false`）整体只读。
 
-**已知缺口**：索引 / 外键 / 触发器只读；不能建表 / 改表名 / 删表；
-CHECK 约束不内省；PG 的 DEFAULT / COMMENT 丢失（`TypeMapper` 不读 `getColumns()`）。
+**已知缺口**：视图定义编辑、表选项（引擎 / 排序规则 / 自增步长）尚不可改；
+分区、表空间等运维属性不在首版范围。
+（索引 / 外键 / 触发器已可增删；建表 / 清空 / 重命名 / 删表已落地；
+CHECK 约束已内省并随重建搬运；PG 的 DEFAULT / COMMENT 已读回。）
 
 ---
 
@@ -221,15 +223,11 @@ CHECK 约束不内省；PG 的 DEFAULT / COMMENT 丢失（`TypeMapper` 不读 `g
 **已知缺口**：
 
 - macOS 写钥匙串时口令经 `-w <password>` 进 argv（`ps` 可见）。
-- Windows 无凭据后端。
-- `AppShell` 只有单一 `activeProfile` / `session`，多连接尚未并行。
-- 连接与内省跑在 UI 线程。
-- ⚠️ **`options` 能覆盖钥匙串口令**：`JdbcSession` 先 `setProperty("password", …)`，
-  再 `spec.options().forEach(props::setProperty)` —— 落盘的明文 options 反而赢。
-- ⚠️ **`ConnectionProfile.withPasswordlessOptions` 零调用** —— 脱敏 helper 写了但没接线。
+- Windows 无凭据后端（落内存）。
 - ⚠️ **`ConnectionPool` 不是池**：`getConnection()` 借出后全程不归还，`idleTimeout` /
   `maxLifetime` 形同虚设；每个连接档案一个 `HikariDataSource`。
 - ⚠️ **切连接泄漏会话**：`AppShell.connectProfile` 开新会话不关旧会话。
+  （多连接并存已落地；孤儿会话回收与凭据脱敏、口令走 stdin 已在 P5 补齐。）
 
 ### 6.2 方言抽象层（A1，✅ 已落地）
 
@@ -352,14 +350,15 @@ app.css          →  业务样式，引用 -adb-* 令牌
 
 ### 7.2 图标体系
 
-当前全部使用 Unicode 符号，无图标字体、无 SVG 资源。已知问题：
-
-- `⚙` 一符两义**只拆了一半**：`TabKind.STRUCTURE` 已改 `☰`，但数据页「结构」按钮
-  仍是 `⚙`，与 `TabKind.SETTINGS` 撞车。
-- `IconAuditTest` 只断言「Tooltip + accessible text」，**不检查符号的语义唯一性**。
-- `⚙ ▤ ▦ ⌕ ▇ ⬢ ⇅ ⌷ ◈` 属 Miscellaneous Technical / Geometric Shapes，
-  Windows 上常见字体可能替换或缺失。
-- 长期方向是内嵌 SVG 图标集（JavaFX 原生支持，无需图标字体、无缺字风险）。
+- **矢量图标**：`ui/adb-ui-core` 的 `Icons` 维护 38 个手绘 `SVGPath`（16×16，1.5px
+  描边），按钮、菜单、树、标签页统一走它；业务按钮里**没有任何 Unicode 图标字符**。
+- **品牌图**：应用窗口图标与欢迎页使用 `app-icon-*.png`（由 `tools/GenLogo.java`
+  从 SVG 生成 7 档，16–1024）；它只用于「图像」，不替代表情/控件图标。
+- **门禁**：`IconSystemAuditTest` 断言按钮不以 Unicode 图标字符开头、纯图标按钮必须
+  走矢量图、每个 `Icons.Icon` 至少被引用一次；`AppIconResourceAuditTest` 断言
+  源码里出现的 `app-icon-*.png` 字面量都真的有对应资源（少一个就红，不再静默降级）。
+- 纯图标按钮必须同时有 Tooltip 与 accessible text（`IconAuditTest`），
+  否则鼠标用户与读屏用户都会失去入口。
 
 ### 7.1 JavaFX Dialog 的两个坑（已踩）
 
@@ -390,7 +389,8 @@ app.css          →  业务样式，引用 -adb-* 令牌
 ./mvnw -B clean verify
 ```
 
-当前：**84 个测试类 / 631 条执行（SQLite，0 失败）/ 35 条跳过（需外部真库或 Docker）**。
+当前：**95 个测试类 / 755 条执行（SQLite，0 失败）/ 44 条跳过（需外部真库或 Docker）**
+（2026-10-24 · 第二十轮 · Windows 10 + JDK 27 全量实测）。
 
 统计用工具兜底（口径问题见 4.5-28）：
 

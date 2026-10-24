@@ -47,7 +47,8 @@ class AppIconResourceAuditTest {
         List<String> referenced = new ArrayList<>();
         try (Stream<Path> paths = Files.walk(root)) {
             for (Path path : paths.filter(Files::isRegularFile).toList()) {
-                String relative = root.relativize(path).toString();
+                // Windows 用 `\`：不归一化会一个文件都不扫，门禁静默变绿。
+                String relative = root.relativize(path).toString().replace('\\', '/');
                 if (!relative.endsWith(".java") || !relative.contains("src/main/java")) {
                     continue;
                 }

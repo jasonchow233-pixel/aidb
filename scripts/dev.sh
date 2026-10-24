@@ -16,8 +16,8 @@
 #     就是因为 jar 还是两小时前的。本脚本强制执行 install。
 #
 #   坑 2 —— JDK 版本不对时，enforcer 的报错埋在 build 日志深处。
-#     pom.xml 要求 [25,26)。用 JDK 21 跑只会得到一句
-#     "Detected JDK version 21.0.12-1 ... is not in the allowed range [25,26)"。
+#     pom.xml 要求 [25,28)。用 JDK 24 跑只会得到一句
+#     "Detected JDK version 24 ... is not in the allowed range [25,28)"。
 #     _env.sh 在编译前就把这件事说清楚，并给出修正命令。
 
 source "$(cd "$(dirname "$0")" && pwd)/_env.sh"

@@ -12,6 +12,8 @@ import io.agenticdb.jdbc.JdbcSession;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -19,6 +21,7 @@ import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.util.WaitForAsyncUtils;
 
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -109,6 +112,49 @@ class DataGridPageTest {
             assertThat(restored).isNotNull();
             assertThat(restored.isVisible()).isFalse();
             second.close();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    @Test
+    void dataColumnsKeepReadableHeadersWhenTheGridIsSqueezed() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("readable.db"))));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
+                    "test.db", noOpFeedback(), name -> { }, executor);
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> page.lookup("#data-table") != null
+                    && tableOf(page).getItems().size() == 200);
+
+            // ⭐ S-6 / C3：详情面板占掉 300px 后，网格必须横向滚动，
+            //    而不是把所有列等比压成 `na… em… acti…`。
+            assertThat(WaitForAsyncUtils.asyncFx(() -> tableOf(page).getColumnResizePolicy()).get())
+                    .as("填满宽屏 + 挤窄卡在 minWidth → CONSTRAINED_FLEX_LAST "
+                            + "（UNCONSTRAINED 会让宽屏留一大片空白）")
+                    .isSameAs(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+
+            Map<String, Double> minimums = WaitForAsyncUtils.asyncFx(() -> {
+                Map<String, Double> widths = new LinkedHashMap<>();
+                for (TableColumn<Map<String, Object>, ?> column : tableOf(page).getColumns()) {
+                    if (column.getUserData() instanceof String name) {
+                        widths.put(name, column.getMinWidth());
+                    }
+                }
+                return widths;
+            }).get();
+
+            assertThat(minimums).containsKeys(
+                    "id", "name", "email", "active", "score", "bio", "created_at");
+            assertThat(minimums).allSatisfy((name, width) -> assertThat(width)
+                    .as("%s 的列头不能被压到读不出来", name)
+                    .isGreaterThanOrEqualTo(ColumnWidths.DATA_MIN));
+            assertThat(minimums.get("created_at"))
+                    .as("timestamp 列要完整放下 10 个字符的列名 + 类型")
+                    .isGreaterThanOrEqualTo(120.0);
+            page.close();
         } finally {
             executor.shutdownNow();
             session.close();

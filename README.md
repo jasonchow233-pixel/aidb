@@ -9,10 +9,10 @@
 
 ---
 
-## 当前状态（2026-10-22）
+## 当前状态（2026-10-24）
 
 **P0–P4 已完成、P5/P6 进行中、界面专项 U-B1–U-B7 已落地。**
-门禁 **745 条 / 93 类 / 0 失败**（2026-10-23 · 第十九轮批次 D 实测；另有 44 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
+门禁 **755 条 / 95 类 / 0 失败**（2026-10-24 · 第二十轮 Windows 实机实测；另有 44 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
 
 > **第八轮之后**：D2+D4（MySQL/PG 列注释读回）已修；B5-S1（索引可编辑）已落地；
 > **T1–T4（建表 / 清空 / 重命名 / 删表）已落地**（T1=弹窗，按形态裁定）；9 张验收截图完成。
@@ -25,7 +25,8 @@
 >   （各驱动码表不同）→ **带外键的表改列必失败**（`ON UPDATE 3` 语法错误）。
 > - 其余遗留：B5-S2/S3、B5-S4/O1/O2、U-B6、空白态 E5–E9、架构收尾 A10/A12/A15/A16。
 >
-> 完整清单见 `NAVICAT-TODO.md`；逐域对比见 `docs/NAVICAT-GAP.md` §7。
+> 完整清单见 `NAVICAT-TODO.md`；逐域对比见 `docs/NAVICAT-GAP.md` §7；
+> **下一阶段 UIUX 升级（UX-0…UX-6）见 `NAVICAT-TODO.md` §34 与 `docs/UI-ROADMAP.md` §12**。
 
 | 能力 | 状态 | 证据 |
 |---|---|---|
@@ -97,10 +98,11 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 
-当前门禁：**745 条 / 93 类 / 0 失败**（2026-10-23 · 第十九轮批次 D 实测；`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
+当前门禁：**755 条 / 95 类 / 0 失败**（2026-10-24 · 第二十轮 Windows 实机实测；`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
 
-> ⚠️ **本机环境**：`java` 默认指向 **JDK 11**，门禁起不来。可用的 JDK 25 是 IntelliJ 自带那份：
-> `export JAVA_HOME="/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home"`。
+> ⚠️ **本机环境**：`java` 默认不在 PATH。可用的 JDK：
+> - Windows 10：`~/.jdks/openjdk-27.0.1.0.2`（pom 的 enforcer 区间为 `[25,28)`）
+> - macOS：IntelliJ 自带 JDK 25 —— `export JAVA_HOME="/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home"`
 
 统计口径用工具兜底（`@Nested` 的测试类在 surefire XML 里会写成 `tests="0"`）：
 
@@ -117,7 +119,8 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 真实窗口截图：`docs/screenshots/p0-shell.png`、`p2-users.png`、`p3-query.png`、`p4-structure.png`、
 `p5-connections.png`、`p5-dark.png`、`p6-tables.png`、`p6-new-table.png`、`p7-new-index.png`
 （共 **9 张**；`docs/screenshots/navicat/` 另存 Navicat Premium Lite 15 实拍 3 张 + 等比例并排图：
-`navicat-tablelist.png` / `navicat-toolbar.png` / `side-by-side-2026-10.png`），
+`navicat-tablelist.png` / `navicat-toolbar.png` / `side-by-side-2026-10.png`，
+以及 2026-10-24 新增的两张高保真实拍 `navicat-data-grid-2026-10-24.png` / `navicat-table-list-2026-10-24.png`），
 由 `ScreenshotSession`（`ADB_SHOTS` 等环境变量）可复现生成，用法见 §12.2。
 弹窗两张靠 `ADB_NEW_TABLE=1` / `ADB_INDEX=1` 启动开关（§16.3）。
 
@@ -125,7 +128,7 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 
 ## 快速开始
 
-要求：JDK 25、Maven 3.9+（或直接用仓库自带 `./mvnw`）。
+要求：JDK 25–27（`pom.xml` 的 enforcer 区间 `[25,28)`）、Maven 3.9+（或直接用仓库自带 `./mvnw`）。
 
 > ⭐ **用 `scripts/` 下的脚本，不要手工敲命令** —— 启动流程里有两个坑：
 > JDK 版本不对时报错埋在日志深处；**不先 `install` 会跑 `~/.m2` 里的旧 jar**
@@ -191,7 +194,7 @@ TestFX 默认用 Monocle 无头模式；在本机想看真实窗口，去掉父 
 | **`docs/UI-VISUAL-SPEC.md`** | ⭐ **可照着实现的 UI 规格书**：8 档字号落到哪个角色 · 96 个令牌语义 · 42 图标清单 · 间距/圆角/固定尺寸 · 五区与四种页面骨架 · 组件规格 · 弹窗骨架与按钮区规则 · 交互态矩阵 · 键盘表 · 文案措辞 |
 | **`docs/NAVICAT-PARITY-2026-10-V5.md`** | ⭐ **Navicat 对齐报告 V5**（2026-10-22）：8 个维度逐像素对照 · 已落地 13 项改动 · 4 处刻意不追 · P0/P1/P2 剩余清单 · 等比例并排图说明 |
 | **`docs/UI-COMPARISON-2026-10.md`** | 与 Navicat 的像素级对拍（**上一版**，并排图存在缩放不一致；最新结论以 `NAVICAT-PARITY-2026-10-V5.md` 为准） |
-| **`docs/UI-ROADMAP.md`** | ⭐ **界面专项**：实测 11 个界面问题（字号 / 间距 / 圆角 / 焦点环 / 按钮层级 / 图标 / 密度 / 列头 / 连接列表）+ 6 个批次计划 + 排版 / 间距 / 圆角 / 配色 / 交互规范 |
+| **`docs/UI-ROADMAP.md`** | ⭐ **界面专项**：实测 11 个界面问题（字号 / 间距 / 圆角 / 焦点环 / 按钮层级 / 图标 / 密度 / 列头 / 连接列表）+ 6 个批次计划 + 排版 / 间距 / 圆角 / 配色 / 交互规范；**§12 第二十一轮 UX-0…UX-6 目标值与门禁** |
 | **`docs/NAVICAT-COMPARE.md`** | ⭐ **与 Navicat 的实拍对比**（本机装了 Navicat Premium Lite 15）：逐项对照 + 6 个真差距 + 由此重排的优先级 |
 | **`docs/GITHUB-COMPARE.md`** | ⭐ **GitHub 上开源数据库管理软件**扫描（DBeaver / Chat2DB / Beekeeper Studio / TablePro / sqlpad / SQLTools…）：与 AIDB 的可比性、独特定位、借鉴项 |
 | **`docs/EXEC-SUMMARY.md`** | ⭐ **对外汇报版**（2026-10-22）：架构 / Todolist / 截图 / Navicat / GitHub / 六维 / 还缺什么 / 本轮交付物 / 汇报要点 |

@@ -246,19 +246,22 @@ final class TableListPage extends VBox {
         table.getStyleClass().add("adb-table-list");
         table.setEditable(false);
         table.setPlaceholder(new Label("没有匹配的表"));
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        // ⭐ S-6：可读下限 + 约束策略 —— 宽屏填满，挤窄卡在 minWidth 并横向滚动
+        //    （为什么不是 UNCONSTRAINED：宽屏会留一大片空白，见 §33.5）。
+        table.setColumnResizePolicy(
+                TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.setFixedCellSize(rowHeight);
         table.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 
         // ⭐ 第十九轮 S-1：可选列要留引用，才能按数据决定显不显示。
         //    「名称 / 行」是核心列，永远显示；其余 6 列是方言相关的可选列。
         sizeColumn = sizeColumn();
-        engineColumn = textColumn("引擎", 100, TableMeta::engineText);
-        createdColumn = textColumn("创建日期", 150, TableMeta::createdText);
+        engineColumn = textColumn("引擎", 100, 80, TableMeta::engineText);
+        createdColumn = textColumn("创建日期", 150, 140, TableMeta::createdText);
         // ⭐ 本轮补的三列：Navicat 的表清单有「修改日期 / 排序规则 / 注释」。
-        updatedColumn = textColumn("修改日期", 150, TableMeta::updatedText);
-        collationColumn = textColumn("排序规则", 120, TableMeta::collationText, true);
-        commentColumn = textColumn("注释", 180, TableMeta::commentText, true);
+        updatedColumn = textColumn("修改日期", 150, 140, TableMeta::updatedText);
+        collationColumn = textColumn("排序规则", 120, 112, TableMeta::collationText, true);
+        commentColumn = textColumn("注释", 180, 120, TableMeta::commentText, true);
 
         table.getColumns().setAll(List.of(
                 nameColumn(),
@@ -355,7 +358,7 @@ final class TableListPage extends VBox {
         TableColumn<TableMeta, String> column = new TableColumn<>("名称");
         column.setId("table-column-name");
         column.setPrefWidth(220);
-        column.setMinWidth(120);
+        column.setMinWidth(140);
         column.setCellValueFactory(cell -> new javafx.beans.property.SimpleStringProperty(
                 cell.getValue().name()));
         column.setCellFactory(unused -> new TableCell<>() {
@@ -384,6 +387,7 @@ final class TableListPage extends VBox {
         TableColumn<TableMeta, String> column = new TableColumn<>("行");
         column.setId("table-column-rows");
         column.setPrefWidth(90);
+        column.setMinWidth(72);
         column.setCellValueFactory(cell -> new javafx.beans.property.SimpleStringProperty(
                 cell.getValue().rowsText()));
         column.setComparator((left, right) -> Long.compare(numberOf(left), numberOf(right)));
@@ -396,6 +400,7 @@ final class TableListPage extends VBox {
         TableColumn<TableMeta, String> column = new TableColumn<>("数据长度");
         column.setId("table-column-size");
         column.setPrefWidth(110);
+        column.setMinWidth(88);
         column.setCellValueFactory(cell -> new javafx.beans.property.SimpleStringProperty(
                 cell.getValue().sizeText()));
         column.setComparator((left, right) -> Long.compare(bytesOf(left), bytesOf(right)));
@@ -404,8 +409,9 @@ final class TableListPage extends VBox {
     }
 
     private TableColumn<TableMeta, String> textColumn(
-            String title, double width, Function<TableMeta, String> value) {
-        return textColumn(title, width, value, false);
+            String title, double width, double minWidth,
+            Function<TableMeta, String> value) {
+        return textColumn(title, width, minWidth, value, false);
     }
 
     /**
@@ -413,10 +419,11 @@ final class TableListPage extends VBox {
      * 避免它们和表名抢视觉重心（Navicat 的注释列也是浅一档）。
      */
     private TableColumn<TableMeta, String> textColumn(
-            String title, double width, Function<TableMeta, String> value,
-            boolean muted) {
+            String title, double width, double minWidth,
+            Function<TableMeta, String> value, boolean muted) {
         TableColumn<TableMeta, String> column = new TableColumn<>(title);
         column.setPrefWidth(width);
+        column.setMinWidth(ColumnWidths.listColumnMin(title, minWidth));
         column.setCellValueFactory(cell -> new javafx.beans.property.SimpleStringProperty(
                 value.apply(cell.getValue())));
         column.setCellFactory(unused -> new TableCell<>() {

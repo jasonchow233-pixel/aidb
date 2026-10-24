@@ -694,11 +694,19 @@ public final class SchemaService {
                      session.dialect().columnsSql(name))) {
             while (rs.next()) {
                 String type = rs.getString("type");
+                boolean primaryKey = rs.getInt("pk") > 0;
+                // ⭐ INTEGER PRIMARY KEY 是 rowid 的别名，SQLite 保证它非空
+                //    （插入 NULL 会自动分配 rowid），但 PRAGMA 里 notnull 仍是 0。
+                //    照抄 notnull 会让结构页把主键显示成「可空 YES」。
+                //    ⚠️ 只有 INTEGER 是别名；TEXT PRIMARY KEY 在 SQLite 里
+                //    **真的允许 NULL**（历史遗留行为），不能一并改成非空。
+                boolean rowidAlias = primaryKey && "INTEGER".equalsIgnoreCase(
+                        type == null ? "" : type.trim());
                 columns.add(new ColumnDef(
                         rs.getString("name"),
                         typeOf(type),
-                        rs.getInt("notnull") == 0,
-                        rs.getInt("pk") > 0,
+                        rs.getInt("notnull") == 0 && !rowidAlias,
+                        primaryKey,
                         rs.getString("dflt_value"),
                         null,
                         null,

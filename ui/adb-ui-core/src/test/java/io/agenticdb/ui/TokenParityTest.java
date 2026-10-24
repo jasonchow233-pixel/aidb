@@ -147,15 +147,21 @@ class TokenParityTest {
     private static String readJavaSources() throws IOException {
         Path root = repositoryRoot();
         StringBuilder all = new StringBuilder();
+        int scanned = 0;
         try (var paths = Files.walk(root)) {
             for (Path path : paths.filter(Files::isRegularFile).toList()) {
-                String relative = root.relativize(path).toString();
+                // Windows 用 `\`：不归一化会一个文件都不扫，门禁静默变绿。
+                String relative = root.relativize(path).toString().replace('\\', '/');
                 if (!relative.endsWith(".java") || relative.contains("/target/")) {
                     continue;
                 }
+                scanned++;
                 all.append(Files.readString(path, StandardCharsets.UTF_8));
             }
         }
+        assertThat(scanned)
+                .as("没有扫到任何 Java 源码 —— 路径过滤失效，这份审计是假绿")
+                .isGreaterThan(50);
         return all.toString();
     }
 

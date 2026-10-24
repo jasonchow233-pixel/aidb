@@ -61,16 +61,21 @@ class DialectBranchAuditTest {
     void noDialectBranchesScatteredOutsideTheDialectLayer() throws IOException {
         Path root = repositoryRoot();
         List<String> violations = new ArrayList<>();
+        int scanned = 0;
 
         try (Stream<Path> paths = Files.walk(root)) {
             for (Path path : paths.filter(Files::isRegularFile).toList()) {
-                String relative = root.relativize(path).toString();
+                // ⚠️ Windows 的 Path.toString() 用 `\`，白名单与排除规则用 `/`。
+                //    不归一化的话，ALLOWED 一个都命中不了、`/target/` 也过滤不掉 ——
+                //    这个门禁在 Windows 上会**把所有合法文件都报成违规**。
+                String relative = root.relativize(path).toString().replace('\\', '/');
                 if (!relative.endsWith(".java")
                         || relative.contains("/target/")
                         || relative.contains("/test/")
                         || ALLOWED.contains(relative)) {
                     continue;
                 }
+                scanned++;
                 String source = Files.readString(path, StandardCharsets.UTF_8);
                 if (BRANCH.matcher(source).find()) {
                     violations.add(relative);
@@ -78,6 +83,9 @@ class DialectBranchAuditTest {
             }
         }
 
+        assertThat(scanned)
+                .as("审计一个文件都没扫到 —— 路径过滤失效，门禁是假绿")
+                .isGreaterThan(100);
         assertThat(violations)
                 .as("方言分支散落在这些文件里 —— 加一种数据库就要改它们，"
                         + "A1 的承诺（一个 Dialect 实现就够）就破了：\n  %s",

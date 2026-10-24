@@ -74,9 +74,6 @@ public final class QueryLimits {
      */
     public static final long MAX_EXPORT_ROWS = 1_000_000L;
 
-    /** 超过这个字节数，单元格内容在传输途中被截断，由详情面板按需再取。 */
-    public static final int MAX_CELL_BYTES = 20 * 1024;
-
     /**
      * ⭐ A10：单条语句的**执行超时**（秒）。0 = 不限制。
      *

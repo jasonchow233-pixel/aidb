@@ -8,8 +8,9 @@
 > **界面规格书见 `docs/UI-VISUAL-SPEC.md`**（第十轮：字号/颜色/图标/布局/组件/弹窗/交互态/键盘）；
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
-> 最后更新：**2026-10-23（第十八轮：截图当证据的第二轮 Navicat 对标 —— 6 个真缺陷修复 + 7 条变异验证门禁 + 合并待办 §29）**
-> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **731 条 / 92 类 / 0 失败**（2026-10-23 第十九轮实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
+> 最后更新：**2026-10-24（第二十一轮启动：UIUX 升级清单 + P2/P5/P6 收尾裁定，见 §34）**
+> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **755 条 / 95 类 / 0 失败**（2026-10-24 第二十轮实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
+> ⚠️ **§34 删除 `declarations` 后基线会下降 43 条（22+18+3）**，属**主动减面**不是回归；届时要更新本行与所有文档的数字口径。
 >
 > 📌 **关于门禁数字的口径（第十八轮勘误）**：第十七轮记的「721 / 29 跳过」是在 **Docker 可用**时测的；
 > 本轮 `adb-ui-shell` 单模块 **278 → 285（+7 = 本轮 7 条新门禁）**、测试类 **89 → 91（+2 = 两个静态审计门禁）**，
@@ -34,8 +35,9 @@
 > **第十四轮已完成 U1 ✅ catalog 树**（MySQL 多库：虚拟连接 + 对象树库一层 + 双击切库）。
 > **第十五轮已完成 Q5 ✅ 结果分页 + V-9 ✅ 表格规格统一**（服务端分页 + 翻页条 + 列类型条，与数据页 record-nav / 类型行同一套视觉）。
 > **U-B6 功能补齐层已全部收官**（G1–G7 / Q5 / Q6 / U1–U6 全部 ✅）。
-> **下一动作 = P5/P6 收尾**（连接管理 / 导入导出剩余项）。
-> 详见 §22 与 `docs/NAVICAT-PARITY-2026-10-V5.md` §5。
+> **下一动作 = §34：先删 `declarations`，再按 UX-0 → UX-1 → UX-2 做 UIUX 升级**；
+> P2/P5/P6 的批次已全部裁定（同意做），排在其后。
+> 详见 §34 与 `docs/UI-ROADMAP.md` §12。
 >
 > 📦 **新增 `scripts/`**：`dev.sh`（一键编译启动）· `build.sh`（门禁）· `shots.sh`（重拍截图）。
 > 它们把 §12.2 记录的三个坑（不 install 拍到旧界面 / JDK 版本错埋在日志深处 / macOS 无 timeout）
@@ -56,7 +58,7 @@
 | P5 连接管理 | 🟡 进行中 | 连接管理页、三步向导、测试连接、钥匙串 / Secret Service 凭据、连接档案落盘、HikariCP 连接池（PG/MySQL）；**本轮补上：凭据脱敏 + 口令走 stdin + 孤儿会话回收** |
 | P6 导入导出 | 🟡 进行中 | CSV / TSV / JSON Lines / SQL 导出 + CSV / TSV 导入、字段映射、坏行报告、导入导出向导；**真库联调：MySQL 5.7（9 例）→ 本轮 Docker 解锁后 PostgreSQL 16 + MySQL 8.4 Testcontainers（11 例全绿），累计抓出 4 个真 bug**（`RENAME COLUMN` 版本差异 / JDBC 类型名不带长度 / `rows` 是 MySQL 8.0 保留字 / `pg_class` 无 `relcollation` 列） |
 | P7 分发 | 🟡 进行中 | ✅ jpackage（`scripts/package.sh`）+ 崩溃日志（`CrashLog`）；⬜ jlink（自动模块暂不可行）/ 自动更新 / 性能 |
-| **UI/UX 专项** | ✅ **U-B1–U-B6 已完成** | **§13–§16 / §22 / §27 / §28**：U-B1–U-B6 全落地；S1 数值展示 / S2 刷新按钮 / D1 函数报错 / X1–X2 空态 / **T1–T4 表级生命周期** / **D2·D4 注释读回** / **B5-S1 索引可编辑**；第十三轮 Navicat 表清单 8 列 + 密度 24/28/34；**U-B7：侧栏改 Navicat 模型（无「工作台」，单棵「我的连接」树，查询跟着连接走）+ 按钮规格统一（§27）**；**第十七轮：规格 §6 右侧对象详情面板 + §13 新建表弹窗重构 + §9.7 底部「记录/页面」标签（§28）** |
+| **UI/UX 专项** | ✅ **U-B1–U-B6 已完成** | **§13–§16 / §22 / §27 / §28**：U-B1–U-B6 全落地；S1 数值展示 / S2 刷新按钮 / D1 函数报错 / X1–X2 空态 / **T1–T4 表级生命周期** / **D2·D4 注释读回** / **B5-S1 索引可编辑**；第十三轮 Navicat 表清单 8 列 + 密度 24/28/34；**U-B7：侧栏改 Navicat 模型（无「工作台」，单棵「我的连接」树，查询跟着连接走）+ 按钮规格统一（§27）**；**第十七轮：规格 §6 右侧对象详情面板 + §13 新建表弹窗重构 + §9.7 底部「记录/页面」标签（§28）**；**第二十轮：S-6 可读列宽 + 横向滚动 · S-9 对象首页工具条 · D-1 SQLite 主键非空 · S-8 Windows 门禁可移植性（§33）** |
 
 首版明确不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务、传输同步。
 
@@ -77,31 +79,26 @@
 ./mvnw -B clean verify
 ```
 
-当前结果（2026-10-23 · 第十九轮批次 D · S-4 列网格键盘导航 实测）：
+当前结果（2026-10-24 · 第二十轮 · Windows 实机全量 实测）：
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **745** | 44 | 0 |
+| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **755** | 44 | 0 |
 | **外部 PG / MySQL 真库**（aliCloud RDS 等，需环境变量） | 单独跑，不在默认门禁 | — | — |
 | **多版本矩阵**（MySQL 5.7/8.0 + PG 13/17，`ADB_TEST_VERSION_MATRIX=1`） | 默认不跑，需显式打开 | 1 | 0 |
 
-**93 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
+**95 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
 （Testcontainers 容器**需 Docker**；本机 Docker 不可用时走跳过分支）—— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-23，第十九轮批次 D 后）**：**745 条 / 93 类 / 0 失败**（`./mvnw -B clean verify`
-> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 745）。
-> 比第十七轮 721 多 24 条：批次 A +14（`MetadataColumnsTest`6 + `TableListPageTest`6 + `ObjectHomePageTest`2）、
-> 批次 B +5（`SideBarTreeTest` 9→14）、批次 C +3（`WelcomeBrandTest` 新建）、
-> **批次 D +6**（`NewTableDialogTest` 17→23）；测试类 89→**93**（新增 `MetadataColumnsTest` / `WelcomeBrandTest`）。
+> 📌 **最新口径（2026-10-24，第二十轮后 · Windows 实机）**：**755 条 / 95 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 755）。
+> 比第十九轮 745 多 10 条：**S-6 +5**（`DataGridPageTest` / `TableListPageTest` / `ObjectHomePageTest` 各 1 +
+> `ColumnResizePolicyTest` 2）、**S-9 +4**（`ObjectHomeToolbarTest` 新建）、**D-1 +1**（`StructureServiceTest` 8→9）；
+> 测试类 93→**95**（新增 `ObjectHomeToolbarTest` / `ColumnResizePolicyTest`）。**Q-1 / Q-2 是既有用例的修正，不加数**。
 >
-> ⚠️ **本机环境**：`java` 默认是 **JDK 11**，门禁跑不起来；可用的 JDK 25 是 IntelliJ 自带那份 ——
-> `export JAVA_HOME="/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home"`（见 §30.3）。
-> 比上一轮 691 多 30 条，来源分两半：
-> **① 本 UI 轮 +25**（`ObjectDetailsPanelTest` 14 + `NewTableDialogTest` +6 + `AppShellTest` +3 +
-> `DataGridPageTest` +1 + `TableListPageTest` +2 + `StructurePageTest` +1，新增 1 个测试类）；
-> **② 工作区里未提交的「多版本真库矩阵」WIP +5**（`PostgresMySqlIntegrationTest` +4 真库契约 +
-> `DialectSqlConformanceTest` +1，新增 `DatabaseVersionMatrixTest` 1 条且默认跳过）。
-> ⚠️ 该 WIP 尚未 commit（含 MySQL 建表钉 `utf8mb4` 的真实修复），见 §28.7。
+> ⚠️ **本机环境（Windows）**：`java` 默认不在 PATH；可用的是 **JDK 27**（`~/.jdks/openjdk-27.0.1.0.2`），
+> pom 的 enforcer 区间已放到 `[25,28)` —— `export JAVA_HOME="$HOME/.jdks/openjdk-27.0.1.0.2"`。
+> macOS 那边仍是 IntelliJ 自带的 JDK 25（见 §30.3）。
 
 统计口径用工具兜底：
 
@@ -458,10 +455,10 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | # | 问题 | 整改方向 | 阶段 | 状态 |
 |---|---|---|---|---|
 | ~~A1~~ | ~~无 Dialect 抽象层，SQL 生成散落 6 个 `switch` + 13 个 `if`~~ **已做**：`Dialect` 接口 + `SqliteDialect`/`PostgresDialect`/`MySqlDialect`，承担全部方言差异 | P5 | ✅ |
-| A2 | `declarations/` 1500 行是死代码 | **决策**：本轮先把它**变成真功能**（loader 修好 + classpath/jar 双路径 + 对拍测试），运行时驱动它留给 A1 方言抽象层 | P5 | 🟡 |
+| A2 | `declarations/` 1500 行是死代码 | **2026-10-24 裁定：删除**（模块 + 根目录 YAML + POM + 测试依赖 + `DeclaredDialectConsistencyTest`），不再等「运行时驱动」 | P5 | ✅ **已裁定，见 §34.1** |
 | A3 | `loadFromClasspath()` 不可用（jar 索引解析错误） | **已修**：枚举目录（爆炸 classpath）/ jar 条目（打包），两条路径实测一致 | P4.5 | ✅ |
-| ~~A4~~ | ~~`paramStyle` / `identifierQuote` 被硬编码~~ **标识符引用已进 `Dialect`**；**参数风格仍固定 `?`**（`paramStyle: numbered` 未实现） | P5 | 🟡 |
-| ~~A5~~ | ~~元数据只读当前 schema~~ **schema 已落地**：`getSchemas()` 接上了，侧栏有 **schema 切换器**（>1 个才显示），PG 用 `SET search_path` 切。**catalog 也已落地（第十四轮 U1，见 §24）**：MySQL 走对象树 catalog 层（切库 = 换虚拟连接）；`getExportedKeys()` / `getColumns()` 也已接上 | P5 | ✅ |
+| ~~A4~~ | ~~`paramStyle` / `identifierQuote` 被硬编码~~ **标识符引用已进 `Dialect`**；**参数风格仍固定 `?`** | **2026-10-24 裁定：不做** —— JDBC 全用 `?`，`numbered` 无消费方；写进不做清单 | P5 | ❌ **不做** |
+| ~~A5~~ | ~~元数据只读当前 schema~~ **schema 已落地**：`getSchemas()` 接上了，侧栏有 **schema 切换器**（>1 个才显示），PG 用 `SET search_path` 切。**catalog 也已落地（第十四轮 U1，见 §24）**：MySQL 走对象树 catalog 层（切库 = 换虚拟连接）；`getColumns()` 已接；**`getExportedKeys()` 仍未接**（2026-10-24 复核：全仓 0 引用）→ 排进 P5-4 | P5 | 🟡 |
 | ~~A6~~ | ~~危险分级第三层门禁不存在；数据页保存不分类~~ **已做**：数据页保存已接入分级；**第三层（驱动侧复查）已落地** —— `DbSession.execute(sql, danger)` / `update(sql, params, danger)` 强制声明等级，驱动侧再判一次，实际更危险就拒绝 | P4.5 | ✅ |
 | A7 | 危险分级 fail-open（未知 → 只读） | **已做**：未知语句头按管理操作处理；`WITH` 体内扫描写语句 | P4.5 | ✅ |
 | A8 | 多语句切分不看字符串/注释 | **已做**：复用 `adb-sql` 的 `SqlSplitter` | P4.5 | ✅ |
@@ -476,12 +473,12 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | ~~A17~~ | ~~79/120 令牌未被引用~~ **已做**：120 → **60 个，全部被用到**（app.css 引用或 Java 常量消费），并有门禁守着 | P4.5 | ✅ |
 | A18 | ~~「跟随系统」只探测 macOS~~ | ✅ **已完成（第十二轮）**：Windows 注册表 / Linux gsettings·kdeglobals | P7 | ✅ |
 | A19 | 密度档位只影响对象树 | **已做**：覆盖网格行高（行高取自 `row-*` 令牌） | P4.5 | ✅ |
-| A20 | `MAX_CELL_BYTES` 声明未用 | 真正限制单元格体积，或删常量 | P4.5 | ⬜ |
+| A20 | `MAX_CELL_BYTES` 声明未用 | ✅ **已删（第二十轮）**，全仓 0 引用 | P4.5 | ✅ |
 | **A21** 🆕 | **切连接泄漏会话** | **已做**：回收没有标签页引用的会话 | P5 | ✅ |
 | **A22** 🆕 | ~~**主题探测每次 shell out**~~ | ✅ **已完成（第十二轮）**：探测结果缓存，只探一次 | P7 | ✅ |
 | **A23** 🆕 | **死代码 / 死引用** | **已做**：删 `QueryOptions`、修 `DeclarationCheckMojo` 悬空引用、`PageSize` 改为 UI 档位来源、清 `MainToolBar` 只写字段与未用 import | P4.5 | ✅ |
 | **A24** 🆕 | **surefire 统计口径失真** | CI 按 `<testcase>` 计数 + 断言总数下限 | P4.5 | ⬜ **（4.5-28）** |
-| **A25** 🆕 | ~~**`declarations` 与运行时方言不一致**~~ | ✅ **已完成（第十二轮）**：不删声明，改为**显式白名单 + 门禁**（`DeclaredDialectConsistencyTest`） | P5 | ✅ |
+| **A25** 🆕 | ~~**`declarations` 与运行时方言不一致**~~ | **被 §34 取代（2026-10-24）**：不再维护声明源，直接删除模块；运行时方言由 `Dialect` + `DialectBranchAuditTest` 守住 | P5 | ✅ **改判为删除** |
 
 ---
 
@@ -878,13 +875,16 @@ Navicat 对象树右键菜单里最高频的四个动作，我们**一个都没�
 **它替你绕开的坑**：
 
 1. **JDK 版本守卫**（实测踩过）：JDK 21 直接跑只会得到埋在日志深处的一句
-   `Detected JDK version 21.0.12-1 ... is not in the allowed range [25,26)`。
+   `Detected JDK version 21.0.12-1 ... is not in the allowed range [25,28)`。
    现在编译**之前**就说清楚，并给出修正命令：
    ```
-   ✗ JDK 版本不对：当前 21，pom.xml 要求 >= 25（区间 [25,26)）。
-      修正示例：export JAVA_HOME=$(/usr/libexec/java_home -v 25)
+   ✗ JDK 版本不对：当前 24，pom.xml 要求 [25,28)。
+      当前 JAVA_HOME = 未设置
+      修正：让 JAVA_HOME 指向 [25,28) 内的 JDK。
+      macOS 示例：export JAVA_HOME=$(/usr/libexec/java_home -v 27)
    ```
-   要求版本从 `pom.xml` 的 `requireJavaVersion` **解析**得来，不硬编码 —— 改了 pom 脚本自动跟上。
+   要求版本从 `pom.xml` 的 `requireJavaVersion` **解析**得来（下限和上限都查，28 也会被拦），
+   不硬编码 —— 改了 pom 脚本自动跟上。
 2. **必须先 install**（实测踩过，最贵的一个）：`javafx:run -pl` 不带 `-am` 会从 `~/.m2`
    取**旧 jar**，改了半天 CSS 界面一点没变。`dev.sh` / `shots.sh` 强制 install 在前。
 3. **macOS 没有 `timeout`**：`shots.sh` 用 `perl -e 'alarm ...; exec @ARGV'` 兜底，
@@ -1877,7 +1877,11 @@ java tools/TestCount.java
 | **S-3** ✅ **DONE (R19 批次 B)** | **C5 对象树表节点可展开出列**：Navicat 每个表节点都有 `>`（裁图核对），AIDB 对象节点是叶子 | `SideBar.kindGroup()` 建的子 `TreeItem` 无 children | 🟠 中高 | ✅ **5 条新门禁，5 条全部做过变异验证**（MUTATION-1 去掉「没接回调就是叶子」→ `tableIsALeafUntilAColumnLoaderIsWired` 红；MUTATION-2 去掉「读过的不再读」闸 → `expandingATableReadsItsColumnsLazily` 红；MUTATION-3 失败后不摘「已尝试」标记 → `aFailedColumnReadIsSaidOutLoudAndCanBeRetried` 红；MUTATION-4 列的「复制名称」不放行 → `columnNodesCannotOpenDataButCanCopyTheirName` 红；MUTATION-5 重建树不认缓存 → `columnsSurviveATreeRebuild` 红，失败原文逐条记录）· 见 **§30** |
 | **S-4** ✅ **DONE (R19 批次 D)** | **列网格键盘导航**（Tab / 方向键在整张网格内移动 + 单元格编辑焦点） | §28.6 遗留；硬规则「一切键盘可达」；§28.10 已把**布尔三态一格**做成可键盘切换 | 🟡 中 | ✅ `NewTableDialogTest` **+6**（`NewTableDialog` 抽出四个静态纯方法 `move` / `step` / `next` / `previous` + record `CellPos`，headless 下不靠 `fireEvent`）· **4 个变异全部验证**（D1 不挂处理器 / D2 最后一格绕回 / D3 `step` 抢 Tab / D4 出界夹坐标，失败原文逐条记录）· 见 **§32** |
 | **S-5** ✅ **DONE (R19 批次 C)**（**但请看下面的 ⚠️**） | **C7 欢迎页用 AIDB mark**：现在还是通用 `Icons.Icon.DATABASE`；品牌改造只注册了 OS 窗口图标 | `WorkspaceView:137`；全仓无 `ImageView(app-icon-*)` | 🟢 低 | ✅ `WelcomeBrandTest`(3) 断言门面是品牌 PNG · **4 个变异全部验证通过**（含「坏 PNG」这一档）· ⚠️ **改完发现欢迎页当前不可达**（见 §31.2 / 新增 **S-7**）—— 所以这个改动**用户暂时看不到**，`p0-shell` 也拍不到它 |
-| **S-6** | **C3 详情面板挤压网格**：列头截成 `na… em… acti… sco…` | `p2-details.png`；`ObjectDetailsPanel.WIDTH_DEFAULT=300` | 🟡 中 | **先定方案**（覆盖式 vs 推挤式 vs 窄宽自动收起），定完再加布局断言 —— 没有裁定就不动手 |
+| **S-6** ✅ **DONE (R20)** | **C3 详情面板挤压网格**：列头截成 `na… em… acti… sco…` | `p2-details.png`；`ObjectDetailsPanel.WIDTH_DEFAULT=300` | 🟡 中 | ✅ **落地为「可读下限 + 约束策略」**（推挤式保留，覆盖式不做）：三张表统一 `CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN`（测过：宽屏填满、挤窄卡在 `minWidth` 并出横向滚动条）；新增纯助手 `ColumnWidths`（西文 7.2px/字符、CJK 算 2 个单位、列头装饰占位 60px，夹在 96–260px）。**列头装饰也算进下限**（`[PK]` / `·` / `· 自增`），否则又回到 72px 老问题。门禁 `DataGridPageTest` / `TableListPageTest` / `ObjectHomePageTest` 各 +1，断言「策略是 CONSTRAINED_FLEX_LAST + 每列 minWidth ≥ 96 + 总下限 ≥ 800」；`ColumnResizePolicyTest` +2 守策略后果（宽屏填满 / 窄屏卡住下限）· 见 **§33** |
+| **S-8** ✅ **DONE (R20)** | **Windows 上门禁假绿**：5 个静态审计用 `/` 过滤路径，Windows 的 `Path.toString()` 是 `\` → `contains("src/main/java")` 全不命中 | 本轮首次在 Windows 跑门禁时发现：`DialectBranchAuditTest` **把全部合法文件都报成违规**（红），另外 4 个审计**一个文件都没扫却显示绿**（更危险） | 🔴 高 | ✅ 5 处统一 `.replace('\\','/')`；并给每份审计补「**扫到 0 个文件必须红**」的下限断言（`scanned > N` / `hasSizeGreaterThan(N)`）。以后路径过滤再失效会当场炸，不会再静默通过 · 见 **§33.2** |
+| **S-9** ✅ **DONE (R20)** | **对象首页缺对象级工具条**：`p0-shell.png` 上只有右上角 `+` | Navicat 的对象清单顶部固定「打开 / 设计 / 新建 / 删除 / 刷新」 | 🟠 中 | ✅ `ObjectHomePage.Host`（建表 / 设计 / 删表 / 同步详情面板）+ 图标工具条；启用态按选择类型：打开=单选任意、设计=单选表/视图、删除=多选且**全是表**、未连接全灰。门禁 `ObjectHomeToolbarTest`(4)：按钮在场景图里 / 选择驱动启停 / 点下去真的到宿主 / 详情面板跟随选择 · 见 **§33.3** |
+| **D-1** ✅ **DONE (R20)** | **SQLite 主键显示成「可空 YES」**：`p4-structure.png` 的 `id INTEGER` | 主键永远非空 | 🟡 中 | ✅ `INTEGER PRIMARY KEY` 是 rowid 别名 → 非空；**TEXT PRIMARY KEY 仍如实显示可空**（SQLite 真的允许 NULL，不能一并改）。门禁 `StructureServiceTest.integerPrimaryKeyIsReportedAsNotNullable` 两向断言 · 见 **§33.4** |
+| **Q-1** ✅ **DONE (R20)** | **查询页快捷键门禁在 Windows 上必红**：测试把 `meta=true` 写死成快捷键 | — | 🟢 低 | ✅ 测试改用平台快捷键（mac ⌘ / 其它 Ctrl）；生产代码 `isShortcutDown()` 本来就对 · 见 **§33.5** |
 
 ### 29.2 P2 —— 排期内（来源清楚、收益中等）
 
@@ -1886,8 +1890,8 @@ java tools/TestCount.java
 | **N6** | 列宽记忆 / 长注释 Tooltip / MySQL 数据长度 `B·KB·MB·GB` 联调 | §22.4 | 🟡 **需要真库**（不与 N1–N5 混做） |
 | **V-12 剩余** | 错误**详情弹窗** + 批量确认**汇总页**（错误**归类**已做） | §19.3 / §21.3 | 🟠 单独一轮 |
 | **表详情「最近执行的相关操作」** | 查询历史按当前对象筛（`QueryHistory` 已有，缺关联） | §28.6 | 🟡 |
-| **连接档案路径回显** | `~/.agenticdb/connections.json` 路径展示 | §28.6 | 🟢 低 |
-| **C4 密度第四档** | 实测 AIDB 网格 **28px** vs Navicat **19px**；现有最紧档 24px 仍松 26% | `AIDB-UIUX-ANALYSIS.md` §10.1 | **先问产品再做**（可读性 vs 扫表效率的产品判断，不是工程判断） |
+| **连接档案路径回显** ✅ **DONE (R20)** | `~/.agenticdb/connections.json` 路径展示 | §28.6 | 🟢 低 | ✅ 接在**连接级详情面板**的 facts 里（显示 `ConnectionStore.file()` 实际路径，不是硬编码 `~/.agenticdb` —— 测试与自定义启动会覆盖它） |
+| **C4 密度第四档** | 实测 AIDB 网格 **28px** vs Navicat **19–22px**；现有最紧档 24px 仍松 | `AIDB-UIUX-ANALYSIS.md` §10.1 | ✅ **已裁定：做**（2026-10-24）—— 新增 `dense 22`，默认改 `compact 24`，见 §34 / UX-2 |
 | **V-5** 工具栏按宽度折叠 / **V-11** 弹窗宽度三档 | §19.3 | ⏸ **暂缓有理由**：1280 宽实测 12个图标放得下 |
 | **S-7** 🆕 **待裁定** | **欢迎页不可达**（2026-10-23 由要做 S-5 顺带挖出）：`AppShell` 构造器无条件 `openPermanent(object-home)` ⇒ `WorkspaceView.showWelcome()` 永远被盖掉 ⇒ 30 行欢迎页是**死代码**，S-5 的品牌改动用户看不到。三个出口：①**接** —— 新增矢量 `Icons.Icon.BRAND`（圆柱 + AI 星芒）换掉应用栏 26px 方块里的 `DATABASE`（⚠️ 不能上 PNG：`AppBarTest.theBrandMarkUsesTheVectorIconSystem` 明确要求矢量）②**删** —— 删掉 `showWelcome()` ③**留** —— 原样放着 | §31.2 | 🟢 低工量，**但属于产品判断**，先裁定再动手（§29.4 的规矩） |
 
@@ -1895,7 +1899,7 @@ java tools/TestCount.java
 
 | # | 项 | 来源 | 说明 |
 |---|---|---|---|
-| **A20** | `QueryLimits.MAX_CELL_BYTES` 声明后**零引用** → 删掉 | §21.2（第十八轮复核仍成立：全仓仅 `QueryLimits.java:78` 一处） | 🟢 |
+| **A20** ✅ **DONE (R20)** | `QueryLimits.MAX_CELL_BYTES` 声明后**零引用** → 删掉 | §21.2（第十八轮复核仍成立：全仓仅 `QueryLimits.java:78` 一处） | ✅ 已删（`grep -r MAX_CELL_BYTES` 全仓 0 命中） |
 | **V-6 应用图标** | 实际**已大半完成**：`stage.getIcons()` 6 档 PNG 已注册（§28.9），R18-4 又修了死引用；**剩「界面内使用」= S-5** | §19.3 | 🟢 |
 | **X4 收口** | 不再为半孤儿动作单独造菜单；口径改成「**⌘K 能搜到即可达**」（`ActionRegistryConvergenceTest` 已守右键走注册表） | §21.1（第十八轮勘误：X3 早已完成，别再列它） | 🟢 |
 | **导入 / 导出向导** | Navicat 的强项之一，AIDB 只有入口没有分步引导 | `AIDB-UIUX-ANALYSIS.md` §9 | 🟠 大，值得单独一轮 |
@@ -1916,7 +1920,8 @@ java tools/TestCount.java
 | **B（交互补强）** ✅ **DONE (R19)** | S-3 树展开出列 | ✅ `SideBarTreeTest` **+5**（`tableIsALeafUntilAColumnLoaderIsWired` / `expandingATableReadsItsColumnsLazily` / `columnsSurviveATreeRebuild` / `columnNodesCannotOpenDataButCanCopyTheirName` / `aFailedColumnReadIsSaidOutLoudAndCanBeRetried`）+ 展开不触发多余查询的断言 · **5 条全部变异验证通过**（改坏必红、改回必绿）· 顺带修掉 `AppShellTest.openTable` 的**选错节点**隐患（`contains("users")` 会同时命中 `v_active_users` / `trg_users_audit`，命中触发器时压根不开页面，失败信息却像分页 bug）与**读旧标签标题**的偶发红（改为等标题真的变成目标名字） |
 | **C（品牌闭环）** ✅ **DONE (R19)** | S-5 欢迎页 mark | ✅ `WelcomeBrandTest`(3) + 4 变异验证（C1 换回通用图标 / C2 关等比 / C3 指非图片 / C4 坏 PNG，失败原文逐条记录）· ⚠️ 截图只能证到 S-3（`p0-shell` 六节点带 `▶`）—— **欢迎页不可达，见 §31.2 与新增的 S-7** |
 | **D（a11y 硬规则）** ✅ **DONE (R19)** | S-4 列网格键盘导航 | ✅ `NewTableDialogTest` **+6**，沿用 §28.10 的「纯方法抽取」做法（不靠 `fireEvent`）· **4 个变异全部验证**（失败原文逐条记录）·额外补了一条 `gridNavigationIsActuallyWiredToTheColumnsTable`（纯方法全绿但忘了 `setOnKeyPressed` 是最容易溜过去的假绿） |
-| **E（需先裁定）** | S-6 详情面板布局 | 先出方案对比，再动手 |
+| **E（需先裁定）** ✅ **DONE (R20)** | S-6 详情面板布局 | ✅ 裁定为「**可读下限 + 约束策略**」（推挤式保留、覆盖式不做）：三张表统一 `CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN` + `ColumnWidths` 可读下限 · 3 条页面门禁 + `ColumnResizePolicyTest`(2) + **M2 / M5 变异验证**（下限改 60 → 3 条红；策略换回 UNCONSTRAINED → 2 条红）· 连带修正拖拽用例（Q-2：改拖前两列，末列在窄视口外是预期行为）· 见 §33 |
+| **F（R20 实机复跑）** ✅ **DONE** | Windows 上门禁假绿（S-8）+ 对象工具条（S-9）+ 主键可空性（D-1）+ 快捷键门禁（Q-1） | ✅ 5 处路径归一化 + 「扫到 0 个文件必须红」下限 · `ObjectHomeToolbarTest`(4) · `StructureServiceTest` 两向断言 · `QueryPageTest` 平台感知快捷键 · **M1/M3/M4 变异各自验证** · 见 §33 |
 
 **统一验收口径**：`./mvnw -B clean verify` 0 失败 · **新增门禁必须做过变异验证**（改坏必红、改回必绿）· 截图重拍后**逐张与 Navicat 参考图并排核对**（第十八轮的方法，不是只看文件生成了）。
 
@@ -2079,10 +2084,296 @@ java tools/TestCount.java
 
 ---
 
+## 33. 第二十轮（2026-10-24）：Windows 实机复跑 —— 5 个真问题
+
+> 来源：§29 合并待办。前十九轮的门禁都在 macOS 上跑；这一轮第一次在 **Windows 10 + JDK 27**
+> 上跑完整 `clean verify`，并对照 `docs/screenshots/` 的实拍与 Navicat 逐张核。
+> 结果：**1 类「门禁假绿」（S-8，最危险）+ 3 个用户看得见的差异（S-6 / S-9 / D-1）+ 2 条测试自身的平台假设（Q-1 / Q-2）**。
+
+### 33.1 这一轮怎么发现的
+
+| 入口 | 发现 |
+|---|---|
+| 第一次跑 Windows 门禁 | `DialectBranchAuditTest` **把所有合法文件都报成违规**；另外 4 个静态审计**一个文件都没扫到却显示绿** |
+| `p2-details.png` | 详情面板 300px 一开，列头被压成 `na… em… acti… sco…`（S-6） |
+| `p0-shell.png` | 对象清单只有右上角一个 `+`，没有 Navicat 那种对象级工具条（S-9） |
+| `p4-structure.png` | SQLite 的 `id INTEGER PRIMARY KEY` 显示「可空 YES」（D-1） |
+| 全量跑 | `QueryPageTest` 的快捷键用例在 Windows 必红（Q-1）；S-6 改完后 `GridInteractionTest` 拖拽用例红（Q-2） |
+
+### 33.2 S-8：Windows 上门禁「假绿」（最严重的一类）
+
+Java 的 `Path.toString()` 在 Windows 用 `\`，而 5 个静态审计的白名单 / 排除规则都写的是 `/`：
+
+| 审计 | 失效表现 |
+|---|---|
+| `DialectBranchAuditTest` | 白名单一个都命中不了 + `/target/` 过滤不掉 → **把所有合法文件都报成违规**（红得离谱） |
+| `TokenParityTest` | `contains("src/main/java")` 全不命中 → **0 个文件，绿** |
+| `AppIconResourceAuditTest` | 同上 |
+| `ScreenshotScriptAuditTest` | 同上（这条正是第十八轮「拍错页」的守门人） |
+| `IconSystemAuditTest` | 同上（图标字符 / 纯图标按钮 / 图标未使用三条全部空转） |
+
+修法两层：
+
+1. **路径归一化**：`root.relativize(path).toString().replace('\\','/')`，且 `relative()` 输出也归一化；
+2. **「扫到 0 个文件必须红」的下限断言**：`scanned > 100`（方言审计）、`scanned > 50`（令牌审计）、
+   `uiSources()` `hasSizeGreaterThan(30)`。**第 2 条比第 1 条重要** —— 路径规则将来再写错，
+   门禁会当场炸，而不是变成一条永远绿的摆设。
+
+变异验证 **M4**：去掉 `DialectBranchAuditTest` 的归一化 → 红，失败原文列出
+`ui\adb-ui-shell\src\main\java\io\agenticdb\ui\shell\ConnectionWizard.java`、
+`ui\adb-ui-shell\src\test\java\...\AppBarTest.java` 等全部合法文件 → 改回必绿。
+
+### 33.3 S-9：对象首页对象级工具条
+
+Navicat 的对象清单顶部固定有「打开 / 设计 / 新建 / 删除（/ 刷新）」；AIDB 只有右上角 `+`。
+这一轮补上 `ObjectHomePage.Host`（**页面不直接依赖 AppShell**，四个回调各管一件事）：
+
+```java
+interface Host {
+    default void newTable() { }
+    default void design(SchemaService.SchemaObject object) { }
+    default void dropTables(List<String> tables) { }
+    default void inspect(SchemaService.SchemaObject object) { }
+}
+```
+
+启用态由**选择本身**决定（`updateToolbarState()` 在加载完、过滤后、选择变化时都调）：
+
+| 动作 | 启用条件 | 理由 |
+|---|---|---|
+| 打开 | 已连接 + **单选任意对象** | 函数/过程有定义体页 |
+| 设计 | 已连接 + 单选**表或视图** | 结构页对视图只读 |
+| 新建 | 已连接即可 | 不需要选对象 |
+| 删除 | 已连接 + 非空 + **每一行都是表** | 删视图/函数走别的路径，不能混进同一次 DROP |
+| 未连接 | 全灰 | — |
+
+同时把详情面板接上选择（`host.inspect`）：选一行看一行，取消选择清空面板。
+按钮用 `Icons` 矢量图 + Tooltip + accessible text（`IconSystemAuditTest` 守着）。
+
+门禁 `ObjectHomeToolbarTest`(4)：窗口里真的有工具条 / 选择驱动四个按钮启停 / 点下去真的到宿主 /
+详情面板跟随选择。变异 **M1**：去掉选择监听 → **3 条红**
+（`buttonsReachTheHost` 期望 `["users"]` 实际 `[]`；`detailsPanelFollowsSelection` 面板为空；
+`selectionDecidesWhichActionsAreAvailable` 触发器行上「设计」仍可点）→ 改回必绿。
+
+### 33.4 D-1：SQLite 主键被显示成「可空 YES」
+
+SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动分配，语义上永远非空；
+但 `PRAGMA table_info` 的 `notnull` 仍是 0。照抄就会在结构页显示「可空 YES」。
+
+**只认 `INTEGER`**：`TEXT PRIMARY KEY` 在 SQLite 里**真的允许 NULL**（历史遗留行为），
+不能为了好看一并改成非空 —— 那会教用户写出插入失败的语句。
+
+门禁 `StructureServiceTest.integerPrimaryKeyIsReportedAsNotNullable` **两向断言**：
+`users.id`（INTEGER PK）非空 **且** `codes.code`（TEXT PK）保持可空。
+变异 **M3**：去掉 `&& !rowidAlias` → 红（`[INTEGER PRIMARY KEY 是 rowid 的别名，SQLite 保证非空]`
+`Expecting value to be false but was true`）→ 改回必绿。
+
+### 33.5 S-6：可读列宽 + 横向滚动（详情面板不再把列头压没）
+
+旧实现：`CONSTRAINED_RESIZE_POLICY` 等比例压扁 + 数据列 `minWidth` 只有 72px → 列头只剩省略号。
+
+第一版实现用的是 `UNCONSTRAINED_RESIZE_POLICY`。**实拍发现它在宽屏下不再填满** ——
+`p0-shell.png` 右侧留了一大片空白（旧图是填满的）。所以先用一个探针
+（`ColumnResizePolicyTest`）把两种策略的实际行为测出来：
+
+| 场景（8 列，pref 200 / min 96） | `UNCONSTRAINED` | `CONSTRAINED_FLEX_LAST` |
+|---|---|---|
+| 视口 1200 | 总宽 **1600**（停在 pref，右侧空白 400px） | 每列 150，**总宽 1198 = 填满** |
+| 视口 500 | 每列 96（总宽 768），横向滚动条 ✔ | 每列 **仍是 96**（不再压小），横向滚动条 ✔ |
+
+结论：**约束策略本来就尊重 `minWidth`** —— 之前「CONSTRAINED 会把列压扁」的判断只对了一半
+（压扁是因为下限只有 72px，不是因为策略不认下限）。最终方案：
+
+- 三张表（数据网格 / 表清单 / 对象首页）统一 `CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN`；
+- 新增纯助手 `ColumnWidths`：西文 7.2px/字符、**CJK 算 2 个单位**、列头固定装饰占位 60px，
+  夹在 96–260px；清单页文本列用 `listColumnMin(title, floor)`；
+- **列头装饰也算进下限**：`[PK]` / `•`（脏行/删行）/ `· 自增` —— 只算列名会回到 72px 老问题；
+- 用户拖过的列宽保留，但**夹在可读下限以上**（`Math.max(minWidth, savedWidth)`）。
+
+效果：宽屏填满、挤窄时卡在可读下限并出横向滚动条（`p2-details.png` 上六列列头完整，
+底部有横向滚动条）—— **既不空白，也不省略号**。
+
+门禁 5 条：三张页各 1 条（策略必须是 `CONSTRAINED_FLEX_LAST` + 每列 `minWidth ≥ 72` +
+总下限 `≥ 800`）+ `ColumnResizePolicyTest` 2 条（宽屏填满 / 窄屏卡住下限且能横向滚）。
+变异 **M2**：`dataColumnMin` / `listColumnMin` 都返回 60 → **3 条页面门禁同时红**
+（`[name 的列头不能被压到读不出来]` 实际 60.0、`[引擎 列的最小宽度]` 60.0 < 72.0、
+`[类型 列的最小宽度]` 60.0 < 72.0）。变异 **M5**：把探针换回 `UNCONSTRAINED` →
+`wideViewportFillsTheFullWidth...` 红（总宽 **1600** vs 视口 1200）、
+`narrowViewportStopsAtTheMinimum...` 红（列宽不是 96）→ 改回必绿。
+
+**Q-2（S-6 的连带修正）**：`GridInteractionTest.draggingAHeaderReordersTheColumns` 抓的是
+最右边 `score` 列头 —— 列有可读下限后它在 1200px 视口外，TestFX 报
+`BoundsLocatorException: bounds are not visible in Scene`。拖拽验证的是「列头拖放 → 重排」，
+与挑哪一列无关，所以改成拖**前两列**（任何宽度都可见）；不是把列宽压回去换绿。
+
+### 33.6 Q-1 / 顺带两件
+
+- **Q-1 快捷键门禁**：`QueryPageTest` 把 `meta=true` 写死成「快捷键」，在 Windows 上必然按不出
+  Ctrl 组合 → 改用平台感知的 `shortcut(KeyCode)`（mac ⌘ / 其它 Ctrl）。生产代码
+  `isShortcutDown()` 本来就是对的，**测试错了，不是功能错了**。
+- **A20**：`QueryLimits.MAX_CELL_BYTES` 声明后零引用 → 已删（`grep` 全仓 0 命中）。
+- **连接档案路径回显**：连接级详情面板的 facts 用 `ConnectionStore.file()` 的**实际路径**
+  （测试与自定义启动会覆盖默认 `~/.agenticdb/connections.json`，不能硬编码）。
+
+### 33.7 门禁与计数
+
+`./mvnw -B clean verify` **BUILD SUCCESS** + `java tools/TestCount.java`：
+
+| 指标 | 值 |
+|---|---|
+| 执行 | **755** |
+| 测试类 | **95** |
+| 失败 | **0** |
+| 环境跳过 | 44（`adb-jdbc` 30 + `adb-introspect` 14 —— 与本轮改动无关） |
+
+比第十九轮 745 多 10 条：S-6 +5、S-9 +4、D-1 +1；类 +2（`ObjectHomeToolbarTest` / `ColumnResizePolicyTest`）。
+**5 个变异（M1–M5）全部验证通过**：改坏必红、改回必绿，失败原文逐条记在 33.2–33.5。
+
+---
+
+## 34. 第二十一轮（2026-10-24）：UIUX 升级 + P2/P5/P6 收尾（已裁定，待执行）
+
+> 触发：用户提供两张 Navicat 高保真实拍（数据网格 / 表清单），要求按
+> **功能 / 交互 / 组件 / 布局 / 字体 / 颜色 / 尺寸 / 投影 / 扁平化 / 图标**重新整理升级清单。
+> 证据与量差见 **`docs/NAVICAT-COMPARE.md` §9**；批次规范与目标值见 **`docs/UI-ROADMAP.md` §12**。
+> 参考图已归档：`docs/screenshots/navicat/navicat-data-grid-2026-10-24.png` /
+> `docs/screenshots/navicat/navicat-table-list-2026-10-24.png`。
+
+### 34.1 本轮裁定（2026-10-24）
+
+| 事项 | 裁定 | 备注 |
+|---|---|---|
+| P2 / P5 / P6 全部批次 | ✅ **同意做** | 明细见 §34.3；顺序见 §34.4 |
+| `declarations/` | ✅ **删除** | 根目录 `declarations/` + `core/adb-declarations` 模块 + POM + `adb-jdbc` 测试依赖 + `DeclaredDialectConsistencyTest`；预计 **-43 条 / -3 类**（22+18+3），基线 755→712，属主动减面 |
+| C4 密度第四档 | ✅ **做** | 新增 `dense 22px`；默认从 `normal 28` 改为 `compact 24`；对比截图用 `dense` |
+| Windows 凭据 | ✅ **做**（JNA WinCred） | 只加在 `adb-session`；测试用唯一 target 前缀 + 清理 |
+| xlsx | ✅ **做**（Apache POI） | 只进 `adb-transfer`；导出 `SXSSF` / 导入 SAX，禁止整文件读入内存 |
+| 连接分组 / 标签 | 分组做，**tags 暂不做** | 一次只动一个字段，避免档案迁移风险 |
+| A4 `paramStyle: numbered` | ❌ **不做** | JDBC 全用 `?`，没有消费方；写进「不做」清单 |
+| 连接属性页 | 功能已完成 | 只补 `ConnectionWizardTest` 一条门禁 |
+| S-7 欢迎页 | ⏳ **仍待裁定** | 接 / 删 / 留三选一；不阻塞 UX-0…UX-4 |
+
+### 34.2 UIUX 执行清单（UX-0…UX-6）
+
+> 目标值与门禁的完整定义见 `docs/UI-ROADMAP.md` §12.1–12.2。
+> **勾选标准**：代码落地 + 门禁绿 + 变异验证 + 截图重拍，四项缺一不算完成。
+
+#### UX-0 · 可复现（S，先做）
+
+- [ ] `shots.sh` 每张图固定 `ADB_DENSITY`（默认 `compact`；对比图 `dense`）
+- [ ] `AppShell` 读 `ADB_DENSITY` 且**不写回** prefs
+- [ ] 测试/截图使用独立 prefs 或启动前清理 `ui.density`
+- [ ] `ScreenshotScriptAuditTest` 断言脚本含 `ADB_DENSITY`
+
+#### UX-1 · 视觉令牌基线（M）
+
+- [ ] 圆角收敛 **3 / 4 / 6 / 8**；按钮与输入框 **4**，搜索框去胶囊
+- [ ] 新增 `border-subtle` / `border-strong` / `bg-canvas` / `bg-subtle`（亮暗各一套）
+- [ ] 投影只留 popover 一级；删卡片投影
+- [ ] 图标尺寸 14 / 16 / 20 三档，删散落尺寸
+- [ ] `TokenParityTest` / `AppCssAuditTest` / `ContrastTest` 全绿
+- [ ] 变异：`r-sm` 改 12 → 圆角审计红；删暗色 `bg-canvas` → 令牌对拍红
+
+#### UX-2 · 密度、排版与 chrome（L，收益最高）
+
+- [ ] 新增 `row-dense = 22`；四档 dense/compact/normal/comfort 全页生效
+- [ ] 默认密度改 `compact`；菜单四项并能切换网格 / 清单 / 树
+- [ ] 网格/清单/树/工具条标签字号 **12px**；状态栏/类型行 11px
+- [ ] 单元格内边距 dense `2 6` / normal `4 8`；列头同步
+- [ ] chrome：标签 28 / 对象头 36 / 页工具条 34 / 状态栏 24
+- [ ] `p2-users` 在 765px 高窗口可见 **≥ 22 行**（当前 16）
+- [ ] `DensityCoverageTest` + 新 `ChromeMetricsTest`；变异验证
+- [ ] 重拍 `p2-users` / `p6-tables` / `p0-shell`，与 Navicat 并排核对
+
+#### UX-3 · 工具条与动作可发现性（L）
+
+- [ ] `ActionButtons.labeled(...)`：图标 + 文字 + id + accessibleText
+- [ ] 数据页主操作带文字：保存 / 筛选与排序 / 列 / 导入 / 导出 / 历史
+- [ ] 数据页补「导入…」（目标表预选）、「历史」（按表筛）、「单元格编辑器」
+- [ ] 清单页补「导入向导 / 导出向导」
+- [ ] 工具条按语义分组 + 分隔线；删除动作 danger 色
+- [ ] <1100px 收成图标 + tooltip；≥1100px 恢复文字
+- [ ] 新 `ToolbarDiscoverabilityTest`；变异：保存改纯图标 → 红
+
+#### UX-4 · 网格交互（M）
+
+- [ ] 行选中强 tint + 2px 左侧强调条；焦点单元格内描边
+- [ ] 单元格淡竖线；斑马纹再降一档
+- [ ] 列头右键：排序升/降/清除 / 筛选 / 隐藏 / 自适应 / 冻结；排序箭头常显
+- [ ] 双击列头右边缘 = 内容自适应
+- [ ] 表格左下 `+ / − / 应用 / 取消`，只读时隐藏
+- [ ] `(NULL)` / `""` / BLOB 大小统一展示 + tooltip
+- [ ] 长文本 / JSON / CLOB 单元格编辑器（Esc 取消，Ctrl+Enter 应用）
+- [ ] `GridInteractionTest` +7、新 `CellDisplayTest` / `CellEditorTest`；变异验证
+
+#### UX-5 · 侧栏 / 标签 / 状态栏（M）
+
+- [ ] 侧栏连接/库/表选中改 tint 填充（与网格同一套令牌）
+- [ ] 连接节点显示已连接绿点 / 未连接灰点
+- [ ] 多连接或重名时标签显示 `表名 @连接`，tooltip 给全名
+- [ ] 状态栏左显当前 SQL（截断、点击复制），右显最后刷新相对时间
+- [ ] 侧栏默认宽 260 并持久化
+- [ ] `SideBarTreeTest` / `TabBarTest` / `StatusBarTest` 扩用例
+
+#### UX-6 · 功能缺口（L，按序）
+
+- [ ] 对象首页列表 / 网格切换（复用 `TableListPage` 卡片与 `ui.*.view`）
+- [ ] 结构页「选项」页签（MySQL：引擎 / 排序规则 / 自增 / 行格式；其它方言显示「—」）
+- [ ] 数据页「概览」页签（行数 / 大小 / 引擎 / 索引数 / 最近操作）
+- [ ] 侧栏「已保存查询」分组（点击载入新查询）
+- [ ] 不做：备份 / 自动化 / 模型 / BI / 数据生成 / 脱敏 / AI（无真实后端）
+
+### 34.3 P2 / P5 / P6 批次（已同意，待执行）
+
+| 批 | 内容 | 门禁 / 验收 | 状态 |
+|---|---|---|---|
+| **P2-1** | 清单列宽记忆 + 长注释 Tooltip + `sizeText` 补 GB/舍入 | 两页各 +2、`TableMetaTest` +4；真 MySQL 契约 | ⬜ |
+| **P2-2** | 错误详情弹窗 + 批量汇总页通用化 | 纯格式化测试 + 三处接线；截图 | ⬜ |
+| **P2-3** | `QueryHistory` 带对象上下文 + 详情面板「最近操作」 | `QueryHistoryTest` +3、面板 +1 | ⬜ |
+| **P2-4** | S-7 欢迎页裁定（C4 已并入 UX-2） | 按裁定 | ⏳ |
+| **P5-1** | 连接重命名 / 分组（tags 暂缓） | Store +2、连接页 +2、侧栏 +1 | ⬜ |
+| **P5-2** | Windows WinCred 后端（JNA） | Windows 上真跑；其它平台跳过不计通过 | ⬜ |
+| **P5-3** | 连接失败语义测试（8 类 / 超时 / 取消 / 重连） | 新 `ConnectionFailureTest` | ⬜ |
+| **P5-4** | 内省补齐：PG 序列 / `getExportedKeys` / DEFAULT·COMMENT·CHECK 契约 | 契约 +4（无 Docker 跳过） | ⬜ |
+| **P5-5** | 删 `declarations`；A4 记为不做；属性页补 1 条门禁 | 编译 + 基线口径更新 | ⬜ |
+| **P6-1** | 导入按目标列类型转换，坏行仍走报告 | 新 `ImportTypeCoercionTest`（约 8） | ⬜ |
+| **P6-2** | 查询结果导出（`exportSql` + 查询页范围选择） | `TransferExportTest` +2、`QueryPageTest` +2 | ⬜ |
+| **P6-3** | xlsx 导入导出（POI，流式） | 新 `XlsxCodecTest`；向导截图 | ⬜ |
+
+### 34.4 执行顺序
+
+```
+0) 文档对齐 + 删 declarations（S，先做，改基线口径）
+1) UX-0 → UX-1 → UX-2            （密度/令牌，P0）
+2) UX-3 → UX-4 → UX-5            （工具条/网格/侧栏，P1）
+3) P2-1 → P2-2                    （清单可读性 / 错误可诊断）
+4) P5-2 → P5-1 → P5-3 → P5-4     （Windows 凭据先跑真机）
+5) P2-3                           （最近操作，UX-3 的「历史」依赖它）
+6) P6-1 → P6-2 → P6-3            （类型转换 → 查询导出 → xlsx）
+7) UX-6                           （功能缺口，独立可最后）
+```
+
+- S-7 裁定放在 UX-5 之前即可（标签/欢迎页的取舍会影响标签栏）。
+- 每个 UI 批次完成后**立即**重拍受影响的截图；不要攒到最后。
+- `declarations` 删除后先跑一次全量门禁，把 **712 条 / 92 类** 作为新基线写进所有文档，
+  再开始加 UX 门禁；**不要拿 755 与 712 直接比**。
+
+### 34.5 统一验收
+
+1. `./mvnw -B clean verify` **0 失败**；`java tools/TestCount.java` 记录新口径；
+2. 新门禁**必须变异验证**（改坏必红、改回必绿，失败原文记录在本节或对应批次）；
+3. 截图先钉 `ADB_THEME_FORCE` + `ADB_DENSITY`；
+4. 与 Navicat 图**同尺寸并排**，量化指标（行数 / 行高 / chrome 高度）写进验收记录；
+5. 暗色同步验收，不允许只改亮色。
+
+---
+
 ## 23. 变更记录
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-24 | **第二十一轮·规划** | **UIUX 升级 + P2/P5/P6 收尾裁定**（§34）：归档两张 Navicat 高保真实拍（数据网格 / 表清单），逐张量差 → 行高 22 vs 34、正文 12 vs 13、工具条图标+文字 vs 纯图标、单元格无竖线、选中态弱、按钮圆角 8 vs 3–4；新增 `docs/UI-ROADMAP.md` §12（UX-0…UX-6）与 `docs/NAVICAT-COMPARE.md` §9；裁定 P2/P5/P6 全做、`declarations` 删除（-43 条测试，基线 755→712）、C4 密度做（`dense 22`，默认 `compact`）、Windows 凭据用 JNA、xlsx 用 POI；**S-7 欢迎页仍待三选一**；本轮只改文档与参考图，未改代码 |
+| 2026-10-24 | **第二十轮** | **⭐ Windows 实机复跑：5 个真问题**（§33）—— **S-8 门禁假绿（最严重）**：5 个静态审计用 `/` 过滤路径，Windows 的 `Path.toString()` 是 `\` → 方言审计把全部合法文件报成违规，另外 4 个**一个文件都没扫却显示绿** → 统一 `.replace('\\','/')` + **「扫到 0 个文件必须红」的下限断言**（`scanned>100` / `>50` / `hasSizeGreaterThan(30)`）· **S-9 对象首页工具条**：`ObjectHomePage.Host`（新建/设计/删表/详情联动）+ 4 个矢量图标按钮，启用态按选择类型（打开=单选任意、设计=单选表/视图、删除=多选且全是表、未连接全灰）· **S-6 可读列宽**：三张表统一 `CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN` + 新纯助手 `ColumnWidths`（CJK 算 2 单位、列头装饰 `[PK]`/`•`/`· 自增` 计入下限、96–260px）；**先用探针测出约束策略本来就尊重 minWidth**（宽屏填满 / 窄屏卡住下限 + 横向滚动），因此没有选 `UNCONSTRAINED`（实拍发现宽屏会留一大片空白）· **D-1**：SQLite `INTEGER PRIMARY KEY` 是 rowid 别名 → 非空；`TEXT PRIMARY KEY` 仍如实可空（两向断言）· **Q-1** `QueryPageTest` 平台感知快捷键（测试错、功能对）· **Q-2** 拖拽用例改拖前两列（末列在窄视口外是预期行为）· 顺带 A20 删 `MAX_CELL_BYTES`、连接档案路径回显 · **5 个变异全部验证**（M1 去掉选择监听 → 3 红；M2 列宽下限改 60 → 3 红；M3 去掉 rowid 判定 → 1 红；M4 去掉路径归一化 → 1 红；M5 策略换回 UNCONSTRAINED → 2 红）· 门禁 **755 条 / 95 类 / 0 失败**（+10：S-6 3 + S-9 4 + D-1 1 + `ColumnResizePolicyTest` 2；类 +2） |
 | 2026-10-23 | **第十九轮·批次 D** | **⭐ S-4 列网格键盘导航**（§32）：新建表弹窗的 7 列网格以前只有鼠标能填 —— 方向键只换行不选列、Tab 直接跳出整张表格（7 列里 4 列要手填，等于强制用鼠标）· `NewTableDialog` 抽出四个静态纯方法 `move` / `step` / `next` / `previous` + record `CellPos`（**给坐标返回坐标**，headless 下不靠 `fireEvent` —— §28.10 的教训），`installGridNavigation` 挂到表上：方向键一格一格走、Tab 按阅读顺序走右一格换行首且**落到新格进编辑态** · 两个刻意的选择：**出界返回 null 而不是夹坐标**（走到头就该停住，绕圈会让用户迷路）、**最后一格不吃 Tab**（能进去却出不来是「键盘可达」的反面）· `step` 只认四个方向键（空格/回车留给 §28.10 的 `BooleanCell`，Tab 走 `next/previous`）· `NewTableDialogTest` **17→23**（+6），**4 个变异全部验证**（D1 不挂处理器 / D2 最后一格绕回 / D3 `step` 抢 Tab / D4 出界夹坐标，失败原文逐条记录）· 额外一条 `gridNavigationIsActuallyWiredToTheColumnsTable` 守「确实挂上了处理器」（纯方法全绿但忘了 `setOnKeyPressed` 是最容易溜过去的假绿）· 门禁 **745 条 / 93 类 / 0 失败** |
 | 2026-10-23 | **第十九轮·批次 C** | **⭐ S-5 品牌闭环**（§31）：欢迎页 logo 从通用矢量圆柱换成**品牌 PNG**（`app-icon-128.png` @ `Icons.SIZE_BRAND`），**缺图抛异常而不是静默换回通用图标**（第十八轮那五个「失败被设计成静默降级」的坑，同名）· **连带**：`fs-4xl`（40px）唯一的消费者就是那条 `-fx-font-size` → 令牌变摆设 → `TokenParityTest` 红 → 按项目规则**删令牌**：tokens.json **97→96**，并重生成 `Tokens.java` + 同步 `AppCssAuditTest`（字号 **9→8 档**）与四份规格文档 · 新门禁 `WelcomeBrandTest`(3)，**4 个变异全部验证**（C1 换回通用图标 / C2 关等比 / C3 指非图片 / C4 **坏 PNG** —— 这档是特意补的：文件在但坏了时 JavaFX 不报错，界面只是一块空白）· ⭐ **本轮真正的发现**：**欢迎页是一条不可达路径**（`AppShell:246` 无条件 `openPermanent(object-home)` ⇒ `showWelcome()` 永远被盖掉）→ S-5 的改动**用户暂时看不到**，`p0-shell` 也拍不到它 → 记成 **S-7 待裁定**（接 / 删 / 留三选项写在 §29.2 末），本轮不越权改应用栏（那会推翻 `AppBarTest` 守着的「品牌标识必须矢量」既有决定）· `p0-shell.png` 已重拍，图上能证实的是 S-3（六对象节点每个都带 `▶`） |
 | 2026-10-23 | **第十九轮·批次 B** | **⭐ S-3 对象树表节点可展开出列**（§30）：表 / 视图节点接上「读列回调」后挂占位子节点（JavaFX 只在有子节点时才画箭头），**展开才读列**（懒加载 + 缓存去重，几千张表的库不会一上来就查爆）· `AppShell.loadColumnsFor` 走数据库执行器 + `Platform.runLater` 回填，`setColumns` **就地换节点不重建整棵树**（不丢展开态 / 选中态）· **重新内省后作废列缓存**（表刚被 ALTER 过，旧列比没有列更糟）· **空清单 = 读失败**，换成「列读取失败（展开重试）」并摘掉「已尝试」标记以便重试，不静默降级成叶子 · 列不是对象：右键只留「复制名称」，打开数据 / 结构 / 复制 SELECT / 收藏一律灰掉，且不进对象计数 · **顺带修 `AppShellTest.openTable` 两个隐患**：`contains("users")` 会同时命中 `v_active_users` / `trg_users_audit`（命中触发器时压根不开页面，报错却像分页 bug）→ 改按 `name=xxx,` 整字段 + 只认表/视图；双击后立刻断言标题会偶发读到**上一个标签** → 改成等标题真的变成目标名字（超时抛 `AssertionError` 说清双击了谁）· **5 条新门禁全部做过变异验证**（MUTATION-1…5 各红一条、失败原文逐条记录，改回必绿）· 门禁 **736 条 / 92 类 / 0 失败**（`adb-ui-shell` 299→**304** +5；44 跳过为环境门控 —— 本机 Docker 不可用）· ⚠️ 本机默认 JDK 是 11，**JDK 25 只有 IntelliJ 自带那份**（`JAVA_HOME=/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home`） |

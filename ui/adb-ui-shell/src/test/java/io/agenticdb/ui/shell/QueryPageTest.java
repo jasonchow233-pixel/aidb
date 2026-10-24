@@ -277,7 +277,9 @@ class QueryPageTest {
         TextField find = (TextField) page.lookup("#query-find");
         interact(() -> {
             find.setText("SELECT 2");
-            page.editor().area().fireEvent(key(KeyCode.G, false, false, true));
+            // ⚠️ 快捷键是「平台快捷键」：macOS 是 ⌘，Windows/Linux 是 Ctrl。
+            //    写死 meta=true 只在 macOS 上成立（Windows 上 isShortcutDown() 为 false）。
+            page.editor().area().fireEvent(shortcut(KeyCode.G));
         });
         assertThat(page.editor().area().getSelectedText()).isEqualTo("SELECT 2");
 
@@ -345,6 +347,14 @@ class QueryPageTest {
     private static KeyEvent key(KeyCode code, boolean control, boolean alt, boolean meta) {
         return new KeyEvent(KeyEvent.KEY_PRESSED, "", "", code,
                 false, control, alt, meta);
+    }
+
+    /** 平台快捷键事件（macOS = ⌘，其它 = Ctrl）。 */
+    private static KeyEvent shortcut(KeyCode code) {
+        boolean mac = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT)
+                .contains("mac");
+        return new KeyEvent(KeyEvent.KEY_PRESSED, "", "", code,
+                false, !mac, false, mac);
     }
 
     private static void interact(Runnable action) {

@@ -258,14 +258,14 @@ class GridInteractionTest {
     void draggingAHeaderReordersTheColumns(FxRobot robot) {
         TableView<?> table = (TableView<?>) page.lookup("#data-table");
         List<String> before = columnOrder(table);
-        int from = before.indexOf("score");
-        assertThat(from).as("score 列存在").isGreaterThan(0);
-
-        // ⭐ 真正的**拖拽手势**：抓住「score」的列头，拖到它左边那列的头上。
-        javafx.scene.Node source = page.lookup("#data-header-score");
-        javafx.scene.Node target = page.lookup("#data-header-" + before.get(from - 1));
-        assertThat(source).as("score 列头").isNotNull();
-        assertThat(target).as("目标列头").isNotNull();
+        // ⭐ S-6 之后列有可读下限：12 列在 1200px 里放不下时，**最右边那列在视野外**
+        //    （节点在、鼠标却够不着，TestFX 报 bounds are not visible in Scene）。
+        //    拖拽验证的是「列头拖放 → 重排」这条链路，不挑哪一列，
+        //    所以抓前两列 —— 它们在任何宽度下都可见。
+        javafx.scene.Node source = page.lookup("#data-header-" + before.get(1));
+        javafx.scene.Node target = page.lookup("#data-header-" + before.get(0));
+        assertThat(source).as("第二个列头").isNotNull();
+        assertThat(target).as("第一个列头").isNotNull();
 
         // TestFX 4.x：drag(源) + dropTo(目标)
         robot.drag(source);

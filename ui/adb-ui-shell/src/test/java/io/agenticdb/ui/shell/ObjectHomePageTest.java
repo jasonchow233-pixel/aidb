@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.TableMeta;
 import javafx.scene.Scene;
+import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
@@ -58,6 +59,22 @@ class ObjectHomePageTest {
                 .as("刷新按钮必须真的挂在场景图里 —— "
                         + "它曾经只被 new 出来、绑了动作、设了 id，却从未加入 header（UI-AUDIT S2）")
                 .isNotNull();
+    }
+
+    /** S-6 / C3：对象首页同样不能因为详情面板挤压把列头压没。 */
+    @Test
+    void columnsKeepReadableMinimumsWhenTheListIsSqueezed() {
+        TableView<ObjectHomePage.ObjectRow> table = page.table();
+        assertThat(table.getColumnResizePolicy())
+                .as("填满宽屏 + 挤窄卡在 minWidth → CONSTRAINED_FLEX_LAST "
+                        + "（UNCONSTRAINED 会让宽屏留一大片空白）")
+                .isSameAs(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        assertThat(table.getColumns()).allSatisfy(column -> assertThat(column.getMinWidth())
+                .as("%s 列的最小宽度", column.getText())
+                .isGreaterThanOrEqualTo(72.0));
+        assertThat(table.getColumns().stream().mapToDouble(TableColumn::getMinWidth).sum())
+                .as("九列的可读下限总和")
+                .isGreaterThanOrEqualTo(800.0);
     }
 
     @Test

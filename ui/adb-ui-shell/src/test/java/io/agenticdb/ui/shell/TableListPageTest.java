@@ -6,6 +6,8 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.stage.Stage;
@@ -90,6 +92,22 @@ class TableListPageTest {
         assertThat(page.table().getColumns().stream().map(column -> column.getText()).toList())
                 .containsExactly("名称", "行", "数据长度", "引擎",
                         "创建日期", "修改日期", "排序规则", "注释");
+    }
+
+    /** S-6 / C3：详情面板挤窄表清单时，列不能被压成省略号。 */
+    @Test
+    void columnsKeepReadableMinimumsWhenTheListIsSqueezed() {
+        TableView<TableMeta> table = page.table();
+        assertThat(table.getColumnResizePolicy())
+                .as("填满宽屏 + 挤窄卡在 minWidth → CONSTRAINED_FLEX_LAST "
+                        + "（UNCONSTRAINED 会让宽屏留一大片空白）")
+                .isSameAs(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        assertThat(table.getColumns()).allSatisfy(column -> assertThat(column.getMinWidth())
+                .as("%s 列的最小宽度", column.getText())
+                .isGreaterThanOrEqualTo(72.0));
+        assertThat(table.getColumns().stream().mapToDouble(TableColumn::getMinWidth).sum())
+                .as("八列的可读下限总和")
+                .isGreaterThanOrEqualTo(800.0);
     }
 
     // ─────────────────────── 第十九轮 S-1 列可见性 ───────────────────────

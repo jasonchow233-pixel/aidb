@@ -499,9 +499,39 @@ public final class AppShell extends StackPane {
     private Node objectHomePage() {
         if (objectHome == null) {
             // 第 6 个参数 = 「未连接」空态上那个「新建连接」按钮的动作（UI-AUDIT X2）。
+            // 第 7 个参数 = 对象级工具条（打开 / 设计 / 新建 / 删除）的宿主。
             objectHome = new ObjectHomePage(() -> session, schemaService,
                     executors.forConnection(activeProfileId()),
-                    this::openObject, this::status, this::openConnectionWizard);
+                    this::openObject, this::status, this::openConnectionWizard,
+                    new ObjectHomePage.Host() {
+                        @Override
+                        public void newTable() {
+                            tableDdl().createTable(activeProfileId());
+                        }
+
+                        @Override
+                        public void design(SchemaService.SchemaObject object) {
+                            openStructure(activeProfileId(), object.name());
+                        }
+
+                        @Override
+                        public void dropTables(List<String> tables) {
+                            tableDdl().dropTables(activeProfileId(), tables);
+                        }
+
+                        @Override
+                        public void inspect(SchemaService.SchemaObject object) {
+                            if (!detailsVisible) {
+                                return;
+                            }
+                            if (object == null) {
+                                details.showEmpty();
+                                return;
+                            }
+                            inspectTarget(new SideBar.InspectTarget(activeProfileId(),
+                                    object.name(), null, topicOf(object.kind())));
+                        }
+                    });
             // 对象首页也要跟密度（它不在 WorkspaceView 的页面缓存里）。
             objectHome.setDensity(currentDensity());
         }
@@ -1772,6 +1802,18 @@ public final class AppShell extends StackPane {
         details.showObject(subject);
     }
 
+    /** 对象类型 → 详情面板的树主题（两者是同一组类型，只是分属不同包的枚举）。 */
+    private static SideBar.InspectTarget.Topic topicOf(SchemaService.ObjectKind kind) {
+        return switch (kind) {
+            case TABLE -> SideBar.InspectTarget.Topic.TABLE;
+            case VIEW -> SideBar.InspectTarget.Topic.VIEW;
+            case TRIGGER -> SideBar.InspectTarget.Topic.TRIGGER;
+            case FUNCTION -> SideBar.InspectTarget.Topic.FUNCTION;
+            case PROCEDURE -> SideBar.InspectTarget.Topic.PROCEDURE;
+            case EVENT -> SideBar.InspectTarget.Topic.EVENT;
+        };
+    }
+
     /**
      * 把树的节点翻译成详情面板的主题。
      *
@@ -1930,6 +1972,11 @@ public final class AppShell extends StackPane {
         facts.add(new ObjectDetailsPanel.Fact("表", String.valueOf(tables)));
         facts.add(new ObjectDetailsPanel.Fact("视图", String.valueOf(views)));
         facts.add(new ObjectDetailsPanel.Fact("触发器", String.valueOf(triggers)));
+        // ⭐ §29.2：连接档案路径是**真实可复制的信息**（备份 / 迁移 / 排查时
+        //    用户第一件事就是找它）。显示的是 ConnectionStore 实际读写的那个文件，
+        //    不是硬编码的 `~/.agenticdb` —— 测试和自定义启动会覆盖它。
+        facts.add(new ObjectDetailsPanel.Fact("连接档案",
+                connectionStore.file().toString()));
         return new ObjectDetailsPanel.Snapshot(subject, facts, List.of(), List.of(),
                 List.of(), List.of(), List.of());
     }
