@@ -81,7 +81,7 @@ public final class AppBar extends HBox {
         mark.setId("appbar-brand-mark");
         mark.getStyleClass().add("adb-appbar__mark");
         mark.setAlignment(Pos.CENTER);
-        SVGPath glyph = Icons.of(Icons.Icon.DATABASE, 16);
+        SVGPath glyph = Icons.of(Icons.Icon.DATABASE, Icons.SIZE_TOOLBAR);
         glyph.getStyleClass().add("adb-appbar__mark-glyph");
         mark.getChildren().add(glyph);
 

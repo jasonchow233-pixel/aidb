@@ -51,6 +51,9 @@ public final class Icons {
     /** 工具栏 / 功能栏的图标：16px（= 视框原尺寸）。 */
     public static final double SIZE_TOOLBAR = 16;
 
+    /** 页面主工具条（对象级动作）：20px —— 主次靠尺寸拉开。 */
+    public static final double SIZE_PRIMARY = 20;
+
     /** 空状态的大图标：32px。 */
     public static final double SIZE_EMPTY = 32;
 
@@ -234,7 +237,7 @@ public final class Icons {
 
     /** 标准尺寸的图标。 */
     public static SVGPath of(Icon icon) {
-        return of(icon, 16);
+        return of(icon, SIZE_TOOLBAR);
     }
 
     /**

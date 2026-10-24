@@ -66,7 +66,7 @@ java tools/GenTokens.java
 
 - 生成器把 **color 类型**令牌导出成 CSS 变量；其余 **37 个**（34 个尺寸 + 3 个时长）
   导出成 `Tokens.java` 常量，供 Java 布局代码引用。
-- 当前 **96 个令牌**（59 颜色 / 34 尺寸 / 3 时长）**全部有使用点**；
+- 当前 **97 个令牌**（60 颜色 / 34 尺寸 / 3 时长）**全部有使用点**；
   `TokenParityTest` 断言「JSON 键 = Tokens.ALL_KEYS」且没有未使用令牌。
   （40px 字号档 `fs-4xl` 于 2026-10-23 移除 —— 它唯一的消费者是欢迎页 logo 的
   `font-size`，S-5 换成品牌 PNG 后尺寸改由 `Icons.SIZE_BRAND` 在代码里定。）

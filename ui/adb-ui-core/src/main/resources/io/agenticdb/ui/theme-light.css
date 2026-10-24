@@ -4,6 +4,7 @@
     -adb-bg-canvas: #FFFFFF;
     -adb-bg-sidebar: #F1F3F5;
     -adb-bg-surface: #FFFFFF;
+    -adb-bg-subtle: #F7F8FA;
     -adb-bg-elevated: #FFFFFF;
     -adb-bg-inset: #F1F5F9;
     -adb-bg-hover: rgba(15,23,42,.04);
@@ -12,6 +13,7 @@
     -adb-bg-stripe: #F7F9FB;
     -adb-bg-disabled: rgba(148,163,184,.14);
     -adb-border: #E2E8F0;
+    -adb-border-subtle: #E3E6EA;
     -adb-border-strong: #CBD5E1;
     -adb-border-focus: #2563EB;
     -adb-text-primary: #0F172A;
@@ -57,7 +59,6 @@
     -adb-kind-procedure: #0369A1;
     -adb-overlay: rgba(15,23,42,.45);
     -adb-shadow-1: rgba(15,23,42,.10);
-    -adb-shadow-2: rgba(15,23,42,.18);
     -adb-kind-index: #64748B;
     -adb-kind-event: #BE185D;
 }

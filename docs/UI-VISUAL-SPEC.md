@@ -124,20 +124,20 @@
 
 ## 3. 颜色与语义
 
-### 3.1 令牌分层（`tokens.json` 共 **95** 个）
+### 3.1 令牌分层（`tokens.json` 共 **97** 个）
 
 | 层 | 数量 | 令牌 | 语义 |
 |---|---|---|---|
-| 背景 | 8 | `bg-canvas` `bg-surface` `bg-elevated` `bg-inset` `bg-hover` `bg-active` `bg-selected` `bg-disabled` | canvas=页面底 · surface=条带/面板 · elevated=浮层(弹窗/toast/命令面板) · inset=凹陷(输入框/表头/代码区) |
-| 边框 | 3 | `border` `border-strong` `border-focus` | 普通分隔 / 控件描边 / 焦点环 |
+| 背景 | 11 | `bg-canvas` `bg-sidebar` `bg-surface` `bg-subtle` `bg-elevated` `bg-inset` `bg-hover` `bg-active` `bg-selected` `bg-stripe` `bg-disabled` | canvas=页面底 · surface=条带/面板 · subtle=分区底(比 surface 低一档) · elevated=浮层(弹窗/toast/命令面板) · inset=凹陷(输入框/表头/代码区) |
+| 边框 | 4 | `border` `border-subtle` `border-strong` `border-focus` | 普通分隔 / 更淡的行线 / 控件描边 / 焦点环 |
 | 文字 | 6 | `text-primary` `text-secondary` `text-tertiary` `text-muted` `text-disabled` `text-inverse` | 正文 / 次要 / 三级(提示) / 弱化装饰(图标·分隔线) / 禁用 / 反色(主按钮上) |
 | 强调 | 2 | `accent` `accent-hover` | 主色、悬停 |
-| 风险 | 16 | `risk-0..3-{read/write/structure/admin}` + `-bg` + `-border` | **四级风险**（本项目强项） |
-| 状态 | 6 | `success` `warning` `error` `info` + `-bg` | 成功/警告/错误/信息 |
+| 风险 | 12 | `risk-0..3-{read/write/structure/admin}` + `-bg` + `-border` | **四级风险**（本项目强项） |
+| 状态 | 7 | `success` `warning` `error` `info` + 各自 `-bg` | 成功/警告/错误/信息 |
 | 语法高亮 | 9 | `syn-keyword/string/number/comment/function/type/ident/param/error` | SQL 编辑器 |
 | 对象类型 | 7 | `kind-table` `kind-view` `kind-function` `kind-trigger` `kind-procedure` `kind-index` `kind-event` | **对象树 / 结构页的类型色** |
-| 尺寸 | 38 | `h-*` `w-*` `row-*` `fs-*` `sp-*` `r-*` `dur-*` | 高度 / 宽度 / 行高 / 字号 / 间距 / 圆角 / 时长 |
-| 遮罩 / 投影 | 3 | `overlay` `shadow-1` `shadow-2` | 弹窗遮罩与浮层投影（V-2 新增） |
+| 尺寸 | 34 | `h-*` `w-*` `row-*` `fs-*` `sp-*` `r-*` `dur-*` | 高度 / 宽度 / 行高 / 字号 / 间距 / 圆角 / 时长 |
+| 遮罩 / 投影 | 2 | `overlay` `shadow-1` | 弹窗遮罩与**唯一一级**浮层投影（UX-1 删 `shadow-2`） |
 
 > ⚠️ **`text-tertiary` 与 `text-muted` 的区别**（2026-10 重构）：
 > `text-muted`（#94A3B8 / #64748B）是**弱化装饰色**（图标描边、分隔线、占位），
@@ -198,7 +198,7 @@
 
 | # | 缺口 | 影响 | 修法 |
 |---|---|---|---|
-| **C-1** | ~~缺 `overlay` / `shadow-1` / `shadow-2` 三个令牌~~ | — | ✅ **已补**（V-2）：三个令牌 + 遮罩与投影用上 |
+| **C-1** | ~~缺 `overlay` / `shadow-1` / `shadow-2` 三个令牌~~ | — | ✅ **已补**（V-2）；UX-1 删 `shadow-2`、只留 `shadow-1` 一级浮层投影 |
 | **C-2** | ~~对比度**无自动检查**~~ | — | ✅ **已补**（V-8）：`ContrastTest` 门禁（2 例），并据此改了 6 个色值 |
 | **C-3** | ~~`text-tertiary` 在亮色下偏弱~~ | — | ✅ **已修**：亮色 #8b95a3（3.03:1）→ #6A717C（4.92:1）；暗色 #6e7681 → #86909D |
 
@@ -209,6 +209,9 @@
 ### 4.1 规格
 
 - 视框 **16×16**，描边 **1.5px**，**圆头圆角**（`StrokeLineCap.ROUND`）。
+- 尺寸只从 `Icons.SIZE_*` 取：**14 标签 / 16 工具条 / 20 主工具条**；
+  另有语义尺寸 8（状态点）/ 12（徽标）/ 32（空状态）/ 40（品牌）。
+  ⛔ 不许在调用点写数字（门禁：`IconSystemAuditTest.iconSizesComeFromTheNamedScale`）。
 - 缩放时**反向补偿描边**（`STROKE / scale`）——放大后视觉粗细不变。
 - 全部**描边**图标（不填充），少数状态点例外（`STAR_FILLED` / `DOT` 用 `.adb-icon--filled`）。
 - 颜色由 CSS 接管（`.adb-icon` → `-adb-text-secondary`；hover → `text-primary`；
@@ -243,7 +246,7 @@
 
 | # | 缺口 | 影响 | 修法 |
 |---|---|---|---|
-| **I-1** | 缺 **20px 图标档**（功能栏用 16px 顶着大字标） | 功能栏图标视觉偏小 | 允许 `Icons.of(icon, 20)` 并给功能栏单独一档 |
+| **I-1** | ~~缺 **20px 图标档**（功能栏用 16px 顶着大字标）~~ | — | ✅ **已修**（UX-1）：新增 `Icons.SIZE_PRIMARY = 20`，对象主工具条使用 |
 | **I-2** | 标签栏图标 11px、侧栏 rail 16px、功能栏 16px，**三档不统一** | 同一语义在不同处大小不一致 | 固定「标签 14 / 工具栏 16 / 空态 32」三档，其余禁用 |
 | **I-3** | 无应用图标 | 标签栏 / 窗口标题无品牌标识 | 出一个 32×32 应用图标 + 窗口图标 |
 
@@ -270,14 +273,14 @@
 
 | 令牌 | 值 | 用途 |
 |---|---|---|
-| `r-sm` | 4px | 徽标、小图标钮、列设置弹层内的小控件 |
-| `r-md` | 6px | 按钮、菜单、下拉、输入框、chip |
-| `r-lg` | 8px | 卡片、面板、网格、toast、命令面板、空态、列设置弹层 |
-| `r-xl` | 12px | **弹窗**（比控件大一档，弹窗才「浮」在页面上） |
-| `r-full` | 999px | 徽标、chip、状态栏方言角标、风险徽标、连接胶囊 |
+| `r-xs` | 3px | 复选框 |
+| `r-sm` | 4px | 按钮、输入框、搜索框、连接状态、小控件 |
+| `r-md` | 6px | 卡片、面板、网格、toast、命令面板、空态、列设置弹层 |
+| `r-lg` | 8px | **对话框**（最大一档） |
+| `r-full` | 999px | 徽标、chip、状态栏方言角标、风险徽标 |
 
-**硬规则**：**外层圆角 ≥ 内层圆角**（弹窗 12 > 卡片 8 > 按钮 6 > 输入框 6）。
-⛔ 不得出现阶梯外的 radius。
+**硬规则**：**外层圆角 ≥ 内层圆角**（对话框 8 > 卡片 6 > 按钮/输入框 4 > 复选框 3）。
+⛔ 不得出现阶梯外的 radius（UX-1 已删 `r-xl` 12px）。
 
 ### 5.3 固定尺寸表
 

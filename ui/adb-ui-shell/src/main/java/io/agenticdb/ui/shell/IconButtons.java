@@ -37,8 +37,13 @@ final class IconButtons {
 
     /** 只有图标的按钮（必须有提示文字）。 */
     static Button icon(Icons.Icon icon, String hint) {
+        return icon(icon, hint, Icons.SIZE_TOOLBAR);
+    }
+
+    /** 只有图标的按钮，指定尺寸（页面主工具条用 {@link Icons#SIZE_PRIMARY}）。 */
+    static Button icon(Icons.Icon icon, String hint, double size) {
         Button button = new Button();
-        button.setGraphic(Icons.of(icon));
+        button.setGraphic(Icons.of(icon, size));
         button.setTooltip(new Tooltip(hint));
         button.setAccessibleText(hint);
         return button;

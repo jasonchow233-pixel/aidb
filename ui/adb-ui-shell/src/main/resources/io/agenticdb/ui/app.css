@@ -60,8 +60,8 @@
 .context-menu {
     -fx-background-color: -adb-bg-elevated;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 4px;
 }
 
@@ -89,7 +89,7 @@
 
 .adb-appbar__mark {
     -fx-background-color: -adb-accent;
-    -fx-background-radius: 6px;
+    -fx-background-radius: 4px;
     -fx-min-width: 26;
     -fx-pref-width: 26;
     -fx-max-width: 26;
@@ -118,13 +118,14 @@
     -fx-max-height: 20;
 }
 
-/* 当前连接：应用级状态，用胶囊承载 */
+/* 当前连接：应用级状态。UX-1 起不再用胶囊 —— 它与输入框同一档圆角，
+   胶囊只留给徽标 / 筛选 chip 这类「可点的小标签」。 */
 .adb-appbar__connection {
     -fx-background-color: -adb-bg-inset;
     -fx-text-fill: -adb-text-primary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 999px;
-    -fx-background-radius: 999px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 4px 12px;
     -fx-font-size: 12px;
 }
@@ -169,7 +170,7 @@
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-secondary;
     -fx-border-color: transparent;
-    -fx-background-radius: 6px;
+    -fx-background-radius: 4px;
     -fx-padding: 4px 8px;
     -fx-min-width: 28;
     -fx-pref-width: 28;
@@ -191,8 +192,8 @@
     -fx-background-color: -adb-bg-inset;
     -fx-text-fill: -adb-text-tertiary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 4px 8px;
     -fx-pref-width: 220;
     -fx-max-width: 220;
@@ -228,8 +229,8 @@
     -fx-background-color: -adb-bg-elevated;
     -fx-text-fill: -adb-text-primary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 4px 12px;
     -fx-font-size: 13px;
     -fx-min-height: 32;
@@ -321,7 +322,7 @@
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-secondary;
     -fx-border-color: transparent;
-    -fx-background-radius: 6px;
+    -fx-background-radius: 4px;
     -fx-padding: 4px 8px;
     -fx-font-size: 14px;
     -fx-min-height: 32;
@@ -337,8 +338,8 @@
 .adb-schema-picker {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
 }
 
 .adb-schema-picker .list-cell {
@@ -413,8 +414,8 @@
     -fx-text-fill: -adb-text-primary;
     -fx-prompt-text-fill: -adb-text-tertiary;
     -fx-border-color: -adb-border-strong;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 4px 8px;
     -fx-font-size: 13px;
     -fx-effect: null;
@@ -433,7 +434,7 @@
 
 .text-area .content {
     -fx-background-color: -adb-bg-elevated;
-    -fx-background-radius: 6px;
+    -fx-background-radius: 4px;
     -fx-padding: 4px 8px;
 }
 
@@ -549,8 +550,8 @@
     -fx-text-fill: -adb-text-primary;
     -fx-prompt-text-fill: -adb-text-tertiary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 4px 8px;
     -fx-font-size: 12px;
 }
@@ -564,7 +565,7 @@
     -fx-text-fill: -adb-text-secondary;
     -fx-padding: 4px 8px;
     -fx-font-size: 13px;
-    -fx-background-radius: 6px;
+    -fx-background-radius: 4px;
 }
 
 .adb-sidebar__nav:hover {
@@ -718,7 +719,7 @@
     -fx-min-height: 32;
     -fx-pref-width: 32;
     -fx-pref-height: 32;
-    -fx-background-radius: 6px;
+    -fx-background-radius: 4px;
     -fx-font-size: 16px;
 }
 
@@ -900,7 +901,8 @@
 }
 
 .adb-object-sections {
-    -fx-background-color: -adb-bg-canvas;
+    /* UX-1：分区用「面」分层 —— 内容区比表格底色再低一档。 */
+    -fx-background-color: -adb-bg-subtle;
     -fx-padding: 0px 16px 16px 16px;
 }
 
@@ -930,8 +932,8 @@
 .adb-column-panel {
     -fx-background-color: -adb-bg-elevated;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-spacing: 8;
     -fx-pref-width: 260;
 }
@@ -939,8 +941,8 @@
 .adb-column-panel__list {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
 }
 
 .adb-column-panel__list .list-cell {
@@ -1015,8 +1017,8 @@
 .adb-card {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-padding: 16px;
 }
 
@@ -1029,8 +1031,8 @@
 .adb-empty {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-padding: 32px;
 }
 
@@ -1071,8 +1073,8 @@
 .adb-grid {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-padding: 0px;
     -fx-table-cell-border-color: transparent;
     -fx-selection-bar: -adb-bg-selected;
@@ -1088,13 +1090,13 @@
 .adb-grid .column-header-background {
     /* Navicat 的列头是白底 + 一条下边框，不是一块灰色标题条。 */
     -fx-background-color: -adb-bg-surface;
-    -fx-border-color: transparent transparent -adb-border transparent;
-    -fx-background-radius: 8px 8px 0px 0px;
+    -fx-border-color: transparent transparent -adb-border-subtle transparent;
+    -fx-background-radius: 6px 6px 0px 0px;
 }
 
 .adb-grid .column-header {
     -fx-background-color: transparent;
-    -fx-border-color: transparent -adb-border transparent transparent;
+    -fx-border-color: transparent -adb-border-subtle transparent transparent;
     -fx-padding: 4px 8px;
 }
 
@@ -1108,7 +1110,8 @@
 
 .adb-grid .table-row-cell {
     -fx-background-color: -adb-bg-surface;
-    -fx-border-color: transparent transparent -adb-border transparent;
+    /* UX-1：行线用 border-subtle，与外框的 border 拉开层级。 */
+    -fx-border-color: transparent transparent -adb-border-subtle transparent;
     -fx-padding: 0px;
 }
 
@@ -1403,16 +1406,16 @@
 .adb-filter-panel__search {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 4px 8px;
 }
 
 .adb-filter-panel__list {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
 }
 
 .adb-filter-panel__list .list-cell {
@@ -1498,8 +1501,9 @@
 .adb-grid__boolean .box {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 4px;
-    -fx-background-radius: 4px;
+    /* ⭐ UX-1：复选框是四档圆角里最小的一档（3px）。 */
+    -fx-border-radius: 3px;
+    -fx-background-radius: 3px;
 }
 
 .adb-grid__search {
@@ -1507,8 +1511,8 @@
     -fx-text-fill: -adb-text-primary;
     -fx-prompt-text-fill: -adb-text-tertiary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 4px 8px;
     -fx-font-size: 12px;
 }
@@ -1672,8 +1676,8 @@
 .adb-page-size {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
 }
 
 .adb-page-size .list-cell {
@@ -1690,8 +1694,8 @@
 .adb-grid__state {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-padding: 16px 24px;
 }
 
@@ -1789,8 +1793,8 @@
 .adb-palette {
     -fx-background-color: -adb-bg-elevated;
     -fx-border-color: -adb-border-strong;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-padding: 12px;
     -fx-effect: dropshadow(gaussian, -adb-shadow-1, 16, 0.2, 0, 2);
 }
@@ -1806,8 +1810,8 @@
     -fx-text-fill: -adb-text-primary;
     -fx-prompt-text-fill: -adb-text-tertiary;
     -fx-border-color: -adb-border-focus;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 8px 12px;
     -fx-font-size: 14px;
 }
@@ -1820,7 +1824,7 @@
 .adb-palette__list .list-cell {
     -fx-background-color: transparent;
     -fx-padding: 0px;
-    -fx-background-radius: 6px;
+    -fx-background-radius: 4px;
 }
 
 .adb-palette__list .list-cell:filled:selected {
@@ -1852,10 +1856,10 @@
 
 .adb-details {
     -fx-background-color: -adb-bg-surface;
+    /* UX-1：抽屉是面板不是浮层 —— 靠 1px 边框分层，不再投影。 */
     -fx-border-color: -adb-border-strong;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
-    -fx-effect: dropshadow(gaussian, -adb-shadow-1, 16, 0.15, 0, 2);
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
 }
 
 .adb-details__header {
@@ -1936,8 +1940,8 @@
     -fx-background-color: -adb-bg-elevated;
     -fx-text-fill: -adb-text-primary;
     -fx-border-color: -adb-border-strong;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-padding: 8px 12px;
     -fx-font-size: 12px;
     -fx-effect: dropshadow(gaussian, -adb-shadow-1, 12, 0.15, 0, 2);
@@ -1952,8 +1956,8 @@
     -fx-background-color: transparent;
     -fx-text-fill: -adb-accent;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 2px 8px;
     -fx-font-size: 11px;
 }
@@ -2005,13 +2009,12 @@
 
 .adb-dialog {
     -fx-background-color: -adb-bg-canvas;
-    /* ⭐ 弹窗圆角走 r-xl（12px）—— 比控件大一档，弹窗才「浮」在页面上。 */
-    -fx-background-radius: 12px;
+    /* ⭐ UX-1：圆角收敛到 4 档（3/4/6/8）—— 对话框是最大一档 8px。
+       投影只留浮层一级（shadow-1）；对话框靠遮罩 + 1px 边框分层。 */
+    -fx-background-radius: 8px;
     -fx-border-color: -adb-border;
     -fx-border-width: 1;
-    -fx-border-radius: 12px;
-    /* ⭐ V-2：弹窗有投影才「浮」在页面之上，而不是贴在白底上。 */
-    -fx-effect: dropshadow(gaussian, -adb-shadow-2, 24, 0.2, 0, 4);
+    -fx-border-radius: 8px;
 }
 
 .adb-dialog .label {
@@ -2054,8 +2057,8 @@
     -fx-background-color: -adb-bg-elevated;
     -fx-text-fill: -adb-text-primary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 4px 16px;
     -fx-font-size: 13px;
     -fx-min-height: 32;
@@ -2138,8 +2141,8 @@
     -fx-text-fill: -adb-text-primary;
     -fx-prompt-text-fill: -adb-text-disabled;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
 }
 
 .adb-query__risk {
@@ -2331,9 +2334,9 @@
     -fx-text-fill: -adb-text-secondary;
     -fx-font-size: 11px;
     -fx-background-color: -adb-bg-inset;
-    -fx-background-radius: 6px;
+    -fx-background-radius: 4px;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
+    -fx-border-radius: 4px;
     -fx-padding: 4px 8px;
 }
 
@@ -2392,8 +2395,8 @@
 .adb-structure__table {
     -fx-background-color: -adb-bg-canvas;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-table-cell-border-color: transparent;
     -fx-selection-bar: -adb-bg-selected;
     -fx-selection-bar-non-focused: -adb-bg-selected;
@@ -2408,7 +2411,7 @@
 .adb-structure__table .column-header-background {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent transparent -adb-border transparent;
-    -fx-background-radius: 8px 8px 0px 0px;
+    -fx-background-radius: 6px 6px 0px 0px;
 }
 
 .adb-structure__table .column-header {
@@ -2487,8 +2490,8 @@
     -fx-padding: 8px 12px;
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
 }
 
 /* DDL 只读编辑器：等宽 + 凹陷底（规格 §11.2：与查询页同一套 SqlEditor，
@@ -2518,8 +2521,8 @@
 .adb-connections__table {
     -fx-background-color: -adb-bg-canvas;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-table-cell-border-color: -adb-border;
     -fx-selection-bar: -adb-bg-selected;
     -fx-selection-bar-non-focused: -adb-bg-selected;
@@ -2583,8 +2586,8 @@
     -fx-text-fill: -adb-text-primary;
     -fx-prompt-text-fill: -adb-text-tertiary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 4px 8px;
     -fx-font-size: 12px;
 }
@@ -2660,8 +2663,8 @@
     -fx-background-color: -adb-bg-inset;
     -fx-text-fill: -adb-text-primary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 2px 8px;
     -fx-font-size: 11px;
 }
@@ -2710,8 +2713,8 @@
 .adb-table-list {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-table-cell-border-color: -adb-border;
     -fx-selection-bar: -adb-bg-selected;
     -fx-selection-bar-non-focused: -adb-bg-selected;
@@ -2784,8 +2787,8 @@
     -fx-text-fill: -adb-text-primary;
     -fx-prompt-text-fill: -adb-text-tertiary;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 4px 8px;
     -fx-font-size: 12px;
 }
@@ -2817,8 +2820,8 @@
 .adb-table-card {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-padding: 8px 12px;
     -fx-cursor: hand;
 }
@@ -2852,8 +2855,8 @@
 .adb-history__list {
     -fx-background-color: -adb-bg-canvas;
     -fx-border-color: -adb-border;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
 }
 
 .adb-history__list .list-cell {

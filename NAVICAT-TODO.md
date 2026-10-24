@@ -8,9 +8,9 @@
 > **界面规格书见 `docs/UI-VISUAL-SPEC.md`**（第十轮：字号/颜色/图标/布局/组件/弹窗/交互态/键盘）；
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
-> 最后更新：**2026-10-24（第二十一轮执行中：已删 declarations + UX-0 已完成，见 §34）**
-> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **714 条 / 92 类 / 0 失败**（2026-10-24 第二十一轮 Windows 实机实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
-> 📌 **714 = 删除 `declarations` 后的 712 + UX-0 的 2 条门禁**（`AppShellTest.forcedDensityWins…` / `ScreenshotScriptAuditTest.shotsScriptPins…`）；712 的小口径见下。
+> 最后更新：**2026-10-24（第二十一轮执行中：已删 declarations + UX-0 / UX-1 已完成，见 §34）**
+> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **716 条 / 92 类 / 0 失败**（2026-10-24 第二十一轮 Windows 实机实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
+> 📌 **716 = 删除 `declarations` 后的 712 + UX-0 的 2 条门禁 + UX-1 的 2 条门禁**（`AppShellTest.forcedDensityWins…` / `ScreenshotScriptAuditTest.shotsScriptPins…` / `AppCssAuditTest.shadowsAreLimited…` / `IconSystemAuditTest.iconSizesComeFrom…`）；712 的小口径见下。
 > 📌 **712 是删除 `declarations` 后的新口径**（-43 条 / -3 类：模块 40 + `DeclaredDialectConsistencyTest` 3），属**主动减面**不是回归。
 >
 > 📌 **关于门禁数字的口径（第十八轮勘误）**：第十七轮记的「721 / 29 跳过」是在 **Docker 可用**时测的；
@@ -36,8 +36,8 @@
 > **第十四轮已完成 U1 ✅ catalog 树**（MySQL 多库：虚拟连接 + 对象树库一层 + 双击切库）。
 > **第十五轮已完成 Q5 ✅ 结果分页 + V-9 ✅ 表格规格统一**（服务端分页 + 翻页条 + 列类型条，与数据页 record-nav / 类型行同一套视觉）。
 > **U-B6 功能补齐层已全部收官**（G1–G7 / Q5 / Q6 / U1–U6 全部 ✅）。
-> **下一动作 = §34 / UX-1（视觉令牌基线）→ UX-2（密度、排版与 chrome）**；
-> UX-0 已完成（截图两次同哈希 + 强制密度不写回偏好），`declarations` 已删除（基线 714/92），
+> **下一动作 = §34 / UX-2（密度、排版与 chrome）**；
+> UX-0 / UX-1 已完成（截图两次同哈希 + 强制密度不写回偏好 + 令牌收敛），`declarations` 已删除（基线 716/92），
 > P2/P5/P6 的批次已全部裁定（同意做），排在其后。
 > 详见 §34 与 `docs/UI-ROADMAP.md` §12。
 >
@@ -92,10 +92,11 @@
 **92 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
 （Testcontainers 容器**需 Docker**；本机 Docker 不可用时走跳过分支）—— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-24，第二十一轮 · Windows 实机）**：**714 条 / 92 类 / 0 失败**（`./mvnw -B clean verify`
-> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 714）。
+> 📌 **最新口径（2026-10-24，第二十一轮 · Windows 实机）**：**716 条 / 92 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 716）。
 > 相比第二十轮的 755 / 95，**减少的 43 条 / 3 类全部来自删除 `declarations`**
-> （模块 40 + `DeclaredDialectConsistencyTest` 3），**不是测试变红**；UX-0 又 +2 条（偏好不写回 + 截图脚本钉密度），类数不变。
+> （模块 40 + `DeclaredDialectConsistencyTest` 3），**不是测试变红**；UX-0 +2 条（偏好不写回 + 截图脚本钉密度）、
+> UX-1 +2 条（投影收敛 + 图标尺寸档位），类数不变。
 >
 > ⚠️ **本机环境（Windows）**：`java` 默认不在 PATH；可用的是 **JDK 27**（`~/.jdks/openjdk-27.0.1.0.2`），
 > pom 的 enforcer 区间已放到 `[25,28)` —— `export JAVA_HOME="$HOME/.jdks/openjdk-27.0.1.0.2"`。
@@ -2273,14 +2274,24 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 - **实测确定性**：`./scripts/shots.sh p0-shell` 连跑两次，两次 SHA-256 均为 `2ee03edb…f03e8`、50184 字节（尺寸与像素完全一致）。
 - **门禁**：`ScreenshotScriptAuditTest.shotsScriptPinsThemeDensityConnectionAndPrefs`、`AppShellTest.forcedDensityWinsAndDoesNotWriteBackToPreferences`；**两条均做过变异验证**——删 `export ADB_DENSITY=` → 脚本审计红「[截图必须用 ADB_DENSITY 钉住密度]」；去掉 `forcedDensity().isEmpty()` 守卫 → 偏好断言红「expected "comfort" but was "compact"」，改回必绿。
 
-#### UX-1 · 视觉令牌基线（M）
+#### UX-1 · 视觉令牌基线（M）— ✅ 已完成（2026-10-24）
 
-- [ ] 圆角收敛 **3 / 4 / 6 / 8**；按钮与输入框 **4**，搜索框去胶囊
-- [ ] 新增 `border-subtle` / `border-strong` / `bg-canvas` / `bg-subtle`（亮暗各一套）
-- [ ] 投影只留 popover 一级；删卡片投影
-- [ ] 图标尺寸 14 / 16 / 20 三档，删散落尺寸
-- [ ] `TokenParityTest` / `AppCssAuditTest` / `ContrastTest` 全绿
-- [ ] 变异：`r-sm` 改 12 → 圆角审计红；删暗色 `bg-canvas` → 令牌对拍红
+- [x] 圆角收敛 **3 / 4 / 6 / 8**；按钮与输入框 **4**，搜索框去胶囊
+- [x] 新增 `border-subtle` / `bg-subtle`（亮暗各一套；`border-strong` / `bg-canvas` 原已有）
+- [x] 投影只留 popover 一级；删卡片投影
+- [x] 图标尺寸 14 / 16 / 20 三档，删散落尺寸
+- [x] `TokenParityTest` / `AppCssAuditTest` / `ContrastTest` 全绿
+- [x] 变异：`r-sm` 改 12 → 圆角审计红；删暗色 `bg-canvas` → 令牌对拍红
+
+**落地记录**
+
+- `tokens.json` **96 → 97**（60 色 / 34 尺寸 / 3 时长）：新增 `border-subtle`（亮 `#E3E6EA` / 暗 `#263449`）、`bg-subtle`（`#F7F8FA` / `#16213A`）、`r-xs` 3px；删除 `r-xl` 12px 与 `shadow-2`。
+- `app.css`：圆角只剩 **0 / 3 / 4 / 6 / 8 / 999**（复选框 3、控件 4、卡片/面板 6、对话框 8）；连接状态从胶囊改为 4px；卡片、抽屉、对话框不再投影，只有命令面板与 toast 用 `shadow-1`。
+- 行线换 `border-subtle`（表头下边/列分隔/行下边），分区底换 `bg-subtle` —— 用「面 + 淡线」分层，不靠投影。
+- 图标新增 `Icons.SIZE_PRIMARY = 20`，对象主工具条四个动作使用；`Icons.of(icon)` 默认改引 `SIZE_TOOLBAR`；`AppBar` 唯一一处字面量 `16` 改常量。
+- **门禁**：`AppCssAuditTest.shadowsAreLimitedToTheFloatingElevation`（新增，8 条）、`IconSystemAuditTest.iconSizesComeFromTheNamedScale`（新增，5 条）；圆角/令牌门禁同步新档位。
+- **4 个变异全部验证**：对话框圆角改 12 → `everyRadiusComesFromTheScale` 红；删暗色 `bg-subtle` → `themesContainEveryColorToken` 红（`[dark theme 缺少 -adb-bg-subtle]`）；给 `.adb-card` 加投影 → 投影门禁红；`AppBar` 尺寸写 18 → 图标门禁红。改回全绿。
+- **截图重拍**：`./scripts/shots.sh` 12 张全部重拍（亮 11 + 暗 1），逐张核对：卡片 / 详情 / 对话框投影已消失（`p0-shell` / `p2-details` / `p6-new-table`），对话框 8px、控件 4px 圆角正常，暗色主题同步（`p5-dark`）。
 
 #### UX-2 · 密度、排版与 chrome（L，收益最高）
 
@@ -2380,6 +2391,7 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-24 | **第二十一轮·UX-1** | **视觉令牌基线**（§34.2）：令牌 **96 → 97**（新增 `bg-subtle` / `border-subtle` / `r-xs`，删除 `r-xl` / `shadow-2`）→ `GenTokens` 重生成；`app.css` 圆角只剩 **0/3/4/6/8/999**（控件 4、卡片 6、对话框 8、连接状态去胶囊）；卡片/详情/对话框投影删除，仅命令面板与 toast 用 `shadow-1`；网格线与分区底改 subtle 层；图标尺寸收敛 `14/16/20`（新增 `SIZE_PRIMARY`，对象工具条使用），`AppBar` 字面量 `16` 改常量；新增 `AppCssAuditTest.shadowsAreLimitedToTheFloatingElevation` + `IconSystemAuditTest.iconSizesComeFromTheNamedScale`，**4 个变异全部验证**（圆角 12 / 缺暗色 `bg-subtle` / 卡片加投影 / 图标写 18 均红，改回绿）；门禁 **716 条 / 92 类 / 0 失败** |
 | 2026-10-24 | **第二十一轮·UX-0** | **截图与偏好可复现**（§34.2）：`SettingsStore` 支持 `ADB_PREFS_NODE`（独立 `Preferences.userRoot()` 节点）+ `ADB_PREFS_RESET`（仅显式给节点时才清空，避免误清真实用户偏好）；`AppShell` 的 `ADB_DENSITY` 优先于 prefs 且**强制值不写回**（原来每次启动光打开就写一次偏好）；`scripts/shots.sh` 默认钉住 `ADB_DENSITY=compact` / 独立 prefs 节点 / `ADB_PREFS_RESET=1` / `ADB_CONNECTION=demo`；**实测连跑两次 `p0-shell` SHA-256 完全一致**（`2ee03edb…f03e8`，50184 字节）；新增 `AppShellTest.forcedDensityWinsAndDoesNotWriteBackToPreferences` + 脚本审计断言，**两条均变异验证**（删 export → 红；去掉不写回守卫 → 红）；门禁 **714 条 / 92 类 / 0 失败** |
 | 2026-10-24 | **第二十一轮·执行** | **删除 `declarations` 声明层，基线 755→712**：移除 `core/adb-declarations` 模块、根目录 `declarations/` YAML（4 连接 + 4 方言 + 5 传输家族 + Schema）、父 POM 的 module / dependencyManagement、`snakeyaml` / `json-schema-validator`、`adb-jdbc` 测试依赖与 `DeclaredDialectConsistencyTest`；全量门禁 **712 条 / 92 类 / 0 失败**（-43 = 模块 40 + 一致性门禁 3，属主动减面）；同步更新 README / ARCHITECTURE / COMPONENT-SELECTION / NEXT-STEPS / EXEC-SUMMARY / NAVICAT-GAP 的模块表与计数口径；顺带修正文档里「当前圆角 3/5/8」的失真（实际令牌为 4/6/8/12 + 999） |
 | 2026-10-24 | **第二十一轮·规划** | **UIUX 升级 + P2/P5/P6 收尾裁定**（§34）：归档两张 Navicat 高保真实拍（数据网格 / 表清单），逐张量差 → 行高 22 vs 34、正文 12 vs 13、工具条图标+文字 vs 纯图标、单元格无竖线、选中态弱、按钮圆角 3–4 vs 6；新增 `docs/UI-ROADMAP.md` §12（UX-0…UX-6）与 `docs/NAVICAT-COMPARE.md` §9；裁定 P2/P5/P6 全做、`declarations` 删除（-43 条测试，基线 755→712）、C4 密度做（`dense 22`，默认 `compact`）、Windows 凭据用 JNA、xlsx 用 POI；**S-7 欢迎页仍待三选一**；本轮只改文档与参考图，未改代码 |

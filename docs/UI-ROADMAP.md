@@ -443,21 +443,26 @@ Button funnel = new Button("▽");   // 每个列头都挂一个，永远可见
 
 | 令牌 | 值 | 用途 |
 |---|---|---|
-| `r-sm` | 3px | 徽标、输入框、小图标钮 |
-| `r-md` | 5px | 按钮、菜单、下拉 |
-| `r-lg` | 8px | 卡片、面板、对话框 |
+| `r-xs` | 3px | 复选框 |
+| `r-sm` | 4px | 按钮、输入框、搜索框、小图标钮 |
+| `r-md` | 6px | 卡片、面板、网格、toast、命令面板 |
+| `r-lg` | 8px | 对话框（最大一档） |
+| `r-full` | 999px | 徽标、chip、状态栏方言角标 |
 
-**硬规则**：**外层圆角 ≥ 内层圆角**。对话框 8 > 按钮 5 > 输入框 3 ✅
+**硬规则**：**外层圆角 ≥ 内层圆角**。对话框 8 > 卡片 6 > 按钮/输入框 4 > 复选框 3 ✅
+（UX-1 已删 `r-xl` 12px。）
 
 ## 7. 配色规范
 
-现有 40 个颜色令牌是**这套设计系统最强的部分**，保留。补 3 个：
+现有颜色令牌是**这套设计系统最强的部分**，保留。投影只留一级：
 
 | 令牌 | 亮 | 暗 | 用途 |
 |---|---|---|---|
-| `overlay` | `rgba(31,35,40,.45)` | `rgba(1,4,9,.6)` | 对话框背后的遮罩 |
-| `shadow-1` | `rgba(31,35,40,.12)` | `rgba(1,4,9,.3)` | 卡片投影 |
-| `shadow-2` | `rgba(31,35,40,.20)` | `rgba(1,4,9,.45)` | 浮层投影 |
+| `overlay` | `rgba(15,23,42,.45)` | `rgba(2,6,23,.62)` | 对话框背后的遮罩 |
+| `shadow-1` | `rgba(15,23,42,.10)` | `rgba(2,6,23,.45)` | **唯一一级**浮层投影（命令面板 / toast） |
+
+> `shadow-2` 已在 UX-1 删除：对话框改用「遮罩 + 1px 边框」，卡片与抽屉不再投影。
+> 门禁：`AppCssAuditTest.shadowsAreLimitedToTheFloatingElevation`。
 
 **语义映射（已有，别重复造）**：
 
@@ -565,7 +570,7 @@ java tools/TestCount.java      # 按 <testcase> 计数，断言总数 ≥ 300
 | 正文字号 | **12px**（网格 / 清单 / 树 / 工具条标签）；页面标题 13/15 | 状态栏与类型行 11px；10px 只留角标 |
 | 单元格内边距 | dense `2px 6px`；normal `4px 8px` | 列头同步 |
 | 顶部 chrome | 标签 **28** / 对象头 **36** / 页工具条 **34** / 状态栏 **24** | 目标：765px 高的窗口里数据页可见 **≥ 22 行** |
-| 圆角 | checkbox 3 / 按钮输入框 **4** / 卡片 **6** / 对话框 **8** | 当前 4/6/8/12 + 999；搜索框不再是 999 胶囊，对话框 12 → 8 |
+| 圆角 | checkbox 3 / 按钮输入框 **4** / 卡片 **6** / 对话框 **8** | ✅ UX-1 已落地；徽标 / chip 保留 999 胶囊，连接状态不再是胶囊 |
 | 边框 | subtle `#E3E6EA` / normal `#D5D9DF` / strong `#BFC5CD` | 面板、表格、分区分明 |
 | 表面 | canvas `#F5F6F8` / surface `#FFFFFF` / subtle `#F7F8FA` | 用「面」分层，不靠投影 |
 | 选中 | **强 tint + 2px 左侧强调条**（`accent`），白字方案先不用 | `ContrastTest` 守对比度；不够再升级实心 |
@@ -574,9 +579,8 @@ java tools/TestCount.java      # 按 <testcase> 计数，断言总数 ≥ 300
 | 工具条动作 | 主操作**图标 + 文字**；次操作纯图标 + tooltip | 主操作：保存 / 筛选排序 / 列 / 导入 / 导出 / 历史 / 新建表 / 设计 / 删除 |
 | 侧栏 | 默认 **260px**，行高随密度 | 表名截断减少 |
 
-> ⚠️ **可复现性前置**：当前 `shots.sh` 不钉密度，而 `SettingsStore` 用真实用户 prefs，
-> 所以同一份脚本可能拍出 28 或 34 行高（本轮 `p2-users` 就是 34）。
-> 先加 `ADB_DENSITY`，否则后面所有「截图验收」都不可信。
+> ✅ **可复现性前置已完成（UX-0）**：`shots.sh` 钉住 `ADB_THEME_FORCE` / `ADB_DENSITY` /
+> 独立 prefs 节点，同一脚本连跑两次已实测同 SHA-256。
 
 ---
 
@@ -594,16 +598,19 @@ java tools/TestCount.java      # 按 <testcase> 计数，断言总数 ≥ 300
 **实测**：`p0-shell` 连跑两次，SHA-256 均为 `2ee03edb…f03e8`、50184 字节。
 两条门禁均变异验证（删 `export ADB_DENSITY=` → 红；去掉不写回守卫 → 红）。
 
-#### UX-1 · 视觉令牌基线（M）
+#### UX-1 · 视觉令牌基线（M）— ✅ 已完成（2026-10-24）
 
 | 项 | 改动 | 门禁 |
 |---|---|---|
-| 圆角四档 | `tokens.json` 的 `r-*` 收敛为 3/4/6/8；按钮/输入框改 4，搜索框去胶囊，卡片 6，对话框 8 | `TokenParityTest` 断言圆角令牌数；`AppCssAuditTest` 断言无字面量 `border-radius` |
-| 边框/表面 | 新增 `border-subtle` / `border-strong` / `bg-canvas` / `bg-subtle`（亮暗各一套），替换写死色 | `TokenParityTest`（亮暗齐全）+ `ContrastTest` |
-| 投影 | 只保留 `shadow-popover` 一级；删除卡片投影类 | `AppCssAuditTest` 断言 `-fx-effect` 只出现在允许的 1–2 处 |
-| 图标尺寸 | 统一到 14/16/20 三档，删除散落字号 | `IconSystemAuditTest` 扩用例 |
+| 圆角四档 | `r-*` 收敛为 3/4/6/8；按钮/输入框 4、卡片/面板 6、对话框 8；连接状态胶囊改 4（徽标 / chip 仍用 999 胶囊） | `AppCssAuditTest.everyRadiusComesFromTheScale` |
+| 边框/表面 | 新增 `border-subtle` / `bg-subtle`（亮暗齐全；`border-strong` / `bg-canvas` 原已有），网格线与分区底改用它们 | `TokenParityTest` + `ContrastTest` |
+| 投影 | 只保留 `shadow-1` 一级；卡片 / 详情 / 对话框投影删除，对话框靠遮罩 + 1px 边框分层 | `AppCssAuditTest.shadowsAreLimitedToTheFloatingElevation` |
+| 图标尺寸 | `SIZE_LABEL 14` / `SIZE_TOOLBAR 16` / `SIZE_PRIMARY 20`；对象主工具条用 20，删除散落字面量 | `IconSystemAuditTest.iconSizesComeFromTheNamedScale` |
 
-**变异**：把 `r-sm` 改成 12 → 圆角审计必须红；删暗色 `bg-canvas` → 令牌对拍必须红。
+**落地**：令牌 96 → 97（`bg-subtle` / `border-subtle` / `r-xs`，删 `r-xl` / `shadow-2`）；
+图标尺寸三档常量化；新增两条门禁（`AppCssAuditTest` 8 条、`IconSystemAuditTest` 5 条）。
+**变异**：对话框圆角改 12 → 圆角审计红；删暗色 `bg-subtle` → 令牌对拍红（`[dark theme 缺少 -adb-bg-subtle]`）；
+给 `.adb-card` 加投影 → 投影门禁红；`AppBar` 图标尺寸写 18 → 图标门禁红。四项改回必绿。
 
 #### UX-2 · 密度、排版与 chrome（L，收益最高）
 

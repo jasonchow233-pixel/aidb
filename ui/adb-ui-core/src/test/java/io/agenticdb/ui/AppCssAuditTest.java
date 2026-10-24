@@ -58,12 +58,13 @@ class AppCssAuditTest {
     /**
      * CSS 里允许的圆角（含 0 —— 直角也是合法圆角）。
      *
-     * <p>r-sm 4 / r-md 6 / r-lg 8 / r-xl 12（弹窗）+ r-full 999。
+     * <p>UX-1 起收敛成四档：r-xs 3（复选框）/ r-sm 4（按钮、输入框）/
+     * r-md 6（卡片、面板）/ r-lg 8（对话框）+ r-full 999（徽标、chip）。
      */
-    private static final Set<String> RADII = Set.of("0px", "4px", "6px", "8px", "12px", "999px");
+    private static final Set<String> RADII = Set.of("0px", "3px", "4px", "6px", "8px", "999px");
 
     /** 令牌里的圆角。 */
-    private static final Set<String> TOKEN_RADII = Set.of("4px", "6px", "8px", "12px", "999px");
+    private static final Set<String> TOKEN_RADII = Set.of("3px", "4px", "6px", "8px", "999px");
 
     // ─────────────────────────── 字号 ───────────────────────────
 
@@ -155,7 +156,7 @@ class AppCssAuditTest {
             }
         }
         assertThat(offenders)
-                .as("圆角必须落在 3 档上（r-sm 3 / r-md 5 / r-lg 8）+ r-full 999：\n  %s",
+                .as("圆角必须落在四档上（r-xs 3 / r-sm 4 / r-md 6 / r-lg 8）+ r-full 999：\n  %s",
                         String.join("\n  ", offenders))
                 .isEmpty();
     }
@@ -171,6 +172,37 @@ class AppCssAuditTest {
             }
         });
         assertThat(fromTokens).isEqualTo(TOKEN_RADII);
+    }
+
+    // ─────────────────────────── 投影 ───────────────────────────
+
+    /**
+     * ⭐ UX-1：投影只留**浮层一级**。
+     *
+     * <p>扁平化不是「完全不要阴影」—— 命令面板 / toast 这类浮层没有阴影就会
+     * 和页面粘在一起；但卡片、抽屉、对话框再投影就回到「网页卡片」的观感。
+     * 所以只允许两类：焦点环（{@code border-focus}，不是阴影）与
+     * {@code shadow-1} 浮层投影；{@code shadow-2} 已随令牌删除。
+     */
+    @Test
+    void shadowsAreLimitedToTheFloatingElevation() throws IOException {
+        String css = css();
+        List<String> effects = values(css, "-fx-effect:\\s*([^;]+);");
+        List<String> offenders = effects.stream()
+                .filter(value -> !value.trim().equals("null"))
+                .filter(value -> !value.contains("-adb-border-focus")
+                        && !value.contains("-adb-shadow-1"))
+                .toList();
+        assertThat(offenders)
+                .as("投影只允许「焦点环」与 floating shadow-1；卡片/抽屉/对话框不许投影：\n  %s",
+                        String.join("\n  ", offenders))
+                .isEmpty();
+        assertThat(css)
+                .as("shadow-2 已删除（只保留一级浮层投影）")
+                .doesNotContain("-adb-shadow-2");
+        assertThat(effects.stream().filter(value -> value.contains("-adb-shadow-1")).count())
+                .as("浮层投影必须真的用在浮层上（命令面板 / toast）")
+                .isBetween(1L, 2L);
     }
 
     // ─────────────────────────── 工具 ───────────────────────────

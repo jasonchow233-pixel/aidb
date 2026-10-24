@@ -236,11 +236,11 @@ final class ObjectHomePage extends VBox {
      * 选函数时「删除」不该亮（宿主只会删表）。
      */
     private HBox buildToolbar() {
-        openButton = IconButtons.icon(Icons.Icon.TABLE, "打开");
+        openButton = IconButtons.icon(Icons.Icon.TABLE, "打开", Icons.SIZE_PRIMARY);
         openButton.setId("object-home-open");
         openButton.setOnAction(event -> openSelected());
 
-        designButton = IconButtons.icon(Icons.Icon.STRUCTURE, "设计表 / 视图");
+        designButton = IconButtons.icon(Icons.Icon.STRUCTURE, "设计表 / 视图", Icons.SIZE_PRIMARY);
         designButton.setId("object-home-design");
         designButton.setOnAction(event -> {
             SchemaService.SchemaObject selected = singleSelection();
@@ -251,11 +251,11 @@ final class ObjectHomePage extends VBox {
             host.design(selected);
         });
 
-        createButton = IconButtons.icon(Icons.Icon.ADD, "新建表…");
+        createButton = IconButtons.icon(Icons.Icon.ADD, "新建表…", Icons.SIZE_PRIMARY);
         createButton.setId("object-home-new");
         createButton.setOnAction(event -> host.newTable());
 
-        dropButton = IconButtons.icon(Icons.Icon.DELETE, "删除表…");
+        dropButton = IconButtons.icon(Icons.Icon.DELETE, "删除表…", Icons.SIZE_PRIMARY);
         dropButton.setId("object-home-drop");
         dropButton.getStyleClass().add("adb-button--danger");
         dropButton.setOnAction(event -> {

@@ -55,6 +55,10 @@ class IconSystemAuditTest {
     private static final Pattern BUTTON = Pattern.compile(
             "new\\s+(?:Button|MenuButton|MenuItem|ToggleButton)\\s*\\(\\s*\"([^\"]*)\"");
 
+    /** 直接写数字的图标尺寸：{@code Icons.of(icon, 16)}。 */
+    private static final Pattern ICON_WITH_NUMERIC_SIZE = Pattern.compile(
+            "Icons\\.of\\([^)]*?,\\s*[0-9]+(?:\\.[0-9]+)?\\s*\\)");
+
     @Test
     void noButtonStartsWithAnIconGlyph() throws IOException {
         List<String> violations = new ArrayList<>();
@@ -119,6 +123,26 @@ class IconSystemAuditTest {
         }
         assertThat(unused)
                 .as("这些图标定义了却没人用 —— 是死代码：\n  %s", String.join("\n  ", unused))
+                .isEmpty();
+    }
+
+    @Test
+    void iconSizesComeFromTheNamedScale() throws IOException {
+        // ⭐ UX-1：14 标签 / 16 工具条 / 20 主工具条 —— 尺寸只能从 Icons 常量来。
+        assertThat(Icons.SIZE_LABEL).as("标签档").isEqualTo(14);
+        assertThat(Icons.SIZE_TOOLBAR).as("工具条档").isEqualTo(16);
+        assertThat(Icons.SIZE_PRIMARY).as("主工具条档").isEqualTo(20);
+
+        List<String> violations = new ArrayList<>();
+        for (Path file : uiSources()) {
+            Matcher matcher = ICON_WITH_NUMERIC_SIZE.matcher(read(file));
+            while (matcher.find()) {
+                violations.add(relative(file) + " → " + matcher.group());
+            }
+        }
+        assertThat(violations)
+                .as("图标尺寸必须用 Icons.SIZE_* 常量，不许写数字：\n  %s",
+                        String.join("\n  ", violations))
                 .isEmpty();
     }
 
