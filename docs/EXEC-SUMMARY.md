@@ -74,11 +74,11 @@ A10 语句超时 / A12 连接池归还 / A15 连接与内省出 UI 线程 / A16 
 
 ## 2. Todolist（`NAVICAT-TODO.md`）结论
 
-### 2.1 基线（2026-10-24 第二十一轮实测刷新；本文其余章节仍是第九轮快照）
+### 2.1 基线（2026-10-24 第二十二轮实测刷新；本文其余章节仍是第九轮快照）
 
-- **门禁**：**753 条 / 97 类 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条**环境门控**跳过 —— Docker / MySQL 真库环境变量不可用时跳过，不影响「0 失败」这条硬门禁）。
-  - 相比第二十轮的 755 / 95，减少的 43 条 / 3 类来自**删除 `declarations` 声明层**，属主动减面；UX-0 / UX-1 各 +2 条、UX-2 +4 条 / +1 类（`ChromeMetricsTest`）、UX-3 +8 条 / +1 类（`ToolbarDiscoverabilityTest`）、**UX-4 +25 条 / +3 类**（`SelectionStateTest` 8 + `CellDisplayTest` 6 + `CellEditorTest` 4 + `GridInteractionTest` 7）。
-  - 增长轨迹：SQLite **443** → 第八轮 **486** → 索引编辑 **512** → 第十三轮 **631** → 第十五轮 **675** → 第十六轮 **691** → 第十七轮 **721** → 第十八轮 **717** → 第十九轮 **731** → 第二十轮 **755** → 第二十一轮 **712**（删 declarations -43）→ **UX-0 714**（+2）→ **UX-1 716**（+2）→ **UX-2 720**（+4，新增 `ChromeMetricsTest`）→ **UX-3 728**（+8，新增 `ToolbarDiscoverabilityTest`）→ **UX-4 753**（+25，新增 `SelectionStateTest` / `CellDisplayTest` / `CellEditorTest`）（总数随外部真库可用性浮动，**模块内数字是准的**）。
+- **门禁**：**754 条 / 97 类 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条**环境门控**跳过 —— Docker / MySQL 真库环境变量不可用时跳过，不影响「0 失败」这条硬门禁）。
+  - 相比第二十轮的 755 / 95，减少的 43 条 / 3 类来自**删除 `declarations` 声明层**，属主动减面；UX-0 / UX-1 各 +2 条、UX-2 +4 条 / +1 类（`ChromeMetricsTest`）、UX-3 +8 条 / +1 类（`ToolbarDiscoverabilityTest`）、**UX-4 +25 条 / +3 类**（`SelectionStateTest` 8 + `CellDisplayTest` 6 + `CellEditorTest` 4 + `GridInteractionTest` 7）、**S-7 净 +1**（品牌 4 条 − 删掉测不可达页的 `WelcomeBrandTest` 3 条）。
+  - 增长轨迹：SQLite **443** → 第八轮 **486** → 索引编辑 **512** → 第十三轮 **631** → 第十五轮 **675** → 第十六轮 **691** → 第十七轮 **721** → 第十八轮 **717** → 第十九轮 **731** → 第二十轮 **755** → 第二十一轮 **712**（删 declarations -43）→ **UX-0 714**（+2）→ **UX-1 716**（+2）→ **UX-2 720**（+4，新增 `ChromeMetricsTest`）→ **UX-3 728**（+8，新增 `ToolbarDiscoverabilityTest`）→ **UX-4 753**（+25，新增 `SelectionStateTest` / `CellDisplayTest` / `CellEditorTest`）→ **S-7 754**（净 +1，新增 `BrandMarkAuditTest`，删 `WelcomeBrandTest`）（总数随外部真库可用性浮动，**模块内数字是准的**）。
 - **真库**：SQLite（演示库）+ **MySQL 5.7.44 真库**（9 例）+ **PostgreSQL 16 / MySQL 8.4 Testcontainers**（11 例，需 Docker）。
   - 权威当前状态见 **`NAVICAT-TODO.md` 表头 + §23 变更记录**，本文不逐轮重写。
 

@@ -9,8 +9,9 @@
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
 > 最后更新：**2026-10-24（第二十一轮执行中：已删 declarations + UX-0 / UX-1 / UX-2 / UX-3 / UX-4 已完成，见 §34）**
-> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **753 条 / 97 类 / 0 失败**（2026-10-24 第二十一轮 Windows 实机实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
-> 📌 **753 = 728 + UX-4 的 25 条**（**`SelectionStateTest` 8 条（新类）** / **`CellDisplayTest` 6 条（新类）** / **`CellEditorTest` 4 条（新类）** / `GridInteractionTest` +7：列头菜单全集、冻结到此列、取消冻结、冻结禁用态、双击自适应、行操作条状态、放弃修改与只读隐藏）；728 的构成见 §34.2 UX-3 落地记录。
+> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **754 条 / 97 类 / 0 失败**（2026-10-24 第二十二轮 Windows 实机实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
+> 📌 **754 = 753 + S-7 的 1 条**（`AppBarTest` 品牌身份 +1、对比度 +1，新 `BrandMarkAuditTest` +2，删掉测不到真路径的 `WelcomeBrandTest` −3 → 净 **+1**）。
+> 753 = 728 + UX-4 的 25 条（**`SelectionStateTest` 8 条（新类）** / **`CellDisplayTest` 6 条（新类）** / **`CellEditorTest` 4 条（新类）** / `GridInteractionTest` +7：列头菜单全集、冻结到此列、取消冻结、冻结禁用态、双击自适应、行操作条状态、放弃修改与只读隐藏）；728 的构成见 §34.2 UX-3 落地记录。
 > 📌 **712 是删除 `declarations` 后的新口径**（-43 条 / -3 类：模块 40 + `DeclaredDialectConsistencyTest` 3），属**主动减面**不是回归。
 >
 > 📌 **关于门禁数字的口径（第十八轮勘误）**：第十七轮记的「721 / 29 跳过」是在 **Docker 可用**时测的；
@@ -37,7 +38,7 @@
 > **第十五轮已完成 Q5 ✅ 结果分页 + V-9 ✅ 表格规格统一**（服务端分页 + 翻页条 + 列类型条，与数据页 record-nav / 类型行同一套视觉）。
 > **U-B6 功能补齐层已全部收官**（G1–G7 / Q5 / Q6 / U1–U6 全部 ✅）。
 > **下一动作 = §34 / UX-5（侧栏 / 标签 / 状态栏）**；
-> UX-0 / UX-1 / UX-2 / UX-3 / UX-4 已完成（截图可复现 + 令牌收敛 + 四档密度与 chrome 收薄 + 工具条动作可发现性 + 网格交互），`declarations` 已删除（基线 753/97），
+> UX-0 / UX-1 / UX-2 / UX-3 / UX-4 / S-7 已完成（截图可复现 + 令牌收敛 + 四档密度与 chrome 收薄 + 工具条动作可发现性 + 网格交互 + 品牌落点），`declarations` 已删除（当前基线 754/97），
 > P2/P5/P6 的批次已全部裁定（同意做），排在其后。
 > 详见 §34 与 `docs/UI-ROADMAP.md` §12。
 >
@@ -81,24 +82,25 @@
 ./mvnw -B clean verify
 ```
 
-当前结果（2026-10-24 · 第二十一轮 · Windows 实机全量 实测）：
+当前结果（2026-10-24 · 第二十二轮 · Windows 实机全量 实测）：
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **753** | 44 | 0 |
+| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **754** | 44 | 0 |
 | **外部 PG / MySQL 真库**（aliCloud RDS 等，需环境变量） | 单独跑，不在默认门禁 | — | — |
 | **多版本矩阵**（MySQL 5.7/8.0 + PG 13/17，`ADB_TEST_VERSION_MATRIX=1`） | 默认不跑，需显式打开 | 1 | 0 |
 
 **97 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
 （Testcontainers 容器**需 Docker**；本机 Docker 不可用时走跳过分支）—— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-24，第二十一轮 · Windows 实机）**：**753 条 / 97 类 / 0 失败**（`./mvnw -B clean verify`
-> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 753）。
+> 📌 **最新口径（2026-10-24，第二十二轮 · Windows 实机）**：**754 条 / 97 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 754）。
 > 相比第二十轮的 755 / 95，**减少的 43 条 / 3 类全部来自删除 `declarations`**
 > （模块 40 + `DeclaredDialectConsistencyTest` 3），**不是测试变红**；UX-0 +2 条（偏好不写回 + 截图脚本钉密度）、
 > UX-1 +2 条（投影收敛 + 图标尺寸档位）、UX-2 +4 条 + 1 类（`ChromeMetricsTest` 框架高度与可见行数、
 > 默认密度 compact、数据面 12px 字号）、**UX-3 +8 条 + 1 类**（`ToolbarDiscoverabilityTest` 5 条、
-> 清单页导入/导出 2 条、对象首页主操作 1 条）。
+> 清单页导入/导出 2 条、对象首页主操作 1 条）、**UX-4 +25 条 + 3 类**（`SelectionStateTest` 8、
+> `CellDisplayTest` 6、`CellEditorTest` 4、`GridInteractionTest` +7）、**S-7 净 +1**（品牌 4 条新门禁 − `WelcomeBrandTest` 3 条死代码门禁）。
 >
 > ⚠️ **本机环境（Windows）**：`java` 默认不在 PATH；可用的是 **JDK 27**（`~/.jdks/openjdk-27.0.1.0.2`），
 > pom 的 enforcer 区间已放到 `[25,28)` —— `export JAVA_HOME="$HOME/.jdks/openjdk-27.0.1.0.2"`。
@@ -123,7 +125,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `workbench/adb-transfer` | 15 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告 |
 | `ui/adb-ui-core` | 24 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** / **CSS 尺度审计** / **焦点环审计** |
-| `ui/adb-ui-shell` | 324 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派**、**侧栏工具可达性**、**右侧对象详情面板**、**新建表弹窗（宽编辑器 SQL 预览）**、**表清单选中项联动详情面板**、**结构页 DDL 只读编辑器**、**方言感知列与卡片去破折号**、**对象树表节点展开出列（懒加载 / 缓存 / 失败可重试 / 列不是对象）**、**欢迎页品牌 mark（矢量换位图 + 坏图不静默）**、**列网格 Tab / 方向键导航（边界不绕圈、最后一格放行 Tab）**、**对象首页级工具条 / 可读列宽 / SQLite 主键非空** |
+| `ui/adb-ui-shell` | 324 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派**、**侧栏工具可达性**、**右侧对象详情面板**、**新建表弹窗（宽编辑器 SQL 预览）**、**表清单选中项联动详情面板**、**结构页 DDL 只读编辑器**、**方言感知列与卡片去破折号**、**对象树表节点展开出列（懒加载 / 缓存 / 失败可重试 / 列不是对象）**、**欢迎页品牌 mark（S-7 起改为「应用栏矢量 BRAND + 死代码不复活」双门禁）**、**列网格 Tab / 方向键导航（边界不绕圈、最后一格放行 Tab）**、**对象首页级工具条 / 可读列宽 / SQLite 主键非空** |
 
 > ⚠️ **统计口径（4.5-28）**：用 `@Nested` 的 2 个测试类（`QueryLimitsTest`、
 > `DangerClassifierTest`）在 surefire XML 里
@@ -628,16 +630,18 @@ ADB_THEME_FORCE=light ADB_SHOTS=$PWD/docs/screenshots \
       `fs-xl` 16 / `fs-2xl` 20 / `fs-3xl` 32 / `fs-4xl` 40
       （⚠️ **`fs-4xl` 40 已于第十九轮批次 C 移除** —— 它唯一的消费者是欢迎页 logo 的
       `font-size`，S-5 把 logo 换成品牌 PNG 后尺寸改由 `Icons.SIZE_BRAND` 在代码里定，
-      留着就是摆设 → `TokenParityTest.everyTokenIsActuallyUsed` 会红。现在是 **8 档**。）
+      留着就是摆设 → `TokenParityTest.everyTokenIsActuallyUsed` 会红。
+      ⚠️ **`fs-2xl` 20 同理已于第二十二轮 S-7 移除**（唯一消费者是那张卡片的标题，而整页不可达）——
+      **现在是 7 档**。）
 - [x] `GenTokens` 生成字号令牌（暗色同值 —— 字号不随主题变）；令牌总数 60 → **80**
-- [x] `app.css` 全部字面量字号改走阶梯（**79 处声明、13 种 → 9 种**（现 8 种））
+- [x] `app.css` 全部字面量字号改走阶梯（**79 处声明、13 种 → 9 种**（现 7 种，见上））
 - [x] **9px 全面废除**（`.adb-rail__dialect` / `.adb-tab__dirty` / `.adb-tab__close`）
 - [x] 10px 只允许留在**单字符徽标 / 角标**；状态栏 / 列类型行 / 功能栏文字 / 分组标题 **升到 11px**
 - [x] 删掉 **12.5px 孤例**
 - [x] 字体族统一 `-fx-font-family: "System"`（本来就是，已核对）
 - [x] 欢迎页大标题 60px → 40px；页面标题 18px → 16px；空状态图标 34px → 32px
 
-**门禁**：`AppCssAuditTest`（🆕）7 例 —— 字号必须落在 8 档阶梯上（原 9 档，见上）、无 10px 以下、
+**门禁**：`AppCssAuditTest`（🆕）7 例 —— 字号必须落在阶梯上（当时 8 档，原 9 档，现 7 档，见上）、无 10px 以下、
 阶梯与 `tokens.json` 逐字一致。
 
 ### 13.2 U-B2 间距 + 圆角层 —— ✅ 已完成
@@ -1896,7 +1900,7 @@ java tools/TestCount.java
 | **连接档案路径回显** ✅ **DONE (R20)** | `~/.agenticdb/connections.json` 路径展示 | §28.6 | 🟢 低 | ✅ 接在**连接级详情面板**的 facts 里（显示 `ConnectionStore.file()` 实际路径，不是硬编码 `~/.agenticdb` —— 测试与自定义启动会覆盖它） |
 | **C4 密度第四档** | 实测 AIDB 网格 **28px** vs Navicat **19–22px**；现有最紧档 24px 仍松 | `AIDB-UIUX-ANALYSIS.md` §10.1 | ✅ **已裁定：做**（2026-10-24）—— 新增 `dense 22`，默认改 `compact 24`，见 §34 / UX-2 |
 | **V-5** 工具栏按宽度折叠 / **V-11** 弹窗宽度三档 | §19.3 | ⏸ **暂缓有理由**：1280 宽实测 12个图标放得下 |
-| **S-7** 🆕 **待裁定** | **欢迎页不可达**（2026-10-23 由要做 S-5 顺带挖出）：`AppShell` 构造器无条件 `openPermanent(object-home)` ⇒ `WorkspaceView.showWelcome()` 永远被盖掉 ⇒ 30 行欢迎页是**死代码**，S-5 的品牌改动用户看不到。三个出口：①**接** —— 新增矢量 `Icons.Icon.BRAND`（圆柱 + AI 星芒）换掉应用栏 26px 方块里的 `DATABASE`（⚠️ 不能上 PNG：`AppBarTest.theBrandMarkUsesTheVectorIconSystem` 明确要求矢量）②**删** —— 删掉 `showWelcome()` ③**留** —— 原样放着 | §31.2 | 🟢 低工量，**但属于产品判断**，先裁定再动手（§29.4 的规矩） |
+| **S-7** ✅ **DONE (R22 · 裁定＝接 + 删)** | **欢迎页不可达**（2026-10-23 由要做 S-5 顺带挖出）：`AppShell` 构造器无条件 `openPermanent(object-home)` ⇒ `WorkspaceView.showWelcome()` 永远被盖掉 ⇒ 30 行欢迎页是**死代码**，S-5 的品牌改动用户看不到 | §31.2 / §34.2 | ✅ **裁定＝接 + 删**（2026-10-24）：新增矢量 `Icons.Icon.BRAND`（圆柱 + AI 星芒）接进应用栏 26px 方块，`showWelcome()` / `brandMark()` / `.adb-welcome*` / `Icons.SIZE_BRAND` / `fs-2xl` 五处死代码连带删净 —— 落地记录见 **§34.2 S-7** |
 
 ### 29.3 P3 —— 结构性收尾
 
@@ -2014,6 +2018,10 @@ java tools/TestCount.java
 
 > 📌 本轮**不做**应用栏替换：那会推翻一个带门禁的既有设计决定，属于产品判断，先问再做
 > （§29.4 的一贯做法）。
+>
+> ✅ **2026-10-24 已裁定并落地：接 + 删**（用户选的，见 §34.1 与 §34.2 的 S-7 落地记录）——
+> 应用栏 26px 方块换成矢量 `Icons.Icon.BRAND`，不可达的欢迎页连同它的样式类、
+> `Icons.SIZE_BRAND`、`fs-2xl` 令牌一起删。上面 A/B 两个选项**同时执行**，不是二选一。
 
 ### 31.3 门禁与变异验证
 
@@ -2254,7 +2262,7 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 | 连接分组 / 标签 | 分组做，**tags 暂不做** | 一次只动一个字段，避免档案迁移风险 |
 | A4 `paramStyle: numbered` | ❌ **不做** | JDBC 全用 `?`，没有消费方；写进「不做」清单 |
 | 连接属性页 | 功能已完成 | 只补 `ConnectionWizardTest` 一条门禁 |
-| S-7 欢迎页 | ⏳ **仍待裁定** | 接 / 删 / 留三选一；不阻塞 UX-0…UX-4，**UX-5 前需要定**（标签栏取舍跟它绑在一起） |
+| S-7 欢迎页 | ✅ **已裁定（2026-10-24）：接 + 删** | 品牌接应用栏（矢量 `Icons.Icon.BRAND`），不可达的欢迎页与 `.adb-welcome*` / `SIZE_BRAND` / `fs-2xl` 连带删净；落地与变异验证见 §34.2 |
 
 ### 34.2 UIUX 执行清单（UX-0…UX-6）
 
@@ -2448,6 +2456,60 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
   补一帧需要给 `AppShell` 加一个 `ADB_CELL` 之类的启动开关（`ADB_DETAILS` / `ADB_NEW_TABLE` 同一形态），归 UX-5 一起做。
 
 
+#### S-7 · 欢迎页裁定 —— ✅ 已完成（2026-10-24 · 裁定＝**接 + 删**）
+
+> 裁定过程：§31.2 那三个选项是产品判断，问用户得到的答案是**「接 + 删」**——
+> 品牌接到用户真看得见的地方，不可达的死代码一起清掉。A 和 B **同时执行**。
+
+| # | 改动 | 落点 |
+|---|---|---|
+| 1 | 新增矢量 `Icons.Icon.BRAND`：数据圆柱（收窄到左下）+ 右上四角 AI 星芒，16 视框描边，随主题换色 | `Icons.Icon` |
+| 2 | 应用栏 26px 方块里的通用 `DATABASE` 换成 `BRAND`，并给它 `#appbar-brand-glyph` 定位符 | `AppBar.brand()` |
+| 3 | 删掉**不可达**的欢迎页：`showWelcome()`（30 行）、`brandMark()`、`BRAND_MARK` 常量、构造器里那次调用，以及 `AppShell.tabClosed` 的 `else` 分支 | `WorkspaceView` / `AppShell:2129` |
+| 4 | 连带删净：CSS 四条 `.adb-welcome*` 规则、`Icons.SIZE_BRAND` 档位 | `app.css` / `Icons` |
+| 5 | ⭐ **连带删令牌**：`fs-2xl`（20px）唯一的消费者是那张卡片的标题 —— 页面删了它就变成摆设，按 §31.1 第 4 行的规矩**删令牌**而不是硬造一个消费者；`tokens.json` 99→**98**（60 色 / **35** 尺寸 / 3 时长），`GenTokens` 重生成，`AppCssAuditTest.FONT_SIZES` 8 档→**7 档** | `tokens.json` / `Tokens.java` / `AppCssAuditTest` |
+| 6 | ⭐⭐ **像素对比抓出的真 bug（品牌根本看不见）**：通用 `.adb-icon { -fx-stroke: -adb-text-secondary }` 排在 `app.css` **后半段**，和 `.adb-appbar__mark-glyph`（应用栏段）**同为单类选择器**，JavaFX「同特异性后写胜」→ 灰字色顶掉了白字。改写成两类 `.adb-appbar__mark .adb-appbar__mark-glyph`（特异性 0,2,0）。这不是新代码的问题 —— **换 mark 之前那颗 `DATABASE` 圆柱同样是灰的**，只是当时没人看得见它。规格落 §4.3 第 6 条（`UI-VISUAL-SPEC.md`） | `app.css` 应用栏段 |
+
+**门禁**（净 **+1**：删 3 条测不到的死代码门禁，补 4 条测得到品牌的门禁 → 基线 **753 → 754 / 97 / 0**）：
+
+| 门禁 | 内容 |
+|---|---|
+| `AppBarTest.theBrandMarkIsTheAidbMarkNotAGenericDatabaseIcon`（新） | 方块里那个 `SVGPath` 的 `getContent()` 必须**等于** `Icons.Icon.BRAND.path()` 且**不等于** `DATABASE.path()` |
+| `AppBarTest.theBrandGlyphKeepsItsContrastAgainstTheGenericIconRule`（新） | 直接读**计算后的** `glyph.getStroke()`：必须是 `text-inverse`（亮色＝白）、**不得**是 `text-secondary` —— 这条专门守第 6 行那个层叠坑，把选择器改回单类它就红。⚠️ 前提：`@Start` 得把 `theme-light.css` + `app.css` **挂上场景**并给根节点加 `theme-light`，否则 CSS 根本没生效，这种断言**永远假绿** |
+| `BrandMarkAuditTest.theUnreachableWelcomePageStaysDeleted`（新） | 主源码 + `app.css` 里 `showWelcome` / `brandMark` / `adb-welcome` / `SIZE_BRAND` 一处都不许留（**剥掉注释再扫** —— 解释「为什么删」的注释不是残留，第一版没剥注释被自己的注释判红）；带 `scanned > 30` 防空扫假绿 |
+| `BrandMarkAuditTest.theBrandIsWiredIntoThePartTheUserActuallySees`（新） | 品牌必须挂在 `AppBar` 上 —— 只定义一个 `BRAND` 没人用，等于没做 |
+| `WelcomeBrandTest`（**删**，3 例） | 三条全绿，测的是一张**用户永远看不到**的页面：测试直接 `new WorkspaceView(...)`，绕过了真实启动路径。这是「绿门禁 ≠ 真功能」的样本，记进 §33 那一类 |
+
+**变异验证（5 条，逐条改坏→红→改回→绿）**：
+
+| 变异 | 红的门禁 |
+|---|---|
+| M1 应用栏换回 `Icons.Icon.DATABASE` | `AppBarTest.theBrandMarkIs…` + `BrandMarkAuditTest.theBrandIsWired…` **两条同时红** |
+| M2 把 `showWelcome()` 加回 `WorkspaceView` | `theUnreachableWelcomePageStaysDeleted`（`WorkspaceView.java → showWelcome`） |
+| M3 把 `.adb-welcome` 样式规则加回 `app.css` | 同上（`app.css → adb-welcome`），另 `StyleClassCoverageTest` 也会抓孤儿规则 |
+| M4 把 `SIZE_BRAND = 40` 加回 `Icons` | 同上（`Icons.java → SIZE_BRAND`） |
+| M5 把 `.adb-appbar__mark .adb-appbar__mark-glyph` 改回单类 | `theBrandGlyphKeepsItsContrastAgainstTheGenericIconRule` **单独红**（计算色变回 `text-secondary`）—— 恰好证明这条门禁守的就是那个层叠坑，别的门禁全绿 |
+
+> ⚠️ **本轮四个脚手架教训**（①②是「看起来红了，其实没测」，③④是反过来「看起来绿了，其实没测」）：
+> ① 变异脚本第一次跑**去掉了 `-am`** → `adb-ui-shell` 从 `~/.m2` 拿**旧的** `adb-ui-core` jar，
+> 编译直接失败、surefire 报告根本没生成，`exit=1` 长得像「门禁红了」。修法：**报告文件不存在＝无效运行**，
+> 脚本里显式判，别拿退出码当结论。
+> ② `fs-2xl` 变摆设只有**全量构建**（`TokenParityTest` 在 `adb-ui-core`）才抓得到 ——
+> 单跑 `-pl ui/adb-ui-shell` 那三条门禁时一切正常。**删样式必须跑一次全量。**
+> ③ ⭐ **CSS 断言必须先把样式表挂上场景**：`AppBarTest` 原本只 `new Scene(bar)`，样式表一条都没加 ——
+> 那样 `getStroke()` 拿到的是 `Shape` 的默认值（`Color.BLACK`），跟任何令牌色都对不上，
+> 「必须等于 `text-inverse`」只会红得莫名其妙，反过来也守不住任何东西。
+> 现在 `@Start` 里显式加 `theme-light.css` + `app.css` 并给根节点 `getStyleClass().add("theme-light")`。
+> 更狠的是：**这条 bug 是像素对比抓出来的，不是门禁抓出来的** —— 全绿了三轮，方块里的星一直是灰的。
+> ④ `-Dtest` 里多类**必须用逗号**：写成 `-Dtest='AppBarTest+BrandMarkAuditTest'` 时 surefire 一条都没跑，
+> 但配了 `-Dsurefire.failIfNoSpecifiedTests=false` → **退出码 0、报告文件不存在**。
+> 又一次「看起来绿了其实没测」，判据同 ①：**报告文件不存在＝无效运行**。
+
+**截图**：`./scripts/shots.sh` 12 张全部重拍（应用栏常驻每一帧，品牌 mark 第一次**拍得到** ——
+S-5 当年拍不到的那条缺口就此闭掉）。⚠️ 第一套 12 张拍在对比度修复**之前**，那时 mark 是灰底蓝块上
+一颗看不见的星，已作废重拍；裁剪放大（`/tmp/Crop.java`）在 `p0-shell` 与 `p5-dark` 上分别核对
+亮/暗两套主题下字形确实是 `text-inverse`。
+
 #### UX-5 · 侧栏 / 标签 / 状态栏（M）
 
 - [ ] 侧栏连接/库/表选中改 tint 填充（与网格同一套令牌）
@@ -2472,7 +2534,7 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 | **P2-1** | 清单列宽记忆 + 长注释 Tooltip + `sizeText` 补 GB/舍入 | 两页各 +2、`TableMetaTest` +4；真 MySQL 契约 | ⬜ |
 | **P2-2** | 错误详情弹窗 + 批量汇总页通用化 | 纯格式化测试 + 三处接线；截图 | ⬜ |
 | **P2-3** | `QueryHistory` 带对象上下文 + 详情面板「最近操作」 | `QueryHistoryTest` +3、面板 +1 | ⬜ |
-| **P2-4** | S-7 欢迎页裁定（C4 已并入 UX-2） | 按裁定 | ⏳ |
+| **P2-4** | S-7 欢迎页裁定（C4 已并入 UX-2） | 按裁定 | ✅ **DONE (R22)** —— 裁定＝接 + 删，见 §34.2 |
 | **P5-1** | 连接重命名 / 分组（tags 暂缓） | Store +2、连接页 +2、侧栏 +1 | ⬜ |
 | **P5-2** | Windows WinCred 后端（JNA） | Windows 上真跑；其它平台跳过不计通过 | ⬜ |
 | **P5-3** | 连接失败语义测试（8 类 / 超时 / 取消 / 重连） | 新 `ConnectionFailureTest` | ⬜ |
@@ -2487,7 +2549,7 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 ```
 0) ✅ 文档对齐 + 删 declarations（已完成，基线 **712 / 92**）
 1) ✅ UX-0 → UX-1 → UX-2          （密度/令牌，P0；基线 720 / 93）
-2) ✅ UX-3 → ✅ UX-4 → ⏭ UX-5     （工具条/网格/侧栏，P1；UX-4 基线 753 / 97）
+2) ✅ UX-3 → ✅ UX-4 → ✅ S-7 → ⏭ UX-5（工具条/网格/品牌落点/侧栏，P1；S-7 后基线 754 / 97）
 3) P2-1 → P2-2                    （清单可读性 / 错误可诊断）
 4) P5-2 → P5-1 → P5-3 → P5-4     （Windows 凭据先跑真机）
 5) P2-3                           （最近操作，UX-3 的「历史」依赖它）
@@ -2495,7 +2557,8 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 7) UX-6                           （功能缺口，独立可最后）
 ```
 
-- S-7 裁定放在 UX-5 之前即可（标签/欢迎页的取舍会影响标签栏）。
+- ✅ **S-7 已裁定并落地（2026-10-24，UX-4 与 UX-5 之间）**：接 + 删，见 §34.2。
+  下一动作是 UX-5（标签栏的取舍不再被它挡住）。
 - 每个 UI 批次完成后**立即**重拍受影响的截图；不要攒到最后。
 - `declarations` 删除后已跑完全量门禁，**712 条 / 92 类** 已成为新基线；
   后续不要拿 755 与 712 直接比。
@@ -2514,6 +2577,7 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-24 | **第二十二轮·S-7** | **品牌落点 + 死代码清理**（裁定＝**接 + 删**，§34.2 / §31.2）：**接** —— 新增矢量 `Icons.Icon.BRAND`（数据圆柱 + 右上 AI 四角星芒，16 视框描边，随主题换色），应用栏 26px 方块里那个「谁都在画的」通用 `DATABASE` 换成它，并给字形加 `#appbar-brand-glyph` 定位符；**删** —— 不可达的欢迎页整条路径清掉：`WorkspaceView.showWelcome()`（30 行）+ `brandMark()` + `BRAND_MARK` 常量 + 构造器那次调用 + `AppShell.tabClosed` 的 `else` 分支（`AppShell` 无条件 `openPermanent(object-home)`，那条分支永远走不到）+ CSS 四条 `.adb-welcome*` + `Icons.SIZE_BRAND`。⭐ **连带删令牌**：`fs-2xl`（20px）唯一的消费者就是那张卡片的标题 → `TokenParityTest.everyTokenIsActuallyUsed` 在全量构建里抓到它变摆设，按 §31.1 第 4 行的规矩**删令牌、不给令牌硬造消费者**：`tokens.json` 99→**98**（60 色 / **35** 尺寸 / 3 时长），`GenTokens` 重生成，`AppCssAuditTest.FONT_SIZES` 8 档→**7 档**，规格文档同步。门禁**净 +1**（删 `WelcomeBrandTest` 3 条 —— 它三条全绿却测着一张用户永远看不到的页，因为测试直接 `new WorkspaceView(...)` 绕过启动路径；补 `AppBarTest` 2 条：方块里 `SVGPath` 的 `getContent()` 必须**等于** `BRAND.path()` 且**不等于** `DATABASE.path()`、字形计算后的 `getStroke()` 必须是 `text-inverse` 而非 `text-secondary`，新 `BrandMarkAuditTest` 2 条守「死代码不许回来」与「品牌必须挂在用户看得见的地方」）。⭐⭐ **像素对比抓出一个真生产 bug**：品牌 mark 挂上去以后方块里的星芒**几乎看不见** —— 通用 `.adb-icon { -fx-stroke: -adb-text-secondary }` 排在 `app.css` **后半段**，和 `.adb-appbar__mark-glyph`（应用栏段）**同为单类选择器**，JavaFX 按「同特异性后写胜」把灰字色盖在白字上；换成两颗 `DATABASE` 圆柱时代就是这么灰着的，只是那时没人盯着这个位。修法是提到两类 `.adb-appbar__mark .adb-appbar__mark-glyph`（0,2,0），并补上那条读**计算值**的门禁；不变量写进 `UI-VISUAL-SPEC.md` §4.3 第 6 条。**5 个变异逐条红→改回绿**（应用栏换回 `DATABASE` → 两条门禁同时红；`showWelcome` / `.adb-welcome` / `SIZE_BRAND` 各自复活 → 审计红，审计脚本**剥掉注释再扫**，否则解释「为什么删」的注释会被自己判红；选择器改回单类 → **只有**对比度门禁红，证明它守的正是这个坑）。⭐ **三条脚手架教训**：① 变异脚本去掉 `-am` 会拿 `~/.m2` 里的旧 `adb-ui-core` jar → 编译失败、surefire 报告根本没生成，`exit=1` 长得像「红了」其实是**没测**，现在脚本显式判「报告不存在＝无效运行」；② 删样式后**必须跑全量**，`TokenParityTest` 在 `adb-ui-core`，单跑 UI 门禁看不见；③ **CSS 断言必须先把样式表挂上场景**（`AppBarTest` 原来只 `new Scene(bar)`，`getStroke()` 拿到的是 `Shape` 默认色），否则这类门禁要么红得莫名其妙、要么根本守不住东西 —— 而这条 bug 全绿了三轮才被像素对比抓到：**绿门禁 ≠ 真看得见**。基线 **754 条 / 97 类 / 0 失败 / 44 跳过**（净 +1），**12 张截图全部重拍**（对比度修复前的那一批已作废 —— mark 是灰的，拍出来也看不出问题）—— 应用栏常驻每一帧，品牌 mark 第一次**拍得到且看得清**（S-5 当年拍不到正是这事的起因） |
 | 2026-10-24 | **第二十一轮·UX-4** | **网格交互**（§34.2）：选中行 = 强 tint + **左侧 2px `accent` 强调条**（`hover` 规则排在 `selected` 前，悬停已选行不被顶掉）；⭐ **槽位常留** —— 行 `-fx-border-width: 0 0 1 2`、格 `0 1 0 2` 由基础规则留透明空槽，选中条 / 脏值条 / 光标环 / 矩形选区**只上色不改宽度**（改宽度就抖：键盘走一格文字左右跳一次；行高 24px 上下各吃 2px 直接压掉 12px 正文）；单元格补**淡竖线**（同 `border-subtle`）、斑马纹 `bg-stripe` 再降一档（亮 `#F7F9FB→#FAFBFC`、暗 `.05→.035`，令牌值改动重生成 `Tokens.java` + 两套主题 CSS）；⭐ **当前格换成应用驱动**：`.table-cell:focused` 在行选模式下是**死选择器**（`TableCell.updateFocus()` 非 cell-selection 时主动 `setFocused(false)`，实测 `isFocused()=false`），改由 `bindFocusCursor()` 盯 `focusModel.focusedCellProperty()` 打样式类 `adb-grid__cell--cursor`（内描边 + `bg-active` 淡底，只有左右两条边），光标**按列名记不按 `TableColumn` 实例记**（冻结列是从右表搬过去的同一批实例，按下标比会标不上）；列头右键收齐排序升/降/清除、移到左/右/首/尾、筛选、隐藏、自适应、**冻结到此列 / 取消冻结**、复制列名，冻结算术走新 `dataColumnsOrdered()`（`dataColumns()` 只看得到 `grid`，冻结列在 `frozenGrid`）+ `isColumnFrozen()`，**做不到就禁用**（已冻列、右边剩不下两列的列，否则最后一列点冻结会偷偷少冻一列）；双击列头 = 自适应（与菜单项同一算法）；网格左下新增**行操作条** `+ / − / 应用 / 取消`（`#data-row-actions`，四个 `disableProperty` **bind** 工具条同一批、删除连 `visible/managed` 一起跟，只读表 `setManaged(false)` 整排消失）+ 新 `discardChanges()`（清缓冲 + 清撤销 + 重建 + 报数）；`NULL` 显示 **`(NULL)`**（灰斜体的 `NULL` 与内容为 "NULL" 的 TEXT 值分不开，两者处理方式完全不同）、抽屉文本页 NULL 说明对齐、`sizeLabel` 补 **GB 档**（不再 `1536.0 MB`）；长文本走**详情抽屉文本页就地编辑**（回填原始值、**Ctrl+Enter 应用**、**Esc 只退编辑不关抽屉**、写**同一个 `EditBuffer`**、主键列与只读表不出现编辑器，门禁走 `canEditTextCell`）。新门禁 **25 条 / 3 类**（`SelectionStateTest` 8 + `CellDisplayTest` 6 + `CellEditorTest` 4 + `GridInteractionTest` 7）逐条**变异红→改回绿**。⭐ 本轮第二个假绿：`primaryKeyAndReadOnlyTablesNeverOfferTheEditor` 删掉 `!definition.primaryKey()` 仍全绿 —— 演示库主键全是 INTEGER，`textual(type)` 先短路，规则根本没被检验 → 测试**自建 `codes (code TEXT PRIMARY KEY, note TEXT NOT NULL)`** 并补**正例**（可写文本列必须出现「编辑」，否则「编辑器永远不出现」这种改坏也能全绿）。另记两个脚手架坑：`WaitForAsyncUtils.waitFor` 放 `@Start` 会**阻塞 FX 线程导致死锁超时**（等加载要放 `@BeforeEach`）；变异脚本**不先删旧报告**会在「编译失败」时读到上一轮 green 报告。⚠️ **已知缺口**：选中态 / 光标环 / 抽屉编辑器是交互态，12 帧截图无一覆盖（靠 `SelectionStateTest` 算色与 x/y 断言兜底），补帧需给 `AppShell` 加 `ADB_CELL` 类启动开关，归 UX-5；门禁 **753 条 / 97 类 / 0 失败**（+25 / +3 类） |
 | 2026-10-24 | **第二十一轮·UX-3** | **工具条与动作可发现性**（§34.2）：新增 `IconButtons.labeled(...)`（图标 + 文字 + tooltip + accessibleText 一次装配，参数收在 `ButtonBase` 上，`Button`/`MenuButton` 通吃）；数据页六颗主操作**由纯图标改为带文字**（保存 / 筛选与排序 / 列 / 视图 / 导入 / 导出），「删除记录」标 `adb-button--danger`，「清除条件」保持纯图标；三页工具条按语义分组并插 `.adb-toolbar__separator`（数据页 4 组 / 清单页 4 组 / 对象首页 2 组）；**响应式收字** `TOOLBAR_LABEL_MIN_WIDTH = 1100`，量**窗口宽度**，窄档 `setText("")` + `adb-button--icon`、**提示与 accessibleText 任何档位都不丢**；补数据页导入入口 `#data-import`（候选表把当前表挪第一位 = 向导预选；启用条件与导出**刻意相反** —— 空表才最需要导入）、清单页 `#table-list-transfer`（`TransferHub`）；对象首页四颗主操作从裸 Modena 按钮升级为 `adb-button` + 文字 + danger；**9 个变异逐条验证全红→改回绿**（保存空白 / 筛选空白 / 删 accessibleText / 去分隔线 / 导入不预选 / 删除不 danger / 清单不预选 / 去掉响应式 / 对象首页改纯图标）。⭐ **两个真问题**：①新门禁第一版是**假绿** —— `robot.lookup(...).tryQuery()` 对不可见节点返回 empty，`findById(null,…)` 一路 null 让每条断言被跳过，M1 改坏仍绿 → 改从 `.adb-grid-page` 手写场景图遍历 + 找不到即 `assertNotNull`（「宁可抛异常，也不放行」；Monocle headless 窗口有 960px 下限，尺寸断言改「是否跨过阈值」）；②修好门禁后红的是**生产代码** —— `updateEditControls()`/保存路径直接 `saveButton.setText(...)` 绕过登记表，窄档收字后一变脏「保存 3」自己长回来、搜索框被挤 → 统一走 `setToolbarLabel(...)`。「历史」推迟到 **P2-3**（`QueryHistory` 只存 SQL，无表名/时间戳）、「单元格编辑器」归 **UX-4**；门禁 **728 条 / 94 类 / 0 失败**（+8 = `ToolbarDiscoverabilityTest` 5 + `TableListPageTest` 2 + `ObjectHomeToolbarTest` 1；类 +1） |
 | 2026-10-24 | **第二十一轮·UX-2** | **密度、排版与 chrome**（§34.2）：密度**三档 → 四档**，新增 `row-dense = 22`（令牌 **97 → 99**：`row-dense` + `sp-1h 6px`），**默认档位由 `normal` 改 `compact`**；`RowHeights.of` / `AppShell.applyDensity` / `SideBar.setDensity` / `DataGridPage.setDensity` 全部认四档

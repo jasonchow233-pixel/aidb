@@ -59,7 +59,15 @@ class AppBarTest {
                 profile("pg", "prod-postgres", DialectKind.POSTGRESQL));
 
         bar = new AppBar(actions, profiles, "demo", selected::add);
-        stage.setScene(new Scene(bar, 1280, 800));
+        Scene scene = new Scene(bar, 1280, 800);
+        // ⭐ 必须挂样式表：App 里由 ThemeManager 挂，测试里不挂则 CSS 一条都不生效，
+        //    「品牌字形的对比度」这类断言会全部假绿（S-7 就是这么发现蓝底灰星的）。
+        java.net.URL appCss = getClass().getResource("/io/agenticdb/ui/app.css");
+        java.net.URL theme = getClass().getResource("/io/agenticdb/ui/theme-light.css");
+        scene.getStylesheets().add(theme.toExternalForm());
+        scene.getStylesheets().add(appCss.toExternalForm());
+        bar.getStyleClass().add("theme-light");
+        stage.setScene(scene);
         stage.show();
     }
 
@@ -170,5 +178,43 @@ class AppBarTest {
                 .lookupAll(".adb-icon"))
                 .as("品牌标识必须是矢量图标（不是位图、不是 Unicode 符号）")
                 .isNotEmpty();
+    }
+
+    @Test
+    void theBrandMarkIsTheAidbMarkNotAGenericDatabaseIcon(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        // ⭐ S-7「接」的那一半：品牌改造把 Logo 做出来了，但界面里一处没用 ——
+        //    方块里挂的是谁都在画的通用圆柱。欢迎页不可达（见 BrandMarkAuditTest），
+        //    应用栏才是**唯一**看得见品牌的地方，所以钉在这里。
+        javafx.scene.shape.SVGPath glyph =
+                robot.lookup("#appbar-brand-glyph").queryAs(javafx.scene.shape.SVGPath.class);
+        assertThat(glyph.getContent())
+                .as("品牌方块必须是 AIDB 自己的 mark（圆柱 + 右上 AI 星芒），"
+                        + "不是 Icons.Icon.DATABASE 那个通用圆柱 —— 换回去一眼认不出这是谁家的 DB 客户端")
+                .isEqualTo(io.agenticdb.ui.Icons.Icon.BRAND.path());
+        assertThat(glyph.getContent())
+                .as("退化成通用圆柱 = 品牌等于没有")
+                .isNotEqualTo(io.agenticdb.ui.Icons.Icon.DATABASE.path());
+    }
+
+    @Test
+    void theBrandGlyphKeepsItsContrastAgainstTheGenericIconRule(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        // ⭐ S-7 顺带挖出的真 bug（截图对比度量出来的）：通用 `.adb-icon` 也设 `-fx-stroke`，
+        //    且**排在后面**、同为单类选择器 → JavaFX「同特异性后写胜」，把灰字色盖在了白字上，
+        //    蓝底方块里的品牌 mark 实测是 #64748B（对比度约 1.9:1），那颗 AI 星几乎看不见。
+        //    这条断言测的是**层叠之后的计算值**，不是 CSS 里写了什么 —— 改回单类选择器立刻红。
+        javafx.scene.shape.SVGPath glyph =
+                robot.lookup("#appbar-brand-glyph").queryAs(javafx.scene.shape.SVGPath.class);
+        javafx.scene.paint.Paint stroke = glyph.getStroke();
+        assertThat(stroke)
+                .as("品牌方块上的字形必须走 `text-inverse`（亮色主题＝白）—— "
+                        + "被通用 .adb-icon 的 text-secondary 顶掉就看不见")
+                .isEqualTo(javafx.scene.paint.Color.web(
+                        io.agenticdb.ui.Tokens.TEXT_INVERSE_LIGHT));
+        assertThat(stroke)
+                .as("反证：不许是灰字色")
+                .isNotEqualTo(javafx.scene.paint.Color.web(
+                        io.agenticdb.ui.Tokens.TEXT_SECONDARY_LIGHT));
     }
 }

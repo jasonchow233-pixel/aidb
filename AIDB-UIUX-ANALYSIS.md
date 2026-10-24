@@ -135,7 +135,7 @@ bootstrap/         - Desktop startup entry (jpackage)
 - **35 sizes**: 38 dimension tokens (h-*, w-*, row-*, fs-*, sp-*, r-*, dur-*) minus 3 already counted
 - **3 durations**: toast durations (1.8s / 6s / 4s)
 
-### Font Scale (8 sizes: fs-2xs 10px through fs-3xl 32px)
+### Font Scale (7 sizes: fs-2xs 10px through fs-3xl 32px)
 ```
 fs-2xs: 10px - Single-char badges, sort markers
 fs-xs: 11px - Status bar, type badges, chip text
@@ -143,12 +143,13 @@ fs-sm: 12px - Compact labels, secondary buttons, menu items
 fs-md: 13px - **Normal body text**, buttons, menus, tree nodes (BASE)
 fs-lg: 14px - Section titles, dialog headers
 fs-xl: 16px - App name, object titles
-fs-2xl: 20px - Page titles, major headings
-fs-3xl: 32px - Empty state titles (with fs-2xl subtitle)
+fs-3xl: 32px - Empty state titles
 ```
-_Note: `fs-4xl` (40px) was removed 2026-10-23 — its only consumer was the welcome-page
-logo's `font-size`, and S-5 replaced that logo with the brand PNG (sized by
-`Icons.SIZE_BRAND` in code)._
+_Note: `fs-4xl` (40px) was removed 2026-10-23 and `fs-2xl` (20px) on 2026-10-24 (S-7).
+Both had the same root cause — their only consumer was the unreachable welcome page
+(`AppShell` always opens the permanent `object-home` tab first), so the tokens were
+deleted rather than given an artificial consumer. `Icons.SIZE_BRAND` (40px) went with
+them; the brand now lives in the app bar at `Icons.SIZE_TOOLBAR`._
 
 ### Color Usage Hierarchy
 1. **Background**: Canvas (page), Surface (panels/headers), Elevated (popovers/toast), Inset (inputs/code)
@@ -330,7 +331,9 @@ Next: N6 (column width memory), V-5 (toolbar folding), V-6 (app icon)
 **`docs/UI-VISUAL-SPEC.md`** sections needing update:
 - §2.5 Color contrast: Verify `text-tertiary` values after recent changes
 - §3.6 Modernization gaps: Update with current status
-- §4.2 Icon list: Confirm all 42 icons are implemented
+- §4.2 Icon list: Confirm all 48 icons are implemented (42 at the time of writing;
+  the S-7 `BRAND` mark and later additions brought it to 48 — `IconSystemAuditTest`
+  is the gate that keeps the list and the usage in sync)
 - §13.2 Visual gaps: Mark items as ✅ done or 🟡 remaining
 
 ### NEXT-STEPS.md Updates
@@ -480,7 +483,8 @@ runs into text rows, take the mode of inter-peak gaps. Threshold 200/765 so 1px 
 ### 10.3 Remaining visual gaps found this round
 
 > **Round-19 update:** **C1 and C2 are fixed** — see the ✅ notes in their rows.
-> The remaining items (C3/C4/C5/C7) are still open and tracked in `NAVICAT-TODO.md` §29.
+> **Round-22 update:** **C7 is fixed** (S-7 ruling 「接 + 删」).
+> The remaining items (C3/C4/C5) are still open and tracked in `NAVICAT-TODO.md` §29.
 
 | ID | Finding | Evidence | Suggested direction |
 |---|---|---|---|
@@ -489,7 +493,7 @@ runs into text rows, take the mode of inter-peak gaps. Threshold 200/765 so 1px 
 | **C3** | **Detail panel squeezes the grid** — headers truncate to `na… em… acti… sco… creat…` | `p2-details.png`; `ObjectDetailsPanel.WIDTH_DEFAULT=300` | overlay instead of push, or auto-collapse below a grid-width threshold, or per-column min-width before truncating |
 | **C4** | **Row pitch** (see 10.1): 28 vs 19 | measured | decide with product owner: optional `dense` tier (~20px), or default list pages to `compact`; keep `normal` for reading |
 | **C5** | **Tree tables can't expand to columns** — every Navicat table node carries a `>` chevron (crop-verified); AIDB object nodes are leaves | `SideBar.kindGroup()` builds child `TreeItem`s with no children; Navicat crop vs AIDB crop | lazy-load columns under table nodes. (AIDB already shows columns in the details panel/structure page — this is about *inline scanning*, Navicat's fastest gesture) |
-| **C7** | **Welcome page still shows a generic `DATABASE` vector**, not the AIDB mark | `WorkspaceView:137`; the brand round only registered OS window icons (`stage.getIcons()`) | put the brand mark on the welcome page (PNG at 128/256, or an `Icons.Icon.BRAND` path) — the app's front door should say AIDB |
+| **C7** ✅ **FIXED (R22 S-7)** | **Welcome page still shows a generic `DATABASE` vector**, not the AIDB mark | `WorkspaceView:137`; the brand round only registered OS window icons (`stage.getIcons()`) | ~~put the brand mark on the welcome page~~ **Ruling was "wire it in + delete the dead code", not either/or**: `AppShell:247` unconditionally `openPermanent(object-home)`, so the welcome page was provably unreachable — three green gates in `WelcomeBrandTest` were testing a page no user ever sees. Instead: added vector `Icons.Icon.BRAND` (data cylinder + AI spark) into the app bar's permanent 26px square (the one brand slot that is actually on screen every frame), deleted `showWelcome()` / `brandMark()` / `BRAND_MARK` / the `.adb-welcome*` CSS / `Icons.SIZE_BRAND` / the unreachable `else` in `AppShell.tabClosed`, and dropped the orphaned `fs-2xl` token (98 tokens now). Gates: `AppBarTest.theBrandMarkIsTheAidbMarkNotAGenericDatabaseIcon`, `BrandMarkAuditTest`(2). Pixel comparison then exposed a **real production bug**: `.adb-icon { -fx-stroke: -adb-text-secondary }` is declared *later* at equal specificity, so the glyph was gray-on-blue and nearly invisible — fixed with the two-class selector `.adb-appbar__mark .adb-appbar__mark-glyph` plus the computed-value gate `AppBarTest.theBrandGlyphKeepsItsContrastAgainstTheGenericIconRule`. All 5 mutations (M1–M5) verified red → restored. |
 
 ### 10.4 Recommended order (senior eng + designer view)
 

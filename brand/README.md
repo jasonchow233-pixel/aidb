@@ -50,9 +50,10 @@ app-icon-16.png     最小尺寸（侧栏树节点）
 
 | 位置 | 规则 | 样式类 |
 |---|---|---|
-| 应用栏品牌块 | 26×26 圆角方 + `accent` 底 + `text-inverse` 数据库字形 | `.adb-appbar__mark` |
+| 应用栏品牌块 | 26×26 圆角方 + `accent` 底 + **矢量 `Icons.Icon.BRAND`**（圆柱 + 右上 AI 星芒，`#appbar-brand-glyph`）—— ⭐ S-7 起这是品牌在界面里的**唯一**落点，欢迎页那张卡不可达、已删 | `.adb-appbar__mark` |
 | 应用栏字标 | 16px bold · `text-primary` | `.adb-appbar__title` |
-| 欢迎页 logo | 矢量图标 `Icons.Icon.DATABASE`，不是位图 | `.adb-welcome__logo` |
+| 位图 `app-icon*.png` | 只给 **OS** 用：窗口图标 / Dock / 任务栏 / 安装包（`App.getIcons()`，见 `AppIconResourceAuditTest`）；界面内不用位图 —— PNG 不随主题换色、放大会糊（`AppBarTest.theBrandMarkUsesTheVectorIconSystem`） | — |
+| 矢量 `Icons.Icon.BRAND` | 16 视框里**手工简化**的同一造型，不要求与 `aidb-mark.svg` 逐点一致（位图那份有 5 层圆柱细节，16px 描边会糊成一团） | `.adb-icon` |
 | 品牌色使用约束 | **品牌蓝只出现在「主操作 / 焦点 / 连接状态点」**，不铺面 | `accent` / `accent-hover` |
 
 ## 命名空间约束（重要）

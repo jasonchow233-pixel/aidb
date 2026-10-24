@@ -76,12 +76,13 @@ public final class AppBar extends HBox {
     // ─────────────────────────── 左：品牌 ───────────────────────────
 
     private Region brand() {
-        // 品牌标识：一个圆角方块 + 数据库字形。矢量、随主题换色，不用位图。
+        // 品牌标识：圆角方块 + 品牌字形（圆柱 + AI 星芒）。矢量、随主题换色，不用位图。
         VBox mark = new VBox();
         mark.setId("appbar-brand-mark");
         mark.getStyleClass().add("adb-appbar__mark");
         mark.setAlignment(Pos.CENTER);
-        SVGPath glyph = Icons.of(Icons.Icon.DATABASE, Icons.SIZE_TOOLBAR);
+        SVGPath glyph = Icons.of(Icons.Icon.BRAND, Icons.SIZE_TOOLBAR);
+        glyph.setId("appbar-brand-glyph");
         glyph.getStyleClass().add("adb-appbar__mark-glyph");
         mark.getChildren().add(glyph);
 

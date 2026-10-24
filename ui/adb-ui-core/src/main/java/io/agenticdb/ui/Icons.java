@@ -57,9 +57,6 @@ public final class Icons {
     /** 空状态的大图标：32px。 */
     public static final double SIZE_EMPTY = 32;
 
-    /** 欢迎页 logo：40px。 */
-    public static final double SIZE_BRAND = 40;
-
     private Icons() {
     }
 
@@ -208,9 +205,23 @@ public final class Icons {
          */
         INDEX("M4.8 3.2 A2.4 2.4 0 1 0 4.8 8 A2.4 2.4 0 1 0 4.8 3.2"
                 + " M6.5 7.3 L12.4 13.2 M9.3 10.1 L10.6 8.8 M10.8 11.6 L12.1 10.3"),
-        /** 导入 / 导出入口（双向箭头）。 */
+        /**
+         * 品牌标识（数据圆柱 + 右上角 AI 星芒）。
+         *
+         * <p>应用栏 26px 方块里原来用的是通用 {@link #DATABASE} —— 所有数据库工具
+         * 都画同一个圆柱，品牌等于没有。这里把圆柱收窄到左下、右上补一颗四角星芒，
+         * 读起来是「数据 + AI」而不是「又一个 DB 客户端」。
+         *
+         * <p>⚠️ 必须是**矢量**：{@code AppBarTest.theBrandMarkUsesTheVectorIconSystem}
+         * 明确禁止位图（PNG 在暗色主题里不会换色，缩放也糊）。
+         */
+        BRAND("M2.6 5.6 C2.6 4.4 4.4 3.5 6.5 3.5 C8.6 3.5 10.4 4.4 10.4 5.6"
+                + " C10.4 6.8 8.6 7.7 6.5 7.7 C4.4 7.7 2.6 6.8 2.6 5.6 Z"
+                + " M2.6 5.6 V11 C2.6 12.2 4.4 13.1 6.5 13.1 C8.6 13.1 10.4 12.2 10.4 11 V5.6"
+                + " M2.6 8.3 C2.6 9.5 4.4 10.4 6.5 10.4 C8.6 10.4 10.4 9.5 10.4 8.3"
+                + " M12.7 1.9 L13.3 3.6 L15 4.2 L13.3 4.8 L12.7 6.5 L12.1 4.8 L10.4 4.2"
+                + " L12.1 3.6 Z"),
         ;
-
 
         private final String path;
         private final boolean filled;

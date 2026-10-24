@@ -5,8 +5,6 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import io.agenticdb.ui.Icons;
-import javafx.scene.image.Image;
-import javafx.scene.image.ImageView;
 import javafx.scene.control.Label;
 import javafx.scene.control.Separator;
 import javafx.scene.layout.HBox;
@@ -24,9 +22,6 @@ import java.util.function.Function;
  * 内容区。GRID 页每个标签独立实例并缓存，切换标签不会重建表格、不会丢分页位置。
  */
 public final class WorkspaceView extends StackPane {
-
-    /** ⭐ S-5：欢迎页门面上的品牌 mark（与 OS 窗口图标同一套 PNG）。 */
-    static final String BRAND_MARK = "/io/agenticdb/ui/app-icon-128.png";
 
     private final ActionRegistry actions;
     private final String connectionName;
@@ -57,7 +52,7 @@ public final class WorkspaceView extends StackPane {
     private io.agenticdb.introspect.SchemaService diagnosticSchemaService;
     private java.util.concurrent.Executor diagnosticExecutor;
 
-    /** 当前活动数据页（编辑菜单据此启用/禁用）；欢迎页或其它页时为 {@code null}。 */
+    /** 当前活动数据页（编辑菜单据此启用/禁用）；不是数据页时为 {@code null}。 */
     public DataGridPage activeGrid() {
         return activeGrid;
     }
@@ -110,7 +105,9 @@ public final class WorkspaceView extends StackPane {
         this.connectionsPageFactory = connectionsPageFactory;
         this.objectHomeFactory = objectHomeFactory;
         getStyleClass().add("adb-workspace");
-        showWelcome();
+        // ⭐ S-7：这里原来会画一张欢迎页，然后**立刻被对象首页盖掉** ——
+        //    AppShell 无条件 openPermanent(object-home)，欢迎页永远没人看得到。
+        //    死代码删掉，初始状态就是空的，等第一次 showTab 来填。
     }
 
     /**
@@ -131,74 +128,6 @@ public final class WorkspaceView extends StackPane {
         this.diagnosticSession = session;
         this.diagnosticSchemaService = schemaService;
         this.diagnosticExecutor = executor;
-    }
-
-    public void showWelcome() {        activeGrid = null;
-        activeQuery = null;
-        activeStructure = null;
-        activeConnections = null;
-
-        // ⭐ S-5：门面用**自家 mark**（数据库三层圆柱 + AI 四角星芒），不是通用数据库图标 ——
-        //    品牌改造（§28.9）只注册了 OS 窗口图标，界面里还是那个谁都在用的圆柱，
-        //    看一眼分不出这是 AIDB。见 brandMark()。
-        Node logo = brandMark();
-        logo.setAccessibleText("AIDB");
-        logo.getStyleClass().add("adb-welcome__logo");
-
-        Label title = new Label("AIDB");
-        title.getStyleClass().add("adb-welcome__title");
-
-        Label subtitle = new Label("原生数据库工作台 · SQLite 演示库已连接");
-        subtitle.getStyleClass().add("adb-welcome__subtitle");
-
-        Label hint = new Label("从左侧双击一张表，或按 ⇧⌘N 新建查询");
-        hint.getStyleClass().add("adb-muted");
-
-        Button connect = IconButtons.of(Icons.Icon.ADD, "新建连接");
-        connect.getStyleClass().addAll("adb-button", "adb-button--primary");
-        connect.setOnAction(event -> actions.run("new-connection"));
-
-        Button palette = new Button("命令面板  ⌘K");
-        palette.getStyleClass().addAll("adb-button", "adb-button--ghost");
-        palette.setOnAction(event -> actions.run("command-palette"));
-
-        HBox buttons = new HBox(8, connect, palette);
-        buttons.setAlignment(Pos.CENTER);
-
-        VBox card = new VBox(12, logo, title, subtitle, hint, buttons);
-        card.getStyleClass().add("adb-welcome");
-        card.setAlignment(Pos.CENTER);
-        card.setMaxWidth(520);
-
-        getChildren().setAll(card);
-        StackPane.setAlignment(card, Pos.CENTER);
-    }
-
-    /**
-     * ⭐ S-5：AIDB 的 mark —— 欢迎页门面上那张图。
-     *
-     * <p>用的是 {@code tools/GenLogo.java} 生成的品牌 PNG（与 OS 窗口图标同一套资源，
-     * 128 档在 40px、2x 屏下也够锐），不是 {@code Icons.Icon.DATABASE} 那个通用圆柱：
-     * 「所有数据库工具都画一个圆柱」正是别人一眼认不出我们的原因。
-     *
-     * <p><b>找不到图就抛异常，不静默换成通用图标</b> —— 第十八轮数过五个「失败被设计成
-     * 静默降级」的坑（缺图标、缺截图目标…），降级之后没人知道门面上挂的是替身。
-     * 打包缺资源应当在这一刻就炸出来；{@code AppIconResourceAuditTest} 还会在源码层
-     * 再查一遍名字，双保险。
-     */
-    static Node brandMark() {
-        java.net.URL url = WorkspaceView.class.getResource(BRAND_MARK);
-        if (url == null) {
-            throw new IllegalStateException("缺少品牌图标资源 " + BRAND_MARK
-                    + "（应由 tools/GenLogo.java 生成）。欢迎页不会拿通用图标顶替 —— "
-                    + "缺图说明打包坏了，必须在启动时就暴露");
-        }
-        ImageView mark = new ImageView(new Image(url.toExternalForm()));
-        mark.setFitWidth(Icons.SIZE_BRAND);
-        mark.setFitHeight(Icons.SIZE_BRAND);
-        mark.setPreserveRatio(true);
-        mark.setSmooth(true);
-        return mark;
     }
 
     public void showTab(TabItem tab) {

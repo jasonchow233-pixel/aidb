@@ -325,10 +325,13 @@ app.css          →  业务样式，引用 -adb-* 令牌
 
 ### 7.2 图标体系
 
-- **矢量图标**：`ui/adb-ui-core` 的 `Icons` 维护 38 个手绘 `SVGPath`（16×16，1.5px
+- **矢量图标**：`ui/adb-ui-core` 的 `Icons` 维护 48 个手绘 `SVGPath`（16×16，1.5px
   描边），按钮、菜单、树、标签页统一走它；业务按钮里**没有任何 Unicode 图标字符**。
-- **品牌图**：应用窗口图标与欢迎页使用 `app-icon-*.png`（由 `tools/GenLogo.java`
-  从 SVG 生成 7 档，16–1024）；它只用于「图像」，不替代表情/控件图标。
+- **品牌图**：`app-icon-*.png`（由 `tools/GenLogo.java` 从 SVG 生成 7 档，16–1024）
+  只给 **OS** 用 —— 窗口图标 / Dock / 任务栏 / 安装包；界面内的品牌位是应用栏那个
+  26px 方块，走**矢量** `Icons.Icon.BRAND`（S-7：PNG 不随主题换色、放大会糊，
+  `AppBarTest.theBrandMarkUsesTheVectorIconSystem` 也禁止位图）。
+  ⚠️ 原来那张画在欢迎页上的品牌 PNG 随 S-7 一起删了 —— 那页不可达，没人看过。
 - **门禁**：`IconSystemAuditTest` 断言按钮不以 Unicode 图标字符开头、纯图标按钮必须
   走矢量图、每个 `Icons.Icon` 至少被引用一次；`AppIconResourceAuditTest` 断言
   源码里出现的 `app-icon-*.png` 字面量都真的有对应资源（少一个就红，不再静默降级）。
@@ -364,7 +367,7 @@ app.css          →  业务样式，引用 -adb-* 令牌
 ./mvnw -B clean verify
 ```
 
-当前：**97 个测试类 / 753 条执行（SQLite，0 失败）/ 44 条跳过（需外部真库或 Docker）**
+当前：**97 个测试类 / 754 条执行（SQLite，0 失败）/ 44 条跳过（需外部真库或 Docker）**
 （2026-10-24 · 第二十一轮 UX-4 · Windows 10 + JDK 27 全量实测）。
 
 统计用工具兜底（口径问题见 4.5-28）：

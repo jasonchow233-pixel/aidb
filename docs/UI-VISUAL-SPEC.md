@@ -55,28 +55,31 @@
 > ⚠️ **等宽字体的边界**：只给「需要按位对齐 / 需要看原始内容」的地方用。
 > 表格正文、按钮、菜单一律用界面字体 —— 全表格等宽会让「表名 + 说明」这类中文文案显得稀疏。
 
-### 2.2 8 档字号阶梯（唯一真相：`tokens.json` 的 `fs-*`）
+### 2.2 7 档字号阶梯（唯一真相：`tokens.json` 的 `fs-*`）
 
 | 令牌 | 值 | 允许出现的场景 | 禁止 |
 |---|---|---|---|
 | `fs-2xs` | 10px | **单字符**徽标 / 角标：排序角标、脏标记、快捷键角标 | 任何成句文字 |
 | `fs-xs` | 11px | 辅助信息：状态栏、列类型行、分组标题、树副标题、提示文字、chip、统计条 | 表格正文 |
 | `fs-sm` | 12px | **数据面正文**：网格 / 清单 / 树 / 结构页 / 按钮 / 菜单 | 页面标题、空态标题 |
-| `fs-md` | 13px | **界面基准**（`.root`）：对话框标题、欢迎页、非数据面的说明文字 | 数据面正文 |
+| `fs-md` | 13px | **界面基准**（`.root`）：对话框标题、非数据面的说明文字 | 数据面正文 |
 | `fs-lg` | 14px | 区块标题、对话框标题 | — |
 | `fs-xl` | 16px | 应用名、对象标题、空状态标题 | — |
-| `fs-2xl` | 20px | 页面标题（对象名 / 页面名） | — |
-| `fs-3xl` | 32px | 空状态图标尺寸（配合 `fs-2xl` 标题） | — |
+| `fs-3xl` | 32px | 空状态图标尺寸 | — |
 
 > ⚠️ **40px（`fs-4xl`）已于 2026-10-23 移除**（第十九轮批次 C · S-5）：它唯一的用处是
-> 欢迎页 logo 的 `-fx-font-size`，而 S-5 把 logo 换成了**品牌 PNG** —— 尺寸改由
-> `Icons.SIZE_BRAND` 在代码里定（与全应用图标尺寸同一套），字号阶梯里不再留一个
-> 没有文字会用到的档（`TokenParityTest.everyTokenIsActuallyUsed` 会红）。
+> 欢迎页 logo 的 `-fx-font-size`，而 S-5 把 logo 换成了**品牌 PNG** —— 尺寸改由代码定，
+> 字号阶梯里不再留一个没有文字会用到的档（`TokenParityTest.everyTokenIsActuallyUsed` 会红）。
+>
+> ⚠️ **20px（`fs-2xl`）已于 2026-10-24 随 S-7 一起移除**：它唯一的消费者是那张欢迎页卡片的
+> 标题，而欢迎页**根本不可达**（`AppShell` 构造器无条件打开常驻的「对象」首页）。
+> 页面、样式类、`Icons.SIZE_BRAND` 档位、`fs-2xl` 令牌四处一起走 ——
+> **删令牌，不给令牌硬造消费者**。品牌 mark 现在挂在应用栏：矢量 `Icons.Icon.BRAND`。
 
 > ⭐ 2026-10 UX-2 重构：**数据面正文统一 12px** —— 网格、清单、树、结构页、
 > 按钮与输入框都落到 `fs-sm`。表格正文 13px 会让 22px 的 dense 行发挤，
 > 而 Navicat 的运维密度就是 12px。13px 仍保留为 `.root` 的界面基准
-> （对话框标题、欢迎页等非数据面）。
+> （对话框标题等非数据面）。
 > 需要更密时用「视图 → 密度 → 密集」（22px 行），而不是继续压字号。
 
 **硬规则**：
@@ -211,14 +214,18 @@
 
 - 视框 **16×16**，描边 **1.5px**，**圆头圆角**（`StrokeLineCap.ROUND`）。
 - 尺寸只从 `Icons.SIZE_*` 取：**14 标签 / 16 工具条 / 20 主工具条**；
-  另有语义尺寸 8（状态点）/ 12（徽标）/ 32（空状态）/ 40（品牌）。
+  另有语义尺寸 8（状态点）/ 12（徽标）/ 32（空状态）。
   ⛔ 不许在调用点写数字（门禁：`IconSystemAuditTest.iconSizesComeFromTheNamedScale`）。
+  ⛔ 40（`SIZE_BRAND`）已随 S-7 删除 —— 它唯一的消费者是不可达的欢迎页；品牌 mark 走 `SIZE_TOOLBAR`。
 - 缩放时**反向补偿描边**（`STROKE / scale`）——放大后视觉粗细不变。
 - 全部**描边**图标（不填充），少数状态点例外（`STAR_FILLED` / `DOT` 用 `.adb-icon--filled`）。
 - 颜色由 CSS 接管（`.adb-icon` → `-adb-text-secondary`；hover → `text-primary`；
   主按钮 → `text-inverse`；禁用 → `text-disabled`），**切主题自动跟随**。
+  ⚠️ `.adb-icon` 这条通用规则排在 `app.css` **后半段**：任何想脱离 `text-secondary` 的字形
+  （品牌方块里的 `text-inverse` 就是第一个）**必须写两类选择器**提高特异性，单类会被后写的通用规则顶掉 ——
+  见 §4.3 第 6 条。
 
-### 4.2 图标清单（**42** 个，`io.agenticdb.ui.Icons.Icon`）
+### 4.2 图标清单（**48** 个，`io.agenticdb.ui.Icons.Icon`）
 
 | 分类 | 图标 | 语义 |
 |---|---|---|
@@ -227,7 +234,8 @@
 | 传输 | `EXPORT` `IMPORT` `TRANSFER` | 导出 / 导入 / 双向 |
 | 执行 | `RUN` `RUN_ALL` `STOP` `EXPLAIN` | 执行 / 执行全部 / 停止 / 执行计划 |
 | 对象 | `DATABASE` `TABLE` `STRUCTURE` `COLUMNS` `VIEW` `VIEW_OBJECT` `FUNCTION` `TRIGGER` `INDEX` | 连接 / 表 / 结构 / 列 / 视图 / 视图对象 / 函数 / 触发器 / **索引** |
-| 其它 | `CONNECT` `QUERY` `THEME` `PALETTE` `HISTORY` `DIAGNOSTICS` | 连接 / 查询 / 主题 / 命令面板 / 历史 / 诊断 |
+| 其它 | `CONNECT` `QUERY` `LIST` `GRID` `THEME` `PALETTE` `HISTORY` `DIAGNOSTICS` | 连接 / 查询 / 清单 / 网格 / 主题 / 命令面板 / 历史 / 诊断 |
+| 品牌 | `BRAND` | ⭐ **AIDB mark**（数据圆柱 + 右上 AI 四角星芒）—— 只用在应用栏 26px 方块；S-7 起品牌在界面里的**唯一**落点 |
 
 ### 4.3 硬规则
 
@@ -242,6 +250,13 @@
    - 高频、无歧义、可并排成条 → 图标（工具栏、分页器、树节点）。
    - 有歧义、需要学习成本 → 图标 + 文字（主操作「保存」、功能栏、危险动作）。
    - 破坏性动作 → 图标 + 文字 + 红色（不许只留一个垃圾桶图标）。
+6. ⭐ **覆盖 `.adb-icon` 的字形颜色必须用两类选择器**。JavaFX 的 CSS 层叠里，**同特异性**的单类规则
+   按「后写胜」判定，而 `.adb-icon { -fx-stroke: -adb-text-secondary }` 位于 `app.css` 末尾 ——
+   任何写在它**前面**的单类覆盖规则（品牌方块的 `text-inverse` 就是第一个受害者）**静默失效**。
+   写法：给宿主容器一个类，用 `.adb-appbar__mark .adb-appbar__mark-glyph`（特异性 0,2,0）。
+   门禁：`AppBarTest.theBrandGlyphKeepsItsContrastAgainstTheGenericIconRule` 读**计算后的** `getStroke()`，
+   并要求测试 `@Start` 把两套样式表挂上场景（不挂样式表时 `getStroke()` 只是 `Shape` 的默认色，断言等于没测）。
+   教训：**这条 bug 全绿了三轮才被像素对比抓到** —— 绿门禁不等于真看得见。
 
 ### 4.4 现状缺口
 
@@ -265,7 +280,7 @@
 | `sp-4` | 12px | 面板内边距、按钮内边距（4×12）、页面 body 横向留白 |
 | `sp-5` | 16px | 区块之间、页面 body 顶部留白、卡片内边距 |
 | `sp-6` | 24px | 大区块之间 |
-| `sp-7` | 32px | 空状态上下留白、欢迎页留白 |
+| `sp-7` | 32px | 空状态上下留白（欢迎页随 S-7 删除后，这一档只剩空态在用） |
 | `sp-1h` | 6px | **dense 档单元格水平内边距**（`2 6`；1.5×`sp-2` 的已登记例外） |
 
 **硬规则**：所有间距是 4 的倍数，仅 `sp-1`（2px，图标微调）与
@@ -291,6 +306,7 @@
 |---|---|---|
 | 菜单栏 | 系统默认（macOS 进系统菜单栏） | — |
 | **应用栏** | **46px** | `h-appbar`（`AppBar.setPrefHeight`） |
+| 应用栏品牌方块 | **26×26**，底 `accent`、字形 `Icons.SIZE_TOOLBAR` 且描边 **`text-inverse`**（⚠️ 必须两类选择器，见 §4.3 第 6 条） | `.adb-appbar__mark` / `.adb-appbar__mark .adb-appbar__mark-glyph` |
 | 标签栏 | **28px**（tab 高 26 + 2px 活动线） | `h-tabbar` / `.adb-tab` |
 | 对象标题栏 | **36px** | `.adb-object-header` |
 | 对象切面条 | 随对象标题栏（36 内） | `.adb-object-tabs` |
@@ -810,7 +826,7 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 | 门禁 | 断言 |
 |---|---|
 | `TokenParityTest` | 令牌键一致 / 亮暗一致 / CSS 无颜色字面量 / **每个令牌都被用到**（不许摆设） |
-| `AppCssAuditTest` | CSS 内无字面量字号·padding·radius；字号 8 档、圆角 3 档、间距 `0/2/4/6/8/12/16/24/32`；`9px` 0 次；数据面正文必须 12px |
+| `AppCssAuditTest` | CSS 内无字面量字号·padding·radius；字号 7 档、圆角 3 档、间距 `0/2/4/6/8/12/16/24/32`；`9px` 0 次；数据面正文必须 12px |
 | `FocusRingAuditTest` | 每个可聚焦组件类都有 `:focused`；`-fx-opacity` 只 1 处；禁用态抵消 Modena 透明度 |
 | `DensityCoverageTest` | 密度四档同时改数据网格 / 查询结果 / 清单 / 结构页的行高；未知档回落 compact |
 | **`ChromeMetricsTest`**（✅ UX-2 新增） | 标签栏 28 / 对象头 36 / 页工具条 34 / 分页器 36 / 状态栏 24；dense 行高 22；1268×765 可见 ≥22 行 |
@@ -831,6 +847,7 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-24 | 第二十二轮 · S-7 | **品牌落点 + 死代码清理**：应用栏 26px 方块由通用圆柱 `Icons.Icon.DATABASE` 换成矢量 **`Icons.Icon.BRAND`**（圆柱 + 右上 AI 四角星芒，随主题换色，`#appbar-brand-glyph`）；⭐ **不可达的欢迎页删除** —— `AppShell` 构造器无条件 `openPermanent(object-home)`，那张卡片永远不会露面，连带删掉 `showWelcome()` / `brandMark()` / `BRAND_MARK` / `.adb-welcome*` 四条规则 / `Icons.SIZE_BRAND`；令牌 **99 → 98**（`fs-2xl` 20px 唯一的消费者就是这张卡的标题，**删令牌不给它硬造消费者**），字号阶梯 8 档 → **7 档**（§2.2）；⭐⭐ **像素对比抓出层叠 bug**：`app.css` 后半段的 `.adb-icon` 与应用栏那段 `.adb-appbar__mark-glyph` **同为单类**，JavaFX「同特异性后写胜」→ 品牌字形被 `text-secondary` 顶成灰字，蓝底方块里几乎看不见；规则提到两类 `.adb-appbar__mark .adb-appbar__mark-glyph`（0,2,0）才拿到 `text-inverse`。**这条不变量已写进 §4.3 第 6 条**。门禁净 **+1**（`AppBarTest` +2：品牌身份 + 计算值对比度；新 `BrandMarkAuditTest` +2；删掉测不到真路径的 `WelcomeBrandTest` −3），**5 个变异逐条红→改回绿**（M5 把选择器改回单类 → 只有对比度门禁红）；基线 **754 / 97 / 0** |
 | 2026-10-24 | 第二十一轮 · UX-4 | **网格交互**：§7.3 重写选中/光标/网格线/行操作条/编辑器五排。⭐ 三条新不变量：① **`NULL` 显示 `(NULL)`**（灰斜体的 `NULL` 和一条内容为 "NULL" 的 TEXT 值在 12px 里分不出来，而两者要做的处理完全不同），空串 `""`、BLOB 补 **GB 档**，三态各有 tooltip；② **槽位常留** —— 行 `border-width: 0 0 1 2`、格 `0 1 0 2` 由基础规则留透明空槽，选中条/脏值条/光标环/矩形选区**只上色不改宽度**（改宽度就抖：键盘走一格文字左右跳一次，行高 24px 上下各吃 2px 直接压掉正文）；③ **当前格不是 `.table-cell:focused`** —— 行选模式下 `TableCell.updateFocus()` 主动清 `:focused`，该伪类在这张表上永不匹配，改由 `focusModel` 打样式类 `adb-grid__cell--cursor`、**按列名**记光标（冻结列是搬过去的同一批实例，按下标比会标不上）。列头右键收齐排序/移动/筛选/隐藏/自适应/**冻结到此列与取消冻结**，且**做不到就禁用**（最后一列冻结会偷偷少冻一列）；双击列头 = 自适应；网格左下**行操作条** `+ / − / 应用 / 取消`（状态 `bind` 工具条、只读表整排消失）；长文本走**抽屉文本页就地编辑**（Ctrl+Enter 应用、Esc 只退编辑不关抽屉、写同一个 `EditBuffer`、主键与只读表不给编辑器）。新门禁 `SelectionStateTest`(8) / `CellDisplayTest`(6) / `CellEditorTest`(4) + `GridInteractionTest` +7，**25 条门禁逐条变异全红→改回绿**（其中 `CellEditorTest` 第三条第一版是假绿：演示库主键全是 INTEGER，删掉主键规则仍绿 → 自建 `TEXT PRIMARY KEY` 表并补正例）；基线 **753 / 97 / 0** |
 | 2026-10-24 | 第二十一轮 · UX-3 | **工具条与动作可发现性**：§7.1 作废「只有保存带文字，其余纯图标（Navicat 形态）」，改为**主操作 = 图标 + 文字 + tooltip + accessibleText**（`IconButtons.labeled`）+ 次要动作纯图标；工具条**语义分组 + `.adb-toolbar__separator`**（数据页 4 组 / 清单页 4 组 / 对象首页 2 组），删除动作用 `adb-button--danger`；**<1100px 自动收字、提示不丢**（量窗口宽度不是页面宽度，文字统一走登记表，裸 `setText` 会让收好的字自己长回来）；补数据页导入（预选当前表）与清单页导入/导出；§13 **V-5 结案**（用分组+收字，不做「更多」菜单）；新门禁 `ToolbarDiscoverabilityTest`(5)，**9 个变异全部红→改回绿**，其中两条抓到真问题（门禁自身空端口径、`setText` 绕过登记表）；基线 **728 / 94 / 0** |
 | 2026-10-24 | 第二十一轮 · UX-2 | **密度/排版/chrome**：新增 dense 22（默认 compact）；数据面正文统一 12px；标签栏 28 / 对象头 36 / 工具栏 34 / 分页器 36 / 状态栏 24；按钮与输入 28；令牌 99（`row-dense` + `sp-1h`）；新增 `ChromeMetricsTest`（765px 高 ≥22 行） |

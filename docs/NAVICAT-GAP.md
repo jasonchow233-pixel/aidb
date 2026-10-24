@@ -462,7 +462,7 @@
 | ▦ | U+25A6 | 表 | `TabKind.GRID`、`ObjectKind.TABLE`、侧栏 rail | ✅ |
 | ▤ | U+25A4 | 表分组 | `SideBar` | ✅ |
 | ◇ | U+25C7 | 视图 | `ObjectKind.VIEW`、`SideBar` | ✅ |
-| ◈ | U+25C8 | 连接 | `TabKind.CONNECTIONS`、`SideBar`、欢迎页 logo | ✅ |
+| ◈ | U+25C8 | 连接 | `TabKind.CONNECTIONS`、`SideBar`（欢迎页 logo 那处随 S-7 整页删除） | ✅ |
 | ◆ | U+25C6 | 工具 | `TabKind.TOOL`、`SideBar` | ✅ |
 | ☰ | U+2630 | 结构 | `TabKind.STRUCTURE` | ✅ 4.5-5 已拆 |
 | **⚙** | U+2699 | **结构（数据页按钮）+ 设置（两处）** | `DataGridPage.java:533`、`TabKind.SETTINGS`、工具栏 | ⚠️ **仍撞车（D14）** |

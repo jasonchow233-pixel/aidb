@@ -32,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>间距 **47 种**硬编码内边距；</li>
  *   <li>圆角 **5 种**（3/5/6/8/10）写死在 26 处。</li>
  * </ul>
- * 现在分别是 8 / 7 / 3 种（字号 8 档：40px 那档随 S-5 移除，见 {@link #FONT_SIZES}）。
+ * 现在分别是 7 / 7 / 3 种（字号被删过两档，见 {@link #FONT_SIZES}）。
  */
 class AppCssAuditTest {
 
@@ -40,12 +40,15 @@ class AppCssAuditTest {
      * 允许的字号（= tokens.json 的 fs-*）。
      *
      * <p>⚠️ 40px（fs-4xl）已于第十九轮批次 C 移除：它唯一的用处是欢迎页 logo 的
-     * `-fx-font-size`，而 S-5 把 logo 换成了品牌 PNG —— 尺寸改由
-     * `Icons.SIZE_BRAND` 在代码里定，字号阶梯里不再留一个没人用的档
-     * （`TokenParityTest.everyTokenIsActuallyUsed` 会红）。
+     * `-fx-font-size`，而 S-5 把 logo 换成了品牌 PNG —— 尺寸改由代码定，字号阶梯里
+     * 不再留一个没人用的档（`TokenParityTest.everyTokenIsActuallyUsed` 会红）。
+     *
+     * <p>⚠️ 20px（fs-2xl）同因于 S-7 移除：欢迎页那张卡片的标题是它唯一的消费者，
+     * 而那张卡片根本不可达（`AppShell` 无条件打开常驻的「对象」首页）—— 页面删了，
+     * 档位跟着删。<b>规矩是删令牌，不是给令牌硬造一个消费者</b>（§31.1 第 4 行同一件事）。
      */
     private static final Set<String> FONT_SIZES = Set.of(
-            "10px", "11px", "12px", "13px", "14px", "16px", "20px", "32px");
+            "10px", "11px", "12px", "13px", "14px", "16px", "32px");
 
     /**
      * CSS 里允许的间距（含 0 —— 归零不是「另一个尺度」）。
@@ -81,7 +84,7 @@ class AppCssAuditTest {
             }
         }
         assertThat(offenders)
-                .as("字号必须落在 8 档阶梯上（fs-2xs…fs-3xl）：\n  %s",
+                .as("字号必须落在 7 档阶梯上（fs-2xs…fs-3xl，中间的 20px 档已随 S-7 删除）：\n  %s",
                         String.join("\n  ", offenders))
                 .isEmpty();
     }

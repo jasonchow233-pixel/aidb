@@ -2125,9 +2125,10 @@ public final class AppShell extends StackPane {
             String permanent = tabBar.permanentId();
             if (permanent != null) {
                 tabBar.activate(permanent);
-            } else {
-                workspace.showWelcome();
             }
+            // ⭐ S-7：原来这里还有个 else 走 workspace.showWelcome()，
+            //    但构造器无条件 openPermanent(object-home) ⇒ permanent 永远存在，
+            //    那条分支不可达，欢迎页的死代码一并删了。
             statusBar.setRange("—");
             statusBar.setDuration(-1);
             statusBar.setDirty(0);

@@ -3,12 +3,12 @@
 > **定位**：**「界面差在哪、差多少、改成什么样、做完怎么验」**。
 > `NAVICAT-TODO.md` 是唯一执行清单（逐条勾选）；本文是**界面专项的阶段规划**（批次 + 依赖 + 门禁）。
 >
-> 最后更新：**2026-10-24（第二十一轮：§12.2 UX-0 / UX-1 / UX-2 / UX-3 / UX-4 已落地，下一项 UX-5）**
-> 适用基线：**97 个测试类 / 753 条执行 / 44 条环境门控跳过 / 0 失败**
+> 最后更新：**2026-10-24（第二十二轮：§12.2 UX-0…UX-4 与 S-7（品牌接应用栏 + 删不可达欢迎页）已落地，下一项 UX-5）**
+> 适用基线：**97 个测试类 / 754 条执行 / 44 条环境门控跳过 / 0 失败**
 >
 > | 批次 | 状态 | 结果 |
 > |---|---|---|
-> | **U-B1 排版层** | ✅ | 字号 13 种 → **8 档阶梯**（40px 那档 2026-10-23 移除）；9px 废除；12.5px 孤例删除 |
+> | **U-B1 排版层** | ✅ | 字号 13 种 → **7 档阶梯**（40px 那档 2026-10-23 移除、20px `fs-2xl` 随 S-7 于 2026-10-24 移除）；9px 废除；12.5px 孤例删除 |
 > | **U-B2 间距 + 圆角** | ✅ | 间距 47 种 → **7 档 4px 阶梯**；圆角 5 种 → **3 档 + pill** |
 > | **U-B3 焦点与交互态** | ✅ | focus 规则 **3 → 29 条**；禁用态不再被整体压暗 |
 > | **U-B4 矢量图标** | ✅ | **38 个 SVGPath**；按钮里**一个 Unicode 符号都不剩** |
@@ -18,7 +18,8 @@
 > | **第十八轮 · 第二轮实测** | ✅ | 6 个截图实证缺陷已修；**C1–C7** 并入 `NAVICAT-TODO.md` **§29** |
 > | **第十九轮 · 批次 A（C1+C2）** | ✅ | **方言感知列**（看数据不看方言：全占位符才整列隐藏）+ **卡片去破折号**；表清单 8→2 列、对象首页 9→3 列；14 条门禁全变异验证 |
 >
-> ⭐ **剩余 C3–C7** 见 `NAVICAT-TODO.md` **§29**（C3 详情面板挤压 / C4 行距 / C5 树展开出列 / C7 欢迎页 mark）。
+> ⭐ **剩余 C3–C6** 见 `NAVICAT-TODO.md` **§29**（C3 详情面板挤压 / C4 行距 / C5 树展开出列）；
+> **C7 欢迎页 mark 已于 S-7 结案** —— 那页不可达，品牌改挂应用栏（矢量 `Icons.Icon.BRAND`）。
 
 ---
 
@@ -43,9 +44,10 @@
 ### 1.1 字号：13 种散落值（79 处声明），最小 9px —— ✅ 已修（U-B1）
 
 `app.css` 里 `-fx-font-size` 出现 **79 处声明、13 种不同值**，其中 **3 种在 12px 以下**（11 / 10 / 9）。
-**现已收敛为 8 档阶梯**（`fs-2xs` 10 / `fs-xs` 11 / `fs-sm` 12 / `fs-md` 13 / `fs-lg` 14 /
-`fs-xl` 16 / `fs-2xl` 20 / `fs-3xl` 32），并由 `AppCssAuditTest` 守着
-（40px 那档随 S-5 移除，见 `docs/UI-VISUAL-SPEC.md` §2.2）：
+**现已收敛为 7 档阶梯**（`fs-2xs` 10 / `fs-xs` 11 / `fs-sm` 12 / `fs-md` 13 / `fs-lg` 14 /
+`fs-xl` 16 / `fs-3xl` 32），并由 `AppCssAuditTest` 守着
+（40px 那档随 S-5 移除、20px `fs-2xl` 随 S-7 移除 —— 两者的唯一消费者都是那张**不可达**的
+欢迎页卡片，见 `docs/UI-VISUAL-SPEC.md` §2.2）：
 
 | 字号 | 出现次数 | 典型落点 |
 |---|---|---|
@@ -416,8 +418,7 @@ Button funnel = new Button("▽");   // 每个列头都挂一个，永远可见
 | `fs-sm` | 12px | 密集正文 | 表格单元格、按钮、菜单、树节点 |
 | `fs-md` | 13px | **界面基准** | 面板标题、输入框、次要说明 |
 | `fs-lg` | 14px | 区块标题 | 分组标题、对话框小标题 |
-| `fs-xl` | 16px | 页面标题 | 空状态标题 |
-| `fs-2xl` | 20px | 强调标题 | —— |
+| `fs-xl` | 16px | 页面标题 | 空状态标题、应用栏字标 |
 
 **硬规则**：
 1. **9px 禁止出现**；10px 只允许单字符徽标。
@@ -490,7 +491,7 @@ Navicat 的密集行是 `2 6`，压到 4px 会让「2020-01-01」贴边）。
 | 加载中 | 按钮内嵌 spinner + 禁用 + 原宽度（不跳动） |
 | 危险 | `adb-button--danger` + 二次确认 + 风险徽标 |
 
-**空状态规范**：大标题（`fs-2xl`）+ 一句说明 + **一个明确的下一步按钮**（primary）。
+**空状态规范**：大标题（`fs-xl` 16px，就是 `.adb-empty__title` 现在用的）+ 一句说明 + **一个明确的下一步按钮**（primary）。
 当前只有文字，没有按钮 —— 用户不知道能干什么。
 
 ## 9. 明确不做
@@ -691,6 +692,23 @@ java tools/TestCount.java      # 按 <testcase> 计数，断言总数 ≥ 300
 **已知缺口（不藏着）**：选中态、光标环、抽屉编辑器都是**交互态**，
 现有 12 张截图没有一帧拍到（`p2-users` 只覆盖竖线 / `(NULL)` / 行操作条）。
 目前靠 `SelectionStateTest` 算色断言兜底；补一帧需要给 `AppShell` 加 `ADB_CELL` 之类的启动开关。
+
+
+#### S-7 · 品牌落点（S）— ✅ 已完成（2026-10-24 · 裁定＝接 + 删）
+
+| 项 | 改动 | 门禁 |
+|---|---|---|
+| 接 | 应用栏 26px 方块里的通用 `Icons.Icon.DATABASE` 换成矢量 `Icons.Icon.BRAND`（圆柱 + 右上 AI 星芒，随主题换色） | `AppBarTest.theBrandMarkIsTheAidbMarkNotAGenericDatabaseIcon`（断言 `getContent()` 等于 `BRAND.path()` 且不等于 `DATABASE.path()`） |
+| 删 | 不可达的欢迎页：`showWelcome()` / `brandMark()` / `BRAND_MARK` / `AppShell` 的 `else` 分支 / `.adb-welcome*` 四条规则 / `Icons.SIZE_BRAND` | `BrandMarkAuditTest.theUnreachableWelcomePageStaysDeleted`（**剥注释**扫主源码 + `app.css`，四个符号一处都不许留，带 `scanned > 30` 防空扫假绿） |
+| 连带 | `fs-2xl`（20px）令牌 —— 唯一消费者是那张卡片的标题，页面删了它就是摆设 → 删令牌（99→98，字号 8→7 档） | `TokenParityTest.everyTokenIsActuallyUsed`（全量构建才看得见，单跑 UI 门禁会漏） |
+| ⭐⭐ 看得清 | 品牌字形从灰改白：`.adb-icon { -fx-stroke: -adb-text-secondary }`（`app.css` 后半段）与 `.adb-appbar__mark-glyph` **同为单类**，JavaFX「同特异性后写胜」→ 蓝底方块里的 mark 几乎看不见。规则提到两类 `.adb-appbar__mark .adb-appbar__mark-glyph`（0,2,0）走 `text-inverse` | `AppBarTest.theBrandGlyphKeepsItsContrastAgainstTheGenericIconRule`（读**计算后的** `getStroke()`；变异 M5 把选择器改回单类 → **只有这条红**）。⚠️ 成立前提：测试 `@Start` 必须挂上 `theme-light.css` + `app.css`，否则拿到的是 `Shape` 默认色，断言等于没测 |
+
+> ⚠️ 上一版 `WelcomeBrandTest`(3) **三条全绿**，测的却是一张用户永远看不到的页面 ——
+> 它直接 `new WorkspaceView(...)`，绕过了 `AppShell` 的真实启动路径。
+> 「绿门禁 ≠ 真功能」：测门面就必须在**装配后的壳**里测，或者像现在这样退到源码审计。
+> ⚠️ 第二个样本更狠：**品牌方块全绿了三轮，里面的 mark 一直是灰的** —— 这条是像素对比抓出来的，
+> 不是门禁抓出来的。「绿门禁 ≠ 真看得见」，所以每轮 UI 改动**必须重拍并放大核对**（`scripts/shots.sh` + 裁剪）。
+> 完整落地记录与 5 条变异见 `NAVICAT-TODO.md` §34.2。
 
 
 #### UX-5 · 侧栏 / 标签 / 状态栏（M）
