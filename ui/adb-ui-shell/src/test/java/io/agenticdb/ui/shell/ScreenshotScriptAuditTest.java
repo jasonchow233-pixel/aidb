@@ -99,7 +99,72 @@ class ScreenshotScriptAuditTest {
                 .contains("ADB_THEME_FORCE=");
     }
 
+    /**
+     * ⭐ UX-5-F：交互态必须有一帧真的被拍到，而且这一帧的开关与点击都还在。
+     *
+     * <p>选中行、光标环、抽屉编辑器只在点下去时出现，以前的 12 帧一帧没覆盖 ——
+     * 这三样改了三版，画面没人看过（那颗灰星就是这么漏的：门禁全绿不等于用户看得见）。
+     * 现在由 {@code p2-cell} 负责：状态靠 {@code ADB_CELL} 摆，编辑态靠真点「编辑」按钮进入。
+     */
+    @Test
+    void interactionStatesHaveTheirOwnFrame() throws IOException {
+        List<Row> rows = shotRows();
+        Row cell = rows.stream().filter(row -> row.envVars().contains("ADB_CELL")).findFirst()
+                .orElse(null);
+        assertThat(cell)
+                .as("数据页要有一帧摆出「选中行 + 光标格 + 抽屉编辑器」三个交互态")
+                .isNotNull();
+        assertThat(cell.clickTargets())
+                .as("这一帧要点抽屉那颗「编辑」，否则编辑器（应用 / 取消 + 可写文本区）不会出现")
+                .isEqualTo("data-details-edit");
+    }
+
+    /**
+     * ⭐ UX-5-F：脚本里用到的每一个 {@code ADB_*} 开关，主源码必须真的读它。
+     *
+     * <p>和第一列门禁同一类病：{@code ADB_CELL} 处理器一旦被删，这一帧会照常拍出一张
+     * 平平无奇的表、返回码照样是 0 —— <b>开关写了没人读</b>是最难发现的静默降级。
+     */
+    @Test
+    void everyEnvSwitchUsedByTheScriptIsActuallyReadByTheUi() throws IOException {
+        String source = readUiSources(repositoryRoot());
+        List<String> dangling = new ArrayList<>();
+        for (Row row : shotRows()) {
+            for (String name : ENV_NAME.matcher(row.envVars()).results()
+                    .map(match -> match.group()).distinct().toList()) {
+                if (!source.contains("\"" + name + "\"")) {
+                    dangling.add(row.name() + " → " + name);
+                }
+            }
+        }
+        assertThat(dangling)
+                .as("这些截图开关在 shots.sh 里被设了，却没有任何主源码读它 —— "
+                        + "对应的那一帧会静默拍成默认界面")
+                .isEmpty();
+    }
+
     // ─────────────────────────── 工具 ───────────────────────────
+
+    /** 一条截图帧：名称 / 点击目标 / 等待 / 该帧预置的环境变量。 */
+    private record Row(String name, String clickTargets, String envVars) {
+    }
+
+    private static final Pattern SHOT_TUPLE = Pattern.compile(
+            "^\\s*\"([a-z0-9-]+)\\|([^|]*)\\|[^|]*\\|([^\"]*)\"", Pattern.MULTILINE);
+
+    private static final Pattern ENV_NAME = Pattern.compile("ADB_[A-Z0-9_]+");
+
+    private static List<Row> shotRows() throws IOException {
+        Path script = repositoryRoot().resolve("scripts/shots.sh");
+        assertThat(Files.isRegularFile(script)).as("找不到 %s", script).isTrue();
+        List<Row> rows = new ArrayList<>();
+        Matcher matcher = SHOT_TUPLE.matcher(Files.readString(script, StandardCharsets.UTF_8));
+        while (matcher.find()) {
+            rows.add(new Row(matcher.group(1), matcher.group(2).trim(), matcher.group(3).trim()));
+        }
+        assertThat(rows).as("shots.sh 解析出来的截图帧（解析不到就是格式变了）").isNotEmpty();
+        return rows;
+    }
 
     /** 拼接全部 UI 主源码，用来查 {@code setId("...")}。 */
     private static String readUiSources(Path root) throws IOException {

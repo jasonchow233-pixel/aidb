@@ -7,6 +7,7 @@ import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.JdbcSession;
 import javafx.scene.Node;
 import javafx.scene.Scene;
+import javafx.scene.control.Label;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
@@ -202,6 +203,67 @@ class SelectionStateTest {
                 .isTrue();
     }
 
+    /**
+     * ⭐ UX-5-F：截图那一帧要摆的三个交互态，必须**真的都落地**，而且落在同一格上。
+     *
+     * <p>为什么要这条：{@code scripts/shots.sh} 的 {@code p2-cell} 帧靠
+     * {@link DataGridPage#poseInteractionStates} 摆状态。这个方法一旦「只是调用了但没生效」，
+     * 拍出来的仍是一张无辜的表，而脚本返回码照样是 0 ——
+     * 交互态以前 12 帧一帧没覆盖，靠的就是这条门禁把它从「没人看过」变成「拍得到且测得到」。
+     *
+     * <p>变异：pose 里删 {@code focusModel.focus(..)} → 光标断言红；删 {@code select(..)}
+     * → 选中断言红；删 {@code showDetails(..)} → 抽屉断言红；列名写错 → 诚实返回 false 那条红。
+     */
+    @Test
+    void theScreenshotPoseLightsUpSelectionCursorAndDrawer() {
+        TableView<?> table = requireTable();
+        boolean[] posed = new boolean[1];
+        WaitForAsyncUtils.asyncFx(() -> {
+            posed[0] = page.poseInteractionStates(1, "name");
+            return null;
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(posed[0])
+                .as("行已灌进来、name 是可见列 → 摆状态必须成功")
+                .isTrue();
+        assertThat(requireRow(table, 1).isSelected())
+                .as("摆完要有一行处于选中态")
+                .isTrue();
+        assertThat(requireCell(requireRow(table, 1), "name").getStyleClass())
+                .as("光标要落在 name 这一格 —— 和抽屉同一格，这张图讲的才是同一件事")
+                .contains("adb-grid__cell--cursor");
+        var focused = table.getFocusModel().getFocusedCell();
+        assertThat(focused.getRow())
+                .as("光标经 focusModel 摆出来（不是把样式类直接糊上去：那样截图好看和键盘真有光标就脱钩了）")
+                .isEqualTo(1);
+        assertThat(focused.getTableColumn().getUserData())
+                .as("光标所在列就是 name")
+                .isEqualTo("name");
+
+        Node drawer = page.lookup("#data-details");
+        assertThat(drawer).as("详情抽屉 #data-details").isNotNull();
+        assertThat(drawer.isVisible())
+                .as("抽屉要开着")
+                .isTrue();
+        assertThat(drawer.isManaged())
+                .as("还要占位 —— 只 visible 不 managed，截图里它会被整块挤掉")
+                .isTrue();
+        assertThat(((Label) page.lookup(".adb-details__title")).getText())
+                .as("抽屉标题就是这一格")
+                .isEqualTo("name");
+
+        boolean[] bogus = new boolean[1];
+        WaitForAsyncUtils.asyncFx(() -> {
+            bogus[0] = page.poseInteractionStates(1, "no_such_column");
+            return null;
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(bogus[0])
+                .as("列不存在必须返回 false：摆不出完整状态就不能装作摆好了（AppShell 靠它决定重试）")
+                .isFalse();
+    }
+
     // ─────────────────────────── CSS：规则本身 ───────────────────────────
 
     /**
@@ -230,10 +292,10 @@ class SelectionStateTest {
 
     /**
      * 光标用**活的**选择器（样式类），不用永远匹配不上的 {@code :focused}；
-     * 树那边继续用发光 —— 树的单元格之间有间隙，光晕画得出来。
+     * 树的焦点格改用**淡底**，不再画蓝边 + 光晕（UX-5 的裁定，理由见下面第二条断言）。
      */
     @Test
-    void theCursorUsesALiveSelectorAndTheTreeKeepsItsGlow() throws IOException {
+    void theGridCursorIsLiveAndTheTreeCursorIsAFill() throws IOException {
         String css = css();
         String cursor = ruleBody(css, ".adb-grid .table-cell.adb-grid__cell--cursor");
         assertThat(cursor)
@@ -250,9 +312,18 @@ class SelectionStateTest {
                 .as("行选模式下 .table-cell:focused 永远不匹配（TableCell.updateFocus 源码），"
                         + "留着就是一条死规则 —— 不许再写回来")
                 .doesNotContain(".adb-grid .table-cell:focused");
-        assertThat(ruleBody(css, ".adb-object-tree .tree-cell:focused"))
-                .as("树的焦点仍用发光：树的单元格之间有间隙，光晕看得见")
-                .contains("dropshadow");
+        String treeFocus = ruleBody(css, ".adb-object-tree .tree-cell:focused");
+        assertThat(treeFocus)
+                .as("⭐ UX-5：树的焦点格改成淡底 —— 容器自己已经有焦点环（.tree-view:focused），"
+                        + "格子里再画一圈就是「框中框」，一整列蓝边互相贴着像坏了；"
+                        + "而且蓝边压在 bg-selected 上是两种语言叠一起")
+                .doesNotContain("dropshadow")
+                .doesNotContain("-fx-border-color")
+                .contains("-adb-bg-active");
+        assertThat(css.indexOf(".adb-object-tree .tree-cell:focused"))
+                .as(":focused 与 :selected 同为 0,3,0，靠先后取胜 —— "
+                        + "焦点必须排在选中**之前**，否则选中格只剩这层更淡的底，强调条没了")
+                .isLessThan(css.indexOf(".adb-object-tree .tree-cell:selected"));
     }
 
     /**
@@ -349,16 +420,21 @@ class SelectionStateTest {
 
     /** 取「name」这一列的单元格 —— 文本列，点下去不会误碰复选框。 */
     private static TableCell<?, ?> requireCell(TableRow<?> row) {
+        return requireCell(row, "name");
+    }
+
+    /** 取指定列在这一行渲染出来的单元格。 */
+    private static TableCell<?, ?> requireCell(TableRow<?> row, String column) {
         List<TableCell<?, ?>> cells = cells(row);
         assertThat(cells).as("该行渲染出来的单元格").isNotEmpty();
         for (TableCell<?, ?> cell : cells) {
             if (cell.getTableColumn() != null
-                    && "name".equals(cell.getTableColumn().getUserData())) {
-                assertThat(cell.isVisible()).as("name 列的单元格要可见").isTrue();
+                    && column.equals(cell.getTableColumn().getUserData())) {
+                assertThat(cell.isVisible()).as(column + " 列的单元格要可见").isTrue();
                 return cell;
             }
         }
-        throw new AssertionError("没有渲染出 name 列的单元格（列："
+        throw new AssertionError("没有渲染出 " + column + " 列的单元格（列："
                 + cells.stream()
                         .map(c -> String.valueOf(c.getTableColumn() == null
                                 ? null : c.getTableColumn().getUserData()))

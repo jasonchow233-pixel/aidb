@@ -162,6 +162,60 @@ class AppShellTest {
                 .isEqualTo(48.0);
     }
 
+    /**
+     * ⭐ UX-5：启动时同步连上的演示库，侧栏那条连接要挂着「在线」点。
+     *
+     * <p>存活判据只能来自 {@code SessionManager} —— 侧栏没有会话。
+     * 把 {@code sideBar.setConnectionLiveness(...)} 那行接线删掉，这条立刻红。
+     */
+    @Test
+    void theSidebarMarksTheLiveConnection(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(robot.lookup(node -> node instanceof javafx.scene.shape.SVGPath path
+                && path.getStyleClass().contains("adb-tree__dot--online")).tryQuery())
+                .as("一个点都没有 = 没接线：「这个连接活着吗」又退化成「双击试一下才知道」")
+                .isPresent();
+    }
+
+    /**
+     * ⭐ UX-5：侧栏宽度是「令牌给默认、偏好记实际」。
+     *
+     * <p>{@code @Start} 往偏好里写了 240，所以这里看到的必须是 240 而不是令牌的 260 ——
+     * 把 {@code AppShell} 读偏好那一步删掉，这条就红（默认值会顶上来）。
+     */
+    @Test
+    void thePersistedSidebarWidthWinsOverTheTokenDefault(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(new SettingsStore().getInt("ui.sidebar.width", -1)).isEqualTo(240);
+        assertThat(robot.lookup(".adb-sidebar").queryAs(SideBar.class).getPrefWidth())
+                .as("上次留下的宽度必须赢过 w-sidebar 默认值")
+                .isEqualTo(240.0);
+    }
+
+    /**
+     * ⭐ UX-5：双击拖拽条 = 回到令牌默认，且**必须写回偏好**。
+     *
+     * <p>只改界面不写回的话，用户下次启动又看到旧宽度，等于重置没生效。
+     */
+    @Test
+    void doubleClickingTheResizerResetsToTheDefaultAndPersists(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+
+        // ⚠️ 用 doubleClickOn 而不是 clickOn(target, PRIMARY, PRIMARY)：
+        //    后者在这个 headless 环境下不触发 getClickCount() == 2 的分支（实测宽度没变）。
+        robot.doubleClickOn(".adb-resizer");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        int expected = io.agenticdb.ui.Tokens.W_SIDEBAR_LIGHT;
+        assertThat(robot.lookup(".adb-sidebar").queryAs(SideBar.class).getPrefWidth())
+                .isEqualTo((double) expected);
+        assertThat(new SettingsStore().getInt("ui.sidebar.width", -1))
+                .as("重置后的宽度必须写回偏好")
+                .isEqualTo(expected);
+    }
+
     @Test
     void themeToggles(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();

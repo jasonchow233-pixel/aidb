@@ -147,19 +147,24 @@
     -fx-font-size: 11px;
 }
 
-.adb-appbar__connection-dot {
+/* ⭐ UX-5：状态点必须写成**两类后代选择器**（特异性 0,2,0）。
+ * 单类时它排在 `.adb-icon--filled`（同 0,1,0，且在后）**前面** → JavaFX
+ * 「同特异性后写胜」，通用图标的 text-secondary 把三种状态色全顶掉：
+ * 实测「已连接」时计算出来是 #64748B —— 这颗点从来没绿过（同一个坑见
+ * §S-7 的品牌 mark）。门禁读的是计算值，改回单类立刻红。 */
+.adb-appbar__connection .adb-appbar__connection-dot {
     -fx-fill: -adb-text-muted;
 }
 
-.adb-appbar__connection-dot--online {
+.adb-appbar__connection .adb-appbar__connection-dot--online {
     -fx-fill: -adb-success;
 }
 
-.adb-appbar__connection-dot--offline {
+.adb-appbar__connection .adb-appbar__connection-dot--offline {
     -fx-fill: -adb-text-muted;
 }
 
-.adb-appbar__connection-dot--error {
+.adb-appbar__connection .adb-appbar__connection-dot--error {
     -fx-fill: -adb-error;
 }
 
@@ -376,10 +381,17 @@
     -fx-effect: dropshadow(gaussian, -adb-border-focus, 4, 0, 0, 0);
 }
 
-/* 树与表格的选中焦点：JavaFX 把焦点画在控件上，这里补一圈可见边框 */
+/* ⭐ UX-5：焦点格改用淡底，**不再画蓝边 + 光晕**。
+   两个原因：
+   ① 容器已经有一圈焦点环（.tree-view:focused），格子里再画一圈等于
+      「框中框」，一整列蓝边互相贴着，看起来像坏了；
+   ② 蓝边压在 bg-selected 上是两种语言叠一起 —— Navicat 的树只有
+      「选中 = 浅底」和「光标 = 浅底」，没有第二层描边。
+   留一条 :focused 规则而不是删掉：它是「键盘光标所在格」唯一的反馈，
+   且必须排在 :selected **前面**（同为 0,3,0，后写胜 —— 选中格要的是
+   选中底 + accent 左条，不是这个更淡的底色）。 */
 .adb-object-tree .tree-cell:focused {
-    -fx-border-color: -adb-border-focus;
-    -fx-effect: dropshadow(gaussian, -adb-border-focus, 3, 0, 0, 0);
+    -fx-background-color: -adb-bg-active;
 }
 
 /* ⭐ UX-4：当前格（键盘光标）用**内描边 + 淡底**，不再用外发光。
@@ -594,21 +606,33 @@
     -fx-padding: 0px;
 }
 
-.adb-object-tree > .virtual-flow > .clipped-container > .sheet > .tree-cell {
+/* ⭐ UX-5：选择器从 `.adb-object-tree > .virtual-flow > .clipped-container > .sheet > .tree-cell`
+   （5 类 = 特异性 0,5,0）降到 `.adb-object-tree .tree-cell`（0,2,0）。
+   原来那条把**所有**状态规则都压死了：`:hover`(0,3,0)、`:selected`(0,3,0)、
+   `.adb-tree-cell--current`(0,4,0) 全都赢不过它 —— 实测选中格的计算底色是**透明**，
+   侧栏既没有悬停反馈也没有选中填充，「点了没反应」。
+   同一条链上的后代单元格本来就只有这一种，缩短选择器不改变命中集合。
+   ⭐ 左槽 2px 由基础规则**常留**（透明），选中只换颜色不改宽度（UX-4 的规矩：
+   改宽度会让文字在选中瞬间左右跳一次）。 */
+.adb-object-tree .tree-cell {
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-primary;
     -fx-padding: 0px 4px;
     /* ⭐ Navicat 的树是**满行高亮**而不是圆角胶囊：一列对象扫下来，
          圆角块会把行与行切断，看不出「同属一张表」的层级。 */
     -fx-background-radius: 0px;
+    -fx-border-color: transparent;
+    -fx-border-width: 0 0 0 2;
 }
 
 .adb-object-tree .tree-cell:hover {
     -fx-background-color: -adb-bg-hover;
 }
 
+/* ⭐ UX-5：侧栏选中与网格选中同一套语言 —— bg-selected 填充 + 左侧 2px accent 强调条。 */
 .adb-object-tree .tree-cell:selected {
     -fx-background-color: -adb-bg-selected;
+    -fx-border-color: -adb-accent transparent transparent transparent;
 }
 
 /* 选中时名字不要跟着变蓝 —— Navicat 是「浅蓝底 + 黑字」，
@@ -654,6 +678,24 @@
 
 .adb-tree__icon--connection {
     -fx-stroke: -adb-text-secondary;
+}
+
+/* ⭐ UX-5：连接节点的存活点（绿=已连上，灰=没连）。
+ * 与应用栏胶囊那颗点同一套令牌 —— 同一个事实不该有两种颜色：
+ * 顶栏说「已连接」、侧栏说「没连接」，用户只会挑一个不信。
+ * ⚠️ 两类选择器（0,2,0）：点是 Icons 的**实心**图标，自带 `.adb-icon--filled`
+ *    （单类，只靠「谁排在后面」取胜 —— 应用栏那颗点就是这么从来没绿过的）。
+ * ⚠️ 用 -fx-**fill**：DOT 是实心圆（矢量 fill 路径），给它写 -fx-stroke 是无效的。 */
+.adb-object-tree .adb-tree__dot {
+    -fx-fill: -adb-text-muted;
+}
+
+.adb-object-tree .adb-tree__dot--online {
+    -fx-fill: -adb-success;
+}
+
+.adb-object-tree .adb-tree__dot--offline {
+    -fx-fill: -adb-text-muted;
 }
 
 /* ── U1：catalog（数据库）节点 ─────────────────────────────────────
@@ -2709,6 +2751,32 @@
 
 .adb-status__transaction {
     -fx-text-fill: -adb-text-secondary;
+}
+
+/* ── UX-5-D：当前语句 / 最后刷新 ───────────────────────────────────────
+ * ⚠️ 选择器带两级祖先（特异性 0,3,0）而不是只写一个类：基线规则
+ *    `.adb-statusbar .label`（0,2,0）会盖住**所有单类**分段规则。
+ *    变异实测：把下面两条改回单类，计算值立刻从三级 #5F6E82 退回二级 #64748B，
+ *    门禁（StatusBarTest 读的就是计算值）两条同时红 —— 也就是说上面那批
+ *    `.adb-status__connection / __range / __duration / __version …` 的 text-fill
+ *    **从未生效过**，整条状态栏一直是清一色二级灰。那批死规则归
+ *    「状态栏文字层级」专项（见 `NAVICAT-TODO.md` §34），本批只保证新加的两段真有效。
+ * ───────────────────────────────────────────────────────────────────── */
+
+/* 语句是等宽内容，与界面文字用不同字族；颜色走三级（它是参考信息，不是结论）。
+   可点击复制 → hover 升到正文色，配合 HAND 光标与 tooltip 说明「点得动」。 */
+.adb-statusbar .adb-statusbar__left .adb-status__sql {
+    -fx-text-fill: -adb-text-tertiary;
+    -fx-font-family: "SF Mono", "Menlo", "Consolas", monospace;
+}
+
+.adb-statusbar .adb-statusbar__left .adb-status__sql:hover {
+    -fx-text-fill: -adb-text-primary;
+}
+
+/* 最后刷新与耗时同一档：都是「这屏信息有多新」的参考值。 */
+.adb-statusbar .adb-statusbar__right .adb-status__refreshed {
+    -fx-text-fill: -adb-text-tertiary;
 }
 
 /* ── 数据页的跳页输入框与行号列 ─────────────────────────────────────── */

@@ -245,8 +245,8 @@ public final class Tokens {
     public static final int W_SIDEBAR_MIN_LIGHT = 200;
 
     /** w-sidebar (size) */
-    public static final int W_SIDEBAR_DARK = 250;
-    public static final int W_SIDEBAR_LIGHT = 250;
+    public static final int W_SIDEBAR_DARK = 260;
+    public static final int W_SIDEBAR_LIGHT = 260;
 
     /** w-sidebar-max (size) */
     public static final int W_SIDEBAR_MAX_DARK = 360;

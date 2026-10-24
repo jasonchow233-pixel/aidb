@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（12 张）。
+# 重拍 docs/screenshots/ 的验收截图（13 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 11 张 + 暗色 1 张）
+#   ./scripts/shots.sh              # 全部重拍（亮色 12 张 + 暗色 1 张）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
 #
 # 为什么需要这个脚本（NAVICAT-TODO.md §12.2 记录的坑，全部在这里被绕开）：
@@ -43,6 +43,9 @@ SHOTS=(
   "p0-shell||2500|ADB_THEME_FORCE=light"
   "p2-users||5000|ADB_OPEN=users ADB_THEME_FORCE=light"
   "p2-details||7000|ADB_OPEN=users ADB_DETAILS=1 ADB_THEME_FORCE=light"
+  # ⭐ UX-5-F：唯一拍到「交互态」的一帧 —— 选中行 + 光标格 + 抽屉编辑器。
+  #   ADB_CELL=1 让数据页自己摆状态，点击真按「编辑」按钮进入编辑态。
+  "p2-cell|data-details-edit|9000|ADB_OPEN=users ADB_CELL=1 ADB_THEME_FORCE=light"
   "p6-tables||5000|ADB_TABLES=1 ADB_THEME_FORCE=light"
   "p6-tables-grid||5000|ADB_TABLES=1 ADB_TABLE_VIEW=grid ADB_THEME_FORCE=light"
   "p3-query||6000|ADB_QUERY=1 ADB_THEME_FORCE=light"

@@ -882,6 +882,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
             feedback.status("查询失败：" + readable(result.error()));
             feedback.range("—");
             feedback.duration(result.durationMs());
+            // ⭐ UX-5-D：失败时更要给出语句（拿去改正是用户下一步要做的事），
+            //    但**不推进刷新时刻** —— 这一轮没有取到任何新数据。
+            feedback.sql(result.executedText());
         } else {
             long rows = result.results().stream().mapToLong(ExecutionResult::rowCount).sum();
             range.setText(rows + " 行");
@@ -891,6 +894,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
             feedback.status(status.getText());
             feedback.range(rows + " 行");
             feedback.duration(result.durationMs());
+            // ⭐ UX-5-D：状态栏给出「跑的是哪条、这屏结果是什么时候落地的」。
+            feedback.sql(result.executedText());
+            feedback.refreshedAt(System.currentTimeMillis());
             if (!explainPlan) {
                 history.add(result.executedText());
                 refreshHistory();

@@ -37,8 +37,8 @@
 > **第十四轮已完成 U1 ✅ catalog 树**（MySQL 多库：虚拟连接 + 对象树库一层 + 双击切库）。
 > **第十五轮已完成 Q5 ✅ 结果分页 + V-9 ✅ 表格规格统一**（服务端分页 + 翻页条 + 列类型条，与数据页 record-nav / 类型行同一套视觉）。
 > **U-B6 功能补齐层已全部收官**（G1–G7 / Q5 / Q6 / U1–U6 全部 ✅）。
-> **下一动作 = §34 / UX-5（侧栏 / 标签 / 状态栏）**；
-> UX-0 / UX-1 / UX-2 / UX-3 / UX-4 / S-7 已完成（截图可复现 + 令牌收敛 + 四档密度与 chrome 收薄 + 工具条动作可发现性 + 网格交互 + 品牌落点），`declarations` 已删除（当前基线 754/97），
+> **下一动作 = §34.3 / P2-1（表清单列宽记忆 + 长注释 Tooltip + `sizeText` 补 GB）**；
+> UX-0 / UX-1 / UX-2 / UX-3 / UX-4 / S-7 / **UX-5** 已完成（截图可复现 + 令牌收敛 + 四档密度与 chrome 收薄 + 工具条动作可发现性 + 网格交互 + 品牌落点 + 侧栏/标签/状态栏同一套语义），`declarations` 已删除（当前基线 **773/100**，截图 **13 张**），
 > P2/P5/P6 的批次已全部裁定（同意做），排在其后。
 > 详见 §34 与 `docs/UI-ROADMAP.md` §12。
 >
@@ -2451,9 +2451,10 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
   放在 `@Start` 里等于阻塞 FX 线程，而加载结果恰恰要靠 FX 线程派发 → **死锁 → 超时**。等表格加载完必须放 `@BeforeEach`。
   另外变异脚本**必须先删旧报告再跑** —— 一次改坏 `sed` 没落上、编译又失败时，
   surefire 目录里留着上一轮的报告，看起来「跑了且绿」，实际什么都没测。
-- **已知缺口（不藏着）**：选中态、光标环、抽屉编辑器都是**交互态**，`scripts/shots.sh` 那 12 帧里没有一帧覆盖
-  （`p2-users` 只拍到竖线 / `(NULL)` / 行操作条）。目前靠 `SelectionStateTest` 的算色与坐标断言兜底；
-  补一帧需要给 `AppShell` 加一个 `ADB_CELL` 之类的启动开关（`ADB_DETAILS` / `ADB_NEW_TABLE` 同一形态），归 UX-5 一起做。
+- ~~**已知缺口（不藏着）**：选中态、光标环、抽屉编辑器都是**交互态**，`scripts/shots.sh` 那 12 帧里没有一帧覆盖~~
+  → **已在 UX-5-F 闭掉**（2026-10-24）：新增启动开关 `ADB_CELL` + 帧 `p2-cell`，
+  三个交互态在同一格上叠着拍（选中强调条 / 光标左右两条蓝边 / 抽屉「编辑中」+ 应用·取消），
+  并配两条门禁守「这一帧还在」与「开关真被读」。详见 §34.2 UX-5。
 
 
 #### S-7 · 欢迎页裁定 —— ✅ 已完成（2026-10-24 · 裁定＝**接 + 删**）
@@ -2510,14 +2511,66 @@ S-5 当年拍不到的那条缺口就此闭掉）。⚠️ 第一套 12 张拍�
 一颗看不见的星，已作废重拍；裁剪放大（`/tmp/Crop.java`）在 `p0-shell` 与 `p5-dark` 上分别核对
 亮/暗两套主题下字形确实是 `text-inverse`。
 
-#### UX-5 · 侧栏 / 标签 / 状态栏（M）
+#### UX-5 · 侧栏 / 标签 / 状态栏 —— ✅ 已完成（2026-10-24 · 六项全落 + 一条新缺口）
 
-- [ ] 侧栏连接/库/表选中改 tint 填充（与网格同一套令牌）
-- [ ] 连接节点显示已连接绿点 / 未连接灰点
-- [ ] 多连接或重名时标签显示 `表名 @连接`，tooltip 给全名
-- [ ] 状态栏左显当前 SQL（截断、点击复制），右显最后刷新相对时间
-- [ ] 侧栏默认宽 260 并持久化
-- [ ] `SideBarTreeTest` / `TabBarTest` / `StatusBarTest` 扩用例
+> 这一批是「**同一套语义只说一次**」的收口：侧栏选中、网格选中、状态栏信息、标签标题，
+> 以前各说各话（树用蓝晕、网格用强调条；顶栏说「已连接」、侧栏不说；标签重名分不出归属）。
+
+| # | 项 | 改动 | 落点 |
+|---|---|---|---|
+| A | 侧栏选中 | 树格选择器从 `.adb-object-tree > .virtual-flow > .clipped-container > .sheet > .tree-cell`（**0,5,0**）降到 `.adb-object-tree .tree-cell`（0,2,0）—— 原来那条把 `:hover` / `:selected` / `--current` 全压死，实测选中格计算底色是**透明**，「点了没反应」；选中改 `bg-selected` 填充 + 左 2px `accent` 强调条（**与网格同一套令牌**），左槽由基础规则常留（只换色不改宽度）；焦点格**去掉蓝边 + 光晕**改淡底 `bg-active`（容器已有焦点环，格子里再画一圈是「框中框」），且 `:focused` 必须排在 `:selected` **之前**（同为 0,3,0，后写胜） | `app.css` 树段 / `SidebarSelectionTest` |
+| B | 连接存活点 | 连接节点画一颗 `DOT` 实心点：绿 `success`＝已连上、灰 `text-muted`＝未连；判据由 `AppShell` 注入（`setConnectionLiveness`），**按连接取**且折叠 catalog 变体（MySQL 一连接多库只算一颗点）；无判据时**不画点**（不拿「没信息」冒充「未连接」）；`accessibleText` 给「已连接 / 未连接」 | `SideBar` / `AppShell` / `SideBarLivenessDotTest` |
+| C | 标签重名 | 标题重名时改画 `表名 @连接名`，**每个标签的 tooltip 永远给全名**；连接名走 `setConnectionLabels`（拿档案里的显示名，不是 id）；关掉一个重名标签后**自动退回**朴素标题 | `TabBar.refreshTitles()` / `TabBarTest` |
+| D | 状态栏两段 | 左段**当前语句**：压成一行显示（`replaceAll("\\s+"," ")`）+ `maxWidth 240` + `ELLIPSIS`（**渲染层截断，复制的是原文**）、tooltip 给完整语句 + 「点击复制」、点一下把**原始语句**写进系统剪贴板并回一句「已复制当前语句」、`HAND` 光标；右段**最后刷新**：相对时间「刚刚 / N 分钟前 / N 小时前 / N 天前」，自带 30s `Timeline` 自己 repaint，时钟可注入（`setClockForTest`）。⚠️ 诚实性：查询**失败**只推语句、**不推进刷新时刻**；换到非数据/查询页签两段一起收起（连分隔条），不摆「—」占位 | `StatusBar` / `DataGridPage` / `QueryPage` / `AppShell.pageFeedback()` / `StatusBarTest` |
+| E | 侧栏默认宽 | `w-sidebar` 250 → **260**（200px 表名 + 图标 + 收藏星在 250 下挤掉末字）；持久化本来就有，补两条门禁钉住「**上次宽度赢过令牌默认**」与「**双击分隔条复位并落盘**」 | `tokens.json` / `Tokens.java` / `AppShellTest` |
+| F | 交互态那一帧 | ⭐ 闭掉 UX-4 留的缺口：新增启动开关 `ADB_CELL=1`（`adb.cell`）→ `poseGridCellWhenReady` 轮询等行灌进来，调 `DataGridPage.poseInteractionStates(1, "name")` 把**选中行 + 光标格 + 详情抽屉**三个交互态一次摆出来，脚本再 `ADB_SHOTS_CLICK=data-details-edit` **真点**「编辑」进入编辑态 → 新帧 `p2-cell`（截图 12 → **13 张**）。⚠️ 两个刻意的选择：① 光标走 `focusModel.focus(..)` 而不是直接糊样式类 —— 摆的必须是真路径，否则「截图好看」和「键盘真有光标」会脱钩；② 列选 `name` 不选 `bio` —— 抽屉浮在右侧 480px，光标格落在它底下就**拍不到要拍的东西**（第一版实拍就是这样，已改） | `AppShell` / `DataGridPage` / `scripts/shots.sh` / `SelectionStateTest` / `ScreenshotScriptAuditTest` |
+
+**门禁**（净 **+19 条 / +3 类** → 基线 **754 → 773 / 100 / 0 失败 / 44 跳过**）：
+`SidebarSelectionTest` 3（新）· `SideBarLivenessDotTest` 3（新）· `TabBarTest` 3（新）·
+`StatusBarTest` +3（语句段 / 点击复制 / 相对时间）· `AppShellTest` +3（存活点接线 / 持久化宽度 / 双击复位）·
+`AppBarTest` +1（点真的绿：读**计算后**的 `-fx-fill`）· `SelectionStateTest` +1（摆帧三态落地）·
+`ScreenshotScriptAuditTest` +2（有这一帧 + 帧里每个 `ADB_*` 开关主源码真读了）。
+
+**⭐ 顺带改坏一条老门禁（必须记）**：UX-4 的
+`theCursorUsesALiveSelectorAndTheTreeKeepsItsGlow` 断言「树的焦点**仍用发光**」，
+而本批 A 项把发光换成了淡底 —— 该门禁**全量构建里直接红**。改成
+`theGridCursorIsLiveAndTheTreeCursorIsAFill`：不只翻断言，还补上 A 项真正的不变量
+（`:focused` 不得再写 `-fx-border-color` / `dropshadow`，且必须排在 `:selected` 之前）。
+ **教训**：本轮先前那次「13 类批量核对」是**按我改了什么挑的类**，没跑全量 ——
+`SelectionStateTest` 不在里面，所以这条红一直藏着。**改 CSS 语义 = 全量构建的活**（同 §S-7 教训②）。
+
+**变异验证（8 条，逐条改坏→红→改回→绿）**：
+
+| 变异 | 红的门禁 |
+|---|---|
+| M1 `poseInteractionStates` 里删 `focusModel.focus(..)` | `theScreenshotPoseLightsUp…`（光标类没了） |
+| M2 删 `selectionModel.select(at)` | 同上（选中断言红） |
+| M3 删 `showDetails(..)` | 同上（抽屉不开） |
+| M4 列不存在时也 `return true` | 同上（诚实 no-op 那条红：「摆不出完整状态就不能装作摆好了」） |
+| M5 `shots.sh` 删掉 `p2-cell` 那一行 | `interactionStatesHaveTheirOwnFrame` |
+| M6 删掉 `AppShell` 里读 `ADB_CELL` 的那个 `if` | `everyEnvSwitchUsedByTheScriptIsActuallyReadByTheUi`（**开关写了没人读**＝这一帧静默拍成默认界面） |
+| M7 树的 `:focused` 改回蓝边 + 光晕 | `theGridCursorIsLiveAndTheTreeCursorIsAFill` |
+| M8 把树的 `:focused` 整块删掉 | 同上（找不到选择器 / 顺序断言红） |
+
+> ⚠️ **本轮最贵的脚手架坑（差点交出八条假变异）**：这台机器的 `python` / `python3` 是
+> **Microsoft Store 的占位壳**，`python -c "print(...)"` **什么都不打印、退出码还是 0**。
+> 用它写变异脚本 → 替换根本没落上 → 门禁照常绿 → 看起来「改坏不红，门禁没用」。
+> 判据：**变异必须先 `grep` 证明改到位，再跑测试**；本仓库脚本一律用 `perl -0pi -e`（`/usr/bin/perl` 是真的）。
+> 同类的第二次确认：`sed` 单行改动能落，多行不行 —— M1/M2/M3/M7 用 `sed` 单行 + `grep -c` 核对后才可信。
+
+**⚠️ 新缺口（登记，不在本批做）——「状态栏文字层级」专项**：
+D 项写门禁时实测出来的：基线规则 `.adb-statusbar .label`（0,2,0）盖住**所有单类**分段规则，
+于是 `.adb-status__connection / __range / __duration / __version / __transaction …` 那 10 条
+`-fx-text-fill` **从未生效过**，整条状态栏一直是清一色 `text-secondary`（把新规则改回单类，
+计算值立刻从三级 `#5F6E82` 退回二级 `#64748B` —— 这是**变异实测**出来的，不是推断）。
+本批只保证新加的两段有效（写成 0,3,0），老的那批留专项：要么整条降档统一，要么按
+「结论 / 参考」分级重排，**别顺手改**（会牵动 `ContrastTest` 的配对）。
+
+**截图**：`./scripts/shots.sh` **13 张**全部重拍（`p2-cell` 为新增帧）。
+逐张 4× 裁剪核对：`p2-cell` 里第 2 行的**选中强调条 + 光标格左右两条蓝边 + 抽屉「name · 编辑中」+ 应用/取消**
+三层同时在场且互不遮挡；侧栏连接节点那颗点**是绿的**（`p2-cell` / `p5-dark` 亮暗各一次）；
+状态栏左段语句等宽三级灰、右段「刷新于 刚刚」，`p5-dark`（连接管理页）两段**正确地不出现**——
+没有摆「—」占位。⚠️ `p2-cell` 第一版拍的是 `bio` 列，光标格整个压在抽屉底下 → 作废重拍。
 
 #### UX-6 · 功能缺口（L，按序）
 

@@ -102,6 +102,24 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
         void duration(long millis);
 
+        /**
+         * ⭐ UX-5-D：这一页「当前正在看的那条语句」。
+         *
+         * <p>数据页给的是本页的分页 SQL，查询页给的是刚执行的那段文本。
+         * null / 空白 = 这一页没有语句（表清单、对象首页），状态栏整段隐藏。
+         */
+        default void sql(String statement) {
+        }
+
+        /**
+         * ⭐ UX-5-D：最后一次取数成功的时刻（epoch 毫秒）。
+         *
+         * <p>耗时回答的是「这次跑了多久」，回答不了「这屏数据多旧」。
+         * ≤0 = 还没取过数 → 状态栏整段隐藏。
+         */
+        default void refreshedAt(long epochMillis) {
+        }
+
         default void dirty(int count) {
         }
 
@@ -372,6 +390,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private boolean transpose;
     private EditSqlBuilder.Plan saveUndoPlan;
     private String lastSql = "";
+    /** ⭐ UX-5-D：最后一次取数成功的时刻（epoch 毫秒）；-1 = 还没取过。 */
+    private long lastRefreshedAt = -1;
     /** ⭐ 最近一次复制出去的文本。headless 下单测读不回系统剪贴板，门禁断言这个。 */
     private String lastCopiedText = "";
     private List<Map<String, Object>> pageRows = List.of();
@@ -1767,6 +1787,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         updateViewControls();
         feedback.range(rangeText());
         feedback.duration(result.elapsedMs);
+        // ⭐ UX-5-D：状态栏要说清「这屏数据是哪条语句取来的、什么时候取的」。
+        //    时刻取结果落到界面的这一刻 —— 用户感知的「刷新完成」就是这一瞬，
+        //    不是后台线程里查询返回的那一毫秒。
+        lastRefreshedAt = System.currentTimeMillis();
+        feedback.sql(lastSql);
+        feedback.refreshedAt(lastRefreshedAt);
         // ⭐ 结果被硬上限截断时必须说出来。数据页平时不会截断（分页 + COUNT 已知总数），
         //    但只要发生了，用户看到的就不是完整数据 —— 静默丢数据是正确性问题。
         boolean truncated = result.page.rowsTruncated();
@@ -1823,6 +1849,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         }
         feedback.range(rangeText());
         feedback.duration(lastElapsedMs);
+        // ⭐ UX-5-D：语句与刷新时刻也要跟着回来 ——
+        //    在表清单那一类「没有语句」的标签上停留时状态栏会清空，切回来不能还是空的。
+        feedback.sql(lastSql);
+        feedback.refreshedAt(lastRefreshedAt);
         feedback.dirty(editBuffer.dirtyCount());
         updateEditControls();
         feedback.status("已激活：" + tableName + " · " + lastRowCount + " 行");
@@ -3990,6 +4020,51 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         applyFilter(condition);
         feedback.status((exclude ? "排除 " : "筛选 ") + definition.name() + " = "
                 + CellValueParser.display(value));
+    }
+
+    /**
+     * ⭐ UX-5-F：把「选中这一行 + 光标落在这一格 + 打开这格的详情抽屉」三个交互态一次摆出来。
+     *
+     * <p>为什么需要它：这三个状态只有真的点下去才出现，而截图脚本只能靠启动开关开页、
+     * 靠 {@code ADB_SHOTS_CLICK} 点一个 id —— 没有「点进某一行某一格」这条路径，
+     * 于是 {@code shots.sh} 的帧里<b>一帧都没拍到</b>选中态、光标环和抽屉
+     * （{@code p2-users} 只拍到竖线和 {@code (NULL)}）。
+     * 「全绿的门禁 + 从没被看见的界面」正是 UX-4 那颗灰星漏掉的形状。
+     *
+     * <p>⚠️ 摆状态必须走**真路径**，不许直接糊样式类：
+     * <ul>
+     *   <li>光标经 {@code focusModel.focus(..)} → 由 {@link #bindFocusCursor} 的监听自己标格子；
+     *       直接 {@code add("adb-grid__cell--cursor")} 的话，截图好看和键盘真有光标
+     *       就成了两件互不相干的事；</li>
+     *   <li>抽屉经 {@link #showDetails} —— 和右键菜单「查看详情」是同一个方法。</li>
+     * </ul>
+     *
+     * @param columnName 列名（表结构里的名字，不是界面标题）；行越界会夹到边界行
+     * @return 是否摆出来了。数据还没灌进来、列不存在或列被隐藏 → false，
+     *         调用方自己决定重试还是放弃，绝不静默摆出一个半套状态。
+     */
+    public boolean poseInteractionStates(int row, String columnName) {
+        List<Map<String, Object>> items = grid.getItems();
+        if (items.isEmpty() || columnName == null) {
+            return false;
+        }
+        TableColumn<Map<String, Object>, Object> column = columnByDefinition.get(columnName);
+        if (column == null || !column.isVisible()) {
+            return false;
+        }
+        ColumnDef definition = tableSchema == null ? null : tableSchema.columns().stream()
+                .filter(candidate -> candidate.name().equals(columnName))
+                .findFirst().orElse(null);
+        if (definition == null) {
+            return false;
+        }
+        int at = Math.max(0, Math.min(items.size() - 1, row));
+        grid.getSelectionModel().clearSelection();
+        grid.getSelectionModel().select(at);
+        grid.scrollTo(at);
+        grid.getFocusModel().focus(at, column);
+        showDetails(items.get(at), definition);
+        return true;
     }
 
     /** 打开详情抽屉；测试与右键菜单共用。 */

@@ -10,6 +10,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SeparatorMenuItem;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.shape.SVGPath;
 import javafx.scene.layout.Priority;
@@ -18,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /** 标签栏：每个标签独立状态，关闭有脏改动时由上层确认。 */
@@ -27,6 +29,10 @@ public final class TabBar extends HBox {
     private final HBox tabs = new HBox();
     private final Map<String, TabItem> items = new LinkedHashMap<>();
     private final Map<String, Node> nodes = new LinkedHashMap<>();
+    /** 每个标签的标题节点（重名时要改写，所以得能单独找到）。 */
+    private final Map<String, Label> titles = new LinkedHashMap<>();
+    /** 每个标签的全名提示（HBox 没有 setTooltip，只能用 Tooltip.install 挂）。 */
+    private final Map<String, Tooltip> tooltips = new LinkedHashMap<>();
 
     private String activeId;
     /** ⭐ S5：常驻标签（「对象」首页）—— 不可关闭，永远排第一。 */
@@ -35,6 +41,14 @@ public final class TabBar extends HBox {
     private Consumer<TabItem> onActivate = tab -> { };
     private Consumer<TabItem> onClose = tab -> { };
     private Predicate<TabItem> closeGuard = tab -> true;
+    /**
+     * ⭐ UX-5：连接 id → 给人看的连接名。
+     *
+     * <p>标签自己只认识 {@code pg} 这种 id，把 id 直接写进标题等于没写
+     * （「users @ pg」对用户毫无信息量）。名字只有外壳知道，所以由它注入；
+     * 没注入时退回 id —— 至少不骗人。
+     */
+    private Function<String, String> connectionLabel = id -> id;
 
     public TabBar(ActionRegistry actions) {
         this.actions = actions;
@@ -80,6 +94,57 @@ public final class TabBar extends HBox {
         this.closeGuard = closeGuard == null ? tab -> true : closeGuard;
     }
 
+    /**
+     * ⭐ UX-5：注入「连接 id → 连接名」（外壳才有档案名字）。
+     *
+     * <p>顺带重写一次标题：档案改名后，重名标签的后缀必须跟着变。
+     */
+    public void setConnectionLabels(Function<String, String> connectionLabel) {
+        this.connectionLabel = connectionLabel == null ? id -> id : connectionLabel;
+        refreshTitles();
+    }
+
+    /**
+     * ⭐ UX-5：重名标签加连接后缀，每个标签都挂上「全名」提示。
+     *
+     * <p>多连接之下两张 {@code users} 表并排站着，标题一模一样 —— 点哪个
+     * 全凭猜。Navicat 的做法是给**重名的那几个**都补上连接名（不是只补后来的，
+     * 否则先开的那张看起来像「本尊」，另一个像副本，而它们完全平权）。
+     * 不重名时保持干净标题，全名进 tooltip。
+     */
+    private void refreshTitles() {
+        Map<String, Integer> counted = new LinkedHashMap<>();
+        for (TabItem tab : items.values()) {
+            counted.merge(tab.title(), 1, Integer::sum);
+        }
+        for (TabItem tab : items.values()) {
+            Label title = titles.get(tab.id());
+            if (title == null) {
+                continue;
+            }
+            boolean duplicated = counted.getOrDefault(tab.title(), 1) > 1;
+            title.setText(duplicated ? qualified(tab) : tab.title());
+            // tooltip **永远**给全名：不重名不代表不用告诉用户这张表在哪个库。
+            // ⚠️ 标签是 HBox（不是 Control），没有 setTooltip —— 用静态的
+            //    Tooltip.install(node, tooltip)，它接受任意 Node。
+            Tooltip tooltip = tooltips.get(tab.id());
+            if (tooltip != null) {
+                tooltip.setText(qualified(tab));
+            }
+        }
+    }
+
+    /** 带连接名的全名；没有归属连接（设置页这类全局标签）就只给标题。 */
+    private String qualified(TabItem tab) {
+        String connectionId = tab.connectionId();
+        if (connectionId == null || connectionId.isBlank()) {
+            return tab.title();
+        }
+        String label = connectionLabel.apply(connectionId);
+        // 解析不出名字（档案已删）时宁可显示 id，也不冒充「未知连接」。
+        return tab.title() + " @ " + (label == null || label.isBlank() ? connectionId : label);
+    }
+
     public List<TabItem> openTabs() {
         return List.copyOf(items.values());
     }
@@ -97,6 +162,7 @@ public final class TabBar extends HBox {
         Node node = buildTab(tab);
         nodes.put(tab.id(), node);
         tabs.getChildren().add(node);
+        refreshTitles();
         setVisible(true);
         setManaged(true);
         activate(tab.id());
@@ -118,6 +184,7 @@ public final class TabBar extends HBox {
         Node node = buildTab(tab);
         nodes.put(tab.id(), node);
         tabs.getChildren().add(0, node);
+        refreshTitles();
         setVisible(true);
         setManaged(true);
         // ⭐ 常驻标签就是**默认落点** —— 启动时它应该是活动标签
@@ -192,9 +259,14 @@ public final class TabBar extends HBox {
         }
         items.remove(id);
         Node node = nodes.remove(id);
+        titles.remove(id);
+        tooltips.remove(id);
         if (node != null) {
             tabs.getChildren().remove(node);
         }
+        // ⭐ UX-5：关掉一张重名表，剩下那张必须**退回干净标题** ——
+        //    留着「users @ 生产库」是在告诉用户「还有一个同名的人」，而那人已经走了。
+        refreshTitles();
 
         if (id.equals(activeId)) {
             activeId = null;
@@ -255,6 +327,18 @@ public final class TabBar extends HBox {
         return lastContextMenu;
     }
 
+    /**
+     * 供门禁读取的全名提示文本。
+     *
+     * <p>{@code Tooltip.install(node, tooltip)} 挂在节点上但**取不回实例**
+     * （Node 没有 getTooltip），所以这里留一个包级读数口 —— 断言测的是
+     * 「用户停上去会看到什么」，不是「map 里有没有东西」。
+     */
+    String tooltipTextForTest(String tabId) {
+        Tooltip tooltip = tooltips.get(tabId);
+        return tooltip == null ? null : tooltip.getText();
+    }
+
     private Node buildTab(TabItem tab) {
         // ⭐ 矢量图标（16×16）；标签栏是用户一直在看的地方，不能靠 Unicode 符号的字形运气。
         SVGPath icon = Icons.of(tab.kind().icon(), Icons.SIZE_LABEL);
@@ -262,6 +346,9 @@ public final class TabBar extends HBox {
 
         Label title = new Label(tab.title());
         title.getStyleClass().add("adb-tab__title");
+        // ⭐ UX-5：留着节点 —— 重名判定变了要改写标题（只改 TabItem 的标题没用，
+        //    页面工厂靠 target 取数据，标题是给人看的）。
+        titles.put(tab.id(), title);
 
         Label dirty = new Label();
         dirty.getStyleClass().add("adb-tab__dirty");
@@ -290,6 +377,11 @@ public final class TabBar extends HBox {
         node.getStyleClass().add("adb-tab");
         // 给标签节点一个 id —— 门禁要能按 id 找到某个标签（常驻标签尤其需要）。
         node.setId(nodeId(tab.id()));
+        // ⭐ UX-5：全名提示（重名时标题带连接名，不重名时标题只有表名 ——
+        //    但「这张表在哪个库」永远值得鼠标停上去就能看到）。
+        Tooltip tooltip = new Tooltip(tab.title());
+        tooltips.put(tab.id(), tooltip);
+        Tooltip.install(node, tooltip);
         node.setAlignment(Pos.CENTER_LEFT);
         node.setOnMouseClicked(event -> {
             if (event.getButton() == javafx.scene.input.MouseButton.MIDDLE) {

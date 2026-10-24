@@ -171,6 +171,9 @@ public final class AppShell extends StackPane {
         this.sideBar.setOnLoadObjects(this::loadObjectsFor);
         // ⭐ S-3：展开表节点时才读它的列（懒加载，见 loadColumnsFor）。
         this.sideBar.setOnLoadColumns(this::loadColumnsFor);
+        // ⭐ UX-5：连接节点的存活点。**判据只能来自 SessionManager** ——
+        //    侧栏没有会话，它自己判断就是第二套真相；外壳也不许替它编一个。
+        this.sideBar.setConnectionLiveness(this::isConnectionAlive);
         // ⭐ §6：右侧详情面板。数据必须由外壳提供 —— 它才认识会话、
         //    执行器和 SchemaService；面板自己一个数据库概念都没有，
         //    于是「不编造数据」这条规则在类型上就成立了。
@@ -390,6 +393,22 @@ public final class AppShell extends StackPane {
         });
     }
 
+    /** 截图用：等 users 网格真的把行灌进来，再摆出选中 / 光标 / 抽屉三个交互态。 */
+    private void poseGridCellWhenReady(int attempt) {
+        Platform.runLater(() -> {
+            // 摆不出来 = 页签还没建 / 行还没灌进来（数据页是异步加载的），继续等。
+            // ⚠️ 列选 name 而不是 bio：抽屉浮在网格右侧约 480px，光标格要是落在
+            //    抽屉底下（bio 本来就得横向滚才看得见），这一帧就拍不到它要拍的东西。
+            DataGridPage grid = workspace.activeGrid();
+            if (grid != null && grid.poseInteractionStates(1, "name")) {
+                return;
+            }
+            if (attempt < POP_READY_MAX_POLLS) {
+                pollAgain(attempt, () -> poseGridCellWhenReady(attempt + 1));
+            }
+        });
+    }
+
     /** 表清单动作的统一入口：没有打开的清单页时给一句人话，不静默 no-op。 */
     private void withActiveTableList(java.util.function.Consumer<TableListPage> action) {
         if (activeTableListPage == null) {
@@ -482,11 +501,34 @@ public final class AppShell extends StackPane {
                     activeProfile == null ? "demo" : activeProfile.id());
         }
         sideBar.setConnections(connections);
+        // ⭐ UX-5：标签重名要补连接名 —— 档案名字只有外壳知道。
+        //    放在这里（而不是构造时一次注入）：连接**改名**后标题里的后缀也得跟着变。
+        tabBar.setConnectionLabels(id -> {
+            ConnectionProfile profile = profileById(id);
+            return profile == null ? id : profile.name();
+        });
     }
 
     private ConnectionProfile profileById(String id) {
         ConnectionProfile saved = profilesById.get(id);
         return saved != null ? saved : catalogVariants.get(id);
+    }
+
+    /**
+     * ⭐ UX-5：这个连接现在有没有活的会话（侧栏存活点的判据）。
+     *
+     * <p>catalog 虚拟连接（{@code 父id@库名}）算在**父连接**头上：切库重连时
+     * 父 id 上没有会话，只认父 id 会把「正在用的那个连接」画成灰色。
+     */
+    private boolean isConnectionAlive(String id) {
+        if (id == null) {
+            return false;
+        }
+        if (sessions.isOpen(id)) {
+            return true;
+        }
+        String prefix = id + ConnectionProfile.CATALOG_VARIANT_SEPARATOR;
+        return sessions.openIds().stream().anyMatch(open -> open.startsWith(prefix));
     }
 
     /** 激活一个连接：打开（或复用）会话、读取对象树、同步侧栏与工具栏。 */
@@ -649,6 +691,7 @@ public final class AppShell extends StackPane {
             if (appBar != null) {
                 appBar.setConnectionState(false, true);
             }
+            sideBar.refreshConnectionLiveness();
         }
     }
 
@@ -694,6 +737,7 @@ public final class AppShell extends StackPane {
                     if (appBar != null) {
                         appBar.setConnectionState(false, true);
                     }
+                    sideBar.refreshConnectionLiveness();
                 });
                 return;
             }
@@ -997,6 +1041,7 @@ public final class AppShell extends StackPane {
                     if (appBar != null) {
                         appBar.setConnectionState(false, true);
                     }
+                    sideBar.refreshConnectionLiveness();
                 });
                 return;
             }
@@ -1179,9 +1224,16 @@ public final class AppShell extends StackPane {
         statusBar.setReadonly(true);
         statusBar.setRange("—");
         statusBar.setDuration(-1);
+        // ⭐ UX-5-D：断开后没有会话了，「当前语句 / 最后刷新」这两段必须一起收掉，
+        //    留着上一条的连接信息会让人以为还在看那批数据。
+        statusBar.setSql(null);
+        statusBar.setRefreshedAt(-1);
         if (appBar != null) {
             appBar.setConnectionState(false, false);
         }
+        // ⭐ UX-5：断开要让侧栏那颗绿点一起变灰 —— 这条路径不重建连接清单，
+        //    不重画的话「已断开」的连接会一直顶着绿点（比没有点更误导人）。
+        sideBar.refreshConnectionLiveness();
         status("已断开连接：" + activeProfile.name());
     }
 
@@ -1339,6 +1391,14 @@ public final class AppShell extends StackPane {
         if (flag("adb.ddl", "ADB_DDL")) {
             openStructure(activeProfileId(), "users");
             showDdlWhenReady(0);
+        }
+        // ⭐ 截图 / 验收（UX-5-F）：在数据页摆出「选中行 + 光标格 + 详情抽屉」三个交互态。
+        //    这三个状态只在真点下去时才出现，以前的帧里一帧都没覆盖到 ——
+        //    于是「网格改了三版」全程只有运行时坐标断言在守，画面没人看过。
+        //    数据是异步灌进来的，所以要等行就绪（与 ADB_DETAILS 的轮询同一形态）；
+        //    编辑态由脚本的 ADB_SHOTS_CLICK=data-details-edit 真点「编辑」按钮进入。
+        if (flag("adb.cell", "ADB_CELL")) {
+            poseGridCellWhenReady(0);
         }
         String initialQuery = System.getProperty("adb.query",
                 System.getenv().getOrDefault("ADB_QUERY", "")).trim();        if (!initialQuery.isEmpty()) {
@@ -2068,6 +2128,10 @@ public final class AppShell extends StackPane {
             statusBar.setDuration(-1);
             statusBar.setDirty(0);
             statusBar.setReadonly(true);
+            // ⭐ UX-5-D：这一类页面（表清单 / 对象首页 / 结构页）没有「当前语句」，
+            //    也没有取数时刻 —— 整段收掉，不能拿上一页的语句冒充这一页在看什么。
+            statusBar.setSql(null);
+            statusBar.setRefreshedAt(-1);
             if (!(tab.view() instanceof TableListPage)) {
                 statusBar.setSelection(0);
             }
@@ -2132,6 +2196,9 @@ public final class AppShell extends StackPane {
             statusBar.setRange("—");
             statusBar.setDuration(-1);
             statusBar.setDirty(0);
+            // ⭐ UX-5-D：全关光了 → 停在常驻的「对象」标签上，那里没有语句可看。
+            statusBar.setSql(null);
+            statusBar.setRefreshedAt(-1);
         }
         updateTabCloseEnabled();
         updateQueryActions();
@@ -2280,6 +2347,16 @@ public final class AppShell extends StackPane {
             @Override
             public void duration(long millis) {
                 statusBar.setDuration(millis);
+            }
+
+            @Override
+            public void sql(String statement) {
+                statusBar.setSql(statement);
+            }
+
+            @Override
+            public void refreshedAt(long epochMillis) {
+                statusBar.setRefreshedAt(epochMillis);
             }
 
             @Override

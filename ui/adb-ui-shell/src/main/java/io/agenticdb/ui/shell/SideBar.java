@@ -38,11 +38,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * 左侧对象树。节点来自 {@link SchemaService} 的真实内省结果，不再硬编码表名。
  *
- * <p>侧栏两种形态：展开 240px / 折叠 48px。折叠不是隐藏，
+ * <p>侧栏两种形态：展开 {@code w-sidebar} 令牌宽 / 折叠 48px。折叠不是隐藏，
  * 高频入口仍保留在图标栏里 —— 这是与「一键隐藏整栏」的关键差别。
  */
 public final class SideBar extends VBox {
@@ -61,6 +62,13 @@ public final class SideBar extends VBox {
      */
     private Consumer<InspectTarget> onInspect = target -> { };
     private List<ConnectionProfile> connections = List.of();
+    /**
+     * ⭐ UX-5：连接「连上了没有」的判据，由外壳注入。
+     *
+     * <p>{@code null} = 没人告诉我 —— 这时**不画状态点**。画一个灰点等于
+     * 宣称「这个连接是离线的」，而侧栏并不知道；界面不许编造状态。
+     */
+    private Predicate<String> connectionAlive;
     private List<SchemaObject> tables = List.of();
     private List<SchemaObject> views = List.of();
     /** ⭐ S3：过程 / 函数 / 触发器。 */
@@ -176,9 +184,13 @@ public final class SideBar extends VBox {
         setObjects(objects == null ? List.of() : objects, false);
 
         getStyleClass().add("adb-sidebar");
-        setPrefWidth(240);
-        setMinWidth(240);
-        setMaxWidth(240);
+        // ⭐ UX-5：宽度走 w-sidebar 令牌，不再写死 240 ——
+        //    装配后 AppShell 会用「持久化过的实际宽度」覆盖这里，
+        //    但单独构造（测试 / 预览）必须落到同一个默认值上。
+        double width = io.agenticdb.ui.Tokens.W_SIDEBAR_LIGHT;
+        setPrefWidth(width);
+        setMinWidth(width);
+        setMaxWidth(width);
 
         registerObjectActions();
         buildExpanded();
@@ -318,6 +330,26 @@ public final class SideBar extends VBox {
     /** 多连接切换：替换可选连接列表并保持当前选中项。 */
     public void setConnections(List<ConnectionProfile> connections) {
         this.connections = connections == null ? List.of() : List.copyOf(connections);
+        refreshTree();
+    }
+
+    /**
+     * ⭐ UX-5：注入连接存活判据（{@code sessions::isOpen} —— 只有 SessionManager 知道答案）。
+     *
+     * <p>侧栏自己**不判断**存活：它没有会话，任何自建判断都会变成第二套真相。
+     */
+    public void setConnectionLiveness(Predicate<String> connectionAlive) {
+        this.connectionAlive = connectionAlive;
+        refreshTree();
+    }
+
+    /**
+     * ⭐ UX-5：连接开/关之后刷新状态点。
+     *
+     * <p>点是**渲染时**取的，所以状态变了必须有人重画一次树；
+     * 否则「已断开」的连接会一直顶着绿点 —— 比没有点更糟。
+     */
+    public void refreshConnectionLiveness() {
         refreshTree();
     }
 
@@ -1567,6 +1599,18 @@ public final class SideBar extends VBox {
 
             HBox box = new HBox(6, icon, name);
             box.setAlignment(Pos.CENTER_LEFT);
+
+            // ⭐ UX-5：连接存活点（与应用栏那颗点同一套令牌：success / text-muted）。
+            //    放在图标与名字**之间**，不是名字后面 —— 长名字会把尾部的点挤出格子，
+            //    「在线/离线」恰恰是最不该看不见的那条信息。
+            if (item.kind() == NodeKind.CONNECTION && connectionAlive != null) {
+                boolean alive = connectionAlive.test(item.connectionId());
+                SVGPath dot = Icons.of(Icons.Icon.DOT, Icons.SIZE_DOT);
+                dot.getStyleClass().addAll("adb-tree__dot", alive
+                        ? "adb-tree__dot--online" : "adb-tree__dot--offline");
+                dot.setAccessibleText(alive ? "已连接" : "未连接");
+                box.getChildren().add(1, dot);
+            }
 
             // ⭐ 分组标题右侧的对象计数 —— 让用户不用展开就知道这个库里
             //    有多少张表（Navicat 也是这个形态）。

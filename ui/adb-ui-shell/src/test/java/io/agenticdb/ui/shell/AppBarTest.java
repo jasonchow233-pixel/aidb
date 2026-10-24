@@ -217,4 +217,45 @@ class AppBarTest {
                 .isNotEqualTo(javafx.scene.paint.Color.web(
                         io.agenticdb.ui.Tokens.TEXT_SECONDARY_LIGHT));
     }
+
+    /**
+     * ⭐ UX-5：应用栏那颗连接状态点，**在线时得真是绿的**。
+     *
+     * <p>侧栏加存活点时发现：{@code .adb-appbar__connection-dot--online} 写在
+     * {@code .adb-icon--filled}（486 行）**前面**、同为单类选择器 —— 同一个
+     * S-7 的坑换了个位置：层叠算下来在线/离线都是 text-secondary 灰，
+     * 那颗点从来没绿过。断言读计算值，不看 CSS 里写了什么。
+     */
+    @Test
+    void theConnectionDotTurnsGreenWhenOnline(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        onFxRun(() -> bar.setConnectionState(true, false));
+
+        assertThat(fillOf(robot, ".adb-appbar__connection-dot"))
+                .as("已连接 = success 绿；被通用 .adb-icon--filled 顶成灰，等于状态永远显示「没连上」")
+                .isEqualTo(javafx.scene.paint.Color.web(io.agenticdb.ui.Tokens.SUCCESS_LIGHT));
+
+        onFxRun(() -> bar.setConnectionState(false, false));
+        assertThat(fillOf(robot, ".adb-appbar__connection-dot"))
+                .as("断开必须是灰（text-muted），不能和在线同色")
+                .isEqualTo(javafx.scene.paint.Color.web(io.agenticdb.ui.Tokens.TEXT_MUTED_LIGHT));
+
+        onFxRun(() -> bar.setConnectionState(false, true));
+        assertThat(fillOf(robot, ".adb-appbar__connection-dot"))
+                .as("连接失败是第三种状态 —— 红（error），不能退回灰")
+                .isEqualTo(javafx.scene.paint.Color.web(io.agenticdb.ui.Tokens.ERROR_LIGHT));
+    }
+
+    /** 取某个样式类节点在层叠**之后**的计算填充色。 */
+    private static javafx.scene.paint.Color fillOf(FxRobot robot, String styleClass) {
+        javafx.scene.shape.SVGPath node = robot.lookup(styleClass)
+                .queryAs(javafx.scene.shape.SVGPath.class);
+        onFxRun(node::applyCss);
+        return (javafx.scene.paint.Color) node.getFill();
+    }
+
+    private static void onFxRun(Runnable action) {
+        javafx.application.Platform.runLater(action);
+        org.testfx.util.WaitForAsyncUtils.waitForFxEvents();
+    }
 }

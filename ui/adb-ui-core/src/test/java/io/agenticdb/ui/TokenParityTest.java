@@ -56,14 +56,15 @@ class TokenParityTest {
     @Test
     void coreDimensionsMatchSpec() {
         // ⭐ UX-2 密度对齐 Navicat：应用栏 46 / 标签栏 28 / 页工具条 34 / 状态栏 24；
-        //    控件高 28；左侧导航默认 250。
+        //    控件高 28；UX-5 把左侧导航默认宽从 250 提到 **260**（200px 的表名 + 图标 +
+        //    收藏星在 250 下会挤掉名字末字，Navicat 侧栏实测约 260）。
         assertThat(Tokens.H_APPBAR_DARK).isEqualTo(46);
         assertThat(Tokens.H_TOOLBAR_DARK).isEqualTo(34);
         assertThat(Tokens.H_STATUSBAR_DARK).isEqualTo(24);
         assertThat(Tokens.H_TABBAR_DARK).isEqualTo(28);
         assertThat(Tokens.H_INPUT_DARK).isEqualTo(28);
         assertThat(Tokens.H_BUTTON_DARK).isEqualTo(28);
-        assertThat(Tokens.W_SIDEBAR_DARK).isEqualTo(250);
+        assertThat(Tokens.W_SIDEBAR_DARK).isEqualTo(260);
         // 可调整范围 200–360。
         assertThat(Tokens.W_SIDEBAR_MIN_DARK).isEqualTo(200);
         assertThat(Tokens.W_SIDEBAR_MAX_DARK).isEqualTo(360);
