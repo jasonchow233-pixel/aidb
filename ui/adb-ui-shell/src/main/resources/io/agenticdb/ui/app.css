@@ -374,10 +374,24 @@
 }
 
 /* 树与表格的选中焦点：JavaFX 把焦点画在控件上，这里补一圈可见边框 */
-.adb-object-tree .tree-cell:focused,
-.adb-grid .table-cell:focused {
+.adb-object-tree .tree-cell:focused {
     -fx-border-color: -adb-border-focus;
     -fx-effect: dropshadow(gaussian, -adb-border-focus, 3, 0, 0, 0);
+}
+
+/* ⭐ UX-4：当前格（键盘光标）用**内描边 + 淡底**，不再用外发光。
+   表格里每个单元格都被邻居紧贴着画，外发光会被裁掉 —— 实测「看起来像没有焦点」。
+   描边只改颜色、不改宽度（左右两条竖线 + 一层淡底），
+   因为改宽度会挤动内容：键盘走一格，文字就上下左右跳一次。
+   行高 24px，上下再吃掉 4px 就把 12px 正文挤没了 —— 所以光标环只有左右两条边。
+
+   ⚠️ 为什么不是 .table-cell:focused：TableCell.updateFocus() 在非 cell-selection
+   模式下会主动 setFocused(false)，本表是行选（MULTIPLE），
+   所以 :focused 在这张表上**永远不匹配**（实测 isFocused()=false）。
+   光标由 DataGridPage 盯 focusModel 打这个类。 */
+.adb-grid .table-cell.adb-grid__cell--cursor {
+    -fx-border-color: -adb-border-focus;
+    -fx-background-color: -adb-bg-active;
 }
 
 /* 输入类控件 */
@@ -1115,8 +1129,12 @@
 
 .adb-grid .table-row-cell {
     -fx-background-color: -adb-bg-surface;
-    /* UX-1：行线用 border-subtle，与外框的 border 拉开层级。 */
+    /* UX-1：行线用 border-subtle，与外框的 border 拉开层级。
+       UX-4：宽度写死 —— 只给颜色不给宽度时，行线粗细取决于 Modena 默认值；
+       左侧那 2px 是**常留的空槽**（透明），选中态只把它上色。
+       为什么留空槽：行有边框会挤掉内容宽度，「一选中文字就右移 2px」是肉眼可见的抖动。 */
     -fx-border-color: transparent transparent -adb-border-subtle transparent;
+    -fx-border-width: 0px 0px 1px 2px;
     -fx-padding: 0px;
 }
 
@@ -1134,15 +1152,25 @@
     -fx-background-color: -adb-bg-hover;
 }
 
+/* ⭐ UX-4：选中行 = 强 tint + 左侧 2px 强调条。
+   以前只有一层淡底：22–24px 的行高、12px 正文里，「选中了哪一行」经常要靠
+   横向扫一遍才知道。强调条给一个行首锚点，眼睛顺着左缘就能定位。
+   顺序刻意排在 :hover 之后 —— 悬停已选中的行时仍然是选中色，不被 hover 顶掉。
+   这里**只改颜色**，宽度由基础规则常留的 2px 左槽提供 → 选中不推走内容。 */
 .adb-grid .table-row-cell:selected {
     -fx-background-color: -adb-bg-selected;
+    -fx-border-color: transparent transparent -adb-border-subtle -adb-accent;
 }
 
+/* ⭐ UX-4：单元格淡竖线。只有横线的网格里，宽表读到第 5 列就串行；
+   竖线用同一档 border-subtle，横竖层级一致，不引入新颜色。
+   左侧 2px 同样是常留空槽：脏值条、焦点条都在这里上色，谁都不改变内容位置。 */
 .adb-grid .table-cell {
     -fx-text-fill: -adb-text-primary;
     -fx-font-size: 12px;
     -fx-padding: 4px 8px;
-    -fx-border-color: transparent;
+    -fx-border-color: transparent -adb-border-subtle transparent transparent;
+    -fx-border-width: 0px 1px 0px 2px;
     -fx-alignment: center-left;
 }
 
@@ -1366,6 +1394,13 @@
     -fx-padding: 0px 8px 0px 4px;
 }
 
+/* ⭐ UX-4：贴在网格左下的行操作条（+ / − / 应用 / 取消）。
+   纯图标，不加文字 —— 这一排紧挨着光标，越短越不挡视线。 */
+.adb-grid__row-actions {
+    -fx-padding: 0px 4px 0px 0px;
+    -fx-alignment: center-left;
+}
+
 /* ── 查询条件 chips ─────────────────────────────────────────────────── */
 
 .adb-query-chips {
@@ -1536,20 +1571,20 @@
     -fx-background-color: -adb-bg-surface;
 }
 
+/* ⭐ UX-4：脏值条只改颜色 —— 2px 左槽由基础规则常留，改单元格不再抖一行。 */
 .adb-grid .table-cell.adb-grid__cell--dirty {
     -fx-background-color: -adb-warning-bg;
-    -fx-border-color: transparent transparent transparent -adb-warning;
-    -fx-border-width: 0 0 0 2;
+    -fx-border-color: transparent -adb-border-subtle transparent -adb-warning;
 }
 
 /* ⭐ G4：矩形选区。必须和「选中整行」区分得开 —— 否则用户分不清
    「选中了整行」和「框住了一块」，这正是区域选择最容易看错的地方。
    用 accent 描边 + accent 淡底（-adb-bg-active），不动文字色：
-   底色是半透明的，NULL / 脏值那两条语义色不会被盖掉。 */
+   底色是半透明的，NULL / 脏值那两条语义色不会被盖掉。
+   UX-4：同样只改颜色 —— 竖线槽位（左 2px / 右 1px）由基础规则提供。 */
 .adb-grid .table-cell.adb-grid__cell--rect {
     -fx-background-color: -adb-bg-active;
     -fx-border-color: -adb-border-focus;
-    -fx-border-width: 1px;
 }
 
 /* ⭐ G1：冻结区（左半张表）。右表能横向滚动，左表不能 —— 所以右边界要有

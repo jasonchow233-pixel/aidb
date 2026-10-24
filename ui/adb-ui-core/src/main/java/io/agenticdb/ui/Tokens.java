@@ -49,8 +49,8 @@ public final class Tokens {
     public static final String BG_SELECTED_LIGHT = "#DBEAFE";
 
     /** bg-stripe (color) */
-    public static final String BG_STRIPE_DARK = "rgba(148,163,184,.05)";
-    public static final String BG_STRIPE_LIGHT = "#F7F9FB";
+    public static final String BG_STRIPE_DARK = "rgba(148,163,184,.035)";
+    public static final String BG_STRIPE_LIGHT = "#FAFBFC";
 
     /** bg-disabled (color) */
     public static final String BG_DISABLED_DARK = "rgba(148,163,184,.08)";

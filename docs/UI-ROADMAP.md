@@ -3,8 +3,8 @@
 > **定位**：**「界面差在哪、差多少、改成什么样、做完怎么验」**。
 > `NAVICAT-TODO.md` 是唯一执行清单（逐条勾选）；本文是**界面专项的阶段规划**（批次 + 依赖 + 门禁）。
 >
-> 最后更新：**2026-10-24（第二十一轮：§12.2 UX-0 / UX-1 / UX-2 / UX-3 已落地，下一项 UX-4）**
-> 适用基线：**94 个测试类 / 728 条执行 / 44 条环境门控跳过 / 0 失败**
+> 最后更新：**2026-10-24（第二十一轮：§12.2 UX-0 / UX-1 / UX-2 / UX-3 / UX-4 已落地，下一项 UX-5）**
+> 适用基线：**97 个测试类 / 753 条执行 / 44 条环境门控跳过 / 0 失败**
 >
 > | 批次 | 状态 | 结果 |
 > |---|---|---|
@@ -652,19 +652,46 @@ java tools/TestCount.java      # 按 <testcase> 计数，断言总数 ≥ 300
 ② `saveButton.setText(...)` 绕过文字登记表 —— 窄档收字后数据一变脏，「保存 3」会自己长回来把搜索框挤掉，
 统一改走 `setToolbarLabel(...)`。
 
-#### UX-4 · 网格交互（M）
+#### UX-4 · 网格交互（M）— ✅ 已完成（2026-10-24）
 
-| 项 | 改动 | 门禁 |
-|---|---|---|
-| 选中与焦点 | 行选中强 tint + 左侧 2px 强调条；焦点单元格 2px 内描边；hover 与选中不互相覆盖 | `ContrastTest` + 新 `SelectionStateTest`（lookup 样式类） |
-| 网格线 | 单元格加淡竖线（`border-subtle`），斑马纹保留但再降一档对比 | 截图 + `AppCssAuditTest` |
-| 列头菜单 | 排序升/降/清除、筛选、隐藏、自适应、冻结收敛到列头右键；排序箭头常显 | `GridInteractionTest` +4 |
-| 自适应 | 双击列头右边缘 = 按内容自适应（复用现有「自适应列宽」算法） | `GridInteractionTest` +1 |
-| 行操作条 | 表格左下 `+ / − / 应用 / 取消`，与工具条共用同一批 `Action`；只读时隐藏 | `GridInteractionTest` +2；`ActionRegistryConvergenceTest` |
-| 空值显示 | 统一 `(NULL)` 灰斜体、空串显示 `""`、BLOB 显示大小，均有 tooltip | 新 `CellDisplayTest`（3 类 × 亮暗） |
-| 单元格编辑器 | 长文本 / JSON / CLOB 弹窗编辑，Esc 取消、Ctrl+Enter 应用 | 新 `CellEditorTest` +3 |
+| 项 | 改动 | 门禁 | 结果 |
+|---|---|---|---|
+| 选中与焦点 | 行选中 = 强 tint + **左侧 2px 强调条**；当前格（键盘光标）= 内描边 + 淡底；hover 排在选中之前，不互相顶掉 | 新 `SelectionStateTest`（8 条，**算色**而不是「有没有类」） | ✅ |
+| 网格线 | 单元格补**淡竖线**（同 `border-subtle`，不引入新颜色）；斑马纹再降一档（`bg-stripe` 亮 `#F7F9FB→#FAFBFC`、暗 `.05→.035`） | `SelectionStateTest`：`gridLinesAndSemanticBarsShareOneSlot` + `theZebraStripeIsTheQuietestLayer`；截图 `p2-users` | ✅ |
+| 列头菜单 | 排序升/降/清除、移到左/右/首/尾、筛选、隐藏、自适应、**冻结到此列 / 取消冻结**、复制列名 | `GridInteractionTest` +3（`theHeaderMenuCarriesTheWholeColumnToolset` / `freezingToAColumnMovesItIntoTheFrozenPane` / `freezeHereIsDisabledWhenItWouldDoNothingOrLie`） | ✅ |
+| 自适应 | 双击列头 = 按内容自适应（与菜单「自适应列宽」同一算法） | `doubleClickingTheHeaderFitsTheColumnToItsContent` | ✅ |
+| 行操作条 | 网格左下 `+ / − / 应用 / 取消`；可用态**绑定**到工具条同一批按钮（不重写判断）；只读表整排消失 | `theRowActionBarSharesTheToolbarState` + `cancelDropsTheBufferAndReadOnlyTablesHideTheBar` | ✅ |
+| 空值显示 | `(NULL)` 灰斜体 + tooltip 说明「不是空串也不是内容为 NULL 的文本」；空串 `""`；BLOB 大小补 **GB 档** | 新 `CellDisplayTest`（6 条） | ✅ |
+| 单元格编辑器 | 详情抽屉**文本页就地可写**（不是弹窗）：回填原始值、Ctrl+Enter 应用、Esc 只放弃本次编辑不关抽屉、写进**同一个** `EditBuffer`；主键列与只读表不出现编辑器 | 新 `CellEditorTest`（4 条） | ✅ |
 
-**变异**：删掉选中强调条 → 选中态门禁红；把 NULL 显示改回空串 → `CellDisplayTest` 红。
+**与原计划的三处偏离（都是实测逼出来的，不是省事）**：
+1. **焦点格不是 `.table-cell:focused`** —— `TableCell.updateFocus()` 在非 cell-selection 模式下会主动
+   `setFocused(false)`，本表是行选（MULTIPLE），`:focused` 在这张表上**永远不匹配**（实测 `isFocused()=false`）。
+   改成 `DataGridPage` 盯 `focusModel.focusedCellProperty()` 打样式类 `adb-grid__cell--cursor`，
+   并且**按列名**记光标：冻结区的列是从右表搬过去的同一批实例，按下标比会让冻结区光标标不上。
+2. **光标环只有左右两条边，且只改颜色不改宽度** —— 外发光会被相邻单元格裁掉（实测「看起来像没有焦点」）；
+   行高 24px、12px 正文，上下再吃掉 4px 就把文字挤没了。做法是**基础规则常留空槽**
+   （行 `0 0 1 2`、格 `0 1 0 2`），状态规则只上色 → 选中/脏/光标都不推走内容。
+3. **行操作条用 `bind` 而不是共享 `Action`** —— 计划写的是「共用同一批 `Action`」，
+   但本项目的动作入口是方法调用 + 一堆 `disableWhen` 条件；这里再 `if` 一遍迟早和工具条不一致，
+   所以 `disableProperty().bind(工具条那颗)`，删除那颗连 `visible` 一起跟（无选中行时工具条是整颗消失，
+   摆一颗灰掉的「删除」在光标旁边比没有更危险）。
+
+**变异**：25 条门禁逐条改坏 → 全红 → 改回全绿（`SelectionStateTest` 8 / `CellDisplayTest` 6 /
+`GridInteractionTest` 新增 7 / `CellEditorTest` 4）。⭐ 其中三条值得记：
+① `CellEditorTest` 第三条**第一版是假绿** —— 演示库所有主键都是 INTEGER，
+把 `!definition.primaryKey()` 删掉仍全绿（`textual(type)` 先短路了），
+于是自建一张 `TEXT PRIMARY KEY` 表并补**正例**（可写的普通文本列必须出现「编辑」）；
+② `GridInteractionTest` 的冻结门禁要的是**诚实的禁用态** ——
+最后一列点「冻结到此列」只会偷偷少冻一列，必须禁用而不是给一个和菜单文字不符的结果；
+③ 编辑器第一版的**提交目标由「当前页签」决定** —— 「文本页敲两下 → 切 JSON 页 → Ctrl+Enter」
+会把美化过的 JSON 整段写进 TEXT 列（缓冲只显示「1 处待保存」）。改成进编辑态时钉死 `editingArea`
++ **换页即放弃编辑**，补门禁 `switchingTabsMidEditAbandonsTheEdit`（删掉换页守卫 → 红）。
+
+**已知缺口（不藏着）**：选中态、光标环、抽屉编辑器都是**交互态**，
+现有 12 张截图没有一帧拍到（`p2-users` 只覆盖竖线 / `(NULL)` / 行操作条）。
+目前靠 `SelectionStateTest` 算色断言兜底；补一帧需要给 `AppShell` 加 `ADB_CELL` 之类的启动开关。
+
 
 #### UX-5 · 侧栏 / 标签 / 状态栏（M）
 

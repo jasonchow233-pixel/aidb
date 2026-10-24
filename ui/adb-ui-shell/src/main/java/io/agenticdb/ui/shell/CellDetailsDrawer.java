@@ -60,6 +60,18 @@ final class CellDetailsDrawer extends VBox {
     private boolean loadedImage;
     private boolean loadedMeta;
 
+    // ⭐ UX-4：长文本 / JSON / CLOB 的多行编辑器。
+    //   格子里那条单行输入框改不了 3KB 的 JSON —— 换行看不见、左右拖来拖去。
+    //   这里把抽屉的文本 / JSON 页变成可写的，Ctrl+Enter 应用、Esc 取消。
+    private final Button edit = IconButtons.of(Icons.Icon.EDIT, "编辑");
+    private final Button apply = IconButtons.of(Icons.Icon.SAVE, "应用");
+    private final Button cancel = IconButtons.of(Icons.Icon.CLOSE, "取消");
+    private java.util.function.Consumer<String> onApply = text -> { };
+    private java.util.function.Predicate<ColumnDef> editGate = column -> false;
+    private boolean editing;
+    /** ⭐ 编辑中的那一个区域 —— 不能靠「当前选中的页」反推，换页会把提交目标换掉。 */
+    private TextArea editingArea;
+
     CellDetailsDrawer() {
         getStyleClass().add("adb-details");
         setId("data-details");
@@ -85,16 +97,48 @@ final class CellDetailsDrawer extends VBox {
         copy.setTooltip(new javafx.scene.control.Tooltip("复制当前 Tab 内容"));
         copy.setOnAction(event -> copyCurrent());
 
+        edit.setId("data-details-edit");
+        edit.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        edit.setTooltip(new javafx.scene.control.Tooltip(
+                "在这格里直接改长文本 / JSON（Ctrl+Enter 应用，Esc 取消）"));
+        edit.setVisible(false);
+        edit.setManaged(false);
+        edit.setOnAction(event -> startEdit());
+
+        apply.setId("data-details-apply");
+        apply.getStyleClass().addAll("adb-button", "adb-button--primary");
+        apply.setTooltip(new javafx.scene.control.Tooltip("应用修改 (Ctrl+Enter)"));
+        apply.setVisible(false);
+        apply.setManaged(false);
+        apply.setOnAction(event -> commit());
+
+        cancel.setId("data-details-cancel");
+        cancel.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        cancel.setTooltip(new javafx.scene.control.Tooltip("放弃这次编辑 (Esc)"));
+        cancel.setVisible(false);
+        cancel.setManaged(false);
+        cancel.setOnAction(event -> stopEditing());
+
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         VBox labels = new VBox(2, title, subtitle);
-        HBox header = new HBox(8, labels, spacer, copy, close);
+        HBox header = new HBox(8, labels, spacer, edit, apply, cancel, copy, close);
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("adb-details__header");
 
         prepareArea(textArea, "data-details-text");
         prepareArea(jsonArea, "data-details-json");
         prepareArea(hexArea, "data-details-hex");
+        // 多行编辑器：Ctrl+Enter 应用。Esc 由数据页统一转成「取消编辑」。
+        for (TextArea area : java.util.List.of(textArea, jsonArea)) {
+            area.setOnKeyPressed(event -> {
+                if (editing && event.getCode() == javafx.scene.input.KeyCode.ENTER
+                        && event.isControlDown()) {
+                    commit();
+                    event.consume();
+                }
+            });
+        }
         textTab.setContent(textArea);
         jsonTab.setContent(jsonArea);
         hexTab.setContent(hexArea);
@@ -105,7 +149,16 @@ final class CellDetailsDrawer extends VBox {
         tabs.setId("data-details-tabs");
         VBox.setVgrow(tabs, Priority.ALWAYS);
         tabs.getSelectionModel().selectedItemProperty().addListener(
-                (observable, previous, selected) -> load(selected));
+                (observable, previous, selected) -> {
+                    // ⭐ 编辑中换页 = **放弃这次编辑**，不是把另一页的内容提交进格子。
+                    //   文本页塞的是原值、JSON 页是美化过的（带换行），
+                    //   让「当前哪一页」决定提交目标，就会出现在文本页敲字、
+                    //   切到 JSON 页按 Ctrl+Enter，把整段美化 JSON 写进 TEXT 列。
+                    if (editing) {
+                        stopEditing();
+                    }
+                    load(selected);
+                });
 
         imageBox.setAlignment(Pos.CENTER);
         imageBox.setPadding(new Insets(12));
@@ -136,6 +189,13 @@ final class CellDetailsDrawer extends VBox {
         this.row = row;
         this.tableName = tableName;
         loadedText = loadedJson = loadedHex = loadedImage = loadedMeta = false;
+        // 换一格就是一次全新的查看：上一格残留的编辑态必须清掉。
+        editing = false;
+        editingArea = null;
+        for (TextArea area : java.util.List.of(textArea, jsonArea)) {
+            area.setEditable(false);
+            area.setWrapText(false);
+        }
         textArea.clear();
         jsonArea.clear();
         hexArea.clear();
@@ -150,6 +210,7 @@ final class CellDetailsDrawer extends VBox {
                         StandardCharsets.UTF_8).length));
         tabs.getSelectionModel().select(textTab);
         load(textTab);
+        flip(false);
         setVisible(true);
         setManaged(true);
     }
@@ -165,6 +226,112 @@ final class CellDetailsDrawer extends VBox {
 
     boolean isOpen() {
         return isVisible();
+    }
+
+    /** 应用编辑时回调（参数是编辑器里的原始文本）。 */
+    void setOnApply(java.util.function.Consumer<String> action) {
+        onApply = action == null ? text -> { } : action;
+    }
+
+    /** 数据页告诉我们「这一格到底能不能改」—— 只读表、主键、保存中都算不能。 */
+    void setEditGate(java.util.function.Predicate<ColumnDef> gate) {
+        editGate = gate == null ? column -> false : gate;
+    }
+
+    /** 编辑态（数据页的 Esc 处理器要看它，别把「取消编辑」做成「关掉抽屉」）。 */
+    boolean isEditing() {
+        return editing;
+    }
+
+    /** 数据页把 Esc 翻译成「放弃这次编辑」，而不是「关掉抽屉」。 */
+    void cancelEditing() {
+        stopEditing();
+    }
+
+    private TextArea activeArea() {
+        Tab selected = tabs.getSelectionModel().getSelectedItem();
+        if (selected == jsonTab) {
+            return jsonArea;
+        }
+        if (selected == textTab) {
+            return textArea;
+        }
+        return null;
+    }
+
+    private boolean canEdit() {
+        return definition != null && activeArea() != null && editGate.test(definition);
+    }
+
+    /**
+     * 进入编辑态。
+     *
+     * <p>回填的是**原值**而不是展示文本 —— 详情文本为了可读性做过收敛
+     * （{@code 22.990000000000002 → 22.99}、NULL 显示成 {@code (NULL)}），
+     * 一进一出就把精度弄丢、甚至写回一个字面量「(NULL)」。
+     */
+    private void startEdit() {
+        TextArea area = activeArea();
+        if (!canEdit() || area == null) {
+            return;
+        }
+        editing = true;
+        editingArea = area;
+        area.setText(value == null ? "" : String.valueOf(value));
+        area.setEditable(true);
+        area.setWrapText(true);
+        title.setText(definition.name() + " · 编辑中");
+        flip(true);
+        area.requestFocus();
+    }
+
+    private void commit() {
+        TextArea area = editingArea;
+        if (!editing || area == null) {
+            return;
+        }
+        String text = area.getText();
+        // 先复位再回调：回调里数据页会用新值重开抽屉，状态错一次就很难查。
+        stopEditing();
+        onApply.accept(text);
+    }
+
+    /** 退出编辑态（取消或应用都走这里），并把文本页恢复成渲染后的样子。 */
+    private void stopEditing() {
+        TextArea area = editingArea;
+        for (TextArea candidate : java.util.List.of(textArea, jsonArea)) {
+            candidate.setEditable(false);
+            candidate.setWrapText(false);
+        }
+        editingArea = null;
+        if (editing) {
+            editing = false;
+            if (area != null) {
+                // 编辑态里塞的是原值，退出后要按渲染规则重新灌一遍。
+                if (area == textArea) {
+                    loadedText = false;
+                    textArea.clear();
+                } else {
+                    loadedJson = false;
+                    jsonArea.clear();
+                }
+                load(area == textArea ? textTab : jsonTab);
+            }
+        }
+        if (definition != null && title.getText() != null
+                && title.getText().endsWith(" · 编辑中")) {
+            title.setText(definition.name());
+        }
+        flip(false);
+    }
+
+    private void flip(boolean editingNow) {
+        edit.setVisible(!editingNow && canEdit());
+        edit.setManaged(!editingNow && canEdit());
+        apply.setVisible(editingNow);
+        apply.setManaged(editingNow);
+        cancel.setVisible(editingNow);
+        cancel.setManaged(editingNow);
     }
 
     private void load(Tab tab) {
@@ -268,7 +435,8 @@ final class CellDetailsDrawer extends VBox {
                     + "\n请切换到 Hex 或图片 Tab 查看。";
         }
         if (value == null) {
-            return "NULL\n\n这是一条 NULL 值，不是空串。";
+            // 和格子里同一套写法：括号的是「状态」，裸 NULL 留给**字面量就是 NULL 的文本**。
+            return "(NULL)\n\n这是一条 NULL 值，不是空串，也不是内容为 \"NULL\" 的文本。";
         }
         if (value instanceof String text && text.isEmpty()) {
             return "空串\n\n这是一个长度为 0 的字符串，不是 NULL。";

@@ -165,7 +165,7 @@ Windows 上常见字体可能替换或缺失。长期方向是**内嵌 SVG 图�
 ### 3.2 数据页
 
 - **只读优先**：视图、无主键表显示只读标记，编辑/新增/删除全部禁用。
-- **NULL ≠ 空串**：NULL 显示 `NULL`，空串显示 `""`；右键菜单分别提供“设为 NULL”“设为空串”。
+- **NULL ≠ 空串**：NULL 显示 `(NULL)`（灰斜体的 `NULL` 与内容为 "NULL" 的文本分不开，见 `UI-VISUAL-SPEC.md` §7.3），空串显示 `""`；右键菜单分别提供“设为 NULL”“设为空串”。
 - **主键列是保护区**：单元格编辑路径禁止改主键（`cellEditable` 检查 `definition.primaryKey()`），
   **批量路径也必须禁止** —— 当前 `applyColumnValue` 漏了这个检查，
   VARCHAR/TEXT 主键可被批量“设空串”→ `UPDATE t SET pk='' WHERE pk=?` → 数据损坏（→ 4.5-26）。

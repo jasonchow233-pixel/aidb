@@ -219,10 +219,25 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final Label summaryLabel = new Label();
     private final TableView<Map<String, Object>> transposeTable = new TableView<>();
     private final CellDetailsDrawer detailsDrawer = new CellDetailsDrawer();
+    /** 抽屉当前展示／编辑的是哪一格（应用编辑时写回这里）。 */
+    private Map<String, Object> detailsRow;
+    private ColumnDef detailsDefinition;
     private final FlowPane chipBar = new FlowPane(6, 6);
     private final HBox batchBar = new HBox(8);
     /** ⭐ 记录导航条（Navicat 形态）：首 / 上 / 下 / 末 + 当前行号。 */
     private final HBox recordNav = new HBox(4);
+    /**
+     * ⭐ UX-4：贴在网格左下的**行操作条**（+ / − / 应用 / 取消）。
+     *
+     * <p>Navicat 改数据时手一直在表格和这一排之间来回，工具条在最上面要抬头；
+     * 这一排贴着光标走。四个按钮的可用态**绑定**到工具条同一批按钮上，
+     * 不在这里重写一遍判断 —— 两处状态不一致比少一排按钮更糟。
+     */
+    private final HBox rowActions = new HBox(4);
+    private final Button rowAddButton = IconButtons.icon(Icons.Icon.ADD, "新增行");
+    private final Button rowDeleteButton = IconButtons.icon(Icons.Icon.DELETE, "删除选中行");
+    private final Button rowApplyButton = IconButtons.icon(Icons.Icon.SAVE, "应用修改");
+    private final Button rowCancelButton = IconButtons.icon(Icons.Icon.CLOSE, "放弃全部修改");
     private final Label recordPosition = new Label("—");
     private final Label batchLabel = new Label();
     private final Button batchNull = new Button("设 NULL");
@@ -257,6 +272,18 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private GridCell rectangleAnchor;
     /** 是否正在拖选（决定鼠标拖动要不要扩展矩形）。 */
     private boolean rectangleDragging;
+
+    /**
+     * ⭐ UX-4：当前格（键盘光标）= 行下标 + **列名**。
+     *
+     * <p>列按名字记，不按 {@code TableColumn} 实例记：冻结区的列是从右表**搬过去**的
+     * 同一批实例（见 {@code applyFrozenColumns}），搬走之后
+     * {@code grid.getVisibleLeafColumns()} 里就没有它了 —— 按下标比会让冻结区的光标标不上。
+     *
+     * <p>{@code cursorRow < 0} = 还没有光标。
+     */
+    private int cursorRow = -1;
+    private String cursorColumnName;
 
     /** 一个单元格坐标（行 + 可见数据列下标）。 */
     private record GridCell(int row, int column) {
@@ -322,6 +349,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private boolean scrollBound;
     /** 选择同步中的防循环标志（两表互相监听，不加会无限来回）。 */
     private boolean syncingSelection;
+    /** 最近一次由列头右键处理器建出来的菜单（测试用它检查菜单内容）。 */
+    private javafx.scene.control.ContextMenu lastHeaderMenu;
 
     private TableSchema tableSchema;
     private DataQuery query = DataQuery.empty();
@@ -394,6 +423,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
     private void installShortcuts() {
         addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            // ⭐ 编辑长文本时按 Esc = 放弃这次编辑，不是把整个抽屉关掉。
+            if (event.getCode() == KeyCode.ESCAPE && detailsDrawer.isEditing()) {
+                detailsDrawer.cancelEditing();
+                event.consume();
+                return;
+            }
             if (event.getCode() == KeyCode.ESCAPE && detailsDrawer.isOpen()) {
                 detailsDrawer.close();
                 event.consume();
@@ -541,6 +576,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         setToolbarLabel(saveButton, editBuffer.isDirty()
                 ? "保存 " + editBuffer.dirtyCount() : "保存");
         addRowButton.setDisable(!editable || loading || saving);
+        // ⭐ 只读表**整排行操作条消失** —— 一排永远点不动的按钮
+        //    只会让人反复去试，而这一排贴着光标，碍事程度高于工具条。
+        rowActions.setVisible(editable);
+        rowActions.setManaged(editable);
         updateSelectAllState();
         updateDeleteButton();
         if (objectHeader != null) {
@@ -1016,6 +1055,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         grid.setFocusTraversable(true);
         grid.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+        bindFocusCursor(grid);
+        bindFocusCursor(frozenGrid);
         selectAllBox.setId("data-select-all");
         selectAllBox.setTooltip(new Tooltip("全选当前页"));
         selectAllBox.setOnAction(event -> {
@@ -1081,6 +1122,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         transposeTable.setFocusTraversable(true);
 
         detailsDrawer.setOnClose(() -> { });
+        // ⭐ UX-4：抽屉里的多行编辑器 —— 应用走的是和格子里同一套写缓冲逻辑。
+        detailsDrawer.setOnApply(this::applyDetailsEdit);
+        detailsDrawer.setEditGate(this::canEditTextCell);
         StackPane.setAlignment(detailsDrawer, Pos.CENTER_RIGHT);
         StackPane.setMargin(detailsDrawer, new javafx.geometry.Insets(8));
 
@@ -1299,6 +1343,65 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         return separator;
     }
 
+    /**
+     * ⭐ UX-4：网格左下的行操作条。
+     *
+     * <p>四个动作与工具条**同一批**：点击直接调同一组方法，可用态用
+     * {@code bind} 挂在工具条按钮上 —— 这里再写一遍 if 迟早和上面不一致。
+     */
+    private HBox buildRowActions() {
+        rowActions.setId("data-row-actions");
+        rowActions.getStyleClass().add("adb-grid__row-actions");
+        rowActions.setAlignment(Pos.CENTER_LEFT);
+
+        rowAddButton.setId("data-row-add");
+        rowAddButton.getStyleClass().add("adb-icon-button");
+        rowAddButton.setOnAction(event -> addRow());
+
+        rowDeleteButton.setId("data-row-delete");
+        rowDeleteButton.getStyleClass().addAll("adb-icon-button", "adb-button--danger");
+        rowDeleteButton.setOnAction(event -> deleteSelectedRows());
+
+        rowApplyButton.setId("data-row-apply");
+        rowApplyButton.getStyleClass().addAll("adb-icon-button", "adb-button--primary");
+        rowApplyButton.setOnAction(event -> saveChanges());
+
+        rowCancelButton.setId("data-row-cancel");
+        rowCancelButton.getStyleClass().add("adb-icon-button");
+        rowCancelButton.setOnAction(event -> discardChanges());
+
+        rowAddButton.disableProperty().bind(addRowButton.disableProperty());
+        rowDeleteButton.disableProperty().bind(deleteRowsButton.disableProperty());
+        // 没有选中行时工具条那颗「删除」整颗消失，这里跟着一起消失 ——
+        // 摆一颗灰掉的删除按钮在光标旁边，比没有更危险。
+        rowDeleteButton.visibleProperty().bind(deleteRowsButton.visibleProperty());
+        rowDeleteButton.managedProperty().bind(deleteRowsButton.visibleProperty());
+        rowApplyButton.disableProperty().bind(saveButton.disableProperty());
+        rowCancelButton.disableProperty().bind(saveButton.disableProperty());
+
+        rowActions.getChildren().addAll(rowAddButton, rowDeleteButton,
+                rowApplyButton, rowCancelButton);
+        return rowActions;
+    }
+
+    /**
+     * 放弃缓冲里全部未保存的修改（行操作条的「取消」）。
+     *
+     * <p>只清缓冲、不重新查询 —— 草稿行本来就不在库里，
+     * 被改的单元格也靠缓冲覆盖显示，清掉就恢复成数据库里的样子。
+     */
+    private void discardChanges() {
+        if (!editBuffer.isDirty() || loading || saving) {
+            return;
+        }
+        int count = editBuffer.dirtyCount();
+        editBuffer.clear();
+        saveUndoPlan = null;
+        rebuildItems();
+        updateDirty();
+        feedback.status("已放弃 " + count + " 处未保存的修改");
+    }
+
     private HBox buildPager() {
         HBox pager = new HBox(8);
         pager.getStyleClass().add("adb-grid__pager");
@@ -1388,7 +1491,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         Label pageLabelText = new Label("页面");
         pageLabelText.getStyleClass().add("adb-record-nav__label");
 
-        pager.getChildren().addAll(rangeLabel, recordNav, spacer, pageLabelText,
+        pager.getChildren().addAll(buildRowActions(),
+                new Separator(javafx.geometry.Orientation.VERTICAL),
+                rangeLabel, recordNav, spacer, pageLabelText,
                 firstPageButton, previous, pageLabel, next, lastPageButton,
                 jumpField, jumpRowField,
                 new Separator(javafx.geometry.Orientation.VERTICAL), perPage, pageSizeBox);
@@ -2208,6 +2313,43 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     /**
+     * 按**用户看到的顺序**列出全部数据列。
+     *
+     * <p>冻结后数据列分散在两张表里（左 = frozenGrid，右 = grid），
+     * 所以只数 {@code grid} 会漏掉冻结区 —— 冻结序号必须跨两表计算。
+     */
+    private List<TableColumn<Map<String, Object>, ?>> dataColumnsOrdered() {
+        List<TableColumn<Map<String, Object>, ?>> result = new ArrayList<>();
+        for (TableColumn<Map<String, Object>, ?> column : frozenGrid.getColumns()) {
+            if (column.getUserData() instanceof String) {
+                result.add(column);
+            }
+        }
+        for (TableColumn<Map<String, Object>, ?> column : grid.getColumns()) {
+            if (column.getUserData() instanceof String) {
+                result.add(column);
+            }
+        }
+        return result;
+    }
+
+    /** 数据列在整体顺序里的下标；找不到返回 -1。 */
+    private int indexOfDataColumn(String name) {
+        List<TableColumn<Map<String, Object>, ?>> columns = dataColumnsOrdered();
+        for (int i = 0; i < columns.size(); i++) {
+            if (name.equals(columns.get(i).getUserData())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** 这一列当前是否在冻结区里。 */
+    private boolean isColumnFrozen(String name) {
+        return frozenColumnCount > 0 && indexOfDataColumn(name) < frozenColumnCount;
+    }
+
+    /**
      * 场景坐标落在哪个数据列上。
      *
      * @return 数据列的序号；落在固定列（选择列 / 行号列）上或不在网格里时返回 -1
@@ -2464,6 +2606,19 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             hide.setOnAction(action -> hideColumn(definition.name()));
             MenuItem fit = new MenuItem("自适应列宽");
             fit.setOnAction(action -> autoFitColumn(definition.name()));
+            // ⭐ UX-4：冻结入口收敛到列头右键。以前只能拖分隔条，
+            //    分隔条看不见就等于功能不存在。
+            MenuItem freezeHere = new MenuItem("冻结到此列");
+            freezeHere.setId("data-freeze-here");
+            boolean alreadyFrozen = isColumnFrozen(definition.name());
+            freezeHere.setDisable(alreadyFrozen
+                    || dataColumnsOrdered().size() - indexOfDataColumn(definition.name()) < 2);
+            freezeHere.setOnAction(action -> setFrozenColumnCount(
+                    indexOfDataColumn(definition.name()) + 1));
+            MenuItem unfreeze = new MenuItem("取消冻结列");
+            unfreeze.setId("data-unfreeze");
+            unfreeze.setDisable(frozenColumnCount == 0);
+            unfreeze.setOnAction(action -> setFrozenColumnCount(0));
             MenuItem copyName = new MenuItem("复制列名");
             copyName.setOnAction(action -> {
                 ClipboardContent content = new ClipboardContent();
@@ -2474,12 +2629,21 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             menu.getItems().addAll(ascending, descending, clearSort,
                     new SeparatorMenuItem(),
                     moveLeft, moveRight, moveFirst, moveLast,
-                    new SeparatorMenuItem(), filter, hide, fit, copyName);
+                    new SeparatorMenuItem(), filter, hide, fit,
+                    freezeHere, unfreeze, copyName);
+            // ⭐ 只有处理器真的跑起来才会有这个实例 ——
+            //    测试拿它检查菜单内容，同时也就验了「handler 挂在列头上」。
+            lastHeaderMenu = menu;
             menu.show(box, event.getScreenX(), event.getScreenY());
             event.consume();
         });
         headers.put(definition.name(), new HeaderView(name, sortBadge, funnel));
         return box;
+    }
+
+    /** 最近一次列头右键**处理器实际建出来**的菜单；没弹过就是 null。 */
+    ContextMenu headerMenuForTest() {
+        return lastHeaderMenu;
     }
 
     private void hideColumn(String name) {
@@ -2501,13 +2665,19 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         if (column == null) {
             return;
         }
+        ColumnDef definition = columnDef(name);
         int max = visualLength(name);
         for (Map<String, Object> row : grid.getItems()) {
             Object value = row.get(name);
-            String text = value == null ? "NULL" : String.valueOf(value);
+            // ⭐ UX-4：按**渲染出来的文本**量宽度，不按原始值。
+            //   JSON 列显示的是摘要、BLOB 显示的是大小、NULL 显示的是 (NULL) ——
+            //   量原始值会给出一格根本看不见的宽度（一个 2KB 的 JSON 摘要只有几十字符，
+            //   原始值能把列撑到 420px 上限）。
+            String text = definition == null
+                    ? (value == null ? "(NULL)" : String.valueOf(value))
+                    : CellRenderer.render(definition, value).text();
             max = Math.max(max, visualLength(text));
         }
-        ColumnDef definition = columnDef(name);
         double minWidth = definition == null ? ColumnWidths.DATA_MIN : readableMinWidth(definition);
         column.setPrefWidth(Math.max(minWidth,
                 ColumnWidths.contentWidth(max, 44, minWidth, 420)));
@@ -3353,6 +3523,48 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     /**
+     * ⭐ UX-4：把「当前格」盯下来，用样式类标出来。
+     *
+     * <p>为什么不能用 CSS 的 {@code .table-cell:focused}：
+     * {@code TableCell.updateFocus()}（JavaFX 25 源码）在非 cell-selection 模式下
+     * 第一件事就是 {@code setFocused(false)} 然后 return ——
+     * 本表用 MULTIPLE（行选），所以**任何** {@code .table-cell:focused} 选择器
+     * 在这张表上永远不匹配。实测：鼠标点进单元格，
+     * {@code table.isFocused()=true}、{@code focusModel.getFocusedCell()} 有值、
+     * 单元格自己 {@code isFocused()=false}。
+     * 结论：焦点必须自己标，否则键盘用户完全看不见光标。
+     */
+    private void bindFocusCursor(TableView<Map<String, Object>> view) {
+        view.getFocusModel().focusedCellProperty().addListener((observable, was, now) -> {
+            int row = now == null ? -1 : now.getRow();
+            String column = null;
+            if (now != null && now.getTableColumn() != null
+                    && now.getTableColumn().getUserData() instanceof String name) {
+                column = name;
+            }
+            if (row == cursorRow && Objects.equals(column, cursorColumnName)) {
+                return;
+            }
+            cursorRow = row;
+            cursorColumnName = column;
+            // TableView 不会自己因为 focusModel 变了重画格子。
+            grid.refresh();
+            frozenGrid.refresh();
+        });
+    }
+
+    /**
+     * 这一格是不是当前光标格。
+     *
+     * <p>行号列 / 勾选列没有 {@code userData}，拿不到列名 → 不参与，
+     * 光标只在数据列之间走。
+     */
+    private boolean isCursor(int row, String column) {
+        return cursorRow >= 0 && column != null
+                && row == cursorRow && column.equals(cursorColumnName);
+    }
+
+    /**
      * 框选一个矩形（两个对角，行列自动取 min/max，越界夹到表格内）。
      *
      * <p>公开是为了两件事：Shift 扩展选区，以及门禁能**不依赖像素坐标**地构造矩形
@@ -3785,8 +3997,45 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         if (definition == null) {
             return;
         }
+        detailsRow = row;
+        detailsDefinition = definition;
         detailsDrawer.showDetails(definition, cellValue(row, definition), row, tableName);
         feedback.status("详情：" + definition.name());
+    }
+
+    /**
+     * 抽屉里的多行编辑器允许改哪一格：可写表 + 文本类列 + 非主键 + 不在加载／保存中。
+     *
+     * <p>主键排除的理由和格子里一样 —— 改主键等于改「这行是谁」，
+     * UPDATE 的 WHERE 会跟着失效，不该在顺手改长文本时发生。
+     */
+    private boolean canEditTextCell(ColumnDef definition) {
+        return definition != null && tableSchema != null && tableSchema.editable()
+                && !loading && !saving && !definition.primaryKey()
+                && textual(definition.type());
+    }
+
+    /** 应用抽屉编辑器的文本：和单元格内联编辑写进同一个编辑缓冲。 */
+    private void applyDetailsEdit(String text) {
+        Map<String, Object> row = detailsRow;
+        ColumnDef definition = detailsDefinition;
+        if (row == null || !canEditTextCell(definition)) {
+            return;
+        }
+        try {
+            Object next = parseCellValue(definition, text);
+            if (next == null && !definition.nullable()) {
+                feedback.status("无效值：" + definition.name() + " 不允许 NULL");
+                return;
+            }
+            setRowValue(row, definition, next);
+            // 用新值重开抽屉：编辑态自动退出，看到的也按渲染规则收敛过。
+            showDetails(row, definition);
+            grid.refresh();
+            frozenGrid.refresh();
+        } catch (IllegalArgumentException e) {
+            feedback.status("无效值：" + e.getMessage());
+        }
     }
 
     private final class ValueCell extends TableCell<Map<String, Object>, Object> {
@@ -3794,7 +4043,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 "adb-grid__cell--null", "adb-grid__cell--empty", "adb-grid__cell--number",
                 "adb-grid__cell--boolean", "adb-grid__cell--binary", "adb-grid__cell--dirty",
                 "adb-grid__cell--json", "adb-grid__cell--enum", "adb-grid__cell--date",
-                "adb-grid__cell--long-text", "adb-grid__cell--rect");
+                "adb-grid__cell--long-text", "adb-grid__cell--rect", "adb-grid__cell--cursor");
 
         private final ColumnDef definition;
         private TextField editor;
@@ -3860,6 +4109,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             //   布尔列会渲染成 CheckBox 并提前 return，晚加就漏掉那一格。
             if (inRectangle(getIndex(), rectangleColumnIndex(getTableColumn()))) {
                 getStyleClass().add("adb-grid__cell--rect");
+            }
+            // ⭐ UX-4：当前格（键盘光标）。同样放在所有 return 分支之前 ——
+            //   布尔列渲染成 CheckBox 会提前 return，晚加就漏掉那一格。
+            if (isCursor(getIndex(), definition.name())) {
+                getStyleClass().add("adb-grid__cell--cursor");
             }
             Map<String, Object> row = getTableRow() == null ? null : getTableRow().getItem();
             Object value = row == null ? item : cellValue(row, definition);

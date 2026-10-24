@@ -8,9 +8,9 @@
 > **界面规格书见 `docs/UI-VISUAL-SPEC.md`**（第十轮：字号/颜色/图标/布局/组件/弹窗/交互态/键盘）；
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
-> 最后更新：**2026-10-24（第二十一轮执行中：已删 declarations + UX-0 / UX-1 / UX-2 / UX-3 已完成，见 §34）**
-> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **728 条 / 94 类 / 0 失败**（2026-10-24 第二十一轮 Windows 实机实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
-> 📌 **728 = 删除 `declarations` 后的 712 + UX-0 的 2 条 + UX-1 的 2 条 + UX-2 的 4 条 + UX-3 的 8 条**（`AppShellTest.forcedDensityWins…` / `ScreenshotScriptAuditTest.shotsScriptPins…` / `AppCssAuditTest.shadowsAreLimited…` / `IconSystemAuditTest.iconSizesComeFrom…` / `ChromeMetricsTest` 2 条 / `AppShellTest.densityDefaultsToCompact…` / `AppCssAuditTest.dataSurfacesUseTheCompactBodySize` / **`ToolbarDiscoverabilityTest` 5 条（新类）** / `TableListPageTest` +2 / `ObjectHomeToolbarTest` +1）；712 的小口径见下。
+> 最后更新：**2026-10-24（第二十一轮执行中：已删 declarations + UX-0 / UX-1 / UX-2 / UX-3 / UX-4 已完成，见 §34）**
+> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **753 条 / 97 类 / 0 失败**（2026-10-24 第二十一轮 Windows 实机实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
+> 📌 **753 = 728 + UX-4 的 25 条**（**`SelectionStateTest` 8 条（新类）** / **`CellDisplayTest` 6 条（新类）** / **`CellEditorTest` 4 条（新类）** / `GridInteractionTest` +7：列头菜单全集、冻结到此列、取消冻结、冻结禁用态、双击自适应、行操作条状态、放弃修改与只读隐藏）；728 的构成见 §34.2 UX-3 落地记录。
 > 📌 **712 是删除 `declarations` 后的新口径**（-43 条 / -3 类：模块 40 + `DeclaredDialectConsistencyTest` 3），属**主动减面**不是回归。
 >
 > 📌 **关于门禁数字的口径（第十八轮勘误）**：第十七轮记的「721 / 29 跳过」是在 **Docker 可用**时测的；
@@ -36,8 +36,8 @@
 > **第十四轮已完成 U1 ✅ catalog 树**（MySQL 多库：虚拟连接 + 对象树库一层 + 双击切库）。
 > **第十五轮已完成 Q5 ✅ 结果分页 + V-9 ✅ 表格规格统一**（服务端分页 + 翻页条 + 列类型条，与数据页 record-nav / 类型行同一套视觉）。
 > **U-B6 功能补齐层已全部收官**（G1–G7 / Q5 / Q6 / U1–U6 全部 ✅）。
-> **下一动作 = §34 / UX-4（网格交互）**；
-> UX-0 / UX-1 / UX-2 / UX-3 已完成（截图可复现 + 令牌收敛 + 四档密度与 chrome 收薄 + 工具条动作可发现性），`declarations` 已删除（基线 728/94），
+> **下一动作 = §34 / UX-5（侧栏 / 标签 / 状态栏）**；
+> UX-0 / UX-1 / UX-2 / UX-3 / UX-4 已完成（截图可复现 + 令牌收敛 + 四档密度与 chrome 收薄 + 工具条动作可发现性 + 网格交互），`declarations` 已删除（基线 753/97），
 > P2/P5/P6 的批次已全部裁定（同意做），排在其后。
 > 详见 §34 与 `docs/UI-ROADMAP.md` §12。
 >
@@ -85,15 +85,15 @@
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **728** | 44 | 0 |
+| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **753** | 44 | 0 |
 | **外部 PG / MySQL 真库**（aliCloud RDS 等，需环境变量） | 单独跑，不在默认门禁 | — | — |
 | **多版本矩阵**（MySQL 5.7/8.0 + PG 13/17，`ADB_TEST_VERSION_MATRIX=1`） | 默认不跑，需显式打开 | 1 | 0 |
 
-**94 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
+**97 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
 （Testcontainers 容器**需 Docker**；本机 Docker 不可用时走跳过分支）—— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-24，第二十一轮 · Windows 实机）**：**728 条 / 94 类 / 0 失败**（`./mvnw -B clean verify`
-> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 728）。
+> 📌 **最新口径（2026-10-24，第二十一轮 · Windows 实机）**：**753 条 / 97 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 753）。
 > 相比第二十轮的 755 / 95，**减少的 43 条 / 3 类全部来自删除 `declarations`**
 > （模块 40 + `DeclaredDialectConsistencyTest` 3），**不是测试变红**；UX-0 +2 条（偏好不写回 + 截图脚本钉密度）、
 > UX-1 +2 条（投影收敛 + 图标尺寸档位）、UX-2 +4 条 + 1 类（`ChromeMetricsTest` 框架高度与可见行数、
@@ -2254,7 +2254,7 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 | 连接分组 / 标签 | 分组做，**tags 暂不做** | 一次只动一个字段，避免档案迁移风险 |
 | A4 `paramStyle: numbered` | ❌ **不做** | JDBC 全用 `?`，没有消费方；写进「不做」清单 |
 | 连接属性页 | 功能已完成 | 只补 `ConnectionWizardTest` 一条门禁 |
-| S-7 欢迎页 | ⏳ **仍待裁定** | 接 / 删 / 留三选一；不阻塞 UX-0…UX-4 |
+| S-7 欢迎页 | ⏳ **仍待裁定** | 接 / 删 / 留三选一；不阻塞 UX-0…UX-4，**UX-5 前需要定**（标签栏取舍跟它绑在一起） |
 
 ### 34.2 UIUX 执行清单（UX-0…UX-6）
 
@@ -2378,16 +2378,75 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
   依赖 **P2-3**（给历史加对象上下文）；②「单元格编辑器」—— 那是 **UX-4** 的网格交互批次，
   现有的 `CellDetailsDrawer` 已经是只读查看器，编辑器要在网格可写之上再做。
 
-#### UX-4 · 网格交互（M）
+#### UX-4 · 网格交互（M）— ✅ 已完成（2026-10-24）
 
-- [ ] 行选中强 tint + 2px 左侧强调条；焦点单元格内描边
-- [ ] 单元格淡竖线；斑马纹再降一档
-- [ ] 列头右键：排序升/降/清除 / 筛选 / 隐藏 / 自适应 / 冻结；排序箭头常显
-- [ ] 双击列头右边缘 = 内容自适应
-- [ ] 表格左下 `+ / − / 应用 / 取消`，只读时隐藏
-- [ ] `(NULL)` / `""` / BLOB 大小统一展示 + tooltip
-- [ ] 长文本 / JSON / CLOB 单元格编辑器（Esc 取消，Ctrl+Enter 应用）
-- [ ] `GridInteractionTest` +7、新 `CellDisplayTest` / `CellEditorTest`；变异验证
+- [x] 行选中强 tint + **左侧 2px 强调条**；当前格（键盘光标）内描边 + 淡底
+- [x] 单元格淡竖线；斑马纹再降一档（亮 `#F7F9FB→#FAFBFC`、暗 `.05→.035`）
+- [x] 列头右键收齐：排序升/降/清除 · 移到左/右/首/尾 · 筛选 · 隐藏 · 自适应 · **冻结到此列 / 取消冻结** · 复制列名
+- [x] 排序箭头**常显**（该列处于排序中就一直挂着 ↑/↓ 与序号，不像漏斗那样悬停才浮现 —— 状态不是装饰；无排序时不占位）。⭐ 本条**核对既有实现**（`DataGridPage` 的 `sortBadge`），本轮未改动，故不计新门禁
+- [x] 双击列头 = 按内容自适应（与菜单项同一算法）
+- [x] 网格左下 `+ / − / 应用 / 取消` 行操作条；只读表整排消失
+- [x] `(NULL)` / `""` / BLOB 大小统一展示 + tooltip（BLOB 补 **GB 档**）
+- [x] 长文本 / JSON / CLOB 单元格编辑器（抽屉文本页就地写：Esc 取消、Ctrl+Enter 应用）
+- [x] 新 `SelectionStateTest`(8) / `CellDisplayTest`(6) / `CellEditorTest`(4) + `GridInteractionTest` +7；**25 条门禁逐条变异红→改回绿**
+
+**落地记录**
+
+- **选中态给一个行首锚点**：22–24px 行高、12px 正文里，只靠一层淡底经常要靠横向扫一遍才知道选中了谁。
+  补一条 2px `accent` 左条，眼睛顺左缘就能定位。`hover` 规则**排在** `selected` 之前 ——
+  悬停已选中的行时仍然是选中色，不被 hover 顶掉。
+- ⭐ **槽位常留（本批最重要的排版不变量）**：状态一律**只改颜色、不改宽度**。
+  基础规则把宽度写死并留出透明空槽（行 `-fx-border-width: 0px 0px 1px 2px`、格 `0px 1px 0px 2px`），
+  选中条 / 脏值条 / 光标环 / 矩形选区四条状态规则都在这同一个槽里上色。
+  为什么不能改宽度：行有边框会挤掉内容宽度，**「一选中文字就右移 2px」是肉眼可见的抖动**；
+  行高 24px，上下再各吃 2px 就把 12px 正文挤没了。
+  门禁 `selectingARowNeverMovesItsCells` / `clickingACellMarksTheCursorWithoutMovingText` 直接比**每个单元格的 x/y 与行高**。
+- ⭐ **当前格不是 `.table-cell:focused`**：`TableCell.updateFocus()` 在非 cell-selection 模式下主动 `setFocused(false)`，
+  本表是行选（MULTIPLE），所以 `:focused` 在这张表上**永远不匹配**（实测 `isFocused()=false`）——
+  原来那条 `.adb-grid .table-cell:focused` 是一条**死选择器**，画了等于没画。
+  改成 `DataGridPage.bindFocusCursor()` 盯 `focusModel.focusedCellProperty()` 打样式类 `adb-grid__cell--cursor`。
+  光标**按列名记、不按 `TableColumn` 实例记**：冻结区的列是从右表**搬过去**的同一批实例，
+  搬走之后 `grid.getVisibleLeafColumns()` 里就没有它了，按下标比会让冻结区的光标标不上。
+  外发光也不行 —— 每格都被邻居紧贴着画，`dropshadow` 会被裁掉，实测「看起来像没有焦点」，所以用**内描边**。
+- **冻结算术**：`dataColumns()` 只看得到 `grid` 的列，冻结列在 `frozenGrid` 里 ——
+  于是新增 `dataColumnsOrdered()`（先冻结区后右表）做下标基准，`isColumnFrozen()` 判已冻列。
+  ⭐ **禁用态必须诚实**：已冻的列「冻结到此列」禁用、右边剩不下两列的列禁用，
+  否则用户点了会得到一个和菜单文字不符的结果（最后一列点冻结只会偷偷冻到倒数第二列）。
+- **行操作条不重写判断**：四个按钮的 `disableProperty()` **bind** 到工具条同一批按钮，
+  「删除」连 `visible/managed` 一起跟（无选中行时工具条那颗是整颗消失 ——
+  摆一颗灰掉的删除在光标旁边比没有更危险）。只读表 `rowActions` 直接 `setManaged(false)`，
+  一排永远点不动的按钮只会引人反复试，而这一排贴着光标，碍事程度高于工具条。
+  配套新增 `discardChanges()`（放弃缓冲 + 清撤销计划 + 重建行 + 报数）。
+- **`NULL` 显示成 `(NULL)`**：TEXT 列里真的会出现**内容为 "NULL" 的字符串**（CSV 导入、日志表、外部系统写的），
+  灰斜体的 `NULL` 和一条值为 NULL 的文本在 12px 网格里根本分不出来，而这两种情况要做的处理完全不同。
+  空串继续 `""`，三态各有 tooltip；`sizeLabel` 补 GB 档（大对象在真实业务表里就是 GB 级，
+  不补就显示成 `1536.0 MB` 这种没法扫读的数字）。抽屉文本页的 NULL 说明同步对齐。
+- **单元格编辑器做在抽屉里，不做弹窗**：格内那条单行输入框改不了 3KB JSON —— 看不见换行，只能左右拖。
+  抽屉文本页因此变成可写的：回填**原始值**（不是渲染后的截断值）、**Ctrl+Enter 应用**
+  （多行编辑器里回车是换行，不能拿来提交）、**Esc 只放弃本次编辑不关抽屉**（用户还想接着看这一格）、
+  写进**同一个 `EditBuffer`**（和格子里改同一条路，脏计数一起亮）。
+  排除条件：主键列（改主键等于改「这行是谁」，UPDATE 的 WHERE 会跟着失效）与只读表不出现编辑器。
+- **门禁 +25 条 / +3 类 → 753 / 97 / 0**。25 条逐条变异验证（改坏→红→改回→绿）。
+- ⭐ **本轮第二个假绿**：`primaryKeyAndReadOnlyTablesNeverOfferTheEditor` 第一版**删掉 `!definition.primaryKey()` 仍然全绿** ——
+  演示库所有主键都是 INTEGER，`textual(type)` 在之前就短路了，那条规则**根本没被检验过**。
+  修法：测试**自建一张 `codes (code TEXT PRIMARY KEY, note TEXT NOT NULL)`**，
+  让「文本 + 主键」这个组合真的存在；同时补**正例**（可写表的普通文本列必须出现「编辑」）——
+  只写反例的话，「编辑器永远不出现」这种改坏也能全绿。
+- ⭐ **本轮第三个真问题（写缓冲会被切页污染）**：编辑器刚做完时，提交目标是由
+  **「当前选中的页签」** 决定的（`commit()` 取 `activeArea()`）。于是
+  「在文本页敲两下 → 切到 JSON 页 → 按 Ctrl+Enter」会把**美化过的 JSON（带换行缩进）**整段写进一个 TEXT 列，
+  缓冲还只显示「1 处待保存」—— 数据损坏里最难查的那种。
+  修法：编辑目标改成字段 `editingArea`（进编辑态时钉死，不再随页签变），
+  且**换页即放弃这次编辑**（`stopEditing()`），不静默提交另一页的内容；
+  门禁 `switchingTabsMidEditAbandonsTheEdit`（删掉换页守卫 → 红，已验证）。
+- ⚠️ **测试脚手架的坑（记一次）**：`WaitForAsyncUtils.waitFor(...)` 会**阻塞调用线程**，
+  放在 `@Start` 里等于阻塞 FX 线程，而加载结果恰恰要靠 FX 线程派发 → **死锁 → 超时**。等表格加载完必须放 `@BeforeEach`。
+  另外变异脚本**必须先删旧报告再跑** —— 一次改坏 `sed` 没落上、编译又失败时，
+  surefire 目录里留着上一轮的报告，看起来「跑了且绿」，实际什么都没测。
+- **已知缺口（不藏着）**：选中态、光标环、抽屉编辑器都是**交互态**，`scripts/shots.sh` 那 12 帧里没有一帧覆盖
+  （`p2-users` 只拍到竖线 / `(NULL)` / 行操作条）。目前靠 `SelectionStateTest` 的算色与坐标断言兜底；
+  补一帧需要给 `AppShell` 加一个 `ADB_CELL` 之类的启动开关（`ADB_DETAILS` / `ADB_NEW_TABLE` 同一形态），归 UX-5 一起做。
+
 
 #### UX-5 · 侧栏 / 标签 / 状态栏（M）
 
@@ -2428,7 +2487,7 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 ```
 0) ✅ 文档对齐 + 删 declarations（已完成，基线 **712 / 92**）
 1) ✅ UX-0 → UX-1 → UX-2          （密度/令牌，P0；基线 720 / 93）
-2) ✅ UX-3 → ⏭ UX-4 → UX-5        （工具条/网格/侧栏，P1；UX-3 基线 728 / 94）
+2) ✅ UX-3 → ✅ UX-4 → ⏭ UX-5     （工具条/网格/侧栏，P1；UX-4 基线 753 / 97）
 3) P2-1 → P2-2                    （清单可读性 / 错误可诊断）
 4) P5-2 → P5-1 → P5-3 → P5-4     （Windows 凭据先跑真机）
 5) P2-3                           （最近操作，UX-3 的「历史」依赖它）
@@ -2455,6 +2514,7 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-24 | **第二十一轮·UX-4** | **网格交互**（§34.2）：选中行 = 强 tint + **左侧 2px `accent` 强调条**（`hover` 规则排在 `selected` 前，悬停已选行不被顶掉）；⭐ **槽位常留** —— 行 `-fx-border-width: 0 0 1 2`、格 `0 1 0 2` 由基础规则留透明空槽，选中条 / 脏值条 / 光标环 / 矩形选区**只上色不改宽度**（改宽度就抖：键盘走一格文字左右跳一次；行高 24px 上下各吃 2px 直接压掉 12px 正文）；单元格补**淡竖线**（同 `border-subtle`）、斑马纹 `bg-stripe` 再降一档（亮 `#F7F9FB→#FAFBFC`、暗 `.05→.035`，令牌值改动重生成 `Tokens.java` + 两套主题 CSS）；⭐ **当前格换成应用驱动**：`.table-cell:focused` 在行选模式下是**死选择器**（`TableCell.updateFocus()` 非 cell-selection 时主动 `setFocused(false)`，实测 `isFocused()=false`），改由 `bindFocusCursor()` 盯 `focusModel.focusedCellProperty()` 打样式类 `adb-grid__cell--cursor`（内描边 + `bg-active` 淡底，只有左右两条边），光标**按列名记不按 `TableColumn` 实例记**（冻结列是从右表搬过去的同一批实例，按下标比会标不上）；列头右键收齐排序升/降/清除、移到左/右/首/尾、筛选、隐藏、自适应、**冻结到此列 / 取消冻结**、复制列名，冻结算术走新 `dataColumnsOrdered()`（`dataColumns()` 只看得到 `grid`，冻结列在 `frozenGrid`）+ `isColumnFrozen()`，**做不到就禁用**（已冻列、右边剩不下两列的列，否则最后一列点冻结会偷偷少冻一列）；双击列头 = 自适应（与菜单项同一算法）；网格左下新增**行操作条** `+ / − / 应用 / 取消`（`#data-row-actions`，四个 `disableProperty` **bind** 工具条同一批、删除连 `visible/managed` 一起跟，只读表 `setManaged(false)` 整排消失）+ 新 `discardChanges()`（清缓冲 + 清撤销 + 重建 + 报数）；`NULL` 显示 **`(NULL)`**（灰斜体的 `NULL` 与内容为 "NULL" 的 TEXT 值分不开，两者处理方式完全不同）、抽屉文本页 NULL 说明对齐、`sizeLabel` 补 **GB 档**（不再 `1536.0 MB`）；长文本走**详情抽屉文本页就地编辑**（回填原始值、**Ctrl+Enter 应用**、**Esc 只退编辑不关抽屉**、写**同一个 `EditBuffer`**、主键列与只读表不出现编辑器，门禁走 `canEditTextCell`）。新门禁 **25 条 / 3 类**（`SelectionStateTest` 8 + `CellDisplayTest` 6 + `CellEditorTest` 4 + `GridInteractionTest` 7）逐条**变异红→改回绿**。⭐ 本轮第二个假绿：`primaryKeyAndReadOnlyTablesNeverOfferTheEditor` 删掉 `!definition.primaryKey()` 仍全绿 —— 演示库主键全是 INTEGER，`textual(type)` 先短路，规则根本没被检验 → 测试**自建 `codes (code TEXT PRIMARY KEY, note TEXT NOT NULL)`** 并补**正例**（可写文本列必须出现「编辑」，否则「编辑器永远不出现」这种改坏也能全绿）。另记两个脚手架坑：`WaitForAsyncUtils.waitFor` 放 `@Start` 会**阻塞 FX 线程导致死锁超时**（等加载要放 `@BeforeEach`）；变异脚本**不先删旧报告**会在「编译失败」时读到上一轮 green 报告。⚠️ **已知缺口**：选中态 / 光标环 / 抽屉编辑器是交互态，12 帧截图无一覆盖（靠 `SelectionStateTest` 算色与 x/y 断言兜底），补帧需给 `AppShell` 加 `ADB_CELL` 类启动开关，归 UX-5；门禁 **753 条 / 97 类 / 0 失败**（+25 / +3 类） |
 | 2026-10-24 | **第二十一轮·UX-3** | **工具条与动作可发现性**（§34.2）：新增 `IconButtons.labeled(...)`（图标 + 文字 + tooltip + accessibleText 一次装配，参数收在 `ButtonBase` 上，`Button`/`MenuButton` 通吃）；数据页六颗主操作**由纯图标改为带文字**（保存 / 筛选与排序 / 列 / 视图 / 导入 / 导出），「删除记录」标 `adb-button--danger`，「清除条件」保持纯图标；三页工具条按语义分组并插 `.adb-toolbar__separator`（数据页 4 组 / 清单页 4 组 / 对象首页 2 组）；**响应式收字** `TOOLBAR_LABEL_MIN_WIDTH = 1100`，量**窗口宽度**，窄档 `setText("")` + `adb-button--icon`、**提示与 accessibleText 任何档位都不丢**；补数据页导入入口 `#data-import`（候选表把当前表挪第一位 = 向导预选；启用条件与导出**刻意相反** —— 空表才最需要导入）、清单页 `#table-list-transfer`（`TransferHub`）；对象首页四颗主操作从裸 Modena 按钮升级为 `adb-button` + 文字 + danger；**9 个变异逐条验证全红→改回绿**（保存空白 / 筛选空白 / 删 accessibleText / 去分隔线 / 导入不预选 / 删除不 danger / 清单不预选 / 去掉响应式 / 对象首页改纯图标）。⭐ **两个真问题**：①新门禁第一版是**假绿** —— `robot.lookup(...).tryQuery()` 对不可见节点返回 empty，`findById(null,…)` 一路 null 让每条断言被跳过，M1 改坏仍绿 → 改从 `.adb-grid-page` 手写场景图遍历 + 找不到即 `assertNotNull`（「宁可抛异常，也不放行」；Monocle headless 窗口有 960px 下限，尺寸断言改「是否跨过阈值」）；②修好门禁后红的是**生产代码** —— `updateEditControls()`/保存路径直接 `saveButton.setText(...)` 绕过登记表，窄档收字后一变脏「保存 3」自己长回来、搜索框被挤 → 统一走 `setToolbarLabel(...)`。「历史」推迟到 **P2-3**（`QueryHistory` 只存 SQL，无表名/时间戳）、「单元格编辑器」归 **UX-4**；门禁 **728 条 / 94 类 / 0 失败**（+8 = `ToolbarDiscoverabilityTest` 5 + `TableListPageTest` 2 + `ObjectHomeToolbarTest` 1；类 +1） |
 | 2026-10-24 | **第二十一轮·UX-2** | **密度、排版与 chrome**（§34.2）：密度**三档 → 四档**，新增 `row-dense = 22`（令牌 **97 → 99**：`row-dense` + `sp-1h 6px`），**默认档位由 `normal` 改 `compact`**；`RowHeights.of` / `AppShell.applyDensity` / `SideBar.setDensity` / `DataGridPage.setDensity` 全部认四档
 （**新门禁在开发过程中就抓到一次自伤**：改白名单时漏写 `normal`，「标准」被静默降级成 compact，`AppShellTest` 立刻红 —— 这正是四档白名单要显式列全的理由）；数据面正文统一 **12px**（网格 / 清单 / 对象树 / 结构页 / 按钮 / 弹窗按钮；`.root` 保留 13px 作界面基准）；chrome 收薄——标签栏 36→**28**、对象头 44→**36**、页工具条 44→**34**、分页器 44→**36**、状态栏 26→**24**、按钮/输入 32→**28**；dense 单元格内边距 `2 6`（`sp-1h`，间距「4 倍数」规则登记第二个例外）；新增 `ChromeMetricsTest`（框架实际高度 + **1268×765 可见 ≥22 行**）、`AppShellTest.densityDefaultsToCompactWhenNoPreferenceIsStored`、`AppCssAuditTest.dataSurfacesUseTheCompactBodySize`，`DensityCoverageTest` / `MenuBarFactoryTest` 扩到四档；**5 个变异全部验证**（字号 13 / 默认 comfort / 分页器 44 / dense 返回 24 / 菜单删「密集」均红，改回绿）；门禁 **720 条 / 93 类 / 0 失败** |

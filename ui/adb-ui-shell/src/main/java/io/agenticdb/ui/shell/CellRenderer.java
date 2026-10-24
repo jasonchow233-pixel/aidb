@@ -62,8 +62,13 @@ final class CellRenderer {
     }
 
     static Rendered render(ColumnDef definition, Object value) {
+        // ⭐ UX-4：NULL 显示成 **(NULL)**，不是 NULL。
+        //   带括号是因为 TEXT 列里真的会出现字符串 "NULL"（导入 CSV、日志表、外部系统写的）——
+        //   灰斜体的 "NULL" 和一条内容为 NULL 的文本在 12px 网格里根本分不出来，
+        //   而这两种情况要做的处理完全不同。空串同理显示成 ""，三种状态各有各的字形。
         if (value == null) {
-            return new Rendered("NULL", "adb-grid__cell--null", "NULL", false);
+            return new Rendered("(NULL)", "adb-grid__cell--null",
+                    "NULL —— 这一格没有值（不是空串，也不是内容为 NULL 的文本）", false);
         }
         if (value instanceof String text && text.isEmpty()) {
             return new Rendered("\"\"", "adb-grid__cell--empty", "空串（不是 NULL）", false);
@@ -152,7 +157,12 @@ final class CellRenderer {
             return String.format(Locale.ROOT, "%.1f KB", value);
         }
         value /= 1024.0;
-        return String.format(Locale.ROOT, "%.1f MB", value);
+        if (value < 1024) {
+            return String.format(Locale.ROOT, "%.1f MB", value);
+        }
+        // 大对象（图片 / 文档 / 音视频）在真实业务表里就是 GB 级，
+        // 不补这一档就会显示成 "1536.0 MB" 这种没法扫读的数字。
+        return String.format(Locale.ROOT, "%.1f GB", value / 1024.0);
     }
 
     static String compact(String text) {

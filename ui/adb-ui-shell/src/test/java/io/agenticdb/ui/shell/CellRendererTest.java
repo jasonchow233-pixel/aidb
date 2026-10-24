@@ -15,7 +15,7 @@ class CellRendererTest {
     void keepsNullAndEmptyStringDistinct() {
         ColumnDef text = column("bio", ColumnType.TEXT, null);
 
-        assertThat(CellRenderer.render(text, null).text()).isEqualTo("NULL");
+        assertThat(CellRenderer.render(text, null).text()).isEqualTo("(NULL)");
         assertThat(CellRenderer.render(text, null).styleClass()).contains("null");
         assertThat(CellRenderer.render(text, "").text()).isEqualTo("\"\"");
         assertThat(CellRenderer.render(text, "").styleClass()).contains("empty");

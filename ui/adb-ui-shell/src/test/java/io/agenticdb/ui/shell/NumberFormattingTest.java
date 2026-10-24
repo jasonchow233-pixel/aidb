@@ -105,7 +105,8 @@ class NumberFormattingTest {
 
     @Test
     void nullStillRendersAsNull() {
-        assertThat(CellRenderer.render(number("amount"), null).text()).isEqualTo("NULL");
+        // 数字列也一样：NULL 就是 NULL，不能因为「数字列不可能是空串」就画成空。
+        assertThat(CellRenderer.render(number("amount"), null).text()).isEqualTo("(NULL)");
     }
 
     private static ColumnDef number(String name) {
