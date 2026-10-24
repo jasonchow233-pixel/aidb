@@ -3,8 +3,8 @@
 > **定位**：**「界面差在哪、差多少、改成什么样、做完怎么验」**。
 > `NAVICAT-TODO.md` 是唯一执行清单（逐条勾选）；本文是**界面专项的阶段规划**（批次 + 依赖 + 门禁）。
 >
-> 最后更新：**2026-10-24（第二十一轮：§12.2 UX-0 / UX-1 / UX-2 已落地，下一项 UX-3）**
-> 适用基线：**93 个测试类 / 720 条执行 / 44 条环境门控跳过 / 0 失败**
+> 最后更新：**2026-10-24（第二十一轮：§12.2 UX-0 / UX-1 / UX-2 / UX-3 已落地，下一项 UX-4）**
+> 适用基线：**94 个测试类 / 728 条执行 / 44 条环境门控跳过 / 0 失败**
 >
 > | 批次 | 状态 | 结果 |
 > |---|---|---|
@@ -634,17 +634,23 @@ java tools/TestCount.java      # 按 <testcase> 计数，断言总数 ≥ 300
 `RowHeights` 的 dense 返回 24 → `DensityCoverageTest` 红；
 视图菜单删掉「密集」→ `MenuBarFactoryTest` 红（动作 id 未出现在菜单里）。
 
-#### UX-3 · 工具条与动作可发现性（L）
+#### UX-3 · 工具条与动作可发现性（L）— ✅ 已完成（2026-10-24）
 
-| 项 | 改动 | 门禁 |
-|---|---|---|
-| 主操作带文字 | 新增 `ActionButtons.labeled(...)`：图标 + 文字 + id + accessibleText；数据页先落「保存 / 筛选与排序 / 列 / 导出 / 导入 / 历史」 | 新 `ToolbarDiscoverabilityTest`：主操作按钮的 `text` 非空、`accessibleText` 非空 |
-| 语义分组 | 数据/清单/对象首页工具条按「对象动作 / 编辑 / 数据交换 / 视图」分组，用分隔线；删除用 danger 色 | `ActionRegistryConvergenceTest` + 页面测试 |
-| 补动作 | 数据页加 `导入…`（目标表预选）、`历史`（按表筛，接 P2-3）、`单元格编辑器`（长文本/JSON 弹窗）；清单页加 `导入向导` / `导出向导` | 各 +1 页面测试；`ImportWizard` / `ExportWizard` 现有测试 |
-| 响应式收字 | 窗口 < 1100px 时主操作退化为图标 + tooltip；≥1100px 恢复文字 | 新窗口宽度测试（900/1280 两档） |
+| 项 | 改动 | 门禁 | 结果 |
+|---|---|---|---|
+| 主操作带文字 | `IconButtons.labeled(...)`：图标 + 文字 + tooltip + accessibleText；数据页落「保存 / 筛选与排序 / 列 / 视图 / 导入 / 导出」，「清除条件」保持纯图标 | 新 `ToolbarDiscoverabilityTest`：主操作 `text` 非空、`graphic` 非空、tooltip 与 accessibleText 非空 | ✅ |
+| 语义分组 | 三页工具条按「数据动作 / 查询与视图 / 数据交换 / 视图」分组，组间 `.adb-toolbar__separator`；删除标 `adb-button--danger` | `groupsAreSeparatedAndDeleteIsMarkedDangerous` + `TableListPageTest` + `ObjectHomeToolbarTest` | ✅ |
+| 补动作 | 数据页 `导入…`（`#data-import`，目标表预选）；清单页 `导入 / 导出`（`#table-list-transfer` → `TransferHub`，选中表挪到第一候选） | `importWizardPreselectsTheCurrentTable` + `transferEntryIsLabeledAndPreselectsTheSelectedTable` | ✅（「历史」→ P2-3、「单元格编辑器」→ UX-4） |
+| 响应式收字 | `TOOLBAR_LABEL_MIN_WIDTH = 1100`：窗口窄于阈值时 `setText("")` + `adb-button--icon`，**tooltip / accessibleText 保留**；量的是**窗口宽度**不是页面宽度 | `narrowWindowCollapsesTextButNeverTheHints` + `labeledToolbarStillFitsInAWideWindow` | ✅ |
 
 **不做的**：Navicat 顶部 11 个大功能条（空壳），以及 AI / 数据生成 / 脱敏 / BI。
-**变异**：把「保存」改成纯图标 → 可发现性门禁红。
+**变异**：9 个逐条验证 —— 保存文字改空串 / 筛选文字改空串 / 删 `setAccessibleText` / 去掉数据页分隔线 /
+导入不预选当前表 / 删除不标 danger / 清单页不预选 / 去掉响应式判断 / 对象首页改回纯图标，
+**全部红**，改回全绿。
+⭐ 两个由门禁抓出的真问题：① 新门禁第一版**自己假绿** —— `robot.lookup().tryQuery()` 对不可见节点返回 empty，
+一路 null 让每条断言被跳过，改成手写场景图遍历 + 找不到即 `assertNotNull`；
+② `saveButton.setText(...)` 绕过文字登记表 —— 窄档收字后数据一变脏，「保存 3」会自己长回来把搜索框挤掉，
+统一改走 `setToolbarLabel(...)`。
 
 #### UX-4 · 网格交互（M）
 

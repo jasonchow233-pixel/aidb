@@ -231,16 +231,19 @@ final class ObjectHomePage extends VBox {
     /**
      * 对象级工具条（Navicat 形态）：打开 / 设计 / 新建 / 删除 / 刷新。
      *
-     * <p>纯图标 + Tooltip，和工具栏、表清单保持同一套按钮规格。
-     * 启用态由 {@link #updateToolbarState()} 按「当前选择是什么」决定 ——
+     * <p>⭐ UX-3：主操作改成「图标 + 文字」—— 这四颗按钮里有一颗会删表，
+     * 只有图标就意味着用户必须先认图标、再确认自己没认错。
+     *
+     * <p>启用态由 {@link #updateToolbarState()} 按「当前选择是什么」决定 ——
      * 选函数时「删除」不该亮（宿主只会删表）。
      */
     private HBox buildToolbar() {
-        openButton = IconButtons.icon(Icons.Icon.TABLE, "打开", Icons.SIZE_PRIMARY);
+        openButton = toolbarOp(Icons.Icon.TABLE, "打开", "打开选中对象的数据页 / 预览页");
         openButton.setId("object-home-open");
         openButton.setOnAction(event -> openSelected());
 
-        designButton = IconButtons.icon(Icons.Icon.STRUCTURE, "设计表 / 视图", Icons.SIZE_PRIMARY);
+        designButton = toolbarOp(Icons.Icon.STRUCTURE, "设计表",
+                "在结构编辑器里打开选中的表或视图");
         designButton.setId("object-home-design");
         designButton.setOnAction(event -> {
             SchemaService.SchemaObject selected = singleSelection();
@@ -251,11 +254,12 @@ final class ObjectHomePage extends VBox {
             host.design(selected);
         });
 
-        createButton = IconButtons.icon(Icons.Icon.ADD, "新建表…", Icons.SIZE_PRIMARY);
+        createButton = toolbarOp(Icons.Icon.ADD, "新建表", "新建一张表（弹窗填字段）");
         createButton.setId("object-home-new");
         createButton.setOnAction(event -> host.newTable());
 
-        dropButton = IconButtons.icon(Icons.Icon.DELETE, "删除表…", Icons.SIZE_PRIMARY);
+        dropButton = toolbarOp(Icons.Icon.DELETE, "删除表",
+                "删除选中的表（会二次确认，可多选批量删）");
         dropButton.setId("object-home-drop");
         dropButton.getStyleClass().add("adb-button--danger");
         dropButton.setOnAction(event -> {
@@ -274,12 +278,29 @@ final class ObjectHomePage extends VBox {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox toolbar = new HBox(8, openButton, designButton, createButton, dropButton,
-                spacer, refresh);
+        // ⭐ UX-3：看对象的一组、改对象的一组，中间一条竖线。
+        HBox groupView = new HBox(4, openButton, designButton);
+        HBox groupEdit = new HBox(4, createButton, dropButton);
+        groupView.getStyleClass().add("adb-toolbar__group");
+        groupEdit.getStyleClass().add("adb-toolbar__group");
+        groupView.setAlignment(Pos.CENTER_LEFT);
+        groupEdit.setAlignment(Pos.CENTER_LEFT);
+        Region separator = new Region();
+        separator.getStyleClass().add("adb-toolbar__separator");
+
+        HBox toolbar = new HBox(8, groupView, separator, groupEdit, spacer, refresh);
         toolbar.setId("object-home-toolbar");
         toolbar.getStyleClass().add("adb-inline-toolbar");
         toolbar.setAlignment(Pos.CENTER_LEFT);
         return toolbar;
+    }
+
+    /** 对象首页工具条的一颗主操作：图标 + 文字 + tooltip + accessibleText。 */
+    private Button toolbarOp(Icons.Icon icon, String text, String hint) {
+        Button button = IconButtons.labeled(new Button(), icon, text, hint, Icons.SIZE_PRIMARY);
+        button.getStyleClass().add("adb-button");
+        button.setMinWidth(Region.USE_PREF_SIZE);
+        return button;
     }
 
     /** 当前唯一的选中对象；多选 / 空选为 {@code null}。 */

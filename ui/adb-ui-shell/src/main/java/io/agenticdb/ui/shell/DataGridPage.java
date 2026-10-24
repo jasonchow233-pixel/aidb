@@ -21,13 +21,17 @@ import io.agenticdb.safety.DangerClassifier;
 import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
+import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.CheckMenuItem;
@@ -60,6 +64,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
+import javafx.stage.Window;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -159,8 +164,23 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final StackPane sectionStack = new StackPane();
     /** 工具栏左组（数据操作）。 */
     private final HBox toolGroupData = new HBox(4);
-    /** 工具栏右组（查询与显示）。 */
+    /** 工具栏中组（查询与显示）。 */
     private final HBox toolGroupQuery = new HBox(4);
+    /** ⭐ UX-3：工具栏数据交换组（导入 / 导出）。 */
+    private final HBox toolGroupTransfer = new HBox(4);
+    /**
+     * ⭐ UX-3：工具条上的「图标 + 文字」主操作 —— 按钮 -&gt; 完整文字。
+     *
+     * <p>收起来时要清空文字、展开时要复原，靠这张表记住原文，
+     * 不在按钮上塞自定义属性。
+     */
+    private final Map<ButtonBase, String> toolbarLabels = new LinkedHashMap<>();
+    /** 工具条当前是否显示文字；null = 还没量过窗口宽度。 */
+    private Boolean toolbarTextVisible;
+    /** 正在监听的窗口宽度（换窗口时必须摘掉旧的监听）。 */
+    private ObservableValue<? extends Number> boundWindowWidth;
+    private final ChangeListener<Number> windowWidthListener =
+            (observable, oldValue, newValue) -> applyToolbarLabels(newValue.doubleValue());
     /** 删除选中行（工具栏左组的危险操作）。 */
     private final Button deleteRowsButton = IconButtons.of(Icons.Icon.DELETE, "删除记录");
     private final VBox stateBox = new VBox(10);
@@ -188,6 +208,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private ColumnSettingsPanel columnPanel;
     private final MenuButton viewButton = IconButtons.iconMenu(new MenuButton(), Icons.Icon.VIEW, "视图");
     private final MenuButton exportButton = IconButtons.iconMenu(new MenuButton(), Icons.Icon.EXPORT, "导出");
+    /** ⭐ UX-3：数据页直接导入（目标表预选本表），不用再绕侧栏的「导入 / 导出」。 */
+    private final Button importButton = new Button();
     private final TextField searchField = new TextField();
     private final CheckMenuItem hideNullItem = new CheckMenuItem("隐藏含 NULL 行");
     private final CheckMenuItem hideEmptyItem = new CheckMenuItem("隐藏含空串行");
@@ -216,6 +238,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private double dragLastSceneX;
     /** 拖动超过这个位移就算「拖」而不是「点」—— 点列头是排序。 */
     private static final double DRAG_THRESHOLD = 6;
+    /**
+     * ⭐ UX-3：窗口窄于这个宽度时，工具条主操作退回「图标 + tooltip」。
+     *
+     * <p>量的是**窗口**而不是页面：侧栏收起会让页面变宽，但用户能一眼扫完的
+     * 工具条宽度取决于整窗给多少地方 —— 1100px 以下文字会开始互相挤。
+     */
+    static final double TOOLBAR_LABEL_MIN_WIDTH = 1100;
 
     // ─────────────── G4：单元格区域选择 ───────────────
     /**
@@ -509,7 +538,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         undoButton.setDisable(!editable || loading || saving || !editBuffer.canUndo());
         redoButton.setDisable(!editable || loading || saving || !editBuffer.canRedo());
         saveButton.setDisable(!editable || loading || saving || !editBuffer.isDirty());
-        saveButton.setText(editBuffer.isDirty()
+        setToolbarLabel(saveButton, editBuffer.isDirty()
                 ? "保存 " + editBuffer.dirtyCount() : "保存");
         addRowButton.setDisable(!editable || loading || saving);
         updateSelectAllState();
@@ -554,7 +583,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         }
 
         saveButton.setDisable(true);
-        saveButton.setText("保存中…");
+        setToolbarLabel(saveButton, "保存中…");
         // ⭐ V-4：保存期间图标换成转圈，且**按钮宽度不变**（否则整排工具栏会往左抽）。
         IconButtons.loading(saveButton, true);
         saving = true;
@@ -807,6 +836,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         toolGroupData.getStyleClass().add("adb-toolbar__group");
         toolGroupQuery.setAlignment(Pos.CENTER_LEFT);
         toolGroupQuery.getStyleClass().add("adb-toolbar__group");
+        toolGroupTransfer.setAlignment(Pos.CENTER_LEFT);
+        toolGroupTransfer.getStyleClass().add("adb-toolbar__group");
 
         Region toolbarSpacer = new Region();
         HBox.setHgrow(toolbarSpacer, Priority.ALWAYS);
@@ -829,12 +860,14 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
         saveButton.setId("data-save");
         saveButton.getStyleClass().addAll("adb-button", "adb-button--primary");
-        saveButton.setTooltip(new Tooltip("预览 SQL 并保存全部修改 (⌘S)"));
+        toolbarOp(saveButton, Icons.Icon.SAVE, "保存", "预览 SQL 并保存全部修改 (⌘S)");
         saveButton.setOnAction(event -> saveChanges());
 
         deleteRowsButton.setId("data-delete-rows");
-        deleteRowsButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
-        deleteRowsButton.setTooltip(new Tooltip("删除选中的行（写进编辑缓冲，保存后生效）"));
+        // ⭐ 删除是这一排里唯一会丢数据的动作 —— 用 danger 色，别和「保存」穿同一件衣服。
+        deleteRowsButton.getStyleClass().addAll("adb-button", "adb-button--danger");
+        toolbarOp(deleteRowsButton, Icons.Icon.DELETE, "删除记录",
+                "删除选中的行（写进编辑缓冲，保存后生效）");
         deleteRowsButton.setDisable(true);
         // ⚠️ 没有选中行时**整颗按钮消失**，而不是摆在那里灰着 ——
         //    「删除」在不可用状态占着位置，只会让人反复去点它。
@@ -849,9 +882,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 deleteRowsButton);
 
         filterButton.setId("data-filter");
-        filterButton.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-button--icon");
+        filterButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         filterButton.setDisable(true);
-        filterButton.setTooltip(new Tooltip("打开条件构造器；列头漏斗可按候选值筛选"));
+        toolbarOp(filterButton, Icons.Icon.FILTER, "筛选与排序",
+                "打开条件构造器；列头漏斗可按候选值筛选");
         filterButton.setOnAction(event -> showConditionDialog());
 
         clearQueryButton.setId("data-clear-query");
@@ -861,16 +895,17 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         clearQueryButton.setOnAction(event -> clearQuery());
 
         columnsButton.setId("data-columns");
-        columnsButton.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-button--icon");
+        columnsButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         columnsButton.setDisable(true);
-        columnsButton.setAccessibleText("列设置");
-        columnsButton.setTooltip(new Tooltip("显示 / 隐藏列、恢复默认布局；列宽可拖列头边缘调整"));
+        toolbarOp(columnsButton, Icons.Icon.COLUMNS, "列",
+                "显示 / 隐藏列、恢复默认布局；列宽可拖列头边缘调整");
         columnsButton.setOnAction(event -> openColumnPanel());
 
         viewButton.setId("data-view");
-        viewButton.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-button--icon");
+        viewButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         viewButton.setDisable(true);
-        viewButton.setTooltip(new Tooltip("本页视图：隐藏 NULL / 空串行、转置"));
+        toolbarOp(viewButton, Icons.Icon.VIEW, "视图",
+                "本页视图：隐藏 NULL / 空串行、转置、冻结列");
         hideNullItem.setId("data-hide-null");
         hideNullItem.setOnAction(event -> setHideNullRows(hideNullItem.isSelected()));
         hideEmptyItem.setId("data-hide-empty");
@@ -901,9 +936,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 new SeparatorMenuItem(), freezeMenu);
 
         exportButton.setId("data-export");
-        exportButton.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-button--icon");
+        exportButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         exportButton.setDisable(true);
-        exportButton.setTooltip(new Tooltip("导出当前页或复制到剪贴板"));
+        toolbarOp(exportButton, Icons.Icon.EXPORT, "导出",
+                "导出当前页或复制到剪贴板；导出向导可导整表、多种格式");
         MenuItem exportCsv = new MenuItem("导出当前页为 CSV…");
         exportCsv.setId("data-export-csv");
         exportCsv.setOnAction(event -> exportCsv());
@@ -920,6 +956,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         exportButton.getItems().addAll(exportWizard, new SeparatorMenuItem(),
                 exportCsv, copyPage, copyPageSql);
 
+        importButton.setId("data-import");
+        importButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        importButton.setDisable(true);
+        toolbarOp(importButton, Icons.Icon.IMPORT, "导入",
+                "打开导入向导；目标表已预选成本表");
+        importButton.setOnAction(event -> openImportWizard());
+
         searchField.setId("data-search");
         searchField.getStyleClass().add("adb-grid__search");
         searchField.setPromptText("本页搜索");
@@ -928,10 +971,16 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         searchField.setTooltip(new Tooltip("只在当前页内过滤 (⌘F)"));
         searchField.textProperty().addListener((observable, previous, value) -> rebuildItems());
 
+        // ⭐ UX-3：按语义分三组 —— 编辑 / 查询与显示 / 数据交换，组间一条竖线。
+        //    以前「导出」混在查询组里、「新增行」和「撤销」挨着，
+        //    眼睛得把一排按钮重新分类一遍才知道哪组管什么。
         toolGroupQuery.getChildren().addAll(filterButton, clearQueryButton, columnsButton,
-                viewButton, exportButton, searchField);
+                viewButton);
+        toolGroupTransfer.getChildren().addAll(importButton, exportButton);
 
-        toolbar.getChildren().addAll(toolGroupData, toolbarSpacer, toolGroupQuery);
+        toolbar.getChildren().addAll(toolGroupData, toolbarSeparator(), toolGroupQuery,
+                toolbarSeparator(), toolGroupTransfer, toolbarSpacer, searchField);
+        bindToolbarLabels();
 
         chipBar.setId("data-query-chips");
         chipBar.getStyleClass().add("adb-query-chips");
@@ -2908,6 +2957,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         boolean hasData = !grid.getItems().isEmpty() || !transposeTable.getItems().isEmpty();
         viewButton.setDisable(tableSchema == null);
         exportButton.setDisable(!hasData);
+        // ⭐ 导入的可用条件和导出**相反**：空表正是最需要导入的时候，
+        //    所以只看「表结构读到没有」，不看「现在有没有行」。
+        importButton.setDisable(tableSchema == null);
         hideNullItem.setSelected(hideNullRows);
         hideEmptyItem.setSelected(hideEmptyRows);
         transposeItem.setSelected(transpose);
@@ -3489,6 +3541,131 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         ExportWizard wizard = new ExportWizard(session, tableName, names, scope, target,
                 dbExecutor, message -> feedback.status(message));
         wizard.show(getScene() == null ? null : getScene().getWindow());
+    }
+
+    /**
+     * ⭐ UX-3：数据页「导入…」—— 直接开导入向导，目标表预选本表。
+     *
+     * <p>以前导数据只能绕侧栏「导入 / 导出」→ 再在表清单里重新找一遍这张表。
+     * 用户正盯着 users 表想补数据，入口就该在这张表上。
+     *
+     * <p>候选表要查库，所以走 {@code dbExecutor}；拉不到清单也照样能往本表导 ——
+     * 那样只是下拉框里少几个别的表，不该挡住主用途。
+     */
+    private void openImportWizard() {
+        if (tableSchema == null) {
+            return;
+        }
+        Task<List<String>> task = new Task<>() {
+            @Override
+            protected List<String> call() throws Exception {
+                return schemaService.listObjects(session).stream()
+                        .filter(object -> object.kind() == SchemaService.ObjectKind.TABLE)
+                        .map(SchemaService.SchemaObject::name)
+                        .toList();
+            }
+        };
+        task.setOnSucceeded(event -> showImportWizard(task.getValue()));
+        task.setOnFailed(event -> {
+            feedback.status("表清单读取失败，导入向导只列出本表");
+            showImportWizard(List.of());
+        });
+        dbExecutor.execute(task);
+    }
+
+    private void showImportWizard(List<String> listedTables) {
+        createImportWizard(listedTables).show(getScene() == null ? null : getScene().getWindow());
+    }
+
+    /**
+     * 组装导入向导（<b>不弹出</b>）：当前表排到候选第一位并预选。
+     *
+     * <p>单独拆出来是因为 {@code ImportWizard#show} 是模态的，
+     * 一点就阻塞 FX 线程 —— 门禁要断言「预选对了」只能走这个接缝。
+     */
+    ImportWizard createImportWizard(List<String> listedTables) {
+        List<String> candidates = new ArrayList<>();
+        candidates.add(tableName);
+        for (String table : listedTables) {
+            if (!table.equals(tableName)) {
+                candidates.add(table);
+            }
+        }
+        return new ImportWizard(session, tableName, tableSchema.columns(), List.copyOf(candidates),
+                null, dbExecutor, message -> feedback.status(message));
+    }
+
+    /**
+     * ⭐ UX-3：工具条主操作 = 图标 + 文字 + tooltip + accessibleText，
+     * 同时登记进「窄窗口收字」名单。
+     */
+    private <T extends ButtonBase> T toolbarOp(T button, Icons.Icon icon, String text, String hint) {
+        IconButtons.labeled(button, icon, text, hint);
+        toolbarLabels.put(button, text);
+        return button;
+    }
+
+    /**
+     * 改工具条主操作的文字（「保存 3」这类脏计数用它）。
+     *
+     * <p>⚠️ 不许直接 {@code setText}：{@link #toolbarLabels} 是收字/复原的唯一真相，
+     * 绕过它改文字，窄窗口里收起的按钮会在下一次刷新时自己长出文字。
+     */
+    private void setToolbarLabel(ButtonBase button, String text) {
+        toolbarLabels.put(button, text);
+        boolean showText = toolbarTextVisible == null || toolbarTextVisible;
+        button.setText(showText ? text : "");
+    }
+
+    /** 组与组之间的竖分隔线（样式在 {@code .adb-toolbar__separator}）。 */
+    private Region toolbarSeparator() {
+        Region separator = new Region();
+        separator.getStyleClass().add("adb-toolbar__separator");
+        return separator;
+    }
+
+    /** 把「窗口宽度 → 工具条收字」接上；还没进窗口时先按带文字渲染。 */
+    private void bindToolbarLabels() {
+        sceneProperty().addListener((observable, oldScene, scene) -> {
+            if (scene != null && scene.getWindow() != null) {
+                attachWindowWidth(scene.getWindow());
+            }
+        });
+        if (getScene() != null && getScene().getWindow() != null) {
+            attachWindowWidth(getScene().getWindow());
+        } else {
+            applyToolbarLabels(Double.POSITIVE_INFINITY);
+        }
+    }
+
+    private void attachWindowWidth(Window window) {
+        if (boundWindowWidth != null) {
+            boundWindowWidth.removeListener(windowWidthListener);
+        }
+        boundWindowWidth = window.widthProperty();
+        boundWindowWidth.addListener(windowWidthListener);
+        applyToolbarLabels(boundWindowWidth.getValue().doubleValue());
+    }
+
+    /**
+     * 宽窗口给文字、窄窗口退回图标 + tooltip。
+     *
+     * <p>⚠️ 收字时补上 {@code adb-button--icon}（固定 30px 宽），
+     * 展开时必须摘掉 —— 留着的话「保存」会被钉成 30px，文字直接看不见。
+     */
+    private void applyToolbarLabels(double windowWidth) {
+        boolean showText = windowWidth >= TOOLBAR_LABEL_MIN_WIDTH;
+        if (toolbarTextVisible != null && toolbarTextVisible.booleanValue() == showText) {
+            return;
+        }
+        toolbarTextVisible = showText;
+        toolbarLabels.forEach((button, text) -> {
+            button.setText(showText ? text : "");
+            button.getStyleClass().remove("adb-button--icon");
+            if (!showText) {
+                button.getStyleClass().add("adb-button--icon");
+            }
+        });
     }
 
     private void exportCsv() {

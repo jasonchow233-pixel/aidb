@@ -149,6 +149,8 @@ final class TableListPage extends VBox {
 
     private Button listButton;
     private Button gridButton;
+    /** ⭐ UX-3：清单页的「导入 / 导出」入口（预选当前选中表）。 */
+    private final Button transferButton = new Button();
     private String anchorName;
     /** 防重入：统计没跑完时再点刷新只会排一次队。 */
     private boolean loading;
@@ -229,14 +231,71 @@ final class TableListPage extends VBox {
         gridButton = ActionRegistry.iconButtonFor(actions.viewGrid(), Icons.Icon.GRID,
                 "网格视图", "网格视图");
 
+        // ⭐ UX-3：清单页直接进导入 / 导出 —— 预选当前选中的那张表。
+        //    以前只能绕侧栏，选中了 orders 却要在弹窗里再找一遍。
+        transferButton.setId("table-list-transfer");
+        transferButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        IconButtons.labeled(transferButton, Icons.Icon.TRANSFER, "导入 / 导出",
+                "选一张表导入或导出；这里会预选当前选中的表");
+        transferButton.setMinWidth(Region.USE_PREF_SIZE);
+        transferButton.setOnAction(event -> openTransferHub());
+
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox toolbar = new HBox(8, create, drop, design, search, spacer, summary, spinner,
-                open, refresh, listButton, gridButton);
+        // ⭐ UX-3：按语义分四组，组间一条竖线 —— 一排 11 颗按钮不分堆，
+        //    等于没有顺序，眼睛每颗都要读一遍。
+        HBox groupObject = grouped(open, design, refresh);
+        HBox groupEdit = grouped(create, drop);
+        HBox groupTransfer = grouped(transferButton);
+        HBox groupView = grouped(listButton, gridButton);
+
+        HBox toolbar = new HBox(8, groupObject, toolbarSeparator(), groupEdit,
+                toolbarSeparator(), groupTransfer, spacer, search, summary, spinner,
+                toolbarSeparator(), groupView);
         toolbar.getStyleClass().addAll("adb-inline-toolbar", "adb-table-list__toolbar");
         toolbar.setAlignment(Pos.CENTER_LEFT);
         return toolbar;
+    }
+
+    /** 工具条的一组（同一语义的动作）。 */
+    private static HBox grouped(Node... nodes) {
+        HBox group = new HBox(4, nodes);
+        group.setAlignment(Pos.CENTER_LEFT);
+        group.getStyleClass().add("adb-toolbar__group");
+        return group;
+    }
+
+    /** 组与组之间的竖分隔线。 */
+    private static Region toolbarSeparator() {
+        Region separator = new Region();
+        separator.getStyleClass().add("adb-toolbar__separator");
+        return separator;
+    }
+
+    /**
+     * 导入 / 导出的候选表：**当前选中的那张排第一**。
+     *
+     * <p>{@link TransferHub} 会预选列表第一项，所以「把选中表挪到第一位」
+     * 就等于「向导里预选了这张表」—— 不用给弹窗再加一个预选参数。
+     */
+    List<String> transferCandidates() {
+        List<String> names = new ArrayList<>();
+        List<String> selected = selectedNames();
+        if (selected.size() == 1) {
+            names.add(selected.getFirst());
+        }
+        for (TableMeta meta : rows) {
+            if (!names.contains(meta.name())) {
+                names.add(meta.name());
+            }
+        }
+        return List.copyOf(names);
+    }
+
+    private void openTransferHub() {
+        TransferHub hub = new TransferHub(session, transferCandidates(), dbExecutor, status);
+        hub.show(getScene() == null ? null : getScene().getWindow());
     }
 
     // ─────────────────────────── 清单 ───────────────────────────

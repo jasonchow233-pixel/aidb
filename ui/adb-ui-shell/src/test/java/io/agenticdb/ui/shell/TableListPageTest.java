@@ -438,6 +438,43 @@ class TableListPageTest {
                 .as("同一个表名反复上报 = 每次都触发一次元数据查询 + 一次面板重绘");
     }
 
+    // ─────────────────────── 第二十一轮 UX-3 工具条可发现性 ───────────────────────
+
+    /**
+     * 清单页的「导入 / 导出」：图标 + 文字 + tooltip + accessibleText 四样齐全，
+     * 并且**预选当前选中的那张表**。
+     *
+     * <p>预选的做法是把选中表挪到候选列表第一位 —— {@code TransferHub} 默认选第一项，
+     * 所以门禁断言这个顺序就够了，不必真点（点了是模态弹窗，会卡住 FX 线程）。
+     */
+    @Test
+    void transferEntryIsLabeledAndPreselectsTheSelectedTable(FxRobot robot) {
+        Button transfer = button("#table-list-transfer");
+        assertThat(transfer.getText()).as("清单页的导入/导出必须带文字").isNotBlank();
+        assertThat(transfer.getGraphic()).as("同时要有图标").isNotNull();
+        assertThat(transfer.getTooltip()).as("带文字的按钮也要有 tooltip").isNotNull();
+        assertThat(transfer.getTooltip().getText()).isNotBlank();
+        assertThat(transfer.getAccessibleText()).isNotBlank();
+
+        assertThat(page.transferCandidates())
+                .as("没选中时按清单原序").containsExactly("users", "logs", "audit");
+        TableMeta logs = page.table().getItems().stream()
+                .filter(meta -> meta.name().equals("logs"))
+                .findFirst().orElseThrow();
+        robot.interact(() -> page.table().getSelectionModel().select(logs));
+        assertThat(page.transferCandidates())
+                .as("选中 logs 后，向导的第一候选就是 logs（且只出现一次）")
+                .containsExactly("logs", "users", "audit");
+    }
+
+    /** 工具条必须分堆（组间竖线），否则一排 11 颗按钮没有可读顺序。 */
+    @Test
+    void toolbarIsGroupedWithSeparators(FxRobot robot) {
+        assertThat(page.lookupAll(".adb-toolbar__separator"))
+                .as("对象动作 / 表操作 / 数据交换 / 视图 四组之间各一条竖线")
+                .hasSizeGreaterThanOrEqualTo(3);
+    }
+
     private Button button(String selector) {
         return (Button) page.lookup(selector);
     }

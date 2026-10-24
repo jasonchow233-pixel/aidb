@@ -8,9 +8,9 @@
 > **界面规格书见 `docs/UI-VISUAL-SPEC.md`**（第十轮：字号/颜色/图标/布局/组件/弹窗/交互态/键盘）；
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
-> 最后更新：**2026-10-24（第二十一轮执行中：已删 declarations + UX-0 / UX-1 / UX-2 已完成，见 §34）**
-> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **720 条 / 93 类 / 0 失败**（2026-10-24 第二十一轮 Windows 实机实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
-> 📌 **720 = 删除 `declarations` 后的 712 + UX-0 的 2 条 + UX-1 的 2 条 + UX-2 的 4 条**（`AppShellTest.forcedDensityWins…` / `ScreenshotScriptAuditTest.shotsScriptPins…` / `AppCssAuditTest.shadowsAreLimited…` / `IconSystemAuditTest.iconSizesComeFrom…` / **`ChromeMetricsTest` 2 条（新类）** / `AppShellTest.densityDefaultsToCompact…` / `AppCssAuditTest.dataSurfacesUseTheCompactBodySize`）；712 的小口径见下。
+> 最后更新：**2026-10-24（第二十一轮执行中：已删 declarations + UX-0 / UX-1 / UX-2 / UX-3 已完成，见 §34）**
+> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **728 条 / 94 类 / 0 失败**（2026-10-24 第二十一轮 Windows 实机实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
+> 📌 **728 = 删除 `declarations` 后的 712 + UX-0 的 2 条 + UX-1 的 2 条 + UX-2 的 4 条 + UX-3 的 8 条**（`AppShellTest.forcedDensityWins…` / `ScreenshotScriptAuditTest.shotsScriptPins…` / `AppCssAuditTest.shadowsAreLimited…` / `IconSystemAuditTest.iconSizesComeFrom…` / `ChromeMetricsTest` 2 条 / `AppShellTest.densityDefaultsToCompact…` / `AppCssAuditTest.dataSurfacesUseTheCompactBodySize` / **`ToolbarDiscoverabilityTest` 5 条（新类）** / `TableListPageTest` +2 / `ObjectHomeToolbarTest` +1）；712 的小口径见下。
 > 📌 **712 是删除 `declarations` 后的新口径**（-43 条 / -3 类：模块 40 + `DeclaredDialectConsistencyTest` 3），属**主动减面**不是回归。
 >
 > 📌 **关于门禁数字的口径（第十八轮勘误）**：第十七轮记的「721 / 29 跳过」是在 **Docker 可用**时测的；
@@ -36,8 +36,8 @@
 > **第十四轮已完成 U1 ✅ catalog 树**（MySQL 多库：虚拟连接 + 对象树库一层 + 双击切库）。
 > **第十五轮已完成 Q5 ✅ 结果分页 + V-9 ✅ 表格规格统一**（服务端分页 + 翻页条 + 列类型条，与数据页 record-nav / 类型行同一套视觉）。
 > **U-B6 功能补齐层已全部收官**（G1–G7 / Q5 / Q6 / U1–U6 全部 ✅）。
-> **下一动作 = §34 / UX-3（工具条与动作可发现性）**；
-> UX-0 / UX-1 / UX-2 已完成（截图可复现 + 令牌收敛 + 四档密度与 chrome 收薄），`declarations` 已删除（基线 720/93），
+> **下一动作 = §34 / UX-4（网格交互）**；
+> UX-0 / UX-1 / UX-2 / UX-3 已完成（截图可复现 + 令牌收敛 + 四档密度与 chrome 收薄 + 工具条动作可发现性），`declarations` 已删除（基线 728/94），
 > P2/P5/P6 的批次已全部裁定（同意做），排在其后。
 > 详见 §34 与 `docs/UI-ROADMAP.md` §12。
 >
@@ -53,14 +53,14 @@
 |---|---|---|
 | P0 外壳 | ✅ 完成 | 六区、菜单、工具栏、侧栏、标签栏、状态栏、命令面板、双主题、密度档位 |
 | P1 竖线 | ✅ 完成 | SQLite 会话、演示库、内省、对象树、分页数据页、三态、标签隔离 |
-| P2 数据页 | ✅ 完成 | 排序/筛选/条件构造器、列布局、行内编辑、撤销重做、SQL 预览保存、批量操作、详情抽屉、搜索/转置/隐藏、CSV 导出、保存反向撤销 |
+| P2 数据页 | ✅ 完成 | 排序/筛选/条件构造器、列布局、行内编辑、撤销重做、SQL 预览保存、批量操作、详情抽屉、搜索/转置/隐藏、CSV 导出、**导入向导（目标表预选，UX-3）**、保存反向撤销 |
 | P3 查询页 | ✅ 完成 | SQL 词法/分句/格式化、RichTextFX 编辑器、查找替换、多语句结果页签、取消、错误定位、执行计划、历史 |
 | P4 结构页 | ✅ 完成 | 列/索引/外键/触发器/DDL 五页签、加列/改列/重命名列/删列、**索引可增删（§16.2）**、**列注释读回（§16.1）**、两级危险确认、单事务、结构变更联动刷新 |
 | P4.5 契约修复 | 🟡 收尾中 | **B0–B4 已全部落地**（安全语义 / 数据正确性 / 注册表收口 / 并发 / 图标令牌）；剩 4.5-3 已做、4.5-14 收尾、4.5-23 已做 |
 | P5 连接管理 | 🟡 进行中 | 连接管理页、三步向导、测试连接、钥匙串 / Secret Service 凭据、连接档案落盘、HikariCP 连接池（PG/MySQL）；**本轮补上：凭据脱敏 + 口令走 stdin + 孤儿会话回收** |
 | P6 导入导出 | 🟡 进行中 | CSV / TSV / JSON Lines / SQL 导出 + CSV / TSV 导入、字段映射、坏行报告、导入导出向导；**真库联调：MySQL 5.7（9 例）→ 本轮 Docker 解锁后 PostgreSQL 16 + MySQL 8.4 Testcontainers（11 例全绿），累计抓出 4 个真 bug**（`RENAME COLUMN` 版本差异 / JDBC 类型名不带长度 / `rows` 是 MySQL 8.0 保留字 / `pg_class` 无 `relcollation` 列） |
 | P7 分发 | 🟡 进行中 | ✅ jpackage（`scripts/package.sh`）+ 崩溃日志（`CrashLog`）；⬜ jlink（自动模块暂不可行）/ 自动更新 / 性能 |
-| **UI/UX 专项** | ✅ **U-B1–U-B6 已完成** | **§13–§16 / §22 / §27 / §28**：U-B1–U-B6 全落地；S1 数值展示 / S2 刷新按钮 / D1 函数报错 / X1–X2 空态 / **T1–T4 表级生命周期** / **D2·D4 注释读回** / **B5-S1 索引可编辑**；第十三轮 Navicat 表清单 8 列 + 密度 24/28/34；**U-B7：侧栏改 Navicat 模型（无「工作台」，单棵「我的连接」树，查询跟着连接走）+ 按钮规格统一（§27）**；**第十七轮：规格 §6 右侧对象详情面板 + §13 新建表弹窗重构 + §9.7 底部「记录/页面」标签（§28）**；**第二十轮：S-6 可读列宽 + 横向滚动 · S-9 对象首页工具条 · D-1 SQLite 主键非空 · S-8 Windows 门禁可移植性（§33）** |
+| **UI/UX 专项** | ✅ **U-B1–U-B6 已完成** | **§13–§16 / §22 / §27 / §28**：U-B1–U-B6 全落地；S1 数值展示 / S2 刷新按钮 / D1 函数报错 / X1–X2 空态 / **T1–T4 表级生命周期** / **D2·D4 注释读回** / **B5-S1 索引可编辑**；第十三轮 Navicat 表清单 8 列 + 密度 24/28/34；**U-B7：侧栏改 Navicat 模型（无「工作台」，单棵「我的连接」树，查询跟着连接走）+ 按钮规格统一（§27）**；**第十七轮：规格 §6 右侧对象详情面板 + §13 新建表弹窗重构 + §9.7 底部「记录/页面」标签（§28）**；**第二十轮：S-6 可读列宽 + 横向滚动 · S-9 对象首页工具条 · D-1 SQLite 主键非空 · S-8 Windows 门禁可移植性（§33）**；**第二十一轮：UX-0 截图可复现 · UX-1 令牌收敛 · UX-2 四档密度与 chrome 收薄 · UX-3 工具条主操作「图标+文字」+ 分组 + 响应式收字（§34）** |
 
 首版明确不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务、传输同步。
 
@@ -85,19 +85,20 @@
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **720** | 44 | 0 |
+| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **728** | 44 | 0 |
 | **外部 PG / MySQL 真库**（aliCloud RDS 等，需环境变量） | 单独跑，不在默认门禁 | — | — |
 | **多版本矩阵**（MySQL 5.7/8.0 + PG 13/17，`ADB_TEST_VERSION_MATRIX=1`） | 默认不跑，需显式打开 | 1 | 0 |
 
-**93 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
+**94 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
 （Testcontainers 容器**需 Docker**；本机 Docker 不可用时走跳过分支）—— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-24，第二十一轮 · Windows 实机）**：**720 条 / 93 类 / 0 失败**（`./mvnw -B clean verify`
-> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 720）。
+> 📌 **最新口径（2026-10-24，第二十一轮 · Windows 实机）**：**728 条 / 94 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 728）。
 > 相比第二十轮的 755 / 95，**减少的 43 条 / 3 类全部来自删除 `declarations`**
 > （模块 40 + `DeclaredDialectConsistencyTest` 3），**不是测试变红**；UX-0 +2 条（偏好不写回 + 截图脚本钉密度）、
 > UX-1 +2 条（投影收敛 + 图标尺寸档位）、UX-2 +4 条 + 1 类（`ChromeMetricsTest` 框架高度与可见行数、
-> 默认密度 compact、数据面 12px 字号）。
+> 默认密度 compact、数据面 12px 字号）、**UX-3 +8 条 + 1 类**（`ToolbarDiscoverabilityTest` 5 条、
+> 清单页导入/导出 2 条、对象首页主操作 1 条）。
 >
 > ⚠️ **本机环境（Windows）**：`java` 默认不在 PATH；可用的是 **JDK 27**（`~/.jdks/openjdk-27.0.1.0.2`），
 > pom 的 enforcer 区间已放到 `[25,28)` —— `export JAVA_HOME="$HOME/.jdks/openjdk-27.0.1.0.2"`。
@@ -2332,15 +2333,50 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
   逐张核对：`p2-users` 22 行 / 12px 正文 / 两行列头不挤；`p6-tables` 清单行高与对象树一致；
   `p0-shell`、`p5-dark` 暗色同步；分页器与状态栏收薄后底部不再被顶出可视区。
 
-#### UX-3 · 工具条与动作可发现性（L）
+#### UX-3 · 工具条与动作可发现性（L）— ✅ 已完成（2026-10-24）
 
-- [ ] `ActionButtons.labeled(...)`：图标 + 文字 + id + accessibleText
-- [ ] 数据页主操作带文字：保存 / 筛选与排序 / 列 / 导入 / 导出 / 历史
-- [ ] 数据页补「导入…」（目标表预选）、「历史」（按表筛）、「单元格编辑器」
-- [ ] 清单页补「导入向导 / 导出向导」
-- [ ] 工具条按语义分组 + 分隔线；删除动作 danger 色
-- [ ] <1100px 收成图标 + tooltip；≥1100px 恢复文字
-- [ ] 新 `ToolbarDiscoverabilityTest`；变异：保存改纯图标 → 红
+- [x] `IconButtons.labeled(...)`：图标 + 文字 + tooltip + accessibleText（一次给全，id 由调用方设）
+- [x] 数据页主操作带文字：保存 / 筛选与排序 / 列 / 视图 / 导入 / 导出
+- [x] 数据页补「导入…」（目标表预选当前表）
+- [x] 清单页补「导入 / 导出」（`TransferHub` 入口，选中表挪到第一候选）
+- [x] 工具条按语义分组 + `.adb-toolbar__separator` 竖线；删除动作 `adb-button--danger`
+- [x] 窗口 <1100px 收成纯图标（文字消失，**tooltip 与 accessibleText 保留**）；≥1100px 恢复文字
+- [x] 新 `ToolbarDiscoverabilityTest`（5 条）+ `TableListPageTest` +2 + `ObjectHomeToolbarTest` +1；**9 个变异全部红→改回绿**
+- [ ] 「历史」（按表筛）→ **推迟到 P2-3**；「单元格编辑器」→ **归 UX-4**（理由见下方落地记录）
+
+**落地记录**
+
+- **主操作全部带文字**：`IconButtons.labeled` 收在 `ButtonBase` 上（`Button` 与 `MenuButton` 都吃），
+  文字 / 图标 / tooltip / accessibleText 四件套一次装配。数据页此前 11 颗纯图标按钮里，
+  「保存」「删除记录」这种**改数据、不可逆**的动作只靠一个磁盘/垃圾桶图标 —— 用户只能靠猜。
+  「清除条件」这类次要动作保持纯图标，不与主操作抢宽度。
+- **语义分组**：数据页 `数据动作 | 查询与视图 | 数据交换 | 搜索框`；清单页
+  `对象动作 | 表操作 | 数据交换 | 视图`；对象首页 `查看 | 编辑`。组间一条 `.adb-toolbar__separator`（样式在 CSS，不写内联色）。
+- **响应式收字**：`DataGridPage.TOOLBAR_LABEL_MIN_WIDTH = 1100`，量的是**窗口宽度**而不是页面宽度
+  （页面本身被详情面板挤窄时，工具条仍该显示文字 —— 挤的是搜索框，不是动作名）。
+  经 `sceneProperty → window.widthProperty` 挂监听，收字时 `setText("")` 并补 `adb-button--icon`，
+  展开时反向移除；**tooltip 与 accessibleText 任何档位都在**。
+- **导入入口**：`#data-import` → `ImportWizard`，候选表把**当前表挪到第一位**（就是向导的预选值）。
+  启用条件是 `tableSchema == null` 才灰 —— 与导出的 `!hasData` **刻意相反**：空表恰恰最需要导入。
+  `createImportWizard(...)` 做成包级非模态接缝，因为 `ImportWizard#show` 是 `showAndWait`，
+  在 TestFX 下会把 FX 线程锁死。清单页同理：`transferCandidates()` + `TransferHub`。
+- **对象首页四颗主操作**：原来是裸 Modena 图标按钮（连 `adb-button` 类都没有），
+  现在走 `toolbarOp(...)` = `adb-button` + 图标 + 文字 + tooltip，删除带 danger，`setMinWidth(USE_PREF_SIZE)` 防截断。
+- **门禁 +8 条 / +1 类 → 728 / 94 / 0**。新类 `ToolbarDiscoverabilityTest` 跑**整个 App**（真挂载、真窗口），
+  5 条分别守：六颗主操作有图标+文字+提示 · 窄窗口收字但提示不丢 · 分组有竖线且删除是 danger ·
+  宽窗口下工具条没把搜索框挤出可视区 · 导入向导预选当前表。
+- ⭐ **本轮抓出的第一个真问题是门禁自己**：`robot.lookup("#data-toolbar").tryQuery()` 在节点不可见时返回
+  `Optional.empty()`，于是 `findById(null, …)` 返回 null，**每条断言都被静默跳过** —— 把「保存」的文字改成空串
+  （M1）它照样绿。改成从 `.adb-grid-page` 手写场景图遍历（含 `managed=false` 分支）+ 找不到就
+  `assertNotNull`，原则是「**宁可抛异常，也不放行**」；仓库里 `IconAuditTest` 早就不用 `robot.lookup`，正是这个原因。
+  另：Monocle headless 的窗口有 **960px 下限**（请求 900 得到 960），所以尺寸断言写成「是否跨过阈值」而非等值。
+- ⭐ **修好门禁后红出来的是生产代码**：`updateEditControls()` 与保存路径直接调 `saveButton.setText(...)`，
+  绕过 `toolbarLabels` 登记表 —— 窄窗口收了字之后，只要数据变脏，「保存 3」会**自己长回来**，
+  工具条重新变宽、搜索框被挤出去。统一改走 `setToolbarLabel(...)`。
+- **两项推迟（不是漏做）**：
+  ①「历史」按钮 —— `QueryHistory` 目前只存 SQL 字符串，没有表名与时间戳，**按表筛**无从谈起，
+  依赖 **P2-3**（给历史加对象上下文）；②「单元格编辑器」—— 那是 **UX-4** 的网格交互批次，
+  现有的 `CellDetailsDrawer` 已经是只读查看器，编辑器要在网格可写之上再做。
 
 #### UX-4 · 网格交互（M）
 
@@ -2391,8 +2427,8 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 
 ```
 0) ✅ 文档对齐 + 删 declarations（已完成，基线 **712 / 92**）
-1) UX-0 → UX-1 → UX-2            （密度/令牌，P0）
-2) UX-3 → UX-4 → UX-5            （工具条/网格/侧栏，P1）
+1) ✅ UX-0 → UX-1 → UX-2          （密度/令牌，P0；基线 720 / 93）
+2) ✅ UX-3 → ⏭ UX-4 → UX-5        （工具条/网格/侧栏，P1；UX-3 基线 728 / 94）
 3) P2-1 → P2-2                    （清单可读性 / 错误可诊断）
 4) P5-2 → P5-1 → P5-3 → P5-4     （Windows 凭据先跑真机）
 5) P2-3                           （最近操作，UX-3 的「历史」依赖它）
@@ -2419,6 +2455,7 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-24 | **第二十一轮·UX-3** | **工具条与动作可发现性**（§34.2）：新增 `IconButtons.labeled(...)`（图标 + 文字 + tooltip + accessibleText 一次装配，参数收在 `ButtonBase` 上，`Button`/`MenuButton` 通吃）；数据页六颗主操作**由纯图标改为带文字**（保存 / 筛选与排序 / 列 / 视图 / 导入 / 导出），「删除记录」标 `adb-button--danger`，「清除条件」保持纯图标；三页工具条按语义分组并插 `.adb-toolbar__separator`（数据页 4 组 / 清单页 4 组 / 对象首页 2 组）；**响应式收字** `TOOLBAR_LABEL_MIN_WIDTH = 1100`，量**窗口宽度**，窄档 `setText("")` + `adb-button--icon`、**提示与 accessibleText 任何档位都不丢**；补数据页导入入口 `#data-import`（候选表把当前表挪第一位 = 向导预选；启用条件与导出**刻意相反** —— 空表才最需要导入）、清单页 `#table-list-transfer`（`TransferHub`）；对象首页四颗主操作从裸 Modena 按钮升级为 `adb-button` + 文字 + danger；**9 个变异逐条验证全红→改回绿**（保存空白 / 筛选空白 / 删 accessibleText / 去分隔线 / 导入不预选 / 删除不 danger / 清单不预选 / 去掉响应式 / 对象首页改纯图标）。⭐ **两个真问题**：①新门禁第一版是**假绿** —— `robot.lookup(...).tryQuery()` 对不可见节点返回 empty，`findById(null,…)` 一路 null 让每条断言被跳过，M1 改坏仍绿 → 改从 `.adb-grid-page` 手写场景图遍历 + 找不到即 `assertNotNull`（「宁可抛异常，也不放行」；Monocle headless 窗口有 960px 下限，尺寸断言改「是否跨过阈值」）；②修好门禁后红的是**生产代码** —— `updateEditControls()`/保存路径直接 `saveButton.setText(...)` 绕过登记表，窄档收字后一变脏「保存 3」自己长回来、搜索框被挤 → 统一走 `setToolbarLabel(...)`。「历史」推迟到 **P2-3**（`QueryHistory` 只存 SQL，无表名/时间戳）、「单元格编辑器」归 **UX-4**；门禁 **728 条 / 94 类 / 0 失败**（+8 = `ToolbarDiscoverabilityTest` 5 + `TableListPageTest` 2 + `ObjectHomeToolbarTest` 1；类 +1） |
 | 2026-10-24 | **第二十一轮·UX-2** | **密度、排版与 chrome**（§34.2）：密度**三档 → 四档**，新增 `row-dense = 22`（令牌 **97 → 99**：`row-dense` + `sp-1h 6px`），**默认档位由 `normal` 改 `compact`**；`RowHeights.of` / `AppShell.applyDensity` / `SideBar.setDensity` / `DataGridPage.setDensity` 全部认四档
 （**新门禁在开发过程中就抓到一次自伤**：改白名单时漏写 `normal`，「标准」被静默降级成 compact，`AppShellTest` 立刻红 —— 这正是四档白名单要显式列全的理由）；数据面正文统一 **12px**（网格 / 清单 / 对象树 / 结构页 / 按钮 / 弹窗按钮；`.root` 保留 13px 作界面基准）；chrome 收薄——标签栏 36→**28**、对象头 44→**36**、页工具条 44→**34**、分页器 44→**36**、状态栏 26→**24**、按钮/输入 32→**28**；dense 单元格内边距 `2 6`（`sp-1h`，间距「4 倍数」规则登记第二个例外）；新增 `ChromeMetricsTest`（框架实际高度 + **1268×765 可见 ≥22 行**）、`AppShellTest.densityDefaultsToCompactWhenNoPreferenceIsStored`、`AppCssAuditTest.dataSurfacesUseTheCompactBodySize`，`DensityCoverageTest` / `MenuBarFactoryTest` 扩到四档；**5 个变异全部验证**（字号 13 / 默认 comfort / 分页器 44 / dense 返回 24 / 菜单删「密集」均红，改回绿）；门禁 **720 条 / 93 类 / 0 失败** |
 | 2026-10-24 | **第二十一轮·UX-1** | **视觉令牌基线**（§34.2）：令牌 **96 → 97**（新增 `bg-subtle` / `border-subtle` / `r-xs`，删除 `r-xl` / `shadow-2`）→ `GenTokens` 重生成；`app.css` 圆角只剩 **0/3/4/6/8/999**（控件 4、卡片 6、对话框 8、连接状态去胶囊）；卡片/详情/对话框投影删除，仅命令面板与 toast 用 `shadow-1`；网格线与分区底改 subtle 层；图标尺寸收敛 `14/16/20`（新增 `SIZE_PRIMARY`，对象工具条使用），`AppBar` 字面量 `16` 改常量；新增 `AppCssAuditTest.shadowsAreLimitedToTheFloatingElevation` + `IconSystemAuditTest.iconSizesComeFromTheNamedScale`，**4 个变异全部验证**（圆角 12 / 缺暗色 `bg-subtle` / 卡片加投影 / 图标写 18 均红，改回绿）；门禁 **716 条 / 92 类 / 0 失败** |

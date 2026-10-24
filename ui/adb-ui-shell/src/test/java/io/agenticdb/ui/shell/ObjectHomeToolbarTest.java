@@ -164,6 +164,33 @@ class ObjectHomeToolbarTest {
         assertThat(inspected).last().isEqualTo("<none>");
     }
 
+    /**
+     * ⭐ UX-3：四颗主操作必须「图标 + 文字 + tooltip + accessibleText」四样齐全。
+     *
+     * <p>这一排里有一颗会删表 —— 纯图标意味着用户要先认图标、再确认自己没认错。
+     */
+    @Test
+    void mainOperationsAreLabeledAndGrouped() {
+        for (Button button : List.of(open(), design(), newButton(), drop())) {
+            assertThat(button.getText()).as("%s 必须有文字", button.getId()).isNotBlank();
+            assertThat(button.getGraphic()).as("%s 必须有图标", button.getId()).isNotNull();
+            assertThat(button.getTooltip()).as("%s 必须有 tooltip", button.getId()).isNotNull();
+            assertThat(button.getTooltip().getText()).isNotBlank();
+            assertThat(button.getAccessibleText())
+                    .as("%s 必须有 accessibleText", button.getId()).isNotBlank();
+            assertThat(button.getStyleClass())
+                    .as("%s 必须走统一的 adb-button 规格（以前四颗是裸 Modena 按钮）",
+                            button.getId())
+                    .contains("adb-button");
+        }
+        assertThat(drop().getStyleClass())
+                .as("删表动作保持 danger 色")
+                .contains("adb-button--danger");
+        assertThat(page.lookupAll(".adb-toolbar__separator"))
+                .as("看对象的一组、改对象的一组，中间要有竖线")
+                .isNotEmpty();
+    }
+
     private void render(FxRobot robot) {
         robot.interact(() -> page.render(List.of(
                 new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE),
