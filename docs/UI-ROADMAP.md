@@ -582,12 +582,17 @@ java tools/TestCount.java      # 按 <testcase> 计数，断言总数 ≥ 300
 
 ### 12.2 批次（每批独立可验收）
 
-#### UX-0 · 截图与偏好可复现（S，先做）
+#### UX-0 · 截图与偏好可复现（S，先做）— ✅ 已完成（2026-10-24）
 
 | 项 | 改动 | 门禁 |
 |---|---|---|
 | 密度固定 | `shots.sh` 为每张图设置 `ADB_DENSITY=compact`（对比图可单独设 `dense`）；`AppShell` 读取该环境变量并**不写回** prefs | `ScreenshotScriptAuditTest` 断言脚本含 `ADB_DENSITY`；`AppShellTest` 断言环境变量优先且不落盘 |
 | 偏好隔离 | 截图/测试使用独立 prefs 根（或启动前清 `ui.density`），避免上一轮遗留 | 同一脚本连跑两次产出同尺寸行高（新 `ScreenshotDeterminismTest` 或脚本内断言） |
+
+**落地**：`SettingsStore` 新增 `ADB_PREFS_NODE` / `ADB_PREFS_RESET`（仅显式给节点名才清理）；
+`AppShell.forcedDensity()` 优先于 prefs，强制值不写回；`shots.sh` 默认导出密度 / 节点 / 重置 / `ADB_CONNECTION=demo`。
+**实测**：`p0-shell` 连跑两次，SHA-256 均为 `2ee03edb…f03e8`、50184 字节。
+两条门禁均变异验证（删 `export ADB_DENSITY=` → 红；去掉不写回守卫 → 红）。
 
 #### UX-1 · 视觉令牌基线（M）
 

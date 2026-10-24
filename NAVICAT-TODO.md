@@ -8,8 +8,9 @@
 > **界面规格书见 `docs/UI-VISUAL-SPEC.md`**（第十轮：字号/颜色/图标/布局/组件/弹窗/交互态/键盘）；
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
-> 最后更新：**2026-10-24（第二十一轮执行中：已删 declarations，UIUX 升级进行中，见 §34）**
-> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **712 条 / 92 类 / 0 失败**（2026-10-24 第二十一轮 Windows 实机实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
+> 最后更新：**2026-10-24（第二十一轮执行中：已删 declarations + UX-0 已完成，见 §34）**
+> 当前基线：**P0–P4 ✅ / P5 🟡 / P6 🟡**；门禁 **714 条 / 92 类 / 0 失败**（2026-10-24 第二十一轮 Windows 实机实测，另有 44 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
+> 📌 **714 = 删除 `declarations` 后的 712 + UX-0 的 2 条门禁**（`AppShellTest.forcedDensityWins…` / `ScreenshotScriptAuditTest.shotsScriptPins…`）；712 的小口径见下。
 > 📌 **712 是删除 `declarations` 后的新口径**（-43 条 / -3 类：模块 40 + `DeclaredDialectConsistencyTest` 3），属**主动减面**不是回归。
 >
 > 📌 **关于门禁数字的口径（第十八轮勘误）**：第十七轮记的「721 / 29 跳过」是在 **Docker 可用**时测的；
@@ -35,8 +36,9 @@
 > **第十四轮已完成 U1 ✅ catalog 树**（MySQL 多库：虚拟连接 + 对象树库一层 + 双击切库）。
 > **第十五轮已完成 Q5 ✅ 结果分页 + V-9 ✅ 表格规格统一**（服务端分页 + 翻页条 + 列类型条，与数据页 record-nav / 类型行同一套视觉）。
 > **U-B6 功能补齐层已全部收官**（G1–G7 / Q5 / Q6 / U1–U6 全部 ✅）。
-> **下一动作 = §34：UX-0（截图可复现）→ UX-1 → UX-2**；
-> `declarations` 已删除（基线 712/92），P2/P5/P6 的批次已全部裁定（同意做），排在其后。
+> **下一动作 = §34 / UX-1（视觉令牌基线）→ UX-2（密度、排版与 chrome）**；
+> UX-0 已完成（截图两次同哈希 + 强制密度不写回偏好），`declarations` 已删除（基线 714/92），
+> P2/P5/P6 的批次已全部裁定（同意做），排在其后。
 > 详见 §34 与 `docs/UI-ROADMAP.md` §12。
 >
 > 📦 **新增 `scripts/`**：`dev.sh`（一键编译启动）· `build.sh`（门禁）· `shots.sh`（重拍截图）。
@@ -83,17 +85,17 @@
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **712** | 44 | 0 |
+| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **714** | 44 | 0 |
 | **外部 PG / MySQL 真库**（aliCloud RDS 等，需环境变量） | 单独跑，不在默认门禁 | — | — |
 | **多版本矩阵**（MySQL 5.7/8.0 + PG 13/17，`ADB_TEST_VERSION_MATRIX=1`） | 默认不跑，需显式打开 | 1 | 0 |
 
 **92 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
 （Testcontainers 容器**需 Docker**；本机 Docker 不可用时走跳过分支）—— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-24，第二十一轮 · Windows 实机）**：**712 条 / 92 类 / 0 失败**（`./mvnw -B clean verify`
-> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 712）。
+> 📌 **最新口径（2026-10-24，第二十一轮 · Windows 实机）**：**714 条 / 92 类 / 0 失败**（`./mvnw -B clean verify`
+> 全绿 + `java tools/TestCount.java`；另有 44 条跳过，不计入 714）。
 > 相比第二十轮的 755 / 95，**减少的 43 条 / 3 类全部来自删除 `declarations`**
-> （模块 40 + `DeclaredDialectConsistencyTest` 3），**不是测试变红**。
+> （模块 40 + `DeclaredDialectConsistencyTest` 3），**不是测试变红**；UX-0 又 +2 条（偏好不写回 + 截图脚本钉密度），类数不变。
 >
 > ⚠️ **本机环境（Windows）**：`java` 默认不在 PATH；可用的是 **JDK 27**（`~/.jdks/openjdk-27.0.1.0.2`），
 > pom 的 enforcer 区间已放到 `[25,28)` —— `export JAVA_HOME="$HOME/.jdks/openjdk-27.0.1.0.2"`。
@@ -118,7 +120,7 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
 | `workbench/adb-transfer` | 15 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告 |
 | `ui/adb-ui-core` | 24 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** / **CSS 尺度审计** / **焦点环审计** |
-| `ui/adb-ui-shell` | 322 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派**、**侧栏工具可达性**、**右侧对象详情面板**、**新建表弹窗（宽编辑器 SQL 预览）**、**表清单选中项联动详情面板**、**结构页 DDL 只读编辑器**、**方言感知列与卡片去破折号**、**对象树表节点展开出列（懒加载 / 缓存 / 失败可重试 / 列不是对象）**、**欢迎页品牌 mark（矢量换位图 + 坏图不静默）**、**列网格 Tab / 方向键导航（边界不绕圈、最后一格放行 Tab）**、**对象首页级工具条 / 可读列宽 / SQLite 主键非空** |
+| `ui/adb-ui-shell` | 324 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派**、**侧栏工具可达性**、**右侧对象详情面板**、**新建表弹窗（宽编辑器 SQL 预览）**、**表清单选中项联动详情面板**、**结构页 DDL 只读编辑器**、**方言感知列与卡片去破折号**、**对象树表节点展开出列（懒加载 / 缓存 / 失败可重试 / 列不是对象）**、**欢迎页品牌 mark（矢量换位图 + 坏图不静默）**、**列网格 Tab / 方向键导航（边界不绕圈、最后一格放行 Tab）**、**对象首页级工具条 / 可读列宽 / SQLite 主键非空** |
 
 > ⚠️ **统计口径（4.5-28）**：用 `@Nested` 的 2 个测试类（`QueryLimitsTest`、
 > `DangerClassifierTest`）在 surefire XML 里
@@ -2256,12 +2258,20 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 > 目标值与门禁的完整定义见 `docs/UI-ROADMAP.md` §12.1–12.2。
 > **勾选标准**：代码落地 + 门禁绿 + 变异验证 + 截图重拍，四项缺一不算完成。
 
-#### UX-0 · 可复现（S，先做）
+#### UX-0 · 可复现（S，先做）— ✅ 已完成（2026-10-24）
 
-- [ ] `shots.sh` 每张图固定 `ADB_DENSITY`（默认 `compact`；对比图 `dense`）
-- [ ] `AppShell` 读 `ADB_DENSITY` 且**不写回** prefs
-- [ ] 测试/截图使用独立 prefs 或启动前清理 `ui.density`
-- [ ] `ScreenshotScriptAuditTest` 断言脚本含 `ADB_DENSITY`
+- [x] `shots.sh` 每张图固定 `ADB_DENSITY`（默认 `compact`；对比图 `dense`）
+- [x] `AppShell` 读 `ADB_DENSITY` 且**不写回** prefs
+- [x] 测试/截图使用独立 prefs 或启动前清理 `ui.density`
+- [x] `ScreenshotScriptAuditTest` 断言脚本含 `ADB_DENSITY`
+
+**落地记录**
+
+- `SettingsStore.openNode()`：`ADB_PREFS_NODE` 指定独立节点（`Preferences.userRoot()` 下），`ADB_PREFS_RESET=1` 在**首次构造时**清空该节点；**只有显式给了节点名才允许清理**，避免误清用户真实偏好。
+- `AppShell`：`ADB_DENSITY` 优先于 prefs，且强制值时**不写回**（`applyDensity` 里 `forcedDensity().isEmpty()` 才 `settings.set`）。
+- `scripts/shots.sh`：默认导出 `ADB_DENSITY=compact` / `ADB_PREFS_NODE=io/agenticdb/screenshots` / `ADB_PREFS_RESET=1` / `ADB_CONNECTION=demo`（`ADB_THEME_FORCE` 原有）。
+- **实测确定性**：`./scripts/shots.sh p0-shell` 连跑两次，两次 SHA-256 均为 `2ee03edb…f03e8`、50184 字节（尺寸与像素完全一致）。
+- **门禁**：`ScreenshotScriptAuditTest.shotsScriptPinsThemeDensityConnectionAndPrefs`、`AppShellTest.forcedDensityWinsAndDoesNotWriteBackToPreferences`；**两条均做过变异验证**——删 `export ADB_DENSITY=` → 脚本审计红「[截图必须用 ADB_DENSITY 钉住密度]」；去掉 `forcedDensity().isEmpty()` 守卫 → 偏好断言红「expected "comfort" but was "compact"」，改回必绿。
 
 #### UX-1 · 视觉令牌基线（M）
 
@@ -2370,6 +2380,7 @@ SQLite 的 `INTEGER PRIMARY KEY` 是 **rowid 的别名**：插入 NULL 会自动
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-24 | **第二十一轮·UX-0** | **截图与偏好可复现**（§34.2）：`SettingsStore` 支持 `ADB_PREFS_NODE`（独立 `Preferences.userRoot()` 节点）+ `ADB_PREFS_RESET`（仅显式给节点时才清空，避免误清真实用户偏好）；`AppShell` 的 `ADB_DENSITY` 优先于 prefs 且**强制值不写回**（原来每次启动光打开就写一次偏好）；`scripts/shots.sh` 默认钉住 `ADB_DENSITY=compact` / 独立 prefs 节点 / `ADB_PREFS_RESET=1` / `ADB_CONNECTION=demo`；**实测连跑两次 `p0-shell` SHA-256 完全一致**（`2ee03edb…f03e8`，50184 字节）；新增 `AppShellTest.forcedDensityWinsAndDoesNotWriteBackToPreferences` + 脚本审计断言，**两条均变异验证**（删 export → 红；去掉不写回守卫 → 红）；门禁 **714 条 / 92 类 / 0 失败** |
 | 2026-10-24 | **第二十一轮·执行** | **删除 `declarations` 声明层，基线 755→712**：移除 `core/adb-declarations` 模块、根目录 `declarations/` YAML（4 连接 + 4 方言 + 5 传输家族 + Schema）、父 POM 的 module / dependencyManagement、`snakeyaml` / `json-schema-validator`、`adb-jdbc` 测试依赖与 `DeclaredDialectConsistencyTest`；全量门禁 **712 条 / 92 类 / 0 失败**（-43 = 模块 40 + 一致性门禁 3，属主动减面）；同步更新 README / ARCHITECTURE / COMPONENT-SELECTION / NEXT-STEPS / EXEC-SUMMARY / NAVICAT-GAP 的模块表与计数口径；顺带修正文档里「当前圆角 3/5/8」的失真（实际令牌为 4/6/8/12 + 999） |
 | 2026-10-24 | **第二十一轮·规划** | **UIUX 升级 + P2/P5/P6 收尾裁定**（§34）：归档两张 Navicat 高保真实拍（数据网格 / 表清单），逐张量差 → 行高 22 vs 34、正文 12 vs 13、工具条图标+文字 vs 纯图标、单元格无竖线、选中态弱、按钮圆角 3–4 vs 6；新增 `docs/UI-ROADMAP.md` §12（UX-0…UX-6）与 `docs/NAVICAT-COMPARE.md` §9；裁定 P2/P5/P6 全做、`declarations` 删除（-43 条测试，基线 755→712）、C4 密度做（`dense 22`，默认 `compact`）、Windows 凭据用 JNA、xlsx 用 POI；**S-7 欢迎页仍待三选一**；本轮只改文档与参考图，未改代码 |
 | 2026-10-24 | **第二十轮** | **⭐ Windows 实机复跑：5 个真问题**（§33）—— **S-8 门禁假绿（最严重）**：5 个静态审计用 `/` 过滤路径，Windows 的 `Path.toString()` 是 `\` → 方言审计把全部合法文件报成违规，另外 4 个**一个文件都没扫却显示绿** → 统一 `.replace('\\','/')` + **「扫到 0 个文件必须红」的下限断言**（`scanned>100` / `>50` / `hasSizeGreaterThan(30)`）· **S-9 对象首页工具条**：`ObjectHomePage.Host`（新建/设计/删表/详情联动）+ 4 个矢量图标按钮，启用态按选择类型（打开=单选任意、设计=单选表/视图、删除=多选且全是表、未连接全灰）· **S-6 可读列宽**：三张表统一 `CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN` + 新纯助手 `ColumnWidths`（CJK 算 2 单位、列头装饰 `[PK]`/`•`/`· 自增` 计入下限、96–260px）；**先用探针测出约束策略本来就尊重 minWidth**（宽屏填满 / 窄屏卡住下限 + 横向滚动），因此没有选 `UNCONSTRAINED`（实拍发现宽屏会留一大片空白）· **D-1**：SQLite `INTEGER PRIMARY KEY` 是 rowid 别名 → 非空；`TEXT PRIMARY KEY` 仍如实可空（两向断言）· **Q-1** `QueryPageTest` 平台感知快捷键（测试错、功能对）· **Q-2** 拖拽用例改拖前两列（末列在窄视口外是预期行为）· 顺带 A20 删 `MAX_CELL_BYTES`、连接档案路径回显 · **5 个变异全部验证**（M1 去掉选择监听 → 3 红；M2 列宽下限改 60 → 3 红；M3 去掉 rowid 判定 → 1 红；M4 去掉路径归一化 → 1 红；M5 策略换回 UNCONSTRAINED → 2 红）· 门禁 **755 条 / 95 类 / 0 失败**（+10：S-6 3 + S-9 4 + D-1 1 + `ColumnResizePolicyTest` 2；类 +2） |

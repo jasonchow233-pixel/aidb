@@ -141,6 +141,7 @@ public final class AppShell extends StackPane {
     private int detailsWidth;
     private boolean detailsVisible;
     private PauseTransition toastTimer;
+    private String density = "normal";
 
     public AppShell(SettingsStore settings, ThemeManager themeManager) {
         this.settings = settings;
@@ -235,7 +236,7 @@ public final class AppShell extends StackPane {
 
         getStyleClass().add("app-shell");
         buildUi();
-        applyDensity(settings.get("ui.density", "normal"));
+        applyDensity(initialDensity());
         sideBar.setCollapsed(sidebarCollapsed);
         applySidebarWidth();
         applyDetailsVisibility();
@@ -2665,11 +2666,21 @@ public final class AppShell extends StackPane {
     }
 
     private String currentDensity() {
-        String value = settings.get("ui.density", "normal");
-        return switch (value) {
-            case "compact", "comfort" -> value;
-            default -> "normal";
-        };
+        return density;
+    }
+
+    /**
+     * ⭐ UX-0：截图脚本用 ADB_DENSITY 钉住密度；它只影响本次运行，**不写回偏好**。
+     * 否则同一份脚本会被上一次运行留下的档位污染（实拍踩过：应为 28，拍成 34）。
+     */
+    private static String forcedDensity() {
+        return System.getProperty("adb.density",
+                System.getenv().getOrDefault("ADB_DENSITY", "")).trim();
+    }
+
+    private String initialDensity() {
+        String forced = forcedDensity();
+        return forced.isEmpty() ? settings.get("ui.density", "normal") : forced;
     }
 
     private void changeDensity(String density) {
@@ -2686,9 +2697,12 @@ public final class AppShell extends StackPane {
             case "compact", "comfort" -> density;
             default -> "normal";
         };
+        this.density = value;
         getStyleClass().removeAll("density-compact", "density-normal", "density-comfort");
         getStyleClass().add("density-" + value);
-        settings.set("ui.density", value);
+        if (forcedDensity().isEmpty()) {
+            settings.set("ui.density", value);
+        }
         // A19：密度以前只影响对象树，数据网格行高不变。现在一起作用。
         if (workspace != null) {
             workspace.applyDensity(value);

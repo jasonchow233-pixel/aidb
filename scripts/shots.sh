@@ -26,6 +26,16 @@ source "$(cd "$(dirname "$0")" && pwd)/_env.sh"
 SHOTS_DIR="$PROJECT_ROOT/docs/screenshots"
 ONLY="${1:-}"
 
+# ── UX-0：可复现性 ────────────────────────────────────────────────
+# 密度必须钉住：上一轮实拍里 p2-users 行高是 34（持久化的 comfort），
+# 而默认是 28 —— 同一份脚本在不同机器/历史上拍出的图不一样。
+# 偏好根也要隔离并在每次启动时清空，否则侧栏宽度 / 上次连接仍会漂移。
+export ADB_DENSITY="${ADB_DENSITY:-compact}"
+export ADB_PREFS_NODE="${ADB_PREFS_NODE:-io/agenticdb/screenshots}"
+export ADB_PREFS_RESET="${ADB_PREFS_RESET:-1}"
+# 不依赖「上次用的连接」；demo 由 ConnectionStore.ensureDemo 保证存在。
+export ADB_CONNECTION="${ADB_CONNECTION:-demo}"
+
 # name|click-id|wait-ms|预置页面环境变量
 # 顺序即拍摄顺序：暗色必须最先。
 SHOTS=(

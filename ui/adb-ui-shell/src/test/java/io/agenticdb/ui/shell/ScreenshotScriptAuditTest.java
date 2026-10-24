@@ -72,6 +72,33 @@ class ScreenshotScriptAuditTest {
                 .isEmpty();
     }
 
+    /**
+     * ⭐ UX-0：截图必须钉住主题、密度、连接与偏好根。
+     *
+     * <p>少钉任何一个，同一份脚本都会拍出不同画面（实拍踩过：
+     * {@code p2-users} 行高 34 而不是默认 28，因为真实偏好里留着 {@code comfort}）。
+     */
+    @Test
+    void shotsScriptPinsThemeDensityConnectionAndPrefs() throws IOException {
+        Path script = repositoryRoot().resolve("scripts/shots.sh");
+        assertThat(Files.isRegularFile(script)).as("找不到 %s", script).isTrue();
+        String text = Files.readString(script, StandardCharsets.UTF_8);
+
+        assertThat(text)
+                .as("截图必须用 ADB_DENSITY 钉住密度")
+                .contains("export ADB_DENSITY=");
+        assertThat(text)
+                .as("截图必须使用独立偏好根，并在每次启动时清空")
+                .contains("export ADB_PREFS_NODE=")
+                .contains("export ADB_PREFS_RESET=");
+        assertThat(text)
+                .as("截图必须显式指定连接，不能依赖「上次用的连接」")
+                .contains("export ADB_CONNECTION=");
+        assertThat(text)
+                .as("主题仍必须用 ADB_THEME_FORCE 钉住")
+                .contains("ADB_THEME_FORCE=");
+    }
+
     // ─────────────────────────── 工具 ───────────────────────────
 
     /** 拼接全部 UI 主源码，用来查 {@code setId("...")}。 */

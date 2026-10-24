@@ -561,7 +561,56 @@ class AppShellTest {
                 .getStyleClass().contains("density-compact")).isTrue();
     }
 
-    private static MenuItem menuItem(FxRobot robot, String id) {        return items(robot).stream()
+    /**
+     * ⭐ UX-0：ADB_DENSITY 优先于偏好，且**不写回**偏好。
+     *
+     * <p>截图脚本靠它把行高固定成 compact；如果写回偏好，
+     * 下一次不带环境变量启动就会被这次截图“污染”。
+     */
+    @Test
+    void forcedDensityWinsAndDoesNotWriteBackToPreferences() throws Exception {
+        String oldNode = System.getProperty("adb.prefs.node");
+        String oldDensity = System.getProperty("adb.density");
+        String node = "io/agenticdb/tests/density-" + System.nanoTime();
+        Preferences testNode = Preferences.userRoot().node(node);
+        try {
+            System.setProperty("adb.prefs.node", node);
+            SettingsStore store = new SettingsStore();
+            store.set("ui.density", "comfort");
+            System.setProperty("adb.density", "compact");
+
+            AtomicReference<AppShell> holder = new AtomicReference<>();
+            WaitForAsyncUtils.asyncFx(() -> holder.set(
+                    new AppShell(store, new ThemeManager(new SettingsStore())))).get();
+            WaitForAsyncUtils.waitForFxEvents();
+
+            assertThat(holder.get().getStyleClass())
+                    .as("强制密度必须生效")
+                    .contains("density-compact");
+            assertThat(store.get("ui.density", ""))
+                    .as("ADB_DENSITY 只影响本次运行，不能覆盖用户偏好")
+                    .isEqualTo("comfort");
+        } finally {
+            if (oldNode == null) {
+                System.clearProperty("adb.prefs.node");
+            } else {
+                System.setProperty("adb.prefs.node", oldNode);
+            }
+            if (oldDensity == null) {
+                System.clearProperty("adb.density");
+            } else {
+                System.setProperty("adb.density", oldDensity);
+            }
+            try {
+                testNode.removeNode();
+            } catch (Exception ignored) {
+                // 测试偏好节点清理失败不影响结论。
+            }
+        }
+    }
+
+    private static MenuItem menuItem(FxRobot robot, String id) {
+        return items(robot).stream()
                 .filter(item -> id.equals(item.getId()))
                 .findFirst()
                 .orElseThrow();

@@ -4,7 +4,7 @@
 > `NAVICAT-TODO.md` 是唯一执行清单（逐条勾选）；本文件是**阶段规划**（批次 + 依赖 + 门禁）。
 > **界面专项的详细分析与规范见 `docs/UI-ROADMAP.md`**。
 >
-> 最后更新：**2026-10-24（第二十一轮执行中：declarations 已删除，基线 712/92；下一步 UX-0）**
+> 最后更新：**2026-10-24（第二十一轮执行中：declarations 已删除 + UX-0 已完成，基线 714/92；下一步 UX-1）**
 
 ---
 
@@ -12,11 +12,11 @@
 
 | 指标 | 值 |
 |---|---|
-| 门禁 | **712 条 / 92 类 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`）。**口径说明**：相比第二十轮的 755 / 95，减少的 **43 条 / 3 类全部来自删除 `declarations`**（模块 40 + `DeclaredDialectConsistencyTest` 3），**不是测试变红**；另有 **44 条环境门控跳过**（`adb-jdbc` 30 + `adb-introspect` 14）。**硬门禁是「0 失败」，不是总数**。 |
+| 门禁 | **714 条 / 92 类 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`）。**口径说明**：相比第二十轮的 755 / 95，减少的 **43 条 / 3 类全部来自删除 `declarations`**（模块 40 + `DeclaredDialectConsistencyTest` 3），**不是测试变红**；UX-0 再 **+2**（偏好不写回 + 脚本钉密度）；另有 **44 条环境门控跳过**（`adb-jdbc` 30 + `adb-introspect` 14）。**硬门禁是「0 失败」，不是总数**。 |
 | 真库验证 | ✅ SQLite（演示库）· ✅ **MySQL 5.7.44 真库**（9 例全绿）· ✅ **PostgreSQL 16 + MySQL 8.4 Testcontainers**（11 例全绿；抓出 2 个跨方言 bug，见 `NAVICAT-TODO.md` §26）—— ⚠️ 本机 Docker 不可用，后两类**本轮未执行**（跳过），改回环境即可复跑 |
 | 截图 | `docs/screenshots/` **12 张**（亮 / 暗两套主题 + 表清单 + 新建表/索引弹窗 + **右侧对象详情面板** + **结构页 DDL 页签**）；第二十轮已按 S-6/S-9 重拍 5 张 |
 | 工作区 | 第二十轮与第二十一轮规划已提交（`f43142b`）；当前正在提交 declarations 删除（见 §8 第 0 步） |
-| **下一动作** | **UX-0 截图可复现**（`NAVICAT-TODO.md` §34.2 / `UI-ROADMAP.md` §12.2）→ UX-1 → UX-2 → UX-3/4/5 → P2/P5/P6 → UX-6。**S-7 欢迎页仍需三选一裁定** |
+| **下一动作** | **UX-1 视觉令牌基线**（`NAVICAT-TODO.md` §34.2 / `UI-ROADMAP.md` §12.2）→ UX-2 → UX-3/4/5 → P2/P5/P6 → UX-6。**S-7 欢迎页仍需三选一裁定** |
 
 > 🔴 **第六轮全量核查改变了优先级排序**：门禁 443 条全绿，但逐文件核对发现
 > **4 个真实缺陷**（其中 D2「改列抹注释」与 D3「改列丢 CHECK」会**丢数据且无撤销**），
@@ -26,6 +26,7 @@
 
 | 轮次 / 批次 | 内容 | 关键结果 |
 |---|---|---|
+| **第二十一轮 · UX-0（2026-10-24）** | **截图与偏好可复现**（`NAVICAT-TODO.md` §34.2） | `ADB_PREFS_NODE` / `ADB_PREFS_RESET` 隔离并清理截图偏好（仅显式节点名才清）；`ADB_DENSITY` 优先且**不写回**；`shots.sh` 钉住密度/节点/重置/演示连接；**`p0-shell` 连跑两次同 SHA-256**（50184 字节）；两条门禁均变异验证；基线 **714 / 92 / 0** |
 | **第二十一轮 · 执行（2026-10-24）** | **删除 `declarations` 声明层** | 模块 + 根目录 YAML + 父 POM module/dependencyManagement + `snakeyaml`/`json-schema-validator` + `adb-jdbc` 测试依赖 + `DeclaredDialectConsistencyTest` 全部移除；基线 **755→712 / 95→92**，属主动减面 |
 | **第二十一轮 · 规划（2026-10-24）** | **UIUX 升级（UX-0…UX-6）+ P2/P5/P6 收尾**（`NAVICAT-TODO.md` §34 / `UI-ROADMAP.md` §12） | 两张新 Navicat 实拍逐张量差：行高 22 vs 34、正文 12 vs 13、工具条图标+文字 vs 纯图标、无单元格竖线、选中态弱、圆角 3–4 vs 6。裁定：P2/P5/P6 全做、`declarations` 删除（-43 条测试）、C4 密度做、WinCred 用 JNA、xlsx 用 POI。**先 UX-0 钉密度/主题，否则截图不可复现** |
 | **第二十轮 · Windows 实机** | **S-8 门禁假绿 + S-9 对象工具条 + S-6 可读列宽 + D-1 主键可空性 + Q-1/Q-2 测试平台假设**（`NAVICAT-TODO.md` §33） | ⭐ 第一次在 Windows 跑全量门禁，发现 **5 个静态审计用 `/` 过滤 `\` 路径**：方言审计把全部合法文件报成违规，另外 4 个**一个文件没扫却显示绿** → 路径归一化 + **「扫到 0 个文件必须红」下限断言**（这条比归一化更重要）；对象首页补「打开/设计/新建/删除」工具条与详情联动；三张表 `CONSTRAINED_FLEX_LAST` + `ColumnWidths` 可读下限（CJK 算 2 单位、列头装饰计入）—— **先用探针测出约束策略本来就尊重 minWidth**（宽屏填满 / 窄屏卡住下限 + 横向滚动），因此否决了会留白屏的 `UNCONSTRAINED`；SQLite `INTEGER PRIMARY KEY` 按 rowid 别名判非空（TEXT PK 仍可空）；**5 个变异 M1–M5 全部验证**，门禁 **755 / 95 类 / 0 失败** |
@@ -136,7 +137,7 @@
 
 | 批次 | 内容 | 量化验收 | 优先级 |
 |---|---|---|---|
-| **UX-0** | 截图可复现：`ADB_DENSITY` + prefs 隔离 | 同一脚本连跑两次同尺寸 | P0 |
+| **UX-0** ✅ | 截图可复现：`ADB_DENSITY` + prefs 隔离 | 同一脚本连跑两次同尺寸（**已实测同 SHA-256**） | P0 |
 | **UX-1** | 令牌：圆角 3/4/6/8、边框/表面分层、投影收敛、图标 14/16/20 | 令牌对拍 + 对比度 + 审计 | P0 |
 | **UX-2** | 密度/排版/chrome：新增 dense 22，默认 compact；字号 12；对象头/工具条/状态栏收薄 | 765px 高可见 ≥22 行 | P0 |
 | **UX-3** | 工具条主操作「图标+文字」+ 分组 + 补导入/历史/单元格编辑器 | 可发现性门禁（主操作必须有文字） | P1 |
@@ -194,7 +195,7 @@ jlink 自定义运行时 → jpackage（macOS `.app`/`.dmg`、Windows `.msi`、L
 
 ```
 P0  0) ✅ §34.1 文档对齐 + 删除 declarations（已完成；基线 712 / 92）
-P0  1) UX-0 截图可复现（ADB_DENSITY + prefs 隔离）
+P0  1) ✅ UX-0 截图可复现（ADB_DENSITY + prefs 隔离；基线 714 / 92）
 P0  2) UX-1 令牌（圆角/边框/表面/投影/图标尺寸）
 P0  3) UX-2 密度与 chrome（dense 22 / 默认 compact / 12px / ≥22 行）
 P1  4) UX-3 工具条图标+文字 + 补导入/历史/单元格编辑器
