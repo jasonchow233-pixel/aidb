@@ -59,6 +59,38 @@ class IndexDdlTest {
                 .isEqualTo("CREATE INDEX `idx_email` ON `users` (`email`)");
     }
 
+    @Test
+    void postgresEmitsTheChosenTypeAndDescendingColumns() {
+        assertThat(StructureSqlBuilder.createIndex(
+                FakeDialectSession.of(DialectKind.POSTGRESQL), table(),
+                new IndexDef("idx_names", false, List.of("last", "first"), "",
+                        "HASH", List.of("last"))).statements().getFirst())
+                .as("类型与排序方向是新出来的能力，必须真的落到语句里 —— "
+                        + "界面上选了、SQL 里没有，就是「显示成功但数据没变」")
+                .isEqualTo("CREATE INDEX \"idx_names\" ON \"users\" USING hash (\"last\" DESC, \"first\")");
+    }
+
+    @Test
+    void dialectsWithoutTheCapabilityEmitNeitherUsingNorDesc() {
+        assertThat(StructureSqlBuilder.createIndex(
+                FakeDialectSession.of(DialectKind.MYSQL), table(),
+                new IndexDef("idx_email", false, List.of("email"), "", "HASH", List.of("email")))
+                        .statements().getFirst())
+                .as("类型和降序是 MySQL 方言不认的能力 —— 数据里带了也不拼进 SQL："
+                        + "界面选了却生成本库不支持的子句，执行时就是语法错误，"
+                        + "把字符串原样塞进 SQL 更是注入面")
+                .isEqualTo("CREATE INDEX `idx_email` ON `users` (`email`)");
+    }
+
+    @Test
+    void legacyIndexDefStillProducesThePreCapabilityStatement() {
+        assertThat(StructureSqlBuilder.createIndex(
+                FakeDialectSession.of(DialectKind.POSTGRESQL), table(),
+                new IndexDef("idx_email", false, List.of("email"), "")).statements().getFirst())
+                .as("四参构造器（内省结果走的这条）必须和改造前逐字节一致")
+                .isEqualTo("CREATE INDEX \"idx_email\" ON \"users\" (\"email\")");
+    }
+
     // ─────────────────────────── 新建的拒绝规则 ───────────────────────────
 
     @Test

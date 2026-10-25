@@ -18,7 +18,7 @@ class CatalogVariantProfileTest {
 
     private static ConnectionProfile parent() {
         return new ConnectionProfile("abc-123", "生产库", DialectKind.MYSQL,
-                "10.0.0.8", 3306, "orders", "root", true, 42L,
+                "10.0.0.8", 3306, "orders", "root", true, 42L, "生产",
                 Map.of("useSSL", "true"));
     }
 

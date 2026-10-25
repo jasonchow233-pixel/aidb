@@ -6,6 +6,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * PostgreSQL 方言。
@@ -299,6 +300,30 @@ public final class PostgresDialect implements Dialect {
     @Override
     public String dropIndexSql(String table, String indexName) {
         return "DROP INDEX " + quote(indexName);
+    }
+
+    /**
+     * PostgreSQL 的索引方法是真可选的：这几种都是服务端内置访问方法，
+     * 不依赖任何需要 {@code CREATE EXTENSION} 的插件（所以不列 bloom）。
+     */
+    @Override
+    public List<String> indexTypes() {
+        return List.of("BTREE", "HASH", "GIST", "SPGIST", "GIN", "BRIN");
+    }
+
+    @Override
+    public String indexTypeClause(String type) {
+        // ⭐ 只认 indexTypes() 里的那几个：这里拼的是裸 SQL，不能把界面传来的字符串直接塞进去。
+        if (type == null || !indexTypes().contains(type.toUpperCase(Locale.ROOT))) {
+            return "";
+        }
+        return " USING " + type.toLowerCase(Locale.ROOT);
+    }
+
+    /** PG 从 7.4 起就支持索引列 {@code ASC / DESC}，且不区分版本。 */
+    @Override
+    public boolean supportsIndexColumnDirection() {
+        return true;
     }
 
     @Override

@@ -230,6 +230,21 @@ public final class MySqlDialect implements Dialect {
                 + "ORDER BY table_name";
     }
 
+    /**
+     * ⭐ UX-6：结构页「选项」页签。
+     *
+     * <p>视图在 {@code information_schema.tables} 里也有行，但它们没有
+     * 存储引擎 / 行格式 —— 用 {@code BASE TABLE} 过滤掉，让视图真的显示「—」。
+     */
+    @Override
+    public String tableOptionsSql() {
+        return "SELECT engine AS engine, table_collation AS collation_name, "
+                + "auto_increment AS auto_increment, row_format AS row_format "
+                + "FROM information_schema.tables "
+                + "WHERE table_schema = DATABASE() AND table_name = ? "
+                + "AND table_type = 'BASE TABLE'";
+    }
+
     @Override
     public String triggersListSql() {
         return "SELECT TRIGGER_NAME FROM information_schema.TRIGGERS "

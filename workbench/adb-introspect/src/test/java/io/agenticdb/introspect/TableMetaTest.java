@@ -3,6 +3,8 @@ package io.agenticdb.introspect;
 import io.agenticdb.jdbc.DialectKind;
 import org.junit.jupiter.api.Test;
 
+import java.util.Locale;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -56,6 +58,46 @@ class TableMetaTest {
         // 0 行 / 0 字节是真实值，不是「没有」。
         assertThat(meta.rowsText()).isEqualTo("0");
         assertThat(meta.sizeText()).isEqualTo("0 B");
+    }
+
+    @Test
+    void bytesBelowOneKStayIntegral() {
+        assertThat(sizeText(0)).isEqualTo("0 B");
+        assertThat(sizeText(1)).isEqualTo("1 B");
+        assertThat(sizeText(1023)).isEqualTo("1023 B");
+    }
+
+    /**
+     * 1 位小数：旧实现直接拼 double，1126 字节会显示成
+     * 「1.099609375 KB」—— 表清单那一列根本读不出来。
+     */
+    @Test
+    void kilobytesAndMegabytesRoundToOneDecimal() {
+        assertThat(sizeText(1126)).isEqualTo("1.1 KB");
+        assertThat(sizeText(1536)).isEqualTo("1.5 KB");
+        assertThat(sizeText(1024L * 1024 + 512L * 1024)).isEqualTo("1.5 MB");
+    }
+
+    @Test
+    void gigabytesDoNotShowUpAsThousandsOfMegabytes() {
+        assertThat(sizeText(2L * 1024 * 1024 * 1024)).isEqualTo("2.0 GB");
+        assertThat(sizeText(1024L * 1024 * 1024)).isEqualTo("1.0 GB");
+    }
+
+    @Test
+    void formattingDoesNotFollowTheSystemLocale() {
+        Locale previous = Locale.getDefault();
+        try {
+            // 德语区域的小数分隔符是逗号 —— 表清单要的是「1.5 KB」。
+            Locale.setDefault(Locale.GERMANY);
+            assertThat(sizeText(1536)).isEqualTo("1.5 KB");
+        } finally {
+            Locale.setDefault(previous);
+        }
+    }
+
+    private static String sizeText(long bytes) {
+        return new TableMeta("t", 1L, bytes, "InnoDB", null).sizeText();
     }
 
     @Test

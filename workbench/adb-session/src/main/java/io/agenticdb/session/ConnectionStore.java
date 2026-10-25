@@ -15,6 +15,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * 连接元数据持久化。JSON 只存非密信息；口令由 {@link CredentialStore} 单独保存。
@@ -84,6 +85,59 @@ public final class ConnectionStore {
             return;
         }
         save(profile.withLastUsed(System.currentTimeMillis()));
+    }
+
+    /**
+     * ⭐ P5-1：改连接显示名。
+     *
+     * <p>只改元数据 —— id、会话、口令条目都不动。改名之后调用方要用返回的
+     * 新档案替换内存里的旧对象（{@link #load()} 的顺序也按新名字重排）。
+     *
+     * @return 改好的档案；id 不存在时 {@link Optional#empty()}
+     * @throws IllegalArgumentException 新名称为空
+     */
+    public Optional<ConnectionProfile> rename(String id, String newName) {
+        if (newName == null || newName.isBlank()) {
+            throw new IllegalArgumentException("连接名称不能为空");
+        }
+        return update(id, profile -> profile.withName(newName.trim()));
+    }
+
+    /**
+     * ⭐ P5-1：把连接移进某个分组（空串 / null = 移出分组）。
+     *
+     * @return 改好的档案；id 不存在时 {@link Optional#empty()}
+     */
+    public Optional<ConnectionProfile> moveToGroup(String id, String group) {
+        return update(id, profile -> profile.withGroup(group));
+    }
+
+    /** 现有分组名（去重、忽略空白、按名称排序）—— 连接页的「分组」下拉用它。 */
+    public List<String> groups() {
+        return load().stream()
+                .map(ConnectionProfile::group)
+                .filter(group -> !group.isBlank())
+                .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
+    }
+    private Optional<ConnectionProfile> update(
+            String id, java.util.function.UnaryOperator<ConnectionProfile> change) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        List<ConnectionProfile> profiles = new ArrayList<>(load());
+        for (int index = 0; index < profiles.size(); index++) {
+            ConnectionProfile existing = profiles.get(index);
+            if (!existing.id().equals(id)) {
+                continue;
+            }
+            ConnectionProfile updated = change.apply(existing);
+            profiles.set(index, updated);
+            write(sort(profiles));
+            return Optional.of(updated);
+        }
+        return Optional.empty();
     }
 
     /** 首次启动或演示库被清理后补回 SQLite 演示连接。 */

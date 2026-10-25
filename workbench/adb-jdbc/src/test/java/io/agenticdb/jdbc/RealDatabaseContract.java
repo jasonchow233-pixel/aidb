@@ -5,6 +5,8 @@ import io.agenticdb.model.ColumnSpec;
 import io.agenticdb.model.ColumnType;
 import io.agenticdb.model.Danger;
 
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -321,6 +323,27 @@ public final class RealDatabaseContract {
                     assertThat(session.execute(meta).rows())
                             .as("表元信息查询要能跑")
                             .isNotNull();
+                }
+
+                // ⭐ UX-6：结构页「选项」页签的查询 —— 表名参数必须能绑定，
+                //    并且在真库上取到引擎 / 排序规则 / 行格式（MySQL 才有）。
+                String options = dialect.tableOptionsSql();
+                if (options != null) {
+                    try (PreparedStatement statement =
+                                 session.connection().prepareStatement(options)) {
+                        statement.setString(1, table);
+                        try (ResultSet rs = statement.executeQuery()) {
+                            assertThat(rs.next())
+                                    .as("表选项查询要能取到刚建的表")
+                                    .isTrue();
+                            assertThat(rs.getString("engine"))
+                                    .as("MySQL 应回报存储引擎").isNotBlank();
+                            assertThat(rs.getString("collation_name"))
+                                    .as("MySQL 应回报表排序规则").isNotBlank();
+                            assertThat(rs.getString("row_format"))
+                                    .as("MySQL 应回报行格式").isNotBlank();
+                        }
+                    }
                 }
 
                 String triggers = dialect.triggersListSql();

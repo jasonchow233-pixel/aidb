@@ -250,6 +250,21 @@ public interface Dialect {
     String tableMetaSql();
 
     /**
+     * ⭐ UX-6：表级**物理选项**查询。
+     *
+     * <p>列名固定为：{@code engine} / {@code collation_name} /
+     * {@code auto_increment} / {@code row_format}；表名用<b>一个 {@code ?}
+     * 绑定</b>（表名是值不是标识符，不拼进 SQL）。
+     *
+     * <p>返回 {@code null} = 该方言没有这些表级选项
+     * （SQLite / PostgreSQL 的引擎、排序规则、行格式不是表属性）——
+     * 于是结构页「选项」页签诚实地显示「—」，而不是给每条连接都编一个 InnoDB。
+     */
+    default String tableOptionsSql() {
+        return null;
+    }
+
+    /**
      * 触发器列表查询（只取名字）。
      *
      * <p>JDBC 的 {@code DatabaseMetaData} <b>没有</b>触发器列表，
@@ -387,6 +402,42 @@ public interface Dialect {
     /** 主键索引在各库里的名字 —— 不能直接 {@code DROP INDEX} 掉。 */
     default String primaryIndexName() {
         return "PRIMARY";
+    }
+
+    /**
+     * 这个库可选的<b>索引类型</b>（{@code CREATE INDEX ... USING method}）。
+     *
+     * <p>⭐ 空列表 = 这个库没有「类型可选」这回事，UI 必须把整行控件收起来 ——
+     * 给 SQLite 摆一个只有 BTREE 的下拉，就是一个永远只会填默认值的死控件
+     * （任务书 §六「不得虚构能力」+ §九「不留无用控件」）。
+     *
+     * <p>MySQL 也返回空：InnoDB 只实现 BTREE，写 {@code USING HASH} 会被引擎直接拒
+     * （MyISAM 才两种都有）。递给用户一个「选了必报错」的选项，比不给选项更坏。
+     */
+    default List<String> indexTypes() {
+        return List.of();
+    }
+
+    /**
+     * 索引类型子句，位置也由方言决定 —— PG 是 {@code ON 表 USING btree (列)}。
+     *
+     * <p>没选类型或不支持类型的方言返回空串（调用方直接拼接即可）。
+     */
+    default String indexTypeClause(String type) {
+        return "";
+    }
+
+    /**
+     * 索引列能不能带 {@code ASC / DESC}。
+     *
+     * <p>只有 PostgreSQL 返回 true。MySQL 的 {@code DESC} 要 8.0 才真正生效
+     * （5.7 只解析、忽略），SQLite 也一样 —— 而我们没有运行时版本判定
+     * （{@link #serverInfoSql()} 只用来展示）。在拿不准的库上发 {@code DESC}，
+     * 用户会看到「建了降序索引，实际是升序」这种最坏的假成功（任务书 §6.5.6），
+     * 所以宁可不给这个选项。
+     */
+    default boolean supportsIndexColumnDirection() {
+        return false;
     }
 
     /**

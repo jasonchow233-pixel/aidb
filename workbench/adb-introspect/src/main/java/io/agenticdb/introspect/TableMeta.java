@@ -52,10 +52,22 @@ public record TableMeta(
         if (sizeBytes < 1024) {
             return sizeBytes + " B";
         }
-        if (sizeBytes < 1024 * 1024) {
-            return (sizeBytes / 1024.0) + " KB";
+        double value;
+        String unit;
+        if (sizeBytes < 1024L * 1024) {
+            value = sizeBytes / 1024.0;
+            unit = "KB";
+        } else if (sizeBytes < 1024L * 1024 * 1024) {
+            value = sizeBytes / 1024.0 / 1024.0;
+            unit = "MB";
+        } else {
+            // 大表 / 带 BLOB 的表在真实库里就是 GB 级；不补这一档会显示成
+            // 「1536.0 MB」这种没法扫读的数字（与 CellRenderer.sizeLabel 同口径）。
+            value = sizeBytes / 1024.0 / 1024.0 / 1024.0;
+            unit = "GB";
         }
-        return String.format("%.1f MB", sizeBytes / 1024.0 / 1024.0);
+        // Locale.ROOT：小数点是「.」，不随系统区域变成逗号。
+        return String.format(java.util.Locale.ROOT, "%.1f %s", value, unit);
     }
 
     public String engineText() {

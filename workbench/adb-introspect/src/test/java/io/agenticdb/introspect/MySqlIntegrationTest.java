@@ -257,6 +257,9 @@ class MySqlIntegrationTest {
                 .as("数据长度要有")
                 .isNotNull()
                 .isPositive();
+        assertThat(meta.sizeText())
+                .as("数据长度要按 B/KB/MB/GB 展示，且只保留 1 位小数")
+                .matches("\\d+(\\.\\d)? (B|KB|MB|GB)");
         assertThat(meta.createdAt())
                 .as("创建时间要有")
                 .isNotBlank();

@@ -713,13 +713,20 @@ public final class StructureSqlBuilder {
      *
      * <p>⭐ 公开是为了让弹窗的「实时预览」和真正执行的语句<b>出自同一处</b> ——
      * 各写一份的话，预览会慢慢变成谎言。
+     *
+     * <p>类型子句（{@code USING btree}）与列的 {@code DESC} 都来自方言能力：
+     * 没选类型 / 方言不支持降序时，这两处都是空串或空操作，
+     * 生成的语句与改造前<b>逐字节一致</b>（{@code IndexDdlTest} 钉住了那些字符串）。
      */
     public static String createIndexSql(DbSession session, String tableName, IndexDef index) {
+        boolean directionSupported = session.dialect().supportsIndexColumnDirection();
         return "CREATE " + (index.unique() ? "UNIQUE " : "") + "INDEX "
                 + quoteIdentifier(session, index.name()) + " ON "
-                + quoteIdentifier(session, tableName) + " ("
+                + quoteIdentifier(session, tableName)
+                + session.dialect().indexTypeClause(index.type()) + " ("
                 + index.columns().stream()
-                .map(column -> quoteIdentifier(session, column))
+                .map(column -> quoteIdentifier(session, column)
+                        + (directionSupported && index.isDescending(column) ? " DESC" : ""))
                 .reduce((a, b) -> a + ", " + b).orElse("") + ")";
     }
 
