@@ -91,9 +91,11 @@ final class NewTableDialog {
     Optional<StructurePlan> show(Window owner, Collection<String> stylesheets) {
         if (stylesheets != null && !stylesheets.isEmpty()) {
             dialog.getDialogPane().getStylesheets().addAll(stylesheets);
-            // ⭐ 主题类必须抄到 DialogPane 上 —— 否则弹窗里所有 -adb-* 查找落空。
-        DialogStyles.apply(dialog, owner);
         }
+        // ⭐ 主题类与 adb-dialog 类必须抄到 DialogPane 上 —— 否则弹窗里所有
+        //    -adb-* 查找落空，退回 JavaFX 默认皮肤。这条不能排在 if 里面：
+        //    没有外部样式表（单测直接 show(null, List.of())）时同样要挂上。
+        DialogStyles.apply(dialog, owner);
         if (owner != null) {
             dialog.initOwner(owner);
         }
@@ -152,6 +154,10 @@ final class NewTableDialog {
         HBox rowButtons = new HBox(8, add, remove);
         rowButtons.setAlignment(Pos.CENTER_LEFT);
         rowButtons.getStyleClass().add("adb-new-table__row-actions");
+        // ⭐ 内容区按钮挂基础类：`.adb-new-table__row-actions .adb-button` 这条
+        //    紧凑内边距的规则此前一直是死的（按钮没这个类），按下 / 禁用态也一起落空。
+        add.getStyleClass().add("adb-button");
+        remove.getStyleClass().add("adb-button");
 
         // ⭐ 规格 §13.4：SQL 预览要像编辑器（等宽 / 行号 / 高亮），
         //    不是一个灰底的 TextArea。复用 SqlEditor —— 查询页那个本来就是它。
@@ -174,7 +180,7 @@ final class NewTableDialog {
         collapseSql.setOnAction(event -> setSqlPreviewVisible(!sqlPreviewVisible, collapseSql));
 
         Label sqlTitle = new Label("将要执行的 SQL");
-        sqlTitle.getStyleClass().add("adb-new-table__section-title");
+        sqlTitle.getStyleClass().add("adb-dialog__section-title");
         HBox sqlHeader = new HBox(8, sqlTitle, copySql, collapseSql);
         sqlHeader.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(sqlTitle, Priority.ALWAYS);
@@ -185,13 +191,15 @@ final class NewTableDialog {
         error.setVisible(false);
         error.setManaged(false);
 
-        VBox body = new VBox(12,
+        // 间距与内边距由 .adb-dialog__body 统一给（CSS 会盖掉这里的构造参数，
+        // 写成一致的值只为了读代码的人不被误导）。
+        VBox body = new VBox(16,
                 buildHeader(),
                 buildTableInfoSection(),
                 buildColumnsSection(table, rowButtons),
                 buildSqlSection(sqlHeader, previewEditor),
-                error);        body.getStyleClass().add("adb-new-table__body");
-        body.setPadding(new Insets(16, 16, 8, 16));
+                error);
+        body.getStyleClass().add("adb-dialog__body");
         VBox.setVgrow(previewEditor, Priority.ALWAYS);
         dialog.getDialogPane().setContent(body);
         dialog.setResizable(true);
@@ -235,16 +243,17 @@ final class NewTableDialog {
     /** 标题栏：新建数据表 + 当前库 / 方言 + 关闭按钮（规格 §13.2）。 */
     private HBox buildHeader() {
         Label title = new Label("新建数据表");
-        title.getStyleClass().add("adb-new-table__title");
-        // ⭐ 库名与方言都来自真实会话，不是写死的示例。
-        Label context = new Label(session.label() + " · " + session.dialect().displayName());
-        context.getStyleClass().add("adb-new-table__context");
+        title.getStyleClass().add("adb-dialog__title");
+        // ⭐ 会话标签本身就是「方言 · 库」（见 JdbcSession.of）—— 再补一遍方言
+        //    就成了「SQLite · 文件 · SQLite」，与「新建索引」的标题栏重复同一个错。
+        Label context = new Label(session.label());
+        context.getStyleClass().add("adb-dialog__context");
         Button close = IconButtons.icon(Icons.Icon.CLOSE, "关闭");
         close.setId("new-table-close");
-        close.getStyleClass().addAll("adb-icon-button", "adb-new-table__close");
+        close.getStyleClass().addAll("adb-icon-button", "adb-dialog__close");
         close.setOnAction(event -> dialog.setResult(null));
         HBox header = new HBox(8, title, context, close);
-        header.getStyleClass().add("adb-new-table__header");
+        header.getStyleClass().add("adb-dialog__header");
         header.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(context, Priority.ALWAYS);
         return header;
@@ -253,11 +262,10 @@ final class NewTableDialog {
     /** 表基本信息（规格 §13.2 第一部分）。 */
     private VBox buildTableInfoSection() {
         Label title = new Label("表基本信息");
-        title.getStyleClass().add("adb-new-table__section-title");
+        title.getStyleClass().add("adb-dialog__section-title");
         VBox box = new VBox(8,
                 row(formLabel("表名"), name),
                 row(formLabel("表注释"), tableComment));
-        box.getStyleClass().add("adb-new-table__section");
         return new VBox(4, title, box);
     }
 
@@ -271,17 +279,13 @@ final class NewTableDialog {
     /** 字段编辑网格（规格 §13.2 第二部分）。 */
     private VBox buildColumnsSection(TableView<ColumnRow> table, HBox rowButtons) {
         Label title = new Label("字段");
-        title.getStyleClass().add("adb-new-table__section-title");
-        VBox box = new VBox(8, table, rowButtons);
-        box.getStyleClass().add("adb-new-table__section");
-        return new VBox(4, title, box);
+        title.getStyleClass().add("adb-dialog__section-title");
+        return new VBox(4, title, new VBox(8, table, rowButtons));
     }
 
     /** SQL 预览（规格 §13.2 第三部分，可折叠）。 */
     private VBox buildSqlSection(HBox header, SqlEditor editor) {
-        VBox box = new VBox(8, header, editor);
-        box.getStyleClass().add("adb-new-table__section");
-        return box;
+        return new VBox(8, header, editor);
     }
 
     private void setSqlPreviewVisible(boolean visible, Button toggle) {

@@ -57,9 +57,40 @@ class SideBarTreeTest {
                 .hasSize(2);
     }
 
+    /**
+     * ⭐ P5-1：有分组的连接收进文件夹节点；未分组的直接挂在根下。
+     *
+     * <p>只用「连接」的用户看不到多出来的一层（上面的用例已守），
+     * 这里守「分组真的出现、且在组里」。
+     */
     @Test
-    void objectsAreLoadedPerConnection() {
+    void connectionsAreGroupedUnderFolderNodes() {
         ActionRegistry actions = new ActionRegistry();
+        List<ConnectionProfile> profiles = List.of(
+                profile("prod-1", "生产库甲").withGroup("生产"),
+                profile("prod-2", "生产库乙").withGroup("生产"),
+                profile("demo", "演示库"));
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "演示库",
+                tab -> { }, message -> { }, "demo", profiles, p -> { }));
+
+        TreeItem root = rootOf(treeOf(sideBar));
+        assertThat(root.getChildren())
+                .as("未分组连接 + 一个「生产」分组 = 根下两项")
+                .hasSize(2);
+
+        TreeItem group = findExact(root, "生产");
+        assertThat(group).as("分组文件夹节点").isNotNull();
+        assertThat(childNames(group))
+                .as("同组连接都在文件夹下面")
+                .containsExactlyInAnyOrder("生产库甲", "生产库乙");
+        assertThat(root.getChildren())
+                .as("未分组连接仍直接挂在根下")
+                .anyMatch(item -> nameOf(valueOf(item)).equals("演示库"));
+    }
+
+    @Test
+    void objectsAreLoadedPerConnection() {        ActionRegistry actions = new ActionRegistry();
         ConnectionProfile demo = profile("demo", "演示库");
         List<SchemaService.SchemaObject> demoObjects = List.of(
                 new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE),
@@ -143,7 +174,7 @@ class SideBarTreeTest {
     void catalogLevelSitsBetweenConnectionAndObjects() {
         ActionRegistry actions = new ActionRegistry();
         ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
-                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, Map.of());
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
 
         SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
                 tab -> { }, message -> { }, "srv-1", List.of(mysql), p -> { }));
@@ -204,7 +235,7 @@ class SideBarTreeTest {
         ActionRegistry actions = new ActionRegistry();
         List<String> loaded = new ArrayList<>();
         ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
-                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, Map.of());
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
 
         SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
                 tab -> { }, message -> { }, "srv-1", List.of(mysql), p -> { }));
@@ -232,7 +263,7 @@ class SideBarTreeTest {
         ActionRegistry actions = new ActionRegistry();
         List<SideBar.CatalogSwitch> switches = new ArrayList<>();
         ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
-                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, Map.of());
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
 
         SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
                 tab -> { }, message -> { }, "srv-1", List.of(mysql), p -> { }));
@@ -258,7 +289,7 @@ class SideBarTreeTest {
     void switchCatalogActionIsDisabledOutsideCatalogNodes() {
         ActionRegistry actions = new ActionRegistry();
         ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
-                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, Map.of());
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
 
         SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
                 tab -> { }, message -> { }, "srv-1", List.of(mysql), p -> { }));
@@ -465,6 +496,99 @@ class SideBarTreeTest {
                 .containsExactly("id");
     }
 
+    /**
+     * ⭐ UX-6：连接节点下直接列「已保存查询」；双击 / 回车 = 新查询页 + 预填 SQL。
+     *
+     * <p>代码片段（SNIPPET）不进这个分组 —— 它是「插进当前编辑器」用的，
+     * 和「载入新查询」是两种行为。
+     */
+    @Test
+    void savedQueriesAppearUnderEveryConnectionAndOpenWithTheirSql() {
+        ActionRegistry actions = new ActionRegistry();
+        List<SideBar.SavedQueryRequest> opened = new ArrayList<>();
+        List<ConnectionProfile> profiles = List.of(
+                profile("demo", "演示库"),
+                profile("other", "另一个库"));
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "演示库",
+                tab -> { }, message -> { }, "demo", profiles, p -> { }));
+        onFxRun(() -> {
+            sideBar.setSavedQuerySource(() -> List.of(
+                    new SavedQueries.Entry("活跃用户",
+                            "SELECT * FROM users WHERE active = 1;", 2L),
+                    new SavedQueries.Entry("片段：计数", "COUNT(*)", 3L,
+                            SavedQueries.Kind.SNIPPET)));
+            sideBar.setOnOpenSavedQuery(opened::add);
+        });
+
+        TreeItem root = rootOf(treeOf(sideBar));
+        TreeItem demoConnection = findExact(root, "演示库");
+        TreeItem otherConnection = findExact(root, "另一个库");
+        assertThat(demoConnection).isNotNull();
+        assertThat(otherConnection).isNotNull();
+
+        TreeItem demoGroup = findExact(demoConnection, "已保存查询");
+        TreeItem otherGroup = findExact(otherConnection, "已保存查询");
+        assertThat(demoGroup).as("连接节点下要有「已保存查询」分组").isNotNull();
+        assertThat(otherGroup).as("每个连接都直接列一份").isNotNull();
+        assertThat(childNames(demoGroup))
+                .as("只列完整查询，代码片段不混进来")
+                .containsExactly("活跃用户");
+
+        TreeItem item = findExact(demoGroup, "活跃用户");
+        TreeView tree = treeOf(sideBar);
+        onFxRun(() -> {
+            tree.getSelectionModel().select(item);
+            sideBar.actionForTest("saved-query.open");
+        });
+
+        assertThat(opened).hasSize(1);
+        assertThat(opened.getFirst().connectionId())
+                .as("查询页跟着条目所在的连接走")
+                .isEqualTo("demo");
+        assertThat(opened.getFirst().name()).isEqualTo("活跃用户");
+        assertThat(opened.getFirst().sql()).isEqualTo("SELECT * FROM users WHERE active = 1;");
+    }
+
+    /** ⭐ UX-6：分组跟着搜索词过滤，并在保存 / 删除后刷新。 */
+    @Test
+    void savedQueryGroupFollowsSearchAndRefreshes() {
+        ActionRegistry actions = new ActionRegistry();
+        List<SavedQueries.Entry> store = new ArrayList<>(List.of(
+                new SavedQueries.Entry("活跃用户", "SELECT 1;", 1L),
+                new SavedQueries.Entry("月度报表", "SELECT 2;", 2L)));
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "演示库",
+                tab -> { }, message -> { }, "demo", List.of(profile("demo", "演示库")), p -> { }));
+        onFxRun(() -> sideBar.setSavedQuerySource(() -> List.copyOf(store)));
+
+        TreeItem demoConnection = findExact(rootOf(treeOf(sideBar)), "演示库");
+        TreeItem group = findExact(demoConnection, "已保存查询");
+        assertThat(childNames(group)).containsExactlyInAnyOrder("活跃用户", "月度报表");
+
+        TextField search = searchFieldOf(sideBar);
+        onFxRun(() -> search.setText("月度"));
+        group = findExact(findExact(rootOf(treeOf(sideBar)), "演示库"), "已保存查询");
+        assertThat(childNames(group))
+                .as("搜索词同样过滤已保存查询")
+                .containsExactly("月度报表");
+
+        store.add(new SavedQueries.Entry("活跃用户归档", "SELECT 3;", 3L));
+        onFxRun(() -> {
+            search.setText("");
+            sideBar.refreshSavedQueries();
+        });
+        group = findExact(findExact(rootOf(treeOf(sideBar)), "演示库"), "已保存查询");
+        assertThat(childNames(group))
+                .as("保存后不必重启，刷新就能看到新条目")
+                .contains("活跃用户归档");
+
+        onFxRun(() -> sideBar.setSavedQuerySource(List::of));
+        assertThat(findExact(rootOf(treeOf(sideBar)), "已保存查询"))
+                .as("一条都没有时不摆空分组")
+                .isNull();
+    }
+
     // ───────────────────────────── 工具 ─────────────────────────────
 
     /** 原生 TreeItem 的 getChildren() 元素类型是 Object —— 统一在这里转。 */
@@ -485,9 +609,23 @@ class SideBarTreeTest {
         return null;
     }
 
+    /** 节点名**正好等于**给定值（区分「生产」和「生产库甲」）。 */
+    private static TreeItem findExact(TreeItem node, String name) {
+        if (nameOf(valueOf(node)).equals(name)) {
+            return node;
+        }
+        for (Object child : node.getChildren()) {
+            TreeItem found = findExact((TreeItem) child, name);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
+    }
+
     private static ConnectionProfile profile(String id, String name) {
         return new ConnectionProfile(id, name, DialectKind.POSTGRESQL, "localhost", 5432,
-                "db", "u", false, 0, java.util.Map.of());
+                "db", "u", false, 0, "", java.util.Map.of());
     }
 
     private static TreeView treeOf(SideBar sideBar) {

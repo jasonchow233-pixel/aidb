@@ -9,6 +9,7 @@ import io.agenticdb.introspect.FilterCondition;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.SchemaService.TableSchema;
 import io.agenticdb.introspect.SortSpec;
+import io.agenticdb.introspect.TableMeta;
 import io.agenticdb.ui.Icons;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.ColumnDef;
@@ -28,7 +29,6 @@ import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonBase;
@@ -58,6 +58,7 @@ import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -68,6 +69,7 @@ import javafx.stage.Window;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -180,6 +182,19 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private ObjectSectionsPanel sectionsPanel;
     /** 数据切面与其它切面共用的容器。 */
     private final StackPane sectionStack = new StackPane();
+    /** ⭐ UX-6：数据切面（工具栏 + 网格 + 分页器）。 */
+    private VBox dataSection;
+    /** ⭐ UX-6：概览切面（事实 + 最近操作 + 快捷动作）。 */
+    private VBox overviewPane;
+    private final Label overviewRows = new Label("—");
+    private final Label overviewSize = new Label("—");
+    private final Label overviewEngine = new Label("—");
+    private final Label overviewIndexes = new Label("—");
+    private final Label overviewHint = new Label();
+    private final VBox overviewRecent = new VBox(4);
+    /** 概览的元信息只读一次；表大小会变，由用户点「刷新概览」或数据刷新来更新。 */
+    private boolean overviewLoaded;
+    private boolean overviewLoading;
     /** 工具栏左组（数据操作）。 */
     private final HBox toolGroupData = new HBox(4);
     /** 工具栏中组（查询与显示）。 */
@@ -228,6 +243,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final MenuButton exportButton = IconButtons.iconMenu(new MenuButton(), Icons.Icon.EXPORT, "导出");
     /** ⭐ UX-3：数据页直接导入（目标表预选本表），不用再绕侧栏的「导入 / 导出」。 */
     private final Button importButton = new Button();
+    /** ⭐ P2-3：按本表筛过的执行历史，点一条载入查询页。 */
+    private final MenuButton historyButton =
+            IconButtons.iconMenu(new MenuButton(), Icons.Icon.HISTORY, "历史");
+    private java.util.function.Supplier<List<QueryHistory.Entry>> historySource = List::of;
+    private Consumer<String> onHistoryPick = sql -> { };
     private final TextField searchField = new TextField();
     private final CheckMenuItem hideNullItem = new CheckMenuItem("隐藏含 NULL 行");
     private final CheckMenuItem hideEmptyItem = new CheckMenuItem("隐藏含空串行");
@@ -686,7 +706,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             String reason = io.agenticdb.safety.ErrorClassifier
                     .classify(task.getException()).message();
             feedback.status("保存失败：" + reason);
-            showErrorDialog("保存失败", reason);
+            showErrorDetails("保存失败", task.getException(), plan.preview());
         });
         dbExecutor.execute(task);
     }
@@ -715,7 +735,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         task.setOnFailed(event -> {
             undoingSave = false;
             feedback.status("撤销保存失败：" + readable(task.getException()));
-            showErrorDialog("撤销保存失败", readable(task.getException()));
+            showErrorDetails("撤销保存失败", task.getException(), inverse.preview());
         });
         dbExecutor.execute(task);
     }
@@ -754,6 +774,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                     "以下 SQL 会在单个事务里执行，任一条失败整体回滚。\n\n"
                             + plan.preview(),
                     "继续");
+            // ⭐ 与本页保存预览同一套皮肤：确认框漏掉主题类时，它是满屏 Modena 灰。
+            DialogStyles.apply(confirm.alert(), getScene() == null ? null : getScene().getWindow());
             if (!confirm.confirmed()) {
                 return false;
             }
@@ -829,16 +851,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         };
     }
 
-    private void showErrorDialog(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle(title);
-        alert.setHeaderText(title);
-        alert.setContentText(message);
-        if (getScene() != null) {
-            alert.initOwner(getScene().getWindow());
-        }
-        DialogStyles.apply(alert, getScene() == null ? null : getScene().getWindow());
-        alert.showAndWait();
+    /**
+     * ⭐ P2-2：失败不再只弹一句 message —— 分类徽标 + 驱动原文 + 建议 + SQL，
+     * 全部可一键复制。{@code sql} 可为 null（导出这类与语句无关的失败）。
+     */
+    private void showErrorDetails(String title, Throwable error, String sql) {
+        ErrorDetailsDialog.show(getScene() == null ? null : getScene().getWindow(),
+                ErrorDetails.of(title, error, sql));
     }
 
     // ─────────────────────────── 结构 ───────────────────────────
@@ -869,6 +888,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         // ── ② 对象功能切面（§6.2）──────────────────────────────────────
         objectTabs = new ObjectTabBar();
         objectTabs.addTab("data", "数据");
+        objectTabs.addTab("overview", "概览");
         objectTabs.addTab(ObjectSectionsPanel.SECTION_COLUMNS, "结构");
         objectTabs.addTab(ObjectSectionsPanel.SECTION_INDEXES, "索引");
         objectTabs.addTab(ObjectSectionsPanel.SECTION_FOREIGN_KEYS, "外键");
@@ -882,6 +902,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
         sectionsPanel = new ObjectSectionsPanel(session, schemaService, tableName,
                 dbExecutor, () -> openStructure.accept(tableName));
+        overviewPane = buildOverview();
 
         // ── ③ 数据工具栏（§6.3）────────────────────────────────────────
         //    左组 = 数据操作；右组 = 查询与显示。两组之间留白分隔，
@@ -943,7 +964,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         filterButton.setId("data-filter");
         filterButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         filterButton.setDisable(true);
-        toolbarOp(filterButton, Icons.Icon.FILTER, "筛选与排序",
+        toolbarOp(filterButton, Icons.Icon.FILTER, "筛选",
                 "打开条件构造器；列头漏斗可按候选值筛选");
         filterButton.setOnAction(event -> showConditionDialog());
 
@@ -1022,6 +1043,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 "打开导入向导；目标表已预选成本表");
         importButton.setOnAction(event -> openImportWizard());
 
+        historyButton.setId("data-history");
+        historyButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        toolbarOp(historyButton, Icons.Icon.HISTORY, "历史",
+                "本表最近执行过的 SQL（按表筛选）；点一条载入到查询页");
+        // 每次展开时重建 —— 历史可能在别的查询页里刚增长，缓存一份只会给出旧列表。
+        historyButton.setOnShowing(event -> rebuildHistoryMenu());
+
         searchField.setId("data-search");
         searchField.getStyleClass().add("adb-grid__search");
         searchField.setPromptText("本页搜索");
@@ -1033,8 +1061,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         // ⭐ UX-3：按语义分三组 —— 编辑 / 查询与显示 / 数据交换，组间一条竖线。
         //    以前「导出」混在查询组里、「新增行」和「撤销」挨着，
         //    眼睛得把一排按钮重新分类一遍才知道哪组管什么。
-        toolGroupQuery.getChildren().addAll(filterButton, clearQueryButton, columnsButton,
-                viewButton);
+        toolGroupQuery.getChildren().addAll(filterButton, clearQueryButton, historyButton,
+                columnsButton, viewButton);
         toolGroupTransfer.getChildren().addAll(importButton, exportButton);
 
         toolbar.getChildren().addAll(toolGroupData, toolbarSeparator(), toolGroupQuery,
@@ -1049,12 +1077,15 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
         grid.setId("data-table");
         grid.getStyleClass().add("adb-grid");
+        // ⭐ P7：表格本身没有文字，读屏只会读「表」—— 给一个明确的名称。
+        grid.setAccessibleText("数据网格");
 
         // ⭐ G1：左表（冻结列）。两张表共享同一份 items，靠索引对齐。
         //   列宽用 UNCONSTRAINED —— 冻结区宽度就是各列 prefWidth 之和，
         //   不能让最后一列被拉伸，否则右表起点会随窗口宽度抖动。
         frozenGrid.setId("data-frozen-table");
         frozenGrid.getStyleClass().addAll("adb-grid", "adb-grid--frozen");
+        frozenGrid.setAccessibleText("数据网格（冻结列）");
         frozenGrid.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         frozenGrid.setFocusTraversable(true);
         frozenGrid.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
@@ -1078,6 +1109,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         bindFocusCursor(grid);
         bindFocusCursor(frozenGrid);
         selectAllBox.setId("data-select-all");
+        selectAllBox.setAccessibleText("全选本页");
         selectAllBox.setTooltip(new Tooltip("全选当前页"));
         selectAllBox.setOnAction(event -> {
             if (selectAllBox.isSelected()) {
@@ -1180,15 +1212,17 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         //    它原来是网格上方一条 28px 的独立横条，把「第一条数据」推到了
         //    窗口的 1/3 处（实测：284px 的 chrome 里它占了 28px）。
         //    两套导航（翻行 / 翻页）放在一起，语义更清楚，还省一行。
-        VBox dataSection = new VBox(toolbar, chipBar, body, batchBar, pager);
+        dataSection = new VBox(toolbar, chipBar, body, batchBar, pager);
         dataSection.getStyleClass().add("adb-grid-page__data");
         VBox.setVgrow(body, Priority.ALWAYS);
 
-        sectionStack.getChildren().addAll(dataSection, sectionsPanel);
+        sectionStack.getChildren().addAll(dataSection, overviewPane, sectionsPanel);
         sectionStack.getStyleClass().add("adb-grid-page__sections");
         VBox.setVgrow(sectionStack, Priority.ALWAYS);
-        // ⚠️ 初始必须只显示数据切面 —— 两个切面都 visible 时会**叠在一起**，
+        // ⚠️ 初始必须只显示数据切面 —— 多个切面都 visible 时会**叠在一起**，
         //    结构表压在网格上，鼠标点到的根本不是网格。
+        overviewPane.setVisible(false);
+        overviewPane.setManaged(false);
         sectionsPanel.setVisible(false);
         sectionsPanel.setManaged(false);
 
@@ -1204,14 +1238,193 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      */
     private void sectionSelected(String sectionId) {
         boolean data = "data".equals(sectionId);
-        for (javafx.scene.Node child : sectionStack.getChildren()) {
-            boolean isData = child == sectionStack.getChildren().get(0);
-            child.setVisible(isData == data);
-            child.setManaged(isData == data);
-        }
-        if (!data) {
+        boolean overview = "overview".equals(sectionId);
+        dataSection.setVisible(data);
+        dataSection.setManaged(data);
+        overviewPane.setVisible(overview);
+        overviewPane.setManaged(overview);
+        boolean sections = !data && !overview;
+        sectionsPanel.setVisible(sections);
+        sectionsPanel.setManaged(sections);
+        if (overview) {
+            loadOverview(false);
+        } else if (sections) {
             sectionsPanel.show(sectionId);
         }
+    }
+
+    /** UX-6：程序化切换对象切面（等同用户点标签；测试与外壳共用）。 */
+    void selectSection(String sectionId) {
+        objectTabs.select(sectionId);
+    }
+
+    /**
+     * ⭐ UX-6：概览切面 —— 一屏给事实（行数 / 大小 / 引擎 / 索引数）
+     * + 这张表的最近操作（P2-3 查询历史）+ 两个快捷动作。
+     *
+     * <p>行数直接复用数据页刚算出来的 {@code total}（同一时刻、同一套筛选条件）；
+     * 大小 / 引擎来自数据库元信息，方言不提供时显示「—」并说明原因；
+     * 索引数走实时内省。**没有哪一项是猜的。**
+     */
+    private VBox buildOverview() {
+        VBox pane = new VBox(12);
+        pane.setId("overview-pane");
+        pane.getStyleClass().add("adb-overview");
+        pane.setPadding(new Insets(16, 18, 16, 18));
+
+        Label title = new Label("表概览");
+        title.getStyleClass().add("adb-overview__title");
+
+        GridPane facts = new GridPane();
+        facts.setId("overview-facts");
+        facts.setHgap(32);
+        facts.setVgap(10);
+        addOverviewFact(facts, 0, 0, "行数", overviewRows, "overview-rows");
+        addOverviewFact(facts, 0, 1, "数据大小", overviewSize, "overview-size");
+        addOverviewFact(facts, 1, 0, "引擎", overviewEngine, "overview-engine");
+        addOverviewFact(facts, 1, 1, "索引数", overviewIndexes, "overview-indexes");
+
+        overviewHint.setId("overview-hint");
+        overviewHint.getStyleClass().add("adb-overview__hint");
+        overviewHint.setWrapText(true);
+
+        Label recentTitle = new Label("最近操作");
+        recentTitle.getStyleClass().add("adb-overview__section-title");
+        Label recentHint = new Label("来自查询历史 —— 点一条在查询页打开");
+        recentHint.getStyleClass().add("adb-overview__hint");
+        overviewRecent.setId("overview-recent");
+
+        Button openStructureButton = IconButtons.of(Icons.Icon.STRUCTURE, "打开结构");
+        openStructureButton.setId("overview-open-structure");
+        openStructureButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        openStructureButton.setOnAction(event -> openStructure.accept(tableName));
+
+        Button refreshOverviewButton = IconButtons.of(Icons.Icon.REFRESH, "刷新概览");
+        refreshOverviewButton.setId("overview-refresh");
+        refreshOverviewButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        refreshOverviewButton.setOnAction(event -> {
+            refresh();
+            loadOverview(true);
+        });
+
+        HBox actions = new HBox(8, openStructureButton, refreshOverviewButton);
+        actions.getStyleClass().add("adb-overview__actions");
+
+        pane.getChildren().addAll(title, facts, overviewHint,
+                new Separator(), recentTitle, recentHint, overviewRecent, actions);
+        return pane;
+    }
+
+    private static void addOverviewFact(GridPane grid, int row, int column, String key,
+                                        Label value, String id) {
+        VBox cell = new VBox(2);
+        Label keyLabel = new Label(key);
+        keyLabel.getStyleClass().add("adb-overview__fact-key");
+        value.setId(id);
+        value.getStyleClass().add("adb-overview__fact-value");
+        cell.getChildren().addAll(keyLabel, value);
+        grid.add(cell, column, row);
+    }
+
+    /** UX-6：切到概览时按需加载；已有结果且不强制刷新时直接复用。 */
+    private void loadOverview(boolean fresh) {
+        updateOverviewRows();
+        renderOverviewRecent();
+        if (overviewLoading || (overviewLoaded && !fresh)) {
+            return;
+        }
+        overviewLoading = true;
+        overviewLoaded = false;
+        overviewSize.setText("…");
+        overviewEngine.setText("…");
+        overviewIndexes.setText("…");
+
+        Task<OverviewFacts> task = new Task<>() {
+            @Override
+            protected OverviewFacts call() {
+                return new OverviewFacts(readTableMeta(), countIndexes());
+            }
+        };
+        task.setOnSucceeded(event -> {
+            overviewLoading = false;
+            overviewLoaded = true;
+            applyOverview(task.getValue());
+        });
+        task.setOnFailed(event -> {
+            overviewLoading = false;
+            overviewLoaded = true;
+            applyOverview(new OverviewFacts(null, null));
+        });
+        start(task);
+    }
+
+    private TableMeta readTableMeta() {
+        if (session.dialect().tableMetaSql() == null) {
+            return null;
+        }
+        try {
+            for (TableMeta meta : schemaService.listTableMeta(session)) {
+                if (meta.name().equalsIgnoreCase(tableName)) {
+                    return meta;
+                }
+            }
+        } catch (SQLException | RuntimeException ignored) {
+            // 元信息读不到就显示「—」，不让概览页整页失败。
+        }
+        return null;
+    }
+
+    private Integer countIndexes() {
+        try {
+            return schemaService.indexCount(session, tableName);
+        } catch (SQLException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private void applyOverview(OverviewFacts facts) {
+        TableMeta meta = facts.meta();
+        overviewSize.setText(meta == null ? "—" : meta.sizeText());
+        overviewEngine.setText(meta == null ? "—" : meta.engineText());
+        overviewIndexes.setText(facts.indexes() == null ? "—" : String.valueOf(facts.indexes()));
+        if (meta == null && session.dialect().tableMetaSql() == null) {
+            overviewHint.setText(session.dialect().displayName()
+                    + " 不提供表大小与引擎 —— 显示「—」；索引数来自实时内省");
+        } else if (meta == null) {
+            overviewHint.setText("没有读到表元信息（权限不足或旧版本库）—— 显示「—」");
+        } else {
+            overviewHint.setText("大小 / 引擎来自数据库元信息；索引数来自实时内省");
+        }
+    }
+
+    private void updateOverviewRows() {
+        overviewRows.setText(total < 0 ? "—" : String.valueOf(total));
+    }
+
+    private void renderOverviewRecent() {
+        overviewRecent.getChildren().clear();
+        List<QueryHistory.Entry> entries = historySource.get();
+        if (entries.isEmpty()) {
+            Label empty = new Label("还没有执行过针对本表的 SQL");
+            empty.setId("overview-recent-empty");
+            empty.getStyleClass().add("adb-overview__empty");
+            overviewRecent.getChildren().add(empty);
+            return;
+        }
+        for (int i = 0; i < Math.min(5, entries.size()); i++) {
+            QueryHistory.Entry entry = entries.get(i);
+            Button item = new Button(entry.summary());
+            item.setId("overview-history-" + i);
+            item.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-overview__history");
+            item.setMaxWidth(Double.MAX_VALUE);
+            item.setAlignment(Pos.CENTER_LEFT);
+            item.setTooltip(new Tooltip(entry.sql()));
+            item.setOnAction(event -> onHistoryPick.accept(entry.sql()));
+            overviewRecent.getChildren().add(item);
+        }
+    }
+
+    private record OverviewFacts(TableMeta meta, Integer indexes) {
     }
 
     /**
@@ -1484,6 +1697,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         rangeLabel.setMinWidth(Region.USE_PREF_SIZE);
 
         pageSizeBox.setId("data-page-size");
+        pageSizeBox.setAccessibleText("每页行数");
         pageSizeBox.getStyleClass().add("adb-page-size");
         // ⭐ 档位来自 PageSize 枚举（唯一真相），不再在 UI 里写死一份数组。
         pageSizeBox.getItems().setAll(Arrays.stream(PageSize.values())
@@ -1523,6 +1737,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     // ─────────────────────────── 加载 ───────────────────────────
 
     public void refresh() {
+        // 表大小 / 引擎会随写入变化：刷新数据时让概览的元信息也重新读一次。
+        overviewLoaded = false;
         load(true);
     }
 
@@ -1746,7 +1962,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         inFlight = start(task);
     }
 
-    private Future<?> start(Task<LoadResult> task) {
+    private <T> Future<?> start(Task<T> task) {
         if (dbExecutor instanceof java.util.concurrent.ExecutorService service) {
             return service.submit(task);
         }
@@ -1764,6 +1980,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         renderQueryState();
         updateEditControls();
         updateHeaderCount();
+        updateOverviewRows();
 
         // 刷新时表可能被删到比当前页更少：回到最后一个有效页，而不是显示空页 + 第 8/3 页。
         if (total >= 0 && total > 0 && offset >= total) {
@@ -2024,6 +2241,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
             {
                 setAlignment(Pos.CENTER);
+                box.setAccessibleText("选择本行");
                 box.setOnAction(event -> {
                     if (isEmpty() || getIndex() < 0) {
                         return;
@@ -3837,6 +4055,38 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 null, dbExecutor, message -> feedback.status(message));
     }
 
+    /** P2-3：历史数据来源（外壳按当前表筛选后喂进来）。 */
+    void setHistorySource(java.util.function.Supplier<List<QueryHistory.Entry>> source) {
+        this.historySource = source == null ? List::of : source;
+    }
+
+    /** P2-3：选中一条历史后做什么（外壳负责开查询页）。 */
+    void setOnHistoryPick(Consumer<String> onPick) {
+        this.onHistoryPick = onPick == null ? sql -> { } : onPick;
+    }
+
+    /** 重建「历史」菜单项；弹层展开时调用，测试也走这里。 */
+    void rebuildHistoryMenu() {
+        // 概览里的「最近操作」与这个菜单是同一份历史，一起重建。
+        renderOverviewRecent();
+        historyButton.getItems().clear();
+        List<QueryHistory.Entry> entries = historySource.get();
+        if (entries.isEmpty()) {
+            MenuItem none = new MenuItem("还没有执行过针对本表的 SQL");
+            none.setId("data-history-empty");
+            none.setDisable(true);
+            historyButton.getItems().add(none);
+            return;
+        }
+        for (int i = 0; i < entries.size(); i++) {
+            QueryHistory.Entry entry = entries.get(i);
+            MenuItem item = new MenuItem(entry.summary());
+            item.setId("data-history-" + i);
+            item.setOnAction(event -> onHistoryPick.accept(entry.sql()));
+            historyButton.getItems().add(item);
+        }
+    }
+
     /**
      * ⭐ UX-3：工具条主操作 = 图标 + 文字 + tooltip + accessibleText，
      * 同时登记进「窄窗口收字」名单。
@@ -3966,7 +4216,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             feedback.status("已导出" + scope + " " + rows.size() + " 行 → " + path);
             feedback.toast("已导出" + scope + " " + rows.size() + " 行 CSV");
         } catch (IOException e) {
-            showErrorDialog("导出失败", readable(e));
+            showErrorDetails("导出失败", e, null);
             feedback.status("导出失败：" + readable(e));
         }
     }
@@ -4215,6 +4465,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 if (bool != null) {
                     CheckBox toggle = new CheckBox();
                     toggle.getStyleClass().add("adb-grid__boolean");
+                    toggle.setAccessibleText("切换布尔值");
                     toggle.setSelected(bool);
                     toggle.setDisable(!cellEditable || deleted);
                     toggle.setTooltip(new Tooltip(bool ? "true · 点击切换" : "false · 点击切换"));

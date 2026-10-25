@@ -28,6 +28,7 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.FlowPane;
@@ -123,6 +124,10 @@ final class TableListPage extends VBox {
     private final Actions actions;
     private final Host host;
     private final Consumer<String> viewSaver;
+    private final SettingsStore settings;
+    /** 列宽记忆按连接分开存；{@code null} = 不持久化（单测的旧构造器）。 */
+    private final String connectionKey;
+    private ColumnLayoutMemory columnMemory;
 
     private final TableView<TableMeta> table = new TableView<>();
     private final ObservableList<TableMeta> rows = FXCollections.observableArrayList();
@@ -170,6 +175,14 @@ final class TableListPage extends VBox {
     TableListPage(DbSession session, SchemaService schemaService, Executor dbExecutor,
                   Consumer<String> onOpen, Consumer<String> status,
                   Actions actions, Host host, String initialView, Consumer<String> viewSaver) {
+        this(session, schemaService, dbExecutor, onOpen, status, actions, host,
+                initialView, viewSaver, null, null);
+    }
+
+    TableListPage(DbSession session, SchemaService schemaService, Executor dbExecutor,
+                  Consumer<String> onOpen, Consumer<String> status,
+                  Actions actions, Host host, String initialView, Consumer<String> viewSaver,
+                  SettingsStore settings, String connectionKey) {
         this.session = session;
         this.schemaService = schemaService;
         this.dbExecutor = dbExecutor;
@@ -178,6 +191,8 @@ final class TableListPage extends VBox {
         this.actions = actions == null ? localActions() : actions;
         this.host = host;
         this.viewSaver = viewSaver;
+        this.settings = settings;
+        this.connectionKey = connectionKey;
 
         getStyleClass().addAll("adb-page", "adb-table-list-page");
         buildTable();
@@ -193,7 +208,8 @@ final class TableListPage extends VBox {
     private HBox buildToolbar() {
         search.setId("table-list-search");
         search.setPromptText("搜索表名");
-        search.setPrefWidth(200);
+        search.setPrefWidth(160);
+        search.setMinWidth(120);
         search.getStyleClass().add("adb-table-list__search");
         search.textProperty().addListener((observable, oldValue, newValue) -> applyFilter(newValue));
         search.focusedProperty().addListener((observable, was, now) -> {
@@ -220,11 +236,17 @@ final class TableListPage extends VBox {
                 ActionRegistry.buttonFor(actions.design()), Icons.Icon.STRUCTURE);
         design.setId("table-list-design");
         Button open = IconButtons.withIcon(
-                ActionRegistry.buttonFor(actions.open()), Icons.Icon.TABLE);
+                ActionRegistry.buttonFor(actions.open()), Icons.Icon.OPEN);
         open.setId("table-list-open");
         Button refresh = IconButtons.withIcon(
                 ActionRegistry.buttonFor(actions.refresh()), Icons.Icon.REFRESH);
         refresh.setId("table-list-refresh");
+
+        // 文字按钮不许被 HBox 压到省略号（"打开…" 比只有图标更难懂）：
+        // 挤不下时让搜索框变窄，动作名保持完整。
+        for (Button button : List.of(create, drop, design, open, refresh)) {
+            button.setMinWidth(Region.USE_PREF_SIZE);
+        }
 
         listButton = ActionRegistry.iconButtonFor(actions.viewList(), Icons.Icon.LIST,
                 "列表视图", "列表视图");
@@ -315,12 +337,14 @@ final class TableListPage extends VBox {
         // ⭐ 第十九轮 S-1：可选列要留引用，才能按数据决定显不显示。
         //    「名称 / 行」是核心列，永远显示；其余 6 列是方言相关的可选列。
         sizeColumn = sizeColumn();
-        engineColumn = textColumn("引擎", 100, 80, TableMeta::engineText);
-        createdColumn = textColumn("创建日期", 150, 140, TableMeta::createdText);
+        engineColumn = keyed(textColumn("引擎", 100, 80, TableMeta::engineText), "engine");
+        createdColumn = keyed(textColumn("创建日期", 150, 140, TableMeta::createdText), "created");
         // ⭐ 本轮补的三列：Navicat 的表清单有「修改日期 / 排序规则 / 注释」。
-        updatedColumn = textColumn("修改日期", 150, 140, TableMeta::updatedText);
-        collationColumn = textColumn("排序规则", 120, 112, TableMeta::collationText, true);
-        commentColumn = textColumn("注释", 180, 120, TableMeta::commentText, true);
+        updatedColumn = keyed(textColumn("修改日期", 150, 140, TableMeta::updatedText), "updated");
+        collationColumn = keyed(textColumn("排序规则", 120, 112,
+                TableMeta::collationText, true), "collation");
+        commentColumn = keyed(textColumn("注释", 180, 120,
+                TableMeta::commentText, true, true), "comment");
 
         table.getColumns().setAll(List.of(
                 nameColumn(),
@@ -331,6 +355,10 @@ final class TableListPage extends VBox {
                 updatedColumn,
                 collationColumn,
                 commentColumn));
+
+        // ⭐ P2-1：列宽按连接记忆（与数据网格同一套「拖完就记住」的预期）。
+        columnMemory = new ColumnLayoutMemory(table, settings,
+                () -> connectionKey, "ui.tablelist");
 
         table.getSelectionModel().getSelectedIndices().addListener(
                 (ListChangeListener<Integer>) change -> updateSelectionState());
@@ -412,10 +440,18 @@ final class TableListPage extends VBox {
         cards.prefWrapLengthProperty().bind(gridScroll.widthProperty().subtract(24));
     }
 
+    /** 列宽记忆的身份：标题会改，这个 key 不会。 */
+    private static TableColumn<TableMeta, String> keyed(
+            TableColumn<TableMeta, String> column, String key) {
+        column.setUserData(key);
+        return column;
+    }
+
     /** 表名列：类型图标 + 名字（与对象树、对象首页同一套图形语言）。 */
     private TableColumn<TableMeta, String> nameColumn() {
         TableColumn<TableMeta, String> column = new TableColumn<>("名称");
         column.setId("table-column-name");
+        column.setUserData("name");
         column.setPrefWidth(220);
         column.setMinWidth(140);
         column.setCellValueFactory(cell -> new javafx.beans.property.SimpleStringProperty(
@@ -445,6 +481,7 @@ final class TableListPage extends VBox {
     private TableColumn<TableMeta, String> rowsColumn() {
         TableColumn<TableMeta, String> column = new TableColumn<>("行");
         column.setId("table-column-rows");
+        column.setUserData("rows");
         column.setPrefWidth(90);
         column.setMinWidth(72);
         column.setCellValueFactory(cell -> new javafx.beans.property.SimpleStringProperty(
@@ -458,6 +495,7 @@ final class TableListPage extends VBox {
     private TableColumn<TableMeta, String> sizeColumn() {
         TableColumn<TableMeta, String> column = new TableColumn<>("数据长度");
         column.setId("table-column-size");
+        column.setUserData("size");
         column.setPrefWidth(110);
         column.setMinWidth(88);
         column.setCellValueFactory(cell -> new javafx.beans.property.SimpleStringProperty(
@@ -480,6 +518,17 @@ final class TableListPage extends VBox {
     private TableColumn<TableMeta, String> textColumn(
             String title, double width, double minWidth,
             Function<TableMeta, String> value, boolean muted) {
+        return textColumn(title, width, minWidth, value, muted, false);
+    }
+
+    /**
+     * @param tooltip 悬停时给出**完整文本**（注释列用）。单元格被列宽截断时，
+     *                tooltip 是唯一能读到全文的出口；占位符「—」不挂 tooltip，
+     *                别把「没有注释」也解释一遍。
+     */
+    private TableColumn<TableMeta, String> textColumn(
+            String title, double width, double minWidth,
+            Function<TableMeta, String> value, boolean muted, boolean tooltip) {
         TableColumn<TableMeta, String> column = new TableColumn<>(title);
         column.setPrefWidth(width);
         column.setMinWidth(ColumnWidths.listColumnMin(title, minWidth));
@@ -493,7 +542,13 @@ final class TableListPage extends VBox {
                 if (muted && !getStyleClass().contains("adb-table-list__muted")) {
                     getStyleClass().add("adb-table-list__muted");
                 }
+                boolean real = !empty && !MetadataColumns.isPlaceholder(text);
                 setText(empty || text == null ? null : text);
+                if (!tooltip || !real) {
+                    setTooltip(null);
+                } else if (getTooltip() == null || !text.equals(getTooltip().getText())) {
+                    setTooltip(new Tooltip(text));
+                }
             }
         });
         return column;
@@ -610,10 +665,16 @@ final class TableListPage extends VBox {
         card.setMaxWidth(220);
         card.setMinHeight(92);
         card.setFocusTraversable(true);
+        // ⭐ P7：卡片是 VBox，读屏默认只会读成「面板」—— 补角色与名称。
+        card.setAccessibleRole(javafx.scene.AccessibleRole.LIST_ITEM);
+        card.setAccessibleText(meta.name());
         if (gridSelection.contains(meta.name())) {
             card.getStyleClass().add("adb-table-card--selected");
         }
-        card.setOnMousePressed(event -> activate());
+        card.setOnMousePressed(event -> {
+            card.requestFocus();
+            activate();
+        });
         card.setOnMouseClicked(event -> {
             if (event.getClickCount() == 2) {
                 onOpen.accept(meta.name());
@@ -669,10 +730,13 @@ final class TableListPage extends VBox {
         if (real.isEmpty()) {
             return null;
         }
-        Label label = new Label(String.join(" · ", real));
+        String joined = String.join(" · ", real);
+        Label label = new Label(joined);
         label.getStyleClass().add(styleClass);
         if (styleClass.equals("adb-table-card__comment")) {
             label.setMaxWidth(Double.MAX_VALUE);
+            // 卡片只有 220px 宽，长注释一定被截断 —— 悬停要给得了全文。
+            label.setTooltip(new Tooltip(joined));
         }
         return label;
     }
@@ -1068,6 +1132,13 @@ final class TableListPage extends VBox {
     /** 表格（供门禁断言密度作用到了它）。 */
     TableView<TableMeta> table() {
         return table;
+    }
+
+    /** 门禁用：立即落盘，不等 400ms 防抖。 */
+    void persistColumnWidthsForTest() {
+        if (columnMemory != null) {
+            columnMemory.persist();
+        }
     }
 
     Actions actions() {

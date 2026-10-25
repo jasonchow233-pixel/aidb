@@ -30,7 +30,7 @@ final class ConditionDialog {
                                           Collection<String> stylesheets) {
         Dialog<FilterCondition> dialog = new Dialog<>();
         dialog.setTitle("添加筛选条件");
-        // ⭐ V-11：弹窗宽度走三档规范（DialogSizes）。
+        // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
         dialog.getDialogPane().setPrefWidth(DialogSizes.FORM);
         dialog.getDialogPane().setMinWidth(DialogSizes.FORM);
 

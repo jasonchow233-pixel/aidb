@@ -11,18 +11,24 @@ import javafx.geometry.Pos;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextInputDialog;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.SVGPath;
 
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -47,6 +53,8 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
     private final Button open = new Button("打开");
     private final Button edit = new Button("编辑");
     private final Button duplicate = new Button("复制");
+    private final Button rename = new Button("重命名");
+    private final Button group = new Button("分组…");
     private final Button delete = new Button("删除");
     private final Button refresh = IconButtons.of(Icons.Icon.REFRESH, "刷新");
 
@@ -57,6 +65,9 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
     private Consumer<ConnectionProfile> onDelete;
     private Runnable onNew;
     private Predicate<ConnectionProfile> connected = profile -> false;
+    /** ⭐ P5-1：改显示名 / 换分组 —— 真正的落盘由外壳做。 */
+    private BiConsumer<ConnectionProfile, String> onRename = (profile, name) -> { };
+    private BiConsumer<ConnectionProfile, String> onGroup = (profile, group) -> { };
 
     public ConnectionsPage(ObservableList<ConnectionProfile> profiles,
                            Runnable onNew,
@@ -88,7 +99,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         badge.getStyleClass().addAll("adb-badge", "adb-badge--muted");
         Region headerSpacer = new Region();
         HBox.setHgrow(headerSpacer, Priority.ALWAYS);
-        Label context = new Label("口令保存于系统钥匙串 / Secret Service");
+        Label context = new Label("口令保存于系统凭据库");
         context.getStyleClass().add("adb-muted");
 
         HBox header = new HBox(10, title, badge, headerSpacer, context);
@@ -97,7 +108,10 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
 
         Button newConnection = IconButtons.of(Icons.Icon.ADD, "新建连接");
         newConnection.setId("connections-new");
-        newConnection.getStyleClass().add("adb-button--primary");
+        // ⚠️ 变体类必须和基础类一起挂：只写 adb-button--primary 的话，
+        //    按钮拿不到统一的 28px 行高 / 12px 内边距 / 悬停与按下反馈 ——
+        //    「新建连接」就成了全应用唯一一颗尺寸不同的主按钮（任务书 §七）。
+        newConnection.getStyleClass().addAll("adb-button", "adb-button--primary");
         newConnection.setOnAction(event -> onNew.run());
 
         open.getStyleClass().add("adb-button");
@@ -109,6 +123,12 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         duplicate.getStyleClass().add("adb-button");
         duplicate.setId("connections-duplicate");
         duplicate.setOnAction(event -> selected().ifPresent(onDuplicate));
+        rename.getStyleClass().add("adb-button");
+        rename.setId("connections-rename");
+        rename.setOnAction(event -> renameSelected());
+        group.getStyleClass().add("adb-button");
+        group.setId("connections-group");
+        group.setOnAction(event -> groupSelected());
         delete.getStyleClass().addAll("adb-button", "adb-button--danger");
         delete.setId("connections-delete");
         delete.setOnAction(event -> selected().ifPresent(this::delete));
@@ -116,7 +136,8 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         refresh.setId("connections-refresh");
         refresh.setOnAction(event -> refresh());
 
-        HBox toolbar = new HBox(6, newConnection, open, edit, duplicate, delete, refresh);
+        HBox toolbar = new HBox(6, newConnection, open, edit, rename, group, duplicate, delete,
+                refresh);
         toolbar.getStyleClass().add("adb-inline-toolbar");
         toolbar.setAlignment(Pos.CENTER_LEFT);
 
@@ -187,6 +208,11 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         kind.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
                 data.getValue().kindLabel()));
 
+        // ⭐ P5-1：分组是展示层元数据，单独一列 —— 不塞进名称列（名字要能直接改名）。
+        TableColumn<ConnectionProfile, String> groupColumn = column("分组", "group", 120);
+        groupColumn.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
+                displayOrDash(data.getValue().group())));
+
         TableColumn<ConnectionProfile, String> host = column("主机", "host", 180);
         host.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
                 displayOrDash(data.getValue().host())));
@@ -214,7 +240,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         state.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
                 connected.test(data.getValue()) ? "已连接" : "—"));
 
-        table.getColumns().addAll(name, kind, host, port, database, user, state);
+        table.getColumns().addAll(name, kind, groupColumn, host, port, database, user, state);
     }
 
     /** 空值 / 空白 → 「—」。空白单元格看起来像「渲染坏了」，横线才读得出是「没有」。 */
@@ -243,6 +269,8 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         open.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
         edit.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
         duplicate.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
+        rename.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
+        group.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
         delete.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
     }
 
@@ -262,7 +290,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
                 return true;
             }
             return (profile.name() + " " + profile.host() + " " + profile.database() + " "
-                    + profile.username()).toLowerCase().contains(needle);
+                    + profile.username() + " " + profile.group()).toLowerCase().contains(needle);
         });
         table.setItems(visible);
     }
@@ -291,6 +319,98 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         this.deleteConfirmation = confirmation == null ? profile -> true : confirmation;
     }
 
+    /** ⭐ P5-1：重命名回调（外壳负责改内存列表 + 落盘）。 */
+    public void setRenameHandler(BiConsumer<ConnectionProfile, String> handler) {
+        this.onRename = handler == null ? (profile, name) -> { } : handler;
+    }
+
+    /** ⭐ P5-1：换分组回调（空串 = 移出分组）。 */
+    public void setGroupHandler(BiConsumer<ConnectionProfile, String> handler) {
+        this.onGroup = handler == null ? (profile, group) -> { } : handler;
+    }
+
+    /**
+     * ⭐ P5-1：把选中连接改成新名字。
+     *
+     * <p>包级可见：门禁直接调它，绕开模态弹窗（{@code showAndWait()} 会卡住
+     * FX 线程，拿不到断言时机）。
+     */
+    void renameSelectedTo(String newName) {
+        Optional<ConnectionProfile> profile = selected();
+        if (profile.isEmpty()) {
+            return;
+        }
+        onRename.accept(profile.get(), newName);
+        refreshAfterEdit();
+    }
+
+    /** ⭐ P5-1：把选中连接移到某个分组（空串 = 移出分组）。 */
+    void groupSelectedAs(String groupName) {
+        Optional<ConnectionProfile> profile = selected();
+        if (profile.isEmpty()) {
+            return;
+        }
+        onGroup.accept(profile.get(), groupName);
+        refreshAfterEdit();
+    }
+
+    private void refreshAfterEdit() {
+        applyFilter();
+        status.setText("共 " + profiles.size() + " 个连接 · 已显示 " + visible.size() + " 个");
+    }
+
+    private void renameSelected() {
+        selected().ifPresent(profile -> {
+            TextInputDialog dialog = new TextInputDialog(profile.name());
+            dialog.setTitle("重命名连接");
+            dialog.setHeaderText("重命名「" + profile.name() + "」");
+            dialog.setContentText("名称");
+            dialog.initOwner(getScene() == null ? null : getScene().getWindow());
+            DialogStyles.apply(dialog, getScene() == null ? null : getScene().getWindow());
+            dialog.showAndWait()
+                    .map(String::trim)
+                    .filter(name -> !name.isEmpty())
+                    .ifPresent(this::renameSelectedTo);
+        });
+    }
+
+    private void groupSelected() {
+        selected().ifPresent(profile -> {
+            Dialog<String> dialog = new Dialog<>();
+            dialog.setTitle("移动到分组");
+            dialog.setHeaderText("把「" + profile.name() + "」移到分组");
+            ComboBox<String> input = new ComboBox<>();
+            input.setId("connection-group-name");
+            input.setEditable(true);
+            input.getItems().setAll(existingGroups());
+            input.setValue(profile.group());
+            input.setPrefWidth(240);
+            Label hint = new Label("留空 = 移出分组；也可以直接输入新分组名。");
+            hint.getStyleClass().add("adb-muted");
+            VBox content = new VBox(8, new Label("分组"), input, hint);
+            dialog.getDialogPane().setContent(content);
+            dialog.getDialogPane().getButtonTypes().setAll(
+                    javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);
+            dialog.setResultConverter(button -> button == javafx.scene.control.ButtonType.OK
+                    ? (input.getEditor().getText() == null ? "" : input.getEditor().getText().trim())
+                    : null);
+            dialog.initOwner(getScene() == null ? null : getScene().getWindow());
+            DialogStyles.apply(dialog, getScene() == null ? null : getScene().getWindow());
+            dialog.showAndWait().ifPresent(this::groupSelectedAs);
+        });
+    }
+
+    /** 已有分组（去重排序）—— 给「分组」下拉做候选。 */
+    private List<String> existingGroups() {
+        LinkedHashSet<String> groups = new LinkedHashSet<>();
+        profiles.stream()
+                .map(ConnectionProfile::group)
+                .filter(value -> !value.isBlank())
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .forEach(groups::add);
+        return List.copyOf(groups);
+    }
+
     private void delete(ConnectionProfile profile) {
         if (!deleteConfirmation.test(profile)) {
             return;
@@ -304,7 +424,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         DestructiveConfirm confirm = DestructiveConfirm.of(
                 "删除连接",
                 "删除 " + profile.name() + "？",
-                "这会移除连接元数据与钥匙串口令，不会删除数据库中的数据。",
+                "这会移除连接元数据与系统凭据，不会删除数据库中的数据。",
                 "删除");
         Alert alert = confirm.alert();
         if (getScene() != null) {

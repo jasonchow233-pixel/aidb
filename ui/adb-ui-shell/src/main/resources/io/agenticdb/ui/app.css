@@ -17,6 +17,15 @@
     -fx-accent: -adb-accent;
     -fx-focus-color: -adb-border-focus;
     -fx-faint-focus-color: transparent;
+    /* ⭐ U-CTRL：选中底色在**根上**定一次。
+     *   Modena 的所有「选中」画法（表格行、列表格、树格、下拉弹层、单元格）
+     *   都读 -fx-selection-bar / -fx-selection-bar-non-focused。以前只有
+     *   5 张表各自在这里压过一次（bg-selected），列表与下拉没人管 ——
+     *   于是同一应用里「选中」长两种样：表里是浅蓝底正文色，
+     *   弹层里是整块 accent 蓝底白字。根上统一后，两类是同一个令牌，
+     *   文字色由 Modena 的 ladder() 按底色亮度自动选，暗色主题跟着令牌走。 */
+    -fx-selection-bar: -adb-bg-selected;
+    -fx-selection-bar-non-focused: -adb-bg-selected;
 }
 
 .app-shell,
@@ -270,7 +279,7 @@
 .adb-menu-item:disabled,
 .adb-tree__star:disabled,
 .adb-sidebar__nav:disabled,
-.adb-filter-panel__value-cell .check-box:disabled {
+.check-box:disabled {
     -fx-opacity: 1;
 }
 
@@ -294,6 +303,15 @@
 
 .adb-button--primary:hover {
     -fx-background-color: -adb-accent-hover;
+}
+
+/* ⭐ 按下态必须**比悬停更深**，而且要压在白色文字下面还是深色：
+   基础类的 .adb-button:pressed 用的是 bg-active（10% 蓝的浅底），
+   白字放上去几乎看不见 —— 「按下去了」反而变成「按钮消失了」。
+   同特异度后写胜，所以这两条必须排在各自的 :hover 之后。 */
+.adb-button--primary:pressed {
+    -fx-background-color: derive(-adb-accent, -14%);
+    -fx-text-fill: -adb-text-inverse;
 }
 
 .adb-button--ghost {
@@ -340,6 +358,19 @@
     -fx-text-fill: -adb-text-primary;
 }
 
+/* ⭐ 任务书 §七 要求五种按钮各有**五态**。以前只有图标按钮的常态 / 悬停 / 焦点，
+   缺「按下」和「禁用」：点下去没有任何反馈（像没反应），禁用的图标按钮
+   和可用的长得一模一样（不知道该不该点）。这两条补上。 */
+.adb-icon-button:pressed {
+    -fx-background-color: -adb-bg-active;
+    -fx-text-fill: -adb-text-primary;
+}
+
+.adb-icon-button:disabled {
+    -fx-background-color: transparent;
+    -fx-text-fill: -adb-text-disabled;
+}
+
 /* schema 切换器：只在真的有多个 schema 时才出现（侧栏的次要控件）。 */
 .adb-schema-picker {
     -fx-background-color: -adb-bg-inset;
@@ -368,6 +399,7 @@
 
 .adb-button:focused,
 .adb-icon-button:focused,
+.adb-dialog .button:focused,
 .adb-appbar__search:focused,
 .adb-appbar__action:focused,
 .adb-appbar__connection:focused,
@@ -448,6 +480,20 @@
     -fx-effect: null;
 }
 
+/* ⭐ 任务书 §七：输入框要统一**高度**。以前只统一了字号 / 内边距 / 边框 / 圆角，
+   行高由「字号 + 内边距」自己算出来（约 25px），和同一行里的按钮（28px）差 3px ——
+   弹窗里「输入框 + 按钮」并排时基线永远不齐，看起来就是两套东西。
+   ⚠️ TextArea 不在这条里：它的高度由 setPrefRowCount 决定，钉死 28 会把
+ *  多行摘要压成一行。网格里的单元格编辑器（.adb-grid__editor）另有更矮的
+ *  档位 —— 它长在 24px 的行里，跟表单不是同一个密度语境。 */
+.text-field,
+.combo-box,
+.choice-box,
+.spinner {
+    -fx-min-height: 28;
+    -fx-pref-height: 28;
+}
+
 .text-field:focused,
 .text-area:focused,
 .combo-box:focused {
@@ -472,6 +518,206 @@
     -fx-background-color: -adb-bg-disabled;
     -fx-border-color: -adb-border;
     -fx-opacity: 1;
+}
+
+/* ── 通用控件：复选框 / 列表 / 下拉（任务书 §七、§八）───────────────────
+ * ⭐ 补的是「没人写样式」留下的三处不一致：
+ *   ① 复选框只有 Modena 的默认皮肤 —— 选中态靠 -fx-accent 的派生色阶，
+ *      描边、圆角、尺寸都没落进令牌档位，而且**能点的区域只有那个方框**
+ *      （约 19px），低于 §八 要求的 24px 命中区；
+ *   ② 列表（ListView）没写字号与内边距 → 正文跟着 .root 的 13px，
+ *      而全应用的数据文字是 12px（AppCssAuditTest 钉住的落点）；
+ *      没有 hover，鼠标扫过去整列都是死的；
+ *   ③ 下拉弹层里的单元格沿用 Modena 的 3px 圆角 + 渐变按钮面。
+ *   （「选中」的颜色语言已经在 .root 用 -fx-selection-bar 统一，见上面。）
+ *
+ * ⚠️ 这里全用**类型选择器**，并且写在场景专用规则之前：
+ *   JavaFX 同特异性下后写胜，已经定过形态的地方
+ *   （.adb-palette__list / .adb-history__list / .adb-column-panel__list /
+ *   .adb-schema-picker）仍然按自己的规则画，不会被这段压死。
+ * ─────────────────────────────────────────────────────────────────── */
+
+/* 选中的文字：浅底 + 正文色。Modena 默认在获得焦点时用它的 accent 蓝底，
+   与表格的 bg-selected 是两种画法。 */
+.text-input,
+.text-input:focused {
+    -fx-highlight-fill: -adb-bg-selected;
+    -fx-highlight-text-fill: -adb-text-primary;
+}
+
+/* ── 复选框：五态（常态 / 悬停 / 按住 / 焦点 / 禁用）+ 24px 命中区 ── */
+
+.check-box {
+    -fx-font-size: 12px;
+    -fx-text-fill: -adb-text-primary;
+    /* 16px 的方框 + 上下各 4px = 24px 行高档；左右各 6px 让文字前面也能点。
+       表格单元格里的复选框把内边距归零（.adb-grid__select-column、
+       .adb-table__bool-box）—— 那里整格本身就是可点区，不需要再撑。 */
+    -fx-padding: 4px 6px;
+    -fx-graphic-text-gap: 8px;
+    -fx-cursor: hand;
+}
+
+.check-box > .box {
+    -fx-background-color: -adb-bg-elevated;
+    -fx-background-insets: 0;
+    -fx-background-radius: 3px;
+    -fx-border-color: -adb-border-strong;
+    -fx-border-width: 1px;
+    -fx-border-radius: 3px;
+    /* 方框定死 16px（r-xs 圆角），勾占中间 10px ——
+       Modena 原本靠 em 内边距撑size，字号一变方框就跟着变。
+       2px 是 4px 阶梯上的合法档位（16 − 2×1 描边 − 2×2 内边距 = 10）。 */
+    -fx-padding: 2px;
+    -fx-min-width: 16px;
+    -fx-min-height: 16px;
+    -fx-pref-width: 16px;
+    -fx-pref-height: 16px;
+}
+
+/* 勾（.mark）：Modena 用两层背景画「高光 + 前景」，这里只留前景一层。 */
+.check-box > .box > .mark {
+    -fx-background-color: null;
+    -fx-padding: 0px;
+}
+
+.check-box:hover > .box {
+    -fx-border-color: -adb-text-secondary;
+}
+
+.check-box:armed > .box {
+    -fx-background-color: -adb-bg-active;
+}
+
+.check-box:selected > .box {
+    -fx-background-color: -adb-accent;
+    -fx-border-color: -adb-accent;
+}
+
+.check-box:selected:armed > .box {
+    -fx-background-color: -adb-accent-hover;
+}
+
+.check-box:selected > .box > .mark {
+    -fx-background-color: -adb-text-inverse;
+    -fx-background-insets: 0;
+}
+
+/* 焦点环画在方框上：只换描边色 + 光晕，不改宽度（与按钮、输入框同一套）。 */
+.check-box:focused > .box {
+    -fx-border-color: -adb-border-focus;
+    -fx-effect: dropshadow(gaussian, -adb-border-focus, 3, 0, 0, 0);
+}
+
+.check-box:disabled {
+    -fx-text-fill: -adb-text-disabled;
+    -fx-cursor: default;
+}
+
+.check-box:disabled > .box {
+    -fx-background-color: -adb-bg-disabled;
+    -fx-border-color: -adb-border;
+}
+
+/* 禁用 + 已勾选：勾还在，但退成灰阶 —— 不许继续喊 accent 蓝。 */
+.check-box:disabled:selected > .box {
+    -fx-background-color: -adb-text-muted;
+    -fx-border-color: -adb-text-muted;
+}
+
+/* ── 列表（ListView）── */
+
+.list-view {
+    -fx-background-color: -adb-bg-elevated;
+    -fx-background-insets: 0;
+    -fx-background-radius: 4px;
+    -fx-border-color: -adb-border-strong;
+    -fx-border-radius: 4px;
+    -fx-padding: 0px;
+}
+
+.list-view .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 12px;
+    -fx-padding: 4px 8px;
+}
+
+.list-view .list-cell:filled:hover {
+    -fx-background-color: -adb-bg-hover;
+}
+
+/* ⚠️ 选中必须**显式写**：上面把 .list-cell 的底色定死成 transparent 之后，
+ *   Modena 那条「-fx-background → -fx-selection-bar」的链路就断了 ——
+ *   不补这一条，列表里点什么都选不中（实测过这个坑）。
+ *   颜色用 bg-selected，与表格行、侧栏选中同一张色卡。 */
+.list-view .list-cell:filled:selected,
+.list-view .list-cell:filled:selected:focused {
+    -fx-background-color: -adb-bg-selected;
+    -fx-text-fill: -adb-text-primary;
+}
+
+.list-view .list-cell:disabled {
+    -fx-text-fill: -adb-text-disabled;
+}
+
+.list-view:disabled {
+    -fx-background-color: -adb-bg-disabled;
+    -fx-border-color: -adb-border;
+    -fx-opacity: 1;
+}
+
+/* 空占位（setPlaceholder）：以前跟着 Modena 走成正文色，
+   和 EmptyState 的提示语不是一个重量。 */
+.list-view .placeholder > .label {
+    -fx-text-fill: -adb-text-tertiary;
+    -fx-font-size: 12px;
+}
+
+/* ── 下拉框：按钮面 + 弹层 ── */
+
+.combo-box .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 12px;
+    -fx-padding: 4px 8px;
+}
+
+/* Modena 给箭头按钮画了渐变底、给箭头画了两层高光；这里都压平。 */
+.combo-box .arrow-button {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0px 4px 0px 0px;
+}
+
+.combo-box .arrow {
+    -fx-background-color: -adb-text-secondary;
+    -fx-background-insets: 0;
+}
+
+.combo-box-popup .list-view {
+    -fx-background-color: -adb-bg-elevated;
+    -fx-background-insets: 0;
+    -fx-background-radius: 4px;
+    -fx-border-color: -adb-border-strong;
+    -fx-border-radius: 4px;
+    -fx-padding: 0px;
+}
+
+.combo-box-popup .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 12px;
+    -fx-padding: 4px 8px;
+}
+
+.combo-box-popup .list-cell:hover {
+    -fx-background-color: -adb-bg-hover;
+}
+
+.combo-box-popup .list-cell:filled:selected {
+    -fx-background-color: -adb-bg-selected;
+    -fx-text-fill: -adb-text-primary;
 }
 
 /* ── 矢量图标 ───────────────────────────────────────────────────────────
@@ -1110,6 +1356,48 @@
     -fx-background-color: -adb-bg-canvas;
 }
 
+/* ── 概览切面（UX-6）────────────────────────────────────────────────── */
+.adb-overview {
+    -fx-background-color: -adb-bg-canvas;
+}
+
+.adb-overview__title {
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+.adb-overview__fact-key {
+    -fx-text-fill: -adb-text-tertiary;
+    -fx-font-size: 11px;
+}
+
+.adb-overview__fact-value {
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+.adb-overview__hint,
+.adb-overview__empty {
+    -fx-text-fill: -adb-text-tertiary;
+    -fx-font-size: 11px;
+}
+
+.adb-overview__section-title {
+    -fx-text-fill: -adb-text-secondary;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.adb-overview__history {
+    -fx-alignment: center-left;
+}
+
+.adb-overview__actions {
+    -fx-padding: 4px 0px 0px 0px;
+}
+
 .adb-grid-page .adb-inline-toolbar {
     -fx-padding: 0px 16px;
 }
@@ -1125,8 +1413,6 @@
     -fx-background-radius: 6px;
     -fx-padding: 0px;
     -fx-table-cell-border-color: transparent;
-    -fx-selection-bar: -adb-bg-selected;
-    -fx-selection-bar-non-focused: -adb-bg-selected;
 }
 
 .adb-grid .virtual-flow,
@@ -1305,8 +1591,6 @@
     -fx-background-radius: 4px;
     -fx-padding: 0px;
     -fx-table-cell-border-color: -adb-border;
-    -fx-selection-bar: -adb-bg-selected;
-    -fx-selection-bar-non-focused: -adb-bg-selected;
 }
 
 .adb-object-list .virtual-flow,
@@ -1637,6 +1921,11 @@
     -fx-background-radius: 4px;
     -fx-padding: 2px 4px;
     -fx-font-size: 12px;
+    /* ⭐ 显式比表单输入框矮一档：上面那条 `.text-field { -fx-min-height: 28 }`
+       是给弹窗 / 表单的，而编辑器长在 24px 的网格里 —— 不压回来的话
+       一进编辑态整行会被撑高 4px（跳动 = 「表格坏了」的观感）。 */
+    -fx-min-height: 24;
+    -fx-pref-height: 24;
 }
 
 .adb-grid__editor--error {
@@ -1724,6 +2013,12 @@
 
 .adb-button--danger:hover {
     -fx-background-color: -adb-error-bg;
+}
+
+/* 按下比悬停再深一档（同特异度后写胜，必须排在 :hover 之后）。
+   红色按钮是全应用最贵的一次点击，反馈必须看得出来。 */
+.adb-button--danger:pressed {
+    -fx-background-color: derive(-adb-error-bg, -10%);
 }
 
 .adb-grid__pager {
@@ -2094,6 +2389,29 @@
     -fx-text-fill: -adb-error;
 }
 
+/* ⭐ P2-2：错误详情弹窗的分类徽标（与 .adb-badge 叠加）。
+   分类文字必须自己带颜色 —— 只靠正文里的说明，用户扫一眼分不清是权限还是语法。 */
+.adb-error-kind {
+    -fx-background-color: -adb-error-bg;
+    -fx-text-fill: -adb-error;
+    -fx-border-color: -adb-error;
+    -fx-border-width: 1;
+    -fx-border-radius: 999px;
+    -fx-background-radius: 999px;
+    -fx-font-weight: bold;
+}
+
+/* 错误详情正文：与普通表单文本区分开，像一块「证据区」。
+   TextArea 的内部背景要走 -fx-control-inner-background，光改 -fx-background-color 会被皮肤盖住。 */
+.adb-error-details {
+    -fx-control-inner-background: -adb-bg-elevated;
+    -fx-border-color: -adb-border;
+    -fx-border-width: 1;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+    -fx-font-size: 12px;
+}
+
 /* ── 对话框 ───────────────────────────────────────────────────────────
  * ⭐ 之前 .adb-dialog 只有一句背景色 + 按钮描边，弹窗在截图里看起来
  *    「完全没上样式」：标题是默认 13px 灰字、正文与标题之间没有分隔、
@@ -2139,6 +2457,56 @@
     -fx-padding: 0px;
 }
 
+/* ── 弹窗骨架（任务书 §六 A/B/C/D/E 分区、§七「不同功能的弹窗不能看起来像
+ *    来自不同的软件」）────────────────────────────────────────────────
+ * ⭐ 这套类原来叫 .adb-new-table__*：只有「新建表」用得上，别的弹窗想要
+ *    「标题 + 上下文 + 分区小标题」就得自己再抄一份，于是「新建索引」的
+ *    题头退回 JavaFX 默认的居中小灰字。现在它是所有弹窗共用的骨架，
+ *    「新建表」与「新建索引」都挂这一组类。 */
+
+.adb-dialog__body {
+    -fx-background-color: -adb-bg-surface;
+    -fx-padding: 24px 24px 16px 24px;
+    -fx-spacing: 16px;
+}
+
+.adb-dialog__header {
+    -fx-padding: 0px 0px 8px 0px;
+    -fx-border-color: transparent transparent -adb-border transparent;
+    -fx-border-width: 0px 0px 1px 0px;
+}
+
+.adb-dialog__title {
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+}
+
+.adb-dialog__context {
+    -fx-text-fill: -adb-text-tertiary;
+    -fx-font-size: 12px;
+}
+
+.adb-dialog__close {
+    -fx-min-height: 24;
+    -fx-pref-height: 24;
+}
+
+.adb-dialog__section-title {
+    -fx-text-fill: -adb-text-secondary;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}
+
+/* 新建索引弹窗里「已选索引列」的行首序号。
+   等宽数字：列一多，1 和 10 的宽度差会让整列名字左右跳。 */
+.adb-picked__order {
+    -fx-text-fill: -adb-text-tertiary;
+    -fx-font-size: 11px;
+    -fx-font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    -fx-min-width: 16;
+}
+
 /* ③ 按钮区 */
 .adb-dialog > .button-bar > .container {
     -fx-background-color: -adb-bg-surface;
@@ -2146,9 +2514,10 @@
     -fx-border-color: -adb-border transparent transparent transparent;
 }
 
-/* ⭐ 与标准 .adb-button 完全对齐规格（4px 圆角 / 12px 字 / 32px 高 /
+/* ⭐ 与标准 .adb-button 完全对齐规格（4px 圆角 / 12px 字 / 28px 高 /
  *   -adb-border 描边），消除「弹窗按钮和页面按钮长得不一样」的问题。
- *   对话框主按钮保留 32px —— 它比页面工具条高一档，是焦点动作。 */
+ *   高度走令牌 h-button=28：以前弹窗按钮 32、同一行的输入框 28，
+ *   一个弹窗里两套行高 —— 任务书 §七「统一控件高度」直接踩在这条上。 */
 .adb-dialog .button {
     -fx-background-color: -adb-bg-elevated;
     -fx-text-fill: -adb-text-primary;
@@ -2157,12 +2526,27 @@
     -fx-background-radius: 4px;
     -fx-padding: 4px 16px;
     -fx-font-size: 12px;
-    -fx-min-height: 32;
-    -fx-pref-height: 32;
+    -fx-min-height: 28;
+    -fx-pref-height: 28;
 }
 
 .adb-dialog .button:hover {
     -fx-background-color: -adb-bg-hover;
+}
+
+/* ⭐ 任务书 §七：五种按钮都要有五态。弹窗里的按钮（含 DialogPane 自己造的
+ *   「确定 / 取消」）不带 .adb-button 类，所以按下 / 禁用态得在弹窗语境里
+ *   各写一次 —— 以前缺这两条：点「确定」没有按下反馈，禁用的按钮靠 Modena
+ *   的 40% 透明（对比度 2.1:1，读不清）。 */
+.adb-dialog .button:pressed {
+    -fx-background-color: -adb-bg-active;
+}
+
+.adb-dialog .button:disabled {
+    -fx-background-color: -adb-bg-disabled;
+    -fx-text-fill: -adb-text-disabled;
+    -fx-border-color: -adb-border;
+    -fx-opacity: 1;
 }
 
 /* 主按钮：实心强调色。默认按钮和取消按钮长得一样时，
@@ -2494,8 +2878,6 @@
     -fx-border-radius: 6px;
     -fx-background-radius: 6px;
     -fx-table-cell-border-color: transparent;
-    -fx-selection-bar: -adb-bg-selected;
-    -fx-selection-bar-non-focused: -adb-bg-selected;
 }
 
 .adb-structure__table .virtual-flow,
@@ -2620,8 +3002,6 @@
     -fx-border-radius: 6px;
     -fx-background-radius: 6px;
     -fx-table-cell-border-color: -adb-border;
-    -fx-selection-bar: -adb-bg-selected;
-    -fx-selection-bar-non-focused: -adb-bg-selected;
 }
 
 .adb-connections__table .virtual-flow,
@@ -2838,8 +3218,6 @@
     -fx-border-radius: 6px;
     -fx-background-radius: 6px;
     -fx-table-cell-border-color: -adb-border;
-    -fx-selection-bar: -adb-bg-selected;
-    -fx-selection-bar-non-focused: -adb-bg-selected;
 }
 
 .adb-table-list .column-header-background {
@@ -3132,45 +3510,10 @@
 
 /* ── 新建表弹窗（规格 §13）────────────────────────────────────────────
  * 三段结构：表基本信息 / 字段网格 / SQL 预览。
- * 与旧版的关键差别：标题栏带库名与关闭钮、SQL 预览是真编辑器、
- * 表格高度随行数收缩（不再挂 170px 空白网格）。
+ * ⭐ 标题栏 / 分区小标题 / 内容底这套类已经上移成所有弹窗共用的
+ *    .adb-dialog__*（见上面「弹窗骨架」），这里只留「新建表」真正的
+ *    专属样式。
  * ─────────────────────────────────────────────────────────────────── */
-
-.adb-new-table__body {
-    -fx-background-color: -adb-bg-surface;
-}
-
-.adb-new-table__header {
-    -fx-padding: 0px 0px 8px 0px;
-    -fx-border-color: transparent transparent -adb-border transparent;
-    -fx-border-width: 0px 0px 1px 0px;
-}
-
-.adb-new-table__title {
-    -fx-text-fill: -adb-text-primary;
-    -fx-font-size: 14px;
-    -fx-font-weight: bold;
-}
-
-.adb-new-table__context {
-    -fx-text-fill: -adb-text-tertiary;
-    -fx-font-size: 12px;
-}
-
-.adb-new-table__close {
-    -fx-min-height: 24;
-    -fx-pref-height: 24;
-}
-
-.adb-new-table__section {
-    -fx-padding: 0px;
-}
-
-.adb-new-table__section-title {
-    -fx-text-fill: -adb-text-secondary;
-    -fx-font-size: 11px;
-    -fx-font-weight: bold;
-}
 
 .adb-new-table__row-actions {
     -fx-padding: 4px 0px 0px 0px;
@@ -3203,6 +3546,10 @@
 
 .adb-table__bool-box {
     -fx-background-color: transparent;
+    /* 复选框在这里只是图形（焦点与点击都在整格上），所以把 U-CTRL
+       给独立复选框加的 4px/6px 命中边距归零 —— 否则 16px 方框 + 边距
+       正好顶满 24px 行高，勾会被挤出可视区。 */
+    -fx-padding: 0px;
 }
 
 /* ── 底部两组方向键的常驻标签 ─────────────────────────────────────────

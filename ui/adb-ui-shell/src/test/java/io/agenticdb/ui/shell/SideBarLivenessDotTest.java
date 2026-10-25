@@ -166,7 +166,7 @@ class SideBarLivenessDotTest {
 
     private static ConnectionProfile profile(String id, String name) {
         return new ConnectionProfile(id, name, DialectKind.SQLITE, "localhost", 0,
-                "db", "u", false, 0, java.util.Map.of());
+                "db", "u", false, 0, "", java.util.Map.of());
     }
 
     private static void onFxRun(Runnable action) {

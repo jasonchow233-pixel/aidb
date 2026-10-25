@@ -91,11 +91,12 @@ public final class ObjectDetailsPanel extends VBox {
      * @param indexes     索引摘要
      * @param foreignKeys 外键摘要
      * @param triggers    触发器摘要
+     * @param recent      该对象最近被执行的 SQL（P2-3），最新在前
      * @param notes       备注 / 警告（例如「SQLite 不提供引擎信息」）
      */
     public record Snapshot(Subject subject, List<Fact> facts, List<String> columns,
                            List<String> indexes, List<String> foreignKeys,
-                           List<String> triggers, List<String> notes) {
+                           List<String> triggers, List<String> recent, List<String> notes) {
 
         public Snapshot {
             facts = facts == null ? List.of() : List.copyOf(facts);
@@ -103,6 +104,7 @@ public final class ObjectDetailsPanel extends VBox {
             indexes = indexes == null ? List.of() : List.copyOf(indexes);
             foreignKeys = foreignKeys == null ? List.of() : List.copyOf(foreignKeys);
             triggers = triggers == null ? List.of() : List.copyOf(triggers);
+            recent = recent == null ? List.of() : List.copyOf(recent);
             notes = notes == null ? List.of() : List.copyOf(notes);
         }
     }
@@ -287,7 +289,7 @@ public final class ObjectDetailsPanel extends VBox {
     /** 什么都没读到的快照 —— 只留对象身份，不填任何假值。 */
     private static Snapshot emptySnapshot(Subject subject) {
         return new Snapshot(subject, List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of());
+                List.of(), List.of(), List.of());
     }
 
     /** 把读到的内容渲染出来。 */
@@ -317,13 +319,22 @@ public final class ObjectDetailsPanel extends VBox {
         }
 
         sections.getChildren().clear();
-        addSection("字段", snapshot.columns());
-        addSection("索引", snapshot.indexes());
-        addSection("外键", snapshot.foreignKeys());
-        addSection("触发器", snapshot.triggers());
-        if (sections.getChildren().isEmpty() && snapshot.facts().isEmpty()) {
-            // 什么都没有时才给提示；只要有基本信息（连接概览就是这样），
-            // 提示文字反而碍事。
+        // 什么都没读到（加载失败 / 驱动不返回）时保持空态 ——
+        // 这时挂一节「最近操作」会假装对象有内容，反而误导。
+        boolean hasContent = !snapshot.facts().isEmpty() || !snapshot.columns().isEmpty()
+                || !snapshot.indexes().isEmpty() || !snapshot.foreignKeys().isEmpty()
+                || !snapshot.triggers().isEmpty() || !snapshot.recent().isEmpty();
+        if (hasContent) {
+            addSection("字段", snapshot.columns());
+            addSection("索引", snapshot.indexes());
+            addSection("外键", snapshot.foreignKeys());
+            addSection("触发器", snapshot.triggers());
+            // ⭐ P2-3：对象一级始终给「最近操作」一节 —— 没有记录时说明「还没有」，
+            //    而不是整节消失，否则用户永远不知道这里能看按表的执行历史。
+            if (snapshot.subject().isObject()) {
+                addRecentSection(snapshot.recent());
+            }
+        } else {
             sections.getChildren().add(empty);
         }
 
@@ -374,6 +385,29 @@ public final class ObjectDetailsPanel extends VBox {
             label.getStyleClass().add("adb-details-panel__list-item");
             label.setWrapText(true);
             list.getChildren().add(label);
+        }
+        VBox section = new VBox(4, heading, list);
+        section.getStyleClass().add("adb-details-panel__section");
+        sections.getChildren().add(section);
+    }
+
+    private void addRecentSection(List<String> items) {
+        Label heading = new Label(items.isEmpty() ? "最近操作" : "最近操作 " + items.size());
+        heading.getStyleClass().add("adb-details-panel__section-title");
+        VBox list = new VBox(2);
+        list.getStyleClass().add("adb-details-panel__list");
+        if (items.isEmpty()) {
+            Label none = new Label("还没有执行过针对该对象的 SQL。");
+            none.getStyleClass().addAll("adb-details-panel__list-item", "adb-muted");
+            none.setWrapText(true);
+            list.getChildren().add(none);
+        } else {
+            for (String item : items) {
+                Label label = new Label(item);
+                label.getStyleClass().add("adb-details-panel__list-item");
+                label.setWrapText(true);
+                list.getChildren().add(label);
+            }
         }
         VBox section = new VBox(4, heading, list);
         section.getStyleClass().add("adb-details-panel__section");

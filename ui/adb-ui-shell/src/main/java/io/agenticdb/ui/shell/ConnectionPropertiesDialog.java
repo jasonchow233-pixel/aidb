@@ -139,7 +139,7 @@ final class ConnectionPropertiesDialog {
                                 + "PostgreSQL 的 SSL 请用高级页里的 sslmode=require。"))),
                 new Tab("高级", new VBox(10,
                         labeled("附加 JDBC 参数", extra),
-                        hint("这些参数会原样传给驱动；口令不要写在这里（口令走系统钥匙串）。"))));
+                        hint("这些参数会原样传给驱动；口令不要写在这里（口令走系统凭据库）。"))));
         tabs.getStyleClass().add("adb-form");
 
         dialog.getDialogPane().setContent(tabs);

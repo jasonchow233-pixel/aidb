@@ -877,6 +877,63 @@ class AppShellTest {
     }
 
     /**
+     * ⭐ 1280 宽 + 详情面板：三栏最小宽度超过窗口时，主区必须让位。
+     *
+     * <p>以前 {@code body} / {@code main} 的 minWidth 跟着内容走，总宽超过窗口，
+     * {@code StackPane} 只能把根节点居中 —— 左侧菜单与侧栏被挤出场景，
+     * 快照里直接从「视图」开始（`p2-details` 实测）。
+     */
+    /** ⭐ P7：启动打点必须真的接在启动链路上，而不是建了一个没人用的对象。 */
+    @Test
+    void startupTraceCoversChromeDemoAndFirstScreen(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+
+        AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
+        io.agenticdb.ui.StartupTrace trace = shell.startupTrace();
+
+        assertThat(trace.marks())
+                .extracting(io.agenticdb.ui.StartupTrace.Mark::name)
+                .as("启动链路：构造 → chrome → 演示库 → afterShown")
+                .containsSubsequence("shell.construct", "shell.chrome", "shell.demo",
+                        "shell.after-shown");
+        assertThat(trace.firstScreenMillis())
+                .as("首屏耗时（进程启动 → 首屏）必须有值")
+                .isPositive();
+        assertThat(trace.summary()).contains("shell.demo=").contains("first-screen=");
+    }
+
+    @Test
+    void detailsPanelKeepsChromeInsideTheSceneAt1280(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
+        onFxRun(() -> {
+            Stage stage = (Stage) shell.getScene().getWindow();
+            stage.setWidth(1280);
+            stage.setHeight(800);
+        });
+        onFxRun(() -> shell.actionRegistry().run("details.toggle"));
+        WaitForAsyncUtils.waitForFxEvents();
+        onFxRun(shell::applyCss);
+        onFxRun(shell::layout);
+
+        assertThat(onFx(() -> shell.lookup(".adb-details-panel").isVisible())).isTrue();
+        double sceneWidth = onFx(() -> shell.getScene().getWidth());
+        assertThat(sceneWidth).as("测试必须真的落在 1280 宽的场景里").isEqualTo(1280.0);
+        double left = onFx(() -> shell.lookup(".adb-root").getBoundsInParent().getMinX());
+        double right = onFx(() -> shell.lookup(".adb-root").getBoundsInParent().getMaxX());
+        assertThat(left).as("根节点左边缘不能被推出场景").isGreaterThanOrEqualTo(-0.5);
+        assertThat(right).as("根节点右边缘不能超出场景")
+                .isLessThanOrEqualTo(sceneWidth + 0.5);
+        // ⚠️ 无头环境不挂 app.css，格子宽度比实拍小，光靠坐标断言复现不出挤压；
+        //    这里同时守机制：主区与 body 必须允许收缩（实拍由 p2-details 核对）。
+        assertThat(onFx(() -> shell.lookup(".adb-main").minWidth(-1)))
+                .as("主区最小宽度必须为 0，否则 1280 宽 + 详情面板会把左侧 chrome 挤出场景")
+                .isZero();
+        assertThat(onFx(() -> shell.lookup(".adb-body").minWidth(-1)))
+                .as("body 最小宽度必须为 0").isZero();
+    }
+
+    /**
      * 树里选中一张表 → 右侧出现该表的**真实**概况。
      *
      * <p>这是整条接线（SideBar 上报 → AppShell 读元数据 → 面板渲染）

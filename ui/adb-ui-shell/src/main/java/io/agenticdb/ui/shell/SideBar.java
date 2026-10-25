@@ -39,6 +39,7 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * 左侧对象树。节点来自 {@link SchemaService} 的真实内省结果，不再硬编码表名。
@@ -124,6 +125,10 @@ public final class SideBar extends VBox {
      */
     private Consumer<String> onRefreshObjects = id -> { };
     private Consumer<TableRequest> onTableDdl = request -> { };
+    /** ⭐ UX-6：连接节点下的「已保存查询」来源（外壳给 savedQueries::all）。 */
+    private Supplier<List<SavedQueries.Entry>> savedQuerySource = List::of;
+    /** ⭐ UX-6：双击 / 回车一条已保存查询 → 外壳建查询页并预填 SQL。 */
+    private Consumer<SavedQueryRequest> onOpenSavedQuery = request -> { };
 
     private final Set<String> starred = new LinkedHashSet<>();
     /** 收藏的持久化位置（以前只在内存里 —— 退出即丢）。 */
@@ -239,6 +244,9 @@ public final class SideBar extends VBox {
                 () -> onSelected(SideBarObject.RENAME_TABLE));
         actions.register("object.drop-table", "删除表…", "对象", null,
                 () -> onSelected(SideBarObject.DROP_TABLE));
+        // ⭐ UX-6：侧栏「已保存查询」分组里的条目（打开 = 新查询页 + 预填 SQL）。
+        actions.register("saved-query.open", "打开已保存查询", "查询", null,
+                () -> onSelected(SideBarObject.OPEN_SAVED_QUERY));
     }
 
     /** 对象树动作的种类（包级可见 —— 外壳要按它分派）。 */
@@ -256,7 +264,9 @@ public final class SideBar extends VBox {
         RENAME_TABLE,
         DROP_TABLE,
         /** ⭐ U1：把当前连接切到这个库（重连）。 */
-        SWITCH_CATALOG
+        SWITCH_CATALOG,
+        /** ⭐ UX-6：打开一条已保存查询（新查询页 + 预填 SQL）。 */
+        OPEN_SAVED_QUERY
     }
 
     /**
@@ -266,6 +276,16 @@ public final class SideBar extends VBox {
      * 只知道「用户在哪个连接上的哪个节点点了什么」。
      */
     record TableRequest(SideBarObject action, String tableName, String connectionId) {
+    }
+
+    /**
+     * ⭐ UX-6：打开一条已保存查询。
+     *
+     * @param connectionId 用户点的是哪个连接下的查询（查询页跟着连接走）
+     * @param name         保存时的名字（作为新标签标题）
+     * @param sql          预填到查询页的 SQL
+     */
+    public record SavedQueryRequest(String connectionId, String name, String sql) {
     }
 
     /**
@@ -325,6 +345,27 @@ public final class SideBar extends VBox {
     /** 表级生命周期（T1–T4）交给外壳执行。 */
     public void setOnTableDdl(Consumer<TableRequest> onTableDdl) {
         this.onTableDdl = onTableDdl == null ? request -> { } : onTableDdl;
+    }
+
+    /**
+     * ⭐ UX-6：已保存查询的来源。
+     *
+     * <p>用 Supplier 而不是一次性 List —— 存 / 改名 / 删以后外壳只需
+     * {@link #refreshSavedQueries()}，不会拿到一份过期快照。
+     */
+    public void setSavedQuerySource(Supplier<List<SavedQueries.Entry>> source) {
+        this.savedQuerySource = source == null ? List::of : source;
+        refreshTree();
+    }
+
+    /** ⭐ UX-6：已保存查询变了（存 / 改名 / 删）→ 重建树。 */
+    public void refreshSavedQueries() {
+        refreshTree();
+    }
+
+    /** ⭐ UX-6：打开一条已保存查询（外壳负责建查询页并预填 SQL）。 */
+    public void setOnOpenSavedQuery(Consumer<SavedQueryRequest> handler) {
+        this.onOpenSavedQuery = handler == null ? request -> { } : handler;
     }
 
     /** 多连接切换：替换可选连接列表并保持当前选中项。 */
@@ -649,6 +690,8 @@ public final class SideBar extends VBox {
         searchEmpty.setVisible(false);
 
         tree.getStyleClass().add("adb-object-tree");
+        // ⭐ P7：树本身没有文字，读屏只会读「树」—— 给一个明确的名称。
+        tree.setAccessibleText("数据库对象树");
         // ⭐ 树根不显示：标题已经是「我的连接」，再显示一行同名根节点
         //    就是重复占位（Navicat 的树直接从连接开始）。
         tree.setShowRoot(false);
@@ -689,6 +732,9 @@ public final class SideBar extends VBox {
                 DemoNode node = selected.getValue();
                 if (node.kind() == NodeKind.TABLE || node.kind() == NodeKind.VIEW) {
                     openGrid(node.connectionId(), node.name());
+                } else if (node.kind() == NodeKind.SAVED_QUERY) {
+                    // ⭐ UX-6：双击已保存查询 = 新开查询页并载入它。
+                    openSavedQuery(node.connectionId(), node.name());
                 } else if (node.kind() == NodeKind.CATALOG) {
                     // ⭐ U1：双击一个库 = 把当前连接切到它（MySQL 要重连）。
                     onSwitchCatalog.accept(new CatalogSwitch(node.connectionId(), node.name()));
@@ -706,6 +752,9 @@ public final class SideBar extends VBox {
                 DemoNode node = selected.getValue();
                 if (node.kind() == NodeKind.TABLE || node.kind() == NodeKind.VIEW) {
                     openGrid(node.connectionId(), node.name());
+                    event.consume();
+                } else if (node.kind() == NodeKind.SAVED_QUERY) {
+                    openSavedQuery(node.connectionId(), node.name());
                     event.consume();
                 } else if (node.kind() == NodeKind.CATALOG) {
                     onSwitchCatalog.accept(new CatalogSwitch(node.connectionId(), node.name()));
@@ -757,7 +806,7 @@ public final class SideBar extends VBox {
             case FUNCTION -> InspectTarget.Topic.FUNCTION;
             case PROCEDURE -> InspectTarget.Topic.PROCEDURE;
             case EVENT -> InspectTarget.Topic.EVENT;
-            case ROOT, GROUP, COLUMN -> null;
+            case ROOT, GROUP, COLUMN, CONNECTION_GROUP, SAVED_GROUP, SAVED_QUERY -> null;
         };
         if (topic == null) {
             return;
@@ -858,22 +907,40 @@ public final class SideBar extends VBox {
         // 连接清单：优先用已保存的连接档案；没有档案时用当前连接兜底。
         // ⭐ 这里**不能**造一个带方言的 ConnectionProfile —— 那是方言分支，
         //    会被 DialectBranchAuditTest 拦下（而且本来就该避免）。
-        List<String[]> entries = new ArrayList<>();
-        for (ConnectionProfile profile : connections) {
-            entries.add(new String[]{profile.id(), profile.name()});
-        }
-        if (entries.isEmpty() && connectionId != null) {
-            entries.add(new String[]{connectionId, connectionName});
-        }
-
+        List<ConnectionProfile> entries = new ArrayList<>(connections);
         TreeItem<DemoNode> root = new TreeItem<>(
                 new DemoNode("我的连接", NodeKind.ROOT, Icons.Icon.DATABASE));
         root.setExpanded(true);
 
-        for (String[] entry : entries) {
-            String id = entry[0];
-            connectionNode(root, id, entry[1], needle);
+        if (entries.isEmpty()) {
+            if (connectionId != null) {
+                connectionNode(root, connectionId, connectionName, needle);
+            }
+            return root;
         }
+
+        // ⭐ P5-1：分组是**显式**的（空串 = 未分组）。没有分组的连接直接挂在根下，
+        //    所以只用「连接」的用户看不到多出来的一层；一旦有分组，同组的连接
+        //    收进一个文件夹节点。分组顺序按名称，组内保持传入顺序（displayOrder）。
+        Map<String, List<ConnectionProfile>> grouped = new LinkedHashMap<>();
+        for (ConnectionProfile profile : entries) {
+            if (profile.group().isBlank()) {
+                connectionNode(root, profile.id(), profile.name(), needle);
+            } else {
+                grouped.computeIfAbsent(profile.group(), key -> new ArrayList<>()).add(profile);
+            }
+        }
+        grouped.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey(String.CASE_INSENSITIVE_ORDER))
+                .forEach(entry -> {
+                    TreeItem<DemoNode> groupNode = new TreeItem<>(new DemoNode(
+                            entry.getKey(), NodeKind.CONNECTION_GROUP, Icons.Icon.FOLDER));
+                    groupNode.setExpanded(true);
+                    for (ConnectionProfile profile : entry.getValue()) {
+                        connectionNode(groupNode, profile.id(), profile.name(), needle);
+                    }
+                    root.getChildren().add(groupNode);
+                });
         return root;
     }
 
@@ -905,7 +972,74 @@ public final class SideBar extends VBox {
             connectionNode.getChildren().addAll(nonEmptyGroups(id, needle));
         }
 
+        // ⭐ UX-6：已保存查询直接挂在**连接**下（不是库下）——
+        //    它是跟着连接走的全局清单，没必要在每个库下面重复一遍。
+        TreeItem<DemoNode> saved = savedQueriesGroup(id, needle);
+        if (saved != null) {
+            connectionNode.getChildren().add(saved);
+        }
+
         root.getChildren().add(connectionNode);
+    }
+
+    /**
+     * ⭐ UX-6：连接节点下的「已保存查询」分组。
+     *
+     * <p>只列完整查询 —— 代码片段是「插进当前编辑器」用的，
+     * 放进这个「双击载入新查询」的列表里，用户点开的行为就说不清了。
+     *
+     * <p>搜索词同样过滤：搜表名时不该被一堆查询名占满。
+     */
+    private TreeItem<DemoNode> savedQueriesGroup(String servingConnectionId, String needle) {
+        List<SavedQueries.Entry> visible = savedQueryEntries().stream()
+                .filter(entry -> matches(entry.name(), needle))
+                .toList();
+        if (visible.isEmpty()) {
+            return null;
+        }
+        TreeItem<DemoNode> group = new TreeItem<>(new DemoNode(
+                "已保存查询", NodeKind.SAVED_GROUP, Icons.Icon.SAVE, "",
+                servingConnectionId, visible.size()));
+        group.setExpanded(true);
+        for (SavedQueries.Entry entry : visible) {
+            group.getChildren().add(new TreeItem<>(new DemoNode(
+                    entry.name(), NodeKind.SAVED_QUERY, Icons.Icon.QUERY, "",
+                    servingConnectionId)));
+        }
+        return group;
+    }
+
+    private List<SavedQueries.Entry> savedQueryEntries() {
+        try {
+            List<SavedQueries.Entry> entries = savedQuerySource.get();
+            return entries == null ? List.of() : entries.stream()
+                    .filter(entry -> entry != null && !entry.snippet())
+                    .toList();
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
+    private SavedQueries.Entry savedQueryByName(String name) {
+        if (name == null) {
+            return null;
+        }
+        for (SavedQueries.Entry entry : savedQueryEntries()) {
+            if (entry.name().equalsIgnoreCase(name)) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    /** ⭐ UX-6：双击 / 回车 / 右键「打开查询」共用这一条路径。 */
+    private void openSavedQuery(String targetConnection, String name) {
+        SavedQueries.Entry entry = savedQueryByName(name);
+        if (entry == null) {
+            status.accept("这条已保存查询已经不在了：" + name);
+            return;
+        }
+        onOpenSavedQuery.accept(new SavedQueryRequest(targetConnection, entry.name(), entry.sql()));
     }
 
     /** 空分组不占位（没读到对象的连接只留一个可展开的节点）。 */
@@ -1210,7 +1344,8 @@ public final class SideBar extends VBox {
             case TABLE, VIEW, PROCEDURE, FUNCTION, TRIGGER -> true;
             // ⭐ S-3：列不是对象 —— 不进「有多少个对象」的计数，
             //    否则一张 50 列的表会让搜索空态判断失真。
-            case COLUMN, ROOT, CONNECTION, GROUP, CATALOG, EVENT -> false;
+            case COLUMN, ROOT, CONNECTION, CONNECTION_GROUP, GROUP, CATALOG, EVENT,
+                    SAVED_GROUP, SAVED_QUERY -> false;
         };
     }
 
@@ -1321,6 +1456,9 @@ public final class SideBar extends VBox {
                     actions.menuItem("object.new-query", "新建查询"),
                     actions.menuItem("object.new-table", "新建表…"),
                     actions.menuItem("object.refresh-objects", "刷新对象"));
+            // ⭐ P5-1：分组节点只装连接 —— 菜单只留「新建连接」。
+            case CONNECTION_GROUP -> menu.getItems().add(
+                    actions.menuItem("new-connection"));
             case GROUP -> menu.getItems().addAll(
                     actions.menuItem("object.refresh-objects", "刷新对象"),
                     new SeparatorMenuItem(),
@@ -1337,6 +1475,11 @@ public final class SideBar extends VBox {
                     actions.menuItem("object.favorite",
                             starred.contains(node.name()) ? "取消收藏" : "收藏"),
                     actions.menuItem("object.copy-name", "复制名称"));
+            // ⭐ UX-6：已保存查询 —— 只有「打开」一件事。
+            case SAVED_QUERY -> menu.getItems().add(
+                    actions.menuItem("saved-query.open", "打开查询"));
+            case SAVED_GROUP -> menu.getItems().add(
+                    actions.menuItem("object.refresh-objects", "刷新"));
             default -> menu.getItems().add(
                     actions.menuItem("object.open-data", "打开"));
         }
@@ -1348,6 +1491,11 @@ public final class SideBar extends VBox {
         DemoNode node = selectedNode;
         if (node == null) {
             status.accept("请先在对象树里选中一个对象");
+            return;
+        }
+        // ⭐ P5-1：分组只是归类容器 —— 它不属于任何一个连接，不能拿它执行对象动作。
+        if (node.kind() == NodeKind.CONNECTION_GROUP) {
+            status.accept("分组节点只用于归类连接，请选中其中的连接");
             return;
         }
         boolean isObject = node.kind() == NodeKind.TABLE || node.kind() == NodeKind.VIEW;
@@ -1417,6 +1565,14 @@ public final class SideBar extends VBox {
                     status.accept("只有数据库节点能切换");
                 }
             }
+            // ⭐ UX-6：已保存查询 → 新查询页 + 预填 SQL。
+            case OPEN_SAVED_QUERY -> {
+                if (node.kind() == NodeKind.SAVED_QUERY) {
+                    openSavedQuery(owner, node.name());
+                } else {
+                    status.accept("请先在对象树里选中一条已保存查询");
+                }
+            }
         }
     }
 
@@ -1438,11 +1594,17 @@ public final class SideBar extends VBox {
                 && (node.kind() == NodeKind.PROCEDURE || node.kind() == NodeKind.FUNCTION
                 || node.kind() == NodeKind.TRIGGER);
         boolean isConnection = node != null && node.kind() == NodeKind.CONNECTION;
+        // ⭐ P5-1：分组容器不属于任何连接 —— 除了「新建连接」什么都不能做。
+        boolean isConnectionGroup = node != null && node.kind() == NodeKind.CONNECTION_GROUP;
         // ⭐ U1：库节点 —— 能切库、能建表、能新建查询，但没有数据页 / 结构页。
         boolean isCatalog = node != null && node.kind() == NodeKind.CATALOG;
         boolean isTable = node != null && node.kind() == NodeKind.TABLE;
         // ⭐ S-3：列节点只能复制名称 —— 打开数据 / 结构 / 收藏都是表级动作。
         boolean isColumn = node != null && node.kind() == NodeKind.COLUMN;
+        // ⭐ UX-6：已保存查询既不是数据库对象，也不是容器 —— 只放行「打开查询」。
+        boolean isSavedQuery = node != null && node.kind() == NodeKind.SAVED_QUERY;
+        boolean isSavedNode = node != null
+                && (node.kind() == NodeKind.SAVED_QUERY || node.kind() == NodeKind.SAVED_GROUP);
         setObjectActionEnabled("object.open-data", isObject);
         setObjectActionEnabled("object.open-structure", isObject);
         // ⚠️ 这条以前写了两遍（先 isObject||isConnection 再 isObject||isCallable），
@@ -1457,15 +1619,19 @@ public final class SideBar extends VBox {
         setObjectActionEnabled("object.open-data", isObject);
         setObjectActionEnabled("object.open-structure", isObject);
         setObjectActionEnabled("object.copy-select", isObject);
-        setObjectActionEnabled("object.refresh-objects", node != null);
+        setObjectActionEnabled("object.refresh-objects",
+                node != null && !isConnectionGroup && !isSavedNode);
         // ⭐ 表级生命周期：建表挂在连接 / 分组 / 库上，改表只挂在「表」上 ——
         //    视图没有 TRUNCATE，过程函数更没有，所以不能一律放行。
-        setObjectActionEnabled("object.new-table", node != null);
+        setObjectActionEnabled("object.new-table",
+                node != null && !isConnectionGroup && !isSavedNode);
         setObjectActionEnabled("object.truncate-table", isTable);
         setObjectActionEnabled("object.rename-table", isTable);
         setObjectActionEnabled("object.drop-table", isTable);
         // ⭐ U1：切库只挂在库节点上。
         setObjectActionEnabled("object.switch-catalog", isCatalog);
+        // ⭐ UX-6：已保存查询只有「打开」可用。
+        setObjectActionEnabled("saved-query.open", isSavedQuery);
     }
 
     private void setObjectActionEnabled(String id, boolean enabled) {
@@ -1541,7 +1707,10 @@ public final class SideBar extends VBox {
     }
 
     private enum NodeKind {
-        ROOT, CONNECTION, GROUP, TABLE, VIEW,
+        ROOT, CONNECTION,
+        /** ⭐ P5-1：连接分组（文件夹）—— 只装连接，不是数据库对象。 */
+        CONNECTION_GROUP,
+        GROUP, TABLE, VIEW,
         /** ⭐ S3：过程 / 函数 / 触发器。 */
         PROCEDURE, FUNCTION, TRIGGER,
         /** ⭐ O1：调度事件（只有 MySQL 有）。 */
@@ -1549,7 +1718,9 @@ public final class SideBar extends VBox {
         /** ⭐ U1：数据库（catalog）—— 只有「切库要重连」的方言有这一层。 */
         CATALOG,
         /** ⭐ S-3：列（展开表 / 视图节点后出现的叶子）。 */
-        COLUMN
+        COLUMN,
+        /** ⭐ UX-6：已保存查询分组 / 条目（连接节点下）。 */
+        SAVED_GROUP, SAVED_QUERY
     }
 
     /**
@@ -1637,7 +1808,8 @@ public final class SideBar extends VBox {
 
             switch (item.kind()) {
                 case ROOT -> getStyleClass().add("adb-tree-cell--connection");
-                case GROUP -> getStyleClass().add("adb-tree-cell--group");
+                case GROUP, CONNECTION_GROUP, SAVED_GROUP ->
+                        getStyleClass().add("adb-tree-cell--group");
                 case CONNECTION -> getStyleClass().add("adb-tree-cell--connection");
                 case CATALOG -> getStyleClass().add("adb-tree-cell--catalog");
                 default -> getStyleClass().add("adb-tree-cell--object");
@@ -1653,6 +1825,10 @@ public final class SideBar extends VBox {
                         // ⭐ U1：双击一个库 = 切到它（外壳负责重连）。
                         onSwitchCatalog.accept(
                                 new CatalogSwitch(item.connectionId(), item.name()));
+                        event.consume();
+                    } else if (item.kind() == NodeKind.SAVED_QUERY) {
+                        // ⭐ UX-6：双击已保存查询 = 新查询页 + 预填 SQL。
+                        openSavedQuery(item.connectionId(), item.name());
                         event.consume();
                     }
                 }

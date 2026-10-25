@@ -5,6 +5,7 @@ import io.agenticdb.introspect.IndexDef;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.StructurePlan;
 import io.agenticdb.introspect.StructureSqlBuilder;
+import io.agenticdb.introspect.TableOptions;
 import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.introspect.TriggerDef;
 import io.agenticdb.introspect.ForeignKeyDef;
@@ -146,6 +147,13 @@ public final class StructurePage extends VBox implements AutoCloseable {
     }
 
     private TableStructure structure;
+    /** ⭐ UX-6：表的物理选项；方言没有这些概念时保持「—」。 */
+    private TableOptions tableOptions = TableOptions.unavailable();
+    private final Label optionsEngine = new Label("—");
+    private final Label optionsCollation = new Label("—");
+    private final Label optionsAutoIncrement = new Label("—");
+    private final Label optionsRowFormat = new Label("—");
+    private final Label optionsHint = new Label();
     private ProgressIndicator loading;
     private Predicate<StructurePlan> confirmation = this::defaultConfirm;
     private Future<?> inFlight;
@@ -262,6 +270,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
 
         tabs.getTabs().addAll(
                 tab("列", buildColumnsTab()),
+                tab("选项", buildOptionsTab()),
                 tab("索引", buildIndexesTab()),
                 tab("外键", buildForeignKeysTab()),
                 tab("检查", buildChecksTab()),
@@ -327,6 +336,70 @@ public final class StructurePage extends VBox implements AutoCloseable {
         VBox box = new VBox(8, overview, columns);
         VBox.setVgrow(columns, Priority.ALWAYS);
         return box;
+    }
+
+    /**
+     * ⭐ UX-6：「选项」页签 —— 引擎 / 排序规则 / 自增值 / 行格式。
+     *
+     * <p>这是 Navicat 表查看器里「选项」这一页的最小形态：只读、一屏看完。
+     * 不在这里改物理选项（改引擎要重建表、改排序规则可能重写全表 ——
+     * 那是另一个量级的危险动作，不属于「查看」）。
+     */
+    private VBox buildOptionsTab() {
+        optionsHint.setId("structure-options-hint");
+        optionsHint.getStyleClass().add("adb-muted");
+        optionsHint.setWrapText(true);
+
+        optionsEngine.setId("structure-options-engine");
+        optionsCollation.setId("structure-options-collation");
+        optionsAutoIncrement.setId("structure-options-auto-increment");
+        optionsRowFormat.setId("structure-options-row-format");
+
+        GridPane grid = new GridPane();
+        grid.setId("structure-options");
+        grid.setHgap(28);
+        grid.setVgap(10);
+        grid.addRow(0, keyLabel("引擎"), optionsEngine);
+        grid.addRow(1, keyLabel("排序规则"), optionsCollation);
+        grid.addRow(2, keyLabel("自增当前值"), optionsAutoIncrement);
+        grid.addRow(3, keyLabel("行格式"), optionsRowFormat);
+
+        VBox box = new VBox(12, optionsHint, grid);
+        box.setPadding(new Insets(12));
+        return box;
+    }
+
+    private static Label keyLabel(String text) {
+        Label label = new Label(text);
+        label.getStyleClass().add("adb-muted");
+        label.setMinWidth(88);
+        return label;
+    }
+
+    /** 把选项落到四个标签上；package-private 供门禁直接验证展示映射。 */
+    void renderOptions(TableOptions options) {
+        tableOptions = options == null ? TableOptions.unavailable() : options;
+        optionsEngine.setText(orDash(tableOptions.engine()));
+        optionsCollation.setText(orDash(tableOptions.collation()));
+        optionsAutoIncrement.setText(tableOptions.autoIncrement() == null
+                ? "—" : String.valueOf(tableOptions.autoIncrement()));
+        optionsRowFormat.setText(orDash(tableOptions.rowFormat()));
+
+        if (structure != null && structure.view()) {
+            optionsHint.setText("视图没有表级引擎 / 排序规则 / 行格式选项");
+        } else if (tableOptions.available()) {
+            optionsHint.setText("选项来自 information_schema.tables；"
+                    + "自增当前值是数据库记录的下一个值");
+        } else if (session.dialect().tableOptionsSql() == null) {
+            optionsHint.setText(session.dialect().displayName()
+                    + " 没有表级引擎 / 排序规则 / 行格式选项 —— 显示「—」");
+        } else {
+            optionsHint.setText("没有读到表级选项（权限不足或旧版本库）—— 显示「—」");
+        }
+    }
+
+    private static String orDash(String value) {
+        return value == null || value.isBlank() ? "—" : value;
     }
 
     private ContextMenu columnMenu(ColumnDef column) {
@@ -598,14 +671,18 @@ public final class StructurePage extends VBox implements AutoCloseable {
         }
         setLoading(true);
         feedback.status("正在读取结构：" + tableName);
-        Task<TableStructure> task = new Task<>() {
+        Task<Loaded> task = new Task<>() {
             @Override
-            protected TableStructure call() throws Exception {
-                return schemaService.structure(session, tableName);
+            protected Loaded call() throws Exception {
+                TableStructure loaded = schemaService.structure(session, tableName);
+                // 选项是锦上添花：方言不提供时 tableOptions 不执行 SQL。
+                return new Loaded(loaded, schemaService.tableOptions(session, tableName));
             }
         };
         task.setOnSucceeded(event -> {
-            structure = task.getValue();
+            Loaded loaded = task.getValue();
+            structure = loaded.structure();
+            tableOptions = loaded.options();
             render();
             setLoading(false);
             updateButtons();
@@ -630,6 +707,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
             return;
         }
         kind.setText(structure.kindLabel());
+        renderOptions(tableOptions);
         // ⭐ 表注释：以前结构页**一个字都看不到**（S4）。
         tableCommentLabel.setId("structure-table-comment-label");
         tableCommentLabel.getStyleClass().add("adb-muted");
@@ -810,6 +888,8 @@ public final class StructurePage extends VBox implements AutoCloseable {
         dialog.setTitle("重命名列");
         dialog.setHeaderText("重命名 " + column.name());
         dialog.initOwner(sceneWindow());
+        // ⭐ TextInputDialog 也是 Dialog：不套就是 Modena 灰皮肤（§七 统一弹窗外观）。
+        DialogStyles.apply(dialog, sceneWindow());
         dialog.getEditor().setId("structure-rename-field");
         // ⭐ 同上：空名字或非法的名字不能静默放过，更不能把对话框关掉。
         Button okButton = (Button) dialog.getDialogPane().lookupButton(ButtonType.OK);
@@ -1069,6 +1149,10 @@ public final class StructurePage extends VBox implements AutoCloseable {
         }
         dbExecutor.execute(task);
         return null;
+    }
+
+    /** 一次后台加载的成果：结构 + 物理选项（选项失败不影响结构）。 */
+    private record Loaded(TableStructure structure, TableOptions options) {
     }
 
     @Override

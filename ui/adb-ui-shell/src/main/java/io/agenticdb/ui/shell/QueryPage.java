@@ -15,8 +15,12 @@ import io.agenticdb.safety.ErrorLocator;
 import io.agenticdb.sql.SqlFormatter;
 import io.agenticdb.sql.SqlSplitter;
 import io.agenticdb.sql.SqlSplitter.SqlStatement;
+import io.agenticdb.transfer.ExportFormat;
+import io.agenticdb.transfer.ExportOptions;
+import io.agenticdb.transfer.TableExporter;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
+import javafx.beans.binding.Bindings;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.LongProperty;
 import javafx.beans.property.SimpleLongProperty;
@@ -58,6 +62,7 @@ import javafx.util.Duration;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -95,6 +100,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
     /** ⭐ 结果网格也要跟密度 —— 否则「紧凑」在查询页看起来没生效。 */
     private final java.util.List<TableView<java.util.Map<String, Object>>> resultTables =
             new java.util.ArrayList<>();
+    /** ⭐ P6-2：可分页结果的导出器（顺序与结果页签一致）。 */
+    private final List<PagedLoader> pagers = new ArrayList<>();
     /** 密度档位 → 行高。 */
     private int rowHeight = RowHeights.of("normal");
     private final Label status = new Label("就绪");
@@ -460,6 +467,16 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
     public int resultTabCount() {
         return results.getTabs().size();
+    }
+
+    /** P6-2：把一个可分页结果的全部行导出到给定 writer（测试与批处理用）。 */
+    long exportAllResultsTo(int resultIndex, Writer out) throws Exception {
+        return pagers.get(resultIndex).exportAllTo(out);
+    }
+
+    /** P6-2：把当前页导出到给定 writer（测试用，绕过文件选择框）。 */
+    void exportCurrentPageTo(int resultIndex, Writer out) throws Exception {
+        pagers.get(resultIndex).exportCurrentTo(out);
     }
 
     public SqlEditor editor() {
@@ -842,7 +859,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             status.setText("执行失败：" + message);
             feedback.status("查询失败：" + message);
             feedback.duration(-1);
-            showErrorTab("执行失败", message, null, -1);
+            showErrorTab("执行失败", error, null, -1);
         });
         task.setOnCancelled(event -> {
             if (request == requestSequence) {
@@ -874,7 +891,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         }
         if (result.error() != null) {
             showErrorTab("语句 " + (result.failedIndex() + 1) + " 失败",
-                    readable(result.error()), result.failed(),
+                    result.error(), result.failed(),
                     result.failedIndex() + 1);
             status.setText("执行失败 · 已完成 " + result.results().size() + " 条");
             range.setText("—");
@@ -898,7 +915,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             feedback.sql(result.executedText());
             feedback.refreshedAt(System.currentTimeMillis());
             if (!explainPlan) {
-                history.add(result.executedText());
+                history.add(result.executedText(), connectionName);
                 refreshHistory();
             }
         }
@@ -1022,6 +1039,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         if (QueryPaginator.isPaginable(sql) && result.hasRows()) {
             PagedLoader loader = new PagedLoader(tab, index, table, rowOffset,
                     sql, params, result.columns());
+            pagers.add(loader);
             VBox box = new VBox(6, loader.node(), table, typeStrip(result.columns()));
             VBox.setVgrow(table, Priority.ALWAYS);
             box.getStyleClass().add("adb-query__result-box");
@@ -1117,7 +1135,11 @@ public final class QueryPage extends VBox implements AutoCloseable {
         private final TextField jumpField = new TextField();
         private final Button jump = new Button("跳转");
         private final Button copy = new Button("复制本页");
-        private final Button export = new Button("导出本页");
+        /** ⭐ P6-2：导出范围 —— 本页 / 选中行 / 全部结果。 */
+        private final MenuButton export = new MenuButton("导出");
+        private final MenuItem exportPage = new MenuItem("导出本页…");
+        private final MenuItem exportSelected = new MenuItem("导出选中行…");
+        private final MenuItem exportAll = new MenuItem("导出全部结果…");
         private final Region spacer = new Region();
 
         PagedLoader(Tab tab, int index, TableView<java.util.Map<String, Object>> table,
@@ -1209,8 +1231,23 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
             copy.getStyleClass().add("adb-button");
             copy.setOnAction(event -> copyResultTsv(currentResult()));
+            export.setId("query-export");
             export.getStyleClass().add("adb-button");
-            export.setOnAction(event -> exportCsv(currentResult()));
+            export.setTooltip(new Tooltip("选择导出范围：本页 / 选中行 / 全部结果"));
+            exportPage.setId("query-export-page");
+            exportPage.setOnAction(event -> chooseAndExport(this::exportCurrentTo,
+                    "query-result-page.csv"));
+            exportSelected.setId("query-export-selected");
+            exportSelected.setOnAction(event -> chooseAndExport(this::exportSelectedTo,
+                    "query-result-selected.csv"));
+            exportAll.setId("query-export-all");
+            exportAll.setOnAction(event -> chooseAndExport(this::exportAllTo,
+                    "query-result-all.csv"));
+            export.getItems().addAll(exportPage, exportSelected,
+                    new SeparatorMenuItem(), exportAll);
+            // 选中行导出只在真的有选区时可用 —— 否则导出的是一张空表。
+            exportSelected.disableProperty().bind(
+                    Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
 
             HBox.setHgrow(spacer, Priority.ALWAYS);
             bar.getChildren().setAll(rangeLabel, recordNav, spacer, perPage,
@@ -1352,6 +1389,92 @@ public final class QueryPage extends VBox implements AutoCloseable {
             }
             return new ExecutionResult(sql, page.columns(), page.rows(), 0, 0);
         }
+
+        // ─────────────────────── P6-2：按范围导出 ───────────────────────
+
+        @FunctionalInterface
+        private interface WriterAction {
+            void write(Writer out) throws Exception;
+        }
+
+        /** 选文件 → 后台写出；失败落状态行，不影响结果集。 */
+        private void chooseAndExport(WriterAction action, String initialName) {
+            FileChooser chooser = new FileChooser();
+            chooser.setTitle("导出查询结果（CSV）");
+            chooser.setInitialFileName(initialName);
+            chooser.getExtensionFilters().add(
+                    new FileChooser.ExtensionFilter("CSV", "*.csv"));
+            Window window = getScene() == null ? null : getScene().getWindow();
+            File file = chooser.showSaveDialog(window);
+            if (file == null) {
+                return;
+            }
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    try (Writer out = Files.newBufferedWriter(file.toPath(),
+                            StandardCharsets.UTF_8)) {
+                        action.write(out);
+                    }
+                    return null;
+                }
+            };
+            task.setOnSucceeded(event -> {
+                status.setText("已导出：" + file.getName());
+                feedback.status("已导出查询结果");
+            });
+            task.setOnFailed(event -> {
+                String message = "导出失败：" + readable(task.getException());
+                status.setText(message);
+                feedback.status(message);
+            });
+            submit(task);
+        }
+
+        /** 当前页（屏幕上这几行）。 */
+        void exportCurrentTo(Writer out) throws IOException {
+            writeCsv(out, List.copyOf(table.getItems()));
+        }
+
+        /** 当前选中的行（可能跨多页选不了，选多少导多少）。 */
+        void exportSelectedTo(Writer out) throws IOException {
+            writeCsv(out, List.copyOf(table.getSelectionModel().getSelectedItems()));
+        }
+
+        /**
+         * ⭐ 全部结果：重跑原始 SQL 流式写文件，不受 UI 单页上限限制。
+         *
+         * <p>这是「导出本页」与「导出全部结果」的本质区别 ——
+         * 250 行的结果翻到第 1 页时，本页只有 200 行，全部仍是 250 行。
+         */
+        long exportAllTo(Writer out) throws Exception {
+            out.write('\uFEFF');
+            return TableExporter.exportSql(session, sql, params,
+                    ExportOptions.of(ExportFormat.CSV), out);
+        }
+
+        private void writeCsv(Writer out, List<java.util.Map<String, Object>> rows)
+                throws IOException {
+            List<String> headers = new ArrayList<>();
+            List<String> keys = new ArrayList<>();
+            for (TableColumn<java.util.Map<String, Object>, ?> column : table.getColumns()) {
+                if (column.getUserData() instanceof String key) {
+                    headers.add(column.getText());
+                    keys.add(key);
+                }
+            }
+            List<List<String>> texts = new ArrayList<>();
+            for (java.util.Map<String, Object> row : rows) {
+                List<String> line = new ArrayList<>(keys.size());
+                for (String key : keys) {
+                    Object value = row.get(key);
+                    line.add(value == null ? "" : String.valueOf(value));
+                }
+                texts.add(line);
+            }
+            out.write('\uFEFF');
+            out.write(CsvExporter.csv(headers, texts));
+        }
     }
 
     private record PagedData(RowPage page, long total) {
@@ -1392,8 +1515,15 @@ public final class QueryPage extends VBox implements AutoCloseable {
         return tab;
     }
 
-    private void showErrorTab(String title, String message, SqlStatement statement,
+    /**
+     * ⭐ P2-2：结果页里的错误页签 —— 快速视图 + 一个「查看详情」。
+     *
+     * <p>页签放「用户下一步要改什么」（语句 / 建议 / 位置），
+     * 详情弹窗放完整证据（分类 / 驱动原文 / 异常类型 / 可复制的 SQL）。
+     */
+    private void showErrorTab(String title, Throwable error, SqlStatement statement,
                               int statementIndex) {
+        String message = readable(error);
         StringBuilder body = new StringBuilder();
         if (statementIndex > 0) {
             body.append("语句：").append(statementIndex).append("\n\n");
@@ -1423,7 +1553,18 @@ public final class QueryPage extends VBox implements AutoCloseable {
         text.setEditable(false);
         text.setWrapText(true);
         text.getStyleClass().add("adb-query__message");
-        Tab tab = new Tab(title, text);
+
+        Button detailsButton = new Button("查看详情");
+        detailsButton.setId("query-error-details");
+        ErrorDetails details = ErrorDetails.of(title, error,
+                statement == null ? "" : statement.text());
+        detailsButton.setOnAction(event -> ErrorDetailsDialog.show(
+                getScene() == null ? null : getScene().getWindow(), details));
+
+        VBox content = new VBox(8, text, detailsButton);
+        VBox.setVgrow(text, Priority.ALWAYS);
+        content.setAlignment(Pos.TOP_LEFT);
+        Tab tab = new Tab(title, content);
         tab.setClosable(false);
         results.getTabs().add(tab);
         results.getSelectionModel().select(tab);

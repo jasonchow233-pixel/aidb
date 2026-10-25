@@ -3,6 +3,8 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.JdbcSession;
 import javafx.scene.Scene;
+import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
@@ -16,6 +18,8 @@ import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.framework.junit5.Start;
 import org.testfx.util.WaitForAsyncUtils;
 
+import java.io.StringWriter;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -118,6 +122,10 @@ class QueryPageTest {
         TabPane results = (TabPane) page.lookup("#query-results");
         assertThat(results.getTabs()).hasSize(2);
         assertThat(results.getTabs().get(1).getText()).contains("失败");
+        assertThat(results.getTabs().get(1).getContent().lookup("#query-error-details"))
+                .as("⭐ P2-2：错误页签必须给一个「查看详情」入口 —— "
+                        + "页签只放下一步要改什么，完整证据在弹窗里")
+                .isNotNull();
         assertThat(page.statusText()).contains("执行失败");
     }
 
@@ -205,6 +213,65 @@ class QueryPageTest {
         // 单行结果也走分页路径：分页条仍在，只是只有 1 页 —— 行为一致、无回归。
         assertThat(page.lookup("#query-result-pager")).isNotNull();
         assertThat(pageLabel()).isEqualTo("第 1 / 1 页");
+    }
+
+    // ─────────────── P6-2：导出范围菜单与「全部结果」 ───────────────
+
+    @Test
+    void exportMenuOffersThreeScopesAndDisablesEmptySelection() {
+        seedRows(250);
+        interact(() -> {
+            page.setSql("SELECT * FROM users ORDER BY id;");
+            page.runAll();
+        });
+        waitForTabs(1);
+        TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        waitFor(() -> table.getItems().size() == 200);
+
+        MenuButton export = (MenuButton) page.lookup("#query-export");
+        assertThat(export).as("分页条要有一个导出范围菜单").isNotNull();
+        assertThat(export.getItems())
+                .filteredOn(item -> item.getId() != null)
+                .extracting(MenuItem::getId)
+                .containsExactly("query-export-page", "query-export-selected",
+                        "query-export-all");
+
+        MenuItem selected = export.getItems().stream()
+                .filter(item -> "query-export-selected".equals(item.getId()))
+                .findFirst().orElseThrow();
+        assertThat(selected.isDisable())
+                .as("没有选区时「导出选中行」必须灰掉，否则导出的是空表")
+                .isTrue();
+
+        interact(() -> table.getSelectionModel().select(0));
+        assertThat(selected.isDisable()).isFalse();
+    }
+
+    @Test
+    void exportAllResultsIgnoresTheUiPageCap() throws Exception {
+        seedRows(250);
+        interact(() -> {
+            page.setSql("SELECT * FROM users ORDER BY id;");
+            page.runAll();
+        });
+        waitForTabs(1);
+        TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        waitFor(() -> table.getItems().size() == 200);
+
+        StringWriter all = new StringWriter();
+        long exported = page.exportAllResultsTo(0, all);
+        assertThat(exported)
+                .as("⭐ 「全部结果」要重跑原始 SQL，不受 UI 单页 200 行上限")
+                .isEqualTo(250);
+        List<String> lines = all.toString().lines().toList();
+        assertThat(lines).hasSize(251); // 表头 + 250 行
+        assertThat(lines.getLast()).contains("250").contains("u250");
+
+        StringWriter currentPage = new StringWriter();
+        page.exportCurrentPageTo(0, currentPage);
+        List<String> pageLines = currentPage.toString().lines().toList();
+        assertThat(pageLines).hasSize(201); // 表头 + 当前页 200 行
+        assertThat(pageLines.getLast()).doesNotContain("u250");
     }
 
     private void seedRows(int count) {

@@ -83,7 +83,7 @@ final class TriggerDialog {
 
     private void buildUi() {
         dialog.setTitle("新建触发器");
-        // ⭐ V-11：弹窗宽度走三档规范（DialogSizes）。
+        // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
         dialog.getDialogPane().setPrefWidth(DialogSizes.LONG_TEXT);
         dialog.getDialogPane().setMinWidth(DialogSizes.LONG_TEXT);
 

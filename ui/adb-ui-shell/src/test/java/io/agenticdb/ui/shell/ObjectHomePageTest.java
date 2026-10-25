@@ -3,11 +3,13 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.TableMeta;
 import javafx.scene.Scene;
+import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.stage.Stage;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.testfx.api.FxRobot;
@@ -18,6 +20,7 @@ import org.testfx.util.WaitForAsyncUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.prefs.Preferences;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -42,6 +45,8 @@ class ObjectHomePageTest {
     private ObjectHomePage page;
     /** 记录 onOpen 收到的东西 —— 用来断言 kind 没有被丢掉。 */
     private final List<SchemaService.SchemaObject> opened = new ArrayList<>();
+    /** P2-1：列宽偏好用独立作用域，跑完清掉，别污染真实用户偏好。 */
+    private final String layoutScopePrefix = "p21-" + System.nanoTime();
 
     @Start
     void start(Stage stage) {
@@ -51,6 +56,18 @@ class ObjectHomePageTest {
         page.reload();
         stage.setScene(new Scene(page, 900, 600));
         stage.show();
+    }
+
+    @AfterEach
+    void removeLayoutPreferences() throws Exception {
+        Preferences preferences = Preferences.userNodeForPackage(SettingsStore.class);
+        String prefix = "ui.objecthome." + layoutScopePrefix;
+        for (String key : preferences.keys()) {
+            if (key.startsWith(prefix)) {
+                preferences.remove(key);
+            }
+        }
+        preferences.flush();
     }
 
     @Test
@@ -276,5 +293,225 @@ class ObjectHomePageTest {
         assertThat(empties.get())
                 .as("连上了但一个对象都没有时，也要有图标+说明+出口")
                 .isNotEmpty();
+    }
+
+    // ─────────────────────── 第二十二轮 P2-1 清单可读性 ───────────────────────
+
+    /**
+     * 对象首页是常驻实例：列宽要按**当前连接**记住，并且切连接时换一套；
+     * 同一连接内的重载不能把用户刚拖的宽度顶回去。
+     */
+    @Test
+    void columnWidthsAreRememberedPerConnection() {
+        SettingsStore settings = new SettingsStore();
+        String scope = layoutScopePrefix + "-a";
+        ObjectHomePage first = pageWithLayout(settings, () -> scope);
+
+        TableColumn<?, ?> engine = first.table().getColumns().get(4);
+        engine.setPrefWidth(222);
+        first.persistColumnWidthsForTest();
+
+        assertThat(settings.getInt("ui.objecthome." + scope + ".width.engine", -1))
+                .as("拖完的列宽要落盘")
+                .isEqualTo(222);
+
+        ObjectHomePage reopened = pageWithLayout(settings, () -> scope);
+        assertThat(reopened.table().getColumns().get(4).getPrefWidth())
+                .as("重开同一连接的对象首页要恢复列宽")
+                .isEqualTo(222);
+
+        String otherScope = layoutScopePrefix + "-b";
+        ObjectHomePage other = pageWithLayout(settings, () -> otherScope);
+        assertThat(other.table().getColumns().get(4).getPrefWidth())
+                .as("另一个连接必须用默认列宽，不能串用")
+                .isEqualTo(90);
+
+        // 连接切换：同一个常驻页从 A 切到 B，B 用 B 的宽，切回 A 仍是 A 的宽。
+        AtomicReference<String> activeScope = new AtomicReference<>(scope);
+        ObjectHomePage switching = pageWithLayout(settings, activeScope::get);
+        switching.render(List.of(new SchemaService.SchemaObject("users",
+                SchemaService.ObjectKind.TABLE)), List.of());
+        assertThat(switching.table().getColumns().get(4).getPrefWidth())
+                .as("常驻页停在 A 连接时用 A 的列宽")
+                .isEqualTo(222);
+
+        activeScope.set(otherScope);
+        switching.render(List.of(new SchemaService.SchemaObject("users",
+                SchemaService.ObjectKind.TABLE)), List.of());
+        assertThat(switching.table().getColumns().get(4).getPrefWidth())
+                .as("切到没有记忆的 B 连接要回到默认宽，不能留着 A 的 222")
+                .isEqualTo(90);
+
+        activeScope.set(scope);
+        switching.render(List.of(new SchemaService.SchemaObject("users",
+                SchemaService.ObjectKind.TABLE)), List.of());
+        assertThat(switching.table().getColumns().get(4).getPrefWidth())
+                .as("切回 A 连接要恢复 A 的列宽")
+                .isEqualTo(222);
+    }
+
+    /** 注释列的 tooltip 给全文；占位符「—」不挂。 */
+    @Test
+    void longCommentsAreReachableThroughATooltip(FxRobot robot) {
+        String longComment = "对象首页的一条长注释：列宽放不下全文，"
+                + "悬停时必须能读到完整内容。";
+        robot.interact(() -> {
+            page.render(
+                    List.of(
+                            new SchemaService.SchemaObject("documented",
+                                    SchemaService.ObjectKind.TABLE),
+                            new SchemaService.SchemaObject("blank",
+                                    SchemaService.ObjectKind.TABLE)),
+                    List.of(
+                            new TableMeta("documented", 1L, 2048L, "InnoDB",
+                                    null, null, null, longComment),
+                            new TableMeta("blank", 1L, 2048L, "InnoDB",
+                                    null, null, null, null)));
+            page.applyCss();
+            page.layout();
+            // 9 列在 900 宽下放不下，注释列可能还没生成单元格；
+            // 滚到注释列即可（不要拉宽 stage —— 超出 headless 屏幕缓冲会抛
+            // BufferOverflowException，而且会污染同一 JVM 里后续的用例）。
+            page.table().scrollToColumn(commentColumn());
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        TableCell<?, ?> documented = commentCell(longComment);
+        assertThat(documented.getTooltip())
+                .as("长注释被截断时必须给 tooltip")
+                .isNotNull();
+        assertThat(documented.getTooltip().getText()).isEqualTo(longComment);
+
+        assertThat(commentCell("—").getTooltip())
+                .as("「—」表示没有注释，不该再弹一个 tooltip 解释它")
+                .isNull();
+    }
+
+    private ObjectHomePage pageWithLayout(SettingsStore settings,
+                                          java.util.function.Supplier<String> scope) {
+        return new ObjectHomePage(() -> null, null, Runnable::run,
+                opened::add, message -> { }, () -> { }, null, settings, scope);
+    }
+
+    // ─────────────────────── 第二十三轮 UX-6 列表 / 网格 ───────────────────────
+
+    /**
+     * 对象首页也要有列表 / 网格两种看法，且两种视图共用同一份选择。
+     *
+     * <p>网格不是「另一张只读页面」：切回列表时选中的对象必须还在，
+     * 否则用户刚选好一张表、切一下视图，工具条的「打开 / 删除」就灰了。
+     */
+    @Test
+    void gridViewShowsCardsAndKeepsTheSelectionInSync(FxRobot robot) {
+        robot.interact(() -> page.render(
+                List.of(
+                        new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE),
+                        new SchemaService.SchemaObject("orders", SchemaService.ObjectKind.TABLE),
+                        new SchemaService.SchemaObject("trg_audit",
+                                SchemaService.ObjectKind.TRIGGER)),
+                List.of(
+                        new TableMeta("users", 200L, 3072L, "InnoDB", null),
+                        new TableMeta("orders", 3L, 1024L, "InnoDB", null))));
+
+        // 列表视图里选中 users，再切网格 —— 卡片必须带着选中态出现。
+        robot.interact(() -> {
+            TableView<ObjectHomePage.ObjectRow> table = page.table();
+            for (int i = 0; i < table.getItems().size(); i++) {
+                if ("users".equals(table.getItems().get(i).object().name())) {
+                    table.getSelectionModel().select(i);
+                }
+            }
+            ((javafx.scene.control.Button) page.lookup("#object-home-view-grid")).fire();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(page.isGridView()).as("点网格按钮后要切到卡片视图").isTrue();
+        assertThat(page.table().isVisible()).as("网格视图下表格要隐藏").isFalse();
+        javafx.scene.Node usersCard = page.lookup("#object-card-table-users");
+        assertThat(usersCard).as("对象卡片要真的挂在场景图里").isNotNull();
+        assertThat(usersCard.getStyleClass())
+                .as("从列表切过来时 users 的选中态要带进卡片")
+                .contains("adb-table-card--selected");
+
+        // 在网格里改选 orders —— 工具条的选择也要跟着换。
+        robot.clickOn(page.lookup("#object-card-table-orders"));
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(page.lookup("#object-card-table-orders").getStyleClass())
+                .contains("adb-table-card--selected");
+        assertThat(page.lookup("#object-card-table-users").getStyleClass())
+                .doesNotContain("adb-table-card--selected");
+
+        // 切回列表：表格里选中的应当还是 orders，而不是空选。
+        robot.interact(() ->
+                ((javafx.scene.control.Button) page.lookup("#object-home-view-list")).fire());
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(page.isGridView()).isFalse();
+        assertThat(page.table().isVisible()).isTrue();
+        assertThat(page.table().getSelectionModel().getSelectedItems())
+                .extracting(row -> row.object().name())
+                .containsExactly("orders");
+    }
+
+    /** 视图偏好要跨会话记住；切走时立即落盘。 */
+    @Test
+    void theChosenViewIsRememberedAcrossSessions(FxRobot robot) throws Exception {
+        SettingsStore settings = new SettingsStore();
+        Preferences preferences = Preferences.userNodeForPackage(SettingsStore.class);
+        String key = "ui.objectHome.view";
+        String original = preferences.get(key, null);
+        try {
+            settings.set(key, "grid");
+            AtomicReference<ObjectHomePage> ref = new AtomicReference<>();
+            robot.interact(() -> {
+                ObjectHomePage restored =
+                        pageWithLayout(settings, () -> layoutScopePrefix + "-view");
+                // 不在场景里的节点 lookup 拿不到 CSS 树；挂一个 Scene 再断言。
+                new Scene(restored, 900, 600);
+                restored.render(List.of(new SchemaService.SchemaObject("users",
+                        SchemaService.ObjectKind.TABLE)), List.of());
+                // ScrollPane 的视口由 skin 创建；不跑一次 CSS/布局，
+                // lookup 走不到卡片（这不是产品缺陷，只是测试没让皮肤上桌）。
+                restored.applyCss();
+                restored.layout();
+                ref.set(restored);
+            });
+            ObjectHomePage restored = ref.get();
+            assertThat(restored.isGridView())
+                    .as("上次选了网格，重开对象首页就该直接是网格")
+                    .isTrue();
+            assertThat(restored.lookup("#object-card-table-users"))
+                    .as("恢复网格后也要真的渲染出卡片")
+                    .isNotNull();
+
+            robot.interact(() -> restored.showView("list"));
+            assertThat(settings.get(key, "list"))
+                    .as("切回列表要立刻记住，不能等退出应用")
+                    .isEqualTo("list");
+        } finally {
+            if (original == null) {
+                preferences.remove(key);
+            } else {
+                preferences.put(key, original);
+            }
+            preferences.flush();
+        }
+    }
+
+    private TableColumn<ObjectHomePage.ObjectRow, ?> commentColumn() {
+        return page.table().getColumns().stream()
+                .filter(column -> "注释".equals(column.getText()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("对象首页没有注释列"));
+    }
+
+    private TableCell<?, ?> commentCell(String text) {
+        return page.table().lookupAll(".table-cell").stream()
+                .filter(TableCell.class::isInstance)
+                .map(node -> (TableCell<?, ?>) node)
+                .filter(cell -> cell.getTableColumn() != null
+                        && "注释".equals(cell.getTableColumn().getText()))
+                .filter(cell -> text.equals(cell.getText()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("找不到注释列的单元格：" + text));
     }
 }

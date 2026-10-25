@@ -21,6 +21,7 @@ import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.util.WaitForAsyncUtils;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -835,6 +836,138 @@ class DataGridPageTest {
     private static String clipboardText() throws Exception {
         return WaitForAsyncUtils.asyncFx(() ->
                 javafx.scene.input.Clipboard.getSystemClipboard().getString()).get();
+    }
+
+    /** ⭐ P2-3：数据页「历史」只列喂进来的本表记录；没有时给禁用占位项。 */
+    @Test
+    void historyMenuListsTheRecentSqlForThisTable() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("history.db"))));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
+                    "history.db", noOpFeedback(), name -> { }, executor);
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                    page.lookup("#data-table") != null);
+
+            javafx.scene.control.MenuButton history = (javafx.scene.control.MenuButton)
+                    page.lookup("#data-history");
+            assertThat(history).as("工具栏必须有「历史」入口").isNotNull();
+
+            page.setHistorySource(() -> List.of(new QueryHistory.Entry(
+                    "SELECT * FROM users;", "history.db", List.of("users"), 1L)));
+            WaitForAsyncUtils.asyncFx(page::rebuildHistoryMenu).get();
+            assertThat(history.getItems()).extracting(javafx.scene.control.MenuItem::getId)
+                    .containsExactly("data-history-0");
+            assertThat(history.getItems().getFirst().getText()).contains("SELECT * FROM users");
+
+            page.setHistorySource(List::of);
+            WaitForAsyncUtils.asyncFx(page::rebuildHistoryMenu).get();
+            assertThat(history.getItems()).hasSize(1);
+            assertThat(history.getItems().getFirst().getId()).isEqualTo("data-history-empty");
+            assertThat(history.getItems().getFirst().isDisable()).isTrue();
+            page.close();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    /**
+     * ⭐ UX-6：概览把行数 / 大小 / 引擎 / 索引数摊在一屏上。
+     *
+     * <p>SQLite 不提供表大小与引擎 —— 这两格必须是「—」，而且旁边要说明原因，
+     * 不能空着让人以为是加载失败。行数与索引数则必须是真的。
+     */
+    @Test
+    void overviewShowsRealFactsAndIsHonestAboutMissingMetadata() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("overview.db"))));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
+                    "overview.db", noOpFeedback(), name -> { }, executor);
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> page.lookup("#data-table") != null);
+
+            WaitForAsyncUtils.asyncFx(() -> page.selectSection("overview")).get();
+
+            Label rows = (Label) page.lookup("#overview-rows");
+            Label size = (Label) page.lookup("#overview-size");
+            Label engine = (Label) page.lookup("#overview-engine");
+            Label indexes = (Label) page.lookup("#overview-indexes");
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                    String.valueOf(DemoDatabase.USER_COUNT).equals(rows.getText())
+                            && !"…".equals(indexes.getText()));
+
+            assertThat(rows.getText())
+                    .as("行数复用数据页刚算出的 COUNT")
+                    .isEqualTo(String.valueOf(DemoDatabase.USER_COUNT));
+            assertThat(size.getText()).as("SQLite 没有表大小").isEqualTo("—");
+            assertThat(engine.getText()).as("SQLite 没有存储引擎").isEqualTo("—");
+
+            int expectedIndexes = new SchemaService().structure(session, "users").indexes().size();
+            assertThat(indexes.getText())
+                    .as("索引数来自实时内省")
+                    .isEqualTo(String.valueOf(expectedIndexes));
+
+            Label hint = (Label) page.lookup("#overview-hint");
+            assertThat(hint.getText())
+                    .as("缺的项要说明为什么缺，而不是留白")
+                    .contains("SQLite", "不提供表大小");
+            page.close();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    /** ⭐ UX-6：概览里的「最近操作」最多 5 条，点一条在查询页打开。 */
+    @Test
+    void overviewListsFiveRecentActionsAndOpensThem() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("overview-history.db"))));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
+                    "overview-history.db", noOpFeedback(), name -> { }, executor);
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> page.lookup("#data-table") != null);
+
+            List<QueryHistory.Entry> entries = new ArrayList<>();
+            for (int i = 0; i < 7; i++) {
+                entries.add(new QueryHistory.Entry("SELECT " + i + " FROM users;",
+                        "overview-history.db", List.of("users"), i));
+            }
+            List<String> opened = new ArrayList<>();
+            WaitForAsyncUtils.asyncFx(() -> {
+                page.setHistorySource(() -> entries);
+                page.setOnHistoryPick(opened::add);
+                page.selectSection("overview");
+            }).get();
+
+            assertThat(page.lookup("#overview-history-0")).isNotNull();
+            assertThat(page.lookup("#overview-history-4")).isNotNull();
+            assertThat(page.lookup("#overview-history-5"))
+                    .as("概览只列最近 5 条 —— 不能变成半个历史页")
+                    .isNull();
+            assertThat(((Button) page.lookup("#overview-history-1")).getText())
+                    .contains("SELECT 1 FROM users");
+
+            WaitForAsyncUtils.asyncFx(() ->
+                    ((Button) page.lookup("#overview-history-1")).fire()).get();
+            assertThat(opened).containsExactly("SELECT 1 FROM users;");
+
+            WaitForAsyncUtils.asyncFx(() -> {
+                page.setHistorySource(List::of);
+                page.rebuildHistoryMenu();
+            }).get();
+            assertThat(page.lookup("#overview-recent-empty"))
+                    .as("没有历史时要给一句明确的空态")
+                    .isNotNull();
+            page.close();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
     }
 
     private static DataGridPage.Feedback noOpFeedback() {

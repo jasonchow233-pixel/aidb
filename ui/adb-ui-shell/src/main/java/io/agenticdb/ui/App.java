@@ -23,13 +23,20 @@ public class App extends Application {
 
     @Override
     public void start(Stage stage) {
+        // ⭐ P7：启动打点（首屏耗时写 ~/.agenticdb/logs/startup.log）。
+        //    必须在最前面创建 —— 进程启动时间由 ProcessHandle 直接取，
+        //    这里晚一点只影响「类初始化之后」的分段。
+        io.agenticdb.ui.StartupTrace startup = new io.agenticdb.ui.StartupTrace();
         // ⭐ P7：崩溃日志兜底（写 ~/.agenticdb/logs/crash-*.log）。
         io.agenticdb.ui.CrashLog.install();
+        startup.mark("crash-log");
         SettingsStore settings = new SettingsStore();
         ThemeManager themeManager = new ThemeManager(settings);
+        startup.mark("settings");
 
-        shell = new AppShell(settings, themeManager);
+        shell = new AppShell(settings, themeManager, startup);
         Scene scene = new Scene(shell, 1280, 800);
+        startup.mark("scene");
 
         themeManager.attach(scene);
         // ADB_THEME_FORCE / -Dadb.theme.force 只改本次外观、不写入偏好（验收截图用）。
@@ -39,6 +46,7 @@ public class App extends Application {
         themeManager.apply(forced
                 ? ThemeMode.of(forcedTheme)
                 : ThemeMode.of(settings.get("ui.theme", "system")), !forced);
+        startup.mark("theme");
 
         stage.setTitle(APP_TITLE);
         stage.setMinWidth(960);
@@ -60,8 +68,17 @@ public class App extends Application {
         stage.setScene(scene);
         shell.restoreWindow(stage);
         stage.show();
+        startup.mark("stage.shown");
 
         shell.afterShown(stage);
+        // ⭐ 首屏 = 窗口已显示且首个页面/对象树已就位（afterShown 完成）。
+        startup.firstScreen();
+        // 落盘开关：测试 JVM（surefire）显式关掉，避免反复启动写满真实用户日志。
+        String logging = System.getProperty("adb.startup.log",
+                System.getenv().getOrDefault("ADB_STARTUP_LOG", "true")).trim();
+        if (!logging.equalsIgnoreCase("false") && !logging.equals("0")) {
+            startup.writeSummary();
+        }
 
         // 验收截图模式：设置了 ADB_SHOTS 时截一张图后自动退出，平时零开销。
         ScreenshotSession.maybeRun(stage);

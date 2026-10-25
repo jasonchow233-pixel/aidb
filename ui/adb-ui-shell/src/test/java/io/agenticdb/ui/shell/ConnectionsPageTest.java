@@ -26,6 +26,8 @@ class ConnectionsPageTest {
     private ObservableList<ConnectionProfile> profiles;
     private AtomicInteger newCount;
     private AtomicInteger openCount;
+    private final java.util.List<String> renames = new java.util.ArrayList<>();
+    private final java.util.List<String> groups = new java.util.ArrayList<>();
     private ConnectionsPage page;
 
     @Start
@@ -33,7 +35,7 @@ class ConnectionsPageTest {
         profiles = FXCollections.observableArrayList(
                 ConnectionProfile.newProfile("Demo", DialectKind.SQLITE, "", 0, "demo.db", ""),
                 ConnectionProfile.newProfile("PG", DialectKind.POSTGRESQL, "db.local", 5432,
-                        "shop", "app").withFavorite(true));
+                        "shop", "app").withFavorite(true).withGroup("生产"));
         newCount = new AtomicInteger();
         openCount = new AtomicInteger();
         page = new ConnectionsPage(profiles,
@@ -57,6 +59,8 @@ class ConnectionsPageTest {
                     }
                 });
         page.setDeleteConfirmation(profile -> true);
+        page.setRenameHandler((profile, name) -> renames.add(profile.name() + "→" + name));
+        page.setGroupHandler((profile, group) -> groups.add(profile.name() + "→" + group));
         stage.setScene(new javafx.scene.Scene(page, 900, 600));
         stage.show();
         WaitForAsyncUtils.waitForFxEvents();
@@ -105,10 +109,10 @@ class ConnectionsPageTest {
 
         assertThat(table.getColumns())
                 .as("Navicat 形态：每个信息一列，可排序、可拖列宽")
-                .hasSize(7);
+                .hasSize(8);
         assertThat(table.getColumns())
                 .extracting(TableColumn::getText)
-                .containsExactly("名称", "类型", "主机", "端口", "数据库", "用户", "状态");
+                .containsExactly("名称", "类型", "分组", "主机", "端口", "数据库", "用户", "状态");
         assertThat(table.getColumns())
                 .as("每一列都要能排序")
                 .allMatch(TableColumn::isSortable);
@@ -136,6 +140,53 @@ class ConnectionsPageTest {
         assertThat(table.getFixedCellSize())
                 .as("密度要作用到连接表 —— 否则用户觉得「密度时灵时不灵」")
                 .isLessThan(before);
+    }
+
+    // ─────────────────────── P5-1：重命名 / 分组 ───────────────────────
+
+    /**
+     * ⭐ P5-1：分组必须是**可见的一列**，不是藏在某个弹窗里的属性。
+     * 未分组显示「—」—— 空白单元格看起来像渲染坏了。
+     */
+    @Test
+    void groupColumnShowsTheGroupOrADash(FxRobot robot) {
+        TableView<ConnectionProfile> table = robot.lookup("#connections-table")
+                .queryAs(TableView.class);
+        @SuppressWarnings("unchecked")
+        TableColumn<ConnectionProfile, String> group = table.getColumns().stream()
+                .filter(column -> "connections-column-group".equals(column.getId()))
+                .map(column -> (TableColumn<ConnectionProfile, String>) column)
+                .findFirst().orElseThrow();
+        ConnectionProfile demo = table.getItems().stream()
+                .filter(profile -> profile.name().equals("Demo")).findFirst().orElseThrow();
+        ConnectionProfile pg = table.getItems().stream()
+                .filter(profile -> profile.name().equals("PG")).findFirst().orElseThrow();
+
+        assertThat(group.getCellData(pg)).as("PG 在「生产」分组").isEqualTo("生产");
+        assertThat(group.getCellData(demo)).as("Demo 未分组 —— 显示横线").isEqualTo("—");
+    }
+
+    /** ⭐ P5-1：重命名 / 换分组走同一套回调（落盘与内存替换归外壳）。 */
+    @Test
+    void renameAndGroupSeamsReachTheHandlers(FxRobot robot) {
+        robot.clickOn(cellNamed(robot, "Demo"));
+        page.renameSelectedTo("Demo 开发库");
+        page.groupSelectedAs("本地");
+
+        assertThat(renames).containsExactly("Demo→Demo 开发库");
+        assertThat(groups).containsExactly("Demo→本地");
+    }
+
+    /** 搜索也要覆盖分组名 —— 否则「分好组了却搜不到」比没有分组更奇怪。 */
+    @Test
+    void searchAlsoMatchesTheGroupName(FxRobot robot) {
+        TextField search = robot.lookup("#connections-search").queryAs(TextField.class);
+        robot.clickOn(search);
+        robot.write("生产");
+
+        TableView<ConnectionProfile> table = robot.lookup("#connections-table")
+                .queryAs(TableView.class);
+        assertThat(table.getItems()).extracting(ConnectionProfile::name).containsExactly("PG");
     }
 
     /** 找到文本等于连接名的表格单元。 */

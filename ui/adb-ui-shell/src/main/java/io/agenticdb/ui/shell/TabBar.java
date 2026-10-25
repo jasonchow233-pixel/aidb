@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import javafx.beans.binding.Bindings;
 import javafx.geometry.Pos;
+import javafx.scene.AccessibleRole;
 import javafx.scene.Node;
 import io.agenticdb.ui.Icons;
 import javafx.scene.control.Button;
@@ -11,10 +12,12 @@ import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.KeyCode;
 import javafx.scene.layout.HBox;
 import javafx.scene.shape.SVGPath;
 import javafx.scene.layout.Priority;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -124,6 +127,11 @@ public final class TabBar extends HBox {
             }
             boolean duplicated = counted.getOrDefault(tab.title(), 1) > 1;
             title.setText(duplicated ? qualified(tab) : tab.title());
+            // ⭐ P7：读屏名称跟着可见标题走（重名时也带上连接名）。
+            Node tabNode = nodes.get(tab.id());
+            if (tabNode != null) {
+                tabNode.setAccessibleText(duplicated ? qualified(tab) : tab.title());
+            }
             // tooltip **永远**给全名：不重名不代表不用告诉用户这张表在哪个库。
             // ⚠️ 标签是 HBox（不是 Control），没有 setTooltip —— 用静态的
             //    Tooltip.install(node, tooltip)，它接受任意 Node。
@@ -339,6 +347,22 @@ public final class TabBar extends HBox {
         return tooltip == null ? null : tooltip.getText();
     }
 
+    /** 方向键在标签之间移动：焦点按视觉顺序走，并同步激活（Tab 控件的惯例）。 */
+    private void stepTabFocus(Node from, int delta) {
+        List<Node> visual = new ArrayList<>(tabs.getChildren());
+        int index = visual.indexOf(from);
+        if (index < 0 || visual.isEmpty()) {
+            return;
+        }
+        Node target = visual.get(Math.floorMod(index + delta, visual.size()));
+        target.requestFocus();
+        nodes.entrySet().stream()
+                .filter(entry -> entry.getValue() == target)
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .ifPresent(this::activate);
+    }
+
     private Node buildTab(TabItem tab) {
         // ⭐ 矢量图标（16×16）；标签栏是用户一直在看的地方，不能靠 Unicode 符号的字形运气。
         SVGPath icon = Icons.of(tab.kind().icon(), Icons.SIZE_LABEL);
@@ -383,7 +407,22 @@ public final class TabBar extends HBox {
         tooltips.put(tab.id(), tooltip);
         Tooltip.install(node, tooltip);
         node.setAlignment(Pos.CENTER_LEFT);
+        // ⭐ P7：标签是 HBox（不是 Button），默认不可聚焦 —— 键盘用户根本到不了
+        //    标签栏。补上 Tab 停靠点、TAB_ITEM 角色与 Enter/Space、左右方向键。
+        node.setFocusTraversable(true);
+        node.setAccessibleRole(AccessibleRole.TAB_ITEM);
+        node.setAccessibleText(tab.title());
+        node.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.ENTER || event.getCode() == KeyCode.SPACE) {
+                activate(tab.id());
+                event.consume();
+            } else if (event.getCode() == KeyCode.LEFT || event.getCode() == KeyCode.RIGHT) {
+                stepTabFocus(node, event.getCode() == KeyCode.LEFT ? -1 : 1);
+                event.consume();
+            }
+        });
         node.setOnMouseClicked(event -> {
+            node.requestFocus();
             if (event.getButton() == javafx.scene.input.MouseButton.MIDDLE) {
                 close(tab.id());
             } else {

@@ -5,12 +5,16 @@ import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.Region;
 import javafx.stage.Stage;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.testfx.api.FxRobot;
@@ -20,6 +24,7 @@ import org.testfx.util.WaitForAsyncUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.prefs.Preferences;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -41,6 +46,20 @@ class TableListPageTest {
     private final List<String> selections = new ArrayList<>();
     /** 报给右侧「对象详情面板」的表名；{@code null} = 没有单一对象可看。 */
     private final List<String> inspected = new ArrayList<>();
+    /** P2-1：列宽偏好用独立作用域，跑完清掉，别污染真实用户偏好。 */
+    private final String layoutScopePrefix = "p21-" + System.nanoTime();
+
+    @AfterEach
+    void removeLayoutPreferences() throws Exception {
+        Preferences preferences = Preferences.userNodeForPackage(SettingsStore.class);
+        String prefix = "ui.tablelist." + layoutScopePrefix;
+        for (String key : preferences.keys()) {
+            if (key.startsWith(prefix)) {
+                preferences.remove(key);
+            }
+        }
+        preferences.flush();
+    }
 
     private final TableListPage.Host host = new TableListPage.Host() {
         @Override
@@ -251,6 +270,18 @@ class TableListPageTest {
                 .anyMatch(text -> text.contains("InnoDB"))
                 .anyMatch(text -> text.contains("2026-02-01"))
                 .anyMatch(text -> text.equals("用户表"));
+
+        // 卡片只有 220px 宽，注释一定被截断 —— 悬停必须能读到全文。
+        Label comment = page.lookupAll(".adb-table-card__comment").stream()
+                .filter(Label.class::isInstance)
+                .map(Label.class::cast)
+                .filter(label -> "用户表".equals(label.getText()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("卡片上找不到注释行"));
+        assertThat(comment.getTooltip())
+                .as("卡片里的长注释也要有 tooltip")
+                .isNotNull();
+        assertThat(comment.getTooltip().getText()).isEqualTo("用户表");
     }
 
     @Test
@@ -301,6 +332,26 @@ class TableListPageTest {
 
         robot.interact(() -> button("#table-list-design").fire());
         assertThat(designed).containsExactly("users");
+    }
+
+    /**
+     * 窄窗口下动作名不许被压成「打开…」：挤不下时该缩的是搜索框。
+     *
+     * <p>2026-10-25 截图对比发现：1280 宽窗口里清单工具条把五个文字按钮压到省略号，
+     * 而同排「导入 / 导出」因为显式设了 {@code minWidth} 完好 —— 一眼能看出不是「设计如此」。
+     *
+     * <p>⚠️ 无头环境（未挂 app.css）复现不出同样的挤压，所以这里守**机制**
+     * （最小宽度 = 首选宽度），渲染结果由截图核对。
+     */
+    @Test
+    void toolbarLabelsAreNotAllowedToShrinkIntoAnEllipsis() {
+        for (String id : List.of("#table-list-open", "#table-list-design",
+                "#table-list-new", "#table-list-drop", "#table-list-refresh",
+                "#table-list-transfer")) {
+            assertThat(button(id).getMinWidth())
+                    .as("%s 的文字不能被压成省略号", id)
+                    .isEqualTo(Region.USE_PREF_SIZE);
+        }
     }
 
     // ─────────────────────── N2 右键菜单 ───────────────────────
@@ -477,5 +528,84 @@ class TableListPageTest {
 
     private Button button(String selector) {
         return (Button) page.lookup(selector);
+    }
+
+    // ─────────────────────── 第二十二轮 P2-1 清单可读性 ───────────────────────
+
+    /**
+     * 列宽要按连接记住：拖宽「引擎」后重开清单仍是那个宽度；
+     * 换一个连接不能继承别人的布局。
+     */
+    @Test
+    void columnWidthsAreRememberedPerConnection() {
+        SettingsStore settings = new SettingsStore();
+        String scope = layoutScopePrefix + "-a";
+        TableListPage first = pageWithLayout(settings, scope);
+
+        TableColumn<?, ?> engine = first.table().getColumns().get(3);
+        engine.setPrefWidth(222);
+        first.persistColumnWidthsForTest();
+
+        assertThat(settings.getInt("ui.tablelist." + scope + ".width.engine", -1))
+                .as("拖完的列宽要落盘")
+                .isEqualTo(222);
+
+        TableListPage reopened = pageWithLayout(settings, scope);
+        assertThat(reopened.table().getColumns().get(3).getPrefWidth())
+                .as("重开同一连接的清单要恢复列宽")
+                .isEqualTo(222);
+
+        TableListPage other = pageWithLayout(settings, layoutScopePrefix + "-b");
+        assertThat(other.table().getColumns().get(3).getPrefWidth())
+                .as("另一个连接必须用默认列宽，不能串用")
+                .isEqualTo(100);
+    }
+
+    /**
+     * 注释列被列宽截断时，tooltip 必须给全文；占位符「—」不挂 tooltip。
+     */
+    @Test
+    void longCommentsAreReachableThroughATooltip(FxRobot robot) {
+        String longComment = "这是表清单里的一条长注释：列宽一定放不下，"
+                + "但用户必须能从悬停提示里读到完整内容。";
+        robot.interact(() -> page.render(List.of(
+                new TableMeta("documented", 1L, 2048L, "InnoDB",
+                        null, null, null, longComment),
+                new TableMeta("blank", 1L, 2048L, "InnoDB",
+                        null, null, null, null))));
+        WaitForAsyncUtils.waitForFxEvents();
+        robot.interact(() -> {
+            page.applyCss();
+            page.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        TableCell<?, ?> documented = commentCell(longComment);
+        assertThat(documented.getTooltip())
+                .as("长注释被截断时必须给 tooltip")
+                .isNotNull();
+        assertThat(documented.getTooltip().getText())
+                .as("tooltip 给的是全文，不是截断后的显示串")
+                .isEqualTo(longComment);
+
+        assertThat(commentCell("—").getTooltip())
+                .as("「—」表示没有注释，不该再弹一个 tooltip 解释它")
+                .isNull();
+    }
+
+    private TableListPage pageWithLayout(SettingsStore settings, String scope) {
+        return new TableListPage(null, null, command -> { }, opened::add, messages::add,
+                null, host, "list", null, settings, scope);
+    }
+
+    private TableCell<?, ?> commentCell(String text) {
+        return page.table().lookupAll(".table-cell").stream()
+                .filter(TableCell.class::isInstance)
+                .map(node -> (TableCell<?, ?>) node)
+                .filter(cell -> cell.getTableColumn() != null
+                        && "注释".equals(cell.getTableColumn().getText()))
+                .filter(cell -> text.equals(cell.getText()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("找不到注释列的单元格：" + text));
     }
 }

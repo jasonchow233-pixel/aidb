@@ -155,7 +155,7 @@ class NewTableDialogTest {
         String label = onFx(session::label);
 
         List<String> texts = onFx(() -> dialog.dialog().getDialogPane().getContent()
-                .lookupAll(".adb-new-table__context")
+                .lookupAll(".adb-dialog__context")
                 .stream()
                 .map(node -> ((javafx.scene.control.Labeled) node).getText())
                 .toList());

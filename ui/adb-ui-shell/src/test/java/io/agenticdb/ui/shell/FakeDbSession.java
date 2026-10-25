@@ -48,9 +48,14 @@ final class FakeDbSession implements DbSession {
         return null;
     }
 
+    /**
+     * 与真实会话同型：{@code JdbcSession} 的标签是「方言 · 库」。
+     * 界面把它当一整块上下文显示，替身也得带上方言 —— 否则弹窗标题栏的
+     * 断言会去查一个真实界面上根本不存在的位置。
+     */
     @Override
     public String label() {
-        return "fake";
+        return dialect.displayName() + " · fake-db";
     }
 
     @Override

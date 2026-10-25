@@ -6,7 +6,6 @@ import io.agenticdb.jdbc.DbSession;
 import javafx.application.Platform;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
-import javafx.scene.control.TextArea;
 import javafx.scene.control.TextInputDialog;
 import javafx.stage.Window;
 
@@ -125,6 +124,9 @@ final class TableDdl {
         if (owner.get() != null) {
             dialog.initOwner(owner.get());
         }
+        // ⭐ 重命名框是 TextInputDialog（也是 Dialog）：不套主题就是 Modena 灰皮肤，
+        //    和同一页上「新建表 / 新建索引」两个弹窗明显不是一套东西（§七）。
+        DialogStyles.apply(dialog, owner.get());
         Optional<String> answer = dialog.showAndWait();
         if (answer.isEmpty()) {
             status.accept("已取消重命名");
@@ -139,6 +141,7 @@ final class TableDdl {
             if (owner.get() != null) {
                 alert.initOwner(owner.get());
             }
+            DialogStyles.apply(alert, owner.get());
             alert.showAndWait();
             return;
         }
@@ -243,28 +246,10 @@ final class TableDdl {
         });
     }
 
-    /** 批量删除的失败明细 —— 状态栏一行放不下，给一份可复制的报告。 */
+    /** 批量删除的失败明细 —— 状态栏一行放不下，给一份可复制的汇总报告。 */
     private void showFailureReport(int total, int deleted, List<String> failures) {
-        // 单测 / 无窗口环境没有 owner —— 不弹模态框（否则测试会一直等）。
-        if (owner.get() == null) {
-            return;
-        }
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle("删除表");
-        alert.setHeaderText("已删除 " + deleted + "/" + total + " 张表，"
-                + failures.size() + " 张失败");
-        TextArea area = new TextArea(String.join("\n", failures));
-        area.setEditable(false);
-        area.setWrapText(true);
-        area.setId("batch-drop-failures");
-        area.setPrefRowCount(Math.min(12, Math.max(3, failures.size() + 1)));
-        alert.getDialogPane().setContent(area);
-        alert.getDialogPane().getButtonTypes().setAll(ButtonType.OK);
-        if (owner.get() != null) {
-            alert.initOwner(owner.get());
-        }
-        DialogStyles.apply(alert, owner.get());
-        alert.showAndWait();
+        BatchSummaryDialog.show(owner.get(),
+                BatchSummary.of("删除表", "删除", "张表", total, deleted, failures));
     }
 
     /** 表名的校验（重命名时用；建表走 {@link StructureSqlBuilder#createTable}）。 */

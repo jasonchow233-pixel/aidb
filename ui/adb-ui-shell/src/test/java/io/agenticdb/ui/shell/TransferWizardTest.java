@@ -6,6 +6,8 @@ import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.JdbcSession;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnType;
+import io.agenticdb.transfer.ExportFormat;
+import io.agenticdb.transfer.ImportFormat;
 import javafx.application.Platform;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
@@ -273,6 +275,61 @@ class TransferWizardTest {
         }
     }
 
+    @Test
+    void exportAndImportXlsxThroughTheWizards() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("demo9.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            Path file = temp.resolve("users.xlsx");
+            ExportWizard export = onFx(() -> new ExportWizard(session, "users",
+                    List.of("id", "name"), ExportWizard.Scope.WHOLE_TABLE, file,
+                    executor, message -> { }));
+            onFxRun(() -> {
+                ComboBox<ExportFormat> formats = (ComboBox<ExportFormat>)
+                        export.content().lookup("#export-format");
+                formats.getSelectionModel().select(ExportFormat.XLSX);
+                ((TextField) export.content().lookup("#export-target"))
+                        .setText(file.toString());
+                clickButton(export, "export-start");
+            });
+
+            assertThat(waitForFile(file, 5000)).as("xlsx 文件应当被写出来").isTrue();
+            assertThat(Files.readAllBytes(file)[0])
+                    .as("xlsx 是 zip 容器，首字节应该是 P")
+                    .isEqualTo((byte) 'P');
+
+            session.execute("CREATE TABLE users_copy (id INTEGER PRIMARY KEY, name TEXT)");
+            List<ColumnDef> columns = List.of(
+                    new ColumnDef("id", ColumnType.NUMBER, false, true, null, null,
+                            null, null, null, null, false, "INTEGER"),
+                    new ColumnDef("name", ColumnType.TEXT, false, false, null, null,
+                            null, null, null, null, false, "TEXT"));
+            ImportWizard importWizard = onFx(() -> new ImportWizard(session, "users_copy",
+                    columns, List.of("users_copy"), file, executor, message -> { }));
+            onFxRun(() -> {
+                ComboBox<ImportFormat> formats = (ComboBox<ImportFormat>)
+                        importWizard.content().lookup("#import-format");
+                formats.getSelectionModel().select(ImportFormat.XLSX);
+                importWizard.refreshPreview();
+            });
+
+            TextArea preview = onFx(() ->
+                    (TextArea) importWizard.content().lookup("#import-preview"));
+            assertThat(preview.getText()).as("预览应走 xlsx 读取路径").contains("User 001");
+
+            onFxRun(() -> ((javafx.scene.control.Button)
+                    importWizard.content().lookup("#import-start")).fire());
+            assertThat(waitForLabel(importWizard.content(), "#import-summary",
+                    "已导入", 5000)).isTrue();
+            assertThat(session.query("SELECT COUNT(*) AS c FROM users_copy", 1)
+                    .rows().getFirst().get("c")).isEqualTo(200);
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
     // ───────────────────────────── 工具 ─────────────────────────────
 
     private static void clickButton(ExportWizard wizard, String id) {
@@ -283,11 +340,17 @@ class TransferWizardTest {
 
     private static boolean waitForSummary(ExportWizard wizard, String fragment, long millis)
             throws InterruptedException {
+        return waitForLabel(wizard.content(), "#export-summary", fragment, millis);
+    }
+
+    private static boolean waitForLabel(javafx.scene.layout.VBox content, String id,
+                                        String fragment, long millis)
+            throws InterruptedException {
         long deadline = System.currentTimeMillis() + millis;
         while (System.currentTimeMillis() < deadline) {
             AtomicReference<String> text = new AtomicReference<>();
             Platform.runLater(() -> text.set(
-                    ((Label) wizard.content().lookup("#export-summary")).getText()));
+                    ((Label) content.lookup(id)).getText()));
             WaitForAsyncUtils.waitForFxEvents();
             if (text.get() != null && text.get().contains(fragment)) {
                 return true;

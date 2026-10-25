@@ -72,7 +72,7 @@ class AppBarTest {
     }
 
     private static ConnectionProfile profile(String id, String name, DialectKind kind) {
-        return new ConnectionProfile(id, name, kind, "", 0, "", "", false, 0, Map.of());
+        return new ConnectionProfile(id, name, kind, "", 0, "", "", false, 0, "", Map.of());
     }
 
     @Test

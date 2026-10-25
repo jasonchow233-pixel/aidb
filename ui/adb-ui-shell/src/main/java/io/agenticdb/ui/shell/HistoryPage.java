@@ -29,7 +29,8 @@ public final class HistoryPage extends VBox {
 
     private final QueryHistory history;
     private final Consumer<String> onUse;
-    private final ListView<String> list = new ListView<>();
+    /** ⭐ P2-3：列表显示「时间 · SQL」；悬停给完整 SQL + 连接 / 表。 */
+    private final ListView<QueryHistory.Entry> list = new ListView<>();
     /** ⭐ E8：空态用统一的 {@link EmptyState}（图标 + 标题 + 说明），不再是一行字。 */
     private final EmptyState empty = EmptyState.of(Icons.Icon.HISTORY, "还没有执行过 SQL",
             "执行过的语句会出现在这里：最近 50 条，去重后落本地偏好，重启还在。");
@@ -61,24 +62,24 @@ public final class HistoryPage extends VBox {
 
         list.setCellFactory(view -> new ListCell<>() {
             @Override
-            protected void updateItem(String item, boolean isEmpty) {
+            protected void updateItem(QueryHistory.Entry item, boolean isEmpty) {
                 super.updateItem(item, isEmpty);
                 if (isEmpty || item == null) {
                     setText(null);
                     setTooltip(null);
                     return;
                 }
-                setText(item.length() > 160 ? item.substring(0, 160) + "…" : item);
-                setTooltip(new Tooltip(item));
+                setText(item.summary());
+                setTooltip(new Tooltip(item.detail()));
             }
         });
 
         use.setId("history-use");
         use.getStyleClass().addAll("adb-button", "adb-button--primary");
         use.setOnAction(event -> {
-            String sql = list.getSelectionModel().getSelectedItem();
-            if (sql != null && onUse != null) {
-                onUse.accept(sql);
+            QueryHistory.Entry entry = list.getSelectionModel().getSelectedItem();
+            if (entry != null && onUse != null) {
+                onUse.accept(entry.sql());
             }
         });
 
@@ -103,7 +104,7 @@ public final class HistoryPage extends VBox {
 
     /** 重新读一次历史（每次打开标签页都调）。 */
     public void refresh() {
-        List<String> items = history.recent();
+        List<QueryHistory.Entry> items = history.entries();
         list.getItems().setAll(items);
         boolean none = items.isEmpty();
         list.setVisible(!none);

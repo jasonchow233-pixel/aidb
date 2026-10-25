@@ -45,7 +45,7 @@ class SidebarSelectionTest {
     void start(Stage stage) {
         ActionRegistry actions = new ActionRegistry();
         ConnectionProfile demo = new ConnectionProfile("demo", "演示库",
-                DialectKind.SQLITE, "localhost", 0, "db", "u", false, 0, java.util.Map.of());
+                DialectKind.SQLITE, "localhost", 0, "db", "u", false, 0, "", java.util.Map.of());
         List<SchemaService.SchemaObject> objects = List.of(
                 new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE));
         sideBar = new SideBar(actions, objects, "演示库", tab -> { }, message -> { },

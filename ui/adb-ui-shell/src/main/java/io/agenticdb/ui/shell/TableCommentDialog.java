@@ -62,7 +62,7 @@ final class TableCommentDialog {
 
     private void buildUi() {
         dialog.setTitle("表注释");
-        // ⭐ V-11：弹窗宽度走三档规范（DialogSizes）。
+        // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
         dialog.getDialogPane().setPrefWidth(DialogSizes.FORM);
         dialog.getDialogPane().setMinWidth(DialogSizes.FORM);
 
