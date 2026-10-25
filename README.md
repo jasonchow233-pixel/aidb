@@ -9,10 +9,10 @@
 
 ---
 
-## 当前状态（2026-10-24）
+## 当前状态（2026-10-25）
 
-**P0–P4 已完成、P5/P6 进行中、界面专项 U-B1–U-B7 已落地。**
-门禁 **754 条 / 97 类 / 0 失败**（2026-10-24 · 第二十二轮 Windows 实机实测；另有 44 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
+**P0–P6 已完成、UIUX 专项 UX-0…UX-6 已全部收官、P7 能自动化的部分已收尾、UI/UX 重构任务书 V1.0（U-ICON / U-CTRL / U-IDX / U-POLISH）已落地。**
+门禁 **913 条 / 116 类 / 0 失败**（2026-10-25 · 第二十七轮 Windows 实机实测；另有 48 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
 
 > **第八轮之后**：D2+D4（MySQL/PG 列注释读回）已修；B5-S1（索引可编辑）已落地；
 > **T1–T4（建表 / 清空 / 重命名 / 删表）已落地**（T1=弹窗，按形态裁定）；9 张验收截图完成。
@@ -26,7 +26,12 @@
 > - 其余遗留：B5-S2/S3、B5-S4/O1/O2、U-B6、空白态 E5–E9、架构收尾 A10/A12/A15/A16。
 >
 > 完整清单见 `NAVICAT-TODO.md`；逐域对比见 `docs/NAVICAT-GAP.md` §7；
-> **下一阶段 UIUX 升级（UX-0…UX-6）见 `NAVICAT-TODO.md` §34 与 `docs/UI-ROADMAP.md` §12**。
+> **UIUX 升级 UX-0…UX-6 已全部落地（2026-10-25）**，见 `NAVICAT-TODO.md` §34 与 `docs/UI-ROADMAP.md` §12；
+> 截图与 Navicat 最终对比见 `docs/NAVICAT-COMPARE.md` §11；
+> **P7 分发收尾（第二十六轮，`NAVICAT-TODO.md` §35）**：启动可观测性 `StartupTrace` +
+> 可访问性（六区焦点顺序 / 标签与切面键盘可达 / 逐页可朗读名称）已落地；
+> **冷启动 <2s 未达标（实测 3.5–3.9 s，成本已归因）**；jlink ⛔（自动模块）·
+> 自动更新 🚫（无发布渠道）· 签名/公证 ⛔（缺证书）—— 逐条理由写在 §35。
 
 | 能力 | 状态 | 证据 |
 |---|---|---|
@@ -53,7 +58,8 @@
 | 行内编辑、类型转换、按主键定位 | ✅ | `ValueCell` + `RowIdentity` |
 | NULL / 空串独立操作 | ✅ | 单元格右键 + 批量条 |
 | `EditBuffer`、撤销/重做、脏标记、关闭确认 | ✅ | `adb-editing` |
-| 导入导出向导（流式 CSV/TSV/JSON/SQL，字段映射，坏行报告） | ✅ | `adb-transfer` |
+| 导入导出向导（流式 CSV/TSV/JSON/SQL/xlsx，字段映射，按目标列类型转换，坏行报告） | ✅ | `adb-transfer` |
+| 查询结果导出：本页 / 选中行 / 全部结果（CSV / TSV / JSON / SQL / xlsx） | ✅ | `QueryPage` 导出菜单 + `TableExporter.exportSql` |
 | 新增行 / 删除 / 克隆（草稿行、一次撤销） | ✅ | 淡绿新增、淡红删除、`●` 脏行 |
 | 多选 + 批量条：TSV / INSERT / 克隆 / 设 NULL / 设空串 / 删除 | ✅ | 表头全选仅当前页 |
 | SQL 预览 → 单事务保存 → 刷新 → Toast 反向撤销 | ✅ | `EditSqlBuilder` + `DataGridPage` |
@@ -84,21 +90,33 @@
 | **语句超时**（30s，超时给建议）+ **连接池归还** | ✅ | `QueryLimits` / `JdbcSession` / `ConnectionPool` |
 | **错误归类**（连接断开/权限/不存在/超时/锁/约束/语法） | ✅ | `ErrorClassifier` / `ErrorClassifierTest` |
 | **代码片段库**（存选中的 SQL → 插入到光标处） | ✅ | `SavedQueries`（查询/片段两种类型） |
+| **侧栏「已保存查询」分组**（双击 / 回车 / 右键载入新查询） | ✅ | `SideBar.setSavedQuerySource` + `AppShell.openSavedQuery` |
+| **连接分组 / 重命名**（分组列、按分组搜索、侧栏文件夹） | ✅ | `ConnectionProfile.group` / `ConnectionStore` |
+| **对象首页列表 / 网格切换**（视图记忆、选中同步） | ✅ | `ObjectHomePage.showView` + `ui.objectHome.view` |
+| **数据页「概览」**（行数 / 大小 / 引擎 / 索引数 / 最近操作） | ✅ | `DataGridPage.buildOverview` + `SchemaService.indexCount` |
+| **结构页「选项」**（MySQL 引擎 / 排序规则 / 自增 / 行格式；其它方言「—」） | ✅ | `SchemaService.tableOptions` + `Dialect.tableOptionsSql` |
+| **查询历史带对象上下文**（连接 / 命中表 / 时间，按表筛） | ✅ | `QueryHistory.Entry` + 详情面板「最近操作」 |
 | **多连接并存**（每连接一条执行器，同连接串行、跨连接不互堵） | ✅ | `DbExecutors` / `SessionManager` |
 | **连接建立移出 UI 线程**（连接慢不再冻窗口） | ✅ | `AppShell.connectProfile` |
 | **崩溃日志**（`~/.agenticdb/logs/crash-*.log`） | ✅ | `CrashLog` |
+| **启动耗时日志**（`~/.agenticdb/logs/startup.log`：进程启动 → 首屏分段打点） | ✅ | `StartupTrace`（**注意：冷启动 <2s 目标未达成**，实测 3.5–3.9 s，见 `NAVICAT-TODO.md` §35.1） |
 | **一键出包**（jpackage：app-image / dmg / msi / deb） | ✅ | `scripts/package.sh` |
 | **连接属性页**（弹窗里套 TabPane：常规/SSL/高级） | ✅ | `ConnectionPropertiesDialog` |
 | 结构安全编辑：加列 / 改列 / 重命名列 / 删列 + 两级危险确认 | ✅ | `StructureSqlBuilder` + `StructurePlan` |
 | 结构变更单事务 + 失败回滚 + 全页面联动刷新 | ✅ | `StructurePage.applyPlan` |
 | 连接管理页：列表 / 搜索 / 收藏 / 打开 / 编辑 / 复制 / 删除 | ✅ | `ConnectionsPage` |
 | 三步连接向导：类型与名称 → 参数 → 测试与保存 | ✅ | `ConnectionWizard` |
-| 凭据存系统钥匙串 / Secret Service（不落盘） | ✅ | `KeychainCredentialStore` / `SecretToolCredentialStore` |
+| 凭据存系统凭据库（不落盘） | ✅ | `WindowsCredentialStore`（WinCred）/ `KeychainCredentialStore` / `SecretToolCredentialStore` |
 | 连接档案落盘 `~/.agenticdb/connections.json`（0600） | ✅ | `ConnectionStore` |
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
+| **键盘可达：六区焦点顺序 + 标签/切面键盘切换 + 逐页可朗读名称** | ✅ | `AccessibilityAuditTest`（第二十六轮）+ `TabBar` / `ObjectTabBar` / `ObjectHomePage` / `TableListPage` |
+| **启动耗时可观测（进程 → 首屏，分段打点 + 日志 + 关于回显）** | ✅ | `StartupTrace` + `StartupTraceTest`（**冷启动 <2s 未达标**：实测 3.5–3.9 s，见 `NAVICAT-TODO.md` §35.1） |
+| **Lucide 矢量图标 + 语义彩色**（对象类型/状态彩色，动作单色） | ✅ | `Icons`（第二十七轮）+ `LucideIconTest` |
+| **统一控件层：五档按钮 × 五态 + 输入/复选/下拉/清单/弹窗同套规则** | ✅ | `app.css` 控件段 + `UnifiedControlTest` |
+| **新建索引弹窗**（双列选择保序 + 方言能力门控 + SQL 预览即执行语句） | ✅ | `IndexDialog` + `IndexDialogTest` / `IndexDdlTest` |
 
-当前门禁：**754 条 / 97 类 / 0 失败**（2026-10-24 · 第二十二轮 Windows 实机实测；`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
+当前门禁：**913 条 / 116 类 / 0 失败**（2026-10-25 · 第二十七轮 Windows 实机实测；`./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`）；另有 48 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
 
 > ⚠️ **本机环境**：`java` 默认不在 PATH。可用的 JDK：
 > - Windows 10：`~/.jdks/openjdk-27.0.1.0.2`（pom 的 enforcer 区间为 `[25,28)`）
@@ -187,7 +205,7 @@ TestFX 默认用 Monocle 无头模式；在本机想看真实窗口，去掉父 
 
 | 文档 | 回答什么问题 |
 |---|---|
-| **`NAVICAT-TODO.md`** | ⭐ **唯一执行清单**：当前状态、P0–P4 完成项、P4.5 契约修复、P4.6 网格/查询进阶、P5–P7 路线与门禁、**§14 第六轮全量核查（4 个缺陷 + 表级生命周期空白）** |
+| **`NAVICAT-TODO.md`** | ⭐ **唯一执行清单**：当前状态、P0–P6 + UX-0…UX-6 完成项、P4.5 契约修复、P7 剩余路线与门禁、**§34 收官批次记录**、**§35 P7 分发收尾（启动成本归因 + 可访问性 + 逐条裁定）** |
 | **`docs/NAVICAT-GAP.md`** | ⭐ **对标分析**：与 Navicat 逐域对比，列出功能/交互/按钮/弹窗/图标/架构的差距与优先级；含**逐文件复核发现的 16 处文档失真** |
 | `docs/ARCHITECTURE.md` | 模块、数据流、线程模型、编辑/SQL/撤销不变量、结构页与连接层模型 |
 | `docs/UI-GUIDE.md` | 视觉基线、五区、组件与交互规则、令牌生成、图标约定、弹窗规范 |
@@ -288,12 +306,21 @@ bootstrap/
 - ✅ **函数 / 过程定义体可看**（第十一轮·续二，只读标签页）；⚠️ SQLite 没有 SQL 层函数。
 - ⚠️ **点对象首页的「函数 / 过程 / 触发器」会被告知暂不支持**（D1 已修，不再报错，
   但还不能看定义体）。
-- 结构页的索引已可编辑；**外键、触发器仍只读**（且没有右键菜单）。
+- ✅ **外键 / 触发器可增删**（第十一轮 B5-S2/S3，弹窗 + 实时 SQL 预览）；结构页的列 / 索引 /
+  外键 / 触发器 / CHECK 都已可编辑。
 - 表注释 / 外键 / 触发器 / CHECK / 函数·过程定义体均已支持；MySQL EVENT 已建模；
   剩余的是视图增删改（V1）与表清单工具条的新建/删除/设计入口（N1–N3）。
-- 导入导出已实现（CSV/TSV/JSON/SQL 导出 + CSV/TSV 导入）；**xlsx 还没有**；导入暂按字符串绑列，类型不匹配的行会跳过并报告。
+- ✅ **导入导出已补齐**（P6-1 / P6-2 / P6-3）：CSV / TSV / JSON Lines / SQL 导出 + 查询结果三档导出
+  （本页 / 选中 / 全部）、**xlsx 导入导出**（POI SXSSF 流式写 + SAX 流式读，与 CSV 共用同一条 `Ingest`）、
+  导入按目标列**类型转换**（数字 / 布尔 / 日期含中文格式，空值→NULL），坏行带列名与原文。
 - 侧栏的查询历史 / 诊断 / 导入导出 / 已保存查询四个入口都已接真功能。
 - **MySQL 5.7.44 真库已联调**（9 例）；**PostgreSQL 仍缺测试库**（未配置，跳过）。
+- ⚠️ **冷启动未达标**：目标 < 2 s，实测 **3.5–3.9 s**（Windows 10 + JDK 27，`StartupTrace` 打点）。
+  地板来自 JVM/Toolkit ~0.95 s + 第一个 JavaFX 控件（Modena 样式表解析）~0.5 s +
+  `stage.show()` 首趟 CSS/布局 ~0.86 s；**AppCDS 在开发启动路径试过不通**。→ §35.1
+- ⚠️ **没有自动更新 / 版本检查**（无发布渠道 + 离线环境 + 无安装包签名）；
+  **签名与公证未做**（需 Apple Developer ID 与 Windows 代码签名证书，属外部资源）；
+  **jlink 自定义运行时不可行**（RichTextFX / ControlFX 是自动模块）。→ §35.2
 - `core/adb-declarations` 与根目录 `declarations/` 已于 2026-10-24 删除（运行时从未引用；
   方言差异现由 `Dialect` 抽象层承担），基线因此减少 43 条测试。
 - 主题“跟随系统”目前只探测 macOS；Windows/Linux 默认亮色。

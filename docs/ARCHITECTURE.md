@@ -34,16 +34,20 @@ workbench/
   adb-introspect     对象列表、列定义、主键、行数、分页/排序/筛选 SQL 构造
                       ＋ 结构内省（IndexDef / ForeignKeyDef / TriggerDef / TableStructure）
                       ＋ 结构变更 SQL 生成（StructureSqlBuilder / StructurePlan）
+                      ＋ P5-4 补齐：序列、getExportedKeys、DEFAULT / COMMENT / CHECK 读回
+                      ＋ TableOptions（引擎 / 排序规则 / 自增 / 行格式，只读）
   adb-session        连接档案（ConnectionProfile / ConnectionStore）
                       ＋ 凭据（CredentialStore / Keychain / SecretTool）
                       ＋ 连接池（HikariCP 包装）
   adb-editing        RowIdentity / CellKey / EditBuffer / EditSqlBuilder
-  adb-transfer       导入导出引擎：流式 CSV/TSV 编解码、四种导出格式、字段映射与坏行报告
+  adb-transfer       导入导出引擎：流式 CSV/TSV/JSON/SQL、xlsx（SXSSF 写 / SAX 读）、
+                     查询结果导出、按目标列类型转换、字段映射与坏行报告
 
 ui/
-  adb-ui-core        tokens.json → Tokens.java + theme-dark/light.css；主题管理
+  adb-ui-core        tokens.json → Tokens.java + theme-dark/light.css；主题管理；启动打点 StartupTrace
   adb-ui-shell       六区外壳、菜单、工具栏、侧栏、标签栏、命令面板
-                     ＋ 数据页 / 查询页 / 结构页 / 连接页 / 连接向导
+                      ＋ 数据页 / 查询页 / 结构页 / 连接页 / 连接向导
+                      ＋ UX-6：数据页「概览」切面、结构页「选项」、侧栏「已保存查询」
 
 testing/
   adb-fixtures       固定种子演示库与测试夹具
@@ -79,24 +83,27 @@ Launcher
        ├─ ThemeManager（SettingsStore / java.util.prefs）
        ├─ SessionManager → JdbcSession（SQLite）/ ConnectionPool（PG、MySQL）
        ├─ SchemaService.listObjects() → SideBar
+       ├─ SideBar「已保存查询」分组（SavedQueries → 点击开查询页）
        └─ TabBar / WorkspaceView
             ├─ DataGridPage（按 tab id 缓存）
             │    ├─ SchemaService.describe()
             │    ├─ DataSqlBuilder.page() → DbSession.query()
+            │    ├─ 「概览」：TableMeta + SchemaService.indexCount() + QueryHistory 最近操作
             │    ├─ EditBuffer（内存中的单元格/删除/草稿）
             │    └─ EditSqlBuilder.plan() → 预览 → 事务执行
             ├─ QueryPage（按 tab id 缓存）
             │    ├─ SqlLexer / SqlSplitter / SqlFormatter
             │    ├─ DangerClassifier → 写操作确认
             │    ├─ DbSession.execute() → ExecutionResult（单条语句）
-            │    └─ 结果 / 消息 / 错误页签 → CellRenderer / CsvExporter
+            │    └─ 结果 / 消息 / 错误页签 → CellRenderer；导出本页/选中/全部（P6-2）
             ├─ StructurePage
             │    ├─ SchemaService.structure() → TableStructure
+            │    ├─ 「选项」页签：TableOptions（MySQL 真值，其它方言「—」）
             │    ├─ StructureSqlBuilder.plan() → 两级确认 → 单事务执行
             │    └─ 变更回调 → AppShell.schemaChanged → 刷新对象树与所有已开页面
             └─ ConnectionsPage / ConnectionWizard
                  ├─ ConnectionStore（~/.agenticdb/connections.json）
-                 ├─ CredentialStore（Keychain / Secret Service / 内存）
+                 ├─ CredentialStore（WinCred / Keychain / Secret Service / 内存）
                  └─ ConnectionPool.open(spec) → 测试连接
 ```
 
@@ -109,14 +116,12 @@ Launcher
 5. 查询页先用 `SqlSplitter` 在 UI 线程分句，再把每条语句依次提交到 `adb-db`；任务带请求序号，取消或重跑后迟到回调直接丢弃。
 6. `DbSession.cancelCurrent()` 调用当前 `Statement.cancel()`；SQLite 驱动不支持时，任务仍会在当前语句结束后退出。
 
-**已知例外（待 P4.5 / P5 修）**：
+**P4.5 之后的线程与取消模型**：
 
-- `AppShell.connectProfile` 与 `AppShell.testConnection` 在 **JavaFX 线程**上同步做
-  `SessionManager.open` + `SchemaService.listObjects` / `SELECT 1`。
-- `JdbcSession.activeStatement` **只在 `execute()` 里赋值**，`query()` / `update()` 不赋值 ——
-  因此数据页的加载与保存**无法真正取消 JDBC 语句**，只能逻辑放弃。
-- 全局只有一个 `adb-db` 线程：A 连接上的慢查询会阻塞 B 连接。
-- `AppShell.connectProfile` 打开新会话时**不关闭旧会话** → 每切换一次连接就多留一条活连接。
+- 连接建立与内省在**每条连接自己的执行器**上跑（A15/A16），A 连接上的慢查询不再阻塞 B 连接。
+- `JdbcSession` 的 `execute()` / `query()` / `update()` 都记录 `activeStatement`（4.5-13），
+  `⌘.` 取消会真的调用 `Statement.cancel()`，不再只是逻辑放弃。
+- 唯一的同步例外是 `AppShell.testConnection`：连接对话框里的 `SELECT 1` 就地执行（短探测）。
 
 ### 3.1 线程模型的整改方向
 
@@ -178,10 +183,10 @@ Launcher
   由 `AppShell.schemaChanged` 刷新对象树与所有已打开的数据页 / 结构页。
 - 视图（`TableStructure.editable() == false`）整体只读。
 
-**已知缺口**：视图定义编辑、表选项（引擎 / 排序规则 / 自增步长）尚不可改；
+**已知缺口**：视图定义编辑、表选项（引擎 / 排序规则 / 自增步长 / 行格式）**只读展示、尚不可改**；
 分区、表空间等运维属性不在首版范围。
 （索引 / 外键 / 触发器已可增删；建表 / 清空 / 重命名 / 删表已落地；
-CHECK 约束已内省并随重建搬运；PG 的 DEFAULT / COMMENT 已读回。）
+CHECK 约束已内省并随重建搬运；PG 的 DEFAULT / COMMENT / 序列 / `getExportedKeys` 已读回。）
 
 ---
 
@@ -189,16 +194,17 @@ CHECK 约束已内省并随重建搬运；PG 的 DEFAULT / COMMENT 已读回。�
 
 | 组件 | 职责 |
 |---|---|
-| `ConnectionProfile` | 连接元数据。**⛔ 不含口令**；`options` 是自由 Map（当前会明文落盘，待脱敏） |
+| `ConnectionProfile` | 连接元数据。**⛔ 不含口令**；`options` 是自由 Map，落盘前剔除敏感键 |
 | `ConnectionStore` | `~/.agenticdb/connections.json`；0600 + 临时文件原子替换；损坏时回退为空列表 |
-| `CredentialStore` | 口令接口。`platform()` 依次尝试 macOS `security` → Linux `secret-tool` → 内存 |
+| `CredentialStore` | 口令接口。`platform()` 依次尝试 Windows WinCred → macOS `security` → Linux `secret-tool` → 内存 |
 | `ConnectionPool` | HikariCP 包装，池大小固定 1（保持单连接串行语义）；SQLite 直连不池化 |
 | `SessionManager` | 按 id 管理多个会话；SQLite → `JdbcSession`，PG/MySQL → `ConnectionPool` |
 
-**已知缺口**：
+**已收口的安全项**：macOS 口令走 stdin（A13）、`options` 敏感键脱敏且不再覆盖口令（A14）、
+Windows 走系统凭据管理器（P5-2，JNA `advapi32`，blob 为 UTF-16LE，条目名
+`io.agenticdb.connection/<profileId>`）。
 
-- macOS 写钥匙串时口令经 `-w <password>` 进 argv（`ps` 可见）。
-- Windows 无凭据后端（落内存）。
+**已知缺口**：
 - ⚠️ **`ConnectionPool` 不是池**：`getConnection()` 借出后全程不归还，`idleTimeout` /
   `maxLifetime` 形同虚设；每个连接档案一个 `HikariDataSource`。
 - ⚠️ **切连接泄漏会话**：`AppShell.connectProfile` 开新会话不关旧会话。
@@ -390,9 +396,9 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 |---|---|
 | P0–P3 ✅ | 外壳、竖线、数据页、查询页 |
 | P4 ✅ | 结构页：列/索引/外键/触发器/DDL 查看与安全的列级编辑 |
-| P4.5 🟡 | 契约修复：快捷键补齐、结果截断提示、危险分级收紧、图标统一、动作注册表收口 |
-| P5 ⬜ | 连接管理收尾：多连接并行、凭据后端、属性页、方言抽象层、PG/MySQL 真联调、声明层去留 |
-| P6 ⬜ | 导入/导出向导：CSV / JSON / Excel、字段映射、预览、批处理 |
+| P4.5 ✅ | 契约修复：快捷键补齐、结果截断提示、危险分级收紧、图标统一、动作注册表收口 |
+| P5 ✅ | 连接管理收尾：多连接并行、凭据后端（WinCred / Keychain / Secret Service）、属性页、方言抽象层、PG/MySQL 真联调、声明层删除 |
+| P6 ✅ | 导入/导出：CSV/TSV/JSON/SQL/xlsx、字段映射、类型转换、坏行报告、查询结果导出 |
 | P7 ⬜ | 打包分发、jlink / jpackage、自动更新、性能与可访问性收尾 |
 
 > **P4.5 的真实状态**（2026-10-21 第四轮逐文件复核）：

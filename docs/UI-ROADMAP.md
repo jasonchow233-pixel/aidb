@@ -3,8 +3,8 @@
 > **定位**：**「界面差在哪、差多少、改成什么样、做完怎么验」**。
 > `NAVICAT-TODO.md` 是唯一执行清单（逐条勾选）；本文是**界面专项的阶段规划**（批次 + 依赖 + 门禁）。
 >
-> 最后更新：**2026-10-24（第二十二轮：§12.2 UX-0…UX-4 与 S-7（品牌接应用栏 + 删不可达欢迎页）已落地，下一项 UX-5）**
-> 适用基线：**97 个测试类 / 754 条执行 / 44 条环境门控跳过 / 0 失败**
+> 最后更新：**2026-10-25（第二十七轮：UI/UX 重构任务书 V1.0 —— U-ICON Lucide 矢量图标 + 对象/状态语义彩色、U-CTRL 五档按钮×五态与控件统一、U-IDX §六 新建索引弹窗重建（方言能力门控）、U-POLISH 弹窗骨架统一并补掉 6 处漏套主题；批次、验收与 6 处如实偏差见 §13）**
+> 适用基线：**116 个测试类 / 913 条执行 / 48 条环境门控跳过 / 0 失败**
 >
 > | 批次 | 状态 | 结果 |
 > |---|---|---|
@@ -17,6 +17,7 @@
 > | **U-B7 侧栏 Navicat 模型** | ✅ | 单棵连接树 + 查询跟着连接走 + 品牌改造（第十六–十七轮） |
 > | **第十八轮 · 第二轮实测** | ✅ | 6 个截图实证缺陷已修；**C1–C7** 并入 `NAVICAT-TODO.md` **§29** |
 > | **第十九轮 · 批次 A（C1+C2）** | ✅ | **方言感知列**（看数据不看方言：全占位符才整列隐藏）+ **卡片去破折号**；表清单 8→2 列、对象首页 9→3 列；14 条门禁全变异验证 |
+> | **第二十七轮 · 任务书 V1.0** | ✅ | **U-ICON**（Lucide 矢量 + 对象/状态彩色）/ **U-CTRL**（五档按钮 × 五态、控件统一）/ **U-IDX**（§六 索引弹窗重建，方言能力门控）/ **U-POLISH**（弹窗骨架统一）；含 6 处如实偏差，见 §13 |
 >
 > ⭐ **剩余 C3–C6** 见 `NAVICAT-TODO.md` **§29**（C3 详情面板挤压 / C4 行距 / C5 树展开出列）；
 > **C7 欢迎页 mark 已于 S-7 结案** —— 那页不可达，品牌改挂应用栏（矢量 `Icons.Icon.BRAND`）。
@@ -725,10 +726,13 @@ java tools/TestCount.java      # 按 <testcase> 计数，断言总数 ≥ 300
 
 | 序 | 项 | 内容 | 门禁 |
 |---|---|---|---|
-| 1 | 对象首页列表/网格切换 | 复用 `TableListPage` 的卡片视图与 `ui.*.view` 记忆 | `ObjectHomePageTest` +2 |
-| 2 | 结构页「选项」页签 | MySQL：引擎 / 排序规则 / 自增 / 行格式；其它方言诚实显示「—」 | `StructurePageTest` +2；真库契约（无 Docker 则跳过，不计通过） |
-| 3 | 数据页「概览」页签 | 行数 / 大小 / 引擎 / 索引数 / 最近操作（接 P2-3），一屏给事实 + 快捷动作 | `DataGridPageTest` +2 |
-| 4 | 侧栏「已保存查询」分组 | 连接节点下直接列，点击载入新查询；保留现有独立页 | `SideBarTreeTest` +2 |
+| 1 ✅ | 对象首页列表/网格切换 | 复用 `TableListPage` 的卡片视图与 `ui.objectHome.view` 记忆；`ADB_OBJECT_VIEW=grid` 可强制截图 | `ObjectHomePageTest` +2 |
+| 2 ✅ | 结构页「选项」页签 | MySQL：引擎 / 排序规则 / 自增 / 行格式；其它方言诚实显示「—」 | `StructurePageTest` +2；真库契约（无 Docker 则跳过，不计通过） |
+| 3 ✅ | 数据页「概览」页签 | 行数 / 大小 / 引擎 / 索引数 / 最近操作（接 P2-3），一屏给事实 + 快捷动作 | `DataGridPageTest` +2 |
+| 4 ✅ | 侧栏「已保存查询」分组 | 连接节点下直接列，双击 / 回车 / 右键载入新查询；保留现有独立页 | `SideBarTreeTest` +2 |
+
+**落地（2026-10-25 · 第二十五轮）**：四项全部完成，变异验证 4 条（概览大小 / 最近 5 条上限 /
+片段过滤 / 搜索过滤）均红→绿；概览初版 15px 字号被 `AppCssAuditTest` 拦下 → 改 16px。
 
 **不做**：备份 / 自动化 / 模型 / BI / 数据生成 / 脱敏 —— 没有真实后端，不做空壳。
 
@@ -742,7 +746,7 @@ UX-0（可复现）
        ├─ UX-2（密度/字号/chrome）── UX-3（工具条，依赖宽度与文字）
        │                              └─ UX-4（网格交互，依赖选中/网格线令牌）
        └─ UX-5（侧栏/标签/状态栏）
-UX-6（功能缺口，独立，可最后做）
+UX-6 ✅（功能缺口，2026-10-25 已完成）
 ```
 
 - **P0**：UX-0 / UX-1 / UX-2 —— 不做这些，后面所有截图对比都不可信。
@@ -811,3 +815,52 @@ UX-6（功能缺口，独立，可最后做）
 | 10 | 状态栏 SQL 回显 | 有，可复制 | 截图 + `StatusBarTest` |
 | 11 | 标签连接限定 | 多连接时显示 `@连接` | `TabBarTest` |
 | 12 | 暗色 | 上述 1–10 在暗色同样成立 | `p5-dark` + 新暗色截图 |
+
+---
+
+## 13. 第二十七轮 · 任务书 V1.0（2026-10-25 · U-ICON / U-CTRL / U-IDX / U-POLISH）
+
+> 来源：《AIDB 桌面端数据库管理软件 UI/UX 全面重构任务书 V1.0》。
+> 本轮实做 §五（图标与组件）、**§六 新建索引弹窗**、**§七 统一通用控件**、
+> §十 P0/P2/P3/P4 验证与 §十一 验收；§八/§九 的各区在 UX-0…UX-6 已落地，本轮只做巡查。
+> 基线 **913 / 116 / 0 失败 / 48 跳过**（上一轮 871 / 113）。
+
+### 13.1 四个批次
+
+| 批次 | 做了什么 | 守它的门禁 |
+|---|---|---|
+| **U-ICON** | Lucide 官方 SVG **48 枚**内嵌为资源（lucide-static v1.61.0，ISC，许可证随目录分发）；运行时 `LucideConverter` 把 `circle/rect/polygon` 与弧命令展开成 JavaFX `SVGPath` 认的绝对 `M L C Z`，24 视框等比缩到 **16**、描边统一 **1.5px**；**动作图标一律单色线性**，只有**对象类型与连接状态**用语义彩色（`-adb-kind-*` / 状态令牌）；Unicode 符号当图标的路径全部删掉 | `LucideIconTest`（转换与视框）+ `IconSystemAuditTest` + `IconAuditTest`（引用必须存在）+ `StyleClassCoverageTest` |
+| **U-CTRL** | 按钮五档（`adb-button` / `--primary` / `--ghost` / `--danger` / `adb-icon-button`）× 五态（常态 / hover / pressed / disabled / focused）一次配齐，实心变体补**独立按下态**并排在 `:hover` 之后；复选框 **16px 方框** + 可读勾 + armed/禁用/聚焦四态；下拉、列表单元格、输入框统一走 `h-input=28` 与 12px 正文；变体类**必须同时挂基础类**（连接页那颗「孤儿按钮」就是这么抓的） | `UnifiedControlTest`(13) + `DisabledButtonVisibilityTest` + `FocusRingAuditTest` + `AppCssAuditTest` + `ContrastTest` + `TokenParityTest` |
+| **U-IDX** | 「新建索引」弹窗按 §6.2 五区重建：A 标题栏（真实表 · 方言 · 库）/ B 基本信息（名称带标签 + 方言给的类型 + 唯一索引不藏）/ C 双列选择（**可用列 N / 索引列 N** 计数来自真实列表，中间添加·移除·上移·下移，双击与 ↵ / Delete / Alt+↑↓ 走同一批方法）/ D 等宽可折叠 SQL 预览（与真正执行的语句同源）/ E 底部左校验提示 + 右取消·确定；新增 `DialogSizes.PICKER=800`、高 560、可缩放 | `IndexDialogTest`(13) + `DialectTest`（能力边界）+ `IndexDdlTest`(17，钉住逐字节一致) |
+| **U-POLISH** | 弹窗骨架统一：`adb-new-table__*` 提升为共享 `.adb-dialog__*`（标题 / 副标题 / 关闭 / 分区标题 / body 内边距），两个弹窗共用一套，删掉失去消费者的旧类；弹窗按钮回到 28px 并补齐 pressed / disabled / focused；巡查抓出 **6 处没套主题的弹窗**（`TableDdl` 重命名框与错误框、`StructurePage` 改列名、`ExportWizard` 大表确认、`DataGridPage` 高风险确认、`AppShell.showInfo` 手写半套皮肤漏抄主题类）；标题栏不再重复方言（实测 `SQLite · 文件 · SQLite`）；`FakeDbSession.label()` 改成与真实会话同型 | 新 `DialogStylesTest.everyDialogConstructionSiteGetsTheSharedTheme`（按文件计数 + **扫描下限** + 先剥行注释；**变异验证**：注掉一处 apply → 红，还原 → 绿）+ `ScreenshotScriptAuditTest` |
+
+### 13.2 索引能力落在适配层，不在界面里判方言（§6.6）
+
+- `Dialect` 新增三个 `default`：`indexTypes()`（空 = 没有类型可选）、
+  `indexTypeClause(type)`、`supportsIndexColumnDirection()`；只有 PostgreSQL 三个都给出实现。
+- ⭐ `indexTypeClause` **只认 `indexTypes()` 白名单里的字符串**，其它（含
+  `btree; DROP TABLE users`）一律空串 —— 这里拼的是裸 SQL，界面传来的值不能原样进语句。
+- `IndexDef` 加 `type` + `descending` 两个分量，**保留 4 参构造器**给内省结果与既有调用方；
+  `createIndexSql` 在默认路径下与改造前**逐字节一致**，类型与 `DESC` 只在方言认的时候才拼。
+- `DialectBranchAuditTest` 抓到界面里 `session.dialect() == null` 命中它的正则 ——
+  顺手删掉这些永远不会走到的判空（调用方保证 session 就绪），界面**不出现任何方言枚举分支**。
+
+### 13.3 与任务书字面值的偏差（如实记录，不偷偷按自己的来）
+
+| 任务书 | 实际落地 | 为什么 |
+|---|---|---|
+| §6.7 输入框 / 按钮约 **32px** | **28px**（`h-input` = `h-button`） | 令牌是项目唯一真相：UX-2 已把全应用 chrome 从 32 收到 28 并由 `ChromeMetricsTest` 守；弹窗单独回到 32 就成了「弹窗按钮和工具条按钮不同高」，正是 §七 禁止的那种不一致 |
+| §6.7 内边距 **20–24**、分区间距 16–20 | **24 横向 / 16 纵向**，分区间距 16 | 间距刻度 `{0,2,4,6,8,12,16,24,32}` 里没有 20；写 20 等于造第 90 个令牌，`AppCssAuditTest` 会直接拦下 |
+| §6.2 B「其他方言支持的索引属性」 | 类型下拉**只有 PostgreSQL 出现**；MySQL / SQLite 连控件都不创建 | 适配层没有按服务器版本判断的能力，InnoDB 只有 BTREE、SQLite 无类型可选 —— 摆了控件就是给用户一个「选了不生效」的选项，§6.5.6 明令禁止 |
+| §6.7 输入框「错误态」 | 校验失败走**底部红色提示标签**（`adb-error`），不造 `:error` 伪类 | JavaFX 没有 `:error`，加一个自定义伪类要为每个控件单独接线；提示语已经说明「哪儿不对、怎么改」 |
+| §6.2 E 校验提示在底部栏**左侧** | 提示在内容区最下方、按钮栏分隔线之上，左对齐 | `DialogPane` 的按钮栏只收 `ButtonType`，把 Label 塞进 ButtonBar 要反射其皮肤节点；实测这一格位置就是 Navicat 的提示位 |
+| §6.7「主按钮放在底部右侧」 | 主按钮在**右下按钮簇内**，但左于「取消」（`确定 \| 取消`） | 这是 JavaFX `ButtonBar` 在 Windows 按钮序下的默认排布，**全应用每个弹窗一致**（新建表 = `创建 | 取消`）。只在索引弹窗里 `setButtonOrder(RIGHT_TO_LEFT)` 就正好违反 §七「不要让不同功能的弹窗看起来像来自不同的软件」；要改就全应用一起改（一行），但那会把 Windows / Navicat 的既有习惯反过来 —— **留给用户裁定，不擅自动** |
+
+### 13.4 验收帧
+
+`p7-new-index` 这一帧现在带 `ADB_INDEX_POSE=1`：把 `users` 表**真实的前两列**加进索引
+（走 `addSelected()`，与点「添加」同一条路），于是画面里能看到
+「可用列（5）/ 索引列（2）」、`1. id / 2. name` 的序号、
+`CREATE INDEX "idx_users_id" ON "users" ("id", "name")` 的预览，
+以及「移除 / 上移可用、下移禁用」的真实按钮态 —— 空态由 `IndexDialogTest` 守，不占帧。
+

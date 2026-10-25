@@ -261,7 +261,7 @@ Scene 与根节点（DialogPane），那个根节点上没有主题类 → 所�
 | 13 | 取消执行 | 停止按钮 | ✅ 后端取消 | `QueryPageCancelTest` | ✅ |
 | 14 | 建表 / 改列 / 建索引 / 外键 / 触发器 | 结构页 | ✅ 方言 SQL | `NewTableDialogTest`（7）、`StructurePageTest`（7） | ✅ |
 | 15 | 导入 / 导出 | 侧栏工具 | ✅ CSV/TSV/JSON/SQL | `TransferWizardTest`（4） | ✅ |
-| 16 | 连接管理（增删改 / 搜索 / 收藏） | 连接页 | ✅ 钥匙串 | `ConnectionsPageTest`（6） | ✅ |
+| 16 | 连接管理（增删改 / 搜索 / 收藏） | 连接页 | ✅ 系统凭据库 | `ConnectionsPageTest`（6） | ✅ |
 | 17 | 断开 / 重连 | 连接胶囊 / 数据库菜单 | ✅ | **本轮新增动作，尚无专用门禁** | ⬜ P2 |
 | 18 | 检测（诊断） | 侧栏工具 | ✅ 表健康 | `WorkspaceToolsPageTest.diagnosticsPageReportsTableHealth` | ✅ |
 | 19 | 查询历史 / 已保存查询 | 侧栏工作台 | ✅ 偏好 | `WorkspaceToolsPageTest`、`SavedQueriesTest`（8） | ✅ |

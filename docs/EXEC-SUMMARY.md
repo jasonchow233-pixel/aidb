@@ -74,11 +74,12 @@ A10 语句超时 / A12 连接池归还 / A15 连接与内省出 UI 线程 / A16 
 
 ## 2. Todolist（`NAVICAT-TODO.md`）结论
 
-### 2.1 基线（2026-10-24 第二十二轮实测刷新；本文其余章节仍是第九轮快照）
+### 2.1 基线（2026-10-25 第二十七轮实测刷新；本文其余章节仍是第九轮快照）
 
-- **门禁**：**754 条 / 97 类 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条**环境门控**跳过 —— Docker / MySQL 真库环境变量不可用时跳过，不影响「0 失败」这条硬门禁）。
-  - 相比第二十轮的 755 / 95，减少的 43 条 / 3 类来自**删除 `declarations` 声明层**，属主动减面；UX-0 / UX-1 各 +2 条、UX-2 +4 条 / +1 类（`ChromeMetricsTest`）、UX-3 +8 条 / +1 类（`ToolbarDiscoverabilityTest`）、**UX-4 +25 条 / +3 类**（`SelectionStateTest` 8 + `CellDisplayTest` 6 + `CellEditorTest` 4 + `GridInteractionTest` 7）、**S-7 净 +1**（品牌 4 条 − 删掉测不可达页的 `WelcomeBrandTest` 3 条）。
-  - 增长轨迹：SQLite **443** → 第八轮 **486** → 索引编辑 **512** → 第十三轮 **631** → 第十五轮 **675** → 第十六轮 **691** → 第十七轮 **721** → 第十八轮 **717** → 第十九轮 **731** → 第二十轮 **755** → 第二十一轮 **712**（删 declarations -43）→ **UX-0 714**（+2）→ **UX-1 716**（+2）→ **UX-2 720**（+4，新增 `ChromeMetricsTest`）→ **UX-3 728**（+8，新增 `ToolbarDiscoverabilityTest`）→ **UX-4 753**（+25，新增 `SelectionStateTest` / `CellDisplayTest` / `CellEditorTest`）→ **S-7 754**（净 +1，新增 `BrandMarkAuditTest`，删 `WelcomeBrandTest`）（总数随外部真库可用性浮动，**模块内数字是准的**）。
+- **门禁**：**913 条 / 116 类 / 0 失败**（`./scripts/build.sh` = `./mvnw -B clean verify` + `java tools/TestCount.java`；另有 48 条**环境门控**跳过 —— Docker / MySQL 真库环境变量不可用时跳过，不影响「0 失败」这条硬门禁）。
+  - 相比第二十轮的 755 / 95，减少的 43 条 / 3 类来自**删除 `declarations` 声明层**，属主动减面；UX-0 / UX-1 各 +2 条、UX-2 +4 条 / +1 类（`ChromeMetricsTest`）、UX-3 +8 条 / +1 类（`ToolbarDiscoverabilityTest`）、**UX-4 +25 条 / +3 类**（`SelectionStateTest` 8 + `CellDisplayTest` 6 + `CellEditorTest` 4 + `GridInteractionTest` 7）、**S-7 净 +1**（品牌 4 条 − 删掉测不可达页的 `WelcomeBrandTest` 3 条）；此后 P2-1 +8、P2-2 +17 / +3 类、P5-2 +9 / +1 类，P2-3 / P5-1 / P5-3 / P5-4 / P6-1 / P6-2 / P6-3 / UX-6 净 +49，**第二十六轮 P7 +14 条 / +3 类**（`StartupTraceTest` 4 + `AccessibilityAuditTest` 5 + `ThemeManagerTest` 4 + `AppShellTest` 1）。
+  - 增长轨迹：SQLite **443** → 第八轮 **486** → 索引编辑 **512** → 第十三轮 **631** → 第十五轮 **675** → 第十六轮 **691** → 第十七轮 **721** → 第十八轮 **717** → 第十九轮 **731** → 第二十轮 **755** → 第二十一轮 **712**（删 declarations -43）→ **UX-0 714**（+2）→ **UX-1 716**（+2）→ **UX-2 720**（+4，新增 `ChromeMetricsTest`）→ **UX-3 728**（+8，新增 `ToolbarDiscoverabilityTest`）→ **UX-4 753**（+25，新增 `SelectionStateTest` / `CellDisplayTest` / `CellEditorTest`）→ **S-7 754**（净 +1，新增 `BrandMarkAuditTest`，删 `WelcomeBrandTest`）→ **P2-1 781** → **P2-2 798** → **P5-2 807** → 第二十五轮收官 **857 / 110** → **P7 收尾 871 / 113** → **任务书 V1.0 913 / 116**（+42 / +3 类：`LucideIconTest` + `UnifiedControlTest` + `IndexDialogTest`，另含 `IndexDdlTest` / `DialectTest` / `DialogStylesTest` 新例；总数随外部真库可用性浮动，**模块内数字是准的**）。
+  - **P7 分发与收尾（第二十六轮）**：✅ 启动可观测性（`StartupTrace` → `~/.agenticdb/logs/startup.log` +「关于」回显）· ✅ 可访问性（六区焦点顺序 / 标签与切面键盘可达 / 逐页可朗读名称，`AccessibilityAuditTest`）· ❌ **冷启动 < 2s 未达标**（实测 3.5–3.9 s，成本已归因：Toolkit 0.95 s + 第一个 JavaFX 控件 0.5 s + 首趟 CSS/布局 0.86 s；AppCDS 在开发启动路径试过不通）· ⛔ jlink（自动模块）· 🚫 自动更新（无发布渠道 / 离线环境 / 无签名）· ⛔ 签名公证（缺证书）。详见 `NAVICAT-TODO.md` §35。
 - **真库**：SQLite（演示库）+ **MySQL 5.7.44 真库**（9 例）+ **PostgreSQL 16 / MySQL 8.4 Testcontainers**（11 例，需 Docker）。
   - 权威当前状态见 **`NAVICAT-TODO.md` 表头 + §23 变更记录**，本文不逐轮重写。
 

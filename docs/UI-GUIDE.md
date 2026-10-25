@@ -266,8 +266,18 @@ Windows 上常见字体可能替换或缺失。长期方向是**内嵌 SVG 图�
 ## 4. 可访问性与键盘
 
 - 所有可点击控件必须可 Tab 到达；表格支持方向键移动焦点。
+  ⭐ **第二十六轮起这条有门禁**：`AccessibilityAuditTest` 按场景图前序断言**六区焦点顺序**
+  （菜单 → 功能栏 → 侧栏 → 标签栏 → 内容区 → 状态栏，状态栏**零**停靠点）。
+- **标签页与对象切面必须键盘可操作**（`←/→` 切换并同步激活、`Enter`/`Space` 确认），
+  角色是 `AccessibleRole.TAB_ITEM`；卡片列表是 `LIST_ITEM`。以前它们是纯鼠标的 `Label`。
+- **容器也要有可朗读名称**：`TableView` / `TreeView` / `CheckBox` / `ComboBox` 光有可见文字不够，
+  读屏需要 `setAccessibleText`（网格、冻结网格、全选、每行、布尔单元、每页下拉、对象树、对象清单）。
 - 禁用态与只读态必须视觉可区分，不能只靠颜色。
 - 错误不能只靠 Toast；状态栏或对话框保留可追溯信息。
 - 单元格 Tooltip 对截断文本、NULL/空串、BLOB 大小、枚举映射给出完整解释。
-- 图标按钮必须有 accessible text（→ 4.5-6）。
-- 对比度：当前只有人工评审，没有自动检查（→ P7；建议门禁见 `docs/UI-VISUAL-SPEC.md` §14）。
+- 图标按钮必须有 accessible text（→ 4.5-6），门禁 `IconAuditTest`。
+- 对比度：✅ 已有自动检查 —— `ContrastTest`（正文 ≥4.5:1、焦点环 ≥3:1）+ `FocusRingAuditTest`（焦点环规则）；
+  见 `docs/UI-VISUAL-SPEC.md` §14。
+- **启动耗时是用户体验的一部分**：`StartupTrace` 把「进程启动 → 首屏」分段写进
+  `~/.agenticdb/logs/startup.log`，「关于 AIDB」回显本次耗时。⚠️ 当前**冷启动 3.5–3.9 s，未达 < 2s 目标**
+  （归因见 `NAVICAT-TODO.md` §35.1）。

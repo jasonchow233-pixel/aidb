@@ -24,6 +24,8 @@ JavaFX 内置 `TableView` 底层是 `VirtualFlow`，只创建可见行的 Node�
 |---|---|---|---|
 | `com.fasterxml.jackson.core:jackson-databind` | 2.22.4（annotations 2.22） | Apache-2.0 | JSON 摘要/格式化、DTO 序列化 |
 | `com.zaxxer:HikariCP` | 6.3.1 | Apache-2.0 | P5 连接池 |
+| `net.java.dev.jna:jna` | 5.13.0 | LGPL-2.1 / Apache-2.0 双许可 | P5-2 Windows 凭据管理器（WinCred / advapi32） |
+| `org.apache.poi:poi-ooxml` | 5.4.1 | Apache-2.0 | P6-3 xlsx 导入导出（SXSSF 流式写 / SAX 事件模型读） |
 
 ### 1.3 数据库与测试
 
@@ -41,10 +43,10 @@ JavaFX 内置 `TableView` 底层是 `VirtualFlow`，只创建可见行的 Node�
 
 | 依赖 | 阶段 | 用途 |
 |---|---|---|
-| `org.apache.poi:poi-ooxml` | P6 | Excel `.xlsx` 导入导出 |
 | `org.testcontainers:postgresql` / `mysql` | P5 | 真数据库集成测试 |
 
 CSV 首版由 `CsvExporter` 自写（RFC 4180 引号/换行转义），暂不引入 commons-csv。
+POI 已在 P6-3 落地（`XlsxCodec` / `XlsxStreamWriter`），不再属于「计划采用」。
 
 ### 1.5 已在 POM 里但运行时未使用的模块
 
@@ -102,5 +104,5 @@ TestFX 两年未大版本更新，但仍是 JavaFX 无头 UI 门禁最成熟的�
 
 - 当前技术栈足够支撑 Navicat 级数据页与查询页，不需要引入 WebView 或 Eclipse RCP。
 - 数据表格、对话框、编辑器底座用成熟库；编辑语义、SQL 安全、渲染规则自己掌握。
-- P3 的唯一新 UI 依赖是 RichTextFX；P5 才引入连接池与 Testcontainers；P6 才引入 POI。
-- 图标暂时用 Unicode 符号（P4.5 统一字形 + 补 accessible text）；长期迁移到内嵌 SVG 图标集。
+- P3 的唯一新 UI 依赖是 RichTextFX；P5 引入连接池、Testcontainers 与 JNA；P6-3 引入 POI（SXSSF / SAX 流式）。
+- 图标已是内嵌 **SVGPath** 矢量（`Icons.Icon` 统一字形 + accessible text，S-7 品牌 mark 同源），不引第三方图标字体。

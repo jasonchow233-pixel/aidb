@@ -4,28 +4,36 @@
 > `NAVICAT-TODO.md` 是唯一执行清单（逐条勾选）；本文件是**阶段规划**（批次 + 依赖 + 门禁）。
 > **界面专项的详细分析与规范见 `docs/UI-ROADMAP.md`**。
 >
-> 最后更新：**2026-10-24（第二十二轮：declarations 已删除 + UX-0 / UX-1 / UX-2 / UX-3 / UX-4 / S-7 已完成，基线 754/97；下一步 UX-5）**
+> 最后更新：**2026-10-25（第二十七轮：任务书 V1.0 落地 —— U-ICON（Lucide 矢量图标 + 对象/状态语义彩色）、U-CTRL（五档按钮 × 五态与控件统一）、U-IDX（§六 新建索引弹窗重建）、U-POLISH（弹窗骨架统一 + 6 处漏套主题的弹窗，基线 913/116）**
 
 ---
 
-## 0. 当前位置（2026-10-24 · 第二十二轮 · Windows 10 + JDK 27）
+## 0. 当前位置（2026-10-25 · 第二十七轮 · Windows 10 + JDK 27）
 
 | 指标 | 值 |
 |---|---|
-| 门禁 | **754 条 / 97 类 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`）。**口径说明**：相比第二十轮的 755 / 95，减少的 **43 条 / 3 类全部来自删除 `declarations`**（模块 40 + `DeclaredDialectConsistencyTest` 3），**不是测试变红**；UX-0 再 **+2**（偏好不写回 + 脚本钉密度），UX-1 再 **+2**（投影收敛 + 图标尺寸档位），UX-2 再 **+4**（`ChromeMetricsTest` 2 条 + 默认密度 1 条 + 数据面字号 1 条，并新增 1 个测试类），UX-3 再 **+8**（`ToolbarDiscoverabilityTest` 5 条 + 清单页导入/导出 2 条 + 对象首页主操作 1 条，并新增 1 个测试类），**UX-4 再 +25**（`SelectionStateTest` 8 + `CellDisplayTest` 6 + `CellEditorTest` 4 三个新类 + `GridInteractionTest` 7 条，类 +3），**S-7 净 +1**（`AppBarTest` 品牌身份 + 对比度 2 条、新 `BrandMarkAuditTest` 2 条，删掉测不可达页的 `WelcomeBrandTest` 3 条）；另有 **44 条环境门控跳过**（`adb-jdbc` 30 + `adb-introspect` 14）。**硬门禁是「0 失败」，不是总数**。 |
+| 门禁 | **913 条 / 116 类 / 0 失败 / 48 跳过**（`./scripts/build.sh`）。**口径说明**：871 → 913 的 **+42 / +3 类** 全部来自本轮任务书 V1.0（U-ICON `LucideIconTest` + U-CTRL `UnifiedControlTest` 13 + U-IDX `IndexDialogTest` 13 + `DialectTest` / `IndexDdlTest` 新例 + U-POLISH `DialogStylesTest` 弹窗覆盖审计）；**48 条环境门控跳过**（本机无 Docker）。**硬门禁是「0 失败」，不是总数**。 |
 | 真库验证 | ✅ SQLite（演示库）· ✅ **MySQL 5.7.44 真库**（9 例全绿）· ✅ **PostgreSQL 16 + MySQL 8.4 Testcontainers**（11 例全绿；抓出 2 个跨方言 bug，见 `NAVICAT-TODO.md` §26）—— ⚠️ 本机 Docker 不可用，后两类**本轮未执行**（跳过），改回环境即可复跑 |
-| 截图 | `docs/screenshots/` **12 张**（亮 / 暗两套主题 + 表清单 + 新建表/索引弹窗 + **右侧对象详情面板** + **结构页 DDL 页签**）；S-7 后**全量重拍两批**（第一批拍在应用栏品牌对比度修复之前，蓝底方块里的字形是灰的 → 作废），现这批已用 10× 裁剪逐主题核对品牌 mark **看得见**、`p2-users` 仍可核对**单元格竖线 / `(NULL)` / 左下行操作条**；⚠️ **选中态、光标环、抽屉编辑器是交互态，12 张里没有一帧覆盖**（靠 `SelectionStateTest` 算色断言兜底），补帧需要给 `AppShell` 加一个 `ADB_CELL` 之类的启动开关 |
-| 工作区 | declarations 删除（`c7375d4`）、UX-0（`ed40f5f`）、UX-1（`0d9808d`）、UX-2（`613af56` + 收尾 `ababa97`）、UX-3（`b8be448`）、UX-4（`e438f8b`）、**S-7（`97bbf24`）** 均已提交 |
-| **下一动作** | **UX-5 侧栏 / 标签 / 状态栏**（`NAVICAT-TODO.md` §34.2 / `UI-ROADMAP.md` §12.2）→ P2-1/P2-2 → P5 → P2-3 → P6 → UX-6。✅ **S-7 已裁定并落地（接 + 删，2026-10-24）**，不再挡 UX-5 的路 |
+| 截图 | `docs/screenshots/` **15 张**（本轮全量重拍，1280×800 窗口）；`p7-new-index` 现在带 `ADB_INDEX_POSE`，拍到的是「已选两列 + 序号 + 预览 SQL + 移动钮真实态」那一帧 |
+| 工作区 | declarations 删除（`c7375d4`）、UX-0…UX-5 与 S-7 均已提交；**P2 / P5 / P6 / UX-6 / P7 / 本轮任务书 V1.0 全部在工作区，未提交** |
+| **下一动作** | **代码主线与 P7 均可交付的部分已做完**。剩下的全是「需要外部资源或跨大改」的长期项：**冷启动 < 2s**（地板 2.4 s：Toolkit + Modena + 首趟 CSS pass，见 `NAVICAT-TODO.md` §35.1）、**jlink**（等 RichTextFX/ControlFX 模块化）、**签名与公证**（要证书）、**自动更新**（要先有发布渠道） |
 
 > 🔴 **第六轮全量核查改变了优先级排序**：门禁 443 条全绿，但逐文件核对发现
 > **4 个真实缺陷**（其中 D2「改列抹注释」与 D3「改列丢 CHECK」会**丢数据且无撤销**），
 > 全部活在测试没有覆盖的路径上。**先修缺陷，再谈新功能。**
 
-### 最近两轮做完了什么
+### 最近几轮做完了什么
 
 | 轮次 / 批次 | 内容 | 关键结果 |
 |---|---|---|
+| **第二十七轮 · 任务书 V1.0（2026-10-25）** | **U-ICON / U-CTRL / U-IDX / U-POLISH**（`UI-ROADMAP.md` §13） | **U-ICON**：Lucide 官方 SVG 48 枚内嵌（v1.61.0 / ISC），新 `LucideConverter` 把弧命令与 `circle/rect/polygon` 展开成 JavaFX `SVGPath` 的绝对 `M L C Z`（24→16 视框、描边统一 1.5px），升级图标＝换 SVG 文件；**动作图标单色、只有对象类型与连接状态语义彩色**。**U-CTRL**：五档按钮 × 五态一次配齐（⭐ 实心变体补**独立 `:pressed` 且必须排在 `:hover` 之后**，否则按住看到的还是悬停色、primary 白字压浅蓝底直接糊），复选框 16px 方框四态、下拉/列表/输入统一 `h-input=28` + 12px 正文，**变体必须同时挂基础类**（抓出连接页孤儿主按钮）。**U-IDX**：按 §6.2 五区重建「新建索引」弹窗（真实计数 `可用列 N / 索引列 N`、序号 `1. 2.`、双击与 ↵/Delete/Alt+↑↓ 与按钮走同一批方法、可折叠等宽预览与执行同源），新 `DialogSizes.PICKER=800` × 560 可缩放；索引类型与每列 `DESC` **只给 PostgreSQL**（`Dialect` 三个 default 能力方法 + `indexTypeClause` 白名单，`btree; DROP TABLE users` 返回空串），`IndexDef` 加两分量但**保留 4 参构造器**，默认路径 SQL **逐字节不变**。⭐ **U-POLISH**：`adb-new-table__*` 提升为共享 `.adb-dialog__*` 骨架，巡查抓出 **6 处弹窗没套主题**（含 `AppShell.showInfo` 手写「半套」—— 挂样式表加 `adb-dialog` 却漏抄主题类），补一条按文件计数的静态门禁（**先剥行注释**，否则注释掉的 apply 照样算数：第一版就是这么假绿的）；标题栏去掉重复方言（实拍 `SQLite · 文件 · SQLite`）、`FakeDbSession.label()` 改与真实会话同型；`p7-new-index` 加 `ADB_INDEX_POSE` 拍到真实交互帧。基线 **913 / 116 / 0 / 48 跳过**（+42 / +3 类）；**变异验证**：注掉 `TableDdl` 一处 apply → 红、还原 → 绿 |
+|---|---|---|
+| **第二十六轮 · P7 收尾（2026-10-25）** | **启动可观测性 + 可访问性 + 分发裁定**（`NAVICAT-TODO.md` §35） | ① 新 `StartupTrace`：进程启动 → 首屏分段打点，一行摘要落 **`~/.agenticdb/logs/startup.log`** +「关于」回显本次耗时（测试 JVM `-Dadb.startup.log=false` 不落盘）。⚠️ 首版漏 `scene` 打点，中段 676 ms 无法归因 → 补标记 + **一次性探针实测**：第一个 JavaFX 控件 **515 ms**、第二个 **2 ms**（Modena 样式表 + 隐式窗口的一次性成本）；`stage.show()` 首趟 CSS/布局 **860 ms**；`DemoDatabase.ensure` 468 ms。`ThemeManager` 的强制 CSS/布局 pass 改为**只在窗口已显示时**做（`theme` 718→2 ms，总时长不变、不再重复算）。**❌ 冷启动 <2s 未达标（实测 3.5–3.9 s），地板 ≈2.4 s**；**AppCDS 试过不通**（缺归档即报错退出、`-Xlog:cds+dyn` 本 JDK 无效、dump 报 `archived full module graph is not used`，失败那几次首屏 15 s）。② 可访问性：标签栏 / 对象切面从**纯鼠标**升级为 `TAB_ITEM` + `←/→` + `Enter/Space`，卡片补 `LIST_ITEM` 与 `requestFocus`，网格 / 复选框 / 下拉 / 树 / 清单补可朗读名称；新 `AccessibilityAuditTest`(5) 守六区焦点顺序（状态栏不设停靠点）。③ 裁定：jlink ⛔（自动模块）· 自动更新 🚫 不做（无发布渠道 + 离线环境 + 无签名）· 签名/公证 ⛔ 缺证书 · §9 里 A18/A19/A22 三行**早已落地却挂着未勾** → 回填。门禁 **871 / 113 / 0 / 48 跳过**（+14 / +3 类）；**变异验证**：去掉 `shouldForcePass` 条件 → `expected: 0 but was: 1`；恒 false → 2 条红；改回 63 条全绿 |
+| **第二十五轮 · 收官（2026-10-25）** | **P2-3 / P5-1 / P5-3 / P5-4 / P6-1 / P6-2 / P6-3 / UX-6**（`NAVICAT-TODO.md` §34.2 / §34.3） | **P5-1** 连接分组（`group` 不进连接参数）+ 重命名只改显示名 + 分组列/搜索/侧栏文件夹；**P5-3** 新 `ConnectionFailureTest` 7 条守会话边界（打开失败不注册 / 可重试 / 错误分类 / 超时 / 取消 / 断线重开 / 未知失败保留驱动原文）；**P5-4** 序列 + `getExportedKeys`（复合外键保序）+ DEFAULT/COMMENT/CHECK，⭐ 修掉 PG **改列静默 DROP DEFAULT**；**P2-3** 历史带连接/命中表/时间（旧格式兼容），数据页 / 详情面板 / 概览三处共用；**P6-1** 导入按目标列类型转换（中文日期格式、空值→NULL、文本逐字保留）；**P6-2** `exportSql` + 查询页三档导出（本页/选中/全部）；**P6-3** POI SXSSF 写 + SAX 读，CSV/xlsx 共用 `Ingest`；**UX-6** 对象首页网格、结构页「选项」、数据页「概览」、侧栏「已保存查询」分组。门禁 **857 / 110 / 0 / 48 跳过**（+50 = 本批 49 + 最终布局守卫 1）；4 个 UX-6 变异红→绿 + 详情布局变异红→绿；⚠️ 概览初版 15px 被 `AppCssAuditTest` 拦下 → 16px；截图收尾修掉筛选标签截断 / 概览动态 id / `p2-details` chrome 挤出三处 |
+| **第二十四轮 · P5-2（2026-10-25）** | **Windows 系统凭据**（`NAVICAT-TODO.md` §34.3） | 新增 `WindowsCredentialStore`，**JNA core** 直连 `advapi32!CredWriteW/CredReadW/CredDeleteW/CredFree`（`jna-platform` 无 WinCred 绑定）；`CREDENTIAL` 按 x64 偏移声明，条目 `io.agenticdb.connection/<profileId>`，blob **UTF-16LE**、1280 字符上限**前置拒绝**、写入 `Memory` finally `clear()`；`platform()` 先判 Windows、DLL 失败 `LinkageError` 降级内存，`supported()` 不在非 Windows 触发 JNA 加载。文案去掉「钥匙串 / Secret Service」（UI-AUDIT L5）。门禁 **+9 / 类 +1**，**4 个变异红→绿**（分派 / 编码 → 4 红 / 上限 / target 前缀）；Windows 10 + JDK 27 **8/8 真跑**；截图复核另修 UX-3 遗留（清单工具条文字被压成省略号 → 五个文字按钮 `minWidth(USE_PREF_SIZE)`、搜索框 200→160，`TableListPageTest` +1，变异红→绿）；基线 **807 / 104 / 0** |
+| **第二十三轮 · P2-2（2026-10-25）** | **错误可诊断 + 批量汇总通用化**（`NAVICAT-TODO.md` §34.3） | 新增纯模型 `ErrorDetails`（8 类分类 / 原因 / 建议 / **整条异常链的驱动原文** / SQL）与 `BatchSummary`（**失败数与明细行数分离** —— 导入只留前 50 条坏行，标题仍报真实失败数），配套两个弹窗（分类徽标 / 可复制正文 / 无 owner 静默跳过）；接进**四处**：数据页保存·撤销·导出、查询错误页签（`#query-error-details`）、批量删表（替换临时 Alert）、导入结果（仅有坏行/跳过时弹）。门禁 **+17 / 类 +3**，**5 个变异红→绿**；新增 `p2-error` 截图（14 张）；⚠️ `StyleClassCoverageTest` 全量构建抓到 `adb-error-details` 缺 CSS，TextArea 背景须走 `-fx-control-inner-background`；基线 **798 / 103 / 0** |
+| **第二十二轮 · P2-1（2026-10-25）** | **清单可读性**（`NAVICAT-TODO.md` §34.3） | `TableMeta.sizeText` 补 **GB 档** + 1 位小数 + `Locale.ROOT`（GB 级表不再显示 `1536.0 MB`），真 MySQL 补格式正则；新增共享 `ColumnLayoutMemory` —— 表清单 / 对象首页按**连接**记住列宽（列身份用 `userData`、400ms 防抖、上限 1600px、无记忆的连接回默认宽，对象首页在 `render()` 按当前连接恢复）；注释列长文本 **tooltip**（`—` 不挂、cell 复用清旧值）。门禁 **+8**（`TableMetaTest` 6→10、`TableListPageTest` 20→22、`ObjectHomePageTest` 10→12），**3 个变异红→绿**；⚠️ headless 下拉宽 stage 会 `BufferOverflowException` 并污染同 JVM 后续用例 → 改 `scrollToColumn`；基线 **781 / 100 / 0** |
+| **第二十二轮 · UX-5（2026-10-24）** | **侧栏 / 标签 / 状态栏**（`NAVICAT-TODO.md` §34.2） | 三处同一套语义（连接限定与状态回显）；补启动开关 `ADB_CELL` + 唯一一帧交互态 `p2-cell`（选中行 + 光标格 + 抽屉编辑器），并配门禁守「帧还在 / 开关真被读」；基线 **773 / 100 / 0** |
 | **第二十二轮 · S-7（2026-10-24）** | **品牌落点 + 死代码清理**（裁定＝**接 + 删**，`NAVICAT-TODO.md` §34.2） | 应用栏 26px 方块换成新矢量 `Icons.Icon.BRAND`（圆柱 + AI 四角星芒）；不可达的欢迎页整条路径删净（`showWelcome()` / `brandMark()` / `BRAND_MARK` / `AppShell.tabClosed` 的 `else` / `.adb-welcome*` / `Icons.SIZE_BRAND`），连带删掉失去消费者的 `fs-2xl` 令牌（99→**98**、字号 8→**7 档**）。⭐⭐ **像素对比抓出真 bug**：`.adb-icon`（`app.css` 后半段）与 `.adb-appbar__mark-glyph` 同为单类，JavaFX「同特异性后写胜」把白字顶成灰字 —— **品牌方块里的 mark 一直几乎看不见，而门禁全绿了三轮**；提到两类选择器 + 一条读**计算值**的门禁（`theBrandGlyphKeepsItsContrastAgainstTheGenericIconRule`）。⚠️ 该门禁成立的前提是测试 `@Start` **把两套样式表挂上场景**，否则 `getStroke()` 只是 `Shape` 默认色，断言等于没测。**5 个变异逐条红→改回绿**；基线 **754 / 97 / 0** |
 | **第二十一轮 · UX-4（2026-10-24）** | **网格交互**（`NAVICAT-TODO.md` §34.2） | 选中行 = 强 tint + **左侧 2px 强调条**；当前格 = **应用驱动的样式类** `adb-grid__cell--cursor`（⭐ 实测 `.table-cell:focused` 在行选模式下**永不匹配**，`TableCell.updateFocus()` 自己把焦点清了），且**按列名**记光标（冻结列是搬过去的同一批实例）；⭐ **槽位常留**——行 `0 0 1 2` / 格 `0 1 0 2` 由基础规则留透明空槽，选中/脏值/光标/矩形选区**只上色不改宽度**，改宽度会让文字随键盘左右跳；单元格补淡竖线、斑马纹再降一档；列头右键收齐排序/移动/筛选/隐藏/自适应/**冻结到此列与取消冻结**（跨冻结区按 `dataColumnsOrdered()` 算下标，**做不到就禁用**）；双击列头 = 自适应；网格左下**行操作条** `+ / − / 应用 / 取消`（状态 `bind` 工具条这一批，只读表整排消失）+ 新增 `discardChanges()`；`NULL` 显示 **`(NULL)`**（与内容为 "NULL" 的文本分开）、BLOB 补 **GB 档**；长文本走**抽屉文本页就地编辑**（Ctrl+Enter 应用 / Esc 只退编辑 / 写同一个 `EditBuffer` / 主键与只读表不给编辑器）；**25 条新门禁逐条变异全红→改回绿**，其中 `CellEditorTest` 第三条**第一版假绿**（演示库主键全是 INTEGER，删掉主键规则仍绿）→ 自建 `TEXT PRIMARY KEY` 表 + 补正例；基线 **753 / 97 / 0** |
 | **第二十一轮 · UX-3（2026-10-24）** | **工具条与动作可发现性**（`NAVICAT-TODO.md` §34.2） | `IconButtons.labeled(...)` 让主操作**图标 + 文字 + tooltip + accessibleText** 一次给全；数据页 6 颗主操作带文字、删除标 danger、三页工具条**语义分组 + 竖线**；**窗口 <1100px 自动收字**（提示不丢）；补数据页**导入**（预选当前表）与清单页**导入/导出**；**9 个变异全部红→改回绿**；新门禁 `ToolbarDiscoverabilityTest`(5) + 清单/对象首页 +3；基线 **728 / 94 / 0** |
@@ -116,7 +124,7 @@
 | 1 | **多连接并行** | `AppShell` 现在是单 `activeProfile` / 单 `session`，切标签即切连接。改为按连接 id 取会话，工具栏显示**当前标签**的连接 | `SessionManagerTest` 扩用例 | ✅ **已完成（第十二轮）** |
 | 2 | ~~**catalog 树**~~ | ~~schema 那一半已做；**catalog 那一半还缺**~~ | `CatalogTreeTest`(5) + `CatalogVariantProfileTest`(5) + `SideBarTreeTest`(+5) | ✅ **已完成（第十四轮 U1，见 `NAVICAT-TODO.md` §24）** |
 | 3 | **连接属性页** | `ConnectionProfile.options` 自由 Map 向导化（读超时 / SSL / 字符集 / 连接池） | `ConnectionWizardTest.propertiesStep` | ✅ **已完成（第十二轮·续三）** |
-| 4 | **Windows 凭据** | WinCred / DPAPI 后端（当前落内存）；已裁定用 JNA，见 `NAVICAT-TODO.md` §34.3 P5-2 | `CredentialStoreTest.windowsBackend`（唯一 target 前缀 + 清理） |
+| 4 | **Windows 凭据** | WinCred 后端（JNA）；见 `NAVICAT-TODO.md` §34.3 P5-2 | `CredentialStoreTest`（唯一 target 前缀 + 清理） | ✅ **已完成（第二十四轮 P5-2）** |
 
 ---
 
@@ -147,10 +155,10 @@
 | **UX-2** ✅ | 密度/排版/chrome：新增 dense 22，默认 compact；字号 12；对象头/工具条/状态栏收薄 | 765px 高可见 ≥22 行（**已落地：`ChromeMetricsTest` 实测通过，5 个变异验证**） | P0 |
 | **UX-3** ✅ | 工具条主操作「图标+文字」+ 分组 + 补导入 | 可发现性门禁（主操作必须有文字）——**已落地：`ToolbarDiscoverabilityTest` 5 条 + 清单/对象首页 3 条，9 个变异验证**；「历史」推迟到 P2-3、「单元格编辑器」归 UX-4 | P1 |
 | **UX-4** ✅ | 网格：强选中、竖线、列头菜单、双击自适应、行操作条、NULL 显示、单元格编辑器 | **已落地：25 条新门禁 / 3 个新类，逐条变异验证**（`SelectionStateTest` 8 + `CellDisplayTest` 6 + `CellEditorTest` 4 + `GridInteractionTest` 7）；⭐ 顺带修掉编辑器「切页签提交错目标」的写缓冲污染 | P1 |
-| **UX-5** | 侧栏选中/连接状态、标签连接限定、状态栏 SQL 回显 | 侧栏/标签/状态栏各 +1~3 | P1 |
+| **UX-5** ✅ | 侧栏选中/连接状态、标签连接限定、状态栏 SQL 回显 | 侧栏/标签/状态栏各 +1~3（**已落地：含唯一一帧交互态 `p2-cell`；基线 773/100**） | P1 |
 | **UX-6** | 功能缺口：对象首页列表/网格、结构「选项」、数据「概览」、已保存查询分组 | 各页 +2；真库项按环境跳过 | P2 |
 
-**依赖**：UX-0 → UX-1 → UX-2 →（UX-3 ✅ → UX-4 ✅ → **UX-5 ⏭ 当前**）；UX-6 独立。
+**依赖**：UX-0 → UX-1 → UX-2 →（UX-3 ✅ → UX-4 ✅ → UX-5 ✅）；**P2-1 ✅**；UX-6 独立。
 **完成定义**：代码 + 门禁（UI 类改动必须新增或扩展一条**可执行**门禁）+ **变异验证**（每处改坏 → 跑门禁 → 必须红 → 立刻还原）+ 截图（钉主题与密度）+ 与 Navicat 同尺寸并排。
 
 > ⚠️ 旧的「顶栏 11 个大功能条」仍然**不做**（没有备份/模型/BI 等真实后端，不做空壳）；
@@ -159,10 +167,18 @@
 
 ---
 
-## 5. 阶段 P：分发与收尾（P7）
+## 5. 阶段 P：分发与收尾（P7 · 第二十六轮收官）
 
-jlink 自定义运行时 → jpackage（macOS `.app`/`.dmg`、Windows `.msi`、Linux `.deb`）
-→ 启动性能（冷启动 < 2s）→ 崩溃日志 → 主题跨平台探测（A18）。
+| 项 | 状态 | 说明 |
+|---|---|---|
+| jpackage | ✅ | `scripts/package.sh` 出 app-image / dmg / msi / deb，含运行时、真能启动 |
+| 崩溃日志 | ✅ | `CrashLog` → `~/.agenticdb/logs/crash-*.log` |
+| **启动可观测性** | ✅ **本轮** | `StartupTrace` → `~/.agenticdb/logs/startup.log` +「关于」回显；`StartupTraceTest`(4) + 外壳打点覆盖(1) |
+| **可访问性** | ✅ **本轮** | 六区焦点顺序、标签/切面键盘可达、逐页可朗读名称；`AccessibilityAuditTest`(5)；对比度与焦点环沿用既有 `ContrastTest` / `FocusRingAuditTest` |
+| **冷启动 < 2s** | ❌ **未达标（3.5–3.9 s）** | 成本已归因，地板 ≈2.4 s（Toolkit 0.95 + Modena 0.5 + 首趟 CSS/布局 0.9）；**AppCDS 在开发启动路径上试过不通**；渐进渲染要重排整条装配链 —— 均为长期项（`NAVICAT-TODO.md` §35.1） |
+| jlink 自定义运行时 | ⛔ 维持不可行 | RichTextFX / ControlFX 是自动模块；jpackage 已能出可启动 app-image |
+| 自动更新 / 版本检查 | 🚫 裁定不做 | 无发布渠道 + 离线/内网 + 无签名；将来若有 Release，只做「提示不下载」 |
+| 签名与公证 | ⛔ 阻塞在外部资源 | 需要 Apple Developer ID + Windows 代码签名证书 |
 
 ---
 
@@ -171,8 +187,9 @@ jlink 自定义运行时 → jpackage（macOS `.app`/`.dmg`、Windows `.msi`、L
 | 项 | 状态 | 解除条件 |
 |---|---|---|
 | **PostgreSQL 真库联调** | ✅ **已解除**（第十六轮）：Docker 解锁后用 `postgres:16-alpine` 跑通 11 例；外部实例走 `ADB_TEST_PG_*` 环境变量 | 已完成；aliCloud RDS 只需填环境变量凭据，**无需改代码** |
-| **Windows 凭据** | ⬜ 已裁定做（P5-2） | JNA WinCred 后端；Windows 实机跑，其它平台跳过不计通过 |
-| **Windows / Linux 分发** | ⬜ | 需要对应机器的 CI 或真机 |
+| **Windows 凭据** | ✅ **已完成**（第二十四轮 P5-2） | JNA WinCred 后端；Windows 实机 8/8 真跑，非 Windows 跳过不计通过 |
+| **Windows / Linux 分发** | 🟡 jpackage 出包 ✅（`scripts/package.sh`）；**签名 / 公证 ⛔** | 需要 Apple Developer ID 与 Windows 代码签名证书（外部资源），不是代码问题 |
+| **冷启动 < 2s** | ❌ **未达标**（实测 3.5–3.9 s，成本已归因） | 需要 AppCDS（开发启动路径试过不通）或首屏渐进渲染（要重排 `AppShell` 装配链）—— 长期项 |
 
 > ⚠️ MySQL 真库联调已经证明了这条路的价值：**一次真库就抓出两个 SQLite 上永远看不到的 bug**
 > （`RENAME COLUMN` 版本差异、JDBC 类型名不带长度）。
@@ -206,12 +223,20 @@ P0  3) ✅ UX-2 密度与 chrome（dense 22 / 默认 compact / 12px / ≥22 行�
 P1  4) ✅ UX-3 工具条图标+文字 + 分组 + 补导入（728 / 94；历史推迟到 P2-3、单元格编辑器归 UX-4）
 P1  5) ✅ UX-4 网格交互（选中/竖线/列头菜单/行操作条/NULL/单元格编辑器；753 / 97）
 P1  6) ✅ S-7 品牌落点（应用栏矢量 BRAND + 删不可达欢迎页与 fs-2xl 令牌；754 / 97）
-P1  7) UX-5 侧栏/标签/状态栏                                        ← 当前
-P2  8) P2-1 清单列宽/长注释/数据长度单位
-P2  9) P2-2 错误详情弹窗 + 批量汇总
-P2 10) P5-2 Windows 凭据 → P5-1 分组/重命名 → P5-3 失败语义 → P5-4 内省
-P2 11) P2-3 最近操作 → P6-1 类型转换 → P6-2 查询结果导出 → P6-3 xlsx
-P2 12) UX-6 功能缺口（对象首页视图切换 / 结构选项 / 数据概览 / 已保存查询分组）
+P1  7) ✅ UX-5 侧栏/标签/状态栏（773 / 100）
+P2  8) ✅ P2-1 清单列宽/长注释/数据长度单位（781 / 100）
+P2  9) ✅ P2-2 错误详情弹窗 + 批量汇总（798 / 103）
+P2 10) ✅ P5-2 Windows WinCred（807 / 104）
+P2 11) ✅ P5-1 分组/重命名 → ✅ P5-3 失败语义 → ✅ P5-4 内省
+P2 12) ✅ P2-3 最近操作 → ✅ P6-1 类型转换 → ✅ P6-2 查询结果导出 → ✅ P6-3 xlsx
+P2 13) ✅ UX-6 功能缺口（对象首页视图切换 / 结构选项 / 数据概览 / 已保存查询分组）
+      → 代码主线收官：**857 / 110 / 0**；15 张截图已重拍，最终对比见 `NAVICAT-COMPARE.md` §11
+P2 14) ✅ P7-1 启动可观测性（StartupTrace + 日志 + 关于回显 + 强制 CSS pass 收口）
+P2 15) ✅ P7-2 可访问性（六区焦点顺序 / 标签与切面键盘可达 / 逐页可朗读名称）
+P2 16) ✅ P7-3 分发裁定（jlink ⛔ · 自动更新 🚫 · 签名 ⛔ · A18/A19/A22 回填）
+      → **P7 能自动化的部分收官：871 / 113 / 0 / 48 跳过**；冷启动 <2s **如实记为未达标**（§35.1）
+P2 17) ✅ 任务书 V1.0（U-ICON Lucide + 语义彩色 → U-CTRL 五档按钮×五态 → U-IDX §六 索引弹窗 → U-POLISH 弹窗骨架统一）
+      → **913 / 116 / 0 / 48 跳过**；15 张截图全量重拍；与任务书字面值的 6 处偏差逐条记录（`docs/UI-ROADMAP.md` §13.3）
 ```
 
 **已裁定**（2026-10-24）：P2/P5/P6 全部同意做；`declarations` 删除；C4 做；

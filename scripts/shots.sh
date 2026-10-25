@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（13 张）。
+# 重拍 docs/screenshots/ 的验收截图（15 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 12 张 + 暗色 1 张）
+#   ./scripts/shots.sh              # 全部重拍（亮色 14 张 + 暗色 1 张）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
 #
 # 为什么需要这个脚本（NAVICAT-TODO.md §12.2 记录的坑，全部在这里被绕开）：
@@ -42,6 +42,10 @@ SHOTS=(
   "p5-dark|appbar-manage-connections|5000|ADB_THEME_FORCE=dark"
   "p0-shell||2500|ADB_THEME_FORCE=light"
   "p2-users||5000|ADB_OPEN=users ADB_THEME_FORCE=light"
+  # ⭐ UX-6：数据页「概览」切面（行数 / 大小 / 引擎 / 索引数 / 最近操作）。
+  #   切面标签 id 是动态拼的（object-tab-<id>），不能当静态点击目标；
+  #   ADB_OVERVIEW=1 与 ADB_DDL 同型，等页面建好后程序化切换。
+  "p2-overview||7000|ADB_OPEN=users ADB_OVERVIEW=1 ADB_THEME_FORCE=light"
   "p2-details||7000|ADB_OPEN=users ADB_DETAILS=1 ADB_THEME_FORCE=light"
   # ⭐ UX-5-F：唯一拍到「交互态」的一帧 —— 选中行 + 光标格 + 抽屉编辑器。
   #   ADB_CELL=1 让数据页自己摆状态，点击真按「编辑」按钮进入编辑态。
@@ -53,7 +57,11 @@ SHOTS=(
   "p4-ddl||7000|ADB_DDL=1 ADB_THEME_FORCE=light"
   "p5-connections|appbar-manage-connections|4000|ADB_THEME_FORCE=light"
   "p6-new-table||5000|ADB_NEW_TABLE=1 ADB_THEME_FORCE=light"
-  "p7-new-index||6000|ADB_INDEX=1 ADB_THEME_FORCE=light"
+  # ⭐ §6.4：这一帧要拍到「已选列 + 序号 + 预览 SQL + 可用的移动钮」，
+  #   光弹一个空弹窗等于没拍这个弹窗的核心交互（空态由 IndexDialogTest 守）。
+  "p7-new-index||6000|ADB_INDEX=1 ADB_INDEX_POSE=1 ADB_THEME_FORCE=light"
+  # ⭐ P2-2：错误详情弹窗 —— 分类徽标 + 驱动原文 + 建议 + 可复制的 SQL。
+  "p2-error||5000|ADB_ERROR_DEMO=1 ADB_THEME_FORCE=light"
 )
 
 step "编译并安装（否则拍到的是旧界面）"
