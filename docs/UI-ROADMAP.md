@@ -3,8 +3,8 @@
 > **定位**：**「界面差在哪、差多少、改成什么样、做完怎么验」**。
 > `NAVICAT-TODO.md` 是唯一执行清单（逐条勾选）；本文是**界面专项的阶段规划**（批次 + 依赖 + 门禁）。
 >
-> 最后更新：**2026-10-25（第二十七轮：UI/UX 重构任务书 V1.0 —— U-ICON Lucide 矢量图标 + 对象/状态语义彩色、U-CTRL 五档按钮×五态与控件统一、U-IDX §六 新建索引弹窗重建（方言能力门控）、U-POLISH 弹窗骨架统一并补掉 6 处漏套主题；批次、验收与 6 处如实偏差见 §13）**
-> 适用基线：**116 个测试类 / 913 条执行 / 48 条环境门控跳过 / 0 失败**
+> 最后更新：**2026-10-26（第二十九轮：UI-AUDIT 收尾 —— D1/D2/D3 拍板（网格低一档 / 中文 12px / 清单两种视图）+ 帧检第五/六拍抓出并修复 U28 弹窗尺寸棘轮 / U29 reset 哑门禁 / U30 弹窗内边距被顶掉；见 `NAVICAT-TODO.md` §37）**
+> 适用基线：**125 个测试类 / 971 条执行 / 48 条环境门控跳过 / 0 失败**
 >
 > | 批次 | 状态 | 结果 |
 > |---|---|---|
@@ -18,8 +18,11 @@
 > | **第十八轮 · 第二轮实测** | ✅ | 6 个截图实证缺陷已修；**C1–C7** 并入 `NAVICAT-TODO.md` **§29** |
 > | **第十九轮 · 批次 A（C1+C2）** | ✅ | **方言感知列**（看数据不看方言：全占位符才整列隐藏）+ **卡片去破折号**；表清单 8→2 列、对象首页 9→3 列；14 条门禁全变异验证 |
 > | **第二十七轮 · 任务书 V1.0** | ✅ | **U-ICON**（Lucide 矢量 + 对象/状态彩色）/ **U-CTRL**（五档按钮 × 五态、控件统一）/ **U-IDX**（§六 索引弹窗重建，方言能力门控）/ **U-POLISH**（弹窗骨架统一）；含 6 处如实偏差，见 §13 |
+> | **第二十八轮 · 裁定落地** | ✅ | **V-6 出包图标闭环**（`GenPackIcons` → `.ico` / `.icns` + `package.sh --icon` + `PackageIconAuditTest`）/ **§6.7 按钮序按 Navicat 全应用统一**（`DialogStyles.apply` 换 O/C 槽 + 六处自建底部区同口径，`DialogButtonOrderTest` 守视觉坐标）/ **裁定：不加 19px 档**（维持 22/24/28/34；默认档与网格低一档由第二十九轮 D1 拍板，见 `NAVICAT-TODO.md` §37.1） |
 >
-> ⭐ **剩余 C3–C6** 见 `NAVICAT-TODO.md` **§29**（C3 详情面板挤压 / C4 行距 / C5 树展开出列）；
+> ⭐ **C3–C6 现状**（详见 `NAVICAT-TODO.md` §29 与 `AIDB-UIUX-ANALYSIS.md` §10.3）：
+> **C5 树展开出列 ✅（S-3 懒加载）** / **C4 行距 ✅ 裁定关闭（不加 19px）** /
+> **C3 详情面板 🟡 已缓解**（主区允许收缩，左侧 chrome 不再被挤出场景）；
 > **C7 欢迎页 mark 已于 S-7 结案** —— 那页不可达，品牌改挂应用栏（矢量 `Icons.Icon.BRAND`）。
 
 ---
@@ -569,6 +572,11 @@ java tools/TestCount.java      # 按 <testcase> 计数，断言总数 ≥ 300
 
 ### 12.1 目标基线（第二十一轮）
 
+> ⚠️ **现状口径（2026-10-26，第二十九轮）**：本表是当时立的**目标** —— 默认档后来改判为
+> **`normal`（28）**，数据网格**比档位低一档**（默认 → 24，D1 裁定 `RowHeights.grid()`），
+> 截图钉 `ADB_DENSITY=normal`；下文「默认 compact」各处均为历史规划记录，以
+> `NAVICAT-TODO.md` §37.1/§37.2 为准。
+
 | 维度 | 目标值 | 说明 |
 |---|---|---|
 | 行高 | **dense 22 / compact 24 / normal 28 / comfort 34** | 新增 `dense`（C4 落地）；**默认 `compact`**，截图对比时用 `dense` |
@@ -829,7 +837,7 @@ UX-6 ✅（功能缺口，2026-10-25 已完成）
 
 | 批次 | 做了什么 | 守它的门禁 |
 |---|---|---|
-| **U-ICON** | Lucide 官方 SVG **48 枚**内嵌为资源（lucide-static v1.61.0，ISC，许可证随目录分发）；运行时 `LucideConverter` 把 `circle/rect/polygon` 与弧命令展开成 JavaFX `SVGPath` 认的绝对 `M L C Z`，24 视框等比缩到 **16**、描边统一 **1.5px**；**动作图标一律单色线性**，只有**对象类型与连接状态**用语义彩色（`-adb-kind-*` / 状态令牌）；Unicode 符号当图标的路径全部删掉 | `LucideIconTest`（转换与视框）+ `IconSystemAuditTest` + `IconAuditTest`（引用必须存在）+ `StyleClassCoverageTest` |
+| **U-ICON** | Lucide 官方 SVG **48 枚**内嵌为资源（lucide-static v1.61.0，ISC，许可证随目录分发）；运行时 `LucideConverter` 把 `circle/rect/polygon` 与弧命令展开成 JavaFX `SVGPath` 认的绝对 `M L C Z`，24 视框等比缩到 **16**、描边统一 **1.5px**；**动作图标一律单色线性**，只有**对象类型与连接状态**用语义彩色（`-adb-kind-*` / 状态令牌）；Unicode 符号当图标的路径全部删掉。**追加（UI-AUDIT §2.8）**：48 枚里没有锁形，补第 49 枚 `lock.svg`（同版本同管道）给「口令保存于系统凭据库」，`Icons.Icon.LOCK` | `LucideIconTest`（转换与视框）+ `IconSystemAuditTest` + `IconAuditTest`（引用必须存在）+ `StyleClassCoverageTest` |
 | **U-CTRL** | 按钮五档（`adb-button` / `--primary` / `--ghost` / `--danger` / `adb-icon-button`）× 五态（常态 / hover / pressed / disabled / focused）一次配齐，实心变体补**独立按下态**并排在 `:hover` 之后；复选框 **16px 方框** + 可读勾 + armed/禁用/聚焦四态；下拉、列表单元格、输入框统一走 `h-input=28` 与 12px 正文；变体类**必须同时挂基础类**（连接页那颗「孤儿按钮」就是这么抓的） | `UnifiedControlTest`(13) + `DisabledButtonVisibilityTest` + `FocusRingAuditTest` + `AppCssAuditTest` + `ContrastTest` + `TokenParityTest` |
 | **U-IDX** | 「新建索引」弹窗按 §6.2 五区重建：A 标题栏（真实表 · 方言 · 库）/ B 基本信息（名称带标签 + 方言给的类型 + 唯一索引不藏）/ C 双列选择（**可用列 N / 索引列 N** 计数来自真实列表，中间添加·移除·上移·下移，双击与 ↵ / Delete / Alt+↑↓ 走同一批方法）/ D 等宽可折叠 SQL 预览（与真正执行的语句同源）/ E 底部左校验提示 + 右取消·确定；新增 `DialogSizes.PICKER=800`、高 560、可缩放 | `IndexDialogTest`(13) + `DialectTest`（能力边界）+ `IndexDdlTest`(17，钉住逐字节一致) |
 | **U-POLISH** | 弹窗骨架统一：`adb-new-table__*` 提升为共享 `.adb-dialog__*`（标题 / 副标题 / 关闭 / 分区标题 / body 内边距），两个弹窗共用一套，删掉失去消费者的旧类；弹窗按钮回到 28px 并补齐 pressed / disabled / focused；巡查抓出 **6 处没套主题的弹窗**（`TableDdl` 重命名框与错误框、`StructurePage` 改列名、`ExportWizard` 大表确认、`DataGridPage` 高风险确认、`AppShell.showInfo` 手写半套皮肤漏抄主题类）；标题栏不再重复方言（实测 `SQLite · 文件 · SQLite`）；`FakeDbSession.label()` 改成与真实会话同型 | 新 `DialogStylesTest.everyDialogConstructionSiteGetsTheSharedTheme`（按文件计数 + **扫描下限** + 先剥行注释；**变异验证**：注掉一处 apply → 红，还原 → 绿）+ `ScreenshotScriptAuditTest` |
@@ -854,7 +862,7 @@ UX-6 ✅（功能缺口，2026-10-25 已完成）
 | §6.2 B「其他方言支持的索引属性」 | 类型下拉**只有 PostgreSQL 出现**；MySQL / SQLite 连控件都不创建 | 适配层没有按服务器版本判断的能力，InnoDB 只有 BTREE、SQLite 无类型可选 —— 摆了控件就是给用户一个「选了不生效」的选项，§6.5.6 明令禁止 |
 | §6.7 输入框「错误态」 | 校验失败走**底部红色提示标签**（`adb-error`），不造 `:error` 伪类 | JavaFX 没有 `:error`，加一个自定义伪类要为每个控件单独接线；提示语已经说明「哪儿不对、怎么改」 |
 | §6.2 E 校验提示在底部栏**左侧** | 提示在内容区最下方、按钮栏分隔线之上，左对齐 | `DialogPane` 的按钮栏只收 `ButtonType`，把 Label 塞进 ButtonBar 要反射其皮肤节点；实测这一格位置就是 Navicat 的提示位 |
-| §6.7「主按钮放在底部右侧」 | 主按钮在**右下按钮簇内**，但左于「取消」（`确定 \| 取消`） | 这是 JavaFX `ButtonBar` 在 Windows 按钮序下的默认排布，**全应用每个弹窗一致**（新建表 = `创建 | 取消`）。只在索引弹窗里 `setButtonOrder(RIGHT_TO_LEFT)` 就正好违反 §七「不要让不同功能的弹窗看起来像来自不同的软件」；要改就全应用一起改（一行），但那会把 Windows / Navicat 的既有习惯反过来 —— **留给用户裁定，不擅自动** |
+| §6.7「主按钮放在底部右侧」 | **已按裁定落地**（第二十八轮）：全应用 `取消 \| 确定`，主动作贴右下 | 当时是 JavaFX `ButtonBar` Windows 序的默认排布（`确定 \| 取消`），要改就得全应用一起改 —— 裁定给出后由 `DialogStyles.apply` 一处换 O/C 两槽，另把六处自建底部区（导入 / 导出向导、传输入口、收藏夹、已保存查询、变量面板）同一口径；视觉坐标由 `DialogButtonOrderTest` 钉 |
 
 ### 13.4 验收帧
 

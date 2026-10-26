@@ -9,10 +9,10 @@
 
 ---
 
-## 当前状态（2026-10-25）
+## 当前状态（2026-10-26）
 
 **P0–P6 已完成、UIUX 专项 UX-0…UX-6 已全部收官、P7 能自动化的部分已收尾、UI/UX 重构任务书 V1.0（U-ICON / U-CTRL / U-IDX / U-POLISH）已落地。**
-门禁 **913 条 / 116 类 / 0 失败**（2026-10-25 · 第二十七轮 Windows 实机实测；另有 48 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
+门禁 **964 条 / 123 类 / 0 失败**（2026-10-26 · 第二十八轮 Windows 实机实测；另有 48 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
 
 > **第八轮之后**：D2+D4（MySQL/PG 列注释读回）已修；B5-S1（索引可编辑）已落地；
 > **T1–T4（建表 / 清空 / 重命名 / 删表）已落地**（T1=弹窗，按形态裁定）；9 张验收截图完成。
@@ -114,9 +114,9 @@
 | **启动耗时可观测（进程 → 首屏，分段打点 + 日志 + 关于回显）** | ✅ | `StartupTrace` + `StartupTraceTest`（**冷启动 <2s 未达标**：实测 3.5–3.9 s，见 `NAVICAT-TODO.md` §35.1） |
 | **Lucide 矢量图标 + 语义彩色**（对象类型/状态彩色，动作单色） | ✅ | `Icons`（第二十七轮）+ `LucideIconTest` |
 | **统一控件层：五档按钮 × 五态 + 输入/复选/下拉/清单/弹窗同套规则** | ✅ | `app.css` 控件段 + `UnifiedControlTest` |
-| **新建索引弹窗**（双列选择保序 + 方言能力门控 + SQL 预览即执行语句） | ✅ | `IndexDialog` + `IndexDialogTest` / `IndexDdlTest` |
+| **新建索引弹窗**（单列表 + 拖拽/Alt+↑↓ 保序 + 「添加列」下拉 + 方言能力门控 + SQL 预览即执行语句） | ✅ | `IndexDialog` + `IndexDialogTest` / `IndexDdlTest` |
 
-当前门禁：**913 条 / 116 类 / 0 失败**（2026-10-25 · 第二十七轮 Windows 实机实测；`./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`）；另有 48 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
+当前门禁：**964 条 / 123 类 / 0 失败**（2026-10-26 · 第二十八轮 Windows 实机实测；`./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`）；另有 48 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
 
 > ⚠️ **本机环境**：`java` 默认不在 PATH。可用的 JDK：
 > - Windows 10：`~/.jdks/openjdk-27.0.1.0.2`（pom 的 enforcer 区间为 `[25,28)`）
@@ -134,13 +134,16 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 演示库首次启动自动生成：4 张表（`users` 200 行、`orders` 500 行、`products` 80 行、`notes` 空表）+ 1 个视图。
 已有有效演示库不会被覆盖；`-Dadb.demo.db=/path/to/file.db` 可指定其他文件。
 
-真实窗口截图：`docs/screenshots/p0-shell.png`、`p2-users.png`、`p3-query.png`、`p4-structure.png`、
-`p5-connections.png`、`p5-dark.png`、`p6-tables.png`、`p6-new-table.png`、`p7-new-index.png`
-（共 **9 张**；`docs/screenshots/navicat/` 另存 Navicat Premium Lite 15 实拍 3 张 + 等比例并排图：
+真实窗口截图：`docs/screenshots/` 共 **18 张**（亮色 15 + 暗色 3）——
+`p0-shell`、`p2-users`、`p2-users-dark`、`p2-overview`、`p2-details`、`p2-cell`、`p2-error`、
+`p3-query`、`p3-query-menu`、`p4-structure`、`p4-ddl`、`p5-connections`、`p5-dark`、
+`p6-tables`、`p6-tables-grid`、`p6-new-table`、`p7-new-index`、`p7-new-index-dark`
+（`docs/screenshots/navicat/` 另存 Navicat Premium Lite 15 实拍 3 张 + 等比例并排图：
 `navicat-tablelist.png` / `navicat-toolbar.png` / `side-by-side-2026-10.png`，
 以及 2026-10-24 新增的两张高保真实拍 `navicat-data-grid-2026-10-24.png` / `navicat-table-list-2026-10-24.png`），
 由 `ScreenshotSession`（`ADB_SHOTS` 等环境变量）可复现生成，用法见 §12.2。
-弹窗两张靠 `ADB_NEW_TABLE=1` / `ADB_INDEX=1` 启动开关（§16.3）。
+弹窗帧靠 `ADB_NEW_TABLE=1` / `ADB_INDEX=1` 启动开关（§16.3）；
+右键菜单帧 `p3-query-menu` 靠 `ADB_MENU_POSE=1` 注入真 `ContextMenuEvent`。
 
 ---
 
@@ -162,7 +165,7 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 # 3. 完整门禁：编译 + 全部测试 + 用例计数
 ./scripts/build.sh
 
-# 4. 重拍 docs/screenshots/ 的 9 张验收截图
+# 4. 重拍 docs/screenshots/ 的 18 张验收截图
 ./scripts/shots.sh
 
 # 5. 出包（jpackage；产物在 bootstrap/adb-desktop/target/dist/，实测可启动）
@@ -325,5 +328,5 @@ bootstrap/
   方言差异现由 `Dialect` 抽象层承担），基线因此减少 43 条测试。
 - 主题“跟随系统”目前只探测 macOS；Windows/Linux 默认亮色。
 - 令牌体系 98 个全部被用到；密度四档（22/24/28/34，默认紧凑）覆盖数据网格 / 查询结果 / 对象清单 / 对象树 / 结构页。
-- `docs/screenshots/` 的 9 张图已按当前代码重拍。
+- `docs/screenshots/` 的 18 张图（亮 15 + 暗 3）已按当前代码重拍。
 - 首版不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务。

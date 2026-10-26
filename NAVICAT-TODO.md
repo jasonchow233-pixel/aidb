@@ -8,8 +8,10 @@
 > **界面规格书见 `docs/UI-VISUAL-SPEC.md`**（第十轮：字号/颜色/图标/布局/组件/弹窗/交互态/键盘）；
 > **对外汇报版见 `docs/EXEC-SUMMARY.md`**；**GitHub 开源对标见 `docs/GITHUB-COMPARE.md`**。
 >
-> 最后更新：**2026-10-25（第二十七轮·任务书 V1.0 落地：U-ICON Lucide 矢量图标 + 对象/状态语义彩色、U-CTRL 五档按钮×五态与控件统一、U-IDX §六 新建索引弹窗重建、U-POLISH 弹窗骨架统一并补掉 6 处漏套主题的弹窗；15 张截图已全量重拍，批次明细见 `docs/UI-ROADMAP.md` §13）**
-> 当前基线：**P0–P4 ✅ / P5 ✅ / P6 ✅ / UX-0…UX-6 ✅ / 任务书 V1.0 ✅**；门禁 **913 条 / 116 类 / 0 失败**（2026-10-25 Windows 实机实测，另有 48 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
+> 最后更新：**2026-10-26（第二十八轮·三项裁定落地：V-6 出包图标闭环、§6.7 弹窗按钮序按 Navicat 全应用统一、文档校准；裁定「行高不加 19px 档」结案 C4；明细见 §36）**
+> 当前基线：**P0–P4 ✅ / P5 ✅ / P6 ✅ / UX-0…UX-6 ✅ / 任务书 V1.0 ✅ / V-6 ✅ / 按钮序 ✅**；门禁 **926 条 / 118 类 / 0 失败**（2026-10-26 Windows 实机实测，另有 48 条**环境门控**跳过 —— Docker/Testcontainers 不可用 + MySQL 真库环境变量未设，与 UI 改动无关）。
+> 📌 **926 = 913 + 13 条净增**（第二十八轮：`DialogButtonOrderTest` 10 条 —— 8 条运行时坐标断言 + 2 条静态收口；`PackageIconAuditTest` 3 条 —— ICO/ICNS 容器存在且帧数达标、`package.sh` 真的传 `--icon`、生成器与产物一致。新增 2 类，48 条跳过数与上一轮完全相同 = 环境开关未变）。
+> 📌 **913 = 857 + 任务书 V1.0 的净增**（第二十七轮 U-ICON / U-CTRL / U-IDX / U-POLISH，明细见 `docs/UI-ROADMAP.md` §13）。
 > 📌 **857 = 807 + 50 条净增**（新增覆盖：P5-1 分组 / 重命名 6 · P5-3 `ConnectionFailureTest` 7 · P5-4 `SequenceExportedKeyTest` 4 + `PostgresIntrospectionTest` 4 · P2-3 历史对象上下文 5 · P6-1 `ImportTypeCoercionTest` 8 · P6-2 `exportSql` + 查询页导出 5 · P6-3 `XlsxCodecTest` 5 + 向导 1 · UX-6 四项 9 · 最终布局守卫 1；逐项明细有跨批次重叠，**以实测总数 857 为准**）。跳过数 44 → 48，全部来自新增 PG 契约。
 > 📌 **807 = 798 + P5-2 的 8 条 + 截图复核的 1 条**（`CredentialStoreTest` 新类：WinCred 真机 round-trip / 跨实例持久 / 空口令删除 / 幂等删除 / UTF-16LE / 超限前置拒绝 / target 命名 / `platform()` 分派；`TableListPageTest` +1：文字按钮不许被压成省略号）。
 > 📌 **798 = 781 + P2-2 的 17 条**（`ErrorDetailsTest` 6 / `BatchSummaryTest` 7 / `ReportDialogsTest` 4，三个新类）：错误详情与批量汇总统一，接进数据页 / 查询页 / 批量删表 / 导入结果。
@@ -64,13 +66,14 @@
 | P5 连接管理 | ✅ 完成 | 连接管理页、三步向导、测试连接、WinCred / 钥匙串 / Secret Service 凭据、连接档案落盘、HikariCP 连接池（PG/MySQL）、**P5-1 分组与重命名 · P5-2 Windows WinCred · P5-3 失败语义 · P5-4 内省补齐** |
 | P6 导入导出 | ✅ 完成 | CSV / TSV / JSON Lines / SQL 导出 + CSV / TSV 导入、字段映射、坏行报告、导入导出向导、**查询结果导出 · xlsx 导入导出（POI 流式）· 导入类型转换**；真库联调：MySQL 5.7（9 例）+ PostgreSQL 16 / MySQL 8.4 Testcontainers（11 例全绿），累计抓出 4 个真 bug（`RENAME COLUMN` 版本差异 / JDBC 类型名不带长度 / `rows` 是 MySQL 8.0 保留字 / `pg_class` 无 `relcollation` 列） |
 | P7 分发 | 🟡 **能自动化的收官** | ✅ jpackage（`scripts/package.sh`）· 崩溃日志（`CrashLog`）· **启动可观测性 `StartupTrace`**（`~/.agenticdb/logs/startup.log` + 关于弹窗回显）· **可访问性**（六区焦点顺序 / 标签与切面键盘可达 / 逐页可朗读名称，`AccessibilityAuditTest` 5 条）· ❌ **冷启动 < 2s 未达标**（实测 3.5–3.9 s，成本已归因，见 §35.1）· ⛔ jlink（自动模块）/ 自动更新（无发布渠道）/ 签名公证（缺证书）—— 理由逐条写在 §35.2–35.3 |
-| **UI/UX 专项** | ✅ **U-B1–U-B6 已完成** | **§13–§16 / §22 / §27 / §28**：U-B1–U-B6 全落地；S1 数值展示 / S2 刷新按钮 / D1 函数报错 / X1–X2 空态 / **T1–T4 表级生命周期** / **D2·D4 注释读回** / **B5-S1 索引可编辑**；第十三轮 Navicat 表清单 8 列 + 密度 24/28/34；**U-B7：侧栏改 Navicat 模型（无「工作台」，单棵「我的连接」树，查询跟着连接走）+ 按钮规格统一（§27）**；**第十七轮：规格 §6 右侧对象详情面板 + §13 新建表弹窗重构 + §9.7 底部「记录/页面」标签（§28）**；**第二十轮：S-6 可读列宽 + 横向滚动 · S-9 对象首页工具条 · D-1 SQLite 主键非空 · S-8 Windows 门禁可移植性（§33）**；**第二十一轮：UX-0 截图可复现 · UX-1 令牌收敛 · UX-2 四档密度与 chrome 收薄 · UX-3 工具条主操作「图标+文字」+ 分组 + 响应式收字（§34）**；**UX-4 网格交互 · UX-5 交互态可拍 · UX-6 概览/结构选项/侧栏已保存查询（§34.2）· S-7 品牌落应用栏** |
+| **UI/UX 专项** | ✅ **U-B1–U-B6 已完成** | **§13–§16 / §22 / §27 / §28**：U-B1–U-B6 全落地；S1 数值展示 / S2 刷新按钮 / D1 函数报错 / X1–X2 空态 / **T1–T4 表级生命周期** / **D2·D4 注释读回** / **B5-S1 索引可编辑**；第十三轮 Navicat 表清单 8 列 + 密度 24/28/34；**U-B7：侧栏改 Navicat 模型（无「工作台」，单棵「我的连接」树，查询跟着连接走）+ 按钮规格统一（§27）**；**第十七轮：规格 §6 右侧对象详情面板 + §13 新建表弹窗重构 + §9.7 底部「记录/页面」标签（§28）**；**第二十轮：S-6 可读列宽 + 横向滚动 · S-9 对象首页工具条 · D-1 SQLite 主键非空 · S-8 Windows 门禁可移植性（§33）**；**第二十一轮：UX-0 截图可复现 · UX-1 令牌收敛 · UX-2 四档密度与 chrome 收薄 · UX-3 工具条主操作「图标+文字」+ 分组 + 响应式收字（§34）**；**UX-4 网格交互 · UX-5 交互态可拍 · UX-6 概览/结构选项/侧栏已保存查询（§34.2）· S-7 品牌落应用栏**；**第二十二轮 UI-AUDIT：U1–U27 逐帧整改（`docs/UI-AUDIT-2026-10-26.md`）· 第二十八轮三项裁定（§36）· 第二十九轮收尾：D1/D2/D3 拍板 + U3/U5 门禁补齐 + 过期门禁重签（§37）** |
 
 首版明确不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务、传输同步。
 
-> **截图验收**：`docs/screenshots/` **15 张**真实窗口图（外壳 / 数据页 / **数据概览** / **数据页 + 右侧对象详情面板** /
-> 查询页 / 结构页 / **结构页 DDL 页签** / 连接页 / 暗色 / 表清单 / 表清单网格 / **新建表弹窗** / **新建索引弹窗** /
-> **交互态 `p2-cell`** / **错误详情 `p2-error`**），
+> **截图验收**：`docs/screenshots/` **18 张**真实窗口图（15 亮 + 3 暗：外壳 / 数据页 / **数据概览** /
+> **详情抽屉** / **交互态 `p2-cell`** / 表清单 / 表清单网格 / 查询页 / **结果右键菜单 `p3-query-menu`** /
+> 结构页 / 结构页 DDL / 连接页 / 暗色连接页 / **暗色数据网格** / **暗色索引弹窗** / 新建表弹窗 /
+> 新建索引弹窗 / **错误详情 `p2-error`**），
 > 由 `ScreenshotSession`（`ADB_SHOTS` 等环境变量）可复现生成，用法见 §12.2。
 > 弹窗两张靠 `ADB_NEW_TABLE=1` / `ADB_INDEX=1` 启动开关（§16.3）；
 > 详情面板那张靠 `ADB_DETAILS=1`、DDL 页签那张靠 `ADB_DDL=1`（第十七轮新增：
@@ -86,23 +89,29 @@
 ./mvnw -B clean verify
 ```
 
-当前结果（2026-10-25 · **第二十七轮 · 任务书 V1.0** · Windows 10 + JDK 27 全量实测）：
+当前结果（2026-10-26 · **第二十九轮 · UI-AUDIT 收尾 + D1/D2/D3 拍板** · Windows 10 + JDK 27 全量实测）：
 
 | 场景 | 执行 | 跳过 | 失败 |
 |---|---|---|---|
-| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **913** | 48 | 0 |
+| **默认门禁（SQLite + Testcontainers PG16/MySQL8.4）** | **971** | 48 | 0 |
 | **外部 PG / MySQL 真库**（aliCloud RDS 等，需环境变量） | 单独跑，不在默认门禁 | — | — |
 | **多版本矩阵**（MySQL 5.7/8.0 + PG 13/17，`ADB_TEST_VERSION_MATRIX=1`） | 默认不跑，需显式打开 | 1 | 0 |
 
-**116 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
+**125 个测试类**。跳过的是「本机没有的外部依赖」：未配置的**外部** PG / MySQL 真库
 （Testcontainers 容器**需 Docker**；本机 Docker 不可用时走跳过分支）—— **跳过不算通过**，门禁统计里单列一行。
 
-> 📌 **最新口径（2026-10-25，第二十七轮 · 任务书 V1.0）**：**913 条 / 116 类 / 0 失败 / 48 跳过**
-> （`./scripts/build.sh` = `./mvnw -B clean verify` + `java tools/TestCount.java` 全绿）。
-> 相比第二十六轮的 871 / 113，**+42 条 / +3 类全部是本轮新增**（新类 `LucideIconTest`、
-> `UnifiedControlTest`、`IndexDialogTest`）：U-ICON 图标资源与彩色语义、U-CTRL 统一控件五态、
-> U-IDX 索引弹窗（含 `IndexDdlTest` / `DialectTest` 的方言能力新例）、U-POLISH 弹窗主题覆盖静态审计。
-> 跳过数不变（48 = 本机无 Docker 的容器契约 + 多版本矩阵）。
+> 📌 **最新口径（2026-10-26，第二十九轮 · 见 §37）**：**971 条 / 125 类 / 0 失败 / 48 跳过**
+> （`./scripts/build.sh` = `./mvnw -B clean verify` 全绿；⚠️ 该脚本尾部的 `java tools/TestCount.java`
+> 在本机报 `java: command not found`，计数要用 `"$JAVA_HOME/bin/java"` 手工补跑，见 §37.6）。
+> 相比第二十八轮的 926 / 118：**+40 条 / +6 类**来自 UI-AUDIT 第二十二轮的整改批次
+> （状态栏空段隐藏契约、死选择器守卫、抽屉编辑态让位与宽度记忆、Lucide 49 枚一一对应、
+> 面包屑截断、布尔字形语法……逐条见 `docs/UI-AUDIT-2026-10-26.md` §2），
+> 本轮再 **+5 条 / +1 类**：D1 网格低一档门禁 1 条、帧检抓出的 U28/U29/U30 行为门禁 4 条
+> （`SettingsStoreTest` 新类 3 条 + `DialogStylesTest` 面板语义重签与内边距计算值各 1 条），
+> 并把两条**缺失的门禁补齐**（`LaunchFlagsAuditTest` = U3、
+> `GridInteractionTest.everyConstraintMovesToTheHeaderSecondLine` = U5）、
+> **一条过期门禁重签**（`SelectionStateTest` 的脏值条：warning 橙 → 专属 `-adb-dirty`）。
+> 密度口径以 §37.1/§37.2 为准：**四档 22/24/28/34，默认 `normal`，记录网格低一档**。
 >
 > ⚠️ **本机环境（Windows）**：`java` 默认不在 PATH；可用的是 **JDK 27**（`~/.jdks/openjdk-27.0.1.0.2`），
 > pom 的 enforcer 区间已放到 `[25,28)` —— `export JAVA_HOME="$HOME/.jdks/openjdk-27.0.1.0.2"`。
@@ -120,14 +129,14 @@ java tools/TestCount.java      # 按 <testcase> 元素计数，并校验下限 �
 | `core/adb-model` | 30 | 分页/行数上限契约 |
 | `core/adb-safety` | 68 | 危险分级四档、**fail-closed**、WITH 体内扫描、PRAGMA 读写、词法切分 |
 | `core/adb-sql` | 31 | 词法 / 分句 / 格式化 / **括号配对** / **参数检测** |
-| `workbench/adb-jdbc` | 54 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为**、**真库契约（跳过 30）** |
+| `workbench/adb-jdbc` | 56 | 参数化、事务、类型映射、截断探测、**取消语义**、**方言行为**、**真库契约（跳过 30）** |
 | `testing/adb-fixtures` | 3 | 演示库固定种子 |
-| `workbench/adb-introspect` | 126 | 内省、表元数据 8 列、分页排序筛选 SQL、结构变更、**catalog 列表与系统库过滤**、**真库契约（跳过 14）** |
+| `workbench/adb-introspect` | 137 | 内省、表元数据 8 列、分页排序筛选 SQL、结构变更、**catalog 列表与系统库过滤**、**索引方言能力下沉**、**真库契约（跳过 18）** |
 | `workbench/adb-session` | 20 | 连接档案、凭据、连接池、**敏感项脱敏**、**catalog 虚拟连接约定** |
 | `workbench/adb-editing` | 19 | 编辑缓冲、SQL 生成、反向撤销 |
-| `workbench/adb-transfer` | 15 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告 |
-| `ui/adb-ui-core` | 30 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** / **CSS 尺度审计** / **焦点环审计** / **启动打点 `StartupTrace`（分段、首屏只记一次、落盘一次、写失败不抛）** |
-| `ui/adb-ui-shell` | 433 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派**、**侧栏工具可达性**、**右侧对象详情面板**、**新建表弹窗（宽编辑器 SQL 预览）**、**表清单选中项联动详情面板**、**结构页 DDL 只读编辑器**、**方言感知列与卡片去破折号**、**对象树表节点展开出列（懒加载 / 缓存 / 失败可重试 / 列不是对象）**、**应用栏矢量 BRAND + 死代码不复活**、**列网格 Tab / 方向键导航**、**对象首页级工具条 / 可读列宽 / SQLite 主键非空**、**⭐ 可访问性（六区焦点顺序 / 标签与切面 `TAB_ITEM` / 逐页可朗读名称 / 键盘操作标签）**、**⭐ 主题强制 CSS pass 只在窗口已显示时做** |
+| `workbench/adb-transfer` | 31 | 流式 CSV 编解码、四种导出格式、导入列匹配与坏行报告、**xlsx（POI SXSSF 写 / SAX 读）**、**按目标列类型转换**、**批量汇总（失败数与明细分离）** |
+| `ui/adb-ui-core` | 51 | 令牌键一致 / 亮暗一致 / 无颜色字面量 / **无未使用令牌** / **CSS 尺度审计** / **焦点环审计** / **启动打点 `StartupTrace`** / **⭐ 字体族门禁 `FontGuardTest`（U2/U11：等宽栈不许 mac 字体开头、必须带 Windows 原生与中文兜底）** / **⭐ 快捷键平台化 `ShortcutsTest`（U1：`Mod` → Windows `Ctrl` / mac `⌘`，非 mac 文案零 Apple 符号）** / **⭐ Lucide 图标一一对应 `LucideIconTest`** |
+| `ui/adb-ui-shell` | 504 | 外壳、数据页、查询页、结构页、连接页、向导、渲染、CSV、**表清单 8 列**、**图标语义唯一**、**注册表收口**、**保存守卫**、**禁用按钮可见性**、**网格交互**、**密度覆盖**、**catalog 树与切库分派**、**侧栏工具可达性**、**右侧对象详情面板**、**新建表弹窗（宽编辑器 SQL 预览）**、**表清单选中项联动详情面板**、**结构页 DDL 只读编辑器**、**方言感知列与卡片去破折号**、**对象树表节点展开出列（懒加载 / 缓存 / 失败可重试 / 列不是对象）**、**应用栏矢量 BRAND + 死代码不复活**、**列网格 Tab / 方向键导航**、**对象首页级工具条 / 可读列宽 / SQLite 主键非空**、**可访问性（六区焦点顺序 / 标签与切面 `TAB_ITEM` / 逐页可朗读名称 / 键盘操作标签）**、**主题强制 CSS pass 只在窗口已显示时做**、**⭐ 弹窗按钮序 `DialogButtonOrderTest`(10) / 出包图标 `PackageIconAuditTest`(3)**、**⭐ UI-AUDIT 批次：状态栏空段隐藏 `StatusBarTest` / 死选择器守卫 `AppCssAuditTest` / 抽屉编辑态让位与宽度记忆 / 面包屑截断 / 布尔字形语法 `StructurePageTest` / 快捷键 glyph 与 tooltip 两条静态守卫 / 术语统一守卫 `TerminologyGuardTest`**、**⭐ 第二十九轮补齐：启动渲染标志 `LaunchFlagsAuditTest`（U3）/ 列头约束并入第二行 `GridInteractionTest`（U5）/ 网格低一档密度（D1）** |
 
 > ⚠️ **统计口径（4.5-28）**：用 `@Nested` 的 2 个测试类（`QueryLimitsTest`、
 > `DangerClassifierTest`）在 surefire XML 里
@@ -1399,16 +1408,16 @@ Navicat 对象树右键菜单里最高频的四个动作，我们**一个都没�
 |---|---|---|---|
 | ~~**A15 / A16**~~ ✅ | ~~连接建立与内省移出 UI 线程 + 每连接一个执行器~~ | — | ✅ **已完成（第十二轮）**：`DbExecutors` + 后台连接 |
 | ~~**A25**~~ ✅ | ~~`declarations/` 与运行时方言不一致（达梦）~~ | — | ✅ **已完成（第十二轮）**：显式白名单 + 门禁；**第二十一轮随声明层整体删除而移除** |
-| **A20** | `MAX_CELL_BYTES` 声明未用 | 🟢 低 | 详情抽屉已按需取数，单元格不再全量传输 —— 那就把常量删掉 |
+| ~~**A20**~~ ✅ | ~~`MAX_CELL_BYTES` 声明未用~~ | — | ✅ **已完成（第二十轮顺手）**：全仓库 `MAX_CELL_BYTES` 已无引用（grep 为空） |
 
 ### 21.3 界面类
 
 | # | 项 | 难度 | 建议 |
 |---|---|---|---|
 | **V-5** | 工具栏按宽度折叠（≤7 常显 + 更多） | 🟡 中 | **实测 1280 宽下 12 个图标按钮放得下** —— 现在做是过度设计。建议等真出现窄屏问题再做 |
-| **V-6** | 应用图标 | 🟢 低 | 需要出图资源（PNG / ICNS）。工程上没问题，缺的是设计稿 |
+| ~~**V-6**~~ ✅ | ~~应用图标（安装包）~~ | — | ✅ **已完成（第二十八轮）**：缺的从来不是设计稿（`brand/aidb-mark.svg` + `tools/GenLogo.java` 早有了），缺的是**出包那一环没接** —— `scripts/package.sh` 原来不传 `--icon`，jpackage 静默退回 Java 默认图标且**不报错**。现在 `tools/GenPackIcons.java` 用 `GenLogo.draw(size)` 同源几何出 `brand/app-icon.ico`（7 帧 PNG）+ `brand/app-icon.icns`（12 帧），`package.sh` 按平台传 `--icon`（缺资产就 warn 拦在打包前）；门禁 `PackageIconAuditTest` 3 条逐字段解两个容器（目录项边长必须等于该帧 PNG IHDR 宽、icns 帧长自洽且恰好铺到 EOF），3 个变异逐条红→改回绿 |
+| ~~**V-12 剩余**~~ ✅ | ~~错误**详情弹窗** / 批量确认汇总页~~ | — | ✅ **已完成（第二十三轮）**：`ErrorDetails`（8 类分类 + 整条异常链驱动原文 + SQL）配 `ErrorDetailsDialog`，`BatchSummary`（失败数与明细行数分离）配 `BatchSummaryDialog`，接进数据页保存/撤销/导出、查询错误页签、批量删表、导入结果四处 |
 | ~~**V-9**~~ ✅ | ~~表格规格统一（类型行 / 记录导航条）~~ | — | ✅ **已完成（第十五轮，随 Q5 一起做）**：查询结果加列类型条 `adb-query__result-types` + 翻页条复用 `adb-record-nav`/`adb-page-size`，与数据页同一套视觉 |
-| **V-12 剩余** | 错误**详情弹窗** / 批量确认汇总页 | 🟠 中 | 错误**归类**已做（第十二轮 `ErrorClassifier`）；剩下的是「详情弹窗」与「批量汇总页」 |
 
 ### 21.4 分发类
 
@@ -1908,10 +1917,10 @@ java tools/TestCount.java
 | # | 项 | 来源 | 难度 / 前置 |
 |---|---|---|---|
 | **N6** | 列宽记忆 / 长注释 Tooltip / MySQL 数据长度 `B·KB·MB·GB` 联调 | §22.4 | 🟡 **需要真库**（不与 N1–N5 混做） |
-| **V-12 剩余** | 错误**详情弹窗** + 批量确认**汇总页**（错误**归类**已做） | §19.3 / §21.3 | 🟠 单独一轮 |
+| **V-12 剩余** ✅ **DONE (R23)** | 错误**详情弹窗** + 批量确认**汇总页**（错误**归类**已做） | §19.3 / §21.3 | ✅ `ErrorDetails` + `ErrorDetailsDialog`、`BatchSummary` + `BatchSummaryDialog`，接进数据页 / 查询错误页签 / 批量删表 / 导入结果四处（`ReportDialogsTest` 等 +17 条，5 个变异验证）· 见 §23 第二十三轮 |
 | **表详情「最近执行的相关操作」** | 查询历史按当前对象筛（`QueryHistory` 已有，缺关联） | §28.6 | 🟡 |
 | **连接档案路径回显** ✅ **DONE (R20)** | `~/.agenticdb/connections.json` 路径展示 | §28.6 | 🟢 低 | ✅ 接在**连接级详情面板**的 facts 里（显示 `ConnectionStore.file()` 实际路径，不是硬编码 `~/.agenticdb` —— 测试与自定义启动会覆盖它） |
-| **C4 密度第四档** | 实测 AIDB 网格 **28px** vs Navicat **19–22px**；现有最紧档 24px 仍松 | `AIDB-UIUX-ANALYSIS.md` §10.1 | ✅ **已裁定：做**（2026-10-24）—— 新增 `dense 22`，默认改 `compact 24`，见 §34 / UX-2 |
+| **C4 密度第四档** | 实测 AIDB 网格 **28px** vs Navicat **19–22px**；现有最紧档 24px 仍松 | `AIDB-UIUX-ANALYSIS.md` §10.1 | ✅ **已裁定：做**（2026-10-24）—— 新增 `dense 22`，默认改 `compact 24`，见 §34 / UX-2。<br>⭐ **第二十八轮再裁定：到此为止，不加 19px 档**（2026-10-26）—— 19–22px 是 Navicat 自己的字体渲染口径，AIDB 12px 正文压到 19px 会切掉字形降部；`dense 22` 已给到要紧凑的人。**C4 结案，别再重开**（§36.1） |
 | **V-5** 工具栏按宽度折叠 / **V-11** 弹窗宽度三档 | §19.3 | ⏸ **暂缓有理由**：1280 宽实测 12个图标放得下 |
 | **S-7** ✅ **DONE (R22 · 裁定＝接 + 删)** | **欢迎页不可达**（2026-10-23 由要做 S-5 顺带挖出）：`AppShell` 构造器无条件 `openPermanent(object-home)` ⇒ `WorkspaceView.showWelcome()` 永远被盖掉 ⇒ 30 行欢迎页是**死代码**，S-5 的品牌改动用户看不到 | §31.2 / §34.2 | ✅ **裁定＝接 + 删**（2026-10-24）：新增矢量 `Icons.Icon.BRAND`（圆柱 + AI 星芒）接进应用栏 26px 方块，`showWelcome()` / `brandMark()` / `.adb-welcome*` / `Icons.SIZE_BRAND` / `fs-2xl` 五处死代码连带删净 —— 落地记录见 **§34.2 S-7** |
 
@@ -1920,7 +1929,7 @@ java tools/TestCount.java
 | # | 项 | 来源 | 说明 |
 |---|---|---|---|
 | **A20** ✅ **DONE (R20)** | `QueryLimits.MAX_CELL_BYTES` 声明后**零引用** → 删掉 | §21.2（第十八轮复核仍成立：全仓仅 `QueryLimits.java:78` 一处） | ✅ 已删（`grep -r MAX_CELL_BYTES` 全仓 0 命中） |
-| **V-6 应用图标** | 实际**已大半完成**：`stage.getIcons()` 6 档 PNG 已注册（§28.9），R18-4 又修了死引用；**剩「界面内使用」= S-5** | §19.3 | 🟢 |
+| **V-6 应用图标** ✅ **DONE (R28)** | 窗口图标 6 档 PNG（§28.9）+ 界面内品牌 mark（S-5/S-7）早就有了；**真正缺的是出包那一环**：`scripts/package.sh` 不传 `--icon`，jpackage 静默退回 Java 默认图标 | §19.3 | ✅ `tools/GenPackIcons.java` 从 `GenLogo` 同源几何生成 `brand/app-icon.ico`（7 帧）+ `brand/app-icon.icns`（12 帧），`package.sh` 按平台传 `--icon`；门禁 `PackageIconAuditTest`(3) 逐字段解两个容器 + 3 个变异验证 · 见 §23 第二十八轮 |
 | **X4 收口** | 不再为半孤儿动作单独造菜单；口径改成「**⌘K 能搜到即可达**」（`ActionRegistryConvergenceTest` 已守右键走注册表） | §21.1（第十八轮勘误：X3 早已完成，别再列它） | 🟢 |
 | **导入 / 导出向导** | Navicat 的强项之一，AIDB 只有入口没有分步引导 | `AIDB-UIUX-ANALYSIS.md` §9 | 🟠 大，值得单独一轮 |
 | **P7 剩余** | 自动更新；jlink 仍不可行（自动模块） | §21.4 | 🟠 |
@@ -2924,10 +2933,264 @@ D 项写门禁时实测出来的：基线规则 `.adb-statusbar .label`（0,2,0�
 
 ---
 
+## 36. 第二十八轮（2026-10-26）：三项裁定落地 —— 出包图标 / 按钮序 / 文档校准
+
+> 本轮**不扩功能**，把上一轮欠的三个「裁定项」一次结清：**V-6 出包图标闭环**、
+> **§6.7 弹窗按钮序按 Navicat 全应用统一**、**文档校准轮**；外加一条产品裁定
+> （**行高不加 19px 档**）把挂了多轮的 C4 结案。冷启动渐进渲染排在最后，**先方案后动手**（见 §36.5）。
+
+### 36.1 本轮裁定（产品口径，写下来防止以后翻案）
+
+| 裁定 | 内容 | 后果 |
+|---|---|---|
+| **行高** | **不加 19px 档**，维持 `dense 22 / compact 24 / normal 28 / comfort 34`，默认 `compact` | **C4 结案**（不再挂账）：Navicat 的 19–22px 是它的字体渲染口径，AIDB 12px 正文压到 19px 会切掉字形降部；`dense 22` 已给到想紧凑的人 |
+| **弹窗按钮序** | 改成 **Navicat 排布**：`取消` 在左、**主动作贴底部右下**，**全应用一致** | 见 §36.3 —— 两套页脚机制都要管，且必须有一处定义 |
+| **本批范围** | V-6 + 文档校准 + 冷启动（冷启动排最后、先出方案） | 见 §36.2 / §36.4 / §36.5 |
+
+### 36.2 V-6 出包图标闭环
+
+⭐ **根因不是「没有图标」**：`brand/` 一直有 512 主入口 PNG，`tools/GenLogo.java` 是矢量同源，
+运行时窗口图标（`stage.getIcons()` 6 档）第十七轮就接好了。**缺的是出包那一环没接** ——
+`scripts/package.sh` 原来**不传 `--icon`**，jpackage 于是**静默退回 Java 默认图标且不报错**：
+包能装、能启动，图标是别人的，装了才知道。这与第十八轮「失败被设计成静默降级」是同一个坑。
+
+| 落点 | 内容 |
+|---|---|
+| `tools/GenPackIcons.java` | 从 `GenLogo.draw(size)` **同源几何**生成两个容器：`brand/app-icon.ico`（**12187 B / 7 帧 PNG**）+ `brand/app-icon.icns`（**53591 B / 12 帧**）。重跑幂等（字节稳定）。 |
+| `scripts/package.sh` | 按 `uname -s` 分支追加 `--icon`（Windows `.ico` / macOS `.icns` / Linux 走 512 PNG）；**容器缺了 `warn` 并说清先跑哪个生成器**，不再静默出包。 |
+| `PackageIconAuditTest`（3 条） | 守的不是「文件在不在」，是**按容器格式逐字段解码**：ICO 头 `reserved=0 / type=1 / 帧数≥7 / planes=1 / bpp=32 / 256 帧边长按容器约定写成 0 且解回 256 不撞车 / 每帧 CRC 完整且 IDAT 可解压`；ICNS `magic + 大端总长 == 实际字节数 + 每帧 type 自洽长度严丝合缝铺到文件尾 + icn4/icn5/ic07/ic08 档位齐`；`package.sh` **每个 `--type` 分支**都拿得到 `--icon`（**先剥行注释再判**，同 §27 的教训）。 |
+
+⚠️ **如实边界**：本轮**真跑通过一次** `./scripts/package.sh app-image`，产出
+`bootstrap/adb-desktop/target/dist/AIDB/AIDB.exe`（构建成功、布局正常），但
+**exe 内嵌图标未做字节级核对**（PE `RT_GROUP_ICON` 资源没解析），且那份产物已被后续
+`clean verify` 删掉。所以本轮结的是「**图标链通到 jpackage 命令行、容器内容合法**」这一环；
+「装到桌面后图标真是 AIDB」仍需一次人工目视验收（Windows 上跑 `package.sh msi` 后看 exe/快捷方式）。
+
+### 36.3 §6.7 弹窗按钮序：一处定义 + 六处页脚 + 十条门禁
+
+**两套页脚机制必须都管**，否则「全应用一致」是假的：
+
+1. **JavaFX `DialogPane`**（绝大多数弹窗）—— 排布由 `ButtonBar` 的**序串**决定。
+   Windows 预设 `L_E+U+FBXI_YNOCAH_R` 里 `O`（OK_DONE）排在 `C`（CANCEL_CLOSE）**后面**，
+   所以原生就是「确定在左、取消在右」。落地：`DialogStyles.apply(...)` 里
+   `orderButtonsNavicatStyle(pane)` 把这两个槽**互换**（`swapChar`），**其余槽一个不动**；
+   认不出的平台预设（如 macOS）**原样放过**，不猜一个把按钮排乱。
+   ⛔ 不用 `RIGHT_TO_LEFT`：那是整串反转，会把 `Apply/Help` 之类也翻过去。
+2. **自建 `HBox` 页脚**（六处：`ExportWizard` / `ImportWizard` / `FavoritesPage` /
+   `SavedQueriesPage` / `TransferHub` / `VariableDialog`，它们 `getButtonTypes().clear()` 自己排）
+   —— 序串对它们无效，逐处改成 `spacer, 关闭, 主动作` + `Pos.CENTER_RIGHT`。
+
+**`DialogButtonOrderTest`（10 条）**：8 条**运行时**（把 DialogPane 挂进真场景、强制排一遍，
+断言**皮肤排布后的场景坐标**：`取消.x < 确定.x`、主动作**右边缘贴按钮区**；六处页脚同理断言
+`layoutX` 与右边缘）+ 2 条**静态收口**（只有 `DialogStyles` 能调 `setButtonOrder(`；
+自建页脚清单必须仍是**已知这六个文件**，多一处就得来这里挂号）。
+另有**前向防御**：断言 `ButtonBar.BUTTON_ORDER_WINDOWS` 仍等于硬编码的预设原文 ——
+JavaFX 升级改了预设，这条**先红**，而不是让生产代码静默失效（同 §27 的假绿教训）。
+
+**变异验证（本轮第一手，4 条）**：
+
+| 变异 | 结果 |
+|---|---|
+| **M1** 注掉 `DialogStyles.apply` 里的 `orderButtonsNavicatStyle(pane)` | 🔴 **恰好 3 条红**：`cancelButtonSitsLeftOfThePrimaryButton`（`[Navicat 口径：取消在主动作左边]`）、`thePrimaryButtonHugsTheRightEdge`（`[主动作右边缘要贴按钮区右边]`）、`theOrderStringOnlySwapsThoseTwoSlots`（`[取消 C 要在主动作 O 左边]`）；其余 7 条绿 —— 页脚与静态清单不依赖它，**分工对得上** |
+| **M2** `VariableDialog` 页脚换成 `spacer, ok, cancel` | 🔴 **恰好 1 条红**：`hubAndVariableFootersFollowTheSameRule`（`[变量面板：主动作应在关闭右边]`），另 9 条绿 |
+| **M3+M4** `NewTableDialog` 里塞进 `getButtonTypes().clear()` + `setButtonOrder("L+R")`（用 `if (Boolean.getBoolean("adb.mutation.never"))` 包住，**运行时不执行**） | 🔴 **恰好 2 条静态红**：`noDialogForksTheButtonOrderItself`（把违规文件名列进失败信息）、`theCustomFooterSetIsStillTheKnownSix`（清单多了第七个）；**8 条运行时全绿** —— 顺带证明这两条守的正是「别处另起炉灶」，而运行时那批不受影响 |
+| 全部改回 | 🟢 `DialogButtonOrderTest` 10 + `DialogStylesTest` 8 + `IndexDialogTest` 13 + `NewTableDialogTest` 23 = **54 条全绿** |
+
+**像素验收**：`p6-new-table`（`取消 | 创建`，创建贴右下）、`p7-new-index`（`取消 | 确定`，确定贴右下）
+两张重拍后**逐张目视核对**，与 Navicat 的弹窗页脚同型；两张都是**套过 `DialogStyles` 的 DialogPane**，
+所以拍到的正是 M1 打红的那条路径。
+
+### 36.4 文档校准轮（数字与状态如实回填）
+
+> 触发点：S-5 那轮发现「绿门禁 ≠ 真看得见」，这轮发现「**文档口径也会静默失真**」——
+> 三份文档里同时存在 97/98 令牌、11/15 张截图、C3–C7 的完成态互相矛盾。
+
+| 文档 | 校准内容 |
+|---|---|
+| `AIDB-UIUX-ANALYSIS.md` | 状态块改为「**recalibrated 2026-10-26 · 第二十八轮**，`NAVICAT-TODO.md` §0/§1 是**唯一真源**」；令牌 **98**（60 色 / 35 尺寸 / 3 时长）、密度 **4 档 22/24/28/34 默认 compact**、截图 **15 张**；模块表补 `tools/`（`GenTokens`/`GenLogo`/`GenPackIcons`/`TestCount`）并注明 `declarations` 层已删；能力差距表逐行重判（P1 ✅ / P2 ✅ / P4 🟡 只读 / P5 🟡 部分 + **跨连接数据迁移未实现** / P6 ❌ 出局 / **V-6 ✅** / 冷启动 ❌ 3.5–3.9 s / jlink ⛔ · 自动更新 🚫 · 签名 ⛔）；§10.3 的 **C3 🟡 已缓解 / C4 ✅ 裁定结案 / C5 ✅ 已修** |
+| `NAVICAT-TODO.md` | §21.2 **A20** 划账（`MAX_CELL_BYTES` 全仓 0 命中）· §21.3 **V-6** 划账并写清根因 · **V-12 剩余**（R23 已做）重复行删除 · §29.2/§29.3 同步 · 头部与 §1 基线换成本轮口径 |
+| `docs/UI-ROADMAP.md` | §13.3 按钮序一行改成「**已按裁定落地**」；状态表加「第二十八轮 · 裁定落地」；C3–C6 尾注重写（C5 ✅ / C4 ✅ 裁定结案 / C3 🟡 缓解） |
+| `docs/NEXT-STEPS.md` · `docs/EXEC-SUMMARY.md` | 基线数字与增长轨迹补到本轮 |
+
+### 36.5 冷启动渐进渲染 —— 排最后，且**先方案后动手**
+
+§35.1 的地板分析：Toolkit 0.95 s + Modena 首控件 0.5 s + 首趟 CSS/布局 pass 0.9 s ≈ **2.35 s 是硬地板**，
+实测 3.5–3.9 s 里可动的是 `DemoDatabase.ensure` 468 ms 与 `AppShell` 装配链的**顺序**，不是总量。
+渐进渲染要改 `AppShell` 的装配顺序（先出空外壳、内容随后填），**牵动 400+ 条 UI 门禁**，
+属于「改一处红一片」的高风险项 → **本轮只出方案，经确认后才动代码**。
+
+### 36.6 本轮门禁与验收口径
+
+- 基线 **913 → 926 条 / 116 → 118 类 / 0 失败 / 48 跳过**（+13 = `DialogButtonOrderTest` 10 + `PackageIconAuditTest` 3；
+  跳过数不变 = 环境开关未动）。
+- 截图：`p6-new-table` / `p7-new-index` 两张按新页脚重拍并**目视核对**；其余 13 张本轮**无视觉变更**，沿用上轮。
+- ⚠️ **未做/边界**：exe 内嵌图标未做字节级核对（§36.2）；V-5 工具栏按宽度折叠、V-11 弹窗宽度三档**仍暂缓**（1280 宽实测放得下）；
+  jlink / 自动更新 / 签名维持 §35.2–35.3 的 ⛔/🚫 裁定。
+
+---
+
+## 37. 第二十九轮（2026-10-26）：UI-AUDIT 收尾 —— 三项拍板 + 两条缺失门禁补齐 + 一条过期门禁重签 + 帧检第五/六拍（U28/U29/U30）
+
+> 上一轮把 U1–U27 的代码与 18 帧验收做完了，但收尾核查发现三件事没闭合：
+> ① 待拍板的 **D1 / D2 / D3** 一直挂着；② **U3、U5 两项整改没有任何门禁**（改坏了不会红）；
+> ③ 一条门禁**还钉着改判前的旧口径**。本轮把这三件事一次结掉。
+
+### 37.1 三项拍板（产品口径，写下来防止以后翻案）
+
+| 编号 | 问题 | 裁定 | 理由 |
+|---|---|---|---|
+| **D1** | 数据网格默认行高：28px 一屏 19 行 vs Navicat 同窗口 45 行 | **网格降一档（默认 24px），其余表面对象留 28px** | 网格是唯一「逐行数数据」的地方；树与清单读的是名字，压到 24 只会让点击目标变小 |
+| **D2** | 中文正文要不要 12→13px | **维持 12px** | 与 D1 联动：13px 会把一屏可见行数再吃掉 1–2 行，而 D1 要解决的正是行数 |
+| **D3** | 表清单保留几种视图 | **两种：列表 + 卡片**（U18 的现状即结案） | 第三种「大图标」要再加一条渲染路径 + 门禁 + 验收帧，收益不抵成本 |
+
+### 37.2 D1 落地：`RowHeights.grid()` —— 「低一档」而不是「钉死 24」
+
+- 新 `RowHeights.grid(density)`（`ui/adb-ui-core`）：**档位减一级**，下限是 `dense`
+  → `dense 22 / compact 22 / normal 24 / comfort 28`。默认档不变（`normal` = 28），
+  所以「默认网格 24、其余 28」是**档位映射的结果**，不是新写的常量。
+  之所以不钉死 24：四档开关在网格上必须仍然连续可感，否则「切了档但网格没反应」重演 §13 的老毛病。
+- **作用面只有记录网格**：`DataGridPage.setDensity`（主网格 + 冻结列 + 转置表，三者同一次赋值）
+  与 `QueryPage.setDensity`（结果表，字段初值同步换成 `grid("normal")`）。
+  侧栏树 / 表清单 / 对象首页 / 连接页 / 结构页**照旧走 `of()`** —— 这正是 D1 里「其余留 28」那一半。
+- 门禁 `DensityCoverageTest`：`theRowHeightsComeFromTheTokens` 补六条 `grid()` 断言（含 null 与未知档位），
+  `theQueryResultFollowsTheDensity` 的期望值从 `of()` 换成 `grid()`，
+  并新增 `theDataGridStepsOneLevelBelowTheSurroundingLists`。
+  ⚠️ **两条 FX 断言的期望值直接取 `grid()`，是「接线门禁」不是「档位门禁」** ——
+  它们抓的是「页面没用上 grid()」，绝对值由 token 那条守。这个分工是变异验证跑出来的（见 §37.5）。
+
+### 37.3 补齐 U3 / U5 缺失的门禁
+
+- **U3**（`prism.lcdtext=false`）原本只活在 `Launcher.java` 的注释里，测试照不到 bootstrap ——
+  新 `LaunchFlagsAuditTest` 读源码文本，钉三件事：属性**存在**、在 `Application.launch(` **之前**
+  （Prism 管线在 launch 时定型，之后设无效）、**保留外部覆盖**（`if (getProperty(...) == null)`，
+  否则 `-Dprism.lcdtext=true` 的 A/B 对比手段就没了）。带「找不到文件即红」的扫描下限。
+  ⭐ U3 的依据本来写在 `main` 体内的注释里，加了门禁之后**注释迁进类 javadoc**，
+  代码行旁不再留一段悬空注释（变异时真删掉了那一段，注释就成了假的寻路牌）。
+- **U5**（列头约束并入第二行）此前只有 `ObjectDetailsPanel` 侧断言过 `· 主键`，网格列头**一条门禁没有** ——
+  新 `GridInteractionTest.everyConstraintMovesToTheHeaderSecondLine`：第一行必须恰好是列名
+  （`id` / `name`），第二行含 `主键` / `自增` / `非空`，并遍历全部列头断言 `[PK]` 与 `•` **零残留**。
+
+### 37.4 一条过期门禁的重签（不是改绿，是改判）
+
+`SelectionStateTest.gridLinesAndSemanticBarsShareOneSlot` 断言脏值左条含 `-adb-warning`，
+而 U13 已给脏值**专属** token（`dirty` / `dirty-bg`，青绿系）—— 门禁钉的是改判前的口径，
+本轮首次全量复跑就红了。按「门禁随裁定重签、不许放宽」的规矩，改成断言
+`-adb-dirty` + `-adb-dirty-bg` 且 `doesNotContain("-adb-warning")`，理由写进断言文案。
+**CSS 一个字没动** —— 把颜色改回 warning 橙才是违反裁定的做法。
+
+### 37.5 变异验证（9 处，逐条红→改回绿，失败原文记录）
+
+| 变异 | 改坏的地方 | 结果 |
+|---|---|---|
+| **M-U1** | `Shortcuts.of` 的 `MOD` 非 mac 分支 `ctrl = true` → `cmd = true` | `ShortcutsTest` **2 红**：`modMapsToPlatformPrimary:31`、`nonMacLabelsHaveNoAppleGlyphs:49`（4 条里红 2，另 2 条与平台无关） |
+| **M-U2** | `app.css` 数字列等宽栈换成裸 `"Menlo"` | `FontGuardTest` **1 红**：`noMonospaceStackStartsWithAMacOnlyFont:61`（3 条里红 1 —— 另两条锚点在其它栈上，符合分工） |
+| **M-U3** | 删掉 `Launcher` 的 `setProperty("prism.lcdtext","false")` 整段 | `LaunchFlagsAuditTest` **1 红**（该类只有 1 条） |
+| **M-U5** | `columnConstraintLabel` 的 `if (definition.primaryKey())` 短路 | `GridInteractionTest` **1 红**：`everyConstraintMovesToTheHeaderSecondLine`（17 条里红 1） |
+| **M-U8** | `StatusBar.setMessage` 的 `show(..., present)` → `show(..., true)` | `StatusBarTest` **1 红**：`messageSegmentOccupiesSpaceOnlyWhenItHasSomethingToSay`（13 条里红 1） |
+| **M-U9** | `StructurePage.addBoolColumn` 的 `checkGlyph` → `setText("YES"/"NO")` | `StructurePageTest` **1 红**：`constraintColumnsUseGlyphGrammarNotText`（11 条里红 1） |
+| **M-D1a** | `RowHeights.grid` 去掉 `-1`（低一档失效） | `DensityCoverageTest` **1 红**：`theRowHeightsComeFromTheTokens` —— 绝对值确实只有这条守得住 |
+| **M-D1b** | `DataGridPage.setDensity` 换回 `of()` | **1 红**：`theDataGridStepsOneLevelBelowTheSurroundingLists` |
+| **M-D1c** | `QueryPage.setDensity` 换回 `of()` | **1 红**：`theQueryResultFollowsTheDensity` |
+
+链式复核：每一处变异的定向跑都**同时**带上上一处已还原的门禁（M-U5 带 `LaunchFlagsAuditTest`、
+M-U8 带 `GridInteractionTest`、M-U9 带 `StatusBarTest`），既省一轮全量，也顺带证明还原是真的。
+
+⚠️ **踩到一个新的构建口径问题**：新 API（`RowHeights.grid`）在只跑
+`-pl ui/adb-ui-shell` 时**编译失败** —— shell 从 `~/.m2` 取的是没有该方法的旧 core jar。
+定向验证必须 `-pl ui/adb-ui-core,ui/adb-ui-shell`（或带 `-am`）把 core 放进 reactor。
+
+### 37.6 本轮门禁与验收口径
+
+- 基线 **966 → 967 条 / 124 类 / 0 失败 / 48 跳过**（`./scripts/build.sh` 全绿；
+  第二十八轮的 926 → 966 是 UI-AUDIT 批次累计 +61，本轮 +1 = `theDataGridStepsOneLevelBelowTheSurroundingLists`）。
+- ⚠️ 本轮**新发现**：`build.sh` 的用例计数步骤直接调 `java`，本机 `java` 不在 PATH →
+  脚本尾部报 `java: command not found`，**门禁结论仍由 `BUILD SUCCESS` 成立**，计数需手工
+  `"$JAVA_HOME/bin/java" tools/TestCount.java` 补跑。
+- 截图：**18 帧全量重拍**（`ADB_DENSITY=normal` 不变，网格行高随 D1 变成 24），
+  `shots.sh` 结尾的全帧 md5 两两去重门禁继续兜假帧。
+- ⚠️ **未做/边界**：D1 只作用到「行高」，**没动 chrome 高度**（工具条 / 标签栏仍是 28/34）；
+  暗色全量 30 帧（§5.1 设想）仍随后续排期；冷启动渐进渲染仍**未动代码**（§36.5，先方案后确认）。
+
+### 37.7 帧检第五拍抓出两条真缺陷：U28 弹窗尺寸棘轮 + U29 reset 哑门禁（2026-10-26）
+
+逐张目视 18 帧时，`p7-new-index` 拍出来是 **864×911**（档位请求是 720×560），
+SQL 预览以下全是死区；`p7-new-index-dark` 848×872、`p6-new-table` 964×761 —— 同一场病。
+用一次性探针跑三次单帧实拍，宽度 **912 → 928 → 944（每次 +16）**，坐实不是拍摄偶发。
+
+**U28：尺寸记忆把「窗口尺寸」当「面板尺寸」存。**
+`DialogStyles.apply(dialog, owner, sizeKey)`（U20）监听的是 `dialog.widthProperty()` ——
+那是**含标题栏/边框**的窗口宽（比面板宽 16px），恢复时却直接 `pane.setPrefSize(窗口宽)`。
+于是每开一次：记 896 → 面板 896 + 装饰 = 窗口 912 → 记 912 → 开成 928……**无限棘轮**。
+真实用户每次打开「新建索引」弹窗都会更大一点，直到被 `clampToScreen` 的屏幕限高兜住
+（1023 = 1080−96+装饰，所以高度看着「稳定」，宽度一路涨）。
+**修法**：监听换 `pane.widthProperty()/heightProperty()`（面板只有布局会动它，
+记多少恢复出来就是多少）；key 前缀换 `dialog.size.v2.*` —— **作废已棘轮的存量值**，
+否则老用户还要多中一次「恢复即超标」。
+
+**U29：`ADB_PREFS_RESET=1` 从 UX-0 起就没生效过。**
+实现是 `Boolean.parseBoolean(...)` —— 它**只认 `"true"`，`"1"` 一律是 false**，
+而 `shots.sh` 从第一天起导出的就是 `ADB_PREFS_RESET=1`。
+「每次启动清空截图偏好」从未发生：U28 的脏值正是在这个没人清的节点里一路攒大的。
+当时的门禁（`ScreenshotScriptAuditTest`）只查脚本里**有没有那行 export**（文本），
+没查**它真的会清**（行为）—— 文本绿、行为哑。
+**修法**：`SettingsStore.resetRequested(raw)` 认 `1` 与 `true`；已清记录从一次性布尔
+换成**按节点名记账**（一次性布尔会让第二个节点永远清不掉，行为门禁也没法测）。
+
+**新门禁 4 条**：`SettingsStoreTest`(3) —— 取值口径认 `1`、**真清得掉**（唯一节点名先写后清）、
+无显式节点**绝不清**（UX-0 原约束）；`DialogStylesTest.aRememberedSizeRoundTrips` 重签为
+**面板语义**（窗口属性故意给不同值 —— 它不许落进偏好）。
+**变异验证**：M-U29 `resetRequested` 换回裸 `parseBoolean` → **恰好 2 红**（口径 + 行为）；
+M-U28 监听换回 `dialog.widthProperty` → **恰好 1 红**（`aRememberedSizeRoundTrips`）；均改回绿。
+
+⚠️ 顺带记两笔：截图会话 `Platform.exit()` 时弹窗还开着，日志里有
+`Key not associated with a running event loop: HeavyweightDialog$1` —— 发生在**捕获之后**，
+不影响帧内容，登记为已知采集噪音；诊断探针（`DialogStyles`/`SettingsStore` 的 TEMP-DIAG）
+已随本轮全部拆除。另踩一次老坑：`mvn -q install` **编译失败仍退出码 0**，
+本轮靠 grep 日志 `BUILD SUCCESS` 才没被糊弄。
+
+### 37.8 帧检第六拍抓出 U30：弹窗骨架的内边距被 `content` 类顶掉（2026-10-26）
+
+U28/U29 修完重拍后逐张复验弹窗帧，发现三个弹窗（`p7-new-index` / `p6-new-table` / `p2-error`）
+的**正文全部贴左边缘** —— 标题、分区小标题、输入框、SQL 预览都没有 24px 内边距，
+和「新建表」任务书 §六 的分区骨架明显对不上。回看 HEAD 里**上一批已提交的 `p7-new-index`**，
+同样的贴边 —— 这不是本轮拍坏的，是**一直存在、从没被任何门禁看过**的缺陷（第二十八轮
+§37.7 那拍只盯着尺寸，没盯内边距）。
+
+**根因（一次性探针实测）**：`DialogPane.setContent(node)` 会把 `content` 样式类
+**追加到节点身上**，并把节点变成 pane 的直接子级。于是弹窗骨架节点同时带
+`[adb-dialog__body, content]`，两条规则同场竞技：
+
+- 通用规则 `.adb-dialog > .content { -fx-padding: 0px; }`（任务书 §六 A 区，防 JavaFX 默认双份留白）—— 特异性 **(0,2,0)**；
+- 骨架规则 `.adb-dialog__body { -fx-padding: 24px 24px 16px 24px; }` —— 特异性 **(0,1,0)**。
+
+JavaFX 按特异性取胜，**通用规则赢了**：所有把骨架类挂在 content 节点上的弹窗，
+内边距静默归零。探针输出：裸 `VBox` 挂场景 → padding 24；同一个 `VBox` 进 `DialogPane` → padding 0。
+**修法**：骨架规则补一条复合选择器 `.adb-dialog > .content.adb-dialog__body`（(0,3,0)），
+两条类名并列保留（脱离 DialogPane 语境仍可用）。
+
+**新门禁 1 条**：`DialogStylesTest.theDialogBodyKeepsItsPaddingInsideThePane` ——
+读**真实 DialogPane 语境里**的计算内边距（left/top=24、bottom=16），不是读 CSS 文本。
+⚠️ 脚手架一笔：探针第一版 `new Scene(d.getDialogPane(), …)` 直接抛异常 ——
+JavaFX 25 里 `DialogPane` 已挂在隐式弹窗场景上，不能再抢根节点；改 `pane.applyCss(); pane.layout();`。
+**变异验证**：M-U30 把复合选择器删掉 → **恰好 1 红**；改回绿。
+
+⚠️ **连带影响如实记录**：内边距回来以后 `p6-new-table` 从 900×605 长到 **900×645**，
+超出 §6.1「新建表」560–620 高度档 **25px** —— 超出的部分正是此前一直没生效的上下留白
+（24+16），内容本身没变多。档位是拍板前量的，判**接受**（弹窗内容区完整可见、无死区），
+不为了回到区间去削骨架留白。
+
+**教训（同 §22 轮「绿门禁 ≠ 真看得见」）**：骨架 CSS 写进文件、类名挂上节点、全仓门禁全绿 ——
+但**没有任何一条门禁读过弹窗正文的计算内边距**，贴边活了一整轮才被帧检抓到。
+CSS 机制门禁必须**在真实容器语境里读计算值**。
+
+---
+
 ## 23. 变更记录
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-26 | **第二十九轮 · UI-AUDIT 收尾（§37）** | **三项拍板落地（D1/D2/D3）+ U3/U5 缺失门禁补齐 + 一条过期门禁重签 + 帧检第五/六拍抓出 U28/U29/U30**。① 拍板：**D1** 数据网格比档位**低一档**（默认 normal → 网格 24px，清单/树仍 28）—— 落成 `RowHeights.grid(density)` 映射而非钉死 24，四档切换保持连续（`DataGridPage`/`QueryPage` 接线，`DensityCoverageTest` +6 断言 +1 用例）；**D2** 中文正文维持 12px；**D3** 表清单维持**列表 + 卡片**两种视图（现状即裁定）。② **补齐两条修了没门禁的**：U3 启动渲染标志 → 新 `LaunchFlagsAuditTest`（读 `Launcher.java` 文本，钉 `setProperty` 在 `Application.launch` 之前 + 可覆盖守卫在 + 文件必须扫到）；U5 列头约束并入第二行 → `GridInteractionTest.everyConstraintMovesToTheHeaderSecondLine`（第一行只剩列名、第二行写「主键/自增/非空」文字、全网格不许残留 `[PK]`/`•`）。③ **过期门禁重签**：`SelectionStateTest` 脏值断言按 U13 裁定改判（`-adb-warning` → `-adb-dirty`/`-adb-dirty-bg`），CSS 未动 —— 改判不是改绿。④ **变异验证 9 处**（M-U1/U2/U3/U5/U8/U9 + M-D1a/b/c，逐条红→改回绿，链式复核，见 §37.5）。⑤ **帧检第五拍抓出两条真缺陷**（§37.7）：**U28** 弹窗尺寸记忆存窗口尺寸、恢复成面板 prefSize → 每开一次 +16px **无限棘轮**（实拍三次 912→928→944；监听换 pane 属性 + key 换 `dialog.size.v2.*` 作废存量脏值）；**U29** `ADB_PREFS_RESET=1` 自 UX-0 起**从未生效**（`Boolean.parseBoolean("1")` 是 false，文本门禁没查行为；`resetRequested` 认 `1`、按节点名记账、新增 `SettingsStoreTest`(3) 行为门禁，2 处变异红→绿）。⑥ **帧检第六拍抓出 U30**（§37.8）：弹窗骨架 24px 内边距被 `.adb-dialog > .content`（0,2,0）顶掉（`setContent` 给节点追加 `content` 类，骨架类只有 0,1,0）—— 三个弹窗正文**一直贴左边缘**，HEAD 旧帧同款，从没被任何门禁看过；修法是补复合选择器 `.adb-dialog > .content.adb-dialog__body`，门禁 `theDialogBodyKeepsItsPaddingInsideThePane` 在**真实 DialogPane 语境里读计算内边距**（M-U30 删复合选择器 → 恰好 1 红）。连带：`p6-new-table` 内边距回来后 900×605 → **900×645**，超 §6.1 高度档 25px，判**接受**（超出部分正是此前没生效的上下留白）。基线 **967 → 971 条 / 125 类 / 0 失败 / 48 跳过**；18 帧全量重拍并逐张目视 |
+| 2026-10-26 | **第二十八轮 · 三项裁定落地（§36）** | **V-6 出包图标闭环 + §6.7 按钮序全应用统一 + 文档校准**，另裁定「**行高不加 19px 档**」把 C4 结案。① **V-6**：⭐ 根因不是没有图标（`brand/` 有 512 PNG、`GenLogo` 是矢量同源、运行时 6 档图标第十七轮就接了），缺的是**出包那一环没接** —— `scripts/package.sh` 原来不传 `--icon`，jpackage **静默退回 Java 默认图标且不报错**，装了才知道（第十八轮「失败设计成静默降级」同一个坑）。新 `tools/GenPackIcons.java` 从 `GenLogo.draw(size)` 同源几何生成 `app-icon.ico`（12187 B / 7 帧）+ `app-icon.icns`（53591 B / 12 帧），`package.sh` 按 `uname` 分支接 `--icon`、缺文件 `warn` 不静默。门禁 `PackageIconAuditTest` 3 条**按容器格式逐字段解码**（ICO `type=1`/帧数/`planes=1`/`bpp=32`/256 帧边长写 0 解回不撞车/每帧 CRC + IDAT 可解压；ICNS magic + **大端总长 == 实际字节数** + 帧严丝合缝铺到文件尾 + `icn4/icn5/ic07/ic08`；`package.sh` 每个 `--type` 分支都要拿到 `--icon`，**先剥行注释**）。⚠️ **如实边界**：真跑通一次 `package.sh app-image` 拿到 `AIDB.exe`，但 **exe 内嵌 `RT_GROUP_ICON` 未做字节级核对**、产物已被后续 `clean` 删掉 —— 本轮结的是「链通到 jpackage 命令行 + 容器合法」，桌面图标仍需一次人工目视验收。② **按钮序**（裁定＝Navicat 排布，全应用一致）：**两套页脚机制都管**才算数 —— JavaFX `DialogPane` 走序串（Windows 预设 `L_E+U+FBXI_YNOCAH_R` 里 `O` 排在 `C` 后面 = 原生「确定在左」），`DialogStyles.apply` 用 `swapChar` **只换这两个槽、其余一槽不动**，认不出的平台预设（macOS）**原样放过**；⛔ 不用 `RIGHT_TO_LEFT`（整串反转会把 Apply/Help 也翻过去）。另**六处自建 `HBox` 页脚**（`ExportWizard`/`ImportWizard`/`FavoritesPage`/`SavedQueriesPage`/`TransferHub`/`VariableDialog`，它们 `getButtonTypes().clear()`）序串管不着，逐处改 `spacer, 关闭, 主动作` + `CENTER_RIGHT`。`DialogButtonOrderTest` **10 条**：8 条断言**皮肤排布后的场景坐标**（`取消.x < 确定.x`、主动作右边缘贴按钮区）+ 2 条静态收口（只有 `DialogStyles` 能调 `setButtonOrder(`、自建页脚清单必须仍是这六个文件）+ **前向防御**（钉住 `ButtonBar.BUTTON_ORDER_WINDOWS` 等于硬编码预设 —— 官方改了这条先红，不让生产代码静默失效）。**4 个变异第一手验证**：M1 注掉 `orderButtonsNavicatStyle` → **恰好 3 条红**（另 7 条绿，分工对得上）；M2 `VariableDialog` 页脚换 `ok, cancel` → **恰好 1 条红**；M3+M4 在 `NewTableDialog` 塞 `getButtonTypes().clear()` + `setButtonOrder("L+R")`（`if (Boolean.getBoolean("adb.mutation.never"))` 包住，运行时不执行）→ **恰好 2 条静态红、8 条运行时全绿**；改回 **54 条全绿**（+`DialogStylesTest` 8 / `IndexDialogTest` 13 / `NewTableDialogTest` 23）。像素验收：`p6-new-table`（取消｜创建）/ `p7-new-index`（取消｜确定）重拍并目视核对。③ **文档校准**：三份文档同时存在 97/98 令牌、11/15 截图、C3–C7 完成态互相矛盾 → `AIDB-UIUX-ANALYSIS.md` 声明 **`NAVICAT-TODO.md` §0/§1 是唯一真源**，令牌 **98**（60 色/35 尺寸/3 时长）、密度 **4 档默认 compact**、截图 **15 张**、模块表补 `tools/` 并注明 `declarations` 已删、能力差距表逐行重判（P4 🟡 只读 / P5 🟡 部分 + **跨连接迁移未实现** / V-6 ✅ / 冷启动 ❌ 3.5–3.9 s / jlink ⛔ · 自动更新 🚫 · 签名 ⛔）、§10.3 改 **C3 🟡 缓解 / C4 ✅ 裁定结案 / C5 ✅ 已修**；§21.2 **A20** 划账（`MAX_CELL_BYTES` 全仓 0 命中）、§21.3 **V-6** 划账、**V-12 剩余**重复行删除。④ **冷启动渐进渲染**排最后：地板分析（Toolkit 0.95 + Modena 0.5 + 首趟 pass 0.9 ≈ **2.35 s 硬地板**）说明可动的是**装配顺序**不是总量，而改 `AppShell` 装配链**牵动 400+ 条 UI 门禁** → **先方案后经确认才动代码**（§36.5）。门禁 **926 / 118 / 0 失败 / 48 跳过**（+13 / +2 类，跳过数不变） |
 | 2026-10-25 | **第二十六轮 · P7 收尾（§35）** | **启动可观测性 + 可访问性落地，其余如实裁定**：① **P7-1** 新 `StartupTrace`（进程启动 → 首屏分段打点）接进 `App` / `AppShell`，一行摘要落 `~/.agenticdb/logs/startup.log` + 「关于」回显本次耗时；测试 JVM 用 surefire 的 `-Dadb.startup.log=false` **不落盘**。⚠️ 首版打点缺 `scene`，中途那 676 ms 无处归因 → 补细粒度标记 + **一次性探针实测**：第一个 JavaFX 控件 **515 ms**（`new Label`）vs 第二个 **2 ms**（`new Button`）= Modena 用户代理样式表 + 隐式窗口的一次性成本，**挪不动**；`stage.show()` 首趟 CSS/布局 **860 ms**；`DemoDatabase.ensure` 468 ms（SQLite 首开解压原生库）；`ThemeManager` 的强制 pass 改为**只在窗口已显示时**做（`theme` 718→2 ms，总时长不变 —— 省不掉，只是不再重复）。**❌ 冷启动 < 2s 未达标（实测 3.5–3.9 s）**，地板 = Toolkit 0.95 s + Modena 0.5 s + 首趟 pass 0.9 s；**试过 AppCDS 且不通**（`-XX:+AutoCreateSharedArchive` 缺文件即报错退出、`-Xlog:cds+dyn=info` 本 JDK 判无效、dump 报 `archived full module graph is not used`，失败那几次首屏反而 **15 s**），渐进渲染要动整条装配链 → 均列长期项。② **P7-2** 可访问性：`TabBar` / `ObjectTabBar` 的标签原来是**纯鼠标**的 `Label` → `focusTraversable` + `TAB_ITEM` + `←/→` 切换 + `Enter/Space` 激活；对象首页 / 表清单卡片补 `LIST_ITEM` + `requestFocus`（原来是空 lambda）；网格 / 冻结网格 / 全选 / 每行 / 布尔单元 / 每页下拉 / 侧栏树 / 对象清单补可朗读名称。⚠️ 门禁第一版把 `ComboBoxListViewSkin` 里的 `ListView` 判成违规（名称在 `ComboBox` 身上）→ **改测试不改生产**，并把父链打进失败信息。③ **P7-3 裁定**：jlink ⛔（RichTextFX/ControlFX 自动模块，jpackage 已出可启动 app-image）· 自动更新 🚫 **不做**（无 Release 渠道 + 离线/内网环境 + 无签名 → 检查失败无法区分、自动下载是供应链风险；将来只做「提示不下载」）· 签名/公证 ⛔ 阻塞在证书（外部资源）· §9 里 A18/A19/A22 三行**第十二轮就落地却一直挂着 `[ ]`** → 回填。门禁 **871 / 113 / 0 / 48 跳过**（+14 / +3 类：`StartupTraceTest` 4 + `AccessibilityAuditTest` 5 + `ThemeManagerTest` 4 + `AppShellTest` 1）；**变异验证 4 条**：去掉 `shouldForcePass` 条件 → `expected: 0 but was: 1` 红；`shouldForcePass` 恒 false → 2 条红；删网格 `setAccessibleText` → 数据页名称审计红；删标签 `setFocusTraversable` → 键盘可操作性红（⚠️ 区域存在性检查没红，`adb-tabbar__add` 兜底 —— 见 §35.4 局限说明）；改回全部绿（63 条主题相关回归 + `AccessibilityAuditTest` 5/5）。截图无视觉变更，`p2-users` 复拍逐张核对一致 |
 | 2026-10-25 | **第二十五轮·收尾** | **剩余开发全部收官**（§34.2 UX-6 + §34.3 P2-3 / P5-1 / P5-3 / P5-4 / P6-1 / P6-2 / P6-3）：**P5-1** 连接加 `group`（展示元数据、不进连接参数），重命名只改显示名，连接页分组列 + 搜索匹配分组 + 侧栏文件夹；**P5-3** 新 `ConnectionFailureTest` 7 条守会话边界（打开失败不注册 / 可重试 / 错误分类跨层 / 超时 / 取消 / 断线重开 / 未知失败保留驱动原文）；**P5-4** 序列、`getExportedKeys`（复合外键保序）、DEFAULT / COMMENT / CHECK 读回，⭐ 修掉 PG **改列静默 DROP DEFAULT** 的潜伏 bug；**P2-3** `QueryHistory.Entry` 带连接 / 命中表 / 时间（旧纯字符串格式仍可读），数据页历史、详情面板「最近操作」、概览三处共用；**P6-1** 导入按目标列类型转换（数字 / 布尔 / 日期含中文格式、空值→NULL、文本逐字保留），坏行带列名与原文；**P6-2** `exportSql` + 查询页导出三档（本页 / 选中 / 全部），选中为空禁用、全部忽略分页上限；**P6-3** POI **SXSSF** 流式写 + **SAX** 流式读，CSV 与 xlsx 共用同一条 `Ingest`（列映射 / 类型转换 / 坏行完全一致），文本 Writer 路径明确拒绝二进制；**UX-6** 对象首页列表/网格（视图记忆 + 选中同步）、结构页「选项」（MySQL 真值，其它方言诚实「—」）、数据页「概览」（行数复用 total、大小/引擎来自 TableMeta、索引数走轻量 `indexCount`、最近 5 条可重跑）、侧栏「已保存查询」分组（只列查询、搜索匹配、双击/回车/右键载入所属连接）。门禁 **857 / 110 / 0 失败 / 48 跳过**（+50：本批 49 + 最终布局守卫 1；跳过 +4 为 PG 契约无 Docker）；**变异验证**：概览大小改空串 / 最近 5 条去上限 / 侧栏去片段过滤 / 侧栏去搜索过滤 → 各自红→绿。⚠️ **CSS 字号门禁抓到概览初版 15px 不在 7 档阶梯** → 16px；全量首次因此红，修复后复跑全绿。**截图收尾**：15 张全量重拍（新增 `p2-overview`）；实拍抓到三件真问题并修掉 ——「筛选与排序」在 1280px 被压成省略号 → 收短为「筛选」、`p2-overview` 点动态 id 被截图审计拦下 → `ADB_OVERVIEW` 程序化切换、`p2-details` 打开详情面板后左侧 chrome 被挤出场景 → 主区允许收缩 + `AppShellTest` 机制门禁（撤修复 → 红，还原 → 绿）。最终对比见 `docs/NAVICAT-COMPARE.md` §11 |
 | 2026-10-25 | **第二十四轮·P5-2** | **Windows 系统凭据后端**（§34.3）：新增 `WindowsCredentialStore`，用 **JNA core** 直连 `advapi32!CredWriteW / CredReadW / CredDeleteW / CredFree`（`jna-platform` 没有 WinCred 绑定，故不引）；`CREDENTIAL` 按 wincred.h x64 偏移声明（`FILETIME` 两 DWORD、blob 指针 8 字节对齐），条目名 `io.agenticdb.connection/<profileId>`（与 macOS service+account、Linux service/account 同口径），`Persist = CRED_PERSIST_LOCAL_MACHINE`；blob 用 **UTF-16LE**，1280 字符上限按 `CRED_MAX_CREDENTIAL_BLOB_SIZE=2560` 字节**前置拒绝**（不截断），写入 `Memory` 在 finally `clear()`；`CredentialStore.platform()` **先判 Windows**，DLL 加载失败（`LinkageError`）告警退回内存，`supported()` 只读 `os.name`（非 Windows 不触发 JNA 加载）。父 POM 新增 `net.java.dev.jna:jna 5.13.0`（版本只写在父 POM）；连接页 / 删除确认 / 属性页文案去掉「钥匙串 / Secret Service」实现细节（UI-AUDIT L5）。门禁 **+8 / 类 +1**（`CredentialStoreTest`：真机 round-trip / 跨实例持久 / 空口令删除 / 幂等删除 / UTF-16LE / 超限 / target 命名 / `platform()` 分派），**4 个变异逐条红→改回绿**（去 Windows 分派 → 1 红；UTF-16LE 改 UTF-8 → 4 红；放宽上限 → 1 红；去 target 前缀 → 1 红）。本机 Windows 10 + JDK 27 **8/8 真跑**（非 Windows 5 条 `assumeTrue` 跳过、不计通过）。**截图对比顺手修掉 UX-3 遗留**：1280 宽窗口清单工具条把「打开表 / 设计表… / 新建表… / 删除表…」压成省略号（同排「导入 / 导出」因显式 `minWidth` 完好）→ 五个文字按钮统一 `minWidth(USE_PREF_SIZE)`、搜索框 200→160，`TableListPageTest` +1 守机制（变异红→绿）。基线 **807 条 / 104 类 / 0 失败 / 44 跳过** |

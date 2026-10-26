@@ -3,13 +3,16 @@
 ## Project Overview
 **AIDB** (AgenticDB) is a cross-platform database management desktop client built with **Java 25 + JavaFX 25**. The project aims to achieve Navicat-level interactivity and polish while being fully native and open-source.
 
-**Current Status** (2026-10-23):
+**Current Status** (recalibrated 2026-10-26, round 29 — this report is a snapshot; `NAVICAT-TODO.md` §0/§1 remains the single source of truth):
 - P0-P4 ✅ completed
-- P5/P6 🟡 in progress  
-- U-B1–U-B6 ✅ all completed (including Navicat alignment)
-- U-B7 ✅ completed (sidebar Navicat model + button spec unification)
-- 721 tests / 89 classes / 0 failures
-- 11 screenshot verification images
+- P5/P6 ✅ completed (rounds 24-25: connection groups / failure tests / sequences & DEFAULT-COMMENT-CHECK read-back, history with connection & table, typed import, three-tier export, xlsx streaming)
+- U-B1–U-B7 ✅ all completed (including Navicat alignment)
+- Task brief V1.0 (round 27) ✅ — Lucide vector icons, unified control layer, §六 index dialog rebuilt, dialog skeleton unified
+- Round 28 (2026-10-26) ✅ — **V-6 packaging icon chain closed** (`GenPackIcons` → `.ico`/`.icns` + `package.sh --icon`), **§6.7 dialog button order aligned to Navicat app-wide** (`Cancel` left · primary hugging bottom-right), **C4 closed by ruling** (no 19 px tier; 22/24/28/34 kept)
+- Round 29 (2026-10-26) ✅ — **D1/D2/D3 ruled** (grid sits one tier below the density setting via `RowHeights.grid()`; CJK body stays 12 px; table list keeps list + card views), frame review caught and fixed **U28** (dialog size ratchet), **U29** (`ADB_PREFS_RESET=1` never took effect) and **U30** (dialog body padding silently overridden by the generic `.content` rule)
+- Design tokens: **98** (not 97); row density: **4 tiers 22/24/28/34, default `normal` (28 px), data grid one tier below (24 px)**
+- Verification screenshots: **18** (15 light + 3 dark); all re-shot and visually reviewed after the U28/U29/U30 fixes
+- Gate baseline: **971 tests / 125 classes / 0 failures / 48 env-gated skips** (2026-10-26, Windows 10 + JDK 27) — authoritative copy in `NAVICAT-TODO.md` §1
 
 ---
 
@@ -17,19 +20,20 @@
 
 ### Module Structure
 ```
-core/              - Domain model, declarations, safety, SQL kernel
+core/              - Domain model, safety, SQL kernel (the `declarations` layer was removed in round 21)
 workbench/         - JDBC session, introspection, session management, editing, transfer
 ui/                - UI core (tokens), UI shell (JavaFX shell)
 testing/           - Fixtures (demo database)
 bootstrap/         - Desktop startup entry (jpackage)
+tools/             - Offline generators + gate bookkeeping (GenTokens, GenLogo, GenPackIcons, TestCount)
 ```
 
 ### Key Architectural Decisions
-- **Design tokens as single source of truth**: `tokens.json` → `Tokens.java` + `theme-*.css` (97 tokens: 59 colors + 35 sizes + 3 durations)
+- **Design tokens as single source of truth**: `tokens.json` → `Tokens.java` + `theme-*.css` (98 tokens: 60 colors + 35 sizes + 3 durations)
 - **Action Registry pattern**: All menus, toolbars, right-click, command palette go through `ActionRegistry` (1 action = 4 entry points)
 - **Token parity enforcement**: `TokenParityTest` + `AppCssAuditTest` prevent hardcoded colors/font sizes in CSS
 - **Fail-closed dangerous operations**: Three-layer protection (UI + session executor + driver-side)
-- **Density-aware layout**: 3 row heights (24/28/34px) that apply to both data grid and object tree
+- **Density-aware layout**: 4 row heights (22 / 24 / 28 / 34 px, default `normal` = 28) applied to the object tree and lists; the data grid sits one tier below the setting (`RowHeights.grid()`, D1 ruling: default → 24 px)
 
 ### Thread Model
 - Single-threaded JDBC execution (`adb-db` shared executor)
@@ -47,7 +51,7 @@ bootstrap/         - Desktop startup entry (jpackage)
 ## 2. UI/UX Screenshot Analysis (vs Navicat Premium Lite 15/17)
 
 ### Source Screenshots
-- **AIDB**: 11 verified screenshots (`p0-shell.png` through `p7-new-index.png` + `p2-details.png`, `p4-ddl.png`, `p6-new-table.png`)
+- **AIDB**: 18 verified screenshots (`docs/screenshots/p0-shell … p7-new-index`, incl. `p2-cell`, `p2-error`, `p2-overview`, `p6-tables-grid`, and 3 dark frames `p2-users-dark` / `p5-dark` / `p7-new-index-dark`) — all re-shot under pinned `ADB_DENSITY=normal` + isolated prefs node (reset actually works since the U29 fix), so `p0-shell` is byte-reproducible
 - **Navicat**: 4 reference images (`navicat-tablelist.png`, `navicat-toolbar.png`, `side-by-side-2026-10.png`, `side-by-side.png`)
 - All images captured at 1× native resolution, no scaling
 
@@ -58,9 +62,9 @@ bootstrap/         - Desktop startup entry (jpackage)
 | **Top chrome** | Large icon bar (90px) + tabs | 46px app bar + 36px tab bar | ✅ AIDB thinner |
 | **Left sidebar** | Connections tree + search/filter/star/collapse | 240px (collapsible 48/200–360) | ✅ Similar |
 | **Content area** | White with zebra striping | Pure white, no zebra striping | ✅ AIDB cleaner |
-| **Table list** | 8 columns, 19px row height | 8 columns, 28px (24/34 available) | ✅ AIDB more compact visually |
-| **Toolbar** | 8 action buttons | 3 actions (new/open/refresh) | ⚠️ AIDM minimal (P2 item N1) |
-| **Status bar** | 23px, single segment | 26px, three segments (dialect/connection/auto-commit) | ✅ AIDB more informative |
+| **Table list** | 8 columns, 19px row height | 8 columns (dialect-aware: hidden when no row has a value), default tier **28 px `normal`** (grid surfaces one tier below, `dense 22` available) | ✅ AIDB hides empty columns instead of showing `—` (C1, R19) |
+| **Toolbar** | 8 action buttons | Table list: 5 icon buttons + 「导入 / 导出」+ 视图切换 + 搜索; data page: 6 **labeled** actions | ✅ Parity reached (N1/UX-3, R13/R21) |
+| **Status bar** | 23px, single segment | **24px** (`h-statusbar`), three segments (dialect/connection/auto-commit) | ✅ AIDB more informative |
 | **Tags** | "Objects" fixed first tab | Content cards + tab bar | ⚠️ Different navigation model |
 | **Risk badges** | Varying colors | 4-level risk system (read/write/sructure/admin) | ✅ AIDB richer |
 
@@ -68,8 +72,8 @@ bootstrap/         - Desktop startup entry (jpackage)
 
 **Row Heights & Density**
 - Navicat: Fixed 19px per row
-- AIDB: Three tiers - 24px (compact), 28px (normal), 34px (comfortable)
-- **Decision**: 28px normal gives better readability for long-term data review; users can switch density
+- AIDB: **Four tiers — 22 `dense` / 24 `compact` / 28 `normal` (default) / 34 `comfort`**; data grid sits one tier below the setting (D1 ruling, `RowHeights.grid()`)
+- **Decision (round 28 ruling)**: **no 19 px tier.** Navicat's 19 px is its own font-render metric; clipping 12 px body text to 19 px cuts descenders in AIDB. `dense 22` already covers the "make it tighter" ask — **C4 closed**, see §10.3 and `NAVICAT-TODO.md` §36.1
 
 **Font Scaling**
 - Navicat: 12px baseline across most areas
@@ -98,10 +102,10 @@ bootstrap/         - Desktop startup entry (jpackage)
 
 | # | Feature | Navicat | AIDB | Effort |
 |---|---------|---------|------|--------|
-| **N1** | Table toolbar: New/delete/design table | Direct buttons on table list | Only accessible via object tree right-click | 🟡 Medium |
-| **N2** | Table right-click menu | Open/design/rename/delete/refresh | Missing entirely | 🟡 Medium |
-| **N3** | Table multi-select + bulk operations | Shift+click, batch delete/clone | Single select only | 🟡 Medium |
-| **N4** | View/list grid toggle | Grid/card icons on toolbar | Not implemented | 🟡 Low |
+| **N1** | Table toolbar: New/delete/design table | Direct buttons on table list | ✅ Done — `table-list.new / open / design / drop` (+ transfer entry) registered in `ActionRegistry` | closed |
+| **N2** | Table right-click menu | Open/design/rename/delete/refresh | ✅ Done — `showContextMenu(...)` on both list rows and cards | closed |
+| **N3** | Table multi-select + bulk operations | Shift+click, batch delete/clone | ✅ Done — `SelectionMode.MULTIPLE` on table list and object home, batch drop with `BatchSummary` result dialog | closed |
+| **N4** | View/list grid toggle | Grid/card icons on toolbar | ✅ Done — object home list/card switch, view remembered per connection | closed |
 | **N5** | Status bar phrasing | "Selected 1 project" | "Unselected — ms / Selected users — N rows" | ✅ Fixed (v13) |
 
 ### Visual/Design Gaps
@@ -119,20 +123,23 @@ bootstrap/         - Desktop startup entry (jpackage)
 
 | Priority | Feature | Status | Notes |
 |----------|---------|--------|-------|
-| **P1** | Import/export wizard | ❌ Not done | Currently only inline CSV/TSV export |
-| **P2** | Index/triggers editable in structure page | ⚠️ Read-only (can view, can't edit) | B5-S1 in progress (2026-10) |
-| **P3** | Multiple connection management | ✅ Done (sidebar tree) | All connections in one tree, not separate windows |
-| **P4** | Function/procedure definition body view | ⚠️ Read-only only | Can see name, can't edit body (except PG) |
-| **P5** | Migration/DDL visual designer | ❌ Not done | SQL-based only |
+| **P1** | Import/export wizard | ✅ Done | `TransferHub` (pick a table) → `ImportWizard` (file/format/target column mapping, typed conversion, bad rows named) and `ExportWizard` (scope/format/target, CSV + xlsx via POI SXSSF, three tiers: page/selection/all) |
+| **P2** | Index / foreign key / trigger editable in structure page | ✅ Done | `IndexDialog` (composite column order, dialect-gated type & ASC/DESC), `ForeignKeyDialog`, `TriggerDialog`; unsupported dialects show **no** control instead of a fake option |
+| **P3** | Multiple connection management | ✅ Done | All connections in one sidebar tree, per-connection executors; connections carry a `group` label |
+| **P4** | Function/procedure definition body view | 🟡 View-only | `RoutinePage` shows the definition body (read-only tab); editing a routine is still not implemented |
+| **P5** | Migration / DDL visual designer | 🟡 Partial | Visual table design exists (`NewTableDialog` create + structure page "design table", index/FK/trigger editors, DDL preview). **Cross-connection data migration is not implemented** — SQL-based copy only |
 | **P6** | ER diagram view | ❌ Not in scope | Explicitly not doing |
+| **V-6** | Installer icon (Win `.ico` / macOS `.icns`) | ✅ Done (round 28) | `tools/GenPackIcons.java` → `brand/app-icon.ico` + `.icns` from `GenLogo` geometry; `scripts/package.sh` passes `--icon` per platform; `PackageIconAuditTest` decodes both containers |
+| — | Cold start < 2 s | ❌ Not met | Measured 3.5–3.9 s, floor ≈ 2.4 s (Toolkit + Modena + first CSS/layout pass); progressive rendering is planned, not implemented |
+| — | jlink runtime / auto-update / code signing | ⛔ Blocked | RichTextFX & ControlFX auto-modules (jlink), no release channel + offline networks + no certificate (update, signing) |
 
 ---
 
 ## 4. Component, Font, Color, Size, Spacing Analysis
 
-### Design Tokens (97 total)
-- **59 colors**: bg-canvas/bg-surface/bg-elevated/bg-inset/bg-hover/bg-active/bg-selected/bg-disabled + 3 border + 6 text + 2 accent + 16 risk + 6 status + 9 syntax + 7 kind
-- **35 sizes**: 38 dimension tokens (h-*, w-*, row-*, fs-*, sp-*, r-*, dur-*) minus 3 already counted
+### Design Tokens (98 total, per `tokens.json` `meta.count`)
+- **60 colors**: bg-canvas/bg-surface/bg-elevated/bg-inset/bg-subtle/bg-hover/bg-active/bg-selected/bg-disabled + border layer + text + accent + risk + status + syntax + kind
+- **35 sizes**: heights, widths, 4 row densities (`row-dense 22` / `row-compact 24` / `row 28` / `row-comfort 34`), 7 font steps, spacing scale, radii
 - **3 durations**: toast durations (1.8s / 6s / 4s)
 
 ### Font Scale (7 sizes: fs-2xs 10px through fs-3xl 32px)
@@ -221,7 +228,7 @@ them; the brand now lives in the app bar at `Icons.SIZE_TOOLBAR`._
 |------|-----|-----|----------|
 | Table list 8 columns | Partial | ✅ Complete | N1–N5 all implemented |
 | Object home 9 columns | Missing type column | ✅ Added + type chip | N0-4 |
-| Density tiers | Only object tree | ✅ All rows (24/28/34) | N0-6 |
+| Density tiers | Only object tree | ✅ All rows (22/24/28/34, default `normal`; grid one tier below, D1) | N0-6 + UX-2 |
 | Zebra striping | Present | ✅ Removed | N0-7 |
 | Sidebar color | `#E5E9EA` | `#F1F3F5` (light) / `#172033` (dark) | N0-7, bg-sidebar token |
 | Header font | 11px | ✅ 12px bold | N0-9 |
@@ -232,20 +239,25 @@ them; the brand now lives in the app bar at `Icons.SIZE_TOOLBAR`._
 
 | Category | Item | Navicat | AIDB | Fix Version |
 |----------|------|---------|------|-------------|
-| **Workflow** | Import/export wizard | ❌ | ❌ | P1 (next sprint) |
-| **Grid toggle** | List/card view switch | ✅ | ❌ | P2 |
-| **Multi-select** | Bulk operations on tables | ✅ | ❌ (single select) | P2 |
+| **Workflow** | Import/export wizard | ✅ | ✅ `TransferHub` → `ImportWizard` / `ExportWizard` (typed conversion, bad-row report, CSV + xlsx) | P1 — closed (rounds 24-25) |
+| **Grid toggle** | List/card view switch | ✅ | ✅ object home list/card, remembered per connection | P2 — closed (UX-6) |
+| **Multi-select** | Bulk operations on tables | ✅ | ✅ `SelectionMode.MULTIPLE` + batch drop with `BatchSummary` | P2 — closed |
+| **Dialog buttons** | 取消 left, primary bottom-right | ✅ | ✅ app-wide: `DialogStyles.apply` swaps the O/C slots; 6 self-built footers follow the same rule (`DialogButtonOrderTest`) | closed (round 28) |
 | **Object tree** | Functions/procedures grouping | ✅ 5-way | ✅ 5-way (same) | — |
-| **DDL designer** | Visual table designer | ❌ | ❌ | Not in scope |
-| **ER diagram** | Visual relationship view | ❌ | ❌ | Explicitly out |
-| **Query history** | Persistent across sessions | ✅ | ✅ (same) | — |
-| **Schema comparison** | Diff two connections | ❌ | ❌ | Future consideration |
+| **Routine body** | Edit function/procedure definition | ✅ | 🟡 view-only (`RoutinePage`) | open |
+| **DDL designer** | Visual table designer | ✅ (Navicat 17) | ✅ create + design table dialogs, index/FK/trigger editors | closed |
+| **Data migration** | Copy data between connections | ✅ | ❌ not implemented (SQL copy only) | open |
+| **ER diagram** | Visual relationship view | ✅ | ❌ | Explicitly out |
+| **Query history** | Persistent across sessions | ✅ | ✅ (entries carry connection / hit tables / timestamp) | — |
+| **Schema comparison** | Diff two connections | ✅ | ❌ | Future consideration |
+| **Packaging** | Installer icon | ✅ | ✅ `.ico` / `.icns` wired into `jpackage --icon` | closed (V-6, round 28) |
+| **Startup** | Cold start under ~2 s | ✅ | ❌ measured 3.5–3.9 s (floor ≈ 2.4 s) | open — progressive rendering not yet attempted |
 
 ### Visual Polishing Items
 
 | Item | Navicat | AIDB | Priority |
 |------|---------|------|----------|
-| **Icon consistency** | Color-coded tool icons | Single-color linear icons | ✅ AIDB unified (v13) |
+| **Icon consistency** | Color-coded tool icons | Lucide vector sources; neutral chrome icons stay single-color, object/state semantics carry color | ✅ aligned (round 27, U-ICON) |
 | **Focus ring** | Visible outline | ✅ `border-focus` token | Consistent |
 | **Hover states** | Subtle blue highlight | ✅ `bg-hover` + `text-primary` | Consistent |
 | **Corner radius** | 4px standard | ✅ `r-full` for pills, `r-8` for containers | Consistent |
@@ -346,31 +358,29 @@ Update the phase planning to reflect current position:
 
 ## 8. TODO List Modification & Development Continuation
 
-### Updated Priorities (Post-U-B7)
+### Updated Priorities (round 28, 2026-10-26)
 
 ```markdown
-## Immediate Next Items (2026-10-23 Sprint)
+## Closed since the 2026-10-23 snapshot
+- ✅ V-6: installer icons — `tools/GenPackIcons.java` emits `brand/app-icon.ico` (7 PNG frames)
+       and `brand/app-icon.icns` (12 frames) from `GenLogo` geometry; `scripts/package.sh`
+       passes `--icon` per platform; `PackageIconAuditTest` decodes both containers field by field
+- ✅ Dialog button order — Navicat layout app-wide (`取消 | 确定`), `DialogButtonOrderTest`
+- ✅ N3 / N4 / N6 / error-detail popup / batch summary / import-export wizard / P2-P6 workbench items
 
-### P0 - Critical (must before release)
-1. ✅ N1–N5: Table list enhancements (completed in v13)
-2. ✅ U-B7: Sidebar Navicat model + button spec (completed)
-3. ⚠️ V-6: Application icon asset (create SVG + PNG sizes)
-4. ⚠️ V-5: Toolbar width folding at <7 items (responsive design)
+## Still open (honest)
+1. ❄️ Cold start: 3.5–3.9 s measured vs < 2 s target — progressive rendering (empty shell first,
+   then fill) is the only untried lever; floor ≈ 2.4 s (Toolkit + Modena + first CSS/layout pass)
+2. 🔧 V-5: toolbar label folding at < 7 visible items — deferred by ruling
+3. 📄 Routine body editing (`RoutinePage` is view-only today)
+4. 🔁 Cross-connection data migration (SQL copy only)
 
-### P1 - High (user experience)
-1. ⏳ N6: Column width memory per connection/table
-2. ⏳ N4: Grid/list view toggle on table list
-3. ⏳ N3: Multi-select + bulk delete on tables
-
-### P2 - Medium (polish)
-1. ⏳ V-9: Table spec unification already done ✅
-2. ⏳ Error detail popup / batch confirmation summary
-3. ⏳ Status bar remaining phrasing tweaks
-
-### P3 - Low (future)
-1. ⏳ Import/export wizard (major feature gap)
-2. ⏳ Visual DDL designer (not in scope)
-3. ⏳ jlink native image build (blocked by modular Java)
+## Blocked / explicitly out (do not count as done elsewhere)
+- ⛔ jlink runtime image (RichTextFX / ControlFX auto-modules)
+- 🚫 auto-update (no release channel, offline networks, no signing → "check failed" is
+  indistinguishable, and silent download is a supply-chain risk)
+- ⛔ code signing / notarization (needs a certificate — external resource)
+- ❌ ER diagram, schema comparison — out of scope by decision
 ```
 
 ### Development Commands (Verified Working)
@@ -382,7 +392,7 @@ Update the phase planning to reflect current position:
 # Generate tokens from tokens.json
 java tools/GenTokens.java
 
-# Re-shoot screenshots (9+1 format)
+# Re-shoot screenshots (18 frames, pinned density + isolated prefs node)
 ./scripts/shots.sh
 
 # Start dev server
@@ -415,9 +425,9 @@ java tools/GenTokens.java
 ### Where AIDB Excels ✅
 1. **Dangerous operation protection** - Three-layer fail-closed design (unique strength)
 2. **Four-level risk classification** - Read/write/structure/admin with visual badges
-3. **Density flexibility** - Users can choose 24/28/34px row heights
+3. **Density flexibility** - Users can choose 22/24/28/34 px row heights (grid one tier below the setting)
 4. **Multi-connection tree** - All connections in one navigable tree (not separate windows)
-5. **Modern token system** - 97 design tokens, all enforced by tests
+5. **Modern token system** - 98 design tokens, all enforced by tests
 6. **No embedded browser** - Pure JDBC, no HTTP ports, native performance
 7. **Cross-platform native** - JavaFX on macOS/Windows/Linux, not Electron
 
@@ -484,15 +494,19 @@ runs into text rows, take the mode of inter-peak gaps. Threshold 200/765 so 1px 
 
 > **Round-19 update:** **C1 and C2 are fixed** — see the ✅ notes in their rows.
 > **Round-22 update:** **C7 is fixed** (S-7 ruling 「接 + 删」).
-> The remaining items (C3/C4/C5) are still open and tracked in `NAVICAT-TODO.md` §29.
+> **Round-28 update:** **C5 is fixed** (S-3: table/view nodes expand into lazily loaded columns),
+> **C4 is closed by ruling** (no 19 px tier; four densities 22/24/28/34 with `normal` = 28 as the
+> default and the data grid one tier below — D1 ruling, round 29), **C3 is mitigated** (the main area is allowed to shrink so opening the panel no longer
+> pushes left-side chrome out of the scene — `AppShellTest` gate; header truncation itself is still
+> user-solvable via column resize / column settings).
 
 | ID | Finding | Evidence | Suggested direction |
 |---|---|---|---|
 | **C1** ✅ **FIXED (R19 S-1)** | **Wall of em-dashes**: on the default SQLite demo, 6 of 8 table-list columns are always `—` — **810 of 1120px preferred width (72%)**; object home likewise 6 of 9 | `p6-tables.png`, `p5-connections.png`; `TableListPage:239-250` creates all columns unconditionally. Note `ObjectHomePage:218` **documents this as deliberate** ("方言拿不到的列显示「—」") | ~~Deliberate ≠ optimal: hide columns with no data source for the dialect, or expose a 「列」 toggle.~~ **Done via a data-driven rule** (not a dialect whitelist): a column is hidden only when *every loaded row* renders the placeholder for it — auto-adapts to new dialects, and a single row with a real value keeps the column (mixed MySQL tables/views). Core columns (名称/行/类型) are never hidden. Gates: `MetadataColumnsTest`(6), `TableListPageTest`+3, `ObjectHomePageTest`+2 — all mutation-tested. |
 | **C2** ✅ **FIXED (R19 S-2)** | **Card view is 2/3 dashes** — `notes / 0行 · — / — · — / —` in a 220px card | `p6-tables-grid.png` + `TableListPage` card builder | ~~render only populated lines (icon + name + rows + comment)~~ **Done**: each card line joins only non-placeholder fragments, and a line whose fragments are all placeholders is not rendered at all (no empty placeholder row left behind). Gate: `TableListPageTest.cardViewOmitsPlaceholderLinesOnSqliteLikeData` (mutation-tested) + a MySQL-shaped case asserting real metadata still shows. |
-| **C3** | **Detail panel squeezes the grid** — headers truncate to `na… em… acti… sco… creat…` | `p2-details.png`; `ObjectDetailsPanel.WIDTH_DEFAULT=300` | overlay instead of push, or auto-collapse below a grid-width threshold, or per-column min-width before truncating |
-| **C4** | **Row pitch** (see 10.1): 28 vs 19 | measured | decide with product owner: optional `dense` tier (~20px), or default list pages to `compact`; keep `normal` for reading |
-| **C5** | **Tree tables can't expand to columns** — every Navicat table node carries a `>` chevron (crop-verified); AIDB object nodes are leaves | `SideBar.kindGroup()` builds child `TreeItem`s with no children; Navicat crop vs AIDB crop | lazy-load columns under table nodes. (AIDB already shows columns in the details panel/structure page — this is about *inline scanning*, Navicat's fastest gesture) |
+| **C3** 🟡 **MITIGATED (R25)** | **Detail panel squeezes the grid** — headers truncate to `na… em… acti… sco… creat…` | `p2-details.png`; `ObjectDetailsPanel.WIDTH_DEFAULT=300` | ~~overlay instead of push~~ Opening the panel no longer pushes left-side chrome out of the scene (main area may shrink; `AppShellTest` mechanism gate, mutation-verified). Header truncation still resolves by column resize / 「列」 settings |
+| **C4** ✅ **CLOSED BY RULING (R28)** | **Row pitch** (see 10.1): 28 vs 19 | measured | Ruling: **no 19 px tier** — keep 22 / 24 / 28 / 34; default tier is `normal` (28) and the data grid sits one tier below (24) per the round-29 D1 ruling (`RowHeights.grid()`). Adding a fifth tier would re-open `DensityCoverageTest` / `ChromeMetricsTest` / menu wiring for ~3 px of gain |
+| **C5** ✅ **FIXED (R19 S-3)** | **Tree tables can't expand to columns** — every Navicat table node carries a `>` chevron (crop-verified); AIDB object nodes are leaves | `SideBar.kindGroup()` builds child `TreeItem`s with no children; Navicat crop vs AIDB crop | Table / view nodes expand into lazily loaded columns (`SideBar:1124-1156` — expansion works before the read finishes, a failed read re-arms the retry, cache survives a tree refresh) |
 | **C7** ✅ **FIXED (R22 S-7)** | **Welcome page still shows a generic `DATABASE` vector**, not the AIDB mark | `WorkspaceView:137`; the brand round only registered OS window icons (`stage.getIcons()`) | ~~put the brand mark on the welcome page~~ **Ruling was "wire it in + delete the dead code", not either/or**: `AppShell:247` unconditionally `openPermanent(object-home)`, so the welcome page was provably unreachable — three green gates in `WelcomeBrandTest` were testing a page no user ever sees. Instead: added vector `Icons.Icon.BRAND` (data cylinder + AI spark) into the app bar's permanent 26px square (the one brand slot that is actually on screen every frame), deleted `showWelcome()` / `brandMark()` / `BRAND_MARK` / the `.adb-welcome*` CSS / `Icons.SIZE_BRAND` / the unreachable `else` in `AppShell.tabClosed`, and dropped the orphaned `fs-2xl` token (98 tokens now). Gates: `AppBarTest.theBrandMarkIsTheAidbMarkNotAGenericDatabaseIcon`, `BrandMarkAuditTest`(2). Pixel comparison then exposed a **real production bug**: `.adb-icon { -fx-stroke: -adb-text-secondary }` is declared *later* at equal specificity, so the glyph was gray-on-blue and nearly invisible — fixed with the two-class selector `.adb-appbar__mark .adb-appbar__mark-glyph` plus the computed-value gate `AppBarTest.theBrandGlyphKeepsItsContrastAgainstTheGenericIconRule`. All 5 mutations (M1–M5) verified red → restored. |
 
 ### 10.4 Recommended order (senior eng + designer view)
