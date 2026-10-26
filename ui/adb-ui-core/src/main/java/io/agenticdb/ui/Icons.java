@@ -92,6 +92,8 @@ public final class Icons {
         // ── 通用动作 ──
         /** 关闭（lucide: ×）。 */
         CLOSE(null, "x"),
+        /** 肯定态勾（lucide: check）—— U9：只读布尔用它，不再用文本「✓」。 */
+        CHECK(null, "check"),
         /** 新增（lucide: plus）。 */
         ADD(null, "plus"),
         /** 编辑（lucide: pencil）。 */
@@ -205,8 +207,17 @@ public final class Icons {
         PALETTE(null, "terminal-square"),
         /** 历史记录（lucide: history）。 */
         HISTORY(null, "history"),
+        /** 凭据安全（lucide: lock）—— U27/§2.8：口令落盘位置这类安全提示配锁形图标。 */
+        LOCK(null, "lock"),
         /** 诊断（lucide: activity，心电波）。 */
         DIAGNOSTICS(null, "activity"),
+        /**
+         * 警示（lucide: triangle-alert）。
+         *
+         * <p>替代查询页里当图标用的文本「⚠」—— 文本符号不吃主题色、不吃字号，
+         * 暗色下几乎看不见，还与「内容真是 ⚠ 的文本」撞车（与 {@link #CHECK} 同一口径）。
+         */
+        ALERT(null, "triangle-alert"),
         /**
          * 索引（lucide: list-ordered）。
          *

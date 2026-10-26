@@ -10,10 +10,10 @@ import java.util.List;
  */
 public final class Tokens {
 
-    public static final int COUNT = 98;
+    public static final int COUNT = 100;
 
     /** bg-canvas (color) */
-    public static final String BG_CANVAS_DARK = "#0F172A";
+    public static final String BG_CANVAS_DARK = "#0B1220";
     public static final String BG_CANVAS_LIGHT = "#FFFFFF";
 
     /** bg-sidebar (color) */
@@ -26,7 +26,7 @@ public final class Tokens {
 
     /** bg-subtle (color) */
     public static final String BG_SUBTLE_DARK = "#16213A";
-    public static final String BG_SUBTLE_LIGHT = "#F7F8FA";
+    public static final String BG_SUBTLE_LIGHT = "#EEF2F7";
 
     /** bg-elevated (color) */
     public static final String BG_ELEVATED_DARK = "#1E293B";
@@ -41,12 +41,12 @@ public final class Tokens {
     public static final String BG_HOVER_LIGHT = "rgba(15,23,42,.04)";
 
     /** bg-active (color) */
-    public static final String BG_ACTIVE_DARK = "rgba(59,130,246,.20)";
-    public static final String BG_ACTIVE_LIGHT = "rgba(37,99,235,.10)";
+    public static final String BG_ACTIVE_DARK = "rgba(99,129,218,.20)";
+    public static final String BG_ACTIVE_LIGHT = "rgba(79,102,204,.10)";
 
     /** bg-selected (color) */
-    public static final String BG_SELECTED_DARK = "rgba(59,130,246,.26)";
-    public static final String BG_SELECTED_LIGHT = "#DBEAFE";
+    public static final String BG_SELECTED_DARK = "rgba(99,129,218,.26)";
+    public static final String BG_SELECTED_LIGHT = "#E6EAF6";
 
     /** bg-stripe (color) */
     public static final String BG_STRIPE_DARK = "rgba(148,163,184,.035)";
@@ -57,31 +57,27 @@ public final class Tokens {
     public static final String BG_DISABLED_LIGHT = "rgba(148,163,184,.14)";
 
     /** border (color) */
-    public static final String BORDER_DARK = "#334155";
-    public static final String BORDER_LIGHT = "#E2E8F0";
+    public static final String BORDER_DARK = "#2C3B52";
+    public static final String BORDER_LIGHT = "#EBEFF4";
 
     /** border-subtle (color) */
-    public static final String BORDER_SUBTLE_DARK = "#263449";
-    public static final String BORDER_SUBTLE_LIGHT = "#E3E6EA";
-
-    /** border-strong (color) */
-    public static final String BORDER_STRONG_DARK = "#475569";
-    public static final String BORDER_STRONG_LIGHT = "#CBD5E1";
+    public static final String BORDER_SUBTLE_DARK = "#223046";
+    public static final String BORDER_SUBTLE_LIGHT = "#EDF0F4";
 
     /** border-focus (color) */
-    public static final String BORDER_FOCUS_DARK = "#60A5FA";
-    public static final String BORDER_FOCUS_LIGHT = "#2563EB";
+    public static final String BORDER_FOCUS_DARK = "#7B93E0";
+    public static final String BORDER_FOCUS_LIGHT = "#4F66CC";
 
     /** text-primary (color) */
     public static final String TEXT_PRIMARY_DARK = "#E2E8F0";
     public static final String TEXT_PRIMARY_LIGHT = "#0F172A";
 
     /** text-secondary (color) */
-    public static final String TEXT_SECONDARY_DARK = "#A3B1C6";
-    public static final String TEXT_SECONDARY_LIGHT = "#64748B";
+    public static final String TEXT_SECONDARY_DARK = "#AEBFD4";
+    public static final String TEXT_SECONDARY_LIGHT = "#475569";
 
     /** text-tertiary (color) */
-    public static final String TEXT_TERTIARY_DARK = "#94A3B8";
+    public static final String TEXT_TERTIARY_DARK = "#8494AA";
     public static final String TEXT_TERTIARY_LIGHT = "#5F6E82";
 
     /** text-muted (color) */
@@ -97,16 +93,16 @@ public final class Tokens {
     public static final String TEXT_INVERSE_LIGHT = "#FFFFFF";
 
     /** accent (color) */
-    public static final String ACCENT_DARK = "#3B82F6";
-    public static final String ACCENT_LIGHT = "#2563EB";
+    public static final String ACCENT_DARK = "#6381DA";
+    public static final String ACCENT_LIGHT = "#4F66CC";
 
     /** accent-hover (color) */
-    public static final String ACCENT_HOVER_DARK = "#60A5FA";
-    public static final String ACCENT_HOVER_LIGHT = "#1D4ED8";
+    public static final String ACCENT_HOVER_DARK = "#7B93E0";
+    public static final String ACCENT_HOVER_LIGHT = "#4257B4";
 
     /** risk-0-read (color) */
-    public static final String RISK_0_READ_DARK = "#60A5FA";
-    public static final String RISK_0_READ_LIGHT = "#2563EB";
+    public static final String RISK_0_READ_DARK = "#7B93E0";
+    public static final String RISK_0_READ_LIGHT = "#4F66CC";
 
     /** risk-1-write (color) */
     public static final String RISK_1_WRITE_DARK = "#FBBF24";
@@ -121,12 +117,12 @@ public final class Tokens {
     public static final String RISK_3_ADMIN_LIGHT = "#7C3AED";
 
     /** risk-0-bg (color) */
-    public static final String RISK_0_BG_DARK = "rgba(59,130,246,.12)";
-    public static final String RISK_0_BG_LIGHT = "rgba(37,99,235,.08)";
+    public static final String RISK_0_BG_DARK = "rgba(99,129,218,.12)";
+    public static final String RISK_0_BG_LIGHT = "rgba(79,102,204,.08)";
 
     /** risk-0-border (color) */
-    public static final String RISK_0_BORDER_DARK = "rgba(59,130,246,.32)";
-    public static final String RISK_0_BORDER_LIGHT = "rgba(37,99,235,.30)";
+    public static final String RISK_0_BORDER_DARK = "rgba(99,129,218,.32)";
+    public static final String RISK_0_BORDER_LIGHT = "rgba(79,102,204,.30)";
 
     /** risk-1-bg (color) */
     public static final String RISK_1_BG_DARK = "rgba(251,191,36,.12)";
@@ -168,6 +164,14 @@ public final class Tokens {
     public static final String WARNING_BG_DARK = "rgba(251,191,36,.12)";
     public static final String WARNING_BG_LIGHT = "rgba(180,83,9,.10)";
 
+    /** dirty (color) */
+    public static final String DIRTY_DARK = "#2DD4BF";
+    public static final String DIRTY_LIGHT = "#0F766E";
+
+    /** dirty-bg (color) */
+    public static final String DIRTY_BG_DARK = "rgba(45,212,191,.12)";
+    public static final String DIRTY_BG_LIGHT = "rgba(15,118,110,.08)";
+
     /** error (color) */
     public static final String ERROR_DARK = "#F87171";
     public static final String ERROR_LIGHT = "#DC2626";
@@ -177,8 +181,8 @@ public final class Tokens {
     public static final String ERROR_BG_LIGHT = "rgba(220,38,38,.10)";
 
     /** info (color) */
-    public static final String INFO_DARK = "#60A5FA";
-    public static final String INFO_LIGHT = "#2563EB";
+    public static final String INFO_DARK = "#7B93E0";
+    public static final String INFO_LIGHT = "#4F66CC";
 
     /** syn-keyword (color) */
     public static final String SYN_KEYWORD_DARK = "#C4B5FD";
@@ -197,8 +201,8 @@ public final class Tokens {
     public static final String SYN_COMMENT_LIGHT = "#64748B";
 
     /** syn-function (color) */
-    public static final String SYN_FUNCTION_DARK = "#93C5FD";
-    public static final String SYN_FUNCTION_LIGHT = "#2563EB";
+    public static final String SYN_FUNCTION_DARK = "#A5B8EF";
+    public static final String SYN_FUNCTION_LIGHT = "#4F66CC";
 
     /** syn-type (color) */
     public static final String SYN_TYPE_DARK = "#7DD3FC";
@@ -332,10 +336,6 @@ public final class Tokens {
     public static final int SP_7_DARK = 32;
     public static final int SP_7_LIGHT = 32;
 
-    /** r-xs (size) */
-    public static final int R_XS_DARK = 3;
-    public static final int R_XS_LIGHT = 3;
-
     /** r-sm (size) */
     public static final int R_SM_DARK = 4;
     public static final int R_SM_LIGHT = 4;
@@ -347,6 +347,10 @@ public final class Tokens {
     /** r-lg (size) */
     public static final int R_LG_DARK = 8;
     public static final int R_LG_LIGHT = 8;
+
+    /** r-xl (size) */
+    public static final int R_XL_DARK = 10;
+    public static final int R_XL_LIGHT = 10;
 
     /** r-full (size) */
     public static final int R_FULL_DARK = 999;
@@ -390,7 +394,11 @@ public final class Tokens {
 
     /** shadow-1 (color) */
     public static final String SHADOW_1_DARK = "rgba(2,6,23,.45)";
-    public static final String SHADOW_1_LIGHT = "rgba(15,23,42,.10)";
+    public static final String SHADOW_1_LIGHT = "rgba(15,23,42,.08)";
+
+    /** shadow-2 (color) */
+    public static final String SHADOW_2_DARK = "rgba(2,6,23,.60)";
+    public static final String SHADOW_2_LIGHT = "rgba(15,23,42,.16)";
 
     /** kind-index (color) */
     public static final String KIND_INDEX_DARK = "#94A3B8";
@@ -401,27 +409,27 @@ public final class Tokens {
     public static final String KIND_EVENT_LIGHT = "#BE185D";
 
     /** row-tree (size) */
-    public static final int ROW_TREE_DARK = 24;
-    public static final int ROW_TREE_LIGHT = 24;
+    public static final int ROW_TREE_DARK = 28;
+    public static final int ROW_TREE_LIGHT = 28;
 
     public static final List<String> ALL_KEYS = List.of(
             "bg-canvas", "bg-sidebar", "bg-surface", "bg-subtle", "bg-elevated", "bg-inset",
             "bg-hover", "bg-active", "bg-selected", "bg-stripe", "bg-disabled", "border",
-            "border-subtle", "border-strong", "border-focus", "text-primary", "text-secondary", "text-tertiary",
-            "text-muted", "text-disabled", "text-inverse", "accent", "accent-hover", "risk-0-read",
-            "risk-1-write", "risk-2-structure", "risk-3-admin", "risk-0-bg", "risk-0-border", "risk-1-bg",
-            "risk-1-border", "risk-2-bg", "risk-2-border", "risk-3-bg", "risk-3-border", "success",
-            "success-bg", "warning", "warning-bg", "error", "error-bg", "info",
-            "syn-keyword", "syn-string", "syn-number", "syn-comment", "syn-function", "syn-type",
-            "syn-ident", "syn-param", "syn-error", "h-appbar", "h-toolbar", "h-tabbar",
-            "h-statusbar", "h-input", "h-button", "w-sidebar-min", "w-sidebar", "w-sidebar-max",
-            "w-sidebar-collapsed", "row-dense", "row-compact", "row-normal", "row-comfort", "fs-2xs",
-            "fs-xs", "fs-sm", "fs-md", "fs-lg", "fs-xl", "fs-3xl",
-            "sp-1", "sp-1h", "sp-2", "sp-3", "sp-4", "sp-5",
-            "sp-6", "sp-7", "r-xs", "r-sm", "r-md", "r-lg",
-            "r-full", "dur-toast", "dur-toast-action", "dur-toast-result", "kind-table", "kind-view",
-            "kind-function", "kind-trigger", "kind-procedure", "overlay", "shadow-1", "kind-index",
-            "kind-event", "row-tree"
+            "border-subtle", "border-focus", "text-primary", "text-secondary", "text-tertiary", "text-muted",
+            "text-disabled", "text-inverse", "accent", "accent-hover", "risk-0-read", "risk-1-write",
+            "risk-2-structure", "risk-3-admin", "risk-0-bg", "risk-0-border", "risk-1-bg", "risk-1-border",
+            "risk-2-bg", "risk-2-border", "risk-3-bg", "risk-3-border", "success", "success-bg",
+            "warning", "warning-bg", "dirty", "dirty-bg", "error", "error-bg",
+            "info", "syn-keyword", "syn-string", "syn-number", "syn-comment", "syn-function",
+            "syn-type", "syn-ident", "syn-param", "syn-error", "h-appbar", "h-toolbar",
+            "h-tabbar", "h-statusbar", "h-input", "h-button", "w-sidebar-min", "w-sidebar",
+            "w-sidebar-max", "w-sidebar-collapsed", "row-dense", "row-compact", "row-normal", "row-comfort",
+            "fs-2xs", "fs-xs", "fs-sm", "fs-md", "fs-lg", "fs-xl",
+            "fs-3xl", "sp-1", "sp-1h", "sp-2", "sp-3", "sp-4",
+            "sp-5", "sp-6", "sp-7", "r-sm", "r-md", "r-lg",
+            "r-xl", "r-full", "dur-toast", "dur-toast-action", "dur-toast-result", "kind-table",
+            "kind-view", "kind-function", "kind-trigger", "kind-procedure", "overlay", "shadow-1",
+            "shadow-2", "kind-index", "kind-event", "row-tree"
     );
 
     private Tokens() { }

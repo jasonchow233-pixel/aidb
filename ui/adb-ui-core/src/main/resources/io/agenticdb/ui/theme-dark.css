@@ -1,35 +1,34 @@
 /* 由 tools/GenTokens.java 生成，不要手改。 */
 /* theme: dark · selector: .theme-dark */
 .theme-dark {
-    -adb-bg-canvas: #0F172A;
+    -adb-bg-canvas: #0B1220;
     -adb-bg-sidebar: #172033;
     -adb-bg-surface: #1E293B;
     -adb-bg-subtle: #16213A;
     -adb-bg-elevated: #1E293B;
     -adb-bg-inset: #172033;
     -adb-bg-hover: rgba(148,163,184,.12);
-    -adb-bg-active: rgba(59,130,246,.20);
-    -adb-bg-selected: rgba(59,130,246,.26);
+    -adb-bg-active: rgba(99,129,218,.20);
+    -adb-bg-selected: rgba(99,129,218,.26);
     -adb-bg-stripe: rgba(148,163,184,.035);
     -adb-bg-disabled: rgba(148,163,184,.08);
-    -adb-border: #334155;
-    -adb-border-subtle: #263449;
-    -adb-border-strong: #475569;
-    -adb-border-focus: #60A5FA;
+    -adb-border: #2C3B52;
+    -adb-border-subtle: #223046;
+    -adb-border-focus: #7B93E0;
     -adb-text-primary: #E2E8F0;
-    -adb-text-secondary: #A3B1C6;
-    -adb-text-tertiary: #94A3B8;
+    -adb-text-secondary: #AEBFD4;
+    -adb-text-tertiary: #8494AA;
     -adb-text-muted: #64748B;
     -adb-text-disabled: #64748B;
     -adb-text-inverse: #0F172A;
-    -adb-accent: #3B82F6;
-    -adb-accent-hover: #60A5FA;
-    -adb-risk-0-read: #60A5FA;
+    -adb-accent: #6381DA;
+    -adb-accent-hover: #7B93E0;
+    -adb-risk-0-read: #7B93E0;
     -adb-risk-1-write: #FBBF24;
     -adb-risk-2-structure: #F87171;
     -adb-risk-3-admin: #C084FC;
-    -adb-risk-0-bg: rgba(59,130,246,.12);
-    -adb-risk-0-border: rgba(59,130,246,.32);
+    -adb-risk-0-bg: rgba(99,129,218,.12);
+    -adb-risk-0-border: rgba(99,129,218,.32);
     -adb-risk-1-bg: rgba(251,191,36,.12);
     -adb-risk-1-border: rgba(251,191,36,.32);
     -adb-risk-2-bg: rgba(248,113,113,.12);
@@ -40,14 +39,16 @@
     -adb-success-bg: rgba(74,222,128,.12);
     -adb-warning: #FBBF24;
     -adb-warning-bg: rgba(251,191,36,.12);
+    -adb-dirty: #2DD4BF;
+    -adb-dirty-bg: rgba(45,212,191,.12);
     -adb-error: #F87171;
     -adb-error-bg: rgba(248,113,113,.12);
-    -adb-info: #60A5FA;
+    -adb-info: #7B93E0;
     -adb-syn-keyword: #C4B5FD;
     -adb-syn-string: #5EEAD4;
     -adb-syn-number: #FCD34D;
     -adb-syn-comment: #94A3B8;
-    -adb-syn-function: #93C5FD;
+    -adb-syn-function: #A5B8EF;
     -adb-syn-type: #7DD3FC;
     -adb-syn-ident: #E2E8F0;
     -adb-syn-param: #FDA4AF;
@@ -59,6 +60,7 @@
     -adb-kind-procedure: #7DD3FC;
     -adb-overlay: rgba(2,6,23,.62);
     -adb-shadow-1: rgba(2,6,23,.45);
+    -adb-shadow-2: rgba(2,6,23,.60);
     -adb-kind-index: #94A3B8;
     -adb-kind-event: #F9A8D4;
 }

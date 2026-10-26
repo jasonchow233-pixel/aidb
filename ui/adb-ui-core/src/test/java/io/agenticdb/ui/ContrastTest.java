@@ -38,6 +38,9 @@ class ContrastTest {
     /** WCAG AA：正常文字的最低对比度。 */
     private static final double MIN_NORMAL = 4.5;
 
+    /** ⭐ U12：灰阶相邻两档之间至少要有多少对比度，肉眼才分得出是两档。 */
+    private static final double MIN_ADJACENT_GRAY_GAP = 1.4;
+
     /**
      * 必须达标的「文字 / 背景」配对 —— 每一对都是**实际用到的**组合（见 {@code app.css}）。
      *
@@ -53,6 +56,9 @@ class ContrastTest {
         PAIRS.put("正文 / 凹陷区", new String[]{"text-primary", "bg-inset", "bg-canvas"});
         PAIRS.put("次要文字 / 页面底", new String[]{"text-secondary", "bg-canvas", "bg-canvas"});
         PAIRS.put("次要文字 / 面板", new String[]{"text-secondary", "bg-surface", "bg-canvas"});
+        // ⭐ U12：凹陷区（输入框 / 网格底）是次要文字实际落底的地方，
+        // 以前只查了页面底 —— 老版 #64748B 在 #F1F5F9 上实测 4.34:1，一直不达 AA。
+        PAIRS.put("次要文字 / 凹陷区", new String[]{"text-secondary", "bg-inset", "bg-canvas"});
         PAIRS.put("三级文字 / 页面底", new String[]{"text-tertiary", "bg-canvas", "bg-canvas"});
         PAIRS.put("三级文字 / 浮层", new String[]{"text-tertiary", "bg-elevated", "bg-canvas"});
         PAIRS.put("三级文字 / 凹陷区", new String[]{"text-tertiary", "bg-inset", "bg-canvas"});
@@ -60,7 +66,13 @@ class ContrastTest {
         PAIRS.put("错误文字 / 页面底", new String[]{"error", "bg-canvas", "bg-canvas"});
         PAIRS.put("错误文字 / 面板", new String[]{"error", "bg-surface", "bg-canvas"});
         PAIRS.put("警告文字 / 页面底", new String[]{"warning", "bg-canvas", "bg-canvas"});
+        // 截断徽标（U13）：橙字现在落在 8% 的 warning 底上，得按实际叠色结果验。
+        PAIRS.put("警告文字 / 警告底", new String[]{"warning", "warning-bg", "bg-canvas"});
         PAIRS.put("成功文字 / 页面底", new String[]{"success", "bg-canvas", "bg-canvas"});
+        // ⭐ U13：未保存（dirty）现在是自己的一档色，不再借「写入风险」的橙；
+        // 它同样以文字形式出现在行号列 / 页签 / 状态栏，所以按文字要求卡。
+        PAIRS.put("未保存文字 / 页面底", new String[]{"dirty", "bg-canvas", "bg-canvas"});
+        PAIRS.put("未保存文字 / 凹陷区", new String[]{"dirty", "bg-inset", "bg-canvas"});
         PAIRS.put("信息文字 / 页面底", new String[]{"info", "bg-canvas", "bg-canvas"});
         // ── 风险徽标：文字是实色，底是 8% 半透明，叠在页面底上 ──
         PAIRS.put("风险 0 文字 / 风险 0 底", new String[]{"risk-0-read", "risk-0-bg", "bg-canvas"});
@@ -114,6 +126,37 @@ class ContrastTest {
                     .as("%s 主题：焦点环与页面底的对比度必须 ≥ 3:1（否则键盘用户看不见焦点）", theme)
                     .isGreaterThanOrEqualTo(3.0);
         }
+    }
+
+    /**
+     * ⭐ U12：三档灰必须**肉眼可分**。
+     *
+     * <p>对比度过 AA 只保证「读得清」，不保证「看得出这是一档、那是另一档」。
+     * 旧值 text-secondary #64748B 与 text-tertiary #5F6E82 都在白底上达标（4.76 / 5.20），
+     * 彼此却只差 1.09:1 —— 设计稿里叫「三级层次」，屏幕上实际只有两档，
+     * 结果是次要文字与参考信息长得一样，层级白搭。
+     *
+     * <p>判据：相邻两档灰之间的对比度 ≥ 1.4:1（肉眼能稳定分辨的最小台阶）。
+     */
+    @Test
+    void theThreeGraysAreActuallyThreeSteps() throws IOException {
+        JsonNode tokens = new ObjectMapper()
+                .readTree(readResource("/tokens/tokens.json")).path("tokens");
+        String[] ramp = {"text-primary", "text-secondary", "text-tertiary"};
+        List<String> failures = new ArrayList<>();
+        for (String theme : new String[]{"light", "dark"}) {
+            for (int i = 0; i + 1 < ramp.length; i++) {
+                double gap = contrast(tokens, ramp[i], ramp[i + 1], "bg-canvas", theme);
+                if (gap < MIN_ADJACENT_GRAY_GAP) {
+                    failures.add(String.format("%s 主题：%s 与 %s 只差 %.2f:1（要求 ≥ %.2f:1）",
+                            theme, ramp[i], ramp[i + 1], gap, MIN_ADJACENT_GRAY_GAP));
+                }
+            }
+        }
+        assertThat(failures)
+                .as("灰阶相邻两档必须肉眼可分，否则「三级文字」只是三级名字\n  %s",
+                        String.join("\n  ", failures))
+                .isEmpty();
     }
 
     // ─────────────────────────── 颜色计算 ───────────────────────────
