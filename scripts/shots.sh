@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（15 张）。
+# 重拍 docs/screenshots/ 的验收截图（18 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 14 张 + 暗色 1 张）
+#   ./scripts/shots.sh              # 全部重拍（亮色 15 张 + 暗色 3 张）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
 #
 # 为什么需要这个脚本（NAVICAT-TODO.md §12.2 记录的坑，全部在这里被绕开）：
@@ -30,7 +30,8 @@ ONLY="${1:-}"
 # 密度必须钉住：上一轮实拍里 p2-users 行高是 34（持久化的 comfort），
 # 而默认是 28 —— 同一份脚本在不同机器/历史上拍出的图不一样。
 # 偏好根也要隔离并在每次启动时清空，否则侧栏宽度 / 上次连接仍会漂移。
-export ADB_DENSITY="${ADB_DENSITY:-compact}"
+# 第二十一轮：默认档位改成 normal（28px），截图跟着钉 normal —— 拍的必须是用户首启看到的样子。
+export ADB_DENSITY="${ADB_DENSITY:-normal}"
 export ADB_PREFS_NODE="${ADB_PREFS_NODE:-io/agenticdb/screenshots}"
 export ADB_PREFS_RESET="${ADB_PREFS_RESET:-1}"
 # 不依赖「上次用的连接」；demo 由 ConnectionStore.ensureDemo 保证存在。
@@ -40,6 +41,12 @@ export ADB_CONNECTION="${ADB_CONNECTION:-demo}"
 # 顺序即拍摄顺序：暗色必须最先。
 SHOTS=(
   "p5-dark|appbar-manage-connections|5000|ADB_THEME_FORCE=dark"
+  # ⭐ U23：暗色不能只有一帧 —— 勾选框与禁用态的问题正是在暗色里暴露的。
+  #   p2-users-dark 拍数据网格（行首选择框 + 工具栏复选），
+  #   p7-new-index-dark 拍索引弹窗（「唯一」复选 + 添加列按钮）。
+  #   必须紧跟 p5-dark：主题偏好会持久化，暗色帧全部排在亮色之前。
+  "p2-users-dark||5000|ADB_OPEN=users ADB_THEME_FORCE=dark"
+  "p7-new-index-dark||6000|ADB_INDEX=1 ADB_INDEX_POSE=1 ADB_THEME_FORCE=dark"
   "p0-shell||2500|ADB_THEME_FORCE=light"
   "p2-users||5000|ADB_OPEN=users ADB_THEME_FORCE=light"
   # ⭐ UX-6：数据页「概览」切面（行数 / 大小 / 引擎 / 索引数 / 最近操作）。
@@ -53,6 +60,8 @@ SHOTS=(
   "p6-tables||5000|ADB_TABLES=1 ADB_THEME_FORCE=light"
   "p6-tables-grid||5000|ADB_TABLES=1 ADB_TABLE_VIEW=grid ADB_THEME_FORCE=light"
   "p3-query||6000|ADB_QUERY=1 ADB_THEME_FORCE=light"
+  # ⭐ U25：右键菜单帧 —— 结果网格上摆出真菜单（复制单元格 / 行 / 列名）。
+  "p3-query-menu||8000|ADB_QUERY=1 ADB_MENU_POSE=1 ADB_THEME_FORCE=light"
   "p4-structure||5000|ADB_STRUCTURE=users ADB_THEME_FORCE=light"
   "p4-ddl||7000|ADB_DDL=1 ADB_THEME_FORCE=light"
   "p5-connections|appbar-manage-connections|4000|ADB_THEME_FORCE=light"
@@ -61,7 +70,10 @@ SHOTS=(
   #   光弹一个空弹窗等于没拍这个弹窗的核心交互（空态由 IndexDialogTest 守）。
   "p7-new-index||6000|ADB_INDEX=1 ADB_INDEX_POSE=1 ADB_THEME_FORCE=light"
   # ⭐ P2-2：错误详情弹窗 —— 分类徽标 + 驱动原文 + 建议 + 可复制的 SQL。
-  "p2-error||5000|ADB_ERROR_DEMO=1 ADB_THEME_FORCE=light"
+  #   8000ms（不是 5000）：连拍 18 次冷启动时这台机器实测会慢过 5s ——
+  #   弹窗还没开就拍，得到一张与 p0-shell 同 md5 的假帧（U7 去重门禁抓到过，
+  #   单帧重拍即真）。留出余量，假帧仍由去重门禁兜底。
+  "p2-error||8000|ADB_ERROR_DEMO=1 ADB_THEME_FORCE=light"
 )
 
 step "编译并安装（否则拍到的是旧界面）"
@@ -120,5 +132,32 @@ done
 
 step "结果"
 ok "已产出 $captured 张 → $SHOTS_DIR"
+
+# ── U7：帧去重 ──────────────────────────────────────────────────────
+# 两张帧 md5 相同 = 拍的是同一个画面，那么其中一张一定是**假帧**（它声称的
+# 那个界面根本没出现）。踩过：p2-error 与 p0-shell 完全一致 —— 错误弹窗是
+# Alert，默认 Modality.NONE，而截图会话只认模态窗口，于是拍到的是主窗口。
+# 这一步把「靠人眼发现重复」变成脚本自己报错。
+if [ "$captured" -gt 0 ]; then
+  step "帧去重（同画面即假帧）"
+  declare -A seen=()
+  duplicates=0
+  while IFS= read -r png; do
+    digest="$(md5sum "$png" | cut -d' ' -f1)"
+    base="$(basename "$png")"
+    if [ -n "${seen[$digest]:-}" ]; then
+      warn "$base 与 ${seen[$digest]} 像素完全相同 —— 其中一张是假帧"
+      duplicates=$((duplicates + 1))
+    else
+      seen[$digest]="$base"
+    fi
+  done < <(ls "$SHOTS_DIR"/*.png 2>/dev/null)
+  if [ "$duplicates" -gt 0 ]; then
+    warn "共 $duplicates 组重复帧：核对对应页面的预置变量（ADB_*）与弹窗模态是否真的生效。"
+  else
+    ok "无重复帧（$captured 张各拍到了自己的画面）"
+  fi
+fi
+
 warn "下一步必须人工核对：状态栏读得清吗 / 按钮有层级吗 / 图标对齐吗 / 有没有空白帧。"
 info "人工核对建议（本机无 PIL，脚本不自动跑）：非背景像素占比过低 = 空白帧，重点查这一项。"
