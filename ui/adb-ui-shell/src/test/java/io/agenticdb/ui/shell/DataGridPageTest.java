@@ -874,10 +874,11 @@ class DataGridPageTest {
     }
 
     /**
-     * ⭐ UX-6：概览把行数 / 大小 / 引擎 / 索引数摊在一屏上。
+     * ⭐ UX-6 + U17：概览是一张两栏<b>表档案</b>（行数 / 列数 / 主键 / 索引数 /
+     * 大小 / 引擎 / 注释），不是四个指标卡。
      *
      * <p>SQLite 不提供表大小与引擎 —— 这两格必须是「—」，而且旁边要说明原因，
-     * 不能空着让人以为是加载失败。行数与索引数则必须是真的。
+     * 不能空着让人以为是加载失败。行数、索引数、列数、主键则必须是真的。
      */
     @Test
     void overviewShowsRealFactsAndIsHonestAboutMissingMetadata() throws Exception {
@@ -914,6 +915,20 @@ class DataGridPageTest {
             assertThat(hint.getText())
                     .as("缺的项要说明为什么缺，而不是留白")
                     .contains("SQLite", "不提供表大小");
+
+            // ⭐ U17：属性表补的三项必须来自真实内省，且「没有」与「读不到」两种写法要分开。
+            io.agenticdb.introspect.SchemaService.TableSchema structure =
+                    new io.agenticdb.introspect.SchemaService().describe(session, "users");
+            assertThat(((Label) page.lookup("#overview-columns")).getText())
+                    .as("列数来自表结构")
+                    .isEqualTo(String.valueOf(structure.columns().size()));
+            assertThat(((Label) page.lookup("#overview-primary")).getText())
+                    .as("主键来自表结构")
+                    .isEqualTo(String.join("、", structure.primaryKeys()));
+            assertThat(((Label) page.lookup("#overview-auto-increment")).getText())
+                    .as("这张表没有自增列 → 写「无」，不是「—」（「—」是读不到的意思）")
+                    .isEqualTo(structure.autoIncrementColumn() == null
+                            ? "无" : structure.autoIncrementColumn());
             page.close();
         } finally {
             executor.shutdownNow();

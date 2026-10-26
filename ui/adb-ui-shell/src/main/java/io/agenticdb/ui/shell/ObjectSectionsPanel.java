@@ -99,7 +99,10 @@ final class ObjectSectionsPanel extends VBox {
         columnsTable.setId("object-columns-table");
         columnsTable.getStyleClass().add("adb-structure__table");
         columnsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        columnsTable.setPlaceholder(new Label("没有列信息"));
+        // U24：四类空态各说一句「为什么是空的」——「没有索引」和「读不到索引」不是一回事。
+        columnsTable.setPlaceholder(EmptyState.of(Icons.Icon.COLUMNS, "读不到这张表的列",
+                "列是表的结构本体，正常不会读空 —— 多半是表刚被删掉，或当前账号没有读结构的权限。"
+                        + "切到「数据」再切回来会重读一次。"));
         columnsTable.getColumns().add(column("列名", ColumnDef::name, 180));
         columnsTable.getColumns().add(column("类型", value -> value.displayType(), 140));
         columnsTable.getColumns().add(column("可空", value -> value.nullable() ? "是" : "否", 60));
@@ -110,7 +113,8 @@ final class ObjectSectionsPanel extends VBox {
         indexesTable.setId("object-indexes-table");
         indexesTable.getStyleClass().add("adb-structure__table");
         indexesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        indexesTable.setPlaceholder(new Label("这张表没有索引"));
+        indexesTable.setPlaceholder(EmptyState.of(Icons.Icon.INDEX, "这张表没有索引",
+                "没有索引时，按任何列过滤都要整表扫 —— 查询慢先看这里。"));
         indexesTable.getColumns().add(column("索引名", IndexDef::name, 200));
         indexesTable.getColumns().add(column("唯一", value -> value.unique() ? "是" : "否", 60));
         indexesTable.getColumns().add(column("列", IndexDef::columnsLabel, 220));
@@ -119,7 +123,9 @@ final class ObjectSectionsPanel extends VBox {
         foreignKeysTable.setId("object-foreign-keys-table");
         foreignKeysTable.getStyleClass().add("adb-structure__table");
         foreignKeysTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        foreignKeysTable.setPlaceholder(new Label("这张表没有外键"));
+        foreignKeysTable.setPlaceholder(EmptyState.of(Icons.Icon.TRANSFER, "这张表没有外键",
+                "没有外键不代表设计有问题 —— 很多库把引用完整性放在应用层。"
+                        + "但少了外键，库里就可能留下指向已删除行的孤儿值。"));
         foreignKeysTable.getColumns().add(column("约束名", ForeignKeyDef::displayName, 160));
         foreignKeysTable.getColumns().add(column("列", value -> String.join(", ", value.columns()), 160));
         foreignKeysTable.getColumns().add(column("引用", ForeignKeyDef::referencedTable, 140));
@@ -130,7 +136,8 @@ final class ObjectSectionsPanel extends VBox {
         triggersTable.setId("object-triggers-table");
         triggersTable.getStyleClass().add("adb-structure__table");
         triggersTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        triggersTable.setPlaceholder(new Label("这张表没有触发器"));
+        triggersTable.setPlaceholder(EmptyState.of(Icons.Icon.TRIGGER, "这张表没有触发器",
+                "触发器是库在写入时自动执行的 SQL。这里为空，说明这张表的写入没有任何库侧的附带逻辑。"));
         triggersTable.getColumns().add(column("名称", TriggerDef::name, 180));
         triggersTable.getColumns().add(column("时机", TriggerDef::timingLabel, 80));
         triggersTable.getColumns().add(column("事件", TriggerDef::eventLabel, 80));

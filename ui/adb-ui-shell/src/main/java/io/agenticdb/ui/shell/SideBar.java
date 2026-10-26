@@ -4,6 +4,7 @@ import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import io.agenticdb.ui.Icons;
+import io.agenticdb.ui.RowHeights;
 import io.agenticdb.ui.Tokens;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
@@ -570,16 +571,12 @@ public final class SideBar extends VBox {
     /**
      * ⭐ UX-2：对象树也要跟密度档位走。
      *
-     * <p>紧凑档沿用 {@code row-tree}（24px，与 Navicat 实测一致），
-     * 密集档 22px，标准 / 宽松分别 28 / 34 —— 行高只由令牌决定。
+     * <p>第二十一轮默认档改成 normal：树和网格共用 {@link RowHeights}，
+     * 不再自己写一份档位表 —— 以前树用 {@code row-tree}、网格用 {@code row-*}，
+     * 同一档密度在两个页面算出两个行高（「密度设置时灵时不灵」的根因）。
      */
     public void setDensity(String density) {
-        tree.setFixedCellSize(switch (density == null ? "compact" : density) {
-            case "dense" -> Tokens.ROW_DENSE_LIGHT;
-            case "comfort" -> Tokens.ROW_COMFORT_LIGHT;
-            case "normal" -> Tokens.ROW_NORMAL_LIGHT;
-            default -> Tokens.ROW_TREE_LIGHT;
-        });
+        tree.setFixedCellSize(RowHeights.of(density));
     }
 
     public void focusSearch() {
@@ -659,7 +656,7 @@ public final class SideBar extends VBox {
         collapse.setAccessibleText("折叠侧栏");
         collapse.setId("sidebar-collapse");
         collapse.getStyleClass().add("adb-icon-button");
-        collapse.setTooltip(new Tooltip("折叠侧栏 (⌘\\)"));
+        collapse.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("折叠侧栏", "Mod+Backslash")));
         collapse.setOnAction(event -> actions.run("sidebar.toggle"));
 
         HBox bottomBar = new HBox(6, search, onlyFavorites, collapse);
@@ -842,7 +839,7 @@ public final class SideBar extends VBox {
         rail.setAlignment(Pos.TOP_CENTER);
         rail.setPadding(new Insets(8, 0, 8, 0));
 
-        Button expand = railButton(Icons.Icon.CHEVRON_RIGHT, "展开侧栏 (⌘\\)", () -> actions.run("sidebar.toggle"));
+        Button expand = railButton(Icons.Icon.CHEVRON_RIGHT, io.agenticdb.ui.Shortcuts.labelled("展开侧栏", "Mod+Backslash"), () -> actions.run("sidebar.toggle"));
         expand.setId("sidebar-expand");
         Button connection = railButton(Icons.Icon.CONNECT, connectionName,
                 () -> status.accept("连接：" + connectionName));
@@ -856,7 +853,7 @@ public final class SideBar extends VBox {
                 openGrid(tables.getFirst().name());
             }
         });
-        Button find = railButton(Icons.Icon.SEARCH, "搜索 (⌘F)", this::focusSearch);
+        Button find = railButton(Icons.Icon.SEARCH, io.agenticdb.ui.Shortcuts.labelled("搜索", "Mod+F"), this::focusSearch);
         // ⚠️ 这里原来直接 openTool("诊断")，但 WorkspaceView 解析诊断页时会做
         //    title.substring("诊断 · ".length()) —— 标题只有「诊断」两个字会越界崩溃。
         //    统一走 object.diagnostics 动作，由它按「当前选中的对象」拼出

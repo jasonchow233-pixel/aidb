@@ -2,7 +2,11 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.TableMeta;
+import io.agenticdb.jdbc.DialectKind;
 import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Label;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
@@ -495,6 +499,171 @@ class ObjectHomePageTest {
             }
             preferences.flush();
         }
+    }
+
+    /**
+     * ⭐ U16：页头说的是「我在哪个库」，不是「这是什么页」。
+     *
+     * <p>tab 上已经写着「对象」，页内再来一个 16px 粗体「对象」是同一句话读两遍；
+     * 而用户真正要在进页面前确认的「连的是哪个库、什么方言」原本哪儿都没有。
+     */
+    @Test
+    void theHeaderNamesTheContextNotTheTab() {
+        Label disconnected = (Label) page.lookup("#object-home-breadcrumb");
+        assertThat(disconnected)
+                .as("页头必须真的在场景图里（不是 new 出来没挂上去）")
+                .isNotNull();
+        assertThat(disconnected.getText())
+                .as("没连接就直说，不编一个库名")
+                .isEqualTo("未连接");
+        assertThat(page.lookup(".adb-page__title"))
+                .as("对象首页不再有页内 H1 —— 它和 tab 名重复")
+                .isNull();
+
+        // 连上之后显示的是会话自己的标识与方言，全部来自真实对象，不是写死的文案。
+        ObjectHomePage connected = new ObjectHomePage(
+                () -> FakeDbSession.of(DialectKind.SQLITE), null, Runnable::run,
+                opened::add, message -> { }, () -> { });
+        Label crumb = (Label) connected.lookup("#object-home-breadcrumb");
+        assertThat(crumb.getText())
+                .as("方言 + 连接标识：取自会话本身；label 已带方言前缀就不许再拼一遍「› SQLite」")
+                .isEqualTo("SQLite · fake-db");
+
+        // p0-shell 第二拍抓到的：文件型会话的 label 带整条绝对路径，页头只留文件名。
+        FakeDbSession file = FakeDbSession.of(DialectKind.SQLITE)
+                .withLabel("SQLite · C:\\Users\\me\\.agenticdb\\agenticdb-demo.db");
+        ObjectHomePage filePath = new ObjectHomePage(
+                () -> file, null, Runnable::run, opened::add, message -> { }, () -> { });
+        Label shortCrumb = (Label) filePath.lookup("#object-home-breadcrumb");
+        assertThat(shortCrumb.getText())
+                .as("页头不是资源管理器 —— 长路径截成文件名，前缀方言保留")
+                .isEqualTo("SQLite · agenticdb-demo.db");
+        assertThat(shortCrumb.getTooltip())
+                .as("全路径不能丢，进 tooltip")
+                .isNotNull()
+                .extracting(javafx.scene.control.Tooltip::getText)
+                .isEqualTo("SQLite · C:\\Users\\me\\.agenticdb\\agenticdb-demo.db");
+    }
+
+    /**
+     * ⭐ U19：禁用按钮要交代「为什么点不动」，而不只是变灰。
+     *
+     * <p>开场四颗按钮全灰，第一眼像界面坏了。灰是对的，缺的是理由；
+     * 理由必须**跟着当前状态变**（未连接 vs 没选中），否则用户照着做也点不亮。
+     */
+    @Test
+    void disabledToolbarButtonsSayWhyTheyAreDisabled() {
+        // 未连接的页：所有按钮的原因都是「先连上库」。
+        Button open = (Button) page.lookup("#object-home-open");
+        assertThat(open.isDisabled()).isTrue();
+        assertThat(open.getTooltip().getText())
+                .as("禁用态的 tooltip 必须是原因，不是按钮名")
+                .isEqualTo("连上一个库才能打开");
+
+        Button create = (Button) page.lookup("#object-home-new");
+        assertThat(create.isDisabled()).isTrue();
+        assertThat(create.getTooltip().getText()).isEqualTo("连上一个库才能建表");
+
+        // 已连接但没选中：原因换成下一步真正要做的事。
+        ObjectHomePage connected = new ObjectHomePage(
+                () -> FakeDbSession.of(DialectKind.SQLITE), null, Runnable::run,
+                opened::add, message -> { }, () -> { });
+        Button connectedOpen = (Button) connected.lookup("#object-home-open");
+        assertThat(connectedOpen.isDisabled()).isTrue();
+        assertThat(connectedOpen.getTooltip().getText()).isEqualTo("先在清单里选中一个对象");
+        // 「新建表」只依赖连接，连上了就该可点 —— tooltip 也要跟着回到按钮本身的说明。
+        Button connectedCreate = (Button) connected.lookup("#object-home-new");
+        assertThat(connectedCreate.isDisabled()).isFalse();
+        assertThat(connectedCreate.getTooltip().getText())
+                .as("恢复可用后不能把禁用原因留在 tooltip 上误导人")
+                .isEqualTo("新建一张表（弹窗填字段）");
+    }
+
+    /**
+     * ⭐ U25：右键菜单与工具条共用一套权限判断，两种视图都挂了入口。
+     *
+     * <p>问题：对象首页此前根本没有右键 —— DBA 想「复制这个表名」得先双击进
+     * 数据页再从别处抄。菜单不是新功能，是把工具条的四个动作原样递到鼠标右边；
+     * 所以门禁盯的是**同一个 kind 在两边给同一个答复**。
+     */
+    @Test
+    void objectMenuMirrorsTheToolbarPermissions(FxRobot robot) {
+        ObjectHomePage connected = new ObjectHomePage(
+                () -> FakeDbSession.of(DialectKind.SQLITE), null, Runnable::run,
+                opened::add, message -> { }, () -> { });
+
+        AtomicReference<ContextMenu> tableMenu = new AtomicReference<>();
+        robot.interact(() -> tableMenu.set(connected.objectMenu(
+                new ObjectHomePage.ObjectRow(new SchemaService.SchemaObject(
+                        "users", SchemaService.ObjectKind.TABLE), null))));
+        assertThat(menuLabels(tableMenu.get()))
+                .as("菜单条目 = 工具条动作，术语一字不差")
+                .containsExactly("打开", "设计表", "复制名称", "删除表");
+        assertThat(disabledMenuIds(tableMenu.get())).as("连着库点表：全都能点").isEmpty();
+
+        AtomicReference<ContextMenu> viewMenu = new AtomicReference<>();
+        robot.interact(() -> viewMenu.set(connected.objectMenu(
+                new ObjectHomePage.ObjectRow(new SchemaService.SchemaObject(
+                        "v_active", SchemaService.ObjectKind.VIEW), null))));
+        assertThat(disabledMenuIds(viewMenu.get()))
+                .as("视图能设计、不能被这里的删除干掉（宿主只会删表）")
+                .containsExactly("object-menu-drop");
+
+        // 未连接的页（setup 里的 page）：三个数据库动作全灰，只有复制名称可用。
+        AtomicReference<ContextMenu> offMenu = new AtomicReference<>();
+        robot.interact(() -> offMenu.set(page.objectMenu(
+                new ObjectHomePage.ObjectRow(new SchemaService.SchemaObject(
+                        "users", SchemaService.ObjectKind.TABLE), null))));
+        assertThat(disabledMenuIds(offMenu.get()))
+                .as("没连库时禁用的是动作，不是整个菜单")
+                .contains("object-menu-open", "object-menu-design", "object-menu-drop")
+                .doesNotContain("object-menu-copy-name");
+    }
+
+    /** U25：清单行与网格卡片都要真的挂上右键入口（挂一行漏一行 = 两种视图两套真相）。 */
+    @Test
+    void rowsAndCardsBothCarryTheContextMenuEntry(FxRobot robot) {
+        robot.interact(() -> page.render(List.of(
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE))));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        javafx.scene.Node row = page.lookup("#object-row-table-users");
+        assertThat(row).as("表行要能按 id 定位").isNotNull();
+        assertThat(row.getOnContextMenuRequested())
+                .as("列表视图的行必须挂右键处理器")
+                .isNotNull();
+
+        robot.interact(() -> page.showView("grid"));
+        WaitForAsyncUtils.waitForFxEvents();
+        javafx.scene.Node card = page.lookup("#object-card-table-users");
+        assertThat(card).as("网格视图的卡片要能按 id 定位").isNotNull();
+        assertThat(card.getOnContextMenuRequested())
+                .as("卡片必须有同一个入口 —— 右键不该只活在表格视图里")
+                .isNotNull();
+    }
+
+    private static List<String> menuLabels(ContextMenu menu) {
+        List<String> labels = new ArrayList<>();
+        for (var item : menu.getItems()) {
+            // ⚠️ SeparatorMenuItem 也是 MenuItem（text 恒为 null）—— 数条目必须先跳过它。
+            if (item instanceof javafx.scene.control.MenuItem menuItem
+                    && !(item instanceof javafx.scene.control.SeparatorMenuItem)) {
+                labels.add(menuItem.getText());
+            }
+        }
+        return labels;
+    }
+
+    private static List<String> disabledMenuIds(ContextMenu menu) {
+        List<String> ids = new ArrayList<>();
+        for (var item : menu.getItems()) {
+            if (item instanceof javafx.scene.control.MenuItem menuItem
+                    && !(item instanceof javafx.scene.control.SeparatorMenuItem)
+                    && menuItem.isDisable()) {
+                ids.add(menuItem.getId());
+            }
+        }
+        return ids;
     }
 
     private TableColumn<ObjectHomePage.ObjectRow, ?> commentColumn() {

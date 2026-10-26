@@ -25,10 +25,13 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuBar;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -145,7 +148,8 @@ public final class AppShell extends StackPane {
     private int detailsWidth;
     private boolean detailsVisible;
     private PauseTransition toastTimer;
-    private String density = "compact";
+    /** ⭐ 第二十一轮：默认密度从 compact(24) 改判 normal(28)（见 {@link #initialDensity()}）。 */
+    private String density = "normal";
 
     public AppShell(SettingsStore settings, ThemeManager themeManager) {
         this(settings, themeManager, new io.agenticdb.ui.StartupTrace());
@@ -1124,7 +1128,8 @@ public final class AppShell extends StackPane {
         }
         if (activeProfile != null && activeProfile.id().equals(profile.id())
                 && sessions.isOpen(profile.id())) {
-            status("当前连接：" + profile.name());
+            // U8：点「已连着的那颗连接」没有新信息可播报 —— 连接灯本来就写着它。
+            status("");
             return;
         }
         connectProfile(profile, true);
@@ -1528,6 +1533,11 @@ public final class AppShell extends StackPane {
             QueryPage page = workspace.activeQuery();
             if (page != null) {
                 page.markClean();
+                // ⭐ 截图 / 验收（U25）：结果渲染后在数据格上摆出真右键菜单。
+                //    以前 15 帧里 0 张菜单 —— 四类状态里「交互态」整类缺证。
+                if (flag("adb.menuPose", "ADB_MENU_POSE")) {
+                    page.poseContextMenuWhenReady();
+                }
             }
             Platform.runLater(workspace::runQuery);
         }
@@ -1690,9 +1700,9 @@ public final class AppShell extends StackPane {
         // 编辑菜单三件套：撤销 / 重做 / 复制，全部委托当前活动数据页。
         // 快捷键不在此注册 —— DataGridPage 已在自己的 scene 上绑了 ⌘Z/⇧⌘Z/⌘C，
         // 两边都注册会双触发（撤销两次）；菜单入口复用同一方法，行为一致。
-        actions.register("edit.undo", "撤销  (⌘Z)", "编辑", null, this::editUndo);
-        actions.register("edit.redo", "重做  (⇧⌘Z)", "编辑", null, this::editRedo);
-        actions.register("edit.copy", "复制  (⌘C)", "编辑", null, () -> {
+        actions.register("edit.undo", io.agenticdb.ui.Shortcuts.labelled("撤销", "Mod+Z"), "编辑", null, this::editUndo);
+        actions.register("edit.redo", io.agenticdb.ui.Shortcuts.labelled("重做", "Shift+Mod+Z"), "编辑", null, this::editRedo);
+        actions.register("edit.copy", io.agenticdb.ui.Shortcuts.labelled("复制", "Mod+C"), "编辑", null, () -> {
             DataGridPage grid = workspace.activeGrid();
             if (grid == null) {
                 status("复制只在数据页可用");
@@ -2258,7 +2268,9 @@ public final class AppShell extends StackPane {
             activeTableListPage = null;
             disableTableListActions();
         }
-        status("已激活：" + tab.title());
+        // U8：切标签不是回执 —— 当前页由标签栏本身表达，「已激活：连接管理」
+        //      只会让消息位常驻一句车轱辘话。
+        status("");
         if (tab.kind() != TabKind.GRID && tab.kind() != TabKind.QUERY) {
             statusBar.setRange("—");
             statusBar.setDuration(-1);
@@ -2922,7 +2934,7 @@ public final class AppShell extends StackPane {
 
     private String initialDensity() {
         String forced = forcedDensity();
-        return forced.isEmpty() ? settings.get("ui.density", "compact") : forced;
+        return forced.isEmpty() ? settings.get("ui.density", "normal") : forced;
     }
 
     private void changeDensity(String density) {
@@ -2938,7 +2950,7 @@ public final class AppShell extends StackPane {
     private String applyDensity(String density) {
         String value = switch (density) {
             case "dense", "compact", "normal", "comfort" -> density;
-            default -> "compact";
+            default -> "normal";
         };
         this.density = value;
         getStyleClass().removeAll("density-dense", "density-compact", "density-normal",
@@ -3055,27 +3067,88 @@ public final class AppShell extends StackPane {
         alert.showAndWait();
     }
 
+    /**
+     * 快捷键总表（F1）。
+     *
+     * <p>U1：这张表原来是一段手写 macOS 符号的纯文本（{@code ⌘N / ⇧⌘N}），
+     * 而实拍与主要用户都在 Windows —— 键盘上没有 ⌘ 这个键，且比例字体下
+     * 空格对齐会散架。现在两列栅格、按键走 {@link io.agenticdb.ui.Shortcuts}，
+     * 与菜单、tooltip、状态栏文案同一份真相。
+     */
     private void showShortcuts() {
-        showInfo("快捷键", """
-                ⌘N        新建连接
-                ⇧⌘N       新建查询
-                ⌘O        打开 SQL 文件
-                ⌘K        命令面板
-                ⌘F        搜索对象 / 查询页查找
-                ⌘R        执行当前语句
-                ⇧⌘R       执行全部语句
-                ⌘.        取消执行
-                ⌘E        解释执行计划
-                ⌘/        注释 / 取消注释
-                ⌥⇧F       格式化 SQL
-                ⌘S        保存 SQL
-                ⌘\\        折叠 / 展开侧栏
-                ⌘,        设置
-                F5        刷新 / 重跑当前语句
-                ⌘W        关闭标签
-                ⇧⌘W       关闭窗口
-                F1        本页
-                """);
+        // {语义按键, 动作}；按键为 null 的行是分节标题。
+        List<String[]> rows = List.of(
+                new String[]{null, "连接与窗口"},
+                new String[]{"Mod+N", "新建连接…"},
+                new String[]{"Mod+O", "打开 SQL 文件…"},
+                new String[]{"Shift+Mod+N", "新建查询"},
+                new String[]{"Mod+W", "关闭标签"},
+                new String[]{"Shift+Mod+W", "关闭窗口"},
+                new String[]{"Mod+M", "最小化"},
+                new String[]{"Mod+Q", "退出 AIDB"},
+                new String[]{null, "编辑与数据页"},
+                new String[]{"Mod+K", "命令面板"},
+                new String[]{"Mod+F", "搜索对象 / 页内查找"},
+                new String[]{"Mod+Z", "撤销上一处编辑"},
+                new String[]{"Shift+Mod+Z", "重做"},
+                new String[]{"Mod+C", "复制单元格 / 矩形选区"},
+                new String[]{"Alt+Mod+C", "复制选中行为 TSV"},
+                new String[]{"Shift+Mod+C", "复制选中行为 INSERT"},
+                new String[]{"Mod+A", "全选当前页"},
+                new String[]{"Mod+UP", "跳到当前页首行"},
+                new String[]{"Mod+DOWN", "跳到当前页末行"},
+                new String[]{"ESCAPE", "取消选区 / 关闭详情抽屉"},
+                new String[]{null, "查询"},
+                new String[]{"Mod+ENTER", "执行当前语句"},
+                new String[]{"Shift+Mod+ENTER", "执行全部语句"},
+                new String[]{"Mod+R", "执行当前语句（菜单）"},
+                new String[]{"Shift+Mod+R", "执行全部语句（菜单）"},
+                new String[]{"Mod+PERIOD", "取消执行"},
+                new String[]{"Mod+E", "解释执行计划"},
+                new String[]{"Alt+Shift+F", "格式化 SQL"},
+                new String[]{"Mod+S", "保存 SQL"},
+                new String[]{"Mod+SLASH", "注释 / 取消注释"},
+                new String[]{"Mod+G", "查找下一处"},
+                new String[]{"F5", "刷新 / 重跑当前语句"},
+                new String[]{null, "视图"},
+                new String[]{"Mod+BACKSLASH", "折叠 / 展开侧栏"},
+                new String[]{"Mod+Alt+D", "显示 / 隐藏对象详情"},
+                new String[]{"Mod+COMMA", "设置…"},
+                new String[]{"F1", "本表"});
+
+        GridPane grid = new GridPane();
+        grid.getStyleClass().add("adb-shortcuts");
+        ColumnConstraints keyColumn = new ColumnConstraints();
+        keyColumn.setMinWidth(120);
+        keyColumn.setHalignment(javafx.geometry.HPos.RIGHT);
+        ColumnConstraints actionColumn = new ColumnConstraints();
+        actionColumn.setHgrow(Priority.ALWAYS);
+        grid.getColumnConstraints().addAll(keyColumn, actionColumn);
+
+        int row = 0;
+        for (String[] entry : rows) {
+            if (entry[0] == null) {
+                Label group = new Label(entry[1]);
+                group.getStyleClass().add("adb-shortcut__group");
+                GridPane.setColumnSpan(group, 2);
+                grid.add(group, 0, row++);
+                continue;
+            }
+            Label key = new Label(io.agenticdb.ui.Shortcuts.of(entry[0]));
+            key.getStyleClass().add("adb-shortcut__key");
+            Label action = new Label(entry[1]);
+            action.getStyleClass().add("adb-shortcut__action");
+            grid.add(key, 0, row);
+            grid.add(action, 1, row++);
+        }
+
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("快捷键");
+        dialog.setHeaderText("键盘快捷键（" + (io.agenticdb.ui.Shortcuts.mac() ? "macOS" : "Windows / Linux") + "）");
+        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        DialogStyles.apply(dialog, stage);
+        dialog.showAndWait();
     }
 
     private static String readable(Throwable error) {

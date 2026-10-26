@@ -74,10 +74,11 @@ final class TransferHub {
         closeButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         closeButton.setOnAction(event -> close());
 
+        // Navicat 口径（§6.7）：关闭在左、主动作贴右下，其余命令保持相对次序。
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox actions = new HBox(8, exportButton, importButton, closeButton, spacer);
-        actions.setAlignment(Pos.CENTER_LEFT);
+        HBox actions = new HBox(8, spacer, closeButton, importButton, exportButton);
+        actions.setAlignment(Pos.CENTER_RIGHT);
 
         Label hint = new Label(this.tables.isEmpty()
                 ? "这个连接里还没有可用的表"
@@ -99,7 +100,7 @@ final class TransferHub {
         if (owner != null) {
             dialog.initOwner(owner);
         }
-        DialogStyles.apply(dialog, owner);
+        DialogStyles.apply(dialog, owner, "transfer");
         dialog.showAndWait();
     }
 

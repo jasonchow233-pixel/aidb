@@ -58,8 +58,8 @@ final class ColumnWidths {
     /**
      * 数据网格某列的最小宽度。
      *
-     * @param headerName 列头第一行（列名，可能带 {@code [PK]} / {@code •}）
-     * @param headerType 列头第二行（类型标签，可能带 {@code · 自增}）
+     * @param headerName 列头第一行（只有列名 —— U5 之后约束不再挤在这一行）
+     * @param headerType 列头第二行（类型 + 约束，如 {@code number · 主键 · 自增}）
      */
     static double dataColumnMin(String headerName, String headerType) {
         double nameWidth = visualLength(headerName) * CHAR_UNIT;

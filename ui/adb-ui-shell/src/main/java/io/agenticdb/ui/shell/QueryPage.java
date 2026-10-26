@@ -35,6 +35,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
@@ -102,8 +103,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
             new java.util.ArrayList<>();
     /** ⭐ P6-2：可分页结果的导出器（顺序与结果页签一致）。 */
     private final List<PagedLoader> pagers = new ArrayList<>();
-    /** 密度档位 → 行高。 */
-    private int rowHeight = RowHeights.of("normal");
+    /** 密度档位 → 行高（结果网格按 D1 比档位低一档，初值 = {@code RowHeights.grid("normal")}）。 */
+    private int rowHeight = RowHeights.grid("normal");
     private final Label status = new Label("就绪");
     private final Label risk = new Label("只读");
     private final Label range = new Label("—");
@@ -271,12 +272,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
         run.setId("query-run");
         run.getStyleClass().addAll("adb-button", "adb-button--primary");
-        run.setTooltip(new Tooltip("执行光标所在语句 (⌘↵)"));
+        run.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("执行光标所在语句", "Mod+Enter")));
         run.setOnAction(event -> runCurrent());
 
         runAll.setId("query-run-all");
         runAll.getStyleClass().add("adb-button");
-        runAll.setTooltip(new Tooltip("按顺序执行全部语句 (⇧⌘↵)"));
+        runAll.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("按顺序执行全部语句", "Shift+Mod+Enter")));
         runAll.setOnAction(event -> runAll());
 
         cancel.setId("query-cancel");
@@ -290,12 +291,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
         format.setId("query-format");
         format.getStyleClass().add("adb-button");
-        format.setTooltip(new Tooltip("格式化当前 SQL (⌥⇧F)"));
+        format.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("格式化当前 SQL", "Alt+Shift+F")));
         format.setOnAction(event -> formatSql());
 
         save.setId("query-save");
         save.getStyleClass().add("adb-button");
-        save.setTooltip(new Tooltip("保存为 .sql 文件 (⌘S)"));
+        save.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("保存为 .sql 文件", "Mod+S")));
         save.setOnAction(event -> save());
 
         Button saveNamed = new Button("存为命名查询");
@@ -433,7 +434,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
     public void activate() {
         activated = true;
-        feedback.status("查询页 · " + connectionName + " · " + (dirty ? "未保存" : "就绪"));
+        // U8：「查询页 · demo · 就绪」三个信息各有更权威的家（标签名 / 连接灯 / 待提交段），
+        //      消息位只在真有话说时占位。
+        feedback.status("");
         feedback.range(range.getText());
         feedback.duration(-1);
         feedback.dirty(dirty ? 1 : 0);
@@ -908,7 +911,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
             duration.setText(result.durationMs() + " ms");
             status.setText((explainPlan ? "执行计划" : "执行完成")
                     + " · " + result.results().size() + " 条语句 · " + result.durationMs() + " ms");
-            feedback.status(status.getText());
+            // U8（p3-query 实拍第二拍）：行数与耗时各有自己的段，
+            // 「执行完成 · N 条语句」把它们再念一遍就是消息段该沉默的时刻。
+            feedback.status("");
             feedback.range(rows + " 行");
             feedback.duration(result.durationMs());
             // ⭐ UX-5-D：状态栏给出「跑的是哪条、这屏结果是什么时候落地的」。
@@ -974,7 +979,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
      * 切到查询结果页行高没变，密度设置看起来时灵时不灵。
      */
     public void setDensity(String density) {
-        rowHeight = RowHeights.of(density);
+        // ⭐ D1（2026-10-26）：结果网格与数据页网格同一档口径（比档位低一档）。
+        rowHeight = RowHeights.grid(density);
         resultTables.forEach(table -> table.setFixedCellSize(rowHeight));
     }
 
@@ -993,6 +999,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
         // ⭐ E5：0 行结果以前只有一行字。空态要说清「这是正常结果」+ 下一步怎么办。
         table.setPlaceholder(EmptyState.of(Icons.Icon.TABLE, "查询成功，但没有返回行",
                 "这是正常的空结果 —— 检查 WHERE 条件，或确认目标表里确实没有数据。"));
+        // ⭐ U25：结果网格的右键菜单（复制单元格 / 行 / 列名 / 全部）——
+        // 分页与非分页两条路径共用同一张表，挂一次就都覆盖。
+        attachResultContextMenu(table);
 
         // ⭐ Q5：绝对行号 = 当前页偏移 + 行内序号 + 1（非分页时偏移恒为 0）。
         LongProperty rowOffset = new SimpleLongProperty(0);
@@ -1067,8 +1076,11 @@ public final class QueryPage extends VBox implements AutoCloseable {
         if (result.isTruncated()) {
             // ⭐ 静默截断比不分页更糟：用户会以为看到的就是全部。
             meta.setText(meta.getText() + " · 已截断");
-            Label warning = new Label("\u26A0 结果已截断，上限 "
+            // U10：警示标记是**矢量图标**，不是文本「⚠」——
+            // 文本符号不吃主题色、不吃字号，暗色下几乎看不见。
+            Label warning = new Label("结果已截断，上限 "
                     + io.agenticdb.model.QueryLimits.MAX_PAGE_SIZE + " 行");
+            warning.setGraphic(Icons.of(Icons.Icon.ALERT, Icons.SIZE_BADGE));
             warning.setId("query-result-truncated");
             warning.getStyleClass().add("adb-query__result-truncated");
             toolbar = new HBox(6, meta, warning, spacer, copy, export);
@@ -1083,6 +1095,171 @@ public final class QueryPage extends VBox implements AutoCloseable {
         box.getStyleClass().add("adb-query__result-box");
         tab.setContent(box);
         return tab;
+    }
+
+    /**
+     * ⭐ U25：结果网格的右键菜单 —— DBA 的高频动作是「抄一个值 / 抄一行 / 抄列名」，
+     * 以前这三件事都要进单元格全选 Ctrl+C，或者回头改 SQL。列头右键同样给
+     * 「复制列名」（列头是皮肤里的 TableCell，只是 getTableRow() 为空，
+     * 于是行相关项自然落到禁用态，不需要两套菜单）。
+     *
+     * <p>「全部」取的是 {@code table.getItems()} 而不是首页的 {@code result} ——
+     * 分页表翻到第 3 页时复制的必须是第 3 页，静默给第 1 页比不给更糟。
+     */
+    private void attachResultContextMenu(
+            TableView<java.util.Map<String, Object>> table) {
+        table.setOnContextMenuRequested(event -> {
+            ContextMenu menu = new ContextMenu();
+            MenuItem copyCell = new MenuItem("复制此单元格");
+            MenuItem copyRow = new MenuItem("复制此行（TSV）");
+            MenuItem copyName = new MenuItem("复制列名");
+            MenuItem copyAll = new MenuItem("复制全部结果（TSV）");
+            copyCell.setId("result-copy-cell");
+            copyRow.setId("result-copy-row");
+            copyName.setId("result-copy-column-name");
+            copyAll.setId("result-copy-all");
+            menu.getItems().addAll(copyCell, copyRow, copyName,
+                    new SeparatorMenuItem(), copyAll);
+
+            TableCell<?, ?> cell = resultCellAt(event.getTarget());
+            TableColumn<?, ?> column = cell == null ? null : cell.getTableColumn();
+            Object key = column == null ? null : column.getUserData();
+            java.util.Map<String, Object> row = cell != null && cell.getTableRow() != null
+                    && cell.getIndex() >= 0 && cell.getIndex() < table.getItems().size()
+                    ? table.getItems().get(cell.getIndex()) : null;
+            String columnName = column == null ? "" : String.valueOf(column.getText());
+
+            copyCell.setDisable(row == null || key == null);
+            copyRow.setDisable(row == null);
+            copyName.setDisable(key == null);
+            copyAll.setDisable(table.getItems().isEmpty());
+
+            copyCell.setOnAction(action -> {
+                Object value = row.get(key);
+                putOnClipboard(value == null ? "" : String.valueOf(value));
+                status.setText("已复制单元格（" + columnName + "）");
+            });
+            copyRow.setOnAction(action -> {
+                StringBuilder line = new StringBuilder();
+                for (String columnKey : dataColumnKeys(table)) {
+                    if (line.length() > 0) {
+                        line.append('\t');
+                    }
+                    Object value = row.get(columnKey);
+                    line.append(value == null ? "" : String.valueOf(value));
+                }
+                putOnClipboard(line.toString());
+                status.setText("已复制第 " + (cell.getIndex() + 1) + " 行");
+            });
+            copyName.setOnAction(action -> {
+                putOnClipboard(columnName);
+                status.setText("已复制列名 " + columnName);
+            });
+            copyAll.setOnAction(action -> {
+                StringBuilder text = new StringBuilder();
+                List<String> keys = dataColumnKeys(table);
+                text.append(String.join("\t", keys)).append('\n');
+                for (java.util.Map<String, Object> item : table.getItems()) {
+                    for (int i = 0; i < keys.size(); i++) {
+                        if (i > 0) {
+                            text.append('\t');
+                        }
+                        Object value = item.get(keys.get(i));
+                        text.append(value == null ? "" : String.valueOf(value));
+                    }
+                    text.append('\n');
+                }
+                putOnClipboard(text.toString());
+                status.setText("已复制 " + table.getItems().size() + " 行 TSV");
+                feedback.status("已复制查询结果 TSV");
+            });
+
+            if (row != null) {
+                // 右键先把选择挪到被点的行 —— 菜单说的是「这一行」，
+                // 高亮却停在别处就是两张嘴（Navicat 也是这个行为）。
+                table.getSelectionModel().clearSelection();
+                table.getSelectionModel().select(cell.getIndex());
+            }
+            menu.show(table, event.getScreenX(), event.getScreenY());
+            event.consume();
+        });
+    }
+
+    /** 事件目标往上找最近的 TableCell（数据格与列头都是 TableCell）。 */
+    private static TableCell<?, ?> resultCellAt(Object target) {
+        if (!(target instanceof javafx.scene.Node node)) {
+            return null;
+        }
+        for (javafx.scene.Node n = node; n != null; n = n.getParent()) {
+            if (n instanceof TableCell<?, ?> cell) {
+                return cell;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * ⭐ U25 验收帧的摆位：给第一个数据格投递**真的** CONTEXT_MENU_REQUESTED ——
+     * 拍到的是同一处理器开出来的真菜单，而不是手搓的「菜单的样子」。
+     * 结果是异步灌进来的，所以要轮询等行就绪（与 AppShell 的 WhenReady 同一形态）。
+     */
+    void poseContextMenuWhenReady() {
+        poseContextMenu(60);
+    }
+
+    private void poseContextMenu(int attemptsLeft) {
+        javafx.scene.Node cell = firstResultDataCell();
+        if (cell != null) {
+            double x = cell.getBoundsInLocal().getWidth() / 2;
+            double y = cell.getBoundsInLocal().getHeight() / 2;
+            javafx.geometry.Point2D screen = cell.localToScreen(x, y);
+            if (screen != null) {
+                cell.fireEvent(new javafx.scene.input.ContextMenuEvent(
+                        javafx.scene.input.ContextMenuEvent.CONTEXT_MENU_REQUESTED,
+                        x, y, screen.getX(), screen.getY(), false, null));
+                return;
+            }
+        }
+        if (attemptsLeft <= 0) {
+            return;
+        }
+        javafx.animation.PauseTransition pause =
+                new javafx.animation.PauseTransition(javafx.util.Duration.millis(100));
+        pause.setOnFinished(event -> poseContextMenu(attemptsLeft - 1));
+        pause.play();
+    }
+
+    private javafx.scene.Node firstResultDataCell() {
+        javafx.scene.Node found = lookup("#query-result-table");
+        if (!(found instanceof TableView<?> table) || table.getItems().isEmpty()) {
+            return null;
+        }
+        return table.lookupAll(".table-cell").stream()
+                .filter(TableCell.class::isInstance)
+                .map(node -> (TableCell<?, ?>) node)
+                .filter(cell -> cell.getTableRow() != null && cell.getIndex() >= 0
+                        && cell.getTableColumn() != null
+                        && cell.getTableColumn().getUserData() instanceof String)
+                .findFirst()
+                .orElse(null);
+    }
+
+    /** 数据列的键（行号列 userData 为空，不参与复制），顺序 = 显示顺序。 */
+    private static List<String> dataColumnKeys(
+            TableView<java.util.Map<String, Object>> table) {
+        List<String> keys = new ArrayList<>();
+        for (TableColumn<java.util.Map<String, Object>, ?> column : table.getColumns()) {
+            if (column.getUserData() instanceof String key) {
+                keys.add(key);
+            }
+        }
+        return keys;
+    }
+
+    private static void putOnClipboard(String text) {
+        ClipboardContent content = new ClipboardContent();
+        content.putString(text);
+        Clipboard.getSystemClipboard().setContent(content);
     }
 
     /**
@@ -1133,7 +1310,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
         private final Button next = IconButtons.of(Icons.Icon.NEXT, "下一页");
         private final Button last = IconButtons.of(Icons.Icon.LAST, "最后一页");
         private final TextField jumpField = new TextField();
-        private final Button jump = new Button("跳转");
+        // §2.6：以前输入框旁边还挂一颗「跳转」按钮 —— 输入框本身已支持回车跳转，
+        //      按钮只会让这一对读起来像「一个禁用 + 一个可点」的两件事（实拍确认）。
         private final Button copy = new Button("复制本页");
         /** ⭐ P6-2：导出范围 —— 本页 / 选中行 / 全部结果。 */
         private final MenuButton export = new MenuButton("导出");
@@ -1227,7 +1405,6 @@ public final class QueryPage extends VBox implements AutoCloseable {
             jumpField.setPrefWidth(64);
             jumpField.setMinWidth(56);
             jumpField.setOnAction(event -> jumpToPage(jumpField.getText()));
-            jump.getStyleClass().add("adb-button");
 
             copy.getStyleClass().add("adb-button");
             copy.setOnAction(event -> copyResultTsv(currentResult()));
@@ -1251,7 +1428,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
             HBox.setHgrow(spacer, Priority.ALWAYS);
             bar.getChildren().setAll(rangeLabel, recordNav, spacer, perPage,
-                    pageSizeBox, jumpField, jump, copy, export);
+                    pageSizeBox, jumpField, copy, export);
         }
 
         private void load() {
@@ -1307,7 +1484,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             last.setDisable(loading || total < 0 || lastOffset == offset
                     || QueryLimits.exceedsOffsetLimit(lastOffset));
             pageSizeBox.setDisable(loading);
-            jump.setDisable(loading);
+            jumpField.setDisable(loading);
         }
 
         private void updatePager() {
@@ -1764,7 +1941,14 @@ public final class QueryPage extends VBox implements AutoCloseable {
                 return;
             }
             CellRenderer.Rendered rendered = CellRenderer.render(definition, item);
-            setText(rendered.text());
+            // ⭐ U9：与数据网格同一套布尔语法 —— 只读态是图标，不是文本 ✓/✗。
+            if (rendered.icon() != null) {
+                setText(null);
+                setGraphic(CellRenderer.checkGlyph(rendered.icon()));
+            } else {
+                setText(rendered.text());
+                setGraphic(null);
+            }
             if (!rendered.styleClass().isEmpty()) {
                 getStyleClass().add(rendered.styleClass());
             }

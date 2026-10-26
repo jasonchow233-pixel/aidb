@@ -78,7 +78,7 @@ public final class TabBar extends HBox {
         Button add = IconButtons.icon(Icons.Icon.ADD, "新建标签");
         add.setAccessibleText("新建标签");
         add.getStyleClass().addAll("adb-icon-button", "adb-tabbar__add");
-        add.setTooltip(new javafx.scene.control.Tooltip("新建查询 ⇧⌘N"));
+        add.setTooltip(new javafx.scene.control.Tooltip(io.agenticdb.ui.Shortcuts.labelled("新建查询", "Shift+Mod+N")));
         add.setOnAction(event -> actions.run("new-query"));
 
         getChildren().addAll(scroll, add);

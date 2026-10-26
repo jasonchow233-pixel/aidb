@@ -116,10 +116,11 @@ final class ImportWizard {
             }
         });
 
+        // Navicat 口径（§6.7）：关闭在左、主动作在最右，进度指示留在最左。
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox actions = new HBox(8, importButton, closeButton, spacer, spinner);
-        actions.setAlignment(Pos.CENTER_LEFT);
+        HBox actions = new HBox(8, spinner, spacer, closeButton, importButton);
+        actions.setAlignment(Pos.CENTER_RIGHT);
 
         content.getChildren().addAll(
                 field("文件", fileField),
@@ -151,7 +152,7 @@ final class ImportWizard {
         if (owner != null) {
             dialog.initOwner(owner);
         }
-        DialogStyles.apply(dialog, owner);
+        DialogStyles.apply(dialog, owner, "import-wizard");
         dialog.showAndWait();
     }
 

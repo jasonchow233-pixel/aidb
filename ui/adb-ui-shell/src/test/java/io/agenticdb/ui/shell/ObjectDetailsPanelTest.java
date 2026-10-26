@@ -276,10 +276,10 @@ class ObjectDetailsPanelTest {
 
         assertThat(connection.typeLabel()).isEqualTo("数据库");
         assertThat(withClass(panel, "adb-details-panel__empty")).isEmpty();
-        // 连接没有「查看数据 / 查看结构」—— 这两个按钮必须是禁用的。
+        // 连接没有「打开数据 / 打开结构」—— 这两个按钮必须是禁用的。
         assertThat(buttons(panel).stream()
-                .filter(button -> "查看数据".equals(button.getText())
-                        || "查看结构".equals(button.getText()))
+                .filter(button -> "打开数据".equals(button.getText())
+                        || "打开结构".equals(button.getText()))
                 .allMatch(javafx.scene.control.Button::isDisable)).isTrue();
     }
 

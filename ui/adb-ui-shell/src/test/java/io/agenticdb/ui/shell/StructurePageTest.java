@@ -288,6 +288,26 @@ class StructurePageTest {
     }
 
     @Test
+    void constraintColumnsUseGlyphGrammarNotText(FxRobot robot) throws Exception {
+        // U9 补漏（p4-structure 第三拍）：可空/主键以前渲染文本 YES/NO/PK，
+        // 与同一张表里「唯一」列的图标语法、以及数据网格/查询结果的布尔语法都不是一套。
+        waitForStructure();
+
+        @SuppressWarnings("unchecked")
+        var table = (javafx.scene.control.TableView<io.agenticdb.model.ColumnDef>) robot
+                .lookup("#structure-columns").queryAs(javafx.scene.control.TableView.class);
+
+        // id/name/email 三格「可空」都有字形（x 或 ✓），id 另有「主键」✓ → ≥4 个 .adb-check。
+        assertThat(robot.from(table).lookup(".adb-check").queryAll())
+                .hasSizeGreaterThanOrEqualTo(4);
+        var cellTexts = new java.util.ArrayList<String>();
+        for (javafx.scene.Node node : robot.from(table).lookup(".table-cell").queryAll()) {
+            cellTexts.add(((javafx.scene.control.TableCell<?, ?>) node).getText());
+        }
+        assertThat(cellTexts).doesNotContain("YES", "NO", "PK");
+    }
+
+    @Test
     void cannotRunTwoStructureChangesAtOnce(FxRobot robot) throws Exception {
         waitForStructure();
         robot.clickOn("#structure-refresh");

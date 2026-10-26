@@ -44,9 +44,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>改之前的问题（都是肉眼可见的）：
  * <ul>
  *   <li>选中行只有一层淡底，24px 行高里「选了哪一行」经常要横向扫一遍；</li>
- *   <li>焦点单元格用的外发光**被邻居裁掉**，看起来像根本没有焦点；</li>
- *   <li>只有横线没有竖线，宽表读到第 5 列就串行。</li>
+ *   <li>焦点单元格用的外发光**被邻居裁掉**，看起来像根本没有焦点。</li>
  * </ul>
+ *
+ * <p>⭐ 第二十一轮（现代无边框）改了第三案的裁定：以前用**列间竖线**解决「宽表串行」，
+ * 代价是整张网格变成一格一线的线框 —— 「边框过多」的头号来源。现在竖线全部退场，
+ * 串行问题由「整行悬停高亮 + 行号列 + 8px 列间留白」承担。
+ * 左 2px 槽位仍然常留：光标条 / 脏值条 / 选中强调条都只换颜色。
  *
  * <p>但加强调条 / 描边有个副作用必须一起钉住：<b>JavaFX 的边框算进内容内缩</b> ——
  * 常态 0px、选中 2px 的话，一选中整行文字就往右跳 2px，键盘走一格就抖一次。
@@ -327,25 +331,29 @@ class SelectionStateTest {
     }
 
     /**
-     * 竖线 + 脏值条共用同一套槽位：三处都不许出现宽度声明。
+     * 左槽由基础规则常留，光标 / 脏值 / 矩形选区三条只换颜色：都不许出现宽度声明。
      */
     @Test
     void gridLinesAndSemanticBarsShareOneSlot() throws IOException {
         String css = css();
         String cell = ruleBody(css, ".adb-grid .table-cell");
         assertThat(cell)
-                .as("单元格要有淡竖线，颜色复用 border-subtle（不引入新色）")
-                .containsPattern("-fx-border-color:\\s*transparent -adb-border-subtle "
-                        + "transparent transparent;")
-                .containsPattern("-fx-border-width:\\s*0px 1px 0px 2px;");
+                .as("⭐ 第二十一轮（无边框）：列间竖线全部退场 —— 「边框过多」的头号来源就是它，"
+                        + "列分隔改由 8px 内边距 + 整行悬停承担")
+                .containsPattern("-fx-border-color:\\s*transparent;")
+                .containsPattern("-fx-border-width:\\s*0px 0px 0px 2px;");
         for (String state : List.of(".adb-grid .table-cell.adb-grid__cell--dirty",
                 ".adb-grid .table-cell.adb-grid__cell--rect")) {
             String body = ruleBody(css, state);
             assertThat(body).as(state + " 不许改宽度").doesNotContain("-fx-border-width");
         }
         assertThat(ruleBody(css, ".adb-grid .table-cell.adb-grid__cell--dirty"))
-                .as("脏值条还是那条 warning 色的左条")
-                .contains("-adb-warning");
+                .as("⭐ U13（2026-10-26）：脏值改挂专属 -adb-dirty / -adb-dirty-bg —— "
+                        + "以前「未保存」和「写入风险」共用 warning 橙，两种语义一种颜色；"
+                        + "左槽位置不变，仍只换颜色")
+                .contains("-adb-dirty")
+                .contains("-adb-dirty-bg")
+                .doesNotContain("-adb-warning");
         assertThat(ruleBody(css, ".adb-grid .table-cell.adb-grid__cell--rect"))
                 .as("矩形选区用焦点色描边 + accent 淡底")
                 .contains("-adb-border-focus")
@@ -354,13 +362,14 @@ class SelectionStateTest {
 
     /**
      * 斑马纹再降一档：暗色 5% → 3.5%，亮色 #F7F9FB → #FAFBFC。
-     * 加了竖线之后，条纹 + 横线 + 竖线三层同时在场会显花，条纹必须最弱。
+     * 第二十一轮竖线全部退场之后，在场的是「条纹 + 行底横线 + 悬停底」三层，
+     * 条纹仍然必须是其中最弱的一层 —— 否则无边框的表读起来还是在数格子。
      */
     @Test
     void theZebraStripeIsTheQuietestLayer() throws IOException {
         JsonNode stripe = tokens().path("bg-stripe");
         assertThat(stripe.path("dark").asText())
-                .as("暗色条纹降到 3.5%：竖线上场后条纹必须退到最弱一层")
+                .as("暗色条纹降到 3.5%：三层底色里条纹必须最弱")
                 .isEqualTo("rgba(148,163,184,.035)");
         assertThat(stripe.path("light").asText())
                 .as("亮色条纹向纯白再靠一档")

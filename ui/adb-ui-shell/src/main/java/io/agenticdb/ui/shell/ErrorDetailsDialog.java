@@ -11,6 +11,7 @@ import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import javafx.stage.Modality;
 import javafx.stage.Window;
 
 /**
@@ -65,6 +66,10 @@ final class ErrorDetailsDialog {
         }
         Alert alert = create(details);
         alert.initOwner(owner);
+        // ⭐ U7：Javadoc 一直写「弹模态框」，但 Alert 的默认模态是 NONE ——
+        //    initOwner 不会顺带改模态。于是错误框能被主窗口盖住、能叠好几种，
+        //    而验收截图按模态找窗口，p2-error 拍到的其实是主窗口（与 p0-shell 同 md5）。
+        alert.initModality(Modality.APPLICATION_MODAL);
         DialogStyles.apply(alert, owner);
         alert.showAndWait();
     }

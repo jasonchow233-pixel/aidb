@@ -95,7 +95,7 @@ final class NewTableDialog {
         // ⭐ 主题类与 adb-dialog 类必须抄到 DialogPane 上 —— 否则弹窗里所有
         //    -adb-* 查找落空，退回 JavaFX 默认皮肤。这条不能排在 if 里面：
         //    没有外部样式表（单测直接 show(null, List.of())）时同样要挂上。
-        DialogStyles.apply(dialog, owner);
+        DialogStyles.apply(dialog, owner, "new-table");
         if (owner != null) {
             dialog.initOwner(owner);
         }
@@ -105,13 +105,13 @@ final class NewTableDialog {
     // ─────────────────────────── 界面 ───────────────────────────
 
     private void buildUi() {
-        dialog.setTitle("新建数据表");
+        dialog.setTitle("新建表");
         // ⭐ 规格 §13.1：850–1000px。720px 下「默认值 / 注释」两列会被压成
         //    一个省略号，改一个默认值先得横向滚 —— 建表是高频操作，不能这样。
         dialog.getDialogPane().setPrefWidth(DialogSizes.TABLE);
         dialog.getDialogPane().setMinWidth(DialogSizes.TABLE);
         dialog.getDialogPane().setMinHeight(600);
-        // 不用 setHeaderText：标题栏要同时放「新建数据表」+ 当前库名 + 关闭按钮
+        // 不用 setHeaderText：标题栏要同时放「新建表」+ 当前库名 + 关闭按钮
         // （规格 §13.2），而 JavaFX 的标准 header 只给一行居中的小字。
         dialog.setHeaderText(null);
 
@@ -240,14 +240,13 @@ final class NewTableDialog {
         return Math.max(min, Math.min(max, value));
     }
 
-    /** 标题栏：新建数据表 + 当前库 / 方言 + 关闭按钮（规格 §13.2）。 */
+    /** 标题栏：新建表 + 当前库 / 方言 + 关闭按钮（规格 §13.2）。 */
     private HBox buildHeader() {
-        Label title = new Label("新建数据表");
+        Label title = new Label("新建表");
         title.getStyleClass().add("adb-dialog__title");
         // ⭐ 会话标签本身就是「方言 · 库」（见 JdbcSession.of）—— 再补一遍方言
         //    就成了「SQLite · 文件 · SQLite」，与「新建索引」的标题栏重复同一个错。
-        Label context = new Label(session.label());
-        context.getStyleClass().add("adb-dialog__context");
+        Label context = DialogStyles.contextLabel(session.label());
         Button close = IconButtons.icon(Icons.Icon.CLOSE, "关闭");
         close.setId("new-table-close");
         close.getStyleClass().addAll("adb-icon-button", "adb-dialog__close");

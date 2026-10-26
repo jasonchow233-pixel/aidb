@@ -138,9 +138,11 @@ class ChromeMetricsTest {
     @Test
     void chromeHeightsMatchTheDenseBudget(FxRobot robot) throws Exception {
         assertHeight(robot, ".adb-tabbar", 28);
-        assertHeight(robot, ".adb-object-header", 36);
+        // ⭐ 第二十一轮（无边框 + 呼吸感）：标题栏 36 → 40、分页器 36 → 38。
+        // 线没了之后，这两条框只能靠内边距把自己和内容区分开。
+        assertHeight(robot, ".adb-object-header", 40);
         assertHeight(robot, "#data-toolbar", 34);
-        assertHeight(robot, ".adb-grid__pager", 36);
+        assertHeight(robot, ".adb-grid__pager", 38);
         assertHeight(robot, ".adb-statusbar", 24);
 
         double rowHeight = WaitForAsyncUtils.asyncFx(() ->

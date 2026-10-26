@@ -81,10 +81,14 @@ class AppBarTest {
         // ⭐ 「建好了但没挂上去」是本项目反复踩过的坑（UI-AUDIT S2）。
         for (String id : List.of("#appbar-brand-mark", "#appbar-brand-name",
                 "#appbar-connection-menu", "#appbar-search", "#appbar-theme",
-                "#appbar-settings", "#appbar-more", "#appbar-new-query",
+                "#appbar-more", "#appbar-new-query",
                 "#appbar-manage-connections")) {
             assertThat(robot.lookup(id).tryQuery()).as(id + " 必须真的在场景图里").isPresent();
         }
+        // §2.1：「设置」不再是顶栏独立齿轮 —— 低频入口搬进 ⋯，右侧只留「主题 + 更多」。
+        assertThat(robot.lookup("#appbar-settings").tryQuery())
+                .as("独立设置齿轮必须已并入 ⋯ 菜单")
+                .isEmpty();
     }
 
     @Test
@@ -142,7 +146,7 @@ class AppBarTest {
     void iconOnlyButtonsDeclareTooltipAndAccessibleText(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
         // ⭐ 纯图标按钮少一个 Tooltip 或 accessible text 就不合格。
-        for (String id : List.of("#appbar-theme", "#appbar-settings",
+        for (String id : List.of("#appbar-theme",
                 "#appbar-new-query", "#appbar-manage-connections")) {
             Button button = robot.lookup(id).queryAs(Button.class);
             assertThat(button.getTooltip()).as(id + " 的 Tooltip").isNotNull();
@@ -159,7 +163,7 @@ class AppBarTest {
         assertThat(ids)
                 .as("更多菜单里的每一项都要是可执行的动作")
                 .contains("connections.manage", "new-query", "object.tables",
-                        "import-export", "diagnostics", "shortcuts", "about");
+                        "import-export", "settings", "diagnostics", "shortcuts", "about");
     }
 
     @Test

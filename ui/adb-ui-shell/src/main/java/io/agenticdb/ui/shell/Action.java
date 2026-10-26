@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.scene.input.KeyCombination;
+import javafx.scene.input.KeyCodeCombination;
 
 /**
  * 一个可执行动作。菜单、工具栏、右键菜单、命令面板共用同一个实例。
@@ -46,6 +47,53 @@ public final class Action {
 
     public KeyCombination accelerator() {
         return accelerator;
+    }
+
+    /**
+     * 快捷键的当前平台读法（如 Windows「Ctrl+K」、macOS「⌘K」）；无快捷键返回 null。
+     *
+     * <p>U26：tooltip 是快捷键的唯一鼠标入口 —— 菜单里 FX 自己画 accelerator，
+     * 工具栏按钮灰着的时候没人告诉用户「其实有快捷键」。文案一律经
+     * {@link io.agenticdb.ui.Shortcuts} 平台化，源码里不出现 ⌘ 字形。
+     */
+    public String shortcutText() {
+        if (accelerator == null) {
+            return null;
+        }
+        String spec = semanticSpec();
+        return spec == null ? accelerator.getDisplayText() : io.agenticdb.ui.Shortcuts.of(spec);
+    }
+
+    /** 把本动作的快捷键追加到提示文案后面：「保存」→「保存 (Ctrl+S)」。 */
+    public String hintWithShortcut(String hint) {
+        String shortcut = shortcutText();
+        return shortcut == null ? hint : hint + " (" + shortcut + ")";
+    }
+
+    /** 把 KeyCombination 拆回 Shortcuts 认识的语义串；拆不动（非常规组合）返回 null。 */
+    private String semanticSpec() {
+        if (!(accelerator instanceof KeyCodeCombination byCode)) {
+            return null;
+        }
+        KeyCombination.ModifierValue down = KeyCombination.ModifierValue.DOWN;
+        if (accelerator.getMeta() == down) {
+            // Meta（Win 键）不在语义表里，硬翻会把「Win+E」写成别的键 —— 退回 FX 自己的读法。
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        if (accelerator.getShortcut() == down) {
+            sb.append("Mod+");
+        }
+        if (accelerator.getControl() == down) {
+            sb.append("Ctrl+");
+        }
+        if (accelerator.getAlt() == down) {
+            sb.append("Alt+");
+        }
+        if (accelerator.getShift() == down) {
+            sb.append("Shift+");
+        }
+        return sb.append(byCode.getCode().getName()).toString();
     }
 
     public BooleanProperty enabledProperty() {

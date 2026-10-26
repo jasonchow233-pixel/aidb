@@ -87,4 +87,20 @@ final class EmptyState extends VBox {
         ((VBox) getChildren().get(0)).getChildren().add(label);
         return this;
     }
+
+    /**
+     * 弹窗里**小选择列表**的占位行。
+     *
+     * <p>这里不该用 {@link EmptyState}：一个 220px 宽、260px 高的候选列表里
+     * 塞 32px 图标 + 48px 内边距，列表看起来像坏了。
+     * 占位行讲的是「这一栏现在为什么没东西、该往哪儿点」，一行灰字就够。
+     */
+    static Label pickerHint(String text) {
+        Label label = new Label(text);
+        label.getStyleClass().add("adb-muted");
+        label.setPadding(new Insets(12));
+        label.setWrapText(true);
+        label.setMaxWidth(220);
+        return label;
+    }
 }

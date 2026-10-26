@@ -19,6 +19,7 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextInputDialog;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -101,6 +102,9 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         HBox.setHgrow(headerSpacer, Priority.ALWAYS);
         Label context = new Label("口令保存于系统凭据库");
         context.getStyleClass().add("adb-muted");
+        // §2.8：安全提示要看着像安全提示 —— 纯文字容易被当成页脚噪音，配一把锁。
+        context.setGraphic(Icons.of(Icons.Icon.LOCK, Icons.SIZE_BADGE));
+        context.setGraphicTextGap(6);
 
         HBox header = new HBox(10, title, badge, headerSpacer, context);
         header.getStyleClass().add("adb-page__header");
@@ -266,12 +270,31 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         });
         table.getSelectionModel().selectedItemProperty().addListener(
                 (observable, oldValue, newValue) -> updateButtons());
-        open.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
-        edit.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
-        duplicate.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
-        rename.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
-        group.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
-        delete.disableProperty().bind(Bindings.isEmpty(table.getSelectionModel().getSelectedItems()));
+        // ⭐ U19：这排按钮在没选中行时**六个一起变灰**，第一眼像整个面板坏了。
+        // 变灰本身是对的（动作确实不可用），缺的是「为什么灰、怎么做才亮」——
+        // 把原因绑在 tooltip 上，选择一变就自动同步，不会出现按钮能点了还写着「先选中」。
+        bindSelectionAction(open, "打开选中的连接（进入对象首页）");
+        bindSelectionAction(edit, "编辑这个连接的参数");
+        bindSelectionAction(duplicate, "复制这个连接为一个新条目");
+        bindSelectionAction(rename, "重命名这个连接");
+        bindSelectionAction(group, "把选中的连接归到一个分组");
+        bindSelectionAction(delete, "删除这个连接（不影响数据库里的数据）");
+    }
+
+    /**
+     * 「未选中连接 → 禁用」这条规则的一次成型：禁用位与 tooltip 原因绑同一个条件。
+     *
+     * <p>用 {@code Bindings.when} 而不是选择监听里手写文本：初始状态（开场没有选中行）
+     * 也走同一条表达式，不需要再补一次「开场刷新」。
+     */
+    private void bindSelectionAction(Button button, String enabledHint) {
+        var noneSelected = Bindings.isEmpty(table.getSelectionModel().getSelectedItems());
+        button.disableProperty().bind(noneSelected);
+        Tooltip tooltip = new Tooltip();
+        tooltip.textProperty().bind(Bindings.when(noneSelected)
+                .then("先选中一个连接 —— " + enabledHint)
+                .otherwise(enabledHint));
+        button.setTooltip(tooltip);
     }
 
     public void refresh() {

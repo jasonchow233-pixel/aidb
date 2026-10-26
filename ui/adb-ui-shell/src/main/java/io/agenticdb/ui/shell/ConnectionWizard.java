@@ -440,13 +440,13 @@ public final class ConnectionWizard {
 
     public void show() {
         dialog.setOnHidden(event -> onFinished.accept(Optional.ofNullable(dialog.getResult())));
-        DialogStyles.apply(dialog, dialog.getOwner());
+        DialogStyles.apply(dialog, dialog.getOwner(), "connection-wizard");
         dialog.show();
     }
 
     public Optional<ConnectionProfile> showAndWait() {
         dialog.setOnHidden(event -> onFinished.accept(Optional.ofNullable(dialog.getResult())));
-        DialogStyles.apply(dialog, dialog.getOwner());
+        DialogStyles.apply(dialog, dialog.getOwner(), "connection-wizard");
         return dialog.showAndWait();
     }
 

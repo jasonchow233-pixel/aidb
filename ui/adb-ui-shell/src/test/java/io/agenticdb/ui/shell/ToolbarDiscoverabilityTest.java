@@ -5,10 +5,12 @@ import javafx.scene.Node;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Control;
 import javafx.scene.control.Labeled;
+import javafx.scene.control.TableView;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
 import javafx.scene.layout.Pane;
+import javafx.scene.layout.Region;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +27,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.prefs.Preferences;
@@ -42,6 +45,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>窗口窄到放不下文字时<b>退成图标</b>，但 tooltip 与 accessibleText 不许跟着丢；
  *       宽度回来文字必须自己复原（不能靠重开页面）；</li>
  *   <li>工具条按语义分组（组间有分隔线）、删除走 danger 色，且 1280 宽下不溢出；</li>
+ *   <li>U4：文字要么完整、要么整颗收成图标 —— 不许出现「筛 …」这种压扁的文字，
+ *       且详情抽屉是浮层，开关都不改变工具条宽度；</li>
  *   <li>数据页「导入…」开出来的向导必须把<b>当前表</b>预选成目标表。</li>
  * </ol>
  */
@@ -224,6 +229,124 @@ class ToolbarDiscoverabilityTest {
     }
 
     /**
+     * U4（其一）：文字档的每一档宽度里，主操作按钮要么**完整**，要么**收成图标**。
+     *
+     * <p>工具条是 HBox —— 放不下时它会**逐个压窄**子节点，
+     * 「筛选」就变成「筛 …」。收字阈值原先只看**窗口**宽度，
+     * 而窗口 ≠ 工具条宽度（侧栏和边距要吃掉几百 px），所以过了阈值不代表真放得下。
+     * 现在多一条工具条自己的实测判据：整排带文字放不下就退回图标 ——
+     * 于是合法状态只有两种，「压扁的文字」必须是 0 个。
+     */
+    @Test
+    void labelsAreNeverSqueezedIntoEllipsis(FxRobot robot) throws Exception {
+        for (int width : new int[]{1100, 1180, 1280}) {
+            resize(width);
+            for (String id : MAIN_OPERATIONS) {
+                Node node = require(robot, id);
+                Labeled labeled = (Labeled) node;
+                if (labeled.getText().isBlank()) {
+                    // 收成纯图标是**合法降级**：尺寸档、图标、tooltip 一样都不能少。
+                    assertThat(node.getStyleClass())
+                            .as("%s 在 %dpx 档收成了图标，就必须回到 30px 图标档", id, width)
+                            .contains("adb-button--icon");
+                    assertThat(labeled.getGraphic())
+                            .as("%s 在 %dpx 档收字后图标不能丢", id, width).isNotNull();
+                    assertHint(id, node);
+                } else {
+                    Control button = (Control) node;
+                    assertThat(button.getWidth())
+                            .as("%s 在 %dpx 档被压扁了：实际 %.0fpx < 需要的 %.0fpx"
+                                            + "（文字会被截成省略号）",
+                                    id, width, button.getWidth(), button.prefWidth(-1))
+                            .isGreaterThanOrEqualTo(button.prefWidth(-1) - 0.5);
+                }
+            }
+            assertToolbarFits(robot, width);
+        }
+        // 1280 是全套验收帧的宽度：这一档必须真的给文字，
+        // 否则「主操作图标 + 文字」这条承诺等于没有。
+        resize(WIDE_WIDTH);
+        for (String id : MAIN_OPERATIONS) {
+            assertThat(((Labeled) require(robot, id)).getText())
+                    .as("%s 在 %dpx 档应该带文字", id, WIDE_WIDTH).isNotBlank();
+        }
+    }
+
+    /**
+     * U4（其二）：详情抽屉是浮层，开与关都不许改变工具条的宽度。
+     *
+     * <p>抽屉原来和数据区并排在同一个 HBox 里 —— 一开就把工具条挤窄，
+     * 「筛 …」「导 …」就是这么来的。现在它挂在 body 的 StackPane 上，
+     * 不参与宽度分配。这里钉住这个结构：宽度必须**一模一样**。
+     */
+    @Test
+    void openingTheDetailsDrawerLeavesTheToolbarWidthAlone(FxRobot robot) throws Exception {
+        resize(WIDE_WIDTH);
+        Region toolbar = toolbar(robot);
+        double closedWidth = WaitForAsyncUtils.asyncFx(toolbar::getWidth).get();
+        Node grid = WaitForAsyncUtils.asyncFx(
+                () -> robot.lookup("#data-table").tryQuery().orElse(null)).get();
+        assertThat(grid).as("数据网格里找不到 #data-table").isNotNull();
+        @SuppressWarnings("unchecked")
+        TableView<Map<String, Object>> table = (TableView<Map<String, Object>>) grid;
+        DataGridPage page = WaitForAsyncUtils.asyncFx(
+                () -> robot.lookup(".adb-grid-page").queryAs(DataGridPage.class)).get();
+        Map<String, Object> row = table.getItems().get(0);
+        WaitForAsyncUtils.asyncFx(() -> page.showDetails(row,
+                new io.agenticdb.model.ColumnDef("name", io.agenticdb.model.ColumnType.TEXT,
+                        true, false, null, null, null, null, null, null, false))).get();
+        WaitForAsyncUtils.waitForFxEvents(3);
+        Node drawer = WaitForAsyncUtils.asyncFx(
+                () -> robot.lookup("#data-details").tryQuery().orElse(null)).get();
+        assertThat(drawer).as("详情抽屉节点 #data-details 不存在").isNotNull();
+        assertThat(drawer.isVisible()).as("抽屉要真的开着，否则这条断言是空的").isTrue();
+
+        double openWidth = WaitForAsyncUtils.asyncFx(toolbar::getWidth).get();
+        assertThat(openWidth)
+                .as("开抽屉改变了工具条宽度（%.0f → %.0f）—— 抽屉又参与布局了", closedWidth, openWidth)
+                .isCloseTo(closedWidth, org.assertj.core.api.Assertions.within(0.5));
+
+        // 浮层不许盖住工具条：两者在场景坐标里不能重叠。
+        javafx.geometry.Bounds drawerBounds =
+                drawer.localToScene(drawer.getBoundsInLocal());
+        javafx.geometry.Bounds toolbarBounds =
+                toolbar.localToScene(toolbar.getBoundsInLocal());
+        assertThat(drawerBounds.intersects(toolbarBounds))
+                .as("抽屉（%.0f,%.0f）盖住了工具条（%.0f,%.0f）",
+                        drawerBounds.getMinX(), drawerBounds.getMinY(),
+                        toolbarBounds.getMinX(), toolbarBounds.getMinY())
+                .isFalse();
+    }
+
+    /** 工具条整排（含搜索框）都在自己的框内 —— 不是只查搜索框那一个点。 */
+    private void assertToolbarFits(FxRobot robot, int width) throws Exception {
+        Region toolbar = toolbar(robot);
+        double toolbarRight =
+                toolbar.localToScene(toolbar.getBoundsInLocal()).getMaxX();
+        for (Node child : cascade(toolbar)) {
+            double right = child.localToScene(child.getBoundsInLocal()).getMaxX();
+            assertThat(right)
+                    .as("%s 在 %dpx 档越出工具条右边缘（%.0f > %.0f）",
+                            describe(child), width, right, toolbarRight)
+                    .isLessThanOrEqualTo(toolbarRight + 0.5);
+        }
+    }
+
+    private static String describe(Node node) {
+        return node.getId() != null ? "#" + node.getId()
+                : node instanceof Labeled labeled && !labeled.getText().isBlank()
+                        ? "「" + labeled.getText() + "」"
+                        : node.getStyleClass().toString();
+    }
+
+    /** 工具条里所有**可见且占位**的后代（隐藏的按钮不算溢出）。 */
+    private static List<Node> cascade(Region toolbar) {
+        List<Node> all = new ArrayList<>();
+        collect(toolbar, node -> node != toolbar && node.isVisible() && node.isManaged(), all);
+        return all;
+    }
+
+    /**
      * 导入向导必须把当前表预选成目标表 —— 这是数据页「导入…」存在的全部理由。
      *
      * <p>走 {@code createImportWizard} 这个接缝：{@code show()} 是模态的，
@@ -279,14 +402,14 @@ class ToolbarDiscoverabilityTest {
      * 一旦断的是「找不到所以跳过」，门禁就会**静默通过**（假绿）。
      * 这里宁可抛异常，也不放行。
      */
-    private Node toolbar(FxRobot robot) throws Exception {
+    private Region toolbar(FxRobot robot) throws Exception {
         Node page = WaitForAsyncUtils.asyncFx(
                 () -> robot.lookup(".adb-grid-page").tryQuery().orElse(null)).get();
         assertThat(page).as("当前不在数据页（工具条不存在，断言无从谈起）").isNotNull();
         Node toolbar = WaitForAsyncUtils.asyncFx(
                 () -> findById(page, "data-toolbar")).get();
         assertThat(toolbar).as("数据页里找不到 #data-toolbar").isNotNull();
-        return toolbar;
+        return (Region) toolbar;
     }
 
     private Node require(FxRobot robot, String id) throws Exception {

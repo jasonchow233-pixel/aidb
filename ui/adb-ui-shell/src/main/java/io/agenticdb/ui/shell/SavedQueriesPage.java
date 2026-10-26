@@ -87,10 +87,11 @@ final class SavedQueriesPage extends VBox {
         close.getStyleClass().addAll("adb-button", "adb-button--ghost");
         close.setOnAction(event -> close());
 
+        // Navicat 口径（§6.7）：关闭在左、主动作在最右，中间命令保持相对次序。
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox actions = new HBox(8, open, rename, delete, close, spacer);
-        actions.setAlignment(Pos.CENTER_LEFT);
+        HBox actions = new HBox(8, spacer, close, rename, delete, open);
+        actions.setAlignment(Pos.CENTER_RIGHT);
 
         summary.setId("saved-summary");
         summary.getStyleClass().add("adb-muted");

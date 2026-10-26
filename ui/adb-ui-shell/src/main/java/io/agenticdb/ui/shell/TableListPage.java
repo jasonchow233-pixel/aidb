@@ -326,7 +326,10 @@ final class TableListPage extends VBox {
         table.setId("table-list");
         table.getStyleClass().add("adb-table-list");
         table.setEditable(false);
-        table.setPlaceholder(new Label("没有匹配的表"));
+        // U24：空态不是一行灰字 —— 图标说清「这是空，不是坏了」，说明给出路。
+        table.setPlaceholder(EmptyState.of(Icons.Icon.SEARCH, "没有匹配的表",
+                "搜索框里的关键词一个表名都对不上。清空关键词就能看到全部表。",
+                "清空搜索", search::clear));
         // ⭐ S-6：可读下限 + 约束策略 —— 宽屏填满，挤窄卡在 minWidth 并横向滚动
         //    （为什么不是 UNCONSTRAINED：宽屏会留一大片空白，见 §33.5）。
         table.setColumnResizePolicy(
@@ -615,10 +618,14 @@ final class TableListPage extends VBox {
         gridSelection.retainAll(visible);
         cards.getChildren().clear();
         if (filtered.isEmpty()) {
-            Label empty = new Label(rows.isEmpty() ? "还没有表" : "没有匹配的表");
-            empty.getStyleClass().add("adb-muted");
-            empty.setPadding(new Insets(24));
-            cards.getChildren().add(empty);
+            // U24：卡片视图的空态与列表视图同一套语言（图标 + 说明 + 出口），
+            // 不再是一行飘在白底上的灰字。
+            cards.getChildren().add(rows.isEmpty()
+                    ? EmptyState.of(Icons.Icon.TABLE, "这个库里还没有表",
+                            "连接里一张表都没有。建一张表，或换个库连接。")
+                    : EmptyState.of(Icons.Icon.SEARCH, "没有匹配的表",
+                            "搜索框里的关键词一个表名都对不上。",
+                            "清空搜索", search::clear));
             return;
         }
         for (TableMeta meta : filtered) {
@@ -1078,7 +1085,11 @@ final class TableListPage extends VBox {
         filtered.setPredicate(meta -> needle.isEmpty()
                 || meta.name().toLowerCase(Locale.ROOT).contains(needle));
         if (!rows.isEmpty() && filtered.isEmpty()) {
-            table.setPlaceholder(new Label("没有名称包含「" + query + "」的表"));
+            // U24：把用户真正输入的词回显给他看 —— 「没有匹配的表」不说是哪几个字没匹配上。
+            table.setPlaceholder(EmptyState.of(Icons.Icon.SEARCH,
+                    "没有名称包含「" + query + "」的表",
+                    "关键词按表名的子串匹配，不区分大小写。",
+                    "清空搜索", search::clear));
         }
     }
 

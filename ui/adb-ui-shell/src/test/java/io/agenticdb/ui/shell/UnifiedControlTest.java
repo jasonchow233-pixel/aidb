@@ -155,8 +155,9 @@ class UnifiedControlTest {
         Paint[] selected = onFx(() -> new Paint[] {fill(box(checked)), fill(mark(checked))});
 
         assertThat(unchecked[0])
-                .as("未选中：方框底 = bg-elevated（不是 Modena 的四层渐变）")
-                .isEqualTo(Color.web(Tokens.BG_ELEVATED_LIGHT));
+                .as("未选中：方框底 = bg-inset（第二十一轮无边框：白底上再画一个白方框等于看不见，"
+                        + "凹陷色块才读得出「这里有一格没勾」；也不是 Modena 的四层渐变）")
+                .isEqualTo(Color.web(Tokens.BG_INSET_LIGHT));
         assertThat(unchecked[1])
                 .as("未选中：勾不许画出来")
                 .isNull();
@@ -308,6 +309,15 @@ class UnifiedControlTest {
                 .as("复选框焦点环只换描边色 + 光晕，不改宽度")
                 .contains("-fx-border-color: -adb-border-focus")
                 .doesNotContain("-fx-border-width");
+        // U23：暗色实拍里未勾选方框和面板融在一起（p5-dark「只看收藏」）——
+        // 描边必须落在 text-tertiary 这一档，border 档（暗色 1.3:1）等于没画。
+        assertThat(ruleBody(css, ".check-box > .box"))
+                .as("未勾选描边用 text-tertiary（任务书 §3.2），不许退回 border/border-subtle")
+                .contains("-fx-border-color: -adb-text-tertiary");
+        assertThat(ruleBody(css, ".check-box:disabled > .box"))
+                .as("禁用 ≠ 消失：描边退到 text-disabled 档，不许置透明")
+                .contains("-fx-border-color: -adb-text-disabled")
+                .doesNotContain("-fx-border-color: transparent");
     }
 
     // ─────────────────────────── 按钮（任务书 §七：5 变体 × 5 态）───────────

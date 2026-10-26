@@ -136,9 +136,11 @@ public final class ObjectDetailsPanel extends VBox {
     private final VBox facts = new VBox(4);
     private final VBox sections = new VBox(12);
     private final VBox notes = new VBox(4);
-    private final Button openData = new Button("查看数据");
-    private final Button openStructure = new Button("查看结构");
-    private final Button openDdl = new Button("查看 DDL");
+    // U15：动词与代码、与其他入口统一成「打开」——「查看数据 / 打开表」说的是同一件事，
+    // 却给了用户两个词，让人怀疑是两个去处。
+    private final Button openData = new Button("打开数据");
+    private final Button openStructure = new Button("打开结构");
+    private final Button openDdl = new Button("打开 DDL");
     private final Button refresh = new Button();
     private final Label empty = new Label("选择左侧的一个数据库对象，在这里查看它的概况。");
     private final Label loading = new Label("正在读取元数据…");

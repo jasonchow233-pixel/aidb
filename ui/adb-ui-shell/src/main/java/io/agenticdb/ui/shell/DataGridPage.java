@@ -57,6 +57,7 @@ import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -190,6 +191,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final Label overviewSize = new Label("—");
     private final Label overviewEngine = new Label("—");
     private final Label overviewIndexes = new Label("—");
+    /** ⭐ U17：表档案补齐的三项 —— 全部来自已内省到的表结构，不额外查库。 */
+    private final Label overviewColumns = new Label("—");
+    private final Label overviewPrimary = new Label("—");
+    private final Label overviewAutoIncrement = new Label("—");
     private final Label overviewHint = new Label();
     private final VBox overviewRecent = new VBox(4);
     /** 概览的元信息只读一次；表大小会变，由用户点「刷新概览」或数据刷新来更新。 */
@@ -208,12 +213,22 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      * 不在按钮上塞自定义属性。
      */
     private final Map<ButtonBase, String> toolbarLabels = new LinkedHashMap<>();
+    /** ⭐ U4：工具条本体要参与「放不放得下文字」的判断，不能只当局部变量。 */
+    private final HBox toolbar = new HBox(8);
     /** 工具条当前是否显示文字；null = 还没量过窗口宽度。 */
     private Boolean toolbarTextVisible;
+    /** U4：窗口宽度这一档（侧栏收起、边距吃掉的宽度由工具条实测宽度负责）。 */
+    private boolean windowAllowsLabels = true;
     /** 正在监听的窗口宽度（换窗口时必须摘掉旧的监听）。 */
     private ObservableValue<? extends Number> boundWindowWidth;
     private final ChangeListener<Number> windowWidthListener =
-            (observable, oldValue, newValue) -> applyToolbarLabels(newValue.doubleValue());
+            (observable, oldValue, newValue) -> {
+                windowAllowsLabels = newValue.doubleValue() >= TOOLBAR_LABEL_MIN_WIDTH;
+                applyToolbarLabels();
+            };
+    /** 工具条宽度一变就重判「这一排文字到底放不放得下」。 */
+    private final ChangeListener<Number> toolbarWidthListener =
+            (observable, oldValue, newValue) -> applyToolbarLabels();
     /** 删除选中行（工具栏左组的危险操作）。 */
     private final Button deleteRowsButton = IconButtons.of(Icons.Icon.DELETE, "删除记录");
     private final VBox stateBox = new VBox(10);
@@ -907,7 +922,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         // ── ③ 数据工具栏（§6.3）────────────────────────────────────────
         //    左组 = 数据操作；右组 = 查询与显示。两组之间留白分隔，
         //    搜索框贴着右边缘 —— 视线从左到右是「改数据 → 看数据」。
-        HBox toolbar = new HBox(8);
         toolbar.getStyleClass().add("adb-inline-toolbar");
         toolbar.setAlignment(Pos.CENTER_LEFT);
         toolbar.setId("data-toolbar");
@@ -930,17 +944,17 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
         undoButton.setId("data-undo");
         undoButton.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-button--icon");
-        undoButton.setTooltip(new Tooltip("撤销上一处编辑 (⌘Z)"));
+        undoButton.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("撤销上一处编辑", "Mod+Z")));
         undoButton.setOnAction(event -> undo());
 
         redoButton.setId("data-redo");
         redoButton.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-button--icon");
-        redoButton.setTooltip(new Tooltip("重做 (⇧⌘Z)"));
+        redoButton.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("重做", "Shift+Mod+Z")));
         redoButton.setOnAction(event -> redo());
 
         saveButton.setId("data-save");
         saveButton.getStyleClass().addAll("adb-button", "adb-button--primary");
-        toolbarOp(saveButton, Icons.Icon.SAVE, "保存", "预览 SQL 并保存全部修改 (⌘S)");
+        toolbarOp(saveButton, Icons.Icon.SAVE, "保存", io.agenticdb.ui.Shortcuts.labelled("预览 SQL 并保存全部修改", "Mod+S"));
         saveButton.setOnAction(event -> saveChanges());
 
         deleteRowsButton.setId("data-delete-rows");
@@ -954,9 +968,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         deleteRowsButton.setVisible(false);
         deleteRowsButton.setManaged(false);
         deleteRowsButton.setOnAction(event -> deleteSelectedRows());
-        // 文字按钮不许被压扁 —— 「保存」被挤成图标 = 用户认不出是保存。
-        saveButton.setMinWidth(Region.USE_PREF_SIZE);
-        deleteRowsButton.setMinWidth(Region.USE_PREF_SIZE);
 
         toolGroupData.getChildren().addAll(addRowButton, undoButton, redoButton, saveButton,
                 deleteRowsButton);
@@ -1055,7 +1066,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         searchField.setPromptText("本页搜索");
         searchField.setPrefWidth(180);
         searchField.setMinWidth(110);
-        searchField.setTooltip(new Tooltip("只在当前页内过滤 (⌘F)"));
+        searchField.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("只在当前页内过滤", "Mod+F")));
         searchField.textProperty().addListener((observable, previous, value) -> rebuildItems());
 
         // ⭐ UX-3：按语义分三组 —— 编辑 / 查询与显示 / 数据交换，组间一条竖线。
@@ -1166,7 +1177,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
         transposeTable.setId("data-transpose");
         transposeTable.getStyleClass().addAll("adb-grid", "adb-grid--transpose");
-        transposeTable.setPlaceholder(new Label("没有可转置的数据"));
+        // U24：转置视图空着的时候，说清是「这张表没行」还是「筛选太严」。
+        transposeTable.setPlaceholder(EmptyState.of(Icons.Icon.STRUCTURE, "没有可转置的数据",
+                "当前页一行都没有 —— 表可能是空的，也可能是筛选条件把所有行都滤掉了。"));
         transposeTable.setColumnResizePolicy(
                 TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         transposeTable.setVisible(false);
@@ -1259,12 +1272,18 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     /**
-     * ⭐ UX-6：概览切面 —— 一屏给事实（行数 / 大小 / 引擎 / 索引数）
+     * ⭐ UX-6 + U17：概览切面 —— 一张<b>表档案</b>（左标签 / 右值）
      * + 这张表的最近操作（P2-3 查询历史）+ 两个快捷动作。
+     *
+     * <p>为什么从「四个指标卡」改成属性表（U17）：卡片版把 4 个数摊成 2×2，
+     * 每个数各占一格视觉重量，而真正想知道的「主键是谁、有几列、哪列自增」
+     * 一格都没有；剩下的 60% 高度是空白。Navicat 的 Table Profile 就是一列
+     * 一行一句话的属性表 —— 读它不需要先理解哪格更重要。
      *
      * <p>行数直接复用数据页刚算出来的 {@code total}（同一时刻、同一套筛选条件）；
      * 大小 / 引擎来自数据库元信息，方言不提供时显示「—」并说明原因；
-     * 索引数走实时内省。**没有哪一项是猜的。**
+     * 索引数走实时内省；列数 / 主键 / 自增列来自已经内省到的表结构。
+     * **没有哪一项是猜的。**
      */
     private VBox buildOverview() {
         VBox pane = new VBox(12);
@@ -1272,17 +1291,19 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         pane.getStyleClass().add("adb-overview");
         pane.setPadding(new Insets(16, 18, 16, 18));
 
-        Label title = new Label("表概览");
-        title.getStyleClass().add("adb-overview__title");
-
+        // ⭐ U16：这里原来还有一个 16px 的「概览」标题 —— 它和上面的切面 tab
+        // 是同一个词，同一句话读两遍，还挤掉了真正的内容。删。
         GridPane facts = new GridPane();
         facts.setId("overview-facts");
-        facts.setHgap(32);
-        facts.setVgap(10);
-        addOverviewFact(facts, 0, 0, "行数", overviewRows, "overview-rows");
-        addOverviewFact(facts, 0, 1, "数据大小", overviewSize, "overview-size");
-        addOverviewFact(facts, 1, 0, "引擎", overviewEngine, "overview-engine");
-        addOverviewFact(facts, 1, 1, "索引数", overviewIndexes, "overview-indexes");
+        facts.setHgap(24);
+        facts.setVgap(6);
+        addOverviewFact(facts, "行数", overviewRows, "overview-rows");
+        addOverviewFact(facts, "列数", overviewColumns, "overview-columns");
+        addOverviewFact(facts, "主键", overviewPrimary, "overview-primary");
+        addOverviewFact(facts, "自增列", overviewAutoIncrement, "overview-auto-increment");
+        addOverviewFact(facts, "索引数", overviewIndexes, "overview-indexes");
+        addOverviewFact(facts, "数据大小", overviewSize, "overview-size");
+        addOverviewFact(facts, "引擎", overviewEngine, "overview-engine");
 
         overviewHint.setId("overview-hint");
         overviewHint.getStyleClass().add("adb-overview__hint");
@@ -1310,25 +1331,36 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         HBox actions = new HBox(8, openStructureButton, refreshOverviewButton);
         actions.getStyleClass().add("adb-overview__actions");
 
-        pane.getChildren().addAll(title, facts, overviewHint,
+        pane.getChildren().addAll(facts, overviewHint,
                 new Separator(), recentTitle, recentHint, overviewRecent, actions);
         return pane;
     }
 
-    private static void addOverviewFact(GridPane grid, int row, int column, String key,
-                                        Label value, String id) {
-        VBox cell = new VBox(2);
+    /**
+     * 属性表的一行：左标签 + 右值。
+     *
+     * <p>标签列给固定宽度（{@code 76px}）而不是靠内容撑开：值必须对齐在同一条竖线上，
+     * 否则「行数 / 索引数 / 表注释」各自缩进，读起来像三张不同的表 ——
+     * 这正是 U17 要修的「同一件事多种长相」。
+     */
+    private static void addOverviewFact(GridPane grid, String key, Label value, String id) {
+        if (grid.getColumnConstraints().isEmpty()) {
+            ColumnConstraints keys = new ColumnConstraints();
+            keys.setMinWidth(76);
+            grid.getColumnConstraints().add(keys);
+        }
         Label keyLabel = new Label(key);
         keyLabel.getStyleClass().add("adb-overview__fact-key");
         value.setId(id);
         value.getStyleClass().add("adb-overview__fact-value");
-        cell.getChildren().addAll(keyLabel, value);
-        grid.add(cell, column, row);
+        value.setWrapText(true);
+        grid.addRow(grid.getRowCount(), keyLabel, value);
     }
 
     /** UX-6：切到概览时按需加载；已有结果且不强制刷新时直接复用。 */
     private void loadOverview(boolean fresh) {
         updateOverviewRows();
+        updateOverviewSchemaFacts();
         renderOverviewRecent();
         if (overviewLoading || (overviewLoaded && !fresh)) {
             return;
@@ -1380,6 +1412,27 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         } catch (SQLException | RuntimeException ignored) {
             return null;
         }
+    }
+
+    /**
+     * U17：列数 / 主键 / 自增列来自<b>已经内省到的表结构</b>，不额外查库。
+     *
+     * <p>「还没加载」与「真的没有」是两件事，必须两种写法：结构没到 → 「…」；
+     * 结构到了但没有主键 / 自增 → 「无」。两者都写成「—」，用户就分不出
+     * 是该等还是这张表确实如此 —— 那是假状态。
+     */
+    private void updateOverviewSchemaFacts() {
+        if (tableSchema == null) {
+            overviewColumns.setText("…");
+            overviewPrimary.setText("…");
+            overviewAutoIncrement.setText("…");
+            return;
+        }
+        overviewColumns.setText(String.valueOf(tableSchema.columns().size()));
+        overviewPrimary.setText(tableSchema.primaryKeys().isEmpty()
+                ? "无" : String.join("、", tableSchema.primaryKeys()));
+        overviewAutoIncrement.setText(tableSchema.autoIncrementColumn() == null
+                ? "无" : tableSchema.autoIncrementColumn());
     }
 
     private void applyOverview(OverviewFacts facts) {
@@ -1981,6 +2034,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         updateEditControls();
         updateHeaderCount();
         updateOverviewRows();
+        updateOverviewSchemaFacts();
 
         // 刷新时表可能被删到比当前页更少：回到最后一个有效页，而不是显示空页 + 第 8/3 页。
         if (total >= 0 && total > 0 && offset >= total) {
@@ -2013,11 +2067,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         // ⭐ 结果被硬上限截断时必须说出来。数据页平时不会截断（分页 + COUNT 已知总数），
         //    但只要发生了，用户看到的就不是完整数据 —— 静默丢数据是正确性问题。
         boolean truncated = result.page.rowsTruncated();
-        // ⭐ M2：耗时**只出现在状态栏的「耗时」字段**。
-        //    以前这条消息后面也带「· 12 ms」，与右边那个独立字段重复两遍。
+        // ⭐ U8：加载成功不再往消息位写「已加载 users · 200 行」—— 行范围段
+        //    （1–200 / 200）说的就是这件事，重复一遍等于多占一格。
+        //    但**截断必须说**：静默丢数据是正确性问题，这一句是消息位存在的意义。
         feedback.status(truncated
-                ? "已加载 " + tableName + " · " + lastRowCount + " 行（⚠ 结果已截断）"
-                : "已加载 " + tableName + " · " + lastRowCount + " 行");
+                ? "⚠ 结果已截断 · " + tableName + " 只取回 " + lastRowCount + " 行"
+                : "");
         activated = true;
     }
 
@@ -2047,7 +2102,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      * 对最费屏的地方不起作用。
      */
     public void setDensity(String density) {
-        int rowHeight = io.agenticdb.ui.RowHeights.of(density);
+        // ⭐ D1（2026-10-26）：网格比档位低一档（默认 normal → 24px），清单/树仍按原档。
+        int rowHeight = io.agenticdb.ui.RowHeights.grid(density);
         grid.setFixedCellSize(rowHeight);
         // ⭐ G1：两表行高必须一致，否则同一行在左右两半会错开半格。
         frozenGrid.setFixedCellSize(rowHeight);
@@ -2072,7 +2128,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         feedback.refreshedAt(lastRefreshedAt);
         feedback.dirty(editBuffer.dirtyCount());
         updateEditControls();
-        feedback.status("已激活：" + tableName + " · " + lastRowCount + " 行");
+        // U8：切回来只恢复事实段（范围/语句/耗时/待提交），不再播一句
+        // 「已激活：users · 200 行」—— 表名在标签上、行数在范围段里，这句话没有新信息。
+        feedback.status("");
     }
 
     // ─────────────────────────── 表格 ───────────────────────────
@@ -2288,13 +2346,15 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 setAlignment(Pos.CENTER_RIGHT);
                 if (empty) {
                     setText(null);
+                    setGraphic(null);
                     return;
                 }
                 Map<String, Object> row = getTableRow() == null
                         ? null : getTableRow().getItem();
                 Long draftId = draftId(row);
                 if (draftId != null) {
-                    setText("＋");
+                    setText(null);
+                    setGraphic(rowStateGlyph(Icons.Icon.ADD));
                     getStyleClass().add("adb-grid__row-number--new");
                     return;
                 }
@@ -2302,13 +2362,16 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                         - editBuffer.drafts().size()) + 1;
                 RowIdentity identity = identity(row);
                 if (identity != null && editBuffer.isDeleted(identity)) {
-                    setText("× " + number);
+                    setText(Long.toString(number));
+                    setGraphic(rowStateGlyph(Icons.Icon.CLOSE));
                     getStyleClass().add("adb-grid__row-number--deleted");
                 } else if (identity != null && editBuffer.hasRowEdits(identity)) {
-                    setText("● " + number);
+                    setText(Long.toString(number));
+                    setGraphic(rowStateGlyph(Icons.Icon.DOT));
                     getStyleClass().add("adb-grid__row-number--dirty");
                 } else {
                     setText(Long.toString(number));
+                    setGraphic(null);
                 }
             }
         });
@@ -2428,17 +2491,48 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /**
      * 这一列的表头至少要占多宽才能读出来。
      *
-     * <p>列头是两行：列名（可能带 {@code [PK]} / NOT NULL 的 {@code •}）+ 类型
-     * （可能带 {@code · 自增}），右侧还有排序徽标与筛选漏斗。只按列名算会漏掉
+     * <p>列头是两行：列名 + 类型与约束（{@link #columnConstraintLabel}），
+     * 右侧还有排序徽标与筛选漏斗。只按列名算会漏掉
      * 这些固定装饰，于是又回到 72px 的老问题。
      */
+    /**
+     * 行号列的状态标记（U10）：新增 / 待保存 / 标记删除。
+     *
+     * <p>以前是文本符号「＋ × ●」拼在行号前面 —— 符号随字体走、颜色只能整格继承，
+     * 在中文行字体下三颗标记大小不一。现在是矢量图标，颜色由
+     * {@code .adb-grid__row-number--*} 的 {@code -fx-stroke} 规则给。
+     */
+    private static javafx.scene.shape.SVGPath rowStateGlyph(Icons.Icon icon) {
+        // Icons.of 已经挂 .adb-icon / .adb-icon--filled，这里不再叠一个只有 Java 侧认识的类。
+        return Icons.of(icon, Icons.SIZE_DOT);
+    }
+
     private double readableMinWidth(ColumnDef definition) {
+        return ColumnWidths.dataColumnMin(definition.name(), columnConstraintLabel(definition));
+    }
+
+    /**
+     * 列头第二行：类型 + 约束摘要（{@code number · 主键 · 自增} / {@code text · 非空}）。
+     *
+     * <p>⭐ U5（2026-10-26）：主键与 NOT NULL 以前挤在第一行，写成
+     * {@code id  [PK]} 和 {@code name  •} 两套互不相干的语法 —— 那个圆点没有任何
+     * 地方解释它是 NOT NULL，而且主键列本身也非空，却被 {@code [PK]} 顶掉，
+     * 于是「非空」这件事在表头时有时无。约束统一并入第二行，
+     * 第一行只放列名，和 {@code · 自增} 走同一种读法。
+     */
+    private String columnConstraintLabel(ColumnDef definition) {
         boolean autoIncrement = tableSchema != null
                 && tableSchema.autoIncrement(definition.name());
-        String name = definition.name()
-                + (definition.primaryKey() ? "  [PK]" : definition.nullable() ? "" : "  •");
-        String type = typeLabel(definition) + (autoIncrement ? " · 自增" : "");
-        return ColumnWidths.dataColumnMin(name, type);
+        StringBuilder label = new StringBuilder(typeLabel(definition));
+        if (definition.primaryKey()) {
+            label.append(" · 主键");
+        } else if (!definition.nullable()) {
+            label.append(" · 非空");
+        }
+        if (autoIncrement) {
+            label.append(" · 自增");
+        }
+        return label.toString();
     }
 
     private static int visualLength(String text) {
@@ -2722,26 +2816,16 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                                        ColumnDef definition) {
         // ⭐ G6：标出自增列 —— 新增行时这一列**留空**就行，数据库自动赋值。
         //    不标出来，用户会以为得自己填，然后撞主键。
-        boolean autoIncrement = tableSchema != null
-                && tableSchema.autoIncrement(definition.name());
-        Label name = new Label(definition.name()
-                + (definition.primaryKey() ? "  [PK]" : definition.nullable() ? "" : "  •"));
+        // ⭐ U5：约束（主键 / 非空 / 自增）统一落在第二行，第一行只有列名。
+        Label name = new Label(definition.name());
         name.setId("data-header-" + definition.name());
         name.getStyleClass().add("adb-grid__column-name");
-        if (autoIncrement) {
-            name.setTooltip(new Tooltip("自增列 · 新增行时留空，数据库自动赋值"));
-        } else if (definition.primaryKey()) {
-            name.setTooltip(new Tooltip("主键" + (definition.comment() == null
-                    ? "" : " · " + definition.comment())));
-        } else if (!definition.nullable()) {
-            name.setTooltip(new Tooltip("NOT NULL" + (definition.comment() == null
-                    ? "" : " · " + definition.comment())));
-        } else if (definition.comment() != null && !definition.comment().isBlank()) {
+        if (definition.comment() != null && !definition.comment().isBlank()) {
+            // 约束已经在第二行写明白了，tooltip 只补「列注释」这一件第二行装不下的事。
             name.setTooltip(new Tooltip(definition.comment()));
         }
 
-        Label type = new Label(typeLabel(definition)
-                + (autoIncrement ? " · 自增" : ""));
+        Label type = new Label(columnConstraintLabel(definition));
         type.getStyleClass().add("adb-grid__column-type");
 
         Label sortBadge = new Label();
@@ -3251,7 +3335,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             int rowIndex = i;
             String key = "__r" + i;
             Long draft = draftId(source);
-            String title = draft != null ? "＋" : Long.toString(offset + i + 1);
+            String title = draft != null ? "新增" : Long.toString(offset + i + 1);
             TableColumn<Map<String, Object>, String> column = new TableColumn<>(title);
             column.setSortable(false);
             column.setPrefWidth(112);
@@ -3476,7 +3560,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         if (editBuffer.removeDraft(id)) {
             rebuildItems();
             updateDirty();
-            feedback.status("已移除新增行 · ⌘Z 可撤销");
+            feedback.status("已移除新增行 · " + io.agenticdb.ui.Shortcuts.of("Mod+Z") + " 可撤销");
         }
     }
 
@@ -3544,7 +3628,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         if (editBuffer.deleteRow(identity, row)) {
             grid.refresh();
             updateDirty();
-            feedback.status("已标记删除 " + identity.display() + " · ⌘Z 可撤销");
+            feedback.status("已标记删除 " + identity.display() + " · "
+                    + io.agenticdb.ui.Shortcuts.of("Mod+Z") + " 可撤销");
         }
     }
 
@@ -3572,7 +3657,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             grid.getSelectionModel().clearSelection();
             rebuildItems();
             updateDirty();
-            feedback.status("已标记删除 " + marked + " 行 · ⌘Z 可撤销");
+            feedback.status("已标记删除 " + marked + " 行 · "
+                    + io.agenticdb.ui.Shortcuts.of("Mod+Z") + " 可撤销");
         }
     }
 
@@ -3669,7 +3755,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             updateDirty();
             grid.refresh();
             feedback.status("已把 " + changed + " 行的 " + definition.name()
-                    + " 设为 " + (next == null ? "NULL" : "空串") + " · ⌘Z 可撤销");
+                    + " 设为 " + (next == null ? "NULL" : "空串") + " · "
+                    + io.agenticdb.ui.Shortcuts.of("Mod+Z") + " 可撤销");
         }
     }
 
@@ -3909,7 +3996,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         frozenGrid.refresh();
         if (rectangle != null) {
             feedback.status("已选 " + rectangle.rowCount() + " × "
-                    + rectangle.columnCount() + " 区域 · ⌘C 复制");
+                    + rectangle.columnCount() + " 区域 · " + io.agenticdb.ui.Shortcuts.of("Mod+C") + " 复制");
         }
     }
 
@@ -4094,6 +4181,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private <T extends ButtonBase> T toolbarOp(T button, Icons.Icon icon, String text, String hint) {
         IconButtons.labeled(button, icon, text, hint);
         toolbarLabels.put(button, text);
+        // ⭐ U4：文字按钮一律不许被 HBox 压扁（「保存」被挤成图标 = 认不出是保存）。
+        // 放不下时走上面那条实测判据：整排退回图标 + tooltip，而不是压某个按钮。
+        button.setMinWidth(Region.USE_PREF_SIZE);
         return button;
     }
 
@@ -4107,6 +4197,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         toolbarLabels.put(button, text);
         boolean showText = toolbarTextVisible == null || toolbarTextVisible;
         button.setText(showText ? text : "");
+        if (showText) {
+            // 「保存 3」比「保存」宽 —— 改完文字要重判这一排还放不放得下（U4）。
+            applyToolbarLabels();
+        }
     }
 
     /** 组与组之间的竖分隔线（样式在 {@code .adb-toolbar__separator}）。 */
@@ -4118,6 +4212,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
     /** 把「窗口宽度 → 工具条收字」接上；还没进窗口时先按带文字渲染。 */
     private void bindToolbarLabels() {
+        toolbar.widthProperty().addListener(toolbarWidthListener);
         sceneProperty().addListener((observable, oldScene, scene) -> {
             if (scene != null && scene.getWindow() != null) {
                 attachWindowWidth(scene.getWindow());
@@ -4126,7 +4221,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         if (getScene() != null && getScene().getWindow() != null) {
             attachWindowWidth(getScene().getWindow());
         } else {
-            applyToolbarLabels(Double.POSITIVE_INFINITY);
+            windowAllowsLabels = true;
+            applyToolbarLabels();
         }
     }
 
@@ -4136,7 +4232,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         }
         boundWindowWidth = window.widthProperty();
         boundWindowWidth.addListener(windowWidthListener);
-        applyToolbarLabels(boundWindowWidth.getValue().doubleValue());
+        windowAllowsLabels = boundWindowWidth.getValue().doubleValue() >= TOOLBAR_LABEL_MIN_WIDTH;
+        applyToolbarLabels();
     }
 
     /**
@@ -4144,9 +4241,17 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      *
      * <p>⚠️ 收字时补上 {@code adb-button--icon}（固定 30px 宽），
      * 展开时必须摘掉 —— 留着的话「保存」会被钉成 30px，文字直接看不见。
+     *
+     * <p>⭐ U4：光按<b>窗口</b>宽度假装放得下是不够的 —— 窗口宽 ≠ 工具条宽
+     * （侧栏、边距、搜索框都要吃宽度）。实测过 1100px 档：工具条给「筛选」60px，
+     * 它要 71px，HBox 就把文字压成「筛 …」。所以加一条<b>工具条自己说的算</b>的判据：
+     * 只有这一排带文字真的放得下，才给文字。
      */
-    private void applyToolbarLabels(double windowWidth) {
-        boolean showText = windowWidth >= TOOLBAR_LABEL_MIN_WIDTH;
+    private void applyToolbarLabels() {
+        boolean showText = windowAllowsLabels
+                // 还没布局过时（宽度 0）没有可信的实测值，先按窗口档位走。
+                && (toolbar.getWidth() <= 0
+                        || toolbar.getWidth() + 0.5 >= labelRequirement());
         if (toolbarTextVisible != null && toolbarTextVisible.booleanValue() == showText) {
             return;
         }
@@ -4158,6 +4263,24 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 button.getStyleClass().add("adb-button--icon");
             }
         });
+    }
+
+    /**
+     * 标签全开时工具条要多宽。
+     *
+     * <p>收着字也要量得出来：临时把文字装回去算一次 {@code prefWidth} 再还原。
+     * {@code prefWidth} 是纯计算，不触发布局，同一帧里用户看不见这次闪动；
+     * 若直接读**当前**的 prefWidth，收字后它会自己变小 —— 于是「收字 → 放得下 →
+     * 展开 → 放不下 → 收字」来回抖。
+     */
+    private double labelRequirement() {
+        if (toolbarTextVisible != null && !toolbarTextVisible) {
+            toolbarLabels.forEach(ButtonBase::setText);
+            double needed = toolbar.prefWidth(-1);
+            toolbarLabels.keySet().forEach(button -> button.setText(""));
+            return needed;
+        }
+        return toolbar.prefWidth(-1);
     }
 
     private void exportCsv() {
@@ -4483,7 +4606,15 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             }
 
             CellRenderer.Rendered rendered = CellRenderer.render(definition, value);
-            setText(rendered.text());
+            // ⭐ U9：只读布尔用图标（check / x），不再用文本 ✓/✗ —— 文本字形不吃主题、
+            //   不吃字号，还会和「内容本身就是 ✓ 的文本」撞车。可编辑态仍是 CheckBox。
+            if (rendered.icon() != null) {
+                setText(null);
+                setGraphic(CellRenderer.checkGlyph(rendered.icon()));
+                setAlignment(Pos.CENTER);
+            } else {
+                setText(rendered.text());
+            }
             if (!rendered.styleClass().isEmpty()) {
                 getStyleClass().add(rendered.styleClass());
             }
@@ -4683,7 +4814,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             clone.setOnAction(event -> cloneRow(row));
 
             MenuItem delete = new MenuItem(draft ? "移除新增行"
-                    : deleted ? "已标记删除（⌘Z 撤销）" : "删除行");
+                    : deleted ? "已标记删除（" + io.agenticdb.ui.Shortcuts.of("Mod+Z") + " 撤销）" : "删除行");
             delete.setDisable(!rowEditable || deleted);
             delete.setOnAction(event -> deleteRow(row));
 

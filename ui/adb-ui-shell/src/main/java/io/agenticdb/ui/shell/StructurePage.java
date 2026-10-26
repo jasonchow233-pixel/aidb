@@ -120,7 +120,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
     /**
      * 直接跳到 DDL 子页签（规格 §11.1：选中表 → 看建表 SQL）。
      *
-     * <p>详情面板的「查看 DDL」走这里 —— 与其新开一个只有一段文本的标签页，
+     * <p>详情面板的「打开 DDL」走这里 —— 与其新开一个只有一段文本的标签页，
      * 不如复用结构页里那个已经会读真 DDL、能复制的页签。
      */
     public void showDdl() {
@@ -300,11 +300,14 @@ public final class StructurePage extends VBox implements AutoCloseable {
         columns.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         addColumn(columns, "名称", value -> new ReadOnlyStringWrapper(value.name()));
         addColumn(columns, "类型", value -> new ReadOnlyStringWrapper(value.displayType()));
-        addColumn(columns, "可空", value -> new ReadOnlyStringWrapper(value.nullable() ? "YES" : "NO"));
+        // U9 补漏（p4-structure 第三拍）：可空/主键以前是文本 YES/PK ——
+        // 「非空」本身就是需要被看见的约束，所以可空列走 check/x 双字形；
+        // 「非主键」不是需要被看见的状态（同 唯一 列的裁定），走 check/留空。
+        addBoolColumn(columns, "可空", ColumnDef::nullable, true);
         addColumn(columns, "默认值", value -> new ReadOnlyStringWrapper(
                 value.defaultValue() == null ? "" : value.defaultValue()));
-        addColumn(columns, "主键", value -> new ReadOnlyStringWrapper(value.primaryKey() ? "PK" : ""));
-        addColumn(columns, "唯一", value -> new ReadOnlyStringWrapper(value.unique() ? "✓" : ""));
+        addFlagColumn(columns, "主键", ColumnDef::primaryKey);
+        addFlagColumn(columns, "唯一", ColumnDef::unique);
         // 注释列只在方言真支持时出现：SQLite 没有列注释，恒为空列就是死 UI（4.5-22）。
         if (session.dialect().supportsColumnComment()) {
             addColumn(columns, "注释", value -> new ReadOnlyStringWrapper(
@@ -440,6 +443,10 @@ public final class StructurePage extends VBox implements AutoCloseable {
         foreignKeys.getStyleClass().add("adb-structure__table");
         foreignKeys.setId("structure-foreign-keys");
         foreignKeys.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        // U24：空态给图标 + 解释 + 出口，不再是一行「表中无内容」。
+        foreignKeys.setPlaceholder(EmptyState.of(Icons.Icon.TRANSFER, "这张表没有外键",
+                "外键让数据库替你守住引用完整性 —— 引用列需要有主键或唯一索引。",
+                "新建外键", this::createForeignKey));
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -460,6 +467,9 @@ public final class StructurePage extends VBox implements AutoCloseable {
         triggers.getStyleClass().add("adb-structure__table");
         triggers.setId("structure-triggers");
         triggers.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        triggers.setPlaceholder(EmptyState.of(Icons.Icon.TRIGGER, "这张表没有触发器",
+                "触发器是数据库在写入前后自动执行的一段 SQL。",
+                "新建触发器", this::createTrigger));
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -480,6 +490,8 @@ public final class StructurePage extends VBox implements AutoCloseable {
         checks.setId("structure-checks");
         checks.setEditable(false);
         checks.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        checks.setPlaceholder(EmptyState.of(Icons.Icon.CHECK, "这张表没有 CHECK 约束",
+                "CHECK 在写入时由数据库强制校验；在「列」页签编辑列的表达式即可添加。"));
 
         Label hint = new Label("CHECK 约束：写入时由数据库强制校验");
         hint.getStyleClass().add("adb-muted");
@@ -493,6 +505,9 @@ public final class StructurePage extends VBox implements AutoCloseable {
         indexes.getStyleClass().add("adb-structure__table");
         indexes.setId("structure-indexes");
         indexes.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        indexes.setPlaceholder(EmptyState.of(Icons.Icon.INDEX, "这张表还没有索引",
+                "列顺序决定复合索引能否被用上（最左前缀）。",
+                "新建索引", this::createIndex));
         indexes.setRowFactory(view -> {
             TableRow<IndexDef> row = new TableRow<>();
             row.setOnContextMenuRequested(event -> {
@@ -548,11 +563,53 @@ public final class StructurePage extends VBox implements AutoCloseable {
         table.getColumns().add(column);
     }
 
+    /**
+     * 标记列（U9，2026-10-26）：为真画一个 ✓ 图标，为假**留空**。
+     *
+     * <p>以前这两列渲染的是文本「✓」—— 与查询结果 / 数据网格里的布尔不是一套东西，
+     * 而且文本字形不吃主题色、不吃字号。现在三处共用 {@link CellRenderer#checkGlyph}。
+     * 这里刻意不画 ✗：「非唯一」不是一个需要被看见的状态，满列的 ✗ 只是噪声
+     * （数据网格里的 ✗ 不同 —— 那里的 false 本身就是值）。
+     */
+    private <T> void addFlagColumn(TableView<T> table, String title, Function<T, Boolean> flag) {
+        addBoolColumn(table, title, flag, false);
+    }
+
+    /**
+     * 布尔标记列（U9）：为真画 ✓（成功色）；{@code showOff} 为真时为假画 ✗（禁用灰），
+     * 否则留空 —— 假值本身要不要被看见，按列裁定（见 {@link #buildColumnsTab}）。
+     */
+    private <T> void addBoolColumn(TableView<T> table, String title,
+                                   Function<T, Boolean> flag, boolean showOff) {
+        TableColumn<T, T> column = new TableColumn<>(title);
+        column.setSortable(false);
+        column.setCellValueFactory(data -> new ReadOnlyObjectWrapper<>(data.getValue()));
+        column.setCellFactory(view -> new TableCell<>() {
+            @Override
+            protected void updateItem(T item, boolean empty) {
+                super.updateItem(item, empty);
+                setAlignment(Pos.CENTER);
+                setText(null);
+                if (empty || item == null) {
+                    setGraphic(null);
+                    return;
+                }
+                boolean on = Boolean.TRUE.equals(flag.apply(item));
+                if (!on && !showOff) {
+                    setGraphic(null);
+                    return;
+                }
+                setGraphic(CellRenderer.checkGlyph(on ? Icons.Icon.CHECK : Icons.Icon.CLOSE));
+            }
+        });
+        table.getColumns().add(column);
+    }
+
     private void setIndexes(List<IndexDef> values) {
         indexes.getColumns().clear();
         addIndexIconColumn();
         addColumn(indexes, "名称", value -> new ReadOnlyStringWrapper(value.name()));
-        addColumn(indexes, "唯一", value -> new ReadOnlyStringWrapper(value.unique() ? "✓" : ""));
+        addFlagColumn(indexes, "唯一", IndexDef::unique);
         addColumn(indexes, "列", value -> new ReadOnlyStringWrapper(value.columnsLabel()));
         indexes.setItems(FXCollections.observableArrayList(values));
     }
@@ -690,7 +747,8 @@ public final class StructurePage extends VBox implements AutoCloseable {
             if (objectHeader != null) {
                 objectHeader.setType(structure.view() ? "视图" : "表");
             }
-            feedback.status("结构已加载：" + tableName);
+            // U8：页头已经写着是哪张表，「结构已加载」没有新增信息 —— 成功保持沉默。
+            feedback.status("");
         });
         task.setOnFailed(event -> {
             setLoading(false);
@@ -1119,6 +1177,39 @@ public final class StructurePage extends VBox implements AutoCloseable {
         // 表注释：SQLite 没有这个概念 → 直接禁用（而不是点了才报错）。
         tableComment.setDisable(running || !editable
                 || !session.dialect().supportsTableComment());
+        // ⭐ U19（p4-structure 实拍）：灰是对的，缺的是「为什么灰、怎么做才亮」。
+        paintDisableReasons(running, editable);
+    }
+
+    /** 禁用态的「原因」tooltip —— 与 {@link #updateButtons()} 的禁用位同一批条件。 */
+    private void paintDisableReasons(boolean running, boolean editable) {
+        boolean columnSelected = selectedColumn().isPresent();
+        for (Button button : java.util.List.of(edit, rename, drop)) {
+            paintDisableReason(button, running, "已有结构变更正在执行",
+                    !editable, "视图不能改结构",
+                    !columnSelected, "先在下面选中一列");
+        }
+        paintDisableReason(addIndex, running, "已有结构变更正在执行",
+                !editable, "视图不能建索引", false, "");
+        paintDisableReason(addForeignKey, running, "已有结构变更正在执行",
+                !editable, "视图不能建外键", false, "");
+        paintDisableReason(addTrigger, running, "已有结构变更正在执行",
+                !editable, "视图不能建触发器", false, "");
+        paintDisableReason(tableComment, running, "已有结构变更正在执行",
+                !editable, "视图不能改结构",
+                !session.dialect().supportsTableComment(), "当前方言不支持表注释");
+    }
+
+    /** 「条件 → 文案」成对传入，第一个命中的条件就是 tooltip；可用时清掉 tooltip。 */
+    private static void paintDisableReason(Button button, Object... conditionThenReason) {
+        String reason = null;
+        for (int i = 0; i + 1 < conditionThenReason.length; i += 2) {
+            if (Boolean.TRUE.equals(conditionThenReason[i])) {
+                reason = (String) conditionThenReason[i + 1];
+                break;
+            }
+        }
+        button.setTooltip(reason == null ? null : new javafx.scene.control.Tooltip(reason));
     }
 
     private void copy(String text) {

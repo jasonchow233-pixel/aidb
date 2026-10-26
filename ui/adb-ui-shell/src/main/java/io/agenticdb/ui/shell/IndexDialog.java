@@ -5,12 +5,12 @@ import io.agenticdb.introspect.StructureSqlBuilder;
 import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.ui.Icons;
-import javafx.beans.InvalidationListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.geometry.Pos;
+import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
@@ -22,11 +22,16 @@ import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.Dragboard;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.input.TransferMode;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -47,13 +52,21 @@ import java.util.Optional;
  *
  * <h2>五个分区（任务书 §6.2）</h2>
  * A 标题栏（标题 + 真实表名 / 库名 / 方言 + 关闭）· B 基本信息（名称 / 类型 / 唯一）·
- * C 索引列双列选择区（可用列 N / 索引列 N，计数来自真实列表）· D SQL 预览 ·
+ * C 索引列（单列表 + 「添加列」下拉，计数来自真实可用列）· D SQL 预览 ·
  * E 底部：左校验提示 + 右取消 / 确定。骨架类与其他弹窗共用 {@code .adb-dialog__*}，
  * 让两个弹窗看起来出自同一个软件（§七）。
  *
  * <h2>为什么列要能排序</h2>
  * 复合索引的<b>列顺序直接决定它能不能被用上</b>（最左前缀）。
  * 所以这里不是「勾几个列」就完了 —— 必须能调顺序，且顺序要体现在预览 SQL 里。
+ *
+ * <h2>为什么是单列表而不是双列传输框（U21）</h2>
+ * 「可用列 ⇄ 索引列」双列表中间竖排四颗按钮（添加 / 移除 / 上移 / 下移）是 2000 年代的
+ * 传输框形态：为了加一列，用户得先在左列点中、再移开鼠标去点中间那颗按钮；
+ * 调顺序还要先选中、再点箭头。这里改成<b>结果即界面</b>：
+ * 唯一的列表就是「索引列」，加列走右上角一个下拉（里面正是可用列，计数写在按钮上），
+ * 排序直接拖行、移除直接点行尾的 ×。少一个列表 = 少一处需要同步的状态，
+ * 也少一类「左列已经没了、右列还在」的错位。
  *
  * <h2>能力边界（§6.6「遵循现有数据库适配层」）</h2>
  * 索引类型与每列 {@code ASC / DESC} 只在<b>方言说支持</b>时才出现：
@@ -100,21 +113,19 @@ final class IndexDialog {
     private final ComboBox<String> type = new ComboBox<>();
     private final CheckBox unique = new CheckBox("唯一索引");
     private final Label error = new Label();
-    private final Label availableHeader = new Label();
     private final Label chosenHeader = new Label();
     private final SqlEditor preview = new SqlEditor();
     private final ObservableList<String> available = FXCollections.observableArrayList();
     private final ObservableList<PickedColumn> chosen = FXCollections.observableArrayList();
-    private final ListView<String> availableList = new ListView<>(available);
     private final ListView<PickedColumn> chosenList = new ListView<>(chosen);
-    private final Button moveIn = pickerButton("添加", "加入索引（双击左列或按 ↵）");
-    private final Button moveOut = pickerButton("移除", "移出索引（双击右列或按 Delete）");
-    private final Button moveUp = pickerButton("上移", "前移一位（Alt+↑）—— 顺序就是最左前缀");
-    private final Button moveDown = pickerButton("下移", "后移一位（Alt+↓）—— 顺序就是最左前缀");
+    /** 加列的唯一入口：下拉里就是「可用列」，计数写在按钮上（U21）。 */
+    private final MenuButton add = new MenuButton();
+    /** 拖拽中的行下标；{@code -1} = 没有在本列表内拖（拖放只接受自己人）。 */
+    private int dragFrom = -1;
     private final Button copySql = IconButtons.of(Icons.Icon.COPY, "复制 SQL");
     private final Button collapseSql = IconButtons.of(Icons.Icon.CHEVRON_RIGHT, "折叠 SQL 预览");
     private final Region sqlGap = new Region();
-    private final HBox picker = new HBox(12);
+    private final VBox picker = new VBox(8);
     private boolean sqlVisible = true;
 
     private IndexDialog(DbSession session, TableStructure table) {
@@ -128,8 +139,7 @@ final class IndexDialog {
         available.setAll(table == null ? List.of()
                 : table.columns().stream().map(column -> column.name()).toList());
         buildUi();
-        refreshCounts();
-        syncActions();
+        refreshAvailable();
         refreshPreview();
     }
 
@@ -143,7 +153,7 @@ final class IndexDialog {
         }
         // ⭐ 主题类与 .adb-dialog 必须抄到 DialogPane 上 —— 否则弹窗里所有
         //    -adb-* 查找落空，退回 JavaFX 默认皮肤。没有外部样式表时同样要挂。
-        DialogStyles.apply(dialog, owner);
+        DialogStyles.apply(dialog, owner, "index");
         if (owner != null) {
             dialog.initOwner(owner);
         }
@@ -154,10 +164,12 @@ final class IndexDialog {
 
     private void buildUi() {
         dialog.setTitle("新建索引");
-        // ⭐ V-11：宽度走档位规范；§6.1 给双列选择单独留了 PICKER 一档。
-        //    高度 560 落在 §6.1 的 560–620 区间，再由 DialogStyles 按屏幕限高。
-        dialog.getDialogPane().setPrefWidth(DialogSizes.PICKER);
-        dialog.getDialogPane().setMinWidth(DialogSizes.PICKER);
+        // ⭐ V-11：宽度走档位规范。U21 之前它是 PICKER=800 —— 那一档是为「两个列表并排
+        //    + 中间四颗按钮」开的；单列表之后 720 就放得下「序号 + 列名 + 方向 + ×」，
+        //    再宽只是让 SQL 预览两侧留白。高度 560 落在 §6.1 的 560–620 区间，
+        //    再由 DialogStyles 按屏幕限高。
+        dialog.getDialogPane().setPrefWidth(DialogSizes.WIDE);
+        dialog.getDialogPane().setMinWidth(DialogSizes.WIDE);
         dialog.getDialogPane().setPrefHeight(560);
         dialog.getDialogPane().setMinHeight(560);
         // 不用 setHeaderText：A 区要同时放标题 + 真实表名 + 关闭钮，
@@ -209,9 +221,8 @@ final class IndexDialog {
         // ⭐ 表名 / 库名 / 方言全部来自真实上下文，不写死示例（§6.2 A）。
         //    会话标签本身就是「方言 · 库」（见 JdbcSession.of），再补一遍方言就成了
         //    「SQLite · 文件 · SQLite」—— 实测截图里就是这么重复的。
-        Label context = new Label("表 " + (table == null ? "?" : table.name())
+        Label context = DialogStyles.contextLabel("表 " + (table == null ? "?" : table.name())
                 + " · " + session.label());
-        context.getStyleClass().add("adb-dialog__context");
         Button close = IconButtons.icon(Icons.Icon.CLOSE, "关闭");
         close.setId("index-dialog-close");
         close.getStyleClass().addAll("adb-icon-button", "adb-dialog__close");
@@ -255,94 +266,55 @@ final class IndexDialog {
         type.valueProperty().addListener((observable, oldValue, newValue) -> refreshPreview());
     }
 
-    /** C 区：可用列 / 索引列双列选择 + 中间的添加、移除、上移、下移。 */
+    /** C 区：索引列单列表 —— 加列走「添加列」下拉，排序靠拖行与 {@code Alt+↑/↓}。 */
     private VBox buildPickerSection() {
-        buildLists();
-        availableHeader.getStyleClass().add("adb-dialog__section-title");
+        buildPicker();
         chosenHeader.getStyleClass().add("adb-dialog__section-title");
-        VBox movers = new VBox(8, moveIn, moveOut, growGap(), moveUp, moveDown);
-        movers.setAlignment(Pos.CENTER);
-        picker.getChildren().setAll(pane(availableHeader, availableList), movers,
-                pane(chosenHeader, chosenList));
+        Label hint = new Label("拖动行改顺序 · 行尾 × 或 "
+                + io.agenticdb.ui.Shortcuts.of("Delete") + " 移除");
+        hint.getStyleClass().add("adb-muted");
+        Region headGap = new Region();
+        HBox.setHgrow(headGap, Priority.ALWAYS);
+        HBox head = new HBox(8, chosenHeader, headGap, add);
+        head.setAlignment(Pos.CENTER_LEFT);
+        picker.getChildren().setAll(head, chosenList, hint);
+        VBox.setVgrow(chosenList, Priority.ALWAYS);
+        chosenList.setMinHeight(140);
         picker.setPrefHeight(220);
         return section("索引列（顺序决定复合索引能否被用上）", picker);
     }
 
-    private static Region growGap() {
-        Region gap = new Region();
-        VBox.setVgrow(gap, Priority.ALWAYS);
-        return gap;
-    }
-
-    private static VBox pane(Label header, ListView<?> list) {
-        VBox pane = new VBox(6, header, list);
-        HBox.setHgrow(pane, Priority.ALWAYS);
-        VBox.setVgrow(list, Priority.ALWAYS);
-        list.setMinHeight(120);
-        list.setMaxWidth(Double.MAX_VALUE);
-        return pane;
-    }
-
     /**
-     * 两个列表的接线：选择驱动按钮可用性；双击 / ↵ / Delete / Alt+↑↓ 与鼠标点按钮
-     * <b>走同一批方法</b> —— 两条路各写一份迟早会走出不同结果（§6.5.5）。
+     * 单列表的接线：加列 / 移除 / 排序三条路都收在一处方法上 ——
+     * 鼠标、键盘、下拉各写一份迟早会走出不同结果（§6.5.5）。
      */
-    private void buildLists() {
-        availableList.setId("index-dialog-available");
-        availableList.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-        availableList.setPlaceholder(new Label("所有列都已加入索引"));
-        availableList.setOnMouseClicked(event -> {
-            if (event.getClickCount() == 2) {
-                addSelected();
-            }
-        });
-        availableList.setOnKeyPressed(event -> {
-            if (event.getCode() == KeyCode.ENTER) {
-                addSelected();
-                event.consume();
-            }
-        });
-
+    private void buildPicker() {
         chosenList.setId("index-dialog-chosen");
         chosenList.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
-        chosenList.setPlaceholder(new Label("从左边选中列，按「添加」或双击加入索引"));
+        chosenList.setPlaceholder(EmptyState.pickerHint(
+                "还没有索引列 —— 点右上角「添加列」选第一列。"));
         chosenList.setCellFactory(list -> new PickedCell());
-        chosenList.setOnMouseClicked(event -> {
-            if (event.getClickCount() == 2) {
-                removeSelected();
-            }
-        });
         chosenList.setOnKeyPressed(event -> {
             if (event.getCode() == KeyCode.DELETE || event.getCode() == KeyCode.BACK_SPACE) {
                 removeSelected();
                 event.consume();
             } else if (event.isAltDown() && event.getCode() == KeyCode.UP) {
-                swap(-1);
+                moveSelected(-1);
                 event.consume();
             } else if (event.isAltDown() && event.getCode() == KeyCode.DOWN) {
-                swap(1);
+                moveSelected(1);
                 event.consume();
             }
         });
 
-        moveIn.setId("index-dialog-add");
-        moveIn.setOnAction(event -> addSelected());
-        moveOut.setId("index-dialog-remove");
-        moveOut.setOnAction(event -> removeSelected());
-        moveUp.setId("index-dialog-up");
-        moveUp.setOnAction(event -> swap(-1));
-        moveDown.setId("index-dialog-down");
-        moveDown.setOnAction(event -> swap(1));
+        IconButtons.labeled(add, Icons.Icon.ADD, "添加列", "从可用列里挑一列加入索引");
+        add.setId("index-dialog-add");
+        // 与 U4 同一口径：宁可让窄弹窗里出现滚动，也不把带文字的按钮压成光秃图标。
+        add.setMinWidth(Region.USE_PREF_SIZE);
 
-        // 选择一变：按钮可用性立刻跟着变（§6.5.1）。
-        InvalidationListener sync = observable -> syncActions();
-        availableList.getSelectionModel().getSelectedIndices().addListener(sync);
-        chosenList.getSelectionModel().getSelectedIndices().addListener(sync);
-        // 索引列一变：可用列重算、计数重写、预览重生成（§6.5.2/3/4）。
+        // 索引列一变：可用列重算、计数与下拉重写、预览重生成（§6.5.2/3/4）。
         chosen.addListener((ListChangeListener<PickedColumn>) change -> {
             refreshAvailable();
-            refreshCounts();
-            syncActions();
             refreshPreview();
         });
 
@@ -354,40 +326,28 @@ final class IndexDialog {
 
     // ─────────────────────────── 行为 ───────────────────────────
 
-    /** 左侧选中的列进索引列；可用列按表的原始顺序重算，不会出现顺序漂移。 */
-    private void addSelected() {
-        List<String> selected = new ArrayList<>(
-                availableList.getSelectionModel().getSelectedItems());
-        if (selected.isEmpty()) {
-            return;
-        }
-        for (String column : selected) {
-            chosen.add(new PickedColumn(column));
-        }
+    /** 一列进索引列，追加在末尾 —— 复合索引的前缀顺序由用户（或拖拽）决定。 */
+    private void addColumn(String column) {
+        chosen.add(new PickedColumn(column));
         chosenList.getSelectionModel().clearAndSelect(chosen.size() - 1);
     }
 
-    /** 右侧选中的列退回可用列，选中仍然停在同一位置的那一项。 */
+    /** 选中行退回可用列，选中仍然停在同一位置的那一项。 */
     private void removeSelected() {
-        int index = chosenList.getSelectionModel().getSelectedIndex();
-        if (index < 0 || index >= chosen.size()) {
-            return;
-        }
-        chosen.remove(index);
-        if (!chosen.isEmpty()) {
-            chosenList.getSelectionModel().clearAndSelect(Math.min(index, chosen.size() - 1));
-        }
+        removeAt(chosenList.getSelectionModel().getSelectedIndex());
     }
 
-    /** 上移 / 下移：复合索引的列顺序就是最左前缀的顺序，必须能调。 */
-    private void swap(int direction) {
+    /** 键盘排序：Alt+↑ / Alt+↓ 每次一位（拖拽走 {@link #move}，同一条路）。 */
+    private void moveSelected(int direction) {
         int from = chosenList.getSelectionModel().getSelectedIndex();
-        if (from < 0) {
-            return;
-        }
-        int to = from + direction;
-        if (to < 0 || to >= chosen.size()) {
-            return;
+        move(from, from + direction);
+    }
+
+    /** 把第 {@code from} 列挪到 {@code to}：复合索引的列顺序就是最左前缀，必须能调。 */
+    private boolean move(int from, int to) {
+        if (from < 0 || to < 0 || from >= chosen.size() || to >= chosen.size()
+                || from == to) {
+            return false;
         }
         PickedColumn moving = chosen.remove(from);
         chosen.add(to, moving);
@@ -395,32 +355,34 @@ final class IndexDialog {
         // 序号写在单元格里，数据位置变了但 item 没变 → 不 refresh 的话
         // 「1. 2. 3.」会跟着行走，界面上的顺序就是假的。
         chosenList.refresh();
-        syncActions();
-        refreshPreview();
+        return true;
     }
 
+    /**
+     * 可用列按表的原始顺序重算（不会出现顺序漂移），并同步「添加列」下拉、
+     * 计数与可用性 —— 一列一列加完，下拉里最后会没有东西可选，那就禁用。
+     */
     private void refreshAvailable() {
         List<String> picked = chosen.stream().map(PickedColumn::name).toList();
         List<String> remaining = new ArrayList<>(table == null ? List.of()
                 : table.columns().stream().map(column -> column.name()).toList());
         remaining.removeAll(picked);
         available.setAll(remaining);
-    }
-
-    /** §6.2 C：两个列表的标题带计数，数字来自真实数据。 */
-    private void refreshCounts() {
-        availableHeader.setText("可用列（" + available.size() + "）");
         chosenHeader.setText("索引列（" + chosen.size() + "）");
-    }
-
-    /** §6.5.1：没东西可操作时按钮必须禁用，而不是「点了没反应」。 */
-    private void syncActions() {
-        moveIn.setDisable(availableList.getSelectionModel().getSelectedIndices().isEmpty());
-        int selected = chosenList.getSelectionModel().getSelectedIndex();
-        boolean hasSelection = selected >= 0;
-        moveOut.setDisable(!hasSelection);
-        moveUp.setDisable(!hasSelection || selected == 0);
-        moveDown.setDisable(!hasSelection || selected == chosen.size() - 1);
+        // 计数写在按钮上：可用列不再有独立列表，这一颗下拉就是它唯一的入口和证据。
+        add.setText("添加列（" + remaining.size() + "）");
+        add.setDisable(remaining.isEmpty());
+        String hint = remaining.isEmpty()
+                ? "所有列都已加入索引" : "从可用列里挑一列加入索引";
+        add.setTooltip(new Tooltip(hint));
+        add.setAccessibleText(hint);
+        List<MenuItem> items = new ArrayList<>();
+        for (String column : remaining) {
+            MenuItem item = new MenuItem(column);
+            item.setOnAction(event -> addColumn(column));
+            items.add(item);
+        }
+        add.getItems().setAll(items);
     }
 
     /** D 区：SQL 预览（等宽、行号、可折叠），与真正执行的那条同源。 */
@@ -521,9 +483,14 @@ final class IndexDialog {
     // ─────────────────────── 已选列的单元格 ───────────────────────
 
     /**
-     * 已选索引列的一行：<b>序号 + 列名 + 排序方向</b>（方向只在方言支持时出现）。
+     * 已选索引列的一行：<b>序号 + 列名 + 排序方向 + 移除</b>
+     * （方向只在方言支持时出现）。
      *
      * <p>序号是复合索引唯一的顺序证据 —— 只靠列表行序，用户看不出谁是前缀。
+     *
+     * <p>这一行同时是<b>拖拽源与落点</b>（U21）：拖到哪一行就落到哪个位置，
+     * 所以排序不需要「上移 / 下移」两颗按钮；键盘走 {@code Alt+↑/↓}，
+     * 两条路最终都进 {@link #move(int, int)} 同一个方法。
      */
     private final class PickedCell extends ListCell<PickedColumn> {
 
@@ -531,6 +498,7 @@ final class IndexDialog {
         private final Label column = new Label();
         /** 方言不支持排序方向时是 {@code null} —— 连控件都不创建（§九 不留无用控件）。 */
         private final ComboBox<String> direction;
+        private final Button remove;
         private final HBox row;
         private PickedColumn bound;
 
@@ -539,11 +507,20 @@ final class IndexDialog {
             order.setMinWidth(Region.USE_PREF_SIZE);
             column.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(column, Priority.ALWAYS);
+            // 拖动手势在整行上，但**光标只在非交互区**显示成「移动」：
+            // 下拉和 × 上再挂 MOVE 就是骗人 —— 它们点下去是选值、是移除，不是拖。
+            order.setCursor(Cursor.MOVE);
+            column.setCursor(Cursor.MOVE);
+            List<Node> cells = new ArrayList<>();
+            cells.add(order);
+            cells.add(column);
             if (directionSupported) {
                 ComboBox<String> box =
                         new ComboBox<>(FXCollections.observableArrayList("升序", "降序"));
                 box.setPrefWidth(76);
-                box.setTooltip(new Tooltip("该列在索引里的排序方向"));
+                box.setTooltip(new Tooltip("该列在索引里的排序方向（"
+                        + io.agenticdb.ui.Shortcuts.of("Alt+UP") + " / "
+                        + io.agenticdb.ui.Shortcuts.of("Alt+DOWN") + " 调整列的顺序）"));
                 // 用值变化而不是 onAction：方向是这一列的**状态**，不是一次动作，
                 // 而且程序化选择（默认值回填、单测）也要走同一条路。
                 box.valueProperty().addListener((observable, oldValue, newValue) -> {
@@ -554,12 +531,54 @@ final class IndexDialog {
                     refreshPreview();
                 });
                 direction = box;
-                row = new HBox(8, order, column, box);
+                cells.add(box);
             } else {
                 direction = null;
-                row = new HBox(8, order, column);
             }
+            remove = IconButtons.icon(Icons.Icon.CLOSE,
+                    "移出索引（" + io.agenticdb.ui.Shortcuts.of("Delete") + "）");
+            remove.getStyleClass().add("adb-icon-button");
+            remove.setMinWidth(Region.USE_PREF_SIZE);
+            remove.setCursor(Cursor.HAND);
+            remove.setOnAction(event -> removeAt(indexOf(bound)));
+            cells.add(remove);
+            row = new HBox(8, cells.toArray(Node[]::new));
             row.setAlignment(Pos.CENTER_LEFT);
+            wireDrag();
+        }
+
+        /** bound 在列表里的位置 —— 单元格被复用后必须按当前绑定重新算，不能用 getIndex() 的缓存。 */
+        private int indexOf(PickedColumn item) {
+            return item == null ? -1 : chosen.indexOf(item);
+        }
+
+        /** 拖拽排序：整行既是源也是落点，落在哪一行就插到哪个位置。 */
+        private void wireDrag() {
+            row.setOnDragDetected(event -> {
+                if (bound == null) {
+                    return;
+                }
+                dragFrom = indexOf(bound);
+                ClipboardContent content = new ClipboardContent();
+                content.putString(bound.name());
+                Dragboard board = row.startDragAndDrop(TransferMode.MOVE);
+                board.setContent(content);
+                event.consume();
+            });
+            row.setOnDragOver(event -> {
+                // dragFrom 只有本列表的行会写：拖到弹窗别处（输入框、SQL 预览）不会被接受。
+                if (dragFrom >= 0) {
+                    event.acceptTransferModes(TransferMode.MOVE);
+                }
+                event.consume();
+            });
+            row.setOnDragDropped(event -> {
+                boolean done = move(dragFrom, getIndex());
+                event.setDropCompleted(done);
+                dragFrom = -1;
+                event.consume();
+            });
+            row.setOnDragDone(event -> dragFrom = -1);
         }
 
         @Override
@@ -581,6 +600,17 @@ final class IndexDialog {
         }
     }
 
+    /** 行尾 × 移除第 {@code index} 列 —— 与 Delete 键走同一个出口（不依赖选中）。 */
+    private void removeAt(int index) {
+        if (index < 0 || index >= chosen.size()) {
+            return;
+        }
+        chosen.remove(index);
+        if (!chosen.isEmpty()) {
+            chosenList.getSelectionModel().clearAndSelect(Math.min(index, chosen.size() - 1));
+        }
+    }
+
     // ─────────────────────────── 布局小件 ───────────────────────────
 
     /** 标签在上、控件在下的一格表单字段（与「新建表」同一份形态）。 */
@@ -588,16 +618,6 @@ final class IndexDialog {
         Label label = new Label(text);
         label.getStyleClass().add("adb-form__label");
         return new VBox(4, label, field);
-    }
-
-    private static Button pickerButton(String text, String hint) {
-        Button button = new Button(text);
-        button.getStyleClass().add("adb-button");
-        button.setMinWidth(Region.USE_PREF_SIZE);
-        button.setMaxWidth(Double.MAX_VALUE);
-        button.setTooltip(new Tooltip(hint));
-        button.setAccessibleText(text);
-        return button;
     }
 
     private static VBox section(String text, Node... children) {
@@ -612,15 +632,15 @@ final class IndexDialog {
     /**
      * 截图摆态：把这张表<b>真实的前两列</b>加进索引并填上名字。
      *
-     * <p>为什么要有它：不摆态的话，验收帧里永远是「索引列（0）+ 四颗灰按钮 + 空预览」，
+     * <p>为什么要有它：不摆态的话，验收帧里永远是「索引列（0）+ 空预览」，
      * 而 §6.4 要的恰恰是顺序与预览那一面 —— 与 {@code ADB_CELL} 同一形态。
-     * 加的列走 {@link #addSelected()}（和点「添加」同一条路），不是往列表里塞数据：
+     * 加的列走 {@link #addColumn(String)}（和点下拉同一条路），不是往列表里塞数据：
      * 摆出来的态和点出来的态必须是同一份代码算出来的，否则截图在骗人。
      */
     void poseForShots() {
-        for (int i = 0; i < 2 && !available.isEmpty(); i++) {
-            availableList.getSelectionModel().select(0);
-            addSelected();
+        List<String> toAdd = available.stream().limit(2).toList();
+        for (String column : toAdd) {
+            addColumn(column);
         }
         if (!chosen.isEmpty() && table != null) {
             name.setText("idx_" + table.name() + "_" + chosen.get(0).name());
@@ -641,32 +661,12 @@ final class IndexDialog {
         return type;
     }
 
-    ListView<String> availableListView() {
-        return availableList;
-    }
-
     ListView<PickedColumn> chosenListView() {
         return chosenList;
     }
 
-    Button addButton() {
-        return moveIn;
-    }
-
-    Button removeButton() {
-        return moveOut;
-    }
-
-    Button upButton() {
-        return moveUp;
-    }
-
-    Button downButton() {
-        return moveDown;
-    }
-
-    Label availableHeader() {
-        return availableHeader;
+    MenuButton addButton() {
+        return add;
     }
 
     Label chosenHeader() {

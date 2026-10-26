@@ -102,7 +102,7 @@ final class ConnectionPropertiesDialog {
         if (stylesheets != null && !stylesheets.isEmpty()) {
             dialog.getDialogPane().getStylesheets().addAll(stylesheets);
             // ⭐ 主题类必须抄到 DialogPane 上 —— 否则弹窗里所有 -adb-* 查找落空。
-        DialogStyles.apply(dialog, owner);
+        DialogStyles.apply(dialog, owner, "connection-properties");
         }
         if (owner != null) {
             dialog.initOwner(owner);

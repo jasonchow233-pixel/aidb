@@ -64,9 +64,11 @@ public final class AppBar extends HBox {
         setMaxHeight(height);
         this.onSelectConnection = onSelectConnection == null ? profile -> { } : onSelectConnection;
 
+        // ⭐ §2.1（U16 追加裁定）：右侧三颗同权重图标里，「设置」是低频入口 ——
+        //    并进 ⋯，顶栏只留「主题 + 更多」两颗。
         getChildren().addAll(brand(), separator(), connectionPill(actions), spacer(),
                 primaryActions(actions), separator(), globalSearch(actions),
-                themeButton(actions), settingsButton(actions), overflow(actions));
+                themeButton(actions), overflow(actions));
         // ⚠️ 必须在所有子节点建好之后再灌连接列表 ——
         //    connectionPill() 里会用空列表初始化一次，那会把构造函数传进来的
         //    连接覆盖成「未连接」（AppBarTest 就是抓到这个才补上门禁的）。
@@ -184,13 +186,16 @@ public final class AppBar extends HBox {
      * 某个对象，放在对象首页、侧栏与 ⌘K 里更合适。所以顶栏只留两个。
      */
     private Region primaryActions(ActionRegistry actions) {
+        // U26：快捷键由 ActionRegistry 从动作的 accelerator 自动追加到 tooltip ——
+        // 这里只写语义提示。以前手打的两处都错了：「连接管理」写的 Mod+N
+        // 实际绑在「新建连接」上（照做会开错窗口），而它自己根本没有快捷键。
         Button newQuery = actions.iconButton("new-query", Icons.Icon.QUERY,
-                "新建查询 (⇧⌘N)", "新建查询");
+                "新建查询", "新建查询");
         newQuery.setId("appbar-new-query");
         newQuery.getStyleClass().add("adb-appbar__action");
 
         Button manage = actions.iconButton("connections.manage", Icons.Icon.CONNECT,
-                "连接管理 (⌘N)", "连接管理");
+                "连接管理", "连接管理");
         manage.setId("appbar-manage-connections");
         manage.getStyleClass().add("adb-appbar__action");
 
@@ -207,7 +212,7 @@ public final class AppBar extends HBox {
         searchHint.setText("搜索对象或命令");
         searchHint.getStyleClass().add("adb-appbar__search-hint");
 
-        Label kbd = new Label("⌘K");
+        Label kbd = new Label(io.agenticdb.ui.Shortcuts.of("Mod+K"));
         kbd.getStyleClass().add("adb-appbar__search-kbd");
 
         HBox content = new HBox(8, icon, searchHint, kbd);
@@ -218,7 +223,7 @@ public final class AppBar extends HBox {
         search.getStyleClass().addAll("adb-appbar__search");
         search.setGraphic(content);
         search.setAccessibleText("搜索对象或命令");
-        search.setTooltip(new Tooltip("搜索对象或命令 (⌘K)"));
+        search.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("搜索对象或命令", "Mod+K")));
         search.setOnAction(event -> actions.run("command-palette"));
         return search;
     }
@@ -230,18 +235,11 @@ public final class AppBar extends HBox {
         return button;
     }
 
-    private Button settingsButton(ActionRegistry actions) {
-        Button button = actions.iconButton("settings", Icons.Icon.SETTINGS, "设置 (⌘,)", "设置");
-        button.setId("appbar-settings");
-        button.getStyleClass().add("adb-appbar__action");
-        return button;
-    }
-
     /**
      * 溢出菜单（⋯）。
      *
      * <p>低频但真实存在的入口放这里，而不是在顶栏排一排图标 ——
-     * 顶栏只留「全局」的东西。
+     * 顶栏只留「全局」的东西。「设置…」也从独立齿轮搬了进来（§2.1）。
      */
     private MenuButton overflow(ActionRegistry actions) {
         MenuButton menu = new MenuButton();
@@ -258,6 +256,7 @@ public final class AppBar extends HBox {
                 actions.menuItem("object.tables"),
                 actions.menuItem("import-export"),
                 new SeparatorMenuItem(),
+                actions.menuItem("settings"),
                 actions.menuItem("diagnostics"),
                 actions.menuItem("shortcuts"),
                 actions.menuItem("about"));

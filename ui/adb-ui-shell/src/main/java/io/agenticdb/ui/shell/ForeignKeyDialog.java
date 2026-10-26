@@ -72,7 +72,7 @@ final class ForeignKeyDialog {
         if (stylesheets != null && !stylesheets.isEmpty()) {
             dialog.getDialogPane().getStylesheets().addAll(stylesheets);
             // ⭐ 主题类必须抄到 DialogPane 上 —— 否则弹窗里所有 -adb-* 查找落空。
-        DialogStyles.apply(dialog, owner);
+        DialogStyles.apply(dialog, owner, "foreign-key");
         }
         if (owner != null) {
             dialog.initOwner(owner);
@@ -114,9 +114,9 @@ final class ForeignKeyDialog {
         availableList.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 
         chosenList.setId("fk-dialog-chosen");
-        chosenList.setPlaceholder(new Label("从左边添加列"));
+        chosenList.setPlaceholder(EmptyState.pickerHint("从左边选中列，按「添加」或双击加入"));
         referencedList.setId("fk-dialog-referenced");
-        referencedList.setPlaceholder(new Label("被引用的列"));
+        referencedList.setPlaceholder(EmptyState.pickerHint("先从左边选一个引用列，这里才会给出候选"));
 
         Button add = IconButtons.of(Icons.Icon.ADD, "添加");
         add.setId("fk-dialog-add");

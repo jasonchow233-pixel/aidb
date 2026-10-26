@@ -24,9 +24,16 @@ final class FakeDbSession implements DbSession {
     private final List<String> executed = new ArrayList<>();
     private final List<String> failingFragments = new ArrayList<>();
     private boolean inTransaction;
+    /** 文件型会话的 label 带整条路径 —— 页头截断逻辑要用同型替身测。 */
+    private String labelOverride;
 
     private FakeDbSession(Dialect dialect) {
         this.dialect = dialect;
+    }
+
+    FakeDbSession withLabel(String label) {
+        this.labelOverride = label;
+        return this;
     }
 
     static FakeDbSession of(DialectKind kind) {
@@ -55,7 +62,7 @@ final class FakeDbSession implements DbSession {
      */
     @Override
     public String label() {
-        return dialect.displayName() + " · fake-db";
+        return labelOverride != null ? labelOverride : dialect.displayName() + " · fake-db";
     }
 
     @Override

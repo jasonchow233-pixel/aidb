@@ -16,8 +16,11 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
@@ -25,6 +28,8 @@ import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.FlowPane;
@@ -122,6 +127,12 @@ final class ObjectHomePage extends VBox {
     private ColumnLayoutMemory columnMemory;
 
     private final Label summary = new Label();
+    /**
+     * ⭐ U16：页头不再写死「对象」—— tab 上已经写着「对象」，
+     * 页内再来一个 16px 粗体等于同一句话读两遍，还占掉了本该显示「我在哪个库」的位置。
+     * 现在这里放的是真实上下文：{@code 连接名 › 方言}。
+     */
+    private final Label breadcrumb = new Label();
     private final ObservableList<ObjectRow> rows = FXCollections.observableArrayList();
     private final FilteredList<ObjectRow> filtered = new FilteredList<>(rows, row -> true);
     private final TableView<ObjectRow> table = new TableView<>();
@@ -261,14 +272,15 @@ final class ObjectHomePage extends VBox {
     }
 
     private void buildUi() {
-        Label title = new Label("对象");
-        title.getStyleClass().add("adb-page__title");
-        Label badge = new Label("总览");
+        breadcrumb.setId("object-home-breadcrumb");
+        breadcrumb.getStyleClass().add("adb-page__breadcrumb");
+        Label badge = new Label("概览");
         badge.getStyleClass().addAll("adb-badge", "adb-badge--muted");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         summary.setId("object-home-summary");
         summary.getStyleClass().add("adb-muted");
+        paintBreadcrumb(session.get());
 
         refresh.setId("object-home-refresh");
         refresh.getStyleClass().add("adb-button");
@@ -277,7 +289,7 @@ final class ObjectHomePage extends VBox {
         // ⚠️ refresh 必须进场景图 —— 此前它只被 new 出来、绑了动作、设了 id，
         //    却从未加入任何容器，于是「刷新」按钮在界面上根本不存在
         //    （截图审计 S2，docs/UI-AUDIT.md §2.1）。
-        HBox header = new HBox(10, title, badge, spacer, summary);
+        HBox header = new HBox(10, breadcrumb, badge, spacer, summary);
         header.getStyleClass().add("adb-page__header");
         header.setAlignment(Pos.CENTER_LEFT);
 
@@ -403,6 +415,50 @@ final class ObjectHomePage extends VBox {
     }
 
     /**
+     * ⭐ U25：对象右键菜单（表格行与网格卡片共用）。
+     *
+     * <p>条目与工具条同源、判断条件也同源（打开要连着库、设计只认表/视图、
+     * 删除只走表）—— 右键不是第二套权限模型，是同一套的另一个入口。
+     *
+     * <p>包可见：单测直接拿菜单断言权限，不必模拟右键弹窗。
+     */
+    ContextMenu objectMenu(ObjectRow row) {
+        SchemaService.SchemaObject object = row.object();
+        boolean connected = session.get() != null;
+        boolean designable = object.kind() == SchemaService.ObjectKind.TABLE
+                || object.kind() == SchemaService.ObjectKind.VIEW;
+
+        ContextMenu menu = new ContextMenu();
+        MenuItem open = new MenuItem("打开");
+        open.setId("object-menu-open");
+        open.setDisable(!connected);
+        open.setOnAction(event -> onOpen.accept(object));
+
+        MenuItem design = new MenuItem("设计表");
+        design.setId("object-menu-design");
+        design.setDisable(!connected || !designable);
+        design.setOnAction(event -> host.design(object));
+
+        MenuItem copyName = new MenuItem("复制名称");
+        copyName.setId("object-menu-copy-name");
+        copyName.setOnAction(event -> {
+            ClipboardContent content = new ClipboardContent();
+            content.putString(object.name());
+            Clipboard.getSystemClipboard().setContent(content);
+            status.accept("已复制名称 " + object.name());
+        });
+
+        MenuItem drop = new MenuItem("删除表");
+        drop.setId("object-menu-drop");
+        drop.setDisable(!connected || object.kind() != SchemaService.ObjectKind.TABLE);
+        drop.setOnAction(event -> host.dropTables(List.of(object.name())));
+
+        menu.getItems().addAll(open, design, copyName,
+                new SeparatorMenuItem(), drop);
+        return menu;
+    }
+
+    /**
      * 当前选中的对象行 —— 列表视图看表格选择，网格视图看卡片选择。
      *
      * <p>工具条、删除动作、状态栏全部走这一份真相，两种视图的行为才不会分叉。
@@ -449,8 +505,36 @@ final class ObjectHomePage extends VBox {
         dropButton.setDisable(!connected || !droppable);
         createButton.setDisable(!connected);
 
+        // ⭐ U19：禁用不能只变灰 —— 一排灰按钮读起来像界面坏了。
+        // 悬停要说清「为什么现在点不动、要做什么才能点」，灰才有解释而不是故障。
+        explainDisabled(openButton, !connected || !single,
+                !connected ? "连上一个库才能打开" : "先在清单里选中一个对象");
+        explainDisabled(designButton, !connected || !designable,
+                !connected ? "连上一个库才能设计" : "只有选中的是表或视图时才能设计");
+        explainDisabled(dropButton, !connected || !droppable,
+                !connected ? "连上一个库才能删除" : "选中的一项或多项不是表（视图 / 函数不走这里）");
+        explainDisabled(createButton, !connected, "连上一个库才能建表");
+
         updateViewButtons();
         host.inspect(single ? selected.getFirst().object() : null);
+    }
+
+    /**
+     * U19：禁用态的 tooltip 换成「原因」，恢复可用时换回「这个按钮是干什么的」。
+     *
+     * <p>原始说明取自 {@code accessibleText} —— {@code IconButtons} 建按钮时就写好了，
+     * 再抄一份会变成两处真相（改了按钮说明，tooltip 还留着老的）。
+     */
+    private static void explainDisabled(Button button, boolean disabled, String reason) {
+        Tooltip tooltip = button.getTooltip();
+        if (tooltip == null) {
+            tooltip = new Tooltip();
+            button.setTooltip(tooltip);
+        }
+        String hint = button.getAccessibleText();
+        tooltip.setText(disabled || hint == null || hint.isBlank()
+                ? (disabled ? reason : "")
+                : hint);
     }
 
     // ─────────────────────────── 过滤条 ───────────────────────────
@@ -503,7 +587,10 @@ final class ObjectHomePage extends VBox {
         //    （为什么不是 UNCONSTRAINED：宽屏会留一大片空白，见 §33.5）。
         table.setColumnResizePolicy(
                 TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        table.setPlaceholder(new Label("没有匹配的对象"));
+        // U24：空态给图标 + 出路，不剩一行猜不出原因的灰字。
+        table.setPlaceholder(EmptyState.of(Icons.Icon.SEARCH, "没有匹配的对象",
+                "搜索关键词按名字匹配，筛选芯片也会一起收窄范围。",
+                "清空搜索", search::clear));
         table.setFixedCellSize(rowHeight);
 
         // ⭐ 列与 Navicat 的「表清单」对齐：名称 / 类型 / 行 / 数据长度 / 引擎 /
@@ -552,6 +639,18 @@ final class ObjectHomePage extends VBox {
                 if (event.getClickCount() == 2 && !row.isEmpty()) {
                     onOpen.accept(row.getItem().object());
                 }
+            });
+            // ⭐ U25：行右键 = 对象菜单（打开 / 设计 / 复制名称 / 删除）。
+            row.setOnContextMenuRequested(event -> {
+                if (row.isEmpty() || row.getItem() == null) {
+                    return;
+                }
+                if (!row.isSelected()) {
+                    table.getSelectionModel().clearSelection();
+                    table.getSelectionModel().select(row.getIndex());
+                }
+                objectMenu(row.getItem()).show(row, event.getScreenX(), event.getScreenY());
+                event.consume();
             });
             return row;
         });
@@ -722,6 +821,18 @@ final class ObjectHomePage extends VBox {
                 return;
             }
             selectCard(row, event);
+        });
+        // ⭐ U25：卡片右键与表格行同一份菜单 —— 两种视图两套右键就是两套真相。
+        card.setOnContextMenuRequested(event -> {
+            if (!gridSelection.contains(row.id())) {
+                gridSelection.clear();
+                gridSelection.add(row.id());
+                cardAnchor = row.id();
+                refreshCardSelectionStyles();
+                updateToolbarState();
+            }
+            objectMenu(row).show(card, event.getScreenX(), event.getScreenY());
+            event.consume();
         });
         card.setOnKeyPressed(event -> {
             if (event.getCode() == KeyCode.ENTER) {
@@ -1006,9 +1117,44 @@ final class ObjectHomePage extends VBox {
 
     // ─────────────────────────── 数据 ───────────────────────────
 
+    /**
+     * ⭐ U16：页头显示真实上下文（{@code 方言 · 连接标识}），没连接就说没连接。
+     *
+     * <p>这一行只读一个已有对象（{@code label()} / {@code dialect()}），不查库，
+     * 所以可以在 FX 线程上直接画；「在哪个库」是用户决定要不要点进去之前就要看到的信息。
+     *
+     * <p>⚠️ 真实会话的 {@code label()} 本身就带方言前缀（「SQLite · 文件路径」）——
+     * 再拼一次「› SQLite」就是同一句话读两遍（p0-shell 实拍抓到）。
+     * 只有 label 没提方言的会话才补方言后缀。
+     *
+     * <p>⚠️ 文件型会话的 label 带**整条绝对路径**（p0-shell 第二拍抓到）——
+     * 页头不是资源管理器，长路径把摘要挤下行、读起来像调试输出；
+     * 这里只留文件名，全路径进 tooltip。
+     */
+    private void paintBreadcrumb(DbSession current) {
+        if (current == null) {
+            breadcrumb.setText("未连接");
+            breadcrumb.setTooltip(null);
+            return;
+        }
+        String label = current.label();
+        String dialect = current.dialect().displayName();
+        int separator = Math.max(label.lastIndexOf('\\'), label.lastIndexOf('/'));
+        if (separator > 0) {
+            int start = label.lastIndexOf(" · ");
+            String prefix = start < 0 ? "" : label.substring(0, start + 3);
+            breadcrumb.setText(prefix + label.substring(separator + 1));
+            breadcrumb.setTooltip(new javafx.scene.control.Tooltip(label));
+            return;
+        }
+        breadcrumb.setText(label.startsWith(dialect) ? label : label + " › " + dialect);
+        breadcrumb.setTooltip(null);
+    }
+
     /** 重新读一遍对象列表。 */
     void reload() {
         DbSession current = session.get();
+        paintBreadcrumb(current);
         if (current == null) {
             showEmpty(EmptyState.of(Icons.Icon.CONNECT, "还没有连接数据库",
                     "连上一个数据库后，这里会列出它的表、视图、函数和触发器。",
@@ -1164,10 +1310,14 @@ final class ObjectHomePage extends VBox {
             return query.isEmpty()
                     || row.object().name().toLowerCase(Locale.ROOT).contains(query);
         });
-        // 过滤后列表可能变空 —— 空清单要说话，不能是一片空白。
+        // 过滤后列表可能变空 —— 空清单要说话，还要说清是哪一层收窄了范围（U24）。
         if (!rows.isEmpty() && filtered.isEmpty()) {
-            table.setPlaceholder(new Label(query.isEmpty()
-                    ? "这个类型下没有对象" : "没有名称包含「" + query + "」的对象"));
+            table.setPlaceholder(query.isEmpty()
+                    ? EmptyState.of(Icons.Icon.FILTER, "这个类型下没有对象",
+                            "上面的筛选芯片把范围收到了当前类型 —— 换回「全部」就有了。")
+                    : EmptyState.of(Icons.Icon.SEARCH, "没有匹配的对象",
+                            "没有名称包含「" + search.getText() + "」的对象。",
+                            "清空搜索", search::clear));
         }
         rebuildCards();
     }

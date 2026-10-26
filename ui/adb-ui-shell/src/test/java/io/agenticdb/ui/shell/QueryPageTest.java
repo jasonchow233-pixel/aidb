@@ -32,9 +32,11 @@ class QueryPageTest {
     private JdbcSession session;
     private ExecutorService executor;
     private QueryPage page;
+    private Stage primaryStage;
 
     @Start
     void start(Stage stage) throws Exception {
+        primaryStage = stage;
         session = JdbcSession.open(ConnectionSpec.sqliteMemory());
         session.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)");
         session.execute("INSERT INTO users VALUES (1, 'Ada'), (2, 'Bob')");
@@ -147,6 +149,55 @@ class QueryPageTest {
                 (java.util.Map<String, Object>) table.getItems().getFirst();
         assertThat(row).hasSize(2);
         assertThat(row.values()).containsExactlyInAnyOrder(1, 2);
+    }
+
+    /**
+     * ⭐ U25：结果网格挂了右键菜单 —— DBA 的高频动作（抄单元格 / 抄一行 /
+     * 抄列名）以前全藏在「进单元格全选 Ctrl+C」后面。门禁验两件事：
+     * 处理器真的挂在表上；模拟事件时**选择会挪到被点的行**
+     * （菜单说的是这一行、高亮停在别处就是两张嘴）。
+     */
+    @Test
+    void resultGridCarriesTheContextMenu() throws Exception {
+        interact(() -> {
+            page.setSql("SELECT id, name FROM users;");
+            page.runAll();
+        });
+        waitForTabs(1);
+
+        TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        assertThat(table.getOnContextMenuRequested())
+                .as("结果网格的右键处理器")
+                .isNotNull();
+
+        javafx.scene.control.TableCell<?, ?> cell = table.lookupAll(".table-cell").stream()
+                .filter(javafx.scene.control.TableCell.class::isInstance)
+                .map(node -> (javafx.scene.control.TableCell<?, ?>) node)
+                .filter(c -> c.getTableRow() != null && c.getIndex() == 1
+                        && c.getTableColumn() != null
+                        && "name".equals(String.valueOf(c.getTableColumn().getText())))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("找不到 name 列第二行的单元格"));
+
+        interact(() -> cell.fireEvent(new javafx.scene.input.ContextMenuEvent(
+                javafx.scene.input.ContextMenuEvent.CONTEXT_MENU_REQUESTED,
+                10, 10,
+                cell.localToScreen(10, 10).getX(),
+                cell.localToScreen(10, 10).getY(),
+                false, null)));
+        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
+                () -> table.getSelectionModel().getSelectedIndex() == 1);
+        assertThat(table.getSelectionModel().getSelectedIndex())
+                .as("右键先把选择挪到被点的行")
+                .isEqualTo(1);
+        // 关掉右键浮窗，别让悬着的菜单污染后续断言。
+        // ⚠️ 必须先快照：hide() 会当场从 Window.getWindows() 这个可观察列表里移除自己，
+        //    直接 forEach 会在迭代中缩表 → IndexOutOfBounds。
+        interact(() -> java.util.List.copyOf(javafx.stage.Window.getWindows()).forEach(w -> {
+            if (w != primaryStage && w.isShowing()) {
+                w.hide();
+            }
+        }));
     }
 
     @Test

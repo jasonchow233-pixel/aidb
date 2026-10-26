@@ -5,6 +5,7 @@ import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnType;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -20,6 +21,8 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -77,9 +80,10 @@ final class CellDetailsDrawer extends VBox {
         setId("data-details");
         setVisible(false);
         setManaged(false);
-        setPrefWidth(480);
         setMinWidth(360);
         setMaxWidth(620);
+        setPrefWidth(new SettingsStore().getInt("details.width", 480));
+        installWidthResize();
 
         title.getStyleClass().add("adb-details__title");
         subtitle.getStyleClass().add("adb-details__subtitle");
@@ -147,6 +151,9 @@ final class CellDetailsDrawer extends VBox {
         tabs.getTabs().addAll(textTab, jsonTab, hexTab, imageTab, metaTab);
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         tabs.setId("data-details-tabs");
+        // §2.5：抽屉的页签与结构页/数据页切面同一套语言 —— 样式类必须挂在
+        //   TabPane 自己身上，`.adb-details .tab-pane …` 那种写法两头都不匹配。
+        tabs.getStyleClass().add("adb-details__tabs");
         VBox.setVgrow(tabs, Priority.ALWAYS);
         tabs.getSelectionModel().selectedItemProperty().addListener(
                 (observable, previous, selected) -> {
@@ -176,6 +183,42 @@ final class CellDetailsDrawer extends VBox {
         area.setEditable(false);
         area.setWrapText(false);
         area.getStyleClass().add("adb-details__text");
+    }
+
+    /**
+     * §2.5：左缘 6px 按住可拖宽，松手落偏好。
+     *
+     * <p>抽屉是浮层（StackPane 右贴），不拖就只能在 360–620 的固定档里用；
+     * 宽度记进与弹窗尺寸**同一个**偏好节点（{@link SettingsStore}），
+     * 截图脚本隔离偏好时不会把用户拖出来的宽度拍进验收帧。
+     */
+    private void installWidthResize() {
+        final double[] start = new double[2];
+        setOnMouseMoved(event -> setCursor(
+                event.getX() <= 6 ? Cursor.W_RESIZE : Cursor.DEFAULT));
+        setOnMousePressed(event -> {
+            if (event.getButton() == MouseButton.PRIMARY && event.getX() <= 6) {
+                start[0] = event.getScreenX();
+                start[1] = getPrefWidth();
+                event.consume();
+            }
+        });
+        setOnMouseDragged(event -> {
+            if (start[1] > 0) {
+                // 左缘拖宽：向左拖 = 变宽，所以是「按下时的宽 − 位移」。
+                double width = Math.max(getMinWidth(),
+                        Math.min(getMaxWidth(), start[1] + start[0] - event.getScreenX()));
+                setPrefWidth(width);
+                event.consume();
+            }
+        });
+        setOnMouseReleased(event -> {
+            if (start[1] > 0) {
+                new SettingsStore().setInt("details.width", (int) getPrefWidth());
+                start[1] = 0;
+                event.consume();
+            }
+        });
     }
 
     void setOnClose(Runnable action) {
@@ -332,6 +375,10 @@ final class CellDetailsDrawer extends VBox {
         apply.setManaged(editingNow);
         cancel.setVisible(editingNow);
         cancel.setManaged(editingNow);
+        // §2.5：编辑态里「取消」和右上「×」说的是同一句话 —— 留一个。
+        // 关闭钮只在查看态出现（Esc 两条路径本来就分流：编辑中=取消，否则=关抽屉）。
+        close.setVisible(!editingNow);
+        close.setManaged(!editingNow);
     }
 
     private void load(Tab tab) {

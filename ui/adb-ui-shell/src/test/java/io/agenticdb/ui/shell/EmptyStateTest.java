@@ -10,6 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.util.WaitForAsyncUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -81,6 +82,49 @@ class EmptyStateTest {
         assertThat(page.dialog().getDialogPane().lookupAll(".adb-empty"))
                 .as("E9：收藏为空时要有空态 + 引导（怎么收藏）")
                 .isNotEmpty();
+    }
+
+    /**
+     * U24：整仓扫一遍 —— 列表/表格的占位**不许是裸 Label**。
+     *
+     * <p>裸 Label 就是「一行灰字飘在白底上」：不解释为什么空、不给下一步，
+     * 用户只能猜是没数据、没权限，还是软件坏了。
+     * 页面级空态走 {@link EmptyState#of}（图标 + 标题 + 说明 + 出口），
+     * 弹窗里的小候选列表走 {@link EmptyState#pickerHint}（一行说明，但不裸着写 Label）。
+     */
+    @Test
+    void noPlaceholderIsABareLabel() throws Exception {
+        java.nio.file.Path root = java.nio.file.Path.of(System.getProperty("user.dir"))
+                .toAbsolutePath();
+        while (root != null && !java.nio.file.Files.isDirectory(root.resolve("ui"))) {
+            root = root.getParent();
+        }
+        assertThat(root).as("找不到模块根目录").isNotNull();
+        List<String> violations = new ArrayList<>();
+        int scanned = 0;
+        try (var paths = java.nio.file.Files.walk(root.resolve(
+                "ui/adb-ui-shell/src/main/java"))) {
+            for (java.nio.file.Path path : paths.filter(java.nio.file.Files::isRegularFile).toList()) {
+                if (!path.toString().endsWith(".java")) {
+                    continue;
+                }
+                String source = java.nio.file.Files.readString(path);
+                scanned++;
+                for (String line : source.split("\n")) {
+                    String code = line.replaceAll("//.*", "");
+                    if (code.contains("setPlaceholder(new Label")) {
+                        violations.add(path.getFileName() + ": " + line.strip());
+                    }
+                }
+            }
+        }
+        assertThat(scanned)
+                .as("一个 java 文件都没扫到 —— 路径过滤失效，这条门禁是假绿")
+                .isGreaterThan(40);
+        assertThat(violations)
+                .as("这些占位是裸 Label（空态必须说清原因并给出路，U24）：\n  %s",
+                        String.join("\n  ", violations))
+                .isEmpty();
     }
 
     /** 把节点挂到场景里 —— 不入场景图，{@code lookup} 找不到 placeholder。 */
