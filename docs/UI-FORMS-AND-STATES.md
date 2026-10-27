@@ -4,12 +4,12 @@
 > **① 一个新能力该做成弹窗还是标签页？** **② 启动时用户应该看到什么？**
 > **③ 什么都没有的时候用户应该看到什么？**
 >
-> 起因：截图审计（`docs/UI-AUDIT.md`）之后要补 T1–T4 等一批能力，
+> 起因：早期截图审计之后要补 T1–T4 等一批能力，
 > 动手前必须先把形态定死 —— 「新建表做成标签页」这种错误一旦落地，
 > 后面每个页面都要跟着改一遍。
 >
-> 对照：`docs/UI-AUDIT.md`（缺陷与批次） · `NAVICAT-TODO.md`（执行清单） ·
-> `docs/UI-GUIDE.md`（视觉规范） · `docs/NAVICAT-COMPARE.md`（实拍对比）。
+> 对照：`NAVICAT-TODO.md`（唯一真源：缺陷、对比、规划） ·
+> `docs/UI-GUIDE.md`（视觉规范） · `docs/UI-VISUAL-SPEC.md`（组件规格）。
 
 ---
 
@@ -244,7 +244,7 @@ dialog.getDialogPane().getStyleClass().add("adb-dialog");
 | ⬜ `EmptyStateTest`（待补） | E5/E7/E8/E9 各自有空态；每个空态都有图标+标题+说明 |
 
 > 门禁策略：**空态属于"呈现"**，只测行为测不到它（控件根本不渲染）。
-> 所以一律用 `lookupAll(".adb-empty")` 这类**呈现门禁**，见 `UI-AUDIT.md` §7。
+> 所以一律用 `lookupAll(".adb-empty")` 这类**呈现门禁**，见 `NAVICAT-TODO.md` §9（验收口径）。
 
 ---
 

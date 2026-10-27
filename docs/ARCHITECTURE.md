@@ -2,7 +2,7 @@
 
 > 当前唯一技术路线。旧 Rust / Vue / Python 实现与构建产物已删除，不再作为运行时依赖。
 > 执行清单见 `NAVICAT-TODO.md`；组件选型见 `docs/COMPONENT-SELECTION.md`；
-> UI 规则见 `docs/UI-GUIDE.md`；Navicat 对标差距见 `docs/NAVICAT-GAP.md`。
+> UI 规则见 `docs/UI-GUIDE.md`；Navicat 对标与差距见 `NAVICAT-TODO.md`。
 
 ---
 
@@ -45,7 +45,7 @@ workbench/
 
 ui/
   adb-ui-core        tokens.json → Tokens.java + theme-dark/light.css；主题管理；启动打点 StartupTrace
-  adb-ui-shell       六区外壳、菜单、工具栏、侧栏、标签栏、命令面板
+  adb-ui-shell       七区外壳、菜单、功能区（Ribbon）、侧栏、标签栏、命令面板
                       ＋ 数据页 / 查询页 / 结构页 / 连接页 / 连接向导
                       ＋ UX-6：数据页「概览」切面、结构页「选项」、侧栏「已保存查询」
 
@@ -71,7 +71,7 @@ RichTextFX 的样式映射在 `ui-shell` 的 `SqlHighlighter` 中完成。
 - 基线 **755 → 712 条 / 95 → 92 类**，属主动减面，不是回归。
 
 > 若将来要做「YAML / 声明驱动方言」，应基于现有 `Dialect` 接口重新设计，
-> 不再恢复旧模块（理由与决策记录见 `NAVICAT-TODO.md` §34.1）。
+> 不再恢复旧模块（决策记录见 git 历史）。
 
 ---
 
@@ -253,7 +253,7 @@ PostgreSQL 注释用独立的 `COMMENT ON`、DDL 只能由内省生成。
 
 ## 7. UI 外壳
 
-六区：菜单栏、主工具栏、侧栏、标签栏、内容区、状态栏。
+七区：菜单栏、功能区（Ribbon）、侧栏、标签栏、对象工具栏、内容区、状态栏。
 
 - `ActionRegistry` 是菜单、工具栏、右键、命令面板的唯一动作来源，统一 enabled/快捷键。
   **已知例外（4 处）**：侧栏树的右键菜单、侧栏导航按钮、工具栏图标按钮、
@@ -331,11 +331,11 @@ app.css          →  业务样式，引用 -adb-* 令牌
 
 ### 7.2 图标体系
 
-- **矢量图标**：`ui/adb-ui-core` 的 `Icons` 维护 48 个手绘 `SVGPath`（16×16，1.5px
+- **矢量图标**：`ui/adb-ui-core` 的 `Icons` 维护 53 个手绘 `SVGPath`（16×16，1.5px
   描边），按钮、菜单、树、标签页统一走它；业务按钮里**没有任何 Unicode 图标字符**。
 - **品牌图**：`app-icon-*.png`（由 `tools/GenLogo.java` 从 SVG 生成 7 档，16–1024）
-  只给 **OS** 用 —— 窗口图标 / Dock / 任务栏 / 安装包；界面内的品牌位是应用栏那个
-  26px 方块，走**矢量** `Icons.Icon.BRAND`（S-7：PNG 不随主题换色、放大会糊，
+  只给 **OS** 用 —— 窗口图标 / Dock / 任务栏 / 安装包；界面内的品牌位是工具行那个
+  20px 方块（`SIZE_LABEL` 14px 字形），走**矢量** `Icons.Icon.BRAND`（S-7：PNG 不随主题换色、放大会糊，
   `AppBarTest.theBrandMarkUsesTheVectorIconSystem` 也禁止位图）。
   ⚠️ 原来那张画在欢迎页上的品牌 PNG 随 S-7 一起删了 —— 那页不可达，没人看过。
 - **门禁**：`IconSystemAuditTest` 断言按钮不以 Unicode 图标字符开头、纯图标按钮必须
@@ -403,4 +403,4 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 
 > **P4.5 的真实状态**（2026-10-21 第四轮逐文件复核）：
 > 4.5-4（危险分级 fail-closed）**从未实现**，4.5-2（截断）**只做了查询页**，
-> 4.5-5（图标统一）**只拆了一半**。完整清单见 `NAVICAT-TODO.md` §6.3。
+> 4.5-5（图标统一）**只拆了一半**。完整清单见 `NAVICAT-TODO.md` §5。
