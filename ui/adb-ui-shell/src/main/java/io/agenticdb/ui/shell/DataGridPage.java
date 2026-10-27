@@ -286,10 +286,21 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final CheckMenuItem hideNullItem = new CheckMenuItem("隐藏含 NULL 行");
     private final CheckMenuItem hideEmptyItem = new CheckMenuItem("隐藏含空串行");
     private final CheckMenuItem transposeItem = new CheckMenuItem("转置（只读）");
+    /** ⭐ G4：表单视图 —— 单记录纵向表单，与转置同一层、互斥。 */
+    private final CheckMenuItem formItem = new CheckMenuItem("表单视图");
     /** ⭐ G3：本页统计（行数与数值列的汇总）。 */
     private final CheckMenuItem summaryItem = new CheckMenuItem("本页统计");
     private final Label summaryLabel = new Label();
     private final TableView<Map<String, Object>> transposeTable = new TableView<>();
+    /** ⭐ G4：表单视图容器（ScrollPane 包一列字段行）—— 与网格/转置同一层整块切换。 */
+    private final ScrollPane formPane = new ScrollPane();
+    private final VBox formRows = new VBox(10);
+    /** 表单头：「记录 N / M」。 */
+    private final Label formPosition = new Label();
+    /** 表单字段按哪份 schema 建的 —— schema 换了才重建，筛选/翻页不拍掉正在打字的控件。 */
+    private TableSchema formSchema;
+    /** ⭐ G4：当前是否表单视图。 */
+    private boolean formView;
     private final CellDetailsDrawer detailsDrawer = new CellDetailsDrawer();
     /** 抽屉当前展示／编辑的是哪一格（应用编辑时写回这里）。 */
     private Map<String, Object> detailsRow;
@@ -1281,6 +1292,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         hideEmptyItem.setOnAction(event -> setHideEmptyRows(hideEmptyItem.isSelected()));
         transposeItem.setId("data-transpose-toggle");
         transposeItem.setOnAction(event -> setTranspose(transposeItem.isSelected()));
+        formItem.setId("data-form-toggle");
+        formItem.setOnAction(event -> setFormView(formItem.isSelected()));
         summaryItem.setId("data-summary-toggle");
         summaryItem.setOnAction(event -> setSummaryVisible(summaryItem.isSelected()));
 
@@ -1301,7 +1314,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         freezeMenu.getItems().add(unfreeze);
 
         viewButton.getItems().addAll(hideNullItem, hideEmptyItem,
-                new SeparatorMenuItem(), summaryItem, transposeItem,
+                new SeparatorMenuItem(), summaryItem, transposeItem, formItem,
                 new SeparatorMenuItem(), freezeMenu);
 
         exportButton.setId("data-export");
@@ -1465,6 +1478,16 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         transposeTable.setManaged(false);
         transposeTable.setFocusTraversable(true);
 
+        // ⭐ G4：表单视图 —— 与转置同一层（body 里的整块切换），字段行按 schema 懒建。
+        formPane.setId("data-form");
+        formPane.getStyleClass().add("adb-grid__form");
+        formPane.setFitToWidth(true);
+        formRows.getStyleClass().add("adb-grid__form-rows");
+        formRows.setFillWidth(true);
+        formPane.setContent(formRows);
+        formPane.setVisible(false);
+        formPane.setManaged(false);
+
         detailsDrawer.setOnClose(() -> { });
         // ⭐ UX-4：抽屉里的多行编辑器 —— 应用走的是和格子里同一套写缓冲逻辑。
         detailsDrawer.setOnApply(this::applyDetailsEdit);
@@ -1484,10 +1507,14 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         HBox.setHgrow(grid, Priority.ALWAYS);
         grid.setMaxWidth(Double.MAX_VALUE);
         gridRow.getChildren().addAll(frozenGrid, grid);
-        body.getChildren().addAll(gridRow, transposeTable, stateBox, summaryLabel, detailsDrawer);
+        body.getChildren().addAll(gridRow, transposeTable, formPane, stateBox, summaryLabel, detailsDrawer);
         VBox.setVgrow(body, Priority.ALWAYS);
         bindFrozenSelection();
         bindFrozenScroll();
+        // ⭐ G4：表单永远跟着「网格当前选中行」—— 记录导航（selectRow）正是通过
+        //    改选中行让表单翻记录的，这里就是唯一的联动点。
+        grid.getSelectionModel().selectedIndexProperty().addListener(
+                (observable, oldValue, newValue) -> refreshForm());
 
         // 记录导航先建（分页器里要用它），再成分页器。
         buildRecordNav();
@@ -3538,16 +3565,22 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         updateRecordPosition();
         // ⭐ G3：行变了，统计要跟着重算。
         updateSummary();
-        grid.setVisible(!transpose);
-        grid.setManaged(!transpose);
+        // ⭐ G4：表单视图 —— 整块换渲染（与转置同一层），网格/冻结区/转置表一起让位。
+        boolean form = formView && !transpose;
+        grid.setVisible(!transpose && !form);
+        grid.setManaged(!transpose && !form);
         // ⭐ G1：转置视图下不该露出冻结区（那是另一套列，冻了也没意义）。
-        frozenGrid.setVisible(!transpose && frozenColumnCount > 0);
-        frozenGrid.setManaged(!transpose && frozenColumnCount > 0);
+        frozenGrid.setVisible(!transpose && !form && frozenColumnCount > 0);
+        frozenGrid.setManaged(!transpose && !form && frozenColumnCount > 0);
         transposeTable.setVisible(transpose);
         transposeTable.setManaged(transpose);
+        formPane.setVisible(form);
+        formPane.setManaged(form);
         if (transpose) {
             rebuildTranspose(visible);
         }
+        // ⭐ G4：行 / 页 / 筛选变了，表单按「当前选中行」重刷（没开表单是空操作）。
+        refreshForm();
         updateBatchBar();
         updateSelectAllState();
         updateViewControls();
@@ -3668,8 +3701,171 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     void setTranspose(boolean value) {
         transpose = value;
         transposeItem.setSelected(value);
+        // ⭐ G4 互斥：表单和转置都是「整块换渲染」，后开的赢 ——
+        //    转置只读、表单可写，同时开着只会让人分不清改的值落在哪个视图。
+        if (value && formView) {
+            formView = false;
+            formItem.setSelected(false);
+        }
         rebuildItems();
         feedback.status(value ? "转置视图 · 只读" : "已恢复表格视图");
+    }
+
+    /**
+     * ⭐ G4：表单视图 —— 整页换成单记录纵向表单（网格 ↔ 表单双向切换的第一半）。
+     *
+     * <p>与转置<b>互斥</b>：转置是只读的整块渲染，压掉表单是同一规则的后开的赢。
+     * 切换不丢任何状态 —— 编辑缓冲、选中行、分页都在，表单只是网格的另一种画法。
+     */
+    void setFormView(boolean value) {
+        formView = value;
+        formItem.setSelected(value);
+        if (value && transpose) {
+            setTranspose(false);
+        }
+        rebuildItems();
+        feedback.status(value ? "表单视图 · 单记录编辑" : "已恢复表格视图");
+    }
+
+    // ───────────────────── G4 表单视图 ─────────────────────
+
+    /** 表单控件能否写 —— 与格子内联编辑同一口径（可编辑表 + 非主键 + 不在载入/保存中）。 */
+    private boolean formFieldEditable(ColumnDef definition) {
+        return tableSchema != null && tableSchema.editable()
+                && !definition.primaryKey() && !loading && !saving;
+    }
+
+    /** 按 schema 建一遍字段行（只在 schema 换了的时候发生，见 refreshForm 的懒重建）。 */
+    private void rebuildForm() {
+        formRows.getChildren().clear();
+        formPosition.getStyleClass().add("adb-grid__form-header");
+        formRows.getChildren().add(formPosition);
+        if (tableSchema == null) {
+            return;
+        }
+        for (ColumnDef definition : tableSchema.columns()) {
+            formRows.getChildren().add(buildFormField(definition));
+        }
+    }
+
+    /** 字段行 = 列名 + 类型（可空列不标）+ 控件；行上挂 definition 供 refresh 定位。 */
+    private HBox buildFormField(ColumnDef definition) {
+        Label name = new Label(definition.name());
+        name.getStyleClass().add("adb-grid__form-label");
+        Label type = new Label(definition.displayType()
+                + (definition.nullable() ? "" : " · NOT NULL"));
+        type.getStyleClass().add("adb-grid__form-type");
+        Node control = definition.type() == ColumnType.BOOLEAN
+                ? buildFormBoolean(definition)
+                : buildFormText(definition);
+        HBox row = new HBox(8);
+        row.getStyleClass().add("adb-grid__form-row");
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.setUserData(definition);
+        name.setPrefWidth(130);
+        name.setMinWidth(96);
+        type.setPrefWidth(110);
+        HBox.setHgrow(control, Priority.ALWAYS);
+        if (control instanceof javafx.scene.control.Control styled) {
+            styled.setMaxWidth(Double.MAX_VALUE);
+        }
+        row.getChildren().addAll(name, type, control);
+        return row;
+    }
+
+    private TextField buildFormText(ColumnDef definition) {
+        TextField field = new TextField();
+        field.setId("data-form-" + definition.name());
+        field.getStyleClass().add("adb-grid__form-field");
+        field.setDisable(!formFieldEditable(definition));
+        // 提交走两条真实路径：Enter、失焦 —— 与格子内联编辑同一套语义。
+        field.setOnAction(event -> commitFormField(definition, field.getText()));
+        field.focusedProperty().addListener((observable, was, focused) -> {
+            if (was && !focused) {
+                commitFormField(definition, field.getText());
+            }
+        });
+        return field;
+    }
+
+    private CheckBox buildFormBoolean(ColumnDef definition) {
+        CheckBox box = new CheckBox();
+        box.setId("data-form-" + definition.name());
+        box.getStyleClass().add("adb-grid__form-check");
+        box.setDisable(!formFieldEditable(definition));
+        box.selectedProperty().addListener((observable, was, selected) ->
+                commitFormField(definition, selected));
+        return box;
+    }
+
+    /**
+     * 表单提交 —— 与格子内联编辑走<b>同一个</b> {@link #setRowValue}（→ 编辑缓冲）。
+     * 解析失败 / 违反 NOT NULL 时打回原值并播报，不静默吞输入。
+     */
+    private void commitFormField(ColumnDef definition, Object raw) {
+        if (!formFieldEditable(definition)) {
+            return;
+        }
+        int index = currentRow();
+        if (index < 0 || index >= grid.getItems().size()) {
+            return;
+        }
+        Map<String, Object> row = grid.getItems().get(index);
+        try {
+            Object next = raw instanceof Boolean value ? value
+                    : parseCellValue(definition, String.valueOf(raw == null ? "" : raw));
+            if (next == null && !definition.nullable()) {
+                feedback.status("无效值：" + definition.name() + " 不允许 NULL");
+                refreshForm();
+                return;
+            }
+            setRowValue(row, definition, next);
+        } catch (IllegalArgumentException e) {
+            feedback.status("无效值：" + e.getMessage());
+            refreshForm();
+        }
+    }
+
+    /**
+     * 表单的值永远跟「网格当前选中行」走，读的是<b>显示口径</b>（{@link #cellValue}，
+     * 缓冲已合并）—— 网格里改、查找替换、撤销、保存后的重载，最终都经过
+     * updateDirty / rebuildItems / 选中监听汇到这里。正在打字的控件跳过刷新，
+     * 不让程序刷新把输入踩掉。
+     */
+    private void refreshForm() {
+        if (!formView) {
+            return;
+        }
+        if (formSchema != tableSchema) {
+            formSchema = tableSchema;
+            rebuildForm();
+        }
+        int size = grid.getItems().size();
+        int index = currentRow();
+        formPosition.setText(index < 0 || size == 0
+                ? "没有选中记录"
+                : "记录 " + (index + 1) + " / " + size);
+        if (tableSchema == null) {
+            return;
+        }
+        Map<String, Object> row = index < 0 ? null : grid.getItems().get(index);
+        for (Node node : formRows.getChildren()) {
+            if (!(node instanceof HBox formRow)
+                    || !(formRow.getUserData() instanceof ColumnDef definition)) {
+                continue;
+            }
+            Node control = formRow.getChildren().get(formRow.getChildren().size() - 1);
+            if (control.isFocused()) {
+                continue;
+            }
+            Object value = row == null ? null : cellValue(row, definition);
+            if (control instanceof CheckBox box) {
+                box.setSelected(Boolean.TRUE.equals(value));
+            } else if (control instanceof TextField field) {
+                field.setText(value == null ? "" : String.valueOf(value));
+                field.setPromptText(value == null ? "（NULL）" : "");
+            }
+        }
     }
 
     /** ⭐ G3：显示 / 隐藏「本页统计」。 */
@@ -3749,6 +3945,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         hideNullItem.setSelected(hideNullRows);
         hideEmptyItem.setSelected(hideEmptyRows);
         transposeItem.setSelected(transpose);
+        formItem.setSelected(formView);
     }
 
     private void updateSelectAllState() {
@@ -4206,6 +4403,21 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         }
         showFindBar();
         findField.setText(needle);
+        return true;
+    }
+
+    /**
+     * 截图 / 验收（R32 G4）：切到表单视图并选中第一条记录。
+     * 返回 false = 行还没灌进来，调用方继续轮询（与 {@link #poseFindBar} 同一契约）。
+     * 「翻到下一条」不在这摆：截图脚本真点 {@code #data-record-next}，
+     * 让那一帧同时证明「表单跟着记录导航走」。
+     */
+    boolean poseFormView() {
+        if (grid.getItems().isEmpty()) {
+            return false;
+        }
+        setFormView(true);
+        selectRow(0);
         return true;
     }
 

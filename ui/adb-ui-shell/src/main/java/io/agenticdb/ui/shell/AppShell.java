@@ -477,6 +477,19 @@ public final class AppShell extends StackPane {
         });
     }
 
+    /** 截图用：等 users 网格灌完行再切表单视图、选中第一条记录。 */
+    private void poseGridFormWhenReady(int attempt) {
+        Platform.runLater(() -> {
+            DataGridPage grid = workspace.activeGrid();
+            if (grid != null && grid.poseFormView()) {
+                return;
+            }
+            if (attempt < POP_READY_MAX_POLLS) {
+                pollAgain(attempt, () -> poseGridFormWhenReady(attempt + 1));
+            }
+        });
+    }
+
     /** 表清单动作的统一入口：没有打开的清单页时给一句人话，不静默 no-op。 */
     private void withActiveTableList(java.util.function.Consumer<TableListPage> action) {
         if (activeTableListPage == null) {
@@ -1530,6 +1543,12 @@ public final class AppShell extends StackPane {
         //    由那一帧自己证明 —— 与 ADB_CELL「状态程序化摆、交互真点进去」同一形态。
         if (flag("adb.find", "ADB_FIND")) {
             poseGridFindWhenReady(0);
+        }
+        // ⭐ 截图 / 验收（R32 G4）：数据页摆出「表单视图 + 第一条记录」。
+        //    翻到下一条由截图脚本真点（#data-record-next），记录导航 ↔ 表单的
+        //    联动由那一帧自己证明 —— 与 ADB_FIND 同一形态。
+        if (flag("adb.form", "ADB_FORM")) {
+            poseGridFormWhenReady(0);
         }
         // ⭐ 截图 / 验收（UX-6）：启动直接落在数据页「概览」切面。
         //    切面标签的 id 是动态拼的（object-tab-<id>），截图脚本的静态审计
