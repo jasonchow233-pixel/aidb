@@ -41,8 +41,13 @@ class AppBarTest {
     @Start
     void start(Stage stage) {
         ActionRegistry actions = new ActionRegistry();
+        actions.register("new-connection", "新建连接", "文件", null, () -> { });
         actions.register("new-query", "新建查询", "文件", null, () -> { });
         actions.register("connections.manage", "连接管理", "连接", null, () -> { });
+        actions.register("object.new-table", "新建表", "对象", null, () -> { });
+        actions.register("saved-queries", "已保存查询", "工具", null, () -> { });
+        actions.register("favorites.open", "收藏夹", "收藏夹", null, () -> { });
+        actions.register("refresh", "刷新", "数据库", null, () -> { });
         actions.register("theme.toggle", "切换主题", "视图", null, () -> { });
         actions.register("settings", "设置", "工具", null, () -> { });
         actions.register("command-palette", "命令面板", "编辑", null, () -> { });
@@ -78,7 +83,7 @@ class AppBarTest {
     @Test
     void everyGlobalEntryIsActuallyInTheScene(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
-        // ⭐ 「建好了但没挂上去」是本项目反复踩过的坑（UI-AUDIT S2）。
+        // ⭐ 「建好了但没挂上去」是本项目反复踩过的坑。
         for (String id : List.of("#appbar-brand-mark", "#appbar-brand-name",
                 "#appbar-connection-menu", "#appbar-search", "#appbar-theme",
                 "#appbar-more", "#appbar-new-query",
@@ -169,7 +174,7 @@ class AppBarTest {
     @Test
     void theBarHasOneFixedHeightAndDoesNotGrowWithContent() {
         assertThat(bar.getPrefHeight())
-                .as("应用栏高度来自令牌 h-appbar（46px）")
+                .as("Navicat 式功能区高度来自令牌 h-appbar（90px）")
                 .isEqualTo(io.agenticdb.ui.Tokens.H_APPBAR_LIGHT);
         assertThat(bar.getMaxHeight()).isEqualTo(bar.getPrefHeight());
         assertThat(bar.getMinHeight()).isEqualTo(bar.getPrefHeight());

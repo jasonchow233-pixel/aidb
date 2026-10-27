@@ -350,8 +350,12 @@ public final class AppShell extends StackPane {
         // ⚠️ 必须再包一层 runLater：showAndWait() 直接写在 Timeline 的帧事件里，
         //    对话框会被提前关掉（实测拍到的图里状态栏是「已取消新建表」）。
         //    包 runLater 之后走的是普通 FX 事件，与 IndexDialog 那条路径一致。
+        // ⭐ R30-D：设计器是多页弹窗，空列表 / 空预览那一页证不了什么 ——
+        //    ADB_NEW_TABLE_POSE=index|foreign-key|trigger|options|sql 让验收帧
+        //    落在对应页上，并带一条按当前字段算出来的对象。
+        String pose = text("adb.newTablePose", "ADB_NEW_TABLE_POSE");
         javafx.application.Platform.runLater(
-                () -> tableDdl().createTable(activeProfileId()));
+                () -> tableDdl().createTable(activeProfileId(), pose));
     }
 
     /** 等到 session 就绪再读结构、弹「新建索引」。 */
@@ -584,13 +588,12 @@ public final class AppShell extends StackPane {
     /**
      * ⭐ S5：常驻的「对象」首页。
      *
-     * <p>Navicat 的标签栏第一个就是常驻的「对象」标签（实拍见
-     * {@code docs/NAVICAT-COMPARE.md} §2.2 C1）——
+     * <p>Navicat 的标签栏第一个就是常驻的「对象」标签（官方截图实拍）——
      * 它是浏览的起点，点它回到对象总览，而不是回到一片空白。
      */
     private Node objectHomePage() {
         if (objectHome == null) {
-            // 第 6 个参数 = 「未连接」空态上那个「新建连接」按钮的动作（UI-AUDIT X2）。
+            // 第 6 个参数 = 「未连接」空态上那个「新建连接」按钮的动作。
             // 第 7 个参数 = 对象级工具条（打开 / 设计 / 新建 / 删除）的宿主。
             objectHome = new ObjectHomePage(() -> session, schemaService,
                     executors.forConnection(activeProfileId()),
@@ -2984,8 +2987,13 @@ public final class AppShell extends StackPane {
 
     /** 「1 / true / yes」算开，其余算关。系统属性优先于环境变量。 */
     private static boolean flag(String property, String env) {
-        String raw = System.getProperty(property, System.getenv().getOrDefault(env, "")).trim();
+        String raw = text(property, env);
         return raw.equals("1") || raw.equalsIgnoreCase("true") || raw.equalsIgnoreCase("yes");
+    }
+
+    /** 系统属性优先、环境变量兜底 —— 与 {@link #flag} 同一口径，只是要原值。 */
+    private static String text(String property, String env) {
+        return System.getProperty(property, System.getenv().getOrDefault(env, "")).trim();
     }
 
     private void toast(String message) {

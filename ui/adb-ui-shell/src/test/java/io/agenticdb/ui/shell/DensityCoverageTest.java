@@ -41,25 +41,23 @@ class DensityCoverageTest {
 
     @Test
     void theRowHeightsComeFromTheTokens() {
-        // ⭐ UX-2：四档行高令牌 —— 密集 22 / 紧凑 24 / 标准 28 / 宽松 34。
-        // 第二十一轮改判：默认档从「紧凑」换成「标准」—— 无边框之后行与行只靠留白分开。
-        assertThat(RowHeights.of("dense")).isEqualTo(22);
-        assertThat(RowHeights.of("compact")).isEqualTo(24);
-        assertThat(RowHeights.of("normal")).isEqualTo(28);
-        assertThat(RowHeights.of("comfort")).isEqualTo(34);
-        assertThat(RowHeights.of(null)).as("默认密度 = 标准").isEqualTo(28);
-        assertThat(RowHeights.of("不存在的档位")).as("未知档位回落到默认档").isEqualTo(28);
+        // ⭐ 2026-10-26 裁定「保持和 Navicat 一样」：四档行高改为
+        // 密集 19 / 紧凑 20 / 标准 21 / 宽松 26 —— 标准档 = Navicat 实测清单 21px。
+        assertThat(RowHeights.of("dense")).isEqualTo(19);
+        assertThat(RowHeights.of("compact")).isEqualTo(20);
+        assertThat(RowHeights.of("normal")).isEqualTo(21);
+        assertThat(RowHeights.of("comfort")).isEqualTo(26);
+        assertThat(RowHeights.of(null)).as("默认密度 = 标准").isEqualTo(21);
+        assertThat(RowHeights.of("不存在的档位")).as("未知档位回落到默认档").isEqualTo(21);
 
-        // ⭐ D1（2026-10-26 裁定）：记录网格**比档位低一档**，其余表面对象照 of() 走。
-        // 28px 一屏只数得下 19 行（Navicat 同窗口 45 行），而网格是唯一逐行数数据的地方；
-        // 树与清单读的是名字，压到 24 只会让点击目标变小 —— 所以只降网格。
-        // 「低一档」而不是「钉死 24」：四档开关在网格上仍然是连续可感的。
-        assertThat(RowHeights.grid("dense")).as("dense 已在下限，不再往下压").isEqualTo(22);
+        // ⭐ 网格 = 清单 + 2（Navicat 实测清单 21 / 网格 23）。
+        // 旧裁定「网格比档位低一档」随本次对齐作废。
+        assertThat(RowHeights.grid("dense")).isEqualTo(21);
         assertThat(RowHeights.grid("compact")).isEqualTo(22);
-        assertThat(RowHeights.grid("normal")).as("默认档：网格 24 / 其余 28").isEqualTo(24);
+        assertThat(RowHeights.grid("normal")).as("默认档：清单 21 / 网格 23").isEqualTo(23);
         assertThat(RowHeights.grid("comfort")).isEqualTo(28);
-        assertThat(RowHeights.grid(null)).as("默认密度下网格 = 24").isEqualTo(24);
-        assertThat(RowHeights.grid("不存在的档位")).as("未知档位与 of() 同一回落").isEqualTo(24);
+        assertThat(RowHeights.grid(null)).as("默认密度下网格 = 23").isEqualTo(23);
+        assertThat(RowHeights.grid("不存在的档位")).as("未知档位与 of() 同一回落").isEqualTo(23);
     }
 
     /**

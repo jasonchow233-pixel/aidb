@@ -416,7 +416,6 @@ class AppShellTest {
         assertThat(robot.lookup("#data-page").queryAs(Label.class).getText())
                 .isEqualTo("第 0 / 0 页");
         // ⭐ 空表不再是「没有数据」四个字 —— 要有图标 + 说明 + 一个真能点的出口。
-        //    （UI-AUDIT X1 / UI-FORMS-AND-STATES §7.2 E4）
         assertThat(robot.lookup(".adb-grid .placeholder .adb-empty__title")
                 .queryAs(Label.class).getText())
                 .isEqualTo("这张表还是空的");
