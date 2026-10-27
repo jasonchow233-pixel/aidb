@@ -159,6 +159,59 @@ class ImportTypeCoercionTest {
 
     // ─────────────────────────── 工具 ───────────────────────────
 
+    /**
+     * ⭐ G2 的另一半：导入在<b>用户已经开着的事务</b>里跑坏行重试时，
+     * 只许丢弃自己那一批，不许碰用户自己的写入。
+     *
+     * <p>坏行会走「丢弃这批 → 逐行重试」，那是导入唯一会调用
+     * {@code rollback()/begin()} 的地方。不加「谁开的事务谁负责」的判断，
+     * 这里就会把用户在数据页里改了半天的未提交内容一起抹掉 ——
+     * 而用户根本不知道导入跑在同一根连接上。
+     */
+    @Test
+    void badRowRetryInsideAUserTransactionDoesNotDiscardTheUsersOwnWrites() throws Exception {
+        try (JdbcSession session = seeded()) {
+            session.begin();
+            try (Statement statement = session.connection().createStatement()) {
+                statement.execute("INSERT INTO typed (id, amount) VALUES (100, 99)");
+            }
+
+            // 第 2 行主键冲突：类型全对、错在数据库约束 —— 只有这条路才会走到
+            // 「丢弃这批 → 逐行重试」，转换错误在绑定前就被拦下了，碰不到事务。
+            TableImporter.ImportReport report = TableImporter.importTypedRows(session, "typed",
+                    COLUMNS, ImportOptions.of(ImportFormat.CSV),
+                    new StringReader("id,amount\n1,10\n1,20\n3,30\n"));
+
+            assertThat(report.inserted()).isEqualTo(2);
+            assertThat(session.inTransaction())
+                    .as("导入结束不能替用户提交或结束事务")
+                    .isTrue();
+            assertThat(valueOf(session, "SELECT amount FROM typed WHERE id = 100"))
+                    .as("用户自己的未提交写入必须还在 —— 导入无权回滚别人的事务")
+                    .isEqualTo("99");
+
+            session.rollback();
+            assertThat(countRows(session, "typed"))
+                    .as("回滚由用户发起：导入的行与用户的行一起消失（说明它们真在同一个事务里）")
+                    .isZero();
+        }
+    }
+
+    @Test
+    void importStillOwnsAndCommitsItsBatchWhenNoTransactionIsOpen() throws Exception {
+        try (JdbcSession session = seeded()) {
+            TableImporter.ImportReport report = TableImporter.importTypedRows(session, "typed",
+                    COLUMNS, ImportOptions.of(ImportFormat.CSV),
+                    new StringReader("id,amount\n1,10\n2,abc\n3,30\n"));
+
+            assertThat(report.inserted()).isEqualTo(2);
+            assertThat(session.inTransaction())
+                    .as("没有用户事务时导入自己开、自己收尾，不许把连接留在事务里")
+                    .isFalse();
+            assertThat(countRows(session, "typed")).isEqualTo(2);
+        }
+    }
+
     private static JdbcSession seeded() throws Exception {
         JdbcSession session = JdbcSession.open(ConnectionSpec.sqliteMemory());
         try (Statement statement = session.connection().createStatement()) {

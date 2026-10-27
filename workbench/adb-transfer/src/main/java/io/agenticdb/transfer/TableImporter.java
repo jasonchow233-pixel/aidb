@@ -244,11 +244,27 @@ public final class TableImporter {
             }
             batch.add(row);
             batchRows.add(rowNumber);
-            if (batch.size() >= options.batchSize()) {
+            if (batch.size() >= batchLimit()) {
                 drain();
                 commitBatch(session, ownTransaction);
             }
             return true;
+        }
+
+        /**
+         * 一批多少行。
+         *
+         * <p>⚠️ 不在自己的事务里时必须<b>一行一批</b>。一批 50 行跑到第 20 行报错时，
+         * 前 19 行已经落进连接，而唯一的补救是「回滚这批」—— 可这一根事务是
+         * <b>用户</b>在数据页里开着的，回滚等于替他丢掉未提交的内容。
+         * 不许回滚，就只能让失败永远发生在「一批只有一行」的时候：
+         * 要么这一行进库、要么这一行进坏行报告，inserted/skipped 与库里一一对应。
+         *
+         * <p>代价是慢（逐条发语句），但这正是显式事务的用法：改错了点「回滚」，
+         * 而不是导入器替用户决定丢什么。
+         */
+        private int batchLimit() {
+            return ownTransaction ? Math.max(1, options.batchSize()) : 1;
         }
 
         void finish() throws SQLException {
@@ -263,7 +279,7 @@ public final class TableImporter {
 
         private void drain() throws SQLException {
             Outcome outcome = flush(session, insertSql, batch, batchRows, mapping,
-                    columns, types, errors);
+                    columns, types, errors, ownTransaction);
             inserted += outcome.inserted();
             skipped += outcome.skipped();
             batch.clear();
@@ -302,18 +318,38 @@ public final class TableImporter {
     private static Outcome flush(DbSession session, String insertSql,
                                  List<List<String>> batch, List<Integer> batchRows,
                                  List<int[]> mapping, List<String> columns,
-                                 List<ColumnType> types, List<String> errors)
+                                 List<ColumnType> types, List<String> errors,
+                                 boolean ownTransaction)
             throws SQLException {
         if (types == null) {
-            return flushRaw(session, insertSql, batch, batchRows, mapping, columns.size(), errors);
+            return flushRaw(session, insertSql, batch, batchRows, mapping, columns.size(),
+                    errors, ownTransaction);
         }
-        return flushTyped(session, insertSql, batch, batchRows, mapping, columns, types, errors);
+        return flushTyped(session, insertSql, batch, batchRows, mapping, columns, types,
+                errors, ownTransaction);
+    }
+
+    /**
+     * 批次执行失败后丢弃这一批，再用逐行重试挑出坏行。
+     *
+     * <p>⚠️ 只在<b>导入自己开的事务</b>里才回滚：如果用户已经在数据页开了显式事务，
+     * 这里的 rollback 会把他尚未提交的全部写入一起抹掉 —— 那是导入替用户做的决定。
+     * 不是自己的事务就什么都不做：坏批次留在事务里，由用户决定提交还是回滚。
+     */
+    private static void discardBatch(DbSession session, boolean ownTransaction)
+            throws SQLException {
+        if (!ownTransaction) {
+            return;
+        }
+        session.rollback();
+        session.begin();
     }
 
     private static Outcome flushRaw(DbSession session, String insertSql,
                                     List<List<String>> batch, List<Integer> batchRows,
                                     List<int[]> mapping, int columnCount,
-                                    List<String> errors) throws SQLException {
+                                    List<String> errors, boolean ownTransaction)
+            throws SQLException {
         try (PreparedStatement statement =
                      session.connection().prepareStatement(insertSql)) {
             for (List<String> row : batch) {
@@ -323,9 +359,8 @@ public final class TableImporter {
             statement.executeBatch();
             return new Outcome(batch.size(), 0);
         } catch (SQLException batchError) {
-            // 整批失败 → 回滚这一批，再逐行找出坏行。
-            session.rollback();
-            session.begin();
+            // 整批失败 → 丢弃这一批，再逐行找出坏行（只丢自己事务里的）。
+            discardBatch(session, ownTransaction);
             int inserted = 0;
             int skipped = 0;
             for (int i = 0; i < batch.size(); i++) {
@@ -361,7 +396,8 @@ public final class TableImporter {
     private static Outcome flushTyped(DbSession session, String insertSql,
                                       List<List<String>> batch, List<Integer> batchRows,
                                       List<int[]> mapping, List<String> columns,
-                                      List<ColumnType> types, List<String> errors)
+                                      List<ColumnType> types, List<String> errors,
+                                      boolean ownTransaction)
             throws SQLException {
         List<Object[]> values = new ArrayList<>();
         List<Integer> acceptedRows = new ArrayList<>();
@@ -390,8 +426,7 @@ public final class TableImporter {
             statement.executeBatch();
             return new Outcome(values.size(), skipped);
         } catch (SQLException batchError) {
-            session.rollback();
-            session.begin();
+            discardBatch(session, ownTransaction);
             int inserted = 0;
             for (int i = 0; i < values.size(); i++) {
                 try (PreparedStatement one =
