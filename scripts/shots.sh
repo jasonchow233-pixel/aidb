@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（18 张）。
+# 重拍 docs/screenshots/ 的验收截图（24 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 15 张 + 暗色 3 张）
+#   ./scripts/shots.sh              # 全部重拍（亮色 19 张 + 暗色 5 张）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
 #
-# 为什么需要这个脚本（NAVICAT-TODO.md §12.2 记录的坑，全部在这里被绕开）：
+# 为什么需要这个脚本（历史上踩过的坑，全部在这里被绕开）：
 #
 #   坑 1（最贵的一个）—— 不先 install，拍到的是旧界面。
 #     javafx:run -pl 不带 -am 时，Maven 从 ~/.m2 取 adb-ui-shell 的已安装 jar。
@@ -30,7 +30,9 @@ ONLY="${1:-}"
 # 密度必须钉住：上一轮实拍里 p2-users 行高是 34（持久化的 comfort），
 # 而默认是 28 —— 同一份脚本在不同机器/历史上拍出的图不一样。
 # 偏好根也要隔离并在每次启动时清空，否则侧栏宽度 / 上次连接仍会漂移。
-# 第二十一轮：默认档位改成 normal（28px），截图跟着钉 normal —— 拍的必须是用户首启看到的样子。
+# 第二十一轮：默认档位改成 normal；2026-10-26 用户裁定「保持和 Navicat 一样」后，
+# normal 对应列表/树 21px、记录网格 23px（旧「网格低一档」映射作废）。
+# 截图跟着钉 normal —— 拍的必须是用户首启看到的样子。
 export ADB_DENSITY="${ADB_DENSITY:-normal}"
 export ADB_PREFS_NODE="${ADB_PREFS_NODE:-io/agenticdb/screenshots}"
 export ADB_PREFS_RESET="${ADB_PREFS_RESET:-1}"
@@ -66,6 +68,19 @@ SHOTS=(
   "p4-ddl||7000|ADB_DDL=1 ADB_THEME_FORCE=light"
   "p5-connections|appbar-manage-connections|4000|ADB_THEME_FORCE=light"
   "p6-new-table||5000|ADB_NEW_TABLE=1 ADB_THEME_FORCE=light"
+  # ⭐ R31：字段页的「深度」那一帧 —— 类型 / 长度 / 小数 + 自增 + 属性面板都有真值，
+  #   只拍一张空网格等于什么都没验（G15~G18 的验收面）。暗色同型再看一次属性面板底色。
+  "p6-new-table-fields||5000|ADB_NEW_TABLE=1 ADB_NEW_TABLE_POSE=fields ADB_THEME_FORCE=light"
+  "p6-new-table-fields-dark||5000|ADB_NEW_TABLE=1 ADB_NEW_TABLE_POSE=fields ADB_THEME_FORCE=dark"
+  # ⭐ R31：备注单独一页后，表注释进不进得了计划要在帧里看得见。
+  "p6-new-table-comment||5000|ADB_NEW_TABLE=1 ADB_NEW_TABLE_POSE=comment ADB_THEME_FORCE=light"
+  # ⭐ R30-D：设计器是多页弹窗。空的对象页 / 空预览证不了「六页收敛成一个计划」，
+  #   所以各拍一帧带真对象的：索引页（列表 + 计数）与 SQL 页（建表 + 索引两条语句）。
+  "p6-new-table-index||5000|ADB_NEW_TABLE=1 ADB_NEW_TABLE_POSE=index ADB_THEME_FORCE=light"
+  "p6-new-table-sql||5000|ADB_NEW_TABLE=1 ADB_NEW_TABLE_POSE=sql ADB_THEME_FORCE=light"
+  # ⭐ 页签的底色方向（栏用画布、选中页用 surface）只在暗色下看得出来 ——
+  #   浅色主题里两者都是 #FFFFFF，光拍浅色等于没验这条规则。
+  "p6-new-table-dark||5000|ADB_NEW_TABLE=1 ADB_NEW_TABLE_POSE=index ADB_THEME_FORCE=dark"
   # ⭐ §6.4：这一帧要拍到「已选列 + 序号 + 预览 SQL + 可用的移动钮」，
   #   光弹一个空弹窗等于没拍这个弹窗的核心交互（空态由 IndexDialogTest 守）。
   "p7-new-index||6000|ADB_INDEX=1 ADB_INDEX_POSE=1 ADB_THEME_FORCE=light"
@@ -101,8 +116,13 @@ captured=0
 for shot in "${SHOTS[@]}"; do
   IFS='|' read -r name click wait envvars <<<"$shot"
 
-  if [ -n "$ONLY" ] && [ "$ONLY" != "$name" ]; then
-    continue
+  if [ -n "$ONLY" ]; then
+    # 支持逗号分隔的多帧（`./shots.sh p6-new-table,p6-new-table-sql`）——
+    # 单帧重拍一次要重装一次，复查同一轮的两三张图没必要装三遍。
+    case ",$ONLY," in
+      *",$name,"*) ;;
+      *) continue ;;
+    esac
   fi
 
   step "拍摄 $name"
