@@ -180,8 +180,7 @@ public final class TabBar extends HBox {
      * ⭐ 打开**常驻标签**（S5 的「对象」首页）。
      *
      * <p>常驻标签永远排第一、**不可关闭** —— 它是浏览的起点
-     * （Navicat 的标签栏最左边就是常驻的「对象」标签，实拍见
-     * {@code docs/NAVICAT-COMPARE.md} §2.2 C1）。
+     * （Navicat 的标签栏最左边就是常驻的「对象」标签，官方截图实拍）。
      */
     public void openPermanent(TabItem tab) {
         permanentId = tab.id();

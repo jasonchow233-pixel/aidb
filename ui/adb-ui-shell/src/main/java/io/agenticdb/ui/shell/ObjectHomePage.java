@@ -55,8 +55,7 @@ import java.util.function.Supplier;
 /**
  * ⭐ **对象首页** —— 标签栏最左边那个常驻的「对象」标签的内容。
  *
- * <p>Navicat 的标签栏第一个就是常驻的「对象」标签（实拍见
- * {@code docs/NAVICAT-COMPARE.md} §2.2 C1）：它是**浏览的起点**，
+ * <p>Navicat 的标签栏第一个就是常驻的「对象」标签（官方截图实拍）：它是**浏览的起点**，
  * 点它回到对象总览，而不是回到一个空白的欢迎页。
  *
  * <h2>为什么是「清单」而不是「卡片墙」</h2>
@@ -205,7 +204,7 @@ final class ObjectHomePage extends VBox {
     /**
      * @param onOpen    ⭐ 传的是<b>整个对象</b>而不只是名字 —— 调用方要按
      *                  {@code kind} 决定开什么页面。只传名字的话，点「函数」
-     *                  也会去开数据页，然后必然报错（UI-AUDIT D1）。
+     *                  也会去开数据页，然后必然报错。
      * @param onConnect 「未连接」空态上的引导按钮；{@code null} = 不放按钮。
      */
     ObjectHomePage(Supplier<DbSession> session,
@@ -288,7 +287,7 @@ final class ObjectHomePage extends VBox {
 
         // ⚠️ refresh 必须进场景图 —— 此前它只被 new 出来、绑了动作、设了 id，
         //    却从未加入任何容器，于是「刷新」按钮在界面上根本不存在
-        //    （截图审计 S2，docs/UI-AUDIT.md §2.1）。
+        //    （截图审计发现）。
         HBox header = new HBox(10, breadcrumb, badge, spacer, summary);
         header.getStyleClass().add("adb-page__header");
         header.setAlignment(Pos.CENTER_LEFT);

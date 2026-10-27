@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 对象首页的**呈现门禁 + 对象分派门禁**。
  *
- * <p>本类补的是截图审计（{@code docs/UI-AUDIT.md} §2 / §7）暴露的两类漏洞：
+ * <p>本类补的是截图审计暴露的两类漏洞：
  *
  * <ol>
  *   <li><b>控件被创建了、事件也绑了，但没有加入场景图</b> —— 行为测试发现不了，
@@ -78,7 +78,7 @@ class ObjectHomePageTest {
     void refreshButtonIsActuallyInTheScene() {
         assertThat(page.lookup("#object-home-refresh"))
                 .as("刷新按钮必须真的挂在场景图里 —— "
-                        + "它曾经只被 new 出来、绑了动作、设了 id，却从未加入 header（UI-AUDIT S2）")
+                        + "它曾经只被 new 出来、绑了动作、设了 id，却从未加入 header")
                 .isNotNull();
     }
 
@@ -152,7 +152,7 @@ class ObjectHomePageTest {
 
         assertThat(opened).hasSize(1);
         // ⭐ 关键：传出去的是整个对象，kind 还在。
-        //    以前只传 String name，外壳无从判断它是不是一张表（UI-AUDIT D1）。
+        //    以前只传 String name，外壳无从判断它是不是一张表。
         assertThat(opened.get(0).kind()).isEqualTo(SchemaService.ObjectKind.FUNCTION);
         assertThat(opened.get(0).name()).isEqualTo("total_amount");
     }
@@ -198,8 +198,7 @@ class ObjectHomePageTest {
      * SQLite 形态：表没有引擎 / 日期 / 排序规则 / 注释 / 长度，
      * 函数 / 触发器更是连元数据都没有 → 6 个可选列全是「—」→ 整列隐藏。
      *
-     * <p>实测 SQLite 演示库上对象首页 9 列有 6 列是「—」墙
-     * （{@code AIDB-UIUX-ANALYSIS.md} §10.3 C1）。
+     * <p>实测 SQLite 演示库上对象首页 9 列有 6 列是「—」墙（逐像素实测）。
      */
     @Test
     void sqliteLikeObjectsHideTheAllPlaceholderColumns(FxRobot robot) {

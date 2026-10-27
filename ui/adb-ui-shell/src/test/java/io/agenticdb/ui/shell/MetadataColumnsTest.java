@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@link MetadataColumns} 门禁 —— 「这一列该不该显示」的判定规则。
  *
  * <p>第十九轮 S-1 的核心：默认的 SQLite 演示库里，Navicat 那 8 列有 6 列恒为「—」
- * （逐像素实测占首选宽度 72%，见 {@code AIDB-UIUX-ANALYSIS.md} §10.3 C1）。
+ * （逐像素实测占首选宽度 72%）。
  * 这里锁住「只看数据、不看方言」的判定，避免以后有人塞一张方言白名单进来
  * 把混合场景（MySQL 表有引擎、视图没有）判错。
  */

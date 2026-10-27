@@ -156,7 +156,7 @@ class TableListPageTest {
      * SQLite 形态（只有行数）→ 6 个方言相关列全是「—」→ 整列隐藏，只留「名称 / 行」。
      *
      * <p>逐像素实测：SQLite 演示库 8 列有 6 列恒为「—」，占首选宽度 72%，
-     * 横向滚动才看得到有内容的「名称」（{@code AIDB-UIUX-ANALYSIS.md} §10.3 C1）。
+     * 横向滚动才看得到有内容的「名称」。
      */
     @Test
     void sqliteLikeDataHidesTheAllPlaceholderColumns(FxRobot robot) {
@@ -229,8 +229,7 @@ class TableListPageTest {
     /**
      * SQLite 卡片不能出现纯破折号片段。
      *
-     * <p>实测 SQLite 演示库上一张卡片 3 行里 2 行是「— · —」和「—」
-     * （{@code AIDB-UIUX-ANALYSIS.md} §10.3 C2）。
+     * <p>实测 SQLite 演示库上一张卡片 3 行里 2 行是「— · —」和「—」。
      */
     @Test
     void cardViewOmitsPlaceholderLinesOnSqliteLikeData(FxRobot robot) {

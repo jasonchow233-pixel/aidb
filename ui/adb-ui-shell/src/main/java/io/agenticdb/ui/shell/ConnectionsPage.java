@@ -158,7 +158,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         table.getStyleClass().addAll("adb-grid", "adb-connections__table");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         // ⭐ 同一句话要同时cover「搜不到」和「压根没建过」两种情况，
-        //    所以说明里把两条出路都讲了（UI-AUDIT §8 E6）。
+        //    所以说明里把两条出路都讲了。
         table.setPlaceholder(EmptyState.of(Icons.Icon.CONNECT, "没有匹配的连接",
                 "换一个关键词试试；如果还没建过连接，先新建第一个。",
                 "新建连接", onNew));
