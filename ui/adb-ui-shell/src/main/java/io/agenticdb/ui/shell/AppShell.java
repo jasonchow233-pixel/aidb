@@ -462,6 +462,21 @@ public final class AppShell extends StackPane {
         });
     }
 
+    /** 截图用：等 users 网格灌完行再打开查找条（行没到就摆不出来，继续轮询）。 */
+    private void poseGridFindWhenReady(int attempt) {
+        Platform.runLater(() -> {
+            DataGridPage grid = workspace.activeGrid();
+            // needle 与 poseInteractionStates 硬编码列同一取舍：帧要的是「条开了、
+            // 有 needle、能点下一个」，具体词命中多少条由演示数据决定，不写死。
+            if (grid != null && grid.poseFindBar("User 0")) {
+                return;
+            }
+            if (attempt < POP_READY_MAX_POLLS) {
+                pollAgain(attempt, () -> poseGridFindWhenReady(attempt + 1));
+            }
+        });
+    }
+
     /** 表清单动作的统一入口：没有打开的清单页时给一句人话，不静默 no-op。 */
     private void withActiveTableList(java.util.function.Consumer<TableListPage> action) {
         if (activeTableListPage == null) {
@@ -1509,6 +1524,12 @@ public final class AppShell extends StackPane {
         //    编辑态由脚本的 ADB_SHOTS_CLICK=data-details-edit 真点「编辑」按钮进入。
         if (flag("adb.cell", "ADB_CELL")) {
             poseGridCellWhenReady(0);
+        }
+        // ⭐ 截图 / 验收（R32 G3）：数据页摆出「查找条展开 + needle 已填」。
+        //    「下一个」由截图脚本真点（#data-find-next），命中推进与计数播报
+        //    由那一帧自己证明 —— 与 ADB_CELL「状态程序化摆、交互真点进去」同一形态。
+        if (flag("adb.find", "ADB_FIND")) {
+            poseGridFindWhenReady(0);
         }
         // ⭐ 截图 / 验收（UX-6）：启动直接落在数据页「概览」切面。
         //    切面标签的 id 是动态拼的（object-tab-<id>），截图脚本的静态审计

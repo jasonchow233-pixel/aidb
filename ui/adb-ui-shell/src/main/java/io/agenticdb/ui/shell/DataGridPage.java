@@ -273,6 +273,16 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private java.util.function.Supplier<List<QueryHistory.Entry>> historySource = List::of;
     private Consumer<String> onHistoryPick = sql -> { };
     private final TextField searchField = new TextField();
+    // ── G3：网格查找 / 替换条（Navicat 数据编辑器的 Ctrl+F 形态）──
+    //    与「本页搜索」分工：那个是行过滤（输入即筛行），这个是逐格查找 + 替换。
+    private final HBox findBar = new HBox(6);
+    private final TextField findField = new TextField();
+    private final TextField replaceField = new TextField();
+    /** 区分大小写：默认关 —— 与 Navicat 及主流编辑器一致（要精确匹配再勾上）。 */
+    private final CheckBox findCaseBox = new CheckBox("区分大小写");
+    private final Button findNextButton = new Button("下一个");
+    private final Button replaceOneButton = new Button("替换");
+    private final Button replaceAllButton = new Button("全部替换");
     private final CheckMenuItem hideNullItem = new CheckMenuItem("隐藏含 NULL 行");
     private final CheckMenuItem hideEmptyItem = new CheckMenuItem("隐藏含空串行");
     private final CheckMenuItem transposeItem = new CheckMenuItem("转置（只读）");
@@ -508,6 +518,20 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 event.consume();
                 return;
             }
+            // ⭐ G3：Esc 关闭查找条 —— 必须拦在「目标是输入框就早退」之前：
+            //    查找/替换框本身就是输入框，不在这之前拦，Esc 永远落不到关闭上。
+            if (event.getCode() == KeyCode.ESCAPE && findBar.isVisible()
+                    && (findField.isFocused() || replaceField.isFocused())) {
+                hideFindBar();
+                event.consume();
+                return;
+            }
+            // ⭐ G3：F3 = 查找下一处（查找条开着时；焦点在哪个输入框里都生效）。
+            if (event.getCode() == KeyCode.F3 && findBar.isVisible()) {
+                findNext();
+                event.consume();
+                return;
+            }
             // ⭐ G4：Esc 取消矩形选区（在输入框里按 Esc 不该动选区，所以放在上面那条之后）
             if (event.getCode() == KeyCode.ESCAPE && hasRectangleSelection()) {
                 clearRectangleSelection();
@@ -528,8 +552,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 saveChanges();
                 event.consume();
             } else if (event.isShortcutDown() && event.getCode() == KeyCode.F) {
-                searchField.requestFocus();
-                searchField.selectAll();
+                // ⭐ G3：⌘F 打开网格查找条（Navicat 数据编辑器口径）。
+                //    原来聚焦的是「本页搜索」过滤框 —— 那个框常驻工具条、不缺入口，
+                //    而查找/替换此前在网格里根本没有入口。
+                showFindBar();
                 event.consume();
             } else if (event.isShortcutDown() && !event.isShiftDown() && !event.isAltDown()
                     && event.getCode() == KeyCode.C) {
@@ -644,6 +670,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         setToolbarLabel(saveButton, editBuffer.isDirty()
                 ? "保存 " + editBuffer.dirtyCount() : "保存");
         addRowButton.setDisable(!editable || loading || saving);
+        // ⭐ G3：替换两键跟「能否写」走 —— 只读表/视图/载入中都点不动（查找不受限）。
+        replaceOneButton.setDisable(!editable || loading || saving);
+        replaceAllButton.setDisable(!editable || loading || saving);
         // ⭐ 只读表**整排行操作条消失** —— 一排永远点不动的按钮
         //    只会让人反复去试，而这一排贴着光标，碍事程度高于工具条。
         rowActions.setVisible(editable);
@@ -1315,7 +1344,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         searchField.setPromptText("本页搜索");
         searchField.setPrefWidth(180);
         searchField.setMinWidth(110);
-        searchField.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("只在当前页内过滤", "Mod+F")));
+        // ⭐ G3 之后 ⌘F 归网格查找条：这里不再挂快捷键，只说它做什么。
+        searchField.setTooltip(new Tooltip("只在当前页内过滤（不改服务端分页）"));
         searchField.textProperty().addListener((observable, previous, value) -> rebuildItems());
 
         // ⭐ UX-3：按语义分三组 —— 编辑 / 查询与显示 / 数据交换，组间一条竖线。
@@ -1464,9 +1494,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         HBox pager = buildPager();
 
         buildBatchBar();
+        buildFindBar();
 
         // ── ④ 组装 ────────────────────────────────────────────────────
-        //    数据切面 = 工具栏 + 条件 chips + 网格 + 批量条 + 分页器。
+        //    数据切面 = 工具栏 + 条件 chips + 查找条 + 网格 + 批量条 + 分页器。
         //    其它切面（结构 / 索引 / 外键 / 触发器 / SQL）共用同一个 StackPane，
         //    切换时不丢数据页的任何状态（编辑缓冲、分页、滚动位置都在）。
         //
@@ -1474,7 +1505,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         //    它原来是网格上方一条 28px 的独立横条，把「第一条数据」推到了
         //    窗口的 1/3 处（实测：284px 的 chrome 里它占了 28px）。
         //    两套导航（翻行 / 翻页）放在一起，语义更清楚，还省一行。
-        dataSection = new VBox(toolbar, chipBar, body, batchBar, pager);
+        //    ⭐ G3 查找条默认 unmanaged（不占高度），打开时才把网格往下推一格。
+        dataSection = new VBox(toolbar, chipBar, findBar, body, batchBar, pager);
         dataSection.getStyleClass().add("adb-grid-page__data");
         VBox.setVgrow(body, Priority.ALWAYS);
 
@@ -4069,6 +4101,426 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         Clipboard.getSystemClipboard().setContent(content);
         lastCopiedText = text;
         feedback.status("已复制单元格值");
+    }
+
+    // ─────────────────────── G3：网格查找 / 替换 ───────────────────────
+
+    /**
+     * 建查找条：查找 / 下一个 / 替换为 / 替换 / 全部替换 / 区分大小写 / 关闭。
+     *
+     * <p>形态照抄查询页的查找条（同一套令牌），语义不同：查询页查的是编辑器里的
+     * 字符流，这里查的是<b>网格单元格</b> —— 范围是当前页的<b>可见</b>数据列：
+     * 隐藏列用户看不到，替换它等于在暗处动手，保存预览里才会突然冒出一句 UPDATE。
+     */
+    private void buildFindBar() {
+        findBar.setId("data-find-bar");
+        findBar.getStyleClass().add("adb-grid__find");
+        findBar.setAlignment(Pos.CENTER_LEFT);
+        findBar.setVisible(false);
+        findBar.setManaged(false);
+
+        findField.setId("data-find");
+        findField.setPromptText("查找");
+        findField.setPrefWidth(180);
+        findField.setMinWidth(110);
+        findField.getStyleClass().add("adb-grid__find-field");
+        findField.setOnAction(event -> findNext());
+
+        replaceField.setId("data-replace");
+        replaceField.setPromptText("替换为");
+        replaceField.setPrefWidth(180);
+        replaceField.setMinWidth(110);
+        replaceField.getStyleClass().add("adb-grid__find-field");
+
+        findNextButton.setId("data-find-next");
+        findNextButton.getStyleClass().add("adb-button");
+        findNextButton.setOnAction(event -> findNext());
+
+        replaceOneButton.setId("data-replace-one");
+        replaceOneButton.getStyleClass().add("adb-button");
+        replaceOneButton.setOnAction(event -> replaceCurrent());
+
+        replaceAllButton.setId("data-replace-all");
+        replaceAllButton.getStyleClass().add("adb-button");
+        replaceAllButton.setOnAction(event -> replaceAllMatches());
+
+        findCaseBox.setId("data-find-case");
+        // 切换口径立刻报一次命中数 —— 勾它的人就是想看「命中变了多少」。
+        findCaseBox.setOnAction(event -> recountMatches());
+
+        Button close = IconButtons.icon(Icons.Icon.CLOSE, "关闭查找");
+        close.setId("data-find-close");
+        close.getStyleClass().add("adb-icon-button");
+        close.setOnAction(event -> hideFindBar());
+
+        findBar.getChildren().addAll(findField, findNextButton, replaceField,
+                replaceOneButton, replaceAllButton, findCaseBox, close);
+    }
+
+    /**
+     * 打开查找条：预填当前焦点格的值 —— 有选中就从选中开始找（Navicat 同款）。
+     *
+     * <p>转置视图不开：它是只读渲染，选中落在隐藏的网格里用户看不见，
+     * 「找到了」就成了没有落点的谎话。
+     */
+    private void showFindBar() {
+        if (transpose) {
+            feedback.status("转置视图是只读的 —— 切回表格视图再查找");
+            return;
+        }
+        findBar.setVisible(true);
+        findBar.setManaged(true);
+        if (findField.getText() == null || findField.getText().isEmpty()) {
+            String focused = focusedCellText();
+            if (focused != null && !focused.isEmpty()) {
+                findField.setText(focused);
+            }
+        }
+        Platform.runLater(() -> {
+            findField.requestFocus();
+            findField.selectAll();
+        });
+    }
+
+    private void hideFindBar() {
+        findBar.setVisible(false);
+        findBar.setManaged(false);
+        grid.requestFocus();
+    }
+
+    /** 查找条当前是否展开（门禁读）。 */
+    boolean findBarVisible() {
+        return findBar.isVisible();
+    }
+
+    /**
+     * 截图 / 验收（R32 G3）：打开查找条并填入 needle。
+     *
+     * <p>返回 false = 行还没灌进来（数据页异步加载），调用方继续轮询 ——
+     * 与 {@code poseInteractionStates} 同一契约。查找的<b>推进</b>不在这摆：
+     * 截图脚本真点 {@code #data-find-next}，那一帧才同时证「按钮能点、计数会走」。
+     */
+    boolean poseFindBar(String needle) {
+        if (grid.getItems().isEmpty()) {
+            return false;
+        }
+        showFindBar();
+        findField.setText(needle);
+        return true;
+    }
+
+    /**
+     * 当前页某行某列<b>显示口径</b>的文本 —— 与 {@link ValueCell} 同源：
+     * 编辑缓冲已合并（脏值看的是新值，不是库里的旧值）。门禁读。
+     *
+     * <p>不能读 items 原始 map：替换落的是缓冲，原始 map 到保存落库前一直不动。
+     */
+    String displayedCellText(int row, String column) {
+        List<Map<String, Object>> rows = grid.getItems();
+        if (row < 0 || row >= rows.size()) {
+            return null;
+        }
+        ColumnDef definition = columnDef(column);
+        if (definition == null) {
+            return null;
+        }
+        Object value = cellValue(rows.get(row), definition);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    /** 查找下一处：从当前焦点格<b>之后</b>找，到底回绕；状态栏报「第 x / y 个」。 */
+    private void findNext() {
+        if (transpose) {
+            feedback.status("转置视图下不查找 —— 切回表格视图");
+            return;
+        }
+        String needle = findField.getText();
+        if (needle == null || needle.isEmpty()) {
+            feedback.status("输入要查找的内容");
+            return;
+        }
+        List<int[]> matches = collectMatches(needle);
+        if (matches.isEmpty()) {
+            feedback.status("未找到：" + needle);
+            return;
+        }
+        int[] cursor = focusedCellPosition();
+        int from = 0;
+        if (cursor != null) {
+            // 从焦点格之后开始（焦点格本身已看过）；没有更靠后的就回绕。
+            from = matches.size();
+            for (int i = 0; i < matches.size(); i++) {
+                int[] hit = matches.get(i);
+                if (hit[0] > cursor[0]
+                        || (hit[0] == cursor[0] && hit[1] > cursor[1])) {
+                    from = i;
+                    break;
+                }
+            }
+            if (from >= matches.size()) {
+                from = 0;
+            }
+        }
+        int[] hit = matches.get(from);
+        selectCell(hit[0], hit[1]);
+        feedback.status("找到 " + needle + " · 第 " + (from + 1) + " / "
+                + matches.size() + " 个匹配");
+    }
+
+    /**
+     * 当前页里所有命中的格子（行下标, 可见列下标）—— 行主序，与眼睛扫表同序。
+     *
+     * <p>每次<b>现算</b>不缓存：翻页 / 替换 / 撤销都会改数据，缓存的下标会指到
+     * 别的格子上（报「第 2/3 个」，点出来是另一条记录）。
+     */
+    private List<int[]> collectMatches(String needle) {
+        boolean caseSensitive = findCaseBox.isSelected();
+        List<int[]> hits = new ArrayList<>();
+        List<TableColumn<Map<String, Object>, ?>> columns = rectangleColumns();
+        List<Map<String, Object>> rows = grid.getItems();
+        for (int row = 0; row < rows.size(); row++) {
+            Map<String, Object> values = rows.get(row);
+            for (int col = 0; col < columns.size(); col++) {
+                Object value = cellValue(columns.get(col), values);
+                // NULL 不参与：空 needle 已被拒，非空 needle 对 NULL 无从谈起。
+                if (value != null && matches(String.valueOf(value), needle, caseSensitive)) {
+                    hits.add(new int[] {row, col});
+                }
+            }
+        }
+        return hits;
+    }
+
+    /** 勾 / 去「区分大小写」后报一次命中数 —— 不动选择（动了反而看不出差别在哪）。 */
+    private void recountMatches() {
+        String needle = findField.getText();
+        if (needle == null || needle.isEmpty()) {
+            return;
+        }
+        feedback.status(needle + " · 当前页共 " + collectMatches(needle).size() + " 个匹配");
+    }
+
+    /**
+     * 替换当前格并前进到下一处（G3）。
+     *
+     * <p>焦点格不匹配时退化成「查找」—— 与主流编辑器一致：先点「替换」看它要动
+     * 哪一格，而不是必须先手动命中一次。
+     */
+    private void replaceCurrent() {
+        String needle = findField.getText();
+        if (needle == null || needle.isEmpty()) {
+            feedback.status("输入要查找的内容");
+            return;
+        }
+        if (!replaceAllowed()) {
+            return;
+        }
+        boolean replaced = false;
+        int[] cursor = focusedCellPosition();
+        if (cursor != null && cellMatchesAt(cursor[0], cursor[1], needle)) {
+            replaced = replaceOneAt(cursor[0], cursor[1], needle);
+            if (replaced) {
+                updateDirty();
+                grid.refresh();
+            }
+        }
+        findNext();
+        if (replaced) {
+            feedback.status("已替换 1 处 · " + io.agenticdb.ui.Shortcuts.of("Mod+Z")
+                    + " 可撤销 · 已跳到下一处");
+        }
+    }
+
+    /**
+     * 全部替换：当前页所有命中的文本格一次写进缓冲 —— <b>一个撤销步</b>。
+     *
+     * <p>主键列与非文本列跳过并计数：主键是保护区（与批量改值同一口径）；
+     * 非文本列做文本替换会产出 `2abc` 这类转不回去的值，宁可不碰。
+     */
+    private void replaceAllMatches() {
+        String needle = findField.getText();
+        if (needle == null || needle.isEmpty()) {
+            feedback.status("输入要查找的内容");
+            return;
+        }
+        if (!replaceAllowed()) {
+            return;
+        }
+        boolean caseSensitive = findCaseBox.isSelected();
+        List<TableColumn<Map<String, Object>, ?>> columns = rectangleColumns();
+        List<Map<String, Object>> rows = grid.getItems();
+        List<EditBuffer.CellWrite> cells = new ArrayList<>();
+        List<EditBuffer.DraftWrite> drafts = new ArrayList<>();
+        int skipped = 0;
+        for (int row = 0; row < rows.size(); row++) {
+            Map<String, Object> values = rows.get(row);
+            for (int col = 0; col < columns.size(); col++) {
+                TableColumn<Map<String, Object>, ?> column = columns.get(col);
+                Object original = cellValue(column, values);
+                if (original == null
+                        || !matches(String.valueOf(original), needle, caseSensitive)) {
+                    continue;
+                }
+                String columnName = column.getUserData() instanceof String name ? name : null;
+                ColumnDef definition = columnName == null ? null : columnDef(columnName);
+                if (definition == null || definition.primaryKey()
+                        || !textual(definition.type())) {
+                    skipped++;
+                    continue;
+                }
+                String text = String.valueOf(original);
+                String next = replaceInText(text, needle);
+                if (next.equals(text)) {
+                    continue;
+                }
+                Long draft = draftId(values);
+                if (draft != null) {
+                    drafts.add(new EditBuffer.DraftWrite(draft, columnName, next));
+                    continue;
+                }
+                RowIdentity identity = identity(values);
+                if (identity != null && !editBuffer.isDeleted(identity)) {
+                    cells.add(new EditBuffer.CellWrite(identity, columnName, original, next));
+                }
+            }
+        }
+        int changed = editBuffer.setValues(cells, drafts);
+        if (changed == 0) {
+            feedback.status(skipped > 0
+                    ? "没有可替换的格子（跳过 " + skipped + " 处主键 / 非文本列）"
+                    : "没有可替换的匹配");
+            return;
+        }
+        updateDirty();
+        grid.refresh();
+        feedback.status("已替换 " + changed + " 处"
+                + (skipped > 0 ? " · 跳过 " + skipped + " 处主键 / 非文本列" : "")
+                + " · " + io.agenticdb.ui.Shortcuts.of("Mod+Z") + " 可撤销");
+    }
+
+    /** 替换的前置守卫：只读 / 转置 / 载入保存中都直接说清楚，不让点了没反应。 */
+    private boolean replaceAllowed() {
+        if (transpose) {
+            feedback.status("转置视图是只读的 —— 切回表格视图再替换");
+            return false;
+        }
+        if (tableSchema == null || !tableSchema.editable()) {
+            feedback.status("这张表是只读的，不能替换");
+            return false;
+        }
+        if (loading || saving) {
+            feedback.status("正在载入 / 保存，稍后再试");
+            return false;
+        }
+        return true;
+    }
+
+    /** 把一格写进编辑缓冲（不是直接落库）—— 与手动编辑同一条路：脏标记、撤销、保存预览自动成立。 */
+    private boolean replaceOneAt(int row, int columnIndex, String needle) {
+        Map<String, Object> values = grid.getItems().get(row);
+        TableColumn<Map<String, Object>, ?> column = rectangleColumns().get(columnIndex);
+        String columnName = column.getUserData() instanceof String name ? name : null;
+        if (columnName == null) {
+            return false;
+        }
+        ColumnDef definition = columnDef(columnName);
+        if (definition == null || definition.primaryKey()) {
+            feedback.status(columnName + " 是主键列，不参与替换");
+            return false;
+        }
+        if (!textual(definition.type())) {
+            feedback.status(columnName + " 不是文本列，不参与替换");
+            return false;
+        }
+        Object original = cellValue(column, values);
+        if (original == null) {
+            return false;
+        }
+        String text = String.valueOf(original);
+        String next = replaceInText(text, needle);
+        if (next.equals(text)) {
+            return false;
+        }
+        Long draft = draftId(values);
+        if (draft != null) {
+            return editBuffer.setDraftCell(draft, columnName, next);
+        }
+        RowIdentity identity = identity(values);
+        return identity != null && !editBuffer.isDeleted(identity)
+                && editBuffer.setCell(identity, columnName, original, next);
+    }
+
+    /** 替换文本里所有命中；替换串按<b>字面量</b>处理（`$1` 不当反引用）。 */
+    private String replaceInText(String text, String needle) {
+        String replacement = replaceField.getText() == null ? "" : replaceField.getText();
+        int flags = findCaseBox.isSelected() ? 0
+                : java.util.regex.Pattern.CASE_INSENSITIVE
+                        | java.util.regex.Pattern.UNICODE_CASE;
+        return java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(needle), flags)
+                .matcher(text)
+                .replaceAll(java.util.regex.Matcher.quoteReplacement(replacement));
+    }
+
+    private static boolean matches(String text, String needle, boolean caseSensitive) {
+        return caseSensitive ? text.contains(needle)
+                : text.toLowerCase(java.util.Locale.ROOT)
+                        .contains(needle.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    private static Object cellValue(TableColumn<Map<String, Object>, ?> column,
+                                    Map<String, Object> row) {
+        javafx.beans.value.ObservableValue<?> observable = column.getCellObservableValue(row);
+        return observable == null ? null : observable.getValue();
+    }
+
+    /** 当前焦点格在「可见数据列」坐标系里的位置 (行, 列下标)；焦点不在数据格 → null。 */
+    private int[] focusedCellPosition() {
+        TablePosition<Map<String, Object>, ?> focused =
+                (TablePosition<Map<String, Object>, ?>) grid.getFocusModel().getFocusedCell();
+        if (focused == null || focused.getRow() < 0
+                || focused.getRow() >= grid.getItems().size()) {
+            return null;
+        }
+        int col = rectangleColumns().indexOf(focused.getTableColumn());
+        return col < 0 ? null : new int[] {focused.getRow(), col};
+    }
+
+    /** 焦点格的显示文本；没有焦点格 → null（打开查找条时用来预填）。 */
+    private String focusedCellText() {
+        TablePosition<Map<String, Object>, ?> focused =
+                (TablePosition<Map<String, Object>, ?>) grid.getFocusModel().getFocusedCell();
+        if (focused == null || focused.getRow() < 0 || focused.getTableColumn() == null) {
+            return null;
+        }
+        javafx.beans.value.ObservableValue<?> observable =
+                focused.getTableColumn().getCellObservableValue(focused.getRow());
+        Object value = observable == null ? null : observable.getValue();
+        return value == null ? null : String.valueOf(value);
+    }
+
+    /** 选中并滚动到指定格 —— 查找的落点（行与列都滚到位，宽表不迷路）。 */
+    private void selectCell(int row, int columnIndex) {
+        List<TableColumn<Map<String, Object>, ?>> columns = rectangleColumns();
+        if (row < 0 || row >= grid.getItems().size() || columnIndex < 0
+                || columnIndex >= columns.size()) {
+            return;
+        }
+        TableColumn<Map<String, Object>, ?> column = columns.get(columnIndex);
+        grid.getSelectionModel().clearAndSelect(row, column);
+        grid.getFocusModel().focus(row, column);
+        grid.scrollTo(row);
+        grid.scrollToColumn(column);
+    }
+
+    private boolean cellMatchesAt(int row, int columnIndex, String needle) {
+        List<TableColumn<Map<String, Object>, ?>> columns = rectangleColumns();
+        if (row < 0 || row >= grid.getItems().size() || columnIndex < 0
+                || columnIndex >= columns.size()) {
+            return false;
+        }
+        Object value = cellValue(columns.get(columnIndex), grid.getItems().get(row));
+        return value != null
+                && matches(String.valueOf(value), needle, findCaseBox.isSelected());
     }
 
     // ─────────────── G4：单元格区域选择 ───────────────

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（24 张）。
+# 重拍 docs/screenshots/ 的验收截图（25 张）。
 #
 # 用法：
 #   ./scripts/shots.sh              # 全部重拍（亮色 19 张 + 暗色 5 张）
@@ -64,6 +64,11 @@ SHOTS=(
   #   所以这一帧同时证的是「按钮可见性由状态驱动」这条实现本身。
   #   9000ms：数据页是异步灌行的，载入没完「开始事务」还禁用着，点下去等于空拍。
   "p2-transaction|data-begin-tx|9000|ADB_OPEN=users ADB_THEME_FORCE=light"
+  # ⭐ R32-G3：查找条那一帧 —— 状态程序化摆（ADB_FIND 开条 + 填 needle），
+  #   「下一个」由脚本真点 #data-find-next，于是这一帧同时证的是
+  #   「点它会推进命中并在状态栏报第 x / y 个」。9000ms：行是异步灌的，
+  #   没灌完 poseFindBar 会一直返回 false，点下去等于拍一张没开条的网格。
+  "p2-find|data-find-next|9000|ADB_OPEN=users ADB_FIND=1 ADB_THEME_FORCE=light"
   "p6-tables||5000|ADB_TABLES=1 ADB_THEME_FORCE=light"
   "p6-tables-grid||5000|ADB_TABLES=1 ADB_TABLE_VIEW=grid ADB_THEME_FORCE=light"
   "p3-query||6000|ADB_QUERY=1 ADB_THEME_FORCE=light"

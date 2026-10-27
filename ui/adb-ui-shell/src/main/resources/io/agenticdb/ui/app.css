@@ -3028,6 +3028,22 @@
     -fx-background-radius: 6px;
 }
 
+/* ⭐ G3：数据网格查找 / 替换条 —— 与查询页查找条同一套规格（同令牌同高同底）。 */
+.adb-grid__find {
+    -fx-padding: 8px 16px;
+    -fx-background-color: -adb-bg-surface;
+    -fx-border-color: transparent transparent -adb-border-subtle transparent;
+}
+
+.adb-grid__find-field {
+    -fx-background-color: -adb-bg-inset;
+    -fx-text-fill: -adb-text-primary;
+    -fx-prompt-text-fill: -adb-text-disabled;
+    -fx-border-color: -adb-border-subtle;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+}
+
 .adb-query__risk {
     -fx-border-width: 1;
     -fx-border-radius: 999px;
