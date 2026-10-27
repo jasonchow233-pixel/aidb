@@ -47,10 +47,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>焦点单元格用的外发光**被邻居裁掉**，看起来像根本没有焦点。</li>
  * </ul>
  *
- * <p>⭐ 第二十一轮（现代无边框）改了第三案的裁定：以前用**列间竖线**解决「宽表串行」，
- * 代价是整张网格变成一格一线的线框 —— 「边框过多」的头号来源。现在竖线全部退场，
- * 串行问题由「整行悬停高亮 + 行号列 + 8px 列间留白」承担。
- * 左 2px 槽位仍然常留：光标条 / 脏值条 / 选中强调条都只换颜色。
+ * <p>⭐ 2026-10-26 用户裁定「保持和 Navicat 一样」：列间竖线回归。
+ * Navicat 17 数据网格实测每列边界都有 1px `#F0F0F0` 竖线；第二十一轮
+ * 「竖线全部退场」的裁定作废。左 2px 槽位仍然常留：光标条 / 脏值条 / 选中强调条只换颜色。
  *
  * <p>但加强调条 / 描边有个副作用必须一起钉住：<b>JavaFX 的边框算进内容内缩</b> ——
  * 常态 0px、选中 2px 的话，一选中整行文字就往右跳 2px，键盘走一格就抖一次。
@@ -338,10 +337,14 @@ class SelectionStateTest {
         String css = css();
         String cell = ruleBody(css, ".adb-grid .table-cell");
         assertThat(cell)
-                .as("⭐ 第二十一轮（无边框）：列间竖线全部退场 —— 「边框过多」的头号来源就是它，"
-                        + "列分隔改由 8px 内边距 + 整行悬停承担")
-                .containsPattern("-fx-border-color:\\s*transparent;")
-                .containsPattern("-fx-border-width:\\s*0px 0px 0px 2px;");
+                .as("⭐ 2026-10-26（Navicat 对齐）：列间竖线回归 —— 实测 Navicat 数据网格"
+                        + "每列边界 1px #F0F0F0；第二十一轮「竖线全部退场」作废。"
+                        + "左右槽位常留，语义态只换颜色")
+                .containsPattern("-fx-border-color:\\s*transparent -adb-border-subtle transparent transparent;")
+                .containsPattern("-fx-border-width:\\s*0px 1px 0px 2px;");
+        assertThat(ruleBody(css, ".adb-grid .column-header"))
+                .as("表头同样要有列间竖线（Navicat 列头实测 #E5E5E5，落到 border-subtle）")
+                .contains("-adb-border-subtle");
         for (String state : List.of(".adb-grid .table-cell.adb-grid__cell--dirty",
                 ".adb-grid .table-cell.adb-grid__cell--rect")) {
             String body = ruleBody(css, state);
@@ -361,24 +364,100 @@ class SelectionStateTest {
     }
 
     /**
-     * 斑马纹再降一档：暗色 5% → 3.5%，亮色 #F7F9FB → #FAFBFC。
-     * 第二十一轮竖线全部退场之后，在场的是「条纹 + 行底横线 + 悬停底」三层，
-     * 条纹仍然必须是其中最弱的一层 —— 否则无边框的表读起来还是在数格子。
+     * 表清单（表列表页）与 Navicat 17 实测对齐：表体纯白、无横向行线；
+     * 列间分隔只在表头（竖线），表体不画格子。
+     *
+     * <p>实拍见 {@code docs/screenshots/navicat/navicat-table-list-2026-10-24.png}。
+     * 变异：把行线加回去 → 红。
+     */
+    @Test
+    void theTableListBodyStaysPlainLikeNavicat() throws IOException {
+        String css = css();
+        assertThat(ruleBody(css, ".adb-table-list .table-row-cell"))
+                .as("Navicat 表清单表体没有横向行线")
+                .doesNotContain("-adb-border-subtle");
+        assertThat(ruleBody(css, ".adb-table-list .column-header"))
+                .as("表头保留列间竖线")
+                .contains("-adb-border-subtle");
+    }
+
+    /**
+     * 四个表格作用域里的行态档（悬停 / 选中 / 新增 / 删除）都必须压得过自家条纹档。
+     *
+     * <p>⭐ R31 实拍抓到两类同源缺陷：弹窗字段网格选中的那一行只剩一圈蓝色描边、
+     * 数据网格 {@code p2-cell} 选中的 {@code User 002} 整行是白的 —— 而按 Navicat，选中就该整行铺底。
+     * 根因是条纹档多带一个伪类（{@code :filled:odd} 比所有行态档重 10），于是<b>只有奇数行</b>掉色：
+     * 偶数行一直是对的，所以以前的帧一张都没看出来。
+     * 这条门禁不查「规则在不在」，查的是<b>谁压谁</b>：权重不低于条纹档，同权重时声明在后。
+     * 变异：任一条纹档写回 {@code :filled:odd} → 该作用域红；把选中档挪到条纹档前面 → 顺序红。
+     */
+    @Test
+    void stateRulesOutweighTheZebraStripeInEveryTableScope() throws IOException {
+        String css = css();
+        assertThat(ruleBody(css, ".adb-dialog .table-view .table-row-cell:selected"))
+                .as("弹窗表格的选中行必须整行铺 bg-selected，不是只剩单元格描边")
+                .contains("-adb-bg-selected");
+
+        for (String scope : List.of(".adb-grid", ".adb-object-list", ".adb-table-list",
+                ".adb-dialog .table-view")) {
+            // 条纹档按「:odd 结尾」找，把选择器本身当参照物 —— 它被改回 :filled:odd 时，
+            // 门禁要比的是「行态档压不压得动改后的它」，而不是先抱怨参照物没了。
+            Matcher stripeRule = Pattern.compile("(?m)^(" + Pattern.quote(scope)
+                    + " \\.table-row-cell[^{\\n]*:odd[^{\\n]*)\\{").matcher(css);
+            assertThat(stripeRule.find())
+                    .as(scope + " 的条纹档是本门禁的参照物，动它要连这里一起动")
+                    .isTrue();
+            String stripe = stripeRule.group(1).trim();
+            int stripeAt = stripeRule.start(1);
+
+            Matcher rules = Pattern.compile("(?m)^(" + Pattern.quote(scope)
+                    + " \\.table-row-cell[^{\\n]*)\\{([^}]*)\\}").matcher(css);
+            int checked = 0;
+            while (rules.find()) {
+                String selector = rules.group(1).trim();
+                String body = rules.group(2);
+                boolean rowState = selector.contains(":selected") || selector.contains(":hover")
+                        || selector.contains("--deleted") || selector.contains("--new");
+                if (!rowState || !body.contains("-fx-background-color") || selector.equals(stripe)) {
+                    continue;
+                }
+                assertThat(specificity(selector))
+                        .as(selector + " 不许被条纹档 " + stripe + " 压住 —— 否则奇数行一选中/悬停就刷回底色")
+                        .isGreaterThanOrEqualTo(specificity(stripe));
+                assertThat(rules.start(1))
+                        .as(selector + " 与条纹档同权重时后声明的赢，必须排在 " + stripe + " 之后")
+                        .isGreaterThan(stripeAt);
+                checked++;
+            }
+            assertThat(checked)
+                    .as(scope + " 至少要有一条行态档被比过（选择器一改写法，这里会静默变成 0 条）")
+                    .isGreaterThanOrEqualTo(1);
+        }
+    }
+
+    /**
+     * 斑马纹保持最弱一层。
+     *
+     * <p>⭐ 2026-10-26 用户裁定「保持和 Navicat 一样」：亮色条纹改为 Navicat 实测的
+     * {@code #F9F9F9}（第二十一轮的 {@code #FAFBFC} 作废 —— 那一档是为「无边框 + 竖线全退场」
+     * 定的；现在网格重新有 #F0F0F0 细线，条纹要跟 Navicat 的实测值走，
+     * 但仍不能压过悬停底 / 选中底，否则表又变成数格子）。
      */
     @Test
     void theZebraStripeIsTheQuietestLayer() throws IOException {
         JsonNode stripe = tokens().path("bg-stripe");
         assertThat(stripe.path("dark").asText())
-                .as("暗色条纹降到 3.5%：三层底色里条纹必须最弱")
+                .as("暗色条纹保持 3.5%：三层底色里条纹必须最弱")
                 .isEqualTo("rgba(148,163,184,.035)");
         assertThat(stripe.path("light").asText())
-                .as("亮色条纹向纯白再靠一档")
-                .isEqualTo("#FAFBFC");
+                .as("亮色条纹 = Navicat 实测 #F9F9F9")
+                .isEqualTo("#F9F9F9");
         assertThat(tokens().path("bg-surface").path("light").asText())
                 .as("条纹仍然要和底色区分（降过头就成纯白，斑马纹等于没有）")
                 .isNotEqualTo(stripe.path("light").asText());
-        assertThat(ruleBody(css(), ".adb-grid .table-row-cell:filled:odd"))
-                .as("网格斑马纹走令牌，不许写死颜色")
+        assertThat(ruleBody(css(), ".adb-grid .table-row-cell:odd"))
+                .as("网格斑马纹走令牌，不许写死颜色（⭐ R31：伪类只许带 :odd 一个，"
+                        + "多带 :filled 会把行态档整条压掉）")
                 .contains("-adb-bg-stripe");
     }
 
@@ -483,6 +562,19 @@ class SelectionStateTest {
             return null;
         });
         WaitForAsyncUtils.waitForFxEvents();
+    }
+
+    /** 选择器的粗粒度权重（#id=100、类/伪类=10、元素=1），够用来比「谁压谁」。 */
+    private static int specificity(String selector) {
+        int score = 0;
+        for (char c : selector.toCharArray()) {
+            if (c == '#') {
+                score += 100;
+            } else if (c == '.' || c == ':') {
+                score += 10;
+            }
+        }
+        return score;
     }
 
     private static String ruleBody(String css, String selector) {

@@ -86,8 +86,8 @@
     /* 浮层新一代形态：r-xl 圆角 + 一级弥散投影 + 极淡描边（内隐边框）。 */
     -fx-background-color: -adb-bg-elevated;
     -fx-border-color: -adb-border-subtle;
-    -fx-border-radius: 10px;
-    -fx-background-radius: 10px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-padding: 6px;
     -fx-effect: dropshadow(gaussian, -adb-shadow-1, 20, 0.25, 0, 4);
 }
@@ -97,19 +97,24 @@
     -fx-border-width: 1 0 0 0;
 }
 
-/* ── 顶部应用栏 ────────────────────────────────────────────────────────
- * ⭐ 2026-10 重构：旧版是「大图标 + 文字」的功能栏（连接/查询/表/导入导出/工具），
- *    五张 52px 宽的图标卡片排成一行 —— 视觉重心全在顶栏，工作区被压成一条缝。
- *    新形态：**品牌 + 当前连接 + 全局搜索 + 少量全局动作**。
- *    主色只出现在「连接状态点」与「激活态」上，顶栏本身是中性表面。
+/* ── 顶部功能区（Navicat 式 Ribbon，2026-10-26 裁定）────────────────────
+ * Navicat 17 实测：Ribbon 90px（#F0F0F0）+ 标签栏 26 + 对象工具条 30；
+ * 这里把 90px 拆成 26px 工具行 + 64px 大图标命令带，总高与 Navicat 一致。
+ * 边框恢复：面板之间用 1px #D9D9D9 分隔（旧「大面积无边框」裁定作废）。
  * ─────────────────────────────────────────────────────────────────── */
 
 .adb-appbar {
-    /* 无边框分区：顶栏属于「外壳色」，与内容区的色差就是分界线；
-       底部一层一级弥散投影兜住层次，不再画 1px 硬线。 */
-    -fx-background-color: -adb-bg-sidebar;
-    -fx-padding: 0px 12px;
-    -fx-effect: dropshadow(gaussian, -adb-shadow-1, 6, 0.05, 0, 1);
+    -fx-background-color: -adb-bg-chrome;
+    -fx-padding: 0px;
+    -fx-border-color: transparent transparent -adb-border transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.adb-appbar__utility {
+    -fx-min-height: 26;
+    -fx-pref-height: 26;
+    -fx-max-height: 26;
+    -fx-padding: 0px 8px;
 }
 
 .adb-appbar__brand {
@@ -118,13 +123,13 @@
 
 .adb-appbar__mark {
     -fx-background-color: -adb-accent;
-    -fx-background-radius: 6px;
-    -fx-min-width: 26;
-    -fx-pref-width: 26;
-    -fx-max-width: 26;
-    -fx-min-height: 26;
-    -fx-pref-height: 26;
-    -fx-max-height: 26;
+    -fx-background-radius: 3px;
+    -fx-min-width: 20;
+    -fx-pref-width: 20;
+    -fx-max-width: 20;
+    -fx-min-height: 20;
+    -fx-pref-height: 20;
+    -fx-max-height: 20;
 }
 
 /* ⭐ S-7：必须写成两类选择器（特异性 0,2,0）—— 通用 `.adb-icon { -fx-stroke: -adb-text-secondary }`
@@ -136,18 +141,18 @@
 
 .adb-appbar__title {
     -fx-text-fill: -adb-text-primary;
-    -fx-font-size: 16px;
+    -fx-font-size: 13px;
     -fx-font-weight: bold;
 }
 
 .adb-appbar__separator {
-    -fx-background-color: -adb-border-subtle;
+    -fx-background-color: -adb-border;
     -fx-min-width: 1;
     -fx-pref-width: 1;
     -fx-max-width: 1;
-    -fx-min-height: 20;
-    -fx-pref-height: 20;
-    -fx-max-height: 20;
+    -fx-min-height: 16;
+    -fx-pref-height: 16;
+    -fx-max-height: 16;
 }
 
 /* 当前连接：应用级状态。无边框填充式 —— 外壳色上的一块凹陷色块，
@@ -155,11 +160,13 @@
 .adb-appbar__connection {
     -fx-background-color: -adb-bg-surface;
     -fx-text-fill: -adb-text-primary;
-    -fx-border-color: transparent;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
-    -fx-padding: 4px 12px;
+    -fx-border-color: -adb-border;
+    -fx-border-radius: 2px;
+    -fx-background-radius: 2px;
+    -fx-padding: 2px 8px;
     -fx-font-size: 12px;
+    -fx-min-height: 22;
+    -fx-pref-height: 22;
 }
 
 .adb-appbar__connection:hover {
@@ -206,12 +213,12 @@
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-secondary;
     -fx-border-color: transparent;
-    -fx-background-radius: 6px;
-    -fx-padding: 4px 8px;
-    -fx-min-width: 28;
-    -fx-pref-width: 28;
-    -fx-min-height: 28;
-    -fx-pref-height: 28;
+    -fx-background-radius: 2px;
+    -fx-padding: 2px 6px;
+    -fx-min-width: 24;
+    -fx-pref-width: 24;
+    -fx-min-height: 24;
+    -fx-pref-height: 24;
 }
 
 .adb-appbar__action:hover {
@@ -227,14 +234,14 @@
 .adb-appbar__search {
     -fx-background-color: -adb-bg-surface;
     -fx-text-fill: -adb-text-tertiary;
-    -fx-border-color: transparent;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
-    -fx-padding: 4px 8px;
+    -fx-border-color: -adb-border;
+    -fx-border-radius: 2px;
+    -fx-background-radius: 2px;
+    -fx-padding: 2px 8px;
     -fx-pref-width: 220;
     -fx-max-width: 220;
-    -fx-min-height: 28;
-    -fx-pref-height: 28;
+    -fx-min-height: 22;
+    -fx-pref-height: 22;
 }
 
 .adb-appbar__search:hover {
@@ -253,10 +260,81 @@
 .adb-appbar__search-kbd {
     -fx-text-fill: -adb-text-muted;
     -fx-font-size: 10px;
-    -fx-padding: 2px 4px;
-    -fx-background-color: -adb-bg-elevated;
+    -fx-padding: 0px 4px;
+    -fx-background-color: -adb-bg-chrome;
+    -fx-border-color: -adb-border;
+    -fx-border-radius: 2px;
+}
+
+/* ── Ribbon 命令带（64px，Navicat 大图标形态）────────────────────────── */
+
+.adb-ribbon {
+    -fx-min-height: 64;
+    -fx-pref-height: 64;
+    -fx-max-height: 64;
+    -fx-padding: 0px 8px;
+    -fx-background-color: -adb-bg-chrome;
+}
+
+.adb-ribbon__button {
+    -fx-background-color: transparent;
     -fx-border-color: transparent;
-    -fx-border-radius: 4px;
+    -fx-background-radius: 3px;
+    -fx-border-radius: 3px;
+    -fx-min-width: 62;
+    -fx-pref-width: 62;
+    -fx-min-height: 58;
+    -fx-pref-height: 58;
+    -fx-padding: 4px 2px;
+    -fx-cursor: hand;
+}
+
+.adb-ribbon__button:hover {
+    -fx-background-color: -adb-bg-active;
+}
+
+.adb-ribbon__button:pressed {
+    -fx-background-color: derive(-adb-bg-active, -8%);
+}
+
+.adb-ribbon__button .adb-ribbon__label {
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 11px;
+}
+
+.adb-ribbon__button:disabled {
+    -fx-opacity: 0.45;
+}
+
+.adb-ribbon__icon {
+    -fx-stroke: -adb-text-secondary;
+}
+
+.adb-ribbon__icon--connect,
+.adb-ribbon__icon--table {
+    -fx-stroke: -adb-kind-table;
+}
+
+.adb-ribbon__icon--query {
+    -fx-stroke: -adb-kind-procedure;
+}
+
+.adb-ribbon__icon--transfer {
+    -fx-stroke: -adb-kind-view;
+}
+
+.adb-ribbon__icon--favorite {
+    -fx-stroke: -adb-kind-function;
+}
+
+.adb-ribbon__separator {
+    -fx-background-color: -adb-border;
+    -fx-min-width: 1;
+    -fx-pref-width: 1;
+    -fx-max-width: 1;
+    -fx-min-height: 48;
+    -fx-pref-height: 48;
+    -fx-max-height: 48;
 }
 
 /* ── 按钮 ───────────────────────────────────────────────────────────── */
@@ -756,9 +834,9 @@
 .combo-box-popup .list-view {
     -fx-background-color: -adb-bg-elevated;
     -fx-background-insets: 0;
-    -fx-background-radius: 10px;
+    -fx-background-radius: 6px;
     -fx-border-color: -adb-border-subtle;
-    -fx-border-radius: 10px;
+    -fx-border-radius: 6px;
     -fx-padding: 4px;
     -fx-effect: dropshadow(gaussian, -adb-shadow-1, 20, 0.25, 0, 4);
 }
@@ -833,9 +911,11 @@
 /* ── 侧栏 ───────────────────────────────────────────────────────────── */
 
 .adb-sidebar {
-    /* ⭐ 无边框分区：侧栏的「外壳色」与内容区色差就是分界线，不再画 1px 右线。 */
+    /* Navicat 式：导航树白底，右侧 1px 分隔线（旧无边框裁定作废）。 */
     -fx-background-color: -adb-bg-sidebar;
-    -fx-padding: 8px;
+    -fx-border-color: transparent -adb-border transparent transparent;
+    -fx-border-width: 0 1 0 0;
+    -fx-padding: 4px;
 }
 
 .adb-sidebar--collapsed {
@@ -1113,9 +1193,11 @@
  * ─────────────────────────────────────────────────────────────────── */
 
 .adb-tabbar {
-    /* 无边框分区：标签栏与顶栏同属外壳色，活动标签的下划线就是唯一的线。 */
-    -fx-background-color: -adb-bg-sidebar;
-    -fx-padding: 0px 8px;
+    /* Navicat 式：标签栏白底 + 1px 下边界，26px 总高。 */
+    -fx-background-color: -adb-bg-surface;
+    -fx-border-color: transparent transparent -adb-border transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 0px 6px;
 }
 
 .adb-tabbar__scroll,
@@ -1131,9 +1213,9 @@
 .adb-tab {
     -fx-background-color: transparent;
     -fx-padding: 0px 8px;
-    /* UX-2：标签栏令牌 28px，留 2px 给底部活动色条。 */
-    -fx-min-height: 26;
-    -fx-pref-height: 26;
+    /* 标签栏令牌 26px，留 2px 给底部活动色条。 */
+    -fx-min-height: 24;
+    -fx-pref-height: 24;
     -fx-border-width: 0 0 2 0;
     -fx-border-color: transparent;
     -fx-background-radius: 6px;
@@ -1301,8 +1383,8 @@
 .adb-column-panel {
     -fx-background-color: -adb-bg-elevated;
     -fx-border-color: -adb-border-subtle;
-    -fx-border-radius: 10px;
-    -fx-background-radius: 10px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-padding: 6px;
     -fx-spacing: 8;
     -fx-pref-width: 260;
@@ -1365,11 +1447,11 @@
 }
 
 .adb-inline-toolbar {
-    -fx-padding: 0px 0px 4px 0px;
-    /* UX-2：页工具条固定 34（28 的控件 + 4 的内边距），和 Navicat 同高。 */
-    -fx-min-height: 34;
-    -fx-pref-height: 34;
-    -fx-max-height: 34;
+    -fx-padding: 0px 0px 2px 0px;
+    /* Navicat 实测对象工具条 30px（28 控件 + 2 内边距）。 */
+    -fx-min-height: 30;
+    -fx-pref-height: 30;
+    -fx-max-height: 30;
 }
 
 .adb-badge {
@@ -1387,8 +1469,8 @@
 .adb-card {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 16px;
 }
 
@@ -1401,8 +1483,8 @@
 .adb-empty {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 32px;
 }
 
@@ -1482,8 +1564,8 @@
     /* 无边框容器：外框由「白底 + 圆角 + 与外层的色差」表达，不画线。 */
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 0px;
     -fx-table-cell-border-color: transparent;
 }
@@ -1498,12 +1580,14 @@
     /* 列头与表体同色，只留一条极淡的下线 —— 无边框语言里最后的「结构提示」。 */
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent transparent -adb-border-subtle transparent;
-    -fx-background-radius: 8px 8px 0px 0px;
+    -fx-background-radius: 4px 4px 0px 0px;
 }
 
 .adb-grid .column-header {
     -fx-background-color: transparent;
-    -fx-border-color: transparent;
+    /* Navicat 17 实测：列头之间有 1px 竖线（#E5E5E5），表体单元格之间也有（#F0F0F0）。 */
+    -fx-border-color: transparent -adb-border-subtle transparent transparent;
+    -fx-border-width: 0px 1px 0px 0px;
     -fx-padding: 6px 8px;
 }
 
@@ -1525,7 +1609,12 @@
     -fx-padding: 0px;
 }
 
-.adb-grid .table-row-cell:filled:odd {
+/* ⭐ R31：条纹档**只许带一个伪类**。以前写的是 `:filled:odd`（2 类 + 2 伪类 = 40 权重），
+   而下面的 hover / selected 与 2127/2135 的 deleted / new 全是 30 —— 于是**奇数行一选中、
+   一悬停、一被标记就刷回条纹色**，只剩左侧强调条：p2-cell 实拍里选中的 `User 002`（第 2 行）
+   就是白的，弹窗字段网格同理。空行不条纹交给下面的 `:empty`（同权重、声明在后）。
+   门禁：SelectionStateTest.stateRulesOutweighTheZebraStripeInEveryTableScope。 */
+.adb-grid .table-row-cell:odd {
     -fx-background-color: -adb-bg-stripe;
 }
 
@@ -1545,19 +1634,21 @@
    顺序刻意排在 :hover 之后 —— 悬停已选中的行时仍然是选中色，不被 hover 顶掉。
    这里**只改颜色**，宽度由基础规则常留的 2px 左槽提供 → 选中不推走内容。 */
 .adb-grid .table-row-cell:selected {
-    -fx-background-color: -adb-bg-selected;
+    -fx-background-color: -adb-bg-selected-grid;
     -fx-border-color: transparent transparent -adb-border-subtle -adb-accent;
 }
 
-/* ⭐ 无边框语言：竖线全部退场（border 过多的头号来源），列间靠 8px 留白分隔。
-   左侧 2px 仍是常留空槽：脏值条、光标条都在这里上色，谁都不改变内容位置。
-   行读串行问题由「悬停整行高亮 + 行号列」兜住，不再靠一堵竖线墙。 */
+/* ⭐ 2026-10-26 用户裁定「保持和 Navicat 一样」：列间 1px 竖线回归。
+   Navicat 17 数据网格实测（y=600 横向扫）：每列边界都是 #F0F0F0 一条线，
+   没有竖线时宽表读到第 5 列就串行。第二十一轮的「竖线全部退场」作废。
+   左侧 2px 仍是常留空槽：脏值条、光标条都在这里上色，谁都不改变内容位置。 */
 .adb-grid .table-cell {
     -fx-text-fill: -adb-text-primary;
     -fx-font-size: 12px;
-    -fx-padding: 6px 8px;
-    -fx-border-color: transparent;
-    -fx-border-width: 0px 0px 0px 2px;
+    /* 23px 行高：12px 字 + 上下各 6px 会裁掉字母下缘（p2-users 实拍在 email 列抓到）。 */
+    -fx-padding: 2px 8px;
+    -fx-border-color: transparent -adb-border-subtle transparent transparent;
+    -fx-border-width: 0px 1px 0px 2px;
     -fx-alignment: center-left;
 }
 
@@ -1659,8 +1750,8 @@
     /* 无边框容器：外框由色差 + 圆角表达。 */
     -fx-background-color: -adb-bg-canvas;
     -fx-border-color: transparent;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 0px;
     -fx-table-cell-border-color: transparent;
 }
@@ -1678,7 +1769,9 @@
 
 .adb-object-list .column-header {
     -fx-background-color: transparent;
-    -fx-border-color: transparent;
+    /* Navicat 17 表清单实测：表头有 1px 竖线（#E5E5E5），表体是纯白、无任何分隔线。 */
+    -fx-border-color: transparent -adb-border-subtle transparent transparent;
+    -fx-border-width: 0px 1px 0px 0px;
     -fx-padding: 6px 8px;
 }
 
@@ -1693,15 +1786,17 @@
 .adb-object-list .table-row-cell {
     -fx-background-color: -adb-bg-surface;
     -fx-background-insets: 0;
-    -fx-border-color: transparent transparent -adb-border-subtle transparent;
-    -fx-border-width: 0 0 1 0;
+    /* Navicat 17 表清单实测：表体纯白，行与行之间**没有**横线；分隔只靠表头竖线 + 列间距。 */
+    -fx-border-color: transparent;
+    -fx-border-width: 0;
 }
 
 /* ⭐ Navicat 的对象清单是**纯白行 + 横线**，没有斑马纹（实拍见
    docs/screenshots/navicat/navicat-tablelist.png）。行多时靠横线分隔，
-   再加条纹会显得比 Navicat 更花。:filled:odd 必须显式覆盖，
-   否则 Modena 默认会把奇数行画成 -fx-control-inner-background-alt。 */
-.adb-object-list .table-row-cell:filled:odd {
+   再加条纹会显得比 Navicat 更花。:odd 必须显式覆盖，
+   否则 Modena 默认会把奇数行画成 -fx-control-inner-background-alt。
+   ⭐ R31：伪类只带 `:odd` 一个，理由见 .adb-grid 同名规则（多带 `:filled` 会压掉选中档）。 */
+.adb-object-list .table-row-cell:odd {
     -fx-background-color: -adb-bg-surface;
 }
 
@@ -1982,7 +2077,7 @@
    第二十一轮：右边的竖线随无边框轮退场，这里只给左槽上色。 */
 .adb-grid .table-cell.adb-grid__cell--dirty {
     -fx-background-color: -adb-dirty-bg;
-    -fx-border-color: transparent transparent transparent -adb-dirty;
+    -fx-border-color: transparent -adb-border-subtle transparent -adb-dirty;
 }
 
 /* ⭐ G4：矩形选区。必须和「选中整行」区分得开 —— 否则用户分不清
@@ -2173,8 +2268,8 @@
 .adb-grid__state {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: transparent;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 16px 24px;
 }
 
@@ -2195,8 +2290,10 @@
 /* ── 状态栏 ─────────────────────────────────────────────────────────── */
 
 .adb-statusbar {
-    /* 无边框分区：状态栏与侧栏同属「外壳色」，与内容区的色差就是顶边界。 */
-    -fx-background-color: -adb-bg-sidebar;
+    /* Navicat 式：状态栏 #F0F0F0，顶部 1px 分隔线，22px 总高。 */
+    -fx-background-color: -adb-bg-chrome;
+    -fx-border-color: -adb-border transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
     -fx-padding: 0px 8px;
     -fx-spacing: 6;
 }
@@ -2284,8 +2381,8 @@
     /* 浮层旗舰形态：r-xl 圆角 + 二级弥散投影（大而柔）+ 极淡描边。 */
     -fx-background-color: -adb-bg-elevated;
     -fx-border-color: -adb-border-subtle;
-    -fx-border-radius: 10px;
-    -fx-background-radius: 10px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-padding: 12px;
     -fx-effect: dropshadow(gaussian, -adb-shadow-2, 32, 0.35, 0, 8);
 }
@@ -2351,8 +2448,8 @@
     /* 无边框分区：抽屉用色差分层；左缘一条极淡竖线提示边界。 */
     -fx-border-color: transparent -adb-border-subtle transparent -adb-border-subtle;
     -fx-border-width: 0 1 0 1;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
 }
 
 .adb-details__header {
@@ -2460,8 +2557,8 @@
     -fx-background-color: -adb-bg-elevated;
     -fx-text-fill: -adb-text-primary;
     -fx-border-color: -adb-border-subtle;
-    -fx-border-radius: 10px;
-    -fx-background-radius: 10px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
     -fx-padding: 8px 12px;
     -fx-font-size: 12px;
     -fx-effect: dropshadow(gaussian, -adb-shadow-1, 20, 0.25, 0, 4);
@@ -2609,10 +2706,10 @@
     /* ⭐ 第二十一轮（浮窗全套现代化）：弹窗和菜单 / 命令面板同用最大一档 r-xl 10px，
        描边从 border 降到 border-subtle —— 弹窗靠「遮罩压暗背景 + 自身抬高底色」分层，
        不需要一根看得出来的线把边焊死。 */
-    -fx-background-radius: 10px;
+    -fx-background-radius: 6px;
     -fx-border-color: -adb-border-subtle;
     -fx-border-width: 1;
-    -fx-border-radius: 10px;
+    -fx-border-radius: 6px;
 }
 
 .adb-dialog .label {
@@ -2793,8 +2890,8 @@
 .adb-dialog .table-view {
     -fx-background-color: -adb-bg-canvas;
     -fx-border-color: transparent;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-table-cell-border-color: transparent;
 }
 
@@ -2817,7 +2914,7 @@
     -fx-border-width: 0 0 1 0;
 }
 
-.adb-dialog .table-view .table-row-cell:filled:odd {
+.adb-dialog .table-view .table-row-cell:odd {
     -fx-background-color: -adb-bg-surface;
 }
 
@@ -2826,6 +2923,79 @@
     -fx-background-insets: 0;
     -fx-border-color: transparent;
     -fx-border-width: 0;
+}
+
+/* ⭐ R31 目视抓到：弹窗表格的选中行**只有一圈蓝色单元格描边、底色仍是白的** ——
+   设计器十二格里看不出选了哪一行，而主界面每张表都是整行铺 `bg-selected`。
+   根因不在这里，在上面那条条纹档多带了一个 `:filled`（详见 .adb-grid 的说明）：
+   它把选中档整条压掉，表现成「只有奇数行选中时没色」—— 摆出来的 `email` 恰好是第 2 行，
+   所以第一版补了 `:selected` 规则、门禁全绿，帧里照样是白的。 */
+.adb-dialog .table-view .table-row-cell:selected {
+    -fx-background-color: -adb-bg-selected;
+}
+
+/* ⭐ R31：表设计器的字段网格改用 21px 固定行高（Navicat 实测 22px）。
+   Modena 给表格单元格的默认上下内边距是 0.6em ≈ 7.2px —— 12px 正文 + 14.4px
+   在 21px 行里放不下，字会被裁掉下半截（与第二十九轮抓到的四处同一个错）。 */
+.adb-dialog .table-view .table-cell {
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 12px;
+    -fx-padding: 2px 8px;
+}
+
+/* 「长度 / 小数」在类型不吃这个参数时置灰（INTEGER 没有长度可言）。
+   灰掉而不是让填、执行时忽略 —— 后者会让用户以为自己设上了。
+   ⭐ 禁用感一律用颜色表达，不用 -fx-opacity：半透明会把文字和图标
+      一起稀释（FocusRingAuditTest 拦这条，全文只允许遮罩一处）。 */
+.adb-dialog .table-view .table-cell:disabled {
+    -fx-opacity: 1;
+    -fx-text-fill: -adb-text-disabled;
+}
+
+/* ── 弹窗内的页签（R30-D 表设计器）───────────────────────────────────
+ * 设计器第一次把 TabPane 用进弹窗：不接样式就是 Modena 的灰圆角页签，
+ * 与「新建索引」那种平顶弹窗明显不是一套东西（§七）。这里按 Navicat
+ * 表设计器的形态：页签栏铺画布底色、选中页与正文同底色、下边一条发丝线。
+ * ⚠️ 只作用于 `.adb-dialog` 之下 —— 工作台自己的标签栏是 custom TabBar，不是 TabPane。
+ * ⚠️ 底色方向别弄反：页签栏用 canvas、选中页用 surface。反过来的话，
+ *    暗色主题里选中的那页比页签栏还暗，看着像按下去/失效。
+ * ─────────────────────────────────────────────────────────────────── */
+.adb-dialog .tab-pane > .tab-header-area > .tab-header-background {
+    -fx-background-color: -adb-bg-canvas;
+    -fx-border-color: transparent transparent -adb-border-subtle transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.adb-dialog .tab-pane > .tab-header-area > .headers-region > .tab {
+    -fx-background-color: transparent;
+    /* 圆角只走五级阶梯（AppCssAuditTest）：不做「上圆下方」的四值写法。 */
+    -fx-background-radius: 3px;
+    -fx-background-insets: 0;
+    -fx-padding: 4px 12px;
+}
+
+.adb-dialog .tab-pane > .tab-header-area > .headers-region > .tab .tab-label {
+    -fx-text-fill: -adb-text-secondary;
+    -fx-font-size: 12px;
+}
+
+.adb-dialog .tab-pane > .tab-header-area > .headers-region > .tab:selected {
+    -fx-background-color: -adb-bg-surface;
+}
+
+.adb-dialog .tab-pane > .tab-header-area > .headers-region > .tab:selected .tab-label {
+    -fx-text-fill: -adb-accent;
+    -fx-font-weight: bold;
+}
+
+/* Modena 会在选中页签上画一圈焦点环 —— 白底上像一根多余的描边。 */
+.adb-dialog .tab-pane > .tab-header-area > .headers-region > .tab:selected .focus-indicator {
+    -fx-border-color: transparent;
+}
+
+.adb-dialog .tab-pane > .tab-content-area {
+    -fx-background-color: -adb-bg-surface;
+    -fx-padding: 12px 0px 0px 0px;
 }
 
 /* ── 查询页 ─────────────────────────────────────────────────────────── */
@@ -3125,8 +3295,8 @@
 .adb-structure__table {
     -fx-background-color: -adb-bg-canvas;
     -fx-border-color: transparent;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-table-cell-border-color: transparent;
 }
 
@@ -3139,12 +3309,13 @@
 .adb-structure__table .column-header-background {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent transparent -adb-border-subtle transparent;
-    -fx-background-radius: 8px 8px 0px 0px;
+    -fx-background-radius: 4px 4px 0px 0px;
 }
 
 .adb-structure__table .column-header {
     -fx-background-color: transparent;
-    -fx-border-color: transparent;
+    -fx-border-color: transparent -adb-border-subtle transparent transparent;
+    -fx-border-width: 0px 1px 0px 0px;
     -fx-padding: 6px 8px;
 }
 
@@ -3182,8 +3353,10 @@
 .adb-structure__table .table-cell {
     -fx-text-fill: -adb-text-primary;
     -fx-font-size: 12px;
-    -fx-padding: 6px 8px;
-    -fx-border-color: transparent;
+    /* 21px 行高：12px 字 + 上下各 6px 会把字裁掉下半截（第二十九轮实拍 p4-structure 抓到）。 */
+    -fx-padding: 2px 8px;
+    -fx-border-color: transparent -adb-border-subtle transparent transparent;
+    -fx-border-width: 0px 1px 0px 0px;
     -fx-alignment: center-left;
 }
 
@@ -3241,8 +3414,8 @@
     -fx-padding: 8px 12px;
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
 }
 
 /* DDL 只读编辑器：等宽 + 凹陷底（规格 §11.2：与查询页同一套 SqlEditor）。
@@ -3272,8 +3445,8 @@
 .adb-connections__table {
     -fx-background-color: -adb-bg-canvas;
     -fx-border-color: transparent;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-table-cell-border-color: transparent;
 }
 
@@ -3290,7 +3463,8 @@
 
 .adb-connections__table .column-header {
     -fx-background-color: transparent;
-    -fx-border-color: transparent;
+    -fx-border-color: transparent -adb-border-subtle transparent transparent;
+    -fx-border-width: 0px 1px 0px 0px;
     -fx-padding: 6px 8px;
 }
 
@@ -3327,7 +3501,10 @@
 .adb-connections__table .table-cell {
     -fx-text-fill: -adb-text-primary;
     -fx-font-size: 12px;
-    -fx-padding: 6px 8px;
+    /* 21px 行高：同上，6px 垂直内边距会裁字。 */
+    -fx-padding: 2px 8px;
+    -fx-border-color: transparent -adb-border-subtle transparent transparent;
+    -fx-border-width: 0px 1px 0px 0px;
 }
 
 .adb-connections__search {
@@ -3478,8 +3655,8 @@
 .adb-table-list {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-table-cell-border-color: transparent;
 }
 
@@ -3490,6 +3667,9 @@
 
 .adb-table-list .column-header {
     -fx-padding: 6px 8px;
+    /* Navicat 表清单实测：表头有列间竖线（#E5E5E5 → border-subtle），表体没有。 */
+    -fx-border-color: transparent -adb-border-subtle transparent transparent;
+    -fx-border-width: 0px 1px 0px 0px;
 }
 
 .adb-table-list .column-header .label {
@@ -3504,15 +3684,17 @@
 .adb-table-list .table-row-cell {
     -fx-background-color: -adb-bg-surface;
     -fx-background-insets: 0;
-    -fx-border-color: transparent transparent -adb-border-subtle transparent;
-    -fx-border-width: 0 0 1 0;
+    /* Navicat 17 表清单实测：表体纯白，行与行之间**没有**横线；分隔只靠表头竖线 + 列间距。 */
+    -fx-border-color: transparent;
+    -fx-border-width: 0;
 }
 
-/* ⭐ Navicat 的表清单是**纯白行 + 横向分隔线**，没有斑马纹。
-   4 行数据下面若还铺满条纹 / 行线，会让人以为「还有数据没加载出来」。
-   :filled:odd 必须显式覆盖，否则 Modena 默认的
-   -fx-control-inner-background-alt 会继续把奇数行染灰。 */
-.adb-table-list .table-row-cell:filled:odd {
+/* ⭐ Navicat 的表清单是**纯白行**，没有斑马纹、没有横线
+   （实拍见 docs/screenshots/navicat/navicat-table-list-2026-10-24.png）。
+   :odd 必须显式覆盖，否则 Modena 默认的
+   -fx-control-inner-background-alt 会继续把奇数行染灰。
+   ⭐ R31：伪类只带 `:odd` 一个，理由见 .adb-grid 同名规则（多带 `:filled` 会压掉选中档）。 */
+.adb-table-list .table-row-cell:odd {
     -fx-background-color: -adb-bg-surface;
 }
 
@@ -3527,11 +3709,11 @@
     -fx-background-color: -adb-bg-selected;
 }
 
-/* 行高：0px 垂直内边距时表名是贴着行线的，28px 一档给 6px。 */
+/* 行高：21px 行只留 2px 垂直内边距 —— 12px 字 + 6px×2 会把字裁掉下半截。 */
 .adb-table-list .table-cell {
     -fx-text-fill: -adb-text-primary;
     -fx-font-size: 12px;
-    -fx-padding: 6px 8px;
+    -fx-padding: 2px 8px;
     -fx-border-color: transparent;
 }
 
@@ -3596,8 +3778,8 @@
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent;
     -fx-border-width: 1;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
     -fx-padding: 12px;
     -fx-cursor: hand;
 }
@@ -3631,8 +3813,8 @@
 .adb-history__list {
     -fx-background-color: -adb-bg-canvas;
     -fx-border-color: transparent;
-    -fx-border-radius: 8px;
-    -fx-background-radius: 8px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
 }
 
 /* 行 = 可点的胶囊：圆角底 + 左右 inset，选中不会一条色带顶到面板边。
@@ -3795,13 +3977,36 @@
  *    专属样式。
  * ─────────────────────────────────────────────────────────────────── */
 
+/* ⭐ R31：字段工具条（添加 / 插入 / 删除 / 上移 / 下移）挪到网格<b>上方</b>，
+   与 Navicat 表设计器同形；原来那 4px 上边距是给「挂在网格下面」用的。 */
 .adb-new-table__row-actions {
-    -fx-padding: 4px 0px 0px 0px;
+    -fx-padding: 0px;
 }
 
 .adb-new-table__row-actions .adb-button {
     -fx-font-size: 12px;
     -fx-padding: 4px 8px;
+}
+
+/* ⭐ R31：网格下方的字段属性面板（默认值 / 字符集 / 排序规则）。
+   一块内凹的面板，与网格之间留出 1px 发丝线 —— Navicat 同位置。 */
+.adb-new-table__properties {
+    -fx-background-color: -adb-bg-inset;
+    -fx-background-radius: 3px;
+    -fx-border-color: -adb-border-subtle;
+    -fx-border-width: 1px;
+    -fx-border-radius: 3px;
+    -fx-padding: 8px 12px;
+}
+
+.adb-new-table__properties .label {
+    -fx-text-fill: -adb-text-secondary;
+    -fx-font-size: 12px;
+}
+
+.adb-new-table__properties .combo-box,
+.adb-new-table__properties .text-field {
+    -fx-pref-height: 24px;
 }
 
 /* ── 新建表：可键盘操作的布尔单元格 ─────────────────────────────────
