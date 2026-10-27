@@ -69,6 +69,9 @@ public final class Icons {
     /** 页面主工具条（对象级动作）：20px —— 主次靠尺寸拉开。 */
     public static final double SIZE_PRIMARY = 20;
 
+    /** Ribbon 大图标：26px（2026-10-26 用户裁定保持和 Navicat 一样，对齐 90px 功能区）。 */
+    public static final double SIZE_RIBBON = 26;
+
     /** 空状态的大图标：32px。 */
     public static final double SIZE_EMPTY = 32;
 
@@ -151,6 +154,10 @@ public final class Icons {
         CHEVRON_LEFT(null, "chevrons-left"),
         /** 双右箭头（侧栏展开，lucide: chevrons-right）。 */
         CHEVRON_RIGHT(null, "chevrons-right"),
+        /** 上移（lucide: arrow-up）—— 表设计器调整列顺序。 */
+        MOVE_UP(null, "arrow-up"),
+        /** 下移（lucide: arrow-down）—— 表设计器调整列顺序。 */
+        MOVE_DOWN(null, "arrow-down"),
 
         // ── 数据传输 ──
         /** 导出（lucide: download）。 */

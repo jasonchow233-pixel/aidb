@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -73,10 +74,10 @@ class AppCssAuditTest {
      * <p>⚠️ r-xs（3px）随本轮删除：无边框语言里最小的一档落到 4px（复选框），
      * 3px 没有任何消费者 —— 规矩是删令牌，不是给令牌硬造一个消费者。
      */
-    private static final Set<String> RADII = Set.of("0px", "4px", "6px", "8px", "10px", "999px");
+    private static final Set<String> RADII = Set.of("0px", "2px", "3px", "4px", "6px", "999px");
 
     /** 令牌里的圆角。 */
-    private static final Set<String> TOKEN_RADII = Set.of("4px", "6px", "8px", "10px", "999px");
+    private static final Set<String> TOKEN_RADII = Set.of("2px", "3px", "4px", "6px", "999px");
 
     // ─────────────────────────── 字号 ───────────────────────────
 
@@ -187,6 +188,50 @@ class AppCssAuditTest {
                 .isEqualTo("12px");
     }
 
+    /**
+     * ⭐ 第二十九轮实拍抓到：行高 28 → 21/23 后，仍按 `6px 8px` 画的表格
+     * （网格 / 结构页 / 连接页 / 表清单）把 12px 文字裁掉了下半截
+     * （p2-users 的 email 列、p4-structure、p5-connections、p6-tables 一眼可见）。
+     *
+     * <p>规则：固定行高下，上下内边距之和 + 12px 正文必须塞得进去。
+     * 变异：任一选择器改回 `6px 8px` → 红。
+     */
+    @Test
+    void fixedRowCellsLeaveRoomForTheirText() throws IOException {
+        String css = css();
+        Map<String, Integer> surfaces = Map.of(
+                ".adb-grid .table-cell", RowHeights.grid("normal"),
+                ".adb-structure__table .table-cell", RowHeights.of("normal"),
+                ".adb-connections__table .table-cell", RowHeights.of("normal"),
+                // ⭐ R31：表设计器的字段网格同样降到 21px（Navicat 实测 22）。
+                ".adb-dialog .table-view .table-cell", RowHeights.of("normal"),
+                ".adb-table-list .table-cell", RowHeights.of("normal"));
+        surfaces.forEach((selector, row) -> {
+            double vertical = verticalPaddingOf(ruleBody(css, selector));
+            assertThat(12 + vertical)
+                    .as("%s：12px 正文 + 上下内边距 %.0fpx 塞不进 %dpx 固定行高（会裁字）",
+                            selector, vertical, row)
+                    .isLessThanOrEqualTo(row);
+        });
+    }
+
+    /** 取规则块里的上下内边距之和（支持 1–4 值简写）。 */
+    private static double verticalPaddingOf(String rule) {
+        Matcher matcher = Pattern.compile("-fx-padding:\\s*([^;]+);").matcher(rule);
+        if (!matcher.find()) {
+            return 0;
+        }
+        String[] parts = matcher.group(1).trim().split("\\s+");
+        return switch (parts.length) {
+            case 4 -> px(parts[0]) + px(parts[2]);
+            default -> 2 * px(parts[0]);
+        };
+    }
+
+    private static double px(String value) {
+        return Double.parseDouble(value.replace("px", ""));
+    }
+
     // ─────────────────────────── 圆角 ───────────────────────────
 
     @Test
@@ -201,7 +246,7 @@ class AppCssAuditTest {
             }
         }
         assertThat(offenders)
-                .as("圆角必须落在五级阶梯上（r-sm 4 / r-md 6 / r-lg 8 / r-xl 10）+ r-full 999：\n  %s",
+                .as("圆角必须落在五级阶梯上（r-sm 2 / r-md 3 / r-lg 4 / r-xl 6）+ r-full 999：\n  %s",
                         String.join("\n  ", offenders))
                 .isEmpty();
     }

@@ -55,25 +55,25 @@ class TokenParityTest {
 
     @Test
     void coreDimensionsMatchSpec() {
-        // ⭐ UX-2 密度对齐 Navicat：应用栏 46 / 标签栏 28 / 页工具条 34 / 状态栏 24；
-        //    控件高 28；UX-5 把左侧导航默认宽从 250 提到 **260**（200px 的表名 + 图标 +
-        //    收藏星在 250 下会挤掉名字末字，Navicat 侧栏实测约 260）。
-        assertThat(Tokens.H_APPBAR_DARK).isEqualTo(46);
-        assertThat(Tokens.H_TOOLBAR_DARK).isEqualTo(34);
-        assertThat(Tokens.H_STATUSBAR_DARK).isEqualTo(24);
-        assertThat(Tokens.H_TABBAR_DARK).isEqualTo(28);
+        // ⭐ 2026-10-26 裁定「保持和 Navicat 一样」：Ribbon 90 / 标签栏 26 / 工具条 30 /
+        //    状态栏 22（Navicat 实测：菜单 24 + Ribbon 90 + 标签 26 + 工具条 30 = 顶部 170）。
+        //    侧栏默认宽仍 260；控件高 28。
+        assertThat(Tokens.H_APPBAR_DARK).isEqualTo(90);
+        assertThat(Tokens.H_TOOLBAR_DARK).isEqualTo(30);
+        assertThat(Tokens.H_STATUSBAR_DARK).isEqualTo(22);
+        assertThat(Tokens.H_TABBAR_DARK).isEqualTo(26);
         assertThat(Tokens.H_INPUT_DARK).isEqualTo(28);
         assertThat(Tokens.H_BUTTON_DARK).isEqualTo(28);
         assertThat(Tokens.W_SIDEBAR_DARK).isEqualTo(260);
         // 可调整范围 200–360。
         assertThat(Tokens.W_SIDEBAR_MIN_DARK).isEqualTo(200);
         assertThat(Tokens.W_SIDEBAR_MAX_DARK).isEqualTo(360);
-        // 表格行高：密集 22 / 紧凑 24 / 标准 28 / 宽松 34（Navicat 实测数据行约 20px，
-        // 我们保留余量给 12px 中文正文）。
-        assertThat(Tokens.ROW_DENSE_DARK).isEqualTo(22);
-        assertThat(Tokens.ROW_COMPACT_DARK).isEqualTo(24);
-        assertThat(Tokens.ROW_NORMAL_DARK).isEqualTo(28);
-        assertThat(Tokens.ROW_COMFORT_DARK).isEqualTo(34);
+        // 表格行高：密集 19 / 紧凑 20 / 标准 21 / 宽松 26（标准档 = Navicat 实测清单 21）。
+        assertThat(Tokens.ROW_DENSE_DARK).isEqualTo(19);
+        assertThat(Tokens.ROW_COMPACT_DARK).isEqualTo(20);
+        assertThat(Tokens.ROW_NORMAL_DARK).isEqualTo(21);
+        assertThat(Tokens.ROW_COMFORT_DARK).isEqualTo(26);
+        assertThat(Tokens.ROW_TREE_DARK).as("导航树 = Navicat 21").isEqualTo(21);
     }
 
     @Test

@@ -26,24 +26,14 @@ public final class RowHeights {
     }
 
     /**
-     * ⭐ D1（2026-10-26 裁定）：**记录网格**（数据页网格 / 冻结列 / 转置表 / 查询结果）
-     * 恒比当前档位**低一档**，其余表面对象（侧栏树、表清单、对象首页、连接页、结构页）
-     * 照 {@link #of} 走。
+     * ⭐ 2026-10-26 用户裁定「保持和 Navicat 一样」：记录网格（数据页 / 冻结列 /
+     * 转置表 / 查询结果）比外壳清单高 **2px** —— Navicat 实测清单 21 / 网格 23。
+     * 之前「网格比档位低一档」的裁定随本次对齐作废。
      *
-     * <p>为什么只有网格降：网格是唯一「逐行数数据」的地方 —— 28px 一屏 19 行，
-     * Navicat 同窗口 45 行；而树和清单读的是名字，压到 24 只是让点击目标变小。
-     * 「低一档」而不是「钉死 24」，是为了让四档密度开关在网格上仍然是连续可感的
-     * （22 / 22 / 24 / 28），不出现「切了档但网格没反应」。
-     *
-     * <p>档位映射（默认 {@code normal} → 网格 24，其余仍 28）：
-     * {@code dense 22 / compact 22 / normal 24 / comfort 28}，下限是 {@code dense}。
+     * <p>档位映射（默认 {@code normal}）：清单/树 21，网格 23；
+     * {@code dense 19/21 · compact 20/22 · normal 21/23 · comfort 26/28}。
      */
     public static int grid(String density) {
-        java.util.List<String> levels = java.util.List.of("dense", "compact", "normal", "comfort");
-        int index = levels.indexOf(density == null ? "normal" : density);
-        if (index < 0) {
-            index = levels.indexOf("normal");
-        }
-        return of(levels.get(Math.max(0, index - 1)));
+        return of(density) + 2;
     }
 }
