@@ -14,6 +14,9 @@ package io.agenticdb.model;
  * @param comment     列注释
  * @param unique      是否唯一
  * @param primaryKey  是否主键
+ * @param autoIncrement 是否自增（MySQL {@code AUTO_INCREMENT} / PG identity / SQLite rowid）
+ * @param charset     列级字符集（仅 MySQL 有意义；{@code null} = 跟随表）
+ * @param collation   列级排序规则（MySQL / PostgreSQL；{@code null} = 跟随表/库）
  */
 public record ColumnSpec(
         String name,
@@ -22,7 +25,22 @@ public record ColumnSpec(
         String defaultValue,
         String comment,
         boolean unique,
-        boolean primaryKey) {
+        boolean primaryKey,
+        boolean autoIncrement,
+        String charset,
+        String collation) {
+
+    /**
+     * 旧签名：不带自增与列级字符集。
+     *
+     * <p>保留它是因为调用点太多（结构页改列、各类测试）；语义与新的 10 参数构造一致 ——
+     * 自增默认关、字符集/排序规则默认跟随表。
+     */
+    public ColumnSpec(String name, String rawType, boolean nullable, String defaultValue,
+                      String comment, boolean unique, boolean primaryKey) {
+        this(name, rawType, nullable, defaultValue, comment, unique, primaryKey,
+                false, null, null);
+    }
 
     public ColumnSpec {
         name = name == null ? "" : name.trim();
@@ -30,6 +48,8 @@ public record ColumnSpec(
         defaultValue = defaultValue == null || defaultValue.isBlank()
                 ? null : defaultValue.trim();
         comment = comment == null || comment.isBlank() ? null : comment.trim();
+        charset = charset == null || charset.isBlank() ? null : charset.trim();
+        collation = collation == null || collation.isBlank() ? null : collation.trim();
     }
 
     public static ColumnSpec from(ColumnDef column) {
@@ -40,11 +60,19 @@ public record ColumnSpec(
 
     public ColumnSpec withName(String value) {
         return new ColumnSpec(value, rawType, nullable, defaultValue, comment, unique,
-                primaryKey);
+                primaryKey, autoIncrement, charset, collation);
     }
 
     /** 声明类型；为空时按是否主键给默认类型。 */
     public String effectiveType() {
         return rawType.isBlank() ? (primaryKey ? "INTEGER" : "TEXT") : rawType;
+    }
+
+    /** 类型名（去掉长度/精度括号），大写 —— 方言判断「是不是整型」用。 */
+    public String baseType() {
+        String type = effectiveType();
+        int paren = type.indexOf('(');
+        String base = (paren < 0 ? type : type.substring(0, paren)).trim();
+        return base.toUpperCase(java.util.Locale.ROOT);
     }
 }

@@ -307,11 +307,24 @@ public final class MySqlDialect implements Dialect {
     public String columnDefinition(ColumnSpec column, boolean includeName) {
         String definition = (includeName ? quote(column.name()) + " " : "")
                 + column.effectiveType();
+        // ⭐ R31：列级字符集/排序规则紧跟在类型后面（MySQL 只认这个位置：
+        //    data_type [CHARACTER SET x] [COLLATE y] [NOT NULL] …）。
+        if (column.charset() != null) {
+            definition += " CHARACTER SET " + column.charset();
+        }
+        if (column.collation() != null) {
+            definition += " COLLATE " + column.collation();
+        }
         if (!column.nullable()) {
             definition += " NOT NULL";
         }
         if (column.defaultValue() != null) {
             definition += " DEFAULT " + column.defaultValue();
+        }
+        // ⭐ 顺序是 MySQL 的硬要求：[DEFAULT] [AUTO_INCREMENT] [UNIQUE] [PRIMARY KEY] [COMMENT]。
+        //    放到 COMMENT 之后就报语法错误，放到 PRIMARY KEY 之后同样不行。
+        if (column.autoIncrement()) {
+            definition += " AUTO_INCREMENT";
         }
         if (column.unique()) {
             definition += " UNIQUE";
@@ -448,6 +461,27 @@ public final class MySqlDialect implements Dialect {
     @Override
     public boolean supportsTableComment() {
         return true;
+    }
+
+    @Override
+    public boolean supportsColumnCharset() {
+        return true;
+    }
+
+    @Override
+    public List<ColumnTypeOption> columnTypes() {
+        return ColumnTypes.MYSQL;
+    }
+
+    @Override
+    public List<String> columnCharsetPresets() {
+        return List.of("utf8mb4", "utf8", "gbk", "latin1", "ascii", "binary");
+    }
+
+    @Override
+    public List<String> columnCollationPresets() {
+        return List.of("utf8mb4_0900_ai_ci", "utf8mb4_general_ci", "utf8mb4_unicode_ci",
+                "utf8mb4_bin", "utf8_general_ci", "latin1_swedish_ci");
     }
 
     @Override

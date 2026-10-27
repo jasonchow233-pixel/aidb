@@ -5,6 +5,7 @@ import io.agenticdb.model.ColumnSpec;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Set;
 
 /**
  * ⭐ 数据库方言的行为抽象。
@@ -368,6 +369,41 @@ public interface Dialect {
     String columnDefinition(ColumnSpec column, boolean includeName);
 
     /**
+     * 自增列的方言约束；{@code null} = 这一列的设定能用。
+     *
+     * <p>三条库的限制不一样（MySQL 要整型且必须是键，PostgreSQL identity 只认
+     * smallint/integer/bigint，SQLite 的 rowid 别名必须是 {@code INTEGER PRIMARY KEY}），
+     * 而「怎么报错」只有方言自己说得清。放在这里而不是 UI：结构页、建表弹窗、
+     * 将来的导入建表都走同一条判定。
+     */
+    default String autoIncrementProblem(ColumnSpec column) {
+        if (!column.autoIncrement()) {
+            return null;
+        }
+        if (!INTEGER_TYPES.contains(column.baseType())) {
+            return "自增列必须是整型：" + column.name() + " 现在是 " + column.effectiveType();
+        }
+        if (column.defaultValue() != null) {
+            return "自增列不能同时设默认值：" + column.name();
+        }
+        return null;
+    }
+
+    /** 自增列允许的整型名（各库略有出入，超集够用 —— 具体库再收紧）。 */
+    Set<String> INTEGER_TYPES = Set.of("TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER",
+            "BIGINT", "SERIAL", "BIGSERIAL", "INT2", "INT4", "INT8");
+
+    /**
+     * 自增列是否必须是<b>唯一</b>主键（不能是多列主键的一部分）。
+     *
+     * <p>MySQL 允许自增列是多列索引的第一列，PostgreSQL 的 identity 也不要求是主键；
+     * SQLite 的 {@code AUTOINCREMENT} 只能挂在<b>单列</b> {@code INTEGER PRIMARY KEY} 上。
+     */
+    default boolean autoIncrementNeedsSinglePrimaryKey() {
+        return false;
+    }
+
+    /**
      * 追加列注释语句。
      *
      * <p>PostgreSQL 用 {@code COMMENT ON COLUMN}；MySQL 把注释写在列定义里（这里什么都不追加）；
@@ -531,6 +567,45 @@ public interface Dialect {
     /** 表注释：PostgreSQL / MySQL 支持，SQLite 不支持。 */
     default boolean supportsTableComment() {
         return false;
+    }
+
+    /**
+     * ⭐ R31：列级字符集。只有 MySQL 有 —— PostgreSQL 的编码是<b>建库时</b>定的，
+     * SQLite 只有 UTF-8 / UTF-16，两者在列上写不进任何语句。
+     */
+    default boolean supportsColumnCharset() {
+        return false;
+    }
+
+    /** ⭐ R31：列级排序规则。三种方言都有（MySQL / PostgreSQL 要引号，SQLite 直接写）。 */
+    default boolean supportsColumnCollation() {
+        return true;
+    }
+
+    /**
+     * ⭐ R31：表设计器「类型」下拉的候选（顺序即显示顺序）。
+     *
+     * <p>空列表 = 该方言没有可推荐的类型名，UI 退回自由文本输入 ——
+     * 不能因为没有清单就禁止建表。
+     */
+    default List<ColumnTypeOption> columnTypes() {
+        return List.of();
+    }
+
+    /**
+     * ⭐ R31：列级字符集的常用候选（下拉里的建议，控件本身可编辑）。
+     *
+     * <p>放在方言层而不是 UI 里判 {@code kind() == MYSQL}：A1 的承诺是「加一种数据库
+     * = 写一个 {@code Dialect} 实现」，UI 里散落枚举比较就等于承诺是假的
+     * （{@code DialectBranchAuditTest} 拦这条）。
+     */
+    default List<String> columnCharsetPresets() {
+        return List.of();
+    }
+
+    /** ⭐ R31：列级排序规则的常用候选。 */
+    default List<String> columnCollationPresets() {
+        return List.of();
     }
 
     /** 表注释语句。仅在 {@link #supportsTableComment()} 为真时调用。 */

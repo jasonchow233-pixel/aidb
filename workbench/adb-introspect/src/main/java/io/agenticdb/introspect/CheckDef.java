@@ -6,7 +6,7 @@ package io.agenticdb.introspect;
  * <p>⭐ 以前**根本没有这个概念** —— 内省层不采、建表 SQL 不带、
  * 结构页不显示。后果是：SQLite 改列要整表重建，重建的 {@code CREATE TABLE}
  * 只搬运「列 / 主键 / UNIQUE / DEFAULT / 外键」，**CHECK 约束静默消失** ——
- * 用户没改错任何东西，约束却没了（UI-AUDIT / TODO D3）。
+ * 用户没改错任何东西，约束却没了。
  *
  * @param name       约束名；SQLite 允许匿名 CHECK（没有名字）
  * @param expression 约束表达式，例如 {@code age >= 0}
