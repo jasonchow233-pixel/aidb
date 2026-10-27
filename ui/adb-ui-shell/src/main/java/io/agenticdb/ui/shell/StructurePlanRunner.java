@@ -37,23 +37,35 @@ public final class StructurePlanRunner {
      *
      * <p>SQLite 整表重建期间要临时关掉外键（{@link StructurePlan#foreignKeysOff()}），
      * 否则复制数据时外键会先炸。
+     *
+     * <p>⭐ G2 之后<b>不能无条件 begin/commit</b>：会话是连接级的，用户可能已经在
+     * 数据页开了显式事务。那时这一批结构变更只是<b>加入</b>他的事务 —— 提交与回滚
+     * 都归他决定。无条件 commit 会把人家没写完的一起落库，无条件 rollback
+     * 会把人家已有的成果一起抹掉。
      */
     static void execute(DbSession session, StructurePlan plan) throws Exception {
         boolean foreignKeysOff = plan.foreignKeysOff();
         if (foreignKeysOff) {
             session.update("PRAGMA foreign_keys = OFF");
         }
-        session.begin();
+        boolean ownTransaction = !session.inTransaction();
+        if (ownTransaction) {
+            session.begin();
+        }
         try {
             for (String sql : plan.statements()) {
                 session.execute(sql);
             }
-            session.commit();
+            if (ownTransaction) {
+                session.commit();
+            }
         } catch (Exception e) {
-            try {
-                session.rollback();
-            } catch (Exception ignored) {
-                // 回滚失败也要把原始 SQL 错误交给用户。
+            if (ownTransaction) {
+                try {
+                    session.rollback();
+                } catch (Exception ignored) {
+                    // 回滚失败也要把原始 SQL 错误交给用户。
+                }
             }
             throw e;
         } finally {

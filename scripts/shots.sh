@@ -59,6 +59,11 @@ SHOTS=(
   # ⭐ UX-5-F：唯一拍到「交互态」的一帧 —— 选中行 + 光标格 + 抽屉编辑器。
   #   ADB_CELL=1 让数据页自己摆状态，点击真按「编辑」按钮进入编辑态。
   "p2-cell|data-details-edit|9000|ADB_OPEN=users ADB_CELL=1 ADB_THEME_FORCE=light"
+  # ⭐ R32-A（G2）：事务中那一帧 —— 「开始事务」整颗退场，提交/回滚现身，
+  #   状态栏那一段常显「事务中」。点击真按 #data-begin-tx（不是程序化摆态），
+  #   所以这一帧同时证的是「按钮可见性由状态驱动」这条实现本身。
+  #   9000ms：数据页是异步灌行的，载入没完「开始事务」还禁用着，点下去等于空拍。
+  "p2-transaction|data-begin-tx|9000|ADB_OPEN=users ADB_THEME_FORCE=light"
   "p6-tables||5000|ADB_TABLES=1 ADB_THEME_FORCE=light"
   "p6-tables-grid||5000|ADB_TABLES=1 ADB_TABLE_VIEW=grid ADB_THEME_FORCE=light"
   "p3-query||6000|ADB_QUERY=1 ADB_THEME_FORCE=light"

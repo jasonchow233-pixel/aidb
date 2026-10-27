@@ -251,6 +251,15 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final Button redoButton = IconButtons.icon(Icons.Icon.REDO, "重做");
     private final Button saveButton = IconButtons.of(Icons.Icon.SAVE, "保存");
     private final Button addRowButton = IconButtons.icon(Icons.Icon.ADD, "新增行");
+    /**
+     * ⭐ G2：事务三键。「开始事务」常驻，「提交 / 回滚」只在事务中现身 ——
+     * 这两颗按钮<b>在不在</b>本身就是事务状态的显示器（跟本页「删除记录」同一套可见性口径）。
+     */
+    private final Button beginTxButton = IconButtons.icon(Icons.Icon.LOCK, "开始事务");
+    private final Button commitTxButton = IconButtons.icon(Icons.Icon.CHECK,
+            "提交事务：本事务内的全部写入落库，之后回到自动提交");
+    private final Button rollbackTxButton = IconButtons.icon(Icons.Icon.CLOSE,
+            "回滚事务：丢弃本事务内尚未提交的全部写入（含网格里未保存的编辑）");
     private final Button columnsButton = IconButtons.icon(Icons.Icon.COLUMNS, "列设置");
     /** ⭐ 列设置弹层（带列名搜索）。 */
     private ColumnSettingsPanel columnPanel;
@@ -417,6 +426,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private boolean loading;
     private boolean saving;
     private boolean undoingSave;
+    /** ⭐ G2：本连接是否处于用户显式事务中（提交或回滚之前一直为真）。 */
+    private boolean transactionOpen;
+    /** 事务指令（开始 / 提交 / 回滚）在途 —— 防连点，也与保存、刷新互斥。 */
+    private boolean txCommandInFlight;
     private boolean activated;
     private boolean hideNullRows;
     private boolean hideEmptyRows;
@@ -637,6 +650,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         rowActions.setManaged(editable);
         updateSelectAllState();
         updateDeleteButton();
+        applyTransactionControls();
         if (objectHeader != null) {
             objectHeader.setContext(connectionName + (editable ? " · 可编辑" : " · 只读"));
         }
@@ -682,7 +696,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         IconButtons.loading(saveButton, true);
         saving = true;
         grid.setDisable(true);
-        // 4.5-11：状态栏的「事务」段接真实数据 —— 保存跑在单事务里。
+        // 4.5-11：状态栏的「事务」段接真实数据 —— 保存跑在事务里（用户开的，或这条保存自己的）。
         feedback.transaction(true);
         EditSqlBuilder.Plan inverse = undoPlan;
         Task<Integer> task = new Task<>() {
@@ -696,12 +710,18 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             saving = false;
             IconButtons.loading(saveButton, false);
             grid.setDisable(false);
-            feedback.transaction(false);
-            saveUndoPlan = inverse;
+            // ⚠️ 不能无条件报「自动提交」：用户开了事务时保存只是写进事务，事务还开着。
+            feedback.transaction(transactionOpen);
+            // 事务中不留反向 SQL 撤销计划（撤销靠回滚，见 undoLastSave）。
+            saveUndoPlan = transactionOpen ? null : inverse;
             editBuffer.clear();
             updateDirty();
-            feedback.status("已保存 " + plan.size() + " 条变更 · 影响 " + affected + " 行");
-            if (!inverse.isEmpty() && inverse.complete()) {
+            feedback.status((transactionOpen ? "已写入事务 " : "已保存 ")
+                    + plan.size() + " 条变更 · 影响 " + affected + " 行"
+                    + (transactionOpen ? " · 未提交" : ""));
+            if (transactionOpen) {
+                feedback.toast("已写入事务 · 点「提交」才落库，点「回滚」整体撤回");
+            } else if (!inverse.isEmpty() && inverse.complete()) {
                 feedback.toast("已保存 " + plan.size() + " 条变更 · 可撤销", this::undoLastSave);
             } else if (!inverse.isEmpty()) {
                 feedback.toastUnreversible("已保存 " + plan.size()
@@ -715,7 +735,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             saving = false;
             IconButtons.loading(saveButton, false);
             grid.setDisable(false);
-            feedback.transaction(false);
+            feedback.transaction(transactionOpen);
             updateEditControls();
             // ⭐ V-12：错误归类 —— 给「能照着做」的说明，而不是驱动的原始英文。
             String reason = io.agenticdb.safety.ErrorClassifier
@@ -726,10 +746,21 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         dbExecutor.execute(task);
     }
 
-    /** Toast 上的“撤销保存”（编辑菜单共用）：执行保存前生成的反向 SQL，再刷新当前页。 */
+    /**
+     * Toast 上的“撤销保存”（编辑菜单共用）：执行保存前生成的反向 SQL，再刷新当前页。
+     *
+     * <p>⚠️ 反向 SQL 只在<b>自动提交</b>模式下有意义：它靠再发一批 UPDATE/DELETE 把数据
+     * 改回去。事务打开时「撤销」的正确手段是回滚整个事务（{@link #rollbackTransaction()}），
+     * 所以在事务中直接拒绝这条路径 —— 否则会出现「反向 SQL 和未提交写入混在一个事务里、
+     * 用户以为撤销了、其实一提交全落库」。
+     */
     public void undoLastSave() {
         EditSqlBuilder.Plan inverse = saveUndoPlan;
         if (inverse == null || inverse.isEmpty() || undoingSave || saving) {
+            return;
+        }
+        if (transactionOpen) {
+            feedback.status("事务中不能用「撤销上次保存」—— 请点「回滚」整体撤回本事务");
             return;
         }
         undoingSave = true;
@@ -751,6 +782,183 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             undoingSave = false;
             feedback.status("撤销保存失败：" + readable(task.getException()));
             showErrorDetails("撤销保存失败", task.getException(), inverse.preview());
+        });
+        dbExecutor.execute(task);
+    }
+
+    // ─────────────────────────── 事务（G2）───────────────────────────
+
+    /** 本连接当前是否处于用户显式事务中（供门禁与外壳读取）。 */
+    public boolean transactionOpen() {
+        return transactionOpen;
+    }
+
+    /** 开始事务：之后的保存只写进事务，点「提交」才落库。 */
+    private void beginTransaction() {
+        runTransactionCommand("开始事务", () -> {
+            session.begin();
+            return session.inTransaction();
+        }, inTx -> {
+            transactionOpen = Boolean.TRUE.equals(inTx);
+            applyTransactionControls();
+            feedback.transaction(transactionOpen);
+            feedback.status(transactionOpen
+                    ? "事务已开始 · 之后的保存只写入不提交，点「提交」才落库"
+                    : "该数据库不支持显式事务");
+        });
+    }
+
+    /** 提交：事务内的写入落库，回到自动提交。 */
+    private void commitTransaction() {
+        runTransactionCommand("提交事务", () -> {
+            session.commit();
+            return session.inTransaction();
+        }, inTx -> {
+            transactionOpen = Boolean.TRUE.equals(inTx);
+            saveUndoPlan = null;
+            applyTransactionControls();
+            feedback.transaction(transactionOpen);
+            feedback.status("事务已提交 · 本事务内的写入已落库");
+            feedback.toast("事务已提交");
+        });
+    }
+
+    /** 回滚前的确认弹窗（不显示；抽出来是为了让门禁断言文案与按钮序，不用真弹模态）。 */
+    Dialog<ButtonType> buildRollbackDialog() {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("回滚事务");
+        ButtonType rollback = new ButtonType("回滚", ButtonBar.ButtonData.OTHER);
+        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        dialog.getDialogPane().getButtonTypes().addAll(rollback, cancel);
+        dialog.getDialogPane().setHeader(new Label("本事务里尚未提交的写入会全部撤销，"
+                + "网格里未保存的编辑也会一起清空 —— 这一步不能恢复。"));
+        dialog.setResultConverter(type -> type);
+        if (getScene() != null) {
+            dialog.initOwner(getScene().getWindow());
+        }
+        DialogStyles.apply(dialog, getScene() == null ? null : getScene().getWindow());
+        dialog.setOnShown(event -> DestructiveConfirm.pinCancelAsDefault(
+                dialog.getDialogPane(), cancel, rollback));
+        return dialog;
+    }
+
+    private boolean confirmRollbackTransaction() {
+        Dialog<ButtonType> dialog = buildRollbackDialog();
+        ButtonType rollback = dialog.getDialogPane().getButtonTypes().stream()
+                .filter(type -> "回滚".equals(type.getText()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("回滚确认弹窗缺少「回滚」按钮"));
+        return dialog.showAndWait().filter(rollback::equals).isPresent();
+    }
+
+    /**
+     * 回滚：丢弃本事务里全部未提交的写入。
+     *
+     * <p>⚠️ 缓冲必须一起清 —— 已经保存进事务的那些改动，回滚后库里根本没有；
+     * 留着它们，网格就会显示一批「数据库里不存在」的编辑，再保存等于凭空造数据。
+     */
+    void rollbackTransaction() {
+        runTransactionCommand("回滚事务", () -> {
+            session.rollback();
+            return session.inTransaction();
+        }, inTx -> {
+            transactionOpen = Boolean.TRUE.equals(inTx);
+            editBuffer.clear();
+            saveUndoPlan = null;
+            applyTransactionControls();
+            feedback.transaction(transactionOpen);
+            updateDirty();
+            feedback.status("事务已回滚 · 未提交的写入全部撤销");
+            feedback.toast("事务已回滚");
+            load(true);
+        });
+    }
+
+    /**
+     * 三条事务指令的统一跑法：串行在 {@code dbExecutor} 上（同一连接的事务必须串行），
+     * 与加载 / 保存 / 彼此互斥，跑完回 FX 线程更新状态。
+     *
+     * @param jdbcCall 真正动会话的那一步，返回指令执行<b>之后</b>会话是否仍在事务中
+     */
+    private void runTransactionCommand(String action,
+                                       java.util.concurrent.Callable<Boolean> jdbcCall,
+                                       java.util.function.Consumer<Boolean> onDone) {
+        if (txCommandInFlight || loading || saving) {
+            return;
+        }
+        txCommandInFlight = true;
+        applyTransactionControls();
+        feedback.status(action + "中…");
+        Task<Boolean> task = new Task<>() {
+            @Override
+            protected Boolean call() throws Exception {
+                return jdbcCall.call();
+            }
+        };
+        task.setOnSucceeded(event -> {
+            txCommandInFlight = false;
+            onDone.accept(task.getValue());
+        });
+        task.setOnFailed(event -> {
+            txCommandInFlight = false;
+            applyTransactionControls();
+            feedback.status(action + "失败：" + readable(task.getException()));
+            showErrorDetails(action + "失败", task.getException(), null);
+        });
+        dbExecutor.execute(task);
+    }
+
+    /**
+     * 事务三键的可见性 / 可用性 —— 由 {@link #updateEditControls()} 统一驱动，
+     * 这样「表变只读」「正在加载」「指令在途」这些状态不需要各自再记一份账。
+     *
+     * <p>「开始事务」在事务中<b>整颗消失</b>而不是灰着摆那儿：它在事务里已经无事可做，
+     * 而「提交 / 回滚」现身就是状态本身 —— 与本页「删除记录」的可见性口径一致。
+     */
+    private void applyTransactionControls() {
+        boolean editable = tableSchema != null && tableSchema.editable();
+        boolean busy = loading || saving || txCommandInFlight;
+        beginTxButton.setDisable(!editable || transactionOpen || busy);
+        beginTxButton.setVisible(!transactionOpen);
+        beginTxButton.setManaged(!transactionOpen);
+        commitTxButton.setDisable(busy);
+        rollbackTxButton.setDisable(busy);
+        commitTxButton.setVisible(transactionOpen);
+        commitTxButton.setManaged(transactionOpen);
+        rollbackTxButton.setVisible(transactionOpen);
+        rollbackTxButton.setManaged(transactionOpen);
+    }
+
+    /**
+     * 向会话核对真实的事务状态（切回本页标签时调用）。
+     *
+     * <p>事务的作用域是<b>连接</b>：同一连接上的查询页、结构页、另一个数据页标签
+     * 都能把本页没看见的事务开起来或提交掉。本页那个布尔只是缓存，不核对就会出现
+     * 「事务中」三个字挂着、按钮全点不动的死局。
+     */
+    private void refreshTransactionState() {
+        if (session == null || txCommandInFlight || loading || saving) {
+            return;
+        }
+        Task<Boolean> task = new Task<>() {
+            @Override
+            protected Boolean call() {
+                try {
+                    return session.inTransaction();
+                } catch (Exception e) {
+                    // 读不到就维持原状 —— 把界面跳到「未知」比停在旧值更糟。
+                    return transactionOpen;
+                }
+            }
+        };
+        task.setOnSucceeded(event -> {
+            boolean open = Boolean.TRUE.equals(task.getValue());
+            if (open == transactionOpen) {
+                return;
+            }
+            transactionOpen = open;
+            applyTransactionControls();
+            feedback.transaction(open);
         });
         dbExecutor.execute(task);
     }
@@ -786,7 +994,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             DestructiveConfirm confirm = DestructiveConfirm.of(
                     "保存修改",
                     plan.size() + " 条变更 · 风险等级：" + danger.label(),
-                    "以下 SQL 会在单个事务里执行，任一条失败整体回滚。\n\n"
+                    transactionOpen
+                            ? "以下 SQL 写进「当前事务」：执行后仍不落库，点「提交」才生效，点「回滚」整体撤回。\n\n"
+                            + plan.preview()
+                            : "以下 SQL 会在单个事务里执行，任一条失败整体回滚。\n\n"
                             + plan.preview(),
                     "继续");
             // ⭐ 与本页保存预览同一套皮肤：确认框漏掉主题类时，它是满屏 Modena 灰。
@@ -825,7 +1036,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     Dialog<ButtonType> buildSavePreviewDialog(EditSqlBuilder.Plan plan, Danger danger) {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle("保存修改");
-        dialog.setHeaderText(plan.size() + " 条变更 · 单事务执行 · 风险：" + danger.label());
+        dialog.setHeaderText(plan.size() + " 条变更 · "
+                + (transactionOpen ? "写入当前事务 · 提交后才落库" : "单事务执行 · 失败回滚")
+                + " · 风险：" + danger.label());
         ButtonType execute = executeButtonType();
         ButtonType cancel = cancelButtonType();
         dialog.getDialogPane().getButtonTypes().addAll(execute, cancel);
@@ -969,8 +1182,44 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         deleteRowsButton.setManaged(false);
         deleteRowsButton.setOnAction(event -> deleteSelectedRows());
 
+        // ── ⭐ G2：事务三键 ────────────────────────────────────────────
+        //    Navicat 的数据页工具栏常驻「开始事务」，事务打开后才有「提交 / 回滚」。
+        //    作用域是<b>连接</b>：一个连接一个会话，同一连接上的查询页、结构页共用这个事务。
+        beginTxButton.setId("data-begin-tx");
+        beginTxButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        beginTxButton.setDisable(true);
+        toolbarOp(beginTxButton, Icons.Icon.LOCK, "开始事务",
+                "在本连接上开一个显式事务：之后的保存只写入不提交，点「提交」才真正落库");
+        beginTxButton.setOnAction(event -> beginTransaction());
+
+        // ⚠️ 提交 / 回滚<b>只有图标</b>，不带文字，也不进 toolbarLabels。
+        //    这一排 1280 窗口实测只有 1026px，文字全开已经要 1026px ——
+        //    再给两颗文字键，事务一打开整排文字就被判「放不下」而集体退成图标，
+        //    「保存」这种主操作反而丢了文字。这两颗只在事务里出现，
+        //    出现本身就是状态，图标 + 提示足够；事务状态由状态栏那一段常显。
+        commitTxButton.setId("data-commit-tx");
+        commitTxButton.getStyleClass()
+                .addAll("adb-button", "adb-button--ghost", "adb-button--icon");
+        commitTxButton.setMinWidth(Region.USE_PREF_SIZE);
+        commitTxButton.setOnAction(event -> commitTransaction());
+
+        rollbackTxButton.setId("data-rollback-tx");
+        rollbackTxButton.getStyleClass()
+                .addAll("adb-button", "adb-button--danger", "adb-button--icon");
+        rollbackTxButton.setMinWidth(Region.USE_PREF_SIZE);
+        rollbackTxButton.setOnAction(event -> {
+            if (confirmRollbackTransaction()) {
+                rollbackTransaction();
+            }
+        });
+        // 非事务态：提交/回滚不占位。
+        for (Button button : List.of(commitTxButton, rollbackTxButton)) {
+            button.setVisible(false);
+            button.setManaged(false);
+        }
+
         toolGroupData.getChildren().addAll(addRowButton, undoButton, redoButton, saveButton,
-                deleteRowsButton);
+                deleteRowsButton, beginTxButton, commitTxButton, rollbackTxButton);
 
         filterButton.setId("data-filter");
         filterButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
@@ -2127,6 +2376,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         feedback.sql(lastSql);
         feedback.refreshedAt(lastRefreshedAt);
         feedback.dirty(editBuffer.dirtyCount());
+        // ⭐ G2：事务状态跟着回来 —— 并且向会话核对一次真实值（见 refreshTransactionState）。
+        feedback.transaction(transactionOpen);
+        refreshTransactionState();
         updateEditControls();
         // U8：切回来只恢复事实段（范围/语句/耗时/待提交），不再播一句
         // 「已激活：users · 200 行」—— 表名在标签上、行数在范围段里，这句话没有新信息。
@@ -4266,21 +4518,43 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     /**
-     * 标签全开时工具条要多宽。
+     * 标签全开时工具条<b>最少</b>要多宽。
      *
-     * <p>收着字也要量得出来：临时把文字装回去算一次 {@code prefWidth} 再还原。
-     * {@code prefWidth} 是纯计算，不触发布局，同一帧里用户看不见这次闪动；
-     * 若直接读**当前**的 prefWidth，收字后它会自己变小 —— 于是「收字 → 放得下 →
-     * 展开 → 放不下 → 收字」来回抖。
+     * <p>收着字也要量得出来：临时把文字装回去算一次再还原。
+     * 文字按钮的 {@code minWidth} 被钉成 {@code USE_PREF_SIZE}（U4：不许把「筛选」压成「筛 …」），
+     * 所以这一趟量到的是「每个按钮文字完整 + 搜索框退到它自己的下限」。
+     *
+     * <p>⚠️ 不能用 {@code toolbar.prefWidth(-1)}：那会按搜索框的 <b>180px 偏好宽</b>记账，
+     * 凭空多要 70px。1280 窗口实测工具条只有 1026px，用 prefWidth 判就会把
+     * 「其实挤得动搜索框」误判成「放不下文字」，整排退成图标。
+     * 真的连下限都不够时，HBox 自己会把搜索框压到 110px —— 那才是这一排该付的代价。
      */
     private double labelRequirement() {
-        if (toolbarTextVisible != null && !toolbarTextVisible) {
+        boolean collapsed = toolbarTextVisible != null && !toolbarTextVisible;
+        if (collapsed) {
             toolbarLabels.forEach(ButtonBase::setText);
-            double needed = toolbar.prefWidth(-1);
-            toolbarLabels.keySet().forEach(button -> button.setText(""));
-            return needed;
         }
-        return toolbar.prefWidth(-1);
+        double needed = rowMinimumWidth(toolbar);
+        if (collapsed) {
+            toolbarLabels.keySet().forEach(button -> button.setText(""));
+        }
+        return needed;
+    }
+
+    /** 一个横排在其<b>托管</b>子节点都不折叠的前提下最少要多宽（未托管的按钮不占位、不计宽）。 */
+    private static double rowMinimumWidth(HBox row) {
+        List<javafx.scene.Node> managed = new ArrayList<>();
+        for (javafx.scene.Node child : row.getChildren()) {
+            if (child.isManaged()) {
+                managed.add(child);
+            }
+        }
+        double total = Math.max(0, row.getSpacing()) * Math.max(0, managed.size() - 1);
+        for (javafx.scene.Node child : managed) {
+            double min = child.minWidth(-1);
+            total += Double.isNaN(min) || min < 0 ? child.prefWidth(-1) : min;
+        }
+        return total;
     }
 
     private void exportCsv() {
