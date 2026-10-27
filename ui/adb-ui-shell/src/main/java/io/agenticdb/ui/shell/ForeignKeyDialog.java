@@ -44,6 +44,15 @@ final class ForeignKeyDialog {
     private final Dialog<ForeignKeyDef> dialog = new Dialog<>();
     private final DbSession session;
     private final TableStructure table;
+    /**
+     * {@code true} = 给「新建表」设计器里的草稿表用。
+     *
+     * <p>草稿表还没建出来，SQLite 的 {@code addForeignKey} 会生成一整段「建影子表 →
+     * 拷贝数据 → 删旧表 → 改名」的重建脚本 —— 对一张不存在的表是纯粹的误导。
+     * 草稿模式预览的是将来写进 {@code CREATE TABLE} 的那一行（同一个
+     * {@link StructureSqlBuilder#foreignKeyClause}，见建表计划的拼装处）。
+     */
+    private final boolean draft;
 
     private final TextField name = new TextField();
     private final ComboBox<String> referencedTable = new ComboBox<>();
@@ -57,23 +66,30 @@ final class ForeignKeyDialog {
     private final Label error = new Label();
     private final TextArea preview = new TextArea();
 
-    private ForeignKeyDialog(DbSession session, TableStructure table) {
+    private ForeignKeyDialog(DbSession session, TableStructure table, boolean draft) {
         this.session = session;
         this.table = table;
+        this.draft = draft;
         buildUi();
         refreshPreview();
     }
 
     static ForeignKeyDialog create(DbSession session, TableStructure table) {
-        return new ForeignKeyDialog(session, table);
+        return new ForeignKeyDialog(session, table, false);
+    }
+
+    /** ⭐ R30-D：给「新建表」设计器的草稿表用 —— 预览写进 CREATE TABLE 的那一行。 */
+    static ForeignKeyDialog createDraft(DbSession session, TableStructure draft) {
+        return new ForeignKeyDialog(session, draft, true);
     }
 
     Optional<ForeignKeyDef> show(Window owner, Collection<String> stylesheets) {
         if (stylesheets != null && !stylesheets.isEmpty()) {
             dialog.getDialogPane().getStylesheets().addAll(stylesheets);
-            // ⭐ 主题类必须抄到 DialogPane 上 —— 否则弹窗里所有 -adb-* 查找落空。
-        DialogStyles.apply(dialog, owner, "foreign-key");
         }
+        // ⭐ 主题类必须抄到 DialogPane 上 —— 否则弹窗里所有 -adb-* 查找落空，
+        //    退回 JavaFX 默认皮肤。没传外部样式表时同样要挂（与「新建表」一致）。
+        DialogStyles.apply(dialog, owner, "foreign-key");
         if (owner != null) {
             dialog.initOwner(owner);
         }
@@ -89,7 +105,6 @@ final class ForeignKeyDialog {
         dialog.getDialogPane().setMinWidth(DialogSizes.WIDE);
 
         dialog.setHeaderText("在 " + (table == null ? "?" : table.name()) + " 上新建外键");
-
         name.setId("fk-dialog-name");
         name.setPromptText("约束名（可留空）");
         name.textProperty().addListener((observable, oldValue, newValue) -> refreshPreview());
@@ -195,7 +210,8 @@ final class ForeignKeyDialog {
                 labeled("被引用的表", referencedTable),
                 labeled("列（左边是本表列，右边是被引用列，顺序一一对应）", picker),
                 new HBox(10, labeled("ON UPDATE", onUpdate), labeled("ON DELETE", onDelete)),
-                labeled("将执行", preview),
+                // 草稿表没有「将执行」这回事：外键在建表时内联进去，单独执行不了。
+                labeled(draft ? "将写进 CREATE TABLE（外键在新建表时内联）" : "将执行", preview),
                 error);
         body.getStyleClass().add("adb-form");
         dialog.getDialogPane().setContent(body);
@@ -235,7 +251,9 @@ final class ForeignKeyDialog {
 
     private ForeignKeyDef current() {
         String constraintName = name.getText() == null ? "" : name.getText().trim();
-        if (constraintName.isEmpty() && !chosen.isEmpty()) {
+        // 草稿表的名字可能还是「?」（用户还没填表名）：拿它拼约束名会得到
+        // 「fk_?_id」。草稿模式干脆不编名字 —— 建表时省略 CONSTRAINT 一样合法。
+        if (constraintName.isEmpty() && !chosen.isEmpty() && !draft) {
             constraintName = "fk_" + table.name() + "_" + chosen.getFirst();
         }
         return new ForeignKeyDef(constraintName, new ArrayList<>(chosen),
@@ -280,7 +298,10 @@ final class ForeignKeyDialog {
             return;
         }
         try {
-            preview.setText(StructureSqlBuilder.addForeignKey(session, table, current()).sql());
+            // 草稿表：预览「写进 CREATE TABLE 的那一行」；已有表：预览真正会执行的 ALTER / 重建。
+            preview.setText(draft
+                    ? StructureSqlBuilder.foreignKeyClause(session, current())
+                    : StructureSqlBuilder.addForeignKey(session, table, current()).sql());
         } catch (RuntimeException e) {
             preview.setText(e.getMessage() == null ? "" : e.getMessage());
         }

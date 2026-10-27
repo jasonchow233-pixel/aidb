@@ -1104,7 +1104,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         frozenGrid.setManaged(false);
 
         // ⭐ 空表不是"没有数据"四个字 —— 用户看到空白不知道下一步能干什么。
-        //   给图标 + 说明 + 一个真能点的出口（UI-AUDIT X1 / §8 E4）。
+        //   给图标 + 说明 + 一个真能点的出口。
         grid.setPlaceholder(EmptyState.of(Icons.Icon.TABLE, "这张表还是空的",
                 "表里没有数据行。可以新增一行，或到查询页执行 INSERT。",
                 "新增一行", this::addRow)

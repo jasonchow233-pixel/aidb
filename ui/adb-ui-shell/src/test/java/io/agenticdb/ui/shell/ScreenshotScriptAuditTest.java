@@ -143,6 +143,42 @@ class ScreenshotScriptAuditTest {
                 .isEmpty();
     }
 
+    /**
+     * ⭐ R31：设计器的<b>摆态值</b>必须真的被 {@code poseForShots} 认得。
+     *
+     * <p>和「开关写了没人读」同一类病：pose 名打错一个字母，那一帧照常拍出默认页、
+     * 返回码照样是 0 —— 而这几帧是 G15~G18 唯一的画面证据。
+     */
+    @Test
+    void everyDesignerPoseUsedByTheScriptIsHandled() throws IOException {
+        Path root = repositoryRoot();
+        String script = Files.readString(root.resolve("scripts/shots.sh"), StandardCharsets.UTF_8);
+        String dialog = Files.readString(root.resolve(
+                "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/NewTableDialog.java"),
+                StandardCharsets.UTF_8);
+
+        List<String> used = new ArrayList<>();
+        List<String> dangling = new ArrayList<>();
+        Matcher matcher = Pattern.compile("ADB_NEW_TABLE_POSE=([A-Za-z0-9_-]+)").matcher(script);
+        while (matcher.find()) {
+            String pose = matcher.group(1);
+            if (!used.contains(pose)) {
+                used.add(pose);
+                if (!dialog.contains("case \"" + pose + "\"")) {
+                    dangling.add(pose);
+                }
+            }
+        }
+
+        assertThat(used)
+                .as("shots.sh 至少要有一帧摆态截图（否则这份门禁没意义）")
+                .isNotEmpty();
+        assertThat(dangling)
+                .as("这些摆态在 shots.sh 里被用了，poseForShots 却没有对应分支 —— "
+                        + "那一帧会静默拍成默认的字段页")
+                .isEmpty();
+    }
+
     // ─────────────────────────── 工具 ───────────────────────────
 
     /** 一条截图帧：名称 / 点击目标 / 等待 / 该帧预置的环境变量。 */

@@ -166,11 +166,13 @@ final class IndexDialog {
         dialog.setTitle("新建索引");
         // ⭐ V-11：宽度走档位规范。U21 之前它是 PICKER=800 —— 那一档是为「两个列表并排
         //    + 中间四颗按钮」开的；单列表之后 720 就放得下「序号 + 列名 + 方向 + ×」，
-        //    再宽只是让 SQL 预览两侧留白。高度 560 落在 §6.1 的 560–620 区间，
-        //    再由 DialogStyles 按屏幕限高。
+        //    再宽只是让 SQL 预览两侧留白。
+        // ⚠️ 高度取 §6.1 区间的上界 620（原来 560）：560 下标题 / 基本信息 / 索引列 / 提示
+        //    把内容区吃满，SQL 预览被压成**一行**（D 区形同不存在，验收帧 p7 实拍抓到）。
+        //    最小高度仍留 560，小屏时由 DialogStyles 限高。
         dialog.getDialogPane().setPrefWidth(DialogSizes.WIDE);
         dialog.getDialogPane().setMinWidth(DialogSizes.WIDE);
-        dialog.getDialogPane().setPrefHeight(560);
+        dialog.getDialogPane().setPrefHeight(620);
         dialog.getDialogPane().setMinHeight(560);
         // 不用 setHeaderText：A 区要同时放标题 + 真实表名 + 关闭钮，
         // 标准 header 只给一行居中的小字（与「新建表」共用同一套骨架）。
@@ -280,7 +282,8 @@ final class IndexDialog {
         picker.getChildren().setAll(head, chosenList, hint);
         VBox.setVgrow(chosenList, Priority.ALWAYS);
         chosenList.setMinHeight(140);
-        picker.setPrefHeight(220);
+        // 220 → 200：给 D 区（SQL 预览）留出一行半以上的余量，见 buildUi 的高度注释。
+        picker.setPrefHeight(200);
         return section("索引列（顺序决定复合索引能否被用上）", picker);
     }
 
@@ -402,6 +405,9 @@ final class IndexDialog {
         //    在这儿是误导（用户会去敲键盘，然后什么都没发生）。
         preview.setHint("填好名称并选择列后，这里显示将要执行的语句");
         preview.setPrefHeight(96);
+        // ⭐ 预览是 D 区，不是一条装订线：不给最小高度，VBox 在高度紧张时
+        //    会把它压到只剩一行（560px 窗口下实测 16px），用户看不到完整语句。
+        preview.setMinHeight(72);
         return new VBox(8, header, preview);
     }
 

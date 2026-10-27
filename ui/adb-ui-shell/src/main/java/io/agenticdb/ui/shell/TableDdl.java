@@ -77,6 +77,17 @@ final class TableDdl {
 
     /** T1 新建表。 */
     void createTable(String connectionId) {
+        createTable(connectionId, "");
+    }
+
+    /**
+     * T1 新建表（可指定设计器落在哪一页）。
+     *
+     * <p>{@code pose} 只服务截图 / 验收（{@code ADB_NEW_TABLE_POSE=index|sql|…}）：
+     * 弹窗是模态的，验收脚本没有第二条路把「索引页 / SQL 预览页」拍下来。
+     * 空串 = 正常从「字段」页开始。
+     */
+    void createTable(String connectionId, String pose) {
         DbSession current = sessionFor.apply(connectionId);
         if (current == null) {
             status.accept("这个连接还没打开，请先在对象树里点它一下");
@@ -84,6 +95,9 @@ final class TableDdl {
         }
         NewTableDialog dialog = NewTableDialog.create(current,
                 existingTablesFor.apply(connectionId));
+        if (pose != null && !pose.isBlank()) {
+            dialog.poseForShots(pose);
+        }
         Optional<StructurePlan> plan = dialog.show(owner.get(), stylesheets.get());
         if (plan.isEmpty()) {
             status.accept("已取消新建表");
