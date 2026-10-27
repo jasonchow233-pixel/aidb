@@ -42,7 +42,7 @@ final class FavoritesPage extends VBox {
         list.setId("favorites-list");
         // ⭐ E9：收藏为空时给一句「怎么收藏」的引导，而不是空白列表。
         list.setPlaceholder(EmptyState.of(Icons.Icon.STAR, "还没有收藏任何对象",
-                "在左侧对象树里点 ★ 就能收藏；收藏会落盘，重启还在。"));
+                "在左侧对象树里右键表或视图，选「收藏」即可加入；收藏会落盘，重启还在。"));
         list.setCellFactory(view -> new ListCell<>() {
             @Override
             protected void updateItem(String item, boolean empty) {
@@ -79,10 +79,11 @@ final class FavoritesPage extends VBox {
         close.getStyleClass().addAll("adb-button", "adb-button--ghost");
         close.setOnAction(event -> close());
 
+        // Navicat 口径（§6.7）：关闭在左、主动作在最右。
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox actions = new HBox(8, open, close, spacer);
-        actions.setAlignment(Pos.CENTER_LEFT);
+        HBox actions = new HBox(8, spacer, close, open);
+        actions.setAlignment(Pos.CENTER_RIGHT);
 
         content.getChildren().addAll(summary, list, actions);
         content.setPadding(new Insets(16));

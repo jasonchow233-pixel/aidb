@@ -4,6 +4,7 @@ import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.Dialect;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.Writer;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -44,6 +45,66 @@ public final class TableExporter {
         Dialect dialect = session.dialect();
         List<String> selected = columns == null || columns.isEmpty() ? null : columns;
         String sql = selectSql(dialect, table, selected);
+        return stream(session, sql, List.of(), options, out, table);
+    }
+
+    /**
+     * ⭐ P6-2：导出任意查询结果（查询页的「导出全部结果」）。
+     *
+     * <p>与 {@link #export} 的差别：不生成 {@code SELECT * FROM 表}，
+     * 而是原样执行用户那条 SQL（带绑定参数），所以结果集的范围、排序、
+     * 多表 JOIN 都与查询页一致；行数不受 UI 单页上限影响。
+     *
+     * <p>SQL 格式会写 {@code INSERT INTO 表 ...}，查询结果没有目标表可写，
+     * 因此明确拒绝，而不是产出不能执行的 SQL 文件。
+     *
+     * @param params 绑定参数（顺序与 SQL 中的 {@code ?} 一致）
+     * @return 实际导出的行数
+     */
+    public static long exportSql(DbSession session, String sql, List<Object> params,
+                                 ExportOptions options, Writer out)
+            throws SQLException, IOException {
+        if (options.format() == ExportFormat.SQL) {
+            throw new IllegalArgumentException(
+                    "查询结果不支持 SQL INSERT 格式导出，请改用 CSV / TSV / JSON");
+        }
+        return stream(session, sql, params == null ? List.of() : params, options, out, null);
+    }
+
+    /**
+     * ⭐ P6-3：导出一张表为 xlsx（SXSSF 流式写出）。
+     *
+     * <p>xlsx 是二进制格式，所以单独走 {@link OutputStream}，
+     * 不能复用 {@code Writer} 的 CSV/JSON/SQL 路径。
+     */
+    public static long exportXlsx(DbSession session, String table, List<String> columns,
+                                  ExportOptions options, OutputStream out)
+            throws SQLException, IOException {
+        Dialect dialect = session.dialect();
+        List<String> selected = columns == null || columns.isEmpty() ? null : columns;
+        return streamXlsx(session, selectSql(dialect, table, selected), List.of(), options, out);
+    }
+
+    /** ⭐ P6-3：把任意查询结果导出为 xlsx（查询结果没有目标表，同 {@link #exportSql}）。 */
+    public static long exportXlsxSql(DbSession session, String sql, List<Object> params,
+                                     ExportOptions options, OutputStream out)
+            throws SQLException, IOException {
+        return streamXlsx(session, sql, params == null ? List.of() : params, options, out);
+    }
+
+    /**
+     * 流式写出结果集。
+     *
+     * @param table 表名：只有整表导出（SQL 格式）需要它；查询结果传 {@code null}
+     */
+    private static long stream(DbSession session, String sql, List<Object> params,
+                               ExportOptions options, Writer out, String table)
+            throws SQLException, IOException {
+        if (options.format().binary()) {
+            throw new IllegalArgumentException(
+                    "xlsx 是二进制格式，请改用 TableExporter.exportXlsx / exportXlsxSql");
+        }
+        Dialect dialect = session.dialect();
         long written = 0;
 
         Connection connection = session.connection();
@@ -51,6 +112,9 @@ public final class TableExporter {
                      connection.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY,
                              ResultSet.CONCUR_READ_ONLY)) {
             statement.setFetchSize(options.batchSize());
+            for (int i = 0; i < params.size(); i++) {
+                statement.setObject(i + 1, params.get(i));
+            }
             try (ResultSet rs = statement.executeQuery()) {
                 ResultSetMetaData meta = rs.getMetaData();
                 List<String> names = new ArrayList<>();
@@ -60,7 +124,7 @@ public final class TableExporter {
                 if (options.includeHeader() && options.format().hasHeader()) {
                     CsvCodec.writeRow(out, names, options.format().delimiter());
                 }
-                if (options.format() == ExportFormat.SQL) {
+                if (options.format() == ExportFormat.SQL && table != null) {
                     writeSqlPreamble(out, dialect, table, names);
                 }
                 // ⭐ 一次只把一批行读进内存，写完就释放。
@@ -81,6 +145,47 @@ public final class TableExporter {
                     if (!hasMore) {
                         break;
                     }
+                }
+            }
+        }
+        out.flush();
+        return written;
+    }
+
+    /**
+     * ⭐ P6-3：xlsx 的流式路径。
+     *
+     * <p>与文本路径同一条 SQL / 同一批行读取方式，区别只在于每行交给
+     * {@link XlsxStreamWriter}（SXSSF，滚动窗口 + 临时文件），而不是拼接字符串。
+     */
+    private static long streamXlsx(DbSession session, String sql, List<Object> params,
+                                   ExportOptions options, OutputStream out)
+            throws SQLException, IOException {
+        long written = 0;
+        Connection connection = session.connection();
+        try (PreparedStatement statement =
+                     connection.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY,
+                             ResultSet.CONCUR_READ_ONLY)) {
+            statement.setFetchSize(options.batchSize());
+            for (int i = 0; i < params.size(); i++) {
+                statement.setObject(i + 1, params.get(i));
+            }
+            try (ResultSet rs = statement.executeQuery();
+                 XlsxStreamWriter xlsx = new XlsxStreamWriter(out)) {
+                ResultSetMetaData meta = rs.getMetaData();
+                List<String> names = new ArrayList<>();
+                for (int i = 1; i <= meta.getColumnCount(); i++) {
+                    names.add(meta.getColumnLabel(i));
+                }
+                if (options.includeHeader()) {
+                    xlsx.header(names);
+                }
+                while (rs.next()) {
+                    if (options.maxRows() > 0 && written >= options.maxRows()) {
+                        break;
+                    }
+                    xlsx.row(readValues(rs, names.size()));
+                    written++;
                 }
             }
         }

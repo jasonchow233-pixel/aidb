@@ -30,7 +30,7 @@ class ConnectionPropertiesDialogTest {
 
     private static ConnectionProfile profile(Map<String, String> options) {
         return new ConnectionProfile("id", "shop", DialectKind.MYSQL, "db.local", 3306,
-                "shop", "root", false, 0, options);
+                "shop", "root", false, 0, "", options);
     }
 
     /** 弹窗必须在 FX 线程上创建（JavaFX 的硬性要求）。 */

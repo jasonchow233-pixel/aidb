@@ -218,7 +218,7 @@ class ConnectionWizardTest {
         ConnectionProfile existing =
                 new ConnectionProfile("fixed-id", "My PG",
                         io.agenticdb.jdbc.DialectKind.SQLITE, "", 0,
-                        sqliteFile.toString(), "", true, 42L, java.util.Map.of());
+                        sqliteFile.toString(), "", true, 42L, "本地", java.util.Map.of());
         open(robot, existing);
 
         // 第 1 步回填名称

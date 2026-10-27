@@ -1,10 +1,14 @@
 package io.agenticdb.ui.shell;
 
 import javafx.geometry.Pos;
+import javafx.scene.AccessibleRole;
 import javafx.scene.control.Label;
+import javafx.scene.input.KeyCode;
 import javafx.scene.layout.HBox;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -43,9 +47,38 @@ public final class ObjectTabBar extends HBox {
         tab.setId("object-tab-" + id);
         tab.getStyleClass().add("adb-object-tab");
         tab.setAccessibleText(label);
-        tab.setOnMouseClicked(event -> select(id));
+        // ⭐ P7：切面以前只有鼠标能点（Label 默认不可聚焦）—— 键盘用户进不了
+        //    结构 / 概览 / 数据这些内部切面。补 Tab 停靠点、TAB_ITEM 角色、
+        //    Enter/Space 选中、左右方向键切换。
+        tab.setFocusTraversable(true);
+        tab.setAccessibleRole(AccessibleRole.TAB_ITEM);
+        tab.setOnMouseClicked(event -> {
+            tab.requestFocus();
+            select(id);
+        });
+        tab.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.ENTER || event.getCode() == KeyCode.SPACE) {
+                select(id);
+                event.consume();
+            } else if (event.getCode() == KeyCode.LEFT || event.getCode() == KeyCode.RIGHT) {
+                stepFocus(id, event.getCode() == KeyCode.LEFT ? -1 : 1);
+                event.consume();
+            }
+        });
         tabs.put(id, tab);
         getChildren().add(tab);
+    }
+
+    /** 方向键切换切面：焦点与选中一起走（Tab 控件的惯例）。 */
+    private void stepFocus(String id, int delta) {
+        List<String> order = new ArrayList<>(tabs.keySet());
+        int index = order.indexOf(id);
+        if (index < 0) {
+            return;
+        }
+        String next = order.get(Math.floorMod(index + delta, order.size()));
+        tabs.get(next).requestFocus();
+        select(next);
     }
 
     /** 切面切换回调。 */

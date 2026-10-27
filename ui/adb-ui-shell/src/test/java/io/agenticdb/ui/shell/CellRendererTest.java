@@ -45,7 +45,7 @@ class CellRendererTest {
 
         CellRenderer.Rendered rendered = CellRenderer.render(binary, bytes);
 
-        assertThat(rendered.text()).isEqualTo("⬢ 4 B");
+        assertThat(rendered.text()).isEqualTo("BLOB · 4 B");
         assertThat(rendered.styleClass()).contains("binary");
         assertThat(CellRenderer.hexDump(bytes))
                 .contains("00000000")

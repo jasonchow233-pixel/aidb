@@ -9,13 +9,10 @@
 
 ---
 
-## 当前状态（2026-10-24）
+## 当前状态（2026-10-26）
 
-**P0–P4 已完成、P5/P6 进行中、界面专项 U-B1–U-B7 已落地。**
-门禁 **786 条 / 101 类 / 0 失败**（2026-10-24 · 第二十二轮实测；另有 44 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
-第二十二轮先把**门禁自己**修干净了：`java.util.prefs` 是进程级共享状态，
-同一个 JVM 里跑的测试会互相污染 —— 三个门禁在 `clean verify` 里红、单独跑却绿。
-现在**每个测试方法一个独立偏好节点**，跑测试也不再改动开发机上的真实 AIDB 偏好。
+**P0–P6 已完成、UIUX 专项 UX-0…UX-6 已全部收官、P7 能自动化的部分已收尾、UI/UX 重构任务书 V1.0（U-ICON / U-CTRL / U-IDX / U-POLISH）已落地。**
+门禁 **964 条 / 123 类 / 0 失败**（2026-10-26 · 第二十八轮 Windows 实机实测；另有 48 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
 
 > **第八轮之后**：D2+D4（MySQL/PG 列注释读回）已修；B5-S1（索引可编辑）已落地；
 > **T1–T4（建表 / 清空 / 重命名 / 删表）已落地**（T1=弹窗，按形态裁定）；9 张验收截图完成。
@@ -28,12 +25,14 @@
 >   （各驱动码表不同）→ **带外键的表改列必失败**（`ON UPDATE 3` 语法错误）。
 > - 其余遗留：B5-S2/S3、B5-S4/O1/O2、U-B6、空白态 E5–E9、架构收尾 A10/A12/A15/A16。
 >
-> 完整清单见 `NAVICAT-TODO.md`；逐域对比见 `docs/NAVICAT-GAP.md` §7；
-> **下一阶段 UIUX 升级（UX-0…UX-6）见 `NAVICAT-TODO.md` §34 与 `docs/UI-ROADMAP.md` §12**。
+> **完整清单、逐域对比、像素级参数与下一轮规划见 `NAVICAT-TODO.md`（2026-10-26 重建）**；
+> 启动可观测性 `StartupTrace` + 可访问性（六区焦点顺序 / 标签与切面键盘可达 / 逐页可朗读名称）已落地；
+> **冷启动 <2s 未达标（实测 3.5–3.9 s，地板 ≈2.35 s）**；jlink ⛔（自动模块）·
+> 自动更新 🚫（无发布渠道）· 签名/公证 ⛔（缺证书）—— 见 `NAVICAT-TODO.md` §8。
 
 | 能力 | 状态 | 证据 |
 |---|---|---|
-| 五区布局（应用栏/标签栏/侧栏/内容区/状态栏） | ✅ | `AppShell` + `AppBar` |
+| 七区布局（菜单/功能区/侧栏/标签栏/对象工具栏/内容区/状态栏） | ✅ | `AppShell` + `AppBar` |
 | 原生窗口装饰 + macOS 系统菜单栏 | ✅ | `StageStyle.DECORATED` + `MenuBar.setUseSystemMenuBar(true)` |
 | 统一动作注册表（菜单/工具栏/右键/命令面板） | ✅ | `ActionRegistry` |
 | 侧栏 250px / 折叠 48px / 拖动改宽 200–360 | ✅ | `SideBar` + `AppShell` |
@@ -56,7 +55,8 @@
 | 行内编辑、类型转换、按主键定位 | ✅ | `ValueCell` + `RowIdentity` |
 | NULL / 空串独立操作 | ✅ | 单元格右键 + 批量条 |
 | `EditBuffer`、撤销/重做、脏标记、关闭确认 | ✅ | `adb-editing` |
-| 导入导出向导（流式 CSV/TSV/JSON/SQL，字段映射，坏行报告） | ✅ | `adb-transfer` |
+| 导入导出向导（流式 CSV/TSV/JSON/SQL/xlsx，字段映射，按目标列类型转换，坏行报告） | ✅ | `adb-transfer` |
+| 查询结果导出：本页 / 选中行 / 全部结果（CSV / TSV / JSON / SQL / xlsx） | ✅ | `QueryPage` 导出菜单 + `TableExporter.exportSql` |
 | 新增行 / 删除 / 克隆（草稿行、一次撤销） | ✅ | 淡绿新增、淡红删除、`●` 脏行 |
 | 多选 + 批量条：TSV / INSERT / 克隆 / 设 NULL / 设空串 / 删除 | ✅ | 表头全选仅当前页 |
 | SQL 预览 → 单事务保存 → 刷新 → Toast 反向撤销 | ✅ | `EditSqlBuilder` + `DataGridPage` |
@@ -87,21 +87,33 @@
 | **语句超时**（30s，超时给建议）+ **连接池归还** | ✅ | `QueryLimits` / `JdbcSession` / `ConnectionPool` |
 | **错误归类**（连接断开/权限/不存在/超时/锁/约束/语法） | ✅ | `ErrorClassifier` / `ErrorClassifierTest` |
 | **代码片段库**（存选中的 SQL → 插入到光标处） | ✅ | `SavedQueries`（查询/片段两种类型） |
+| **侧栏「已保存查询」分组**（双击 / 回车 / 右键载入新查询） | ✅ | `SideBar.setSavedQuerySource` + `AppShell.openSavedQuery` |
+| **连接分组 / 重命名**（分组列、按分组搜索、侧栏文件夹） | ✅ | `ConnectionProfile.group` / `ConnectionStore` |
+| **对象首页列表 / 网格切换**（视图记忆、选中同步） | ✅ | `ObjectHomePage.showView` + `ui.objectHome.view` |
+| **数据页「概览」**（行数 / 大小 / 引擎 / 索引数 / 最近操作） | ✅ | `DataGridPage.buildOverview` + `SchemaService.indexCount` |
+| **结构页「选项」**（MySQL 引擎 / 排序规则 / 自增 / 行格式；其它方言「—」） | ✅ | `SchemaService.tableOptions` + `Dialect.tableOptionsSql` |
+| **查询历史带对象上下文**（连接 / 命中表 / 时间，按表筛） | ✅ | `QueryHistory.Entry` + 详情面板「最近操作」 |
 | **多连接并存**（每连接一条执行器，同连接串行、跨连接不互堵） | ✅ | `DbExecutors` / `SessionManager` |
 | **连接建立移出 UI 线程**（连接慢不再冻窗口） | ✅ | `AppShell.connectProfile` |
 | **崩溃日志**（`~/.agenticdb/logs/crash-*.log`） | ✅ | `CrashLog` |
+| **启动耗时日志**（`~/.agenticdb/logs/startup.log`：进程启动 → 首屏分段打点） | ✅ | `StartupTrace`（**注意：冷启动 <2s 目标未达成**，实测 3.5–3.9 s，见 `NAVICAT-TODO.md` §8） |
 | **一键出包**（jpackage：app-image / dmg / msi / deb） | ✅ | `scripts/package.sh` |
 | **连接属性页**（弹窗里套 TabPane：常规/SSL/高级） | ✅ | `ConnectionPropertiesDialog` |
 | 结构安全编辑：加列 / 改列 / 重命名列 / 删列 + 两级危险确认 | ✅ | `StructureSqlBuilder` + `StructurePlan` |
 | 结构变更单事务 + 失败回滚 + 全页面联动刷新 | ✅ | `StructurePage.applyPlan` |
 | 连接管理页：列表 / 搜索 / 收藏 / 打开 / 编辑 / 复制 / 删除 | ✅ | `ConnectionsPage` |
 | 三步连接向导：类型与名称 → 参数 → 测试与保存 | ✅ | `ConnectionWizard` |
-| 凭据存系统钥匙串 / Secret Service（不落盘） | ✅ | `KeychainCredentialStore` / `SecretToolCredentialStore` |
+| 凭据存系统凭据库（不落盘） | ✅ | `WindowsCredentialStore`（WinCred）/ `KeychainCredentialStore` / `SecretToolCredentialStore` |
 | 连接档案落盘 `~/.agenticdb/connections.json`（0600） | ✅ | `ConnectionStore` |
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
+| **键盘可达：六区焦点顺序 + 标签/切面键盘切换 + 逐页可朗读名称** | ✅ | `AccessibilityAuditTest`（第二十六轮）+ `TabBar` / `ObjectTabBar` / `ObjectHomePage` / `TableListPage` |
+| **启动耗时可观测（进程 → 首屏，分段打点 + 日志 + 关于回显）** | ✅ | `StartupTrace` + `StartupTraceTest`（**冷启动 <2s 未达标**：实测 3.5–3.9 s，见 `NAVICAT-TODO.md` §8） |
+| **Lucide 矢量图标 + 语义彩色**（对象类型/状态彩色，动作单色） | ✅ | `Icons`（第二十七轮）+ `LucideIconTest` |
+| **统一控件层：五档按钮 × 五态 + 输入/复选/下拉/清单/弹窗同套规则** | ✅ | `app.css` 控件段 + `UnifiedControlTest` |
+| **新建索引弹窗**（单列表 + 拖拽/Alt+↑↓ 保序 + 「添加列」下拉 + 方言能力门控 + SQL 预览即执行语句） | ✅ | `IndexDialog` + `IndexDialogTest` / `IndexDdlTest` |
 
-当前门禁：**786 条 / 101 类 / 0 失败**（2026-10-24 · 第二十二轮实测；`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
+当前门禁：**1035 条 / 127 类 / 0 失败**（2026-10-27 · 第三十一轮 Windows 实机实测；`./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`）；另有 48 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
 
 > ⚠️ **本机环境**：`java` 默认不在 PATH。可用的 JDK：
 > - Windows 10：`~/.jdks/openjdk-27.0.1.0.2`（pom 的 enforcer 区间为 `[25,28)`）
@@ -119,13 +131,18 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 演示库首次启动自动生成：4 张表（`users` 200 行、`orders` 500 行、`products` 80 行、`notes` 空表）+ 1 个视图。
 已有有效演示库不会被覆盖；`-Dadb.demo.db=/path/to/file.db` 可指定其他文件。
 
-真实窗口截图：`docs/screenshots/p0-shell.png`、`p2-users.png`、`p3-query.png`、`p4-structure.png`、
-`p5-connections.png`、`p5-dark.png`、`p6-tables.png`、`p6-new-table.png`、`p7-new-index.png`
-（共 **9 张**；`docs/screenshots/navicat/` 另存 Navicat Premium Lite 15 实拍 3 张 + 等比例并排图：
+真实窗口截图：`docs/screenshots/` 共 **24 张**（亮色 19 + 暗色 5）——
+`p0-shell`、`p2-users`、`p2-users-dark`、`p2-overview`、`p2-details`、`p2-cell`、`p2-error`、
+`p3-query`、`p3-query-menu`、`p4-structure`、`p4-ddl`、`p5-connections`、`p5-dark`、
+`p6-tables`、`p6-tables-grid`、`p6-new-table`、`p6-new-table-fields`、`p6-new-table-fields-dark`、
+`p6-new-table-comment`、`p6-new-table-index`、`p6-new-table-sql`、`p6-new-table-dark`、
+`p7-new-index`、`p7-new-index-dark`
+（`docs/screenshots/navicat/` 另存 Navicat Premium Lite 15 实拍 3 张 + 等比例并排图：
 `navicat-tablelist.png` / `navicat-toolbar.png` / `side-by-side-2026-10.png`，
 以及 2026-10-24 新增的两张高保真实拍 `navicat-data-grid-2026-10-24.png` / `navicat-table-list-2026-10-24.png`），
 由 `ScreenshotSession`（`ADB_SHOTS` 等环境变量）可复现生成，用法见 §12.2。
-弹窗两张靠 `ADB_NEW_TABLE=1` / `ADB_INDEX=1` 启动开关（§16.3）。
+弹窗帧靠 `ADB_NEW_TABLE=1` / `ADB_INDEX=1` 启动开关（§16.3）；
+右键菜单帧 `p3-query-menu` 靠 `ADB_MENU_POSE=1` 注入真 `ContextMenuEvent`。
 
 ---
 
@@ -147,7 +164,7 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 # 3. 完整门禁：编译 + 全部测试 + 用例计数
 ./scripts/build.sh
 
-# 4. 重拍 docs/screenshots/ 的 9 张验收截图
+# 4. 重拍 docs/screenshots/ 的 24 张验收截图
 ./scripts/shots.sh
 
 # 5. 出包（jpackage；产物在 bootstrap/adb-desktop/target/dist/，实测可启动）
@@ -190,20 +207,13 @@ TestFX 默认用 Monocle 无头模式；在本机想看真实窗口，去掉父 
 
 | 文档 | 回答什么问题 |
 |---|---|
-| **`NAVICAT-TODO.md`** | ⭐ **唯一执行清单**：当前状态、P0–P4 完成项、P4.5 契约修复、P4.6 网格/查询进阶、P5–P7 路线与门禁、**§14 第六轮全量核查（4 个缺陷 + 表级生命周期空白）** |
-| **`docs/NAVICAT-GAP.md`** | ⭐ **对标分析**：与 Navicat 逐域对比，列出功能/交互/按钮/弹窗/图标/架构的差距与优先级；含**逐文件复核发现的 16 处文档失真** |
+| **`NAVICAT-TODO.md`** | ⭐ **唯一真源（2026-10-26 重建）**：对标 Navicat Premium 17 的官方手册 + 像素级实测对比、逐组件/功能/流程差距清单（G1–G14）、第三十~三十二轮规划与决策项、已裁定口径、不做边界、每轮验收口径 |
 | `docs/ARCHITECTURE.md` | 模块、数据流、线程模型、编辑/SQL/撤销不变量、结构页与连接层模型 |
-| `docs/UI-GUIDE.md` | 视觉基线、五区、组件与交互规则、令牌生成、图标约定、弹窗规范 |
-| **`docs/UI-VISUAL-SPEC.md`** | ⭐ **可照着实现的 UI 规格书**：7 档字号落到哪个角色 · 98 个令牌语义 · 48 图标清单 · 间距/圆角/固定尺寸 · 五区与四种页面骨架 · 组件规格 · 弹窗骨架与按钮区规则 · 交互态矩阵 · 键盘表 · 文案措辞 |
-| **`docs/NAVICAT-PARITY-2026-10-V5.md`** | ⭐ **Navicat 对齐报告 V5**（2026-10-22）：8 个维度逐像素对照 · 已落地 13 项改动 · 4 处刻意不追 · P0/P1/P2 剩余清单 · 等比例并排图说明 |
-| **`docs/UI-COMPARISON-2026-10.md`** | 与 Navicat 的像素级对拍（**上一版**，并排图存在缩放不一致；最新结论以 `NAVICAT-PARITY-2026-10-V5.md` 为准） |
-| **`docs/UI-ROADMAP.md`** | ⭐ **界面专项**：实测 11 个界面问题（字号 / 间距 / 圆角 / 焦点环 / 按钮层级 / 图标 / 密度 / 列头 / 连接列表）+ 6 个批次计划 + 排版 / 间距 / 圆角 / 配色 / 交互规范；**§12 第二十一轮 UX-0…UX-6 目标值与门禁** |
-| **`docs/NAVICAT-COMPARE.md`** | ⭐ **与 Navicat 的实拍对比**（本机装了 Navicat Premium Lite 15）：逐项对照 + 6 个真差距 + 由此重排的优先级 |
+| `docs/UI-GUIDE.md` | 视觉基线、七区、组件与交互规则、令牌生成、图标约定、弹窗规范 |
+| **`docs/UI-VISUAL-SPEC.md`** | ⭐ **可照着实现的 UI 规格书**：7 档字号落到哪个角色 · 102 个令牌语义 · 图标清单 · 间距/圆角/固定尺寸 · 七区与四种页面骨架 · 组件规格 · 弹窗骨架与按钮区规则 · 交互态矩阵 · 键盘表 · 文案措辞 |
 | **`docs/GITHUB-COMPARE.md`** | ⭐ **GitHub 上开源数据库管理软件**扫描（DBeaver / Chat2DB / Beekeeper Studio / TablePro / sqlpad / SQLTools…）：与 AIDB 的可比性、独特定位、借鉴项 |
 | **`docs/EXEC-SUMMARY.md`** | ⭐ **对外汇报版**（2026-10-22）：架构 / Todolist / 截图 / Navicat / GitHub / 六维 / 还缺什么 / 本轮交付物 / 汇报要点 |
-| **`docs/UI-AUDIT.md`** | ⭐ **截图实测审计（2026-10-21）**：4 张真实窗口截图逐项挑问题 + 代码定位 + 修法 + 验收标准；含**3 个已排除的误判**与分批执行计划 |
 | **`docs/UI-FORMS-AND-STATES.md`** | ⭐ **形态与状态规范**：新能力该做**弹窗还是标签页**（含待建能力的裁定表，防「新建表做成标签页」这类错误）+ 默认态 8 项 + 空白态 9 处清单 + `EmptyState` 组件约定 |
-| `docs/NEXT-STEPS.md` | 阶段规划：批次划分、依赖顺序、提交策略 |
 | `docs/COMPONENT-SELECTION.md` | 开源组件选型、版本、许可证、禁入清单 |
 
 > 📌 **对外汇报**：`docs/EXEC-SUMMARY.md`（一句话结论 + 六维全景 + 还缺什么）与
@@ -212,7 +222,7 @@ TestFX 默认用 Monocle 无头模式；在本机想看真实窗口，去掉父 
 **脚本**（`scripts/`，2026-10-21 新增）：`dev.sh` 一键编译启动 ·
 `build.sh` 门禁 · `shots.sh` 重拍截图 · `package.sh` **一键出包**（jpackage）·
 `_env.sh` 公共环境预检。
-用法见上文「快速开始」，设计取舍见 `NAVICAT-TODO.md` §14.7。
+用法见上文「快速开始」，设计取舍见 `scripts/` 各脚本头部注释。
 
 旧 Rust / Vue / Python 实现、构建产物和过时规划已删除；git 历史仍可追溯。
 
@@ -235,7 +245,7 @@ workbench/
 
 ui/
   adb-ui-core        设计令牌（tokens.json → Tokens.java + theme CSS）
-  adb-ui-shell       JavaFX 五区外壳、应用栏、命令面板、数据页、查询页、结构页、连接页
+  adb-ui-shell       JavaFX 七区外壳、应用栏、命令面板、数据页、查询页、结构页、连接页
 
 testing/
   adb-fixtures       演示库与测试夹具（固定种子）
@@ -248,7 +258,7 @@ bootstrap/
 
 ## 工程约束
 
-1. **设计令牌唯一真相**：`ui/adb-ui-core/src/main/resources/tokens/tokens.json`（98 个：60 颜色 / 35 尺寸 / 3 时长）。
+1. **设计令牌唯一真相**：`ui/adb-ui-core/src/main/resources/tokens/tokens.json`（102 个：64 颜色 / 35 尺寸 / 3 时长）。
    改完运行 `java tools/GenTokens.java` 重新生成 `Tokens.java` 与 `theme-dark/light.css`。
 2. **业务代码禁止颜色字面量**：只能引用 `-adb-*` looked-up colors。
    `TokenParityTest` 会扫描 `app.css`，出现 `#rrggbb` / `rgba(...)` 直接失败。
@@ -268,7 +278,7 @@ bootstrap/
 
 - 危险分级**第三层（驱动侧复查）仍不存在**：`DbSession.execute(sql)` 没有 `danger`
   参数。前两层（fail-closed 分类 + UI 确认）已落地。→ §10 A6
-- 设计令牌已收敛到 98 个且全部被用到；`TokenParityTest` 门禁守着不会再长回摆设
+- 设计令牌已收敛到 102 个且全部被用到；`TokenParityTest` 门禁守着不会再长回摆设
   （40px 档 `fs-4xl` 于 2026-10-23 移除 —— 唯一消费者是欢迎页 logo 的 `font-size`；
   20px 档 `fs-2xl` 于 2026-10-24 随 S-7 移除 —— 唯一消费者是那张**不可达**欢迎页卡片的标题。
   两次都是删令牌，不给令牌硬造消费者）。
@@ -291,15 +301,24 @@ bootstrap/
 - ✅ **函数 / 过程定义体可看**（第十一轮·续二，只读标签页）；⚠️ SQLite 没有 SQL 层函数。
 - ⚠️ **点对象首页的「函数 / 过程 / 触发器」会被告知暂不支持**（D1 已修，不再报错，
   但还不能看定义体）。
-- 结构页的索引已可编辑；**外键、触发器仍只读**（且没有右键菜单）。
+- ✅ **外键 / 触发器可增删**（第十一轮 B5-S2/S3，弹窗 + 实时 SQL 预览）；结构页的列 / 索引 /
+  外键 / 触发器 / CHECK 都已可编辑。
 - 表注释 / 外键 / 触发器 / CHECK / 函数·过程定义体均已支持；MySQL EVENT 已建模；
   剩余的是视图增删改（V1）与表清单工具条的新建/删除/设计入口（N1–N3）。
-- 导入导出已实现（CSV/TSV/JSON/SQL 导出 + CSV/TSV 导入）；**xlsx 还没有**；导入暂按字符串绑列，类型不匹配的行会跳过并报告。
+- ✅ **导入导出已补齐**（P6-1 / P6-2 / P6-3）：CSV / TSV / JSON Lines / SQL 导出 + 查询结果三档导出
+  （本页 / 选中 / 全部）、**xlsx 导入导出**（POI SXSSF 流式写 + SAX 流式读，与 CSV 共用同一条 `Ingest`）、
+  导入按目标列**类型转换**（数字 / 布尔 / 日期含中文格式，空值→NULL），坏行带列名与原文。
 - 侧栏的查询历史 / 诊断 / 导入导出 / 已保存查询四个入口都已接真功能。
 - **MySQL 5.7.44 真库已联调**（9 例）；**PostgreSQL 仍缺测试库**（未配置，跳过）。
+- ⚠️ **冷启动未达标**：目标 < 2 s，实测 **3.5–3.9 s**（Windows 10 + JDK 27，`StartupTrace` 打点）。
+  地板来自 JVM/Toolkit ~0.95 s + 第一个 JavaFX 控件（Modena 样式表解析）~0.5 s +
+  `stage.show()` 首趟 CSS/布局 ~0.86 s；**AppCDS 在开发启动路径试过不通**。→ `NAVICAT-TODO.md` §8
+- ⚠️ **没有自动更新 / 版本检查**（无发布渠道 + 离线环境 + 无安装包签名）；
+  **签名与公证未做**（需 Apple Developer ID 与 Windows 代码签名证书，属外部资源）；
+  **jlink 自定义运行时不可行**（RichTextFX / ControlFX 是自动模块）。→ `NAVICAT-TODO.md` §8
 - `core/adb-declarations` 与根目录 `declarations/` 已于 2026-10-24 删除（运行时从未引用；
   方言差异现由 `Dialect` 抽象层承担），基线因此减少 43 条测试。
 - 主题“跟随系统”目前只探测 macOS；Windows/Linux 默认亮色。
-- 令牌体系 98 个全部被用到；密度四档（22/24/28/34，默认紧凑）覆盖数据网格 / 查询结果 / 对象清单 / 对象树 / 结构页。
-- `docs/screenshots/` 的 9 张图已按当前代码重拍。
+- 令牌体系 102 个全部被用到；密度四档（19/20/21/26，默认 normal；数据网格 +2 = 21/22/23/28）覆盖数据网格 / 查询结果 / 对象清单 / 对象树 / 结构页。
+- `docs/screenshots/` 的 24 张图（亮 19 + 暗 5）已按当前代码重拍。
 - 首版不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务。

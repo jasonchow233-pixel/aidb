@@ -116,10 +116,11 @@ final class ImportWizard {
             }
         });
 
+        // Navicat 口径（§6.7）：关闭在左、主动作在最右，进度指示留在最左。
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox actions = new HBox(8, importButton, closeButton, spacer, spinner);
-        actions.setAlignment(Pos.CENTER_LEFT);
+        HBox actions = new HBox(8, spinner, spacer, closeButton, importButton);
+        actions.setAlignment(Pos.CENTER_RIGHT);
 
         content.getChildren().addAll(
                 field("文件", fileField),
@@ -136,7 +137,7 @@ final class ImportWizard {
 
         dialog.setTitle("导入数据");
 
-        // ⭐ V-11：弹窗宽度走三档规范（DialogSizes）。
+        // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
 
         dialog.getDialogPane().setPrefWidth(DialogSizes.WIDE);
 
@@ -151,7 +152,7 @@ final class ImportWizard {
         if (owner != null) {
             dialog.initOwner(owner);
         }
-        DialogStyles.apply(dialog, owner);
+        DialogStyles.apply(dialog, owner, "import-wizard");
         dialog.showAndWait();
     }
 
@@ -187,25 +188,38 @@ final class ImportWizard {
             return;
         }
         ImportFormat format = formatBox.getValue();
-        try (Reader reader = new InputStreamReader(Files.newInputStream(file),
-                StandardCharsets.UTF_8);
-             PushbackReader pushback = new PushbackReader(reader, 8)) {
-
-            List<String> header = io.agenticdb.transfer.CsvCodec.readRow(pushback,
-                    format.delimiter());
+        try {
+            List<String> header;
             List<String> previewLines = new ArrayList<>();
-            List<String> row;
-            int count = 0;
-            while (count < PREVIEW_ROWS && (row = io.agenticdb.transfer.CsvCodec.readRow(pushback,
-                    format.delimiter())) != null) {
-                previewLines.add(String.join(" | ", row));
-                count++;
+            if (format.binary()) {
+                // ⭐ P6-3：xlsx 走 SAX 预览，同样只读前若干行。
+                List<List<String>> rows = io.agenticdb.transfer.XlsxCodec.preview(
+                        file, PREVIEW_ROWS + 1);
+                header = rows.isEmpty() ? null : rows.getFirst();
+                for (List<String> row : rows.subList(Math.min(1, rows.size()), rows.size())) {
+                    previewLines.add(String.join(" | ", row));
+                }
+            } else {
+                try (Reader reader = new InputStreamReader(Files.newInputStream(file),
+                        StandardCharsets.UTF_8);
+                     PushbackReader pushback = new PushbackReader(reader, 8)) {
+                    header = io.agenticdb.transfer.CsvCodec.readRow(pushback,
+                            format.delimiter());
+                    List<String> row;
+                    int count = 0;
+                    while (count < PREVIEW_ROWS && (row = io.agenticdb.transfer.CsvCodec
+                            .readRow(pushback, format.delimiter())) != null) {
+                        previewLines.add(String.join(" | ", row));
+                        count++;
+                    }
+                }
             }
 
             preview.setText(String.join("\n", previewLines));
             List<String> mapping = resolveMappingText(header);
             mappingView.getItems().setAll(mapping);
-            summary.setText("预览 " + count + " 行 · " + mapping.size() + " 个字段已映射");
+            summary.setText("预览 " + previewLines.size() + " 行 · "
+                    + mapping.size() + " 个字段已映射");
         } catch (IOException e) {
             summary.setText("读取失败：" + e.getMessage());
         }
@@ -242,7 +256,6 @@ final class ImportWizard {
         }
         Path file = Path.of(text);
         ImportFormat format = formatBox.getValue();
-        List<String> targetColumns = columns.stream().map(ColumnDef::name).toList();
 
         running = true;
         importButton.setDisable(true);
@@ -251,10 +264,14 @@ final class ImportWizard {
 
         dbExecutor.execute(() -> {
             String message;
-            try (Reader reader = new InputStreamReader(Files.newInputStream(file),
-                    StandardCharsets.UTF_8)) {
-                TableImporter.ImportReport report = TableImporter.importRows(session, table,
-                        targetColumns, ImportOptions.of(format), reader);
+            TableImporter.ImportReport report = null;
+            try {
+                // ⭐ P6-1：带上目标列类型 —— 数值 / 布尔 / 日期先转换，坏值进报告。
+                // ⭐ P6-3：xlsx 走 SAX 流式路径，其余格式按文本行读取。
+                report = format.binary()
+                        ? TableImporter.importXlsx(session, table, columns,
+                                ImportOptions.of(format), file)
+                        : importText(file, table, columns, format);
                 message = "已导入 " + report.inserted() + " 行"
                         + (report.skipped() > 0 ? "，跳过 " + report.skipped() + " 行" : "")
                         + (report.hasErrors() ? "（首条错误：" + report.errors().getFirst() + "）" : "");
@@ -262,13 +279,55 @@ final class ImportWizard {
                 message = "导入失败：" + (e.getMessage() == null ? e.toString() : e.getMessage());
             }
             String finalMessage = message;
+            TableImporter.ImportReport finalReport = report;
             Platform.runLater(() -> {
                 running = false;
                 importButton.setDisable(false);
                 spinner.setVisible(false);
                 summary.setText(finalMessage);
                 status.accept(finalMessage);
+                // ⭐ P2-2：有坏行就给一份可复制的汇总；全部成功时只用状态行，不弹窗打扰。
+                if (finalReport != null
+                        && (finalReport.hasErrors() || finalReport.skipped() > 0)) {
+                    showReport(finalReport);
+                }
             });
         });
+    }
+
+    /** 文本格式（CSV / TSV）的导入：Reader → 类型转换 → 批量写入。 */
+    private TableImporter.ImportReport importText(Path file, String table,
+                                                  List<ColumnDef> columns, ImportFormat format)
+            throws Exception {
+        try (Reader reader = new InputStreamReader(Files.newInputStream(file),
+                StandardCharsets.UTF_8)) {
+            return TableImporter.importTypedRows(session, table, columns,
+                    ImportOptions.of(format), reader);
+        }
+    }
+
+    /** 导入结果汇总 —— 失败数可能大于明细行数（坏行只保留前 50 条）。 */
+    private void showReport(TableImporter.ImportReport report) {
+        BatchSummaryDialog.show(ownerWindow(), summaryOf(report));
+    }
+
+    /** 抽成静态纯函数：坏行截断的口径要能被门禁直接断言。 */
+    static BatchSummary summaryOf(TableImporter.ImportReport report) {
+        int attempted = report.inserted() + report.skipped();
+        List<String> notes = new ArrayList<>();
+        if (report.skipped() > report.errors().size()) {
+            notes.add("坏行共 " + report.skipped() + " 行，仅列出前 "
+                    + report.errors().size() + " 条。");
+        }
+        return BatchSummary.of("导入数据", "导入", "行",
+                attempted, report.inserted(), report.skipped(), report.errors(), notes);
+    }
+
+    /** 汇总弹窗要盖在向导上面 —— 优先用向导自己的窗口，其次才是它的 owner。 */
+    private javafx.stage.Window ownerWindow() {
+        if (dialog.getDialogPane().getScene() != null) {
+            return dialog.getDialogPane().getScene().getWindow();
+        }
+        return dialog.getOwner();
     }
 }

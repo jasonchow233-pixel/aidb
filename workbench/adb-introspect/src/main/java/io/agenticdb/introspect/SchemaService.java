@@ -8,6 +8,7 @@ import io.agenticdb.model.QueryLimits;
 import io.agenticdb.model.RowPage;
 
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -302,6 +303,31 @@ public final class SchemaService {
     }
 
     /**
+     * ⭐ P5-4：当前 schema 下的序列名。
+     *
+     * <p>只有 PostgreSQL 有序列；SQLite / MySQL 返回空列表（不假装有）。
+     * 走 JDBC 元数据的 {@code SEQUENCE} 类型，驱动不支持时安静返回空。
+     */
+    public List<String> listSequences(DbSession session) {
+        List<String> sequences = new ArrayList<>();
+        try (ResultSet rs = session.connection().getMetaData().getTables(
+                currentCatalog(session), currentSchema(session), "%",
+                new String[]{"SEQUENCE"})) {
+            while (rs.next()) {
+                String name = rs.getString("TABLE_NAME");
+                if (name != null && !name.isBlank() && !isSystemObject(name)) {
+                    sequences.add(name);
+                }
+            }
+        } catch (SQLException | RuntimeException ignored) {
+            // 驱动不支持序列（SQLite / MySQL）→ 空列表，不让对象树失败。
+            return List.of();
+        }
+        sequences.sort(String.CASE_INSENSITIVE_ORDER);
+        return List.copyOf(sequences);
+    }
+
+    /**
      * 表清单的元信息（Navicat「表清单」那一行的内容）。
      *
      * <p>方言能一条 SQL 取全就取（PG / MySQL）；取不到（SQLite 没有表大小与创建时间）
@@ -341,6 +367,39 @@ public final class SchemaService {
             }
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * ⭐ UX-6：表的物理选项（引擎 / 排序规则 / 自增值 / 行格式）。
+     *
+     * <p>只有方言提供 {@link Dialect#tableOptionsSql()} 时才查一次；
+     * 其它方言直接返回 {@link TableOptions#unavailable()}（不执行任何 SQL）。
+     *
+     * <p>⚠️ 这一块是**锦上添花**：查询失败（老版本库 / 权限不足 / 视图）时
+     * 返回空选项，让结构页的其它页签照常可用 —— 不能因为「选项读不到」
+     * 就把整张结构页变成错误页。
+     */
+    public TableOptions tableOptions(DbSession session, String table) {
+        String sql = session.dialect().tableOptionsSql();
+        if (sql == null || table == null || table.isBlank()) {
+            return TableOptions.unavailable();
+        }
+        try (PreparedStatement statement = session.connection().prepareStatement(sql)) {
+            statement.setString(1, table);
+            try (ResultSet rs = statement.executeQuery()) {
+                if (!rs.next()) {
+                    return TableOptions.unavailable();
+                }
+                long autoIncrement = rs.getLong("auto_increment");
+                boolean autoIncrementMissing = rs.wasNull();
+                return new TableOptions(rs.getString("engine"),
+                        rs.getString("collation_name"),
+                        autoIncrementMissing ? null : autoIncrement,
+                        rs.getString("row_format"));
+            }
+        } catch (SQLException | RuntimeException ignored) {
+            return TableOptions.unavailable();
+        }
     }
 
     /** 读一个可能为 NULL 的 BIGINT 列。 */
@@ -433,6 +492,53 @@ public final class SchemaService {
                 column.unique(), column.rawType());
     }
 
+    private static ColumnDef withDefault(ColumnDef column, String defaultValue) {
+        return new ColumnDef(column.name(), column.type(), column.nullable(),
+                column.primaryKey(), defaultValue, column.comment(), column.enumValues(),
+                column.charMaxLength(), column.numericPrecision(), column.numericScale(),
+                column.unique(), column.rawType());
+    }
+
+    /**
+     * ⭐ P5-4：把 JDBC 元数据里的 {@code COLUMN_DEF} 并进列定义。
+     *
+     * <p>为什么必须读回来：结构页把内省结果当基底，只覆盖用户改过的字段。
+     * 基底里没有默认值 → PostgreSQL 的改列语句会下发
+     * <b>{@code ALTER COLUMN … DROP DEFAULT}</b> —— 用户只改了个类型，
+     * 默认值却被静默删掉（数据库不报错，下一次插入才出问题）。
+     *
+     * <p>读不到（驱动不提供 / 权限不够）就当没有 —— 探测是锦上添花。
+     */
+    private static List<ColumnDef> withDefaults(DbSession session, String table,
+                                                List<ColumnDef> columns) {
+        if (columns.isEmpty()) {
+            return columns;
+        }
+        Map<String, String> defaults = new HashMap<>();
+        try (ResultSet rs = session.connection().getMetaData()
+                .getColumns(currentCatalog(session), currentSchema(session), table, "%")) {
+            while (rs.next()) {
+                String column = rs.getString("COLUMN_NAME");
+                String value = rs.getString("COLUMN_DEF");
+                if (column != null && value != null && !value.isBlank()) {
+                    defaults.put(column.toLowerCase(Locale.ROOT), value);
+                }
+            }
+        } catch (SQLException | RuntimeException ignored) {
+            return columns;
+        }
+        if (defaults.isEmpty()) {
+            return columns;
+        }
+        return columns.stream()
+                .map(column -> {
+                    String value = defaults.get(column.name().toLowerCase(Locale.ROOT));
+                    return value == null || value.equals(column.defaultValue())
+                            ? column : withDefault(column, value);
+                })
+                .toList();
+    }
+
     /**
      * 把列注释并进列定义。
      *
@@ -514,8 +620,10 @@ public final class SchemaService {
         List<ForeignKeyDef> foreignKeys = foreignKeys(session, name);
         List<TriggerDef> triggers = triggers(session, name);
         // ⭐ 列来源由方言决定（SQLite 的结果集元数据不带声明类型与默认值，要读 PRAGMA）。
+        // ⭐ P5-4：PG / MySQL 的默认值只能从 getColumns() 的 COLUMN_DEF 读 ——
+        //    以前结构页拿到的 default 恒为 null，改列时 PG 会**静默 DROP DEFAULT**。
         List<ColumnDef> baseColumns = session.dialect().readsColumnsViaJdbcMetadata()
-                ? table.columns() : sqliteColumns(session, name);
+                ? withDefaults(session, name, table.columns()) : sqliteColumns(session, name);
         // ⭐ 注释在 markUnique 之后合并：markUnique 会重建 ColumnDef，先并会被丢掉。
         List<ColumnDef> columns = withComments(session, name, markUnique(baseColumns, indexes));
         String ddl = ddl(session, name, view, columns, table.primaryKeys(),
@@ -526,6 +634,13 @@ public final class SchemaService {
         String comment = tableComment(session, name);
         return new TableStructure(name, view, columns, table.primaryKeys(),
                 indexes, foreignKeys, triggers, checks, comment, ddl);
+    }
+
+    /**
+     * ⭐ UX-6：概览页只显示索引数量 —— 不为一行数字读整张表的结构。
+     */
+    public int indexCount(DbSession session, String name) throws SQLException {
+        return indexes(session, name).size();
     }
 
     /**
@@ -641,10 +756,17 @@ public final class SchemaService {
                 return List.of();
             }
             List<CheckDef> checks = new ArrayList<>();
-            try (java.sql.Statement statement = session.connection().createStatement();
-                 ResultSet rs = statement.executeQuery(sql)) {
-                while (rs.next()) {
-                    checks.add(new CheckDef(rs.getString(1), stripOuterParens(rs.getString(2))));
+            // ⭐ P5-4：方言 SQL 里表名是 `?` 占位符 —— 以前用 createStatement()
+            //    直接把带 `?` 的文本发出去，PG / MySQL 一律语法错误，于是 CHECK
+            //    永远读不到（还被 catch 吞成「没有约束」）。
+            try (java.sql.PreparedStatement statement =
+                         session.connection().prepareStatement(sql)) {
+                statement.setString(1, name);
+                try (ResultSet rs = statement.executeQuery()) {
+                    while (rs.next()) {
+                        checks.add(new CheckDef(rs.getString(1),
+                                stripOuterParens(rs.getString(2))));
+                    }
                 }
             }
             return checks;
@@ -860,6 +982,64 @@ public final class SchemaService {
         return List.copyOf(result);
     }
 
+    /**
+     * ⭐ P5-4：谁引用了这张表（{@code getExportedKeys}）。
+     *
+     * <p>{@link #structure} 的外键清单只回答「我的列指向谁」。删表 / 改主键前，
+     * 用户还需要知道反向关系：有哪些子表在引用我。
+     *
+     * <p>读不到（驱动不支持 / 权限不够）时返回空列表 —— 不让结构页失败。
+     */
+    public List<ExportedKeyDef> exportedKeys(DbSession session, String name)
+            throws SQLException {
+        Map<String, ExportedKeyAccumulator> found = new LinkedHashMap<>();
+        try (ResultSet rs = session.connection().getMetaData()
+                .getExportedKeys(currentCatalog(session), currentSchema(session), name)) {
+            while (rs.next()) {
+                String childTable = rs.getString("FKTABLE_NAME");
+                if (childTable == null || childTable.isBlank()) {
+                    continue;
+                }
+                String fkName = rs.getString("FK_NAME");
+                String updateRule = session.dialect()
+                        .foreignKeyActionName(rs.getString("UPDATE_RULE"));
+                String deleteRule = session.dialect()
+                        .foreignKeyActionName(rs.getString("DELETE_RULE"));
+                String key = (fkName == null || fkName.isBlank() ? "~" : fkName)
+                        + '\u0000' + childTable;
+                ExportedKeyAccumulator accumulator = found.computeIfAbsent(key,
+                        ignored -> new ExportedKeyAccumulator(fkName, childTable,
+                                updateRule, deleteRule));
+                int position = rs.getInt("KEY_SEQ");
+                accumulator.columns.put(
+                        position > 0 ? position : accumulator.columns.size() + 1,
+                        rs.getString("FKCOLUMN_NAME"));
+                accumulator.referencedColumns.put(
+                        position > 0 ? position : accumulator.referencedColumns.size() + 1,
+                        rs.getString("PKCOLUMN_NAME"));
+            }
+        } catch (SQLException ignored) {
+            return List.of();
+        }
+
+        List<ExportedKeyDef> result = new ArrayList<>();
+        int anonymous = 0;
+        for (ExportedKeyAccumulator value : found.values()) {
+            String fkName = value.name;
+            if (fkName == null || fkName.isBlank()) {
+                anonymous++;
+                fkName = "fk_" + value.childTable + "_" + anonymous;
+            }
+            result.add(new ExportedKeyDef(fkName, value.childTable,
+                    value.ordered(value.columns), value.ordered(value.referencedColumns),
+                    value.updateRule, value.deleteRule));
+        }
+        result.sort(Comparator.comparing(ExportedKeyDef::childTable,
+                        String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(ExportedKeyDef::name, String.CASE_INSENSITIVE_ORDER));
+        return List.copyOf(result);
+    }
+
     private List<TriggerDef> triggers(DbSession session, String name) throws SQLException {
         List<TriggerDef> result = new ArrayList<>();
         // ⭐ 触发器查询由方言给 —— 以前这里是 switch，加一种库要改这里。
@@ -967,6 +1147,31 @@ public final class SchemaService {
             return columns.entrySet().stream()
                     .sorted(Map.Entry.comparingByKey())
                     .map(Map.Entry::getValue)
+                    .toList();
+        }
+    }
+
+    private static final class ExportedKeyAccumulator {
+        private final String name;
+        private final String childTable;
+        private final String updateRule;
+        private final String deleteRule;
+        private final Map<Integer, String> columns = new LinkedHashMap<>();
+        private final Map<Integer, String> referencedColumns = new LinkedHashMap<>();
+
+        private ExportedKeyAccumulator(String name, String childTable,
+                                       String updateRule, String deleteRule) {
+            this.name = name;
+            this.childTable = childTable;
+            this.updateRule = updateRule;
+            this.deleteRule = deleteRule;
+        }
+
+        private List<String> ordered(Map<Integer, String> values) {
+            return values.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .map(Map.Entry::getValue)
+                    .filter(java.util.Objects::nonNull)
                     .toList();
         }
     }

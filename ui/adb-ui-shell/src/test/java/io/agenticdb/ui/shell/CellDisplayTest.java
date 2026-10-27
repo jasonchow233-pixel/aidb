@@ -44,7 +44,7 @@ class CellDisplayTest {
 
         byte[] blob = new byte[4096];
         CellRenderer.Rendered binary = CellRenderer.render(column("avatar", ColumnType.BINARY), blob);
-        assertThat(binary.text()).as("BLOB 只显示大小").isEqualTo("⬢ 4.0 KB");
+        assertThat(binary.text()).as("BLOB 只显示类型与大小").isEqualTo("BLOB · 4.0 KB");
         assertThat(binary.styleClass()).isEqualTo("adb-grid__cell--binary");
         assertThat(binary.tooltip())
                 .as("tooltip 给精确字节数，并告诉用户去哪看内容")

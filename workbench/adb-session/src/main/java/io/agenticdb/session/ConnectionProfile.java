@@ -12,7 +12,7 @@ import java.util.UUID;
 /**
  * 已保存连接的元数据。
  *
- * <p>⛔ 绝不包含口令。口令只存在系统钥匙串 / Secret Service；
+ * <p>⛔ 绝不包含口令。口令只存在系统凭据库（WinCred / Keychain / Secret Service）；
  * 这个类可以被安全地序列化到 {@code ~/.agenticdb/connections.json}。
  */
 public record ConnectionProfile(
@@ -25,6 +25,7 @@ public record ConnectionProfile(
         String username,
         boolean favorite,
         long lastUsedAt,
+        String group,
         Map<String, String> options) {
 
     public ConnectionProfile {
@@ -34,17 +35,19 @@ public record ConnectionProfile(
         port = port <= 0 ? ConnectionProfile.defaultPort(kind) : port;
         database = database == null ? "" : database;
         username = username == null ? "" : username;
+        // ⭐ P5-1：空串 = 未分组。分组是展示层元数据，不参与连接参数。
+        group = group == null ? "" : group.trim();
         options = options == null ? Map.of() : Map.copyOf(options);
     }
 
     public static ConnectionProfile newProfile(String name, DialectKind kind, String host,
                                                int port, String database, String username) {
         return new ConnectionProfile(UUID.randomUUID().toString(), name, kind, host, port,
-                database, username, false, 0, Map.of());
+                database, username, false, 0, "", Map.of());
     }
 
     public static ConnectionProfile sqlite(String id, String name, String path) {
-        return new ConnectionProfile(id, name, DialectKind.SQLITE, "", 0, path, "", false, 0,
+        return new ConnectionProfile(id, name, DialectKind.SQLITE, "", 0, path, "", false, 0, "",
                 Map.of());
     }
 
@@ -69,7 +72,7 @@ public record ConnectionProfile(
     public ConnectionProfile catalogVariant(String catalog) {
         return new ConnectionProfile(catalogVariantId(id, catalog),
                 name + " · " + catalog, kind, host, port, catalog, username,
-                favorite, lastUsedAt, options);
+                favorite, lastUsedAt, group, options);
     }
 
     public static String catalogVariantId(String parentId, String catalog) {
@@ -98,17 +101,23 @@ public record ConnectionProfile(
 
     public ConnectionProfile withFavorite(boolean value) {
         return new ConnectionProfile(id, name, kind, host, port, database, username, value,
-                lastUsedAt, options);
+                lastUsedAt, group, options);
     }
 
     public ConnectionProfile withLastUsed(long value) {
         return new ConnectionProfile(id, name, kind, host, port, database, username, favorite,
-                value, options);
+                value, group, options);
     }
 
     public ConnectionProfile withName(String value) {
         return new ConnectionProfile(id, value, kind, host, port, database, username, favorite,
-                lastUsedAt, options);
+                lastUsedAt, group, options);
+    }
+
+    /** ⭐ P5-1：移到某个分组；空串 = 移出分组。连接 id / 会话都不变。 */
+    public ConnectionProfile withGroup(String value) {
+        return new ConnectionProfile(id, name, kind, host, port, database, username, favorite,
+                lastUsedAt, value, options);
     }
 
     public ConnectionSpec spec(String password) {
@@ -188,13 +197,13 @@ public record ConnectionProfile(
 
     public ConnectionProfile withPasswordlessOptions(Map<String, String> value) {
         return new ConnectionProfile(id, name, kind, host, port, database, username, favorite,
-                lastUsedAt, value == null ? Map.of() : value);
+                lastUsedAt, group, value == null ? Map.of() : value);
     }
 
-    /** 用于重复连接：新 id、新名称、不带使用记录。 */
+    /** 用于重复连接：新 id、新名称、不带使用记录；留在同一分组。 */
     public ConnectionProfile duplicate() {
         return new ConnectionProfile(UUID.randomUUID().toString(), name + " 副本", kind, host,
-                port, database, username, false, 0, options);
+                port, database, username, false, 0, group, options);
     }
 
     @Override

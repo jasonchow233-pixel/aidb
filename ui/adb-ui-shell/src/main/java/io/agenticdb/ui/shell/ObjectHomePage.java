@@ -4,15 +4,23 @@ import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.TableMeta;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.ui.Icons;
+import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.collections.transformation.SortedList;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
@@ -20,19 +28,26 @@ import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.MouseEvent;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.SVGPath;
 
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -40,8 +55,7 @@ import java.util.function.Supplier;
 /**
  * ⭐ **对象首页** —— 标签栏最左边那个常驻的「对象」标签的内容。
  *
- * <p>Navicat 的标签栏第一个就是常驻的「对象」标签（实拍见
- * {@code docs/NAVICAT-COMPARE.md} §2.2 C1）：它是**浏览的起点**，
+ * <p>Navicat 的标签栏第一个就是常驻的「对象」标签（官方截图实拍）：它是**浏览的起点**，
  * 点它回到对象总览，而不是回到一个空白的欢迎页。
  *
  * <h2>为什么是「清单」而不是「卡片墙」</h2>
@@ -106,16 +120,26 @@ final class ObjectHomePage extends VBox {
     private final Consumer<String> status;
     private final Runnable onConnect;
     private final Host host;
-
-    /** 列宽记忆的偏好根；没有它就不记（单测 / 无外壳照样能用）。 */
-    private SettingsStore preferences;
-    /** 对象首页的列宽存在这个前缀下（与表清单页分开，两页列的集合不同）。 */
-    private static final String COLUMN_WIDTH_PREFIX = "ui.list.objects";
+    private final SettingsStore settings;
+    /** 列宽记忆按连接分开存；{@code null} = 不持久化（单测的旧构造器）。 */
+    private final Supplier<String> connectionKey;
+    private ColumnLayoutMemory columnMemory;
 
     private final Label summary = new Label();
+    /**
+     * ⭐ U16：页头不再写死「对象」—— tab 上已经写着「对象」，
+     * 页内再来一个 16px 粗体等于同一句话读两遍，还占掉了本该显示「我在哪个库」的位置。
+     * 现在这里放的是真实上下文：{@code 连接名 › 方言}。
+     */
+    private final Label breadcrumb = new Label();
     private final ObservableList<ObjectRow> rows = FXCollections.observableArrayList();
     private final FilteredList<ObjectRow> filtered = new FilteredList<>(rows, row -> true);
     private final TableView<ObjectRow> table = new TableView<>();
+    private final FlowPane cards = new FlowPane(10, 10);
+    private final ScrollPane gridScroll = new ScrollPane(cards);
+    private final StackPane views = new StackPane(table, gridScroll);
+    private final Set<String> gridSelection = new LinkedHashSet<>();
+    private final BooleanProperty listView = new SimpleBooleanProperty(true);
     private final HBox filters = new HBox(6);
     private final TextField search = new TextField();
     private final Button refresh = IconButtons.of(Icons.Icon.REFRESH, "刷新");
@@ -126,6 +150,13 @@ final class ObjectHomePage extends VBox {
     private Button designButton;
     private Button createButton;
     private Button dropButton;
+    private Button listButton;
+    private Button gridButton;
+
+    /** 切换视图时同步选择，避免把「清空表格选择」误当成用户取消选择。 */
+    private boolean syncingSelection;
+    /** 网格视图 Shift 连选的锚点（行 id）。 */
+    private String cardAnchor;
 
     // ─────────── 可选列（方言相关）的引用 ───────────
     // ⭐ 第十九轮 S-1：与 TableListPage 同一套规则 —— 这 6 列在数据里全是
@@ -150,36 +181,16 @@ final class ObjectHomePage extends VBox {
         table.setFixedCellSize(rowHeight);
     }
 
-    /**
-     * ⭐ P2-1：列宽记住 —— 拖过一次，下次打开还是那个宽度。
-     *
-     * <p>没有偏好存储时（单测 / 无外壳）就不记，功能不缺，只是不记。
-     */
-    void rememberColumnsIn(SettingsStore store) {
-        this.preferences = store;
-        ListColumns.installWidthMemory(table, COLUMN_WIDTH_PREFIX, store);
-    }
-
-    /** 测试用：跳过防抖直接落盘。 */
-    void persistColumnWidthsForTest() {
-        if (preferences != null) {
-            ListColumns.save(table, COLUMN_WIDTH_PREFIX, preferences);
-        }
-    }
-
-    /** 测试用：按列标题取列。 */
-    TableColumn<ObjectRow, ?> columnTitled(String title) {
-        for (TableColumn<ObjectRow, ?> column : table.getColumns()) {
-            if (title.equals(column.getText())) {
-                return column;
-            }
-        }
-        return null;
-    }
-
     /** 表格（供门禁断言列集合与密度）。 */
     TableView<ObjectRow> table() {
         return table;
+    }
+
+    /** 门禁用：立即落盘，不等 400ms 防抖。 */
+    void persistColumnWidthsForTest() {
+        if (columnMemory != null) {
+            columnMemory.persist();
+        }
     }
 
     ObjectHomePage(Supplier<DbSession> session,
@@ -193,7 +204,7 @@ final class ObjectHomePage extends VBox {
     /**
      * @param onOpen    ⭐ 传的是<b>整个对象</b>而不只是名字 —— 调用方要按
      *                  {@code kind} 决定开什么页面。只传名字的话，点「函数」
-     *                  也会去开数据页，然后必然报错（UI-AUDIT D1）。
+     *                  也会去开数据页，然后必然报错。
      * @param onConnect 「未连接」空态上的引导按钮；{@code null} = 不放按钮。
      */
     ObjectHomePage(Supplier<DbSession> session,
@@ -212,6 +223,23 @@ final class ObjectHomePage extends VBox {
                    Consumer<String> status,
                    Runnable onConnect,
                    Host host) {
+        this(session, schemaService, dbExecutor, onOpen, status, onConnect, host, null, null);
+    }
+
+    /**
+     * @param settings      列宽记忆的存储；{@code null} = 不持久化
+     * @param connectionKey 当前连接 id 的供应器 —— 对象首页是常驻实例，
+     *                      切连接时不重建，所以用供应器而不是固定值
+     */
+    ObjectHomePage(Supplier<DbSession> session,
+                   SchemaService schemaService,
+                   Executor dbExecutor,
+                   Consumer<SchemaService.SchemaObject> onOpen,
+                   Consumer<String> status,
+                   Runnable onConnect,
+                   Host host,
+                   SettingsStore settings,
+                   Supplier<String> connectionKey) {
         this.session = session;
         this.schemaService = schemaService;
         this.dbExecutor = dbExecutor;
@@ -219,20 +247,39 @@ final class ObjectHomePage extends VBox {
         this.status = status == null ? message -> { } : status;
         this.onConnect = onConnect;
         this.host = host == null ? new Host() { } : host;
+        this.settings = settings;
+        this.connectionKey = connectionKey;
         getStyleClass().addAll("adb-page", "adb-object-home");
         buildUi();
+        showView(initialView(), false);
         applyFilter();
     }
 
+    /**
+     * 首次进入时用哪种视图。
+     *
+     * <p>截图脚本可以用 {@code ADB_OBJECT_VIEW=grid} 强制切换，
+     * 与表清单的 {@code ADB_TABLE_VIEW} 保持同一套约定。
+     */
+    private String initialView() {
+        String forced = System.getProperty("adb.object.view",
+                System.getenv().getOrDefault("ADB_OBJECT_VIEW", "")).trim();
+        if (!forced.isEmpty()) {
+            return forced;
+        }
+        return settings == null ? "list" : settings.get("ui.objectHome.view", "list");
+    }
+
     private void buildUi() {
-        Label title = new Label("对象");
-        title.getStyleClass().add("adb-page__title");
-        Label badge = new Label("总览");
+        breadcrumb.setId("object-home-breadcrumb");
+        breadcrumb.getStyleClass().add("adb-page__breadcrumb");
+        Label badge = new Label("概览");
         badge.getStyleClass().addAll("adb-badge", "adb-badge--muted");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         summary.setId("object-home-summary");
         summary.getStyleClass().add("adb-muted");
+        paintBreadcrumb(session.get());
 
         refresh.setId("object-home-refresh");
         refresh.getStyleClass().add("adb-button");
@@ -240,16 +287,18 @@ final class ObjectHomePage extends VBox {
 
         // ⚠️ refresh 必须进场景图 —— 此前它只被 new 出来、绑了动作、设了 id，
         //    却从未加入任何容器，于是「刷新」按钮在界面上根本不存在
-        //    （截图审计 S2，docs/UI-AUDIT.md §2.1）。
-        HBox header = new HBox(10, title, badge, spacer, summary);
+        //    （截图审计发现）。
+        HBox header = new HBox(10, breadcrumb, badge, spacer, summary);
         header.getStyleClass().add("adb-page__header");
         header.setAlignment(Pos.CENTER_LEFT);
 
         buildFilters();
         buildTable();
+        buildGrid();
+        buildViews();
 
-        content.getChildren().addAll(filters, table);
-        VBox.setVgrow(table, Priority.ALWAYS);
+        content.getChildren().addAll(filters, views);
+        VBox.setVgrow(views, Priority.ALWAYS);
 
         VBox body = new VBox(8, content);
         body.getStyleClass().add("adb-page__body");
@@ -270,7 +319,7 @@ final class ObjectHomePage extends VBox {
      * 选函数时「删除」不该亮（宿主只会删表）。
      */
     private HBox buildToolbar() {
-        openButton = toolbarOp(Icons.Icon.TABLE, "打开", "打开选中对象的数据页 / 预览页");
+        openButton = toolbarOp(Icons.Icon.OPEN, "打开", "打开选中对象的数据页 / 预览页");
         openButton.setId("object-home-open");
         openButton.setOnAction(event -> openSelected());
 
@@ -291,11 +340,10 @@ final class ObjectHomePage extends VBox {
         createButton.setOnAction(event -> host.newTable());
 
         dropButton = toolbarOp(Icons.Icon.DELETE, "删除表",
-                "删除选中的表（会二次确认，可多选批量删）");
+                "删除选中的表（会二次确认，可多选批量删）", "adb-button--danger");
         dropButton.setId("object-home-drop");
-        dropButton.getStyleClass().add("adb-button--danger");
         dropButton.setOnAction(event -> {
-            List<String> tables = table.getSelectionModel().getSelectedItems().stream()
+            List<String> tables = selectedRows().stream()
                     .map(row -> row.object())
                     .filter(object -> object.kind() == SchemaService.ObjectKind.TABLE)
                     .map(SchemaService.SchemaObject::name)
@@ -310,6 +358,22 @@ final class ObjectHomePage extends VBox {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
+        // ⭐ UX-6：列表 / 网格两种视图。网格复用表清单的卡片样式，
+        //    但对象种类更多（表 / 视图 / 函数…），卡片按 kind 取图标。
+        listButton = IconButtons.icon(Icons.Icon.LIST, "列表视图");
+        listButton.setId("object-home-view-list");
+        listButton.getStyleClass().add("adb-icon-button");
+        listButton.setOnAction(event -> showView("list"));
+
+        gridButton = IconButtons.icon(Icons.Icon.GRID, "网格视图");
+        gridButton.setId("object-home-view-grid");
+        gridButton.getStyleClass().add("adb-icon-button");
+        gridButton.setOnAction(event -> showView("grid"));
+
+        HBox groupLayout = new HBox(4, listButton, gridButton);
+        groupLayout.getStyleClass().add("adb-toolbar__group");
+        groupLayout.setAlignment(Pos.CENTER_LEFT);
+
         // ⭐ UX-3：看对象的一组、改对象的一组，中间一条竖线。
         HBox groupView = new HBox(4, openButton, designButton);
         HBox groupEdit = new HBox(4, createButton, dropButton);
@@ -320,25 +384,95 @@ final class ObjectHomePage extends VBox {
         Region separator = new Region();
         separator.getStyleClass().add("adb-toolbar__separator");
 
-        HBox toolbar = new HBox(8, groupView, separator, groupEdit, spacer, refresh);
+        HBox toolbar = new HBox(8, groupView, separator, groupEdit, spacer,
+                refresh, groupLayout);
         toolbar.setId("object-home-toolbar");
         toolbar.getStyleClass().add("adb-inline-toolbar");
         toolbar.setAlignment(Pos.CENTER_LEFT);
         return toolbar;
     }
 
-    /** 对象首页工具条的一颗主操作：图标 + 文字 + tooltip + accessibleText。 */
-    private Button toolbarOp(Icons.Icon icon, String text, String hint) {
+    /**
+     * 对象首页工具条的一颗主操作：图标 + 文字 + tooltip + accessibleText。
+     *
+     * <p>变体类（{@code adb-button--danger} 这种）从这里的参数挂，
+     * 不在调用点再补一次 {@code getStyleClass()}：基础类和变体类同一条语句成型，
+     * 才不会出现「只有变体、拿不到统一尺寸与五态」的按钮（任务书 §七）。
+     */
+    private Button toolbarOp(Icons.Icon icon, String text, String hint, String... variants) {
         Button button = IconButtons.labeled(new Button(), icon, text, hint, Icons.SIZE_PRIMARY);
         button.getStyleClass().add("adb-button");
+        button.getStyleClass().addAll(variants);
         button.setMinWidth(Region.USE_PREF_SIZE);
         return button;
     }
 
     /** 当前唯一的选中对象；多选 / 空选为 {@code null}。 */
     private SchemaService.SchemaObject singleSelection() {
-        List<ObjectRow> selected = table.getSelectionModel().getSelectedItems();
+        List<ObjectRow> selected = selectedRows();
         return selected.size() == 1 ? selected.getFirst().object() : null;
+    }
+
+    /**
+     * ⭐ U25：对象右键菜单（表格行与网格卡片共用）。
+     *
+     * <p>条目与工具条同源、判断条件也同源（打开要连着库、设计只认表/视图、
+     * 删除只走表）—— 右键不是第二套权限模型，是同一套的另一个入口。
+     *
+     * <p>包可见：单测直接拿菜单断言权限，不必模拟右键弹窗。
+     */
+    ContextMenu objectMenu(ObjectRow row) {
+        SchemaService.SchemaObject object = row.object();
+        boolean connected = session.get() != null;
+        boolean designable = object.kind() == SchemaService.ObjectKind.TABLE
+                || object.kind() == SchemaService.ObjectKind.VIEW;
+
+        ContextMenu menu = new ContextMenu();
+        MenuItem open = new MenuItem("打开");
+        open.setId("object-menu-open");
+        open.setDisable(!connected);
+        open.setOnAction(event -> onOpen.accept(object));
+
+        MenuItem design = new MenuItem("设计表");
+        design.setId("object-menu-design");
+        design.setDisable(!connected || !designable);
+        design.setOnAction(event -> host.design(object));
+
+        MenuItem copyName = new MenuItem("复制名称");
+        copyName.setId("object-menu-copy-name");
+        copyName.setOnAction(event -> {
+            ClipboardContent content = new ClipboardContent();
+            content.putString(object.name());
+            Clipboard.getSystemClipboard().setContent(content);
+            status.accept("已复制名称 " + object.name());
+        });
+
+        MenuItem drop = new MenuItem("删除表");
+        drop.setId("object-menu-drop");
+        drop.setDisable(!connected || object.kind() != SchemaService.ObjectKind.TABLE);
+        drop.setOnAction(event -> host.dropTables(List.of(object.name())));
+
+        menu.getItems().addAll(open, design, copyName,
+                new SeparatorMenuItem(), drop);
+        return menu;
+    }
+
+    /**
+     * 当前选中的对象行 —— 列表视图看表格选择，网格视图看卡片选择。
+     *
+     * <p>工具条、删除动作、状态栏全部走这一份真相，两种视图的行为才不会分叉。
+     */
+    private List<ObjectRow> selectedRows() {
+        if (isGridView()) {
+            List<ObjectRow> selected = new ArrayList<>();
+            for (ObjectRow row : filtered) {
+                if (gridSelection.contains(row.id())) {
+                    selected.add(row);
+                }
+            }
+            return selected;
+        }
+        return List.copyOf(table.getSelectionModel().getSelectedItems());
     }
 
     /**
@@ -353,8 +487,11 @@ final class ObjectHomePage extends VBox {
      * </ul>
      */
     private void updateToolbarState() {
+        if (syncingSelection) {
+            return;
+        }
         boolean connected = session.get() != null;
-        List<ObjectRow> selected = List.copyOf(table.getSelectionModel().getSelectedItems());
+        List<ObjectRow> selected = selectedRows();
         boolean single = selected.size() == 1;
         SchemaService.ObjectKind kind = single ? selected.getFirst().object().kind() : null;
         boolean designable = kind == SchemaService.ObjectKind.TABLE
@@ -367,7 +504,36 @@ final class ObjectHomePage extends VBox {
         dropButton.setDisable(!connected || !droppable);
         createButton.setDisable(!connected);
 
+        // ⭐ U19：禁用不能只变灰 —— 一排灰按钮读起来像界面坏了。
+        // 悬停要说清「为什么现在点不动、要做什么才能点」，灰才有解释而不是故障。
+        explainDisabled(openButton, !connected || !single,
+                !connected ? "连上一个库才能打开" : "先在清单里选中一个对象");
+        explainDisabled(designButton, !connected || !designable,
+                !connected ? "连上一个库才能设计" : "只有选中的是表或视图时才能设计");
+        explainDisabled(dropButton, !connected || !droppable,
+                !connected ? "连上一个库才能删除" : "选中的一项或多项不是表（视图 / 函数不走这里）");
+        explainDisabled(createButton, !connected, "连上一个库才能建表");
+
+        updateViewButtons();
         host.inspect(single ? selected.getFirst().object() : null);
+    }
+
+    /**
+     * U19：禁用态的 tooltip 换成「原因」，恢复可用时换回「这个按钮是干什么的」。
+     *
+     * <p>原始说明取自 {@code accessibleText} —— {@code IconButtons} 建按钮时就写好了，
+     * 再抄一份会变成两处真相（改了按钮说明，tooltip 还留着老的）。
+     */
+    private static void explainDisabled(Button button, boolean disabled, String reason) {
+        Tooltip tooltip = button.getTooltip();
+        if (tooltip == null) {
+            tooltip = new Tooltip();
+            button.setTooltip(tooltip);
+        }
+        String hint = button.getAccessibleText();
+        tooltip.setText(disabled || hint == null || hint.isBlank()
+                ? (disabled ? reason : "")
+                : hint);
     }
 
     // ─────────────────────────── 过滤条 ───────────────────────────
@@ -382,6 +548,8 @@ final class ObjectHomePage extends VBox {
         search.textProperty().addListener((observable, oldValue, newValue) -> {
             query = newValue == null ? "" : newValue.trim().toLowerCase(Locale.ROOT);
             applyFilter();
+            // 过滤可能让网格里选中的卡片消失 —— 工具条要跟着收缩。
+            updateToolbarState();
         });
 
         Region spacer = new Region();
@@ -411,12 +579,17 @@ final class ObjectHomePage extends VBox {
     private void buildTable() {
         table.setId("object-list");
         table.getStyleClass().add("adb-object-list");
+        // ⭐ P7：表格没有文字，读屏只会读「表」—— 给一个明确的名称。
+        table.setAccessibleText("对象清单");
         table.setEditable(false);
         // ⭐ S-6：可读下限 + 约束策略 —— 宽屏填满，挤窄卡在 minWidth 并横向滚动
         //    （为什么不是 UNCONSTRAINED：宽屏会留一大片空白，见 §33.5）。
         table.setColumnResizePolicy(
                 TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        table.setPlaceholder(new Label("没有匹配的对象"));
+        // U24：空态给图标 + 出路，不剩一行猜不出原因的灰字。
+        table.setPlaceholder(EmptyState.of(Icons.Icon.SEARCH, "没有匹配的对象",
+                "搜索关键词按名字匹配，筛选芯片也会一起收窄范围。",
+                "清空搜索", search::clear));
         table.setFixedCellSize(rowHeight);
 
         // ⭐ 列与 Navicat 的「表清单」对齐：名称 / 类型 / 行 / 数据长度 / 引擎 /
@@ -424,20 +597,21 @@ final class ObjectHomePage extends VBox {
         // ⭐ 第十九轮 S-1：可选列（数据长度/引擎/创建/修改/排序规则/注释）留引用，
         //    按已加载数据决定显不显示 —— 全是占位符就整列隐藏（见 applyColumnVisibility）。
         sizeColumn = sizeColumn();
-        engineColumn = textColumn("引擎", 90, 80, row -> row.meta() == null
-                ? "—" : row.meta().engineText());
-        createdColumn = textColumn("创建时间", 130, 130, row -> row.meta() == null
-                ? "—" : row.meta().createdText());
-        updatedColumn = textColumn("修改时间", 130, 130, row -> row.meta() == null
-                ? "—" : row.meta().updatedText());
-        collationColumn = textColumn("排序规则", 110, 110, row -> row.meta() == null
-                ? "—" : row.meta().collationText());
-        commentColumn = textColumn("注释", 160, 120, row -> row.meta() == null
-                ? "—" : row.meta().commentText());
+        engineColumn = keyed(textColumn("引擎", 90, 80, row -> row.meta() == null
+                ? "—" : row.meta().engineText()), "engine");
+        createdColumn = keyed(textColumn("创建时间", 130, 130, row -> row.meta() == null
+                ? "—" : row.meta().createdText()), "created");
+        updatedColumn = keyed(textColumn("修改时间", 130, 130, row -> row.meta() == null
+                ? "—" : row.meta().updatedText()), "updated");
+        collationColumn = keyed(textColumn("排序规则", 110, 110, row -> row.meta() == null
+                ? "—" : row.meta().collationText()), "collation");
+        commentColumn = keyed(textColumn("注释", 160, 120, row -> row.meta() == null
+                ? "—" : row.meta().commentText(), true), "comment");
 
         table.getColumns().setAll(List.of(
                 nameColumn(),
-                textColumn("类型", 64, 72, row -> typeLabel(row.object().kind())),
+                keyed(textColumn("类型", 64, 72,
+                        row -> typeLabel(row.object().kind())), "kind"),
                 rowsColumn(),
                 sizeColumn,
                 engineColumn,
@@ -445,6 +619,10 @@ final class ObjectHomePage extends VBox {
                 updatedColumn,
                 collationColumn,
                 commentColumn));
+
+        // ⭐ P2-1：列宽按连接记忆；render() 里再按当前连接恢复一次。
+        columnMemory = new ColumnLayoutMemory(table, settings,
+                connectionKey, "ui.objecthome");
 
         // ⭐ 行 id：单测与截图脚本要能按「类型 + 名称」点中某一行，
         //    和以前的 object-chip-* 一一对应（D1 回归门禁要靠它）。
@@ -460,6 +638,18 @@ final class ObjectHomePage extends VBox {
                 if (event.getClickCount() == 2 && !row.isEmpty()) {
                     onOpen.accept(row.getItem().object());
                 }
+            });
+            // ⭐ U25：行右键 = 对象菜单（打开 / 设计 / 复制名称 / 删除）。
+            row.setOnContextMenuRequested(event -> {
+                if (row.isEmpty() || row.getItem() == null) {
+                    return;
+                }
+                if (!row.isSelected()) {
+                    table.getSelectionModel().clearSelection();
+                    table.getSelectionModel().select(row.getIndex());
+                }
+                objectMenu(row.getItem()).show(row, event.getScreenX(), event.getScreenY());
+                event.consume();
             });
             return row;
         });
@@ -478,9 +668,267 @@ final class ObjectHomePage extends VBox {
                 (ListChangeListener<ObjectRow>) change -> updateToolbarState());
     }
 
+    // ─────────────────────────── 网格视图（UX-6） ───────────────────────────
+
+    /** 列表 / 网格共用同一块内容区；用可见性切换，选择与滚动位置都保留。 */
+    private void buildViews() {
+        table.visibleProperty().bind(listView);
+        table.managedProperty().bind(listView);
+        gridScroll.visibleProperty().bind(listView.not());
+        gridScroll.managedProperty().bind(listView.not());
+        views.getStyleClass().add("adb-table-list__views");
+    }
+
+    private void buildGrid() {
+        gridScroll.setId("object-home-grid");
+        gridScroll.setFitToWidth(true);
+        gridScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        gridScroll.getStyleClass().add("adb-table-list__scroll");
+        cards.setPadding(new Insets(8));
+        cards.setAlignment(Pos.TOP_LEFT);
+        cards.getStyleClass().add("adb-table-list__cards");
+        cards.prefWrapLengthProperty().bind(gridScroll.widthProperty().subtract(24));
+    }
+
+    /** 供门禁断言：当前是不是网格视图。 */
+    boolean isGridView() {
+        return !listView.get();
+    }
+
+    /** 切换视图，并记住选择（切回表格时仍选中同样的对象）。 */
+    void showView(String view) {
+        showView(view, true);
+    }
+
+    private void showView(String view, boolean remember) {
+        boolean grid = "grid".equalsIgnoreCase(view);
+        if (grid == isGridView()) {
+            updateViewButtons();
+            updateToolbarState();
+            return;
+        }
+        syncingSelection = true;
+        try {
+            if (grid) {
+                gridSelection.clear();
+                for (ObjectRow row : table.getSelectionModel().getSelectedItems()) {
+                    gridSelection.add(row.id());
+                }
+                cardAnchor = gridSelection.stream().findFirst().orElse(null);
+            } else {
+                Set<String> keep = new LinkedHashSet<>(gridSelection);
+                table.getSelectionModel().clearSelection();
+                for (int i = 0; i < table.getItems().size(); i++) {
+                    if (keep.contains(table.getItems().get(i).id())) {
+                        table.getSelectionModel().select(i);
+                    }
+                }
+            }
+            listView.set(!grid);
+        } finally {
+            syncingSelection = false;
+        }
+        if (grid) {
+            rebuildCards();
+        }
+        updateViewButtons();
+        updateToolbarState();
+        if (remember && settings != null) {
+            settings.set("ui.objectHome.view", grid ? "grid" : "list");
+        }
+    }
+
+    private void updateViewButtons() {
+        if (listButton == null || gridButton == null) {
+            return;
+        }
+        listButton.getStyleClass().remove("adb-icon-button--active");
+        gridButton.getStyleClass().remove("adb-icon-button--active");
+        (isGridView() ? gridButton : listButton)
+                .getStyleClass().add("adb-icon-button--active");
+    }
+
+    /** 把过滤后的对象重建成卡片；空结果给一句明确的空态。 */
+    private void rebuildCards() {
+        Set<String> visible = new LinkedHashSet<>();
+        for (ObjectRow row : filtered) {
+            visible.add(row.id());
+        }
+        gridSelection.retainAll(visible);
+        cards.getChildren().clear();
+        if (filtered.isEmpty()) {
+            Label empty = new Label(rows.isEmpty() ? "还没有对象" : "没有匹配的对象");
+            empty.getStyleClass().add("adb-muted");
+            empty.setPadding(new Insets(24));
+            cards.getChildren().add(empty);
+            return;
+        }
+        for (ObjectRow row : filtered) {
+            cards.getChildren().add(buildCard(row));
+        }
+    }
+
+    private VBox buildCard(ObjectRow row) {
+        SVGPath icon = Icons.of(iconOf(row.object().kind()), Icons.SIZE_LABEL);
+        icon.getStyleClass().addAll("adb-icon", iconStyleClass(row.object().kind()));
+        Label name = new Label(row.object().name());
+        name.getStyleClass().add("adb-table-card__name");
+        HBox title = new HBox(6, icon, name);
+        title.setAlignment(Pos.CENTER_LEFT);
+
+        // 与表清单卡片同一规则：不摆「—」，整行都是占位符就不渲染这一行。
+        String rowsFact = row.meta() == null || MetadataColumns.isPlaceholder(row.meta().rowsText())
+                ? null : row.meta().rowsText().trim() + " 行";
+        Label facts = cardLine("adb-table-card__facts", rowsFact,
+                row.meta() == null ? null : row.meta().sizeText());
+        Label detail = cardLine("adb-table-card__detail", typeLabel(row.object().kind()),
+                row.meta() == null ? null : row.meta().engineText(),
+                row.meta() == null ? null : row.meta().updatedText());
+        Label comment = cardLine("adb-table-card__comment",
+                row.meta() == null ? null : row.meta().commentText());
+
+        List<Node> lines = new ArrayList<>();
+        lines.add(title);
+        if (facts != null) {
+            lines.add(facts);
+        }
+        if (detail != null) {
+            lines.add(detail);
+        }
+        if (comment != null) {
+            lines.add(comment);
+        }
+
+        VBox card = new VBox(4, lines.toArray(new Node[0]));
+        card.setId(row.cardId());
+        card.setUserData(row.id());
+        card.getStyleClass().add("adb-table-card");
+        card.setPrefWidth(220);
+        card.setMaxWidth(220);
+        card.setMinHeight(92);
+        card.setFocusTraversable(true);
+        // ⭐ P7：卡片是 VBox，读屏默认只会读成「面板」—— 补角色与名称。
+        card.setAccessibleRole(javafx.scene.AccessibleRole.LIST_ITEM);
+        card.setAccessibleText(row.object().name());
+        if (gridSelection.contains(row.id())) {
+            card.getStyleClass().add("adb-table-card--selected");
+        }
+        card.setOnMousePressed(event -> card.requestFocus());
+        card.setOnMouseClicked(event -> {
+            if (event.getClickCount() == 2) {
+                onOpen.accept(row.object());
+                return;
+            }
+            selectCard(row, event);
+        });
+        // ⭐ U25：卡片右键与表格行同一份菜单 —— 两种视图两套右键就是两套真相。
+        card.setOnContextMenuRequested(event -> {
+            if (!gridSelection.contains(row.id())) {
+                gridSelection.clear();
+                gridSelection.add(row.id());
+                cardAnchor = row.id();
+                refreshCardSelectionStyles();
+                updateToolbarState();
+            }
+            objectMenu(row).show(card, event.getScreenX(), event.getScreenY());
+            event.consume();
+        });
+        card.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.ENTER) {
+                onOpen.accept(row.object());
+                event.consume();
+            } else if (event.getCode() == KeyCode.SPACE) {
+                if (!gridSelection.remove(row.id())) {
+                    gridSelection.add(row.id());
+                }
+                cardAnchor = row.id();
+                refreshCardSelectionStyles();
+                updateToolbarState();
+                event.consume();
+            }
+        });
+        return card;
+    }
+
+    /** 卡片里的一行：只留真有值的片段；全占位符返回 {@code null}。 */
+    private static Label cardLine(String styleClass, String... parts) {
+        List<String> real = new ArrayList<>();
+        for (String part : parts) {
+            if (!MetadataColumns.isPlaceholder(part)) {
+                real.add(part.trim());
+            }
+        }
+        if (real.isEmpty()) {
+            return null;
+        }
+        String joined = String.join(" · ", real);
+        Label label = new Label(joined);
+        label.getStyleClass().add(styleClass);
+        if (styleClass.equals("adb-table-card__comment")) {
+            label.setMaxWidth(Double.MAX_VALUE);
+            label.setTooltip(new Tooltip(joined));
+        }
+        return label;
+    }
+
+    /** 卡片点击：普通点击单选，⌘/Ctrl 切换，Shift 选区间。 */
+    private void selectCard(ObjectRow row, MouseEvent event) {
+        if (event.isShortcutDown()) {
+            if (!gridSelection.remove(row.id())) {
+                gridSelection.add(row.id());
+            }
+        } else if (event.isShiftDown() && cardAnchor != null) {
+            int from = indexOfCard(cardAnchor);
+            int to = indexOfCard(row.id());
+            if (from >= 0 && to >= 0) {
+                gridSelection.clear();
+                int start = Math.min(from, to);
+                int end = Math.max(from, to);
+                for (int i = start; i <= end; i++) {
+                    gridSelection.add(filtered.get(i).id());
+                }
+            } else {
+                gridSelection.clear();
+                gridSelection.add(row.id());
+            }
+        } else {
+            gridSelection.clear();
+            gridSelection.add(row.id());
+        }
+        cardAnchor = row.id();
+        refreshCardSelectionStyles();
+        updateToolbarState();
+    }
+
+    private int indexOfCard(String id) {
+        for (int i = 0; i < filtered.size(); i++) {
+            if (filtered.get(i).id().equals(id)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void refreshCardSelectionStyles() {
+        for (Node node : cards.getChildren()) {
+            node.getStyleClass().remove("adb-table-card--selected");
+            if (node.getUserData() instanceof String id && gridSelection.contains(id)) {
+                node.getStyleClass().add("adb-table-card--selected");
+            }
+        }
+    }
+
+    /** 列宽记忆的身份：标题会改，这个 key 不会。 */
+    private static TableColumn<ObjectRow, String> keyed(
+            TableColumn<ObjectRow, String> column, String key) {
+        column.setUserData(key);
+        return column;
+    }
+
     private TableColumn<ObjectRow, String> nameColumn() {
         TableColumn<ObjectRow, String> column = new TableColumn<>("名称");
         column.setId("object-column-name");
+        column.setUserData("name");
         column.setPrefWidth(200);
         column.setMinWidth(140);
         column.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().object().name()));
@@ -501,8 +949,6 @@ final class ObjectHomePage extends VBox {
                         ? SchemaService.ObjectKind.TABLE : row.object().kind()));
                 Label label = new Label(name);
                 HBox box = new HBox(6, icon, label);
-                // ⭐ P2-1：长对象名截断后，Tooltip 是拿到全名的唯一出口。
-                ListColumns.applyTooltip(this, name);
                 box.setAlignment(Pos.CENTER_LEFT);
                 setText(null);
                 setGraphic(box);
@@ -515,6 +961,7 @@ final class ObjectHomePage extends VBox {
     private TableColumn<ObjectRow, String> rowsColumn() {
         TableColumn<ObjectRow, String> column = new TableColumn<>("行数");
         column.setId("object-column-rows");
+        column.setUserData("rows");
         column.setPrefWidth(80);
         column.setMinWidth(72);
         column.setCellValueFactory(cell -> new SimpleStringProperty(
@@ -530,6 +977,7 @@ final class ObjectHomePage extends VBox {
     private TableColumn<ObjectRow, String> sizeColumn() {
         TableColumn<ObjectRow, String> column = new TableColumn<>("数据长度");
         column.setId("object-column-size");
+        column.setUserData("size");
         column.setPrefWidth(90);
         column.setMinWidth(88);
         column.setCellValueFactory(cell -> new SimpleStringProperty(
@@ -561,19 +1009,35 @@ final class ObjectHomePage extends VBox {
     private static TableColumn<ObjectRow, String> textColumn(
             String title, double width, double minWidth,
             java.util.function.Function<ObjectRow, String> value) {
+        return textColumn(title, width, minWidth, value, false);
+    }
+
+    /**
+     * @param tooltip 悬停给出**完整文本**（注释列用）；占位符「—」不挂 tooltip。
+     */
+    private static TableColumn<ObjectRow, String> textColumn(
+            String title, double width, double minWidth,
+            java.util.function.Function<ObjectRow, String> value, boolean tooltip) {
         TableColumn<ObjectRow, String> column = new TableColumn<>(title);
         column.setPrefWidth(width);
         column.setMinWidth(ColumnWidths.listColumnMin(title, minWidth));
         column.setCellValueFactory(cell -> new SimpleStringProperty(value.apply(cell.getValue())));
-        // ⭐ P2-1：长注释 / 长排序规则被截断时给全文（短值与「—」不给）。
-        column.setCellFactory(unused -> new TableCell<>() {
-            @Override
-            protected void updateItem(String text, boolean empty) {
-                super.updateItem(text, empty);
-                setText(empty || text == null ? null : text);
-                ListColumns.applyTooltip(this, text);
-            }
-        });
+        if (tooltip) {
+            column.setCellFactory(unused -> new TableCell<>() {
+                @Override
+                protected void updateItem(String text, boolean empty) {
+                    super.updateItem(text, empty);
+                    boolean real = !empty && !MetadataColumns.isPlaceholder(text);
+                    setText(empty || text == null ? null : text);
+                    if (!real) {
+                        setTooltip(null);
+                    } else if (getTooltip() == null
+                            || !text.equals(getTooltip().getText())) {
+                        setTooltip(new Tooltip(text));
+                    }
+                }
+            });
+        }
         return column;
     }
 
@@ -615,12 +1079,16 @@ final class ObjectHomePage extends VBox {
     }
 
     private void openSelected() {
-        ObjectRow row = table.getSelectionModel().getSelectedItem();
-        if (row == null) {
+        List<ObjectRow> selected = selectedRows();
+        if (selected.isEmpty()) {
             status.accept("先选一个对象");
             return;
         }
-        onOpen.accept(row.object());
+        if (selected.size() > 1) {
+            status.accept("一次只能打开一个对象");
+            return;
+        }
+        onOpen.accept(selected.getFirst().object());
     }
 
     /**
@@ -648,9 +1116,44 @@ final class ObjectHomePage extends VBox {
 
     // ─────────────────────────── 数据 ───────────────────────────
 
+    /**
+     * ⭐ U16：页头显示真实上下文（{@code 方言 · 连接标识}），没连接就说没连接。
+     *
+     * <p>这一行只读一个已有对象（{@code label()} / {@code dialect()}），不查库，
+     * 所以可以在 FX 线程上直接画；「在哪个库」是用户决定要不要点进去之前就要看到的信息。
+     *
+     * <p>⚠️ 真实会话的 {@code label()} 本身就带方言前缀（「SQLite · 文件路径」）——
+     * 再拼一次「› SQLite」就是同一句话读两遍（p0-shell 实拍抓到）。
+     * 只有 label 没提方言的会话才补方言后缀。
+     *
+     * <p>⚠️ 文件型会话的 label 带**整条绝对路径**（p0-shell 第二拍抓到）——
+     * 页头不是资源管理器，长路径把摘要挤下行、读起来像调试输出；
+     * 这里只留文件名，全路径进 tooltip。
+     */
+    private void paintBreadcrumb(DbSession current) {
+        if (current == null) {
+            breadcrumb.setText("未连接");
+            breadcrumb.setTooltip(null);
+            return;
+        }
+        String label = current.label();
+        String dialect = current.dialect().displayName();
+        int separator = Math.max(label.lastIndexOf('\\'), label.lastIndexOf('/'));
+        if (separator > 0) {
+            int start = label.lastIndexOf(" · ");
+            String prefix = start < 0 ? "" : label.substring(0, start + 3);
+            breadcrumb.setText(prefix + label.substring(separator + 1));
+            breadcrumb.setTooltip(new javafx.scene.control.Tooltip(label));
+            return;
+        }
+        breadcrumb.setText(label.startsWith(dialect) ? label : label + " › " + dialect);
+        breadcrumb.setTooltip(null);
+    }
+
     /** 重新读一遍对象列表。 */
     void reload() {
         DbSession current = session.get();
+        paintBreadcrumb(current);
         if (current == null) {
             showEmpty(EmptyState.of(Icons.Icon.CONNECT, "还没有连接数据库",
                     "连上一个数据库后，这里会列出它的表、视图、函数和触发器。",
@@ -709,6 +1212,10 @@ final class ObjectHomePage extends VBox {
         });
 
         rows.setAll(all);
+        // 对象首页切连接时不重建 —— 列宽要跟着当前连接换一套。
+        if (columnMemory != null) {
+            columnMemory.restoreIfScopeChanged();
+        }
         applyColumnVisibility();
         rebuildFilterChips();
         applyFilter();
@@ -802,14 +1309,19 @@ final class ObjectHomePage extends VBox {
             return query.isEmpty()
                     || row.object().name().toLowerCase(Locale.ROOT).contains(query);
         });
-        // 过滤后列表可能变空 —— 空清单要说话，不能是一片空白。
+        // 过滤后列表可能变空 —— 空清单要说话，还要说清是哪一层收窄了范围（U24）。
         if (!rows.isEmpty() && filtered.isEmpty()) {
-            table.setPlaceholder(new Label(query.isEmpty()
-                    ? "这个类型下没有对象" : "没有名称包含「" + query + "」的对象"));
+            table.setPlaceholder(query.isEmpty()
+                    ? EmptyState.of(Icons.Icon.FILTER, "这个类型下没有对象",
+                            "上面的筛选芯片把范围收到了当前类型 —— 换回「全部」就有了。")
+                    : EmptyState.of(Icons.Icon.SEARCH, "没有匹配的对象",
+                            "没有名称包含「" + search.getText() + "」的对象。",
+                            "清空搜索", search::clear));
         }
+        rebuildCards();
     }
 
-    private void showEmpty(javafx.scene.Node node) {
+    private void showEmpty(Node node) {
         content.getChildren().setAll(node);
         VBox.setVgrow(node, Priority.ALWAYS);
     }
@@ -818,8 +1330,8 @@ final class ObjectHomePage extends VBox {
         if (content.getChildren().size() == 2 && content.getChildren().get(0) == filters) {
             return;
         }
-        content.getChildren().setAll(filters, table);
-        VBox.setVgrow(table, Priority.ALWAYS);
+        content.getChildren().setAll(filters, views);
+        VBox.setVgrow(views, Priority.ALWAYS);
     }
 
     // ─────────────────────────── 展示映射 ───────────────────────────
@@ -879,6 +1391,12 @@ final class ObjectHomePage extends VBox {
         /** 行 id —— 测试与截图脚本靠它定位，格式与旧的 object-chip-* 对齐。 */
         String id() {
             return "object-row-" + object.kind().name().toLowerCase(Locale.ROOT)
+                    + "-" + object.name();
+        }
+
+        /** 网格视图里卡片的 id（与行 id 分开，便于截图脚本分别定位）。 */
+        String cardId() {
+            return "object-card-" + object.kind().name().toLowerCase(Locale.ROOT)
                     + "-" + object.name();
         }
     }

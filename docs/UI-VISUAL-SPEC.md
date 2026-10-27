@@ -9,9 +9,8 @@
 > `ui/adb-ui-shell/src/main/resources/io/agenticdb/ui/app.css` 为唯一真相**；
 > 本文只解释「为什么这么定」与「哪些还没定」。
 >
-> 配套：`docs/UI-GUIDE.md`（规则）· `docs/UI-ROADMAP.md`（差距与批次）·
-> `docs/UI-FORMS-AND-STATES.md`（形态 / 空态裁定）· `docs/UI-AUDIT.md`（截图审计）·
-> **`NAVICAT-TODO.md` §19（本规格衍生出的待办）**。
+> 配套：`docs/UI-GUIDE.md`（规则）· `docs/UI-FORMS-AND-STATES.md`（形态 / 空态裁定）·
+> **`NAVICAT-TODO.md`（唯一真源：对标对比、差距清单、下一轮规划）**。
 
 ---
 
@@ -32,8 +31,9 @@
 
 ## 1. 设计基线（三条，冲突时按此判）
 
-1. **密度优先于气派**。数据库客户端 90% 的时间在看列表：正文 **12px**、网格行高 **24/28/34**、
-   对象树行高 **24px**。13px 界面基准会让「表名 + 类型 + 注释」三列在 1366 宽的笔记本上挤不下。
+1. **密度优先于气派**。数据库客户端 90% 的时间在看列表：正文 **12px**、网格行高 **21/22/23/28**
+   （密集/紧凑/标准/宽松）、对象树行高 **21px**（2026-10-26 用户裁定：保持和 Navicat 一样）。
+   13px 界面基准会让「表名 + 类型 + 注释」三列在 1366 宽的笔记本上挤不下。
 2. **颜色只来自令牌**。业务 CSS 里出现 `#rrggbb` / `rgba(...)` 即违规
    （`TokenParityTest` 扫描 `app.css`）。新增颜色必须先进 `tokens.json` 再 `java tools/GenTokens.java`。
 3. **一切都要键盘可达**。可点击控件必须能被 Tab 到达、焦点必须可见（`:focused` 规则 30 条）、
@@ -77,10 +77,10 @@
 > **删令牌，不给令牌硬造消费者**。品牌 mark 现在挂在应用栏：矢量 `Icons.Icon.BRAND`。
 
 > ⭐ 2026-10 UX-2 重构：**数据面正文统一 12px** —— 网格、清单、树、结构页、
-> 按钮与输入框都落到 `fs-sm`。表格正文 13px 会让 22px 的 dense 行发挤，
+> 按钮与输入框都落到 `fs-sm`。表格正文 13px 会让 21px 的 dense 行发挤，
 > 而 Navicat 的运维密度就是 12px。13px 仍保留为 `.root` 的界面基准
 > （对话框标题等非数据面）。
-> 需要更密时用「视图 → 密度 → 密集」（22px 行），而不是继续压字号。
+> 需要更密时用「视图 → 密度 → 密集」（21px 行），而不是继续压字号。
 
 **硬规则**：
 
@@ -225,16 +225,16 @@
   （品牌方块里的 `text-inverse` 就是第一个）**必须写两类选择器**提高特异性，单类会被后写的通用规则顶掉 ——
   见 §4.3 第 6 条。
 
-### 4.2 图标清单（**48** 个，`io.agenticdb.ui.Icons.Icon`）
+### 4.2 图标清单（**53** 个，`io.agenticdb.ui.Icons.Icon`）
 
 | 分类 | 图标 | 语义 |
 |---|---|---|
-| 通用动作 | `CLOSE` `ADD` `EDIT` `COPY` `DELETE` `SAVE` `REFRESH` `UNDO` `REDO` `SEARCH` `FILTER` `CLEAR` `SETTINGS` `STAR` `STAR_FILLED` `DOT` `MORE` | 关闭 / 新增 / 编辑 / 复制 / 删除 / 保存 / 刷新 / 撤销 / 重做 / 搜索 / 筛选 / 清除 / 设置 / 收藏 / 收藏实心 / 状态点 / **更多（⋯，应用栏溢出菜单）** |
-| 导航 | `PREVIOUS` `NEXT` `FIRST` `LAST` `CHEVRON_LEFT` `CHEVRON_RIGHT` | 上/下/首页/末页/左/右 |
+| 通用动作 | `CLOSE` `CHECK` `ADD` `EDIT` `COPY` `DELETE` `SAVE` `REFRESH` `UNDO` `REDO` `SEARCH` `FILTER` `CLEAR` `SETTINGS` `STAR` `STAR_FILLED` `DOT` `MORE` | 关闭 / 勾选（布尔单元格、CHECK 约束）/ 新增 / 编辑 / 复制 / 删除 / 保存 / 刷新 / 撤销 / 重做 / 搜索 / 筛选 / 清除 / 设置 / 收藏 / 收藏实心 / 状态点 / **更多（⋯，应用栏溢出菜单）** |
+| 导航 | `PREVIOUS` `NEXT` `FIRST` `LAST` `CHEVRON_LEFT` `CHEVRON_RIGHT` `FOLDER` | 上/下/首页/末页/左/右 / 连接分组 |
 | 传输 | `EXPORT` `IMPORT` `TRANSFER` | 导出 / 导入 / 双向 |
 | 执行 | `RUN` `RUN_ALL` `STOP` `EXPLAIN` | 执行 / 执行全部 / 停止 / 执行计划 |
-| 对象 | `DATABASE` `TABLE` `STRUCTURE` `COLUMNS` `VIEW` `VIEW_OBJECT` `FUNCTION` `TRIGGER` `INDEX` | 连接 / 表 / 结构 / 列 / 视图 / 视图对象 / 函数 / 触发器 / **索引** |
-| 其它 | `CONNECT` `QUERY` `LIST` `GRID` `THEME` `PALETTE` `HISTORY` `DIAGNOSTICS` | 连接 / 查询 / 清单 / 网格 / 主题 / 命令面板 / 历史 / 诊断 |
+| 对象 | `DATABASE` `TABLE` `STRUCTURE` `COLUMNS` `VIEW` `VIEW_OBJECT` `FUNCTION` `TRIGGER` `INDEX` `OPEN` | 连接 / 表 / 结构 / 列 / 视图 / 视图对象 / 函数 / 触发器 / **索引** / 打开选中对象 |
+| 其它 | `CONNECT` `QUERY` `LIST` `GRID` `THEME` `PALETTE` `HISTORY` `DIAGNOSTICS` `LOCK` `ALERT` | 连接 / 查询 / 清单 / 网格 / 主题 / 命令面板 / 历史 / 诊断 / 加密连接 / 警告提示 |
 | 品牌 | `BRAND` | ⭐ **AIDB mark**（数据圆柱 + 右上 AI 四角星芒）—— 只用在应用栏 26px 方块；S-7 起品牌在界面里的**唯一**落点 |
 
 ### 4.3 硬规则
@@ -287,38 +287,40 @@
 `sp-1h`（6px，dense 单元格内边距）两个已登记例外。
 ⛔ CSS 里不得出现阶梯外的 padding（门禁：`AppCssAuditTest`）；**padding 必须带 `px` 单位**。
 
-### 5.2 圆角（4 档 + pill，`r-*`）
+### 5.2 圆角（3 档 + 浮层 + pill，`r-*`）
 
 | 令牌 | 值 | 用途 |
 |---|---|---|
-| `r-xs` | 3px | 复选框 |
-| `r-sm` | 4px | 按钮、输入框、搜索框、连接状态、小控件 |
-| `r-md` | 6px | 卡片、面板、网格、toast、命令面板、空态、列设置弹层 |
-| `r-lg` | 8px | **对话框**（最大一档） |
+| `r-sm` | 2px | 按钮、输入框、搜索框、连接状态、check-box 方框 |
+| `r-md` | 3px | 列表格 |
+| `r-lg` | 4px | 表格容器、卡片、抽屉 |
+| `r-xl` | 6px | **浮层**：对话框、菜单、下拉弹层、命令面板、toast（最大一档） |
 | `r-full` | 999px | 徽标、chip、状态栏方言角标、风险徽标 |
 
-**硬规则**：**外层圆角 ≥ 内层圆角**（对话框 8 > 卡片 6 > 按钮/输入框 4 > 复选框 3）。
-⛔ 不得出现阶梯外的 radius（UX-1 已删 `r-xl` 12px）。
+**硬规则**：**外层圆角 ≥ 内层圆角**（浮层/对话框 6 > 卡片 4 > 列表格 3 > 按钮/输入框 2）。
+⛔ 不得出现阶梯外的 radius（2026-10-26 起按 Navicat 2–4px 语言收敛；旧 `r-xs` 3px 与 8/10px 档已删）。
 
 ### 5.3 固定尺寸表
 
 | 元素 | 尺寸 | 来源 |
 |---|---|---|
 | 菜单栏 | 系统默认（macOS 进系统菜单栏） | — |
-| **应用栏** | **46px** | `h-appbar`（`AppBar.setPrefHeight`） |
-| 应用栏品牌方块 | **26×26**，底 `accent`、字形 `Icons.SIZE_TOOLBAR` 且描边 **`text-inverse`**（⚠️ 必须两类选择器，见 §4.3 第 6 条） | `.adb-appbar__mark` / `.adb-appbar__mark .adb-appbar__mark-glyph` |
-| 标签栏 | **28px**（tab 高 26 + 2px 活动线） | `h-tabbar` / `.adb-tab` |
-| 对象标题栏 | **36px** | `.adb-object-header` |
-| 对象切面条 | 随对象标题栏（36 内） | `.adb-object-tabs` |
-| 工具栏（数据页） | **34px** | `h-toolbar` |
-| **状态栏** | **24px** | `h-statusbar` |
+| **应用栏（含 Ribbon）** | **90px** = 26px 工具行 + 64px 命令带 | `h-appbar`（`AppBar.setPrefHeight`）/ `.adb-appbar__utility` / `.adb-ribbon` |
+| 应用栏品牌方块 | **20×20**，圆角 3、底 `accent`、字形 `Icons.SIZE_LABEL` 且描边 **`text-inverse`**（⚠️ 必须两类选择器，见 §4.3 第 6 条） | `.adb-appbar__mark` / `.adb-appbar__mark .adb-appbar__mark-glyph` |
+| Ribbon 大图标按钮 | **62×58**，图标 `Icons.SIZE_RIBBON`（26）+ 11px 标签 | `.adb-ribbon__button` / `.adb-ribbon__label` |
+| 标签栏 | **26px**，白底 + 1px 下边界 | `h-tabbar` / `.adb-tabbar` |
+| 对象标题栏 | **40px** | `.adb-object-header` |
+| 对象切面条 | 随对象标题栏（40 内） | `.adb-object-tabs` |
+| 工具栏（数据页） | **30px** | `h-toolbar` |
+| **状态栏** | **22px** | `h-statusbar` |
 | 侧栏（展开） | **250px**，可拖 200–360 | `w-sidebar*` |
 | 侧栏（折叠 rail） | **48px** | `w-sidebar-collapsed` |
 | 输入框高 | **28px** | `h-input` |
 | 按钮高 | **28px** | `h-button` |
-| **网格行高** | 22 / **24** / 28 / 34（密集/紧凑/标准/宽松，默认紧凑） | `row-dense/compact/normal/comfort` |
-| 分页器 | **36px** | `.adb-grid__pager` |
-| **对象树行高** | **24px**（密集 22） | `row-tree` / `row-dense` |
+| **行高（列表/树）** | 19 / 20 / **21** / 26（密集/紧凑/标准/宽松，默认标准） | `RowHeights.of()` / `row-*` |
+| **行高（记录网格）** | **列表 + 2**：21 / 22 / **23** / 28（默认 23；`RowHeights.grid()`） | `RowHeights.grid()` |
+| 分页器 | **38px** | `.adb-grid__pager` |
+| **对象树行高** | **固定 21px**（`row-tree`；2026-10-26 Navicat 实测，不再跟密度档位放大） | `row-tree`（21） |
 | 侧栏 rail 按钮 | 32×32 | `.adb-rail__button` |
 | 详情抽屉宽 | 360–620（默认 480） | `CellDetailsDrawer` |
 | 命令面板宽 | ≤ 620 | `CommandPalette` |
@@ -344,26 +346,30 @@
 
 ## 6. 布局
 
-### 6.1 五区骨架（2026-10 重构）
+### 6.1 七区骨架（2026-10-26：Navicat 对齐）
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ 应用栏 46px：◆ AgenticDB │ ● 当前连接 ▾ │  [新建][连接] ⌘K ◐ ⚙ ⋯│  ← surface + 下边框
+│ 菜单栏 24px（系统原生，白底）                                   │
+├──────────────────────────────────────────────────────────────┤
+│ 工具行 26px：◆ AIDB │ ● 当前连接 ▾ │  [搜索对象或命令 ⌘K] ◐ ⋯ │  ← chrome #F0F0F0
+│ Ribbon 64px：[连接][新建查询][表][新建表][导入/导出]…[设置]      │  ← 大图标 + 11px 标签
 ├────────────┬─────────────────────────────────────────────────┤
-│ 侧栏 250px │ 标签栏 36px：对象(常驻) · users × · 查询示例 ×    │  ← canvas + 下边框
+│ 侧栏 250px │ 标签栏 26px：对象(常驻) · users × · 查询示例 ×    │  ← 白底 + 下边界
 │ (可拖/折叠)├─────────────────────────────────────────────────┤
 │ 收藏        │ 内容区（页面自行管理加载/空/错误三态）            │  ← canvas
 │ 连接（对象树）│                                                  │
 │ 工作台      │                                                  │
 │ 工具        │                                                  │
 ├────────────┴─────────────────────────────────────────────────┤
-│ 状态栏 26px：方言·连接·行范围·消息 | 脏·选择·耗时·事务·只读·版本│  ← surface + 上边框
+│ 状态栏 22px：方言·连接·行范围·消息 | 脏·选择·耗时·事务·只读·版本│  ← #F0F0F0 + 上边界
 └──────────────────────────────────────────────────────────────┘
 ```
 
-> ⭐ 重构前顶栏是「大图标 + 文字」的功能栏（连接 / 查询 / 表 / 导入导出 / 工具）——
-> 五张 52px 宽的图标卡片排成一行，视觉重心全在顶栏，工作区被压成一条缝。
-> 现在顶栏只留**应用级**的东西：品牌、当前连接、全局搜索、主题、设置、更多。
+> ⭐ 2026-10-26 用户裁定「保持和 Navicat 一样」：顶部固定区合计 **170px**
+> （菜单 24 + Ribbon 90 + 标签栏 26 + 对象工具条 30），与 Navicat 17 实测一致。
+> Ribbon 只摆**真动作**（10 个，全部经 `ActionRegistry`），不摆备份/模型/BI 这类我们没有的假按钮。
+> 品牌、当前连接、全局搜索、主题、更多留在 26px 工具行；设置同时有 Ribbon 与 ⋯ 两个入口。
 
 | 区域 | 规则 |
 |---|---|
@@ -474,10 +480,10 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 | 选择列 | 宽 36，表头全选**只作用于当前页** |
 | 正文 | 12px，`4px 8px`（dense `2px 6px`）；NULL 斜体灰、空串浅灰、枚举绿粗体、JSON 蓝等宽、数字等宽 |
 | **空值三态** | ⭐ **`NULL` 显示 `(NULL)`**，不是 `NULL`。带括号的原因：TEXT 列里真的会出现**内容为 "NULL" 的字符串**（CSV 导入、日志表、外部系统写的），灰斜体的 `NULL` 和一条值为 NULL 的文本在 12px 网格里分不出来，而这两种情况要做的处理完全不同。空串显示 `""`，BLOB 显示大小（补 **GB 档**，不显示 `1536.0 MB`）。三者各有 tooltip |
-| 斑马纹 | 奇数行 `bg-stripe`（亮 `#FAFBFC` / 暗 `rgba(148,163,184,.035)`）—— **网格三层里最轻的一层**，必须轻于选中 tint 和 hover |
-| 网格线 | 横线 `border-subtle` 1px；⭐ 单元格**右竖线**同色 1px（宽表读到第 5 列不串行）。**宽度写在基础规则里，状态规则只改颜色**（见下方「槽位常留」） |
-| 选中 | `bg-selected` + 正文色字（不蓝字）+ **左侧 2px `accent` 强调条**（行高 22–24px 里只靠淡底经常扫不出选中了哪一行）；`hover` 规则排在 `selected` **之前**，悬停已选行仍是选中色 |
-| 当前格（键盘光标） | ⭐ **不是 `.table-cell:focused`** —— 行选模式下 `TableCell.updateFocus()` 会主动清掉 `:focused`，那条伪类在这张表上永远不匹配。由 `DataGridPage` 盯 `focusModel` 打样式类 `adb-grid__cell--cursor`：**内描边 `border-focus` + `bg-active` 淡底**，只有左右两条边（行高 24px，上下再吃 4px 就把正文挤没）。光标**按列名**记，不按 `TableColumn` 实例记（冻结区的列是从右表搬过去的同一批实例） |
+| 斑马纹 | 奇数行 `bg-stripe`（亮 `#F9F9F9` / 暗 `rgba(148,163,184,.035)`）—— **网格三层里最轻的一层**，必须轻于选中 tint 和 hover。⚠️ 实现上条纹档**只许带 `:odd` 一个伪类**：多带一个 `:filled` 就比 `:hover` / `:selected` / `--deleted` / `--new` 重一档，会反过来把行态底色整条压掉，且**只有奇数行错**（第三十一轮实拍抓到，门禁 `SelectionStateTest.stateRulesOutweighTheZebraStripeInEveryTableScope`） |
+| 网格线 | 横线 + 竖线都是 `border-subtle` 1px（Navicat 17 实测：列边界 `#F0F0F0`）。**宽度写在基础规则里，状态规则只改颜色**（见下方「槽位常留」） |
+| 选中 | `bg-selected-grid`（Navicat 实测 `#C4E0F7`）+ 正文色字（不蓝字）+ **左侧 2px `accent` 强调条**；`hover` 规则排在 `selected` **之前**，悬停已选行仍是选中色 |
+| 当前格（键盘光标） | ⭐ **不是 `.table-cell:focused`** —— 行选模式下 `TableCell.updateFocus()` 会主动清掉 `:focused`，那条伪类在这张表上永远不匹配。由 `DataGridPage` 盯 `focusModel` 打样式类 `adb-grid__cell--cursor`：**内描边 `border-focus` + `bg-active` 淡底**，只有左右两条边（行高 23px，上下再吃 4px 就把正文挤没）。光标**按列名**记，不按 `TableColumn` 实例记（冻结区的列是从右表搬过去的同一批实例） |
 | 脏单元格 | 左侧 2px 黄条 + `warning-bg` |
 | 新增行 / 删除行 | 绿底 / 红底（删除行文字降为 tertiary） |
 | 行操作条 | 网格左下 `+ / − / 应用 / 取消`，**纯图标不加文字**（贴着光标，越短越不挡视线）。可用态**绑定**工具条同一批按钮，不重写判断；只读表**整排消失**（一排永远点不动的按钮只会引人反复试） |
@@ -486,7 +492,7 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 > ⭐ **槽位常留（UX-4 的排版不变量）**：行 `border-width: 0 0 1 2`、单元格 `0 1 0 2` ——
 > 左侧 2px、右侧 1px 由**基础规则**留成透明空槽，选中条 / 脏值条 / 光标环 / 矩形选区
 > 这些状态规则**只上色、不改宽度**。改宽度就会抖：键盘走一格、文字左右跳一次；
-> 行高 24px 里上下各吃 2px 直接压掉一行正文。
+> 行高 23px 里上下各吃 2px 直接压掉一行正文。
 > 门禁：`SelectionStateTest.selectingARowNeverMovesItsCells`（实测每个单元格的 x/y 与行高都不变）。
 
 
@@ -494,7 +500,7 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 
 | 元素 | 规格 |
 |---|---|
-| 行高 | 24px（`row-tree`；dense 22） |
+| 行高 | 21px（`row-tree` / `RowHeights.of(normal)`；dense 19） |
 | 选中 | **满行高亮**（`bg-selected`），不是圆角胶囊 |
 | 类型色 | 图标着色（`kind-*`），文字保持正文色 |
 | 计数 | 分组右侧 11px tertiary（「表 12」） |
@@ -556,15 +562,15 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 |---|---|
 | 列（表清单） | 名称 / 行 / 数据长度 / 引擎 / 创建日期 / 修改日期 / 排序规则 / 注释 |
 | 列（对象首页） | 名称 / **类型** / 行数 / 数据长度 / 引擎 / 创建时间 / 修改时间 / 排序规则 / 注释 |
-| 行高 | 22 / **24** / 28 / 34（跟随密度令牌，默认紧凑） |
-| 表体 | 12px；**纯白行 + 1px `border` 下线，无斑马纹** |
-| 表头 | 12px bold，`text-secondary`，`bg-surface` |
+| 行高 | 19 / 20 / **21** / 26（跟随密度令牌，默认标准 = Navicat 21） |
+| 表体 | 12px；**纯白行、无横线、无斑马纹**（Navicat 17 实测）；列分隔由表头竖线承担 |
+| 表头 | 12px bold，`text-secondary`，`bg-surface`；列间 1px `border-subtle` 竖线 |
 | 空行 | **不画线、不铺色**（避免看起来像还有数据） |
 | 数字列 | 右对齐 + **按数值排序**（不按字符串） |
 | 缺失元数据 | 显示「—」，不编造 SQLite 拿不到的值 |
 | 交互 | 双击 / Enter 打开；搜索实时过滤；刷新在后台线程 |
 
-> 实拍对照与像素测量见 `docs/NAVICAT-PARITY-2026-10-V5.md`。
+> 实拍对照与像素测量见 `NAVICAT-TODO.md` §1（2026-10-26 实测重建）。
 
 ---
 
@@ -602,7 +608,9 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 4. **导航按钮不放按钮栏**：`DialogPane.createButton` 会给按钮栏里的每个按钮挂
    `setResultAndClose`，放进「下一步」会让整个向导当场关闭。
    → 导航按钮放**内容区**（`ConnectionWizard` 已这样改）。
-5. 宽度档：表单 **480** · 宽表 **720** · 长文本 **560**。
+5. 宽度档：表单 **480** · 长文本 **560** · 宽表（表格 / 列选择） **720** · 建表 **900**
+   （`DialogSizes` 四档，V-11。原第五档「双列选择 **800**」随 U21 新建索引改单列表一并删除 ——
+   宽度前提是双列传输框，前提没了就是死规格）。
 
 ### 8.4 校验与错误
 
@@ -635,7 +643,7 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 | 弹窗 | 触发 | 形态 | 默认按钮 |
 |---|---|---|---|
 | 新建连接向导（三步） | 功能栏 / 侧栏 / ⌘N | 弹窗（内容区导航） | 保存（校验不过 consume） |
-| 新建表（T1） | 树右键 / 数据库菜单 / ⌘K | 弹窗 + 实时 SQL 预览 | 创建（取消为默认） |
+| 新建表（T1） | 树右键 / 数据库菜单 / ⌘K | 弹窗 + **六页设计器**（字段 / 索引 / 外键 / 触发器 / 选项 / SQL 预览），字段与三类对象同一计划 | 创建（取消为默认） |
 | 新建索引（S1） | 结构页索引页签 | 弹窗 + 实时 SQL 预览 | 创建 |
 | 清空 / 重命名 / 删除表（T2/T3/T4） | 树右键 / 菜单 | 弹窗 + SQL 预览 | **取消**（破坏性） |
 | 保存修改（SQL 预览） | 数据页 ⌘S | 弹窗 | **取消** |
@@ -652,10 +660,10 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 
 | # | 缺口 | 影响 | 修法 |
 |---|---|---|---|
-| **D-1** | 没有统一的**「错误详情」弹窗** | 错误只落在状态栏一行，看不全 | 错误详情弹窗：可读原因 + 归类 + 可复制 |
-| **D-2** | 没有**批量确认汇总页** | 删 500 行只有一行 header | 汇总页：N 条变更 · 影响行数 · SQL 摘要 |
-| **D-3** | 没有**错误归类**（连接断开 / 权限不足 / 不存在 / 超时 / 死锁） | 用户看不懂该怎么处理 | 错误分类器 + 建议动作 |
-| **D-4** | 弹窗宽度没有档位规范 | 各弹窗宽度随手写 | 按 §8.3 的三档统一 |
+| ~~**D-1**~~ | ✅ **已落地（P2-2）** | ~~没有统一的「错误详情」弹窗~~ → `ErrorDetailsDialog`：分类徽标 + 原因 / 建议 / 驱动原文 / 异常链 / SQL + 一键复制 |
+| ~~**D-2**~~ | ✅ **已落地（P2-2）** | ~~没有批量汇总页~~ → `BatchSummaryDialog`：成功数 / 失败数（**与明细行数分离**）+ 失败明细 + 一键复制；已接批量删表与导入报告 |
+| ~~**D-3**~~ | ✅ **已落地（V-12 + P2-2 接到界面）** | ~~没有错误归类~~ → `ErrorClassifier` 8 类 + 建议动作，详情弹窗显示分类徽标 |
+| **D-4** | 弹窗宽度没有档位规范 | 各弹窗宽度随手写 | 按 §8.3 的五档统一 |
 
 ---
 
@@ -711,6 +719,16 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 - 文本输入框聚焦时**不抢** `⌘Z` / `⌘F`。
 - 所有弹窗：`Esc` 关闭（破坏性弹窗的 Esc = 取消）；Tab 顺序按视觉顺序（左→右、上→下）。
 - **焦点顺序**：菜单 → 功能栏 → 侧栏 → 标签栏 → 内容区 → 状态栏（状态栏不可聚焦）。
+  ⭐ **第二十六轮起这条有门禁**：`AccessibilityAuditTest` 按场景图**前序**走出六区顺序，
+  并要求**状态栏没有 tab 停靠点**、每个区域至少一个 —— 规格书里躺了四轮没人守的规矩，从此会红。
+- **标签栏与对象切面必须键盘可操作**：`←/→` 在标签间移动焦点**并同步激活**、`Enter`/`Space` 激活；
+  两者都是 `AccessibleRole.TAB_ITEM` 且带 `accessibleText`（重名标签带连接限定，与可见标题同一口径）。
+  以前它们是**纯鼠标**的 `Label` —— 键盘用户切不了标签，读屏只听到一段孤立文字。
+- **可朗读名称逐个控件给**（`setAccessibleText`）：数据网格 / 冻结网格 / 全选 / 每行复选框 /
+  布尔单元 / 每页下拉 / 侧栏树 / 对象清单 / 卡片（`LIST_ITEM`）。
+  ⚠️ `ComboBox` 皮肤内部的那个 `ListView`（`ComboBoxListViewSkin`）**不单独要求**名称 ——
+  名称挂在 `ComboBox` 自己身上，重复要求是假缺陷。
+- 图标控件：Tooltip（鼠标）+ accessibleText（读屏）两者缺一不可（`IconAuditTest`）。
 
 ---
 
@@ -735,12 +753,16 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 
 ### 12.1 密度（四档，全局 5 处生效）
 
-| 档 | 网格行高 | 树行高 | cell padding | 适用 |
+| 档 | 列表/树行高 | 记录网格行高 | cell padding | 适用 |
 |---|---|---|---|---|
-| 密集 | 22px | 22px | `2 6` / 清单 `0 6` | 与 Navicat 并排对标、大表扫读 |
-| **紧凑（默认）** | **24px** | **24px** | `4 8` / 清单 `0 8` | 笔记本 / 日常 |
-| 标准 | 28px | 28px | `4 8` | 宽松的桌面环境 |
-| 宽松 | 34px | 34px | `4 8` | 演示 / 触屏 |
+| 密集 | 19px | 21px | 网格/清单 `2 6`，对象清单 `0 6` | 与 Navicat 并排对标、大表扫读 |
+| 紧凑 | 20px | 22px | `2 8`（对象清单 `4 8`） | 笔记本 / 日常 |
+| **标准（默认）** | **21px** | **23px** | `2 8`（对象清单 `4 8`） | Navicat 同档（实测 21 / 23） |
+| 宽松 | 26px | 28px | `2 8`（对象清单 `4 8`） | 演示 / 触屏 |
+
+> ⚠️ 固定行高下 **12px 正文 + 上下 padding 必须 ≤ 行高**，否则字会被裁掉下半截
+> （第二十九轮重拍实拍抓到网格 / 结构页 / 连接页 / 表清单四处的裁字）。门禁：
+> `AppCssAuditTest.fixedRowCellsLeaveRoomForTheirText`。
 
 覆盖：数据网格 · 查询结果网格 · 表清单 · 对象首页 · 结构页四张表 · 对象树
 （`DensityCoverageTest` 四档 × 各页面，`ChromeMetricsTest` 钉 chrome 高度与可见行数）。
@@ -794,8 +816,8 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 | **V-8** | ~~对比度无自动检查~~ | — | ✅ **已修**：`ContrastTest` + 改 6 个色值 |
 | **V-9** | 表格/抽屉/结果区规格不一致（类型行、记录导航条） | 同一份数据两种长相 | 统一网格外壳组件 |
 | **V-10** | ~~空态 E5/E7/E8/E9 未补~~ | — | ✅ **已修**：4 处全补 + `EmptyStateTest` 门禁 |
-| **V-11** | 弹窗宽度无档位 | 各弹窗宽度随手写 | §8.3 三档 |
-| **V-12** | 无错误详情弹窗 / 批量汇总页 / 错误归类 | 错误信息不完整 | §8.7 |
+| **V-11** | 弹窗宽度无档位 | 各弹窗宽度随手写 | §8.3 五档 |
+| **V-12** | ~~无错误详情弹窗 / 批量汇总页 / 错误归类~~ | 错误信息不完整 | ✅ **已修**（V-12 归类 + P2-2 界面）：`ErrorDetailsDialog` / `BatchSummaryDialog`，见 §8.7 |
 
 ### 13.3 ✅ 本轮已顺手修掉的
 
@@ -826,10 +848,12 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 | 门禁 | 断言 |
 |---|---|
 | `TokenParityTest` | 令牌键一致 / 亮暗一致 / CSS 无颜色字面量 / **每个令牌都被用到**（不许摆设） |
-| `AppCssAuditTest` | CSS 内无字面量字号·padding·radius；字号 7 档、圆角 3 档、间距 `0/2/4/6/8/12/16/24/32`；`9px` 0 次；数据面正文必须 12px |
+| `AppCssAuditTest` | CSS 内无字面量字号·padding·radius；字号 7 档、圆角 3 档、间距 `0/2/4/6/8/12/16/24/32`；`9px` 0 次；数据面正文必须 12px；**固定行高下 12px 正文 + 上下 padding 不得超行高** |
 | `FocusRingAuditTest` | 每个可聚焦组件类都有 `:focused`；`-fx-opacity` 只 1 处；禁用态抵消 Modena 透明度 |
+| **`AccessibilityAuditTest`**（✅ 第二十六轮 P7-2 新增） | ① 逐页（首页 / 数据页 / 查询页）遍历**可见交互控件**，每个都要有可朗读名称或自身文字 ② 标签与对象切面必须是 `TAB_ITEM` ③ **六区焦点顺序**（前序：菜单→功能栏→侧栏→标签栏→内容区→状态栏；状态栏**零**停靠点，每区 ≥1）④ 标签栏 `Enter` + `→` 键盘可用 ⑤ 切面标签键盘可用 |
+| **`ThemeManagerTest`**（✅ 第二十六轮 P7-1 新增） | 主题切换只在**窗口已显示**时做强制 CSS/布局 pass（未显示时交给 `stage.show()`，别把整棵场景图算两遍）；两套主题 + 业务 CSS 常驻样式表；根节点必须带 `theme-light`/`theme-dark` 类 |
 | `DensityCoverageTest` | 密度四档同时改数据网格 / 查询结果 / 清单 / 结构页的行高；未知档回落 compact |
-| **`ChromeMetricsTest`**（✅ UX-2 新增） | 标签栏 28 / 对象头 36 / 页工具条 34 / 分页器 36 / 状态栏 24；dense 行高 22；1268×765 可见 ≥22 行 |
+| **`ChromeMetricsTest`** | 标签栏 26 / 对象头 40 / 页工具条 30 / 分页器 38 / 状态栏 22；dense 网格行高 21；1268×765 可见 ≥22 行 |
 | **`ToolbarDiscoverabilityTest`**（✅ UX-3 新增） | 跑**整个 App**：六颗主操作有图标+文字+tooltip+accessibleText；窄窗口收字但提示不丢；组间有竖线且删除标 danger；宽窗口工具条不把搜索框挤出可视区；导入向导预选当前表 |
 | `IconAuditTest` | 图标控件同时有 Tooltip + accessible text；符号语义唯一 |
 | `IconSystemAuditTest` | 按钮无 Unicode 图标/中文词图标；`Icons` 无死常量；领域层不带图标 |
@@ -839,7 +863,6 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 | **`ContrastTest`**（✅ 本轮新增） | 正文/次要/三级/风险/类型色与各自底色的对比度 ≥ 4.5:1；焦点环与背景 ≥ 3:1 |
 | **`StatusBarTest`**（✅ 本轮新增） | 版本号来自 `AppVersion` 且无阶段代号；`range` 不带耗时 |
 | **`EmptyStateTest`**（✅ 本轮新增） | 空态有图标+标题+说明+下一步按钮；E8/E9 真的渲染出来 |
-| **建议新增** `ContrastTest` | 正文/次要/三级文字与各自底色对比度 ≥ 4.5:1 |
 
 ---
 
@@ -847,6 +870,10 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-27 | 第三十一轮 · R31 | **表设计器补成 Navicat 的七页 + 字段页三段**。字段页 = 工具条（添加 / 插入 / 删除 / 上移 / 下移）+ 网格 + 常驻属性面板（默认值 / 字符集 / 排序规则），默认值从网格挪进面板换取长度/小数/自增的列宽；网格行高 30 → **21px**（`RowHeights.of("normal")`，Navicat 实测 22，差 1px 换来与自家密度同档）；九列按 Navicat 顺序排（名称 / 类型 / 长度 / 小数 / 不为空 / 主键 / 唯一 / 自增 / 注释），类型是可编辑下拉、候选来自 `Dialect.columnTypes()`；`字段数：N` 常驻工具条右端。⭐ **置灰一律用颜色，不用 `-fx-opacity`**：新写的 `.adb-dialog .table-view .table-cell:disabled` 本想用 `0.45` 半透明，被 `FocusRingAuditTest.opacityIsNeverUsedToDimContent` 拦下（全文只允许命令面板遮罩一处，半透明会把文字和图标一起稀释），改成 `-fx-opacity: 1` + `text-disabled` 色 —— 与本文件「禁用感完全由颜色表达」这条既有规矩一致。⭐ **方言知识不下 UI**：字符集/排序规则的「支持与否 + 常用候选」全部做成 `Dialect` 默认方法（`supportsColumnCharset` / `columnCharsetPresets` / `columnCollationPresets`），UI 里写 `kind() == MYSQL` 会被 `DialectBranchAuditTest` 判红（本轮真的红过一次）；候选表与建表器校验之间加了 `everyCharsetAndCollationPresetIsAcceptedByTheBuilder` 对账门 —— 变异验证：往 PG 候选里塞一个带点号的 `en_US.UTF-8`（过不了注入防线）只红这条。⭐ **行态档集体栽在权重上**：字段网格选中的那一行实拍只剩一圈单元格描边、底色还是白的，第一版补的裸 `.adb-dialog .table-view .table-row-cell:selected` 门禁全绿、帧照样没色 —— 真根因是四处表格作用域的条纹档写成 `:filled:odd`（比所有行态档多一个伪类 = 重 10），把 `:hover` / `:selected` / `--deleted` / `--new` 整档压掉，表现成**只有奇数行掉色**（`p2-cell` 里选中的 `User 002` 同样是白行，只是此前没有任何一帧选中过奇数行）。修法是把**条纹降回一个伪类** `:odd`（空行不条纹交给同权重、声明在后的 `:empty`），而不是给每条行态档补 `:filled` —— 前者一次修完四个作用域，后者每加一条新态都要记住补。门禁 `SelectionStateTest.stateRulesOutweighTheZebraStripeInEveryTableScope` 随之从「规则在不在」升级成「逐作用域把行态档全捞出、比权重 ≥ 条纹档且声明在后」，变异两处各红一次（条纹写回 `:filled:odd`、选中档挪到条纹档前面）。新增帧 `p6-new-table-fields` / `-fields-dark` / `-comment`（**24 张：19 亮 + 5 暗**）。 |
+| 2026-10-27 | 第三十轮 · R30-D | **弹窗内第一次出现 TabPane**（新建表的六页设计器：字段 / 索引 / 外键 / 触发器 / 选项 / SQL 预览），规则落在 `.adb-dialog .tab-pane` 之下，不影响工作台自己的标签栏：页签栏铺**画布底色** + 底部 1px `border-subtle`，选中页与正文同用 **surface**、文字 `accent` 加粗，页签内边距 `4px 12px`（12px 字，命中区 ~24px），圆角只取阶梯里的 `3px`（`AppCssAuditTest` 拦四值写法），选中页焦点环清空。⚠️ 底色方向不能反：暗色下画布 `#0B1220` 比 surface `#1E293B` 更暗，反写会让选中页看着像按下去/失效。对象页 = 列表 + 两颗按钮 + 一行说明，行选中用全应用统一的 `bg-selected`。**预览空态改成「说原因」**：表名撞上已有表时不再只清空预览（演示库本来就有 `orders`，实拍帧一片空白），填了表名就照实显示 `表「x」已经存在`，只有表名为空才保留「填写表名后…」。新增帧 `p6-new-table-index` / `p6-new-table-sql` / `p6-new-table-dark`（21 张：17 亮 + 4 暗）。 |
+| 2026-10-26 | 第三十轮 · R30-A/B/C | **按 Navicat 17 重定视觉基线**（用户裁定「保持和 Navicat 一样」，第二十一轮的无边框 / 低饱和靛蓝 / 28px 密度 / 22px 行高下限 / 大圆角全部作废）：列表/树 21、网格 23、外壳与细线 `#F0F0F0`、白底导航树、树/网格选中 `#CDE8FF`/`#C4E0F7`、斑马 `#F9F9F9`、强调 `#0067B8`（守 WCAG AA）、圆角 2/3/4/6；顶区 **170px** = 菜单 24 + 功能区 90（26 工具行 + 64 Ribbon）+ 标签栏 26 + 对象工具条 30；Ribbon 10 条真命令、26px 图标。**重拍抓到并修掉 4 处裁字**（网格 / 结构页 / 连接页 / 表清单：21/23px 行高仍按 6px 垂直内边距画，12px 字被切掉下半截）→ cell padding 改 `2px 8px`，新增门禁 `AppCssAuditTest.fixedRowCellsLeaveRoomForTheirText`；表清单表体去掉横线、表头保留列间竖线（`SelectionStateTest.theTableListBodyStaysPlainLikeNavicat`）。图标清单 48 → **53**（补 CHECK / OPEN / FOLDER / LOCK / ALERT）。索引弹窗 SQL 预览在 560px 高下被挤成一行（D 区失效）→ 弹窗高度 620（min 仍 560）、预览最小 72px、索引列区 220 → 200。 |
+| 2026-10-25 | 第二十六轮 · P7-2 | **把 §10.4 的键盘与读屏规矩变成会红的门禁**：`TabBar` / `ObjectTabBar` 的标签原来是**纯鼠标**的 `Label`（无 `focusTraversable`、无键处理、`AccessibleRole` 用默认值）→ 补 `TAB_ITEM` + `accessibleText`（重名标签带连接限定，与可见标题同一口径）+ `←/→` 移动焦点并同步激活 + `Enter`/`Space` 激活；对象首页 / 表清单**卡片**补 `LIST_ITEM` + `requestFocus`（原来挂的是空 lambda）；网格 / 冻结网格 / 全选 / 每行复选框 / 布尔单元 / 每页下拉 / 侧栏树 / 对象清单补可朗读名称。新门禁 `AccessibilityAuditTest`(5)：逐页控件名称、`TAB_ITEM` 角色、**六区前序焦点顺序 + 状态栏零停靠点**、标签栏与切面键盘可操作。⚠️ 第一版把 `ComboBoxListViewSkin` 里的 `ListView` 判成违规（名称挂在 `ComboBox` 自己身上）——**改的是测试不是生产代码**，并把父链打进失败信息，避免下次靠猜。另加 `ThemeManagerTest`(4)：主题切换的强制 CSS/布局 pass **只在窗口已显示时**做（启动那一趟交给 `stage.show()`，实测省掉一次整场景图重算 706 ms）。**2 个变异红→改回绿**（去掉条件 → `expected: 0 but was: 1`；`shouldForcePass` 恒 false → 2 条红）；基线 **871 / 113 / 0** |
 | 2026-10-24 | 第二十二轮 · S-7 | **品牌落点 + 死代码清理**：应用栏 26px 方块由通用圆柱 `Icons.Icon.DATABASE` 换成矢量 **`Icons.Icon.BRAND`**（圆柱 + 右上 AI 四角星芒，随主题换色，`#appbar-brand-glyph`）；⭐ **不可达的欢迎页删除** —— `AppShell` 构造器无条件 `openPermanent(object-home)`，那张卡片永远不会露面，连带删掉 `showWelcome()` / `brandMark()` / `BRAND_MARK` / `.adb-welcome*` 四条规则 / `Icons.SIZE_BRAND`；令牌 **99 → 98**（`fs-2xl` 20px 唯一的消费者就是这张卡的标题，**删令牌不给它硬造消费者**），字号阶梯 8 档 → **7 档**（§2.2）；⭐⭐ **像素对比抓出层叠 bug**：`app.css` 后半段的 `.adb-icon` 与应用栏那段 `.adb-appbar__mark-glyph` **同为单类**，JavaFX「同特异性后写胜」→ 品牌字形被 `text-secondary` 顶成灰字，蓝底方块里几乎看不见；规则提到两类 `.adb-appbar__mark .adb-appbar__mark-glyph`（0,2,0）才拿到 `text-inverse`。**这条不变量已写进 §4.3 第 6 条**。门禁净 **+1**（`AppBarTest` +2：品牌身份 + 计算值对比度；新 `BrandMarkAuditTest` +2；删掉测不到真路径的 `WelcomeBrandTest` −3），**5 个变异逐条红→改回绿**（M5 把选择器改回单类 → 只有对比度门禁红）；基线 **754 / 97 / 0** |
 | 2026-10-24 | 第二十一轮 · UX-4 | **网格交互**：§7.3 重写选中/光标/网格线/行操作条/编辑器五排。⭐ 三条新不变量：① **`NULL` 显示 `(NULL)`**（灰斜体的 `NULL` 和一条内容为 "NULL" 的 TEXT 值在 12px 里分不出来，而两者要做的处理完全不同），空串 `""`、BLOB 补 **GB 档**，三态各有 tooltip；② **槽位常留** —— 行 `border-width: 0 0 1 2`、格 `0 1 0 2` 由基础规则留透明空槽，选中条/脏值条/光标环/矩形选区**只上色不改宽度**（改宽度就抖：键盘走一格文字左右跳一次，行高 24px 上下各吃 2px 直接压掉正文）；③ **当前格不是 `.table-cell:focused`** —— 行选模式下 `TableCell.updateFocus()` 主动清 `:focused`，该伪类在这张表上永不匹配，改由 `focusModel` 打样式类 `adb-grid__cell--cursor`、**按列名**记光标（冻结列是搬过去的同一批实例，按下标比会标不上）。列头右键收齐排序/移动/筛选/隐藏/自适应/**冻结到此列与取消冻结**，且**做不到就禁用**（最后一列冻结会偷偷少冻一列）；双击列头 = 自适应；网格左下**行操作条** `+ / − / 应用 / 取消`（状态 `bind` 工具条、只读表整排消失）；长文本走**抽屉文本页就地编辑**（Ctrl+Enter 应用、Esc 只退编辑不关抽屉、写同一个 `EditBuffer`、主键与只读表不给编辑器）。新门禁 `SelectionStateTest`(8) / `CellDisplayTest`(6) / `CellEditorTest`(4) + `GridInteractionTest` +7，**25 条门禁逐条变异全红→改回绿**（其中 `CellEditorTest` 第三条第一版是假绿：演示库主键全是 INTEGER，删掉主键规则仍绿 → 自建 `TEXT PRIMARY KEY` 表并补正例）；基线 **753 / 97 / 0** |
 | 2026-10-24 | 第二十一轮 · UX-3 | **工具条与动作可发现性**：§7.1 作废「只有保存带文字，其余纯图标（Navicat 形态）」，改为**主操作 = 图标 + 文字 + tooltip + accessibleText**（`IconButtons.labeled`）+ 次要动作纯图标；工具条**语义分组 + `.adb-toolbar__separator`**（数据页 4 组 / 清单页 4 组 / 对象首页 2 组），删除动作用 `adb-button--danger`；**<1100px 自动收字、提示不丢**（量窗口宽度不是页面宽度，文字统一走登记表，裸 `setText` 会让收好的字自己长回来）；补数据页导入（预选当前表）与清单页导入/导出；§13 **V-5 结案**（用分组+收字，不做「更多」菜单）；新门禁 `ToolbarDiscoverabilityTest`(5)，**9 个变异全部红→改回绿**，其中两条抓到真问题（门禁自身空端口径、`setText` 绕过登记表）；基线 **728 / 94 / 0** |

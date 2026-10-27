@@ -144,7 +144,13 @@ public final class ActionRegistry {
         return iconButtonFor(require(id), icon, tooltip, accessibleText);
     }
 
-    /** 由一个动作实例生成纯图标按钮（Tooltip + accessibleText 由调用方给）。 */
+    /**
+     * 由一个动作实例生成纯图标按钮（提示文字由调用方给，accessibleText 同理）。
+     *
+     * <p>⭐ U26：动作带快捷键时，tooltip 自动追加「(Ctrl+K)」—— 这一层就是
+     * 收口点：调用方只写语义提示，漏没漏快捷键不再取决于手打。
+     * accessibleText 保持纯文案（读屏会单独播报按键，写进正文反而是重复）。
+     */
     public static Button iconButtonFor(Action action, Icons.Icon icon,
                                        String tooltip, String accessibleText) {
         Objects.requireNonNull(action, "action");
@@ -153,7 +159,7 @@ public final class ActionRegistry {
         button.setGraphic(Icons.of(icon));
         button.getStyleClass().addAll("adb-icon-button");
         button.setId(action.id());
-        button.setTooltip(new javafx.scene.control.Tooltip(tooltip));
+        button.setTooltip(new javafx.scene.control.Tooltip(action.hintWithShortcut(tooltip)));
         button.setAccessibleText(accessibleText);
         button.setOnAction(event -> action.run());
         button.disableProperty().bind(action.enabledProperty().not());

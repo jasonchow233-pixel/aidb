@@ -13,7 +13,8 @@ public enum ExportFormat {
     CSV("CSV", "逗号分隔，RFC 4180", ','),
     TSV("TSV", "制表符分隔", '\t'),
     JSON("JSON", "数组，每行一个对象（JSON Lines）", '\0'),
-    SQL("SQL", "INSERT 语句，可直接重放", '\0');
+    SQL("SQL", "INSERT 语句，可直接重放", '\0'),
+    XLSX("XLSX", "Excel 工作簿（流式写出）", '\0');
 
     private final String label;
     private final String hint;
@@ -33,9 +34,14 @@ public enum ExportFormat {
         return hint;
     }
 
-    /** 分隔符。JSON / SQL 没有分隔符，返回 {@code '\0'}。 */
+    /** 分隔符。JSON / SQL / XLSX 没有分隔符，返回 {@code '\0'}。 */
     public char delimiter() {
         return delimiter;
+    }
+
+    /** 是否是「写入 Writer 的文本格式」；XLSX 是二进制，走 {@code exportXlsx}。 */
+    public boolean binary() {
+        return this == XLSX;
     }
 
     public boolean hasHeader() {

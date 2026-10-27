@@ -40,9 +40,10 @@ final class VariableDialog {
     private final List<SqlParameters.Parameter> parameters;
     private final List<TextField> fields = new ArrayList<>();
     private final Dialog<Void> dialog = new Dialog<>();
+    private final VBox content;
     private boolean confirmed;
 
-    private VariableDialog(List<SqlParameters.Parameter> parameters) {
+    VariableDialog(List<SqlParameters.Parameter> parameters) {
         this.parameters = parameters;
 
         Label hint = new Label("填写变量的值 —— 执行时按参数绑定，不做字符串替换");
@@ -83,18 +84,19 @@ final class VariableDialog {
         cancel.getStyleClass().addAll("adb-button", "adb-button--ghost");
         cancel.setOnAction(event -> close());
 
+        // Navicat 口径（§6.7）：取消在左、主动作贴右下。
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox actions = new HBox(8, ok, cancel, spacer);
-        actions.setAlignment(Pos.CENTER_LEFT);
+        HBox actions = new HBox(8, spacer, cancel, ok);
+        actions.setAlignment(Pos.CENTER_RIGHT);
 
-        VBox content = new VBox(10, hint, grid, actions);
+        content = new VBox(10, hint, grid, actions);
         content.setPadding(new Insets(16));
         content.getStyleClass().add("adb-wizard__content");
 
         dialog.setTitle("变量");
 
-        // ⭐ V-11：弹窗宽度走三档规范（DialogSizes）。
+        // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
 
         dialog.getDialogPane().setPrefWidth(DialogSizes.FORM);
 
@@ -103,6 +105,10 @@ final class VariableDialog {
         dialog.setHeaderText("共 " + parameters.size() + " 个参数");
         dialog.getDialogPane().getButtonTypes().clear();
         dialog.getDialogPane().setContent(content);
+    }
+
+    VBox content() {
+        return content;
     }
 
     /**
@@ -117,7 +123,7 @@ final class VariableDialog {
             return null;
         }
         VariableDialog panel = new VariableDialog(parameters);
-        DialogStyles.apply(panel.dialog, owner);
+        DialogStyles.apply(panel.dialog, owner, "variables");
         panel.dialog.showAndWait();
         if (!panel.confirmed) {
             return null;

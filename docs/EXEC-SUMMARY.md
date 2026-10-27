@@ -1,20 +1,22 @@
 # EXEC-SUMMARY — AgenticDB 对外汇报版（一句话 + 全景）
 
 > **日期**：2026-10-22（第九轮汇总）。
+> ⚠️ **历史快照**：文中指向的 `UI-ROADMAP` / `NAVICAT-COMPARE` / `NAVICAT-GAP` / `UI-AUDIT` /
+> `NEXT-STEPS` 已于 2026-10-26 删除并并入 `NAVICAT-TODO.md`；**现行结论一律以该文档为准**。
 > **本文是把「架构 / Todolist / 截图 / Navicat 对标 / GitHub 开源对标 / UI 六维 / 还缺什么」
 > 串成的一份对外汇报**。每个章节都指向对应的细节文档，避免与之漂移：
 >
 > | 主题 | 权威来源 |
 > |---|---|
-> | 执行清单 / 当前状态 / 门禁 | **`NAVICAT-TODO.md`**（唯一执行清单） |
+> | 执行清单 / 当前状态 / 门禁 | **`NAVICAT-TODO.md`**（唯一真源） |
 > | 架构、线程、门禁 | `docs/ARCHITECTURE.md` |
 > | 视觉规范 / 交互 / 弹窗 | `docs/UI-GUIDE.md` |
-> | 界面差距 / 批次 | `docs/UI-ROADMAP.md` |
-> | **Navicat 对拍 + 差距** | `docs/NAVICAT-COMPARE.md` / `docs/NAVICAT-GAP.md` |
+> | 界面差距 / 批次 | `NAVICAT-TODO.md` §5–§6 |
+> | **Navicat 对拍 + 差距** | `NAVICAT-TODO.md` §1–§5 |
 > | **GitHub 开源数据库管理软件** | `docs/GITHUB-COMPARE.md`（🆕 本轮新增） |
-> | 截图审计 | `docs/UI-AUDIT.md` |
+> | 截图审计 | 已并入 `NAVICAT-TODO.md`（§1 像素对照） |
 > | 形态 / 状态规范 | `docs/UI-FORMS-AND-STATES.md` |
-> | 阶段规划 | `docs/NEXT-STEPS.md` |
+> | 阶段规划 | `NAVICAT-TODO.md` §6 |
 > | **本篇** | `docs/EXEC-SUMMARY.md`（🆕 本轮新增：对外汇报版） |
 
 ---
@@ -65,7 +67,7 @@ bootstrap/adb-desktop
 | 线程 | 全局单线程执行器 `adb-db`；UI 更新回 JavaFX 线程 |
 | SQL 内核 | 自研 `SqlLexer/Splitter/Formatter/Brackets/Parameters`（`adb-sql`，不依赖 UI/JDBC） |
 
-### 1.3 架构层已知缺口（详见 `NAVICAT-TODO.md` §10 / `ARCHITECTURE.md`）
+### 1.3 架构层已知缺口（详见 `NAVICAT-TODO.md` §5 / `ARCHITECTURE.md`）
 
 A10 语句超时 / A12 连接池归还 / A15 连接与内省出 UI 线程 / A16 单执行器 / A18/A22 主题探测 / A25 达梦声明 —
 — 属于「架构收尾」，用户感知不强但会卡界面。
@@ -74,13 +76,15 @@ A10 语句超时 / A12 连接池归还 / A15 连接与内省出 UI 线程 / A16 
 
 ## 2. Todolist（`NAVICAT-TODO.md`）结论
 
-### 2.1 基线（2026-10-24 第二十二轮实测刷新；本文其余章节仍是第九轮快照）
+### 2.1 基线（2026-10-26 第二十八轮实测刷新；本文其余章节仍是第九轮快照）
 
-- **门禁**：**754 条 / 97 类 / 0 失败**（`./mvnw -B clean verify` + `java tools/TestCount.java`；另有 44 条**环境门控**跳过 —— Docker / MySQL 真库环境变量不可用时跳过，不影响「0 失败」这条硬门禁）。
-  - 相比第二十轮的 755 / 95，减少的 43 条 / 3 类来自**删除 `declarations` 声明层**，属主动减面；UX-0 / UX-1 各 +2 条、UX-2 +4 条 / +1 类（`ChromeMetricsTest`）、UX-3 +8 条 / +1 类（`ToolbarDiscoverabilityTest`）、**UX-4 +25 条 / +3 类**（`SelectionStateTest` 8 + `CellDisplayTest` 6 + `CellEditorTest` 4 + `GridInteractionTest` 7）、**S-7 净 +1**（品牌 4 条 − 删掉测不可达页的 `WelcomeBrandTest` 3 条）。
-  - 增长轨迹：SQLite **443** → 第八轮 **486** → 索引编辑 **512** → 第十三轮 **631** → 第十五轮 **675** → 第十六轮 **691** → 第十七轮 **721** → 第十八轮 **717** → 第十九轮 **731** → 第二十轮 **755** → 第二十一轮 **712**（删 declarations -43）→ **UX-0 714**（+2）→ **UX-1 716**（+2）→ **UX-2 720**（+4，新增 `ChromeMetricsTest`）→ **UX-3 728**（+8，新增 `ToolbarDiscoverabilityTest`）→ **UX-4 753**（+25，新增 `SelectionStateTest` / `CellDisplayTest` / `CellEditorTest`）→ **S-7 754**（净 +1，新增 `BrandMarkAuditTest`，删 `WelcomeBrandTest`）（总数随外部真库可用性浮动，**模块内数字是准的**）。
+- **门禁**：**926 条 / 118 类 / 0 失败**（`./scripts/build.sh` = `./mvnw -B clean verify` + `java tools/TestCount.java`；另有 48 条**环境门控**跳过 —— Docker / MySQL 真库环境变量不可用时跳过，不影响「0 失败」这条硬门禁）。
+  - 相比第二十轮的 755 / 95，减少的 43 条 / 3 类来自**删除 `declarations` 声明层**，属主动减面；UX-0 / UX-1 各 +2 条、UX-2 +4 条 / +1 类（`ChromeMetricsTest`）、UX-3 +8 条 / +1 类（`ToolbarDiscoverabilityTest`）、**UX-4 +25 条 / +3 类**（`SelectionStateTest` 8 + `CellDisplayTest` 6 + `CellEditorTest` 4 + `GridInteractionTest` 7）、**S-7 净 +1**（品牌 4 条 − 删掉测不可达页的 `WelcomeBrandTest` 3 条）；此后 P2-1 +8、P2-2 +17 / +3 类、P5-2 +9 / +1 类，P2-3 / P5-1 / P5-3 / P5-4 / P6-1 / P6-2 / P6-3 / UX-6 净 +49，**第二十六轮 P7 +14 条 / +3 类**（`StartupTraceTest` 4 + `AccessibilityAuditTest` 5 + `ThemeManagerTest` 4 + `AppShellTest` 1）。
+  - 增长轨迹：SQLite **443** → 第八轮 **486** → 索引编辑 **512** → 第十三轮 **631** → 第十五轮 **675** → 第十六轮 **691** → 第十七轮 **721** → 第十八轮 **717** → 第十九轮 **731** → 第二十轮 **755** → 第二十一轮 **712**（删 declarations -43）→ **UX-0 714**（+2）→ **UX-1 716**（+2）→ **UX-2 720**（+4，新增 `ChromeMetricsTest`）→ **UX-3 728**（+8，新增 `ToolbarDiscoverabilityTest`）→ **UX-4 753**（+25，新增 `SelectionStateTest` / `CellDisplayTest` / `CellEditorTest`）→ **S-7 754**（净 +1，新增 `BrandMarkAuditTest`，删 `WelcomeBrandTest`）→ **P2-1 781** → **P2-2 798** → **P5-2 807** → 第二十五轮收官 **857 / 110** → **P7 收尾 871 / 113** → **任务书 V1.0 913 / 116**（+42 / +3 类：`LucideIconTest` + `UnifiedControlTest` + `IndexDialogTest`，另含 `IndexDdlTest` / `DialectTest` / `DialogStylesTest` 新例）→ **裁定落地 926 / 118**（+13 / +2 类：`DialogButtonOrderTest` 10 + `PackageIconAuditTest` 3；总数随外部真库可用性浮动，**模块内数字是准的**）。
+  - **P7 分发与收尾（第二十六轮）**：✅ 启动可观测性（`StartupTrace` → `~/.agenticdb/logs/startup.log` +「关于」回显）· ✅ 可访问性（六区焦点顺序 / 标签与切面键盘可达 / 逐页可朗读名称，`AccessibilityAuditTest`）· ❌ **冷启动 < 2s 未达标**（实测 3.5–3.9 s，成本已归因：Toolkit 0.95 s + 第一个 JavaFX 控件 0.5 s + 首趟 CSS/布局 0.86 s；AppCDS 在开发启动路径试过不通）· ⛔ jlink（自动模块）· 🚫 自动更新（无发布渠道 / 离线环境 / 无签名）· ⛔ 签名公证（缺证书）。详见 `NAVICAT-TODO.md` §8。
+  - **第二十八轮 · 三项裁定落地（2026-10-26）**：✅ **V-6 出包图标闭环**（根因是 `package.sh` 不传 `--icon` → jpackage **静默退回 Java 默认图标且不报错**；新 `tools/GenPackIcons.java` 生成 `.ico` / `.icns`，`PackageIconAuditTest` 按容器格式逐字段解码。⚠️ **边界**：跑通了一次 `package.sh app-image`，但 **exe 内嵌图标未做字节级核对**，桌面效果仍需人工目视）· ✅ **§6.7 弹窗按钮序按 Navicat 全应用统一**（`取消` 在左、主动作贴右下：`DialogStyles` 一处换 O/C 两槽 + 六处自建底部区同口径，`DialogButtonOrderTest` 守皮肤排布后的坐标）· ✅ **文档校准**（三份文档的令牌/截图/完成态互相矛盾 → 声明 `NAVICAT-TODO.md` §0/§1 为唯一真源）· ✅ **裁定「行高不加 19px 档」→ C4 结案**（旧 §36 已随文档重写并入 §7）。
 - **真库**：SQLite（演示库）+ **MySQL 5.7.44 真库**（9 例）+ **PostgreSQL 16 / MySQL 8.4 Testcontainers**（11 例，需 Docker）。
-  - 权威当前状态见 **`NAVICAT-TODO.md` 表头 + §23 变更记录**，本文不逐轮重写。
+  - 权威当前状态见 **`NAVICAT-TODO.md` 表头**，本文不逐轮重写。
 
 ### 2.2 本轮（第六 / 七 / 八 / 九）的推进
 
@@ -125,7 +129,7 @@ docs/screenshots/navicat/  Navicat Premium Lite 15 实拍
   navicat-tablelist.png / navicat-toolbar.png / side-by-side-2026-10.png
 ```
 
-### 3.2 审计结论（`docs/UI-AUDIT.md`，基于 4 张图 + 代码定位）
+### 3.2 审计结论（历史记录：早期截图审计，基于 4 张图 + 代码定位；现行结论见 `NAVICAT-TODO.md`）
 
 | 批 | 内容 | 状态 |
 |---|---|---|
@@ -137,16 +141,16 @@ docs/screenshots/navicat/  Navicat Premium Lite 15 实拍
 
 ### 3.3 ⚠️ 方法学声明（诚实项）
 
-> 第八轮的截图结论来自 `docs/UI-AUDIT.md` 的四张图审计 + 代码定位。
+> 第八轮的截图结论来自早期截图审计（该文档已并入 `NAVICAT-TODO.md`）+ 代码定位。
 > **2026-10-22 第十三轮已补上「直接看图」**：对 `navicat-tablelist.png` 与
 > `p0-shell.png` / `p6-tables.png` 做了像素采样（侧栏宽度、行高、表头高度、色值、
-> 空行假线），结论与改动见 **`docs/NAVICAT-PARITY-2026-10-V5.md`**。
+> 空行假线），现行结论与改动见 **`NAVICAT-TODO.md` §1**。
 > 重拍流程在 `scripts/shots.sh`（`ADB_SHOTS*`、`ADB_OPEN`、`ADB_TABLES`、`ADB_NEW_TABLE`/`ADB_INDEX`）。
 > **对外汇报前仍建议用户肉眼复核 9 张图**。
 
 ---
 
-## 4. Navicat 对标结论（`docs/NAVICAT-COMPARE.md` / `NAVICAT-GAP.md`）
+## 4. Navicat 对标结论（历史记录；现行对比见 `NAVICAT-TODO.md` §0–§4）
 
 ### 4.1 第一轮（2026-10-21 实拍）关掉的差距
 
@@ -163,7 +167,7 @@ docs/screenshots/navicat/  Navicat Premium Lite 15 实拍
 
 | 项 | Navicat | AgenticDB | 处置 |
 |---|---|---|---|
-| **表清单元数据列**（修改日期 / 排序规则 / 注释） | 8 列 | **chip 布局，0 列** | 产品决策（chip vs 表格）：见 `NAVICAT-COMPARE.md` §6.2 D1 |
+| **表清单元数据列**（修改日期 / 排序规则 / 注释） | 8 列 | **chip 布局，0 列** | 产品决策（chip vs 表格）：已落地列表 + 卡片两视图（见 `NAVICAT-TODO.md` §7.8） |
 | **对象工具栏**（表列表上方图标条） | ✅ | 结构页有，对象首页没有 | 随 chip→表格决策 |
 | **外键 / 触发器可编辑** | ✅ | 只读 + 无右键菜单 | B5-S2/S3 |
 | **函数 / 过程 / 事件定义体** | ✅ | 名字 / 报错 | O1/O2/O3 |
@@ -173,9 +177,9 @@ docs/screenshots/navicat/  Navicat Premium Lite 15 实拍
 ### 4.3 我们**更好**或**有意不同**的地方
 
 - 危险色四级 + 危险门禁**三层**（Navicat 无第三层）✅；
-- 密度三档 + 暗色主题 + 真库联调（Navicat 闭源无从验证）✅；
-- 图标 38 个 SVGPath + 语义唯一门禁 ✅（比 Navicat 的位图更可访问）；
-- 设计令牌 60 色全部被引用 ✅。
+- 密度四档 + 暗色主题 + 真库联调（Navicat 闭源无从验证）✅；
+- 图标 53 个 SVGPath + 语义唯一门禁 ✅（比 Navicat 的位图更可访问）；
+- 设计令牌 102 个（64 色）全部被引用 ✅。
 
 ---
 
@@ -240,8 +244,8 @@ docs/screenshots/navicat/  Navicat Premium Lite 15 实拍
 
 ### 6.2 关键矛盾 / 漂移（「补充完善文档」的价值）
 
-- `NAVICAT-TODO.md` §13.5 的 U-B5 条目曾是 `- [ ]]`（未做），实际已全落地（UI-ROADMAP / NEXT-STEPS 已标 ✅）→ **文档漂移**，已于本轮纠正思路待提交。
-- `docs/NAVICAT-GAP.md` §7.3「本轮新发现的 4 个真实缺陷」中 D1/D2/D3/D4 的某些状态与代码对不上 → **已纠正**（第六轮逐文件复核）。
+- 旧 TODO 的 U-B5 条目曾是 `- [ ]]`（未做），实际已全落地 → **文档漂移**，已纠正（旧文档已删）。
+- 旧差距清单「本轮新发现的 4 个真实缺陷」中 D1/D2/D3/D4 的某些状态与代码对不上 → **已纠正**（第六轮逐文件复核）。
 
 ---
 
@@ -271,7 +275,7 @@ docs/screenshots/navicat/  Navicat Premium Lite 15 实拍
 2. `docs/GITHUB-COMPARE.md`（🆕）：GitHub 开源数据库管理软件对照 + AgenticDB 独特定位 + 借鉴清单。
 3. `NAVICAT-TODO.md`：**状态基线更新（527/68）**、U-B5 漂移纠正、第七/八轮结论固化、`§17` 新增「GitHub 对标 + 对外汇报」、`§18` 新增「UI/UX 细化规格」（V-1…V-12 + S-1…S-7）。
 4. `README.md`：文档地图补 `EXEC-SUMMARY.md` / `GITHUB-COMPARE.md`，截图清单更新（9 张 + navicat/ 3 张），门禁基线更新。
-5. `docs/NEXT-STEPS.md`：基线与下一动作同步更新。
+5. `docs/NEXT-STEPS.md`（已于 2026-10-26 删除并并入 `NAVICAT-TODO.md`）：基线与下一动作同步更新。
 6. `.workbuddy/memory/2026-10-22.md`：第九轮记忆补记。
 7. **第十轮（2026-10-22）**：
    - 新增 **`docs/UI-VISUAL-SPEC.md`** —— 可照着实现的 UI 规格书

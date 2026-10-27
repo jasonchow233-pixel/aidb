@@ -197,6 +197,52 @@ class GridInteractionTest {
                 .isTrue();
     }
 
+    /**
+     * ⭐ U5（2026-10-26）：列头**第一行只有列名**，约束全部并进第二行读法
+     * （{@code number · 主键 · 自增} / {@code text · 非空}）。
+     *
+     * <p>以前是两套互不相干的语法挤在第一行：{@code id [PK]} 和一个没人解释的
+     * {@code name •}。圆点表示 NOT NULL 无处说明，而主键列本身也非空却被
+     * {@code [PK]} 顶掉 —— 「非空」这件事在表头时有时无。
+     */
+    @Test
+    void everyConstraintMovesToTheHeaderSecondLine() {
+        assertThat(headerName("id"))
+                .as("第一行只剩列名 —— [PK] 徽章退场")
+                .isEqualTo("id");
+        assertThat(headerName("name"))
+                .as("第一行不许再挂那个没有解释的圆点")
+                .isEqualTo("name");
+        assertThat(headerType("id"))
+                .as("主键与自增都写进第二行，和 非空 同一种读法")
+                .contains("主键")
+                .contains("自增");
+        assertThat(headerType("name"))
+                .as("非空要用文字，不是一个没人解释的符号")
+                .contains("非空");
+        assertThat(page.lookupAll(".adb-grid__column-name").stream()
+                .filter(node -> node instanceof javafx.scene.control.Label)
+                .map(node -> ((javafx.scene.control.Label) node).getText())
+                .filter(text -> text != null && (text.contains("[PK]") || text.contains("•")))
+                .toList())
+                .as("任何列头第一行都不许残留 [PK] / • 旧语法")
+                .isEmpty();
+    }
+
+    private String headerName(String column) {
+        javafx.scene.control.Label name = (javafx.scene.control.Label)
+                page.lookup("#data-header-" + column);
+        assertThat(name).as("列头 %s 的第一行", column).isNotNull();
+        return name.getText();
+    }
+
+    private String headerType(String column) {
+        javafx.scene.control.Label name = (javafx.scene.control.Label)
+                page.lookup("#data-header-" + column);
+        javafx.scene.layout.VBox labels = (javafx.scene.layout.VBox) name.getParent();
+        return ((javafx.scene.control.Label) labels.getChildren().get(1)).getText();
+    }
+
     @SuppressWarnings("unchecked")
     @Test
     void aNewRowLeavesTheAutoIncrementColumnEmpty() {

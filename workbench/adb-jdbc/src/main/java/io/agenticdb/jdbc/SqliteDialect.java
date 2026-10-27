@@ -270,6 +270,10 @@ public final class SqliteDialect implements Dialect {
     public String columnDefinition(ColumnSpec column, boolean includeName) {
         String definition = (includeName ? quote(column.name()) + " " : "")
                 + column.effectiveType();
+        // ⭐ R31：SQLite 支持列级排序规则（NOCASE / RTRIM / BINARY），没有列级字符集。
+        if (column.collation() != null) {
+            definition += " COLLATE " + column.collation();
+        }
         if (!column.nullable()) {
             definition += " NOT NULL";
         }
@@ -281,6 +285,54 @@ public final class SqliteDialect implements Dialect {
         }
         // SQLite 没有列注释，写进定义只会变成语法错误。
         return definition;
+    }
+
+    /**
+     * SQLite 的自增只有一种写法：单列 {@code INTEGER PRIMARY KEY AUTOINCREMENT}。
+     *
+     * <p>{@code INT PRIMARY KEY} 不是 rowid 别名、{@code TEXT PRIMARY KEY} 更不行 ——
+     * 写错的建表语句能执行，但「自增」悄悄失效，所以这里直接拦下。
+     */
+    @Override
+    public String createTableColumnDefinition(ColumnSpec column, boolean inlinePrimaryKey) {
+        if (!column.autoIncrement()) {
+            return Dialect.super.createTableColumnDefinition(column, inlinePrimaryKey);
+        }
+        if (!inlinePrimaryKey) {
+            throw new IllegalArgumentException(
+                    "SQLite 的自增列必须是单列 INTEGER 主键：" + column.name());
+        }
+        return columnDefinition(column, true) + " PRIMARY KEY AUTOINCREMENT";
+    }
+
+    @Override
+    public boolean autoIncrementNeedsSinglePrimaryKey() {
+        return true;
+    }
+
+    @Override
+    public List<ColumnTypeOption> columnTypes() {
+        return ColumnTypes.SQLITE;
+    }
+
+    @Override
+    public List<String> columnCollationPresets() {
+        return List.of("BINARY", "NOCASE", "RTRIM");
+    }
+
+    @Override
+    public String autoIncrementProblem(ColumnSpec column) {
+        if (!column.autoIncrement()) {
+            return null;
+        }
+        if (!"INTEGER".equals(column.baseType())) {
+            return "自增列必须是整型 —— SQLite 要求正好是 INTEGER（INT 不是 rowid 别名）："
+                    + column.name() + " 现在是 " + column.effectiveType();
+        }
+        if (column.defaultValue() != null) {
+            return "自增列不能同时设默认值：" + column.name();
+        }
+        return null;
     }
 
     @Override
@@ -309,6 +361,11 @@ public final class SqliteDialect implements Dialect {
 
     @Override
     public String addColumnSql(String table, ColumnSpec column) {
+        if (column.autoIncrement()) {
+            // SQLite 的 ALTER TABLE … ADD COLUMN 不接受主键列（更不用说自增）。
+            throw new IllegalArgumentException(
+                    "SQLite 不能给已有表追加自增列 —— 只能建表时设置");
+        }
         return "ALTER TABLE " + quote(table) + " ADD COLUMN " + columnDefinition(column, true);
     }
 

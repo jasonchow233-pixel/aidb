@@ -86,13 +86,31 @@ public final class ScreenshotSession {
     }
 
     /**
-     * 有模态弹窗时拍弹窗，否则拍主窗口。
+     * 有弹窗时拍弹窗，否则拍主窗口。
      *
      * <p>⭐ JavaFX 的 {@code Dialog} 是<b>独立的 Stage</b>，不是主场景的子节点 ——
      * 直接 {@code stage.getScene().snapshot()} 只会拍到主窗口，弹窗整个消失。
      * 实测踩过：拍了张「新建索引」弹窗，结果和结构页的图 MD5 完全一样。
+     *
+     * <p>⚠️ 优先模态，但**不能只认模态**：Alert 默认 {@code Modality.NONE}，
+     * 只按模态筛会把「没设模态的弹窗」悄悄拍成主窗口（U7 的 p2-error 就是这么假的）。
+     * 所以第二轮兜底认「有 owner 且正在显示」的窗口，并把选中的窗口打进日志。
      */
     private static Scene targetScene(Stage stage) {
+        // ⭐ U25：ContextMenu 的浮窗不是 Stage（是 PopupWindow），主窗口的
+        // scene.snapshot 拍不到它 —— 菜单帧必须直接拍浮窗自己的场景。
+        for (Window window : Window.getWindows()) {
+            if (window == stage || !window.isShowing() || window.getScene() == null) {
+                continue;
+            }
+            if (!(window instanceof Stage)) {
+                System.out.println("[screenshot] 拍到浮窗（右键菜单）：窗口类="
+                        + window.getClass().getSimpleName());
+                return window.getScene();
+            }
+        }
+        Scene owned = null;
+        String ownedTitle = null;
         for (Window window : Window.getWindows()) {
             if (!(window instanceof Stage candidate) || candidate == stage) {
                 continue;
@@ -104,8 +122,16 @@ public final class ScreenshotSession {
                 System.out.println("[screenshot] 拍到模态窗口：" + candidate.getTitle());
                 return candidate.getScene();
             }
+            if (candidate.getOwner() == stage) {
+                owned = candidate.getScene();
+                ownedTitle = candidate.getTitle();
+            }
         }
-        System.out.println("[screenshot] 没有模态窗口，拍主窗口"
+        if (owned != null) {
+            System.out.println("[screenshot] 没有模态窗口，拍到主窗口的从属弹窗：" + ownedTitle);
+            return owned;
+        }
+        System.out.println("[screenshot] 没有弹窗，拍主窗口"
                 + "（窗口总数=" + Window.getWindows().size() + "）");
         return stage.getScene();
     }

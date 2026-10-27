@@ -137,15 +137,21 @@ class ChromeMetricsTest {
 
     @Test
     void chromeHeightsMatchTheDenseBudget(FxRobot robot) throws Exception {
-        assertHeight(robot, ".adb-tabbar", 28);
-        assertHeight(robot, ".adb-object-header", 36);
-        assertHeight(robot, "#data-toolbar", 34);
-        assertHeight(robot, ".adb-grid__pager", 36);
-        assertHeight(robot, ".adb-statusbar", 24);
+        // ⭐ 2026-10-26 用户裁定「保持和 Navicat 一样」：标签栏 26、对象工具条 30、
+        //    状态栏 22 —— 全部按 Navicat 17 实测值重定，第二十一轮的
+        //    28 / 34 / 24（无边框呼吸感）同时作废。
+        assertHeight(robot, ".adb-tabbar", 26);
+        // 对象标题栏 40 与分页器 38 本轮未动（Navicat 无对应可见框，保留可读性预算）。
+        assertHeight(robot, ".adb-object-header", 40);
+        assertHeight(robot, "#data-toolbar", 30);
+        assertHeight(robot, ".adb-grid__pager", 38);
+        assertHeight(robot, ".adb-statusbar", 22);
 
         double rowHeight = WaitForAsyncUtils.asyncFx(() ->
                 ((TableView<?>) robot.lookup("#data-table").query()).getFixedCellSize()).get();
-        assertThat(rowHeight).as("dense 档行高必须是 22").isEqualTo(22.0);
+        assertThat(rowHeight)
+                .as("dense 档网格行高 = 列表 19 + 2（Navicat 列表 21 / 网格 23 的同一档差）")
+                .isEqualTo(21.0);
     }
 
     @Test

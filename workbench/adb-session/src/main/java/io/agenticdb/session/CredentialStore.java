@@ -5,8 +5,9 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 口令存储抽象。默认实现走系统钥匙串（macOS）或 Secret Service（Linux）；
- * 找不到系统服务时退回内存实现，并明确打印警告 —— 口令<b>绝不</b>落盘。
+ * 口令存储抽象。默认实现走系统安全存储：Windows 凭据管理器（WinCred）、
+ * macOS 钥匙串、Linux Secret Service；找不到系统服务时退回内存实现，
+ * 并明确打印警告 —— 口令<b>绝不</b>落盘。
  */
 public interface CredentialStore extends AutoCloseable {
 
@@ -21,13 +22,22 @@ public interface CredentialStore extends AutoCloseable {
     }
 
     static CredentialStore platform() {
+        if (WindowsCredentialStore.supported()) {
+            try {
+                return new WindowsCredentialStore();
+            } catch (LinkageError e) {
+                System.err.println("[adb] Windows 凭据管理器不可用（" + e.getMessage()
+                        + "），口令仅保存在当前进程内存中");
+                return inMemory();
+            }
+        }
         if (isCommandAvailable("security")) {
             return new KeychainCredentialStore();
         }
         if (isCommandAvailable("secret-tool")) {
             return new SecretToolCredentialStore();
         }
-        System.err.println("[adb] 未找到 security/secret-tool，口令仅保存在当前进程内存中");
+        System.err.println("[adb] 未找到系统凭据服务，口令仅保存在当前进程内存中");
         return inMemory();
     }
 

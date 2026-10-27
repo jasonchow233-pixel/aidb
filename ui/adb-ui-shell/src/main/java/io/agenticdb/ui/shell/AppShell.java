@@ -25,10 +25,13 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuBar;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -80,7 +83,11 @@ public final class AppShell extends StackPane {
     private static final int DETAILS_DEFAULT = ObjectDetailsPanel.WIDTH_DEFAULT;
 
     private final SettingsStore settings;
+    /** ⭐ P2-3：查询历史（连接 / 表 / 时间）。数据页「历史」与详情面板共用。 */
+    private final QueryHistory history;
     private final ThemeManager themeManager;
+    /** ⭐ P7：启动阶段打点（首屏耗时 / 各阶段 / 关于弹窗里回显）。 */
+    private final io.agenticdb.ui.StartupTrace startup;
     private final ActionRegistry actions = new ActionRegistry();
     private final SessionManager sessions = new SessionManager();
     private final SchemaService schemaService = new SchemaService();
@@ -141,14 +148,28 @@ public final class AppShell extends StackPane {
     private int detailsWidth;
     private boolean detailsVisible;
     private PauseTransition toastTimer;
-    private String density = "compact";
+    /** ⭐ 第二十一轮：默认密度从 compact(24) 改判 normal(28)（见 {@link #initialDensity()}）。 */
+    private String density = "normal";
 
     public AppShell(SettingsStore settings, ThemeManager themeManager) {
+        this(settings, themeManager, new io.agenticdb.ui.StartupTrace());
+    }
+
+    /**
+     * ⭐ P7：带启动打点的构造器。测试与 `App` 共用一条路径，
+     * 避免「生产环境记、测试环境不记」两套行为。
+     */
+    public AppShell(SettingsStore settings, ThemeManager themeManager,
+                    io.agenticdb.ui.StartupTrace startup) {
+        this.startup = startup;
+        startup.mark("shell.construct");
         this.settings = settings;
+        this.history = new QueryHistory(settings);
         this.themeManager = themeManager;
 
         Path demoPath = DemoDatabase.defaultPath();
         DemoDatabase.ensure(demoPath);
+        startup.mark("shell.demo-db");
         this.connectionStore = ConnectionStore.defaultStore();
         this.savedQueries = new SavedQueries(settings);
         this.credentials = connectionStore.credentials();
@@ -156,6 +177,7 @@ public final class AppShell extends StackPane {
         this.connections.setAll(connectionStore.load());
         this.connectionName = demoPath.getFileName() == null
                 ? DemoDatabase.DEFAULT_FILE_NAME : demoPath.getFileName().toString();
+        startup.mark("shell.stores");
 
         this.sideBar = new SideBar(actions, List.of(), connectionName,
                 this::openTab, statusBar::setMessage, "demo", connections,
@@ -167,6 +189,9 @@ public final class AppShell extends StackPane {
         this.sideBar.setOnSwitchCatalog(this::switchCatalog);
         // ⭐ T1–T4 表级生命周期：右键菜单 / 数据库菜单 / 命令面板三条入口进同一个 TableDdl。
         this.sideBar.setOnTableDdl(this::runTableDdl);
+        // ⭐ UX-6：连接节点下直接列「已保存查询」；点一条 = 新查询页 + 预填 SQL。
+        this.sideBar.setSavedQuerySource(savedQueries::all);
+        this.sideBar.setOnOpenSavedQuery(this::openSavedQuery);
         // ⭐ 多连接对象树：展开一个没读过的连接时，去连它、读它的对象。
         this.sideBar.setOnLoadObjects(this::loadObjectsFor);
         // ⭐ S-3：展开表节点时才读它的列（懒加载，见 loadColumnsFor）。
@@ -212,17 +237,20 @@ public final class AppShell extends StackPane {
             }
         });
         this.sideBar.setOnInspect(this::inspectTarget);
+        startup.mark("shell.sidebar");
         this.workspace = new WorkspaceView(actions, connectionName,
                 this::createGridPage, this::createQueryPage, this::createStructurePage,
                 this::createConnectionsPage, tab -> objectHomePage());
         this.palette = new CommandPalette(actions);
         // 侧栏「查询历史」接真实功能：QueryHistory 本来就可用，只是侧栏开错了页面。
-        this.workspace.setHistory(new QueryHistory(settings), this::openQueryWith);
+        this.workspace.setHistory(history, this::openQueryWith);
+        startup.mark("shell.views");
 
         registerActions();
         actions.validateUniqueAccelerators();
         // 4.5-30：动作被禁用时给出解释，不再静默 no-op。
         actions.setFeedback(statusBar::setMessage);
+        startup.mark("shell.actions");
 
         tabBar.setOnActivate(this::showTab);
         tabBar.setOnClose(this::tabClosed);
@@ -239,11 +267,13 @@ public final class AppShell extends StackPane {
 
         getStyleClass().add("app-shell");
         buildUi();
+        startup.mark("shell.ui");
         applyDensity(initialDensity());
         sideBar.setCollapsed(sidebarCollapsed);
         applySidebarWidth();
         applyDetailsVisibility();
         updateTabCloseEnabled();
+        startup.mark("shell.chrome");
 
         refreshProfiles();
         // ⭐ S5：常驻的「对象」标签 —— 永远排第一、不可关闭。
@@ -255,6 +285,7 @@ public final class AppShell extends StackPane {
             //    用户自己连远程库时才走后台（那边可能很慢）。
             connectProfileBlocking(demo, false);
         }
+        startup.mark("shell.demo");
         statusBar.setReadonly(true);
         statusBar.setRange("—");
         if (activeProfile == null) {
@@ -319,8 +350,12 @@ public final class AppShell extends StackPane {
         // ⚠️ 必须再包一层 runLater：showAndWait() 直接写在 Timeline 的帧事件里，
         //    对话框会被提前关掉（实测拍到的图里状态栏是「已取消新建表」）。
         //    包 runLater 之后走的是普通 FX 事件，与 IndexDialog 那条路径一致。
+        // ⭐ R30-D：设计器是多页弹窗，空列表 / 空预览那一页证不了什么 ——
+        //    ADB_NEW_TABLE_POSE=index|foreign-key|trigger|options|sql 让验收帧
+        //    落在对应页上，并带一条按当前字段算出来的对象。
+        String pose = text("adb.newTablePose", "ADB_NEW_TABLE_POSE");
         javafx.application.Platform.runLater(
-                () -> tableDdl().createTable(activeProfileId()));
+                () -> tableDdl().createTable(activeProfileId(), pose));
     }
 
     /** 等到 session 就绪再读结构、弹「新建索引」。 */
@@ -337,10 +372,14 @@ public final class AppShell extends StackPane {
         executors.forConnection(activeProfileId()).execute(() -> {
             try {
                 TableStructure structure = schemaService.structure(current, "users");
-                javafx.application.Platform.runLater(() ->
-                        IndexDialog.create(current, structure)
-                                .show(stage, getScene() == null ? List.of()
-                                        : List.copyOf(getScene().getStylesheets())));
+                javafx.application.Platform.runLater(() -> {
+                    IndexDialog dialog = IndexDialog.create(current, structure);
+                    if (flag("adb.indexPose", "ADB_INDEX_POSE")) {
+                        dialog.poseForShots();
+                    }
+                    dialog.show(stage, getScene() == null ? List.of()
+                            : List.copyOf(getScene().getStylesheets()));
+                });
             } catch (Exception ignored) {
                 // 读不到结构就不弹 —— 截图脚本至少还能拍到结构页。
             }
@@ -393,6 +432,20 @@ public final class AppShell extends StackPane {
         });
     }
 
+    /** 截图用：等数据页建出来再切到「概览」切面（页签与行数都是异步到的）。 */
+    private void showOverviewWhenReady(int attempt) {
+        Platform.runLater(() -> {
+            DataGridPage grid = workspace.activeGrid();
+            if (grid == null) {
+                if (attempt < POP_READY_MAX_POLLS) {
+                    pollAgain(attempt, () -> showOverviewWhenReady(attempt + 1));
+                }
+                return;
+            }
+            grid.selectSection("overview");
+        });
+    }
+
     /** 截图用：等 users 网格真的把行灌进来，再摆出选中 / 光标 / 抽屉三个交互态。 */
     private void poseGridCellWhenReady(int attempt) {
         Platform.runLater(() -> {
@@ -405,6 +458,34 @@ public final class AppShell extends StackPane {
             }
             if (attempt < POP_READY_MAX_POLLS) {
                 pollAgain(attempt, () -> poseGridCellWhenReady(attempt + 1));
+            }
+        });
+    }
+
+    /** 截图用：等 users 网格灌完行再打开查找条（行没到就摆不出来，继续轮询）。 */
+    private void poseGridFindWhenReady(int attempt) {
+        Platform.runLater(() -> {
+            DataGridPage grid = workspace.activeGrid();
+            // needle 与 poseInteractionStates 硬编码列同一取舍：帧要的是「条开了、
+            // 有 needle、能点下一个」，具体词命中多少条由演示数据决定，不写死。
+            if (grid != null && grid.poseFindBar("User 0")) {
+                return;
+            }
+            if (attempt < POP_READY_MAX_POLLS) {
+                pollAgain(attempt, () -> poseGridFindWhenReady(attempt + 1));
+            }
+        });
+    }
+
+    /** 截图用：等 users 网格灌完行再切表单视图、选中第一条记录。 */
+    private void poseGridFormWhenReady(int attempt) {
+        Platform.runLater(() -> {
+            DataGridPage grid = workspace.activeGrid();
+            if (grid != null && grid.poseFormView()) {
+                return;
+            }
+            if (attempt < POP_READY_MAX_POLLS) {
+                pollAgain(attempt, () -> poseGridFormWhenReady(attempt + 1));
             }
         });
     }
@@ -535,13 +616,12 @@ public final class AppShell extends StackPane {
     /**
      * ⭐ S5：常驻的「对象」首页。
      *
-     * <p>Navicat 的标签栏第一个就是常驻的「对象」标签（实拍见
-     * {@code docs/NAVICAT-COMPARE.md} §2.2 C1）——
+     * <p>Navicat 的标签栏第一个就是常驻的「对象」标签（官方截图实拍）——
      * 它是浏览的起点，点它回到对象总览，而不是回到一片空白。
      */
     private Node objectHomePage() {
         if (objectHome == null) {
-            // 第 6 个参数 = 「未连接」空态上那个「新建连接」按钮的动作（UI-AUDIT X2）。
+            // 第 6 个参数 = 「未连接」空态上那个「新建连接」按钮的动作。
             // 第 7 个参数 = 对象级工具条（打开 / 设计 / 新建 / 删除）的宿主。
             objectHome = new ObjectHomePage(() -> session, schemaService,
                     executors.forConnection(activeProfileId()),
@@ -574,7 +654,8 @@ public final class AppShell extends StackPane {
                             inspectTarget(new SideBar.InspectTarget(activeProfileId(),
                                     object.name(), null, topicOf(object.kind())));
                         }
-                    });
+                    },
+                    settings, this::activeProfileId);
             // 对象首页也要跟密度（它不在 WorkspaceView 的页面缓存里）。
             objectHome.setDensity(currentDensity());
             // ⭐ P2-1：对象首页的列宽也要记住（与表清单页各存各的）。
@@ -848,7 +929,7 @@ public final class AppShell extends StackPane {
      * <p>在后台线程做 —— 一个连不上的连接不能把界面卡住。
      *
      * <p>⭐ U1：{@code connectionId} 可能是 catalog 虚拟连接（{@code 父id@库名}）——
-     * 它的档案从父连接派生（口令也走父连接的钥匙串条目）。
+     * 它的档案从父连接派生（口令也走父连接的凭据条目）。
      */
     private void loadObjectsFor(String connectionId) {
         ConnectionProfile profile = profileFor(connectionId);
@@ -1080,7 +1161,8 @@ public final class AppShell extends StackPane {
         }
         if (activeProfile != null && activeProfile.id().equals(profile.id())
                 && sessions.isOpen(profile.id())) {
-            status("当前连接：" + profile.name());
+            // U8：点「已连着的那颗连接」没有新信息可播报 —— 连接灯本来就写着它。
+            status("");
             return;
         }
         connectProfile(profile, true);
@@ -1138,7 +1220,63 @@ public final class AppShell extends StackPane {
                 profile -> sessions.isOpen(profile.id()),
                 pageFeedback());
         page.setDeleteConfirmation(this::confirmDeleteConnection);
+        page.setRenameHandler(this::renameConnection);
+        page.setGroupHandler(this::moveConnectionToGroup);
         return page;
+    }
+
+    /**
+     * ⭐ P5-1：连接改名。
+     *
+     * <p>只改元数据：会话与口令条目都挂在不变的 id 上，所以改名不会断开连接，
+     * 也不会让已保存的口令「消失」。
+     */
+    private void renameConnection(ConnectionProfile profile, String newName) {
+        if (profile == null) {
+            return;
+        }
+        String trimmed = newName == null ? "" : newName.trim();
+        if (trimmed.isEmpty()) {
+            status("连接名称不能为空");
+            return;
+        }
+        if (trimmed.equals(profile.name())) {
+            return;
+        }
+        replaceProfile(profile.withName(trimmed));
+        connectionStore.rename(profile.id(), trimmed);
+        status("已重命名连接：" + trimmed);
+    }
+
+    /** ⭐ P5-1：把连接移进分组（空串 = 移出分组）；同样不动会话。 */
+    private void moveConnectionToGroup(ConnectionProfile profile, String groupName) {
+        if (profile == null) {
+            return;
+        }
+        String group = groupName == null ? "" : groupName.trim();
+        if (group.equals(profile.group())) {
+            return;
+        }
+        replaceProfile(profile.withGroup(group));
+        connectionStore.moveToGroup(profile.id(), group);
+        status(group.isEmpty()
+                ? "已移出分组：" + profile.name()
+                : "已移到分组「" + group + "」：" + profile.name());
+    }
+
+    /** 用改好的档案替换内存里的同一 id 项，并同步顺序 / 顶栏 / 侧栏 / 标签标题。 */
+    private void replaceProfile(ConnectionProfile updated) {
+        for (int index = 0; index < connections.size(); index++) {
+            if (connections.get(index).id().equals(updated.id())) {
+                connections.set(index, updated);
+                break;
+            }
+        }
+        if (activeProfile != null && activeProfile.id().equals(updated.id())) {
+            activeProfile = updated;
+        }
+        resortConnections();
+        refreshProfiles();
     }
 
     private void duplicateConnection(ConnectionProfile profile) {
@@ -1189,7 +1327,7 @@ public final class AppShell extends StackPane {
         DestructiveConfirm confirm = DestructiveConfirm.of(
                 "删除连接",
                 "删除 " + profile.name() + "？",
-                "连接元数据与钥匙串口令会被移除；数据库本身不受影响。",
+                "连接元数据与系统凭据会被移除；数据库本身不受影响。",
                 "删除");
         styleDialog(confirm.alert());
         return confirm.confirmed();
@@ -1259,7 +1397,7 @@ public final class AppShell extends StackPane {
     /**
      * 取连接的 spec（口令从凭据存储取）。
      *
-     * <p>⭐ U1：catalog 虚拟连接的口令在<b>父连接</b>的钥匙串条目里
+     * <p>⭐ U1：catalog 虚拟连接的口令在<b>父连接</b>的凭据条目里
      * （虚拟连接不是档案，没有自己的凭据条目）。
      */
     private io.agenticdb.jdbc.ConnectionSpec specOf(ConnectionProfile profile) {
@@ -1402,6 +1540,33 @@ public final class AppShell extends StackPane {
         if (flag("adb.cell", "ADB_CELL")) {
             poseGridCellWhenReady(0);
         }
+        // ⭐ 截图 / 验收（R32 G3）：数据页摆出「查找条展开 + needle 已填」。
+        //    「下一个」由截图脚本真点（#data-find-next），命中推进与计数播报
+        //    由那一帧自己证明 —— 与 ADB_CELL「状态程序化摆、交互真点进去」同一形态。
+        if (flag("adb.find", "ADB_FIND")) {
+            poseGridFindWhenReady(0);
+        }
+        // ⭐ 截图 / 验收（R32 G4）：数据页摆出「表单视图 + 第一条记录」。
+        //    翻到下一条由截图脚本真点（#data-record-next），记录导航 ↔ 表单的
+        //    联动由那一帧自己证明 —— 与 ADB_FIND 同一形态。
+        if (flag("adb.form", "ADB_FORM")) {
+            poseGridFormWhenReady(0);
+        }
+        // ⭐ 截图 / 验收（UX-6）：启动直接落在数据页「概览」切面。
+        //    切面标签的 id 是动态拼的（object-tab-<id>），截图脚本的静态审计
+        //    不允许点它；这里与 ADB_DDL 同型，等页面建好后程序化切换。
+        if (flag("adb.overview", "ADB_OVERVIEW")) {
+            showOverviewWhenReady(0);
+        }
+        // ⭐ 截图 / 验收（P2-2）：启动即弹「错误详情」。
+        //    JavaFX 的 Dialog 是独立 Stage，ScreenshotSession 会优先拍模态窗口；
+        //    必须 runLater —— 直接 showAndWait 会开嵌套事件循环，把截图调度挡住。
+        if (flag("adb.errorDemo", "ADB_ERROR_DEMO")) {
+            Platform.runLater(() -> ErrorDetailsDialog.show(stage,
+                    ErrorDetails.of("执行查询失败",
+                            new java.sql.SQLException("no such table: user_profiles"),
+                            "SELECT id, name, email\nFROM user_profiles\nWHERE active = 1;")));
+        }
         String initialQuery = System.getProperty("adb.query",
                 System.getenv().getOrDefault("ADB_QUERY", "")).trim();        if (!initialQuery.isEmpty()) {
             String sql = initialQuery.equals("1") || initialQuery.equalsIgnoreCase("true")
@@ -1413,6 +1578,11 @@ public final class AppShell extends StackPane {
             QueryPage page = workspace.activeQuery();
             if (page != null) {
                 page.markClean();
+                // ⭐ 截图 / 验收（U25）：结果渲染后在数据格上摆出真右键菜单。
+                //    以前 15 帧里 0 张菜单 —— 四类状态里「交互态」整类缺证。
+                if (flag("adb.menuPose", "ADB_MENU_POSE")) {
+                    page.poseContextMenuWhenReady();
+                }
             }
             Platform.runLater(workspace::runQuery);
         }
@@ -1420,6 +1590,13 @@ public final class AppShell extends StackPane {
         if (initial.isEmpty() && structure.isEmpty() && initialQuery.isEmpty()) {
             restoreLastTabs();
         }
+        // ⭐ P7：首屏 = 启动参数 / 上次标签都恢复完（后续截图弹窗走 runLater，不计入）。
+        startup.mark("shell.after-shown");
+    }
+
+    /** ⭐ P7：给门禁 / 关于弹窗读的启动打点。 */
+    io.agenticdb.ui.StartupTrace startupTrace() {
+        return startup;
     }
 
     /** 窗口关闭时调用：先停掉在途查询，再关连接。 */
@@ -1568,9 +1745,9 @@ public final class AppShell extends StackPane {
         // 编辑菜单三件套：撤销 / 重做 / 复制，全部委托当前活动数据页。
         // 快捷键不在此注册 —— DataGridPage 已在自己的 scene 上绑了 ⌘Z/⇧⌘Z/⌘C，
         // 两边都注册会双触发（撤销两次）；菜单入口复用同一方法，行为一致。
-        actions.register("edit.undo", "撤销  (⌘Z)", "编辑", null, this::editUndo);
-        actions.register("edit.redo", "重做  (⇧⌘Z)", "编辑", null, this::editRedo);
-        actions.register("edit.copy", "复制  (⌘C)", "编辑", null, () -> {
+        actions.register("edit.undo", io.agenticdb.ui.Shortcuts.labelled("撤销", "Mod+Z"), "编辑", null, this::editUndo);
+        actions.register("edit.redo", io.agenticdb.ui.Shortcuts.labelled("重做", "Shift+Mod+Z"), "编辑", null, this::editRedo);
+        actions.register("edit.copy", io.agenticdb.ui.Shortcuts.labelled("复制", "Mod+C"), "编辑", null, () -> {
             DataGridPage grid = workspace.activeGrid();
             if (grid == null) {
                 status("复制只在数据页可用");
@@ -1732,7 +1909,8 @@ public final class AppShell extends StackPane {
                                 + "\nJavaFX 25 · 原生桌面\n\n"
                                 + "SQLite 演示库 · 真实内省 · 分页数据页 · SQL 编辑器\n"
                                 + "执行清单：NAVICAT-TODO.md\n"
-                                + "不内嵌浏览器，不启动 HTTP 端口。"));
+                                + "不内嵌浏览器，不启动 HTTP 端口。\n\n"
+                                + startupText()));
         updateQueryActions();
     }
 
@@ -1750,13 +1928,19 @@ public final class AppShell extends StackPane {
         detailsResizer = buildDetailsResizer();
         VBox main = new VBox(tabBar, workspace);
         main.getStyleClass().add("adb-main");
+        // ⭐ 1280 宽 + 右侧详情面板时，三栏的最小宽度会超过窗口：
+        //    StackPane 只能把超宽的内容居中，结果左侧菜单/侧栏被挤出可视区。
+        //    主区允许收缩（网格本来就有横向滚动），chrome 与详情面板保持原位。
+        main.setMinWidth(0);
         VBox.setVgrow(workspace, Priority.ALWAYS);
         HBox.setHgrow(main, Priority.ALWAYS);
 
         HBox body = new HBox(sideBar, resizer, main, detailsResizer, details);
         body.getStyleClass().add("adb-body");
+        body.setMinWidth(0);
 
         root.getStyleClass().add("adb-root");
+        root.setMinWidth(0);
         root.setTop(top);
         root.setCenter(body);
         root.setBottom(statusBar);
@@ -2008,8 +2192,13 @@ public final class AppShell extends StackPane {
         if (structure.view()) {
             notes.add("视图没有行数统计 —— 它取决于底层表的实时数据。");
         }
+        // ⭐ P2-3：这张表最近被怎么查过（历史按表名筛，最新在前）。
+        List<String> recent = new ArrayList<>();
+        for (QueryHistory.Entry entry : history.recentForObject(subject.name(), 5)) {
+            recent.add(entry.summary());
+        }
         return new ObjectDetailsPanel.Snapshot(subject, facts, columns, indexes,
-                foreignKeys, triggers, notes);
+                foreignKeys, triggers, recent, notes);
     }
 
     /** 连接 / 库一级的概览（§6.2）：只放主工作区没有的真实信息。 */
@@ -2043,7 +2232,7 @@ public final class AppShell extends StackPane {
         facts.add(new ObjectDetailsPanel.Fact("连接档案",
                 connectionStore.file().toString()));
         return new ObjectDetailsPanel.Snapshot(subject, facts, List.of(), List.of(),
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of());
     }
 
     private io.agenticdb.introspect.TableMeta tableMetaOf(DbSession session, String table) {
@@ -2124,7 +2313,9 @@ public final class AppShell extends StackPane {
             activeTableListPage = null;
             disableTableListActions();
         }
-        status("已激活：" + tab.title());
+        // U8：切标签不是回执 —— 当前页由标签栏本身表达，「已激活：连接管理」
+        //      只会让消息位常驻一句车轱辘话。
+        status("");
         if (tab.kind() != TabKind.GRID && tab.kind() != TabKind.QUERY) {
             statusBar.setRange("—");
             statusBar.setDuration(-1);
@@ -2245,6 +2436,9 @@ public final class AppShell extends StackPane {
                 executors.forConnection(tab.connectionId()), settings);
         // 新开的数据页要继承当前密度档位（A19）。
         page.setDensity(currentDensity());
+        // ⭐ P2-3：数据页「历史」只看本表；选中一条载入新查询页。
+        page.setHistorySource(() -> history.recentForObject(tab.target(), 10));
+        page.setOnHistoryPick(this::openQueryWith);
         page.setDirtyListener(count -> {
             tab.markDirty(count);
             updateEditActions();
@@ -2266,6 +2460,8 @@ public final class AppShell extends StackPane {
         // 「存为命名查询」落到已保存查询库。
         page.setOnSaveNamed((name, sql) -> {
             savedQueries.save(name, sql);
+            // ⭐ UX-6：侧栏跟着更新，不必重启才看到新保存的查询。
+            sideBar.refreshSavedQueries();
             // ⭐ Q6：片段库接线（存片段 / 取片段）。
             page.setOnSaveSnippet((snippetName, snippetSql) ->
                     savedQueries.saveSnippet(snippetName, snippetSql));
@@ -2475,7 +2671,8 @@ public final class AppShell extends StackPane {
                     }
                 },
                 tableListInitialView(),
-                view -> settings.set("ui.tableList.view", view));
+                view -> settings.set("ui.tableList.view", view),
+                settings, pageConnection);
         page.setDensity(currentDensity());
         // ⭐ P2-1：表清单的列宽要记住（拖过一次，下次打开还是那个宽度）。
         page.rememberColumnsIn(settings);
@@ -2552,6 +2749,26 @@ public final class AppShell extends StackPane {
         SavedQueriesPage page = new SavedQueriesPage(savedQueries,
                 sql -> openQueryWith(sql), this::status);
         page.show(stage);
+        // 对话框里可能改名 / 删除了条目 —— 侧栏的分组要跟着变。
+        sideBar.refreshSavedQueries();
+    }
+
+    /**
+     * ⭐ UX-6：打开侧栏里的一条已保存查询。
+     *
+     * <p>查询页跟着**那条查询所在的连接**走（多连接下不能用当前活跃连接
+     * 硬套）；标题沿用保存时的名字，方便在标签栏里认出来。
+     */
+    private void openSavedQuery(SideBar.SavedQueryRequest request) {
+        queryCounter++;
+        String connection = request.connectionId() == null || request.connectionId().isBlank()
+                ? activeProfileId() : request.connectionId();
+        String name = request.name() == null || request.name().isBlank()
+                ? "未命名查询 " + queryCounter : request.name();
+        String id = "query:" + connection + ":" + System.nanoTime();
+        initialQuerySql.put(id, request.sql());
+        openTab(new TabItem(id, name, TabKind.QUERY, null, connection));
+        status("已载入已保存查询：" + name);
     }
 
     /**
@@ -2764,7 +2981,7 @@ public final class AppShell extends StackPane {
 
     private String initialDensity() {
         String forced = forcedDensity();
-        return forced.isEmpty() ? settings.get("ui.density", "compact") : forced;
+        return forced.isEmpty() ? settings.get("ui.density", "normal") : forced;
     }
 
     private void changeDensity(String density) {
@@ -2780,7 +2997,7 @@ public final class AppShell extends StackPane {
     private String applyDensity(String density) {
         String value = switch (density) {
             case "dense", "compact", "normal", "comfort" -> density;
-            default -> "compact";
+            default -> "normal";
         };
         this.density = value;
         getStyleClass().removeAll("density-dense", "density-compact", "density-normal",
@@ -2814,8 +3031,13 @@ public final class AppShell extends StackPane {
 
     /** 「1 / true / yes」算开，其余算关。系统属性优先于环境变量。 */
     private static boolean flag(String property, String env) {
-        String raw = System.getProperty(property, System.getenv().getOrDefault(env, "")).trim();
+        String raw = text(property, env);
         return raw.equals("1") || raw.equalsIgnoreCase("true") || raw.equalsIgnoreCase("yes");
+    }
+
+    /** 系统属性优先、环境变量兜底 —— 与 {@link #flag} 同一口径，只是要原值。 */
+    private static String text(String property, String env) {
+        return System.getProperty(property, System.getenv().getOrDefault(env, "")).trim();
     }
 
     private void toast(String message) {
@@ -2873,6 +3095,16 @@ public final class AppShell extends StackPane {
         toastAction.setManaged(false);
     }
 
+    /** 关于弹窗里的启动耗时（P7）：给用户 / 支持人员一个可直接复述的数字。 */
+    private String startupText() {
+        long millis = startup.firstScreenMillis();
+        String line = millis > 0
+                ? "本次启动 " + millis + " ms（进程启动 → 首屏）"
+                : "本次启动耗时未记录";
+        return line + (startup.slow() ? "，超过 2s 目标" : "")
+                + "\n启动日志：~/.agenticdb/logs/startup.log";
+    }
+
     private void showInfo(String title, String content) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle(title);
@@ -2881,34 +3113,94 @@ public final class AppShell extends StackPane {
         if (stage != null) {
             alert.initOwner(stage);
         }
-        if (getScene() != null) {
-            alert.getDialogPane().getStylesheets().addAll(getScene().getStylesheets());
-            alert.getDialogPane().getStyleClass().add("adb-dialog");
-        }
+        // ⭐ 这里原来手写「挂样式表 + adb-dialog」—— 少了主题类，
+        //    -adb-* 查找照样落空（半套皮肤）。DialogStyles 是这三件事的唯一入口。
+        DialogStyles.apply(alert, stage);
         alert.showAndWait();
     }
 
+    /**
+     * 快捷键总表（F1）。
+     *
+     * <p>U1：这张表原来是一段手写 macOS 符号的纯文本（{@code ⌘N / ⇧⌘N}），
+     * 而实拍与主要用户都在 Windows —— 键盘上没有 ⌘ 这个键，且比例字体下
+     * 空格对齐会散架。现在两列栅格、按键走 {@link io.agenticdb.ui.Shortcuts}，
+     * 与菜单、tooltip、状态栏文案同一份真相。
+     */
     private void showShortcuts() {
-        showInfo("快捷键", """
-                ⌘N        新建连接
-                ⇧⌘N       新建查询
-                ⌘O        打开 SQL 文件
-                ⌘K        命令面板
-                ⌘F        搜索对象 / 查询页查找
-                ⌘R        执行当前语句
-                ⇧⌘R       执行全部语句
-                ⌘.        取消执行
-                ⌘E        解释执行计划
-                ⌘/        注释 / 取消注释
-                ⌥⇧F       格式化 SQL
-                ⌘S        保存 SQL
-                ⌘\\        折叠 / 展开侧栏
-                ⌘,        设置
-                F5        刷新 / 重跑当前语句
-                ⌘W        关闭标签
-                ⇧⌘W       关闭窗口
-                F1        本页
-                """);
+        // {语义按键, 动作}；按键为 null 的行是分节标题。
+        List<String[]> rows = List.of(
+                new String[]{null, "连接与窗口"},
+                new String[]{"Mod+N", "新建连接…"},
+                new String[]{"Mod+O", "打开 SQL 文件…"},
+                new String[]{"Shift+Mod+N", "新建查询"},
+                new String[]{"Mod+W", "关闭标签"},
+                new String[]{"Shift+Mod+W", "关闭窗口"},
+                new String[]{"Mod+M", "最小化"},
+                new String[]{"Mod+Q", "退出 AIDB"},
+                new String[]{null, "编辑与数据页"},
+                new String[]{"Mod+K", "命令面板"},
+                new String[]{"Mod+F", "搜索对象 / 页内查找"},
+                new String[]{"Mod+Z", "撤销上一处编辑"},
+                new String[]{"Shift+Mod+Z", "重做"},
+                new String[]{"Mod+C", "复制单元格 / 矩形选区"},
+                new String[]{"Alt+Mod+C", "复制选中行为 TSV"},
+                new String[]{"Shift+Mod+C", "复制选中行为 INSERT"},
+                new String[]{"Mod+A", "全选当前页"},
+                new String[]{"Mod+UP", "跳到当前页首行"},
+                new String[]{"Mod+DOWN", "跳到当前页末行"},
+                new String[]{"ESCAPE", "取消选区 / 关闭详情抽屉"},
+                new String[]{null, "查询"},
+                new String[]{"Mod+ENTER", "执行当前语句"},
+                new String[]{"Shift+Mod+ENTER", "执行全部语句"},
+                new String[]{"Mod+R", "执行当前语句（菜单）"},
+                new String[]{"Shift+Mod+R", "执行全部语句（菜单）"},
+                new String[]{"Mod+PERIOD", "取消执行"},
+                new String[]{"Mod+E", "解释执行计划"},
+                new String[]{"Alt+Shift+F", "格式化 SQL"},
+                new String[]{"Mod+S", "保存 SQL"},
+                new String[]{"Mod+SLASH", "注释 / 取消注释"},
+                new String[]{"Mod+G", "查找下一处"},
+                new String[]{"F5", "刷新 / 重跑当前语句"},
+                new String[]{null, "视图"},
+                new String[]{"Mod+BACKSLASH", "折叠 / 展开侧栏"},
+                new String[]{"Mod+Alt+D", "显示 / 隐藏对象详情"},
+                new String[]{"Mod+COMMA", "设置…"},
+                new String[]{"F1", "本表"});
+
+        GridPane grid = new GridPane();
+        grid.getStyleClass().add("adb-shortcuts");
+        ColumnConstraints keyColumn = new ColumnConstraints();
+        keyColumn.setMinWidth(120);
+        keyColumn.setHalignment(javafx.geometry.HPos.RIGHT);
+        ColumnConstraints actionColumn = new ColumnConstraints();
+        actionColumn.setHgrow(Priority.ALWAYS);
+        grid.getColumnConstraints().addAll(keyColumn, actionColumn);
+
+        int row = 0;
+        for (String[] entry : rows) {
+            if (entry[0] == null) {
+                Label group = new Label(entry[1]);
+                group.getStyleClass().add("adb-shortcut__group");
+                GridPane.setColumnSpan(group, 2);
+                grid.add(group, 0, row++);
+                continue;
+            }
+            Label key = new Label(io.agenticdb.ui.Shortcuts.of(entry[0]));
+            key.getStyleClass().add("adb-shortcut__key");
+            Label action = new Label(entry[1]);
+            action.getStyleClass().add("adb-shortcut__action");
+            grid.add(key, 0, row);
+            grid.add(action, 1, row++);
+        }
+
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("快捷键");
+        dialog.setHeaderText("键盘快捷键（" + (io.agenticdb.ui.Shortcuts.mac() ? "macOS" : "Windows / Linux") + "）");
+        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        DialogStyles.apply(dialog, stage);
+        dialog.showAndWait();
     }
 
     private static String readable(Throwable error) {

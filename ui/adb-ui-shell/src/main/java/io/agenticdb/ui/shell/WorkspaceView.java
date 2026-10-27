@@ -60,7 +60,7 @@ public final class WorkspaceView extends StackPane {
     /**
      * 当前活动的结构页；不是结构页时为 {@code null}。
      *
-     * <p>详情面板的「查看 DDL」要用它 —— 打开结构标签后直接把
+     * <p>详情面板的「打开 DDL」要用它 —— 打开结构标签后直接把
      * 子页签切到 DDL（规格 §11.1），而不是另开一个只读文本框。
      */
     public StructurePage activeStructure() {
@@ -481,7 +481,8 @@ public final class WorkspaceView extends StackPane {
         Label theme = new Label("外观");
         theme.getStyleClass().add("adb-section-title");
 
-        Label mode = new Label("主题跟随系统，可在应用栏 ◐ 切换（⌘K 搜索「主题」也可）");
+        Label mode = new Label("主题跟随系统，可用下方「切换主题」按钮或应用栏的主题图标切换（"
+                + io.agenticdb.ui.Shortcuts.of("Mod+K") + " 搜索「主题」也可）");
         mode.getStyleClass().add("adb-muted");
 
         Button toggle = IconButtons.of(Icons.Icon.THEME, "切换主题");

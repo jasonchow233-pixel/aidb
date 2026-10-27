@@ -27,6 +27,7 @@
 | `brand/aidb-mark.svg` | 纯图标（1024 规格），透明底 |
 | `brand/aidb-logo-horizontal.svg` | 横版：图标 + AIDB 字标 + 副标 |
 | `tools/GenLogo.java` | Java2D 渲染器，与 SVG 几何一致，产出 PNG |
+| `tools/GenPackIcons.java` | 同几何产出**安装包容器**：`brand/app-icon.ico`（PNG 帧，16–256 七档）+ `brand/app-icon.icns`（12 帧），`scripts/package.sh` 按平台传给 jpackage `--icon` |
 | `ui/adb-ui-shell/src/main/resources/io/agenticdb/ui/app-icon*.png` | 运行时使用的多尺寸 PNG |
 
 ### 尺寸集（由 `java tools/GenLogo.java` 生成）
@@ -44,7 +45,8 @@ app-icon-16.png     最小尺寸（侧栏树节点）
 ### 改 logo 的流程
 1. 同步改 `brand/aidb-mark.svg` 与 `tools/GenLogo.java`（几何必须一致）
 2. `java tools/GenLogo.java`
-3. `./scripts/shots.sh` 重拍截图，肉眼看应用栏
+3. `java tools/GenPackIcons.java`（安装包图标；`PackageIconAuditTest` 会逐字段解码两个容器，坏了当场红）
+4. `./scripts/shots.sh` 重拍截图，肉眼看应用栏
 
 ## 品牌色在界面中的落点
 

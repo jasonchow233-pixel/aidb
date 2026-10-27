@@ -72,7 +72,7 @@ public final class ConnectionWizard {
         this.tester = tester == null ? spec -> "未配置测试器" : tester;
         dialog.initOwner(owner);
         dialog.setTitle("连接向导");
-        // ⭐ V-11：弹窗宽度走三档规范（DialogSizes）。
+        // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
         dialog.getDialogPane().setPrefWidth(DialogSizes.FORM);
         dialog.getDialogPane().setMinWidth(DialogSizes.FORM);
 
@@ -387,13 +387,15 @@ public final class ConnectionWizard {
         if (kind.dialect().usesFilePath()) {
             return new ConnectionProfile(id, connectionName, kind, "", 0, file.getText().trim(),
                     "", initial != null && initial.favorite(),
-                    initial == null ? 0 : initial.lastUsedAt(), options);
+                    initial == null ? 0 : initial.lastUsedAt(),
+                    initial == null ? "" : initial.group(), options);
         }
         int portValue = parsePort(port.getText(), ConnectionProfile.defaultPort(kind));
         return new ConnectionProfile(id, connectionName, kind, host.getText().trim(), portValue,
                 database.getText().trim(), username.getText().trim(),
                 initial != null && initial.favorite(),
-                initial == null ? 0 : initial.lastUsedAt(), options);
+                initial == null ? 0 : initial.lastUsedAt(),
+                initial == null ? "" : initial.group(), options);
     }
 
     /**
@@ -408,7 +410,7 @@ public final class ConnectionWizard {
                 parsePort(port.getText(), ConnectionProfile.defaultPort(type.getValue())),
                 database.getText() == null ? "" : database.getText().trim(),
                 username.getText() == null ? "" : username.getText().trim(),
-                false, 0, Map.copyOf(options));
+                false, 0, initial == null ? "" : initial.group(), Map.copyOf(options));
         ConnectionPropertiesDialog properties = ConnectionPropertiesDialog.create(draft);
         properties.show(dialog.getOwner(), ownerStylesheets())
                 .ifPresent(collected -> options = new LinkedHashMap<>(collected));
@@ -438,13 +440,13 @@ public final class ConnectionWizard {
 
     public void show() {
         dialog.setOnHidden(event -> onFinished.accept(Optional.ofNullable(dialog.getResult())));
-        DialogStyles.apply(dialog, dialog.getOwner());
+        DialogStyles.apply(dialog, dialog.getOwner(), "connection-wizard");
         dialog.show();
     }
 
     public Optional<ConnectionProfile> showAndWait() {
         dialog.setOnHidden(event -> onFinished.accept(Optional.ofNullable(dialog.getResult())));
-        DialogStyles.apply(dialog, dialog.getOwner());
+        DialogStyles.apply(dialog, dialog.getOwner(), "connection-wizard");
         return dialog.showAndWait();
     }
 

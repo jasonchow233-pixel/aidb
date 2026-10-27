@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -23,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>JavaFX 的 CSS 没有自定义属性机制，CSS 侧只能写字面值 ——
  * 所以「令牌是唯一真相」这句话，靠的不是 CSS 引用，而是**这道门禁**：
- * {@code tokens.json} 里定了 9 档字号、7 档间距、3 档圆角，
+ * {@code tokens.json} 里定了字号、间距、圆角阶梯，
  * {@code app.css} 里出现的每个值都必须在这些档位上。
  *
  * <p>门禁前的样子（实测）：
@@ -32,7 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>间距 **47 种**硬编码内边距；</li>
  *   <li>圆角 **5 种**（3/5/6/8/10）写死在 26 处。</li>
  * </ul>
- * 现在分别是 7 / 7 / 3 种（字号被删过两档，见 {@link #FONT_SIZES}）。
+ * 现在分别是 7 / 9 / 5 种（字号被删过两档，见 {@link #FONT_SIZES}；
+ * 圆角在第二十一轮重新定阶梯，见 {@link #RADII}）。
  */
 class AppCssAuditTest {
 
@@ -65,13 +67,17 @@ class AppCssAuditTest {
     /**
      * CSS 里允许的圆角（含 0 —— 直角也是合法圆角）。
      *
-     * <p>UX-1 起收敛成四档：r-xs 3（复选框）/ r-sm 4（按钮、输入框）/
-     * r-md 6（卡片、面板）/ r-lg 8（对话框）+ r-full 999（徽标、chip）。
+     * <p>第二十一轮（现代无边框）五级：<b>r-sm 4（复选框方框）/ r-md 6（按钮、输入框、
+     * 列表格）/ r-lg 8（表格容器、卡片、抽屉）/ r-xl 10（浮层：菜单、下拉弹层、命令面板、
+     * 弹窗、toast）+ r-full 999（徽标、chip）</b>。
+     *
+     * <p>⚠️ r-xs（3px）随本轮删除：无边框语言里最小的一档落到 4px（复选框），
+     * 3px 没有任何消费者 —— 规矩是删令牌，不是给令牌硬造一个消费者。
      */
-    private static final Set<String> RADII = Set.of("0px", "3px", "4px", "6px", "8px", "999px");
+    private static final Set<String> RADII = Set.of("0px", "2px", "3px", "4px", "6px", "999px");
 
     /** 令牌里的圆角。 */
-    private static final Set<String> TOKEN_RADII = Set.of("3px", "4px", "6px", "8px", "999px");
+    private static final Set<String> TOKEN_RADII = Set.of("2px", "3px", "4px", "6px", "999px");
 
     // ─────────────────────────── 字号 ───────────────────────────
 
@@ -182,6 +188,50 @@ class AppCssAuditTest {
                 .isEqualTo("12px");
     }
 
+    /**
+     * ⭐ 第二十九轮实拍抓到：行高 28 → 21/23 后，仍按 `6px 8px` 画的表格
+     * （网格 / 结构页 / 连接页 / 表清单）把 12px 文字裁掉了下半截
+     * （p2-users 的 email 列、p4-structure、p5-connections、p6-tables 一眼可见）。
+     *
+     * <p>规则：固定行高下，上下内边距之和 + 12px 正文必须塞得进去。
+     * 变异：任一选择器改回 `6px 8px` → 红。
+     */
+    @Test
+    void fixedRowCellsLeaveRoomForTheirText() throws IOException {
+        String css = css();
+        Map<String, Integer> surfaces = Map.of(
+                ".adb-grid .table-cell", RowHeights.grid("normal"),
+                ".adb-structure__table .table-cell", RowHeights.of("normal"),
+                ".adb-connections__table .table-cell", RowHeights.of("normal"),
+                // ⭐ R31：表设计器的字段网格同样降到 21px（Navicat 实测 22）。
+                ".adb-dialog .table-view .table-cell", RowHeights.of("normal"),
+                ".adb-table-list .table-cell", RowHeights.of("normal"));
+        surfaces.forEach((selector, row) -> {
+            double vertical = verticalPaddingOf(ruleBody(css, selector));
+            assertThat(12 + vertical)
+                    .as("%s：12px 正文 + 上下内边距 %.0fpx 塞不进 %dpx 固定行高（会裁字）",
+                            selector, vertical, row)
+                    .isLessThanOrEqualTo(row);
+        });
+    }
+
+    /** 取规则块里的上下内边距之和（支持 1–4 值简写）。 */
+    private static double verticalPaddingOf(String rule) {
+        Matcher matcher = Pattern.compile("-fx-padding:\\s*([^;]+);").matcher(rule);
+        if (!matcher.find()) {
+            return 0;
+        }
+        String[] parts = matcher.group(1).trim().split("\\s+");
+        return switch (parts.length) {
+            case 4 -> px(parts[0]) + px(parts[2]);
+            default -> 2 * px(parts[0]);
+        };
+    }
+
+    private static double px(String value) {
+        return Double.parseDouble(value.replace("px", ""));
+    }
+
     // ─────────────────────────── 圆角 ───────────────────────────
 
     @Test
@@ -196,7 +246,7 @@ class AppCssAuditTest {
             }
         }
         assertThat(offenders)
-                .as("圆角必须落在四档上（r-xs 3 / r-sm 4 / r-md 6 / r-lg 8）+ r-full 999：\n  %s",
+                .as("圆角必须落在五级阶梯上（r-sm 2 / r-md 3 / r-lg 4 / r-xl 6）+ r-full 999：\n  %s",
                         String.join("\n  ", offenders))
                 .isEmpty();
     }
@@ -217,32 +267,87 @@ class AppCssAuditTest {
     // ─────────────────────────── 投影 ───────────────────────────
 
     /**
-     * ⭐ UX-1：投影只留**浮层一级**。
+     * ⭐ 第二十一轮（现代无边框）：投影就是**分层的唯一手段**，所以它必须成体系。
      *
-     * <p>扁平化不是「完全不要阴影」—— 命令面板 / toast 这类浮层没有阴影就会
-     * 和页面粘在一起；但卡片、抽屉、对话框再投影就回到「网页卡片」的观感。
-     * 所以只允许两类：焦点环（{@code border-focus}，不是阴影）与
-     * {@code shadow-1} 浮层投影；{@code shadow-2} 已随令牌删除。
+     * <p>边框退场之后，「这一块浮在上面」只能靠阴影。三级阶梯：
+     * <ol>
+     *   <li>{@code border-focus} —— 焦点环，不是投影，是键盘用户的唯一光标；</li>
+     *   <li>{@code shadow-1} —— 贴附层与浮层：外壳条（应用栏 / 批量条）的一层薄影 +
+     *       菜单 / 下拉弹层 / 列设置弹层 / toast 的弥散影；</li>
+     *   <li>{@code shadow-2} —— 只给**遮罩级**的旗舰浮层（命令面板）：半径最大、透明度最低。</li>
+     * </ol>
+     *
+     * <p>反面同样要钉住：卡片、抽屉、表格、弹窗这些**内容层**不许投影 ——
+     * 它们靠底色阶梯（canvas / surface / inset）分层，再投影就回到「网页卡片堆」的观感。
      */
     @Test
-    void shadowsAreLimitedToTheFloatingElevation() throws IOException {
+    void shadowsFollowTheThreeTierElevationModel() throws IOException {
         String css = css();
         List<String> effects = values(css, "-fx-effect:\\s*([^;]+);");
         List<String> offenders = effects.stream()
                 .filter(value -> !value.trim().equals("null"))
                 .filter(value -> !value.contains("-adb-border-focus")
-                        && !value.contains("-adb-shadow-1"))
+                        && !value.contains("-adb-shadow-1")
+                        && !value.contains("-adb-shadow-2"))
                 .toList();
         assertThat(offenders)
-                .as("投影只允许「焦点环」与 floating shadow-1；卡片/抽屉/对话框不许投影：\n  %s",
+                .as("投影只允许三档：焦点环 border-focus / 浮层 shadow-1 / 遮罩级 shadow-2：\n  %s",
                         String.join("\n  ", offenders))
                 .isEmpty();
-        assertThat(css)
-                .as("shadow-2 已删除（只保留一级浮层投影）")
-                .doesNotContain("-adb-shadow-2");
-        assertThat(effects.stream().filter(value -> value.contains("-adb-shadow-1")).count())
-                .as("浮层投影必须真的用在浮层上（命令面板 / toast）")
+
+        long floating = effects.stream().filter(v -> v.contains("-adb-shadow-1")).count();
+        long overlay = effects.stream().filter(v -> v.contains("-adb-shadow-2")).count();
+        assertThat(floating)
+                .as("shadow-1 要真的覆盖浮层（菜单 / 下拉弹层 / 列设置 / toast）与外壳条，"
+                        + "少于 4 处说明无边框之后有区域没分层手段")
+                .isBetween(4L, 8L);
+        assertThat(overlay)
+                .as("shadow-2 是「遮罩级」那一档，只许给命令面板这类最高浮层（1–2 处）")
                 .isBetween(1L, 2L);
+    }
+
+    /** 内容层必须是平的：底色阶梯负责分层，不许再加阴影。 */
+    @Test
+    void contentSurfacesStayFlat() throws IOException {
+        String css = css();
+        for (String selector : List.of(".adb-card", ".adb-table-card", ".adb-details",
+                ".adb-grid", ".adb-dialog", ".adb-structure__table",
+                ".adb-connections__table", ".adb-table-list")) {
+            assertThat(ruleBody(css, selector))
+                    .as(selector + " 是内容层，靠底色分层 —— 不许投影")
+                    .doesNotContain("dropshadow");
+        }
+    }
+
+    /** §2.7：结构页切面 tab 的规则必须真的可达。
+     *
+     * <p>踩过的坑：`adb-structure__tabs` 挂在 TabPane **自己**身上，
+     * 旧规则却写成 `.adb-structure__tabs .tab-pane …` —— `.tab-pane` 是宿主自己的
+     * 皮肤类，永远不会是它的后代，五条规则全是死码，页签保持 Modena 默认盒状
+     * （实拍 p4-structure 抓到）。死选择器不报错，只让界面悄悄变回默认。 */
+    @Test
+    void structureTabRulesTargetRealDescendantsNotTheHostItself() throws IOException {
+        String css = css();
+        assertThat(css)
+                .as(".tab-pane 挂在 TabPane 自己身上，写成后代选择器就是永远不命中的死码")
+                .doesNotContain(".adb-structure__tabs .tab-pane")
+                .doesNotContain(".adb-details .tab-pane");
+        assertThat(css)
+                .as("结构页切面 tab 必须打在 TabPane 的真实子节点上（与 .adb-object-tab 同一套下边框语言）")
+                .contains(".adb-structure__tabs > .tab-header-area");
+        assertThat(css)
+                .as("单元格详情抽屉的页签同一条规矩（§2.5：曾同样写成死选择器，一直吃 Modena 默认）")
+                .contains(".adb-details__tabs > .tab-header-area");
+    }
+
+    /** 取某个选择器**基础规则**（行首锚定）的规则体。 */
+    private static String ruleBody(String css, String selector) {
+        Matcher matcher = Pattern.compile("(?m)^" + Pattern.quote(selector) + "\\s*\\{([^}]*)\\}")
+                .matcher(css);
+        assertThat(matcher.find())
+                .as("app.css 里找不到选择器 %s", selector)
+                .isTrue();
+        return matcher.group(1);
     }
 
     // ─────────────────────────── 工具 ───────────────────────────

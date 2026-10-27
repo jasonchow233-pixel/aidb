@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.IndexDef;
+import io.agenticdb.introspect.TableOptions;
 import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.JdbcSession;
@@ -216,10 +217,94 @@ class StructurePageTest {
         assertThat(comment.getPromptText()).contains("不支持列注释");
     }
 
+    // ─────────────────────── UX-6 选项页签 ───────────────────────
+
+    /**
+     * SQLite 没有表级引擎 / 排序规则 / 行格式 —— 四项必须显示「—」，
+     * 并且说明为什么是「—」，而不是给每条连接都编一个 InnoDB。
+     */
+    @Test
+    void optionsTabIsHonestWhenTheDialectHasNoTableOptions(FxRobot robot) throws Exception {
+        waitForStructure();
+        selectTab(robot, "选项");
+
+        assertThat(robot.lookup("#structure-options-engine").queryAs(Label.class).getText())
+                .isEqualTo("—");
+        assertThat(robot.lookup("#structure-options-collation").queryAs(Label.class).getText())
+                .isEqualTo("—");
+        assertThat(robot.lookup("#structure-options-auto-increment")
+                .queryAs(Label.class).getText()).isEqualTo("—");
+        assertThat(robot.lookup("#structure-options-row-format").queryAs(Label.class).getText())
+                .isEqualTo("—");
+        assertThat(robot.lookup("#structure-options-hint").queryAs(Label.class).getText())
+                .as("「—」要给出来源，否则用户以为功能坏了")
+                .contains("SQLite")
+                .contains("没有表级");
+    }
+
+    /** MySQL 形态的四个值要能如实落到页面上（真实取值由真库契约守）。 */
+    @Test
+    void optionsTabShowsEngineCollationAutoIncrementAndRowFormat(FxRobot robot) throws Exception {
+        waitForStructure();
+        selectTab(robot, "选项");
+
+        robot.interact(() -> page.renderOptions(
+                new TableOptions("InnoDB", "utf8mb4_0900_ai_ci", 42L, "Dynamic")));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(robot.lookup("#structure-options-engine").queryAs(Label.class).getText())
+                .isEqualTo("InnoDB");
+        assertThat(robot.lookup("#structure-options-collation").queryAs(Label.class).getText())
+                .isEqualTo("utf8mb4_0900_ai_ci");
+        assertThat(robot.lookup("#structure-options-auto-increment")
+                .queryAs(Label.class).getText()).isEqualTo("42");
+        assertThat(robot.lookup("#structure-options-row-format").queryAs(Label.class).getText())
+                .isEqualTo("Dynamic");
+        assertThat(robot.lookup("#structure-options-hint").queryAs(Label.class).getText())
+                .contains("information_schema");
+
+        // 没有自增列时不能显示 0（0 是一个看起来像真的值）。
+        robot.interact(() -> page.renderOptions(
+                new TableOptions("InnoDB", "utf8mb4_0900_ai_ci", null, "Dynamic")));
+        assertThat(robot.lookup("#structure-options-auto-increment")
+                .queryAs(Label.class).getText()).isEqualTo("—");
+    }
+
+    private static void selectTab(FxRobot robot, String title) {
+        javafx.scene.control.TabPane tabs =
+                robot.lookup("#structure-tabs").queryAs(javafx.scene.control.TabPane.class);
+        robot.interact(() -> tabs.getSelectionModel().select(
+                tabs.getTabs().stream()
+                        .filter(tab -> title.equals(tab.getText()))
+                        .findFirst()
+                        .orElseThrow(() -> new AssertionError("没有页签：" + title))));
+        WaitForAsyncUtils.waitForFxEvents();
+    }
+
     private static Button okButton(FxRobot robot) {
         return robot.lookup(node -> node instanceof Button button
                         && "确定".equals(button.getText()))
                 .queryAs(Button.class);
+    }
+
+    @Test
+    void constraintColumnsUseGlyphGrammarNotText(FxRobot robot) throws Exception {
+        // U9 补漏（p4-structure 第三拍）：可空/主键以前渲染文本 YES/NO/PK，
+        // 与同一张表里「唯一」列的图标语法、以及数据网格/查询结果的布尔语法都不是一套。
+        waitForStructure();
+
+        @SuppressWarnings("unchecked")
+        var table = (javafx.scene.control.TableView<io.agenticdb.model.ColumnDef>) robot
+                .lookup("#structure-columns").queryAs(javafx.scene.control.TableView.class);
+
+        // id/name/email 三格「可空」都有字形（x 或 ✓），id 另有「主键」✓ → ≥4 个 .adb-check。
+        assertThat(robot.from(table).lookup(".adb-check").queryAll())
+                .hasSizeGreaterThanOrEqualTo(4);
+        var cellTexts = new java.util.ArrayList<String>();
+        for (javafx.scene.Node node : robot.from(table).lookup(".table-cell").queryAll()) {
+            cellTexts.add(((javafx.scene.control.TableCell<?, ?>) node).getText());
+        }
+        assertThat(cellTexts).doesNotContain("YES", "NO", "PK");
     }
 
     @Test

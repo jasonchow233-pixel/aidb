@@ -15,6 +15,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
+import io.agenticdb.ui.Icons;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -159,7 +160,10 @@ final class ColumnFilterPanel extends VBox {
         valueList.getStyleClass().add("adb-filter-panel__list");
         valueList.setPrefHeight(260);
         valueList.setCellFactory(view -> new ValueCell());
-        valueList.setPlaceholder(new Label("没有候选值"));
+        // U24：候选值读空是有原因的（整列 NULL / 还没加载完），一句话说清，别让人猜。
+        valueList.setPlaceholder(EmptyState.of(Icons.Icon.FILTER, "没有候选值",
+                "这一列在当前页里没有可枚举的值 —— 可能整列都是 NULL，"
+                        + "也可能值还在从库里读。"));
 
         spinner.setPrefSize(22, 22);
         spinner.getStyleClass().add("adb-filter-panel__spinner");

@@ -24,9 +24,16 @@ final class FakeDbSession implements DbSession {
     private final List<String> executed = new ArrayList<>();
     private final List<String> failingFragments = new ArrayList<>();
     private boolean inTransaction;
+    /** 文件型会话的 label 带整条路径 —— 页头截断逻辑要用同型替身测。 */
+    private String labelOverride;
 
     private FakeDbSession(Dialect dialect) {
         this.dialect = dialect;
+    }
+
+    FakeDbSession withLabel(String label) {
+        this.labelOverride = label;
+        return this;
     }
 
     static FakeDbSession of(DialectKind kind) {
@@ -48,9 +55,14 @@ final class FakeDbSession implements DbSession {
         return null;
     }
 
+    /**
+     * 与真实会话同型：{@code JdbcSession} 的标签是「方言 · 库」。
+     * 界面把它当一整块上下文显示，替身也得带上方言 —— 否则弹窗标题栏的
+     * 断言会去查一个真实界面上根本不存在的位置。
+     */
     @Override
     public String label() {
-        return "fake";
+        return labelOverride != null ? labelOverride : dialect.displayName() + " · fake-db";
     }
 
     @Override

@@ -140,6 +140,28 @@ class DialectTest {
         }
     }
 
+    @Test
+    void onlyMysqlOffersTablePhysicalOptions() {
+        String sql = DialectKind.MYSQL.dialect().tableOptionsSql();
+        assertThat(sql)
+                .as("MySQL 的引擎 / 排序规则 / 行格式在 information_schema.tables 里")
+                .isNotNull()
+                .contains("information_schema.tables")
+                .contains("engine")
+                .contains("table_collation")
+                .contains("auto_increment")
+                .contains("row_format")
+                .contains("table_name = ?")
+                .contains("AND table_type = 'BASE TABLE'");
+
+        assertThat(DialectKind.SQLITE.dialect().tableOptionsSql())
+                .as("SQLite 没有表级引擎 / 排序规则 / 行格式，不能假装有")
+                .isNull();
+        assertThat(DialectKind.POSTGRESQL.dialect().tableOptionsSql())
+                .as("PostgreSQL 的表级选项不在 information_schema.tables 里")
+                .isNull();
+    }
+
     // ─────────────────────────── 结构变更 SQL ───────────────────────────
 
     @Test
@@ -326,5 +348,40 @@ class DialectTest {
                 .isEqualTo("PRAGMA index_info(\"idx_users_email\")");
         assertThat(DialectKind.POSTGRESQL.dialect().indexColumnsSql("idx")).isNull();
         assertThat(DialectKind.MYSQL.dialect().indexColumnsSql("idx")).isNull();
+    }
+
+    /**
+     * 索引类型与每列排序方向是**方言能力**，不是界面想摆就摆的装饰。
+     *
+     * <p>摆一个「选了不生效」的控件，比不给控件更糟：用户会以为索引建成了降序
+     * （任务书 §6.5.6 禁的就是这种假成功）。所以 SQLite / MySQL 必须给空列表，
+     * 而 {@code indexTypeClause} 在非白名单输入下必须返回空串 —— 这里拼的是裸 SQL。
+     */
+    @Test
+    void onlyPostgresOffersIndexTypesAndColumnDirection() {
+        assertThat(DialectKind.SQLITE.dialect().indexTypes()).isEmpty();
+        assertThat(DialectKind.MYSQL.dialect().indexTypes())
+                .as("InnoDB 只有 BTREE；给一个选了必报错的下拉比不给更坏")
+                .isEmpty();
+        assertThat(DialectKind.POSTGRESQL.dialect().indexTypes())
+                .contains("BTREE", "HASH", "GIST", "SPGIST", "GIN", "BRIN");
+
+        assertThat(DialectKind.POSTGRESQL.dialect().indexTypeClause("HASH"))
+                .isEqualTo(" USING hash");
+        assertThat(DialectKind.POSTGRESQL.dialect().indexTypeClause("hash"))
+                .as("大小写不认死：界面给什么都能落到同一个方法名")
+                .isEqualTo(" USING hash");
+        assertThat(DialectKind.POSTGRESQL.dialect().indexTypeClause(null)).isEmpty();
+        assertThat(DialectKind.POSTGRESQL.dialect().indexTypeClause("")).isEmpty();
+        assertThat(DialectKind.POSTGRESQL.dialect().indexTypeClause("btree; DROP TABLE users"))
+                .as("白名单外的字符串一个字符都不许进 SQL")
+                .isEmpty();
+        assertThat(DialectKind.SQLITE.dialect().indexTypeClause("HASH")).isEmpty();
+
+        assertThat(DialectKind.POSTGRESQL.dialect().supportsIndexColumnDirection()).isTrue();
+        assertThat(DialectKind.MYSQL.dialect().supportsIndexColumnDirection())
+                .as("DESC 要 8.0 才真生效，而我们没有运行时版本判定")
+                .isFalse();
+        assertThat(DialectKind.SQLITE.dialect().supportsIndexColumnDirection()).isFalse();
     }
 }

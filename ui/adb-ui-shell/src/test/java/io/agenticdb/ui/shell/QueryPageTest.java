@@ -3,6 +3,8 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.JdbcSession;
 import javafx.scene.Scene;
+import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
@@ -16,6 +18,8 @@ import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.framework.junit5.Start;
 import org.testfx.util.WaitForAsyncUtils;
 
+import java.io.StringWriter;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -28,9 +32,11 @@ class QueryPageTest {
     private JdbcSession session;
     private ExecutorService executor;
     private QueryPage page;
+    private Stage primaryStage;
 
     @Start
     void start(Stage stage) throws Exception {
+        primaryStage = stage;
         session = JdbcSession.open(ConnectionSpec.sqliteMemory());
         session.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)");
         session.execute("INSERT INTO users VALUES (1, 'Ada'), (2, 'Bob')");
@@ -118,6 +124,10 @@ class QueryPageTest {
         TabPane results = (TabPane) page.lookup("#query-results");
         assertThat(results.getTabs()).hasSize(2);
         assertThat(results.getTabs().get(1).getText()).contains("失败");
+        assertThat(results.getTabs().get(1).getContent().lookup("#query-error-details"))
+                .as("⭐ P2-2：错误页签必须给一个「查看详情」入口 —— "
+                        + "页签只放下一步要改什么，完整证据在弹窗里")
+                .isNotNull();
         assertThat(page.statusText()).contains("执行失败");
     }
 
@@ -139,6 +149,55 @@ class QueryPageTest {
                 (java.util.Map<String, Object>) table.getItems().getFirst();
         assertThat(row).hasSize(2);
         assertThat(row.values()).containsExactlyInAnyOrder(1, 2);
+    }
+
+    /**
+     * ⭐ U25：结果网格挂了右键菜单 —— DBA 的高频动作（抄单元格 / 抄一行 /
+     * 抄列名）以前全藏在「进单元格全选 Ctrl+C」后面。门禁验两件事：
+     * 处理器真的挂在表上；模拟事件时**选择会挪到被点的行**
+     * （菜单说的是这一行、高亮停在别处就是两张嘴）。
+     */
+    @Test
+    void resultGridCarriesTheContextMenu() throws Exception {
+        interact(() -> {
+            page.setSql("SELECT id, name FROM users;");
+            page.runAll();
+        });
+        waitForTabs(1);
+
+        TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        assertThat(table.getOnContextMenuRequested())
+                .as("结果网格的右键处理器")
+                .isNotNull();
+
+        javafx.scene.control.TableCell<?, ?> cell = table.lookupAll(".table-cell").stream()
+                .filter(javafx.scene.control.TableCell.class::isInstance)
+                .map(node -> (javafx.scene.control.TableCell<?, ?>) node)
+                .filter(c -> c.getTableRow() != null && c.getIndex() == 1
+                        && c.getTableColumn() != null
+                        && "name".equals(String.valueOf(c.getTableColumn().getText())))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("找不到 name 列第二行的单元格"));
+
+        interact(() -> cell.fireEvent(new javafx.scene.input.ContextMenuEvent(
+                javafx.scene.input.ContextMenuEvent.CONTEXT_MENU_REQUESTED,
+                10, 10,
+                cell.localToScreen(10, 10).getX(),
+                cell.localToScreen(10, 10).getY(),
+                false, null)));
+        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
+                () -> table.getSelectionModel().getSelectedIndex() == 1);
+        assertThat(table.getSelectionModel().getSelectedIndex())
+                .as("右键先把选择挪到被点的行")
+                .isEqualTo(1);
+        // 关掉右键浮窗，别让悬着的菜单污染后续断言。
+        // ⚠️ 必须先快照：hide() 会当场从 Window.getWindows() 这个可观察列表里移除自己，
+        //    直接 forEach 会在迭代中缩表 → IndexOutOfBounds。
+        interact(() -> java.util.List.copyOf(javafx.stage.Window.getWindows()).forEach(w -> {
+            if (w != primaryStage && w.isShowing()) {
+                w.hide();
+            }
+        }));
     }
 
     @Test
@@ -205,6 +264,65 @@ class QueryPageTest {
         // 单行结果也走分页路径：分页条仍在，只是只有 1 页 —— 行为一致、无回归。
         assertThat(page.lookup("#query-result-pager")).isNotNull();
         assertThat(pageLabel()).isEqualTo("第 1 / 1 页");
+    }
+
+    // ─────────────── P6-2：导出范围菜单与「全部结果」 ───────────────
+
+    @Test
+    void exportMenuOffersThreeScopesAndDisablesEmptySelection() {
+        seedRows(250);
+        interact(() -> {
+            page.setSql("SELECT * FROM users ORDER BY id;");
+            page.runAll();
+        });
+        waitForTabs(1);
+        TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        waitFor(() -> table.getItems().size() == 200);
+
+        MenuButton export = (MenuButton) page.lookup("#query-export");
+        assertThat(export).as("分页条要有一个导出范围菜单").isNotNull();
+        assertThat(export.getItems())
+                .filteredOn(item -> item.getId() != null)
+                .extracting(MenuItem::getId)
+                .containsExactly("query-export-page", "query-export-selected",
+                        "query-export-all");
+
+        MenuItem selected = export.getItems().stream()
+                .filter(item -> "query-export-selected".equals(item.getId()))
+                .findFirst().orElseThrow();
+        assertThat(selected.isDisable())
+                .as("没有选区时「导出选中行」必须灰掉，否则导出的是空表")
+                .isTrue();
+
+        interact(() -> table.getSelectionModel().select(0));
+        assertThat(selected.isDisable()).isFalse();
+    }
+
+    @Test
+    void exportAllResultsIgnoresTheUiPageCap() throws Exception {
+        seedRows(250);
+        interact(() -> {
+            page.setSql("SELECT * FROM users ORDER BY id;");
+            page.runAll();
+        });
+        waitForTabs(1);
+        TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        waitFor(() -> table.getItems().size() == 200);
+
+        StringWriter all = new StringWriter();
+        long exported = page.exportAllResultsTo(0, all);
+        assertThat(exported)
+                .as("⭐ 「全部结果」要重跑原始 SQL，不受 UI 单页 200 行上限")
+                .isEqualTo(250);
+        List<String> lines = all.toString().lines().toList();
+        assertThat(lines).hasSize(251); // 表头 + 250 行
+        assertThat(lines.getLast()).contains("250").contains("u250");
+
+        StringWriter currentPage = new StringWriter();
+        page.exportCurrentPageTo(0, currentPage);
+        List<String> pageLines = currentPage.toString().lines().toList();
+        assertThat(pageLines).hasSize(201); // 表头 + 当前页 200 行
+        assertThat(pageLines.getLast()).doesNotContain("u250");
     }
 
     private void seedRows(int count) {

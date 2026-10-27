@@ -5,13 +5,16 @@ import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.Region;
 import javafx.stage.Stage;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.testfx.api.FxRobot;
@@ -21,6 +24,7 @@ import org.testfx.util.WaitForAsyncUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.prefs.Preferences;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -42,6 +46,20 @@ class TableListPageTest {
     private final List<String> selections = new ArrayList<>();
     /** 报给右侧「对象详情面板」的表名；{@code null} = 没有单一对象可看。 */
     private final List<String> inspected = new ArrayList<>();
+    /** P2-1：列宽偏好用独立作用域，跑完清掉，别污染真实用户偏好。 */
+    private final String layoutScopePrefix = "p21-" + System.nanoTime();
+
+    @AfterEach
+    void removeLayoutPreferences() throws Exception {
+        Preferences preferences = Preferences.userNodeForPackage(SettingsStore.class);
+        String prefix = "ui.tablelist." + layoutScopePrefix;
+        for (String key : preferences.keys()) {
+            if (key.startsWith(prefix)) {
+                preferences.remove(key);
+            }
+        }
+        preferences.flush();
+    }
 
     private final TableListPage.Host host = new TableListPage.Host() {
         @Override
@@ -138,7 +156,7 @@ class TableListPageTest {
      * SQLite 形态（只有行数）→ 6 个方言相关列全是「—」→ 整列隐藏，只留「名称 / 行」。
      *
      * <p>逐像素实测：SQLite 演示库 8 列有 6 列恒为「—」，占首选宽度 72%，
-     * 横向滚动才看得到有内容的「名称」（{@code AIDB-UIUX-ANALYSIS.md} §10.3 C1）。
+     * 横向滚动才看得到有内容的「名称」。
      */
     @Test
     void sqliteLikeDataHidesTheAllPlaceholderColumns(FxRobot robot) {
@@ -211,8 +229,7 @@ class TableListPageTest {
     /**
      * SQLite 卡片不能出现纯破折号片段。
      *
-     * <p>实测 SQLite 演示库上一张卡片 3 行里 2 行是「— · —」和「—」
-     * （{@code AIDB-UIUX-ANALYSIS.md} §10.3 C2）。
+     * <p>实测 SQLite 演示库上一张卡片 3 行里 2 行是「— · —」和「—」。
      */
     @Test
     void cardViewOmitsPlaceholderLinesOnSqliteLikeData(FxRobot robot) {
@@ -252,6 +269,18 @@ class TableListPageTest {
                 .anyMatch(text -> text.contains("InnoDB"))
                 .anyMatch(text -> text.contains("2026-02-01"))
                 .anyMatch(text -> text.equals("用户表"));
+
+        // 卡片只有 220px 宽，注释一定被截断 —— 悬停必须能读到全文。
+        Label comment = page.lookupAll(".adb-table-card__comment").stream()
+                .filter(Label.class::isInstance)
+                .map(Label.class::cast)
+                .filter(label -> "用户表".equals(label.getText()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("卡片上找不到注释行"));
+        assertThat(comment.getTooltip())
+                .as("卡片里的长注释也要有 tooltip")
+                .isNotNull();
+        assertThat(comment.getTooltip().getText()).isEqualTo("用户表");
     }
 
     @Test
@@ -302,6 +331,26 @@ class TableListPageTest {
 
         robot.interact(() -> button("#table-list-design").fire());
         assertThat(designed).containsExactly("users");
+    }
+
+    /**
+     * 窄窗口下动作名不许被压成「打开…」：挤不下时该缩的是搜索框。
+     *
+     * <p>2026-10-25 截图对比发现：1280 宽窗口里清单工具条把五个文字按钮压到省略号，
+     * 而同排「导入 / 导出」因为显式设了 {@code minWidth} 完好 —— 一眼能看出不是「设计如此」。
+     *
+     * <p>⚠️ 无头环境（未挂 app.css）复现不出同样的挤压，所以这里守**机制**
+     * （最小宽度 = 首选宽度），渲染结果由截图核对。
+     */
+    @Test
+    void toolbarLabelsAreNotAllowedToShrinkIntoAnEllipsis() {
+        for (String id : List.of("#table-list-open", "#table-list-design",
+                "#table-list-new", "#table-list-drop", "#table-list-refresh",
+                "#table-list-transfer")) {
+            assertThat(button(id).getMinWidth())
+                    .as("%s 的文字不能被压成省略号", id)
+                    .isEqualTo(Region.USE_PREF_SIZE);
+        }
     }
 
     // ─────────────────────── N2 右键菜单 ───────────────────────
@@ -480,73 +529,82 @@ class TableListPageTest {
         return (Button) page.lookup(selector);
     }
 
-    // ───────────────────── 第二十二轮 P2-1：列宽记忆 + 长文本 Tooltip ─────────────────────
+    // ─────────────────────── 第二十二轮 P2-1 清单可读性 ───────────────────────
 
     /**
-     * 长注释被列宽截断后，Tooltip 是拿到全文的**唯一**出口；
-     * 但短值明明完整显示着就不该弹气泡 —— 那是噪音。
+     * 列宽要按连接记住：拖宽「引擎」后重开清单仍是那个宽度；
+     * 换一个连接不能继承别人的布局。
      */
     @Test
-    void aTruncatedCommentCarriesTheFullTextButAShortValueStaysQuiet() throws Exception {
-        String longComment = "这是一张存放全部历史审计记录的主表，按月分区保存，保留七年";
-        WaitForAsyncUtils.asyncFx(() -> page.render(List.of(
-                new TableMeta("users", 1L, 1L, "InnoDB", "2026-01-01", null,
-                        "utf8mb4_0900_ai_ci", longComment)))).get();
+    void columnWidthsAreRememberedPerConnection() {
+        SettingsStore settings = new SettingsStore();
+        String scope = layoutScopePrefix + "-a";
+        TableListPage first = pageWithLayout(settings, scope);
+
+        TableColumn<?, ?> engine = first.table().getColumns().get(3);
+        engine.setPrefWidth(222);
+        first.persistColumnWidthsForTest();
+
+        assertThat(settings.getInt("ui.tablelist." + scope + ".width.engine", -1))
+                .as("拖完的列宽要落盘")
+                .isEqualTo(222);
+
+        TableListPage reopened = pageWithLayout(settings, scope);
+        assertThat(reopened.table().getColumns().get(3).getPrefWidth())
+                .as("重开同一连接的清单要恢复列宽")
+                .isEqualTo(222);
+
+        TableListPage other = pageWithLayout(settings, layoutScopePrefix + "-b");
+        assertThat(other.table().getColumns().get(3).getPrefWidth())
+                .as("另一个连接必须用默认列宽，不能串用")
+                .isEqualTo(100);
+    }
+
+    /**
+     * 注释列被列宽截断时，tooltip 必须给全文；占位符「—」不挂 tooltip。
+     */
+    @Test
+    void longCommentsAreReachableThroughATooltip(FxRobot robot) {
+        String longComment = "这是表清单里的一条长注释：列宽一定放不下，"
+                + "但用户必须能从悬停提示里读到完整内容。";
+        robot.interact(() -> page.render(List.of(
+                new TableMeta("documented", 1L, 2048L, "InnoDB",
+                        null, null, null, longComment),
+                new TableMeta("blank", 1L, 2048L, "InnoDB",
+                        null, null, null, null))));
+        WaitForAsyncUtils.waitForFxEvents();
+        robot.interact(() -> {
+            page.applyCss();
+            page.layout();
+        });
         WaitForAsyncUtils.waitForFxEvents();
 
-        TableCell<?, ?> comment = cellShowing("历史审计记录");
-        assertThat(comment).as("注释那一格要真的渲染出来").isNotNull();
-        assertThat(comment.getTooltip())
-                .as("注释被截断时，Tooltip 是拿到全文的唯一出口")
+        TableCell<?, ?> documented = commentCell(longComment);
+        assertThat(documented.getTooltip())
+                .as("长注释被截断时必须给 tooltip")
                 .isNotNull();
-        assertThat(comment.getTooltip().getText()).isEqualTo(longComment);
+        assertThat(documented.getTooltip().getText())
+                .as("tooltip 给的是全文，不是截断后的显示串")
+                .isEqualTo(longComment);
 
-        TableCell<?, ?> engine = cellShowing("InnoDB");
-        assertThat(engine.getTooltip())
-                .as("完整显示着的短值不该弹气泡 —— 扫过每一行都冒泡是噪音")
+        assertThat(commentCell("—").getTooltip())
+                .as("「—」表示没有注释，不该再弹一个 tooltip 解释它")
                 .isNull();
     }
 
-    /** 列宽记住：新页面拿到的宽度是本页真实的宽度，不是写死的那个。 */
-    @Test
-    void columnWidthsAreRememberedAcrossAReopen() throws Exception {
-        WaitForAsyncUtils.waitForFxEvents();
-        SettingsStore store = new SettingsStore();
-
-        // 本节 @Start 里那张页已经在场景中布局过 → 列宽是真实的（不是 0）。
-        // ⚠️ TableColumnBase.setWidth 不是公开 API，所以这里不手工摆宽度，
-        //    直接用布局出来的真实宽度做往返。
-        WaitForAsyncUtils.asyncFx(() -> {
-            page.rememberColumnsIn(store);
-            page.persistColumnWidthsForTest();
-            return null;
-        }).get();
-        double actual = page.columnTitled("注释").getWidth();
-        assertThat(ListColumns.usable(actual))
-                .as("拿到的列宽必须是布局出来的真实宽度（0 说明还没布局，这条会假绿）")
-                .isTrue();
-
-        TableListPage second = newPageWithColumns(store);
-        assertThat(second.columnTitled("注释").getPrefWidth())
-                .as("记住的宽度要还回来 —— 新页面退回写死的 180 就等于没记")
-                .isEqualTo(actual);
+    private TableListPage pageWithLayout(SettingsStore settings, String scope) {
+        return new TableListPage(null, null, command -> { }, opened::add, messages::add,
+                null, host, "list", null, settings, scope);
     }
 
-    private TableListPage newPageWithColumns(SettingsStore store) throws Exception {
-        return WaitForAsyncUtils.asyncFx(() -> {
-            TableListPage created = new TableListPage(null, null, command -> { },
-                    opened::add, messages::add, null, host, "list", null);
-            created.rememberColumnsIn(store);
-            return created;
-        }).get();
-    }
-
-    @SuppressWarnings("unchecked")
-    private TableCell<?, ?> cellShowing(String fragment) {
+    private TableCell<?, ?> commentCell(String text) {
         return page.table().lookupAll(".table-cell").stream()
+                .filter(TableCell.class::isInstance)
                 .map(node -> (TableCell<?, ?>) node)
-                .filter(cell -> cell.getText() != null && cell.getText().contains(fragment))
+                .filter(cell -> cell.getTableColumn() != null
+                        && "注释".equals(cell.getTableColumn().getText()))
+                .filter(cell -> text.equals(cell.getText()))
                 .findFirst()
-                .orElse(null);
+                .orElseThrow(() -> new AssertionError("找不到注释列的单元格：" + text));
     }
 }

@@ -54,17 +54,102 @@ class StatusBarTest {
         stage.show();
     }
 
+    /**
+     * ⭐ U8：应用版本号<b>不再占状态栏一格</b>（它属于「关于」弹窗），
+     * 但版本串本身仍然必须来自构建产物、不许写死、不许带阶段代号。
+     */
     @Test
-    void versionComesFromTheBuildArtifact() {
+    void buildVersionComesFromTheArtifactAndNoLongerOccupiesASegment() {
         StatusBar bar = new StatusBar();
-        String version = versionText(bar);
 
-        assertThat(version)
-                .as("状态栏版本号必须来自 AppVersion（构建产物）")
-                .isEqualTo(AppVersion.DISPLAY);
-        assertThat(version)
-                .as("版本号不该再写死：以前是 v0.1.0")
+        assertThat(bar.lookup(".adb-status__version"))
+                .as("状态栏不该再常驻版本号 —— 11 段里没人读过它（任务书 U8）")
+                .isNull();
+        assertThat(AppVersion.DISPLAY)
+                .as("「关于」里的版本必须来自 AppVersion（构建产物），以前是写死的 v0.1.0")
+                .isEqualTo(AppVersion.DISPLAY)
+                .isNotBlank()
                 .doesNotContain("v0.1.0");
+    }
+
+    /**
+     * ⭐ U8：方言 + 连接名合成<b>一颗连接灯</b>，服务器信息退到它的 tooltip。
+     *
+     * <p>合并的是显示，不是数据：两件事都还能被读回（{@code dialectText()}、
+     * {@code sourceText()}），断开时也不会把旧连接名留在灯上。
+     */
+    @Test
+    void dialectAndConnectionMergeIntoOneLight() throws Exception {
+        StatusBar bar = new StatusBar();
+        onFx(() -> {
+            bar.setDialect("SQLite");
+            bar.setConnection("agenticdb-demo");
+            bar.setServerInfo("3.45.1", "jason");
+        });
+
+        assertThat(bar.dialectText()).isEqualTo("SQLite");
+        assertThat(bar.sourceText())
+                .as("一颗灯说两件事：方言 · 连接名")
+                .isEqualTo("SQLite · agenticdb-demo");
+        Label light = (Label) bar.lookup(".adb-status__source");
+        assertThat(light.getGraphic())
+                .as("状态点是**矢量图标**，不是文本符号（与行号列、布尔列同一口径）")
+                .isNotNull();
+        assertThat(bar.sourceTooltipText())
+                .as("服务器版本与当前用户进 tooltip，不再各占一格")
+                .contains("3.45.1")
+                .contains("jason");
+        assertThat(light.getStyleClass())
+                .as("连上后灯必须是「亮」态 —— 常绿和常灰一样，都是在骗人")
+                .contains("adb-status__source", "adb-status__source--live");
+
+        onFx(() -> bar.setDialect("—"));
+        assertThat(bar.sourceText())
+                .as("断开后方言位是「—」，连接名跟着语境走，不留旧值")
+                .startsWith("—");
+
+        onFx(() -> bar.setConnection("未连接"));
+        assertThat(light.getStyleClass())
+                .as("断开后修饰类要收掉（源类不能一起掉，胶囊的底和边距挂在它上面）")
+                .doesNotContain("adb-status__source--live")
+                .contains("adb-status__source");
+    }
+
+    /** ⭐ U8：没有选中就整段不占位 ——「未选择」这三个字对谁都没有信息量。 */
+    @Test
+    void selectionSegmentDisappearsWhenNothingIsSelected() throws Exception {
+        StatusBar bar = new StatusBar();
+        onFx(() -> bar.setSelection(0));
+        assertThat(visibleText(bar, "adb-status__selection"))
+                .as("无选择时不显示占位词")
+                .isEmpty();
+        assertThat(bar.selectionText())
+                .as("但门禁侧仍读得到语义值，调用方不用改")
+                .isEqualTo("未选择");
+
+        onFx(() -> bar.setSelection(3));
+        assertThat(visibleText(bar, "adb-status__selection")).isEqualTo("已选 3 行");
+    }
+
+    /** ⭐ U8：事务与读写合成一段人话「自动提交 · 可写」，不再两个词个占一格。 */
+    @Test
+    void transactionAndReadonlyMergeIntoOneSentence() throws Exception {
+        StatusBar bar = new StatusBar();
+        onFx(() -> {
+            bar.setTransaction(false);
+            bar.setReadonly(false);
+        });
+        assertThat(visibleText(bar, "adb-status__session"))
+                .as("右段只有一句：事务状态 · 读写权限")
+                .isEqualTo("自动提交 · 可写");
+
+        onFx(() -> {
+            bar.setTransaction(true);
+            bar.setReadonly(true);
+        });
+        assertThat(visibleText(bar, "adb-status__session")).isEqualTo("事务中 · 只读");
+        assertThat(bar.transactionText()).isEqualTo("事务中");
+        assertThat(bar.readonlyText()).isEqualTo("只读");
     }
 
     @Test
@@ -132,6 +217,42 @@ class StatusBarTest {
     }
 
     // ───────────────── 第十八轮：没有计时就不许出现「— ms」 ─────────────────
+
+    /**
+     * ⭐ U8：消息位是<b>回执通道</b>，不是常驻播报。
+     *
+     * <p>以前开场白「就绪」和每次加载后的「已加载 users · 200 行」都常驻一格，
+     * 后者与行范围段（1–200 / 200）重复同一件事。现在没话说就整段连同分隔符收掉，
+     * 有回执（复制成功 / 保存失败 / 结果截断）才占位。
+     */
+    @Test
+    void messageSegmentOccupiesSpaceOnlyWhenItHasSomethingToSay() throws Exception {
+        StatusBar bar = new StatusBar();
+        WaitForAsyncUtils.asyncFx(() -> {
+            bar.applyCss();
+            bar.layout();
+        }).get();
+
+        assertThat(bar.isMessageVisible())
+                .as("U8：开场没有回执可说 —— 不许常驻「就绪」")
+                .isFalse();
+        assertThat(managedSeparatorsIn(bar, "adb-statusbar__left"))
+                .as("消息位隐藏时不许剩孤零零的「·」")
+                .isEqualTo(1);
+
+        WaitForAsyncUtils.asyncFx(() -> bar.setMessage("已复制名称 users")).get();
+        assertThat(bar.isMessageVisible()).as("有回执就要占位").isTrue();
+        assertThat(bar.message()).isEqualTo("已复制名称 users");
+        assertThat(managedSeparatorsIn(bar, "adb-statusbar__left")).isEqualTo(2);
+
+        // 空消息 = 收回（页面切换 / 加载成功都走这条路），且要能再次说出话。
+        WaitForAsyncUtils.asyncFx(() -> bar.setMessage("")).get();
+        assertThat(bar.isMessageVisible()).isFalse();
+        WaitForAsyncUtils.asyncFx(() -> bar.setMessage("保存失败：约束冲突")).get();
+        assertThat(bar.isMessageVisible())
+                .as("隐藏不能变成永久消失")
+                .isTrue();
+    }
 
     @Test
     void durationSegmentHidesEntirelyWhenThereIsNoTiming() throws Exception {
@@ -207,7 +328,9 @@ class StatusBarTest {
                 .as("tooltip 给完整原文，外加「点一下能干什么」")
                 .contains("WHERE  active = 1")
                 .contains("点击复制");
-        assertThat(managedSeparatorsIn(styledBar, "adb-statusbar__left")).isEqualTo(4);
+        // U8 后左段共三根分隔符（范围后 / 语句前随 sql / 消息前随 message），
+        // 开场语句与消息都不占位 → 有语句时立着的是 2 根。
+        assertThat(managedSeparatorsIn(styledBar, "adb-statusbar__left")).isEqualTo(2);
 
         // 表清单 / 对象首页这类页面没有语句 → 整段连同分隔符收掉（与 setDuration 同一套纪律）。
         onFx(() -> styledBar.setSql("   "));
@@ -216,7 +339,7 @@ class StatusBarTest {
                 .isFalse();
         assertThat(managedSeparatorsIn(styledBar, "adb-statusbar__left"))
                 .as("段隐藏后不许剩一个孤零零的「·」")
-                .isEqualTo(3);
+                .isEqualTo(1);
     }
 
     /**
@@ -249,47 +372,57 @@ class StatusBarTest {
     }
 
     /**
-     * ⭐ UX-5-D：右段的「最后刷新」说的是<b>新旧</b>，不是耗时。
+     * ⭐ UX-5-D + U8：「最后刷新」说的是<b>新旧</b>，不是耗时；U8 后它住进行范围的
+     * <b>tooltip</b>，不再常驻一格。
      *
      * <p>时钟由门禁注入：相对时间若拿真实时钟断言，用例跑多久都不固定，
-     * 今天绿明天红。「还没有取过数」（未连接 / 表清单页）必须整段隐藏，
+     * 今天绿明天红。「还没有取过数」（未连接 / 表清单页）时 tooltip 只说范围，
      * 不许出现「刷新于 —」这种看着像坏了的占位。
      */
     @Test
-    void theRefreshedSegmentCountsRelativeTimeAgainstItsOwnClock() throws Exception {
+    void theRefreshedTimeCountsAgainstItsOwnClockAndLivesInTheRangeTooltip() throws Exception {
         long now = 1_767_225_600_000L;
-        onFx(() -> styledBar.setClockForTest(() -> now));
-
         onFx(() -> {
+            styledBar.setClockForTest(() -> now);
+            styledBar.setRange("1-200 / 共 500");
             styledBar.setRefreshedAt(now);
             styledBar.applyCss();
         });
-        assertThat(visibleText(styledBar, "adb-status__refreshed"))
+
+        assertThat(styledBar.refreshedText())
                 .as("刚取完数说「刚刚」，不是时间戳")
                 .isEqualTo("刷新于 刚刚");
-        assertThat(fillOf(styledBar, "adb-status__refreshed"))
-                .as("与耗时同一档参考信息色，规则要真的生效")
-                .isEqualTo(Color.web(Tokens.TEXT_TERTIARY_LIGHT));
-        assertThat(managedSeparatorsIn(styledBar, "adb-statusbar__right")).isEqualTo(5);
+        assertThat(styledBar.rangeTooltipText())
+                .as("行范围与数据新旧一起读：悬停一次就能看全")
+                .contains("当前范围：1-200 / 共 500")
+                .contains("刷新于 刚刚");
+        assertThat(barLookup(styledBar, "adb-status__refreshed"))
+                .as("U8：相对时间不再是独立分段")
+                .isNull();
 
         onFx(() -> styledBar.setRefreshedAt(now - 5 * 60_000L));
-        assertThat(visibleText(styledBar, "adb-status__refreshed")).isEqualTo("刷新于 5 分钟前");
+        assertThat(styledBar.refreshedText()).isEqualTo("刷新于 5 分钟前");
 
         onFx(() -> styledBar.setRefreshedAt(now - 3 * 60 * 60_000L));
-        assertThat(visibleText(styledBar, "adb-status__refreshed")).isEqualTo("刷新于 3 小时前");
+        assertThat(styledBar.refreshedText()).isEqualTo("刷新于 3 小时前");
 
         onFx(() -> styledBar.setRefreshedAt(now - 2 * 24 * 60 * 60_000L));
-        assertThat(visibleText(styledBar, "adb-status__refreshed"))
+        assertThat(styledBar.refreshedText())
                 .as("超过一天要说「几天前」——数据放了一周还写「刚刚」是在骗人")
                 .isEqualTo("刷新于 2 天前");
 
         onFx(() -> styledBar.setRefreshedAt(-1));
-        assertThat(visibleText(styledBar, "adb-status__refreshed"))
-                .as("还没取过数 → 整段消失")
+        assertThat(styledBar.refreshedText())
+                .as("还没取过数 → tooltip 里也不许留「刷新于」")
                 .isEmpty();
-        assertThat(managedSeparatorsIn(styledBar, "adb-statusbar__right"))
-                .as("段隐藏后不留孤零零的「·」")
-                .isEqualTo(4);
+        assertThat(styledBar.rangeTooltipText())
+                .as("没有取数时刻时，tooltip 退回只说范围")
+                .doesNotContain("刷新于");
+    }
+
+    /** 供门禁：按样式类取节点（不存在返回 null）。 */
+    private static javafx.scene.Node barLookup(StatusBar bar, String styleClass) {
+        return bar.lookup("." + styleClass);
     }
 
     /** 供门禁：场景图里那条语句的 Label 节点。 */
@@ -351,10 +484,6 @@ class StatusBarTest {
 
     private static String orEmpty(String text) {
         return text == null ? "" : text;
-    }
-
-    private static String versionText(StatusBar bar) {
-        return segmentText(bar, "adb-status__version");
     }
 
     private static String segmentText(StatusBar bar, String styleClass) {

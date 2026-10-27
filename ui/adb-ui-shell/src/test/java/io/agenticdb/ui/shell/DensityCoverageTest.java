@@ -41,13 +41,49 @@ class DensityCoverageTest {
 
     @Test
     void theRowHeightsComeFromTheTokens() {
-        // ⭐ UX-2：四档行高令牌 —— 密集 22 / 紧凑 24 / 标准 28 / 宽松 34；默认紧凑。
-        assertThat(RowHeights.of("dense")).isEqualTo(22);
-        assertThat(RowHeights.of("compact")).isEqualTo(24);
-        assertThat(RowHeights.of("normal")).isEqualTo(28);
-        assertThat(RowHeights.of("comfort")).isEqualTo(34);
-        assertThat(RowHeights.of(null)).as("默认密度 = 紧凑").isEqualTo(24);
-        assertThat(RowHeights.of("不存在的档位")).as("未知档位回落到默认紧凑").isEqualTo(24);
+        // ⭐ 2026-10-26 裁定「保持和 Navicat 一样」：四档行高改为
+        // 密集 19 / 紧凑 20 / 标准 21 / 宽松 26 —— 标准档 = Navicat 实测清单 21px。
+        assertThat(RowHeights.of("dense")).isEqualTo(19);
+        assertThat(RowHeights.of("compact")).isEqualTo(20);
+        assertThat(RowHeights.of("normal")).isEqualTo(21);
+        assertThat(RowHeights.of("comfort")).isEqualTo(26);
+        assertThat(RowHeights.of(null)).as("默认密度 = 标准").isEqualTo(21);
+        assertThat(RowHeights.of("不存在的档位")).as("未知档位回落到默认档").isEqualTo(21);
+
+        // ⭐ 网格 = 清单 + 2（Navicat 实测清单 21 / 网格 23）。
+        // 旧裁定「网格比档位低一档」随本次对齐作废。
+        assertThat(RowHeights.grid("dense")).isEqualTo(21);
+        assertThat(RowHeights.grid("compact")).isEqualTo(22);
+        assertThat(RowHeights.grid("normal")).as("默认档：清单 21 / 网格 23").isEqualTo(23);
+        assertThat(RowHeights.grid("comfort")).isEqualTo(28);
+        assertThat(RowHeights.grid(null)).as("默认密度下网格 = 23").isEqualTo(23);
+        assertThat(RowHeights.grid("不存在的档位")).as("未知档位与 of() 同一回落").isEqualTo(23);
+    }
+
+    /**
+     * ⭐ D1 的作用面：数据页网格（含冻结列 / 转置表）跟的是 {@link RowHeights#grid}，
+     * 不是 {@link RowHeights#of} —— 上一版这条路径由 ActionRegistryConvergenceTest
+     * 只做相对断言，档位一改就没人守得住。
+     */
+    @Test
+    void theDataGridStepsOneLevelBelowTheSurroundingLists(FxRobot robot) throws Exception {
+        try (Fixture fixture = Fixture.open()) {
+            List<Integer> heights = new ArrayList<>();
+            List<Integer> expected = new ArrayList<>();
+            robot.interact((Callable<Void>) () -> {
+                DataGridPage page = new DataGridPage(fixture.session, fixture.schemaService,
+                        "t", "demo.db", feedback(), name -> { }, fixture.executor);
+                for (String density : DENSITIES) {
+                    page.setDensity(density);
+                    heights.add((int) page.rowHeight());
+                    expected.add(RowHeights.grid(density));
+                }
+                return null;
+            });
+            assertThat(heights)
+                    .as("数据页网格四档都要比同档的清单低一档（D1）")
+                    .containsExactlyElementsOf(expected);
+        }
     }
 
     @Test
@@ -107,7 +143,8 @@ class DensityCoverageTest {
                 for (String density : DENSITIES) {
                     page.setDensity(density);
                     heights.add(page.resultRowHeight());
-                    expected.add(RowHeights.of(density));
+                    // ⭐ D1：结果网格与数据页网格同一口径（比档位低一档）。
+                    expected.add(RowHeights.grid(density));
                 }
                 return null;
             });

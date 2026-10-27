@@ -19,8 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * ⭐ S5 门禁：**「对象」首页标签是常驻的**。
  *
- * <p>Navicat 的标签栏第一个就是常驻的「对象」标签（实拍见
- * {@code docs/NAVICAT-COMPARE.md} §2.2 C1）——
+ * <p>Navicat 的标签栏第一个就是常驻的「对象」标签（官方截图实拍）——
  * 它是浏览的起点，**不可关闭**，永远排第一。
  */
 @ExtendWith(ApplicationExtension.class)

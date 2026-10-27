@@ -16,7 +16,7 @@
 #   Automatic-Module-Name，没有 module-info），jlink **收不进去**。
 #   jpackage 不指定 --runtime-image 时会直接用当前 JDK（不跑 jlink），
 #   所以能用；代价是安装包里的运行时偏大。
-#   等这两个库模块化之后，再加 jlink profile 裁剪（见 NAVICAT-TODO.md §21 P7）。
+#   等这两个库模块化之后，再加 jlink profile 裁剪（jlink 边界见 NAVICAT-TODO.md §8）。
 
 source "$(cd "$(dirname "$0")" && pwd)/_env.sh"
 
@@ -75,6 +75,32 @@ JPACKAGE_ARGS=(
   --dest "$DIST_DIR"
   --java-options "--enable-native-access=ALL-UNNAMED"
 )
+
+# ⭐ 安装包图标（V-6）：jpackage 按扩展名选解码器，不给 --icon 就回退 Java 默认图标，
+# 而且**不报错** —— 装了才知道。资产由 `java tools/GenPackIcons.java` 从 GenLogo 同源几何生成。
+PACK_ICON_DIR="$PROJECT_ROOT/brand"
+case "$(uname -s)" in
+  Darwin*)
+    if [ -f "$PACK_ICON_DIR/app-icon.icns" ]; then
+      JPACKAGE_ARGS+=(--icon "$PACK_ICON_DIR/app-icon.icns")
+    else
+      warn "缺 brand/app-icon.icns —— 先跑 java tools/GenPackIcons.java，否则包里没有品牌图标"
+    fi
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    if [ -f "$PACK_ICON_DIR/app-icon.ico" ]; then
+      JPACKAGE_ARGS+=(--icon "$PACK_ICON_DIR/app-icon.ico")
+    else
+      warn "缺 brand/app-icon.ico —— 先跑 java tools/GenPackIcons.java，否则包里没有品牌图标"
+    fi
+    ;;
+  *)
+    # Linux：deb 的图标走 --icon（png 可用运行时 512 主入口）
+    if [ -f "$PACK_ICON_DIR/app-icon.png" ] || [ -f "$PROJECT_ROOT/ui/adb-ui-shell/src/main/resources/io/agenticdb/ui/app-icon.png" ]; then
+      JPACKAGE_ARGS+=(--icon "$PROJECT_ROOT/ui/adb-ui-shell/src/main/resources/io/agenticdb/ui/app-icon.png")
+    fi
+    ;;
+esac
 
 case "$TYPE" in
   app-image)

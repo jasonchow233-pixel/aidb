@@ -55,7 +55,7 @@ class ObjectDetailsPanelTest {
             ObjectDetailsPanel.Subject subject, List<ObjectDetailsPanel.Fact> facts,
             List<String> columns, List<String> notes) {
         return new ObjectDetailsPanel.Snapshot(subject, facts, columns,
-                List.of(), List.of(), List.of(), notes);
+                List.of(), List.of(), List.of(), List.of(), notes);
     }
 
     private static List<javafx.scene.Node> withClass(javafx.scene.Parent root, String styleClass) {
@@ -162,7 +162,7 @@ class ObjectDetailsPanelTest {
         assertThat(values).doesNotContain("InnoDB", "utf8mb4_general_ci", "未知");
         // 字段摘要用的是真实列名，不是占位文本。
         assertThat(textsOf(withClass(panel, "adb-details-panel__list-item")))
-                .containsExactly("id INTEGER · 主键", "name TEXT · 非空");
+                .startsWith("id INTEGER · 主键", "name TEXT · 非空");
     }
 
     @Test
@@ -178,9 +178,36 @@ class ObjectDetailsPanelTest {
                 .anyMatch(text -> text.contains("不提供"));
     }
 
-    // ─────────────────────────── 切换对象不串内容 ───────────────────────────
+    // ─────────────────────────── 最近操作（P2-3） ───────────────────────────
 
     @Test
+    void recentQueriesForTheObjectAreListedOrExplainedAsEmpty() throws Exception {
+        ObjectDetailsPanel panel = new ObjectDetailsPanel();
+        panel.setLoader(immediate(new ObjectDetailsPanel.Snapshot(USERS,
+                List.of(new ObjectDetailsPanel.Fact("名称", "users")), List.of(), List.of(),
+                List.of(), List.of(), List.of("11:20 · SELECT * FROM users;"), List.of())));
+
+        WaitForAsyncUtils.asyncFx(() -> panel.showObject(USERS)).get();
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(textsOf(withClass(panel, "adb-details-panel__section-title")))
+                .contains("最近操作 1");
+        assertThat(textsOf(withClass(panel, "adb-details-panel__list-item")))
+                .contains("11:20 · SELECT * FROM users;");
+
+        // 没有记录时也要说明「还没有」，而不是整节消失。
+        ObjectDetailsPanel fresh = new ObjectDetailsPanel();
+        fresh.setLoader(immediate(snapshot(USERS,
+                List.of(new ObjectDetailsPanel.Fact("名称", "users")), List.of(), List.of())));
+        WaitForAsyncUtils.asyncFx(() -> fresh.showObject(USERS)).get();
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(textsOf(withClass(fresh, "adb-details-panel__section-title")))
+                .contains("最近操作");
+        assertThat(textsOf(withClass(fresh, "adb-details-panel__list-item")))
+                .anyMatch(text -> text.contains("还没有执行过"));
+    }
+
+    // ─────────────────────────── 切换对象不串内容 ───────────────────────────    @Test
     void switchingObjectsLeavesNoStaleContent() throws Exception {
         AtomicReference<ObjectDetailsPanel.Subject> asked = new AtomicReference<>();
         ObjectDetailsPanel panel = new ObjectDetailsPanel();
@@ -249,10 +276,10 @@ class ObjectDetailsPanelTest {
 
         assertThat(connection.typeLabel()).isEqualTo("数据库");
         assertThat(withClass(panel, "adb-details-panel__empty")).isEmpty();
-        // 连接没有「查看数据 / 查看结构」—— 这两个按钮必须是禁用的。
+        // 连接没有「打开数据 / 打开结构」—— 这两个按钮必须是禁用的。
         assertThat(buttons(panel).stream()
-                .filter(button -> "查看数据".equals(button.getText())
-                        || "查看结构".equals(button.getText()))
+                .filter(button -> "打开数据".equals(button.getText())
+                        || "打开结构".equals(button.getText()))
                 .allMatch(javafx.scene.control.Button::isDisable)).isTrue();
     }
 
@@ -291,7 +318,7 @@ class ObjectDetailsPanelTest {
     void snapshotCopiesDefensively() {
         List<String> columns = new ArrayList<>(List.of("a"));
         ObjectDetailsPanel.Snapshot snapshot = new ObjectDetailsPanel.Snapshot(
-                USERS, List.of(), columns, List.of(), List.of(), List.of(), List.of());
+                USERS, List.of(), columns, List.of(), List.of(), List.of(), List.of(), List.of());
         columns.add("b");
         assertThat(snapshot.columns()).containsExactly("a");
     }

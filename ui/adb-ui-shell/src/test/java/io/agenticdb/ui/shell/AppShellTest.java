@@ -416,7 +416,6 @@ class AppShellTest {
         assertThat(robot.lookup("#data-page").queryAs(Label.class).getText())
                 .isEqualTo("第 0 / 0 页");
         // ⭐ 空表不再是「没有数据」四个字 —— 要有图标 + 说明 + 一个真能点的出口。
-        //    （UI-AUDIT X1 / UI-FORMS-AND-STATES §7.2 E4）
         assertThat(robot.lookup(".adb-grid .placeholder .adb-empty__title")
                 .queryAs(Label.class).getText())
                 .isEqualTo("这张表还是空的");
@@ -670,13 +669,15 @@ class AppShellTest {
     }
 
     /**
-     * ⭐ UX-2：没有存过偏好时默认是 **compact（紧凑）**，不是标准。
+     * ⭐ 第二十一轮改判：没有存过偏好时默认是 **normal（28px）**，不再是 compact。
      *
-     * <p>Navicat 的默认密度偏紧；我们之前的 28px 标准行高在 800 高窗口里
-     * 只能看到 20 行。默认必须落在四档里的第二档，dense 才是用户主动选择。
+     * <p>原来的裁定（UX-2 那轮）照的是 Navicat「默认偏紧」，理由是 800 高窗口
+     * 28px 只能看 20 行。无边框化之后这条不再成立：线撤了，行与行之间
+     * 本来就靠留白分开，24px 的行高在没线之后读起来比有线时更挤 ——
+     * 所以默认回到 28，**密度交给用户**（视图菜单四档都在），dense/compact 才是主动选择。
      */
     @Test
-    void densityDefaultsToCompactWhenNoPreferenceIsStored() throws Exception {
+    void densityDefaultsToNormalWhenNoPreferenceIsStored() throws Exception {
         String oldNode = System.getProperty("adb.prefs.node");
         String oldDensity = System.getProperty("adb.density");
         String node = "io/agenticdb/tests/density-default-" + System.nanoTime();
@@ -692,12 +693,12 @@ class AppShellTest {
             WaitForAsyncUtils.waitForFxEvents();
 
             assertThat(holder.get().getStyleClass())
-                    .as("未存偏好时默认密度必须是 compact")
-                    .contains("density-compact")
-                    .doesNotContain("density-dense", "density-normal", "density-comfort");
+                    .as("未存偏好时默认密度必须是 normal")
+                    .contains("density-normal")
+                    .doesNotContain("density-dense", "density-compact", "density-comfort");
             assertThat(store.get("ui.density", ""))
                     .as("首次启动要把默认密度落到偏好里，下次启动不变")
-                    .isEqualTo("compact");
+                    .isEqualTo("normal");
         } finally {
             if (oldNode == null) {
                 System.clearProperty("adb.prefs.node");
@@ -880,6 +881,71 @@ class AppShellTest {
         WaitForAsyncUtils.waitForFxEvents();
         assertThat(onFx(() -> Boolean.valueOf(
                 shell.lookup(".adb-details-panel").isVisible()))).isFalse();
+    }
+
+    /**
+     * ⭐ 1280 宽 + 详情面板：三栏最小宽度超过窗口时，主区必须让位。
+     *
+     * <p>以前 {@code body} / {@code main} 的 minWidth 跟着内容走，总宽超过窗口，
+     * {@code StackPane} 只能把根节点居中 —— 左侧菜单与侧栏被挤出场景，
+     * 快照里直接从「视图」开始（`p2-details` 实测）。
+     */
+    /** ⭐ P7：启动打点必须真的接在启动链路上，而不是建了一个没人用的对象。 */
+    @Test
+    void startupTraceCoversChromeDemoAndFirstScreen(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+
+        AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
+        io.agenticdb.ui.StartupTrace trace = shell.startupTrace();
+
+        assertThat(trace.marks())
+                .extracting(io.agenticdb.ui.StartupTrace.Mark::name)
+                .as("启动链路：构造 → chrome → 演示库 → afterShown")
+                .containsSubsequence("shell.construct", "shell.chrome", "shell.demo",
+                        "shell.after-shown");
+        assertThat(trace.firstScreenMillis())
+                .as("首屏耗时（进程启动 → 首屏）必须有值")
+                .isPositive();
+        assertThat(trace.summary()).contains("shell.demo=").contains("first-screen=");
+    }
+
+    @Test
+    void detailsPanelKeepsChromeInsideTheSceneAt1280(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
+        onFxRun(() -> {
+            Stage stage = (Stage) shell.getScene().getWindow();
+            stage.setWidth(1280);
+            stage.setHeight(800);
+        });
+        onFxRun(() -> shell.actionRegistry().run("details.toggle"));
+        WaitForAsyncUtils.waitForFxEvents();
+        onFxRun(shell::applyCss);
+        onFxRun(shell::layout);
+
+        assertThat(onFx(() -> shell.lookup(".adb-details-panel").isVisible())).isTrue();
+        double sceneWidth = onFx(() -> shell.getScene().getWidth());
+        assertThat(sceneWidth).as("测试必须真的落在 1280 宽的场景里").isEqualTo(1280.0);
+        // ⭐ 量的是**布局边界**，不是 getBoundsInParent()。
+        // 第二十一轮无边框语言给顶栏挂了一层弥散投影（elevation 一级），
+        // 而 JavaFX 的 boundsInParent **包含效果光晕** —— 实测顶栏左右各外扩 6px，
+        // 一路传到根节点变成 minX = -6。光晕出界是设计要的，不是 chrome 被挤出场景，
+        // 所以这条门禁必须换成不受 effect 污染的 localToParent(layoutBounds)。
+        double left = onFx(() -> shell.lookup(".adb-root")
+                .localToParent(((javafx.scene.layout.Region) shell.lookup(".adb-root"))
+                        .getLayoutBounds()).getMinX());
+        double right = onFx(() -> shell.lookup(".adb-root")
+                .localToParent(((javafx.scene.layout.Region) shell.lookup(".adb-root"))
+                        .getLayoutBounds()).getMaxX());
+        assertThat(left).as("根节点左边缘不能被推出场景").isGreaterThanOrEqualTo(-0.5);
+        assertThat(right).as("根节点右边缘不能超出场景")
+                .isLessThanOrEqualTo(sceneWidth + 0.5);
+        // 这里同时守机制：主区与 body 必须允许收缩（实拍由 p2-details 核对）。
+        assertThat(onFx(() -> shell.lookup(".adb-main").minWidth(-1)))
+                .as("主区最小宽度必须为 0，否则 1280 宽 + 详情面板会把左侧 chrome 挤出场景")
+                .isZero();
+        assertThat(onFx(() -> shell.lookup(".adb-body").minWidth(-1)))
+                .as("body 最小宽度必须为 0").isZero();
     }
 
     /**

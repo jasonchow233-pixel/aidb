@@ -27,6 +27,7 @@ import javafx.scene.layout.VBox;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
@@ -107,6 +108,8 @@ final class ExportWizard {
     private final Confirmation confirmation;
 
     private volatile boolean running;
+    /** 打开时记住拥有者窗口 —— 大表确认那颗 Alert 要用它取主题。 */
+    private javafx.stage.Window owner;
 
     ExportWizard(DbSession session, String tableName, List<String> columns, Scope defaultScope,
                  Path defaultTarget, Executor dbExecutor, Consumer<String> status) {
@@ -123,7 +126,7 @@ final class ExportWizard {
         this.dbExecutor = dbExecutor;
         this.status = status == null ? message -> { } : status;
         this.counter = counter == null ? this::countRows : counter;
-        this.confirmation = confirmation == null ? ExportWizard::askUser : confirmation;
+        this.confirmation = confirmation == null ? this::askUser : confirmation;
 
         scopeBox.getItems().setAll(Scope.values());
         scopeBox.getSelectionModel().select(defaultScope);
@@ -132,6 +135,9 @@ final class ExportWizard {
         formatBox.getItems().setAll(ExportFormat.values());
         formatBox.getSelectionModel().select(ExportFormat.CSV);
         formatBox.setId("export-format");
+        // 换格式时同步目标文件后缀，避免把 xlsx 字节写进 .csv。
+        formatBox.valueProperty().addListener((observable, old, format) ->
+                targetField.setText(withExtension(targetField.getText(), format)));
 
         targetField.setId("export-target");
         targetField.setText(defaultTarget == null ? "" : defaultTarget.toString());
@@ -161,10 +167,11 @@ final class ExportWizard {
             }
         });
 
+        // Navicat 口径（§6.7）：关闭在左、主动作在最右，进度指示留在最左。
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox actions = new HBox(8, exportButton, closeButton, spacer, spinner);
-        actions.setAlignment(Pos.CENTER_LEFT);
+        HBox actions = new HBox(8, spinner, spacer, closeButton, exportButton);
+        actions.setAlignment(Pos.CENTER_RIGHT);
 
         content.getChildren().addAll(
                 field("范围", scopeBox),
@@ -178,7 +185,7 @@ final class ExportWizard {
 
         dialog.setTitle("导出 " + tableName);
 
-        // ⭐ V-11：弹窗宽度走三档规范（DialogSizes）。
+        // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
 
         dialog.getDialogPane().setPrefWidth(DialogSizes.WIDE);
 
@@ -192,10 +199,11 @@ final class ExportWizard {
 
     /** 打开向导（模态）。 */
     void show(javafx.stage.Window owner) {
+        this.owner = owner;
         if (owner != null) {
             dialog.initOwner(owner);
         }
-        DialogStyles.apply(dialog, owner);
+        DialogStyles.apply(dialog, owner, "export-wizard");
         dialog.showAndWait();
     }
 
@@ -314,12 +322,19 @@ final class ExportWizard {
         return value instanceof Number number ? number.longValue() : 0;
     }
 
-    /** 默认的确认方式：模态框，且把真实行数写出来（不抽象的「确定吗」）。 */
-    private static boolean askUser(String message) {
+    /**
+     * 默认的确认方式：模态框，且把真实行数写出来（不抽象的「确定吗」）。
+     *
+     * <p>⭐ 必须走 {@link DialogStyles}：这是一颗 {@link Alert}，自带自己的 Scene，
+     * 主题类不在 DialogPane 上 → {@code -adb-*} 全部落空 → 弹出的是一个 Modena 灰皮肤，
+     * 和同一个软件里的其它弹窗不是一套东西（任务书 §七）。
+     */
+    private boolean askUser(String message) {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION, message,
                 ButtonType.OK, ButtonType.CANCEL);
         alert.setTitle("导出确认");
         alert.setHeaderText("这张表很大");
+        DialogStyles.apply(alert, owner);
         return alert.showAndWait().filter(button -> button == ButtonType.OK).isPresent();
     }
 
@@ -328,10 +343,30 @@ final class ExportWizard {
         if (parent != null) {
             Files.createDirectories(parent);
         }
+        if (options.format().binary()) {
+            try (OutputStream out = Files.newOutputStream(target)) {
+                return TableExporter.exportXlsx(session, tableName, columns, options, out);
+            }
+        }
         try (Writer writer = new BufferedWriter(
                 Files.newBufferedWriter(target, StandardCharsets.UTF_8))) {
             return TableExporter.export(session, tableName, columns, options, writer);
         }
+    }
+
+    /** 只替换已知的导出后缀；用户自定义文件名保持原样。 */
+    static String withExtension(String target, ExportFormat format) {
+        if (target == null || target.isBlank() || format == null) {
+            return target;
+        }
+        String lower = target.toLowerCase(java.util.Locale.ROOT);
+        for (String known : new String[]{".csv", ".tsv", ".json", ".sql", ".xlsx"}) {
+            if (lower.endsWith(known)) {
+                return target.substring(0, target.length() - known.length())
+                        + "." + format.name().toLowerCase(java.util.Locale.ROOT);
+            }
+        }
+        return target;
     }
 
     /** 超过导出上限时要不要确认。 */

@@ -53,10 +53,48 @@ final class CellRenderer {
             DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss"),
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"));
 
-    record Rendered(String text, String styleClass, String tooltip, boolean truncated) {
+    /**
+     * 一格渲染结果。
+     *
+     * <p>⭐ U9（2026-10-26）：{@code icon} 非空表示这一格用**图标**表达，
+     * {@code text} 退成它的纯文本读法（{@code true} / {@code false}）。
+     * 以前布尔渲染成文本「✓ / ✗」，于是同一个 boolean 值在可编辑网格里是
+     * 实心勾选框、在查询结果与结构页里是一个对勾 —— 两套语法，
+     * 而且文本 ✓ 不吃主题、不吃字号、还和「内容就是 ✓ 的文本」撞车。
+     * 现在：只读态一律图标，可编辑态才出现 checkbox。
+     * 宽度测量与转置视图继续读 {@code text}（那里要的是值，不是字形）。
+     */
+    record Rendered(String text, String styleClass, String tooltip, boolean truncated,
+                    io.agenticdb.ui.Icons.Icon icon) {
+
+        Rendered(String text, String styleClass, String tooltip, boolean truncated) {
+            this(text, styleClass, tooltip, truncated, null);
+        }
+
         static Rendered plain(String text) {
             return new Rendered(text, "", null, false);
         }
+
+        /** U9：只读布尔 —— 图标 + tooltip 给真值。 */
+        static Rendered bool(boolean value, String tooltip) {
+            return new Rendered(value ? "true" : "false", "adb-grid__cell--boolean",
+                    tooltip, false,
+                    value ? io.agenticdb.ui.Icons.Icon.CHECK : io.agenticdb.ui.Icons.Icon.CLOSE);
+        }
+    }
+
+    /**
+     * U9：布尔 / 标记格共用的图标节点。颜色跟着字形走 ——
+     * ✓ 上成功色，✗ 用禁用灰（数据值本身就是 false，不是错误）。
+     */
+    static javafx.scene.shape.SVGPath checkGlyph(io.agenticdb.ui.Icons.Icon icon) {
+        javafx.scene.shape.SVGPath glyph =
+                io.agenticdb.ui.Icons.of(icon, io.agenticdb.ui.Icons.SIZE_BADGE);
+        glyph.getStyleClass().add("adb-check");
+        if (icon != io.agenticdb.ui.Icons.Icon.CHECK) {
+            glyph.getStyleClass().add("adb-check--off");
+        }
+        return glyph;
     }
 
     private CellRenderer() {
@@ -75,18 +113,16 @@ final class CellRenderer {
             return new Rendered("\"\"", "adb-grid__cell--empty", "空串（不是 NULL）", false);
         }
         if (value instanceof byte[] bytes) {
-            return new Rendered("⬢ " + sizeLabel(bytes.length), "adb-grid__cell--binary",
+            return new Rendered("BLOB · " + sizeLabel(bytes.length), "adb-grid__cell--binary",
                     "BLOB · " + bytes.length + " 字节 · 双击查看详情", false);
         }
         if (value instanceof Boolean bool) {
-            return new Rendered(bool ? "✓" : "✗", "adb-grid__cell--boolean",
-                    bool ? "true" : "false", false);
+            return Rendered.bool(bool, bool ? "true" : "false");
         }
         if (definition.type() == ColumnType.BOOLEAN) {
             Boolean bool = booleanValue(value);
             if (bool != null) {
-                return new Rendered(bool ? "✓" : "✗", "adb-grid__cell--boolean",
-                        String.valueOf(value), false);
+                return Rendered.bool(bool, String.valueOf(value));
             }
         }
         if (definition.isEnum()) {

@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>这里守住三件事：
  * <ol>
- *   <li>五个按钮**真的在场景图里**（UI-AUDIT S2 的老毛病：建了没挂）；</li>
+ *   <li>五个按钮**真的在场景图里**（本项目的老毛病：建了没挂）；</li>
  *   <li>启用态跟着**选择类型**走（选函数时「删除」不能亮）；</li>
  *   <li>点下去**真的到宿主**（不是只改了个状态）。</li>
  * </ol>

@@ -21,7 +21,7 @@ import java.util.function.Consumer;
 public final class SqlEditor extends StackPane {
 
     private final CodeArea area = new CodeArea();
-    private final Label hint = new Label("输入 SQL，⌘↵ 执行当前语句，⇧⌘↵ 执行全部");
+    private final Label hint = new Label("输入 SQL，" + io.agenticdb.ui.Shortcuts.of("Mod+Enter") + " 执行当前语句，" + io.agenticdb.ui.Shortcuts.of("Shift+Mod+Enter") + " 执行全部");
 
     public SqlEditor() {
         getStyleClass().add("adb-query__editor-box");

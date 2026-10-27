@@ -132,6 +132,8 @@ class IconSystemAuditTest {
         assertThat(Icons.SIZE_LABEL).as("标签档").isEqualTo(14);
         assertThat(Icons.SIZE_TOOLBAR).as("工具条档").isEqualTo(16);
         assertThat(Icons.SIZE_PRIMARY).as("主工具条档").isEqualTo(20);
+        // ⭐ 2026-10-26：Ribbon 大图标 26px（对齐 Navicat 90px 功能区）。
+        assertThat(Icons.SIZE_RIBBON).as("Ribbon 档").isEqualTo(26);
 
         List<String> violations = new ArrayList<>();
         for (Path file : uiSources()) {

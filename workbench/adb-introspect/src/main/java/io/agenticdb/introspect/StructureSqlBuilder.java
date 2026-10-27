@@ -1,5 +1,6 @@
 package io.agenticdb.introspect;
 
+import io.agenticdb.jdbc.ColumnTypes;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.model.ColumnDef;
@@ -215,12 +216,43 @@ public final class StructureSqlBuilder {
                                             List<ColumnSpec> columns,
                                             String tableComment,
                                             List<String> existingTables) {
+        return createTableWith(session, name, columns, tableComment, existingTables,
+                List.of(), List.of(), List.of());
+    }
+
+    /**
+     * ⭐ R30-D：新建表 + <b>随表一起建</b>的索引 / 外键 / 触发器。
+     *
+     * <p>表设计器的 SQL 预览与真正执行的语句必须出自同一处 —— 设计器里填的索引、
+     * 外键、触发器如果建完表再各弹一次确认，用户看到的「一条建表计划」就和实际执行
+     * 的 N 次动作对不上了。这里把它们合并成<b>一个</b> {@link StructurePlan}：
+     * 一个事务、一次确认、失败整体回滚。
+     *
+     * <p><b>外键写进 CREATE TABLE</b>，不跟 ALTER TABLE：SQLite 不支持
+     * {@code ALTER TABLE … ADD CONSTRAINT}，只能整表重建 —— 对一张还没建出来的表，
+     * 「重建」没有意义。三条方言的 CREATE TABLE 都接受表级 {@code FOREIGN KEY} 子句。
+     *
+     * @param foreignKeys 表级外键约束（可空）
+     * @param indexes     建表后追加的索引（可空）
+     * @param triggers    建表后追加的触发器（可空）
+     */
+    public static StructurePlan createTableWith(DbSession session, String name,
+                                                List<ColumnSpec> columns,
+                                                String tableComment,
+                                                List<String> existingTables,
+                                                List<ForeignKeyDef> foreignKeys,
+                                                List<IndexDef> indexes,
+                                                List<TriggerDef> triggers) {
         String problem = tableNameProblem(name, existingTables);
         if (problem != null) {
             throw new IllegalArgumentException(problem);
         }
         String tableName = name.trim();
         problem = columnListProblem(columns);
+        if (problem != null) {
+            throw new IllegalArgumentException(problem);
+        }
+        problem = columnOptionProblem(session.dialect(), columns);
         if (problem != null) {
             throw new IllegalArgumentException(problem);
         }
@@ -241,6 +273,7 @@ public final class StructureSqlBuilder {
                     .map(key -> quoteIdentifier(session, key))
                     .reduce((a, b) -> a + ", " + b).orElse("") + ")");
         }
+        appendForeignKeyLines(session, columns, foreignKeys, lines);
 
         List<String> statements = new ArrayList<>();
         // ⭐ 表级选项（MySQL 的 DEFAULT CHARSET=utf8mb4）—— 不带的话，
@@ -263,8 +296,128 @@ public final class StructureSqlBuilder {
         if (comment != null && dialect.supportsTableComment()) {
             statements.add(dialect.tableCommentSql(tableName, comment));
         }
+        appendIndexStatements(session, tableName, columns, indexes, statements);
+        appendTriggerStatements(session, tableName, triggers, statements);
         return new StructurePlan("新建表 " + tableName, statements, Danger.DESTRUCTIVE,
                 false, false);
+    }
+
+    /**
+     * 表级外键子句（写进 CREATE TABLE 的那一行）。
+     *
+     * <p>公开是为了让「外键」弹窗在<b>设计器里</b>能预览真正会执行的那一段 ——
+     * 复用 {@code addForeignKey} 会得到 SQLite 的整表重建脚本，对一个还不存在的表
+     * 是误导（那时候没有「表」可重建）。
+     */
+    public static String foreignKeyClause(DbSession session, ForeignKeyDef foreignKey) {
+        if (foreignKey == null) {
+            throw new IllegalArgumentException("请指定外键");
+        }
+        if (foreignKey.columns().isEmpty() || foreignKey.referencedColumns().isEmpty()) {
+            throw new IllegalArgumentException("外键至少要有一列");
+        }
+        if (foreignKey.referencedTable().isBlank()) {
+            throw new IllegalArgumentException("请选择被引用的表");
+        }
+        if (foreignKey.columns().size() != foreignKey.referencedColumns().size()) {
+            throw new IllegalArgumentException("外键的列数与被引用列的列数必须一致");
+        }
+        String name = foreignKey.name().isBlank() ? ""
+                : "CONSTRAINT " + quoteIdentifier(session, foreignKey.name()) + " ";
+        return name + "FOREIGN KEY (" + quoteList(session, foreignKey.columns())
+                + ") REFERENCES " + quoteIdentifier(session, foreignKey.referencedTable())
+                + " (" + quoteList(session, foreignKey.referencedColumns()) + ")"
+                + " ON UPDATE " + foreignKey.onUpdate()
+                + " ON DELETE " + foreignKey.onDelete();
+    }
+
+    private static void appendForeignKeyLines(DbSession session, List<ColumnSpec> columns,
+                                              List<ForeignKeyDef> foreignKeys,
+                                              List<String> lines) {
+        if (foreignKeys == null) {
+            return;
+        }
+        Set<String> names = new HashSet<>();
+        for (ForeignKeyDef key : foreignKeys) {
+            for (String column : key.columns()) {
+                if (columns.stream().noneMatch(candidate ->
+                        candidate.name().equalsIgnoreCase(column))) {
+                    throw new IllegalArgumentException("表里没有这一列: " + column);
+                }
+            }
+            if (!key.name().isBlank() && !names.add(key.name().toLowerCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("已经有一个叫「" + key.name() + "」的外键了");
+            }
+            lines.add(foreignKeyClause(session, key));
+        }
+    }
+
+    private static void appendIndexStatements(DbSession session, String tableName,
+                                              List<ColumnSpec> columns,
+                                              List<IndexDef> indexes,
+                                              List<String> statements) {
+        if (indexes == null) {
+            return;
+        }
+        Set<String> names = new HashSet<>();
+        for (IndexDef index : indexes) {
+            requireIndexName(index.name());
+            if (index.columns().isEmpty()) {
+                throw new IllegalArgumentException("索引「" + index.name() + "」请至少选择一列");
+            }
+            for (String column : index.columns()) {
+                if (columns.stream().noneMatch(candidate ->
+                        candidate.name().equalsIgnoreCase(column))) {
+                    throw new IllegalArgumentException("索引「" + index.name()
+                            + "」引用了表里没有的列: " + column);
+                }
+            }
+            if (!names.add(index.name().toLowerCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("已经有一个叫「" + index.name() + "」的索引了");
+            }
+            statements.add(createIndexSql(session, tableName, index));
+        }
+    }
+
+    /**
+     * 触发器语句（建表后追加 / 结构页新建都走这一份校验）。
+     *
+     * {@code body} 是 {@link TriggerDef#statement()}：BEFORE/AFTER + INSERT/UPDATE/DELETE + 体。
+     */
+    private static void appendTriggerStatements(DbSession session, String tableName,
+                                                List<TriggerDef> triggers,
+                                                List<String> statements) {
+        if (triggers == null) {
+            return;
+        }
+        Set<String> names = new HashSet<>();
+        for (TriggerDef trigger : triggers) {
+            String triggerName = trigger.name().trim();
+            if (triggerName.isEmpty()) {
+                throw new IllegalArgumentException("触发器名不能为空");
+            }
+            if (trigger.statement().isBlank()) {
+                throw new IllegalArgumentException("触发器体不能为空");
+            }
+            String when = trigger.timing().trim().toUpperCase(Locale.ROOT);
+            String what = trigger.event().trim().toUpperCase(Locale.ROOT);
+            if (!List.of("BEFORE", "AFTER").contains(when)) {
+                throw new IllegalArgumentException("触发时机只能是 BEFORE 或 AFTER");
+            }
+            if (!List.of("INSERT", "UPDATE", "DELETE").contains(what)) {
+                throw new IllegalArgumentException("触发事件只能是 INSERT / UPDATE / DELETE");
+            }
+            if (!names.add(triggerName.toLowerCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("已经有一个叫「" + triggerName + "」的触发器了");
+            }
+            session.dialect().appendCreateTriggerSql(tableName, triggerName, when, what,
+                    trigger.statement().trim(), statements);
+        }
+    }
+
+    private static String quoteList(DbSession session, List<String> values) {
+        return String.join(", ", values.stream()
+                .map(value -> quoteIdentifier(session, value)).toList());
     }
 
     /** 清空表：保留结构，删掉全部行。 */
@@ -347,6 +500,77 @@ public final class StructureSqlBuilder {
             }
         }
         return null;
+    }
+
+    /**
+     * 自增与列级字符集的校验（R31）。
+     *
+     * <p>为什么单列一条：自增是**跨列**属性（全表只能一列），
+     * 而「这一列能不能自增」只有方言知道 —— 通用校验放这里，方言细则问 {@link Dialect}。
+     */
+    /**
+     * 列级选项的校验：自增、字符集、排序规则。
+     *
+     * <p>「能不能设」和「设了怎么报错」都交给方言 —— 结构页、建表弹窗、
+     * 将来的导入建表走的是同一条判定。
+     */
+    private static String columnOptionProblem(Dialect dialect, List<ColumnSpec> columns) {
+        ColumnSpec auto = null;
+        int primaryKeys = 0;
+        for (ColumnSpec column : columns) {
+            if (column == null) {
+                continue;
+            }
+            if (column.primaryKey()) {
+                primaryKeys++;
+            }
+            if (column.autoIncrement()) {
+                if (auto != null) {
+                    return "只能有一列自增：已选「" + auto.name() + "」，又勾了「"
+                            + column.name() + "」";
+                }
+                auto = column;
+            }
+            if (column.charset() != null && !dialect.supportsColumnCharset()) {
+                return dialect.displayName() + " 没有列级字符集（编码是建库时定的）："
+                        + column.name();
+            }
+            if (column.collation() != null && !dialect.supportsColumnCollation()) {
+                return dialect.displayName() + " 不支持列级排序规则：" + column.name();
+            }
+            if ((column.charset() != null || column.collation() != null)
+                    && !ColumnTypes.isTextual(column.baseType())) {
+                // 整数列写 COLLATE 在 PostgreSQL 上直接报错，MySQL 收下也没意义。
+                return "字符集 / 排序规则只对文本类型有效：" + column.name() + " 是 "
+                        + column.effectiveType();
+            }
+            String problem = identifierProblem(column.charset(), "字符集", column.name());
+            if (problem == null) {
+                problem = identifierProblem(column.collation(), "排序规则", column.name());
+            }
+            if (problem != null) {
+                return problem;
+            }
+        }
+        if (auto == null) {
+            return null;
+        }
+        if (!auto.primaryKey()) {
+            return "自增列必须是主键：" + auto.name();
+        }
+        if (dialect.autoIncrementNeedsSinglePrimaryKey() && primaryKeys > 1) {
+            return dialect.displayName() + " 的自增列必须是唯一主键：" + auto.name()
+                    + "（现在表里有 " + primaryKeys + " 列主键）";
+        }
+        return dialect.autoIncrementProblem(auto);
+    }
+
+    /** 字符集/排序规则是标识符，直接拼进 DDL —— 只许字母数字下划线。 */
+    private static String identifierProblem(String value, String label, String columnName) {
+        if (value == null || value.matches("[A-Za-z0-9_]+")) {
+            return null;
+        }
+        return label + "只能用字母、数字、下划线：" + columnName + " → " + value;
     }
 
     /** 建表时整份列定义的校验。 */
@@ -599,8 +823,10 @@ public final class StructureSqlBuilder {
             }
         }
         List<String> statements = new ArrayList<>();
-        session.dialect().appendCreateTriggerSql(table.name(), triggerName, when, what,
-                body.trim(), statements);
+        // 形状校验与「建表时带的触发器」共用 appendTriggerStatements —— 两处各写一份
+        // 迟早会走出不同规则（例如将来加 INSTEAD OF 时机，只改一处就成了静默漏洞）。
+        appendTriggerStatements(session, table.name(),
+                List.of(new TriggerDef(triggerName, when, what, body.trim())), statements);
         return new StructurePlan("新建触发器 " + triggerName, statements,
                 Danger.DESTRUCTIVE, true, false);
     }
@@ -713,13 +939,20 @@ public final class StructureSqlBuilder {
      *
      * <p>⭐ 公开是为了让弹窗的「实时预览」和真正执行的语句<b>出自同一处</b> ——
      * 各写一份的话，预览会慢慢变成谎言。
+     *
+     * <p>类型子句（{@code USING btree}）与列的 {@code DESC} 都来自方言能力：
+     * 没选类型 / 方言不支持降序时，这两处都是空串或空操作，
+     * 生成的语句与改造前<b>逐字节一致</b>（{@code IndexDdlTest} 钉住了那些字符串）。
      */
     public static String createIndexSql(DbSession session, String tableName, IndexDef index) {
+        boolean directionSupported = session.dialect().supportsIndexColumnDirection();
         return "CREATE " + (index.unique() ? "UNIQUE " : "") + "INDEX "
                 + quoteIdentifier(session, index.name()) + " ON "
-                + quoteIdentifier(session, tableName) + " ("
+                + quoteIdentifier(session, tableName)
+                + session.dialect().indexTypeClause(index.type()) + " ("
                 + index.columns().stream()
-                .map(column -> quoteIdentifier(session, column))
+                .map(column -> quoteIdentifier(session, column)
+                        + (directionSupported && index.isDescending(column) ? " DESC" : ""))
                 .reduce((a, b) -> a + ", " + b).orElse("") + ")";
     }
 

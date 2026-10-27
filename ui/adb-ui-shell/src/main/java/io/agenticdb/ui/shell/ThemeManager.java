@@ -15,6 +15,8 @@ public final class ThemeManager {
     private final SettingsStore settings;
     private Scene scene;
     private ThemeMode mode = ThemeMode.SYSTEM;
+    /** ⭐ P7 门禁读数：真的做过「强制 CSS + 布局」的次数。 */
+    private int forcedPasses;
 
     public ThemeManager(SettingsStore settings) {
         this.settings = settings;
@@ -71,10 +73,26 @@ public final class ThemeManager {
         root.getStyleClass().add(isDark() ? "theme-dark" : "theme-light");
 
         // 强制同步一次 CSS 与布局，别让快照拿到「样式已换、像素还没重画」的帧。
-        root.applyCss();
-        if (root instanceof Parent parent) {
-            parent.layout();
+        // ⭐ P7 启动性能：窗口还没显示时**不做**这次强制 pass —— stage.show() 本来
+        //    就会跑一次，提前跑等于把整棵场景图的 CSS/布局算两遍（实测 706ms）。
+        //    主题切换（窗口已显示）仍然强制，截图确定性不受影响。
+        if (shouldForcePass(scene.getWindow())) {
+            forcedPasses++;
+            root.applyCss();
+            if (root instanceof Parent parent) {
+                parent.layout();
+            }
         }
+    }
+
+    /** 只有「窗口已经显示」才需要强制 CSS/布局；启动时交给 {@code stage.show()}。 */
+    static boolean shouldForcePass(javafx.stage.Window window) {
+        return window != null && window.isShowing();
+    }
+
+    /** 供门禁读数：做过几次强制 CSS + 布局。 */
+    int forcedPassesForTest() {
+        return forcedPasses;
     }
 
     public void toggle() {

@@ -162,4 +162,62 @@ class ConnectionStoreTest {
         assertThat(profile.toString()).doesNotContain("very-secret");
         assertThat(spec.jdbcUrl()).doesNotContain("very-secret");
     }
+
+    // ─────────────────────── P5-1：重命名 / 分组 ───────────────────────
+
+    /**
+     * ⭐ P5-1：重命名只改显示名。
+     *
+     * <p>id / 口令条目 / 连接参数都不许跟着动 —— 改个名字把口令弄丢，
+     * 是这类功能最典型的事故。
+     */
+    @Test
+    void renameChangesOnlyTheDisplayName() {
+        ConnectionStore store = new ConnectionStore(temp.resolve("connections.json"),
+                CredentialStore.inMemory());
+        ConnectionProfile profile = ConnectionProfile.newProfile("Old", DialectKind.POSTGRESQL,
+                "db.local", 5432, "app", "app");
+        store.credentials().save(profile.id(), "pw");
+        store.save(profile);
+
+        Optional<ConnectionProfile> renamed = store.rename(profile.id(), "  新名字  ");
+
+        assertThat(renamed).isPresent();
+        assertThat(renamed.get().id()).as("id 不变 —— 会话与口令都挂在它上面")
+                .isEqualTo(profile.id());
+        assertThat(renamed.get().name()).as("首尾空白要去掉").isEqualTo("新名字");
+        assertThat(store.load()).singleElement()
+                .satisfies(loaded -> assertThat(loaded.name()).isEqualTo("新名字"));
+        assertThat(store.credentials().password(profile.id())).contains("pw");
+        assertThat(store.rename("missing", "x")).isEmpty();
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> store.rename(profile.id(), "   "))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /**
+     * ⭐ P5-1：分组落盘、可清空，且不影响连接参数。
+     *
+     * <p>空串是「未分组」的规范形态（不是 {@code null}）—— 旧配置文件没有这个字段时
+     * 反序列化出来就是 null，必须归一成空串，否则界面会出现「null」字样。
+     */
+    @Test
+    void groupIsPersistedAndCanBeCleared() {
+        ConnectionStore store = new ConnectionStore(temp.resolve("connections.json"),
+                CredentialStore.inMemory());
+        ConnectionProfile profile = ConnectionProfile.newProfile("PG", DialectKind.POSTGRESQL,
+                "db.local", 5432, "app", "app");
+        store.save(profile);
+
+        store.moveToGroup(profile.id(), " 生产 ");
+        assertThat(store.load()).singleElement()
+                .satisfies(loaded -> assertThat(loaded.group()).isEqualTo("生产"));
+        assertThat(store.groups()).containsExactly("生产");
+        assertThat(store.load().getFirst().spec("pw").host()).isEqualTo("db.local");
+
+        store.moveToGroup(profile.id(), "");
+        assertThat(store.load()).singleElement()
+                .satisfies(loaded -> assertThat(loaded.group()).isEmpty());
+        assertThat(store.groups()).isEmpty();
+    }
 }
