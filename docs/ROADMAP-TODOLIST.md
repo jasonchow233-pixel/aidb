@@ -10,9 +10,9 @@
 
 ## 0. 当前基线
 
-- 门禁 **1119 条 / 134 类 / 0 失败 / 48 环境跳过**（2026-10-28 干净全量实测 BUILD SUCCESS）。
+- 门禁 **1119 条 / 134 类 / 0 失败 / 48 环境跳过**（2026-10-28 干净全量实测 BUILD SUCCESS）；棘轮 **1917**。
 - 已落库：`34ffb8f`（R33 全部 + R34 顶区与动作层抽取）· `288592d`（N1-d）·
-  `05351ce`（N2 菜单组）· `87d2ddb`（N2 窗口标题）· `383c51c`（文档回填）。**push 仍未授权。**
+  `05351ce`（N2 菜单组）· `87d2ddb`（N2 窗口标题）· `383c51c` + `85d7f33`（文档）· `c6ae488`（N1-b 第三批 表清单页）。**push 仍未授权。**
 - ⚠️ **旧文档记的「1108 / 134」从未复现**：R34 开工前干净全量实测是 **1107 / 133**。
   数字是记上去的不是量出来的 —— 以后基线一律附量法。README 里那句同样要改（并入 D-4）。
 - 验收帧 33 张**全部过时**（都是中文帧，顶区本轮已换英文）；重拍排在 R34 收口。
@@ -60,9 +60,15 @@
       （⚠️ 它们同时含未提交的 R33 改动，`git checkout` 会连 R33 一起毁掉）。
       ⚠️ 界面现在仍是**中英混排**，这是中间态不是验收态。
       待抽重点文件（按**字面量条数**重排，此前按"含 CJK 行数"排是错的 —— 那个数把注释也算进去了）：
-      `DataGridPage`(415) / `AppShell`(313，本批后已降) / `QueryPage`(161) / `StructurePage`(156) /
-      `SideBar`(128，本批后已降) / `ConnectionWizard`(89) / `ObjectHomePage`(84) / `NewTableDialog`(75) /
-      `TableListPage`(71) / `ImportWizard`(61) —— 共 60 个文件仍有残留
+      ✅ **第三批已完成 `TableListPage`（70 → 0，提交 `c6ae488`）**：column.* 八个列名 +
+      tableList.* 二十四个提示，en/zh 各 175 键对称。顺带发现并补上**动作门禁的盲区** ——
+      `TableListPage.localActions()` 走 `new Action(...)` 而非 `actions.register(...)`，
+      「每个动作两侧都有名字」那条门禁完全看不见这 11 个动作（声称穷举、实际只穷举了注册表那一路）。
+      ⚠️ 下一站 `SideBar` 实测比 TableListPage 难：96 条里约 40% 是**拼接前缀**
+      （`已刷新 ` / `打开表：` / `只有表能`），要参数化 + 重钉断言，不是一次 codemod 能收的。
+      剩余按字面量数排：`DataGridPage`(413) / `AppShell`(198) / `QueryPage`(161) /
+      `StructurePage`(156) / `SideBar`(96) / `ConnectionWizard`(89) / `ObjectHomePage`(83) /
+      `NewTableDialog`(75) / `ImportWizard`(61) —— 棘轮现 **1917**
 - [x] **N1-c** 新增门禁 `I18nAuditTest`（**7 条**）：① 两套键集**完全相等**；② 源码里每个 `I18n.t("key")`
       都必须在两侧存在（编译前就抓错键，不等帧里长出 `⚠key`）；③ **每个注册的动作必须在两种语言里都有名字**
       —— 穷举 `actions.register("id", …)` 对账 `action.id`，比抽查强：新加动作忘了配名字立刻红；
