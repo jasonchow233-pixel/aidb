@@ -522,6 +522,36 @@ class AppShellTest {
     }
 
     /**
+     * ⭐ R34 N2：窗口标题必须是 Navicat 式 {@code <连接> [@库] (<对象>) - <页型> - <产品>}。
+     *
+     * <p>钉的不是措辞而是**信息在不在、脏东西有没有**：多开几个窗口时任务栏要靠它分清
+     * 哪个连的是生产库。SQLite 的 database() 是整个 .db 文件路径，直接拼会把临时目录
+     * 摊到标题栏上（本仓库第一版就是这么写的，被这条门禁抓到）—— 所以除了"该有的在"，
+     * 还要断言"不该来的没来"。
+     */
+    @Test
+    void theWindowTitleCarriesTheConnectionAndTheProduct(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        openTable(robot, "users");
+
+        Stage stage = robot.listWindows().stream()
+                .filter(w -> w instanceof Stage).map(w -> (Stage) w).findFirst().orElseThrow();
+        String title = stage.getTitle();
+        assertThat(title)
+                .as("标题必须说清连的是哪个库、停在哪个页型、产品是什么")
+                .contains("demo.db")
+                .contains("(users)")
+                .contains(I18n.t("window.pageType.grid"))
+                .endsWith(I18n.t("window.product"));
+        assertThat(title)
+                .as("SQLite 的文件路径不进标题 —— 那是临时目录，摊在标题栏上既长又没信息量")
+                .doesNotContain(".db @")
+                .doesNotContain("Temp")
+                .doesNotContain("@ ")
+                .doesNotContain("()");
+    }
+
+    /**
      * ⭐ R34 N2 的另一半：{@code Table} 菜单必须**真的会显出来**。
      *
      * <p>只测"默认隐藏"是不够的 —— 一个坏掉的、永远不显示的菜单也能通过它。

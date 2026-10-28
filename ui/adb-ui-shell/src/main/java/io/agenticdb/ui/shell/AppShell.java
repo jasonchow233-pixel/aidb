@@ -2206,6 +2206,66 @@ public final class AppShell extends StackPane {
     }
 
     /**
+     * ⭐ R34 N2：窗口标题改成 Navicat 式 {@code <连接> @<库> (<对象>) - <页型> - <产品>}。
+     *
+     * <p>实拍样例 {@code tz - mkopo @loanmarket (fetch) - Query - Navicat Premium}。
+     * 旧版标题是写死的 "AIDB" —— 多开几个窗口后任务栏里分不清哪个是哪个库，
+     * 而"当前连的是生产还是测试库"正是数据库客户端最该一直看得见的一件事。
+     *
+     * <p>缺哪段就省哪段，不留悬空的 {@code @ } 或 {@code ()}：
+     * 没连接时整个标题就是产品名。
+     */
+    private void updateWindowTitle(TabItem tab) {
+        if (stage == null) {
+            return;
+        }
+        String product = I18n.t("window.product");
+        if (activeProfile == null) {
+            stage.setTitle(product);
+            return;
+        }
+        StringBuilder title = new StringBuilder(activeProfile.name());
+        String database = activeProfile.database();
+        // 「@库」只在它**带来新信息**时才加。SQLite 的 database() 是整个 .db 文件路径，
+        // 拼上去就成了 `demo.db @C:\Users\ADMINI~1\AppData\Local\Temp\adb-app-test-…\demo.db`
+        // —— 又长又把临时目录摊在标题栏上，而连接名本身已经说了是哪个文件。
+        // 实测被自己新加的门禁抓到一次，所以这条判断写在这里并说明原因。
+        if (addsInformation(database, activeProfile.name())) {
+            title.append(" @").append(database);
+        }
+        if (tab != null) {
+            String target = tab.target();
+            if (target != null && !target.isBlank()) {
+                title.append(" (").append(target).append(')');
+            }
+            title.append(" - ").append(pageTypeLabel(tab.kind()));
+        }
+        stage.setTitle(title.append(" - ").append(product).toString());
+    }
+
+    /** 库名是否值得单独出现在标题里：非空、不等于连接名、且不是一条文件路径。 */
+    private static boolean addsInformation(String database, String connectionName) {
+        if (database == null || database.isBlank() || database.equals(connectionName)) {
+            return false;
+        }
+        return !database.contains("/") && !database.contains("\\") && !database.endsWith(".db");
+    }
+
+    /** 页型走资源，不复用 {@code TabKind} 自带的中文标签 —— 那是标签栏文案。 */
+    private static String pageTypeLabel(TabKind kind) {
+        return switch (kind) {
+            case GRID -> I18n.t("window.pageType.grid");
+            case QUERY -> I18n.t("window.pageType.query");
+            case STRUCTURE -> I18n.t("window.pageType.structure");
+            case OBJECT -> I18n.t("window.pageType.object");
+            case CONNECTIONS -> I18n.t("window.pageType.connections");
+            case ROUTINE -> I18n.t("window.pageType.routine");
+            case SETTINGS -> I18n.t("window.pageType.settings");
+            case TOOL -> I18n.t("window.pageType.tool");
+        };
+    }
+
+    /**
      * ⭐ §6 的数据来源：<b>全部走真实元数据，一个值都不编</b>。
      *
      * <p>读不到的（SQLite 没有引擎 / 排序规则 / 创建时间）就在
@@ -2432,6 +2492,7 @@ public final class AppShell extends StackPane {
             tableContextMenu.setVisible(tab.kind() == TabKind.GRID
                     || tab.kind() == TabKind.STRUCTURE);
         }
+        updateWindowTitle(tab);
         // U8：切标签不是回执 —— 当前页由标签栏本身表达，「已激活：连接管理」
         //      只会让消息位常驻一句车轱辘话。
         status("");
