@@ -62,14 +62,22 @@ class I18nAuditTest {
      * <pre><code>find ui -path '*src/main*' -name '*.java' -print0 \
      *   | xargs -0 grep -hoP '"[^"[:cntrl:]]*[han][^"[:cntrl:]]*"' | wc -l</code></pre>
      */
-    private static final int CJK_CEILING = 1987;
+    private static final int CJK_CEILING = 1917;
 
     /** 源码里对 {@link I18n#t(String, Object...)} 的键引用。 */
     private static final Pattern KEY_REFERENCE = Pattern.compile("I18n\\.t\\(\\s*\"([^\"]+)\"");
 
-    /** 动作注册：{@code actions.register("id", …)} —— 第一个实参就是标签键的后缀。 */
+    /**
+     * 动作构造：{@code actions.register("id", …)} 与 {@code new Action("id", …)}。
+     *
+     * <p>⚠️ 两种都要匹配。第一版只写了 {@code actions.register}，于是
+     * {@code TableListPage.localActions()} 那批走 {@code new Action} 的本地动作
+     * 完全落在门禁视野之外 —— 门禁声称"穷举所有动作"，实际只穷举了注册表那一路。
+     * 这类"看起来是全覆盖、其实漏了一整个分支"的门禁比没有门禁更危险，
+     * 因为它给出的信心是假的。
+     */
     private static final Pattern ACTION_REGISTRATION =
-            Pattern.compile("actions\\.register\\(\\s*\"([^\"]+)\"");
+            Pattern.compile("(?:actions\\.register|new Action)\\(\\s*\"([^\"]+)\"");
 
     /** 含中文的字符串字面量（不含跨行文本块，够用且不会漏普通字面量）。 */
     private static final Pattern CJK_LITERAL =

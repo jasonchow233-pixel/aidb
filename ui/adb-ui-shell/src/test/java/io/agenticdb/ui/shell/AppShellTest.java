@@ -944,8 +944,10 @@ class AppShellTest {
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(onFx(() -> shell.statusBar().selectionText()))
-                .as("N5：选中表后状态栏要说「已选 users · 200 行」")
-                .isEqualTo("已选 users · 200 行");
+                .as("N5：选中表后状态栏要同时报出表名与行数（不照抄实现的拼接，否则退化成同义反复）")
+                .contains("users")
+                .contains("200")
+                .isNotEqualTo(I18n.t("status.noneSelected"));
 
         onFxRun(() -> shell.actionRegistry().run("table-list.view-grid"));
         WaitForAsyncUtils.waitForFxEvents();

@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.TableMeta;
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import io.agenticdb.ui.RowHeights;
 import javafx.application.Platform;
@@ -206,7 +207,7 @@ final class TableListPage extends VBox {
 
     private HBox buildToolbar() {
         search.setId("table-list-search");
-        search.setPromptText("搜索表名");
+        search.setPromptText(I18n.t("tableList.searchPrompt"));
         search.setPrefWidth(160);
         search.setMinWidth(120);
         search.getStyleClass().add("adb-table-list__search");
@@ -248,16 +249,16 @@ final class TableListPage extends VBox {
         }
 
         listButton = ActionRegistry.iconButtonFor(actions.viewList(), Icons.Icon.LIST,
-                "列表视图", "列表视图");
+                I18n.t("action.table-list.view-list"), I18n.t("action.table-list.view-list"));
         gridButton = ActionRegistry.iconButtonFor(actions.viewGrid(), Icons.Icon.GRID,
-                "网格视图", "网格视图");
+                I18n.t("action.table-list.view-grid"), I18n.t("action.table-list.view-grid"));
 
         // ⭐ UX-3：清单页直接进导入 / 导出 —— 预选当前选中的那张表。
         //    以前只能绕侧栏，选中了 orders 却要在弹窗里再找一遍。
         transferButton.setId("table-list-transfer");
         transferButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
-        IconButtons.labeled(transferButton, Icons.Icon.TRANSFER, "导入 / 导出",
-                "选一张表导入或导出；这里会预选当前选中的表");
+        IconButtons.labeled(transferButton, Icons.Icon.TRANSFER, I18n.t("action.import-export"),
+                I18n.t("tableList.transferTooltip"));
         transferButton.setMinWidth(Region.USE_PREF_SIZE);
         transferButton.setOnAction(event -> openTransferHub());
 
@@ -326,9 +327,9 @@ final class TableListPage extends VBox {
         table.getStyleClass().add("adb-table-list");
         table.setEditable(false);
         // U24：空态不是一行灰字 —— 图标说清「这是空，不是坏了」，说明给出路。
-        table.setPlaceholder(EmptyState.of(Icons.Icon.SEARCH, "没有匹配的表",
-                "搜索框里的关键词一个表名都对不上。清空关键词就能看到全部表。",
-                "清空搜索", search::clear));
+        table.setPlaceholder(EmptyState.of(Icons.Icon.SEARCH, I18n.t("tableList.noMatches"),
+                I18n.t("tableList.noMatchesDetail"),
+                I18n.t("tableList.clearSearch"), search::clear));
         // ⭐ S-6：可读下限 + 约束策略 —— 宽屏填满，挤窄卡在 minWidth 并横向滚动
         //    （为什么不是 UNCONSTRAINED：宽屏会留一大片空白，见 §33.5）。
         table.setColumnResizePolicy(
@@ -339,13 +340,13 @@ final class TableListPage extends VBox {
         // ⭐ 第十九轮 S-1：可选列要留引用，才能按数据决定显不显示。
         //    「名称 / 行」是核心列，永远显示；其余 6 列是方言相关的可选列。
         sizeColumn = sizeColumn();
-        engineColumn = keyed(textColumn("引擎", 100, 80, TableMeta::engineText), "engine");
-        createdColumn = keyed(textColumn("创建日期", 150, 140, TableMeta::createdText), "created");
+        engineColumn = keyed(textColumn(I18n.t("column.engine"), 100, 80, TableMeta::engineText), "engine");
+        createdColumn = keyed(textColumn(I18n.t("column.created"), 150, 140, TableMeta::createdText), "created");
         // ⭐ 本轮补的三列：Navicat 的表清单有「修改日期 / 排序规则 / 注释」。
-        updatedColumn = keyed(textColumn("修改日期", 150, 140, TableMeta::updatedText), "updated");
-        collationColumn = keyed(textColumn("排序规则", 120, 112,
+        updatedColumn = keyed(textColumn(I18n.t("column.updated"), 150, 140, TableMeta::updatedText), "updated");
+        collationColumn = keyed(textColumn(I18n.t("column.collation"), 120, 112,
                 TableMeta::collationText, true), "collation");
-        commentColumn = keyed(textColumn("注释", 180, 120,
+        commentColumn = keyed(textColumn(I18n.t("column.comment"), 180, 120,
                 TableMeta::commentText, true, true), "comment");
 
         table.getColumns().setAll(List.of(
@@ -451,7 +452,7 @@ final class TableListPage extends VBox {
 
     /** 表名列：类型图标 + 名字（与对象树、对象首页同一套图形语言）。 */
     private TableColumn<TableMeta, String> nameColumn() {
-        TableColumn<TableMeta, String> column = new TableColumn<>("名称");
+        TableColumn<TableMeta, String> column = new TableColumn<>(I18n.t("column.name"));
         column.setId("table-column-name");
         column.setUserData("name");
         column.setPrefWidth(220);
@@ -481,7 +482,7 @@ final class TableListPage extends VBox {
 
     /** 行数列：右对齐 + 按数值排序。 */
     private TableColumn<TableMeta, String> rowsColumn() {
-        TableColumn<TableMeta, String> column = new TableColumn<>("行");
+        TableColumn<TableMeta, String> column = new TableColumn<>(I18n.t("column.rows"));
         column.setId("table-column-rows");
         column.setUserData("rows");
         column.setPrefWidth(90);
@@ -495,7 +496,7 @@ final class TableListPage extends VBox {
 
     /** 数据长度列：右对齐 + 折回字节排序。 */
     private TableColumn<TableMeta, String> sizeColumn() {
-        TableColumn<TableMeta, String> column = new TableColumn<>("数据长度");
+        TableColumn<TableMeta, String> column = new TableColumn<>(I18n.t("column.dataLength"));
         column.setId("table-column-size");
         column.setUserData("size");
         column.setPrefWidth(110);
@@ -620,11 +621,11 @@ final class TableListPage extends VBox {
             // U24：卡片视图的空态与列表视图同一套语言（图标 + 说明 + 出口），
             // 不再是一行飘在白底上的灰字。
             cards.getChildren().add(rows.isEmpty()
-                    ? EmptyState.of(Icons.Icon.TABLE, "这个库里还没有表",
-                            "连接里一张表都没有。建一张表，或换个库连接。")
-                    : EmptyState.of(Icons.Icon.SEARCH, "没有匹配的表",
-                            "搜索框里的关键词一个表名都对不上。",
-                            "清空搜索", search::clear));
+                    ? EmptyState.of(Icons.Icon.TABLE, I18n.t("tableList.empty"),
+                            I18n.t("tableList.emptyDetail"))
+                    : EmptyState.of(Icons.Icon.SEARCH, I18n.t("tableList.noMatches"),
+                            I18n.t("tableList.noMatchesDetail"),
+                            I18n.t("tableList.clearSearch"), search::clear));
             return;
         }
         for (TableMeta meta : filtered) {
@@ -645,7 +646,7 @@ final class TableListPage extends VBox {
         //    实测 SQLite 演示库上一张卡片 3 行有 2 行是纯破折号（§10.3 C2）。
         //    注意 rowsText() 为「—」时不能拼成「— 行」——那不是占位符了。
         String rowsFact = MetadataColumns.isPlaceholder(meta.rowsText())
-                ? null : meta.rowsText().trim() + " 行";
+                ? null : I18n.t("status.rows", meta.rowsText().trim());
         Label facts = cardLine("adb-table-card__facts", rowsFact, meta.sizeText());
         Label engine = cardLine("adb-table-card__detail",
                 meta.engineText(), meta.updatedText());
@@ -888,13 +889,13 @@ final class TableListPage extends VBox {
         }
         List<TableMeta> selected = selectedMetas();
         if (selected.isEmpty()) {
-            host.selectionChanged("未选择");
+            host.selectionChanged(I18n.t("status.noneSelected"));
         } else if (selected.size() == 1) {
             TableMeta meta = selected.getFirst();
-            String rowsText = meta.rows() == null ? "" : " · " + meta.rowsText() + " 行";
-            host.selectionChanged("已选 " + meta.name() + rowsText);
+            String rowsText = meta.rows() == null ? "" : " · " + I18n.t("status.rows", meta.rowsText());
+            host.selectionChanged(I18n.t("tableList.selectedOne", meta.name() + rowsText));
         } else {
-            host.selectionChanged("已选 " + selected.size() + " 个项目");
+            host.selectionChanged(I18n.t("tableList.selectedCount", selected.size()));
         }
         reportInspect(selected.size() == 1 ? selected.getFirst().name() : null);
     }
@@ -921,7 +922,7 @@ final class TableListPage extends VBox {
 
     void createTable() {
         if (host == null) {
-            status.accept("请先连上一个数据库");
+            status.accept(I18n.t("tableList.connectFirst"));
             return;
         }
         host.newTable();
@@ -930,7 +931,7 @@ final class TableListPage extends VBox {
     void openSelected() {
         List<TableMeta> selected = selectedMetas();
         if (selected.size() != 1) {
-            status.accept(selected.isEmpty() ? "先选一张表" : "一次只能打开一张表");
+            status.accept(selected.isEmpty() ? I18n.t("tableList.pickOneFirst") : I18n.t("tableList.singleOpen"));
             return;
         }
         if (host != null) {
@@ -941,7 +942,7 @@ final class TableListPage extends VBox {
     void designSelected() {
         List<TableMeta> selected = selectedMetas();
         if (selected.size() != 1) {
-            status.accept(selected.isEmpty() ? "先选一张表" : "一次只能设计一张表");
+            status.accept(selected.isEmpty() ? I18n.t("tableList.pickOneFirst") : I18n.t("tableList.singleDesign"));
             return;
         }
         if (host != null) {
@@ -952,7 +953,7 @@ final class TableListPage extends VBox {
     void renameSelected() {
         List<TableMeta> selected = selectedMetas();
         if (selected.size() != 1) {
-            status.accept(selected.isEmpty() ? "先选一张表" : "一次只能重命名一张表");
+            status.accept(selected.isEmpty() ? I18n.t("tableList.pickOneFirst") : I18n.t("tableList.singleRename"));
             return;
         }
         if (host != null) {
@@ -963,7 +964,7 @@ final class TableListPage extends VBox {
     void truncateSelected() {
         List<TableMeta> selected = selectedMetas();
         if (selected.size() != 1) {
-            status.accept(selected.isEmpty() ? "先选一张表" : "一次只能清空一张表");
+            status.accept(selected.isEmpty() ? I18n.t("tableList.pickOneFirst") : I18n.t("tableList.singleTruncate"));
             return;
         }
         if (host != null) {
@@ -974,7 +975,7 @@ final class TableListPage extends VBox {
     void dropSelected() {
         List<String> names = selectedNames();
         if (names.isEmpty()) {
-            status.accept("先选中要删除的表");
+            status.accept(I18n.t("tableList.pickToDelete"));
             return;
         }
         if (host != null) {
@@ -1086,9 +1087,9 @@ final class TableListPage extends VBox {
         if (!rows.isEmpty() && filtered.isEmpty()) {
             // U24：把用户真正输入的词回显给他看 —— 「没有匹配的表」不说是哪几个字没匹配上。
             table.setPlaceholder(EmptyState.of(Icons.Icon.SEARCH,
-                    "没有名称包含「" + query + "」的表",
-                    "关键词按表名的子串匹配，不区分大小写。",
-                    "清空搜索", search::clear));
+                    I18n.t("tableList.noNameContains", query),
+                    I18n.t("tableList.substringHelp"),
+                    I18n.t("tableList.clearSearch"), search::clear));
         }
     }
 
@@ -1098,9 +1099,9 @@ final class TableListPage extends VBox {
         }
         if (search.getText() != null && !search.getText().isBlank()
                 && filtered.size() != rows.size()) {
-            summary.setText("显示 " + filtered.size() + " / " + rows.size() + " 张表");
+            summary.setText(I18n.t("tableList.showingOf", filtered.size(), rows.size()));
         } else {
-            summary.setText("共 " + rows.size() + " 张表");
+            summary.setText(I18n.t("tableList.totalTables", rows.size()));
         }
     }
 
@@ -1111,7 +1112,7 @@ final class TableListPage extends VBox {
         }
         loading = true;
         spinner.setVisible(true);
-        summary.setText("正在统计…");
+        summary.setText(I18n.t("tableList.counting"));
         updateSelectionState();
         dbExecutor.execute(() -> {
             List<TableMeta> metas;
@@ -1132,8 +1133,8 @@ final class TableListPage extends VBox {
                 updateSummary();
                 updateSelectionState();
                 if (finalError != null) {
-                    summary.setText("读取失败：" + finalError);
-                    status.accept("读取表清单失败：" + finalError);
+                    summary.setText(I18n.t("tableList.readFailed", finalError));
+                    status.accept(I18n.t("tableList.readListFailed", finalError));
                 }
             });
         });
@@ -1163,19 +1164,40 @@ final class TableListPage extends VBox {
 
     // ─────────────────────────── 默认动作（单测 / 无外壳） ───────────────────────────
 
+    /**
+     * 无外壳（单测 / 独立使用）时用的本地动作。
+     *
+     * <p>⚠️ 走的是 {@code new Action(...)} 而不是 {@code actions.register(...)} ——
+     * 所以「每个动作两侧都有名字」那条门禁原先**看不见这里**（它只匹配 register）。
+     * 键仍然用 {@code action.<id>} / {@code category.<slug>}，与注册表那一路同名同值，
+     * 两处共用一份资源；门禁的模式已扩到同时匹配两种构造。
+     */
     private Actions localActions() {
+        String category = io.agenticdb.ui.I18n.t("category.tableList");
         return new Actions(
-                new Action("table-list.new", "新建表…", "表清单", null, this::createTable),
-                new Action("table-list.open", "打开表", "表清单", null, this::openSelected),
-                new Action("table-list.design", "设计表…", "表清单", null, this::designSelected),
-                new Action("table-list.rename", "重命名表…", "表清单", null, this::renameSelected),
-                new Action("table-list.truncate", "清空表…", "表清单", null, this::truncateSelected),
-                new Action("table-list.drop", "删除表…", "表清单", null, this::dropSelected),
-                new Action("table-list.refresh", "刷新表清单", "表清单", null, this::reload),
-                new Action("table-list.select-all", "全选", "表清单", null, this::selectAll),
-                new Action("table-list.view-list", "列表视图", "表清单", null,
-                        () -> showView("list")),
-                new Action("table-list.view-grid", "网格视图", "表清单", null,
-                        () -> showView("grid")));
+                new Action("table-list.new", io.agenticdb.ui.I18n.t("action.table-list.new"),
+                        category, null, this::createTable),
+                new Action("table-list.open", io.agenticdb.ui.I18n.t("action.table-list.open"),
+                        category, null, this::openSelected),
+                new Action("table-list.design", io.agenticdb.ui.I18n.t("action.table-list.design"),
+                        category, null, this::designSelected),
+                new Action("table-list.rename", io.agenticdb.ui.I18n.t("action.table-list.rename"),
+                        category, null, this::renameSelected),
+                new Action("table-list.truncate",
+                        io.agenticdb.ui.I18n.t("action.table-list.truncate"),
+                        category, null, this::truncateSelected),
+                new Action("table-list.drop", io.agenticdb.ui.I18n.t("action.table-list.drop"),
+                        category, null, this::dropSelected),
+                new Action("table-list.refresh", io.agenticdb.ui.I18n.t("action.table-list.refresh"),
+                        category, null, this::reload),
+                new Action("table-list.select-all",
+                        io.agenticdb.ui.I18n.t("action.table-list.select-all"),
+                        category, null, this::selectAll),
+                new Action("table-list.view-list",
+                        io.agenticdb.ui.I18n.t("action.table-list.view-list"),
+                        category, null, () -> showView("list")),
+                new Action("table-list.view-grid",
+                        io.agenticdb.ui.I18n.t("action.table-list.view-grid"),
+                        category, null, () -> showView("grid")));
     }
 }

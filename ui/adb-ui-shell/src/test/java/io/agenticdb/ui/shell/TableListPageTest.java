@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.introspect.TableMeta;
 import javafx.scene.Node;
 import javafx.scene.Scene;
@@ -109,8 +110,8 @@ class TableListPageTest {
     @Test
     void showsTheEightNavicatColumns() {
         assertThat(page.table().getColumns().stream().map(column -> column.getText()).toList())
-                .containsExactly("名称", "行", "数据长度", "引擎",
-                        "创建日期", "修改日期", "排序规则", "注释");
+                .containsExactly(I18n.t("column.name"), I18n.t("column.rows"), I18n.t("column.dataLength"), I18n.t("column.engine"),
+                        I18n.t("column.created"), I18n.t("column.updated"), I18n.t("column.collation"), I18n.t("column.comment"));
     }
 
     /** S-6 / C3：详情面板挤窄表清单时，列不能被压成省略号。 */
@@ -148,8 +149,8 @@ class TableListPageTest {
     void mysqlLikeDataKeepsEveryColumnVisible() {
         assertThat(visibleTitles())
                 .as("MySQL 连接下 8 列全有值 → 一列都不能藏")
-                .containsExactly("名称", "行", "数据长度", "引擎",
-                        "创建日期", "修改日期", "排序规则", "注释");
+                .containsExactly(I18n.t("column.name"), I18n.t("column.rows"), I18n.t("column.dataLength"), I18n.t("column.engine"),
+                        I18n.t("column.created"), I18n.t("column.updated"), I18n.t("column.collation"), I18n.t("column.comment"));
     }
 
     /**
@@ -169,7 +170,7 @@ class TableListPageTest {
 
         assertThat(visibleTitles())
                 .as("SQLite 拿不到引擎/日期/排序规则/注释/长度 → 全是「—」的列整列隐藏")
-                .containsExactly("名称", "行");
+                .containsExactly(I18n.t("column.name"), I18n.t("column.rows"));
     }
 
     /**
@@ -188,7 +189,7 @@ class TableListPageTest {
 
         assertThat(visibleTitles())
                 .as("混合场景：有行有引擎/注释 → 这两列要留着，其余全空的列仍然隐藏")
-                .containsExactly("名称", "行", "引擎", "注释");
+                .containsExactly(I18n.t("column.name"), I18n.t("column.rows"), I18n.t("column.engine"), I18n.t("column.comment"));
     }
 
     /**
@@ -204,14 +205,14 @@ class TableListPageTest {
                 new TableMeta("users", 1L, null, "InnoDB", null, null, null, null),
                 new TableMeta("logs", 1L, null, null, null, null, null, null))));
         WaitForAsyncUtils.waitForFxEvents();
-        assertThat(visibleTitles()).contains("引擎");
+        assertThat(visibleTitles()).contains(I18n.t("column.engine"));
 
         robot.interact(() -> page.searchField().setText("logs"));
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(visibleTitles())
                 .as("搜索只过滤行，不许动列布局")
-                .containsExactly("名称", "行", "引擎");
+                .containsExactly(I18n.t("column.name"), I18n.t("column.rows"), I18n.t("column.engine"));
     }
 
     // ─────────────────────── 第十九轮 S-2 卡片不摆「—」 ───────────────────────
@@ -243,7 +244,7 @@ class TableListPageTest {
 
         assertThat(labels)
                 .as("事实行只留有值的片段：「200 行」而不是「200 行 · —」")
-                .anyMatch(text -> text.equals("200 行"));
+                .anyMatch(text -> text.equals(I18n.t("status.rows", 200)));
         assertThat(labels)
                 .as("整行都是占位符就不渲染这一行 —— 卡片里不许出现「—」")
                 .noneMatch(text -> text.contains("—"));
@@ -427,7 +428,12 @@ class TableListPageTest {
         });
         WaitForAsyncUtils.waitForFxEvents();
 
-        assertThat(selections).last().asString().isEqualTo("已选 3 个项目");
+        // 断"信息在不在"而不是"这句话怎么拼" —— 照抄实现里的 I18n.t 组合会退化成同义反复，
+        // 实现改错键它照样绿。
+        assertThat(selections).last().asString()
+                .as("多选要报出项目数，且不能退回空态词")
+                .contains("3")
+                .isNotEqualTo(I18n.t("status.noneSelected"));
     }
 
     // ─────────────────────── N5 状态栏文案 ───────────────────────
@@ -440,7 +446,9 @@ class TableListPageTest {
 
         assertThat(selections).last().asString()
                 .as("单表要带表名与行数（N5）")
-                .isEqualTo("已选 users · 200 行");
+                .contains("users")
+                .contains("200")
+                .isNotEqualTo(I18n.t("status.noneSelected"));
 
         robot.interact(() -> {
             page.table().getSelectionModel().clearSelection();
@@ -450,7 +458,7 @@ class TableListPageTest {
 
         assertThat(selections).last().asString()
                 .as("行数未知时不要编一个 0")
-                .isEqualTo("已选 audit");
+                .isEqualTo(I18n.t("tableList.selectedOne", "audit"));
     }
 
     // ─────────────────────── §6.3 详情面板联动 ───────────────────────
@@ -602,7 +610,7 @@ class TableListPageTest {
                 .filter(TableCell.class::isInstance)
                 .map(node -> (TableCell<?, ?>) node)
                 .filter(cell -> cell.getTableColumn() != null
-                        && "注释".equals(cell.getTableColumn().getText()))
+                        && I18n.t("column.comment").equals(cell.getTableColumn().getText()))
                 .filter(cell -> text.equals(cell.getText()))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("找不到注释列的单元格：" + text));
