@@ -229,6 +229,45 @@ class ToolbarDiscoverabilityTest {
     }
 
     /**
+     * 选中一行之后这一排多了一颗「删除记录」—— 不许因此把右边挤出框外。
+     *
+     * <p>实拍踩过（`p2-cell` 帧）：选中行 →「删除记录」整颗出现 → 总宽超过可用宽度，
+     * 最右的「本页搜索」被裁到只剩一个「本」字。成因是收字档只在<b>工具条宽度变化</b>
+     * 时重判，而这次变的是<b>按钮个数</b>：宽度没动，判据一次都没跑。
+     */
+    @Test
+    void selectingARowKeepsTheToolbarInsideItsEdge(FxRobot robot) throws Exception {
+        resize(WIDE_WIDTH);
+        @SuppressWarnings("unchecked")
+        TableView<Map<String, Object>> table = (TableView<Map<String, Object>>)
+                WaitForAsyncUtils.asyncFx(
+                        () -> robot.lookup("#data-table").tryQuery().orElse(null)).get();
+        assertThat(table).as("数据网格里找不到 #data-table").isNotNull();
+        WaitForAsyncUtils.waitFor(8, TimeUnit.SECONDS, () -> !table.getItems().isEmpty());
+        WaitForAsyncUtils.asyncFx(() -> table.getSelectionModel().select(0)).get();
+        WaitForAsyncUtils.waitForFxEvents(3);
+
+        Node delete = findById(toolbar(robot), "data-delete-rows");
+        assertThat(delete).as("找不到 #data-delete-rows").isNotNull();
+        assertThat(delete.isManaged())
+                .as("选中行后「删除记录」没占位，这条门禁证不了任何事").isTrue();
+        // 摆不下就整排退图标（合法降级），但绝不许压扁某个按钮。
+        for (String id : MAIN_OPERATIONS) {
+            Labeled labeled = (Labeled) require(robot, id);
+            if (labeled.getText().isBlank()) {
+                assertThat(labeled.getStyleClass())
+                        .as("%s 收字后必须回到图标档", id).contains("adb-button--icon");
+            } else {
+                assertThat(((Control) labeled).getWidth())
+                        .as("%s 带文字时被压扁了（%.0f < %.0f）", id,
+                                ((Control) labeled).getWidth(), labeled.prefWidth(-1))
+                        .isGreaterThanOrEqualTo(labeled.prefWidth(-1) - 0.5);
+            }
+        }
+        assertToolbarFits(robot, WIDE_WIDTH);
+    }
+
+    /**
      * U4（其一）：文字档的每一档宽度里，主操作按钮要么**完整**，要么**收成图标**。
      *
      * <p>工具条是 HBox —— 放不下时它会**逐个压窄**子节点，
@@ -323,6 +362,18 @@ class ToolbarDiscoverabilityTest {
         Region toolbar = toolbar(robot);
         double toolbarRight =
                 toolbar.localToScene(toolbar.getBoundsInLocal()).getMaxX();
+        // ⭐ 框自己也不许被撑出场景：minWidth 钉死时溢出的是**整条**，
+        //    子节点个个都在「自己的框」里，可框有一大截在窗外（p2-cell 实拍 1406 > 1280）。
+        //    ⚠️ 1100 档不查这条：那一档是**分页器**的最小宽度把整页撑出去的
+        //    （G12 / R32-D 的「1280 宽下分页器被裁」），跟工具条无关。
+        if (width >= 1180) {
+            double sceneRight = toolbar.getScene() == null
+                    ? Double.MAX_VALUE : toolbar.getScene().getWidth();
+            assertThat(toolbarRight)
+                    .as("工具条在 %dpx 档被撑出场景（右边缘 %.0f > 场景 %.0f）—— 它不肯收缩",
+                            width, toolbarRight, sceneRight)
+                    .isLessThanOrEqualTo(sceneRight + 0.5);
+        }
         for (Node child : cascade(toolbar)) {
             double right = child.localToScene(child.getBoundsInLocal()).getMaxX();
             assertThat(right)

@@ -2073,6 +2073,82 @@
     -fx-background-color: -adb-bg-surface;
 }
 
+/* ⭐ G4：表单视图 —— 一行一个字段（列名 / 类型 / 值）。
+   收起时这些类先落在 Java 里、样式没跟上，`StyleClassCoverageTest` 当场抓住：
+   不补规则的话表单会退回 JavaFX 默认外观，和网格不是一套东西。
+   行线、输入框分别沿用网格行线与「本页搜索」那套 inset 底。 */
+.adb-grid__form {
+    -fx-background-color: -adb-bg-surface;
+    -fx-border-color: -adb-border-subtle;
+    -fx-background-insets: 0;
+    -fx-padding: 0px;
+}
+
+.adb-grid__form > .viewport {
+    -fx-background-color: transparent;
+}
+
+.adb-grid__form-rows {
+    -fx-padding: 2px 12px 12px 12px;
+}
+
+.adb-grid__form-header {
+    -fx-text-fill: -adb-text-secondary;
+    -fx-font-size: 12px;
+    -fx-padding: 4px 0px 2px 0px;
+}
+
+.adb-grid__form-row {
+    -fx-padding: 6px 0px;
+    -fx-border-color: transparent transparent -adb-border-subtle transparent;
+    -fx-border-width: 0px 0px 1px 0px;
+}
+
+.adb-grid__form-label {
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.adb-grid__form-type {
+    -fx-text-fill: -adb-text-tertiary;
+    -fx-font-size: 11px;
+}
+
+.adb-grid__form-field {
+    -fx-background-color: -adb-bg-inset;
+    -fx-text-fill: -adb-text-primary;
+    -fx-prompt-text-fill: -adb-text-tertiary;
+    -fx-border-color: transparent;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+    -fx-padding: 4px 8px;
+    -fx-font-size: 12px;
+}
+
+.adb-grid__form-field:focused {
+    -fx-border-color: -adb-border-focus;
+}
+
+/* 只读字段（视图 / 无主键）：底色退一档、字色降一级。
+   `-fx-opacity: 1` 是必须的 —— 默认禁用会把整行淡到读不清。 */
+.adb-grid__form-field:disabled {
+    -fx-opacity: 1;
+    -fx-background-color: -adb-bg-subtle;
+    -fx-text-fill: -adb-text-secondary;
+}
+
+.adb-grid__form-check {
+    -fx-padding: 0px;
+}
+
+.adb-grid__form-check .box {
+    -fx-background-color: -adb-bg-inset;
+    -fx-border-color: transparent;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+}
+
 /* ⭐ UX-4：脏值条只改颜色 —— 2px 左槽由基础规则常留，改单元格不再抖一行。
    第二十一轮：右边的竖线随无边框轮退场，这里只给左槽上色。 */
 .adb-grid .table-cell.adb-grid__cell--dirty {

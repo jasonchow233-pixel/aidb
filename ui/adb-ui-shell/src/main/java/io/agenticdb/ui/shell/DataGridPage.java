@@ -28,6 +28,7 @@ import javafx.collections.FXCollections;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
@@ -44,6 +45,7 @@ import javafx.scene.control.MenuItem;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.Separator;
 import javafx.scene.control.SeparatorMenuItem;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TablePosition;
@@ -301,6 +303,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private TableSchema formSchema;
     /** ⭐ G4：当前是否表单视图。 */
     private boolean formView;
+    /**
+     * 程序化回填期间置位 —— 复选框的 {@code setSelected} 会触发提交监听，
+     * 而「切行 / 撤销 / 保存后重载」把值写回控件不是用户编辑。
+     */
+    private boolean formRefreshing;
     private final CellDetailsDrawer detailsDrawer = new CellDetailsDrawer();
     /** 抽屉当前展示／编辑的是哪一格（应用编辑时写回这里）。 */
     private Map<String, Object> detailsRow;
@@ -671,6 +678,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         updateBatchBar();
         feedback.dirty(count);
         dirtyListener.accept(count);
+        // ⭐ 缓冲一变，表单里显示的值就变了（编辑 / 撤销 / 重做 / 清空都走这里）。
+        //    之前只在 rebuildItems 时刷表单，于是「撤销」后表单还挂着被撤掉的值。
+        refreshForm();
     }
 
     private void updateEditControls() {
@@ -707,6 +717,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         // 没有可删的行时按钮**整颗消失**（而不是灰着占位）。
         deleteRowsButton.setVisible(hasSelection);
         deleteRowsButton.setManaged(hasSelection);
+        // ⭐ 这一排的宽度**会随状态变**（选中行多一颗删除、事务中换三颗键）。
+        //    收字判据原先只在工具条宽度变化时跑，于是「多一颗按钮」把需求顶到
+        //    1093px 也没人重判（1280 下可用只有 1026px），最右的搜索框被裁掉
+        //    （p2-cell 实拍踩到）。按钮进出必须跟着重判。
+        applyToolbarLabels();
     }
 
     private void saveChanges() {
@@ -967,6 +982,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         commitTxButton.setManaged(transactionOpen);
         rollbackTxButton.setVisible(transactionOpen);
         rollbackTxButton.setManaged(transactionOpen);
+        // 事务开关换掉的是三颗按钮 —— 与「删除记录」同理，宽度要重判一次。
+        applyToolbarLabels();
     }
 
     /**
@@ -1178,6 +1195,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         toolbar.getStyleClass().add("adb-inline-toolbar");
         toolbar.setAlignment(Pos.CENTER_LEFT);
         toolbar.setId("data-toolbar");
+        // ⭐ 这一排必须肯认输：按钮的 minWidth 钉着 USE_PREF_SIZE（文字不许压扁），
+        //    HBox 的最小宽就等于「带文字的一整排」。不给它 0 的话，父容器只能
+        //    把超宽的一条**居中溢出并裁掉**，收字判据也永远看不到真实可用宽度
+        //    （p2-details / p2-cell 实拍就是这么被裁的：1026 的框，需求 994 或 1093）。
+        toolbar.setMinWidth(0);
 
         toolGroupData.setAlignment(Pos.CENTER_LEFT);
         toolGroupData.getStyleClass().add("adb-toolbar__group");
@@ -1482,6 +1504,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         formPane.setId("data-form");
         formPane.getStyleClass().add("adb-grid__form");
         formPane.setFitToWidth(true);
+        formPosition.setId("data-form-position");
         formRows.getStyleClass().add("adb-grid__form-rows");
         formRows.setFillWidth(true);
         formPane.setContent(formRows);
@@ -3764,7 +3787,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         row.setUserData(definition);
         name.setPrefWidth(130);
         name.setMinWidth(96);
-        type.setPrefWidth(110);
+        // ⭐ 150px：`BOOLEAN · NOT NULL` / `TIMESTAMP · NOT NULL` 在 110px 下会被截成
+        //    `BOOLEAN · NOT …`（p2-form 帧实拍）—— 类型后面那半句「不许为空」是
+        //    这一行最有用的信息，宁可让输入框少 40px。
+        type.setPrefWidth(150);
+        type.setMinWidth(110);
         HBox.setHgrow(control, Priority.ALWAYS);
         if (control instanceof javafx.scene.control.Control styled) {
             styled.setMaxWidth(Double.MAX_VALUE);
@@ -3803,7 +3830,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      * 解析失败 / 违反 NOT NULL 时打回原值并播报，不静默吞输入。
      */
     private void commitFormField(ColumnDef definition, Object raw) {
-        if (!formFieldEditable(definition)) {
+        if (formRefreshing || !formFieldEditable(definition)) {
             return;
         }
         int index = currentRow();
@@ -3849,22 +3876,29 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             return;
         }
         Map<String, Object> row = index < 0 ? null : grid.getItems().get(index);
-        for (Node node : formRows.getChildren()) {
-            if (!(node instanceof HBox formRow)
-                    || !(formRow.getUserData() instanceof ColumnDef definition)) {
-                continue;
+        formRefreshing = true;
+        try {
+            for (Node node : formRows.getChildren()) {
+                if (!(node instanceof HBox formRow)
+                        || !(formRow.getUserData() instanceof ColumnDef definition)) {
+                    continue;
+                }
+                Node control = formRow.getChildren().get(formRow.getChildren().size() - 1);
+                if (control.isFocused()) {
+                    continue;
+                }
+                Object value = row == null ? null : cellValue(row, definition);
+                if (control instanceof CheckBox box) {
+                    // ⭐ 与网格同一口径：SQLite 的 BOOLEAN 列取回来是 0/1，
+                    //   不能只认 Boolean.TRUE（否则库里是 1，表单却显示未勾选）。
+                    box.setSelected(Boolean.TRUE.equals(CellRenderer.booleanValue(value)));
+                } else if (control instanceof TextField field) {
+                    field.setText(value == null ? "" : String.valueOf(value));
+                    field.setPromptText(value == null ? "（NULL）" : "");
+                }
             }
-            Node control = formRow.getChildren().get(formRow.getChildren().size() - 1);
-            if (control.isFocused()) {
-                continue;
-            }
-            Object value = row == null ? null : cellValue(row, definition);
-            if (control instanceof CheckBox box) {
-                box.setSelected(Boolean.TRUE.equals(value));
-            } else if (control instanceof TextField field) {
-                field.setText(value == null ? "" : String.valueOf(value));
-                field.setPromptText(value == null ? "（NULL）" : "");
-            }
+        } finally {
+            formRefreshing = false;
         }
     }
 
@@ -5164,14 +5198,19 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      * 只有这一排带文字真的放得下，才给文字。
      */
     private void applyToolbarLabels() {
+        double available = availableToolbarWidth();
         boolean showText = windowAllowsLabels
                 // 还没布局过时（宽度 0）没有可信的实测值，先按窗口档位走。
-                && (toolbar.getWidth() <= 0
-                        || toolbar.getWidth() + 0.5 >= labelRequirement());
+                && (available <= 0 || available + 0.5 >= labelRequirement());
         if (toolbarTextVisible != null && toolbarTextVisible.booleanValue() == showText) {
             return;
         }
         toolbarTextVisible = showText;
+        renderToolbarLabels(showText);
+    }
+
+    /** 把这一排画成文字档或图标档（样式类与文字必须一起动，见 {@link #labelRequirement()}）。 */
+    private void renderToolbarLabels(boolean showText) {
         toolbarLabels.forEach((button, text) -> {
             button.setText(showText ? text : "");
             button.getStyleClass().remove("adb-button--icon");
@@ -5179,6 +5218,30 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 button.getStyleClass().add("adb-button--icon");
             }
         });
+    }
+
+    /**
+     * 工具条真正**分到**的宽度 —— 按场景坐标量，不用 {@code toolbar.getWidth()}。
+     *
+     * <p>用自身宽度会成死结：这一排放不下时 HBox 会被自己的 {@code minWidth}
+     * 顶到「带文字的需求宽」（实测 1093px），判据再拿 1093 去比 1093 就永远通过，
+     * 于是宁可溢出窗外也不肯收字（p2-form 实拍：1280 窗口、表单视图选中一行，
+     * 最右的搜索框被裁到只剩一个「本」字）。可用宽度由场景与左边缘算出，
+     * 与这一排有没有被撑宽无关。
+     */
+    private double availableToolbarWidth() {
+        if (toolbar.getScene() == null) {
+            return toolbar.getWidth();
+        }
+        double left = toolbar.localToScene(0, 0).getX();
+        double right = toolbar.getScene().getWidth();
+        if (toolbar.getParent() instanceof Region parent) {
+            // 父容器自己被撑宽（G12 分页器）时，这一排也拿不到那部分 —— 两边取小。
+            right = Math.min(right,
+                    parent.localToScene(parent.getBoundsInLocal()).getMaxX()
+                            - parent.getInsets().getRight());
+        }
+        return right > left ? right - left : toolbar.getWidth();
     }
 
     /**
@@ -5194,15 +5257,20 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      * 真的连下限都不够时，HBox 自己会把搜索框压到 110px —— 那才是这一排该付的代价。
      */
     private double labelRequirement() {
-        boolean collapsed = toolbarTextVisible != null && !toolbarTextVisible;
-        if (collapsed) {
-            toolbarLabels.forEach(ButtonBase::setText);
+        // 一律摆成「文字档」再量：图标档的按钮被 `adb-button--icon` 钉成 30px，
+        // 读到的会是「一整排图标」（实测 556 而不是 1093），下一次重判就会
+        // 「放得下」把文字涨回来 —— p2-form 帧「刚收完字又涨回去、搜索框被裁成『本』」
+        // 就是这么来的。
+        // ⚠️ 光改样式类不够：`-fx-min-width` 是 CSS 算出来的，JavaFX 要等一次样式重算
+        //    才更新 minWidth()，同步读到的还是旧值。所以两档切换后都当场 applyCss。
+        renderToolbarLabels(true);
+        toolbar.applyCss();
+        try {
+            return rowMinimumWidth(toolbar);
+        } finally {
+            renderToolbarLabels(toolbarTextVisible == null || toolbarTextVisible);
+            toolbar.applyCss();
         }
-        double needed = rowMinimumWidth(toolbar);
-        if (collapsed) {
-            toolbarLabels.keySet().forEach(button -> button.setText(""));
-        }
-        return needed;
     }
 
     /** 一个横排在其<b>托管</b>子节点都不折叠的前提下最少要多宽（未托管的按钮不占位、不计宽）。 */

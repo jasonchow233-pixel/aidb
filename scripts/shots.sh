@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（25 张）。
+# 重拍 docs/screenshots/ 的验收截图（27 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 19 张 + 暗色 5 张）
+#   ./scripts/shots.sh              # 全部重拍（亮色 22 张 + 暗色 5 张）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
 #
 # 为什么需要这个脚本（历史上踩过的坑，全部在这里被绕开）：
@@ -69,6 +69,10 @@ SHOTS=(
   #   「点它会推进命中并在状态栏报第 x / y 个」。9000ms：行是异步灌的，
   #   没灌完 poseFindBar 会一直返回 false，点下去等于拍一张没开条的网格。
   "p2-find|data-find-next|9000|ADB_OPEN=users ADB_FIND=1 ADB_THEME_FORCE=light"
+  # ⭐ R32-G4：表单视图那一帧 —— ADB_FORM 摆出「表单视图 + 选中第一条」，
+  #   「下一行」由脚本真点 #data-record-next。于是这一帧同时证的是
+  #   「记录导航翻行时表单跟着翻」这条联动本身（不是两张各自摆拍的静态图）。
+  "p2-form|data-record-next|9000|ADB_OPEN=users ADB_FORM=1 ADB_THEME_FORCE=light"
   "p6-tables||5000|ADB_TABLES=1 ADB_THEME_FORCE=light"
   "p6-tables-grid||5000|ADB_TABLES=1 ADB_TABLE_VIEW=grid ADB_THEME_FORCE=light"
   "p3-query||6000|ADB_QUERY=1 ADB_THEME_FORCE=light"
