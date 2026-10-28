@@ -113,7 +113,7 @@
 | **统一控件层：五档按钮 × 五态 + 输入/复选/下拉/清单/弹窗同套规则** | ✅ | `app.css` 控件段 + `UnifiedControlTest` |
 | **新建索引弹窗**（单列表 + 拖拽/Alt+↑↓ 保序 + 「添加列」下拉 + 方言能力门控 + SQL 预览即执行语句） | ✅ | `IndexDialog` + `IndexDialogTest` / `IndexDdlTest` |
 
-当前门禁：**1035 条 / 127 类 / 0 失败**（2026-10-27 · 第三十一轮 Windows 实机实测；`./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`）；另有 48 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
+当前门禁：**1064 条 / 130 类 / 0 失败**（2026-10-28 · 第三十二轮 G4 Windows 实机实测；`./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`）；另有 48 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
 
 > ⚠️ **本机环境**：`java` 默认不在 PATH。可用的 JDK：
 > - Windows 10：`~/.jdks/openjdk-27.0.1.0.2`（pom 的 enforcer 区间为 `[25,28)`）
@@ -131,8 +131,9 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 演示库首次启动自动生成：4 张表（`users` 200 行、`orders` 500 行、`products` 80 行、`notes` 空表）+ 1 个视图。
 已有有效演示库不会被覆盖；`-Dadb.demo.db=/path/to/file.db` 可指定其他文件。
 
-真实窗口截图：`docs/screenshots/` 共 **24 张**（亮色 19 + 暗色 5）——
+真实窗口截图：`docs/screenshots/` 共 **27 张**（亮色 22 + 暗色 5）——
 `p0-shell`、`p2-users`、`p2-users-dark`、`p2-overview`、`p2-details`、`p2-cell`、`p2-error`、
+`p2-transaction`、`p2-find`、`p2-form`、
 `p3-query`、`p3-query-menu`、`p4-structure`、`p4-ddl`、`p5-connections`、`p5-dark`、
 `p6-tables`、`p6-tables-grid`、`p6-new-table`、`p6-new-table-fields`、`p6-new-table-fields-dark`、
 `p6-new-table-comment`、`p6-new-table-index`、`p6-new-table-sql`、`p6-new-table-dark`、
@@ -164,7 +165,7 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 # 3. 完整门禁：编译 + 全部测试 + 用例计数
 ./scripts/build.sh
 
-# 4. 重拍 docs/screenshots/ 的 24 张验收截图
+# 4. 重拍 docs/screenshots/ 的 27 张验收截图
 ./scripts/shots.sh
 
 # 5. 出包（jpackage；产物在 bootstrap/adb-desktop/target/dist/，实测可启动）
@@ -320,5 +321,5 @@ bootstrap/
   方言差异现由 `Dialect` 抽象层承担），基线因此减少 43 条测试。
 - 主题“跟随系统”目前只探测 macOS；Windows/Linux 默认亮色。
 - 令牌体系 102 个全部被用到；密度四档（19/20/21/26，默认 normal；数据网格 +2 = 21/22/23/28）覆盖数据网格 / 查询结果 / 对象清单 / 对象树 / 结构页。
-- `docs/screenshots/` 的 24 张图（亮 19 + 暗 5）已按当前代码重拍。
+- `docs/screenshots/` 的 27 张图（亮 22 + 暗 5）已按当前代码重拍。
 - 首版不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务。
