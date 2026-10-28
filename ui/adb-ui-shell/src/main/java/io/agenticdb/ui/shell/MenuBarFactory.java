@@ -8,17 +8,31 @@ import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.ToggleGroup;
 
 /**
- * 原生菜单栏。菜单项全部来自 {@link ActionRegistry}，不在这里写业务。
- * macOS 上走系统菜单栏（{@code setUseSystemMenuBar(true)}）。
+ * ⭐ R34 N2：顶级菜单组改成 Navicat 的集合。
  *
- * <p>顶级组的<b>标签</b>走 {@link I18n}（2026-10-28 拍板 3：默认英文）。
- * 组的<b>集合</b>仍是 AIDB 现有的九组 —— 改成 Navicat 的
- * {@code File/Edit/View/Query/Format/Favorites/Tools/Window/Help} 是 N2，
- * 刻意与「换取词来源」分成两步做：同时改结构和改字符串，红了无法归因。
+ * <p>Navicat 17 实拍的九组是 {@code File / Edit / View / Query / Format / Favorites /
+ * Tools / Window / Help}。旧版这里是 {@code 文件/编辑/视图/数据库/对象/收藏夹/工具/窗口/帮助}
+ * —— 自有的「数据库」「对象」两组在 Navicat 里不存在。
+ *
+ * <h2>为什么还多一个 {@code Table}</h2>
+ * Navicat 的 {@code Table} 菜单是**随活动页签出现**的：查询页上下文里没有它（实拍正是如此），
+ * 打开一张表之后才有。所以这里建了 {@code Table} 菜单但默认隐藏，由
+ * {@code AppShell.showTab} 在激活表类页签时显出来 —— {@link #tableMenu()} 就是那个开关的把手。
+ *
+ * <h2>旧版 X5 的教训仍然守着</h2>
+ * 对象动作以前**只存在于树右键菜单**，用户根本不知道有「复制 SELECT」这类能力。
+ * 现在它们有 {@code Table} 菜单这个固定去处；{@code Table} 菜单藏起来的时刻，
+ * 恰好是没有表在上的时刻 —— 那时这些动作本来也是灰的，
+ * 所以藏掉比摆一排灰项更诚实。建新表不依赖活动表，它另有 Ribbon 与表清单工具条两个入口。
+ *
+ * <p>菜单项全部来自 {@link ActionRegistry}，不在这里写业务。
+ * macOS 上走系统菜单栏（{@code setUseSystemMenuBar(true)}）。
  */
 public final class MenuBarFactory {
 
     private final ActionRegistry actions;
+    /** 只在表类页签激活时显出来；见类注释「为什么还多一个 Table」。 */
+    private Menu tableMenu;
 
     public MenuBarFactory(ActionRegistry actions) {
         this.actions = actions;
@@ -27,22 +41,31 @@ public final class MenuBarFactory {
     public MenuBar build() {
         MenuBar bar = new MenuBar();
         bar.setUseSystemMenuBar(true);
-        // ⭐ X5：顶级菜单加「对象」—— Navicat 就有（表/对象/函数…）。
-        //    以前对象动作**只在对象树右键菜单里**，命令面板又因为「未选中就禁用」
-        //    把它们藏掉了 —— 用户根本不知道「复制 SELECT」这类能力存在。
         bar.getMenus().addAll(
-                fileMenu(), editMenu(), viewMenu(),
-                databaseMenu(), objectMenu(), favoritesMenu(), toolsMenu(), windowMenu(), helpMenu());
+                fileMenu(), editMenu(), viewMenu(), buildTableMenu(), queryMenu(), formatMenu(),
+                favoritesMenu(), toolsMenu(), windowMenu(), helpMenu());
         return bar;
+    }
+
+    /**
+     * 表级动作菜单。默认隐藏 —— {@code AppShell.showTab} 在激活
+     * {@code TableListPage} 之类的表页签时把它显出来。
+     */
+    public Menu tableMenu() {
+        return tableMenu;
     }
 
     private Menu fileMenu() {
         return new Menu(I18n.t("menu.file"), null,
                 actions.menuItem("new-connection"),
-                // 4.5-10：这两个动作以前只注册、没有任何菜单入口，只能靠 ⌘K 找。
                 actions.menuItem("connections.manage"),
+                new SeparatorMenuItem(),
                 actions.menuItem("new-query"),
                 actions.menuItem("open-sql"),
+                actions.menuItem("demo.open"),
+                new SeparatorMenuItem(),
+                actions.menuItem("connection.reconnect"),
+                actions.menuItem("connection.disconnect"),
                 new SeparatorMenuItem(),
                 actions.menuItem("tab.close"),
                 actions.menuItem("window.close"),
@@ -52,7 +75,7 @@ public final class MenuBarFactory {
 
     private Menu editMenu() {
         // 撤销 / 重做 / 复制委托给当前活动页；剪切 / 粘贴在数据库客户端没有语义，
-        // 按 TODO §12「占位要么接要么删」删除，不留永久禁用项。
+        // 按「占位要么接要么删」删除，不留永久禁用项。
         return new Menu(I18n.t("menu.edit"), null,
                 actions.menuItem("edit.undo"),
                 actions.menuItem("edit.redo"),
@@ -60,7 +83,6 @@ public final class MenuBarFactory {
                 actions.menuItem("edit.copy"),
                 new SeparatorMenuItem(),
                 actions.menuItem("focus-search"),
-                actions.menuItem("query.comment"),
                 actions.menuItem("command-palette"));
     }
 
@@ -80,47 +102,8 @@ public final class MenuBarFactory {
                 actions.menuItem("window.zoom"));
     }
 
-    private Menu databaseMenu() {
-        return new Menu(I18n.t("menu.database"), null,
-                actions.menuItem("refresh"),
-                // 4.5-10：以前只注册、没有任何菜单入口。
-                actions.menuItem("connection.reconnect"),
-                actions.menuItem("connection.disconnect"),
-                actions.menuItem("demo.open"),
-                actions.menuItem("new-query"),
-                new SeparatorMenuItem(),
-                // 4.5-10 的教训：注册了却没有任何菜单入口的动作等于孤儿。
-                // T1–T4 建表 / 清空 / 重命名 / 删表在「数据库」菜单里要有真入口。
-                actions.menuItem("object.new-table"),
-                actions.menuItem("object.truncate-table"),
-                actions.menuItem("object.rename-table"),
-                actions.menuItem("object.drop-table"),
-                new SeparatorMenuItem(),
-                actions.menuItem("query.run"),
-                actions.menuItem("query.run-all"),
-                actions.menuItem("query.cancel"),
-                actions.menuItem("query.explain"),
-                new SeparatorMenuItem(),
-                actions.menuItem("query.format"),
-                actions.menuItem("query.save"),
-                new SeparatorMenuItem(),
-                // ⭐ Q6：代码片段库
-                actions.menuItem("query.save-snippet"),
-                actions.menuItem("query.insert-snippet"));
-    }
-
-    /**
-     * ⭐ X5：「对象」顶级菜单 —— 对象树的动作在这里也有入口。
-     *
-     * <p>动作的 enabled 状态仍由「当前选中的树节点」决定（没选中就是灰的），
-     * 但**它们在菜单里始终可见** —— 用户能知道有哪些能力。
-     */
-    private Menu objectMenu() {
-        return new Menu(I18n.t("menu.object"), null,
-                // ⭐ 表清单以前只能靠 ⌘K 或动作 id 打开 —— 菜单里根本找不到。
-                //    这是**可发现性 bug**：功能存在≠用户找得到。
-                actions.menuItem("object.tables"),
-                new SeparatorMenuItem(),
+    private Menu buildTableMenu() {
+        tableMenu = new Menu(I18n.t("menu.table"), null,
                 actions.menuItem("object.open-data"),
                 actions.menuItem("object.open-structure"),
                 actions.menuItem("object.new-query"),
@@ -134,15 +117,35 @@ public final class MenuBarFactory {
                 actions.menuItem("object.copy-name"),
                 actions.menuItem("object.copy-select"),
                 new SeparatorMenuItem(),
-                actions.menuItem("object.refresh-objects"));
+                actions.menuItem("object.refresh-objects"),
+                actions.menuItem("refresh"));
+        // 默认隐藏：没有表在上时摆一排灰项，不如不摆。
+        tableMenu.setVisible(false);
+        return tableMenu;
     }
 
-    /**
-     * ⭐ S6：独立的「收藏夹」顶级菜单（Navicat 的菜单栏就是
-     * 文件 / 编辑 / 查看 / 表 / **收藏夹** / 工具 / 窗口 / 帮助）。
-     */
+    private Menu queryMenu() {
+        return new Menu(I18n.t("menu.query"), null,
+                actions.menuItem("query.run"),
+                actions.menuItem("query.run-all"),
+                actions.menuItem("query.cancel"),
+                new SeparatorMenuItem(),
+                actions.menuItem("query.explain"),
+                new SeparatorMenuItem(),
+                actions.menuItem("query.save"));
+    }
+
+    /** Navicat 的 {@code Format} 是独立顶级组 —— 排版类动作不散在编辑/数据库里。 */
+    private Menu formatMenu() {
+        return new Menu(I18n.t("menu.format"), null,
+                actions.menuItem("query.format"),
+                actions.menuItem("query.comment"),
+                new SeparatorMenuItem(),
+                actions.menuItem("query.save-snippet"),
+                actions.menuItem("query.insert-snippet"));
+    }
+
     private Menu favoritesMenu() {
-        // ⭐ X6：以前只有 1 项（顶级菜单资源被浪费）—— 补上「清空收藏」。
         return new Menu(I18n.t("menu.favorites"), null,
                 actions.menuItem("favorites.open"),
                 new SeparatorMenuItem(),
@@ -151,6 +154,7 @@ public final class MenuBarFactory {
 
     private Menu toolsMenu() {
         return new Menu(I18n.t("menu.tools"), null,
+                actions.menuItem("object.tables"),
                 actions.menuItem("diagnostics"),
                 actions.menuItem("import-export"),
                 new SeparatorMenuItem(),

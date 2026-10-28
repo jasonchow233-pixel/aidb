@@ -110,6 +110,11 @@ public final class AppShell extends StackPane {
     private ObjectHomePage objectHome;
     /** ⭐ N1–N5：当前可操作的表清单页（工具栏 / 右键动作按它取选择）。 */
     private TableListPage activeTableListPage;
+    /**
+     * ⭐ R34 N2：Navicat 的 {@code Table} 顶级菜单是**上下文菜单** —— 只在活动页签是表时出现
+     * （查询页那张实拍的菜单栏里就没有它）。由 {@link #showTab} 开合。
+     */
+    private javafx.scene.control.Menu tableContextMenu;
     /** 表级 DDL 协调者（懒建 —— 构造时 stage 还没有）。 */
     private TableDdl tableDdl;
     private final CommandPalette palette;
@@ -2005,7 +2010,9 @@ public final class AppShell extends StackPane {
     }
 
     private void buildUi() {
-        MenuBar menuBar = new MenuBarFactory(actions).build();
+        MenuBarFactory menuFactory = new MenuBarFactory(actions);
+        MenuBar menuBar = menuFactory.build();
+        tableContextMenu = menuFactory.tableMenu();
         appBar = new AppBar(actions, connections,
                 activeProfile == null ? "demo" : activeProfile.id(), this::selectConnection);
 
@@ -2416,6 +2423,14 @@ public final class AppShell extends StackPane {
         } else {
             activeTableListPage = null;
             disableTableListActions();
+        }
+        // Table 菜单跟着「活动页签是不是一张表」走 —— 与 Navicat 同形。
+        // GRID（数据页）与 STRUCTURE（结构页）才是表上下文；表清单不是"某一张表"，
+        // 它的动作在页内工具条上，不占这个菜单。
+        // ⚠️ 只能 setVisible：Menu 不是 Node，没有 setManaged —— 菜单栏自己听 visibleProperty 重排。
+        if (tableContextMenu != null) {
+            tableContextMenu.setVisible(tab.kind() == TabKind.GRID
+                    || tab.kind() == TabKind.STRUCTURE);
         }
         // U8：切标签不是回执 —— 当前页由标签栏本身表达，「已激活：连接管理」
         //      只会让消息位常驻一句车轱辘话。

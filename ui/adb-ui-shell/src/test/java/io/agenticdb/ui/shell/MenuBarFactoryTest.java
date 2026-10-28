@@ -184,7 +184,7 @@ class MenuBarFactoryTest {
         assertThat(edit.getItems().stream().map(MenuItem::getText))
                 .containsExactly("label-edit.undo", "label-edit.redo", null,
                         "label-edit.copy", null,
-                        "label-focus-search", "label-query.comment", "label-command-palette");
+                        "label-focus-search", "label-command-palette");
 
         onFxRun(() -> actions.require("edit.undo").setEnabled(false));
         MenuItem undo = edit.getItems().getFirst();
@@ -192,6 +192,55 @@ class MenuBarFactoryTest {
 
         onFxRun(() -> actions.require("edit.undo").setEnabled(true));
         assertThat(undo.isDisable()).isFalse();
+    }
+
+    /**
+     * ⭐ R34 N2：顶级组必须正好是 Navicat 的那一套，且每个动作落在 Navicat 放它的那一组里。
+     *
+     * <p>只查"组名对不对"不够 —— 把「注释」从编辑挪到格式、把表级动作从自有的「对象」组
+     * 挪进 Table 上下文菜单，这些**归属**才是这次改判的内容。所以逐组钉成员清单。
+     * 顺带钉住 Table 菜单默认是藏着的（上下文菜单，见 {@code AppShell.showTab}）。
+     */
+    @Test
+    void theTopLevelGroupsMatchNavicat() {
+        MenuBar menuBar = bar(registry());
+
+        assertThat(menuBar.getMenus().stream().map(Menu::getText))
+                .as("Navicat 实拍九组 + 随表页签出现的 Table")
+                .containsExactly(
+                        I18n.t("menu.file"), I18n.t("menu.edit"), I18n.t("menu.view"),
+                        I18n.t("menu.table"), I18n.t("menu.query"), I18n.t("menu.format"),
+                        I18n.t("menu.favorites"), I18n.t("menu.tools"),
+                        I18n.t("menu.window"), I18n.t("menu.help"));
+
+        assertThat(group(menuBar, "menu.query").getItems().stream().map(MenuItem::getText))
+                .containsExactly("label-query.run", "label-query.run-all", "label-query.cancel",
+                        null, "label-query.explain", null, "label-query.save");
+        // 「注释 / 取消注释」从编辑组挪进来了 —— Navicat 的 Format 组就管排版类动作。
+        assertThat(group(menuBar, "menu.format").getItems().stream().map(MenuItem::getText))
+                .containsExactly("label-query.format", "label-query.comment", null,
+                        "label-query.save-snippet", "label-query.insert-snippet");
+        assertThat(group(menuBar, "menu.tools").getItems().stream().map(MenuItem::getText))
+                .containsExactly("label-object.tables", "label-diagnostics",
+                        "label-import-export", null, "label-settings");
+
+        assertThat(group(menuBar, "menu.table").isVisible())
+                .as("Table 是上下文菜单，构造完默认藏着")
+                .isFalse();
+        assertThat(group(menuBar, "menu.table").getItems().stream().map(MenuItem::getText))
+                .as("表级动作从自有的「对象」组迁进 Table，一个都不能丢（X5 可发现性教训）")
+                .contains("label-object.open-data", "label-object.open-structure",
+                        "label-object.new-table", "label-object.truncate-table",
+                        "label-object.rename-table", "label-object.drop-table",
+                        "label-object.favorite", "label-object.copy-name",
+                        "label-object.copy-select", "label-object.refresh-objects");
+    }
+
+    private static Menu group(MenuBar bar, String key) {
+        return bar.getMenus().stream()
+                .filter(menu -> I18n.t(key).equals(menu.getText()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("找不到菜单组：" + key));
     }
 
     private static RadioMenuItem findRadio(MenuBar bar, String label) {

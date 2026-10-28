@@ -62,7 +62,7 @@ class I18nAuditTest {
      * <pre><code>find ui -path '*src/main*' -name '*.java' -print0 \
      *   | xargs -0 grep -hoP '"[^"[:cntrl:]]*[han][^"[:cntrl:]]*"' | wc -l</code></pre>
      */
-    private static final int CJK_CEILING = 2011;
+    private static final int CJK_CEILING = 1987;
 
     /** 源码里对 {@link I18n#t(String, Object...)} 的键引用。 */
     private static final Pattern KEY_REFERENCE = Pattern.compile("I18n\\.t\\(\\s*\"([^\"]+)\"");
@@ -221,7 +221,7 @@ class I18nAuditTest {
         int total = 0;
         List<String> byFile = new ArrayList<>();
         for (Path file : uiSources()) {
-            int hits = count(CJK_LITERAL, read(file));
+            int hits = count(CJK_LITERAL, stripComments(read(file)));
             total += hits;
             if (hits > 0) {
                 byFile.add(relative(file) + " = " + hits);
@@ -237,6 +237,68 @@ class I18nAuditTest {
                         + "新增硬编码中文请改成 I18n.t(...)；抽完一批请把 CJK_CEILING 调小。\n"
                         + "当前残留（按文件）：" + String.join("\n  ", byFile))
                 .isLessThanOrEqualTo(CJK_CEILING);
+    }
+
+    /**
+     * 去掉注释，只留代码 —— 棘轮数的是**界面文案**，不是解释文案的注释。
+     *
+     * <p>不做这一步的话，写一段带 ASCII 引号的中文注释就会把上限顶高一个，
+     * 于是这条门禁反过来惩罚"把 WHY 写清楚" —— 与本仓库的注释文化正好相反。
+     * （实测踩过：StatusBar 修布尔哨兵时补的一句注释让计数从 2011 变 2012。）
+     *
+     * <p>逐字符扫而不是用正则删，是因为字符串里合法地会出现 {@code //}
+     * （URL、路径分隔），正则删会把字符串一起咬掉。
+     */
+    private static String stripComments(String source) {
+        StringBuilder out = new StringBuilder(source.length());
+        boolean inString = false;
+        boolean inLine = false;
+        boolean inBlock = false;
+        for (int i = 0; i < source.length(); i++) {
+            char c = source.charAt(i);
+            char next = i + 1 < source.length() ? source.charAt(i + 1) : '\0';
+            if (inLine) {
+                if (c == '\n') {
+                    inLine = false;
+                    out.append(c);
+                }
+                continue;
+            }
+            if (inBlock) {
+                if (c == '*' && next == '/') {
+                    inBlock = false;
+                    i++;
+                } else if (c == '\n') {
+                    out.append(c);
+                }
+                continue;
+            }
+            if (inString) {
+                out.append(c);
+                if (c == '\\') {
+                    if (next != '\0') {
+                        out.append(next);
+                        i++;
+                    }
+                } else if (c == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+            if (c == '"') {
+                inString = true;
+                out.append(c);
+            } else if (c == '/' && next == '/') {
+                inLine = true;
+                i++;
+            } else if (c == '/' && next == '*') {
+                inBlock = true;
+                i++;
+            } else {
+                out.append(c);
+            }
+        }
+        return out.toString();
     }
 
     // ─────────────────────────── 3. format 的两个坑 ───────────────────────────

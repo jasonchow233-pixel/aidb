@@ -133,11 +133,22 @@ class AppShellTest {
 
         javafx.scene.control.MenuBar menuBar =
                 robot.lookup(".menu-bar").queryAs(javafx.scene.control.MenuBar.class);
-        // 9 个顶级菜单：文件 / 编辑 / 视图 / 数据库 / **对象** / **收藏夹** / 工具 / 窗口 / 帮助
-        // （X5：新增「对象」顶级菜单 —— 对象动作不再只藏在右键菜单里。）
-        assertThat(menuBar.getMenus()).hasSize(9);
-        assertThat(menuBar.getMenus().stream().map(javafx.scene.control.Menu::getText))
-                .contains(I18n.t("menu.favorites"), I18n.t("menu.object"));
+        // ⭐ R34 N2：顶级组改成 Navicat 实拍的那一套。常驻 9 组 + 一个只在表上下文里
+        //    显出来的 Table 菜单（Navicat 的查询页实拍就没有 Table，所以停在对象首页时
+        //    可见的是 9 组，不是 10 组）。
+        //    旧的「数据库 / 对象」两组是 AIDB 自有的，Navicat 没有 —— 已撤。
+        assertThat(menuBar.getMenus())
+                .as("菜单组必须**按顺序**等于 Navicat 的那一套（含隐藏的 Table）")
+                .extracting(javafx.scene.control.Menu::getText)
+                .containsExactly(
+                        I18n.t("menu.file"), I18n.t("menu.edit"), I18n.t("menu.view"),
+                        I18n.t("menu.table"), I18n.t("menu.query"), I18n.t("menu.format"),
+                        I18n.t("menu.favorites"), I18n.t("menu.tools"),
+                        I18n.t("menu.window"), I18n.t("menu.help"));
+        assertThat(menuBar.getMenus().stream().filter(javafx.scene.control.Menu::isVisible)
+                .map(javafx.scene.control.Menu::getText))
+                .as("对象首页不是「某一张表」，Table 菜单此刻必须藏着")
+                .doesNotContain(I18n.t("menu.table"));
 
         // ⭐ S5：标签栏**永远可见** —— 第一个标签是常驻的「对象」标签，
         //    它是浏览的起点（Navicat 同形）。
@@ -508,6 +519,40 @@ class AppShellTest {
     private static Label dirtyMarkerOf(FxRobot robot, String tabId) {
         return robot.lookup("#" + TabBar.nodeId(tabId) + " .adb-tab__dirty")
                 .queryAs(Label.class);
+    }
+
+    /**
+     * ⭐ R34 N2 的另一半：{@code Table} 菜单必须**真的会显出来**。
+     *
+     * <p>只测"默认隐藏"是不够的 —— 一个坏掉的、永远不显示的菜单也能通过它。
+     * Navicat 的 Table 菜单是上下文菜单，所以这里打开一张表，断言它出现，
+     * 并且里面装的是表级动作而不是别的组。
+     */
+    @Test
+    void theTableMenuAppearsOnlyWhenATableIsActive(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        javafx.scene.control.MenuBar menuBar =
+                robot.lookup(".menu-bar").queryAs(javafx.scene.control.MenuBar.class);
+        javafx.scene.control.Menu table = menuBar.getMenus().stream()
+                .filter(menu -> I18n.t("menu.table").equals(menu.getText()))
+                .findFirst().orElseThrow();
+        assertThat(table.isVisible())
+                .as("停在对象首页时不该有 Table 菜单")
+                .isFalse();
+
+        openTable(robot, "users");
+
+        assertThat(table.isVisible())
+                .as("打开一张表（GRID 上下文）之后 Table 菜单必须出现")
+                .isTrue();
+        assertThat(table.getItems().stream()
+                .filter(item -> item instanceof javafx.scene.control.MenuItem
+                        && item.getText() != null && !item.getText().isEmpty())
+                .map(javafx.scene.control.MenuItem::getText))
+                .as("里面是表级动作")
+                .contains(I18n.t("action.object.open-data"),
+                        I18n.t("action.object.new-table"),
+                        I18n.t("action.object.copy-select"));
     }
 
     /**
