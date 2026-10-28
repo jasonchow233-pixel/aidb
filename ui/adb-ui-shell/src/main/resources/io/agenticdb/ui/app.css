@@ -800,11 +800,18 @@
 
 /* ── 下拉框：按钮面 + 弹层 ── */
 
+/* ⭐ R33（2026-10-28）：显示格**不能再吃 4px 内边距**。
+ *   `.combo-box` 自己已经有 4px 8px（见上面「输入控件」段），28px 高里留给
+ *   按钮面的只剩 20px；显示格再套一层 4px 8px，内容区只剩 12px，而 12px 字号
+ *   的行框是 15px —— Labeled 把字形裁掉上下，p5-connect-ssl / p8-export 实拍里
+ *   「校验 CA」「整表」只剩约 8px 高的一条。这里把内边距归零（横向也归零：
+ *   组合框的 8px 已经把文字和同排 TextField 的 8px 对齐，再加一层会缩进 16px）。
+ *   弹层里的格子另有 `.combo-box-popup .list-cell` 的 4px 8px，不受影响。 */
 .combo-box .list-cell {
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-primary;
     -fx-font-size: 12px;
-    -fx-padding: 4px 8px;
+    -fx-padding: 0px;
 }
 
 /* Modena 给箭头按钮画了渐变底、给箭头画了两层高光；这里都压平。 */
@@ -3615,10 +3622,57 @@
 
 /* ── 向导（导入 / 导出 / 收藏 / 已保存查询 / 传输入口）───────────────── */
 
-.adb-wizard__content {
+/* ⭐ R33（2026-10-28）：与 U30 同一场特异性之争，这次轮到向导。
+ *   `.adb-dialog > .content { padding: 0 }` 是 (0,2,0)，裸 `.adb-wizard__content`
+ *   只有 (0,1,0) —— 五个向导的正文**一直贴着弹窗边缘**（p8-import / p8-export /
+ *   p5-connect-* 实拍：标签的落点几乎就是 x=0）。补一条带 `.content` 的选择器
+ *   提到 (0,3,0) 才赢得过；裸类规则留着给不走 setContent 的场合。 */
+.adb-wizard__content,
+.adb-dialog > .content.adb-wizard__content {
     -fx-padding: 16px;
     -fx-spacing: 12px;
     -fx-background-color: -adb-bg-canvas;
+}
+
+/* 连接向导的类型磁贴（Navicat 的连接类型页：白卡 + 选中蓝边）。
+   选中态用 :selected（ToggleButton 自带伪类），边框宽度恒定 —— 只换颜色。 */
+.adb-type-tile {
+    -fx-background-color: -adb-bg-surface;
+    -fx-border-color: -adb-border;
+    -fx-border-width: 1px;
+    -fx-border-radius: 3px;
+    -fx-background-radius: 3px;
+    -fx-padding: 12px;
+    -fx-cursor: hand;
+}
+
+.adb-type-tile:hover {
+    -fx-background-color: -adb-bg-hover;
+}
+
+.adb-type-tile:selected {
+    -fx-background-color: -adb-bg-selected;
+    -fx-border-color: -adb-accent;
+}
+
+.adb-type-tile__icon {
+    -fx-text-fill: -adb-accent;
+}
+
+.adb-type-tile__name {
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.adb-type-tile__hint {
+    -fx-font-size: 11px;
+}
+
+/* 导入向导的执行日志：等宽、小一号 —— 它是「一行一条事实」的流水，不是正文。 */
+.adb-import-log {
+    -fx-font-family: "Consolas", "Cascadia Mono", "SF Mono", "Menlo", "Noto Sans Mono", monospace;
+    -fx-font-size: 11px;
 }
 
 /* ── 表单（新建表 / 新建索引）───────────────────────────────────────── */

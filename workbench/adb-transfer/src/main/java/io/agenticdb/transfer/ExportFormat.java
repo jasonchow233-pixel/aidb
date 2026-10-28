@@ -1,7 +1,5 @@
 package io.agenticdb.transfer;
 
-import java.util.List;
-
 /**
  * 导出格式。
  *
@@ -14,7 +12,9 @@ public enum ExportFormat {
     TSV("TSV", "制表符分隔", '\t'),
     JSON("JSON", "数组，每行一个对象（JSON Lines）", '\0'),
     SQL("SQL", "INSERT 语句，可直接重放", '\0'),
-    XLSX("XLSX", "Excel 工作簿（流式写出）", '\0');
+    XLSX("XLSX", "Excel 工作簿（流式写出）", '\0'),
+    XML("XML", "每行一个 <row>，列名写在 <c name> 上", '\0'),
+    HTML("HTML", "带表头的 <table>，可直接用浏览器打开", '\0');
 
     private final String label;
     private final String hint;
@@ -34,7 +34,7 @@ public enum ExportFormat {
         return hint;
     }
 
-    /** 分隔符。JSON / SQL / XLSX 没有分隔符，返回 {@code '\0'}。 */
+    /** 分隔符。JSON / SQL / XLSX / XML / HTML 没有分隔符，返回 {@code '\0'}。 */
     public char delimiter() {
         return delimiter;
     }
@@ -44,7 +44,13 @@ public enum ExportFormat {
         return this == XLSX;
     }
 
+    /** 只有 CSV / TSV 有可选的表头行 —— 其余格式的表头是结构的一部分。 */
     public boolean hasHeader() {
         return this == CSV || this == TSV;
+    }
+
+    /** 文件后缀（小写，带点）。 */
+    public String extension() {
+        return "." + name().toLowerCase(java.util.Locale.ROOT);
     }
 }

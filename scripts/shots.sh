@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（27 张）。
+# 重拍 docs/screenshots/ 的验收截图（33 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 22 张 + 暗色 5 张）
+#   ./scripts/shots.sh              # 全部重拍（亮色 28 张 + 暗色 5 张）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
 #
 # 为什么需要这个脚本（历史上踩过的坑，全部在这里被绕开）：
@@ -98,6 +98,22 @@ SHOTS=(
   # ⭐ §6.4：这一帧要拍到「已选列 + 序号 + 预览 SQL + 可用的移动钮」，
   #   光弹一个空弹窗等于没拍这个弹窗的核心交互（空态由 IndexDialogTest 守）。
   "p7-new-index||6000|ADB_INDEX=1 ADB_INDEX_POSE=1 ADB_THEME_FORCE=light"
+  # ⭐ R33-G5：导入向导 —— 外壳先写一份 GBK 演示 CSV，向导摆出「GBK 解码 +
+  #   表头第 1 行 + 预览已读出中文 + 字段映射」，证的是编码/表头行真生效
+  #   （空窗与 UTF-8 假数据都证明不了）。9000ms：数据页要先把表结构读回来。
+  "p8-import||9000|ADB_OPEN=users ADB_IMPORT=1 ADB_THEME_FORCE=light"
+  # ⭐ R33-G6：导出向导 —— 摆「取消勾选一列 + XML 格式 + 目标路径」，
+  #   证的是列选择与 XML/HTML 两种新格式在界面上真的可选、可用性跟着格式走。
+  "p8-export||9000|ADB_OPEN=users ADB_EXPORT=xml ADB_THEME_FORCE=light"
+  # ⭐ R33-G20：连接向导的类型选择页 —— 三张真实库型磁贴 + 搜索 + URI 入口。
+  #   不需要数据库连接，弹得快；4000ms 只等启动。
+  "p5-connect-type||4000|ADB_CONNECT_WIZARD=type ADB_THEME_FORCE=light"
+  # ⭐ R33-G8/G20：7 页属性 —— 常规 / SSL / SSH 各一帧。
+  #   SSH 页是「明说没有隧道引擎 + 给 ssh -L 替代做法」那一屏，
+  #   不摆一帧就等于这条诚实边界没人看过。
+  "p5-connect-general||4000|ADB_CONNECT_WIZARD=general ADB_THEME_FORCE=light"
+  "p5-connect-ssl||4000|ADB_CONNECT_WIZARD=ssl ADB_THEME_FORCE=light"
+  "p5-connect-ssh||4000|ADB_CONNECT_WIZARD=ssh ADB_THEME_FORCE=light"
   # ⭐ P2-2：错误详情弹窗 —— 分类徽标 + 驱动原文 + 建议 + 可复制的 SQL。
   #   8000ms（不是 5000）：连拍 18 次冷启动时这台机器实测会慢过 5s ——
   #   弹窗还没开就拍，得到一张与 p0-shell 同 md5 的假帧（U7 去重门禁抓到过，

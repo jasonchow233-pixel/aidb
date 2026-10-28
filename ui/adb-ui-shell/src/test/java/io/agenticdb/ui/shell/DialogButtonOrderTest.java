@@ -225,6 +225,15 @@ class DialogButtonOrderTest {
                 .content()), "variable-cancel", "variable-ok");
     }
 
+    @Test
+    @DisplayName("连接向导：取消在左，下一步 / 确定贴右下")
+    void connectionWizardFooterPutsDismissLeft() {
+        ConnectionWizard wizard = onFx(() -> new ConnectionWizard(stage, null,
+                io.agenticdb.session.CredentialStore.inMemory(), spec -> null));
+        assertFooter("连接向导第 1 步", (Pane) onFx(wizard::stepContent),
+                "wizard-cancel", "wizard-next");
+    }
+
     // ─────────────── ③ 静态：不许有弹窗自己改序串 / 悄悄多出一套底部区 ───────────────
 
     @Test
@@ -252,8 +261,8 @@ class DialogButtonOrderTest {
     }
 
     @Test
-    @DisplayName("自建底部按钮区的弹窗就这六处，多一处必须一起来这里挂号")
-    void theCustomFooterSetIsStillTheKnownSix() {
+    @DisplayName("自建底部按钮区的弹窗就这七处，多一处必须一起来这里挂号")
+    void theCustomFooterSetIsStillTheKnownSeven() {
         List<String> files = new ArrayList<>();
         for (Path path : productionSources()) {
             if (stripLineComments(read(path)).contains("getButtonTypes().clear()")) {
@@ -262,8 +271,8 @@ class DialogButtonOrderTest {
         }
         assertThat(files)
                 .as("清空 JavaFX 按钮栏、自己排按钮的弹窗清单变了 —— 上面的视觉门禁要跟着加")
-                .containsExactlyInAnyOrder("ExportWizard.java", "ImportWizard.java",
-                        "FavoritesPage.java", "SavedQueriesPage.java",
+                .containsExactlyInAnyOrder("ConnectionWizard.java", "ExportWizard.java",
+                        "ImportWizard.java", "FavoritesPage.java", "SavedQueriesPage.java",
                         "TransferHub.java", "VariableDialog.java");
     }
 

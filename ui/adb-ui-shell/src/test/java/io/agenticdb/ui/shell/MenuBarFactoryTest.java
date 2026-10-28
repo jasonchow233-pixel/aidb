@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import javafx.application.Platform;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
@@ -177,7 +178,7 @@ class MenuBarFactoryTest {
         MenuBar menuBar = bar(actions);
 
         Menu edit = menuBar.getMenus().stream()
-                .filter(menu -> "编辑".equals(menu.getText()))
+                .filter(menu -> I18n.t("menu.edit").equals(menu.getText()))
                 .findFirst()
                 .orElseThrow();
         assertThat(edit.getItems().stream().map(MenuItem::getText))

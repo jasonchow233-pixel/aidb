@@ -10,6 +10,7 @@ import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.ConnectionStore;
 import io.agenticdb.session.CredentialStore;
 import io.agenticdb.session.SessionManager;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
@@ -489,6 +490,50 @@ public final class AppShell extends StackPane {
                 pollAgain(attempt, () -> poseGridFormWhenReady(attempt + 1));
             }
         });
+    }
+
+    /** 截图用：等数据页读完表结构再弹导入向导（showAndWait 只能从事件里开）。 */
+    private void poseImportWizardWhenReady(Path file, int attempt) {
+        Platform.runLater(() -> {
+            DataGridPage grid = workspace.activeGrid();
+            if (grid != null && grid.poseImportWizardForShots(file)) {
+                return;
+            }
+            if (attempt < POP_READY_MAX_POLLS) {
+                pollAgain(attempt, () -> poseImportWizardWhenReady(file, attempt + 1));
+            }
+        });
+    }
+
+    /** 截图用：等数据页读完表结构再弹导出向导。 */
+    private void poseExportWizardWhenReady(String pose, int attempt) {
+        Platform.runLater(() -> {
+            DataGridPage grid = workspace.activeGrid();
+            if (grid != null && grid.poseExportWizardForShots(pose)) {
+                return;
+            }
+            if (attempt < POP_READY_MAX_POLLS) {
+                pollAgain(attempt, () -> poseExportWizardWhenReady(pose, attempt + 1));
+            }
+        });
+    }
+
+    /**
+     * 截图用：写一份 GBK 演示 CSV（中文姓名），让导入向导的「编码」这一项
+     * 在帧里真的起作用 —— UTF-8 文件按 GBK 解会乱码，证明不了什么。
+     */
+    private static Path writeDemoImportFile() {
+        Path file = Path.of(System.getProperty("java.io.tmpdir"), "adb-demo-import-gbk.csv");
+        String text = "id,name,email\n"
+                + "101,张三,zhangsan@example.com\n"
+                + "102,李四,lisi@example.com\n"
+                + "103,王五,wangwu@example.com\n";
+        try {
+            Files.writeString(file, text, java.nio.charset.Charset.forName("GBK"));
+            return file;
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     /** 表清单动作的统一入口：没有打开的清单页时给一句人话，不静默 no-op。 */
@@ -1310,7 +1355,10 @@ public final class AppShell extends StackPane {
                 connectProfile(fallback, true);
             } else {
                 sideBar.setObjects(List.of());
-                statusBar.setConnection("未连接");
+                // ⚠️ 以前这里传字面量「未连接」，靠 StatusBar 拿显示文案反推状态。
+                //    StatusBar 改成记布尔之后，传字符串就是"有一个名字叫未连接的连接"——
+                //    连接灯会在没连上时亮绿。断开的正确表达是 null。
+                statusBar.setConnection(null);
                 if (appBar != null) {
                     appBar.setConnectionState(false, false);
                 }
@@ -1358,7 +1406,7 @@ public final class AppShell extends StackPane {
         }
         sessions.close(id);
         session = null;
-        statusBar.setConnection("未连接");
+        statusBar.setConnection(null);
         statusBar.setDialect("—");
         statusBar.setReadonly(true);
         statusBar.setRange("—");
@@ -1557,6 +1605,39 @@ public final class AppShell extends StackPane {
         if (flag("adb.form", "ADB_FORM")) {
             poseGridFormWhenReady(0);
         }
+        // ⭐ 截图 / 验收（R33-G5）：导入向导 —— 文件由外壳准备（GBK 中文），
+        //    绕过文件选择框直接弹向导并摆好预览。与 ADB_NEW_TABLE 同理必须 runLater：
+        //    向导是 showAndWait 的模态框，直接调用会开嵌套事件循环挡住截图调度。
+        if (flag("adb.import", "ADB_IMPORT")) {
+            Path demo = writeDemoImportFile();
+            if (demo == null) {
+                status("导入演示文件写入失败，这一帧拍不到导入向导");
+            } else {
+                poseImportWizardWhenReady(demo, 0);
+            }
+        }
+        // ⭐ 截图 / 验收（R33-G6）：导出向导 —— ADB_EXPORT=xml|html 决定摆哪一档格式。
+        String exportPose = text("adb.exportPose", "ADB_EXPORT").trim();
+        if (!exportPose.isEmpty()) {
+            String pose = exportPose.equals("1") || exportPose.equalsIgnoreCase("true")
+                    ? "xml" : exportPose;
+            poseExportWizardWhenReady(pose, 0);
+        }
+        // ⭐ 截图 / 验收（R33-G8/G20）：连接向导 —— 类型页 / 7 页属性各一帧。
+        //    不需要数据库连接，所以直接 runLater 弹出；pose 打错会落到默认页，
+        //    由 ScreenshotScriptAuditTest 守着「脚本里的 pose 必须被认得」。
+        String connectWizardPose = text("adb.connectWizard", "ADB_CONNECT_WIZARD").trim();
+        if (!connectWizardPose.isEmpty()) {
+            String pose = connectWizardPose.equals("1")
+                    || connectWizardPose.equalsIgnoreCase("true")
+                    ? "general" : connectWizardPose;
+            Platform.runLater(() -> {
+                ConnectionWizard wizard = new ConnectionWizard(
+                        stage, null, credentials, this::testConnection);
+                wizard.poseForShots(pose);
+                wizard.show();
+            });
+        }
         // ⭐ 截图 / 验收（UX-6）：启动直接落在数据页「概览」切面。
         //    切面标签的 id 是动态拼的（object-tab-<id>），截图脚本的静态审计
         //    不允许点它；这里与 ADB_DDL 同型，等页面建好后程序化切换。
@@ -1700,28 +1781,28 @@ public final class AppShell extends StackPane {
     // ─────────────────────────── 动作 ───────────────────────────
 
     private void registerActions() {
-        actions.register("new-connection", "新建连接…", "文件",
+        actions.register("new-connection", I18n.t("action.new-connection"), I18n.t("category.file"),
                 key("Shortcut+N"), this::openConnectionWizard);
-        actions.register("connections.manage", "连接管理…", "文件",
+        actions.register("connections.manage", I18n.t("action.connections.manage"), I18n.t("category.file"),
                 null, this::openConnections);
-        actions.register("new-query", "新建查询", "文件",
+        actions.register("new-query", I18n.t("action.new-query"), I18n.t("category.file"),
                 key("Shift+Shortcut+N"), this::openNewQuery);
-        actions.register("open-sql", "打开 SQL 文件…", "文件",
+        actions.register("open-sql", I18n.t("action.open-sql"), I18n.t("category.file"),
                 key("Shortcut+O"), this::openSqlFile);
-        actions.register("tab.close", "关闭标签", "文件",
+        actions.register("tab.close", I18n.t("action.tab.close"), I18n.t("category.file"),
                 key("Shortcut+W"), () -> tabBar.closeActive());
         // 4.5-29：标签栏右键菜单以前是手搓 MenuItem，现在也走注册表，
         // 于是「关闭其他 / 全部关闭」能在 ⌘K 里搜到，enabled 也统一。
-        actions.register("tab.close-others", "关闭其他", "文件",
+        actions.register("tab.close-others", I18n.t("action.tab.close-others"), I18n.t("category.file"),
                 null, () -> tabBar.closeOthers(tabBar.activeId()));
-        actions.register("tab.close-all", "全部关闭", "文件",
+        actions.register("tab.close-all", I18n.t("action.tab.close-all"), I18n.t("category.file"),
                 null, () -> tabBar.closeAll());
         // ⭐ S8：标签栏右键补「复制表名 / 复制 SELECT」
-        actions.register("tab.copy-name", "复制表名", "文件",
+        actions.register("tab.copy-name", I18n.t("action.tab.copy-name"), I18n.t("category.file"),
                 null, () -> copyActiveTabTarget(false));
-        actions.register("tab.copy-select", "复制 SELECT", "文件",
+        actions.register("tab.copy-select", I18n.t("action.tab.copy-select"), I18n.t("category.file"),
                 null, () -> copyActiveTabTarget(true));
-        actions.register("window.close", "关闭窗口", "文件",
+        actions.register("window.close", I18n.t("action.window.close"), I18n.t("category.file"),
                 key("Shift+Shortcut+W"), () -> {
                     if (stage != null) {
                         stage.close();
@@ -1729,7 +1810,7 @@ public final class AppShell extends StackPane {
                         Platform.exit();
                     }
                 });
-        actions.register("app.quit", "退出 AIDB", "文件",
+        actions.register("app.quit", I18n.t("action.app.quit"), I18n.t("category.file"),
                 key("Shortcut+Q"), () -> {
                     if (stage != null) {
                         stage.close();
@@ -1738,9 +1819,9 @@ public final class AppShell extends StackPane {
                     }
                 });
 
-        actions.register("command-palette", "命令面板", "编辑",
+        actions.register("command-palette", I18n.t("action.command-palette"), I18n.t("category.edit"),
                 key("Shortcut+K"), palette::showPalette);
-        actions.register("focus-search", "搜索对象", "编辑",
+        actions.register("focus-search", I18n.t("action.focus-search"), I18n.t("category.edit"),
                 key("Shortcut+F"), () -> {
                     if (!workspace.focusSearch()) {
                         sideBar.focusSearch();
@@ -1750,9 +1831,12 @@ public final class AppShell extends StackPane {
         // 编辑菜单三件套：撤销 / 重做 / 复制，全部委托当前活动数据页。
         // 快捷键不在此注册 —— DataGridPage 已在自己的 scene 上绑了 ⌘Z/⇧⌘Z/⌘C，
         // 两边都注册会双触发（撤销两次）；菜单入口复用同一方法，行为一致。
-        actions.register("edit.undo", io.agenticdb.ui.Shortcuts.labelled("撤销", "Mod+Z"), "编辑", null, this::editUndo);
-        actions.register("edit.redo", io.agenticdb.ui.Shortcuts.labelled("重做", "Shift+Mod+Z"), "编辑", null, this::editRedo);
-        actions.register("edit.copy", io.agenticdb.ui.Shortcuts.labelled("复制", "Mod+C"), "编辑", null, () -> {
+        actions.register("edit.undo", io.agenticdb.ui.Shortcuts.labelled(
+                I18n.t("action.edit.undo"), "Mod+Z"), I18n.t("category.edit"), null, this::editUndo);
+        actions.register("edit.redo", io.agenticdb.ui.Shortcuts.labelled(
+                I18n.t("action.edit.redo"), "Shift+Mod+Z"), I18n.t("category.edit"), null, this::editRedo);
+        actions.register("edit.copy", io.agenticdb.ui.Shortcuts.labelled(
+                I18n.t("action.edit.copy"), "Mod+C"), I18n.t("category.edit"), null, () -> {
             DataGridPage grid = workspace.activeGrid();
             if (grid == null) {
                 status("复制只在数据页可用");
@@ -1761,38 +1845,38 @@ public final class AppShell extends StackPane {
             grid.copyFocusedCellValue();
         });
 
-        actions.register("query.run", "执行当前语句", "查询",
+        actions.register("query.run", I18n.t("action.query.run"), I18n.t("category.query"),
                 key("Shortcut+R"), () -> {
                     if (!workspace.runQuery()) {
                         status("请先新建一个查询页");
                     }
                 });
-        actions.register("query.run-all", "执行全部语句", "查询",
+        actions.register("query.run-all", I18n.t("action.query.run-all"), I18n.t("category.query"),
                 key("Shift+Shortcut+R"), () -> {
                     if (!workspace.runAllQuery()) {
                         status("请先新建一个查询页");
                     }
                 });
-        actions.register("query.cancel", "取消执行", "查询",
+        actions.register("query.cancel", I18n.t("action.query.cancel"), I18n.t("category.query"),
                 key("Shortcut+Period"), () -> {
                     if (!workspace.cancelQuery()) {
                         status("当前没有正在执行的查询");
                     }
                 });
-        actions.register("query.explain", "解释执行计划", "查询",
+        actions.register("query.explain", I18n.t("action.query.explain"), I18n.t("category.query"),
                 key("Shortcut+E"), () -> {
                     if (!workspace.explainQuery()) {
                         status("请先新建一个查询页");
                     }
                 });
-        actions.register("query.format", "格式化 SQL", "查询",
+        actions.register("query.format", I18n.t("action.query.format"), I18n.t("category.query"),
                 key("Alt+Shift+F"), () -> {
                     if (!workspace.formatQuery()) {
                         status("请先新建一个查询页");
                     }
                 });
         // ⭐ Q6：代码片段库（与「已保存查询」同源，但用法不同：插入而非执行）。
-        actions.register("query.save-snippet", "存为代码片段", "查询", null, () -> {
+        actions.register("query.save-snippet", I18n.t("action.query.save-snippet"), I18n.t("category.query"), null, () -> {
             QueryPage page = workspace.activeQuery();
             if (page == null) {
                 status("请先新建一个查询页");
@@ -1800,78 +1884,78 @@ public final class AppShell extends StackPane {
             }
             page.saveSnippet();
         });
-        actions.register("query.insert-snippet", "插入代码片段…", "查询", null, this::insertSnippet);
-        actions.register("query.save", "保存 SQL", "查询",
+        actions.register("query.insert-snippet", I18n.t("action.query.insert-snippet"), I18n.t("category.query"), null, this::insertSnippet);
+        actions.register("query.save", I18n.t("action.query.save"), I18n.t("category.query"),
                 key("Shortcut+S"), () -> {
                     if (!workspace.saveQuery()) {
                         status("请先新建一个查询页");
                     }
                 });
-        actions.register("query.comment", "注释 / 取消注释", "查询",
+        actions.register("query.comment", I18n.t("action.query.comment"), I18n.t("category.query"),
                 key("Shortcut+Slash"), () -> {
                     if (!workspace.toggleQueryComment()) {
                         status("请先新建一个查询页");
                     }
                 });
 
-        actions.register("sidebar.toggle", "折叠 / 展开侧栏", "视图",
+        actions.register("sidebar.toggle", I18n.t("action.sidebar.toggle"), I18n.t("category.view"),
                 key("Shortcut+Backslash"),
                 () -> sideBar.setCollapsed(!sideBar.isCollapsed()));
         // ⭐ §6：右侧对象详情面板。⌥⌘D 与 VS Code 的侧栏一致，
         //    用户不用重新学。
-        actions.register("details.toggle", "显示 / 隐藏对象详情", "视图",
+        actions.register("details.toggle", I18n.t("action.details.toggle"), I18n.t("category.view"),
                 key("Shortcut+Alt+D"),
                 this::toggleDetails);
-        actions.register("theme.toggle", "切换主题", "视图",
+        actions.register("theme.toggle", I18n.t("action.theme.toggle"), I18n.t("category.view"),
                 null, () -> {
                     themeManager.toggle();
                     status("主题：" + themeManager.mode().label());
                     toast("主题：" + themeManager.mode().label());
                 });
-        actions.register("density-dense", "密集", "视图",
+        actions.register("density-dense", I18n.t("action.density-dense"), I18n.t("category.view"),
                 null, () -> changeDensity("dense"));
-        actions.register("density-compact", "紧凑", "视图",
+        actions.register("density-compact", I18n.t("action.density-compact"), I18n.t("category.view"),
                 null, () -> changeDensity("compact"));
-        actions.register("density-normal", "标准", "视图",
+        actions.register("density-normal", I18n.t("action.density-normal"), I18n.t("category.view"),
                 null, () -> changeDensity("normal"));
-        actions.register("density-comfort", "宽松", "视图",
+        actions.register("density-comfort", I18n.t("action.density-comfort"), I18n.t("category.view"),
                 null, () -> changeDensity("comfort"));
 
-        actions.register("refresh", "刷新", "数据库",
+        actions.register("refresh", I18n.t("action.refresh"), I18n.t("category.database"),
                 key("F5"), this::refresh);
-        actions.register("connection.reconnect", "重新连接", "数据库",
+        actions.register("connection.reconnect", I18n.t("action.connection.reconnect"), I18n.t("category.database"),
                 null, this::reconnectConnection);
-        actions.register("connection.disconnect", "断开连接", "数据库",
+        actions.register("connection.disconnect", I18n.t("action.connection.disconnect"), I18n.t("category.database"),
                 null, this::disconnectConnection);
-        actions.register("demo.open", "打开演示表 users", "数据库",
+        actions.register("demo.open", I18n.t("action.demo.open"), I18n.t("category.database"),
                 null, () -> openTab(new TabItem("grid:" + activeProfileId() + ":users",
                         "users", TabKind.GRID, "users", activeProfileId())));
 
         // ⭐ S2：表清单（Navicat 的「表清单」那一层）
-        actions.register("object.tables", "表清单", "对象",
+        actions.register("object.tables", I18n.t("action.object.tables"), I18n.t("category.object"),
                 null, this::openTableList);
 
         // ⭐ N1–N5：表清单的动作全部进注册表 —— 工具栏、右键菜单、命令面板同一份真相。
         //    选择相关的动作先禁用，等表清单页出现后由页面按选择启用。
-        actions.register("table-list.new", "新建表…", "表清单", null,
+        actions.register("table-list.new", I18n.t("action.table-list.new"), I18n.t("category.tableList"), null,
                 () -> withActiveTableList(TableListPage::createTable));
-        actions.register("table-list.open", "打开表", "表清单", null,
+        actions.register("table-list.open", I18n.t("action.table-list.open"), I18n.t("category.tableList"), null,
                 () -> withActiveTableList(TableListPage::openSelected));
-        actions.register("table-list.design", "设计表…", "表清单", null,
+        actions.register("table-list.design", I18n.t("action.table-list.design"), I18n.t("category.tableList"), null,
                 () -> withActiveTableList(TableListPage::designSelected));
-        actions.register("table-list.rename", "重命名表…", "表清单", null,
+        actions.register("table-list.rename", I18n.t("action.table-list.rename"), I18n.t("category.tableList"), null,
                 () -> withActiveTableList(TableListPage::renameSelected));
-        actions.register("table-list.truncate", "清空表…", "表清单", null,
+        actions.register("table-list.truncate", I18n.t("action.table-list.truncate"), I18n.t("category.tableList"), null,
                 () -> withActiveTableList(TableListPage::truncateSelected));
-        actions.register("table-list.drop", "删除表…", "表清单", null,
+        actions.register("table-list.drop", I18n.t("action.table-list.drop"), I18n.t("category.tableList"), null,
                 () -> withActiveTableList(TableListPage::dropSelected));
-        actions.register("table-list.refresh", "刷新表清单", "表清单", null,
+        actions.register("table-list.refresh", I18n.t("action.table-list.refresh"), I18n.t("category.tableList"), null,
                 () -> withActiveTableList(TableListPage::reload));
-        actions.register("table-list.select-all", "全选", "表清单", null,
+        actions.register("table-list.select-all", I18n.t("action.table-list.select-all"), I18n.t("category.tableList"), null,
                 () -> withActiveTableList(TableListPage::selectAll));
-        actions.register("table-list.view-list", "列表视图", "表清单", null,
+        actions.register("table-list.view-list", I18n.t("action.table-list.view-list"), I18n.t("category.tableList"), null,
                 () -> withActiveTableList(page -> page.showView("list")));
-        actions.register("table-list.view-grid", "网格视图", "表清单", null,
+        actions.register("table-list.view-grid", I18n.t("action.table-list.view-grid"), I18n.t("category.tableList"), null,
                 () -> withActiveTableList(page -> page.showView("grid")));
         for (String id : List.of("table-list.open", "table-list.design", "table-list.rename",
                 "table-list.truncate", "table-list.drop", "table-list.refresh",
@@ -1879,36 +1963,36 @@ public final class AppShell extends StackPane {
             actions.find(id).ifPresent(action -> action.setEnabled(false));
         }
         // ⭐ S6：顶级「收藏夹」菜单的入口
-        actions.register("favorites.open", "打开收藏夹…", "收藏夹",
+        actions.register("favorites.open", I18n.t("action.favorites.open"), I18n.t("category.favorites"),
                 null, this::openFavorites);
-        actions.register("diagnostics", "诊断", "工具",
+        actions.register("diagnostics", I18n.t("action.diagnostics"), I18n.t("category.tools"),
                 null, () -> actions.run("object.diagnostics"));
         // P6 的「导入 / 导出」向导还没做：入口先从侧栏撤掉，
         // 不留「点了只有一句提示」的死 UI（TODO §12.1「要么接要么删」）。
-        actions.register("import-export", "导入 / 导出", "工具",
+        actions.register("import-export", I18n.t("action.import-export"), I18n.t("category.tools"),
                 null, this::openTransferHub);
-        actions.register("saved-queries", "已保存查询", "工具",
+        actions.register("saved-queries", I18n.t("action.saved-queries"), I18n.t("category.tools"),
                 null, this::openSavedQueries);
-        actions.register("settings", "设置…", "工具",
+        actions.register("settings", I18n.t("action.settings"), I18n.t("category.tools"),
                 key("Shortcut+Comma"),
                 () -> openTab(new TabItem("settings", "设置", TabKind.SETTINGS)));
 
-        actions.register("window.minimize", "最小化", "窗口",
+        actions.register("window.minimize", I18n.t("action.window.minimize"), I18n.t("category.window"),
                 key("Shortcut+M"), () -> {
                     if (stage != null) {
                         stage.setIconified(true);
                     }
                 });
-        actions.register("window.zoom", "最大化 / 还原", "窗口",
+        actions.register("window.zoom", I18n.t("action.window.zoom"), I18n.t("category.window"),
                 null, () -> {
                     if (stage != null) {
                         stage.setMaximized(!stage.isMaximized());
                     }
                 });
 
-        actions.register("shortcuts", "快捷键…", "帮助",
+        actions.register("shortcuts", I18n.t("action.shortcuts"), I18n.t("category.help"),
                 key("F1"), this::showShortcuts);
-        actions.register("about", "关于 AIDB", "帮助",
+        actions.register("about", I18n.t("action.about"), I18n.t("category.help"),
                 null, () -> showInfo("关于 AIDB",
                         "AIDB " + io.agenticdb.ui.AppVersion.DISPLAY
                                 + "\nJavaFX 25 · 原生桌面\n\n"

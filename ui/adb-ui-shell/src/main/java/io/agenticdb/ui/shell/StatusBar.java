@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
@@ -61,12 +62,19 @@ public final class StatusBar extends HBox {
     private final Label source = segment("—", "adb-status__source");
     /** 方言与连接名的当前值 —— 合成显示，各自仍可被门禁读回。 */
     private String dialectName = "—";
-    private String connectionName = "未连接";
+    private String connectionName = I18n.t("status.notConnected");
+    /**
+     * ⭐ i18n 前置修正：连接与否以前靠 {@code !"未连接".equals(connectionName)} 判断 ——
+     * **拿显示文案当状态哨兵**。默认语言换成英文之后，这个比较会永远为真，
+     * 连接灯会在完全没连接时亮起绿色；而且真有人把连接命名成「未连接」时它会反过来。
+     * 现在由 {@link #setConnection} 一次性记下布尔值，显示文案只负责显示。
+     */
+    private boolean connected;
     /** 服务器信息（版本 · 用户）：U8 后退到连接灯的 tooltip。 */
     private String serverInfo = "";
     private final Tooltip sourceTooltip = new Tooltip();
 
-    private final Label range = segment("0 行", "adb-status__range");
+    private final Label range = segment(I18n.t("status.rows", 0), "adb-status__range");
     /** U8：行范围也讲「没数据不占位」—— 对象首页/表清单上那根悬空的「—」就是它。 */
     private final Region rangeSeparator = separator();
     private final Tooltip rangeTooltip = new Tooltip();
@@ -91,7 +99,8 @@ public final class StatusBar extends HBox {
     /** 耗时段的分隔符 —— 必须与 {@link #duration} 同进退，否则会剩一个孤零零的「·」。 */
     private final Region durationSeparator = separator();
     /** U8：事务状态 + 读写权限合成的一段「自动提交 · 可写」。 */
-    private final Label session = segment("自动提交 · 只读", "adb-status__session");
+    private final Label session = segment(
+            I18n.t("status.autoCommit") + " · " + I18n.t("status.readOnly"), "adb-status__session");
     /**
      * ⭐ G19b（2026-10-28 改判 U8）：最后刷新**常驻一格**。
      *
@@ -101,7 +110,7 @@ public final class StatusBar extends HBox {
      */
     private final Label refreshed = segment("", "adb-status__refreshed");
     private final Region refreshedSeparator = separator();
-    private String transactionState = "自动提交";
+    private String transactionState = I18n.t("status.autoCommit");
     private boolean readonly = true;
     private final Label dirty = segment("", "adb-status__dirty");
     /** ⭐ UX-5-D：左段的「当前语句」—— 显示压平后的一行，复制与 tooltip 用原文。 */
@@ -189,7 +198,8 @@ public final class StatusBar extends HBox {
     }
 
     public void setConnection(String value) {
-        connectionName = value == null || value.isBlank() ? "未连接" : value;
+        connected = value != null && !value.isBlank();
+        connectionName = connected ? value : I18n.t("status.notConnected");
         paintSource();
     }
 
@@ -206,13 +216,13 @@ public final class StatusBar extends HBox {
             source.getStyleClass().remove(LIVE);
         }
         sourceTooltip.setText(serverInfo.isEmpty()
-                ? "当前连接：" + connectionName
-                : "当前连接：" + connectionName + "\n" + serverInfo);
+                ? I18n.t("status.currentConnection", connectionName)
+                : I18n.t("status.currentConnection", connectionName) + "\n" + serverInfo);
     }
 
-    /** U8：AppShell 在未连接时把连接名写回「未连接」，这是唯一的判据。 */
+    /** U8：连接与否的判据 —— 读 {@link #connected}，不再比较显示文案（见该字段注释）。 */
     private boolean isConnected() {
-        return !"未连接".equals(connectionName);
+        return connected;
     }
 
     /** 供门禁断言：悬浮连接灯时看到的服务器信息。 */
@@ -257,7 +267,7 @@ public final class StatusBar extends HBox {
     }
 
     public void setSelection(int count) {
-        setSelectionText(count <= 0 ? null : "已选 " + count + " 行");
+        setSelectionText(count <= 0 ? null : I18n.t("status.selectedRows", count));
     }
 
     /**
@@ -307,7 +317,7 @@ public final class StatusBar extends HBox {
         }
         // 显示的是压平后的一行，tooltip 与复制用的是原文。
         sql.setText(oneLine(statement));
-        sqlTooltip.setText(statement.strip() + "\n\n点击复制完整语句");
+        sqlTooltip.setText(statement.strip() + "\n\n" + I18n.t("status.copyStatementHint"));
     }
 
     /**
@@ -339,14 +349,14 @@ public final class StatusBar extends HBox {
      * <p>4.5-11：以前这个位置写死「自动提交」，{@code setTransaction} 零调用。
      */
     public void setTransaction(boolean inTransaction) {
-        transactionState = inTransaction ? "事务中" : "自动提交";
+        transactionState = inTransaction ? I18n.t("status.inTransaction") : I18n.t("status.autoCommit");
         paintSession();
     }
 
     public void setDirty(int count) {
         // ⭐ 状态点用矢量实心圆（不是 Unicode 的 ●）。
         dirty.setGraphic(Icons.of(Icons.Icon.DOT, Icons.SIZE_DOT));
-        dirty.setText("  " + count + " 待提交");
+        dirty.setText("  " + I18n.t("status.pending", count));
         dirty.setVisible(count > 0);
         dirty.setManaged(count > 0);
     }
@@ -373,7 +383,8 @@ public final class StatusBar extends HBox {
 
     /** U8：事务状态与读写权限合成一段，读起来是一句人话而不是两个词。 */
     private void paintSession() {
-        session.setText(transactionState + " · " + (readonly ? "只读" : "可写"));
+        session.setText(transactionState + " · " + (readonly
+                ? I18n.t("status.readOnly") : I18n.t("status.writable")));
     }
 
     public String message() {
@@ -392,7 +403,7 @@ public final class StatusBar extends HBox {
 
     /** 供门禁断言：当前显示的选中行数。 */
     public String selectionText() {
-        return selection.isVisible() ? selection.getText() : "未选择";
+        return selection.isVisible() ? selection.getText() : I18n.t("status.noneSelected");
     }
 
     /** 供门禁断言：当前显示的事务状态。 */
@@ -402,7 +413,7 @@ public final class StatusBar extends HBox {
 
     /** 供门禁断言：当前显示的读写状态。 */
     public String readonlyText() {
-        return readonly ? "只读" : "可写";
+        return readonly ? I18n.t("status.readOnly") : I18n.t("status.writable");
     }
 
     /** 供门禁断言：当前语句的<b>原文</b>（点击复制的内容，不是界面那行截断文本）。 */
@@ -417,7 +428,8 @@ public final class StatusBar extends HBox {
 
     /** 供门禁断言：右侧「最后刷新」段的文本（没取过数为空串）。 */
     public String refreshedText() {
-        return refreshedAt > 0 ? "刷新于 " + relativeTime(refreshedAt, clock.getAsLong()) : "";
+        return refreshedAt > 0
+                ? I18n.t("status.refreshedAt", relativeTime(refreshedAt, clock.getAsLong())) : "";
     }
 
     /** 供门禁断言：行范围的 tooltip 全文（范围 + 最后刷新）。 */
@@ -433,7 +445,7 @@ public final class StatusBar extends HBox {
 
     /** 行范围 tooltip：范围本身 + 最后刷新（相对时间同时常驻右侧一格）。 */
     private void paintRangeTooltip() {
-        String scope = "当前范围：" + range.getText();
+        String scope = I18n.t("status.currentRange", range.getText());
         String when = refreshedText();
         rangeTooltip.setText(when.isEmpty() ? scope : scope + "\n" + when);
     }
@@ -471,24 +483,24 @@ public final class StatusBar extends HBox {
         ClipboardContent content = new ClipboardContent();
         content.putString(rawSql);
         Clipboard.getSystemClipboard().setContent(content);
-        message.setText("已复制当前语句");
+        message.setText(I18n.t("status.statementCopied"));
     }
 
     /** 相对时间：<1 分钟「刚刚」，往后依次是分钟 / 小时 / 天。 */
     static String relativeTime(long then, long now) {
         long seconds = Math.max(0, (now - then) / 1000);
         if (seconds < 60) {
-            return "刚刚";
+            return I18n.t("status.justNow");
         }
         long minutes = seconds / 60;
         if (minutes < 60) {
-            return minutes + " 分钟前";
+            return I18n.t("status.minutesAgo", minutes);
         }
         long hours = minutes / 60;
         if (hours < 24) {
-            return hours + " 小时前";
+            return I18n.t("status.hoursAgo", hours);
         }
-        return hours / 24 + " 天前";
+        return I18n.t("status.daysAgo", hours / 24);
     }
 
     private void startTicker() {

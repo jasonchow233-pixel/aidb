@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import io.agenticdb.ui.RowHeights;
 import io.agenticdb.ui.Tokens;
@@ -215,38 +216,38 @@ public final class SideBar extends VBox {
      * 具体作用对象由 {@link #selectedNode} 决定。
      */
     private void registerObjectActions() {
-        actions.register("object.open-data", "打开数据", "对象", null,
+        actions.register("object.open-data", I18n.t("action.object.open-data"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.OPEN_DATA));
-        actions.register("object.open-structure", "打开结构", "对象", null,
+        actions.register("object.open-structure", I18n.t("action.object.open-structure"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.OPEN_STRUCTURE));
-        actions.register("object.new-query", "新建查询", "对象", null,
+        actions.register("object.new-query", I18n.t("action.object.new-query"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.NEW_QUERY));
-        actions.register("object.favorite", "收藏 / 取消收藏", "对象", null,
+        actions.register("object.favorite", I18n.t("action.object.favorite"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.FAVORITE));
-        actions.register("object.copy-name", "复制名称", "对象", null,
+        actions.register("object.copy-name", I18n.t("action.object.copy-name"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.COPY_NAME));
-        actions.register("object.copy-select", "复制 SELECT", "对象", null,
+        actions.register("object.copy-select", I18n.t("action.object.copy-select"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.COPY_SELECT));
-        actions.register("object.diagnostics", "诊断", "对象", null,
+        actions.register("object.diagnostics", I18n.t("action.object.diagnostics"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.DIAGNOSTICS));
-        actions.register("object.refresh-objects", "刷新对象", "对象", null,
+        actions.register("object.refresh-objects", I18n.t("action.object.refresh-objects"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.REFRESH_OBJECTS));
         // ⭐ U1：切换数据库（catalog 节点专用；其它节点上这个动作是禁用的）。
-        actions.register("object.switch-catalog", "切换到此数据库", "对象", null,
+        actions.register("object.switch-catalog", I18n.t("action.object.switch-catalog"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.SWITCH_CATALOG));
         // ⭐ X6：收藏夹菜单只有一项 → 顶级菜单资源被浪费。补「清空收藏」。
-        actions.register("favorites.clear", "清空收藏", "收藏夹", null, this::clearStarred);
+        actions.register("favorites.clear", I18n.t("action.favorites.clear"), I18n.t("category.favorites"), null, this::clearStarred);
         // ── T1–T4 表级生命周期 ──
-        actions.register("object.new-table", "新建表…", "对象", null,
+        actions.register("object.new-table", I18n.t("action.object.new-table"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.NEW_TABLE));
-        actions.register("object.truncate-table", "清空表…", "对象", null,
+        actions.register("object.truncate-table", I18n.t("action.object.truncate-table"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.TRUNCATE_TABLE));
-        actions.register("object.rename-table", "重命名表…", "对象", null,
+        actions.register("object.rename-table", I18n.t("action.object.rename-table"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.RENAME_TABLE));
-        actions.register("object.drop-table", "删除表…", "对象", null,
+        actions.register("object.drop-table", I18n.t("action.object.drop-table"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.DROP_TABLE));
         // ⭐ UX-6：侧栏「已保存查询」分组里的条目（打开 = 新查询页 + 预填 SQL）。
-        actions.register("saved-query.open", "打开已保存查询", "查询", null,
+        actions.register("saved-query.open", I18n.t("action.saved-query.open"), I18n.t("category.query"), null,
                 () -> onSelected(SideBarObject.OPEN_SAVED_QUERY));
     }
 

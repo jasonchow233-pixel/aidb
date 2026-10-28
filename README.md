@@ -98,11 +98,11 @@
 | **崩溃日志**（`~/.agenticdb/logs/crash-*.log`） | ✅ | `CrashLog` |
 | **启动耗时日志**（`~/.agenticdb/logs/startup.log`：进程启动 → 首屏分段打点） | ✅ | `StartupTrace`（**注意：冷启动 <2s 目标未达成**，实测 3.5–3.9 s，见 `NAVICAT-TODO.md` §8） |
 | **一键出包**（jpackage：app-image / dmg / msi / deb） | ✅ | `scripts/package.sh` |
-| **连接属性页**（弹窗里套 TabPane：常规/SSL/高级） | ✅ | `ConnectionPropertiesDialog` |
+| **连接属性 7 页**（常规/高级/数据库/SSL/SSH/HTTP/备注；SSL 真写驱动属性，SSH/HTTP 明说未实现） | ✅ | `ConnectionWizard`（第三十三轮） |
 | 结构安全编辑：加列 / 改列 / 重命名列 / 删列 + 两级危险确认 | ✅ | `StructureSqlBuilder` + `StructurePlan` |
 | 结构变更单事务 + 失败回滚 + 全页面联动刷新 | ✅ | `StructurePage.applyPlan` |
 | 连接管理页：列表 / 搜索 / 收藏 / 打开 / 编辑 / 复制 / 删除 | ✅ | `ConnectionsPage` |
-| 三步连接向导：类型与名称 → 参数 → 测试与保存 | ✅ | `ConnectionWizard` |
+| 连接向导：类型磁贴（3 种真实库型 + 搜索 + URI）→ 7 页属性 → 测试 → 保存 | ✅ | `ConnectionWizard` |
 | 凭据存系统凭据库（不落盘） | ✅ | `WindowsCredentialStore`（WinCred）/ `KeychainCredentialStore` / `SecretToolCredentialStore` |
 | 连接档案落盘 `~/.agenticdb/connections.json`（0600） | ✅ | `ConnectionStore` |
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
@@ -113,7 +113,7 @@
 | **统一控件层：五档按钮 × 五态 + 输入/复选/下拉/清单/弹窗同套规则** | ✅ | `app.css` 控件段 + `UnifiedControlTest` |
 | **新建索引弹窗**（单列表 + 拖拽/Alt+↑↓ 保序 + 「添加列」下拉 + 方言能力门控 + SQL 预览即执行语句） | ✅ | `IndexDialog` + `IndexDialogTest` / `IndexDdlTest` |
 
-当前门禁：**1066 条 / 131 类 / 0 失败**（2026-10-28 · 第三十二轮 G19b/D-1 Windows 实机实测；`./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`）；另有 48 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
+当前门禁：**1108 条 / 134 类 / 0 失败**（2026-10-28 · 第三十三轮 R33 Windows 实机实测；`./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`）；另有 48 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
 
 > ⚠️ **本机环境**：`java` 默认不在 PATH。可用的 JDK：
 > - Windows 10：`~/.jdks/openjdk-27.0.1.0.2`（pom 的 enforcer 区间为 `[25,28)`）
@@ -131,13 +131,14 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 演示库首次启动自动生成：4 张表（`users` 200 行、`orders` 500 行、`products` 80 行、`notes` 空表）+ 1 个视图。
 已有有效演示库不会被覆盖；`-Dadb.demo.db=/path/to/file.db` 可指定其他文件。
 
-真实窗口截图：`docs/screenshots/` 共 **27 张**（亮色 22 + 暗色 5）——
+真实窗口截图：`docs/screenshots/` 共 **33 张**（亮色 28 + 暗色 5）——
 `p0-shell`、`p2-users`、`p2-users-dark`、`p2-overview`、`p2-details`、`p2-cell`、`p2-error`、
 `p2-transaction`、`p2-find`、`p2-form`、
 `p3-query`、`p3-query-menu`、`p4-structure`、`p4-ddl`、`p5-connections`、`p5-dark`、
+`p5-connect-type`、`p5-connect-general`、`p5-connect-ssl`、`p5-connect-ssh`、
 `p6-tables`、`p6-tables-grid`、`p6-new-table`、`p6-new-table-fields`、`p6-new-table-fields-dark`、
 `p6-new-table-comment`、`p6-new-table-index`、`p6-new-table-sql`、`p6-new-table-dark`、
-`p7-new-index`、`p7-new-index-dark`
+`p7-new-index`、`p7-new-index-dark`、`p8-import`、`p8-export`
 （`docs/screenshots/navicat/` 另存 Navicat Premium Lite 15 实拍 3 张 + 等比例并排图：
 `navicat-tablelist.png` / `navicat-toolbar.png` / `side-by-side-2026-10.png`，
 以及 2026-10-24 新增的两张高保真实拍 `navicat-data-grid-2026-10-24.png` / `navicat-table-list-2026-10-24.png`），
@@ -165,7 +166,7 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 # 3. 完整门禁：编译 + 全部测试 + 用例计数
 ./scripts/build.sh
 
-# 4. 重拍 docs/screenshots/ 的 27 张验收截图
+# 4. 重拍 docs/screenshots/ 的 33 张验收截图
 ./scripts/shots.sh
 
 # 5. 出包（jpackage；产物在 bootstrap/adb-desktop/target/dist/，实测可启动）
@@ -321,5 +322,5 @@ bootstrap/
   方言差异现由 `Dialect` 抽象层承担），基线因此减少 43 条测试。
 - 主题“跟随系统”目前只探测 macOS；Windows/Linux 默认亮色。
 - 令牌体系 102 个全部被用到；密度四档（19/20/21/26，默认 normal；数据网格 +2 = 21/22/23/28）覆盖数据网格 / 查询结果 / 对象清单 / 对象树 / 结构页。
-- `docs/screenshots/` 的 27 张图（亮 22 + 暗 5）已按当前代码重拍。
+- `docs/screenshots/` 的 33 张图（亮 28 + 暗 5）已按当前代码重拍。
 - 首版不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务。

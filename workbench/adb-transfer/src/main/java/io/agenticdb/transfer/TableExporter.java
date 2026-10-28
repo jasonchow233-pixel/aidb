@@ -93,6 +93,68 @@ public final class TableExporter {
     }
 
     /**
+     * 导出<b>已经在内存里</b>的行（「当前页」「选中行」两个范围）。
+     *
+     * <p>⭐ 这两个范围的行就是网格里那一屏，数量受页大小约束，不存在「导一千万行」；
+     * 之前它们只影响确认框、实际写入却永远整表 —— 用户选「选中行 3 条」拿到整表，
+     * 这是这个向导最严重的一条谎。现在范围由这一入口真正落实。
+     *
+     * @param table   表名：SQL 格式要用它拼 {@code INSERT INTO}；查询结果传 {@code null} 会被拒绝
+     * @param columns 列名（顺序与每行的值一致）
+     * @param rows    行数据（值为 JDBC 原始类型，{@code null} 表示 NULL）
+     * @return 实际写出的行数
+     */
+    public static long exportRows(String table, List<String> columns, List<List<Object>> rows,
+                                  ExportOptions options, Writer out) throws IOException {
+        ExportFormat format = options.format();
+        if (format.binary()) {
+            throw new IllegalArgumentException(
+                    "xlsx 是二进制格式，请改用 TableExporter.exportRowsXlsx");
+        }
+        if (format == ExportFormat.SQL && table == null) {
+            throw new IllegalArgumentException(
+                    "查询结果不支持 SQL INSERT 格式导出，请改用 CSV / TSV / JSON");
+        }
+        List<String> names = columns == null ? List.of() : List.copyOf(columns);
+        List<List<Object>> data = rows == null ? List.of() : rows;
+
+        writePreamble(out, options, names, null, table);
+        long written = 0;
+        for (int i = 0; i < data.size(); i++) {
+            if (options.maxRows() > 0 && written >= options.maxRows()) {
+                break;
+            }
+            writeDataRow(options, out, data.get(i), names, null, i < data.size() - 1);
+            written++;
+        }
+        writeFooter(out, format);
+        out.flush();
+        return written;
+    }
+
+    /** xlsx 版本的内存行导出（「当前页」「选中行」）。 */
+    public static long exportRowsXlsx(List<String> columns, List<List<Object>> rows,
+                                      ExportOptions options, OutputStream out)
+            throws IOException {
+        List<String> names = columns == null ? List.of() : List.copyOf(columns);
+        long written = 0;
+        try (XlsxStreamWriter xlsx = new XlsxStreamWriter(out)) {
+            if (options.includeHeader()) {
+                xlsx.header(names);
+            }
+            for (List<Object> row : rows == null ? List.<List<Object>>of() : rows) {
+                if (options.maxRows() > 0 && written >= options.maxRows()) {
+                    break;
+                }
+                xlsx.row(row);
+                written++;
+            }
+        }
+        out.flush();
+        return written;
+    }
+
+    /**
      * 流式写出结果集。
      *
      * @param table 表名：只有整表导出（SQL 格式）需要它；查询结果传 {@code null}
@@ -121,35 +183,75 @@ public final class TableExporter {
                 for (int i = 1; i <= meta.getColumnCount(); i++) {
                     names.add(meta.getColumnLabel(i));
                 }
-                if (options.includeHeader() && options.format().hasHeader()) {
-                    CsvCodec.writeRow(out, names, options.format().delimiter());
-                }
-                if (options.format() == ExportFormat.SQL && table != null) {
-                    writeSqlPreamble(out, dialect, table, names);
+                // ⭐ 表头 / 根节点 / 建表语句都必须在拿到列名之后、第一行之前写出。
+                writePreamble(out, options, names, dialect, table);
+                if (!rs.next()) {
+                    writeFooter(out, options.format());
+                    out.flush();
+                    return 0;
                 }
                 // ⭐ 一次只把一批行读进内存，写完就释放。
                 //    这里用「先看有没有下一行」的写法（而不是读完再问），
                 //    因为 SQL 格式要靠「是不是最后一行」决定写 "," 还是 ";"。
-                if (!rs.next()) {
-                    out.flush();
-                    return 0;
-                }
                 while (true) {
                     if (options.maxRows() > 0 && written >= options.maxRows()) {
                         break;
                     }
                     List<Object> values = readValues(rs, names.size());
                     boolean hasMore = rs.next();
-                    writeRow(options, out, values, names, dialect, hasMore);
+                    writeDataRow(options, out, values, names, dialect, hasMore);
                     written++;
                     if (!hasMore) {
                         break;
                     }
                 }
+                writeFooter(out, options.format());
             }
         }
         out.flush();
         return written;
+    }
+
+    private static void writePreamble(Writer out, ExportOptions options, List<String> names,
+                                      Dialect dialect, String table) throws IOException {
+        ExportFormat format = options.format();
+        if (format.hasHeader() && options.includeHeader()) {
+            // 表头与数据行走同一个引号口径 —— 不一致会让消费方把表头当数据解析
+            CsvCodec.writeRow(out, names, format.delimiter(), options.quoteAll());
+            return;
+        }
+        if (format == ExportFormat.SQL && table != null && dialect != null) {
+            writeSqlPreamble(out, dialect, table, names);
+            return;
+        }
+        if (format == ExportFormat.XML) {
+            out.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+            out.write("<rows>\n");
+            return;
+        }
+        if (format == ExportFormat.HTML) {
+            out.write("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n");
+            out.write("<title>" + xmlEscape(table == null ? "查询结果" : table)
+                    + "</title>\n</head>\n<body>\n<table>\n");
+            if (options.includeHeader()) {
+                out.write("<thead><tr>");
+                for (String name : names) {
+                    out.write("<th>");
+                    out.write(xmlEscape(name));
+                    out.write("</th>");
+                }
+                out.write("</tr></thead>\n");
+            }
+            out.write("<tbody>\n");
+        }
+    }
+
+    private static void writeFooter(Writer out, ExportFormat format) throws IOException {
+        if (format == ExportFormat.XML) {
+            out.write("</rows>\n");
+        } else if (format == ExportFormat.HTML) {
+            out.write("</tbody>\n</table>\n</body>\n</html>\n");
+        }
     }
 
     /**
@@ -222,8 +324,9 @@ public final class TableExporter {
         out.write(") VALUES\n");
     }
 
-    private static void writeRow(ExportOptions options, Writer out, List<Object> values,
-                                 List<String> names, Dialect dialect, boolean hasMore)
+    /** 写一行；行数上限由调用方的循环负责，这里只管格式。 */
+    private static void writeDataRow(ExportOptions options, Writer out, List<Object> values,
+                                     List<String> names, Dialect dialect, boolean hasMore)
             throws IOException {
         ExportFormat format = options.format();
 
@@ -263,11 +366,40 @@ public final class TableExporter {
             return;
         }
 
+        if (format == ExportFormat.XML) {
+            out.write("<row>");
+            for (int i = 0; i < values.size(); i++) {
+                out.write("<c name=\"");
+                out.write(xmlEscape(names.get(i)));
+                out.write("\">");
+                Object value = values.get(i);
+                if (value != null) {
+                    out.write(xmlEscape(String.valueOf(value)));
+                }
+                out.write("</c>");
+            }
+            out.write("</row>\n");
+            return;
+        }
+
+        if (format == ExportFormat.HTML) {
+            out.write("<tr>");
+            for (Object value : values) {
+                out.write("<td>");
+                if (value != null) {
+                    out.write(xmlEscape(String.valueOf(value)));
+                }
+                out.write("</td>");
+            }
+            out.write("</tr>\n");
+            return;
+        }
+
         List<String> texts = new ArrayList<>(values.size());
         for (Object value : values) {
             texts.add(value == null ? null : String.valueOf(value));
         }
-        CsvCodec.writeRow(out, texts, format.delimiter());
+        CsvCodec.writeRow(out, texts, format.delimiter(), options.quoteAll());
     }
 
     /** 读一行的原始值（保留类型 —— JSON / SQL 要靠类型决定要不要加引号）。 */
@@ -316,6 +448,26 @@ public final class TableExporter {
                         text.append(c);
                     }
                 }
+            }
+        }
+        return text.toString();
+    }
+
+    /** XML / HTML 共用的文本转义（HTML 里也用同一套，够用且不会引号失衡）。 */
+    static String xmlEscape(String value) {
+        if (value == null) {
+            return "";
+        }
+        StringBuilder text = new StringBuilder(value.length() + 8);
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '&' -> text.append("&amp;");
+                case '<' -> text.append("&lt;");
+                case '>' -> text.append("&gt;");
+                case '"' -> text.append("&quot;");
+                case '\'' -> text.append("&#39;");
+                default -> text.append(c);
             }
         }
         return text.toString();

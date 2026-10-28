@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.ui.AppVersion;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Tokens;
 import javafx.scene.Cursor;
 import javafx.scene.Scene;
@@ -108,7 +109,10 @@ class StatusBarTest {
                 .as("断开后方言位是「—」，连接名跟着语境走，不留旧值")
                 .startsWith("—");
 
-        onFx(() -> bar.setConnection("未连接"));
+        // ⚠️ 以前这里传字面量「未连接」来表达"断开"，靠 StatusBar 拿显示文案反推状态。
+        //    StatusBar 改成记布尔之后，传任何非空字符串都表示"有一个这么长的连接"，
+        //    灯会亮绿 —— 断开的正确表达是 null。
+        onFx(() -> bar.setConnection(null));
         assertThat(light.getStyleClass())
                 .as("断开后修饰类要收掉（源类不能一起掉，胶囊的底和边距挂在它上面）")
                 .doesNotContain("adb-status__source--live")
@@ -125,10 +129,11 @@ class StatusBarTest {
                 .isEmpty();
         assertThat(bar.selectionText())
                 .as("但门禁侧仍读得到语义值，调用方不用改")
-                .isEqualTo("未选择");
+                .isEqualTo(I18n.t("status.noneSelected"));
 
         onFx(() -> bar.setSelection(3));
-        assertThat(visibleText(bar, "adb-status__selection")).isEqualTo("已选 3 行");
+        assertThat(visibleText(bar, "adb-status__selection"))
+                .isEqualTo(I18n.t("status.selectedRows", 3));
     }
 
     /** ⭐ U8：事务与读写合成一段人话「自动提交 · 可写」，不再两个词个占一格。 */
@@ -141,15 +146,16 @@ class StatusBarTest {
         });
         assertThat(visibleText(bar, "adb-status__session"))
                 .as("右段只有一句：事务状态 · 读写权限")
-                .isEqualTo("自动提交 · 可写");
+                .isEqualTo(I18n.t("status.autoCommit") + " · " + I18n.t("status.writable"));
 
         onFx(() -> {
             bar.setTransaction(true);
             bar.setReadonly(true);
         });
-        assertThat(visibleText(bar, "adb-status__session")).isEqualTo("事务中 · 只读");
-        assertThat(bar.transactionText()).isEqualTo("事务中");
-        assertThat(bar.readonlyText()).isEqualTo("只读");
+        assertThat(visibleText(bar, "adb-status__session"))
+                .isEqualTo(I18n.t("status.inTransaction") + " · " + I18n.t("status.readOnly"));
+        assertThat(bar.transactionText()).isEqualTo(I18n.t("status.inTransaction"));
+        assertThat(bar.readonlyText()).isEqualTo(I18n.t("status.readOnly"));
     }
 
     @Test
@@ -193,7 +199,7 @@ class StatusBarTest {
         assertThat(bar.selectionText()).isEqualTo("已选 3 个项目");
 
         WaitForAsyncUtils.asyncFx(() -> bar.setSelectionText("  ")).get();
-        assertThat(bar.selectionText()).isEqualTo("未选择");
+        assertThat(bar.selectionText()).isEqualTo(I18n.t("status.noneSelected"));
     }
 
     @Test
@@ -204,16 +210,16 @@ class StatusBarTest {
             bar.setTransaction(false);
         }).get();
 
-        assertThat(bar.selectionText()).isEqualTo("未选择");
-        assertThat(bar.transactionText()).isEqualTo("自动提交");
+        assertThat(bar.selectionText()).isEqualTo(I18n.t("status.noneSelected"));
+        assertThat(bar.transactionText()).isEqualTo(I18n.t("status.autoCommit"));
 
         WaitForAsyncUtils.asyncFx(() -> {
             bar.setSelection(7);
             bar.setTransaction(true);
         }).get();
 
-        assertThat(bar.selectionText()).isEqualTo("已选 7 行");
-        assertThat(bar.transactionText()).isEqualTo("事务中");
+        assertThat(bar.selectionText()).isEqualTo(I18n.t("status.selectedRows", 7));
+        assertThat(bar.transactionText()).isEqualTo(I18n.t("status.inTransaction"));
     }
 
     // ───────────────── 第十八轮：没有计时就不许出现「— ms」 ─────────────────
@@ -327,7 +333,7 @@ class StatusBarTest {
         assertThat(styledBar.sqlTooltipText())
                 .as("tooltip 给完整原文，外加「点一下能干什么」")
                 .contains("WHERE  active = 1")
-                .contains("点击复制");
+                .contains(I18n.t("status.copyStatementHint"));
         // U8 后左段共三根分隔符（范围后 / 语句前随 sql / 消息前随 message），
         // 开场语句与消息都不占位 → 有语句时立着的是 2 根。
         assertThat(managedSeparatorsIn(styledBar, "adb-statusbar__left")).isEqualTo(2);
@@ -368,7 +374,7 @@ class StatusBarTest {
                 .isEqualTo(raw);
         assertThat(styledBar.message())
                 .as("剪贴板看不见，界面得回执一句")
-                .isEqualTo("已复制当前语句");
+                .isEqualTo(I18n.t("status.statementCopied"));
     }
 
     /**
@@ -392,31 +398,31 @@ class StatusBarTest {
 
         assertThat(styledBar.refreshedText())
                 .as("刚取完数说「刚刚」，不是时间戳")
-                .isEqualTo("刷新于 刚刚");
+                .isEqualTo(refreshed(I18n.t("status.justNow")));
         Label refreshedSegment = barLookupLabel(styledBar, "adb-status__refreshed");
         assertThat(refreshedSegment)
                 .as("G19b：最后刷新必须常驻可见，不能只藏在 tooltip 里")
                 .isNotNull();
         assertThat(refreshedSegment.isVisible()).isTrue();
-        assertThat(refreshedSegment.getText()).isEqualTo("刷新于 刚刚");
+        assertThat(refreshedSegment.getText()).isEqualTo(refreshed(I18n.t("status.justNow")));
         assertThat(styledBar.rangeTooltipText())
                 .as("行范围与数据新旧一起读：悬停一次就能看全（tooltip 保留）")
-                .contains("当前范围：1-200 / 共 500")
-                .contains("刷新于 刚刚");
+                .contains(I18n.t("status.currentRange", "1-200 / 共 500"))
+                .contains(refreshed(I18n.t("status.justNow")));
 
         onFx(() -> styledBar.setRefreshedAt(now - 5 * 60_000L));
-        assertThat(styledBar.refreshedText()).isEqualTo("刷新于 5 分钟前");
+        assertThat(styledBar.refreshedText()).isEqualTo(refreshed(I18n.t("status.minutesAgo", 5)));
         assertThat(refreshedSegment.getText())
                 .as("计时器重算时要同时刷新常驻段与 tooltip")
-                .isEqualTo("刷新于 5 分钟前");
+                .isEqualTo(refreshed(I18n.t("status.minutesAgo", 5)));
 
         onFx(() -> styledBar.setRefreshedAt(now - 3 * 60 * 60_000L));
-        assertThat(styledBar.refreshedText()).isEqualTo("刷新于 3 小时前");
+        assertThat(styledBar.refreshedText()).isEqualTo(refreshed(I18n.t("status.hoursAgo", 3)));
 
         onFx(() -> styledBar.setRefreshedAt(now - 2 * 24 * 60 * 60_000L));
         assertThat(styledBar.refreshedText())
                 .as("超过一天要说「几天前」——数据放了一周还写「刚刚」是在骗人")
-                .isEqualTo("刷新于 2 天前");
+                .isEqualTo(refreshed(I18n.t("status.daysAgo", 2)));
 
         onFx(() -> styledBar.setRefreshedAt(-1));
         assertThat(styledBar.refreshedText())
@@ -427,7 +433,17 @@ class StatusBarTest {
                 .isFalse();
         assertThat(styledBar.rangeTooltipText())
                 .as("没有取数时刻时，tooltip 退回只说范围")
-                .doesNotContain("刷新于");
+                .doesNotContain(refreshedLabel());
+    }
+
+    /** 「刷新于 X」的组装 —— 测试钉的是"用了哪个键"，不钉任何一种语言的原文。 */
+    private static String refreshed(String relative) {
+        return I18n.t("status.refreshedAt", relative);
+    }
+
+    /** 常驻段的前缀（不含值），用来断言"没取过数时这个短语根本不出现"。 */
+    private static String refreshedLabel() {
+        return I18n.t("status.refreshedAt", "");
     }
 
     /** 供门禁：按样式类取节点（不存在返回 null）。 */

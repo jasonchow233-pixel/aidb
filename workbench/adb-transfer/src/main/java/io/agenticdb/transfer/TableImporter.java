@@ -44,11 +44,17 @@ public final class TableImporter {
      * @param skipped   跳过的坏行数
      * @param errors    坏行明细（最多 {@link #MAX_REPORTED} 条）
      * @param totalRead 读到的总行数
+     * @param deleted   覆盖模式下先被清掉的行数；追加模式恒为 0
      */
-    public record ImportReport(int inserted, int skipped, List<String> errors, int totalRead) {
+    public record ImportReport(int inserted, int skipped, List<String> errors, int totalRead,
+                               int deleted) {
 
         public ImportReport {
             errors = List.copyOf(errors == null ? List.of() : errors);
+        }
+
+        public ImportReport(int inserted, int skipped, List<String> errors, int totalRead) {
+            this(inserted, skipped, errors, totalRead, 0);
         }
 
         public boolean hasErrors() {
@@ -109,10 +115,29 @@ public final class TableImporter {
             types.add(column.type());
         }
         ImportOptions effective = options.format() == ImportFormat.XLSX ? options
-                : new ImportOptions(ImportFormat.XLSX, options.hasHeader(), options.batchSize(),
-                        options.columnMap(), options.skipRows(), options.stopOnError());
+                : options.withFormat(ImportFormat.XLSX);
         return importFrom(session, table, names, types, effective, sink ->
                 XlsxCodec.read(file, cells -> accept(cells, sink)));
+    }
+
+    /**
+     * 从文本文件导入，编码取 {@link ImportOptions#charset()}，开头的 BOM 会被吞掉。
+     *
+     * <p>编码留在 {@link ImportOptions} 里（而不是让调用方自己 new Reader），
+     * 是为了让「GBK 的 CSV」这件事能被单元测试直接覆盖 —— UI 只是把下拉框的值塞进去。
+     */
+    public static ImportReport importTypedRows(DbSession session, String table,
+                                               List<ColumnDef> columns, ImportOptions options,
+                                               Path file) throws SQLException, IOException {
+        List<String> names = new ArrayList<>();
+        List<ColumnType> types = new ArrayList<>();
+        for (ColumnDef column : columns) {
+            names.add(column.name());
+            types.add(column.type());
+        }
+        try (Reader in = TransferFiles.openReader(file, options.charset())) {
+            return importRows(session, table, names, types, options, in);
+        }
     }
 
     /** xlsx 回调只能抛 IOException；把数据库异常包进去，顶层仍能报出原因。 */
@@ -158,9 +183,21 @@ public final class TableImporter {
         Ingest ingest = new Ingest(session, session.dialect(), table, columns, types, options,
                 !session.inTransaction());
         boolean ownTransaction = !session.inTransaction();
+        // ⚠️ 覆盖模式要 DELETE 整表：只能在导入自己开的事务里做。
+        //    用户开着显式事务时，这句 DELETE 会被他之后的一次「提交」钉死，
+        //    或者在失败时被这里回滚掉他没提交的内容 —— 两种都不是导入能替他做的决定。
+        if (options.mode() == ImportMode.REPLACE && !ownTransaction) {
+            throw new IllegalStateException(
+                    "覆盖模式需要自己的事务：请先提交或回滚数据页上的当前事务，再导入");
+        }
+        int deleted = 0;
         try {
             if (ownTransaction) {
                 session.begin();
+            }
+            if (options.mode() == ImportMode.REPLACE) {
+                deleted = session.update("DELETE FROM " + session.dialect().quote(table),
+                        List.of(), io.agenticdb.model.Danger.DESTRUCTIVE);
             }
             feed.feed(ingest);
             ingest.finish();
@@ -173,7 +210,7 @@ public final class TableImporter {
             }
             throw e;
         }
-        return ingest.report();
+        return ingest.report(deleted);
     }
 
     /**
@@ -273,8 +310,8 @@ public final class TableImporter {
             }
         }
 
-        ImportReport report() {
-            return new ImportReport(inserted, skipped, errors, totalRead);
+        ImportReport report(int deleted) {
+            return new ImportReport(inserted, skipped, errors, totalRead, deleted);
         }
 
         private void drain() throws SQLException {

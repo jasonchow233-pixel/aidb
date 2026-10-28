@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.session.ConnectionProfile;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -64,15 +65,21 @@ public final class AppBar extends VBox {
         this.onSelectConnection = onSelectConnection == null ? profile -> { } : onSelectConnection;
 
         HBox ribbon = new HBox(2,
-                ribbonButton("new-connection", Icons.Icon.CONNECT, "连接", "adb-ribbon__icon--connect"),
+                ribbonButton("new-connection", Icons.Icon.CONNECT, I18n.t("ribbon.newConnection"),
+                        "adb-ribbon__icon--connect"),
                 ribbonSeparator(),
-                ribbonButton("new-query", Icons.Icon.QUERY, "新建查询", "adb-ribbon__icon--query"),
-                ribbonButton("object.new-table", Icons.Icon.ADD, "新建表", "adb-ribbon__icon--table"),
+                ribbonButton("new-query", Icons.Icon.QUERY, I18n.t("ribbon.newQuery"),
+                        "adb-ribbon__icon--query"),
+                ribbonButton("object.new-table", Icons.Icon.ADD, I18n.t("ribbon.newTable"),
+                        "adb-ribbon__icon--table"),
                 ribbonSeparator(),
-                ribbonButton("import-export", Icons.Icon.TRANSFER, "导入 / 导出", "adb-ribbon__icon--transfer"),
+                ribbonButton("import-export", Icons.Icon.TRANSFER, I18n.t("ribbon.importExport"),
+                        "adb-ribbon__icon--transfer"),
                 ribbonSeparator(),
-                ribbonButton("saved-queries", Icons.Icon.HISTORY, "已保存查询", "adb-ribbon__icon--query"),
-                ribbonButton("favorites.open", Icons.Icon.STAR, "收藏夹", "adb-ribbon__icon--favorite"),
+                ribbonButton("saved-queries", Icons.Icon.HISTORY, I18n.t("ribbon.savedQueries"),
+                        "adb-ribbon__icon--query"),
+                ribbonButton("favorites.open", Icons.Icon.STAR, I18n.t("ribbon.favorites"),
+                        "adb-ribbon__icon--favorite"),
                 spacer());
         ribbon.setId("adb-ribbon");
         ribbon.getStyleClass().add("adb-ribbon");
@@ -146,8 +153,8 @@ public final class AppBar extends VBox {
         connectionMenu.setId("appbar-connection-menu");
         connectionMenu.getStyleClass().addAll("adb-appbar__connection", "adb-button");
         connectionMenu.setGraphic(text);
-        connectionMenu.setAccessibleText("当前连接");
-        connectionMenu.setTooltip(new Tooltip("切换当前连接"));
+        connectionMenu.setAccessibleText(I18n.t("appbar.connectionAria"));
+        connectionMenu.setTooltip(new Tooltip(I18n.t("appbar.switchConnection")));
         setConnections(List.of(), null);
         return connectionMenu;
     }
@@ -167,17 +174,17 @@ public final class AppBar extends VBox {
         if (active != null) {
             connectionName.setText(active.name());
             connectionKind.setText(active.kindDisplay());
-            connectionMenu.setTooltip(new Tooltip("当前连接：" + active.name()
-                    + "（" + active.kindDisplay() + "）· 点击切换"));
+            connectionMenu.setTooltip(new Tooltip(I18n.t("appbar.currentConnectionTooltip",
+                    active.name(), active.kindDisplay())));
         } else {
-            connectionName.setText("未连接");
+            connectionName.setText(I18n.t("appbar.notConnected"));
             connectionKind.setText("");
-            connectionMenu.setTooltip(new Tooltip("尚未连接任何数据库"));
+            connectionMenu.setTooltip(new Tooltip(I18n.t("appbar.noConnectionsYet")));
         }
 
         connectionMenu.getItems().clear();
         if (safe.isEmpty()) {
-            MenuItem empty = new MenuItem("没有可用连接");
+            MenuItem empty = new MenuItem(I18n.t("appbar.noConnections"));
             empty.setDisable(true);
             connectionMenu.getItems().add(empty);
         } else {
@@ -190,7 +197,7 @@ public final class AppBar extends VBox {
             }
         }
         connectionMenu.getItems().add(new SeparatorMenuItem());
-        MenuItem manage = new MenuItem("管理连接…");
+        MenuItem manage = new MenuItem(I18n.t("appbar.manageConnections"));
         manage.setId("appbar-connection-manage");
         manage.setOnAction(event -> actions.run("connections.manage"));
         connectionMenu.getItems().add(manage);
@@ -214,7 +221,7 @@ public final class AppBar extends VBox {
         SVGPath icon = Icons.of(Icons.Icon.SEARCH);
         icon.getStyleClass().add("adb-appbar__search-icon");
 
-        searchHint.setText("搜索对象或命令");
+        searchHint.setText(I18n.t("appbar.searchPlaceholder"));
         searchHint.getStyleClass().add("adb-appbar__search-hint");
 
         searchKbd.setText(io.agenticdb.ui.Shortcuts.of("Mod+K"));
@@ -227,14 +234,16 @@ public final class AppBar extends VBox {
         search.setId("appbar-search");
         search.getStyleClass().addAll("adb-appbar__search");
         search.setGraphic(content);
-        search.setAccessibleText("搜索对象或命令");
-        search.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("搜索对象或命令", "Mod+K")));
+        search.setAccessibleText(I18n.t("appbar.searchPlaceholder"));
+        search.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(
+                I18n.t("appbar.searchPlaceholder"), "Mod+K")));
         search.setOnAction(event -> actions.run("command-palette"));
         return search;
     }
 
     private Button themeButton(ActionRegistry actions) {
-        Button button = actions.iconButton("theme.toggle", Icons.Icon.THEME, "切换主题", "切换主题");
+        String label = I18n.t("appbar.toggleTheme");
+        Button button = actions.iconButton("theme.toggle", Icons.Icon.THEME, label, label);
         button.setId("appbar-theme");
         button.getStyleClass().add("adb-appbar__action");
         return button;
@@ -246,8 +255,8 @@ public final class AppBar extends VBox {
         menu.getStyleClass().addAll("adb-appbar__action", "adb-appbar__more");
         SVGPath icon = Icons.of(Icons.Icon.MORE);
         menu.setGraphic(icon);
-        menu.setAccessibleText("更多");
-        menu.setTooltip(new Tooltip("更多"));
+        menu.setAccessibleText(I18n.t("appbar.more"));
+        menu.setTooltip(new Tooltip(I18n.t("appbar.more")));
 
         menu.getItems().addAll(
                 actions.menuItem("connections.manage"),

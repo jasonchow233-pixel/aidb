@@ -179,6 +179,51 @@ class ScreenshotScriptAuditTest {
                 .isEmpty();
     }
 
+    /**
+     * ⭐ R33：导入 / 导出 / 连接向导的<b>摆态值</b>必须真的被 {@code poseForShots} 认得。
+     *
+     * <p>与设计器那条同型：pose 打错一个字母，那一帧照常拍出默认屏、返回码照样是 0，
+     * 而这几帧是 G5 / G6 / G8 / G20 唯一的画面证据。
+     */
+    @Test
+    void everyWizardPoseUsedByTheScriptIsHandled() throws IOException {
+        Path root = repositoryRoot();
+        String script = Files.readString(root.resolve("scripts/shots.sh"), StandardCharsets.UTF_8);
+
+        assertThat(assertPosesHandled(script, "ADB_CONNECT_WIZARD",
+                root.resolve("ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/ConnectionWizard.java")))
+                .as("连接向导帧的摆态名必须在 poseForShots 里有对应分支")
+                .isEmpty();
+        assertThat(assertPosesHandled(script, "ADB_EXPORT",
+                root.resolve("ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/ExportWizard.java")))
+                .as("导出向导帧的格式摆态必须在 poseForShots 里有对应分支")
+                .isEmpty();
+    }
+
+    /** 脚本里 {@code SWITCH=value} 的每个 value，源码里都要有 {@code case "value"}。 */
+    private static List<String> assertPosesHandled(String script, String switchName, Path source)
+            throws IOException {
+        String code = Files.readString(source, StandardCharsets.UTF_8);
+        List<String> used = new ArrayList<>();
+        List<String> dangling = new ArrayList<>();
+        Matcher matcher = Pattern.compile(switchName + "=([A-Za-z0-9_-]+)").matcher(script);
+        while (matcher.find()) {
+            String pose = matcher.group(1);
+            if (pose.equals("1") || pose.equalsIgnoreCase("true")) {
+                continue;
+            }
+            if (!used.contains(pose)) {
+                used.add(pose);
+                if (!code.contains("case \"" + pose + "\"")) {
+                    dangling.add(pose);
+                }
+            }
+        }
+        assertThat(used).as("shots.sh 至少要用一帧 %s 摆态（否则这份门禁没意义）", switchName)
+                .isNotEmpty();
+        return dangling;
+    }
+
     // ─────────────────────────── 工具 ───────────────────────────
 
     /** 一条截图帧：名称 / 点击目标 / 等待 / 该帧预置的环境变量。 */

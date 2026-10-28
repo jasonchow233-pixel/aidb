@@ -38,7 +38,8 @@ public final class ActionRegistry {
         }
         Action action = new Action(id, label, category, accelerator, handler);
         // 读字段而不是捕获值：feedback 可能在注册之后才被设置。
-        action.setOnDisabled(() -> feedback.accept(label + " 当前不可用"));
+        // 后缀走资源 —— 「X 当前不可用」这句在 Java 里写死，英文界面就会长出一句中文。
+        action.setOnDisabled(() -> feedback.accept(label + io.agenticdb.ui.I18n.t("action.disabledSuffix")));
         actions.put(id, action);
         return action;
     }

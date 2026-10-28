@@ -28,21 +28,37 @@ public final class CsvCodec {
     /** 写一行。{@code null} 写成空字段。 */
     public static void writeRow(Writer out, List<String> values, char delimiter)
             throws IOException {
+        writeRow(out, values, delimiter, false);
+    }
+
+    /**
+     * 写一行。
+     *
+     * @param quoteAll {@code true} 时每个字段都加引号（导出向导的「文本限定符」选项）；
+     *                 {@code false} 时只在必要时加 —— Navicat 的默认行为
+     */
+    public static void writeRow(Writer out, List<String> values, char delimiter, boolean quoteAll)
+            throws IOException {
         for (int i = 0; i < values.size(); i++) {
             if (i > 0) {
                 out.write(delimiter);
             }
-            out.write(escape(values.get(i), delimiter));
+            out.write(escape(values.get(i), delimiter, quoteAll));
         }
         out.write("\r\n");
     }
 
     /** 转义单个字段。需要时加引号。 */
     public static String escape(String value, char delimiter) {
+        return escape(value, delimiter, false);
+    }
+
+    /** 转义单个字段。 */
+    public static String escape(String value, char delimiter, boolean quoteAll) {
         if (value == null) {
-            return "";
+            return quoteAll ? "\"\"" : "";
         }
-        boolean quote = value.indexOf(delimiter) >= 0 || value.indexOf('"') >= 0
+        boolean quote = quoteAll || value.indexOf(delimiter) >= 0 || value.indexOf('"') >= 0
                 || value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0;
         String escaped = value.replace("\"", "\"\"");
         return quote ? '"' + escaped + '"' : escaped;

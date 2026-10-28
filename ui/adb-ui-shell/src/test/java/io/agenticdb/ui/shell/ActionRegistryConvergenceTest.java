@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.ui.App;
+import io.agenticdb.ui.I18n;
 import javafx.application.Platform;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
@@ -222,7 +223,7 @@ class ActionRegistryConvergenceTest {
         WaitForAsyncUtils.waitForFxEvents();
 
         String before = onFx(() -> shell(robot).statusBar().selectionText());
-        assertThat(before).isEqualTo("未选择");
+        assertThat(before).isEqualTo(I18n.t("status.noneSelected"));
 
         onFxRun(() -> {
             TableView<?> table = (TableView<?>) shell(robot).lookup("#data-table");
@@ -231,16 +232,19 @@ class ActionRegistryConvergenceTest {
         WaitForAsyncUtils.waitForFxEvents();
 
         String after = onFx(() -> shell(robot).statusBar().selectionText());
+        // 这条门禁要钉的是"选择段反映了真实行数"，不是"这句话用中文怎么说" ——
+        // 所以断言「不等于空态词 + 含数字」，换语言也不用改（原来写死 startsWith("已选 ")）。
         assertThat(after)
                 .as("状态栏的「选择」段以前永远是「未选择」（4.5-11）")
-                .startsWith("已选 ")
-                .contains("行");
+                .isNotEqualTo(I18n.t("status.noneSelected"))
+                .matches("(?s).*\\d.*");
     }
 
     @Test
     void statusBarTransactionDefaultsToAutoCommit(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
-        assertThat(onFx(() -> shell(robot).statusBar().transactionText())).isEqualTo("自动提交");
+        assertThat(onFx(() -> shell(robot).statusBar().transactionText()))
+                .isEqualTo(I18n.t("status.autoCommit"));
     }
 
     // ─────────────────── A19 密度覆盖数据网格行高 ───────────────────

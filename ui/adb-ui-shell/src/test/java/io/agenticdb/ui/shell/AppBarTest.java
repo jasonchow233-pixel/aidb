@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.session.ConnectionProfile;
+import io.agenticdb.ui.I18n;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -166,7 +167,7 @@ class AppBarTest {
         assertThat(labels)
                 .as("下拉里必须有全部连接 + 管理 / 重连 / 断开")
                 .contains("agenticdb-demo.db  ·  SQLite", "prod-postgres  ·  PostgreSQL",
-                        "管理连接…", "重新连接", "断开连接");
+                        I18n.t("appbar.manageConnections"), "重新连接", "断开连接");
     }
 
     @Test

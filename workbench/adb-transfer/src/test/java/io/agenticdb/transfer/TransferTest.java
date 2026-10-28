@@ -175,7 +175,8 @@ class TransferTest {
             String csv = "9,epsilon\n";
             TableImporter.ImportReport report = TableImporter.importRows(session, "t",
                     List.of("id", "name"),
-                    new ImportOptions(ImportFormat.CSV, false, 200, List.of(), 0, false),
+                    new ImportOptions(ImportFormat.CSV, false, 200, List.of(), 0, false,
+                            java.nio.charset.StandardCharsets.UTF_8, ImportMode.APPEND),
                     new StringReader(csv));
 
             assertThat(report.inserted()).isEqualTo(1);
@@ -209,7 +210,8 @@ class TransferTest {
             }
             TableImporter.ImportReport report = TableImporter.importRows(session, "t",
                     List.of("id", "name"),
-                    new ImportOptions(ImportFormat.CSV, true, 10, List.of(), 0, false),
+                    new ImportOptions(ImportFormat.CSV, true, 10, List.of(), 0, false,
+                            java.nio.charset.StandardCharsets.UTF_8, ImportMode.APPEND),
                     new StringReader(csv.toString()));
 
             assertThat(report.inserted()).isEqualTo(50);

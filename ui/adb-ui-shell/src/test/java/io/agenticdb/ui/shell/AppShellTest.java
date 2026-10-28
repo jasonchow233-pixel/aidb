@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.TableMeta;
 import io.agenticdb.ui.App;
+import io.agenticdb.ui.I18n;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
@@ -136,7 +137,7 @@ class AppShellTest {
         // （X5：新增「对象」顶级菜单 —— 对象动作不再只藏在右键菜单里。）
         assertThat(menuBar.getMenus()).hasSize(9);
         assertThat(menuBar.getMenus().stream().map(javafx.scene.control.Menu::getText))
-                .contains("收藏夹", "对象");
+                .contains(I18n.t("menu.favorites"), I18n.t("menu.object"));
 
         // ⭐ S5：标签栏**永远可见** —— 第一个标签是常驻的「对象」标签，
         //    它是浏览的起点（Navicat 同形）。

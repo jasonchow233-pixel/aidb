@@ -4,6 +4,7 @@ import javafx.beans.binding.Bindings;
 import javafx.geometry.Pos;
 import javafx.scene.AccessibleRole;
 import javafx.scene.Node;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
@@ -75,10 +76,11 @@ public final class TabBar extends HBox {
         scroll.setPannable(true);
         HBox.setHgrow(scroll, Priority.ALWAYS);
 
-        Button add = IconButtons.icon(Icons.Icon.ADD, "新建标签");
-        add.setAccessibleText("新建标签");
+        Button add = IconButtons.icon(Icons.Icon.ADD, I18n.t("tab.newTab"));
+        add.setAccessibleText(I18n.t("tab.newTab"));
         add.getStyleClass().addAll("adb-icon-button", "adb-tabbar__add");
-        add.setTooltip(new javafx.scene.control.Tooltip(io.agenticdb.ui.Shortcuts.labelled("新建查询", "Shift+Mod+N")));
+        add.setTooltip(new javafx.scene.control.Tooltip(
+                io.agenticdb.ui.Shortcuts.labelled(I18n.t("tab.newQuery"), "Shift+Mod+N")));
         add.setOnAction(event -> actions.run("new-query"));
 
         getChildren().addAll(scroll, add);
@@ -384,8 +386,8 @@ public final class TabBar extends HBox {
         // ⭐ 常驻标签**根本没有关闭钮** —— 不是「藏起来」，
         //    而是不放进场景图：界面上不该出现一个点了没反应的 ×，
         //    留在树里还会干扰「查找可见节点」这类操作。
-        Button close = IconButtons.icon(Icons.Icon.CLOSE, "关闭标签");
-        close.setAccessibleText("关闭");
+        Button close = IconButtons.icon(Icons.Icon.CLOSE, I18n.t("tab.closeTab"));
+        close.setAccessibleText(I18n.t("tab.close"));
         close.getStyleClass().add("adb-tab__close");
         close.setFocusTraversable(false);
         close.setOnAction(event -> {
@@ -433,16 +435,16 @@ public final class TabBar extends HBox {
         lastContextMenu = menu;
         // ⭐ 右键菜单走 ActionRegistry（4.5-29）：和菜单栏、命令面板同源，
         //    enabled 状态统一，也能在 ⌘K 里搜到。
-        MenuItem closeItem = actions.menuItem("tab.close", "关闭");
+        MenuItem closeItem = actions.menuItem("tab.close", I18n.t("tab.close"));
         if (isPermanent(tab.id())) {
             // ⭐ 常驻标签不能关 —— 菜单项直接不出现，而不是「点了没反应」。
             closeItem.setVisible(false);
         }
-        MenuItem closeOthers = actions.menuItem("tab.close-others", "关闭其他");
-        MenuItem closeAll = actions.menuItem("tab.close-all", "全部关闭");
+        MenuItem closeOthers = actions.menuItem("tab.close-others", I18n.t("tab.closeOthers"));
+        MenuItem closeAll = actions.menuItem("tab.close-all", I18n.t("tab.closeAll"));
         // ⭐ S8：补「复制表名 / 复制 SELECT」—— Navicat 的标签右键也有。
-        MenuItem copyName = actions.menuItem("tab.copy-name", "复制表名");
-        MenuItem copySelect = actions.menuItem("tab.copy-select", "复制 SELECT");
+        MenuItem copyName = actions.menuItem("tab.copy-name", I18n.t("tab.copyName"));
+        MenuItem copySelect = actions.menuItem("tab.copy-select", I18n.t("tab.copySelect"));
         menu.getItems().addAll(copyName, copySelect, new SeparatorMenuItem(),
                 closeItem, closeOthers, new SeparatorMenuItem(), closeAll);
         node.setOnContextMenuRequested(event -> {

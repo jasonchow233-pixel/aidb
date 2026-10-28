@@ -55,7 +55,8 @@ class XlsxCodecTest {
     void exportXlsxHonoursTheRowLimitAndHeaderFlag() throws Exception {
         try (JdbcSession session = seeded()) {
             Path file = temp.resolve("limited.xlsx");
-            ExportOptions options = new ExportOptions(ExportFormat.XLSX, false, 500, 2, true);
+            ExportOptions options = new ExportOptions(ExportFormat.XLSX, false, 500, 2, false,
+                    java.nio.charset.StandardCharsets.UTF_8);
             try (OutputStream out = Files.newOutputStream(file)) {
                 TableExporter.exportXlsx(session, "t", List.of(), options, out);
             }

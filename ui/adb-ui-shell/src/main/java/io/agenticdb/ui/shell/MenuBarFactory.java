@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
@@ -9,6 +10,11 @@ import javafx.scene.control.ToggleGroup;
 /**
  * 原生菜单栏。菜单项全部来自 {@link ActionRegistry}，不在这里写业务。
  * macOS 上走系统菜单栏（{@code setUseSystemMenuBar(true)}）。
+ *
+ * <p>顶级组的<b>标签</b>走 {@link I18n}（2026-10-28 拍板 3：默认英文）。
+ * 组的<b>集合</b>仍是 AIDB 现有的九组 —— 改成 Navicat 的
+ * {@code File/Edit/View/Query/Format/Favorites/Tools/Window/Help} 是 N2，
+ * 刻意与「换取词来源」分成两步做：同时改结构和改字符串，红了无法归因。
  */
 public final class MenuBarFactory {
 
@@ -31,7 +37,7 @@ public final class MenuBarFactory {
     }
 
     private Menu fileMenu() {
-        return new Menu("文件", null,
+        return new Menu(I18n.t("menu.file"), null,
                 actions.menuItem("new-connection"),
                 // 4.5-10：这两个动作以前只注册、没有任何菜单入口，只能靠 ⌘K 找。
                 actions.menuItem("connections.manage"),
@@ -47,7 +53,7 @@ public final class MenuBarFactory {
     private Menu editMenu() {
         // 撤销 / 重做 / 复制委托给当前活动页；剪切 / 粘贴在数据库客户端没有语义，
         // 按 TODO §12「占位要么接要么删」删除，不留永久禁用项。
-        return new Menu("编辑", null,
+        return new Menu(I18n.t("menu.edit"), null,
                 actions.menuItem("edit.undo"),
                 actions.menuItem("edit.redo"),
                 new SeparatorMenuItem(),
@@ -61,7 +67,7 @@ public final class MenuBarFactory {
     private Menu viewMenu() {
         ToggleGroup group = new ToggleGroup();
 
-        return new Menu("视图", null,
+        return new Menu(I18n.t("menu.view"), null,
                 actions.menuItem("sidebar.toggle"),
                 actions.menuItem("details.toggle"),
                 new SeparatorMenuItem(),
@@ -75,7 +81,7 @@ public final class MenuBarFactory {
     }
 
     private Menu databaseMenu() {
-        return new Menu("数据库", null,
+        return new Menu(I18n.t("menu.database"), null,
                 actions.menuItem("refresh"),
                 // 4.5-10：以前只注册、没有任何菜单入口。
                 actions.menuItem("connection.reconnect"),
@@ -110,7 +116,7 @@ public final class MenuBarFactory {
      * 但**它们在菜单里始终可见** —— 用户能知道有哪些能力。
      */
     private Menu objectMenu() {
-        return new Menu("对象", null,
+        return new Menu(I18n.t("menu.object"), null,
                 // ⭐ 表清单以前只能靠 ⌘K 或动作 id 打开 —— 菜单里根本找不到。
                 //    这是**可发现性 bug**：功能存在≠用户找得到。
                 actions.menuItem("object.tables"),
@@ -137,14 +143,14 @@ public final class MenuBarFactory {
      */
     private Menu favoritesMenu() {
         // ⭐ X6：以前只有 1 项（顶级菜单资源被浪费）—— 补上「清空收藏」。
-        return new Menu("收藏夹", null,
+        return new Menu(I18n.t("menu.favorites"), null,
                 actions.menuItem("favorites.open"),
                 new SeparatorMenuItem(),
                 actions.menuItem("favorites.clear"));
     }
 
     private Menu toolsMenu() {
-        return new Menu("工具", null,
+        return new Menu(I18n.t("menu.tools"), null,
                 actions.menuItem("diagnostics"),
                 actions.menuItem("import-export"),
                 new SeparatorMenuItem(),
@@ -152,7 +158,7 @@ public final class MenuBarFactory {
     }
 
     private Menu windowMenu() {
-        return new Menu("窗口", null,
+        return new Menu(I18n.t("menu.window"), null,
                 actions.menuItem("window.minimize"),
                 actions.menuItem("window.zoom"),
                 new SeparatorMenuItem(),
@@ -160,7 +166,7 @@ public final class MenuBarFactory {
     }
 
     private Menu helpMenu() {
-        return new Menu("帮助", null,
+        return new Menu(I18n.t("menu.help"), null,
                 actions.menuItem("shortcuts"),
                 new SeparatorMenuItem(),
                 actions.menuItem("about"));

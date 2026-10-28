@@ -115,6 +115,38 @@ class DialogStylesTest {
                 .isLessThan(screenHeight);
     }
 
+    /**
+     * ⭐ R33：向导正文的 16px 留白必须真的落到屏幕上。
+     *
+     * <p>{@code .adb-dialog > .content { padding: 0 }} 是 (0,2,0)，裸的
+     * {@code .adb-wizard__content} 只有 (0,1,0) —— 特异性输了，五个向导的正文
+     * 一直贴着弹窗边缘（p8-import / p5-connect-* 实拍：标签几乎落在 x=0）。
+     * JavaFX 里代码里 {@code setPadding(16)} 也压不住样式表（代码是 USER 来源，
+     * 优先级最低），所以只能靠 selector 提权，也必须用**上屏后读到的 padding** 来钉。
+     */
+    @Test
+    void wizardContentKeepsItsInsetInsideTheDialogPane(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        javafx.geometry.Insets padding = WaitForAsyncUtils.asyncFx((Callable<javafx.geometry.Insets>) () -> {
+            javafx.scene.layout.VBox content = new javafx.scene.layout.VBox(new Label("正文"));
+            content.getStyleClass().add("adb-wizard__content");
+            Dialog<Void> dialog = new Dialog<>();
+            DialogStyles.apply(dialog, owner);
+            dialog.getDialogPane().setContent(content);
+            dialog.show();
+            dialog.getDialogPane().applyCss();
+            dialog.getDialogPane().layout();
+            javafx.geometry.Insets result = content.getPadding();
+            dialog.hide();
+            return result;
+        }).get();
+        assertThat(padding.getLeft())
+                .as("向导正文左留白被 .adb-dialog > .content 的 padding:0 压掉了")
+                .isEqualTo(16);
+        assertThat(padding.getTop()).isEqualTo(16);
+        assertThat(padding.getRight()).isEqualTo(16);
+    }
+
     @Test
     void theDialogKeepsItsOwnTitleAndContent(FxRobot robot) throws Exception {
         WaitForAsyncUtils.waitForFxEvents();

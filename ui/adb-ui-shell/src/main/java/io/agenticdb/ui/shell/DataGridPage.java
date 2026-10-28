@@ -5074,7 +5074,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         feedback.status("已复制 " + scope + " " + rows.size() + " 行 INSERT");
     }
 
-    /** 打开导出向导：整表 / 当前页 / 选中行，CSV/TSV/JSON/SQL。 */
+    /** 打开导出向导：整表 / 当前页 / 选中行，CSV/TSV/JSON/SQL/XLSX/XML/HTML。 */
     private void openExportWizard() {
         if (tableSchema == null) {
             return;
@@ -5084,8 +5084,31 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 ? ExportWizard.Scope.WHOLE_TABLE : ExportWizard.Scope.SELECTED;
         Path target = Path.of(System.getProperty("user.home"), tableName + ".csv");
         ExportWizard wizard = new ExportWizard(session, tableName, names, scope, target,
-                dbExecutor, message -> feedback.status(message));
+                dbExecutor, message -> feedback.status(message), this::exportScopeRows);
         wizard.show(getScene() == null ? null : getScene().getWindow());
+    }
+
+    /**
+     * 导出向导的「当前页 / 选中行」数据来源：网格里那一屏的行，按请求的列摊平。
+     *
+     * <p>只在 FX 线程上被调用（向导在点「开始导出」时取快照），所以这里可以直接读网格。
+     */
+    private List<List<Object>> exportScopeRows(ExportWizard.Scope scope, List<String> columns) {
+        List<Map<String, Object>> source = switch (scope) {
+            case CURRENT_PAGE -> List.copyOf(grid.getItems());
+            case SELECTED -> List.copyOf(grid.getSelectionModel().getSelectedItems());
+            case WHOLE_TABLE -> List.of();
+        };
+        List<List<Object>> rows = new ArrayList<>(source.size());
+        for (Map<String, Object> row : source) {
+            List<Object> values = new ArrayList<>(columns.size());
+            for (String name : columns) {
+                ColumnDef definition = columnDef(name);
+                values.add(definition == null ? row.get(name) : cellValue(row, definition));
+            }
+            rows.add(values);
+        }
+        return rows;
     }
 
     /**
@@ -5138,6 +5161,34 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         }
         return new ImportWizard(session, tableName, tableSchema.columns(), List.copyOf(candidates),
                 null, dbExecutor, message -> feedback.status(message));
+    }
+
+    // ── 截图 / 验收（R33 G5/G6）：直接弹向导，跳过文件选择框 ──
+
+    /** 截图用：弹导入向导并摆好预览；表结构还没读到时返回 false（外壳继续轮询）。 */
+    boolean poseImportWizardForShots(Path file) {
+        if (tableSchema == null) {
+            return false;
+        }
+        ImportWizard wizard = createImportWizard(List.of());
+        wizard.poseForShots(file);
+        wizard.show(getScene() == null ? null : getScene().getWindow());
+        return true;
+    }
+
+    /** 截图用：弹导出向导并摆好「字段子集 + XML/HTML」（不执行导出）。 */
+    boolean poseExportWizardForShots(String pose) {
+        if (tableSchema == null) {
+            return false;
+        }
+        List<String> names = tableSchema.columns().stream().map(ColumnDef::name).toList();
+        Path target = Path.of(System.getProperty("user.home"), tableName + ".xml");
+        ExportWizard wizard = new ExportWizard(session, tableName, names,
+                ExportWizard.Scope.WHOLE_TABLE, target, dbExecutor,
+                message -> feedback.status(message), this::exportScopeRows);
+        wizard.poseForShots(pose);
+        wizard.show(getScene() == null ? null : getScene().getWindow());
+        return true;
     }
 
     /** P2-3：历史数据来源（外壳按当前表筛选后喂进来）。 */
