@@ -46,15 +46,15 @@ app-icon-16.png     最小尺寸（侧栏树节点）
 1. 同步改 `brand/aidb-mark.svg` 与 `tools/GenLogo.java`（几何必须一致）
 2. `java tools/GenLogo.java`
 3. `java tools/GenPackIcons.java`（安装包图标；`PackageIconAuditTest` 会逐字段解码两个容器，坏了当场红）
-4. `./scripts/shots.sh` 重拍截图，肉眼看应用栏
+4. `./scripts/shots.sh` 重拍截图，肉眼看窗口标题 / 窗口图标 / 「关于」弹窗
 
 ## 品牌色在界面中的落点
 
 | 位置 | 规则 | 样式类 |
 |---|---|---|
-| 应用栏品牌块 | 26×26 圆角方 + `accent` 底 + **矢量 `Icons.Icon.BRAND`**（圆柱 + 右上 AI 星芒，`#appbar-brand-glyph`）—— ⭐ S-7 起这是品牌在界面里的**唯一**落点，欢迎页那张卡不可达、已删 | `.adb-appbar__mark` |
-| 应用栏字标 | 16px bold · `text-primary` | `.adb-appbar__title` |
-| 位图 `app-icon*.png` | 只给 **OS** 用：窗口图标 / Dock / 任务栏 / 安装包（`App.getIcons()`，见 `AppIconResourceAuditTest`）；界面内不用位图 —— PNG 不随主题换色、放大会糊（`AppBarTest.theBrandMarkUsesTheVectorIconSystem`） | — |
+| 窗口标题 | 标题文字 **AIDB**（`App.APP_TITLE`）；应用栏不再有品牌块（2026-10-28 顶区精简） | — |
+| 「关于」弹窗 | 品牌图形的界面唯一落点：`Icons.Icon.BRAND` 作为弹窗 graphic | `.adb-icon` |
+| 位图 `app-icon*.png` | 只给 **OS** 用：窗口图标 / Dock / 任务栏 / 安装包（`App.getIcons()`，见 `AppIconResourceAuditTest`）；界面内不用位图 —— PNG 不随主题换色、放大会糊 | — |
 | 矢量 `Icons.Icon.BRAND` | 16 视框里**手工简化**的同一造型，不要求与 `aidb-mark.svg` 逐点一致（位图那份有 5 层圆柱细节，16px 描边会糊成一团） | `.adb-icon` |
 | 品牌色使用约束 | **品牌蓝只出现在「主操作 / 焦点 / 连接状态点」**，不铺面 | `accent` / `accent-hover` |
 

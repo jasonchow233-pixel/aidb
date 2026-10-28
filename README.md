@@ -113,7 +113,7 @@
 | **统一控件层：五档按钮 × 五态 + 输入/复选/下拉/清单/弹窗同套规则** | ✅ | `app.css` 控件段 + `UnifiedControlTest` |
 | **新建索引弹窗**（单列表 + 拖拽/Alt+↑↓ 保序 + 「添加列」下拉 + 方言能力门控 + SQL 预览即执行语句） | ✅ | `IndexDialog` + `IndexDialogTest` / `IndexDdlTest` |
 
-当前门禁：**1064 条 / 130 类 / 0 失败**（2026-10-28 · 第三十二轮 G4 Windows 实机实测；`./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`）；另有 48 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
+当前门禁：**1064 条 / 130 类 / 0 失败**（2026-10-28 · 第三十二轮 G4 + 顶区精简（R32-D）Windows 实机实测；`./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`）；另有 48 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
 
 > ⚠️ **本机环境**：`java` 默认不在 PATH。可用的 JDK：
 > - Windows 10：`~/.jdks/openjdk-27.0.1.0.2`（pom 的 enforcer 区间为 `[25,28)`）

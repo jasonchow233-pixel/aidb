@@ -74,7 +74,8 @@
 > ⚠️ **20px（`fs-2xl`）已于 2026-10-24 随 S-7 一起移除**：它唯一的消费者是那张欢迎页卡片的
 > 标题，而欢迎页**根本不可达**（`AppShell` 构造器无条件打开常驻的「对象」首页）。
 > 页面、样式类、`Icons.SIZE_BRAND` 档位、`fs-2xl` 令牌四处一起走 ——
-> **删令牌，不给令牌硬造消费者**。品牌 mark 现在挂在应用栏：矢量 `Icons.Icon.BRAND`。
+> **删令牌，不给令牌硬造消费者**。品牌 mark 现在只出现在「关于」弹窗图形（`Icons.Icon.BRAND`）；
+> 2026-10-28 顶区精简后，顶栏的品牌方块与字标一并删除。
 
 > ⭐ 2026-10 UX-2 重构：**数据面正文统一 12px** —— 网格、清单、树、结构页、
 > 按钮与输入框都落到 `fs-sm`。表格正文 13px 会让 21px 的 dense 行发挤，
@@ -92,7 +93,6 @@
 
 | 界面角色 | 字号 | 样式类 |
 |---|---|---|
-| 应用名 | 16px bold | `.adb-appbar__title` |
 | 页面标题 / 对象名 | 20px bold | `.adb-page__title`、`.adb-object-header__title` |
 | 分组标题（侧栏 / 表格页签区） | 11px bold | `.adb-sidebar__section-title`、`.adb-section-title` |
 | 表格正文 | 12px | `.adb-grid .table-cell` |
@@ -229,13 +229,13 @@
 
 | 分类 | 图标 | 语义 |
 |---|---|---|
-| 通用动作 | `CLOSE` `CHECK` `ADD` `EDIT` `COPY` `DELETE` `SAVE` `REFRESH` `UNDO` `REDO` `SEARCH` `FILTER` `CLEAR` `SETTINGS` `STAR` `STAR_FILLED` `DOT` `MORE` | 关闭 / 勾选（布尔单元格、CHECK 约束）/ 新增 / 编辑 / 复制 / 删除 / 保存 / 刷新 / 撤销 / 重做 / 搜索 / 筛选 / 清除 / 设置 / 收藏 / 收藏实心 / 状态点 / **更多（⋯，应用栏溢出菜单）** |
+| 通用动作 | `CLOSE` `CHECK` `ADD` `EDIT` `COPY` `DELETE` `SAVE` `REFRESH` `UNDO` `REDO` `SEARCH` `FILTER` `CLEAR` `SETTINGS` `STAR` `STAR_FILLED` `DOT` `MORE` | 关闭 / 勾选（布尔单元格、CHECK 约束）/ 新增 / 编辑 / 复制 / 删除 / 保存 / 刷新 / 撤销 / 重做 / 搜索 / 筛选 / 清除 / 设置 / 收藏 / 收藏实心 / 状态点 / **更多（⋯，页签行的溢出菜单）** |
 | 导航 | `PREVIOUS` `NEXT` `FIRST` `LAST` `CHEVRON_LEFT` `CHEVRON_RIGHT` `FOLDER` | 上/下/首页/末页/左/右 / 连接分组 |
 | 传输 | `EXPORT` `IMPORT` `TRANSFER` | 导出 / 导入 / 双向 |
 | 执行 | `RUN` `RUN_ALL` `STOP` `EXPLAIN` | 执行 / 执行全部 / 停止 / 执行计划 |
 | 对象 | `DATABASE` `TABLE` `STRUCTURE` `COLUMNS` `VIEW` `VIEW_OBJECT` `FUNCTION` `TRIGGER` `INDEX` `OPEN` | 连接 / 表 / 结构 / 列 / 视图 / 视图对象 / 函数 / 触发器 / **索引** / 打开选中对象 |
 | 其它 | `CONNECT` `QUERY` `LIST` `GRID` `THEME` `PALETTE` `HISTORY` `DIAGNOSTICS` `LOCK` `ALERT` | 连接 / 查询 / 清单 / 网格 / 主题 / 命令面板 / 历史 / 诊断 / 加密连接 / 警告提示 |
-| 品牌 | `BRAND` | ⭐ **AIDB mark**（数据圆柱 + 右上 AI 四角星芒）—— 只用在应用栏 26px 方块；S-7 起品牌在界面里的**唯一**落点 |
+| 品牌 | `BRAND` | ⭐ **AIDB mark**（数据圆柱 + 右上 AI 四角星芒）—— 只用在**「关于」弹窗的图形**；2026-10-28 顶区精简后，品牌在界面里的落点是窗口标题 + 窗口图标 + 关于框（顶栏不再有品牌块） |
 
 ### 4.3 硬规则
 
@@ -252,10 +252,12 @@
    - 破坏性动作 → 图标 + 文字 + 红色（不许只留一个垃圾桶图标）。
 6. ⭐ **覆盖 `.adb-icon` 的字形颜色必须用两类选择器**。JavaFX 的 CSS 层叠里，**同特异性**的单类规则
    按「后写胜」判定，而 `.adb-icon { -fx-stroke: -adb-text-secondary }` 位于 `app.css` 末尾 ——
-   任何写在它**前面**的单类覆盖规则（品牌方块的 `text-inverse` 就是第一个受害者）**静默失效**。
-   写法：给宿主容器一个类，用 `.adb-appbar__mark .adb-appbar__mark-glyph`（特异性 0,2,0）。
-   门禁：`AppBarTest.theBrandGlyphKeepsItsContrastAgainstTheGenericIconRule` 读**计算后的** `getStroke()`，
-   并要求测试 `@Start` 把两套样式表挂上场景（不挂样式表时 `getStroke()` 只是 `Shape` 的默认色，断言等于没测）。
+   任何写在它**前面**的单类覆盖规则（历史第一个受害者是已被删除的应用栏品牌方块）**静默失效**。
+   写法：给宿主容器一个类，用 `.adb-host .adb-host__glyph`（特异性 0,2,0），并保证宿主本身
+   处在挂着 `theme-light` / `theme-dark` 的子树里 —— 2026-10-28 顶区精简时，工具件被搬到
+   `#adb-chrome-row` 后脱离主题根，连接点直接算成纯黑（`0x000000ff`）。
+   门禁：读**计算后的**颜色（如 `AppBarTest.theConnectionDotTurnsGreenWhenOnline` 读 `getFill()`），
+   并要求测试 `@Start` 把两套样式表挂上场景（不挂样式表时 `getStroke()`/`getFill()` 只是控件默认色，断言等于没测）。
    教训：**这条 bug 全绿了三轮才被像素对比抓到** —— 绿门禁不等于真看得见。
 
 ### 4.4 现状缺口
@@ -305,10 +307,10 @@
 | 元素 | 尺寸 | 来源 |
 |---|---|---|
 | 菜单栏 | 系统默认（macOS 进系统菜单栏） | — |
-| **应用栏（含 Ribbon）** | **90px** = 26px 工具行 + 64px 命令带 | `h-appbar`（`AppBar.setPrefHeight`）/ `.adb-appbar__utility` / `.adb-ribbon` |
-| 应用栏品牌方块 | **20×20**，圆角 3、底 `accent`、字形 `Icons.SIZE_LABEL` 且描边 **`text-inverse`**（⚠️ 必须两类选择器，见 §4.3 第 6 条） | `.adb-appbar__mark` / `.adb-appbar__mark .adb-appbar__mark-glyph` |
-| Ribbon 大图标按钮 | **62×58**，图标 `Icons.SIZE_RIBBON`（26）+ 11px 标签 | `.adb-ribbon__button` / `.adb-ribbon__label` |
-| 标签栏 | **26px**，白底 + 1px 下边界 | `h-tabbar` / `.adb-tabbar` |
+| **命令带（Ribbon）** | **64px** 单行；2026-10-28 起全局工具件并入页签行，顶区合计 **114px**（菜单 24 + 64 + 页签行 26） | `h-appbar`（`Tokens.H_APPBAR_LIGHT/DARK`）/ `.adb-ribbon` |
+| Ribbon 命令按钮 | **62×58**，图标 `Icons.SIZE_RIBBON`（26）+ 11px 标签；只摆没有第二入口的 6 条命令 | `.adb-ribbon__button` / `.adb-ribbon__label` |
+| 页签行（兼全局工具行） | **26px**，白底 + 1px 下边界；右侧连接 pill / 全局搜索 220px / 主题 / ⋯ | `h-tabbar` / `.adb-tabbar` / `#adb-chrome-row` / `.adb-appbar__utility` |
+| 页签行紧凑形态 | 行宽 **<780px** 触发：收掉连接副标题与搜索提示词，搜索框缩为 30px 放大镜 | `.adb-appbar__utility--compact` |
 | 对象标题栏 | **40px** | `.adb-object-header` |
 | 对象切面条 | 随对象标题栏（40 内） | `.adb-object-tabs` |
 | 工具栏（数据页） | **30px** | `h-toolbar` |
@@ -346,18 +348,20 @@
 
 ## 6. 布局
 
-### 6.1 七区骨架（2026-10-26：Navicat 对齐）
+### 6.1 七区骨架（2026-10-28：顶区两层版）
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ 菜单栏 24px（系统原生，白底）                                   │
 ├──────────────────────────────────────────────────────────────┤
-│ 工具行 26px：◆ AIDB │ ● 当前连接 ▾ │  [搜索对象或命令 ⌘K] ◐ ⋯ │  ← chrome #F0F0F0
-│ Ribbon 64px：[连接][新建查询][表][新建表][导入/导出]…[设置]      │  ← 大图标 + 11px 标签
+│ 命令带 64px：[连接][新建查询][新建表][导入/导出][已保存查询][收藏夹] │  ← chrome #F0F0F0，62×58
 ├────────────┬─────────────────────────────────────────────────┤
-│ 侧栏 250px │ 标签栏 26px：对象(常驻) · users × · 查询示例 ×    │  ← 白底 + 下边界
-│ (可拖/折叠)├─────────────────────────────────────────────────┤
-│ 收藏        │ 内容区（页面自行管理加载/空/错误三态）            │  ← canvas
+│            │ 页签行 26px：对象(常驻) · users × · 查询示例 ×     │  ← 白底 + 下边界
+│            │                       ● 当前连接 ▾  [搜索 ⌘K] ◐ ⋯ │  ← 工具件靠右，同行
+├────────────┼─────────────────────────────────────────────────┤
+│ 侧栏 250px │ 内容区（页面自行管理加载/空/错误三态）            │  ← canvas
+│ (可拖/折叠)│                                                  │
+│ 收藏        │                                                  │
 │ 连接（对象树）│                                                  │
 │ 工作台      │                                                  │
 │ 工具        │                                                  │
@@ -366,15 +370,18 @@
 └──────────────────────────────────────────────────────────────┘
 ```
 
-> ⭐ 2026-10-26 用户裁定「保持和 Navicat 一样」：顶部固定区合计 **170px**
-> （菜单 24 + Ribbon 90 + 标签栏 26 + 对象工具条 30），与 Navicat 17 实测一致。
-> Ribbon 只摆**真动作**（10 个，全部经 `ActionRegistry`），不摆备份/模型/BI 这类我们没有的假按钮。
-> 品牌、当前连接、全局搜索、主题、更多留在 26px 工具行；设置同时有 Ribbon 与 ⋯ 两个入口。
+> ⭐ 2026-10-26 用户裁定「保持和 Navicat 一样」；2026-10-28 再裁定**顶区精简**（方案 B「并入标签栏」）：
+> 全局顶区 **114px** = 菜单 24 + 命令带 64 + 页签行 26（原 140px = 24 + 90 双行 + 26）。
+> 页面内的对象页签 26 + 对象工具条 30 仍归页面，从窗口顶到内容 ≈170px，与 Navicat 17 实测同线。
+> 品牌块删除（品牌 = 窗口标题 + 窗口图标 + 关于框图形）；全局工具件（连接 / 搜索 / 主题 / ⋯）
+> 与文档页签**共用一行**；命令带只摆**没有第二入口**的 6 条命令（全部经 `ActionRegistry`），
+> 表 / 诊断 / 刷新 / 设置 留在菜单、侧栏、⌘K 与 ⋯ 菜单；窄窗（<780px）自动降级成图标。
 
 | 区域 | 规则 |
 |---|---|
 | 菜单栏 | 9 个顶级菜单；全部项走 `ActionRegistry`；macOS 进系统菜单栏 |
-| 应用栏 | 品牌 + 当前连接（状态点 + 切换 + 重连 / 断开）+ 两个全局动作 + ⌘K 搜索 + 主题 + 设置 + 更多 |
+| 命令带 | 6 条命令（连接 / 新建查询 / 新建表 / 导入导出 / 已保存查询 / 收藏夹），62×58；不再重复摆有第二入口的动作 |
+| 页签行右侧 | 当前连接（状态点 + 切换 + 重连 / 断开）+ ⌘K 搜索 + 主题 + ⋯；行宽不足时收字收提示词 |
 | 侧栏 | 搜索框在**底部**（与 ★、« 同行）；对象树满行高亮、类型色图标、右侧计数；重建后视口回顶 |
 | 标签栏 | 第一个是**常驻「对象」标签**（无关闭钮）；下划线指示当前标签；脏点 `●N`；中键关闭 |
 | 内容区 | 页面自己管三态；网格页与查询页各有一套骨架（见下） |
@@ -870,6 +877,7 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-28 | 第三十二轮 · R32-D | **顶区精简（用户拍板方案 B「并入标签栏」）**：删掉整条 26px 全局工具行与品牌块，顶区 **140 → 114px** = 菜单 24 + 命令带 64 + 页签行 26。命令带由双行 90px 收到 **64px 单行**，同时裁掉 4 个有第二入口的重复命令（表 / 诊断 / 刷新 / 设置 —— 仍在菜单、侧栏、⌘K、⋯ 菜单），只留 6 条；连接 pill / 全局搜索 / 主题 / ⋯ 搬进页签行右侧，与文档页签共用 26px；品牌改为**窗口标题 + 窗口图标 + 关于框图形**。新增窄窗降级 `AppBar.fitChromeWidth`（行宽 <780px 收掉连接副标题与搜索提示词，搜索框缩为 30px 放大镜；`p2-details` 在侧栏 + 抽屉同开、内容区 ~420px 时实证）。⭐ **两条新教训**：① CSS 变量靠继承，工具件搬出 AppBar 后脱离挂 `theme-light` / `theme-dark` 的子树 → 连接点算成纯黑 `0x000000ff`，**主题类必须挂在场景根**；② 节点 id 里带 `.`（`ribbon-object.new-table`）会让 `lookup("#…")` 解析失败 —— 改用遍历 `.adb-ribbon__button` 比对 `getId()`。门禁：`AppBarTest` 12 条（品牌块禁止回归 / 命令带只剩 6 条 / 紧凑形态往返 / ⋯ 含刷新）、`AppShellTest` 顶区两行断言、`BrandMarkAuditTest`（品牌只在窗口身份与关于框）、`TokenParityTest`（64px）；两次变异（工具行拆回独立一行 → `AppShellTest` 红；`compact = false` → `AppBarTest` 红）均还原。27 张帧重拍并逐张目视（`ADB_CONNECTIONS` 摆态补齐被删图标的截图入口）。 |
 | 2026-10-28 | 第三十二轮 · R32-G4 | **表单视图（单记录纵向表单）**。一行一个字段：列名 12px 粗（130px）/ 类型 11px 灰（150px）/ 值控件（inset 底 + 6px 圆角，聚焦描 `border-focus`）；行线沿用网格的 `border-subtle`，只读字段用 `bg-subtle` 底 + `text-secondary` 字、`-fx-opacity: 1` 保持可读。八个 `.adb-grid__form*` 样式类先落在 Java 里没有规则，被 `StyleClassCoverageTest` 拦下后补齐；类型栏 110 → 150px 是因为 `BOOLEAN · NOT NULL` 在 110px 下被截成 `BOOLEAN · NOT …`（`p2-form` 实拍）。⭐ **工具条收字判据补两条**：① 按钮个数变化（选中行多出「删除记录」）也要重判，不只盯工具条宽度；② 收起状态下量需求宽必须先把文字装回、摘掉 `adb-button--icon` 并**当场 `applyCss()`** —— 否则读到的还是 30px 图标档（实测 556 / 1093），下一次重判会把文字涨回来、把搜索框裁成「本」。新增帧 `p2-form`（27 张：22 亮 + 5 暗）。 |
 | 2026-10-27 | 第三十一轮 · R31 | **表设计器补成 Navicat 的七页 + 字段页三段**。字段页 = 工具条（添加 / 插入 / 删除 / 上移 / 下移）+ 网格 + 常驻属性面板（默认值 / 字符集 / 排序规则），默认值从网格挪进面板换取长度/小数/自增的列宽；网格行高 30 → **21px**（`RowHeights.of("normal")`，Navicat 实测 22，差 1px 换来与自家密度同档）；九列按 Navicat 顺序排（名称 / 类型 / 长度 / 小数 / 不为空 / 主键 / 唯一 / 自增 / 注释），类型是可编辑下拉、候选来自 `Dialect.columnTypes()`；`字段数：N` 常驻工具条右端。⭐ **置灰一律用颜色，不用 `-fx-opacity`**：新写的 `.adb-dialog .table-view .table-cell:disabled` 本想用 `0.45` 半透明，被 `FocusRingAuditTest.opacityIsNeverUsedToDimContent` 拦下（全文只允许命令面板遮罩一处，半透明会把文字和图标一起稀释），改成 `-fx-opacity: 1` + `text-disabled` 色 —— 与本文件「禁用感完全由颜色表达」这条既有规矩一致。⭐ **方言知识不下 UI**：字符集/排序规则的「支持与否 + 常用候选」全部做成 `Dialect` 默认方法（`supportsColumnCharset` / `columnCharsetPresets` / `columnCollationPresets`），UI 里写 `kind() == MYSQL` 会被 `DialectBranchAuditTest` 判红（本轮真的红过一次）；候选表与建表器校验之间加了 `everyCharsetAndCollationPresetIsAcceptedByTheBuilder` 对账门 —— 变异验证：往 PG 候选里塞一个带点号的 `en_US.UTF-8`（过不了注入防线）只红这条。⭐ **行态档集体栽在权重上**：字段网格选中的那一行实拍只剩一圈单元格描边、底色还是白的，第一版补的裸 `.adb-dialog .table-view .table-row-cell:selected` 门禁全绿、帧照样没色 —— 真根因是四处表格作用域的条纹档写成 `:filled:odd`（比所有行态档多一个伪类 = 重 10），把 `:hover` / `:selected` / `--deleted` / `--new` 整档压掉，表现成**只有奇数行掉色**（`p2-cell` 里选中的 `User 002` 同样是白行，只是此前没有任何一帧选中过奇数行）。修法是把**条纹降回一个伪类** `:odd`（空行不条纹交给同权重、声明在后的 `:empty`），而不是给每条行态档补 `:filled` —— 前者一次修完四个作用域，后者每加一条新态都要记住补。门禁 `SelectionStateTest.stateRulesOutweighTheZebraStripeInEveryTableScope` 随之从「规则在不在」升级成「逐作用域把行态档全捞出、比权重 ≥ 条纹档且声明在后」，变异两处各红一次（条纹写回 `:filled:odd`、选中档挪到条纹档前面）。新增帧 `p6-new-table-fields` / `-fields-dark` / `-comment`（**24 张：19 亮 + 5 暗**）。 |
 | 2026-10-27 | 第三十轮 · R30-D | **弹窗内第一次出现 TabPane**（新建表的六页设计器：字段 / 索引 / 外键 / 触发器 / 选项 / SQL 预览），规则落在 `.adb-dialog .tab-pane` 之下，不影响工作台自己的标签栏：页签栏铺**画布底色** + 底部 1px `border-subtle`，选中页与正文同用 **surface**、文字 `accent` 加粗，页签内边距 `4px 12px`（12px 字，命中区 ~24px），圆角只取阶梯里的 `3px`（`AppCssAuditTest` 拦四值写法），选中页焦点环清空。⚠️ 底色方向不能反：暗色下画布 `#0B1220` 比 surface `#1E293B` 更暗，反写会让选中页看着像按下去/失效。对象页 = 列表 + 两颗按钮 + 一行说明，行选中用全应用统一的 `bg-selected`。**预览空态改成「说原因」**：表名撞上已有表时不再只清空预览（演示库本来就有 `orders`，实拍帧一片空白），填了表名就照实显示 `表「x」已经存在`，只有表名为空才保留「填写表名后…」。新增帧 `p6-new-table-index` / `p6-new-table-sql` / `p6-new-table-dark`（21 张：17 亮 + 4 暗）。 |
