@@ -162,6 +162,58 @@ class I18nAuditTest {
                 .isEmpty();
     }
 
+    /**
+     * ⭐ N1-d 的两条约束：偏好链的**优先级**，以及 configure 必须**早于任何节点构造**。
+     *
+     * <p>优先级是行为断言（{@code -Dadb.locale} &gt; 偏好 &gt; 默认英文）——
+     * 截图脚本要靠它拍中文帧，搞错就会整套帧都是英文而没人发现。
+     *
+     * <p>顺序那条只能静态查：JavaFX 的 {@code setText} 是构造时一次性取值，
+     * {@code configure()} 跑晚了等于没跑，而"跑晚了"在运行时**完全静默**。
+     * 所以这里查 {@code App.start} 里两行的先后 —— 不是用文本 grep 代替行为，
+     * 而是这条约束本身没有可执行的行为面（构造顺序错了不会报错，只是语言不对）。
+     */
+    @Test
+    void thePreferenceChainIsPropertyThenPreferenceThenDefault() {
+        String previous = System.getProperty(I18n.LOCALE_PROPERTY);
+        try {
+            System.clearProperty(I18n.LOCALE_PROPERTY);
+            assertThat(I18n.configure(I18n.CHINESE))
+                    .as("无系统属性时，显式偏好生效")
+                    .isEqualTo(I18n.CHINESE);
+            assertThat(I18n.configure(null))
+                    .as("偏好也没给时，落回默认英文（拍板 3）")
+                    .isEqualTo(I18n.ENGLISH);
+
+            System.setProperty(I18n.LOCALE_PROPERTY, "zh");
+            assertThat(I18n.configure(I18n.ENGLISH))
+                    .as("系统属性必须压过偏好 —— shots.sh 靠它拍中文帧")
+                    .isEqualTo(I18n.CHINESE);
+        } finally {
+            if (previous == null) {
+                System.clearProperty(I18n.LOCALE_PROPERTY);
+            } else {
+                System.setProperty(I18n.LOCALE_PROPERTY, previous);
+            }
+            I18n.setLocale(I18n.DEFAULT_LOCALE);
+        }
+    }
+
+    @Test
+    void theEntryPointConfiguresTheLocaleBeforeBuildingAnyNode() throws IOException {
+        String source = read(repositoryRoot().resolve(
+                "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/App.java"));
+        int configure = source.indexOf("I18n.configure(");
+        int buildShell = source.indexOf("new AppShell(");
+        assertThat(configure)
+                .as("App.start 里必须调用 I18n.configure —— 不调用的话偏好设置是死的")
+                .isPositive();
+        assertThat(configure)
+                .as("configure 必须早于 new AppShell(...)：标签是构造时一次性取值的，"
+                        + "晚 configure 在运行时完全静默")
+                .isLessThan(buildShell);
+    }
+
     // ─────────────────────────── 2. 硬编码中文棘轮 ───────────────────────────
 
     @Test

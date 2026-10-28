@@ -34,6 +34,15 @@ public class App extends Application {
         ThemeManager themeManager = new ThemeManager(settings);
         startup.mark("settings");
 
+        // ⭐ R34 N1-d：语言必须在**任何节点构造之前**定下来 —— 标签是构造时一次性取值的
+        //    （JavaFX 的 setText 不是绑定），所以 configure 晚跑就等于没跑。
+        //    优先级由 I18n.configure 决定：-Dadb.locale > 偏好 ui.locale > 默认英文。
+        //    ⚠️ 这里只做到「启动时按偏好生效」，**不做运行时切换** —— 切换要重建整棵场景，
+        //    而主题与密度都是 CSS 类切换、没有可借用的重建路径（见 AppShell.changeDensity）。
+        //    运行时换语言是独立的一轮，不在视觉对齐轮里顺手塞。
+        I18n.configure(toLocale(settings.get("ui.locale", "")));
+        startup.mark("locale");
+
         shell = new AppShell(settings, themeManager, startup);
         Scene scene = new Scene(shell, 1280, 800);
         startup.mark("scene");
@@ -89,6 +98,18 @@ public class App extends Application {
         if (shell != null) {
             shell.close();
         }
+    }
+
+    /**
+     * 偏好字符串 → 语言。空串返回 {@code null}，让 {@link I18n#configure} 走它自己的
+     * 「系统属性 &gt; 默认英文」链 —— 不在这里再复制一遍默认值。
+     */
+    private static java.util.Locale toLocale(String raw) {
+        String value = raw == null ? "" : raw.trim().toLowerCase(java.util.Locale.ROOT);
+        if (value.startsWith("zh")) {
+            return I18n.CHINESE;
+        }
+        return value.isEmpty() ? null : I18n.ENGLISH;
     }
 
     public static void main(String[] args) {
