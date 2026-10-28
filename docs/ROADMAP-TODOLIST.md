@@ -10,7 +10,8 @@
 
 ## 0. 当前基线
 
-- 门禁 **1114 条 / 134 类 / 0 失败 / 48 环境跳过**（2026-10-28 R34 第二批之后实测，BUILD SUCCESS）。
+- 门禁 **1116 条 / 134 类 / 0 失败 / 48 环境跳过**（2026-10-28 R34 第二批 + N1-d 之后实测，BUILD SUCCESS）。
+- 已落库：`34ffb8f`（R33 全部 + R34 顶区与动作层抽取）· `288592d`（N1-d 语言偏好生效）。**push 仍未授权。**
 - ⚠️ **旧文档记的「1108 / 134」从未复现**：R34 开工前干净全量实测是 **1107 / 133**。
   数字是记上去的不是量出来的 —— 以后基线一律附量法。README 里那句同样要改（并入 D-4）。
 - 验收帧 33 张**全部过时**（都是中文帧，顶区本轮已换英文）；重拍排在 R34 收口。
@@ -25,16 +26,16 @@
 
 ## 1. Todolist
 
-### R33 收口 · ⛔ 先落库（阻塞 R34，估 0.5 人日 + 等授权）
+### R33 收口 · 落库 ✅（2026-10-28，提交 `34ffb8f`）
 
-- [ ] **确认工作区内容就是 R33 验收的那一版**：全量门禁复跑一次，核对 **1108 / 134 / 0 / 48**
-      ⚠️ 本项目 `mvn` 走管道**永远退 0**，必须读日志判定，不能看退出码
-- [ ] **补交未跟踪文件**：6 张新帧（`p5-connect-type/-general/-ssl/-ssh`、`p8-import`、`p8-export`）+
-      4 个新类（`TransferRoundTripTest` / `TransferDepthTest` / `ComboCellRenderingTest` / `TransferProfiles`）+
-      `ImportMode` / `TransferFiles` —— 漏一个 `git add` 就是一次「本地绿、干净检出红」
-- [ ] **确认删除已入库**：`ConnectionPropertiesDialog.java` + 其测试已在工作区删除，需一并提交
-- [ ] **分批本地提交**（feat transfer / feat wizard / css+gates / docs+frames），**push 需单独授权**
-- [ ] 提交后 `git status` 必须干净（README 那 15 行未提交改动随 D-4 一并处理）
+- [x] 全量门禁复跑核对 —— ⚠️ **实测 1107 / 133，不是文档记的 1108 / 134**；
+      133 个 `*Test.java` 全部出了 surefire 报告，没有静默跳过的类。数字是记上去的不是量出来的。
+- [x] 补交未跟踪文件：6 张新帧 + `TransferRoundTripTest` / `TransferDepthTest` /
+      `ComboCellRenderingTest` / `TransferProfiles` / `ImportMode` / `TransferFiles`
+- [x] 确认删除已入库：`ConnectionPropertiesDialog.java` 及其测试
+- [x] 提交 —— **与 R34 首批合成一笔**（`34ffb8f`）：`AppShell.java` 同时承载两轮改动，
+      按 hunk 拆分会产出一个编译不过的中间提交，bisect 价值反而更低。commit message 里写明了原因。
+- [ ] push —— 仍未授权（规划要求单独授权）
 
 ### R34 · i18n 层 + 默认英文（N1 N2，估 8–12 人日）
 
@@ -75,8 +76,13 @@
 - [ ] **N2** 菜单项集改为 `File / Edit / View / Query / Format / Favorites / Tools / Window / Help`
       （`MenuBarFactory.java:27-31`：去掉「数据库 / 对象」两个我方自有顶级组，项并入 Navicat 的归属）
       ️ **刻意与 N1 分两步**：同时改组结构和改取词来源，红了无法归因。本轮只搬字符串，组没动。
-- [ ] **N1-d 未做**：没有任何地方调用 `I18n.configure()` —— 语言偏好还没接进 `SettingsStore`，
-      界面上也没有语言切换项（换语言要像换主题那样重建场景）。目前只能靠 `-Dadb.locale=zh`
+- [x] **N1-d**（提交 `288592d`）`App.start` 在任何节点构造之前读 `settings("ui.locale")` 并
+      `I18n.configure(...)` —— 此前没有任何地方调用 configure，所以偏好是死的、`-Dadb.locale` 也不生效，
+      「中英双语」只做了一半。优先级链：`-Dadb.locale` > 偏好 > 默认英文。
+      ⚠️ **运行时切换刻意没做**：主题与密度都只是 CSS 类切换（`AppShell.changeDensity` 换 style class），
+      没有可借用的场景重建路径；标签是构造时一次性取值的，所以换语言必须重建整棵场景 —— 那是独立一轮。
+      两条新门禁（I18nAuditTest 7 → 9）：偏好链优先级（行为）+ configure 早于 `new AppShell(`（静态查两行先后，
+      这条约束没有可执行的行为面：顺序错了不报错、只是语言不对）。变异验证：删掉 configure → 恰这一条红。
 - [ ] **窗口标题**改 Navicat 式 `<对象> - <页型> - <产品名>`（真源 §5 `BrandMarkAuditTest` 行）
 - [ ] **P4 冷启动复测**：ResourceBundle 不得把首屏拖过 3.9s（未测）
 - [ ] R34 验收：全量门禁 + 33 帧重拍（**全英文**）逐张目视 + md5 去重 + 回填真源三处

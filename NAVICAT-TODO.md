@@ -376,7 +376,10 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
 
 ## 8. 当前基线（2026-10-28 R34 首批之后实测）
 
-- 门禁 **1114 条 / 134 类 / 0 失败 / 48 环境跳过**（`./scripts/build.sh` 干净全量实测 BUILD SUCCESS）。
+- 门禁 **1116 条 / 134 类 / 0 失败 / 48 环境跳过**（`./scripts/build.sh` 干净全量实测 BUILD SUCCESS）。
+- ✅ **R33 与 R34 首批已落库**：`34ffb8f`（R33 全部 + R34 顶区与动作层抽取，合成一笔 ——
+  `AppShell.java` 同时承载两轮改动，按 hunk 拆分会产出编译不过的中间提交）、
+  `288592d`（N1-d 语言偏好启动生效）。**push 仍未授权。**
   ⚠️ **上一版真源与 README 记的「1108 条 / 134 类」从未复现** —— R34 开工前先跑了一次干净全量，
   实测是 **1107 / 133**（133 个 `*Test.java` 全部出了 surefire 报告，没有静默跳过的类），
   也就是说那个数字是**记上去的，不是量出来的**。本轮起基线一律附量法。
@@ -393,17 +396,10 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
   `StructurePage`(156)。
   ⚠️ 此前按「含 CJK 的行数」排优先级是错的 —— 那个数把注释也算进去了（`DataGridPage` 1037 行 vs 实际 415 条字面量）。
 - **N1-a ✅ / N1-c ✅**（三条断言 + 两次变异验证）；**N1-b 进行中（1386 / 1404 待抽）**；**N2 未动**。
--  **阻塞项仍在，而且更重：R33 与 R34 首批现在叠在同一棵未提交的工作树上。**
-  `HEAD = f668cfa`（R32 G19b/D-1 的 docs 回填），其下是 `fde2d82`（R32 G19b+D-1）。
-  R33 的全部改动**只存在于工作区**：34 个文件、**+3177 / −1245**，含
-  `ConnectionWizard.java`(+1006) / `TransferWizardTest.java`(+433) / `ConnectionWizardTest.java`(+414) /
-  `ImportWizard` / `ExportWizard` / 整个 `adb-transfer` 模块改动 / `app.css` / `AppShell.java`，
-  以及 **6 张未跟踪的新帧**（`p5-connect-type/-general/-ssl/-ssh`、`p8-import`、`p8-export`）和
-  4 个未跟踪的新测试类（`TransferRoundTripTest` / `TransferDepthTest` / `ComboCellRenderingTest` / `TransferProfiles`）。
-  另有 `ConnectionPropertiesDialog.java` 与其测试**已在工作区删除但未提交**。
-  上一版真源与 ROADMAP 写的「R33 已收官 / 已提交」**不成立** —— 是"已验收未落库"。
-  → **R34 开工前必须先提交 R33**（提交需用户授权），否则 R34 的 i18n 全量替换会压在一堆未落库改动上，
-  出问题无法二分定位。
+- ~~**阻塞项：R33 与 R34 叠在同一棵未提交的工作树上**~~ → **已解除**（见上条两笔提交）。
+  留一条流程教训：**验收 ≠ 落库**。R33 当时写了「已收官」，但从未提交，
+  于是一路压了 R34 两批改动进来，最后只能合成一笔。
+  以后每轮验收的收尾动作里，**提交与回填同级**，不留"已验收未落库"的状态过夜。
 - 未结：**D-3**（表清单 1280 宽只剩 2 列）→ 并入 R37 N14；**PG 真库联调**（48 条环境跳过的一部分）；
   **D-4 文档债**（README「已知限制」与能力表口径冲突 —— `README.md` 同样有 15 行未提交改动）。
 - 本文替换：旧 §0/§1/§2/§5/§6/§7 的**结论与裁定**全部作废，历史轮次记录（R30–R33 做了什么）
