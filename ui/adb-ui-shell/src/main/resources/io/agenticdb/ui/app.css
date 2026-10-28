@@ -98,9 +98,13 @@
 }
 
 /* ── 顶部功能区（Navicat 式 Ribbon，2026-10-26 裁定）────────────────────
- * Navicat 17 实测：Ribbon 90px（#F0F0F0）+ 标签栏 26 + 对象工具条 30；
- * 这里把 90px 拆成 26px 工具行 + 64px 大图标命令带，总高与 Navicat 一致。
+ * Navicat 17 实测：Ribbon 90px（#F0F0F0）+ 标签栏 26 + 对象工具条 30。
  * 边框恢复：面板之间用 1px #D9D9D9 分隔（旧「大面积无边框」裁定作废）。
+ *
+ * ⭐ 2026-10-28 顶区精简（用户裁定：品牌那一行多余、顶部栏目太多）：
+ *   原来 90px = 26px 工具行（品牌/连接/搜索/主题/更多）+ 64px 命令带。
+ *   现在工具行**并进标签栏那一行**（`.adb-chrome-row`），品牌块整块删除，
+ *   命令带保留 64px ⇒ 顶区 = 菜单 24 + 64 + 标签行 26 = 114px（原 140px）。
  * ─────────────────────────────────────────────────────────────────── */
 
 .adb-appbar {
@@ -110,39 +114,28 @@
     -fx-border-width: 0 0 1 0;
 }
 
+/* 标签栏那一行：左边标签、右边全局工具条。底色由 .adb-tabbar 画（白），
+   这一行只负责不画第二条边框。 */
+.adb-chrome-row {
+    -fx-background-color: -adb-bg-surface;
+    -fx-padding: 0px;
+}
+
 .adb-appbar__utility {
     -fx-min-height: 26;
     -fx-pref-height: 26;
     -fx-max-height: 26;
-    -fx-padding: 0px 8px;
+    -fx-padding: 0px 8px 0px 0px;
 }
 
-.adb-appbar__brand {
-    -fx-alignment: center-left;
-}
-
-.adb-appbar__mark {
-    -fx-background-color: -adb-accent;
-    -fx-background-radius: 3px;
-    -fx-min-width: 20;
-    -fx-pref-width: 20;
-    -fx-max-width: 20;
-    -fx-min-height: 20;
-    -fx-pref-height: 20;
-    -fx-max-height: 20;
-}
-
-/* ⭐ S-7：必须写成两类选择器（特异性 0,2,0）—— 通用 `.adb-icon { -fx-stroke: -adb-text-secondary }`
- * 排在这条**下面**且同为单类，JavaFX「同特异性后写胜」会把灰字色盖在白字上，
- * 蓝底方块里的品牌 mark 直接看不见（实测踩过，规格 §4.3 第 6 条）。 */
-.adb-appbar__mark .adb-appbar__mark-glyph {
-    -fx-stroke: -adb-text-inverse;
-}
-
-.adb-appbar__title {
-    -fx-text-fill: -adb-text-primary;
-    -fx-font-size: 13px;
-    -fx-font-weight: bold;
+/* 窄窗形态：搜索框降级成图标入口（命令面板本身仍可 ⌘K 直达），
+   连接胶囊只留名字。切换逻辑在 AppBar.fitChromeWidth()。 */
+.adb-appbar__utility--compact .adb-appbar__search {
+    -fx-pref-width: 30;
+    -fx-max-width: 30;
+    -fx-min-width: 30;
+    -fx-padding: 2px 4px;
+    -fx-alignment: center;
 }
 
 .adb-appbar__separator {
@@ -203,10 +196,6 @@
 
 .adb-appbar__connection .adb-appbar__connection-dot--error {
     -fx-fill: -adb-error;
-}
-
-.adb-appbar__actions {
-    -fx-spacing: 2;
 }
 
 .adb-appbar__action {

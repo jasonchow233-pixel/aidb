@@ -10,6 +10,7 @@ import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.ConnectionStore;
 import io.agenticdb.session.CredentialStore;
 import io.agenticdb.session.SessionManager;
+import io.agenticdb.ui.Icons;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.util.Duration;
@@ -1515,6 +1516,12 @@ public final class AppShell extends StackPane {
         if (flag("adb.tables", "ADB_TABLES")) {
             openTableListWhenReady(0);
         }
+        // ⭐ 截图 / 验收：启动即打开「连接管理」。
+        //    顶栏的连接管理图标随 2026-10-28 顶区精简一起删了，菜单项又不是场景节点、
+        //    截图脚本点不到 —— 于是给定格留一个与 ADB_TABLES 同型的开关。
+        if (flag("adb.connections", "ADB_CONNECTIONS")) {
+            actions.run("connections.manage");
+        }
         // ⭐ 截图 / 验收：启动即打开「对象详情面板」并选中 users 表（规格 §6）。
         //    面板默认是关的（ui.details.visible=false），所以这里显式打开；
         //    树节点没有公开的「选中」入口，于是直接喂一个 InspectTarget ——
@@ -1908,7 +1915,8 @@ public final class AppShell extends StackPane {
                                 + "SQLite 演示库 · 真实内省 · 分页数据页 · SQL 编辑器\n"
                                 + "执行清单：NAVICAT-TODO.md\n"
                                 + "不内嵌浏览器，不启动 HTTP 端口。\n\n"
-                                + startupText()));
+                                + startupText(),
+                        Icons.Icon.BRAND));
         updateQueryActions();
     }
 
@@ -1917,14 +1925,28 @@ public final class AppShell extends StackPane {
         appBar = new AppBar(actions, connections,
                 activeProfile == null ? "demo" : activeProfile.id(), this::selectConnection);
 
-        // ⭐ 顶区只有**一层**：应用栏。菜单栏在 macOS 上走系统菜单栏，
-        //    在 Windows / Linux 上由 JavaFX 贴在窗口顶部 —— 两种形态都只占一行。
+        // ⭐ 顶区 = 菜单栏 + 64px 命令带；全局工具条（连接/搜索/主题/更多）在
+        //    main 里的标签栏那一行（见下方 chromeRow）。菜单栏在 macOS 上走系统
+        //    菜单栏，在 Windows / Linux 上由 JavaFX 贴在窗口顶部 —— 两种形态都只占一行。
         VBox top = new VBox(menuBar, appBar);
         top.getStyleClass().add("adb-top");
 
         resizer = buildResizer();
         detailsResizer = buildDetailsResizer();
-        VBox main = new VBox(tabBar, workspace);
+        // ⭐ 2026-10-28 顶区精简：原来 26px 的独立工具行（品牌/连接/搜索/主题/更多）
+        //    并进标签栏这一行 —— 标签栏本来就是一条横贯主区的 26px 带，
+        //    右端空着一大片。顶区因此少一行：菜单 24 + 命令带 64 + 这一行 26 = 114。
+        HBox chromeRow = new HBox(tabBar, appBar.utilityBar());
+        chromeRow.setId("adb-chrome-row");
+        chromeRow.getStyleClass().add("adb-chrome-row");
+        chromeRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(tabBar, Priority.ALWAYS);
+        // 侧栏 + 详情面板同时打开时主区可能只剩四百多像素：
+        // 工具条切紧凑形态（搜索降级成图标），而不是让 220px 搜索框把标签栏挤没。
+        chromeRow.widthProperty().addListener((observable, oldWidth, newWidth) ->
+                appBar.fitChromeWidth(newWidth == null ? 0 : newWidth.doubleValue()));
+
+        VBox main = new VBox(chromeRow, workspace);
         main.getStyleClass().add("adb-main");
         // ⭐ 1280 宽 + 右侧详情面板时，三栏的最小宽度会超过窗口：
         //    StackPane 只能把超宽的内容居中，结果左侧菜单/侧栏被挤出可视区。
@@ -3102,10 +3124,21 @@ public final class AppShell extends StackPane {
     }
 
     private void showInfo(String title, String content) {
+        showInfo(title, content, null);
+    }
+
+    /**
+     * ⭐ 2026-10-28 顶区精简：顶栏那块 AIDB logo 删掉之后，品牌 mark 在应用内的
+     * 唯一落点是「关于」对话框 —— 低频、但用户找品牌的时候就在那里。
+     */
+    private void showInfo(String title, String content, Icons.Icon graphic) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle(title);
         alert.setHeaderText(title);
         alert.setContentText(content);
+        if (graphic != null) {
+            alert.setGraphic(Icons.of(graphic, Icons.SIZE_EMPTY));
+        }
         if (stage != null) {
             alert.initOwner(stage);
         }

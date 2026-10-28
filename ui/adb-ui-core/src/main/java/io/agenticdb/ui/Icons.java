@@ -69,7 +69,7 @@ public final class Icons {
     /** 页面主工具条（对象级动作）：20px —— 主次靠尺寸拉开。 */
     public static final double SIZE_PRIMARY = 20;
 
-    /** Ribbon 大图标：26px（2026-10-26 用户裁定保持和 Navicat 一样，对齐 90px 功能区）。 */
+    /** Ribbon 大图标：26px（2026-10-28 顶区精简后命令带 64px，图标档不变）。 */
     public static final double SIZE_RIBBON = 26;
 
     /** 空状态的大图标：32px。 */
@@ -236,12 +236,13 @@ public final class Icons {
         /**
          * 品牌标识（数据圆柱 + 右上角 AI 星芒，自绘）。
          *
-         * <p>应用栏 26px 方块里原来用的是通用 {@link #DATABASE} —— 所有数据库工具
-         * 都画同一个圆柱，品牌等于没有。这里把圆柱收窄到左下、右上补一颗四角星芒，
-         * 读起来是「数据 + AI」而不是「又一个 DB 客户端」。
+         * <p>应用栏品牌方块 2026-10-28 已随顶区精简删除；这个字形现在出现在
+         * 「关于」弹窗的图形位。历史上它替掉的是通用 {@link #DATABASE} ——
+         * 所有数据库工具都画同一个圆柱，品牌等于没有。圆柱收窄到左下、右上补一颗
+         * 四角星芒，读起来是「数据 + AI」而不是「又一个 DB 客户端」。
          *
-         * <p>⚠️ 必须是**矢量**：{@code AppBarTest.theBrandMarkUsesTheVectorIconSystem}
-         * 明确禁止位图（PNG 在暗色主题里不会换色，缩放也糊）。
+         * <p>⚠️ 必须是**矢量**（{@code BrandMarkAuditTest} 守着品牌身份）：
+         * 位图 PNG 在暗色主题里不会换色，缩放也糊。
          */
         BRAND("M2.6 5.6 C2.6 4.4 4.4 3.5 6.5 3.5 C8.6 3.5 10.4 4.4 10.4 5.6"
                 + " C10.4 6.8 8.6 7.7 6.5 7.7 C4.4 7.7 2.6 6.8 2.6 5.6 Z"

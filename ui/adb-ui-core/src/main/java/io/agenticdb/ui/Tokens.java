@@ -228,9 +228,9 @@ public final class Tokens {
     public static final String SYN_ERROR_DARK = "#F87171";
     public static final String SYN_ERROR_LIGHT = "#DC2626";
 
-    /** h-appbar (size) */
-    public static final int H_APPBAR_DARK = 90;
-    public static final int H_APPBAR_LIGHT = 90;
+    /** h-appbar (size) —— 2026-10-28 顶区精简：只剩 64px 命令带（工具行并入标签栏行）。 */
+    public static final int H_APPBAR_DARK = 64;
+    public static final int H_APPBAR_LIGHT = 64;
 
     /** h-toolbar (size) */
     public static final int H_TOOLBAR_DARK = 30;

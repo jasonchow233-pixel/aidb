@@ -2,10 +2,13 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.session.ConnectionProfile;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,18 +26,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * ⭐ 应用栏门禁（§5.1）。
  *
- * <p>应用栏是**全应用唯一的全局入口层** —— 门禁要钉住三件事：
+ * <p>应用栏是**全应用唯一的全局入口层** —— 门禁要钉住四件事：
  * <ol>
- *   <li>品牌、当前连接、全局搜索、主题、设置、更多**都在场景图里**
+ *   <li>当前连接、全局搜索、主题、更多**都在场景图里**
  *       （本项目反复踩过「控件建了、事件绑了，却从未加入 header」的坑）；</li>
  *   <li>当前连接胶囊显示的是**真名**，下拉里是**真实连接列表**，切换回调真的传出去；</li>
- *   <li>纯图标按钮都有 Tooltip 与 accessible text（读屏能读出语义）。</li>
+ *   <li>纯图标按钮都有 Tooltip 与 accessible text（读屏能读出语义）；</li>
+ *   <li>⭐ 2026-10-28 顶区精简之后：<b>品牌行不再存在</b>、命令带只剩
+ *       六个不重复的全局命令、窄窗下工具条切紧凑形态。</li>
  * </ol>
  */
 @ExtendWith(ApplicationExtension.class)
 class AppBarTest {
 
     private AppBar bar;
+    /** 工具条，外壳在真实装配里把它挂进标签栏那一行。 */
+    private HBox chromeRow;
     /** 记录被选中的连接。 */
     private final List<ConnectionProfile> selected = new ArrayList<>();
 
@@ -64,14 +71,23 @@ class AppBarTest {
                 profile("pg", "prod-postgres", DialectKind.POSTGRESQL));
 
         bar = new AppBar(actions, profiles, "demo", selected::add);
-        Scene scene = new Scene(bar, 1280, 800);
+
+        // 与 AppShell 的真实装配一致：命令带在上，工具条挂在标签栏那一行。
+        chromeRow = new HBox(bar.utilityBar());
+        chromeRow.setId("adb-chrome-row");
+        chromeRow.setAlignment(Pos.CENTER_LEFT);
+        VBox root = new VBox(bar, chromeRow);
+        Scene scene = new Scene(root, 1280, 800);
         // ⭐ 必须挂样式表：App 里由 ThemeManager 挂，测试里不挂则 CSS 一条都不生效，
-        //    「品牌字形的对比度」这类断言会全部假绿（S-7 就是这么发现蓝底灰星的）。
+        //    紧凑形态断言会全部假绿。
+        // ⚠️ 主题类挂在**根**上（真实装配里 ThemeManager 就是挂在场景根）：
+        //    挂在 AppBar 上时，搬到 chromeRow 里的工具条收不到 -adb-* 变量，
+        //    连接状态点会算成纯黑（0x000000）—— 门禁当场抓到过。
         java.net.URL appCss = getClass().getResource("/io/agenticdb/ui/app.css");
         java.net.URL theme = getClass().getResource("/io/agenticdb/ui/theme-light.css");
         scene.getStylesheets().add(theme.toExternalForm());
         scene.getStylesheets().add(appCss.toExternalForm());
-        bar.getStyleClass().add("theme-light");
+        root.getStyleClass().add("theme-light");
         stage.setScene(scene);
         stage.show();
     }
@@ -84,10 +100,8 @@ class AppBarTest {
     void everyGlobalEntryIsActuallyInTheScene(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
         // ⭐ 「建好了但没挂上去」是本项目反复踩过的坑。
-        for (String id : List.of("#appbar-brand-mark", "#appbar-brand-name",
-                "#appbar-connection-menu", "#appbar-search", "#appbar-theme",
-                "#appbar-more", "#appbar-new-query",
-                "#appbar-manage-connections")) {
+        for (String id : List.of("#appbar-connection-menu", "#appbar-search",
+                "#appbar-theme", "#appbar-more")) {
             assertThat(robot.lookup(id).tryQuery()).as(id + " 必须真的在场景图里").isPresent();
         }
         // §2.1：「设置」不再是顶栏独立齿轮 —— 低频入口搬进 ⋯，右侧只留「主题 + 更多」。
@@ -96,11 +110,42 @@ class AppBarTest {
                 .isEmpty();
     }
 
+    /**
+     * ⭐ 2026-10-28 顶区精简：品牌块整块删掉。
+     *
+     * <p>窗口标题与任务栏图标已经写着 AIDB，顶栏再占一段「蓝方块 + AIDB」
+     * 就是纯粹的垂直/水平浪费 —— 用户原话「AIDBlogo 那一栏有多多余」。
+     * 这条门禁防的是它悄悄长回来。
+     */
     @Test
-    void theBrandShowsTheProductName(FxRobot robot) {
+    void theBrandBlockIsGoneFromTheTopChrome(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
-        assertThat(robot.lookup("#appbar-brand-name").queryAs(Label.class).getText())
-                .isEqualTo("AIDB");
+        for (String id : List.of("#appbar-brand-mark", "#appbar-brand-name",
+                "#appbar-brand-glyph")) {
+            assertThat(robot.lookup(id).tryQuery())
+                    .as(id + " 必须已随顶区精简删除（品牌由窗口标题 / 任务栏图标承担）")
+                    .isEmpty();
+        }
+    }
+
+    /**
+     * 命令带只剩**不与侧栏 / 页内工具条 / ⋯ 菜单重复**的六个命令。
+     *
+     * <p>表清单、刷新、诊断、设置都还有第二条入口（侧栏 / F5 + 对象页 / ⋯ 菜单），
+     * 在 64px 高的大图标带上再出现一遍只是让顶栏更挤。
+     */
+    @Test
+    void theRibbonKeepsOnlyCommandsThatHaveNoSecondHome(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        // ⚠️ 不能按 `#ribbon-object.new-table` 查找：JavaFX 选择器把 `.` 当类分隔符，
+        //    带点的 id 永远查不到。直接比对命令带上每个按钮的 id。
+        List<String> ids = robot.lookup(".adb-ribbon__button").queryAllAs(Button.class)
+                .stream().map(Button::getId).toList();
+        assertThat(ids)
+                .as("命令带只剩六个不与侧栏 / 页内工具条 / ⋯ 菜单重复的全局命令")
+                .containsExactly("ribbon-new-connection", "ribbon-new-query",
+                        "ribbon-object.new-table", "ribbon-import-export",
+                        "ribbon-saved-queries", "ribbon-favorites.open");
     }
 
     @Test
@@ -151,12 +196,14 @@ class AppBarTest {
     void iconOnlyButtonsDeclareTooltipAndAccessibleText(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
         // ⭐ 纯图标按钮少一个 Tooltip 或 accessible text 就不合格。
-        for (String id : List.of("#appbar-theme",
-                "#appbar-new-query", "#appbar-manage-connections")) {
+        for (String id : List.of("#appbar-theme", "#appbar-search")) {
             Button button = robot.lookup(id).queryAs(Button.class);
             assertThat(button.getTooltip()).as(id + " 的 Tooltip").isNotNull();
             assertThat(button.getAccessibleText()).as(id + " 的 accessibleText").isNotBlank();
         }
+        MenuButton more = robot.lookup("#appbar-more").queryAs(MenuButton.class);
+        assertThat(more.getTooltip()).as("#appbar-more 的 Tooltip").isNotNull();
+        assertThat(more.getAccessibleText()).as("#appbar-more 的 accessibleText").isNotBlank();
     }
 
     @Test
@@ -166,74 +213,56 @@ class AppBarTest {
         List<String> ids = more.getItems().stream()
                 .map(javafx.scene.control.MenuItem::getId).toList();
         assertThat(ids)
-                .as("更多菜单里的每一项都要是可执行的动作")
+                .as("更多菜单里的每一项都要是可执行的动作；"
+                        + "命令带裁掉的四个命令必须都能从这里到达")
                 .contains("connections.manage", "new-query", "object.tables",
-                        "import-export", "settings", "diagnostics", "shortcuts", "about");
+                        "import-export", "refresh", "settings", "diagnostics",
+                        "shortcuts", "about");
     }
 
     @Test
     void theBarHasOneFixedHeightAndDoesNotGrowWithContent() {
         assertThat(bar.getPrefHeight())
-                .as("Navicat 式功能区高度来自令牌 h-appbar（90px）")
-                .isEqualTo(io.agenticdb.ui.Tokens.H_APPBAR_LIGHT);
+                .as("2026-10-28 顶区精简后只剩 64px 命令带（工具行并入标签栏行）")
+                .isEqualTo(io.agenticdb.ui.Tokens.H_APPBAR_LIGHT)
+                .isEqualTo(64);
         assertThat(bar.getMaxHeight()).isEqualTo(bar.getPrefHeight());
         assertThat(bar.getMinHeight()).isEqualTo(bar.getPrefHeight());
     }
 
+    /**
+     * ⭐ 窄窗形态：侧栏 + 详情面板同时打开时主区只剩四百多像素，
+     * 220px 的搜索框会把标签栏挤没 —— 搜索降级成图标，连接胶囊只留名字。
+     * 命令面板本身仍可 ⌘K 直达，收起的是**外观**不是入口。
+     */
     @Test
-    void theBrandMarkUsesTheVectorIconSystem(FxRobot robot) {
+    void theUtilityCollapsesWhenTheChromeRowIsNarrow(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
-        assertThat(robot.lookup("#appbar-brand-mark").queryAs(javafx.scene.layout.VBox.class)
-                .lookupAll(".adb-icon"))
-                .as("品牌标识必须是矢量图标（不是位图、不是 Unicode 符号）")
-                .isNotEmpty();
-    }
+        onFxRun(() -> bar.fitChromeWidth(1280));
+        assertThat(bar.isChromeCompact()).as("宽窗下不收起").isFalse();
+        assertThat(robot.lookup("#appbar-search").queryAs(Button.class).isManaged()).isTrue();
+        assertThat(robot.lookup("#appbar-connection-kind").queryAs(Label.class).isManaged())
+                .as("宽窗下连接类型可见").isTrue();
 
-    @Test
-    void theBrandMarkIsTheAidbMarkNotAGenericDatabaseIcon(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        // ⭐ S-7「接」的那一半：品牌改造把 Logo 做出来了，但界面里一处没用 ——
-        //    方块里挂的是谁都在画的通用圆柱。欢迎页不可达（见 BrandMarkAuditTest），
-        //    应用栏才是**唯一**看得见品牌的地方，所以钉在这里。
-        javafx.scene.shape.SVGPath glyph =
-                robot.lookup("#appbar-brand-glyph").queryAs(javafx.scene.shape.SVGPath.class);
-        assertThat(glyph.getContent())
-                .as("品牌方块必须是 AIDB 自己的 mark（圆柱 + 右上 AI 星芒），"
-                        + "不是 Icons.Icon.DATABASE 那个通用圆柱 —— 换回去一眼认不出这是谁家的 DB 客户端")
-                .isEqualTo(io.agenticdb.ui.Icons.Icon.BRAND.path());
-        assertThat(glyph.getContent())
-                .as("退化成通用圆柱 = 品牌等于没有")
-                .isNotEqualTo(io.agenticdb.ui.Icons.Icon.DATABASE.path());
-    }
+        onFxRun(() -> bar.fitChromeWidth(420));
+        assertThat(bar.isChromeCompact()).as("窄窗下切紧凑").isTrue();
+        assertThat(robot.lookup("#appbar-connection-kind").queryAs(Label.class).isManaged())
+                .as("紧凑形态下连接胶囊只留名字")
+                .isFalse();
+        assertThat(robot.lookup(".adb-appbar__search-hint").queryAs(Label.class).isManaged())
+                .as("紧凑形态下搜索框里的提示文字必须收起（只留放大镜）")
+                .isFalse();
+        assertThat(robot.lookup("#appbar-search").queryAs(Button.class).isManaged())
+                .as("搜索按钮本身还在 —— 收的是外观不是入口")
+                .isTrue();
 
-    @Test
-    void theBrandGlyphKeepsItsContrastAgainstTheGenericIconRule(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        // ⭐ S-7 顺带挖出的真 bug（截图对比度量出来的）：通用 `.adb-icon` 也设 `-fx-stroke`，
-        //    且**排在后面**、同为单类选择器 → JavaFX「同特异性后写胜」，把灰字色盖在了白字上，
-        //    蓝底方块里的品牌 mark 实测是 #64748B（对比度约 1.9:1），那颗 AI 星几乎看不见。
-        //    这条断言测的是**层叠之后的计算值**，不是 CSS 里写了什么 —— 改回单类选择器立刻红。
-        javafx.scene.shape.SVGPath glyph =
-                robot.lookup("#appbar-brand-glyph").queryAs(javafx.scene.shape.SVGPath.class);
-        javafx.scene.paint.Paint stroke = glyph.getStroke();
-        assertThat(stroke)
-                .as("品牌方块上的字形必须走 `text-inverse`（亮色主题＝白）—— "
-                        + "被通用 .adb-icon 的 text-secondary 顶掉就看不见")
-                .isEqualTo(javafx.scene.paint.Color.web(
-                        io.agenticdb.ui.Tokens.TEXT_INVERSE_LIGHT));
-        assertThat(stroke)
-                .as("反证：不许是灰字色")
-                .isNotEqualTo(javafx.scene.paint.Color.web(
-                        io.agenticdb.ui.Tokens.TEXT_SECONDARY_LIGHT));
+        onFxRun(() -> bar.fitChromeWidth(1280));
+        assertThat(bar.isChromeCompact()).as("拉宽后要能恢复").isFalse();
     }
 
     /**
-     * ⭐ UX-5：应用栏那颗连接状态点，**在线时得真是绿的**。
-     *
-     * <p>侧栏加存活点时发现：{@code .adb-appbar__connection-dot--online} 写在
-     * {@code .adb-icon--filled}（486 行）**前面**、同为单类选择器 —— 同一个
-     * S-7 的坑换了个位置：层叠算下来在线/离线都是 text-secondary 灰，
-     * 那颗点从来没绿过。断言读计算值，不看 CSS 里写了什么。
+     * ⭐ UX-5：被通用 {@code .adb-icon--filled} 顶成灰是同一个 S-7 坑换位置 ——
+     * 断言读计算值，不看 CSS 里写了什么。
      */
     @Test
     void theConnectionDotTurnsGreenWhenOnline(FxRobot robot) {

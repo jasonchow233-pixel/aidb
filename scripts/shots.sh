@@ -42,7 +42,7 @@ export ADB_CONNECTION="${ADB_CONNECTION:-demo}"
 # name|click-id|wait-ms|预置页面环境变量
 # 顺序即拍摄顺序：暗色必须最先。
 SHOTS=(
-  "p5-dark|appbar-manage-connections|5000|ADB_THEME_FORCE=dark"
+  "p5-dark||5000|ADB_CONNECTIONS=1 ADB_THEME_FORCE=dark"
   # ⭐ U23：暗色不能只有一帧 —— 勾选框与禁用态的问题正是在暗色里暴露的。
   #   p2-users-dark 拍数据网格（行首选择框 + 工具栏复选），
   #   p7-new-index-dark 拍索引弹窗（「唯一」复选 + 添加列按钮）。
@@ -80,7 +80,7 @@ SHOTS=(
   "p3-query-menu||8000|ADB_QUERY=1 ADB_MENU_POSE=1 ADB_THEME_FORCE=light"
   "p4-structure||5000|ADB_STRUCTURE=users ADB_THEME_FORCE=light"
   "p4-ddl||7000|ADB_DDL=1 ADB_THEME_FORCE=light"
-  "p5-connections|appbar-manage-connections|4000|ADB_THEME_FORCE=light"
+  "p5-connections||4000|ADB_CONNECTIONS=1 ADB_THEME_FORCE=light"
   "p6-new-table||5000|ADB_NEW_TABLE=1 ADB_THEME_FORCE=light"
   # ⭐ R31：字段页的「深度」那一帧 —— 类型 / 长度 / 小数 + 自增 + 属性面板都有真值，
   #   只拍一张空网格等于什么都没验（G15~G18 的验收面）。暗色同型再看一次属性面板底色。

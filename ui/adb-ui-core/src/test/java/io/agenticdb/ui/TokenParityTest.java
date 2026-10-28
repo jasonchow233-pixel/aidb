@@ -57,8 +57,10 @@ class TokenParityTest {
     void coreDimensionsMatchSpec() {
         // ⭐ 2026-10-26 裁定「保持和 Navicat 一样」：Ribbon 90 / 标签栏 26 / 工具条 30 /
         //    状态栏 22（Navicat 实测：菜单 24 + Ribbon 90 + 标签 26 + 工具条 30 = 顶部 170）。
+        // ⭐ 2026-10-28 顶区精简（用户裁定：品牌行多余、顶部栏目太多）：26px 工具行并入
+        //    标签栏那一行，命令带保留 64px ⇒ 顶区 = 菜单 24 + 64 + 标签 26 = 114。
         //    侧栏默认宽仍 260；控件高 28。
-        assertThat(Tokens.H_APPBAR_DARK).isEqualTo(90);
+        assertThat(Tokens.H_APPBAR_DARK).isEqualTo(64);
         assertThat(Tokens.H_TOOLBAR_DARK).isEqualTo(30);
         assertThat(Tokens.H_STATUSBAR_DARK).isEqualTo(22);
         assertThat(Tokens.H_TABBAR_DARK).isEqualTo(26);

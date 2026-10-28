@@ -73,7 +73,7 @@ class AccessibilityAuditTest {
         assertThat(gridViolations).as("数据页：\n  %s",
                 String.join("\n  ", gridViolations)).isEmpty();
 
-        robot.clickOn("#appbar-new-query");
+        robot.clickOn("#ribbon-new-query");
         WaitForAsyncUtils.waitForFxEvents();
         List<String> queryViolations = auditNames();
         assertThat(queryViolations)

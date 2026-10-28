@@ -23,10 +23,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 单元测试全绿（{@code WelcomeBrandTest} 三条就是绿的），因为测试直接 new 了
  * {@code WorkspaceView}，绕过了真实的启动路径。
  *
- * <p>裁定是「接 + 删」：品牌接到**用户真看得见**的应用栏方块上（矢量
- * {@link Icons.Icon#BRAND}，PNG 在暗色主题里不会换色、放大会糊，
- * {@code AppBarTest.theBrandMarkUsesTheVectorIconSystem} 也禁止位图），
+ * <p>裁定是「接 + 删」：品牌先接到**用户真看得见**的应用栏方块上（矢量
+ * {@link Icons.Icon#BRAND}，PNG 在暗色主题里不会换色、放大会糊），
  * 不可达的欢迎页连同它专用的样式类、尺寸档一起删掉。
+ * 2026-10-28 用户裁定顶区精简后，方块本身也不留了 ——
+ * 品牌改由窗口标题 / 窗口图标 / 「关于」弹窗图形承担。
  *
  * <h2>守两件事</h2>
  * <ol>
@@ -34,7 +35,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       / {@code SIZE_BRAND} 在主源码与 CSS 里一处都不许留 ——
  *       半删最坏：Java 走了、CSS 还留着，{@code StyleClassCoverageTest} 之外没人知道
  *       这块规则是给谁写的。</li>
- *   <li><b>接到看得见的地方</b>：品牌字形必须出现在 {@code AppBar} 里，
+ *   <li><b>接到看得见的地方</b>：品牌字形必须出现在用户真的能看到的位置。
+ *       2026-10-28 之前那是应用栏里的一个 26px 方块；用户裁定「那一栏多余」之后，
+ *       品牌改由<b>窗口标题与任务栏/程序坞图标</b>承担（见
+ *       {@link #theBrandLivesInTheWindowIdentityNotInAnExtraTopRow()}），
  *       而不是又变成一个「定义了但没人用」的图标。</li>
  * </ol>
  */
@@ -69,16 +73,38 @@ class BrandMarkAuditTest {
                 .isEmpty();
     }
 
+    /**
+     * ⭐ 2026-10-28 顶区精简后的品牌归属：**窗口标题 + 任务栏图标**。
+     *
+     * <p>用户裁定「AIDB logo 那一栏有多多余」——顶栏的蓝方块 + 字标整块删掉，
+     * 因为操作系统层面的窗口标题（{@code AIDB}）与任务栏/程序坞图标本来就在讲
+     * 同一件事，应用内再讲一遍只是白占高度。品牌没有消失，它换了个更权威的位置：
+     *
+     * <ul>
+     *   <li>{@link io.agenticdb.ui.App} 的 {@code APP_TITLE} = 「AIDB」；</li>
+     *   <li>{@code App} 把多尺寸品牌图标注册进 {@code stage.getIcons()}
+     *       （{@code AppIconResourceAuditTest} 保证文件真的存在）；</li>
+     *   <li>顶栏里**不许**再长出 {@code #appbar-brand-*} 之类的品牌块。</li>
+     * </ul>
+     */
     @Test
-    void theBrandIsWiredIntoThePartTheUserActuallySees() throws IOException {
+    void theBrandLivesInTheWindowIdentityNotInAnExtraTopRow() throws IOException {
+        Path app = repositoryRoot().resolve(
+                "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/App.java");
+        String appSource = Files.readString(app, StandardCharsets.UTF_8);
+        assertThat(appSource)
+                .as("窗口标题就是品牌 —— 顶栏删掉品牌行之后，这是用户最先看到的名字")
+                .containsPattern("APP_TITLE\\s*=\\s*\"AIDB\"");
+        assertThat(appSource)
+                .as("品牌图标必须真的注册进窗口（任务栏 / 程序坞 / 标题栏图标）")
+                .contains("stage.getIcons().add(");
+
         Path appBar = repositoryRoot().resolve(
                 "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/AppBar.java");
-        String source = Files.readString(appBar, StandardCharsets.UTF_8);
-
-        assertThat(source)
-                .as("应用栏那个 26px 方块是全应用唯一常驻的品牌位 —— 它必须用自家 mark。"
-                        + "换回 Icons.Icon.DATABASE 就是「又一个 DB 客户端」")
-                .contains("Icons.Icon.BRAND");
+        String appBarSource = Files.readString(appBar, StandardCharsets.UTF_8);
+        assertThat(appBarSource)
+                .as("顶栏品牌块已删——它要是回来了，那条 26px 行就跟着回来了")
+                .doesNotContain("appbar-brand");
         assertThat(Icons.Icon.BRAND.path())
                 .as("品牌 mark 走矢量图标体系（路径在 Icons 里，尺寸由 Icons.SIZE_* 定）")
                 .isNotBlank();

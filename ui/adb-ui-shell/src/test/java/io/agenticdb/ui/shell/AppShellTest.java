@@ -146,6 +146,42 @@ class AppShellTest {
                 .isPresent();
     }
 
+    /**
+     * ⭐ 2026-10-28 顶区精简的门禁：**三行变两行**。
+     *
+     * <p>原来 140px：菜单 24 + 90（26 工具行 + 64 命令带）+ 标签栏 26。
+     * 现在 114px：菜单 24 + 64 + 26 —— 原来那条独立工具行整行取消，
+     * 连接胶囊 / 全局搜索 / 主题 / 更多 与标签栏**同一行**（{@code #adb-chrome-row}）。
+     *
+     * <p>钉三件事：工具条确实搬进了标签栏那一行；命令带是令牌高度；品牌块没回来。
+     * 任一条回退，用户那条「顶部太多栏目了」就复活了。
+     */
+    @Test
+    void theTopChromeIsTwoRowsAndTheUtilitySharesTheTabRow(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+
+        javafx.scene.layout.HBox row =
+                robot.lookup("#adb-chrome-row").queryAs(javafx.scene.layout.HBox.class);
+        javafx.scene.Node utility = robot.lookup("#appbar-utility").query();
+        assertThat(utility.getParent())
+                .as("工具条必须挂在标签栏那一行，而不是自己再占一行")
+                .isEqualTo(row);
+        assertThat(row.getChildren())
+                .as("同一行里：左边标签栏、右边全局工具条")
+                .contains(robot.lookup(".adb-tabbar").query(), utility);
+
+        javafx.scene.layout.Region appBar =
+                robot.lookup(".adb-appbar").queryAs(javafx.scene.layout.Region.class);
+        assertThat(appBar.getHeight())
+                .as("命令带 64px（旧 90px 含已删的 26px 工具行）")
+                .isEqualTo(io.agenticdb.ui.Tokens.H_APPBAR_LIGHT)
+                .isEqualTo(64);
+
+        assertThat(robot.lookup("#appbar-brand-name").tryQuery())
+                .as("AIDB 品牌块已随顶区精简删除（品牌在窗口标题与任务栏图标）")
+                .isEmpty();
+    }
+
     @Test
     void sidebarCollapsesToRail(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
@@ -530,7 +566,7 @@ class AppShellTest {
 
     @Test
     void opensQueryPageRunsSqlAndShowsResultTab(FxRobot robot) throws Exception {
-        robot.clickOn("#appbar-new-query");
+        robot.clickOn("#ribbon-new-query");
         WaitForAsyncUtils.waitForFxEvents();
 
         CodeArea editor = robot.lookup("#query-editor").queryAs(CodeArea.class);
