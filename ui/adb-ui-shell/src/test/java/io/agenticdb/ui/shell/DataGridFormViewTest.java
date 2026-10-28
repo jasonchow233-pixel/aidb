@@ -504,7 +504,9 @@ class DataGridFormViewTest {
     }
 
     private void click(String id) {
-        Button button = (Button) page.lookup(id);
+        // ⚠️ lookup 必须回 FX 线程：全量套件里加载回调仍在改子树时，测试线程
+        //    直接遍历会撞上「Index 14 out of bounds for length 0」（Parent.lookup 非线程安全）。
+        Button button = WaitForAsyncUtils.waitForAsyncFx(5_000, () -> (Button) page.lookup(id));
         assertThat(button).as("找不到按钮 %s", id).isNotNull();
         interact(button::fire);
     }

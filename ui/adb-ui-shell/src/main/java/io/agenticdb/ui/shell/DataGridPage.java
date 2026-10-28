@@ -247,6 +247,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /** ⭐ G7：行级导航（跳到第 N 行）。 */
     private final TextField jumpRowField = new TextField();
     private final ComboBox<Integer> pageSizeBox = new ComboBox<>();
+    /** ⭐ D-1：分页器本体 —— 窄宽降级按它的<b>实际</b>宽度决定收起哪几项。 */
+    private HBox pagerBox;
+    /** D-1：「每页」文字标签（下拉框本身永远留着，必要时靠 tooltip 认）。 */
+    private final Label perPageLabel = new Label("每页");
     private final Button filterButton = IconButtons.icon(Icons.Icon.FILTER, "筛选");
     private final Button clearQueryButton = IconButtons.icon(Icons.Icon.CLEAR, "清除条件");
     private final Button undoButton = IconButtons.icon(Icons.Icon.UNDO, "撤销");
@@ -2021,8 +2025,18 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
     private HBox buildPager() {
         HBox pager = new HBox(8);
+        pagerBox = pager;
+        pager.setId("data-pager");
         pager.getStyleClass().add("adb-grid__pager");
         pager.setAlignment(Pos.CENTER_LEFT);
+        // ⭐ D-1：1280 宽 + 右侧详情面板打开时，底栏右端会被裁掉半截「跳至页」。
+        //    分页器自己按真实宽度收起低优先级项，绝不把文字切成半边。
+        pager.widthProperty().addListener((observable, oldValue, newValue) -> {
+            // ⚠️ 不能在布局过程中直接改 managed —— 实测会把同一场景里对象标题栏
+            //    的标签也挤成「u…」（多一轮布局把宽度传成了极窄值）。推迟到本轮
+            //    布局结束再收，宽度是稳定的。
+            javafx.application.Platform.runLater(() -> fitPagerWidth(newValue.doubleValue()));
+        });
 
         rangeLabel.setId("data-range");
         rangeLabel.getStyleClass().add("adb-grid__range");
@@ -2072,12 +2086,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         jumpRowField.setMinWidth(56);
         jumpRowField.setOnAction(event -> jumpToRow(jumpRowField.getText()));
 
-        Label perPage = new Label("每页");
-        perPage.getStyleClass().add("adb-muted");
+        perPageLabel.setId("data-per-page");
+        perPageLabel.getStyleClass().add("adb-muted");
         // ⭐ 这些文字标签**不许被压扁** —— 「第 1 / 1 页」被截成「第 1/…」，
         //    用户就不知道当前在第几页了。宁可让别的东西收缩。
         pageLabel.setMinWidth(Region.USE_PREF_SIZE);
-        perPage.setMinWidth(Region.USE_PREF_SIZE);
+        perPageLabel.setMinWidth(Region.USE_PREF_SIZE);
         rangeLabel.setMinWidth(Region.USE_PREF_SIZE);
 
         pageSizeBox.setId("data-page-size");
@@ -2114,8 +2128,42 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 rangeLabel, recordNav, spacer, pageLabelText,
                 firstPageButton, previous, pageLabel, next, lastPageButton,
                 jumpField, jumpRowField,
-                new Separator(javafx.geometry.Orientation.VERTICAL), perPage, pageSizeBox);
+                new Separator(javafx.geometry.Orientation.VERTICAL), perPageLabel, pageSizeBox);
         return pager;
+    }
+
+    /**
+     * ⭐ D-1：分页器窄宽降级 —— 按「重复度 / 优先级」依次收起，绝不裁半截字。
+     *
+     * <p>1280 宽 + 右侧详情面板打开时分页器只剩约 700px，右端的「跳至页 / 每页」
+     * 被父容器裁成半个词（p2-details 实拍）。这里用真实 {@code prefWidth} 判断而不写
+     * 死阈值：字体、主题、语言一变，阈值就错了。
+     *
+     * <p>收起顺序：行号跳转 → 页码跳转 → 行范围 → 记录导航 → 「每页」标签。
+     * 前两项在网格里有等价操作；行范围在状态栏还有一份；记录导航也能用方向键代替。
+     * <b>「每页」文字永远留到最后一档</b> —— 先撤它，右端就剩一个孤零零的「200」，
+     * 读起来像页码。页码导航与每页框本身终归不清除 —— 没了它们就翻不了页 / 改不了页大小。
+     */
+    void fitPagerWidth(double width) {
+        if (pagerBox == null || width <= 0) {
+            return;
+        }
+        javafx.scene.Node[] droppable = {
+                jumpRowField, jumpField, rangeLabel, recordNav, perPageLabel};
+        for (javafx.scene.Node node : droppable) {
+            showPagerPart(node, true);
+        }
+        for (javafx.scene.Node node : droppable) {
+            if (pagerBox.prefWidth(-1) <= width) {
+                break;
+            }
+            showPagerPart(node, false);
+        }
+    }
+
+    private static void showPagerPart(javafx.scene.Node node, boolean present) {
+        node.setVisible(present);
+        node.setManaged(present);
     }
 
     // ─────────────────────────── 加载 ───────────────────────────

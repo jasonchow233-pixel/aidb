@@ -135,4 +135,59 @@ class ObjectHeaderAndTabsTest {
                     .isNotBlank();
         }
     }
+
+    /**
+     * ⭐ 窄宽标题栏（1280 窗口 + 右侧详情抽屉）只允许辅助信息让位。
+     *
+     * <p>实测缺陷：抽屉一开，HBox 把对象名、类型、行数、七个切面一起按比例
+     * 压成「u…」「20…」「触…」—— 主信息全废。规则：切面/类型/行数永不缩写，
+     * 对象名保底，只有「连接名 · 读写」可以变省略号。
+     */
+    @Test
+    void aNarrowHeaderAbbreviatesOnlyTheContextAndNeverTheTabsOrTitle(FxRobot robot) {
+        ObjectHeader squeezed = new ObjectHeader(Icons.Icon.TABLE, "users", "表");
+        squeezed.setCount("200 行");
+        squeezed.setContext("agenticdb-demo.db · 可写");
+        ObjectTabBar bar = new ObjectTabBar();
+        for (String[] tab : new String[][]{
+                {"data", "数据"}, {"overview", "概览"}, {"columns", "结构"},
+                {"indexes", "索引"}, {"fks", "外键"}, {"triggers", "触发器"}, {"sql", "SQL"}}) {
+            bar.addTab(tab[0], tab[1]);
+        }
+        squeezed.setTabs(bar);
+        squeezed.addActions(new Button("刷新"), new Button("结构"));
+
+        java.util.concurrent.atomic.AtomicReference<Stage> narrowRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        robot.interact(() -> {
+            // ⚠️ 不能给**已显示的**主舞台换 Scene 再 sizeToScene：换 Scene 时场景会先被
+            //    撑回原窗口的 900 宽，窄宽条件根本不成立（第一版就是假绿）。
+            Stage narrow = new Stage();
+            narrow.setScene(new Scene(new javafx.scene.layout.VBox(squeezed), 600, 200));
+            narrow.show();
+            narrowRef.set(narrow);
+        });
+        try {
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(narrowRef.get().getScene().getWidth())
+                    .as("前置条件：场景真的被压到 600 宽以内")
+                    .isLessThan(700);
+
+            Label title = (Label) squeezed.lookup(".adb-object-header__title");
+            assertThat(title.getWidth())
+                    .as("对象名不能被压成「u…」")
+                    .isGreaterThanOrEqualTo(title.prefWidth(-1) - 0.5);
+            for (javafx.scene.Node tab : squeezed.lookupAll(".adb-object-tab")) {
+                assertThat(tab.getLayoutBounds().getWidth())
+                        .as("切面「" + ((Label) tab).getText() + "」不能被压缩成省略号")
+                        .isGreaterThanOrEqualTo(tab.prefWidth(-1) - 0.5);
+            }
+            Label context = (Label) squeezed.lookup(".adb-object-header__context");
+            assertThat(context.getWidth())
+                    .as("让位的必须是辅助信息")
+                    .isLessThan(context.prefWidth(-1));
+        } finally {
+            robot.interact(() -> narrowRef.get().close());
+        }
+    }
 }

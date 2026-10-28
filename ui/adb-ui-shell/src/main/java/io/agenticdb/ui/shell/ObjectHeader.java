@@ -63,6 +63,16 @@ public final class ObjectHeader extends HBox {
 
         context.getStyleClass().addAll("adb-muted", "adb-object-header__context");
 
+        // ⭐ 右侧详情抽屉打开时标题栏只剩 ~700px：HBox 会把所有 Label 按比例
+        //    压缩，连对象名和切面一起缩成「…」。这里钉死优先级 ——
+        //    类型 / 行数 / 切面 / 动作按钮**永不缩写**，对象名保底，只有
+        //    「连接名 · 读写」这段辅助信息可以让位（它是最先可以放弃的）。
+        title.setMinWidth(60);
+        type.setMinWidth(Region.USE_PREF_SIZE);
+        count.setMinWidth(Region.USE_PREF_SIZE);
+        tabHost.setMinWidth(Region.USE_PREF_SIZE);
+        context.setMinWidth(0);
+
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 

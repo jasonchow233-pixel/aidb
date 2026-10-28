@@ -2405,6 +2405,11 @@
     -fx-text-fill: -adb-text-tertiary;
 }
 
+/* G19b：最后刷新常驻右侧一格（Navicat 的 Last Refresh）。同为背景信息，与事务段同档。 */
+.adb-statusbar .adb-status__refreshed {
+    -fx-text-fill: -adb-text-tertiary;
+}
+
 .adb-status__separator {
     -fx-background-color: -adb-border-subtle;
     -fx-min-width: 1;

@@ -5,6 +5,7 @@ import javafx.scene.AccessibleRole;
 import javafx.scene.control.Label;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -47,6 +48,9 @@ public final class ObjectTabBar extends HBox {
         tab.setId("object-tab-" + id);
         tab.getStyleClass().add("adb-object-tab");
         tab.setAccessibleText(label);
+        // ⭐ 切面名是整个对象的主导航，**不许被压缩成「触…」**。空间不够时
+        //    由标题栏去缩写辅助信息（连接名），而不是让每一个切面都只剩一个字。
+        tab.setMinWidth(Region.USE_PREF_SIZE);
         // ⭐ P7：切面以前只有鼠标能点（Label 默认不可聚焦）—— 键盘用户进不了
         //    结构 / 概览 / 数据这些内部切面。补 Tab 停靠点、TAB_ITEM 角色、
         //    Enter/Space 选中、左右方向键切换。

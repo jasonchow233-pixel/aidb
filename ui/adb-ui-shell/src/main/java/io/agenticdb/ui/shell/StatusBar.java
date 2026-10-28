@@ -32,6 +32,8 @@ import java.util.function.LongSupplier;
  *   <li>事务状态 + 只读/可写 → 一段「自动提交 · 可写」；</li>
  *   <li>「刷新于 5 分钟前」→ 行范围段的 tooltip（数据新旧是<b>点开看</b>的信息，
  *       不是每 30 秒都值得占一格的东西）；</li>
+ *   <li>⭐ G19b（2026-10-28 改判上一条）：Navicat 17 底栏右侧常驻 {@code Last Refresh: 37m}，
+ *       于是「刷新于 …」回到右侧一格 —— 同时仍留在行范围 tooltip 里；</li>
  *   <li>未选择 / 没有耗时 / 没有待提交 → <b>整段不占位</b>，不显示占位符。</li>
  * </ul>
  *
@@ -90,6 +92,15 @@ public final class StatusBar extends HBox {
     private final Region durationSeparator = separator();
     /** U8：事务状态 + 读写权限合成的一段「自动提交 · 可写」。 */
     private final Label session = segment("自动提交 · 只读", "adb-status__session");
+    /**
+     * ⭐ G19b（2026-10-28 改判 U8）：最后刷新**常驻一格**。
+     *
+     * <p>Navicat 17 底栏右侧写着 {@code Last Refresh: 37m}；U8 当时把它收进行范围的
+     * tooltip 省格子，但「这屏数据多旧」是扫一眼就要知道的信息，不该靠悬停。
+     * 仍然只有**真取过数**时才占位（未连接 / 表清单页整段隐藏）。
+     */
+    private final Label refreshed = segment("", "adb-status__refreshed");
+    private final Region refreshedSeparator = separator();
     private String transactionState = "自动提交";
     private boolean readonly = true;
     private final Label dirty = segment("", "adb-status__dirty");
@@ -131,6 +142,8 @@ public final class StatusBar extends HBox {
         // U8：连接灯的状态点是**图标**，不是文本符号（与行号列、布尔列同一口径）。
         source.setGraphic(Icons.of(Icons.Icon.DOT, Icons.SIZE_DOT));
         source.getGraphic().getStyleClass().add("adb-status__light");
+        // G19b：最后刷新常驻右侧，但开场没取过数 → 连同分隔符一起不占位。
+        hide(refreshed, refreshedSeparator);
         // Label 用 setTooltip 而不是 Tooltip.install：属性式 tooltip 才能被门禁直接读回。
         source.setTooltip(sourceTooltip);
         paintSource();
@@ -151,7 +164,7 @@ public final class StatusBar extends HBox {
         center.setAlignment(Pos.CENTER);
         center.getStyleClass().add("adb-statusbar__center");
 
-        HBox right = new HBox(6, session);
+        HBox right = new HBox(6, refreshed, refreshedSeparator, session);
         right.setAlignment(Pos.CENTER_RIGHT);
         right.getStyleClass().add("adb-statusbar__right");
 
@@ -303,13 +316,15 @@ public final class StatusBar extends HBox {
      * <p>耗时说「这次跑了多久」，回答不了「这屏数据多旧」—— 页面开着不动半小时，
      * 界面上必须看得出来它是旧的。
      *
-     * <p>U8：相对时间从独立分段挪进行范围的 <b>tooltip</b> —— 一格常驻位置换不来
-     * 「一眼就看到」，但悬停时它和行数本来就该一起读。
+     * <p>U8 曾把它挪进行范围的 tooltip；⭐ G19b（2026-10-28）改判回<b>右侧常驻一格</b>：
+     * Navicat 17 底栏就常驻着 {@code Last Refresh: 37m}，数据新旧是扫一眼就要看到的信息，
+     * 不该藏在悬停里。tooltip 里仍保留一份与行范围一起读（悬停一次看全）。
      *
-     * @param epochMillis ≤0 表示「还没有取过数」→ 停掉自重算计时器并从 tooltip 里去掉
+     * @param epochMillis ≤0 表示「还没有取过数」→ 停掉自重算计时器，分段与 tooltip 都去掉
      */
     public void setRefreshedAt(long epochMillis) {
         refreshedAt = epochMillis;
+        paintRefreshed();
         paintRangeTooltip();
         if (epochMillis > 0) {
             startTicker();
@@ -400,7 +415,7 @@ public final class StatusBar extends HBox {
         return sqlTooltip.getText();
     }
 
-    /** 供门禁断言：行范围 tooltip 里的「最后刷新」文本（没取过数为空串）。 */
+    /** 供门禁断言：右侧「最后刷新」段的文本（没取过数为空串）。 */
     public String refreshedText() {
         return refreshedAt > 0 ? "刷新于 " + relativeTime(refreshedAt, clock.getAsLong()) : "";
     }
@@ -416,11 +431,18 @@ public final class StatusBar extends HBox {
         paintRangeTooltip();
     }
 
-    /** 行范围 tooltip：范围本身 + 最后刷新（U8 后相对时间住在这里）。 */
+    /** 行范围 tooltip：范围本身 + 最后刷新（相对时间同时常驻右侧一格）。 */
     private void paintRangeTooltip() {
         String scope = "当前范围：" + range.getText();
         String when = refreshedText();
         rangeTooltip.setText(when.isEmpty() ? scope : scope + "\n" + when);
+    }
+
+    /** G19b：最后刷新常驻段 —— 与 {@link #paintRangeTooltip()} 同一口径。 */
+    private void paintRefreshed() {
+        boolean present = refreshedAt > 0;
+        refreshed.setText(present ? refreshedText() : "");
+        show(refreshed, refreshedSeparator, present);
     }
 
     /** 状态位与分隔符同进退：只藏 Label 会在两段之间留下一个孤零零的「·」。 */
@@ -472,7 +494,10 @@ public final class StatusBar extends HBox {
     private void startTicker() {
         if (relativeTicker == null) {
             relativeTicker = new Timeline(new KeyFrame(
-                    Duration.seconds(REFRESH_TICK_SECONDS), event -> paintRangeTooltip()));
+                    Duration.seconds(REFRESH_TICK_SECONDS), event -> {
+                        paintRefreshed();
+                        paintRangeTooltip();
+                    }));
             relativeTicker.setCycleCount(Timeline.INDEFINITE);
         }
         relativeTicker.play();

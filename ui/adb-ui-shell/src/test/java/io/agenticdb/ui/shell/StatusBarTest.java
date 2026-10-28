@@ -372,15 +372,16 @@ class StatusBarTest {
     }
 
     /**
-     * ⭐ UX-5-D + U8：「最后刷新」说的是<b>新旧</b>，不是耗时；U8 后它住进行范围的
-     * <b>tooltip</b>，不再常驻一格。
+     * ⭐ UX-5-D + U8 + G19b：「最后刷新」说的是<b>新旧</b>，不是耗时。
+     * U8 把它收进行范围 tooltip；G19b（2026-10-28）按 Navicat 底栏的
+     * {@code Last Refresh: 37m} 改回<b>右侧常驻一格</b>，tooltip 里仍保留一份。
      *
      * <p>时钟由门禁注入：相对时间若拿真实时钟断言，用例跑多久都不固定，
-     * 今天绿明天红。「还没有取过数」（未连接 / 表清单页）时 tooltip 只说范围，
+     * 今天绿明天红。「还没有取过数」（未连接 / 表清单页）时整段连同分隔符隐藏，
      * 不许出现「刷新于 —」这种看着像坏了的占位。
      */
     @Test
-    void theRefreshedTimeCountsAgainstItsOwnClockAndLivesInTheRangeTooltip() throws Exception {
+    void theRefreshedTimeCountsAgainstItsOwnClockAndIsVisibleInTheStatusBar() throws Exception {
         long now = 1_767_225_600_000L;
         onFx(() -> {
             styledBar.setClockForTest(() -> now);
@@ -392,16 +393,22 @@ class StatusBarTest {
         assertThat(styledBar.refreshedText())
                 .as("刚取完数说「刚刚」，不是时间戳")
                 .isEqualTo("刷新于 刚刚");
+        Label refreshedSegment = barLookupLabel(styledBar, "adb-status__refreshed");
+        assertThat(refreshedSegment)
+                .as("G19b：最后刷新必须常驻可见，不能只藏在 tooltip 里")
+                .isNotNull();
+        assertThat(refreshedSegment.isVisible()).isTrue();
+        assertThat(refreshedSegment.getText()).isEqualTo("刷新于 刚刚");
         assertThat(styledBar.rangeTooltipText())
-                .as("行范围与数据新旧一起读：悬停一次就能看全")
+                .as("行范围与数据新旧一起读：悬停一次就能看全（tooltip 保留）")
                 .contains("当前范围：1-200 / 共 500")
                 .contains("刷新于 刚刚");
-        assertThat(barLookup(styledBar, "adb-status__refreshed"))
-                .as("U8：相对时间不再是独立分段")
-                .isNull();
 
         onFx(() -> styledBar.setRefreshedAt(now - 5 * 60_000L));
         assertThat(styledBar.refreshedText()).isEqualTo("刷新于 5 分钟前");
+        assertThat(refreshedSegment.getText())
+                .as("计时器重算时要同时刷新常驻段与 tooltip")
+                .isEqualTo("刷新于 5 分钟前");
 
         onFx(() -> styledBar.setRefreshedAt(now - 3 * 60 * 60_000L));
         assertThat(styledBar.refreshedText()).isEqualTo("刷新于 3 小时前");
@@ -413,8 +420,11 @@ class StatusBarTest {
 
         onFx(() -> styledBar.setRefreshedAt(-1));
         assertThat(styledBar.refreshedText())
-                .as("还没取过数 → tooltip 里也不许留「刷新于」")
+                .as("还没取过数 → 文字与 tooltip 里都不许留「刷新于」")
                 .isEmpty();
+        assertThat(refreshedSegment.isVisible())
+                .as("没取过数时整段隐藏（不占位、不留悬空占位符）")
+                .isFalse();
         assertThat(styledBar.rangeTooltipText())
                 .as("没有取数时刻时，tooltip 退回只说范围")
                 .doesNotContain("刷新于");
@@ -423,6 +433,12 @@ class StatusBarTest {
     /** 供门禁：按样式类取节点（不存在返回 null）。 */
     private static javafx.scene.Node barLookup(StatusBar bar, String styleClass) {
         return bar.lookup("." + styleClass);
+    }
+
+    /** 供门禁：按样式类取 Label（最后刷新段要读文字与可见性）。 */
+    private static Label barLookupLabel(StatusBar bar, String styleClass) {
+        javafx.scene.Node node = barLookup(bar, styleClass);
+        return node instanceof Label label ? label : null;
     }
 
     /** 供门禁：场景图里那条语句的 Label 节点。 */
