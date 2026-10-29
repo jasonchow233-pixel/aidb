@@ -9,21 +9,22 @@
 
 ## 0. 当前基线
 
-- 门禁 **1180 条 / 134 类 / 0 失败 / 48 环境跳过**（第八批后 `./mvnw -o test` 实测 —— 恰比第七批的
-  1179 多 1，即第八批新立的对象树菜单文字对账门禁）。
+- 门禁 **1180 条 / 134 类 / 0 失败 / 48 环境跳过**（第九批后 `./mvnw -o test` 实测 —— 与第八批持平：
+  第九批只降棘轮、未立新门禁；第八批曾恰比第七批的 1179 多 1，即第八批新立的对象树菜单文字对账门禁）。
   **量法**：`grep -aoP 'Tests run: \K[0-9]+(?=, Failures: [0-9]+, Errors: \d+, Skipped: \d+, Time elapsed)'`
-  对全量日志求和 → 150 组 / 1179 条；类数按 `**/target/surefire-reports/*.txt` 数 = 134
+  对全量日志求和 → 150 组 / 1180 条；类数按 `**/target/surefire-reports/*.txt` 数 = 134
   （150 与 134 之差是 `@Nested`：一行一组、一份报告）。
   ⚠️ 全量必须 JDK 25+；`JAVA_HOME` 留在系统默认 21 会被 enforcer 直接 BUILD FAILURE
   （本机 `C:\Users\Administrator\.jdks\openjdk-27.0.1.0.2`）。
   ⚠️ 此前文档记过 1116/1119/1122/1173/1174/1175/1176 —— 都是两种口径混用；以后照上面那条命令量。
 - 已落库提交：`34ffb8f`（R33 全部 + R34 首批）· `288592d`（N1-d）· `05351ce`（N2）· `87d2ddb`（窗口标题）·
   `c6ae488`/`2f85990`（第三批）· `3077924`/`bd2640b`（第四批）· `534ebe9`/`91c4084`/`e7c6543`（第五批）·
-  `7e8b6f7`/`82ea100`（第六批）· `88a4576`/`ff2e7d4`（第七批）· `46873b8`（第八批 + 本文重写）。**push 仍未授权。**
+  `7e8b6f7`/`82ea100`（第六批）· `88a4576`/`ff2e7d4`（第七批）· `46873b8`（第八批 + 本文重写）·
+  `f0c1044`（第九批）。**push 仍未授权。**
 - 验收帧 33 张（28 亮 / 5 暗），第八批后全量重拍为英文档（19 帧变化、1280×800、md5 无重复帧）。
-  中英混排仍是中间态：`ConnectionWizard`(89) / `ObjectHomePage`(83) / `NewTableDialog`(75) /
-  `ImportWizard`(61) / `CellDetailsDrawer`(39) 等 49 个文件未抽。
-- 棘轮 **890**（主尺，只许降）；模型层 **277**（第 13 条棘轮，D-9）。资源包 **846 键** en/zh 对称。
+  中英混排仍是中间态：`ObjectHomePage`(83) / `NewTableDialog`(75) /
+  `ImportWizard`(61) / `CellDetailsDrawer`(39) 等 48 个文件未抽。
+- 棘轮 **801**（主尺，只许降）；模型层 **277**（第 13 条棘轮，D-9）。资源包 **929 键** en/zh 对称。
 - 总账：**R34–R41 = 61–86 人日**；**+R42 = 97–142 人日**（本轮新增 N31–N34 后上调，见 §2）。
 
 ---
@@ -56,6 +57,11 @@
       ① 21 处菜单标签二次覆盖中文 override 全删 + `ActionRegistryConvergenceTest` 走真菜单树对账；
       ② 「标题当路由键」改 `TabItem.target()`（`TOOL_HISTORY`/`TOOL_DIAGNOSTICS` 常量），
       删 `AppShell.openTool(String title)` 残骸。33 帧重拍目视（19 变化），本批无新裁字
+- [x] **N1-b 第九批** `ConnectionWizard`（89→0）：→ **801**，929 键。SslMode 枚举改「存键、
+      渲染时解析」（TableListPage 教训第二次落地）；SSH/HTTP 四段 concat 并单键、错误文案
+      {0} 传参；英文按本地帧实证（页签/按钮/占位符），SSL 模式名 inferred；7 处测试文案
+      断言重钉为 `I18n.t()`。p5-connect 4 帧全英无裁字；p5-connections 的中文属
+      `ConnectionsPage` 未抽（与第八批帧同态，非本批回归）
 - [x] **N1-c** `I18nAuditTest` **13 条**（键集相等 / 调用点对账 / 动作命名穷举 / 占位符 / 棘轮×2 /
       全角标点 / 实参个数 / 模型层标签边界 / 偏好链 / configure 先于 AppShell）
 - [x] **N2** 菜单组 `File/Edit/View/Query/Format/Favorites/Tools/Window/Help` + Table 上下文菜单按页型开合
@@ -179,7 +185,7 @@
 
 ```
 R30–R33 ✅ 已提交。功能资产保住；视觉裁定多数被推翻（真源 §3 台账）
-R34     i18n 八批已收（棘轮 890，已落库）→ 收尾 3–5          ← 当前
+R34     i18n 九批已收（棘轮 801，已落库）→ 收尾 2–4          ← 当前
 R35     彩色图标渲染层 + 50 枚资产 + 暗色档             （10–14） 前置卡所有视觉
 R36     顶区 140px / 12 格 Ribbon / 页签行 / #F0F0F0   （5–7）   ⚠️ 撤销 R32-D
 R37     树 20px 五组 / 库级树 / 对象页合一 / 6 列 7 键  （8–11）  ⭐ N32 N33 本轮新增
