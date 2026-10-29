@@ -4,6 +4,7 @@ import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.CredentialStore;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -72,21 +73,21 @@ public final class ConnectionWizard {
 
     /** SSL 档位。对用户是中性的说明，落进 options 时按方言换成驱动认识的值。 */
     enum SslMode {
-        OFF("不加密"),
-        PREFER("优先加密"),
-        REQUIRE("必须加密"),
-        VERIFY_CA("校验 CA"),
-        VERIFY_IDENTITY("校验主机名");
+        OFF("wizard.ssl.mode.off"),
+        PREFER("wizard.ssl.mode.prefer"),
+        REQUIRE("wizard.ssl.mode.require"),
+        VERIFY_CA("wizard.ssl.mode.verifyCa"),
+        VERIFY_IDENTITY("wizard.ssl.mode.verifyIdentity");
 
-        private final String label;
+        private final String key;
 
-        SslMode(String label) {
-            this.label = label;
+        SslMode(String key) {
+            this.key = key;
         }
 
         @Override
         public String toString() {
-            return label;
+            return I18n.t(key);
         }
 
         /** PostgreSQL {@code sslmode} 的取值。 */
@@ -152,7 +153,7 @@ public final class ConnectionWizard {
      * 以前是 VBox + VGrow，三个磁贴被拉成每个 ~220px 高的空白块（p5-connect-type 实拍）。
      */
     private final FlowPane tiles = new FlowPane(8, 8);
-    private final Button cancelButton = new Button("取消");
+    private final Button cancelButton = new Button(I18n.t("common.cancel"));
     private final TextField search = new TextField();
     private final HBox uriRow = new HBox(8);
     private final TextField uriField = new TextField();
@@ -165,7 +166,7 @@ public final class ConnectionWizard {
     private final TextField database = new TextField();
     private final TextField username = new TextField();
     private final PasswordField password = new PasswordField();
-    private final CheckBox savePassword = new CheckBox("保存口令（系统凭据库）");
+    private final CheckBox savePassword = new CheckBox(I18n.t("wizard.savePassword"));
 
     private final TextField queryTimeout = new TextField();
     private final TextField charset = new TextField();
@@ -176,7 +177,7 @@ public final class ConnectionWizard {
     private final TextArea remarks = new TextArea();
     private TabPane tabs;
 
-    private final Label testResult = new Label("尚未测试");
+    private final Label testResult = new Label(I18n.t("wizard.test.notYet"));
     private final Label saveError = new Label();
 
     private final ConnectionProfile initial;
@@ -189,9 +190,9 @@ public final class ConnectionWizard {
                             CredentialStore credentials, Tester tester) {
         this.initial = initial;
         this.credentials = credentials == null ? CredentialStore.inMemory() : credentials;
-        this.tester = tester == null ? spec -> "未配置测试器" : tester;
+        this.tester = tester == null ? spec -> I18n.t("wizard.test.noTester") : tester;
         dialog.initOwner(owner);
-        dialog.setTitle("连接向导");
+        dialog.setTitle(I18n.t("wizard.title"));
         // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
         dialog.getDialogPane().setPrefWidth(DialogSizes.WIDE);
         dialog.getDialogPane().setMinWidth(DialogSizes.WIDE);
@@ -203,7 +204,7 @@ public final class ConnectionWizard {
 
     private void build() {
         search.setId("wizard-type-search");
-        search.setPromptText("搜索数据库（SQLite / PostgreSQL / MySQL）");
+        search.setPromptText(I18n.t("wizard.search.prompt"));
         search.textProperty().addListener((observable, old, text) -> filterTiles(text));
 
         tiles.setId("wizard-type-tiles");
@@ -212,9 +213,9 @@ public final class ConnectionWizard {
         }
 
         uriField.setId("wizard-uri");
-        uriField.setPromptText("例如 postgresql://user:pass@host:5432/db?sslmode=require");
+        uriField.setPromptText(I18n.t("wizard.uri.example"));
         HBox.setHgrow(uriField, Priority.ALWAYS);
-        Button apply = new Button("解析并填入");
+        Button apply = new Button(I18n.t("wizard.uri.apply"));
         apply.setId("wizard-uri-apply");
         apply.getStyleClass().addAll("adb-button", "adb-button--primary");
         apply.setOnAction(event -> applyUri());
@@ -235,11 +236,11 @@ public final class ConnectionWizard {
         savePassword.setSelected(true);
 
         queryTimeout.setId("wizard-query-timeout");
-        queryTimeout.setPromptText("秒，0 = 不限");
+        queryTimeout.setPromptText(I18n.t("wizard.timeout.prompt"));
         charset.setId("wizard-charset");
-        charset.setPromptText("如 UTF-8");
+        charset.setPromptText(I18n.t("wizard.charset.prompt"));
         extra.setId("wizard-extra");
-        extra.setPromptText("每行一个 key=value，例如：serverTimezone=Asia/Shanghai");
+        extra.setPromptText(I18n.t("wizard.extra.prompt"));
         extra.setPrefRowCount(5);
 
         sslMode.setId("wizard-ssl-mode");
@@ -248,13 +249,13 @@ public final class ConnectionWizard {
         sslMode.setMaxWidth(Double.MAX_VALUE);
         sslMode.valueProperty().addListener((observable, old, mode) -> updateSslHint());
         sslRoot.setId("wizard-ssl-root");
-        sslRoot.setPromptText("服务端 CA 证书路径（PostgreSQL）");
+        sslRoot.setPromptText(I18n.t("wizard.sslRoot.prompt"));
         sslHint.setId("wizard-ssl-hint");
         sslHint.getStyleClass().add("adb-muted");
         sslHint.setWrapText(true);
 
         remarks.setId("wizard-remarks");
-        remarks.setPromptText("给这条连接留一句话（不参与连接）");
+        remarks.setPromptText(I18n.t("wizard.remarks.prompt"));
         remarks.setPrefRowCount(5);
 
         testResult.setId("wizard-test-result");
@@ -347,9 +348,9 @@ public final class ConnectionWizard {
 
     private static String hintOf(DialectKind kind) {
         return switch (kind) {
-            case SQLITE -> "本地单文件数据库，无需服务器";
-            case POSTGRESQL -> "默认端口 5432，支持 SSL";
-            case MYSQL -> "默认端口 3306，支持 SSL";
+            case SQLITE -> I18n.t("wizard.tile.sqlite");
+            case POSTGRESQL -> I18n.t("wizard.tile.postgresql");
+            case MYSQL -> I18n.t("wizard.tile.mysql");
         };
     }
 
@@ -392,7 +393,7 @@ public final class ConnectionWizard {
         try {
             target = parseUri(uriField.getText());
         } catch (RuntimeException e) {
-            showStepError(e.getMessage() == null ? "URI 无法解析" : e.getMessage());
+            showStepError(e.getMessage() == null ? I18n.t("wizard.uri.unparseable") : e.getMessage());
             return false;
         }
         clearStepError();
@@ -425,7 +426,7 @@ public final class ConnectionWizard {
     static UriTarget parseUri(String text) {
         String raw = text == null ? "" : text.trim();
         if (raw.isEmpty()) {
-            throw new IllegalArgumentException("请输入连接 URI");
+            throw new IllegalArgumentException(I18n.t("wizard.uri.required"));
         }
         String normalized = raw.toLowerCase(Locale.ROOT);
         if (normalized.startsWith("jdbc:")) {
@@ -438,7 +439,7 @@ public final class ConnectionWizard {
                 path = path.substring(2);
             }
             if (path.isBlank()) {
-                throw new IllegalArgumentException("SQLite URI 里缺少文件路径");
+                throw new IllegalArgumentException(I18n.t("wizard.uri.missingPath"));
             }
             return new UriTarget(DialectKind.SQLITE, "", 0, path, "", "");
         }
@@ -447,16 +448,16 @@ public final class ConnectionWizard {
                 ? DialectKind.POSTGRESQL
                 : normalized.startsWith("mysql://") ? DialectKind.MYSQL : null;
         if (kind == null) {
-            throw new IllegalArgumentException("只支持 sqlite: / postgresql:// / postgres:// / mysql://");
+            throw new IllegalArgumentException(I18n.t("wizard.uri.unsupported"));
         }
         URI uri;
         try {
             uri = URI.create(raw);
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("URI 格式不对：" + e.getMessage());
+            throw new IllegalArgumentException(I18n.t("wizard.uri.malformed", e.getMessage()));
         }
         if (uri.getHost() == null || uri.getHost().isBlank()) {
-            throw new IllegalArgumentException("URI 里缺少主机名");
+            throw new IllegalArgumentException(I18n.t("wizard.uri.missingHost"));
         }
         String user = "";
         String secret = "";
@@ -483,10 +484,10 @@ public final class ConnectionWizard {
     // ─────────────────── 第 2 步：属性页（7 个页签） ───────────────────
 
     private Node typeStep() {
-        Label hint = new Label("选中一种库型后点「下一步」填连接参数。");
+        Label hint = new Label(I18n.t("wizard.type.hint"));
         hint.getStyleClass().add("adb-muted");
 
-        Button uriToggle = new Button("使用 URI 新建连接…");
+        Button uriToggle = new Button(I18n.t("wizard.type.uri"));
         uriToggle.setId("wizard-type-uri");
         uriToggle.getStyleClass().addAll("adb-button", "adb-button--ghost");
         uriToggle.setOnAction(event -> toggleUriRow(!uriRow.isVisible()));
@@ -502,7 +503,7 @@ public final class ConnectionWizard {
         Region navGap = new Region();
         HBox.setHgrow(navGap, Priority.ALWAYS);
         HBox nav = new HBox(8, uriToggle, navGap,
-                cancelButton, navButton("wizard-next", "下一步 →", this::goNext));
+                cancelButton, navButton("wizard-next", I18n.t("wizard.next"), this::goNext));
         nav.setAlignment(Pos.CENTER_LEFT);
         VBox outer = new VBox(8, box, saveError, nav);
         // 和其他四个向导同一档留白（16px）；属性页的 GridPane 自带 12px，不加类免双份。
@@ -517,28 +518,25 @@ public final class ConnectionWizard {
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         tabs.getStyleClass().add("adb-form");
         tabs.getTabs().addAll(
-                tab("wizard-tab-general", "常规", generalPane()),
-                tab("wizard-tab-advanced", "高级", advancedPane()),
-                tab("wizard-tab-databases", "数据库", databasesPane()),
-                tab("wizard-tab-ssl", "SSL", sslPane()),
-                tab("wizard-tab-ssh", "SSH", notice(
-                        "本版没有内置 SSH 隧道引擎，这一页暂时不提供字段。",
-                        "需要穿过跳板机时，请先在网络层建立端口转发（例如 OpenSSH 的"
-                                + " ssh -L 本地端口:数据库主机:数据库端口 用户@跳板机），"
-                                + "再在上面的「常规」页里填 127.0.0.1 与那个本地端口。")),
-                tab("wizard-tab-http", "HTTP", notice(
-                        "本版不支持 HTTP 隧道（Navicat 用一段 PHP 脚本转发）。",
-                        "如果目标环境只暴露 HTTP 入口，请在网关侧开一个直连数据库端口的"
-                                + "通道，或改用 SSH 端口转发（见上一页）。")),
-                tab("wizard-tab-remarks", "备注", remarksPane()));
+                tab("wizard-tab-general", I18n.t("wizard.tab.general"), generalPane()),
+                tab("wizard-tab-advanced", I18n.t("wizard.tab.advanced"), advancedPane()),
+                tab("wizard-tab-databases", I18n.t("wizard.tab.databases"), databasesPane()),
+                tab("wizard-tab-ssl", I18n.t("wizard.tab.ssl"), sslPane()),
+                tab("wizard-tab-ssh", I18n.t("wizard.tab.ssh"), notice(
+                        I18n.t("wizard.ssh.notice"),
+                        I18n.t("wizard.ssh.workaround"))),
+                tab("wizard-tab-http", I18n.t("wizard.tab.http"), notice(
+                        I18n.t("wizard.http.notice"),
+                        I18n.t("wizard.http.workaround"))),
+                tab("wizard-tab-remarks", I18n.t("wizard.tab.remarks"), remarksPane()));
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
-        Button testButton = new Button("测试连接");
+        Button testButton = new Button(I18n.t("wizard.test"));
         testButton.setId("wizard-test");
         testButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         testButton.setOnAction(event -> testConnection());
 
-        Button uriButton = new Button("URI…");
+        Button uriButton = new Button(I18n.t("wizard.uriButton"));
         uriButton.setId("wizard-uri-open");
         uriButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         uriButton.setOnAction(event -> {
@@ -547,12 +545,12 @@ public final class ConnectionWizard {
             toggleUriRow(true);
         });
 
-        Button saveButton = new Button("确定");
+        Button saveButton = new Button(I18n.t("common.ok"));
         saveButton.setId("wizard-save");
         saveButton.getStyleClass().addAll("adb-button", "adb-button--primary");
         saveButton.setOnAction(event -> commit());
 
-        HBox nav = new HBox(8, navButton("wizard-back", "← 上一步", this::goBack),
+        HBox nav = new HBox(8, navButton("wizard-back", I18n.t("wizard.back"), this::goBack),
                 uriButton, testButton, cancelButton, saveButton);
         nav.setAlignment(Pos.CENTER_RIGHT);
 
@@ -570,17 +568,17 @@ public final class ConnectionWizard {
 
     private Node generalPane() {
         GridPane grid = grid();
-        grid.addRow(0, new Label("连接名"), name);
+        grid.addRow(0, new Label(I18n.t("wizard.name")), name);
         if (type.dialect().usesFilePath()) {
-            Button browse = new Button("浏览…");
+            Button browse = new Button(I18n.t("wizard.browse"));
             browse.setId("wizard-browse");
             browse.getStyleClass().addAll("adb-button", "adb-button--ghost");
             browse.setOnAction(event -> {
                 FileChooser chooser = new FileChooser();
-                chooser.setTitle("选择 SQLite 文件");
+                chooser.setTitle(I18n.t("wizard.file.chooserTitle"));
                 chooser.getExtensionFilters().addAll(
-                        new FileChooser.ExtensionFilter("SQLite", "*.db", "*.sqlite"),
-                        new FileChooser.ExtensionFilter("All", "*.*"));
+                        new FileChooser.ExtensionFilter(I18n.t("wizard.file.filter.sqlite"), "*.db", "*.sqlite"),
+                        new FileChooser.ExtensionFilter(I18n.t("wizard.file.filter.all"), "*.*"));
                 java.io.File selected = chooser.showSaveDialog(dialog.getOwner());
                 if (selected != null) {
                     file.setText(selected.getAbsolutePath());
@@ -588,50 +586,47 @@ public final class ConnectionWizard {
             });
             HBox fileRow = new HBox(8, file, browse);
             HBox.setHgrow(file, Priority.ALWAYS);
-            grid.addRow(1, new Label("数据库文件"), fileRow);
-            grid.addRow(2, new Label(), new Label("SQLite 是单文件数据库，没有主机与口令。"));
+            grid.addRow(1, new Label(I18n.t("wizard.file")), fileRow);
+            grid.addRow(2, new Label(), new Label(I18n.t("wizard.general.sqliteNote")));
             return grid;
         }
-        grid.addRow(1, new Label("主机"), host);
-        grid.addRow(2, new Label("端口"), port);
-        grid.addRow(3, new Label("默认库"), database);
-        grid.addRow(4, new Label("用户名"), username);
-        grid.addRow(5, new Label("口令"), password);
+        grid.addRow(1, new Label(I18n.t("wizard.host")), host);
+        grid.addRow(2, new Label(I18n.t("wizard.port")), port);
+        grid.addRow(3, new Label(I18n.t("wizard.database")), database);
+        grid.addRow(4, new Label(I18n.t("wizard.username")), username);
+        grid.addRow(5, new Label(I18n.t("wizard.password")), password);
         grid.addRow(6, new Label(), savePassword);
         return grid;
     }
 
     private Node advancedPane() {
         VBox box = new VBox(10,
-                labeled("语句超时（秒）", queryTimeout),
-                labeled("字符集", charset),
-                labeled("附加 JDBC 参数", extra),
-                hint("超时由应用自己消费（0 = 不限）；其余参数原样传给驱动。"
-                        + "口令不要写在这里 —— 口令只走系统凭据库。"));
+                labeled(I18n.t("wizard.timeout"), queryTimeout),
+                labeled(I18n.t("wizard.charset"), charset),
+                labeled(I18n.t("wizard.extra"), extra),
+                hint(I18n.t("wizard.advanced.hint")));
         return box;
     }
 
     private Node databasesPane() {
         Label summary = new Label(type.dialect().usesFilePath()
-                ? "SQLite 是单文件数据库，没有库列表。"
-                : "连接后由服务器返回库列表；打开哪一个是「常规」页的「默认库」。");
+                ? I18n.t("wizard.databases.sqlite")
+                : I18n.t("wizard.databases.server"));
         summary.setId("wizard-databases-summary");
         summary.setWrapText(true);
         summary.getStyleClass().add("adb-muted");
-        return new VBox(10, summary,
-                hint("这一页在 Navicat 里还能勾选「只显示哪些库」；本版不做，"
-                        + "因为侧栏目前按服务器返回的全部库展示，勾了也没有地方生效。"));
+        return new VBox(10, summary, hint(I18n.t("wizard.databases.hint")));
     }
 
     private Node sslPane() {
         if (type == DialectKind.SQLITE) {
-            return notice("SQLite 是本地文件，没有网络传输，也就没有 SSL。",
-                    "把连接换成 PostgreSQL / MySQL 后，这一页会给出可用的加密档位。");
+            return notice(I18n.t("wizard.ssl.sqlite"),
+                    I18n.t("wizard.ssl.sqliteNext"));
         }
         VBox box = new VBox(10);
         GridPane grid = grid();
-        grid.addRow(0, new Label("加密"), sslMode);
-        grid.addRow(1, new Label("根证书"), sslRoot);
+        grid.addRow(0, new Label(I18n.t("wizard.ssl.encryption")), sslMode);
+        grid.addRow(1, new Label(I18n.t("wizard.ssl.rootCert")), sslRoot);
         box.getChildren().addAll(grid, sslHint);
         updateSslHint();
         return box;
@@ -643,19 +638,18 @@ public final class ConnectionWizard {
         }
         sslRoot.setDisable(type != DialectKind.POSTGRESQL);
         if (type == DialectKind.MYSQL) {
-            sslHint.setText("MySQL 由驱动按下拉档位设置 sslMode；校验 CA 需要把 CA 导入"
-                    + " JVM 信任库，本版不改「根证书」这一格。");
+            sslHint.setText(I18n.t("wizard.ssl.mysqlHint"));
         } else if (sslMode.getValue() == SslMode.VERIFY_CA
                 || sslMode.getValue() == SslMode.VERIFY_IDENTITY) {
-            sslHint.setText("校验档位需要服务端证书链可验证；填「根证书」指向 CA 的 PEM 文件。");
+            sslHint.setText(I18n.t("wizard.ssl.verifyHint"));
         } else {
-            sslHint.setText("「必须加密」不校验证书；要校验请选后面的两档。");
+            sslHint.setText(I18n.t("wizard.ssl.requireHint"));
         }
     }
 
     private Node remarksPane() {
-        VBox box = new VBox(10, labeled("备注", remarks),
-                hint("备注只落在这条连接的元数据里，不参与连接参数。"));
+        VBox box = new VBox(10, labeled(I18n.t("wizard.remarks.label"), remarks),
+                hint(I18n.t("wizard.remarks.hint")));
         VBox.setVgrow(remarks, Priority.ALWAYS);
         return box;
     }
@@ -768,18 +762,18 @@ public final class ConnectionWizard {
     /** 摆一张填好示例值的 PostgreSQL 属性页，并选中指定页签。 */
     private void propertiesPose(String tab) {
         selectType(DialectKind.POSTGRESQL);
-        name.setText("生产库 · shop");
+        name.setText("Production · shop");
         host.setText("db.example.com");
         port.setText("5432");
         database.setText("shop");
         username.setText("app");
-        password.setText("示例口令");
+        password.setText("sample-password");
         queryTimeout.setText("15");
         charset.setText("UTF-8");
         extra.setText("serverTimezone=Asia/Shanghai\nconnectTimeout=5000");
         sslMode.getSelectionModel().select(SslMode.VERIFY_CA);
         sslRoot.setText("/etc/ssl/certs/company-ca.pem");
-        remarks.setText("只读账号；变更请走 DBA 审批。");
+        remarks.setText("Read-only account; changes go through DBA approval.");
         step = 2;
         updateStep();
         selectTab(tab);
@@ -798,11 +792,11 @@ public final class ConnectionWizard {
 
     private void updateStep() {
         if (step == 1) {
-            dialog.setHeaderText(initial == null ? "第 1 步 / 共 2 步：选择数据库类型"
-                    : "编辑连接 · 选择数据库类型");
+            dialog.setHeaderText(initial == null ? I18n.t("wizard.step1.new")
+                    : I18n.t("wizard.step1.edit"));
             dialog.getDialogPane().setContent(typeStep());
         } else {
-            dialog.setHeaderText("第 2 步 / 共 2 步：" + type.displayName() + " 连接属性");
+            dialog.setHeaderText(I18n.t("wizard.step2", type.displayName()));
             dialog.getDialogPane().setContent(propertiesStep());
         }
         updateButtons();
@@ -857,7 +851,7 @@ public final class ConnectionWizard {
 
     private boolean validateType() {
         if (type == null) {
-            showStepError("请选择数据库类型");
+            showStepError(I18n.t("wizard.error.type"));
             return false;
         }
         return true;
@@ -865,22 +859,22 @@ public final class ConnectionWizard {
 
     private boolean validateDetails() {
         if (name.getText() == null || name.getText().isBlank()) {
-            showStepError("连接名不能为空");
+            showStepError(I18n.t("wizard.error.name"));
             return false;
         }
         if (type.dialect().usesFilePath()) {
             if (file.getText() == null || file.getText().isBlank()) {
-                showStepError("请选择数据库文件");
+                showStepError(I18n.t("wizard.error.file"));
                 return false;
             }
             return true;
         }
         if (host.getText() == null || host.getText().isBlank()) {
-            showStepError("主机不能为空");
+            showStepError(I18n.t("wizard.error.host"));
             return false;
         }
         if (database.getText() == null || database.getText().isBlank()) {
-            showStepError("默认库不能为空");
+            showStepError(I18n.t("wizard.error.database"));
             return false;
         }
         return true;
@@ -900,12 +894,13 @@ public final class ConnectionWizard {
     private void testConnection() {
         ConnectionProfile profile = buildProfile();
         if (profile == null) {
-            testResult.setText("请先补全连接参数");
+            testResult.setText(I18n.t("wizard.test.incomplete"));
             return;
         }
-        testResult.setText("正在测试…");
+        testResult.setText(I18n.t("wizard.test.running"));
         String error = tester.test(profile.spec(password.getText()));
-        testResult.setText(error == null ? "连接成功" : "连接失败：" + error);
+        testResult.setText(error == null ? I18n.t("wizard.test.ok")
+                : I18n.t("wizard.test.failed", error));
     }
 
     private ConnectionProfile buildProfile() {

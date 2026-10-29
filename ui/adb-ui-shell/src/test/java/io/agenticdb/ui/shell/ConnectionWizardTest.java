@@ -4,6 +4,7 @@ import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.CredentialStore;
+import io.agenticdb.ui.I18n;
 import javafx.scene.Scene;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
@@ -219,7 +220,7 @@ class ConnectionWizardTest {
         assertThat(org.assertj.core.api.Assertions.catchThrowable(
                         () -> ConnectionWizard.parseUri("oracle://host/db")))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("只支持");
+                .hasMessageContaining(I18n.t("wizard.uri.unsupported"));
     }
 
     // ─────────────────── 第 2 步：7 个页签 ───────────────────
@@ -231,7 +232,10 @@ class ConnectionWizardTest {
 
         TabPane tabs = robot.lookup("#wizard-tabs").queryAs(TabPane.class);
         assertThat(tabs.getTabs()).extracting(Tab::getText)
-                .containsExactly("常规", "高级", "数据库", "SSL", "SSH", "HTTP", "备注");
+                .containsExactly(I18n.t("wizard.tab.general"), I18n.t("wizard.tab.advanced"),
+                        I18n.t("wizard.tab.databases"), I18n.t("wizard.tab.ssl"),
+                        I18n.t("wizard.tab.ssh"), I18n.t("wizard.tab.http"),
+                        I18n.t("wizard.tab.remarks"));
     }
 
     @Test
@@ -246,10 +250,11 @@ class ConnectionWizardTest {
         assertThat(ssh.getContent().lookup("#wizard-notice")).isNotNull();
         assertThat(allText(ssh.getContent()))
                 .as("SSH 页必须说清楚没有隧道引擎，并给替代做法")
-                .contains("SSH 隧道").contains("ssh -L");
+                .contains(I18n.t("wizard.ssh.notice"))
+                .contains(I18n.t("wizard.ssh.workaround"));
         assertThat(allText(http.getContent()))
                 .as("HTTP 页同理，不能假装有字段")
-                .contains("不支持 HTTP 隧道");
+                .contains(I18n.t("wizard.http.notice"));
     }
 
     @Test
@@ -330,7 +335,7 @@ class ConnectionWizardTest {
         robot.write(sqliteFile.toString());
         click(robot, "wizard-test");
         WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> robot
-                .lookup("#wizard-test-result").queryAs(Label.class).getText().contains("连接成功"));
+                .lookup("#wizard-test-result").queryAs(Label.class).getText().contains(I18n.t("wizard.test.ok")));
 
         click(robot, "wizard-save");
 
@@ -419,7 +424,7 @@ class ConnectionWizardTest {
         click(robot, "wizard-save");
 
         Label error = robot.lookup("#wizard-save-error").queryAs(Label.class);
-        assertThat(error.getText()).isEqualTo("连接名不能为空");
+        assertThat(error.getText()).isEqualTo(I18n.t("wizard.error.name"));
         assertThat(error.isVisible()).isTrue();
         assertThat(wizard.step()).isEqualTo(2);
         assertThat(wizard.dialogResult()).isEmpty();
@@ -430,7 +435,7 @@ class ConnectionWizardTest {
         click(robot, "wizard-save");
         assertThat(wizard.dialogResult()).isEmpty();
         assertThat(robot.lookup("#wizard-save-error").queryAs(Label.class).getText())
-                .contains("数据库文件");
+                .isEqualTo(I18n.t("wizard.error.file"));
     }
 
     @Test
