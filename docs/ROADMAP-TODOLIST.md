@@ -1,445 +1,221 @@
 # ROADMAP-TODOLIST — 开发 Todolist 与规划（执行视图）
 
-> **定位**：`NAVICAT-TODO.md`（唯一真源）的可勾选执行清单。
-> 编号 N1–N30、实测值、成本、门禁改判全部继承真源 §2/§1/§5；状态变更**两处同步**。
-> 本版生成：2026-10-28，依据**四项新拍板**（140px 顶区 / 自绘彩色图标 / i18n 默认英文 / 拿掉全部刻意差异）
-> 与两张新的 1920×1040 Navicat 全窗口实拍（查询编辑器、已保存清单）。
-> **上一版（2026-10-27，按 G1–G20 组织的 R32–R34 规划）整份作废**，历史轮次记录移入 `docs/ARCHIVE-R30-R33.md`。
+> **定位**：`NAVICAT-TODO.md`（唯一真源，2026-10-29 第三次重写）的可勾选执行清单。
+> 编号 N1–N34、实测值、成本、门禁改判全部继承真源 §2/§1/§5；状态变更**两处同步**。
+> 本版依据：2026-10-29 用户令「忘掉旧对比、9 张 Navicat 实拍（含 2 张 10-29 新帧）逐张重比、重写规划」。
+> 上一版（2026-10-28）的规划口径作废；R34 八个批次的执行日志保留在本文 §1.1（第八批已随 `46873b8` 落库）。
 
 ---
 
 ## 0. 当前基线
 
-- 门禁 **1179 条 / 134 类 / 0 失败 / 48 环境跳过**（2026-10-29 第七批之后 `./mvnw -o test` 实测 BUILD SUCCESS）。
+- 门禁 **1180 条 / 134 类 / 0 失败 / 48 环境跳过**（第八批后 `./mvnw -o test` 实测 —— 恰比第七批的
+  1179 多 1，即第八批新立的对象树菜单文字对账门禁）。
   **量法**：`grep -aoP 'Tests run: \K[0-9]+(?=, Failures: [0-9]+, Errors: \d+, Skipped: \d+, Time elapsed)'`
   对全量日志求和 → 150 组 / 1179 条；类数按 `**/target/surefire-reports/*.txt` 数 = 134
-  （150 与 134 之差是 `@Nested`：一行一组、一份报告）。两种口径都算过：按模块汇总行相加也是 1179。
-  ⚠️ 本文与真源此前分别记过 **1119 / 1116 / 1122 / 1173 / 1174 / 1175 / 1176** —— 都对不上，混用了「按模块汇总」
-  与「按报告文件累加」两种口径。以后照上面那条命令量，别凭记忆写。
+  （150 与 134 之差是 `@Nested`：一行一组、一份报告）。
   ⚠️ 全量必须 JDK 25+；`JAVA_HOME` 留在系统默认 21 会被 enforcer 直接 BUILD FAILURE
-  （本机 `C:\Users\Administrator\.jdks\openjdk-27.0.1.0.2`）。棘轮 **989**；模型层另立一条 **277**（见 D-9）。
-- 已落库：`34ffb8f`（R33 全部 + R34 顶区与动作层抽取）· `288592d`（N1-d）·
-  `05351ce`（N2 菜单组）· `87d2ddb`（N2 窗口标题）· `383c51c` + `85d7f33`（文档）·
-  `c6ae488`（N1-b 第三批 表清单页）· `2f85990`（第三批文档回填）·
-  `3077924`（N1-b 第四批 数据网格）+ `bd2640b`（第四批文档回填）。**push 仍未授权。**
-- ⚠️ **旧文档记的「1108 / 134」从未复现**：R34 开工前干净全量实测是 **1107 / 133**。
-  数字是记上去的不是量出来的 —— 以后基线一律附量法。README 里那句同样要改（并入 D-4）。
-- 验收帧 33 张（28 亮 / 5 暗）**第五批 + D-5 之后再次全量重拍为英文档**，逐张目视 + md5 去重 + 逐张比尺寸。
-  ⚠️ 帧里仍有中英混排：侧栏、连接向导、对象主页、新建表弹窗、单元格详情抽屉等未抽 —— 中间态不是验收态。
-  （第七批只重拍了结构页那两张：`p4-structure` / `p4-ddl` 整页英文、无裁字、1280×800、无重复帧。）
-  `scripts/shots.sh` 现在会打印每张帧的宽×高并与已入库版本比对 ——
-  本轮抓到两张：p2-find 又 **1920×1017**（窗口被最大化）、p3-query-menu **203×172 → 1280×800**（弹窗丢了）。
-  ⚠️ 尺寸守卫只说"变了"不说"哪个对"：p3-query-menu 这次是**新帧错了**、旧帧才是真菜单。
-  细节与「兜底如何从尽力变成已证明」记在真源 §8。
-- ⛔ **D-1 未结**：分页器降级拿的是盒子自己的宽度，而对象详情面板是浮层 ——
-  p2-details 实测盒子右边缘在场景 x=1082、面板从 x≈990 起，右边约 90px 被压住，
-  「每页」下拉框露半截。要外壳把可用宽度递进来 → 归 R38 N19/N20。
-- ✅ **D-5 已修**（第五批重拍帧目视发现）：命令带两个英文标签被 62px 定宽格子裁成省略号，
-  改内容驱动宽度 + 新立宽度门禁。缺陷源自**首批**，第四批的帧就裁着 —— 归因见 §1 N1-b 第五批那段。
-- ✅ **D-6 已修**：`p3-query-menu` 连续两轮拍到主窗口而不是右键菜单。
-  第一版归因（冷启动没等到行）**是错的** —— 摆位日志证明菜单开出来了（`windows=2`），
-  是快门按下时它已经自己收了。逐档试等待时长定位边界：1500/3000/5000/7000/8000ms 都拍得到、
-  9000ms 拍不到，而本帧固定等 8000ms —— 压在菜单寿命边界上，所以同一份代码一次成一次败。
-  收起的触发者没查到，修法不赌原因而是**续摆**（每 1500ms 检查，没有浮窗就重投一次真事件）。
-  验证：9000ms 那档由红转绿。详见真源 §8。
-- ✅ **D-8 已修**（第六批重拍帧目视发现）：查询页分页条整排挤成半截字
-  （"Previous Pa…" / "Per p…" / "Copy This Pa…" / "Exp…" / "Go to pa"）。
-  翻页键改回**纯图标**（与数据页、与 Navicat 同一形态），文字项钉 `USE_PREF_SIZE`，
-  跳页框宽度测量抽成 `FieldFits.prompt()` 两页共用；新立宽度门禁（推导 1280 下的预算）。
-  两个坑（`stage.setWidth` 不同步落到场景 / `getMinWidth()` 属性 ≠ `minWidth(-1)`）见真源 §5 末。
-- ✅ **兜底从「尽力」变成「已证明」**：`ADB_SHOTS_MAXIMIZE=1` 逼最大化路径走一遍，
-  当场发现旧兜底是坏的 —— 只取消最大化会拍回 **1264×761**（JavaFX 还原的是外框），
-  且 `setWidth()` 与 `snapshot()` 同一条 FX 任务里读不到新尺寸。改成三步后帧稳定 1280×800。
-- ✅ **D-7 已修**（第六批重钉断言时发现）：查询页那颗风险徽章渲染的是 `Danger.label()`，
-  中文枚举常量在 **`core/adb-model`** 里，而汉字棘轮只扫 `ui/` ——
-  默认英文的界面上钉着「只读」而**门禁全绿**；`DataGridTransactionTest` 还拿中文 label 拼 expected，
-  把缺陷编成了绿灯。新增 `DangerLabels.t(Danger)` 做键映射（7 个调用点全换）
-  + 第 12 条门禁钉住这条边界。归因与变异见 §1 N1-c ⑫。
-- ⚠️ **D-9 未结**（第七批量出来的，别当已修）：`StructureSqlBuilder` 用中文拼
-  `StructurePlan.title()` 的 17 个标题（"新增列 id" / "删除列 x" / "重建表以修改列 a"…），
-  经结构页状态条/吐司与 `StructurePlanRunner` 确认弹窗流到界面 —— 该文件独占 **104** 条
-  模型层字面量，是 `MODEL_CJK_CEILING = 277` 里最大的一块。它**不在任何验收帧上**，
-  只能靠第 13 条棘轮的数字看见。修法：`StructurePlan` 改成携带「键 + 参数」由界面渲染
-  （17 producer + 4 consumer + adb-introspect 层按 `title()` 拼的断言一起动），
-  同批清掉 `core/adb-model/Danger.java` 剩下的 4 条生产者。
-- ⭐ **一条判据（第七批定的）**：模型层中文流到界面上时，**能删掉生产者就别在调用点加映射**。
-  `TableStructure.kindLabel()` 换完调用点后一个消费者都不剩 → 直接删掉，不需要新闸；
-  `Danger.label()` 有 7 个调用点删不掉，才需要 `DangerLabels` 那种映射 + 一条正则闸。
-- **R34 进度**：N1-a ✅（`I18n.java` + 两份 `.properties`）· N1-c ✅（`I18nAuditTest` 现 **13 条**）·
-  N1-b **进行中**（CJK 字面量出现 2216 → 2154 → 2011 → 1917 → 1504 → 1306 → 1145 → **989**，去重 737 条待抽，
-  剩 50 个文件；资源包 **795** 键 en/zh 对称）· N2 ✅（菜单组 + 窗口标题）。
-- 已收官并提交：R30 / R31 / R32。总账：**R34–R41 = 54–74 人日**；**+R42 = 88–126 人日**。
+  （本机 `C:\Users\Administrator\.jdks\openjdk-27.0.1.0.2`）。
+  ⚠️ 此前文档记过 1116/1119/1122/1173/1174/1175/1176 —— 都是两种口径混用；以后照上面那条命令量。
+- 已落库提交：`34ffb8f`（R33 全部 + R34 首批）· `288592d`（N1-d）· `05351ce`（N2）· `87d2ddb`（窗口标题）·
+  `c6ae488`/`2f85990`（第三批）· `3077924`/`bd2640b`（第四批）· `534ebe9`/`91c4084`/`e7c6543`（第五批）·
+  `7e8b6f7`/`82ea100`（第六批）· `88a4576`/`ff2e7d4`（第七批）· `46873b8`（第八批 + 本文重写）。**push 仍未授权。**
+- 验收帧 33 张（28 亮 / 5 暗），第八批后全量重拍为英文档（19 帧变化、1280×800、md5 无重复帧）。
+  中英混排仍是中间态：`ConnectionWizard`(89) / `ObjectHomePage`(83) / `NewTableDialog`(75) /
+  `ImportWizard`(61) / `CellDetailsDrawer`(39) 等 49 个文件未抽。
+- 棘轮 **890**（主尺，只许降）；模型层 **277**（第 13 条棘轮，D-9）。资源包 **846 键** en/zh 对称。
+- 总账：**R34–R41 = 61–86 人日**；**+R42 = 97–142 人日**（本轮新增 N31–N34 后上调，见 §2）。
 
 ---
 
 ## 1. Todolist
 
-### R33 收口 · 落库 ✅（2026-10-28，提交 `34ffb8f`）
+### R34 · i18n 层 + 默认英文（N1 N2，估 8–12 人日）—— 进行中
 
-- [x] 全量门禁复跑核对 —— ⚠️ **实测 1107 / 133，不是文档记的 1108 / 134**；
-      133 个 `*Test.java` 全部出了 surefire 报告，没有静默跳过的类。数字是记上去的不是量出来的。
-- [x] 补交未跟踪文件：6 张新帧 + `TransferRoundTripTest` / `TransferDepthTest` /
-      `ComboCellRenderingTest` / `TransferProfiles` / `ImportMode` / `TransferFiles`
-- [x] 确认删除已入库：`ConnectionPropertiesDialog.java` 及其测试
-- [x] 提交 —— **与 R34 首批合成一笔**（`34ffb8f`）：`AppShell.java` 同时承载两轮改动，
-      按 hunk 拆分会产出一个编译不过的中间提交，bisect 价值反而更低。commit message 里写明了原因。
-- [ ] push —— 仍未授权（规划要求单独授权）
+> 前置轮，卡住后面每一条带标签的条目。设计定式与批次教训全文见真源 §5 与 git 历史。
 
-### R34 · i18n 层 + 默认英文（N1 N2，估 8–12 人日）
-
-> 前置轮。它卡住后面每一条带标签的条目 —— 先改文案再改布局，否则每轮都要重做一遍字符串。
-
-- [x] **N1-a** 新建 `I18n.java` + `messages_en.properties`（默认）/ `messages_zh.properties`，键按区命名空间
-      落地时改了三处设计：① 不走 `ResourceBundle` 的 locale 级联（否则中文机器上的基包会推翻"默认英文"），
-      直接按名读两份文件；② 占位符用字面 `{0}` 替换而**不是 MessageFormat** ——
-      实测 `MessageFormat.format("Don't delete {0} rows", 5)` 会得到 `"Dont delete {0} rows"`，
-      撇号开启的 literal 区一路吞到行尾、**连占位符都不再替换**，这条已写成对照断言；
-      ③ `Properties.load(InputStream)` 永远按 ISO-8859-1 解，中文静默乱码，一律走 Reader + UTF-8
-- [ ] **N1-b** 抽取 1404 条 CJK 字面量 → 反向对齐中文资源（不机器翻译，按现有中文原文抽）
-      ✅ **首批已完成**：顶区四件套 62 处出现（`MenuBarFactory` 九组标题 / `AppBar` Ribbon 六格 +
-      连接胶囊 + 搜索 + 主题 + ⋯ / `StatusBar` 全部语义段与相对时间 / `TabBar` 右键菜单），
-      2216 → **2154** 次出现，去重 1404 → **1386** 条，资源包 51 键。
-      ✅ **第二批已完成（动作层，最高杠杆点）**：`AppShell` + `SideBar` 里 **71 个动作**的
-      标签与分类全部换成 `I18n.t("action.<id>")` / `I18n.t("category.<slug>")`（键名由动作 id 直接推导，
-      不需要人工对照表），外加 `ActionRegistry` 的「X 当前不可用」后缀。
-      2154 → **2011** 次出现，资源包 51 → **134 键**（en/zh 各 134，对称）。
-      一次 codemod 完成 68 处三元组 + 3 处 `Shortcuts.labelled` 特例；改前对两个文件做了 md5 校验的备份
-      （⚠️ 它们同时含未提交的 R33 改动，`git checkout` 会连 R33 一起毁掉）。
-      ⚠️ 界面现在仍是**中英混排**，这是中间态不是验收态。
-      待抽重点文件（按**字面量条数**重排，此前按"含 CJK 行数"排是错的 —— 那个数把注释也算进去了）：
-      ✅ **第三批已完成 `TableListPage`（70 → 0，提交 `c6ae488`）**：column.* 八个列名 +
-      tableList.* 二十四个提示，en/zh 各 175 键对称。顺带发现并补上**动作门禁的盲区** ——
-      `TableListPage.localActions()` 走 `new Action(...)` 而非 `actions.register(...)`，
-      「每个动作两侧都有名字」那条门禁完全看不见这 11 个动作（声称穷举、实际只穷举了注册表那一路）。
-      ⚠️ 下一站 `SideBar` 实测比 TableListPage 难：96 条里约 40% 是**拼接前缀**
-      （`已刷新 ` / `打开表：` / `只有表能`），要参数化 + 重钉断言，不是一次 codemod 能收的。
-      ✅ **第四批已完成 `DataGridPage`（413 → 0，R34 最大的一块）**：333 处 `I18n.t(...)`、
-      `grid.*` 298 键（en/zh 各 **474** 键对称 —— ⚠️ 当时文档与提交信息写的 472/296 是错的，
-      第五批用 `git show HEAD:` 回量才发现：那批收尾又补了两个键，数没回量。见真源 §8）。1917 → **1504** 次出现（去重 1062 条，剩 53 个文件）。
-      这一页是**第一个把「英文比中文宽」变成真缺陷的地方**，三处因此改判（依据与实测数见真源 §5 末）：
-      ① **工具条按 Navicat 的分工重切**（2026-10-28 用户拍板）：具名操作留文字
-      （`Begin Transaction` / `Filter & Sort` / `Columns` / `History`），瞬时编辑键只给图标 +
-      tooltip + accessibleText —— 中文档九颗文字全开 1026px 贴着 1036px 可用宽，
-      换英文同样九颗要 **1153px**；切完需求降到 **899px**。
-      代价写清楚：「保存 3」这个待保存计数从按钮上消失，改由状态栏 `status.pending` 承担。
-      ② **分页器文字一律钉 `USE_PREF_SIZE`**（压不了，只能整项收起），判据**仍用 `prefWidth`** ——
-      中途换成 `minWidth` 被实测推翻（`min <= 实际宽` 恒真 → 阶梯一项都不撤，
-      且 891px 的 min 往上传把整页顶出窗口，三条溢出门禁红）。
-      1280 + 侧栏实测：分页器实得 1016px、满配 pref=1073 / min=1027 → 第一档收「Go to row」。
-      ③ **跳转框宽度跟着提示文字量**（64 → 75/69，min 一起抬）：英文 "Go to page" 要 70px，
-      写死的 64px 在实拍里切成「Go to pa」。
-      ⭐ 顺手抓到三个真缺陷：`IconButtons` 没关助记符解析，资源里的 `"Filter & Sort"` 画成
-      「Filter  Sort」（`&S` 带下划线）而 `getText()` 仍返回原串 —— **按字符串比对的门禁全看不见**，
-      已修 + 新立 `ampersandsFromTheLanguagePackAreNotEatenAsMnemonics`；
-      汉字棘轮只认 U+4E00–U+9FFF，`"（NULL）"`、`"、"` 这类**纯全角标点**从底下钻了过去
-      （全库 366 条含全角），新立 `filesThatClaimToBeCleanAreAlsoFreeOfFullwidthPunctuation`
-      —— **不做成第二条棘轮**是因为并进 `CJK_CEILING` 会让 1504 涨到 1536，「只许降」当场破功，
-      而涨的原因只是尺子变细了；当前 **25 个文件**做到零汉字且零全角；
-      阶梯门禁把「喂宽度」与「读可见性」分两次跨线程调用，中间能插入宽度监听器的 `runLater`，
-      实测到过 `pref=960`（像全展开）而 `isVisible()=false`（像已收起）的自相矛盾帧、
-      单跑永远复现不了 —— 改成**同一条 FX 任务里喂完立刻读**。
-      三次变异验证：撤标签钉 → 真实布局那条门禁红（「Record 实得 17px < 需要 41px」@760 档）；
-      判据退回 `minWidth` → 阶梯 + 三条溢出共 **4 红**；往清零文件塞回 `"（NULL）"` → 全角那条红。
-      ⚠️ **D-1 没修完**：阶梯拿的是盒子自己的宽度，而对象详情面板是浮层 ——
-      p2-details 实测盒子右边缘 x=1082、面板从 x≈990 起，右边约 90px 被压住，「每页」框露半截。
-      归 R38 N19/N20（要外壳把**可用宽度**递进来，与 `availableToolbarWidth()` 同一类问题）。
-      ✅ **第五批已完成 `AppShell`（198 → 0）**：1504 → **1306** 次出现（去重 930 条，剩 **52** 个文件），
-      资源包 474 → **598** 键（en/zh 各 598，对称）。这一批不是搬运，坑在**合并键**与**数据不是文案**：
-      ① 英文文案逐条回查本地 Navicat 实拍（用户定的规矩），查到的写进资源包头注并标是哪个帧；
-      查不到的标 `inferred`。**实拍推翻了两个我原本打算用的词**（"Row Count" / "Creation Time" 都不是 Navicat 的说法）。
-      ② **复用既有键的前提是两侧都对得上** —— `column.rows` 的中文是「行」、`column.created` 是「创建时间」，
-      直接拿去顶「行数」会静默改掉中文档。这类只能新铸键，不能图省事合。
-      ③ 快捷键总表 37 行里有 **21 行**与动作层同名 → 复用 `action.*`，剩下 16 行新铸 `shortcut.*`；
-      两处 tooltip 与窗口标题各用各的键。
-      ④ **演示导入的 CSV 是数据不是文案**：里面是「张三 / 李四 / 王五」，抽进语言包毫无意义。
-      改成 `demo-import-utf8.csv` 资源 + 落盘时按 GBK 转码。**没有**为它开注释豁免口子 ——
-      一旦开了「数据里的中文」这个豁免，棘轮就再也挡不住有人拿它当万能挡箭牌。
-      ⚠️ 教训仍重复：中途数错一次（472/296 → 实测 474/298），改完一律回量。
-      三条改判与实测依据在真源 §5 末，「第五批三条纪律」在同节。
-      ⭐ **重拍帧目视时另抓到 D-5（已修）**：命令带 `Import / Export`、`Saved Queries` 两颗标签
-      被裁成 "Import / …" / "Saved Qu…" —— `app.css` 的 `.adb-ribbon__button` 写死 62px 定宽，
-      那是按中文量的，英文要 74 / 69px（实得 56px）。改内容驱动宽度 + 62 下限，
-      新立 `AppBarTest.ribbonLabelsAreNeverEllipsised`（改 CSS 前先红、改完 13 条全绿）。
-      ⚠️ 缺陷是**首批**埋的、第四批的帧就裁着而没人发现 —— 因为**没有一条门禁量过标签宽度**。
-      「重拍 33 帧」≠「逐张看 33 帧」，这条与 D-1 一起进 §0 的目视清单。
-      ✅ **第六批已完成 `QueryPage`（161 → 0）**：1306 → **1145** 次出现（去重 810 条，剩 **51** 个文件），
-      资源包 598 → **701** 键（en/zh 各 701 对称；新增 `query.*` 100 键 + `danger.*` 3 键）。
-      英文照规矩回查本地帧：`navicat17-query-editor-2026-10-28.png` 给
-      **Save / Run / Stop / Explain / Beautify SQL / Code Snippet / Message / Result 1 / Read Only /
-      Record 1 of 20473 / Elapsed Time** —— 一次给齐了整页的措辞，帧里没有的标 inferred。
-      22 处两侧完全一致的直接复用（`grid.pager.*` / `grid.find.*` / `status.rows` / `common.cancel` /
-      `action.query.*`），没有为省事合过任何一个只对上半边侧的键。
-      ⭐ **本批真正的产出是 D-7**（见 §0）：抽完去重钉断言才发现风险徽章是中文 `Danger.label()`，
-      那个枚举在 `core/adb-model` 里，**棘轮只扫 `ui/` 所以完全看不见它** ——
-      英文界面钉着「只读」而门禁全绿，`DataGridTransactionTest` 甚至拿中文 label 拼 expected，
-      把缺陷编成了绿灯。修法：`DangerLabels.t(Danger)` 做键映射 + 第 12 条门禁钉住这条边界。
-      ⚠️ 工具坑两条：本仓库工作副本是 **CRLF**，codemod 多行模式写 `\n` 会整批 MISS；
-      且 **dry 模式看不出"被前一条模式吃掉"的重复**，dry/apply 各跑一次才算数。
-      剩余按字面量数排：`StructurePage`(156) / `SideBar`(96) / `ConnectionWizard`(89) /
-      `ObjectHomePage`(83) / `NewTableDialog`(75) / `ImportWizard`(61) / `CellDetailsDrawer`(39) ——
-      棘轮现 **1145**
-      ✅ **第七批已完成 `StructurePage`（156 → 0）**：1145 → **989** 次出现（去重 737 条，剩 **50** 个文件），
-      资源包 701 → **795** 键（en/zh 各 795 对称；新增 `structure.*` 93 键 + `common.ok`）。
-      英文回查 `navicat17-designer-fields-2026-10-27.png`：页签 **Fields / Indexes / Foreign Keys /
-      Triggers / Options**，工具条 **Add Field / Insert Field / Delete Field / Primary Key**，
-      表头 **Name / Type / Not null / Key / Comment**，页脚 **Number of Fields: 15**。
-      ⭐ 术语按 **Navicat 自己的分工**落，不按我们的中文对齐：设计器页签是 Fields、
-      数据网格那条工具栏 Navicat 写的是 Columns —— 所以「列」在两个位置落成两个英文词是照抄，不是漂移。
-      ⚠️ 「可空」**没照抄** `Not null`：Navicat 那列勾上=非空、我们这列勾上=可空，照抄会把语义反掉，
-      因此叫 `Nullable` 并标 inferred。
-      ⭐ **本批真正的产出是把「扫描范围」变成数字**（详见 §0 的 D-9 与判据条）：
-      按 D-7 的老路回查这一页还渲染了谁的文案，撞到 `structure.kindLabel()`（就在 p4-structure 帧上，
-      那行孤零零的「表」）与 `plan.title()`（`StructureSqlBuilder` 拼的 17 个中文标题）。
-      前者换完调用点后**零消费者 → 直接从模型层删掉**（能删生产者就别加映射闸）；
-      后者是独立一批的量级、且不在任何验收帧上 → 记 D-9，并新增**第 13 条棘轮**
-      `modelLayerChineseIsRatchetedDown`（`MODEL_CJK_CEILING = 277`，实测，`--model` 复现同一数）
-      把这类债变成有数字的队列，而不是每次靠实拍帧撞见。
-      ⭐ 另立 `StructurePageTest.structureToolbarsFitTheAcceptanceWidth` —— 这条**不是**因为拍到了裁字
-      （两帧都没有），是因为 D-5、D-8 连续两批在「一排文字按钮」这个形状上翻车，而后面还有 50 个文件要抽。
-      写它的时候自证救了自己一次：第一版把"扫到的排数"误写成"违规列表非空"，**当场红**并打出
-      「一排内联工具条都没有」；接着又发现 **TabPane 只把选中页签挂进场景图**，`lookupAll` 因此
-      只看得见「列」那一排 —— 改成逐页签 select 再量，并钉「四排都量到」。
-      变异验证：预算改 300 → 红并点名「Add Field」那一排（需 528px）与「New Foreign Key」那一排（293px）；
-      还原 → 12 条全绿。实测主工具条在 1280 下余量很大（528 / 约 1264）。
-      验收面：`p4-structure` / `p4-ddl` 重拍并逐张看过 —— 整页英文、无裁字、1280×800、无重复帧。
-      剩余按字面量数排：`SideBar`(96) / `ConnectionWizard`(89) / `ObjectHomePage`(83) /
-      `NewTableDialog`(75) / `ImportWizard`(61) / `CellDetailsDrawer`(39) —— 棘轮现 **989**
-- [x] **N1-c** 新增门禁 `I18nAuditTest`（**13 条**，第四批 +1、第五批 +1、第六批 +1、第七批 +1）：① 两套键集**完全相等**；② 源码里每个 `I18n.t("key")`
-      都必须在两侧存在（编译前就抓错键，不等帧里长出 `⚠key`）；③ **每个注册的动作必须在两种语言里都有名字**
-      —— 穷举 `actions.register("id", …)` 对账 `action.id`，比抽查强：新加动作忘了配名字立刻红；
-      ④ 占位符行为 + MessageFormat 对照；⑤ 默认英文与切换往返；⑥ 缺键返回可见标记且记账；
-      ⑦ 棘轮而非清零 —— `CJK_CEILING` 只许降不许升（现 **989**）；
-      ⑩ **汉字清零的文件，全角标点也必须清零**（第四批补，理由见上面 N1-b 第四批那段）；
-      ⑪ **调用点实参个数必须等于两侧的占位符数**（第五批补：一次引入 ~40 个带参键，
-      少传一个参数不会编译失败，只会在界面上留下裸 `{0}`）——
-      解析走**引号/括号感知的顶层逗号切分**，否则会数到字符串里的逗号。
-      双向变异验证：删掉一个实参 → 报「少传」；多传一个 → 报「多传」；还原即绿。
-      ⑫ **模型层的中文标签不许直接进界面**（第六批补）：ui 主源码里不许出现 `danger.label()` /
-      `Danger.X.label()` —— 那个枚举在 `core/adb-model`，而棘轮只扫 `ui/`，
-      于是默认英文的界面上钉着「只读」而**一条门禁都不红**。这条补的是**扫描范围的边界**，
-      不是又一把尺。变异验证：把 `QueryPage:612` 改回 `danger.label()` → 恰这一条红并点名文件；还原即绿。
-      三次变异验证：塞一个只在一侧存在且值命中禁用词的死键 → 键集对账与 `TerminologyGuardTest` 各红一次；
-      删掉 `action.about` 的两侧名字 → 动作名字门禁红（还原即绿）；
-      往已清零的文件里塞回 `"（NULL）"` → 全角那条红，报「残留 1 条全角标点字面量」。
-      ⑬ **模型层自己也有一条只许降的棘轮**（第七批补）：`MODEL_CJK_CEILING = 277`，
-      扫 `core/` + `workbench/` 的 main 源码，口径与主尺同构（同一套 `stripComments` + 同一条正则），
-      `node tools/cjk-count.mjs --model` 复现同一个 277、Java 侧的按文件明细逐条一致。
-      ⚠️ 它**不证明**"哪些会流到界面"，它证明的是**没人再新写** —— ⑫ 那种正则只能钉住已知的
-      一两个访问器，而 `StructureSqlBuilder` 一个文件就有 104 条（D-9）。
-      两条自证：一个文件都没扫到 → 红；一个含中文字面量的文件都没有 → 红（防"清零假象"）。
-      变异验证：上限调到 276 → 恰这一条红并打出 277 与 37 个文件；还原即绿。
-- [x] **顺手修缺陷**：`StatusBar` 用 `!"未连接".equals(显示文案)` 反推连接状态，`AppShell` 两处靠传该字面量
-      表达"断开" —— 默认换英文后**没连上灯会亮绿**。改成记布尔 + 调用方传 `null`
-- [x] **顺手修门禁失明**：`TerminologyGuardTest` 只扫 `src/main/java`，文案一搬进 `.properties`
-      就静默失效。扫范围已扩到主源码 **+ 主资源**（properties 按 `key=value` 逐行取值）
-- [x] **N2**（提交 `05351ce`）顶级组改为 Navicat 的 `File / Edit / View / Query / Format /
-      Favorites / Tools / Window / Help`，撤掉自有的「数据库 / 对象」两组。
-      **另加一个 `Table` 上下文菜单** —— Navicat 的 Table 只在活动页签是表时出现
-      （查询页实拍里就没有），由 `AppShell.showTab` 按 `TabKind.GRID/STRUCTURE` 开合。
-      ⚠️ `Menu` 不是 Node，只有 `setVisible` 没有 `setManaged`（第一版写错被编译器抓到）。
-      表级动作从「对象」组整体迁入 Table、一个不丢（X5 可发现性教训仍守着）；
-      Table 藏起来的时刻恰是没有表在上的时刻，那时这些动作本来也是灰的 —— 藏掉比摆一排灰项诚实。
-      「注释 / 取消注释」从编辑挪进格式组。
-      新增 3 条门禁：组集合按顺序 containsExactly + 逐组钉成员归属（改判的实质是**归属**不是组名）
-      + **Table 打开一张表后必须真的出现**（只测"默认隐藏"不够，一个坏掉永不显示的菜单也能通过）。
-- [x] **N1-d**（提交 `288592d`）`App.start` 在任何节点构造之前读 `settings("ui.locale")` 并
-      `I18n.configure(...)` —— 此前没有任何地方调用 configure，所以偏好是死的、`-Dadb.locale` 也不生效，
-      「中英双语」只做了一半。优先级链：`-Dadb.locale` > 偏好 > 默认英文。
-      ⚠️ **运行时切换刻意没做**：主题与密度都只是 CSS 类切换（`AppShell.changeDensity` 换 style class），
-      没有可借用的场景重建路径；标签是构造时一次性取值的，所以换语言必须重建整棵场景 —— 那是独立一轮。
-      两条新门禁（I18nAuditTest 7 → 9）：偏好链优先级（行为）+ configure 早于 `new AppShell(`（静态查两行先后，
-      这条约束没有可执行的行为面：顺序错了不报错、只是语言不对）。变异验证：删掉 configure → 恰这一条红。
-- [x] **窗口标题**（提交 `87d2ddb`）改 Navicat 式 `<连接> [@库] (<对象>) - <页型> - <产品>`
-      （实拍 `tz - mkopo @loanmarket (fetch) - Query - Navicat Premium`）。旧版写死 "AIDB"，
-      多开几个窗口后任务栏分不清哪个连的是生产库。
-      ⚠️ 第一版被自己新加的门禁抓到：SQLite 的 `database()` 是整个 .db 文件路径，
-      无条件拼 `@库` 会把临时目录摊到标题栏上 → 改为只在库名带来新信息时才加。
-      页型走独立资源键，不复用 `TabKind` 自带的中文标签（那是标签栏文案，两者会各自漂移）。
-- [ ] **P4 冷启动复测**：ResourceBundle 不得把首屏拖过 3.9s（未测）
-- [ ] R34 验收：全量门禁 + 33 帧重拍（**全英文**）逐张目视 + md5 去重 + 回填真源三处
+- [x] **N1-a** `I18n.java` + `messages_en.properties`（默认）/ `messages_zh.properties`
+      （不走 locale 级联；占位符字面替换不用 MessageFormat；properties 一律 UTF-8 Reader）
+- [x] **N1-b 第一批** 顶区四件套（MenuBarFactory/AppBar/StatusBar/TabBar）：2216 → **2154**，资源包 51 键
+- [x] **N1-b 第二批** 动作层 71 个动作（最高杠杆点）：→ **2011**，134 键
+- [x] **N1-b 第三批** `TableListPage`（70→0）：→ **1917**；顺带补动作门禁盲区（`localActions()` 走 `new Action` 绕过注册表对账）
+- [x] **N1-b 第四批** `DataGridPage`（413→0，R34 最大一块）：→ **1504**，474 键。三处改判
+      （工具条按 Navicat 分工切、分页器钉 `USE_PREF_SIZE` 判据用 `prefWidth`、跳转框宽随提示文字），
+      三个真缺陷顺手修（`&S` 助记符吞噬、全角标点漏检、喂宽/读可见性跨线程竞态）
+- [x] **N1-b 第五批** `AppShell`（198→0）：→ **1306**，598 键。英文逐条回查本地帧
+      （证伪 "Row Count"/"Creation Time"）；演示 CSV 是数据不是文案（资源文件落盘转 GBK）；
+      新立第 11 条门禁（实参个数 = 两侧占位符数）；⭐ 目视抓到 **D-5**（命令带 62px 定宽裁英文标签）已修
+- [x] **N1-b 第六批** `QueryPage`（161→0）：→ **1145**，701 键。⭐ 抓到 **D-7**（模型层 `Danger.label()`
+      中文越过棘轮扫描范围上屏，`DataGridTransactionTest` 还把它编成契约）已修 + 第 12 条门禁；
+      ⭐ 目视抓到 **D-8**（查询页分页条挤成半截字）已修；工具坑：CRLF 让 codemod 多行模式整批 MISS，dry/apply 各跑一次
+- [x] **N1-b 第七批** `StructurePage`（156→0）：→ **989**，795 键。⭐ 量出模型层 277 条 → 第 13 条棘轮
+      （`MODEL_CJK_CEILING`）；`kindLabel()` 零消费者直接删（能删生产者就别加映射）；
+      **D-9 记账未修**（`StructurePlan.title()` 17 个中文标题，104 条）；新立结构页宽度门禁
+      （自证救场一次 + TabPane 只挂选中页签的坑）
+- [x] **N1-b 第八批** `SideBar`（96→0）：→ **890**，846 键。⭐ 两个结构性缺陷：
+      ① 21 处菜单标签二次覆盖中文 override 全删 + `ActionRegistryConvergenceTest` 走真菜单树对账；
+      ② 「标题当路由键」改 `TabItem.target()`（`TOOL_HISTORY`/`TOOL_DIAGNOSTICS` 常量），
+      删 `AppShell.openTool(String title)` 残骸。33 帧重拍目视（19 变化），本批无新裁字
+- [x] **N1-c** `I18nAuditTest` **13 条**（键集相等 / 调用点对账 / 动作命名穷举 / 占位符 / 棘轮×2 /
+      全角标点 / 实参个数 / 模型层标签边界 / 偏好链 / configure 先于 AppShell）
+- [x] **N2** 菜单组 `File/Edit/View/Query/Format/Favorites/Tools/Window/Help` + Table 上下文菜单按页型开合
+- [x] **N1-d** 语言偏好启动生效（`-Dadb.locale` > 偏好 > 默认英文；运行时切换刻意未做 —— 需重建场景，独立一轮）
+- [x] 窗口标题 Navicat 式 `<连接> @<库> (<对象>) - <页型> - <产品>`
+- [x] **落库**：第八批 `46873b8`（代码+资源+测试+19 帧重拍）+ 文档重写（本提交）。
+- [ ] **P4** 冷启动复测：ResourceBundle 不得把首屏拖过 3.9s
+- [ ] R34 收官验收：全量门禁回量 + 33 帧全英文逐张目视 + md5 去重 + 回填真源三处
 
 ### R35 · 彩色图标渲染层 + 资产（N3 N4，估 10–14 人日）
 
-> 结构性改造。当前 `LucideConverter.java:57` 把整个 SVG 压成**一条** path，
-> `Icons.java:326-327` 只给一个 fill **或** stroke —— 多色不是缺资产，是缺渲染层。
+> 结构性改造：`LucideConverter.java:57` 压单 path、`Icons.java:326-327` 单 paint —— 多色不是缺资产是缺渲染层。
 
-- [ ] **N3-a** `Icons.of()` 返回类型 `SVGPath` → `Node`；新增 `ColoredIcon`（`Group<SVGPath>`，逐 path 保留自身 paint）
-- [ ] **N3-b** 新增资源命名空间 `icons/color/`；`IconButtons` / `AppBar` / `SideBar` / `TabBar` 调用点适配
-- [ ] **N4-a** Ribbon 12 枚 30px 多色渐变（实测色板：`#FC6C45→#DA512D`、`#2190DC→#0476CF`、
-      `#97CDF9→#3BA3F8`、`#9F571D`、`#869099`、`#F78129→#CB691F`、`#E74FD6`、绿徽章 `#45C300`/`#8FD768`）
-- [ ] **N4-b** 树 16 枚四色（表图标实测 `#077ED5` 描边 + `#CDE8FF`/`#B8DFFF`/`#96D0FF` 三档）
-- [ ] **N4-c** 工具条 16 枚 16px 彩色 + 连接磁贴 48 枚彩色
-- [ ] **P3 暗色档**：同一批图标出暗色变体（Navicat 暗色是位图加亮边），否则暗色帧黑底黑标
-- [ ] **门禁改判**：`LucideIconTest:129`（自绘集恰 `{BRAND,DOT}`）、`:213-233`（源 SVG 必须 `stroke-width=2`）、
-      `IconSystemAuditTest:136`（`SIZE_RIBBON` 26 → **30**）→ 重写为彩色资源规则（多 path / 逐 path paint / 色值落在实测色板内）
-- [ ] R35 验收：全量门禁 + 帧目视（图标是本轮唯一变量，先不动布局）
+- [ ] **N3-a** `Icons.of()` 返回 `Node`；新增 `ColoredIcon`（`Group<SVGPath>` 逐 path 保留 paint）
+- [ ] **N3-b** 资源命名空间 `icons/color/`；`IconButtons`/`AppBar`/`SideBar`/`TabBar` 适配
+- [ ] **N4-a** Ribbon 12 枚 30px 多色渐变（实测色板见真源 §1.2）
+- [ ] **N4-b** 树 16 枚四色（`#077ED5` 描边 + `#CDE8FF`/`#B8DFFF`/`#96D0FF`）
+- [ ] **N4-c** 工具条 16 枚 + 连接磁贴 48 枚
+- [ ] **P3** 暗色档同批出（否则暗色帧黑底黑标）
+- [ ] 门禁改判：`LucideIconTest` 三条 + `IconSystemAuditTest`（SIZE_RIBBON 26→30）
+- [ ] R35 验收：全量门禁 + 帧目视（图标是唯一变量，不动布局）
 
 ### R36 · 顶区与外壳（N5–N10，估 5–7 人日）
 
-> ⚠️ 本轮**撤销 R32-D**（`e595c1f`）：114px 顶区、64px 命令带、工具件并入页签行，三处全部回退。
+> ⚠️ 撤销 R32-D（`e595c1f`）。
 
-- [ ] **N5** 顶区 114 → **140px** = 菜单 23 + Ribbon 91 + 1px `#DBDBDB` + 页签 25 + 1px `#DBDBDB`
-- [ ] **N5-b** ⚠️ **先还令牌债**：`tokens/tokens.json:277-280` 的 `h-appbar` 仍是 **90px**，生成物 `Tokens.java:232-233`
-      却是手改的 **64**（该文件头写着「⛔ 不要手改」）—— R32-D 当时只改生成物没改源。
-      正解是**改 `tokens.json` → 重跑 `tools/GenTokens.java` → 再改 CSS**，顺序错了下一轮又攒一条同型债
-- [ ] **N6** Ribbon：64 → **90px**、磁贴 **70×90**、**6 格 → 12 格**、图标 30px 在上 + 标签在下、
-      激活格 `#C0DCF3` 填充 + `#90C8F6` 描边、组间 1px `#DBDBDB` + ≈14px 空隙
-      12 格顺序：Connection · New Query · Table · View · Function · User · Others · Query · Backup · Automation · Model · BI
-- [ ] **N6-b** 新增门禁 `RibbonCapabilityAuditTest`：12 格每格必须落到**真实存在**的目标（页面或如实说明页），不许空 `onAction`
-- [ ] **N7** 页签行**只放页签**（+ 侧栏折叠箭头）；连接 pill / 全局搜索 / 主题 / ⋯ 挪走（全局搜索回导航树底部）
-- [ ] **N8** 页面工具带底色 白 → **`#F0F0F0`**（对象清单 30px / 查询页 62px 双行）
-- [ ] **N9** 顶区两条 1px `#DBDBDB`；状态栏段间 1px `#D7D7D7`
-- [ ] **N10** 强调色 `#0067B8` → **`#0078D7`**；`ContrastTest:39`（`MIN_NORMAL = 4.5`）降到 4.4 并注释「主动放弃 AA」
-- [ ] **门禁改判**：`TokenParityTest:63`、`AppBarTest:137-149,224-231`、`AppShellTest:161-182`、`ChromeMetricsTest:143-148`
-- [ ] R36 验收：全量门禁 + 帧目视（顶区是全局变量，33 帧全重拍）
+- [ ] **N5-b 先还令牌债**：改 `tokens/tokens.json` → 重跑 `tools/GenTokens.java` → 再改 CSS（顺序不能反）
+- [ ] **N5** 顶区 114 → **140px**（菜单 23 + Ribbon 91 + 1 + 页签 25 + 1）
+- [ ] **N6** Ribbon 90px / 磁贴 70×90 / **12 格** / 图标 30px 上 + 标签下 / 激活 `#C0DCF3`+`#90C8F6` / 组间 `#DBDBDB`
+      顺序：Connection · New Query · Table · View · Function · User · Others · Query · Backup · Automation · Model · BI
+- [ ] **N6-b** 新增 `RibbonCapabilityAuditTest`（每格必须落到真实目标）
+- [ ] **N7** 页签行只放页签；页签标题 `<对象> @<库> (<连接>)`（真源 §1.10）
+- [ ] **N8** 工具带底色 `#F0F0F0`；**N9** 顶区两条 1px `#DBDBDB` + 状态栏段间 `#D7D7D7`；**N10** `#0078D7`
+- [ ] 门禁改判：`TokenParityTest` / `AppBarTest` / `AppShellTest` / `ChromeMetricsTest`
+- [ ] R36 验收：全量门禁 + 33 帧全重拍（顶区是全局变量）
 
-### R37 · 导航树 + 对象清单（N11–N15，估 5–7 人日）
+### R37 · 导航树 + 对象清单 + 结构收敛（N11–N15 N32 N33，估 8–11 人日）
 
-- [ ] **N11** 树行距 21 → **20px**（`Tokens.java:421` `ROW_TREE_LIGHT`）；对象清单**保持 21px**
-      —— 真源 §1.3 改判：旧文档把两者混为一谈，实测是两个不同高度（树 20 / 清单 21）
-- [ ] **N12** 树分组集合改为 Navicat 的**五组** `Tables`/`Views`/`Functions`/`Queries`/`Backups`：
-      **补 `Queries` + `Backups` 两组，摘掉 `过程`/`触发器`/`事件` 三个顶层组**（`SideBar.java:1087-1095`）；
-      连接落在单个库上时**表平铺**（去掉「表」分组）；**去掉分组标题上的计数徽标**（Navicat 树里没有计数）
-- [ ] **N13** `查询历史` / `诊断` / `导入·导出` 三个 navButton（`SideBar.java:671-681`）移出树 → 菜单/工具
-- [ ] **N14** 对象清单列 8 → **6 列**（`Name`/`Rows`/`Data Length`/`Engine`/`Modified Date`/`Comment`）
-      ⋆ 顺带收掉**未结缺陷 D-3**（1280 宽只剩 2 列）—— 列集本身变了，单独修窄宽降级是白做
-- [ ] **N15** 对象工具条 → 7 个带文字按钮 + 彩色图标：
-      `Open Table` / `Design Table` / `New Table` / `New Table with AI` / `Delete Table` / `Import Wizard` / `Export Wizard`
-      （`New Table with AI` 按拍板做真按钮 + 如实说明页；导入导出不再合并）
-- [ ] R37 验收：全量门禁 + `p0-shell` / `p6-tables` / `p5-connections` 目视
+- [ ] **N11** 树行距 21 → **20px**（对象清单保持 21）
+- [ ] **N12** 树分组改五组 `Tables/Views/Functions/Queries/Backups`，摘掉 `过程/触发器/事件`，去计数徽标
+- [ ] **N32** ⭐ **库级树**：连接 → 库 → 分组三级；页签标题/状态栏带库名；SQLite 单库平铺待手册核对（P7）
+- [ ] **N33** ⭐ **对象页二合一**：删 Objects 主页（药丸总览，Navicat 无此概念），Table List 扩展为唯一对象清单页
+      ⚠️ 待拍板 P6；落地时同步删除/改判 Objects 主页的旧门禁
+- [ ] **N13** 三个 navButton（查询历史/诊断/导入导出）移出树
+- [ ] **N14** 对象清单 8 → **6 列**（`Name/Rows/Data Length/Engine/Modified Date/Comment`）⋆ 顺带收 D-3
+- [ ] **N15** 对象工具条 7 键（`Open Table/Design Table/New Table/New Table with AI/Delete Table/Import Wizard/Export Wizard`）
+- [ ] R37 验收：全量门禁 + `p0-shell` / `p6-tables` / `p5-connections` 并排帧目视
 
-### R38 · 数据网格（N16–N20，估 9–12 人日）
+### R38 · 数据网格（N16–N20 N31，估 13–18 人日）
 
-> ⚠️ 本轮撤销 **R32-G19b**（`fde2d82`）的「整排退成图标」。
+> ⚠️ 撤销 R32-G19b 的「整排退成图标」。
 
-- [ ] **N16-a** 行首：复选框 + 行号 → **行号 + 铅笔编辑标记**
-- [ ] **N16-b** 批量入口重建：勾选模型 → **行多选**（Shift/Ctrl）+ 右键 + 工具条
-      连带重写：批量改值 / 批量删除 / 批量设 NULL（`DataGridPage` 批量逻辑核心）
-      ⋆ 这是 N16 成本 3–4 人日的主体，不是换个表头画
-- [ ] **N17** 当前格标记：2px 主色左槽 + 蓝描边 → **橙黄 `#FFB666` / `#FFFFB6`**（实测）
-- [ ] **N18** 工具条溢出：退图标 → 右端 **`>>` 折叠菜单**；改判 `ToolbarDiscoverabilityTest`
-      （溢出项必须可键盘到达，不许藏掉就没了）
-- [ ] **N19** 工具条项集 → `Table Profile▾` / `Begin Transaction` / `Column Filter` / `Fill with AI` / `Data Profiling` + 视图切换
-      （G2 事务条 / G3 查找替换 / G4 表单视图**功能保留**，只是挂到 Navicat 的位置与措辞）
-- [ ] **N20** 底部栏 → `Record 7 of 100 in page 1` + 五键导航 + 刷新 + `Last Refresh: 37m`
-      （D-1 的按 `prefWidth` 逐档收起保留，措辞与项集对齐）
-- [ ] R38 验收：全量门禁 + `p2-*` 全族帧目视
+- [ ] **N16** 行首 → 行号+铅笔（开工前 `tools/Crop.java` 8× 复核帧 4 左缘行首槽，真源 §1.4 注记）；
+      批量入口重建为行多选 + 右键 + 底部图标条，撤掉「1 row(s) selected…」批量条
+- [ ] **N17** 当前格橙黄 `#FFB666`/`#FFFFB6` + 编辑盒（白底蓝框值全选）+ 行灰带 + **当前列表头 tint**
+- [ ] **N18** 工具条溢出 → 右端 `>>` 折叠（可键盘到达）
+- [ ] **N19** 工具条 → **13 具名键 + 右端 2 小键**（真源 §1.4 逐键清单）；表头第二行只放类型；
+      `Fill with AI`/`Data Profiling`/`Data Generation`/`Data Masking`/`Create BI Workspace` 按诚实条款给说明页或真功能
+- [ ] **N20** 底部栏 → 五键导航 + 页码框 + 齿轮 + 放大镜 + 视图切换；记录计数移状态栏
+- [ ] **N31** ⭐ **Filter & Sort 生成器面板**：网格内嵌（替代 `ConditionDialog`+`ColumnFilterPanel` 弹窗形态）、
+      Builder/Text 双模式、条件行（字段链接 + 操作符 + `<?>` 占位 + `and` 连接词）、`[+]`/`[Ω]`、
+      Sort By 芯片、显式 `Apply Filter & Sort` + `Criteria Edited` 脏标记、工具条按钮按下态联动
+      新增 `FilterPanelAuditTest`
+- [ ] D-1 一并收：分页器可用宽度由外壳递入（详情浮层压住 90px 的老账）
+- [ ] R38 验收：全量门禁 + `p2-*` 全族并排帧目视（新增带 Filter 面板帧）
 
 ### R39 · 查询编辑器 + 已保存查询 + 状态栏（N21–N25，估 9–12 人日）
 
-> 本轮的对照证据是**新帧** `navicat17-query-editor-2026-10-28.png`（1920×1040）。
-
-- [ ] **N21** 查询工具带 → **双行 62px** `#F0F0F0`：
-      行 1 `Save` / `Query Builder` / `Beautify SQL` / `Code Snippet` / `Ask AI▾`；
-      行 2 `[查询名▾]` / `[库▾]` / `▶ Run▾` / `■ Stop` / `Explain`
-- [ ] **N22** 语法配色重标定（`SqlHighlighter.java`）：
-      关键字 `#097BF7` 粗 · 字符串 `#FF1744` · 注释 `#929292` · 普通 `#424242` · 表名 `#424242`+下划线
-      新增门禁 `SqlSyntaxColorTest`（六角色逐一对账）
-- [ ] **N23** 结果区 → 三段：编辑器 / **27px** `Message`·`Summary`·`Result N` 页签条（`#F0F0F0` + 1px `#D9D9D9`）/
-      **32px** `Data`·`Info` 子页签条（`#F9F9F9`）/ 结果网格（表头**单行** `#E7E7E7` ≈26px）
-- [ ] **N24** 已保存查询 → 树 `Queries` 分组 + 文件清单对象页
-      （列 `Name`/`Modified Date`/`File Size`/`Modified User`，工具条 `Design Query`/`New Query`/`Delete Query`，
-      状态栏左 `4 Queries`）
-- [ ] **N25** 状态栏 → 查询页六段：SQL 全文 · `Read Only` · `Record 1 of 20473` · `Ln 11, Col 5` ·
-      `Elapsed Time: 18.735s` · 视图切换；**删掉「自动提交 · 只读」段**
-- [ ] R39 验收：全量门禁 + `p3-*` 帧目视 + **新增查询页并排帧**
+- [ ] **N21** 查询工具带双行 62px `#F0F0F0`（行1 Save/Query Builder/Beautify SQL/Code Snippet/Ask AI▾；
+      行2 查询名▾/库▾/▶Run▾/■Stop/Explain）；收敛我方多出的 Run All/Parameters/Clear/Save as Named Query/页首大标题/列类型 chips
+- [ ] **N22** 语法配色重标定：关键字 `#097BF7` 粗 · 字符串 `#FF1744` · 注释 `#929292` · 普通 `#424242` · 表名下划线
+      新增 `SqlSyntaxColorTest`
+- [ ] **N23** 结果区三段：27px `Message/Summary/Result N` + 32px `Data/Info` + 网格（表头单行 `#E7E7E7`）
+- [ ] **N24** 已保存查询：树 `Queries` 分组可展开出文件叶子 + 文件清单对象页（4 列 + `Design/New/Delete Query`）
+- [ ] **N25** 状态栏三页型（查询页 6 段 / 数据页 左 SQL+右 Record·Last Refresh / 对象页 左计数+右连接·库）；
+      删「自动提交·只读」段
+- [ ] R39 验收：全量门禁 + `p3-*` 并排帧目视
 
 ### R40 · 弹窗 + 连接向导（N26 N27，估 5–7 人日）
 
-- [ ] **N26** 去掉内容区自绘标题条 `adb-dialog__header`（`NewTableDialog.java:543`、`IndexDialog.java:222`）
-      → 只走系统标题栏；尺寸记忆随自绘条一并失去（拍板 4 已确认接受）
-- [ ] **N27-a** 类型页：左侧 `Connection Filter` **9 个复选** + `Vendor Filter` **13 个复选**；
-      右侧 **5 列彩色磁贴**（图标 48px + 名称在下）；右上搜索；左下 `New Connection with URI…`；右下 `Next`/`Cancel`
-      ⋆ 撤销真源旧 §7.15「磁贴只摆真实支持的 3 种」：全摆，**不支持的库型点进去是如实说明页**（G8 SSH/HTTP 先例），
-      不是填了也没用的假表单
-- [ ] **N27-b** 常规页：900×700、`Navicat ⟷ Database` 示意图、右对齐标签、`Save password` 复选、
-      底部 `Test Connection` / `URI…`（左）· `Back` / `OK` / `Cancel`（右）
-- [ ] R40 验收：全量门禁 + `p5-*` / `p6-*` / `p7-*` 弹窗族帧目视
+- [ ] **N26** 弹窗去自绘标题条 → 系统标题栏（尺寸记忆随之取消，拍板 4 已接受）
+- [ ] **N27-a** 类型页：9+13 复选侧栏 / 5 列彩色磁贴 / 搜索 / `New Connection with URI…` / Next·Cancel
+- [ ] **N27-b** 常规页：900×700 / 示意图 / 右对齐标签 / Save password / 底部五键
+- [ ] R40 验收：全量门禁 + `p5-*` / `p6-*` 弹窗族帧目视
 
 ### R41 · 设计器收口 + 字号梯度（N29 N30，估 3–5 人日）
 
-- [ ] **N29-a** 字段网格补 `Virtual` 列（撤销旧 §7.17「不做」；需表达式编辑与方言校验，本轮先做 SQLite/MySQL/PG 都吃得下的子集）
-- [ ] **N29-b** 属性面板补 `Key Length` / `Binary` 两格（G17 已知残差收口）
-- [ ] **N29-c** `Key` 从「主键/唯一/自增」三勾选**合回 Navicat 的单一下拉**
-- [ ] **N29-d** 设计器工具条 → 8 键：`Save`/`Add Field`/`Insert Field`/`Delete Field`/`Primary Key`/`Move Up`/`Move Down`/`Ask AI`
-- [ ] **N29-e** 底部措辞 → `Number of Fields: 15`
-- [ ] **N30** 字号梯度 7 档（10/11/12/13/14/16/32）→ **11/12/13 三档**；逐个失去消费者的令牌按旧 §7.9 删除
+- [ ] **N29** `Virtual` 列 / `Key Length`+`Binary` / `Key` 单下拉 / `Ask AI` 键 / `Number of Fields: 15`
+- [ ] **N30** 字号 7 档 → **11/12/13 三档**；失去消费者的令牌删除
 - [ ] R41 验收：全量门禁 + `p6-new-table-*` 族帧目视
 
-### R42 · Ribbon 12 格背后的 6 个能力面（N28，估 34–52 人日）
+### R42 · 能力面收尾（N28 N34，估 36–56 人日）—— 待拍板 P1
 
-> **这是「一模一样」的真实价签。** 不做，顶区 12 格里有 6 格只能点进「本版本未提供」。
-> 待拍板 **P1**：建议先做 View / Backup / Model(ER)（14–21 人日，有明确用户价值），
-> Automation / BI / User 管理暂缓（独立产品线）。
-
-- [ ] **N28-a** `View` 对象页 + 视图增/改/删/重命名（原 V1，目前视图只在树里只读）— 2–3
-- [ ] **N28-b** `Backup` 转储与恢复（SQL dump / restore，含进度与日志）— 4–6
-- [ ] **N28-c** `Model` ER 图（原 G9 的 ER 视图，需画布与自动布局）— 8–12
-- [ ] **N28-d** `User` 用户与角色管理面 — 3–4
-- [ ] **N28-e** `Automation` 作业与调度 — 6–10
-- [ ] **N28-f** `BI` 图表与透视 — 10–15
-- [ ] 暂缓期：对应格子保留，点击给**如实说明页**（`RibbonCapabilityAuditTest` 要求每格有真实去向）
+- [ ] **N28-a** View 对象页 + 视图增删改（2–3）
+- [ ] **N28-b** Backup 转储恢复（4–6）
+- [ ] **N28-c** Model ER 图（8–12）
+- [ ] **N28-d** User 管理面（3–4）
+- [ ] **N28-e** Automation 作业调度（6–10）
+- [ ] **N28-f** BI 图表透视（10–15）
+- [ ] **N34** 数据页 3 新面：Data Generation / Data Masking（真功能或说明页，1–2）；Create BI Workspace 并入 N28-f
+- [ ] 暂缓期：对应格/键保留，点击给如实说明页（`RibbonCapabilityAuditTest` 兜底）
 
 ### 未结与文档债
 
-- [ ] **D-3** 表清单 1280 宽只剩 2 列 → **并入 R37 N14**（列集要改成 6 列，单独修窄宽降级是白做）
-- [ ] **PG 真库联调**：补测试库，消掉 48 条环境跳过里 PG 相关部分
-- [ ] **D-4** README「已知限制」与能力表口径冲突（`DbExecutors` / UI 线程），核实后改掉过时的一条
-- [ ] **旧真源归档**：`docs/ARCHIVE-R30-R33.md` 收 R30–R33 轮次记录与旧裁定表，仅作备查
-- [ ] **并排帧体系**：`docs/screenshots/side-by-side/` 每张 AIDB 帧配一张同场景 Navicat 帧，目视看并排
-      （旧 `side-by-side.png` / `side-by-side-2026-10.png` 已过时，重做）
+- [ ] **D-1** 分页器被详情浮层压 90px → R38 N19/N20（外壳递可用宽度）
+- [ ] **D-3** 表清单 1280 只剩 2 列 → 并入 R37 N14
+- [ ] **D-4** README「已知限制」与能力表口径冲突
+- [ ] **D-9** `StructurePlan.title()` 17 个中文标题（模型层 104 条）→ 独立一批：改「键+参数」由界面渲染
+- [ ] **PG 真库联调**：补测试库，消环境跳过
+- [ ] **并排帧体系**：`docs/screenshots/side-by-side/` 重做（旧两张过时）
 
 ### 边界外（本版仍不做）
 
-- ⛔ jlink（自动模块化）、自动更新（无发布渠道）、代码签名（缺证书）—— 与「像不像」无关，是发布工程
-- ⛔ 提取 Navicat 原始图标位图进产品（他人版权素材；拍板 2 已选自绘同风格）
-- 🚫 Navicat Cloud / 协作 / 项目（真源旧 §2 已记「不在路线内」）
+- ⛔ jlink、自动更新、代码签名 —— 发布工程，与「像不像」无关
+- ⛔ 提取 Navicat 原始图标位图（版权素材；拍板 2 选自绘）
+- 🚫 Navicat Cloud / 协作 / 项目
 
 ---
 
 ## 2. 规划（轮次视图）
 
 ```
-R30–R32 ✅ 已提交。功能资产保住，视觉裁定大部分被本版推翻（见真源 §3 推翻台账）
-R33     ⛔ 已验收但**全部未提交**（34 文件 / +3177 −1245 在工作区）→ 先落库，0.5 人日 + 等授权   ← 当前
-R34     i18n 层 + 默认英文 + 菜单项集                        （8–12） 前置卡所有标签
-R35     彩色图标渲染层 + 50 枚资产 + 暗色档                  （10–14） 前置卡所有视觉
-R36     顶区 140px / 90px Ribbon 12 格 / 页签行 / 工具带底色  （5–7）  ⚠️ 撤销 R32-D
-R37     导航树 20px+表平铺 / 对象清单 6 列+7 键 / 修 D-3      （5–7）
-R38     数据网格 行号+铅笔 / 当前格橙黄 / >> 溢出 / 底部栏     （9–12）  ⚠️ 撤销 G19b
-R39     查询编辑器双行+配色+结果三段 / 状态栏六段 / Queries 页 （9–12）
-R40     弹窗系统标题栏 / 连接向导两页全量                     （5–7）
-R41     设计器 Virtual+KeyLength+Binary+Key下拉 / 字号三档    （3–5）
-R42     Ribbon 12 格背后的 6 个能力面（待拍板 P1，可拆两半）  （34–52）
+R30–R33 ✅ 已提交。功能资产保住；视觉裁定多数被推翻（真源 §3 台账）
+R34     i18n 八批已收（棘轮 890，已落库）→ 收尾 3–5          ← 当前
+R35     彩色图标渲染层 + 50 枚资产 + 暗色档             （10–14） 前置卡所有视觉
+R36     顶区 140px / 12 格 Ribbon / 页签行 / #F0F0F0   （5–7）   ⚠️ 撤销 R32-D
+R37     树 20px 五组 / 库级树 / 对象页合一 / 6 列 7 键  （8–11）  ⭐ N32 N33 本轮新增
+R38     行号+铅笔 / 编辑盒+列头tint / >> / 13 键 / Filter 面板（13–18）⭐ N31 本轮新增
+R39     查询双行+配色+结果三段 / 状态栏三页型 / Queries 页（9–12）
+R40     弹窗系统标题栏 / 连接向导两页                   （5–7）
+R41     设计器 Virtual+KeyLength+Binary+Key下拉 / 字号三档（3–5）
+R42     能力面：Ribbon 6 面 + Data Generation/Masking   （36–56） 待拍板 P1
 ─────────────────────────────────────────────────────────────
-R34–R41 小计 54–74 人日      含 R42 合计 88–126 人日
+R34–R41 小计 61–86 人日        含 R42 合计 97–142 人日
 ```
 
 **排序理由**
-0. **R33 先落库**：i18n 是全量字符串替换，压在一堆未提交改动上，回归时无法二分定位。
-1. **R34 i18n 必须第一**：它卡住后面每一条带标签的条目。先改布局再改文案 = 每轮重做一遍字符串。
-2. **R35 图标第二**：`Icons.of()` 返回类型一改，`IconButtons`/`AppBar`/`SideBar`/`TabBar` 全要适配；
-   放在顶区改造之前做，R36 的 12 格才能直接用彩色图标，否则要摆两次。
-3. **R36 顶区第三**：140px / 90px / 工具带底色是**全局变量**，会改动每一张帧的构图；
-   在它之前拍的帧全部作废，所以 R34/R35 的验收帧只作阶段目视，不作终态基线。
-4. **R37–R41 是页面级**，彼此独立，按「打开频率」排：树/清单 → 数据网格 → 查询 → 弹窗 → 设计器。
-5. **R42 独立在最后**：它不是视觉轮，是 6 个功能面；可以整轮砍掉而不影响 R34–R41 的「看起来一样」。
+1. **R34 收尾先行**：i18n 卡所有标签；「验收 ≠ 落库」红线生效中（第八批已当天落库）。
+2. **R35 图标第二**：`Icons.of()` 返回类型一改四个调用点全要适配；在顶区前做，12 格直接用彩色图标。
+3. **R36 顶区第三**：全局变量，改完之前拍的帧只作阶段目视。
+4. **R37–R41 页面级**，按打开频率排：树/清单（含两处结构性收敛 N32/N33）→ 数据网格（含 N31 面板）→
+   查询 → 弹窗 → 设计器。
+5. **R42 独立在最后**：功能面不是视觉轮，可整体砍掉而不影响「看起来一样」。
 
 **每轮固定验收口径**（真源 §7）：全量门禁 0 失败 + 新能力带行为门禁与变异验证 +
-CSS 门禁连权重与声明顺序一起比 + 涉视觉必重拍帧并**逐张目视并排帧** + md5 去重 + 回填真源三处 +
-分批本地提交（**push 需单独授权**）+ **诚实条款**（不许有「看着一样但点了没反应」的控件）。
+CSS 门禁连权重与声明顺序 + 涉视觉必重拍帧并**逐张目视并排帧** + md5 去重 + 回填真源三处 +
+分批本地提交（**push 需单独授权**）+ 诚实条款。
 
 ---
 
-## 3. 证据速查（新帧 → 条目）
+## 3. 证据速查（9 张帧 → 条目）
 
-| Navicat 帧（1920×1040 / 1219×893 / 900×700） | AIDB 对照帧 | 本轮新暴露的差 | 条目 |
+| Navicat 帧 | AIDB 对照帧 | 关键差 | 条目 |
 |---|---|---|---|
-| `navicat17-query-editor-2026-10-28` **新** | `p3-query` | 双行工具带 / 语法配色 / 结果三段 / 状态栏六段 / 顶区 140 vs 114 | N5 N21–N25 |
-| `navicat17-saved-queries-2026-10-28` **新** | `p6-tables` | 树 `Queries` 分组 / 文件清单列集 / `Design New Delete Query` / 工具带 `#F0F0F0` | N7 N8 N12 N24 |
-| 同上（树区） | `p0-shell` | **树行距实测 20px（旧文档写 21 是错的）** / 表平铺 / 无计数 / 四色表图标 | N4 N11 N12 |
-| `navicat17-data-grid-2026-10-27` | `p2-users` | 行号+铅笔 / 当前格橙黄 / `>>` 溢出 / 工具条项集 | N16–N20 |
-| `navicat17-object-list-2026-10-27` | `p6-tables` | 6 列 / 7 键带文字 / `New Table with AI` | N14 N15 |
-| `navicat17-designer-fields-2026-10-27` | `p6-new-table-fields` | `Virtual` 列 / `Key Length` `Binary` / `Key` 单下拉 / 8 键 | N29 |
-| `navicat17-conn-type-2026-10-27` | `p5-connect-type` | 9+13 复选侧栏 / 5 列彩色磁贴（撤销「只摆 3 种」） | N27-a |
-| `navicat17-conn-general-2026-10-27` | `p5-connect-general` | 示意图 / 右对齐标签 / 底部五键 | N27-b |
+| `navicat17-query-editor-2026-10-28`（1920×1040） | `p3-query` | 双行工具带 / 语法配色 / 结果三段 / 状态栏 6 段 / 顶区 140 vs 114 | N5 N21–N25 |
+| `navicat17-saved-queries-2026-10-28`（1920×1040） | `p6-tables` | 树 Queries 分组 / 文件清单 4 列 / `Design New Delete Query` / 对象页状态栏 | N7 N8 N12 N24 N25 |
+| `navicat17-filter-sort-2026-10-29` **新**（1617×903） | `p2-users` | **Filter & Sort 内嵌面板** / 13 具名键 / 底部记录操作条 / 编辑盒+列头 tint | N17 N19 N20 N31 |
+| `navicat17-tree-multidb-2026-10-29` **新**（1920×1040） | `p0-shell` | **连接→库→分组三级** / Queries 树叶子 / 数据页状态栏 / 页签标题 `@库 (连接)` | N7 N12 N24 N32 |
+| `navicat17-object-list-2026-10-27`（1219×893） | `p6-tables` | 6 列 / 7 键带文字 / `New Table with AI` / `22 Tables` 页脚 | N14 N15 N33 |
+| `navicat17-data-grid-2026-10-27`（1219×893） | `p2-users` | 行号+铅笔（行首槽实测源）| N16 |
+| `navicat17-designer-fields-2026-10-27`（1219×893） | `p6-new-table-fields` | `Virtual` 列 / `Key Length` `Binary` / `Key` 单下拉 / 8 键 | N29 |
+| `navicat17-conn-type-2026-10-27`（900×700） | `p5-connect-type` | 9+13 复选侧栏 / 5 列彩色磁贴 | N27-a |
+| `navicat17-conn-general-2026-10-27`（900×700） | `p5-connect-general` | 示意图 / 右对齐标签 / 底部五键 | N27-b |
