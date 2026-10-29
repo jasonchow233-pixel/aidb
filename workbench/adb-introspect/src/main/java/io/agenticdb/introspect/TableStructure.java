@@ -64,8 +64,4 @@ public record TableStructure(
                 .findFirst()
                 .orElse(null);
     }
-
-    public String kindLabel() {
-        return view ? "视图" : "表";
-    }
 }

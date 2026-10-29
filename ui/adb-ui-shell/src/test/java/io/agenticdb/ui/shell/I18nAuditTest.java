@@ -73,7 +73,24 @@ class I18nAuditTest {
      * 而本类是先 {@code stripComments} 再计数。口径不同的两个数放在一起，
      * 只会让人以为棘轮又涨了。
      */
-    private static final int CJK_CEILING = 1145;
+    private static final int CJK_CEILING = 989;
+
+    /**
+     * ⭐ R34 N1-b 第七批补的第三把尺：<b>模型层</b>（core / workbench）的汉字字面量。
+     *
+     * <p>为什么 {@link #CJK_CEILING} 挡不住这一层：它只扫 {@code ui/**}\/src/main。
+     * 第六批的 D-7 就是这么漏的 —— {@code Danger.label()} 的中文写在
+     * {@code core/adb-model}，英文构建把「只读」原样渲染到界面上，<b>三条门禁全绿</b>。
+     * 第七批量到同一层还有 277 条，其中最大的一块是
+     * {@code StructureSqlBuilder} 给 {@code StructurePlan.title()} 拼的中文标题，
+     * 正被结构页拼进状态条与确认弹窗（记为 D-9，仍未修）。
+     *
+     * <p>口径与 ui 侧完全一致：同一套 {@code stripComments} + 同一条正则，
+     * 所以 {@code node tools/cjk-count.mjs --model} 能复现这个数字。
+     * 只许降不许升 —— 它不证明「哪些会流到界面」，那只证明<b>没人新写</b>，
+     * 并且把 D-9 这类债变成有数字的队列，而不是每次实拍帧撞见才发现。
+     */
+    private static final int MODEL_CJK_CEILING = 277;
 
     /** 源码里对 {@link I18n#t(String, Object...)} 的键引用。 */
     private static final Pattern KEY_REFERENCE = Pattern.compile("I18n\\.t\\(\\s*\"([^\"]+)\"");
@@ -455,6 +472,40 @@ class I18nAuditTest {
     }
 
     /**
+     * ⭐ 第三把尺：模型层的汉字字面量（理由见 {@link #MODEL_CJK_CEILING}）。
+     *
+     * <p>扫描失效的自证与 ui 侧同构：一个文件都没扫到就红，不给「永远绿」的机会。
+     */
+    @Test
+    void modelLayerChineseIsRatchetedDown() throws IOException {
+        int total = 0;
+        List<String> byFile = new ArrayList<>();
+        List<Path> sources = modelSources();
+        for (Path file : sources) {
+            int hits = count(CJK_LITERAL, stripComments(read(file)));
+            total += hits;
+            if (hits > 0) {
+                byFile.add(relative(file) + " = " + hits);
+            }
+        }
+        assertThat(sources)
+                .as("没扫到模型层主源码 —— 路径过滤失效，这条门禁是假绿")
+                .isNotEmpty();
+        assertThat(byFile)
+                .as("模型层一个含中文字面量的文件都没有：要么真清零了（把上限一并降到 0），"
+                        + "要么扫描口径变了")
+                .isNotEmpty();
+
+        assertThat(total)
+                .as("core/workbench 主源码里的 CJK 字面量超过棘轮上限。这一层的中文不在 ui 棘轮"
+                        + "视野内，却能顺着 label()/title() 直接流到界面上（D-7 就是这么漏的）。"
+                        + "新增请改成「键 + 参数」由界面渲染；清掉一批请把 "
+                        + "MODEL_CJK_CEILING 调小。\n当前残留 %d 条（上限 %d，按文件）：%s",
+                        total, MODEL_CJK_CEILING, String.join("  ", byFile))
+                .isLessThanOrEqualTo(MODEL_CJK_CEILING);
+    }
+
+    /**
      * ⭐ 补的第二把尺：<b>已经抽干净的文件，也不许留全角标点</b>。
      *
      * <p>{@link #CJK_LITERAL} 只认 U+4E00–U+9FFF，于是 {@code "（NULL）"}、
@@ -680,6 +731,29 @@ class I18nAuditTest {
         }
         assertThat(files)
                 .as("没有扫到 UI 主源码 —— 路径过滤失效，这份审计是假绿")
+                .hasSizeGreaterThan(30);
+        return files;
+    }
+
+    /**
+     * 模型层（core / workbench）的主源码 —— {@link #MODEL_CJK_CEILING} 的扫描范围。
+     *
+     * <p>不含 bootstrap：那里 0 条，纳进来只会让「一个文件都没扫到」的自证更难判读。
+     */
+    private static List<Path> modelSources() throws IOException {
+        Path root = repositoryRoot();
+        List<Path> files = new ArrayList<>();
+        try (Stream<Path> paths = Files.walk(root)) {
+            for (Path path : paths.filter(Files::isRegularFile).toList()) {
+                String relative = root.relativize(path).toString().replace('\\', '/');
+                if (relative.endsWith(".java") && relative.contains("src/main/java")
+                        && (relative.startsWith("core/") || relative.startsWith("workbench/"))) {
+                    files.add(path);
+                }
+            }
+        }
+        assertThat(files)
+                .as("没有扫到模型层主源码 —— 路径过滤失效，这条门禁是假绿")
                 .hasSizeGreaterThan(30);
         return files;
     }

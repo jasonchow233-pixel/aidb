@@ -142,6 +142,33 @@ if (listAt >= 0) {
   process.exit(0);
 }
 
+/**
+ * `node tools/cjk-count.mjs --model` —— 量**模型层**（core / workbench）的汉字字面量。
+ *
+ * 棘轮主尺只扫 ui 下的 src/main，所以这一层的中文一直是「看不见的债」：第六批的 D-7
+ * （{@code Danger.label()} 的中文在 core/adb-model）就是全绿之下漏到界面上的。
+ * 口径与主尺完全一致（同一套 stripComments + 同一条正则），复现
+ * I18nAuditTest.MODEL_CJK_CEILING。
+ */
+const modelAt = process.argv.indexOf('--model');
+if (modelAt >= 0) {
+  const roots = process.argv[modelAt + 1] ? process.argv.slice(modelAt + 1) : ['core', 'workbench'];
+  let total = 0;
+  const rows = [];
+  for (const root of roots) {
+    for (const f of walk(root)) {
+      const han = stripComments(fs.readFileSync(f, 'utf8')).match(hanPattern) || [];
+      total += han.length;
+      if (han.length) rows.push([han.length, f.split(path.sep).join('/')]);
+    }
+  }
+  rows.sort((a, b) => b[0] - a[0]);
+  console.log(`模型层汉字字面量 TOTAL ${total} · 有残留 ${rows.length} 个文件`
+          + `（对应 I18nAuditTest.MODEL_CJK_CEILING）`);
+  console.log(rows.map(r => String(r[0]).padStart(4) + '  ' + r[1]).join('\n'));
+  process.exit(0);
+}
+
 let hanTotal = 0;
 const unique = new Set();
 const rows = [];

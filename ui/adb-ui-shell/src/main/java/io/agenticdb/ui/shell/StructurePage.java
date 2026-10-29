@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.ui.Icons;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.introspect.IndexDef;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.StructurePlan;
@@ -93,26 +94,26 @@ public final class StructurePage extends VBox implements AutoCloseable {
     /** ⭐ B5-S4：表注释（B5-S4 之前**连看都看不了**）。 */
     private final Label tableCommentLabel = new Label();
     private final Label ddlNote = new Label("");
-    private final Button add = IconButtons.of(Icons.Icon.ADD, "新增列");
-    private final Button edit = IconButtons.of(Icons.Icon.EDIT, "修改列");
-    private final Button rename = new Button("重命名");
-    private final Button drop = IconButtons.of(Icons.Icon.DELETE, "删除列");
-    private final Button refresh = IconButtons.of(Icons.Icon.REFRESH, "刷新");
-    private final Button copyDdl = IconButtons.icon(Icons.Icon.COPY, "复制 DDL");
-    private final Button copySelect = IconButtons.icon(Icons.Icon.COPY, "复制 SELECT");
+    private final Button add = IconButtons.of(Icons.Icon.ADD, I18n.t("structure.field.add"));
+    private final Button edit = IconButtons.of(Icons.Icon.EDIT, I18n.t("structure.field.edit"));
+    private final Button rename = new Button(I18n.t("structure.field.rename"));
+    private final Button drop = IconButtons.of(Icons.Icon.DELETE, I18n.t("structure.field.delete"));
+    private final Button refresh = IconButtons.of(Icons.Icon.REFRESH, I18n.t("action.refresh"));
+    private final Button copyDdl = IconButtons.icon(Icons.Icon.COPY, I18n.t("structure.action.copyDdl"));
+    private final Button copySelect = IconButtons.icon(Icons.Icon.COPY, I18n.t("tab.copySelect"));
     /** ⭐ 与数据页共用的对象标题栏。 */
     private ObjectHeader objectHeader;
     /** S1 索引可编辑 —— 按钮挂在索引页签里，不进顶部工具栏（那是列操作的地盘）。 */
-    private final Button addIndex = IconButtons.of(Icons.Icon.ADD, "新建索引");
-    private final Button dropIndex = IconButtons.of(Icons.Icon.DELETE, "删除索引");
+    private final Button addIndex = IconButtons.of(Icons.Icon.ADD, I18n.t("structure.index.add"));
+    private final Button dropIndex = IconButtons.of(Icons.Icon.DELETE, I18n.t("structure.index.delete"));
     /** ⭐ B5-S2：外键可增删。 */
-    private final Button addForeignKey = IconButtons.of(Icons.Icon.ADD, "新建外键");
-    private final Button dropForeignKey = IconButtons.of(Icons.Icon.DELETE, "删除外键");
+    private final Button addForeignKey = IconButtons.of(Icons.Icon.ADD, I18n.t("structure.fk.add"));
+    private final Button dropForeignKey = IconButtons.of(Icons.Icon.DELETE, I18n.t("structure.fk.delete"));
     /** ⭐ B5-S4：表注释可改（SQLite 不支持 → 按钮禁用）。 */
-    private final Button tableComment = IconButtons.of(Icons.Icon.EDIT, "表注释");
+    private final Button tableComment = IconButtons.of(Icons.Icon.EDIT, I18n.t("structure.tableComment.button"));
     /** ⭐ B5-S3：触发器可增删。 */
-    private final Button addTrigger = IconButtons.of(Icons.Icon.ADD, "新建触发器");
-    private final Button dropTrigger = IconButtons.of(Icons.Icon.DELETE, "删除触发器");
+    private final Button addTrigger = IconButtons.of(Icons.Icon.ADD, I18n.t("structure.trigger.add"));
+    private final Button dropTrigger = IconButtons.of(Icons.Icon.DELETE, I18n.t("structure.trigger.delete"));
 
     /**
      * 密度档位 —— 结构页有<b>四张</b>表，都要跟。
@@ -179,7 +180,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
     private void buildUi() {
         // ⭐ 标题栏与数据页共用 {@link ObjectHeader} —— 同一类对象在两个页面里
         //    长得不一样，是「不统一」最直接的来源。
-        ObjectHeader header = new ObjectHeader(Icons.Icon.TABLE, tableName, "表");
+        ObjectHeader header = new ObjectHeader(Icons.Icon.TABLE, tableName, I18n.t("detail.kind.table"));
         objectHeader = header;
         header.setContext(connectionName);
         // 结构页没有「行数」这回事，显示「行数未知」像坏了。
@@ -187,11 +188,11 @@ public final class StructurePage extends VBox implements AutoCloseable {
 
         add.getStyleClass().add("adb-button");
         add.setId("structure-add");
-        add.setOnAction(event -> showColumnDialog("新增列", null));
+        add.setOnAction(event -> showColumnDialog(I18n.t("structure.field.add"), null));
         edit.getStyleClass().add("adb-button");
         edit.setId("structure-edit");
         edit.setOnAction(event -> selectedColumn().ifPresent(column ->
-                showColumnDialog("修改列 " + column.name(), ColumnSpec.from(column))));
+                showColumnDialog(I18n.t("structure.dialog.editHeader", column.name()), ColumnSpec.from(column))));
         rename.getStyleClass().add("adb-button");
         rename.setId("structure-rename");
         rename.setOnAction(event -> selectedColumn().ifPresent(this::renameColumn));
@@ -200,18 +201,18 @@ public final class StructurePage extends VBox implements AutoCloseable {
         drop.setOnAction(event -> selectedColumn().ifPresent(this::dropColumn));
         refresh.getStyleClass().addAll("adb-button", "adb-button--icon");
         refresh.setId("structure-refresh");
-        refresh.setAccessibleText("刷新结构");
-        refresh.setTooltip(new javafx.scene.control.Tooltip("重新读取结构"));
+        refresh.setAccessibleText(I18n.t("structure.refresh.accessible"));
+        refresh.setTooltip(new javafx.scene.control.Tooltip(I18n.t("structure.refresh.tooltip")));
         refresh.setOnAction(event -> reload());
         copyDdl.getStyleClass().addAll("adb-button", "adb-button--icon");
         copyDdl.setId("structure-copy-ddl");
-        copyDdl.setAccessibleText("复制 DDL");
-        copyDdl.setTooltip(new javafx.scene.control.Tooltip("复制建表语句"));
+        copyDdl.setAccessibleText(I18n.t("structure.action.copyDdl"));
+        copyDdl.setTooltip(new javafx.scene.control.Tooltip(I18n.t("structure.copyDdl.tooltip")));
         copyDdl.setOnAction(event -> copy(structure == null ? "" : structure.ddl()));
         copySelect.getStyleClass().addAll("adb-button", "adb-button--icon");
         copySelect.setId("structure-copy-select");
-        copySelect.setAccessibleText("复制 SELECT");
-        copySelect.setTooltip(new javafx.scene.control.Tooltip("复制查询语句"));
+        copySelect.setAccessibleText(I18n.t("tab.copySelect"));
+        copySelect.setTooltip(new javafx.scene.control.Tooltip(I18n.t("structure.copySelect.tooltip")));
         copySelect.setOnAction(event -> copy("SELECT * FROM "
                 + session.dialect().quote(tableName) + " LIMIT 200;"));
 
@@ -226,7 +227,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
         //    只读：DDL 是内省/生成出来的，不允许在这里改。
         ddlEditor.area().setEditable(false);
         ddlEditor.getStyleClass().add("adb-structure__ddl");
-        ddlEditor.setHint("没有可显示的 DDL");
+        ddlEditor.setHint(I18n.t("structure.ddl.empty"));
         ddlEditor.setPrefHeight(340);
         ddlNote.getStyleClass().add("adb-muted");
         VBox ddlBox = new VBox(4, ddlEditor, ddlNote);
@@ -269,12 +270,12 @@ public final class StructurePage extends VBox implements AutoCloseable {
                 dropIndex(index)));
 
         tabs.getTabs().addAll(
-                tab("列", buildColumnsTab()),
-                tab("选项", buildOptionsTab()),
-                tab("索引", buildIndexesTab()),
-                tab("外键", buildForeignKeysTab()),
-                tab("检查", buildChecksTab()),
-                tab("触发器", buildTriggersTab()),
+                tab(I18n.t("structure.tab.fields"), buildColumnsTab()),
+                tab(I18n.t("structure.tab.options"), buildOptionsTab()),
+                tab(I18n.t("structure.tab.indexes"), buildIndexesTab()),
+                tab(I18n.t("structure.tab.foreignKeys"), buildForeignKeysTab()),
+                tab(I18n.t("structure.tab.checks"), buildChecksTab()),
+                tab(I18n.t("structure.tab.triggers"), buildTriggersTab()),
                 tab("DDL", ddlBox));
 
         VBox body = new VBox(8, toolbar, tabs);
@@ -298,19 +299,19 @@ public final class StructurePage extends VBox implements AutoCloseable {
         columns.getStyleClass().add("adb-structure__table");
         columns.setId("structure-columns");
         columns.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        addColumn(columns, "名称", value -> new ReadOnlyStringWrapper(value.name()));
-        addColumn(columns, "类型", value -> new ReadOnlyStringWrapper(value.displayType()));
+        addColumn(columns, I18n.t("column.name"), value -> new ReadOnlyStringWrapper(value.name()));
+        addColumn(columns, I18n.t("detail.type"), value -> new ReadOnlyStringWrapper(value.displayType()));
         // U9 补漏（p4-structure 第三拍）：可空/主键以前是文本 YES/PK ——
         // 「非空」本身就是需要被看见的约束，所以可空列走 check/x 双字形；
         // 「非主键」不是需要被看见的状态（同 唯一 列的裁定），走 check/留空。
-        addBoolColumn(columns, "可空", ColumnDef::nullable, true);
-        addColumn(columns, "默认值", value -> new ReadOnlyStringWrapper(
+        addBoolColumn(columns, I18n.t("structure.col.nullable"), ColumnDef::nullable, true);
+        addColumn(columns, I18n.t("structure.col.default"), value -> new ReadOnlyStringWrapper(
                 value.defaultValue() == null ? "" : value.defaultValue()));
-        addFlagColumn(columns, "主键", ColumnDef::primaryKey);
-        addFlagColumn(columns, "唯一", ColumnDef::unique);
+        addFlagColumn(columns, I18n.t("structure.col.key"), ColumnDef::primaryKey);
+        addFlagColumn(columns, I18n.t("structure.col.unique"), ColumnDef::unique);
         // 注释列只在方言真支持时出现：SQLite 没有列注释，恒为空列就是死 UI（4.5-22）。
         if (session.dialect().supportsColumnComment()) {
-            addColumn(columns, "注释", value -> new ReadOnlyStringWrapper(
+            addColumn(columns, I18n.t("column.comment"), value -> new ReadOnlyStringWrapper(
                     value.comment() == null ? "" : value.comment()));
         }
         columns.setRowFactory(view -> {
@@ -328,7 +329,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
         });
         columns.setOnMouseClicked(event -> {
             if (event.getClickCount() == 2 && selectedColumn().isPresent()) {
-                showColumnDialog("修改列", ColumnSpec.from(
+                showColumnDialog(I18n.t("structure.field.edit"), ColumnSpec.from(
                         selectedColumn().orElseThrow()));
             }
         });
@@ -362,10 +363,10 @@ public final class StructurePage extends VBox implements AutoCloseable {
         grid.setId("structure-options");
         grid.setHgap(28);
         grid.setVgap(10);
-        grid.addRow(0, keyLabel("引擎"), optionsEngine);
-        grid.addRow(1, keyLabel("排序规则"), optionsCollation);
-        grid.addRow(2, keyLabel("自增当前值"), optionsAutoIncrement);
-        grid.addRow(3, keyLabel("行格式"), optionsRowFormat);
+        grid.addRow(0, keyLabel(I18n.t("column.engine")), optionsEngine);
+        grid.addRow(1, keyLabel(I18n.t("column.collation")), optionsCollation);
+        grid.addRow(2, keyLabel(I18n.t("structure.options.autoIncrement")), optionsAutoIncrement);
+        grid.addRow(3, keyLabel(I18n.t("structure.options.rowFormat")), optionsRowFormat);
 
         VBox box = new VBox(12, optionsHint, grid);
         box.setPadding(new Insets(12));
@@ -389,15 +390,14 @@ public final class StructurePage extends VBox implements AutoCloseable {
         optionsRowFormat.setText(orDash(tableOptions.rowFormat()));
 
         if (structure != null && structure.view()) {
-            optionsHint.setText("视图没有表级引擎 / 排序规则 / 行格式选项");
+            optionsHint.setText(I18n.t("structure.options.viewNone"));
         } else if (tableOptions.available()) {
-            optionsHint.setText("选项来自 information_schema.tables；"
-                    + "自增当前值是数据库记录的下一个值");
+            optionsHint.setText(I18n.t("structure.options.source"));
         } else if (session.dialect().tableOptionsSql() == null) {
-            optionsHint.setText(session.dialect().displayName()
-                    + " 没有表级引擎 / 排序规则 / 行格式选项 —— 显示「—」");
+            optionsHint.setText(I18n.t("structure.options.dialectNone",
+                    session.dialect().displayName()));
         } else {
-            optionsHint.setText("没有读到表级选项（权限不足或旧版本库）—— 显示「—」");
+            optionsHint.setText(I18n.t("structure.options.unreadable"));
         }
     }
 
@@ -409,16 +409,16 @@ public final class StructurePage extends VBox implements AutoCloseable {
         if (column == null || structure == null || !structure.editable()) {
             return new ContextMenu();
         }
-        MenuItem editItem = new MenuItem("修改列");
-        editItem.setOnAction(event -> showColumnDialog("修改列 " + column.name(),
+        MenuItem editItem = new MenuItem(I18n.t("structure.field.edit"));
+        editItem.setOnAction(event -> showColumnDialog(I18n.t("structure.dialog.editHeader", column.name()),
                 ColumnSpec.from(column)));
-        MenuItem renameItem = new MenuItem("重命名");
+        MenuItem renameItem = new MenuItem(I18n.t("structure.field.rename"));
         renameItem.setOnAction(event -> renameColumn(column));
-        MenuItem dropItem = new MenuItem("删除列");
+        MenuItem dropItem = new MenuItem(I18n.t("structure.field.delete"));
         dropItem.setOnAction(event -> dropColumn(column));
-        MenuItem copyName = new MenuItem("复制列名");
+        MenuItem copyName = new MenuItem(I18n.t("structure.menu.copyColumnName"));
         copyName.setOnAction(event -> copy(column.name()));
-        MenuItem copySelect = new MenuItem("复制 SELECT");
+        MenuItem copySelect = new MenuItem(I18n.t("tab.copySelect"));
         copySelect.setOnAction(event -> copy("SELECT "
                 + session.dialect().quote(column.name()) + " FROM "
                 + session.dialect().quote(tableName) + " LIMIT 200;"));
@@ -444,9 +444,9 @@ public final class StructurePage extends VBox implements AutoCloseable {
         foreignKeys.setId("structure-foreign-keys");
         foreignKeys.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         // U24：空态给图标 + 解释 + 出口，不再是一行「表中无内容」。
-        foreignKeys.setPlaceholder(EmptyState.of(Icons.Icon.TRANSFER, "这张表没有外键",
-                "外键让数据库替你守住引用完整性 —— 引用列需要有主键或唯一索引。",
-                "新建外键", this::createForeignKey));
+        foreignKeys.setPlaceholder(EmptyState.of(Icons.Icon.TRANSFER, I18n.t("structure.empty.foreignKeys"),
+                I18n.t("structure.hint.foreignKeys"),
+                I18n.t("structure.fk.add"), this::createForeignKey));
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -454,7 +454,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
         bar.getStyleClass().add("adb-inline-toolbar");
         bar.setAlignment(Pos.CENTER_LEFT);
 
-        Label hint = new Label("外键约束：被引用的列必须有唯一性（主键或唯一索引）");
+        Label hint = new Label(I18n.t("structure.note.foreignKeys"));
         hint.getStyleClass().add("adb-muted");
 
         VBox box = new VBox(8, bar, hint, foreignKeys);
@@ -467,9 +467,9 @@ public final class StructurePage extends VBox implements AutoCloseable {
         triggers.getStyleClass().add("adb-structure__table");
         triggers.setId("structure-triggers");
         triggers.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        triggers.setPlaceholder(EmptyState.of(Icons.Icon.TRIGGER, "这张表没有触发器",
-                "触发器是数据库在写入前后自动执行的一段 SQL。",
-                "新建触发器", this::createTrigger));
+        triggers.setPlaceholder(EmptyState.of(Icons.Icon.TRIGGER, I18n.t("structure.empty.triggers"),
+                I18n.t("structure.hint.triggers"),
+                I18n.t("structure.trigger.add"), this::createTrigger));
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -477,7 +477,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
         bar.getStyleClass().add("adb-inline-toolbar");
         bar.setAlignment(Pos.CENTER_LEFT);
 
-        Label hint = new Label("触发器：数据库在写入前后自动执行的一段 SQL");
+        Label hint = new Label(I18n.t("structure.note.triggers"));
         hint.getStyleClass().add("adb-muted");
 
         VBox box = new VBox(8, bar, hint, triggers);
@@ -490,10 +490,10 @@ public final class StructurePage extends VBox implements AutoCloseable {
         checks.setId("structure-checks");
         checks.setEditable(false);
         checks.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        checks.setPlaceholder(EmptyState.of(Icons.Icon.CHECK, "这张表没有 CHECK 约束",
-                "CHECK 在写入时由数据库强制校验；在「列」页签编辑列的表达式即可添加。"));
+        checks.setPlaceholder(EmptyState.of(Icons.Icon.CHECK, I18n.t("structure.empty.checks"),
+                I18n.t("structure.hint.checks")));
 
-        Label hint = new Label("CHECK 约束：写入时由数据库强制校验");
+        Label hint = new Label(I18n.t("structure.note.checks"));
         hint.getStyleClass().add("adb-muted");
 
         VBox box = new VBox(8, hint, checks);
@@ -505,9 +505,9 @@ public final class StructurePage extends VBox implements AutoCloseable {
         indexes.getStyleClass().add("adb-structure__table");
         indexes.setId("structure-indexes");
         indexes.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        indexes.setPlaceholder(EmptyState.of(Icons.Icon.INDEX, "这张表还没有索引",
-                "列顺序决定复合索引能否被用上（最左前缀）。",
-                "新建索引", this::createIndex));
+        indexes.setPlaceholder(EmptyState.of(Icons.Icon.INDEX, I18n.t("structure.empty.indexes"),
+                I18n.t("structure.hint.indexes"),
+                I18n.t("structure.index.add"), this::createIndex));
         indexes.setRowFactory(view -> {
             TableRow<IndexDef> row = new TableRow<>();
             row.setOnContextMenuRequested(event -> {
@@ -528,7 +528,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
         bar.getStyleClass().add("adb-inline-toolbar");
         bar.setAlignment(Pos.CENTER_LEFT);
 
-        Label hint = new Label("列顺序决定复合索引能否被用上（最左前缀）");
+        Label hint = new Label(I18n.t("structure.note.indexes"));
         hint.getStyleClass().add("adb-muted");
 
         VBox box = new VBox(8, bar, hint, indexes);
@@ -541,11 +541,11 @@ public final class StructurePage extends VBox implements AutoCloseable {
         if (index == null || structure == null || !structure.editable()) {
             return new ContextMenu();
         }
-        MenuItem drop = new MenuItem("删除索引");
+        MenuItem drop = new MenuItem(I18n.t("structure.index.delete"));
         drop.setDisable(index.autoCreated()
                 || index.name().equalsIgnoreCase(session.dialect().primaryIndexName()));
         drop.setOnAction(event -> dropIndex(index));
-        MenuItem copyName = new MenuItem("复制索引名");
+        MenuItem copyName = new MenuItem(I18n.t("structure.menu.copyIndexName"));
         copyName.setOnAction(event -> copy(index.name()));
         return new ContextMenu(drop, new SeparatorMenuItem(), copyName);
     }
@@ -608,9 +608,9 @@ public final class StructurePage extends VBox implements AutoCloseable {
     private void setIndexes(List<IndexDef> values) {
         indexes.getColumns().clear();
         addIndexIconColumn();
-        addColumn(indexes, "名称", value -> new ReadOnlyStringWrapper(value.name()));
-        addFlagColumn(indexes, "唯一", IndexDef::unique);
-        addColumn(indexes, "列", value -> new ReadOnlyStringWrapper(value.columnsLabel()));
+        addColumn(indexes, I18n.t("column.name"), value -> new ReadOnlyStringWrapper(value.name()));
+        addFlagColumn(indexes, I18n.t("structure.col.unique"), IndexDef::unique);
+        addColumn(indexes, I18n.t("structure.col.columns"), value -> new ReadOnlyStringWrapper(value.columnsLabel()));
         indexes.setItems(FXCollections.observableArrayList(values));
     }
 
@@ -645,14 +645,14 @@ public final class StructurePage extends VBox implements AutoCloseable {
 
     private void setForeignKeys(List<ForeignKeyDef> values) {
         foreignKeys.getColumns().clear();
-        addColumn(foreignKeys, "名称", value -> new ReadOnlyStringWrapper(value.displayName()));
-        addColumn(foreignKeys, "列", value -> new ReadOnlyStringWrapper(
+        addColumn(foreignKeys, I18n.t("column.name"), value -> new ReadOnlyStringWrapper(value.displayName()));
+        addColumn(foreignKeys, I18n.t("structure.col.columns"), value -> new ReadOnlyStringWrapper(
                 String.join(", ", value.columns())));
-        addColumn(foreignKeys, "引用表", value -> new ReadOnlyStringWrapper(value.referencedTable()));
-        addColumn(foreignKeys, "引用列", value -> new ReadOnlyStringWrapper(
+        addColumn(foreignKeys, I18n.t("structure.fk.referencedTable"), value -> new ReadOnlyStringWrapper(value.referencedTable()));
+        addColumn(foreignKeys, I18n.t("structure.fk.referencedColumns"), value -> new ReadOnlyStringWrapper(
                 String.join(", ", value.referencedColumns())));
-        addColumn(foreignKeys, "更新", value -> new ReadOnlyStringWrapper(value.onUpdate()));
-        addColumn(foreignKeys, "删除", value -> new ReadOnlyStringWrapper(value.onDelete()));
+        addColumn(foreignKeys, I18n.t("structure.fk.onUpdate"), value -> new ReadOnlyStringWrapper(value.onUpdate()));
+        addColumn(foreignKeys, I18n.t("structure.fk.onDelete"), value -> new ReadOnlyStringWrapper(value.onDelete()));
         foreignKeys.setRowFactory(view -> {
             TableRow<ForeignKeyDef> row = new TableRow<>();
             row.setOnContextMenuRequested(event -> {
@@ -674,26 +674,26 @@ public final class StructurePage extends VBox implements AutoCloseable {
         if (foreignKey == null || structure == null || !structure.editable()) {
             return new ContextMenu();
         }
-        MenuItem drop = new MenuItem("删除外键");
+        MenuItem drop = new MenuItem(I18n.t("structure.fk.delete"));
         drop.setOnAction(event -> dropForeignKey(foreignKey));
-        MenuItem copyName = new MenuItem("复制外键名");
+        MenuItem copyName = new MenuItem(I18n.t("structure.menu.copyForeignKeyName"));
         copyName.setOnAction(event -> copy(foreignKey.name()));
         return new ContextMenu(drop, new SeparatorMenuItem(), copyName);
     }
 
     private void setChecks(List<io.agenticdb.introspect.CheckDef> values) {
         checks.getColumns().clear();
-        addColumn(checks, "名称", value -> new ReadOnlyStringWrapper(value.name()));
-        addColumn(checks, "表达式", value -> new ReadOnlyStringWrapper(value.expression()));
+        addColumn(checks, I18n.t("column.name"), value -> new ReadOnlyStringWrapper(value.name()));
+        addColumn(checks, I18n.t("structure.check.expression"), value -> new ReadOnlyStringWrapper(value.expression()));
         checks.setItems(FXCollections.observableArrayList(values));
     }
 
     private void setTriggers(List<TriggerDef> values) {
         triggers.getColumns().clear();
-        addColumn(triggers, "名称", value -> new ReadOnlyStringWrapper(value.name()));
-        addColumn(triggers, "时机", value -> new ReadOnlyStringWrapper(value.timingLabel()));
-        addColumn(triggers, "事件", value -> new ReadOnlyStringWrapper(value.eventLabel()));
-        addColumn(triggers, "语句", value -> new ReadOnlyStringWrapper(value.statement()));
+        addColumn(triggers, I18n.t("column.name"), value -> new ReadOnlyStringWrapper(value.name()));
+        addColumn(triggers, I18n.t("structure.trigger.timing"), value -> new ReadOnlyStringWrapper(value.timingLabel()));
+        addColumn(triggers, I18n.t("structure.trigger.event"), value -> new ReadOnlyStringWrapper(value.eventLabel()));
+        addColumn(triggers, I18n.t("structure.trigger.statement"), value -> new ReadOnlyStringWrapper(value.statement()));
         triggers.setRowFactory(view -> {
             TableRow<TriggerDef> row = new TableRow<>();
             row.setOnContextMenuRequested(event -> {
@@ -715,9 +715,9 @@ public final class StructurePage extends VBox implements AutoCloseable {
         if (trigger == null || structure == null || !structure.editable()) {
             return new ContextMenu();
         }
-        MenuItem drop = new MenuItem("删除触发器");
+        MenuItem drop = new MenuItem(I18n.t("structure.trigger.delete"));
         drop.setOnAction(event -> dropTrigger(trigger));
-        MenuItem copyName = new MenuItem("复制触发器名");
+        MenuItem copyName = new MenuItem(I18n.t("structure.menu.copyTriggerName"));
         copyName.setOnAction(event -> copy(trigger.name()));
         return new ContextMenu(drop, new SeparatorMenuItem(), copyName);
     }
@@ -727,7 +727,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
             return;
         }
         setLoading(true);
-        feedback.status("正在读取结构：" + tableName);
+        feedback.status(I18n.t("structure.status.loading", tableName));
         Task<Loaded> task = new Task<>() {
             @Override
             protected Loaded call() throws Exception {
@@ -745,7 +745,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
             updateButtons();
             // 标题栏的对象类型：内省结果出来才知道是表还是视图。
             if (objectHeader != null) {
-                objectHeader.setType(structure.view() ? "视图" : "表");
+                objectHeader.setType(I18n.t(structure.view() ? "detail.kind.view" : "detail.kind.table"));
             }
             // U8：页头已经写着是哪张表，「结构已加载」没有新增信息 —— 成功保持沉默。
             feedback.status("");
@@ -754,8 +754,8 @@ public final class StructurePage extends VBox implements AutoCloseable {
             setLoading(false);
             updateButtons();
             Throwable error = task.getException();
-            feedback.status("读取结构失败：" + readable(error));
-            feedback.toast("读取结构失败：" + readable(error));
+            feedback.status(I18n.t("structure.status.readFailed", readable(error)));
+            feedback.toast(I18n.t("structure.status.readFailed", readable(error)));
         });
         submit(task);
     }
@@ -764,24 +764,22 @@ public final class StructurePage extends VBox implements AutoCloseable {
         if (structure == null) {
             return;
         }
-        kind.setText(structure.kindLabel());
+        kind.setText(I18n.t(structure.view() ? "detail.kind.view" : "detail.kind.table"));
         renderOptions(tableOptions);
         // ⭐ 表注释：以前结构页**一个字都看不到**（S4）。
         tableCommentLabel.setId("structure-table-comment-label");
         tableCommentLabel.getStyleClass().add("adb-muted");
-        tableCommentLabel.setText("表注释：" + (structure.comment().isBlank()
-                ? "—" : structure.comment()));
+        tableCommentLabel.setText(I18n.t("structure.tableComment.prefix",
+                structure.comment().isBlank() ? "—" : structure.comment()));
         tableCommentLabel.setWrapText(true);
-        summary.setText("列 " + structure.columns().size()
-                + " · 主键 " + structure.primaryKeys().size()
-                + " · 索引 " + structure.indexes().size()
-                + " · 外键 " + structure.foreignKeys().size()
-                + " · 检查 " + structure.checks().size()
-                + " · 触发器 " + structure.triggers().size());
+        summary.setText(I18n.t("structure.summary", structure.columns().size(),
+                structure.primaryKeys().size(), structure.indexes().size(),
+                structure.foreignKeys().size(), structure.checks().size(),
+                structure.triggers().size()));
         ddlEditor.setText(structure.ddl());
         // ⭐ 「没有 SHOW CREATE TABLE」是方言的事实，不是 PostgreSQL 的硬编码。
         ddlNote.setText(!session.dialect().readsDdlFromDatabase() && !structure.view()
-                ? session.dialect().displayName() + " 无 SHOW CREATE TABLE；以下为由内省生成的等价 DDL"
+                ? I18n.t("structure.ddl.generatedNote", session.dialect().displayName())
                 : "");
         columns.setItems(FXCollections.observableArrayList(structure.columns()));
         setIndexes(structure.indexes());
@@ -801,14 +799,14 @@ public final class StructurePage extends VBox implements AutoCloseable {
             return;
         }
         Dialog<ColumnSpec> dialog = new Dialog<>();
-        dialog.setTitle("结构变更");
+        dialog.setTitle(I18n.t("structure.dialog.title"));
         dialog.setHeaderText(title);
         dialog.initOwner(sceneWindow());
         DialogStyles.apply(dialog, sceneWindow());
 
         TextField name = new TextField(initial == null ? "" : initial.name());
         name.setId("structure-dialog-name");
-        name.setPromptText("列名");
+        name.setPromptText(I18n.t("structure.dialog.name"));
 
         ComboBox<String> type = new ComboBox<>();
         type.setId("structure-dialog-type");
@@ -818,28 +816,28 @@ public final class StructurePage extends VBox implements AutoCloseable {
         type.setValue(initial == null || initial.rawType().isBlank()
                 ? "TEXT" : initial.rawType());
 
-        CheckBox nullable = new CheckBox("允许 NULL");
+        CheckBox nullable = new CheckBox(I18n.t("structure.dialog.nullable"));
         nullable.setId("structure-dialog-nullable");
         nullable.setSelected(initial == null || initial.nullable());
 
         TextField defaultValue = new TextField(
                 initial == null ? "" : (initial.defaultValue() == null ? "" : initial.defaultValue()));
         defaultValue.setId("structure-dialog-default");
-        defaultValue.setPromptText("默认值表达式（可空）");
+        defaultValue.setPromptText(I18n.t("structure.dialog.defaultPrompt"));
 
         TextField comment = new TextField(
                 initial == null ? "" : (initial.comment() == null ? "" : initial.comment()));
         comment.setId("structure-dialog-comment");
-        comment.setPromptText("注释（可空）");
+        comment.setPromptText(I18n.t("structure.dialog.commentPrompt"));
         // SQLite 没有列注释：输入框可打字但存不住、读不回，是「数据丢失幻觉」。
         // 按能力禁用并说明，而不是留一个骗人的输入框（4.5-22）。
         boolean commentSupported = session.dialect().supportsColumnComment();
         comment.setDisable(!commentSupported);
         if (!commentSupported) {
-            comment.setPromptText(session.dialect().displayName() + " 不支持列注释");
+            comment.setPromptText(I18n.t("structure.dialog.commentUnsupported", session.dialect().displayName()));
         }
 
-        CheckBox unique = new CheckBox("唯一");
+        CheckBox unique = new CheckBox(I18n.t("structure.col.unique"));
         unique.setId("structure-dialog-unique");
         unique.setSelected(initial != null && initial.unique());
 
@@ -854,16 +852,16 @@ public final class StructurePage extends VBox implements AutoCloseable {
         GridPane grid = new GridPane();
         grid.setHgap(10);
         grid.setVgap(8);
-        grid.addRow(0, new Label("列名"), name);
-        grid.addRow(1, new Label("类型"), type);
-        grid.addRow(2, new Label("默认值"), defaultValue);
-        grid.addRow(3, new Label("注释"), comment);
+        grid.addRow(0, new Label(I18n.t("structure.dialog.name")), name);
+        grid.addRow(1, new Label(I18n.t("detail.type")), type);
+        grid.addRow(2, new Label(I18n.t("structure.col.default")), defaultValue);
+        grid.addRow(3, new Label(I18n.t("column.comment")), comment);
         grid.addRow(4, nullable, unique);
         grid.add(error, 0, 5, 2, 1);
         dialog.getDialogPane().setContent(grid);
 
-        ButtonType ok = new ButtonType("确定", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType ok = new ButtonType(I18n.t("common.ok"), ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
         dialog.getDialogPane().getButtonTypes().setAll(ok, cancel);
         // ⭐ 校验失败必须把对话框留在原地：用户改一个字符就能继续，
         //    关掉再重开等于把刚才填的四五个字段全丢了（4.5-12 / 4.5-16）。
@@ -897,7 +895,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
                     && spec.nullable() == (initial == null || initial.nullable())
                     && java.util.Objects.equals(spec.defaultValue(), initial == null ? null : initial.defaultValue())
                     && java.util.Objects.equals(spec.comment(), initial == null ? null : initial.comment())) {
-                feedback.status("结构未变化");
+                feedback.status(I18n.t("structure.status.unchanged"));
                 return;
             }
             StructurePlan plan = initial == null
@@ -916,14 +914,14 @@ public final class StructurePage extends VBox implements AutoCloseable {
                                     String selfName, List<ColumnDef> existing) {
         String name = rawName == null ? "" : rawName.trim();
         if (name.isEmpty()) {
-            return "列名不能为空";
+            return I18n.t("structure.error.emptyName");
         }
         if (!VALID_COLUMN_NAME.matcher(name).matches()) {
-            return "列名只能以字母或下划线开头，且只能包含字母、数字、下划线和 $";
+            return I18n.t("structure.error.badName");
         }
         String type = rawType == null ? "" : rawType.trim();
         if (type.isEmpty()) {
-            return "列类型不能为空";
+            return I18n.t("structure.error.emptyType");
         }
         for (ColumnDef column : existing) {
             // 改名时自己那个旧名字不算冲突。
@@ -931,7 +929,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
                 continue;
             }
             if (column.name().equalsIgnoreCase(name)) {
-                return "列名 " + name + " 已存在";
+                return I18n.t("structure.error.duplicateName", name);
             }
         }
         return null;
@@ -943,8 +941,8 @@ public final class StructurePage extends VBox implements AutoCloseable {
 
     private void renameColumn(ColumnDef column) {
         TextInputDialog dialog = new TextInputDialog(column.name());
-        dialog.setTitle("重命名列");
-        dialog.setHeaderText("重命名 " + column.name());
+        dialog.setTitle(I18n.t("structure.dialog.renameTitle"));
+        dialog.setHeaderText(I18n.t("structure.dialog.renameHeader", column.name()));
         dialog.initOwner(sceneWindow());
         // ⭐ TextInputDialog 也是 Dialog：不套就是 Modena 灰皮肤（§七 统一弹窗外观）。
         DialogStyles.apply(dialog, sceneWindow());
@@ -989,19 +987,19 @@ public final class StructurePage extends VBox implements AutoCloseable {
 
     private void applyPlan(StructurePlan plan) {
         if (running) {
-            feedback.status("已有结构变更正在执行");
+            feedback.status(I18n.t("structure.status.busy"));
             return;
         }
         if (plan.empty()) {
             return;
         }
         if (!confirmation.test(plan)) {
-            feedback.status("已取消结构变更");
+            feedback.status(I18n.t("structure.status.cancelled"));
             return;
         }
         running = true;
         updateButtons();
-        feedback.status("正在执行结构变更…");
+        feedback.status(I18n.t("structure.status.applying"));
         feedback.duration(-1);
         Task<Void> task = new Task<>() {
             @Override
@@ -1013,8 +1011,8 @@ public final class StructurePage extends VBox implements AutoCloseable {
         task.setOnSucceeded(event -> {
             running = false;
             updateButtons();
-            feedback.toast(plan.title() + " 已完成");
-            feedback.status(plan.title() + " 已完成");
+            feedback.toast(I18n.t("structure.status.done", plan.title()));
+            feedback.status(I18n.t("structure.status.done", plan.title()));
             onChanged.run();
             reload();
         });
@@ -1022,8 +1020,8 @@ public final class StructurePage extends VBox implements AutoCloseable {
             running = false;
             updateButtons();
             Throwable error = task.getException();
-            feedback.status("结构变更失败：" + readable(error));
-            feedback.toast("结构变更失败：" + readable(error));
+            feedback.status(I18n.t("structure.status.failed", readable(error)));
+            feedback.toast(I18n.t("structure.status.failed", readable(error)));
         });
         submit(task);
     }
@@ -1050,11 +1048,11 @@ public final class StructurePage extends VBox implements AutoCloseable {
 
     private void createIndex() {
         if (structure == null || !structure.editable()) {
-            feedback.status("视图不能建索引");
+            feedback.status(I18n.t("structure.blocked.viewIndex"));
             return;
         }
         if (running) {
-            feedback.status("已有结构变更正在执行");
+            feedback.status(I18n.t("structure.status.busy"));
             return;
         }
         IndexDialog dialog = IndexDialog.create(session, structure);
@@ -1069,8 +1067,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
         }
         if (index.autoCreated()
                 || index.name().equalsIgnoreCase(session.dialect().primaryIndexName())) {
-            feedback.status("「" + index.name() + "」是数据库为约束自动创建的索引，"
-                    + "不能直接删除 —— 要去掉它请改对应的约束");
+            feedback.status(I18n.t("structure.blocked.autoIndex", index.name()));
             return;
         }
         applyPlan(StructureSqlBuilder.dropIndex(session, structure, index.name()));
@@ -1083,15 +1080,15 @@ public final class StructurePage extends VBox implements AutoCloseable {
      */
     private void showTableCommentDialog() {
         if (structure == null || !structure.editable()) {
-            feedback.status("请先选中一张表");
+            feedback.status(I18n.t("structure.blocked.noTable"));
             return;
         }
         if (running) {
-            feedback.status("已有结构变更正在执行");
+            feedback.status(I18n.t("structure.status.busy"));
             return;
         }
         if (!session.dialect().supportsTableComment()) {
-            feedback.status(session.dialect().displayName() + " 不支持表注释");
+            feedback.status(I18n.t("structure.blocked.dialectComment", session.dialect().displayName()));
             return;
         }
         TableCommentDialog dialog = TableCommentDialog.create(session, structure);
@@ -1104,11 +1101,11 @@ public final class StructurePage extends VBox implements AutoCloseable {
 
     private void createForeignKey() {
         if (structure == null || !structure.editable()) {
-            feedback.status("视图不能建外键");
+            feedback.status(I18n.t("structure.blocked.viewFk"));
             return;
         }
         if (running) {
-            feedback.status("已有结构变更正在执行");
+            feedback.status(I18n.t("structure.status.busy"));
             return;
         }
         ForeignKeyDialog dialog = ForeignKeyDialog.create(session, structure);
@@ -1126,11 +1123,11 @@ public final class StructurePage extends VBox implements AutoCloseable {
 
     private void createTrigger() {
         if (structure == null || !structure.editable()) {
-            feedback.status("视图不能建触发器");
+            feedback.status(I18n.t("structure.blocked.viewTrigger"));
             return;
         }
         if (running) {
-            feedback.status("已有结构变更正在执行");
+            feedback.status(I18n.t("structure.status.busy"));
             return;
         }
         TriggerDialog dialog = TriggerDialog.create(session, structure);
@@ -1185,19 +1182,19 @@ public final class StructurePage extends VBox implements AutoCloseable {
     private void paintDisableReasons(boolean running, boolean editable) {
         boolean columnSelected = selectedColumn().isPresent();
         for (Button button : java.util.List.of(edit, rename, drop)) {
-            paintDisableReason(button, running, "已有结构变更正在执行",
-                    !editable, "视图不能改结构",
-                    !columnSelected, "先在下面选中一列");
+            paintDisableReason(button, running, I18n.t("structure.status.busy"),
+                    !editable, I18n.t("structure.blocked.viewStructure"),
+                    !columnSelected, I18n.t("structure.blocked.noColumn"));
         }
-        paintDisableReason(addIndex, running, "已有结构变更正在执行",
-                !editable, "视图不能建索引", false, "");
-        paintDisableReason(addForeignKey, running, "已有结构变更正在执行",
-                !editable, "视图不能建外键", false, "");
-        paintDisableReason(addTrigger, running, "已有结构变更正在执行",
-                !editable, "视图不能建触发器", false, "");
-        paintDisableReason(tableComment, running, "已有结构变更正在执行",
-                !editable, "视图不能改结构",
-                !session.dialect().supportsTableComment(), "当前方言不支持表注释");
+        paintDisableReason(addIndex, running, I18n.t("structure.status.busy"),
+                !editable, I18n.t("structure.blocked.viewIndex"), false, "");
+        paintDisableReason(addForeignKey, running, I18n.t("structure.status.busy"),
+                !editable, I18n.t("structure.blocked.viewFk"), false, "");
+        paintDisableReason(addTrigger, running, I18n.t("structure.status.busy"),
+                !editable, I18n.t("structure.blocked.viewTrigger"), false, "");
+        paintDisableReason(tableComment, running, I18n.t("structure.status.busy"),
+                !editable, I18n.t("structure.blocked.viewStructure"),
+                !session.dialect().supportsTableComment(), I18n.t("structure.blocked.dialectCommentTip"));
     }
 
     /** 「条件 → 文案」成对传入，第一个命中的条件就是 tooltip；可用时清掉 tooltip。 */
@@ -1214,14 +1211,14 @@ public final class StructurePage extends VBox implements AutoCloseable {
 
     private void copy(String text) {
         if (text == null || text.isBlank()) {
-            feedback.status("没有可复制的内容");
+            feedback.status(I18n.t("structure.copy.empty"));
             return;
         }
         ClipboardContent content = new ClipboardContent();
         content.putString(text);
         Clipboard.getSystemClipboard().setContent(content);
-        feedback.status("已复制到剪贴板");
-        feedback.toast("已复制到剪贴板");
+        feedback.status(I18n.t("structure.copy.done"));
+        feedback.toast(I18n.t("structure.copy.done"));
     }
 
     private javafx.stage.Window sceneWindow() {

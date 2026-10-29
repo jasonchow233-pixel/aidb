@@ -5,6 +5,8 @@ import io.agenticdb.introspect.TableOptions;
 import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.JdbcSession;
+import io.agenticdb.ui.App;
+import io.agenticdb.ui.I18n;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -72,6 +74,82 @@ class StructurePageTest {
         session.close();
     }
 
+    /**
+     * ⭐ 第七批补的适配闸：结构页每一排内联工具条，在**验收宽度 1280** 下
+     * 整排需要的宽度必须放得进预算。
+     *
+     * <p>为什么值得为一条「现在还没坏」的排立闸：D-5（命令带）与 D-8（查询页分页条）
+     * 是连续两批在同一类形状上翻的车 —— 英文比中文宽，一排文字按钮就装不下。
+     * 结构页这一排是 Add Field / Edit Field / Rename / Delete Field / Table Comment，
+     * 形状一模一样，而后面还有 44 个文件要抽。
+     *
+     * <p>两个坑按 D-8 的教训绕开：
+     * ① <b>不去改窗口尺寸</b> —— {@code stage.setWidth()} 在这套 harness 里不会同步落到场景上，
+     *    所以改成**推导预算**：此刻「场景宽 − 这一排的实得宽」就是这一排以外的固定开销，
+     *    1280 下的预算 = 1280 − 那个开销。
+     * ② 必须**挂上样式表**再量：本类的 {@code @Start} 建的是裸场景，字号与内边距全来自
+     *    {@code app.css}，不挂就量出另一套宽度，这条闸会绿得毫无意义。
+     * 外加一条"先确认量到的是真宽度"的自证（{@code getWidth() > 0} 且开销不为负），
+     * 否则扫描失效时它同样会绿。
+     */
+    @Test
+    void structureToolbarsFitTheAcceptanceWidth(FxRobot robot) throws Exception {
+        waitForStructure();
+        // 喂布局与读几何必须在同一条 FX 任务里（第四批的教训：分两次调用，
+        // 中间能插入布局事件，读到自相矛盾的帧）。
+        List<String> bad = WaitForAsyncUtils.asyncFx(() -> {
+            Scene scene = page.getScene();
+            if (scene.getStylesheets().isEmpty()) {
+                scene.getStylesheets().add(getClass()
+                        .getResource("/io/agenticdb/ui/theme-light.css").toExternalForm());
+                scene.getStylesheets().add(getClass()
+                        .getResource("/io/agenticdb/ui/app.css").toExternalForm());
+                scene.getRoot().getStyleClass().add("theme-light");
+            }
+            page.applyCss();
+            page.layout();
+            List<String> out = new java.util.ArrayList<>();
+            java.util.Set<javafx.scene.Node> seen =
+                    java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+            // ⚠️ 必须逐页签切一遍再量：TabPane 只把**选中**页签的内容挂进场景图，
+            //    直接 lookupAll 只能看见「列」那一排 —— 一条声称"量每一排"、
+            //    实际只量到一排的门禁比没有门禁更危险（同一个坑见 I18nAuditTest 的
+            //    ACTION_REGISTRATION 注释）。
+            javafx.scene.control.TabPane tabs =
+                    (javafx.scene.control.TabPane) page.lookup("#structure-tabs");
+            for (int i = -1; i < tabs.getTabs().size(); i++) {
+                if (i >= 0) {
+                    tabs.getSelectionModel().select(i);
+                }
+                page.applyCss();
+                page.layout();
+                for (javafx.scene.Node node : page.lookupAll(".adb-inline-toolbar")) {
+                    if (!(node instanceof javafx.scene.layout.HBox bar) || !seen.add(bar)) {
+                        continue;
+                    }
+                    double overhead = scene.getWidth() - bar.getWidth();
+                    assertThat(bar.getWidth())
+                            .as("量之前先确认这一排真的布局过了（宽度 0 = 这条闸在空转）")
+                            .isGreaterThan(0.0);
+                    assertThat(overhead)
+                            .as("开销为负说明量到的不是同一帧，预算就不成立")
+                            .isGreaterThanOrEqualTo(0.0);
+                    double budget = App.SHOT_SCENE_WIDTH - overhead;
+                    if (bar.prefWidth(-1) > budget + 0.5) {
+                        out.add(who(bar) + " 在 " + (int) App.SHOT_SCENE_WIDTH + " 下需要 "
+                                + Math.round(bar.prefWidth(-1)) + "px > 预算 "
+                                + Math.round(budget) + "px");
+                    }
+                }
+            }
+            assertThat(seen)
+                    .as("结构页有四排内联工具条（列 / 索引 / 外键 / 触发器），少一排就是漏量")
+                    .hasSizeGreaterThanOrEqualTo(4);
+            return out;
+        }).get();
+        assertThat(bad).isEmpty();
+    }
+
     @Test
     void loadsColumnsIndexesAndDdl(FxRobot robot) throws Exception {
         waitForStructure();
@@ -123,7 +201,7 @@ class StructurePageTest {
         robot.clickOn(name);
         robot.write("nickname");
         Button ok = robot.lookup(node -> node instanceof Button button
-                        && "确定".equals(button.getText()))
+                        && I18n.t("common.ok").equals(button.getText()))
                 .queryAs(Button.class);
         robot.clickOn(ok);
         WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
@@ -173,16 +251,19 @@ class StructurePageTest {
 
     @Test
     void columnNameRulesAreExplicit() {
+        // 断言一律走 I18n.t(...)，不写死中文：测试 JVM 的默认语言是英文
+        // （I18n.DEFAULT_LOCALE），写死中文等于把这条门禁钉死在一种语言上 ——
+        // 抽干净之后它会「因为比较对象变了」而红，而不是因为行为错了。
         assertThat(StructurePage.columnSpecProblem("", "TEXT", null, List.of()))
-                .isEqualTo("列名不能为空");
+                .isEqualTo(I18n.t("structure.error.emptyName"));
         assertThat(StructurePage.columnSpecProblem(null, "TEXT", null, List.of()))
-                .isEqualTo("列名不能为空");
+                .isEqualTo(I18n.t("structure.error.emptyName"));
         assertThat(StructurePage.columnSpecProblem("1bad", "TEXT", null, List.of()))
-                .contains("字母或下划线开头");
+                .isEqualTo(I18n.t("structure.error.badName"));
         assertThat(StructurePage.columnSpecProblem("bad name", "TEXT", null, List.of()))
-                .contains("字母或下划线开头");
+                .isEqualTo(I18n.t("structure.error.badName"));
         assertThat(StructurePage.columnSpecProblem("good_name1", "", null, List.of()))
-                .isEqualTo("列类型不能为空");
+                .isEqualTo(I18n.t("structure.error.emptyType"));
         assertThat(StructurePage.columnSpecProblem("nickname", "TEXT", null, List.of()))
                 .isNull();
     }
@@ -201,8 +282,9 @@ class StructurePageTest {
                 .lookup("#structure-columns").queryAs(javafx.scene.control.TableView.class);
         assertThat(columns.getColumns().stream()
                 .map(column -> String.valueOf(column.getText())))
-                .doesNotContain("注释")
-                .contains("名称", "类型", "主键");
+                .doesNotContain(I18n.t("column.comment"))
+                .contains(I18n.t("column.name"), I18n.t("detail.type"),
+                        I18n.t("structure.col.key"));
     }
 
     @Test
@@ -214,7 +296,8 @@ class StructurePageTest {
 
         TextInputControl comment = robot.lookup("#structure-dialog-comment").queryTextInputControl();
         assertThat(comment.isDisabled()).isTrue();
-        assertThat(comment.getPromptText()).contains("不支持列注释");
+        assertThat(comment.getPromptText())
+                .isEqualTo(I18n.t("structure.dialog.commentUnsupported", "SQLite"));
     }
 
     // ─────────────────────── UX-6 选项页签 ───────────────────────
@@ -226,7 +309,7 @@ class StructurePageTest {
     @Test
     void optionsTabIsHonestWhenTheDialectHasNoTableOptions(FxRobot robot) throws Exception {
         waitForStructure();
-        selectTab(robot, "选项");
+        selectTab(robot, I18n.t("structure.tab.options"));
 
         assertThat(robot.lookup("#structure-options-engine").queryAs(Label.class).getText())
                 .isEqualTo("—");
@@ -238,15 +321,15 @@ class StructurePageTest {
                 .isEqualTo("—");
         assertThat(robot.lookup("#structure-options-hint").queryAs(Label.class).getText())
                 .as("「—」要给出来源，否则用户以为功能坏了")
-                .contains("SQLite")
-                .contains("没有表级");
+                .isEqualTo(I18n.t("structure.options.dialectNone", "SQLite"))
+                .contains("SQLite");
     }
 
     /** MySQL 形态的四个值要能如实落到页面上（真实取值由真库契约守）。 */
     @Test
     void optionsTabShowsEngineCollationAutoIncrementAndRowFormat(FxRobot robot) throws Exception {
         waitForStructure();
-        selectTab(robot, "选项");
+        selectTab(robot, I18n.t("structure.tab.options"));
 
         robot.interact(() -> page.renderOptions(
                 new TableOptions("InnoDB", "utf8mb4_0900_ai_ci", 42L, "Dynamic")));
@@ -281,9 +364,22 @@ class StructurePageTest {
         WaitForAsyncUtils.waitForFxEvents();
     }
 
+    /** 报"哪一排"：这些内联工具条没有 id，用排里第一个文字项的内容代指。 */
+    private static String who(javafx.scene.Node node) {
+        if (node instanceof javafx.scene.layout.Pane pane) {
+            for (javafx.scene.Node child : pane.getChildren()) {
+                if (child instanceof javafx.scene.control.Labeled labeled
+                        && !labeled.getText().isEmpty()) {
+                    return "「" + labeled.getText() + "」那一排";
+                }
+            }
+        }
+        return node.getStyleClass().toString();
+    }
+
     private static Button okButton(FxRobot robot) {
         return robot.lookup(node -> node instanceof Button button
-                        && "确定".equals(button.getText()))
+                        && I18n.t("common.ok").equals(button.getText()))
                 .queryAs(Button.class);
     }
 
