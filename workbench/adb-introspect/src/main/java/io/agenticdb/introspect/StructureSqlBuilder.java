@@ -302,6 +302,31 @@ public final class StructureSqlBuilder {
                 false, false);
     }
 
+    /** 出错的设计器页签（外键 / 索引 / 触发器）。 */
+    public enum DesignStep { FOREIGN_KEY, INDEX, TRIGGER }
+
+    /**
+     * 建表计划里「对象」部分的校验失败 —— 异常自带出错的页签，UI 按类型路由。
+     *
+     * <p>新建表弹窗的规则是「报错落在哪一页，就把用户带到哪一页」。按文案
+     * {@code contains("索引")} 猜页签，文案一改（模型层消息迟早双语化）路由就静默
+     * 失效 —— 所以把步骤做成类型。表名与列的问题落在「字段」页，用普通
+     * {@link IllegalArgumentException} 即可，不走这个类型。
+     */
+    public static final class DesignStepException extends IllegalArgumentException {
+
+        private final DesignStep step;
+
+        public DesignStepException(DesignStep step, String message) {
+            super(message);
+            this.step = step;
+        }
+
+        public DesignStep step() {
+            return step;
+        }
+    }
+
     /**
      * 表级外键子句（写进 CREATE TABLE 的那一行）。
      *
@@ -311,16 +336,16 @@ public final class StructureSqlBuilder {
      */
     public static String foreignKeyClause(DbSession session, ForeignKeyDef foreignKey) {
         if (foreignKey == null) {
-            throw new IllegalArgumentException("请指定外键");
+            throw new DesignStepException(DesignStep.FOREIGN_KEY, "请指定外键");
         }
         if (foreignKey.columns().isEmpty() || foreignKey.referencedColumns().isEmpty()) {
-            throw new IllegalArgumentException("外键至少要有一列");
+            throw new DesignStepException(DesignStep.FOREIGN_KEY, "外键至少要有一列");
         }
         if (foreignKey.referencedTable().isBlank()) {
-            throw new IllegalArgumentException("请选择被引用的表");
+            throw new DesignStepException(DesignStep.FOREIGN_KEY, "请选择被引用的表");
         }
         if (foreignKey.columns().size() != foreignKey.referencedColumns().size()) {
-            throw new IllegalArgumentException("外键的列数与被引用列的列数必须一致");
+            throw new DesignStepException(DesignStep.FOREIGN_KEY, "外键的列数与被引用列的列数必须一致");
         }
         String name = foreignKey.name().isBlank() ? ""
                 : "CONSTRAINT " + quoteIdentifier(session, foreignKey.name()) + " ";
@@ -342,11 +367,12 @@ public final class StructureSqlBuilder {
             for (String column : key.columns()) {
                 if (columns.stream().noneMatch(candidate ->
                         candidate.name().equalsIgnoreCase(column))) {
-                    throw new IllegalArgumentException("表里没有这一列: " + column);
+                    throw new DesignStepException(DesignStep.FOREIGN_KEY, "表里没有这一列: " + column);
                 }
             }
             if (!key.name().isBlank() && !names.add(key.name().toLowerCase(Locale.ROOT))) {
-                throw new IllegalArgumentException("已经有一个叫「" + key.name() + "」的外键了");
+                throw new DesignStepException(DesignStep.FOREIGN_KEY,
+                        "已经有一个叫「" + key.name() + "」的外键了");
             }
             lines.add(foreignKeyClause(session, key));
         }
@@ -363,17 +389,18 @@ public final class StructureSqlBuilder {
         for (IndexDef index : indexes) {
             requireIndexName(index.name());
             if (index.columns().isEmpty()) {
-                throw new IllegalArgumentException("索引「" + index.name() + "」请至少选择一列");
+                throw new DesignStepException(DesignStep.INDEX, "索引「" + index.name() + "」请至少选择一列");
             }
             for (String column : index.columns()) {
                 if (columns.stream().noneMatch(candidate ->
                         candidate.name().equalsIgnoreCase(column))) {
-                    throw new IllegalArgumentException("索引「" + index.name()
+                    throw new DesignStepException(DesignStep.INDEX, "索引「" + index.name()
                             + "」引用了表里没有的列: " + column);
                 }
             }
             if (!names.add(index.name().toLowerCase(Locale.ROOT))) {
-                throw new IllegalArgumentException("已经有一个叫「" + index.name() + "」的索引了");
+                throw new DesignStepException(DesignStep.INDEX,
+                        "已经有一个叫「" + index.name() + "」的索引了");
             }
             statements.add(createIndexSql(session, tableName, index));
         }
@@ -394,21 +421,22 @@ public final class StructureSqlBuilder {
         for (TriggerDef trigger : triggers) {
             String triggerName = trigger.name().trim();
             if (triggerName.isEmpty()) {
-                throw new IllegalArgumentException("触发器名不能为空");
+                throw new DesignStepException(DesignStep.TRIGGER, "触发器名不能为空");
             }
             if (trigger.statement().isBlank()) {
-                throw new IllegalArgumentException("触发器体不能为空");
+                throw new DesignStepException(DesignStep.TRIGGER, "触发器体不能为空");
             }
             String when = trigger.timing().trim().toUpperCase(Locale.ROOT);
             String what = trigger.event().trim().toUpperCase(Locale.ROOT);
             if (!List.of("BEFORE", "AFTER").contains(when)) {
-                throw new IllegalArgumentException("触发时机只能是 BEFORE 或 AFTER");
+                throw new DesignStepException(DesignStep.TRIGGER, "触发时机只能是 BEFORE 或 AFTER");
             }
             if (!List.of("INSERT", "UPDATE", "DELETE").contains(what)) {
-                throw new IllegalArgumentException("触发事件只能是 INSERT / UPDATE / DELETE");
+                throw new DesignStepException(DesignStep.TRIGGER, "触发事件只能是 INSERT / UPDATE / DELETE");
             }
             if (!names.add(triggerName.toLowerCase(Locale.ROOT))) {
-                throw new IllegalArgumentException("已经有一个叫「" + triggerName + "」的触发器了");
+                throw new DesignStepException(DesignStep.TRIGGER,
+                        "已经有一个叫「" + triggerName + "」的触发器了");
             }
             session.dialect().appendCreateTriggerSql(tableName, triggerName, when, what,
                     trigger.statement().trim(), statements);

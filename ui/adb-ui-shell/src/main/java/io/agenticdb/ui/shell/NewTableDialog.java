@@ -12,6 +12,7 @@ import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnSpec;
 import io.agenticdb.model.ColumnType;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import io.agenticdb.ui.RowHeights;
 import javafx.beans.property.BooleanProperty;
@@ -82,7 +83,9 @@ import java.util.function.Predicate;
 final class NewTableDialog {
 
     /** 表名还没填时的预览空态；填了却拼不出 SQL 时换成真正的原因。 */
-    private static final String PREVIEW_EMPTY_HINT = "填写表名后，这里会显示将要执行的建表语句";
+    private static String previewEmptyHint() {
+        return I18n.t("newtable.preview.emptyHint");
+    }
 
     /**
      * ⭐ R31：字段网格行高跟随清单档位（Navicat 实测 22px，本档位 21px）。
@@ -119,7 +122,7 @@ final class NewTableDialog {
     private final TextField fieldDefault = new TextField();
     private final ComboBox<String> fieldCharset = new ComboBox<>();
     private final ComboBox<String> fieldCollation = new ComboBox<>();
-    private final Label fieldPropertiesHint = new Label("选中网格里的一列，这里编辑它的属性");
+    private final Label fieldPropertiesHint = new Label(I18n.t("newtable.properties.hint"));
     /** 面板正在回填选中行的值 —— 这时的控件变化不是用户输入，不能写回模型。 */
     private boolean syncingProperties;
     /** ⭐ R31：Navicat 底部的「字段数」。 */
@@ -177,7 +180,7 @@ final class NewTableDialog {
     // ─────────────────────────── 界面 ───────────────────────────
 
     private void buildUi() {
-        dialog.setTitle("新建表");
+        dialog.setTitle(I18n.t("ribbon.newTable"));
         // ⭐ 规格 §13.1：850–1000px。720px 下「默认值 / 注释」两列会被压成
         //    一个省略号，改一个默认值先得横向滚 —— 建表是高频操作，不能这样。
         dialog.getDialogPane().setPrefWidth(DialogSizes.TABLE);
@@ -191,13 +194,13 @@ final class NewTableDialog {
         dialog.setHeaderText(null);
 
         name.setId("new-table-name");
-        name.setPromptText("表名");
+        name.setPromptText(I18n.t("newtable.name"));
         name.textProperty().addListener((observable, oldValue, newValue) -> refreshPreview());
 
         boolean commentSupported = session.dialect().supportsTableComment();
         tableComment.setId("new-table-comment");
         tableComment.setPromptText(commentSupported
-                ? "表注释（可空）" : session.dialect().displayName() + " 不支持表注释");
+                ? I18n.t("newtable.comment.prompt") : I18n.t("newtable.comment.unsupportedPrompt", session.dialect().displayName()));
         tableComment.setDisable(!commentSupported);
         tableComment.textProperty().addListener((observable, oldValue, newValue) -> refreshPreview());
 
@@ -211,28 +214,28 @@ final class NewTableDialog {
 
         // ⭐ R31：工具条按 Navicat 摆在网格<b>上方</b>（添加 / 插入 / 删除 / 上移 / 下移）——
         //    以前只有「添加 / 删除」两颗按钮、还挂在网格下面，调列顺序无路可走。
-        Button add = IconButtons.of(Icons.Icon.ADD, "添加字段");
+        Button add = IconButtons.of(Icons.Icon.ADD, I18n.t("newtable.field.add"));
         add.setId("new-table-add-column");
         add.setOnAction(event -> {
             addRow();
             fitTableHeight(table);
         });
-        Button insert = IconButtons.of(Icons.Icon.ADD, "插入字段");
+        Button insert = IconButtons.of(Icons.Icon.ADD, I18n.t("newtable.field.insert"));
         insert.setId("new-table-insert-column");
         insert.setOnAction(event -> {
             insertRow();
             fitTableHeight(table);
         });
-        Button remove = IconButtons.of(Icons.Icon.DELETE, "删除字段");
+        Button remove = IconButtons.of(Icons.Icon.DELETE, I18n.t("newtable.field.delete"));
         remove.setId("new-table-remove-column");
         remove.setOnAction(event -> {
             removeSelectedRow();
             fitTableHeight(table);
         });
-        Button moveUp = IconButtons.icon(Icons.Icon.MOVE_UP, "上移");
+        Button moveUp = IconButtons.icon(Icons.Icon.MOVE_UP, I18n.t("newtable.moveUp"));
         moveUp.setId("new-table-move-up");
         moveUp.setOnAction(event -> moveSelectedRow(-1));
-        Button moveDown = IconButtons.icon(Icons.Icon.MOVE_DOWN, "下移");
+        Button moveDown = IconButtons.icon(Icons.Icon.MOVE_DOWN, I18n.t("newtable.moveDown"));
         moveDown.setId("new-table-move-down");
         moveDown.setOnAction(event -> moveSelectedRow(1));
 
@@ -269,7 +272,7 @@ final class NewTableDialog {
         //    「输入 SQL，⌘↵ 执行当前语句」是误导（用户会去敲键盘、按 ⌘↵，
         //    然后什么都没发生）。setHint 是 §11.2/§28.8 为只读视图加的口子，
         //    这里必须用上（结构页 DDL 已经用了）。
-        previewEditor.setHint(PREVIEW_EMPTY_HINT);
+        previewEditor.setHint(previewEmptyHint());
         previewEditor.setPrefHeight(168);
         VBox.setVgrow(previewEditor, Priority.ALWAYS);
 
@@ -281,19 +284,19 @@ final class NewTableDialog {
 
         tabs.setId("new-table-tabs");
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-        columnsTab = tab("字段", "new-table-tab-columns", fieldPage);
-        indexTab = tab("索引", "new-table-tab-indexes", buildObjectsPage(indexList,
-                "还没有索引 —— 点「添加索引」新建一个", "添加索引", "new-table-indexes",
+        columnsTab = tab(I18n.t("newtable.tab.fields"), "new-table-tab-columns", fieldPage);
+        indexTab = tab(I18n.t("structure.tab.indexes"), "new-table-tab-indexes", buildObjectsPage(indexList,
+                I18n.t("newtable.empty.indexes"), I18n.t("newtable.index.add"), "new-table-indexes",
                 indexes, this::addIndex,
                 index -> index.name() + "  ·  " + index.columnsLabel()
-                        + (index.unique() ? "  ·  唯一" : "")));
-        foreignKeyTab = tab("外键", "new-table-tab-foreign-keys", buildObjectsPage(
-                foreignKeyList, "还没有外键 —— 点「添加外键」新建一个", "添加外键",
+                        + (index.unique() ? "  ·  " + I18n.t("structure.col.unique") : "")));
+        foreignKeyTab = tab(I18n.t("structure.tab.foreignKeys"), "new-table-tab-foreign-keys", buildObjectsPage(
+                foreignKeyList, I18n.t("newtable.empty.foreignKeys"), I18n.t("newtable.foreignKey.add"),
                 "new-table-foreign-keys", foreignKeys, this::addForeignKey,
                 key -> key.displayName() + "  ·  " + String.join(", ", key.columns())
                         + " → " + key.referencedTable()));
-        triggerTab = tab("触发器", "new-table-tab-triggers", buildObjectsPage(triggerList,
-                "还没有触发器 —— 点「添加触发器」新建一个", "添加触发器",
+        triggerTab = tab(I18n.t("structure.tab.triggers"), "new-table-tab-triggers", buildObjectsPage(triggerList,
+                I18n.t("newtable.empty.triggers"), I18n.t("newtable.trigger.add"),
                 "new-table-triggers", triggers, this::addTrigger,
                 trigger -> trigger.name() + "  ·  " + trigger.timingLabel()
                         + " " + trigger.eventLabel()));
@@ -312,8 +315,8 @@ final class NewTableDialog {
         dialog.getDialogPane().setContent(body);
         dialog.setResizable(true);
 
-        ButtonType ok = new ButtonType("创建", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType ok = new ButtonType(I18n.t("newtable.create"), ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
         dialog.getDialogPane().getButtonTypes().setAll(ok, cancel);
         // ⭐ 校验失败必须把弹窗留在原地：用户改一个字符就能继续，
         //    关掉再重开等于把刚填的列全丢了（与结构页 4.5-12 同一条规则）。
@@ -347,7 +350,7 @@ final class NewTableDialog {
 
     /** 表名固定在最上面：它是这张表的身份，切到任何一页都得看得见。 */
     private HBox buildNameSection() {
-        Label label = formLabel("表名");
+        Label label = formLabel(I18n.t("newtable.name"));
         label.setMinWidth(56);
         HBox.setHgrow(name, Priority.ALWAYS);
         HBox box = new HBox(10, label, name);
@@ -385,14 +388,14 @@ final class NewTableDialog {
         add.setId(idPrefix + "-add");
         add.getStyleClass().add("adb-button");
         add.setOnAction(event -> onAdd.run());
-        Button remove = IconButtons.of(Icons.Icon.DELETE, "移除");
+        Button remove = IconButtons.of(Icons.Icon.DELETE, I18n.t("newtable.objects.remove"));
         remove.setId(idPrefix + "-remove");
         remove.getStyleClass().add("adb-button");
         remove.setOnAction(event -> removeSelected(list, backing));
         HBox buttons = new HBox(8, add, remove);
         buttons.setAlignment(Pos.CENTER_LEFT);
 
-        Label hint = new Label("这些对象与字段写进同一个建表计划 —— SQL 见「SQL 预览」页");
+        Label hint = new Label(I18n.t("newtable.objectsHint"));
         hint.getStyleClass().add("adb-muted");
         VBox.setVgrow(list, Priority.ALWAYS);
         return new VBox(8, list, buttons, hint);
@@ -476,33 +479,33 @@ final class NewTableDialog {
         Label dialect = new Label(session.dialect().displayName());
 
         VBox box = new VBox(12,
-                labelledInfo("建表选项", options),
-                labelledInfo("方言", dialect));
-        return tab("选项", "new-table-tab-options", box);
+                labelledInfo(I18n.t("newtable.options.heading"), options),
+                labelledInfo(I18n.t("newtable.options.dialect"), dialect));
+        return tab(I18n.t("structure.tab.options"), "new-table-tab-options", box);
     }
 
     /** ⭐ R31：「备注」页 —— 表注释的唯一入口（不支持的方言置灰并说明原因）。 */
     private Tab buildCommentTab() {
         tableComment.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(tableComment, Priority.ALWAYS);
-        HBox commentRow = new HBox(10, formLabel("表注释"), tableComment);
+        HBox commentRow = new HBox(10, formLabel(I18n.t("structure.tableComment.button")), tableComment);
         commentRow.setAlignment(Pos.CENTER_LEFT);
 
         Label note = new Label(session.dialect().supportsTableComment()
-                ? "注释会写进建表计划（MySQL 用 ALTER TABLE … COMMENT，PostgreSQL 用 COMMENT ON）。"
-                : session.dialect().displayName() + " 不支持表注释。");
+                ? I18n.t("newtable.comment.note")
+                : I18n.t("newtable.comment.unsupportedNote", session.dialect().displayName()));
         note.getStyleClass().add("adb-muted");
         note.setWrapText(true);
 
         VBox box = new VBox(12, commentRow, note);
-        return tab("备注", "new-table-tab-comment", box);
+        return tab(I18n.t("newtable.tab.comment"), "new-table-tab-comment", box);
     }
 
     /** 方言会自动追加的建表选项；没有就明说「不追加」，不让用户以为漏了设置。 */
     private String optionsText() {
         String options = session.dialect().createTableOptions();
         return options == null || options.isBlank()
-                ? "方言默认（CREATE TABLE 不追加选项子句）" : options;
+                ? I18n.t("newtable.options.none") : options;
     }
 
     private static VBox labelledInfo(String text, Label value) {
@@ -510,17 +513,17 @@ final class NewTableDialog {
     }
 
     private Tab buildSqlTab() {
-        Button copySql = IconButtons.of(Icons.Icon.COPY, "复制 SQL");
+        Button copySql = IconButtons.of(Icons.Icon.COPY, I18n.t("newtable.sql.copy"));
         copySql.setId("new-table-copy-sql");
         copySql.setOnAction(event -> copyPreview());
-        Label sqlTitle = new Label("将要执行的 SQL");
+        Label sqlTitle = new Label(I18n.t("newtable.sql.title"));
         sqlTitle.getStyleClass().add("adb-dialog__section-title");
         HBox header = new HBox(8, sqlTitle, copySql);
         header.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(sqlTitle, Priority.ALWAYS);
         VBox box = new VBox(8, header, previewEditor);
         VBox.setVgrow(previewEditor, Priority.ALWAYS);
-        return tab("SQL 预览", "new-table-tab-sql", box);
+        return tab(I18n.t("newtable.tab.sql"), "new-table-tab-sql", box);
     }
 
     /**
@@ -541,12 +544,12 @@ final class NewTableDialog {
 
     /** 标题栏：新建表 + 当前库 / 方言 + 关闭按钮（规格 §13.2）。 */
     private HBox buildHeader() {
-        Label title = new Label("新建表");
+        Label title = new Label(I18n.t("ribbon.newTable"));
         title.getStyleClass().add("adb-dialog__title");
         // ⭐ 会话标签本身就是「方言 · 库」（见 JdbcSession.of）—— 再补一遍方言
         //    就成了「SQLite · 文件 · SQLite」，与「新建索引」的标题栏重复同一个错。
         Label context = DialogStyles.contextLabel(session.label());
-        Button close = IconButtons.icon(Icons.Icon.CLOSE, "关闭");
+        Button close = IconButtons.icon(Icons.Icon.CLOSE, I18n.t("tab.close"));
         close.setId("new-table-close");
         close.getStyleClass().addAll("adb-icon-button", "adb-dialog__close");
         close.setOnAction(event -> close());
@@ -609,15 +612,15 @@ final class NewTableDialog {
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         this.typeColumn = buildTypeColumn(146);
         table.getColumns().setAll(
-                textColumn("名称", "name", 180, row -> row.name),
+                textColumn(I18n.t("column.name"), "name", 180, row -> row.name),
                 typeColumn,
-                numberColumn("长度", "length", 58, row -> row.length, this::takesLength),
-                numberColumn("小数", "decimals", 58, row -> row.decimals, this::takesDecimals),
-                booleanColumn("不为空", 58, row -> row.notNull),
-                booleanColumn("主键", 46, row -> row.primaryKey),
-                booleanColumn("唯一", 46, row -> row.unique),
-                booleanColumn("自增", 46, row -> row.autoIncrement),
-                textColumn("注释", "comment", 130, row -> row.comment));
+                numberColumn(I18n.t("newtable.col.length"), "length", 58, row -> row.length, this::takesLength),
+                numberColumn(I18n.t("newtable.col.decimals"), "decimals", 58, row -> row.decimals, this::takesDecimals),
+                booleanColumn(I18n.t("newtable.col.notNull"), 58, row -> row.notNull),
+                booleanColumn(I18n.t("structure.col.key"), 46, row -> row.primaryKey),
+                booleanColumn(I18n.t("structure.col.unique"), 46, row -> row.unique),
+                booleanColumn(I18n.t("newtable.col.autoIncrement"), 72, row -> row.autoIncrement),
+                textColumn(I18n.t("column.comment"), "comment", 130, row -> row.comment));
         // ⭐ S-4：Tab / 方向键在整张网格里移动（装上去之前，7 列里有 4 列只能靠鼠标点准）。
         installGridNavigation(table);
         table.getSelectionModel().selectedItemProperty()
@@ -631,7 +634,7 @@ final class NewTableDialog {
      */
     private TableColumn<ColumnRow, String> buildTypeColumn(double width) {
         List<String> names = typeOptions.stream().map(ColumnTypeOption::name).toList();
-        TableColumn<ColumnRow, String> column = new TableColumn<>("类型");
+        TableColumn<ColumnRow, String> column = new TableColumn<>(I18n.t("detail.type"));
         column.setId("new-table-column-type");
         column.setPrefWidth(width);
         column.setCellValueFactory(cell -> cell.getValue().type);
@@ -721,7 +724,7 @@ final class NewTableDialog {
      */
     private VBox buildFieldProperties() {
         fieldDefault.setId("new-table-field-default");
-        fieldDefault.setPromptText("空 = 无默认值");
+        fieldDefault.setPromptText(I18n.t("newtable.default.prompt"));
         fieldDefault.setPrefWidth(300);
         fieldDefault.textProperty().addListener((observable, oldValue, newValue) -> {
             ColumnRow row = selectedRow();
@@ -735,8 +738,8 @@ final class NewTableDialog {
         fieldCharset.setEditable(true);
         fieldCharset.getItems().setAll(charsetPresets());
         fieldCharset.setPromptText(charsetSupported()
-                ? "空 = 跟随表 / 库的字符集"
-                : session.dialect().displayName() + " 没有列级字符集");
+                ? I18n.t("newtable.charset.prompt")
+                : I18n.t("newtable.charset.unsupported", session.dialect().displayName()));
         fieldCharset.getEditor().textProperty().addListener((observable, oldValue, newValue) -> {
             ColumnRow row = selectedRow();
             if (!syncingProperties && row != null) {
@@ -748,7 +751,7 @@ final class NewTableDialog {
         fieldCollation.setPrefWidth(300);
         fieldCollation.setEditable(true);
         fieldCollation.getItems().setAll(collationPresets());
-        fieldCollation.setPromptText("空 = 跟随字符集默认排序");
+        fieldCollation.setPromptText(I18n.t("newtable.collation.prompt"));
         fieldCollation.getEditor().textProperty().addListener((observable, oldValue, newValue) -> {
             ColumnRow row = selectedRow();
             if (!syncingProperties && row != null) {
@@ -760,11 +763,11 @@ final class NewTableDialog {
         grid.getStyleClass().add("adb-new-table__properties");
         grid.setHgap(12);
         grid.setVgap(6);
-        grid.add(formLabel("默认值"), 0, 0);
+        grid.add(formLabel(I18n.t("structure.col.default")), 0, 0);
         grid.add(fieldDefault, 1, 0);
-        grid.add(formLabel("字符集"), 0, 1);
+        grid.add(formLabel(I18n.t("newtable.field.charset")), 0, 1);
         grid.add(fieldCharset, 1, 1);
-        grid.add(formLabel("排序规则"), 0, 2);
+        grid.add(formLabel(I18n.t("column.collation")), 0, 2);
         grid.add(fieldCollation, 1, 2);
 
         ColumnConstraints labels = new ColumnConstraints();
@@ -788,10 +791,10 @@ final class NewTableDialog {
         fieldCharset.setDisable(!has || !charsetSupported() || !textual);
         fieldCollation.setDisable(!has || !textual);
         fieldCharset.setPromptText(!charsetSupported()
-                ? session.dialect().displayName() + " 没有列级字符集"
-                : !textual ? "只有文本类型可以指定字符集" : "空 = 跟随表 / 库的字符集");
-        fieldCollation.setPromptText(textual ? "空 = 跟随字符集默认排序"
-                : "只有文本类型可以指定排序规则");
+                ? I18n.t("newtable.charset.unsupported", session.dialect().displayName())
+                : !textual ? I18n.t("newtable.charset.textOnly") : I18n.t("newtable.charset.prompt"));
+        fieldCollation.setPromptText(textual ? I18n.t("newtable.collation.prompt")
+                : I18n.t("newtable.collation.textOnly"));
         fieldDefault.setText(has ? row.defaultValue.get() : "");
         fieldCharset.getEditor().setText(has && row.charset.get() != null
                 ? row.charset.get() : "");
@@ -1164,7 +1167,7 @@ final class NewTableDialog {
             showError(e.getMessage());
             // 报错落在哪一页就把用户带到哪一页 —— 在「字段」页看着一句
             // 「索引引用了表里没有的列」是找不到出路的。
-            selectTabFor(e.getMessage());
+            selectTabFor(e);
             return null;
         }
     }
@@ -1181,17 +1184,22 @@ final class NewTableDialog {
                 List.copyOf(triggers));
     }
 
-    private void selectTabFor(String message) {
-        String text = message == null ? "" : message;
-        if (text.contains("索引")) {
-            tabs.getSelectionModel().select(indexTab);
-        } else if (text.contains("外键")) {
-            tabs.getSelectionModel().select(foreignKeyTab);
-        } else if (text.contains("触发器")) {
-            tabs.getSelectionModel().select(triggerTab);
-        } else {
-            tabs.getSelectionModel().select(columnsTab);
+    /**
+     * 校验失败落在哪一页，就把用户带到哪一页。
+     *
+     * <p>路由按 {@link StructureSqlBuilder.DesignStep} 的类型走，不按文案猜 ——
+     * 按文案 {@code contains("索引")} 的路由，模型层文案一改（迟早双语化）就静默失效。
+     */
+    private void selectTabFor(IllegalArgumentException e) {
+        if (e instanceof StructureSqlBuilder.DesignStepException typed) {
+            switch (typed.step()) {
+                case FOREIGN_KEY -> tabs.getSelectionModel().select(foreignKeyTab);
+                case INDEX -> tabs.getSelectionModel().select(indexTab);
+                case TRIGGER -> tabs.getSelectionModel().select(triggerTab);
+            }
+            return;
         }
+        tabs.getSelectionModel().select(columnsTab);
     }
 
     /** 当前输入的问题；{@code null} 表示可以建。供单测直接断言规则。 */
@@ -1211,13 +1219,13 @@ final class NewTableDialog {
 
     private void refreshPreview() {
         // 页签上的计数是「这几页里有东西」的唯一证据 —— 在字段页也看得见。
-        indexTab.setText(counted("索引", indexes.size()));
-        foreignKeyTab.setText(counted("外键", foreignKeys.size()));
-        triggerTab.setText(counted("触发器", triggers.size()));
-        fieldCount.setText("字段数：" + rows.size());
+        indexTab.setText(counted(I18n.t("structure.tab.indexes"), indexes.size()));
+        foreignKeyTab.setText(counted(I18n.t("structure.tab.foreignKeys"), foreignKeys.size()));
+        triggerTab.setText(counted(I18n.t("structure.tab.triggers"), triggers.size()));
+        fieldCount.setText(I18n.t("newtable.fieldCount", rows.size()));
         try {
             previewEditor.setText(currentPlan().sql());
-            previewEditor.setHint(PREVIEW_EMPTY_HINT);
+            previewEditor.setHint(previewEmptyHint());
         } catch (IllegalArgumentException e) {
             previewEditor.setText("");
             // ⭐ 预览空着就必须说出原因：表名已经填了却还显示「填写表名后…」，
@@ -1230,13 +1238,13 @@ final class NewTableDialog {
     private String previewProblemHint(String message) {
         boolean nameBlank = name.getText() == null || name.getText().isBlank();
         if (nameBlank || message == null || message.isBlank()) {
-            return PREVIEW_EMPTY_HINT;
+            return previewEmptyHint();
         }
         return message;
     }
 
     private static String counted(String title, int count) {
-        return count == 0 ? title : title + "（" + count + "）";
+        return count == 0 ? title : I18n.t("newtable.tabCount", title, count);
     }
 
     private void showError(String message) {
@@ -1426,14 +1434,14 @@ final class NewTableDialog {
                             if (!collations.isEmpty()) {
                                 row.collation.set(collations.getFirst());
                             }
-                            row.comment.set("邮箱");
+                            row.comment.set(I18n.t("newtable.pose.comment"));
                             columnsTable.getSelectionModel().select(row);
                             showProperties(row);
                         });
                 selectTab("new-table-tab-columns");
             }
             case "comment" -> {
-                tableComment.setText("会员档案");
+                tableComment.setText(I18n.t("newtable.pose.tableComment"));
                 selectTab("new-table-tab-comment");
             }
             case "sql" -> {
@@ -1597,17 +1605,17 @@ final class NewTableDialog {
             String len = length.get() == null ? "" : length.get().trim();
             String dec = decimals.get() == null ? "" : decimals.get().trim();
             if (!len.isEmpty() && !len.matches("\\d{1,4}")) {
-                throw new IllegalArgumentException("长度必须是 1–4 位数字：" + label());
+                throw new IllegalArgumentException(I18n.t("newtable.error.lengthDigits", label()));
             }
             if (!dec.isEmpty() && !dec.matches("\\d{1,4}")) {
-                throw new IllegalArgumentException("小数位必须是数字：" + label());
+                throw new IllegalArgumentException(I18n.t("newtable.error.decimalsDigits", label()));
             }
             if (!dec.isEmpty()) {
                 if (len.isEmpty()) {
-                    throw new IllegalArgumentException("填了小数位就要填长度：" + label());
+                    throw new IllegalArgumentException(I18n.t("newtable.error.decimalsNeedsLength", label()));
                 }
                 if (Integer.parseInt(dec) > Integer.parseInt(len)) {
-                    throw new IllegalArgumentException("小数位不能大于长度：" + label());
+                    throw new IllegalArgumentException(I18n.t("newtable.error.decimalsTooLarge", label()));
                 }
             }
             return new ColumnSpec(name.get(), rawType(), !notNull.get(), defaultValue.get(),
@@ -1617,7 +1625,7 @@ final class NewTableDialog {
 
         private String label() {
             String value = name.get() == null ? "" : name.get().trim();
-            return value.isEmpty() ? "（未命名列）" : value;
+            return value.isEmpty() ? I18n.t("newtable.error.unnamedColumn") : value;
         }
     }
 }

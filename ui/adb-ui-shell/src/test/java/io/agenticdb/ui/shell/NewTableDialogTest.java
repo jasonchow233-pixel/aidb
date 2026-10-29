@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.StructurePlan;
 import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.ui.I18n;
 import javafx.application.Platform;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
@@ -209,7 +210,7 @@ class NewTableDialogTest {
         NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
 
         javafx.scene.control.Tab sqlTab = onFx(() -> dialog.tabs().getTabs().getLast());
-        assertThat(onFx(sqlTab::getText)).isEqualTo("SQL 预览");
+        assertThat(onFx(sqlTab::getText)).isEqualTo(I18n.t("newtable.tab.sql"));
         assertThat(onFx(sqlTab::getId)).isEqualTo("new-table-tab-sql");
         assertThat(onFx(sqlTab::isClosable)).isFalse();
         assertThat(onFx(() -> sqlTab.getContent().lookup("#new-table-preview")))
@@ -233,8 +234,10 @@ class NewTableDialogTest {
         List<String> titles = onFx(() -> dialog.tabs().getTabs().stream()
                 .map(javafx.scene.control.Tab::getText).toList());
 
-        assertThat(titles).containsExactly("字段", "索引", "外键", "触发器", "选项", "备注",
-                "SQL 预览");
+        assertThat(titles).containsExactly(I18n.t("newtable.tab.fields"),
+                I18n.t("structure.tab.indexes"), I18n.t("structure.tab.foreignKeys"),
+                I18n.t("structure.tab.triggers"), I18n.t("structure.tab.options"),
+                I18n.t("newtable.tab.comment"), I18n.t("newtable.tab.sql"));
     }
 
     /** R30-D：页签名上带计数 —— 在字段页也看得见「索引页里有两条」。 */
@@ -246,10 +249,10 @@ class NewTableDialogTest {
                 "idx_users_name", false, List.of("id"), "c", "", List.of())));
 
         assertThat(onFx(() -> dialog.tabs().getTabs().get(1).getText()))
-                .isEqualTo("索引（1）");
+                .isEqualTo(I18n.t("newtable.tabCount", I18n.t("structure.tab.indexes"), 1));
         assertThat(onFx(() -> dialog.tabs().getTabs().get(2).getText()))
                 .as("没有外键时标题保持干净")
-                .isEqualTo("外键");
+                .isEqualTo(I18n.t("structure.tab.foreignKeys"));
     }
 
     /**
@@ -434,7 +437,7 @@ class NewTableDialogTest {
         assertThat(hint)
                 .as("预览空着必须说出原因 —— 表名已填却显示「填写表名后…」会让人以为预览坏了")
                 .contains("已经存在")
-                .doesNotContain("填写表名后");
+                .doesNotContain(I18n.t("newtable.preview.emptyHint"));
     }
 
     @Test
@@ -444,7 +447,7 @@ class NewTableDialogTest {
         String hint = onFx(() -> dialog.previewEditor()
                 .lookup(".adb-query__hint") instanceof javafx.scene.control.Label label
                 ? label.getText() : null);
-        assertThat(hint).contains("填写表名后");
+        assertThat(hint).contains(I18n.t("newtable.preview.emptyHint"));
     }
 
     // ───────────────── 规格 §13.3：布尔单元格键盘可达 ─────────────────
@@ -500,7 +503,7 @@ class NewTableDialogTest {
         NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
 
         boolean usesCustom = onFx(() -> dialog.columnsTable().getColumns().stream()
-                .filter(column -> "主键".equals(column.getText()))
+                .filter(column -> I18n.t("structure.col.key").equals(column.getText()))
                 .findFirst()
                 .orElseThrow()
                 .getCellFactory() != null);
@@ -754,7 +757,7 @@ class NewTableDialogTest {
         assertThat(onFx(dialog::buildPlan)).isNull();
         String message = onFx(() -> ((javafx.scene.control.Label) dialog.dialog()
                 .getDialogPane().getContent().lookup("#new-table-error")).getText());
-        assertThat(message).contains("小数位不能大于长度").contains("amount");
+        assertThat(message).contains(I18n.t("newtable.error.decimalsTooLarge", "amount"));
         assertThat(onFx(() -> dialog.tabs().getSelectionModel().getSelectedItem().getId()))
                 .as("长度错误属于字段页 —— 别把用户丢在别的页上找不着北")
                 .isEqualTo("new-table-tab-columns");
@@ -774,7 +777,7 @@ class NewTableDialogTest {
         assertThat(onFx(dialog::buildPlan)).isNull();
         assertThat(onFx(() -> ((javafx.scene.control.Label) dialog.dialog()
                 .getDialogPane().getContent().lookup("#new-table-error")).getText()))
-                .contains("填了小数位就要填长度");
+                .contains(I18n.t("newtable.error.decimalsNeedsLength", "c"));
     }
 
     /** 长度不是数字就别说「执行时才报错」—— 现在就拦。 */
@@ -791,7 +794,7 @@ class NewTableDialogTest {
         assertThat(onFx(dialog::buildPlan)).isNull();
         assertThat(onFx(() -> ((javafx.scene.control.Label) dialog.dialog()
                 .getDialogPane().getContent().lookup("#new-table-error")).getText()))
-                .contains("长度必须是 1–4 位数字");
+                .contains(I18n.t("newtable.error.lengthDigits", "c"));
     }
 
     /**
@@ -807,8 +810,11 @@ class NewTableDialogTest {
         List<String> headers = onFx(() -> dialog.columnsTable().getColumns().stream()
                 .map(javafx.scene.control.TableColumn::getText).toList());
 
-        assertThat(headers).containsExactly("名称", "类型", "长度", "小数", "不为空", "主键",
-                "唯一", "自增", "注释");
+        assertThat(headers).containsExactly(I18n.t("column.name"), I18n.t("detail.type"),
+                I18n.t("newtable.col.length"), I18n.t("newtable.col.decimals"),
+                I18n.t("newtable.col.notNull"), I18n.t("structure.col.key"),
+                I18n.t("structure.col.unique"), I18n.t("newtable.col.autoIncrement"),
+                I18n.t("column.comment"));
     }
 
     /** 类型格是「点开才选」的可编辑下拉，候选来自本方言。 */
@@ -956,7 +962,8 @@ class NewTableDialogTest {
         fire(dialog, "new-table-remove-column");
 
         assertThat(onFx(() -> dialog.previewArea().getText())).doesNotContain("`email`");
-        assertThat(onFx(() -> dialog.fieldCountLabel().getText())).isEqualTo("字段数：1");
+        assertThat(onFx(() -> dialog.fieldCountLabel().getText()))
+                .isEqualTo(I18n.t("newtable.fieldCount", 1));
     }
 
     /** 工具条在网格上方、五颗按钮齐全（Navicat 形态）。 */
@@ -1083,7 +1090,7 @@ class NewTableDialogTest {
                 .lookup("#new-table-field-properties-hint"));
         assertThat(hint).isNotNull();
         assertThat(onFx(() -> ((javafx.scene.control.Label) hint).getText()))
-                .contains("选中网格里的一列");
+                .contains(I18n.t("newtable.properties.hint"));
     }
 
     /**
@@ -1131,7 +1138,7 @@ class NewTableDialogTest {
 
         assertThat(onFx(() -> postgres.fieldCharsetBox().isDisable())).isTrue();
         assertThat(onFx(() -> postgres.fieldCharsetBox().getPromptText()))
-                .contains("没有列级字符集");
+                .contains(I18n.t("newtable.charset.unsupported", "PostgreSQL"));
         assertThat(onFx(() -> postgres.fieldCollationBox().isDisable()))
                 .as("排序规则 PostgreSQL 是支持的，不该跟着一起灰")
                 .isFalse();
@@ -1149,7 +1156,7 @@ class NewTableDialogTest {
 
         javafx.scene.control.Tab commentTab = onFx(() -> dialog.tabs().getTabs().get(5));
         assertThat(onFx(commentTab::getId)).isEqualTo("new-table-tab-comment");
-        assertThat(onFx(commentTab::getText)).isEqualTo("备注");
+        assertThat(onFx(commentTab::getText)).isEqualTo(I18n.t("newtable.tab.comment"));
         assertThat(onFx(() -> commentTab.getContent().lookup("#new-table-comment")))
                 .as("表注释输入必须挂在「备注」页上")
                 .isNotNull();
