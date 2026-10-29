@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnType;
@@ -36,21 +37,21 @@ import java.util.Map;
  */
 final class CellDetailsDrawer extends VBox {
 
-    private final Label title = new Label("单元格详情");
+    private final Label title = new Label(I18n.t("details.title"));
     private final Label subtitle = new Label();
-    private final Button close = IconButtons.icon(Icons.Icon.CLOSE, "关闭");
-    private final Button copy = IconButtons.of(Icons.Icon.COPY, "复制");
+    private final Button close = IconButtons.icon(Icons.Icon.CLOSE, I18n.t("tab.close"));
+    private final Button copy = IconButtons.of(Icons.Icon.COPY, I18n.t("action.edit.copy"));
     private final TabPane tabs = new TabPane();
     private final TextArea textArea = new TextArea();
     private final TextArea jsonArea = new TextArea();
     private final TextArea hexArea = new TextArea();
     private final StackPane imageBox = new StackPane();
     private final GridPane metadata = new GridPane();
-    private final Tab textTab = new Tab("文本");
+    private final Tab textTab = new Tab(I18n.t("details.tab.text"));
     private final Tab jsonTab = new Tab("JSON");
     private final Tab hexTab = new Tab("Hex");
-    private final Tab imageTab = new Tab("图片");
-    private final Tab metaTab = new Tab("元数据");
+    private final Tab imageTab = new Tab(I18n.t("details.tab.image"));
+    private final Tab metaTab = new Tab(I18n.t("details.tab.metadata"));
 
     private ColumnDef definition;
     private Object value;
@@ -66,14 +67,16 @@ final class CellDetailsDrawer extends VBox {
     // ⭐ UX-4：长文本 / JSON / CLOB 的多行编辑器。
     //   格子里那条单行输入框改不了 3KB 的 JSON —— 换行看不见、左右拖来拖去。
     //   这里把抽屉的文本 / JSON 页变成可写的，Ctrl+Enter 应用、Esc 取消。
-    private final Button edit = IconButtons.of(Icons.Icon.EDIT, "编辑");
-    private final Button apply = IconButtons.of(Icons.Icon.SAVE, "应用");
-    private final Button cancel = IconButtons.of(Icons.Icon.CLOSE, "取消");
+    private final Button edit = IconButtons.of(Icons.Icon.EDIT, I18n.t("menu.edit"));
+    private final Button apply = IconButtons.of(Icons.Icon.SAVE, I18n.t("details.action.apply"));
+    private final Button cancel = IconButtons.of(Icons.Icon.CLOSE, I18n.t("common.cancel"));
     private java.util.function.Consumer<String> onApply = text -> { };
     private java.util.function.Predicate<ColumnDef> editGate = column -> false;
     private boolean editing;
     /** ⭐ 编辑中的那一个区域 —— 不能靠「当前选中的页」反推，换页会把提交目标换掉。 */
     private TextArea editingArea;
+    /** ⭐ 标题是否被 startEdit 改成了编辑态 —— 用标记，别对翻译后的文案做 endsWith。 */
+    private boolean titleShowsEditState;
 
     CellDetailsDrawer() {
         getStyleClass().add("adb-details");
@@ -91,34 +94,34 @@ final class CellDetailsDrawer extends VBox {
 
         close.setId("data-details-close");
         close.getStyleClass().addAll("adb-icon-button", "adb-details__close");
-        close.setTooltip(new javafx.scene.control.Tooltip("关闭详情 (Esc)"));
+        close.setTooltip(new javafx.scene.control.Tooltip(I18n.t("details.tooltip.close")));
         // 4.5-6 / 4.5-5：读屏软件要能读出「关闭」，
         // 且 ✕ 的语义必须与标签栏的 ✕ 一致（一个符号只表一个意思）。
-        close.setAccessibleText("关闭");
+        close.setAccessibleText(I18n.t("tab.close"));
         close.setOnAction(event -> close());
 
         copy.getStyleClass().addAll("adb-button", "adb-button--ghost");
-        copy.setTooltip(new javafx.scene.control.Tooltip("复制当前 Tab 内容"));
+        copy.setTooltip(new javafx.scene.control.Tooltip(I18n.t("details.tooltip.copy")));
         copy.setOnAction(event -> copyCurrent());
 
         edit.setId("data-details-edit");
         edit.getStyleClass().addAll("adb-button", "adb-button--ghost");
         edit.setTooltip(new javafx.scene.control.Tooltip(
-                "在这格里直接改长文本 / JSON（Ctrl+Enter 应用，Esc 取消）"));
+                I18n.t("details.tooltip.edit")));
         edit.setVisible(false);
         edit.setManaged(false);
         edit.setOnAction(event -> startEdit());
 
         apply.setId("data-details-apply");
         apply.getStyleClass().addAll("adb-button", "adb-button--primary");
-        apply.setTooltip(new javafx.scene.control.Tooltip("应用修改 (Ctrl+Enter)"));
+        apply.setTooltip(new javafx.scene.control.Tooltip(I18n.t("details.tooltip.apply")));
         apply.setVisible(false);
         apply.setManaged(false);
         apply.setOnAction(event -> commit());
 
         cancel.setId("data-details-cancel");
         cancel.getStyleClass().addAll("adb-button", "adb-button--ghost");
-        cancel.setTooltip(new javafx.scene.control.Tooltip("放弃这次编辑 (Esc)"));
+        cancel.setTooltip(new javafx.scene.control.Tooltip(I18n.t("details.tooltip.cancel")));
         cancel.setVisible(false);
         cancel.setManaged(false);
         cancel.setOnAction(event -> stopEditing());
@@ -320,10 +323,11 @@ final class CellDetailsDrawer extends VBox {
         }
         editing = true;
         editingArea = area;
+        titleShowsEditState = true;
         area.setText(value == null ? "" : String.valueOf(value));
         area.setEditable(true);
         area.setWrapText(true);
-        title.setText(definition.name() + " · 编辑中");
+        title.setText(I18n.t("details.title.editing", definition.name()));
         flip(true);
         area.requestFocus();
     }
@@ -361,9 +365,11 @@ final class CellDetailsDrawer extends VBox {
                 load(area == textArea ? textTab : jsonTab);
             }
         }
-        if (definition != null && title.getText() != null
-                && title.getText().endsWith(" · 编辑中")) {
-            title.setText(definition.name());
+        if (titleShowsEditState) {
+            titleShowsEditState = false;
+            if (definition != null) {
+                title.setText(definition.name());
+            }
         }
         flip(false);
     }
@@ -406,13 +412,13 @@ final class CellDetailsDrawer extends VBox {
     private void loadImage() {
         imageBox.getChildren().clear();
         if (!(value instanceof byte[] bytes) || bytes.length == 0) {
-            imageBox.getChildren().add(new Label("当前值不是二进制图片"));
+            imageBox.getChildren().add(new Label(I18n.t("details.image.notBinary")));
             return;
         }
         try {
             Image image = new Image(new ByteArrayInputStream(bytes));
             if (image.isError() || image.getWidth() <= 0) {
-                throw new IllegalArgumentException("不是可识别的图片格式");
+                throw new IllegalArgumentException(I18n.t("details.image.unrecognized"));
             }
             ImageView view = new ImageView(image);
             view.setPreserveRatio(true);
@@ -424,33 +430,38 @@ final class CellDetailsDrawer extends VBox {
             size.getStyleClass().add("adb-muted");
             imageBox.getChildren().add(new VBox(8, view, size));
         } catch (RuntimeException e) {
-            imageBox.getChildren().add(new Label("不是可识别的图片格式"));
+            imageBox.getChildren().add(new Label(I18n.t("details.image.unrecognized")));
         }
     }
 
     private void loadMetadata() {
         metadata.getChildren().clear();
         int row = 0;
-        addMeta("表", tableName, row++);
-        addMeta("列", definition.name(), row++);
-        addMeta("类型", definition.type().name(), row++);
-        addMeta("可空", definition.nullable() ? "是" : "否", row++);
-        addMeta("主键", definition.primaryKey() ? "是" : "否", row++);
+        addMeta(I18n.t("menu.table"), tableName, row++);
+        addMeta(I18n.t("details.meta.column"), definition.name(), row++);
+        addMeta(I18n.t("detail.type"), definition.type().name(), row++);
+        addMeta(I18n.t("structure.col.nullable"),
+                definition.nullable() ? I18n.t("details.meta.yes")
+                        : I18n.t("details.meta.no"), row++);
+        addMeta(I18n.t("detail.primaryKey"),
+                definition.primaryKey() ? I18n.t("details.meta.yes")
+                        : I18n.t("details.meta.no"), row++);
         if (definition.charMaxLength() != null) {
-            addMeta("长度", String.valueOf(definition.charMaxLength()), row++);
+            addMeta(I18n.t("newtable.col.length"),
+                    String.valueOf(definition.charMaxLength()), row++);
         }
         if (definition.numericPrecision() != null) {
-            addMeta("精度", definition.numericPrecision()
+            addMeta(I18n.t("details.meta.precision"), definition.numericPrecision()
                     + (definition.numericScale() == null ? ""
                     : "," + definition.numericScale()), row++);
         }
         if (definition.defaultValue() != null) {
-            addMeta("默认值", definition.defaultValue(), row++);
+            addMeta(I18n.t("structure.col.default"), definition.defaultValue(), row++);
         }
         if (definition.comment() != null && !definition.comment().isBlank()) {
-            addMeta("注释", definition.comment(), row++);
+            addMeta(I18n.t("column.comment"), definition.comment(), row++);
         }
-        addMeta("字节数", value instanceof byte[] bytes
+        addMeta(I18n.t("details.meta.bytes"), value instanceof byte[] bytes
                 ? String.valueOf(bytes.length)
                 : value == null ? "0" : String.valueOf(String.valueOf(value)
                 .getBytes(StandardCharsets.UTF_8).length), row++);
@@ -478,15 +489,14 @@ final class CellDetailsDrawer extends VBox {
             return "";
         }
         if (value instanceof byte[] bytes) {
-            return "二进制数据 · " + CellRenderer.sizeLabel(bytes.length)
-                    + "\n请切换到 Hex 或图片 Tab 查看。";
+            return I18n.t("details.text.binary", CellRenderer.sizeLabel(bytes.length));
         }
         if (value == null) {
             // 和格子里同一套写法：括号的是「状态」，裸 NULL 留给**字面量就是 NULL 的文本**。
-            return "(NULL)\n\n这是一条 NULL 值，不是空串，也不是内容为 \"NULL\" 的文本。";
+            return I18n.t("details.text.null");
         }
         if (value instanceof String text && text.isEmpty()) {
-            return "空串\n\n这是一个长度为 0 的字符串，不是 NULL。";
+            return I18n.t("details.text.empty");
         }
         if (definition.type() == ColumnType.JSON) {
             return CellRenderer.prettyJson(value);
