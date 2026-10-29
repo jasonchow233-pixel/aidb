@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.transfer.CsvCodec;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.transfer.ImportFormat;
 import io.agenticdb.transfer.ImportMode;
 import io.agenticdb.transfer.ImportOptions;
@@ -85,8 +86,8 @@ final class ImportWizard {
     private final TextArea logArea = new TextArea();
     private final Label summary = new Label();
     private final ProgressIndicator spinner = new ProgressIndicator();
-    private final Button importButton = new Button("开始导入");
-    private final Button closeButton = new Button("关闭");
+    private final Button importButton = new Button(I18n.t("import.start"));
+    private final Button closeButton = new Button(I18n.t("tab.close"));
 
     private volatile boolean running;
 
@@ -122,7 +123,7 @@ final class ImportWizard {
 
         fileField.setId("import-file");
         fileField.setText(initialFile == null ? "" : initialFile.toString());
-        fileField.setPromptText("要导入的文件");
+        fileField.setPromptText(I18n.t("import.file.prompt"));
 
         formatBox.setId("import-format");
         formatBox.getItems().setAll(ImportFormat.values());
@@ -139,7 +140,7 @@ final class ImportWizard {
         headerRowSpinner.setEditable(true);
         headerRowSpinner.setMaxWidth(Double.MAX_VALUE);
         headerRowSpinner.setTooltip(new javafx.scene.control.Tooltip(
-                "表头在第几行（从 1 开始）；填 0 表示文件没有表头，按顺序对应"));
+                I18n.t("import.headerRow.tooltip")));
 
         modeBox.setId("import-mode");
         modeBox.getItems().setAll(ImportMode.values());
@@ -148,7 +149,7 @@ final class ImportWizard {
 
         profileBox.setId("import-profile");
         profileBox.setMaxWidth(Double.MAX_VALUE);
-        profileBox.setPromptText("载入已保存的选项配置");
+        profileBox.setPromptText(I18n.t("import.profile.prompt"));
         profileBox.getItems().setAll(profiles.list());
         profileBox.valueProperty().addListener((observable, old, profile) -> {
             if (profile != null) {
@@ -156,11 +157,11 @@ final class ImportWizard {
             }
         });
 
-        Button saveProfile = new Button("保存配置");
+        Button saveProfile = new Button(I18n.t("import.profile.save"));
         saveProfile.setId("import-profile-save");
         saveProfile.getStyleClass().addAll("adb-button", "adb-button--ghost");
         saveProfile.setOnAction(event -> saveProfile());
-        Button deleteProfile = new Button("删除");
+        Button deleteProfile = new Button(I18n.t("common.delete"));
         deleteProfile.setId("import-profile-delete");
         deleteProfile.getStyleClass().addAll("adb-button", "adb-button--ghost");
         deleteProfile.setOnAction(event -> deleteProfile());
@@ -193,7 +194,7 @@ final class ImportWizard {
         spinner.setVisible(false);
 
         summary.setId("import-summary");
-        summary.setText("选好文件与目标表后点「开始导入」");
+        summary.setText(I18n.t("import.summary.initial"));
         summary.getStyleClass().add("adb-muted");
 
         importButton.setId("import-start");
@@ -208,7 +209,7 @@ final class ImportWizard {
             }
         });
 
-        Button saveLog = new Button("导出日志…");
+        Button saveLog = new Button(I18n.t("import.exportLog"));
         saveLog.setId("import-log-save");
         saveLog.getStyleClass().addAll("adb-button", "adb-button--ghost");
         saveLog.setOnAction(event -> saveLog());
@@ -220,25 +221,25 @@ final class ImportWizard {
         actions.setAlignment(Pos.CENTER_RIGHT);
 
         content.getChildren().addAll(
-                field("文件", fileField),
-                field("格式", formatBox),
-                field("编码", charsetBox),
-                field("表头行", headerRowSpinner),
-                field("导入模式", modeBox),
-                field("选项配置", profileRow),
-                field("目标表", tableBox),
-                new Label("字段映射"),
+                field(I18n.t("menu.file"), fileField),
+                field(I18n.t("menu.format"), formatBox),
+                field(I18n.t("import.field.encoding"), charsetBox),
+                field(I18n.t("import.field.headerRow"), headerRowSpinner),
+                field(I18n.t("import.field.mode"), modeBox),
+                field(I18n.t("import.field.profile"), profileRow),
+                field(I18n.t("import.field.table"), tableBox),
+                new Label(I18n.t("import.mapping")),
                 mappingView,
-                new Label("预览"),
+                new Label(I18n.t("import.preview")),
                 preview,
-                new Label("执行日志"),
+                new Label(I18n.t("import.log")),
                 logArea,
                 summary,
                 actions);
         content.setPadding(new Insets(16));
         content.getStyleClass().add("adb-wizard__content");
 
-        dialog.setTitle("导入数据");
+        dialog.setTitle(I18n.t("import.title"));
 
         // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
 
@@ -246,7 +247,7 @@ final class ImportWizard {
 
         dialog.getDialogPane().setMinWidth(DialogSizes.WIDE);
 
-        dialog.setHeaderText("文件与编码 → 目标表 → 字段映射 → 预览 → 执行");
+        dialog.setHeaderText(I18n.t("import.steps"));
         dialog.getDialogPane().getButtonTypes().clear();
         dialog.getDialogPane().setContent(content);
     }
@@ -276,7 +277,7 @@ final class ImportWizard {
         charsetBox.getSelectionModel().select(java.nio.charset.Charset.forName("GBK"));
         headerRowSpinner.getValueFactory().setValue(1);
         refreshPreview();
-        log("按 GBK 解码 · 表头在第 1 行 · 预览前 5 行已读出");
+        log(I18n.t("import.log.pose", charsetBox.getValue().name(), 1, 5));
     }
 
     VBox content() {
@@ -314,16 +315,16 @@ final class ImportWizard {
         charsetBox.getSelectionModel().select(TransferProfiles.charsetOf(profile.charset()));
         headerRowSpinner.getValueFactory().setValue(profile.headerRow());
         modeBox.getSelectionModel().select(profile.mode());
-        log("已载入配置「" + profile.name() + "」");
+        log(I18n.t("import.log.profileLoaded", profile.name()));
     }
 
     private void saveProfile() {
         ImportOptions options = options();
         TextInputDialog prompt = new TextInputDialog(
-                "配置 " + (profileBox.getItems().size() + 1));
-        prompt.setTitle("保存导入配置");
-        prompt.setHeaderText("把当前选项（格式 / 编码 / 表头行 / 导入模式）存成一份配置");
-        prompt.setContentText("配置名");
+                I18n.t("import.profile.defaultName", profileBox.getItems().size() + 1));
+        prompt.setTitle(I18n.t("import.profile.saveTitle"));
+        prompt.setHeaderText(I18n.t("import.profile.saveHeader"));
+        prompt.setContentText(I18n.t("import.profile.nameLabel"));
         DialogStyles.apply(prompt, ownerWindow());
         Optional<String> name = prompt.showAndWait();
         if (name.isEmpty() || name.get().isBlank()) {
@@ -335,7 +336,7 @@ final class ImportWizard {
         profiles.save(profile);
         profileBox.getItems().setAll(profiles.list());
         profileBox.getSelectionModel().select(profile);
-        log("已保存配置「" + profile.name() + "」");
+        log(I18n.t("import.log.profileSaved", profile.name()));
     }
 
     private void deleteProfile() {
@@ -346,7 +347,7 @@ final class ImportWizard {
         profiles.remove(selected.name());
         profileBox.getItems().setAll(profiles.list());
         profileBox.getSelectionModel().clearSelection();
-        log("已删除配置「" + selected.name() + "」");
+        log(I18n.t("import.log.profileDeleted", selected.name()));
     }
 
     // ─────────────────────────── 预览 ───────────────────────────
@@ -355,12 +356,12 @@ final class ImportWizard {
     void refreshPreview() {
         String text = fileField.getText() == null ? "" : fileField.getText().trim();
         if (text.isBlank()) {
-            summary.setText("请先选一个文件");
+            summary.setText(I18n.t("import.summary.pickFile"));
             return;
         }
         Path file = Path.of(text);
         if (!Files.isRegularFile(file)) {
-            summary.setText("文件不存在：" + file);
+            summary.setText(I18n.t("import.summary.fileMissing", file));
             return;
         }
         ImportFormat format = formatBox.getValue();
@@ -400,12 +401,12 @@ final class ImportWizard {
             preview.setText(String.join("\n", previewLines));
             List<String> mapping = resolveMappingText(header);
             mappingView.getItems().setAll(mapping);
-            summary.setText("预览 " + previewLines.size() + " 行 · "
-                    + (header == null ? "无表头，按顺序对应"
-                    : mapping.size() + " 个字段已映射")
-                    + " · " + charsetLabel());
+            summary.setText(I18n.t("import.summary.preview", previewLines.size(),
+                    header == null ? I18n.t("import.summary.noHeader")
+                            : I18n.t("import.summary.mapped", mapping.size()),
+                    charsetLabel()));
         } catch (IOException e) {
-            summary.setText("读取失败：" + e.getMessage());
+            summary.setText(I18n.t("import.summary.readFailed", e.getMessage()));
         }
     }
 
@@ -427,7 +428,8 @@ final class ImportWizard {
                     break;
                 }
             }
-            lines.add(column.name() + "  ←  " + (matched == null ? "（未匹配）" : matched));
+            lines.add(column.name() + "  ←  "
+                    + (matched == null ? I18n.t("import.mapping.unmatched") : matched));
         }
         return lines;
     }
@@ -442,7 +444,7 @@ final class ImportWizard {
         String text = fileField.getText() == null ? "" : fileField.getText().trim();
         String table = tableBox.getValue();
         if (text.isBlank() || table == null) {
-            summary.setText("请先选好文件与目标表");
+            summary.setText(I18n.t("import.summary.pickFileAndTable"));
             return;
         }
         Path file = Path.of(text);
@@ -451,11 +453,12 @@ final class ImportWizard {
         running = true;
         importButton.setDisable(true);
         spinner.setVisible(true);
-        summary.setText("正在导入 …");
-        log("开始导入 → " + table + "（" + options.format().label()
-                + " · " + options.charset().name()
-                + " · 表头行 " + (options.headerRow() == 0 ? "无" : options.headerRow())
-                + " · " + options.mode().label() + "）");
+        summary.setText(I18n.t("import.summary.running"));
+        log(I18n.t("import.log.start", table, options.format().label(),
+                options.charset().name(),
+                options.headerRow() == 0 ? I18n.t("import.log.headerNone")
+                        : String.valueOf(options.headerRow()),
+                options.mode().label()));
 
         dbExecutor.execute(() -> {
             String message;
@@ -466,12 +469,17 @@ final class ImportWizard {
                 report = options.format().binary()
                         ? TableImporter.importXlsx(session, table, columns, options, file)
                         : TableImporter.importTypedRows(session, table, columns, options, file);
-                message = "已导入 " + report.inserted() + " 行"
-                        + (report.deleted() > 0 ? "（先清空 " + report.deleted() + " 行）" : "")
-                        + (report.skipped() > 0 ? "，跳过 " + report.skipped() + " 行" : "")
-                        + (report.hasErrors() ? "（首条错误：" + report.errors().getFirst() + "）" : "");
+                message = I18n.t("import.done", report.inserted())
+                        + (report.deleted() > 0
+                                ? I18n.t("import.done.cleared", report.deleted()) : "")
+                        + (report.skipped() > 0
+                                ? I18n.t("import.done.skipped", report.skipped()) : "")
+                        + (report.hasErrors()
+                                ? I18n.t("import.done.firstError", report.errors().getFirst())
+                                : "");
             } catch (Exception e) {
-                message = "导入失败：" + (e.getMessage() == null ? e.toString() : e.getMessage());
+                message = I18n.t("import.failed",
+                        e.getMessage() == null ? e.toString() : e.getMessage());
             }
             String finalMessage = message;
             TableImporter.ImportReport finalReport = report;
@@ -502,23 +510,24 @@ final class ImportWizard {
 
     private void saveLog() {
         if (logArea.getText() == null || logArea.getText().isBlank()) {
-            summary.setText("还没有日志可导出");
+            summary.setText(I18n.t("import.summary.noLog"));
             return;
         }
         javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
-        chooser.setTitle("导出导入日志");
+        chooser.setTitle(I18n.t("import.log.exportTitle"));
         chooser.setInitialFileName("import-" + (tableName == null ? "log" : tableName) + ".log");
         chooser.getExtensionFilters().add(
-                new javafx.stage.FileChooser.ExtensionFilter("日志文件", "*.log", "*.txt"));
+                new javafx.stage.FileChooser.ExtensionFilter(
+                        I18n.t("import.log.fileFilter"), "*.log", "*.txt"));
         java.io.File file = chooser.showSaveDialog(ownerWindow());
         if (file == null) {
             return;
         }
         try {
             Files.writeString(file.toPath(), logArea.getText(), StandardCharsets.UTF_8);
-            summary.setText("日志已导出 → " + file.toPath());
+            summary.setText(I18n.t("import.log.exported", file.toPath()));
         } catch (IOException e) {
-            summary.setText("日志导出失败：" + e.getMessage());
+            summary.setText(I18n.t("import.log.exportFailed", e.getMessage()));
         }
     }
 
@@ -532,10 +541,11 @@ final class ImportWizard {
         int attempted = report.inserted() + report.skipped();
         List<String> notes = new ArrayList<>();
         if (report.skipped() > report.errors().size()) {
-            notes.add("坏行共 " + report.skipped() + " 行，仅列出前 "
-                    + report.errors().size() + " 条。");
+            notes.add(I18n.t("import.note.truncated",
+                    report.skipped(), report.errors().size()));
         }
-        return BatchSummary.of("导入数据", "导入", "行",
+        return BatchSummary.of(I18n.t("import.title"), I18n.t("import.summary.action"),
+                I18n.t("import.summary.unit"),
                 attempted, report.inserted(), report.skipped(), report.errors(), notes);
     }
 

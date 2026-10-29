@@ -9,6 +9,7 @@ import io.agenticdb.model.ColumnType;
 import io.agenticdb.transfer.ExportFormat;
 import io.agenticdb.transfer.ImportFormat;
 import io.agenticdb.transfer.TableImporter;
+import io.agenticdb.ui.I18n;
 import javafx.application.Platform;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
@@ -252,7 +253,7 @@ class TransferWizardTest {
             assertThat(preview.getText()).contains("New Person");
 
             Label summary = onFx(() -> (Label) wizard.content().lookup("#import-summary"));
-            assertThat(summary.getText()).contains("字段已映射");
+            assertThat(summary.getText()).contains(I18n.t("import.summary.mapped", 2));
         } finally {
             executor.shutdownNow();
             session.close();
@@ -325,7 +326,7 @@ class TransferWizardTest {
             onFxRun(() -> ((javafx.scene.control.Button)
                     importWizard.content().lookup("#import-start")).fire());
             assertThat(waitForLabel(importWizard.content(), "#import-summary",
-                    "已导入", 5000)).isTrue();
+                    I18n.t("import.done", 200), 5000)).isTrue();
             assertThat(session.query("SELECT COUNT(*) AS c FROM users_copy", 1)
                     .rows().getFirst().get("c")).isEqualTo(200);
         } finally {
@@ -603,7 +604,8 @@ class TransferWizardTest {
                 ((javafx.scene.control.Button) wizard.content().lookup("#import-start")).fire();
             });
 
-            assertThat(waitForLabel(wizard.content(), "#import-summary", "已导入", 5000)).isTrue();
+            assertThat(waitForLabel(wizard.content(), "#import-summary",
+                    I18n.t("import.done", 1), 5000)).isTrue();
             assertThat(session.query("SELECT name FROM people WHERE id = 901", 1)
                     .rows().getFirst().get("name")).isEqualTo("张三");
         } finally {
@@ -633,11 +635,12 @@ class TransferWizardTest {
             });
 
             Label summary = onFx(() -> (Label) wizard.content().lookup("#import-summary"));
-            assertThat(summary.getText()).contains("字段已映射");
+            assertThat(summary.getText()).contains(I18n.t("import.summary.mapped", 2));
 
             onFxRun(() -> ((javafx.scene.control.Button)
                     wizard.content().lookup("#import-start")).fire());
-            assertThat(waitForLabel(wizard.content(), "#import-summary", "已导入", 5000)).isTrue();
+            assertThat(waitForLabel(wizard.content(), "#import-summary",
+                    I18n.t("import.done", 1), 5000)).isTrue();
             assertThat(session.query("SELECT name FROM people WHERE id = 902", 1)
                     .rows().getFirst().get("name")).isEqualTo("李四");
         } finally {
@@ -668,7 +671,8 @@ class TransferWizardTest {
                 ((javafx.scene.control.Button) wizard.content().lookup("#import-start")).fire();
             });
 
-            assertThat(waitForLabel(wizard.content(), "#import-summary", "已导入", 5000)).isTrue();
+            assertThat(waitForLabel(wizard.content(), "#import-summary",
+                    I18n.t("import.done", 1), 5000)).isTrue();
             assertThat(session.query("SELECT COUNT(*) AS c FROM people", 1)
                     .rows().getFirst().get("c")).as("覆盖模式先清空旧数据").isEqualTo(1);
             assertThat(session.query("SELECT name FROM people", 1)
@@ -696,13 +700,18 @@ class TransferWizardTest {
             onFxRun(() -> ((javafx.scene.control.Button)
                     wizard.content().lookup("#import-start")).fire());
 
-            assertThat(waitForLabel(wizard.content(), "#import-summary", "跳过", 5000)).isTrue();
+            assertThat(waitForLabel(wizard.content(), "#import-summary",
+                    I18n.t("import.done.skipped", 1), 5000)).isTrue();
             assertThat(reported.get()).as("坏行汇总要走注入的去向，不能直接弹模态框")
                     .isNotNull();
             assertThat(reported.get().skipped()).isEqualTo(1);
             TextArea logArea = onFx(() ->
                     (TextArea) wizard.content().lookup("#import-log"));
-            assertThat(logArea.getText()).contains("开始导入").contains("已导入 1 行")
+            assertThat(logArea.getText())
+                    .contains(I18n.t("import.log.start", "people",
+                            ImportFormat.CSV.label(), "UTF-8", "1",
+                            io.agenticdb.transfer.ImportMode.APPEND.label()))
+                    .contains(I18n.t("import.done", 1))
                     .as("坏行明细要进日志，用户能把它导出给同事看").contains("第 2 行");
         } finally {
             executor.shutdownNow();

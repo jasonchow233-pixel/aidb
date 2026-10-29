@@ -1,5 +1,7 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
+
 import javafx.geometry.Pos;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
@@ -33,7 +35,8 @@ final class BatchSummaryDialog {
         alert.setHeaderText(summary.headline());
 
         Label status = new Label(summary.allSucceeded()
-                ? "全部完成" : summary.failed() + " 项失败");
+                ? I18n.t("batch.badge.allDone")
+                : I18n.t("batch.badge.failed", summary.failed()));
         status.setId("batch-summary-status");
         status.getStyleClass().add("adb-badge");
         status.getStyleClass().add(summary.allSucceeded()
@@ -46,7 +49,7 @@ final class BatchSummaryDialog {
         text.setPrefColumnCount(64);
         text.setPrefRowCount(rowCount(summary));
 
-        Button copy = new Button("复制报告");
+        Button copy = new Button(I18n.t("batch.dialog.copy"));
         copy.setId("batch-summary-copy");
         copy.setOnAction(event -> copy(summary.copyText()));
 

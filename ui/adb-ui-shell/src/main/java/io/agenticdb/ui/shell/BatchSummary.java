@@ -1,5 +1,7 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -17,9 +19,9 @@ record BatchSummary(String title, String action, String unit, int total,
                     int succeeded, int failed, List<String> failures, List<String> notes) {
 
     BatchSummary {
-        title = blank(title) ? "批量操作" : title.trim();
-        action = blank(action) ? "完成" : action.trim();
-        unit = blank(unit) ? "项" : unit.trim();
+        title = blank(title) ? I18n.t("batch.fallback.title") : title.trim();
+        action = blank(action) ? I18n.t("batch.fallback.action") : action.trim();
+        unit = blank(unit) ? I18n.t("batch.fallback.unit") : unit.trim();
         total = Math.max(total, 0);
         succeeded = Math.max(succeeded, 0);
         failures = clean(failures);
@@ -48,8 +50,9 @@ record BatchSummary(String title, String action, String unit, int total,
 
     /** 标题行：先给「做成了多少」，再给「几项失败」。 */
     String headline() {
-        String done = "已" + action + " " + succeeded + "/" + total + " " + unit;
-        return failed == 0 ? done + "，全部完成" : done + "，" + failed + " 项失败";
+        return failed == 0
+                ? I18n.t("batch.headline.allDone", action, succeeded, total, unit)
+                : I18n.t("batch.headline.failed", action, succeeded, total, unit, failed);
     }
 
     /** 正文：备注 → 失败明细；全成功时给一句结论。 */
@@ -60,17 +63,17 @@ record BatchSummary(String title, String action, String unit, int total,
         }
         if (failures.isEmpty()) {
             sections.add(allSucceeded()
-                    ? "全部完成。"
-                    : "失败 " + failed + " 项，但没有可展示的明细。");
+                    ? I18n.t("batch.body.allDone")
+                    : I18n.t("batch.body.noDetails", failed));
         } else {
-            sections.add("失败明细：\n" + String.join("\n", failures));
+            sections.add(I18n.t("batch.body.details", String.join("\n", failures)));
         }
         return String.join("\n\n", sections);
     }
 
     /** 一键复制的文本：标题 + 标题行 + 完整正文。 */
     String copyText() {
-        String head = title + "：" + headline();
+        String head = title + I18n.t("batch.copy.separator") + headline();
         String body = body();
         return body.isEmpty() ? head : head + "\n\n" + body;
     }

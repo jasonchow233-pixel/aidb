@@ -1,5 +1,7 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
+
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
@@ -88,17 +90,19 @@ class ReportDialogsTest {
         Alert alert = WaitForAsyncUtils.asyncFx((Callable<Alert>) () ->
                 BatchSummaryDialog.create(summary)).get();
         assertThat(alert.getAlertType()).isEqualTo(Alert.AlertType.ERROR);
-        assertThat(alert.getHeaderText()).isEqualTo("已删除 2/3 张表，1 项失败");
+        assertThat(alert.getHeaderText())
+                .isEqualTo(I18n.t("batch.headline.failed", "删除", 2, 3, "张表", 1));
 
         VBox content = (VBox) alert.getDialogPane().getContent();
         Label status = (Label) content.lookup("#batch-summary-status");
         assertThat(status).isNotNull();
-        assertThat(status.getText()).isEqualTo("1 项失败");
+        assertThat(status.getText()).isEqualTo(I18n.t("batch.badge.failed", 1));
         assertThat(status.getStyleClass()).contains("adb-error-kind");
 
         TextArea text = (TextArea) content.lookup("#batch-summary-text");
         assertThat(text).isNotNull();
-        assertThat(text.getText()).contains("失败明细：").contains("logs：有外键依赖");
+        assertThat(text.getText())
+                .contains(I18n.t("batch.body.details", "logs：有外键依赖"));
 
         Button copy = (Button) content.lookup("#batch-summary-copy");
         WaitForAsyncUtils.asyncFx((Runnable) copy::fire).get();
@@ -114,10 +118,11 @@ class ReportDialogsTest {
                         BatchSummary.of("删除表", "删除", "张表", 2, 2, List.of()))).get();
 
         assertThat(alert.getAlertType()).isEqualTo(Alert.AlertType.INFORMATION);
-        assertThat(alert.getHeaderText()).contains("全部完成");
+        assertThat(alert.getHeaderText())
+                .isEqualTo(I18n.t("batch.headline.allDone", "删除", 2, 2, "张表"));
         VBox content = (VBox) alert.getDialogPane().getContent();
         Label status = (Label) content.lookup("#batch-summary-status");
-        assertThat(status.getText()).isEqualTo("全部完成");
+        assertThat(status.getText()).isEqualTo(I18n.t("batch.badge.allDone"));
         assertThat(status.getStyleClass()).contains("adb-badge--muted");
     }
 
