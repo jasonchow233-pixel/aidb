@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.session.ConnectionProfile;
+import io.agenticdb.ui.I18n;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.control.TableCell;
@@ -112,7 +113,10 @@ class ConnectionsPageTest {
                 .hasSize(8);
         assertThat(table.getColumns())
                 .extracting(TableColumn::getText)
-                .containsExactly("名称", "类型", "分组", "主机", "端口", "数据库", "用户", "状态");
+                .containsExactly(I18n.t("column.name"), I18n.t("detail.type"),
+                        I18n.t("conn.col.group"), I18n.t("wizard.host"),
+                        I18n.t("wizard.port"), I18n.t("category.database"),
+                        I18n.t("conn.col.user"), I18n.t("conn.col.state"));
         assertThat(table.getColumns())
                 .as("每一列都要能排序")
                 .allMatch(TableColumn::isSortable);

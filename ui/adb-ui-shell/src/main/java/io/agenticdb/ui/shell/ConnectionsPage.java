@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.session.ConnectionProfile;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import io.agenticdb.ui.RowHeights;
 import javafx.beans.binding.Bindings;
@@ -49,15 +50,15 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
     /** 密度档位 → 行高（不写死）。 */
     private int rowHeight = RowHeights.of("normal");
     private final TextField search = new TextField();
-    private final CheckBox favoritesOnly = new CheckBox("只看收藏");
+    private final CheckBox favoritesOnly = new CheckBox(I18n.t("sidebar.onlyFavorites"));
     private final Label status = new Label("—");
-    private final Button open = new Button("打开");
-    private final Button edit = new Button("编辑");
-    private final Button duplicate = new Button("复制");
-    private final Button rename = new Button("重命名");
-    private final Button group = new Button("分组…");
-    private final Button delete = new Button("删除");
-    private final Button refresh = IconButtons.of(Icons.Icon.REFRESH, "刷新");
+    private final Button open = new Button(I18n.t("sidebar.menuOpen"));
+    private final Button edit = new Button(I18n.t("menu.edit"));
+    private final Button duplicate = new Button(I18n.t("action.edit.copy"));
+    private final Button rename = new Button(I18n.t("structure.field.rename"));
+    private final Button group = new Button(I18n.t("conn.action.group"));
+    private final Button delete = new Button(I18n.t("common.delete"));
+    private final Button refresh = IconButtons.of(Icons.Icon.REFRESH, I18n.t("action.refresh"));
 
     private Predicate<ConnectionProfile> deleteConfirmation = this::confirmDelete;
     private Consumer<ConnectionProfile> onOpen;
@@ -94,13 +95,13 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
     }
 
     private void buildUi() {
-        Label title = new Label("连接管理");
+        Label title = new Label(I18n.t("conn.title"));
         title.getStyleClass().add("adb-page__title");
-        Label badge = new Label("连接");
+        Label badge = new Label(I18n.t("ribbon.newConnection"));
         badge.getStyleClass().addAll("adb-badge", "adb-badge--muted");
         Region headerSpacer = new Region();
         HBox.setHgrow(headerSpacer, Priority.ALWAYS);
-        Label context = new Label("口令保存于系统凭据库");
+        Label context = new Label(I18n.t("conn.context.credentials"));
         context.getStyleClass().add("adb-muted");
         // §2.8：安全提示要看着像安全提示 —— 纯文字容易被当成页脚噪音，配一把锁。
         context.setGraphic(Icons.of(Icons.Icon.LOCK, Icons.SIZE_BADGE));
@@ -110,7 +111,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         header.getStyleClass().add("adb-page__header");
         header.setAlignment(Pos.CENTER_LEFT);
 
-        Button newConnection = IconButtons.of(Icons.Icon.ADD, "新建连接");
+        Button newConnection = IconButtons.of(Icons.Icon.ADD, I18n.t("object.newConnection"));
         newConnection.setId("connections-new");
         // ⚠️ 变体类必须和基础类一起挂：只写 adb-button--primary 的话，
         //    按钮拿不到统一的 28px 行高 / 12px 内边距 / 悬停与按下反馈 ——
@@ -147,7 +148,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
 
         search.setId("connections-search");
         search.getStyleClass().add("adb-connections__search");
-        search.setPromptText("搜索名称、主机、数据库");
+        search.setPromptText(I18n.t("conn.search.prompt"));
         favoritesOnly.getStyleClass().add("adb-connections__favorites");
         HBox filter = new HBox(10, search, favoritesOnly);
         filter.setAlignment(Pos.CENTER_LEFT);
@@ -159,9 +160,9 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         // ⭐ 同一句话要同时cover「搜不到」和「压根没建过」两种情况，
         //    所以说明里把两条出路都讲了。
-        table.setPlaceholder(EmptyState.of(Icons.Icon.CONNECT, "没有匹配的连接",
-                "换一个关键词试试；如果还没建过连接，先新建第一个。",
-                "新建连接", onNew));
+        table.setPlaceholder(EmptyState.of(Icons.Icon.CONNECT, I18n.t("conn.empty.title"),
+                I18n.t("conn.empty.note"),
+                I18n.t("object.newConnection"), onNew));
         table.setFixedCellSize(rowHeight);
         VBox.setVgrow(table, Priority.ALWAYS);
 
@@ -182,7 +183,8 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
 
     /** 七列：名称 / 类型 / 主机 / 端口 / 数据库 / 用户 / 状态。 */
     private void buildColumns() {
-        TableColumn<ConnectionProfile, String> name = column("名称", "name", 200);
+        TableColumn<ConnectionProfile, String> name = column(I18n.t("column.name"),
+                "name", 200);
         name.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
                 data.getValue().name()));
         // 收藏标记放进「名称」列的前面 —— 一列一个信息，不另开一列。
@@ -199,7 +201,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
                 if (getTableRow() != null && getTableRow().getItem() != null
                         && getTableRow().getItem().favorite()) {
                     SVGPath star = Icons.of(Icons.Icon.STAR_FILLED, Icons.SIZE_BADGE);
-                    star.setAccessibleText("已收藏");
+                    star.setAccessibleText(I18n.t("conn.star.favorited"));
                     setGraphic(star);
                     setGraphicTextGap(4);
                 } else {
@@ -208,16 +210,19 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
             }
         });
 
-        TableColumn<ConnectionProfile, String> kind = column("类型", "kind", 90);
+        TableColumn<ConnectionProfile, String> kind = column(I18n.t("detail.type"),
+                "kind", 90);
         kind.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
                 data.getValue().kindLabel()));
 
         // ⭐ P5-1：分组是展示层元数据，单独一列 —— 不塞进名称列（名字要能直接改名）。
-        TableColumn<ConnectionProfile, String> groupColumn = column("分组", "group", 120);
+        TableColumn<ConnectionProfile, String> groupColumn = column(I18n.t("conn.col.group"),
+                "group", 120);
         groupColumn.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
                 displayOrDash(data.getValue().group())));
 
-        TableColumn<ConnectionProfile, String> host = column("主机", "host", 180);
+        TableColumn<ConnectionProfile, String> host = column(I18n.t("wizard.host"),
+                "host", 180);
         host.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
                 displayOrDash(data.getValue().host())));
 
@@ -226,23 +231,27 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         //    「这个方言有没有端口」是**方言层的事**（`usesFilePath` = 走文件路径，
         //    自然没有主机与端口）—— 这里不能按具体方言写分支，
         //    否则就破了 A1 的承诺（加一种数据库只改 Dialect 实现）。
-        TableColumn<ConnectionProfile, String> port = column("端口", "port", 80);
+        TableColumn<ConnectionProfile, String> port = column(I18n.t("wizard.port"),
+                "port", 80);
         port.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
                 data.getValue().kind().dialect().usesFilePath()
                         ? "—"
                         : String.valueOf(data.getValue().port())));
 
-        TableColumn<ConnectionProfile, String> database = column("数据库", "database", 180);
+        TableColumn<ConnectionProfile, String> database = column(I18n.t("category.database"),
+                "database", 180);
         database.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
                 displayOrDash(data.getValue().database())));
 
-        TableColumn<ConnectionProfile, String> user = column("用户", "user", 130);
+        TableColumn<ConnectionProfile, String> user = column(I18n.t("conn.col.user"),
+                "user", 130);
         user.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
                 displayOrDash(data.getValue().username())));
 
-        TableColumn<ConnectionProfile, String> state = column("状态", "state", 100);
+        TableColumn<ConnectionProfile, String> state = column(I18n.t("conn.col.state"),
+                "state", 100);
         state.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
-                connected.test(data.getValue()) ? "已连接" : "—"));
+                connected.test(data.getValue()) ? I18n.t("detail.connected") : "—"));
 
         table.getColumns().addAll(name, kind, groupColumn, host, port, database, user, state);
     }
@@ -273,12 +282,12 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         // ⭐ U19：这排按钮在没选中行时**六个一起变灰**，第一眼像整个面板坏了。
         // 变灰本身是对的（动作确实不可用），缺的是「为什么灰、怎么做才亮」——
         // 把原因绑在 tooltip 上，选择一变就自动同步，不会出现按钮能点了还写着「先选中」。
-        bindSelectionAction(open, "打开选中的连接（进入对象首页）");
-        bindSelectionAction(edit, "编辑这个连接的参数");
-        bindSelectionAction(duplicate, "复制这个连接为一个新条目");
-        bindSelectionAction(rename, "重命名这个连接");
-        bindSelectionAction(group, "把选中的连接归到一个分组");
-        bindSelectionAction(delete, "删除这个连接（不影响数据库里的数据）");
+        bindSelectionAction(open, I18n.t("conn.hint.open"));
+        bindSelectionAction(edit, I18n.t("conn.hint.edit"));
+        bindSelectionAction(duplicate, I18n.t("conn.hint.duplicate"));
+        bindSelectionAction(rename, I18n.t("conn.hint.rename"));
+        bindSelectionAction(group, I18n.t("conn.hint.group"));
+        bindSelectionAction(delete, I18n.t("conn.hint.delete"));
     }
 
     /**
@@ -292,14 +301,14 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         button.disableProperty().bind(noneSelected);
         Tooltip tooltip = new Tooltip();
         tooltip.textProperty().bind(Bindings.when(noneSelected)
-                .then("先选中一个连接 —— " + enabledHint)
+                .then(I18n.t("conn.hint.noneSelected", enabledHint))
                 .otherwise(enabledHint));
         button.setTooltip(tooltip);
     }
 
     public void refresh() {
         applyFilter();
-        status.setText("共 " + profiles.size() + " 个连接 · 已显示 " + visible.size() + " 个");
+        status.setText(I18n.t("conn.status", profiles.size(), visible.size()));
         updateButtons();
     }
 
@@ -379,15 +388,15 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
 
     private void refreshAfterEdit() {
         applyFilter();
-        status.setText("共 " + profiles.size() + " 个连接 · 已显示 " + visible.size() + " 个");
+        status.setText(I18n.t("conn.status", profiles.size(), visible.size()));
     }
 
     private void renameSelected() {
         selected().ifPresent(profile -> {
             TextInputDialog dialog = new TextInputDialog(profile.name());
-            dialog.setTitle("重命名连接");
-            dialog.setHeaderText("重命名「" + profile.name() + "」");
-            dialog.setContentText("名称");
+            dialog.setTitle(I18n.t("conn.rename.title"));
+            dialog.setHeaderText(I18n.t("conn.rename.header", profile.name()));
+            dialog.setContentText(I18n.t("column.name"));
             dialog.initOwner(getScene() == null ? null : getScene().getWindow());
             DialogStyles.apply(dialog, getScene() == null ? null : getScene().getWindow());
             dialog.showAndWait()
@@ -400,17 +409,17 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
     private void groupSelected() {
         selected().ifPresent(profile -> {
             Dialog<String> dialog = new Dialog<>();
-            dialog.setTitle("移动到分组");
-            dialog.setHeaderText("把「" + profile.name() + "」移到分组");
+            dialog.setTitle(I18n.t("conn.group.title"));
+            dialog.setHeaderText(I18n.t("conn.group.header", profile.name()));
             ComboBox<String> input = new ComboBox<>();
             input.setId("connection-group-name");
             input.setEditable(true);
             input.getItems().setAll(existingGroups());
             input.setValue(profile.group());
             input.setPrefWidth(240);
-            Label hint = new Label("留空 = 移出分组；也可以直接输入新分组名。");
+            Label hint = new Label(I18n.t("conn.group.hint"));
             hint.getStyleClass().add("adb-muted");
-            VBox content = new VBox(8, new Label("分组"), input, hint);
+            VBox content = new VBox(8, new Label(I18n.t("conn.col.group")), input, hint);
             dialog.getDialogPane().setContent(content);
             dialog.getDialogPane().getButtonTypes().setAll(
                     javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);
@@ -445,10 +454,10 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
     private boolean confirmDelete(ConnectionProfile profile) {
         // ⛔ 同 AppShell：破坏性按钮不能是默认按钮（回车即删），统一走 DestructiveConfirm。
         DestructiveConfirm confirm = DestructiveConfirm.of(
-                "删除连接",
-                "删除 " + profile.name() + "？",
-                "这会移除连接元数据与系统凭据，不会删除数据库中的数据。",
-                "删除");
+                I18n.t("conn.delete.title"),
+                I18n.t("conn.delete.header", profile.name()),
+                I18n.t("conn.delete.note"),
+                I18n.t("common.delete"));
         Alert alert = confirm.alert();
         if (getScene() != null) {
             alert.initOwner(getScene().getWindow());
