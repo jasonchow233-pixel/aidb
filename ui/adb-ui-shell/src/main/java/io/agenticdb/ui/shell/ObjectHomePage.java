@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.TableMeta;
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
@@ -142,7 +143,7 @@ final class ObjectHomePage extends VBox {
     private final BooleanProperty listView = new SimpleBooleanProperty(true);
     private final HBox filters = new HBox(6);
     private final TextField search = new TextField();
-    private final Button refresh = IconButtons.of(Icons.Icon.REFRESH, "刷新");
+    private final Button refresh = IconButtons.of(Icons.Icon.REFRESH, I18n.t("action.refresh"));
     private final VBox content = new VBox();
 
     // 对象级工具条：随选择启停（Navicat 的对象清单同样如此）。
@@ -273,7 +274,7 @@ final class ObjectHomePage extends VBox {
     private void buildUi() {
         breadcrumb.setId("object-home-breadcrumb");
         breadcrumb.getStyleClass().add("adb-page__breadcrumb");
-        Label badge = new Label("概览");
+        Label badge = new Label(I18n.t("grid.tab.overview"));
         badge.getStyleClass().addAll("adb-badge", "adb-badge--muted");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -319,28 +320,30 @@ final class ObjectHomePage extends VBox {
      * 选函数时「删除」不该亮（宿主只会删表）。
      */
     private HBox buildToolbar() {
-        openButton = toolbarOp(Icons.Icon.OPEN, "打开", "打开选中对象的数据页 / 预览页");
+        openButton = toolbarOp(Icons.Icon.OPEN, I18n.t("sidebar.menuOpen"),
+                I18n.t("object.hint.open"));
         openButton.setId("object-home-open");
         openButton.setOnAction(event -> openSelected());
 
-        designButton = toolbarOp(Icons.Icon.STRUCTURE, "设计表",
-                "在结构编辑器里打开选中的表或视图");
+        designButton = toolbarOp(Icons.Icon.STRUCTURE, I18n.t("object.design"),
+                I18n.t("object.hint.design"));
         designButton.setId("object-home-design");
         designButton.setOnAction(event -> {
             SchemaService.SchemaObject selected = singleSelection();
             if (selected == null) {
-                status.accept("先选一个表或视图");
+                status.accept(I18n.t("object.pickTableOrView"));
                 return;
             }
             host.design(selected);
         });
 
-        createButton = toolbarOp(Icons.Icon.ADD, "新建表", "新建一张表（弹窗填字段）");
+        createButton = toolbarOp(Icons.Icon.ADD, I18n.t("ribbon.newTable"),
+                I18n.t("object.hint.newTable"));
         createButton.setId("object-home-new");
         createButton.setOnAction(event -> host.newTable());
 
-        dropButton = toolbarOp(Icons.Icon.DELETE, "删除表",
-                "删除选中的表（会二次确认，可多选批量删）", "adb-button--danger");
+        dropButton = toolbarOp(Icons.Icon.DELETE, I18n.t("object.drop"),
+                I18n.t("object.hint.drop"), "adb-button--danger");
         dropButton.setId("object-home-drop");
         dropButton.setOnAction(event -> {
             List<String> tables = selectedRows().stream()
@@ -349,7 +352,7 @@ final class ObjectHomePage extends VBox {
                     .map(SchemaService.SchemaObject::name)
                     .toList();
             if (tables.isEmpty()) {
-                status.accept("先选一张表");
+                status.accept(I18n.t("tableList.pickOneFirst"));
                 return;
             }
             host.dropTables(tables);
@@ -360,12 +363,12 @@ final class ObjectHomePage extends VBox {
 
         // ⭐ UX-6：列表 / 网格两种视图。网格复用表清单的卡片样式，
         //    但对象种类更多（表 / 视图 / 函数…），卡片按 kind 取图标。
-        listButton = IconButtons.icon(Icons.Icon.LIST, "列表视图");
+        listButton = IconButtons.icon(Icons.Icon.LIST, I18n.t("action.table-list.view-list"));
         listButton.setId("object-home-view-list");
         listButton.getStyleClass().add("adb-icon-button");
         listButton.setOnAction(event -> showView("list"));
 
-        gridButton = IconButtons.icon(Icons.Icon.GRID, "网格视图");
+        gridButton = IconButtons.icon(Icons.Icon.GRID, I18n.t("action.table-list.view-grid"));
         gridButton.setId("object-home-view-grid");
         gridButton.getStyleClass().add("adb-icon-button");
         gridButton.setOnAction(event -> showView("grid"));
@@ -428,26 +431,26 @@ final class ObjectHomePage extends VBox {
                 || object.kind() == SchemaService.ObjectKind.VIEW;
 
         ContextMenu menu = new ContextMenu();
-        MenuItem open = new MenuItem("打开");
+        MenuItem open = new MenuItem(I18n.t("sidebar.menuOpen"));
         open.setId("object-menu-open");
         open.setDisable(!connected);
         open.setOnAction(event -> onOpen.accept(object));
 
-        MenuItem design = new MenuItem("设计表");
+        MenuItem design = new MenuItem(I18n.t("object.design"));
         design.setId("object-menu-design");
         design.setDisable(!connected || !designable);
         design.setOnAction(event -> host.design(object));
 
-        MenuItem copyName = new MenuItem("复制名称");
+        MenuItem copyName = new MenuItem(I18n.t("action.object.copy-name"));
         copyName.setId("object-menu-copy-name");
         copyName.setOnAction(event -> {
             ClipboardContent content = new ClipboardContent();
             content.putString(object.name());
             Clipboard.getSystemClipboard().setContent(content);
-            status.accept("已复制名称 " + object.name());
+            status.accept(I18n.t("object.copied", object.name()));
         });
 
-        MenuItem drop = new MenuItem("删除表");
+        MenuItem drop = new MenuItem(I18n.t("object.drop"));
         drop.setId("object-menu-drop");
         drop.setDisable(!connected || object.kind() != SchemaService.ObjectKind.TABLE);
         drop.setOnAction(event -> host.dropTables(List.of(object.name())));
@@ -507,12 +510,12 @@ final class ObjectHomePage extends VBox {
         // ⭐ U19：禁用不能只变灰 —— 一排灰按钮读起来像界面坏了。
         // 悬停要说清「为什么现在点不动、要做什么才能点」，灰才有解释而不是故障。
         explainDisabled(openButton, !connected || !single,
-                !connected ? "连上一个库才能打开" : "先在清单里选中一个对象");
+                !connected ? I18n.t("object.needConnect.open") : I18n.t("object.pickFirst"));
         explainDisabled(designButton, !connected || !designable,
-                !connected ? "连上一个库才能设计" : "只有选中的是表或视图时才能设计");
+                !connected ? I18n.t("object.needConnect.design") : I18n.t("object.designTablesOnly"));
         explainDisabled(dropButton, !connected || !droppable,
-                !connected ? "连上一个库才能删除" : "选中的一项或多项不是表（视图 / 函数不走这里）");
-        explainDisabled(createButton, !connected, "连上一个库才能建表");
+                !connected ? I18n.t("object.needConnect.drop") : I18n.t("object.dropTablesOnly"));
+        explainDisabled(createButton, !connected, I18n.t("object.needConnect.create"));
 
         updateViewButtons();
         host.inspect(single ? selected.getFirst().object() : null);
@@ -543,7 +546,7 @@ final class ObjectHomePage extends VBox {
         filters.setAlignment(Pos.CENTER_LEFT);
 
         search.setId("object-home-search");
-        search.setPromptText("搜索对象名");
+        search.setPromptText(I18n.t("object.searchPrompt"));
         search.setPrefWidth(180);
         search.textProperty().addListener((observable, oldValue, newValue) -> {
             query = newValue == null ? "" : newValue.trim().toLowerCase(Locale.ROOT);
@@ -555,7 +558,7 @@ final class ObjectHomePage extends VBox {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        filters.getChildren().addAll(chip("全部", null), spacer, search);
+        filters.getChildren().addAll(chip(I18n.t("object.filter.all"), null), spacer, search);
     }
 
     /**
@@ -580,16 +583,16 @@ final class ObjectHomePage extends VBox {
         table.setId("object-list");
         table.getStyleClass().add("adb-object-list");
         // ⭐ P7：表格没有文字，读屏只会读「表」—— 给一个明确的名称。
-        table.setAccessibleText("对象清单");
+        table.setAccessibleText(I18n.t("object.listName"));
         table.setEditable(false);
         // ⭐ S-6：可读下限 + 约束策略 —— 宽屏填满，挤窄卡在 minWidth 并横向滚动
         //    （为什么不是 UNCONSTRAINED：宽屏会留一大片空白，见 §33.5）。
         table.setColumnResizePolicy(
                 TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         // U24：空态给图标 + 出路，不剩一行猜不出原因的灰字。
-        table.setPlaceholder(EmptyState.of(Icons.Icon.SEARCH, "没有匹配的对象",
-                "搜索关键词按名字匹配，筛选芯片也会一起收窄范围。",
-                "清空搜索", search::clear));
+        table.setPlaceholder(EmptyState.of(Icons.Icon.SEARCH, I18n.t("object.noMatches"),
+                I18n.t("object.noMatchesDetail"),
+                I18n.t("tableList.clearSearch"), search::clear));
         table.setFixedCellSize(rowHeight);
 
         // ⭐ 列与 Navicat 的「表清单」对齐：名称 / 类型 / 行 / 数据长度 / 引擎 /
@@ -597,20 +600,20 @@ final class ObjectHomePage extends VBox {
         // ⭐ 第十九轮 S-1：可选列（数据长度/引擎/创建/修改/排序规则/注释）留引用，
         //    按已加载数据决定显不显示 —— 全是占位符就整列隐藏（见 applyColumnVisibility）。
         sizeColumn = sizeColumn();
-        engineColumn = keyed(textColumn("引擎", 90, 80, row -> row.meta() == null
+        engineColumn = keyed(textColumn(I18n.t("column.engine"), 90, 80, row -> row.meta() == null
                 ? "—" : row.meta().engineText()), "engine");
-        createdColumn = keyed(textColumn("创建时间", 130, 130, row -> row.meta() == null
+        createdColumn = keyed(textColumn(I18n.t("object.column.created"), 130, 130, row -> row.meta() == null
                 ? "—" : row.meta().createdText()), "created");
-        updatedColumn = keyed(textColumn("修改时间", 130, 130, row -> row.meta() == null
+        updatedColumn = keyed(textColumn(I18n.t("object.column.updated"), 130, 130, row -> row.meta() == null
                 ? "—" : row.meta().updatedText()), "updated");
-        collationColumn = keyed(textColumn("排序规则", 110, 110, row -> row.meta() == null
+        collationColumn = keyed(textColumn(I18n.t("column.collation"), 110, 110, row -> row.meta() == null
                 ? "—" : row.meta().collationText()), "collation");
-        commentColumn = keyed(textColumn("注释", 160, 120, row -> row.meta() == null
+        commentColumn = keyed(textColumn(I18n.t("column.comment"), 160, 120, row -> row.meta() == null
                 ? "—" : row.meta().commentText(), true), "comment");
 
         table.getColumns().setAll(List.of(
                 nameColumn(),
-                keyed(textColumn("类型", 64, 72,
+                keyed(textColumn(I18n.t("detail.type"), 64, 72,
                         row -> typeLabel(row.object().kind())), "kind"),
                 rowsColumn(),
                 sizeColumn,
@@ -757,7 +760,7 @@ final class ObjectHomePage extends VBox {
         gridSelection.retainAll(visible);
         cards.getChildren().clear();
         if (filtered.isEmpty()) {
-            Label empty = new Label(rows.isEmpty() ? "还没有对象" : "没有匹配的对象");
+            Label empty = new Label(rows.isEmpty() ? I18n.t("object.grid.empty") : I18n.t("object.noMatches"));
             empty.getStyleClass().add("adb-muted");
             empty.setPadding(new Insets(24));
             cards.getChildren().add(empty);
@@ -778,7 +781,7 @@ final class ObjectHomePage extends VBox {
 
         // 与表清单卡片同一规则：不摆「—」，整行都是占位符就不渲染这一行。
         String rowsFact = row.meta() == null || MetadataColumns.isPlaceholder(row.meta().rowsText())
-                ? null : row.meta().rowsText().trim() + " 行";
+                ? null : I18n.t("object.rowsUnit", row.meta().rowsText().trim());
         Label facts = cardLine("adb-table-card__facts", rowsFact,
                 row.meta() == null ? null : row.meta().sizeText());
         Label detail = cardLine("adb-table-card__detail", typeLabel(row.object().kind()),
@@ -926,7 +929,7 @@ final class ObjectHomePage extends VBox {
     }
 
     private TableColumn<ObjectRow, String> nameColumn() {
-        TableColumn<ObjectRow, String> column = new TableColumn<>("名称");
+        TableColumn<ObjectRow, String> column = new TableColumn<>(I18n.t("column.name"));
         column.setId("object-column-name");
         column.setUserData("name");
         column.setPrefWidth(200);
@@ -959,7 +962,7 @@ final class ObjectHomePage extends VBox {
 
     /** 「行数」「大小」右对齐，且**按数值排序**而不是按字符串。 */
     private TableColumn<ObjectRow, String> rowsColumn() {
-        TableColumn<ObjectRow, String> column = new TableColumn<>("行数");
+        TableColumn<ObjectRow, String> column = new TableColumn<>(I18n.t("detail.rows"));
         column.setId("object-column-rows");
         column.setUserData("rows");
         column.setPrefWidth(80);
@@ -975,7 +978,7 @@ final class ObjectHomePage extends VBox {
     }
 
     private TableColumn<ObjectRow, String> sizeColumn() {
-        TableColumn<ObjectRow, String> column = new TableColumn<>("数据长度");
+        TableColumn<ObjectRow, String> column = new TableColumn<>(I18n.t("column.dataLength"));
         column.setId("object-column-size");
         column.setUserData("size");
         column.setPrefWidth(90);
@@ -1081,11 +1084,11 @@ final class ObjectHomePage extends VBox {
     private void openSelected() {
         List<ObjectRow> selected = selectedRows();
         if (selected.isEmpty()) {
-            status.accept("先选一个对象");
+            status.accept(I18n.t("object.pickObject"));
             return;
         }
         if (selected.size() > 1) {
-            status.accept("一次只能打开一个对象");
+            status.accept(I18n.t("object.singleOpen"));
             return;
         }
         onOpen.accept(selected.getFirst().object());
@@ -1110,7 +1113,7 @@ final class ObjectHomePage extends VBox {
             // ⭐ O2：函数 / 过程现在**能看定义体**（只读标签页），不再是「不支持」。
             case FUNCTION, PROCEDURE, EVENT -> null;
             // 触发器在**结构页**的「触发器」页签里看（那里能看到完整语句）。
-            case TRIGGER -> "「" + name + "」是触发器 —— 请在结构页的「触发器」页签里查看";
+            case TRIGGER -> I18n.t("object.triggerReason", name);
         };
     }
 
@@ -1132,7 +1135,7 @@ final class ObjectHomePage extends VBox {
      */
     private void paintBreadcrumb(DbSession current) {
         if (current == null) {
-            breadcrumb.setText("未连接");
+            breadcrumb.setText(I18n.t("sidebar.disconnected"));
             breadcrumb.setTooltip(null);
             return;
         }
@@ -1155,11 +1158,11 @@ final class ObjectHomePage extends VBox {
         DbSession current = session.get();
         paintBreadcrumb(current);
         if (current == null) {
-            showEmpty(EmptyState.of(Icons.Icon.CONNECT, "还没有连接数据库",
-                    "连上一个数据库后，这里会列出它的表、视图、函数和触发器。",
-                    onConnect == null ? null : "新建连接",
+            showEmpty(EmptyState.of(Icons.Icon.CONNECT, I18n.t("object.empty.notConnected"),
+                    I18n.t("object.empty.notConnectedDetail"),
+                    onConnect == null ? null : I18n.t("object.newConnection"),
                     onConnect));
-            summary.setText("未连接");
+            summary.setText(I18n.t("sidebar.disconnected"));
             updateToolbarState();
             return;
         }
@@ -1170,9 +1173,9 @@ final class ObjectHomePage extends VBox {
             } catch (Exception e) {
                 String message = e.getMessage() == null ? e.toString() : e.getMessage();
                 javafx.application.Platform.runLater(() -> {
-                    summary.setText("读取失败");
-                    showEmpty(EmptyState.of(Icons.Icon.CLEAR, "读不到对象列表",
-                            message, "重试", this::reload));
+                    summary.setText(I18n.t("object.readFailed"));
+                    showEmpty(EmptyState.of(Icons.Icon.CLEAR, I18n.t("object.readFailedTitle"),
+                            message, I18n.t("shell.retry"), this::reload));
                 });
                 return;
             }
@@ -1222,11 +1225,11 @@ final class ObjectHomePage extends VBox {
 
         if (all.isEmpty()) {
             showEmpty(EmptyState.of(Icons.Icon.DATABASE,
-                    "这个连接里还没有对象",
-                    "数据库是空的。可以先在查询页执行建表语句，"
-                            + "或从侧栏新建一个表。",
-                    "打开查询页", () -> status.accept("用查询页执行 CREATE TABLE 建第一张表")));
-            summary.setText("共 0 个对象");
+                    I18n.t("object.empty.noObjects"),
+                    I18n.t("object.empty.noObjectsDetail"),
+                    I18n.t("object.openQueryPage"),
+                    () -> status.accept(I18n.t("object.empty.createQueryHint"))));
+            summary.setText(I18n.t("object.summary.count", 0));
             updateToolbarState();
             return;
         }
@@ -1236,7 +1239,7 @@ final class ObjectHomePage extends VBox {
     }
 
     private String summaryText(List<ObjectRow> all) {
-        StringBuilder text = new StringBuilder("共 " + all.size() + " 个对象");
+        StringBuilder text = new StringBuilder(I18n.t("object.summary.count", all.size()));
         for (SchemaService.ObjectKind kind : KINDS) {
             long count = all.stream().filter(row -> row.object().kind() == kind).count();
             if (count > 0) {
@@ -1273,7 +1276,7 @@ final class ObjectHomePage extends VBox {
     /** 过滤 chip 的标签带上数量 —— 「视图 1」比「视图」有用得多。 */
     private void rebuildFilterChips() {
         List<javafx.scene.Node> children = new ArrayList<>();
-        children.add(chip("全部 " + rows.size(), null));
+        children.add(chip(I18n.t("object.filter.allCount", rows.size()), null));
         for (SchemaService.ObjectKind kind : KINDS) {
             long count = rows.stream().filter(row -> row.object().kind() == kind).count();
             if (count > 0) {
@@ -1294,7 +1297,7 @@ final class ObjectHomePage extends VBox {
                 if (active) {
                     button.getStyleClass().add("adb-filter-chip--active");
                 }
-                button.setTooltip(new Tooltip("只看" + button.getText()));
+                button.setTooltip(new Tooltip(I18n.t("object.filter.tooltip", button.getText())));
             }
         }
         filters.getChildren().setAll(children);
@@ -1312,11 +1315,11 @@ final class ObjectHomePage extends VBox {
         // 过滤后列表可能变空 —— 空清单要说话，还要说清是哪一层收窄了范围（U24）。
         if (!rows.isEmpty() && filtered.isEmpty()) {
             table.setPlaceholder(query.isEmpty()
-                    ? EmptyState.of(Icons.Icon.FILTER, "这个类型下没有对象",
-                            "上面的筛选芯片把范围收到了当前类型 —— 换回「全部」就有了。")
-                    : EmptyState.of(Icons.Icon.SEARCH, "没有匹配的对象",
-                            "没有名称包含「" + search.getText() + "」的对象。",
-                            "清空搜索", search::clear));
+                    ? EmptyState.of(Icons.Icon.FILTER, I18n.t("object.filter.kindEmpty"),
+                            I18n.t("object.filter.kindEmptyDetail"))
+                    : EmptyState.of(Icons.Icon.SEARCH, I18n.t("object.noMatches"),
+                            I18n.t("object.noNameContains", search.getText()),
+                            I18n.t("tableList.clearSearch"), search::clear));
         }
         rebuildCards();
     }
@@ -1336,26 +1339,15 @@ final class ObjectHomePage extends VBox {
 
     // ─────────────────────────── 展示映射 ───────────────────────────
 
-    private static String labelOf(SchemaService.ObjectKind kind) {
-        return switch (kind) {
-            case TABLE -> "表";
-            case VIEW -> "视图";
-            case PROCEDURE -> "过程";
-            case FUNCTION -> "函数";
-            case TRIGGER -> "触发器";
-            case EVENT -> "事件";
-        };
-    }
-
     /** 清单「类型」列的文案（比侧栏分组名更完整）。 */
     private static String typeLabel(SchemaService.ObjectKind kind) {
         return switch (kind) {
-            case TABLE -> "表";
-            case VIEW -> "视图";
-            case PROCEDURE -> "存储过程";
-            case FUNCTION -> "函数";
-            case TRIGGER -> "触发器";
-            case EVENT -> "事件";
+            case TABLE -> I18n.t("detail.kind.table");
+            case VIEW -> I18n.t("detail.kind.view");
+            case PROCEDURE -> I18n.t("object.kind.procedure");
+            case FUNCTION -> I18n.t("object.kind.function");
+            case TRIGGER -> I18n.t("object.kind.trigger");
+            case EVENT -> I18n.t("object.kind.event");
         };
     }
 

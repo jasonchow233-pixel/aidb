@@ -170,6 +170,13 @@ public final class ScreenshotSession {
             if (window == stage || !window.isShowing() || window.getScene() == null) {
                 continue;
             }
+            // Tooltip 也是 PopupWindow（非 Stage）。物理光标恰好停在带 tooltip 的
+            // 控件上时它会自己冒出来 —— 拍它的 scene 会拍出一张 163×48 的悬浮条
+            // （2026-10-29 p0-shell 实拍），并且 snapshot 与 tooltip 自动 hide
+            // 竞态直接把 glass.dll 干崩。任何帧都不该以 tooltip 为目标。
+            if (window instanceof javafx.scene.control.Tooltip) {
+                continue;
+            }
             if (!(window instanceof Stage)) {
                 System.out.println("[screenshot] 拍到浮窗（右键菜单）：窗口类="
                         + window.getClass().getSimpleName());

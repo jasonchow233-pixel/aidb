@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.TableMeta;
 import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.ui.I18n;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
@@ -178,8 +179,11 @@ class ObjectHomePageTest {
         //    而不是只有名字。列集合就是这条契约 —— 与 Navicat 表清单的 8 列对齐
         //    （名称 / 类型 / 行 / 数据长度 / 引擎 / 创建时间 / 修改时间 / 排序规则 / 注释）。
         assertThat(texts.get())
-                .containsExactly("名称", "类型", "行数", "数据长度", "引擎", "创建时间",
-                        "修改时间", "排序规则", "注释");
+                .containsExactly(I18n.t("column.name"), I18n.t("detail.type"),
+                        I18n.t("detail.rows"), I18n.t("column.dataLength"),
+                        I18n.t("column.engine"), I18n.t("object.column.created"),
+                        I18n.t("object.column.updated"), I18n.t("column.collation"),
+                        I18n.t("column.comment"));
     }
 
     // ─────────────────────── 第十九轮 S-1 列可见性 ───────────────────────
@@ -217,7 +221,8 @@ class ObjectHomePageTest {
         assertThat(visibleTitles(robot))
                 .as("SQLite 拿不到长度/引擎/日期/排序规则/注释 → 全「—」的列整列隐藏，"
                         + "核心列「名称 / 类型 / 行数」必须留着")
-                .containsExactly("名称", "类型", "行数");
+                .containsExactly(I18n.t("column.name"), I18n.t("detail.type"),
+                        I18n.t("detail.rows"));
     }
 
     /**
@@ -244,8 +249,11 @@ class ObjectHomePageTest {
         assertThat(visibleTitles(robot))
                 .as("混合场景：表有引擎/注释 → 这些列要留着；但没有任何行给出"
                         + "「创建/修改/排序规则」以外真值的列仍按数据判定")
-                .containsExactly("名称", "类型", "行数", "数据长度", "引擎",
-                        "创建时间", "修改时间", "排序规则", "注释");
+                .containsExactly(I18n.t("column.name"), I18n.t("detail.type"),
+                        I18n.t("detail.rows"), I18n.t("column.dataLength"),
+                        I18n.t("column.engine"), I18n.t("object.column.created"),
+                        I18n.t("object.column.updated"), I18n.t("column.collation"),
+                        I18n.t("column.comment"));
     }
 
     @Test
@@ -283,7 +291,7 @@ class ObjectHomePageTest {
         assertThat(ObjectHomePage.unsupportedReason(SchemaService.ObjectKind.TRIGGER, "x"))
                 .as("触发器要给出「去哪里看」的指引")
                 .isNotNull()
-                .contains("结构页");
+                .isEqualTo(I18n.t("object.triggerReason", "x"));
     }
 
     @Test
@@ -514,7 +522,7 @@ class ObjectHomePageTest {
                 .isNotNull();
         assertThat(disconnected.getText())
                 .as("没连接就直说，不编一个库名")
-                .isEqualTo("未连接");
+                .isEqualTo(I18n.t("sidebar.disconnected"));
         assertThat(page.lookup(".adb-page__title"))
                 .as("对象首页不再有页内 H1 —— 它和 tab 名重复")
                 .isNull();
@@ -557,11 +565,11 @@ class ObjectHomePageTest {
         assertThat(open.isDisabled()).isTrue();
         assertThat(open.getTooltip().getText())
                 .as("禁用态的 tooltip 必须是原因，不是按钮名")
-                .isEqualTo("连上一个库才能打开");
+                .isEqualTo(I18n.t("object.needConnect.open"));
 
         Button create = (Button) page.lookup("#object-home-new");
         assertThat(create.isDisabled()).isTrue();
-        assertThat(create.getTooltip().getText()).isEqualTo("连上一个库才能建表");
+        assertThat(create.getTooltip().getText()).isEqualTo(I18n.t("object.needConnect.create"));
 
         // 已连接但没选中：原因换成下一步真正要做的事。
         ObjectHomePage connected = new ObjectHomePage(
@@ -569,13 +577,13 @@ class ObjectHomePageTest {
                 opened::add, message -> { }, () -> { });
         Button connectedOpen = (Button) connected.lookup("#object-home-open");
         assertThat(connectedOpen.isDisabled()).isTrue();
-        assertThat(connectedOpen.getTooltip().getText()).isEqualTo("先在清单里选中一个对象");
+        assertThat(connectedOpen.getTooltip().getText()).isEqualTo(I18n.t("object.pickFirst"));
         // 「新建表」只依赖连接，连上了就该可点 —— tooltip 也要跟着回到按钮本身的说明。
         Button connectedCreate = (Button) connected.lookup("#object-home-new");
         assertThat(connectedCreate.isDisabled()).isFalse();
         assertThat(connectedCreate.getTooltip().getText())
                 .as("恢复可用后不能把禁用原因留在 tooltip 上误导人")
-                .isEqualTo("新建一张表（弹窗填字段）");
+                .isEqualTo(I18n.t("object.hint.newTable"));
     }
 
     /**
@@ -597,7 +605,8 @@ class ObjectHomePageTest {
                         "users", SchemaService.ObjectKind.TABLE), null))));
         assertThat(menuLabels(tableMenu.get()))
                 .as("菜单条目 = 工具条动作，术语一字不差")
-                .containsExactly("打开", "设计表", "复制名称", "删除表");
+                .containsExactly(I18n.t("sidebar.menuOpen"), I18n.t("object.design"),
+                        I18n.t("action.object.copy-name"), I18n.t("object.drop"));
         assertThat(disabledMenuIds(tableMenu.get())).as("连着库点表：全都能点").isEmpty();
 
         AtomicReference<ContextMenu> viewMenu = new AtomicReference<>();
@@ -667,7 +676,7 @@ class ObjectHomePageTest {
 
     private TableColumn<ObjectHomePage.ObjectRow, ?> commentColumn() {
         return page.table().getColumns().stream()
-                .filter(column -> "注释".equals(column.getText()))
+                .filter(column -> I18n.t("column.comment").equals(column.getText()))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("对象首页没有注释列"));
     }
@@ -677,7 +686,7 @@ class ObjectHomePageTest {
                 .filter(TableCell.class::isInstance)
                 .map(node -> (TableCell<?, ?>) node)
                 .filter(cell -> cell.getTableColumn() != null
-                        && "注释".equals(cell.getTableColumn().getText()))
+                        && I18n.t("column.comment").equals(cell.getTableColumn().getText()))
                 .filter(cell -> text.equals(cell.getText()))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("找不到注释列的单元格：" + text));
