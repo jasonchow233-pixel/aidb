@@ -137,7 +137,7 @@ public final class AppShell extends StackPane {
     private final BorderPane root = new BorderPane();
     private final ObjectDetailsPanel details = new ObjectDetailsPanel();
     private final Label toastLabel = new Label();
-    private final Button toastAction = new Button("撤销");
+    private final Button toastAction = new Button(I18n.t("action.edit.undo"));
     private final HBox toast = new HBox(10, toastLabel, toastAction);
     private String connectionName;
     private DbSession session;
@@ -284,7 +284,11 @@ public final class AppShell extends StackPane {
 
         refreshProfiles();
         // ⭐ S5：常驻的「对象」标签 —— 永远排第一、不可关闭。
-        tabBar.openPermanent(new TabItem("object-home", "对象", TabKind.OBJECT));
+        // 用 window.pageType.object 而不是 category.object：中文两侧都是「对象」，
+        // 但 category.object 的英文是单数 "Object"，当页面标题读着不对，
+        // pageType 那一档才是 "Objects"（Navicat 的对象页头也是复数）。
+        tabBar.openPermanent(new TabItem("object-home",
+                I18n.t("window.pageType.object"), TabKind.OBJECT));
         ConnectionProfile demo = profileById("demo");
         if (demo != null) {
             // ⭐ A15：启动时的演示库连接**同步**做 —— 它是本地 SQLite（毫秒级），
@@ -296,10 +300,10 @@ public final class AppShell extends StackPane {
         statusBar.setReadonly(true);
         statusBar.setRange("—");
         if (activeProfile == null) {
-            status("演示库不可用：无法打开 " + connectionName);
+            status(I18n.t("shell.demoUnusable", connectionName));
         } else {
-            status("已连接 " + connectionName + " · " + objectsByConnection.getOrDefault(
-                    activeProfile.id(), List.of()).size() + " 个对象");
+            status(I18n.t("shell.connectedObjects", connectionName,
+                    objectsByConnection.getOrDefault(activeProfile.id(), List.of()).size()));
         }
     }
 
@@ -526,14 +530,21 @@ public final class AppShell extends StackPane {
     /**
      * 截图用：写一份 GBK 演示 CSV（中文姓名），让导入向导的「编码」这一项
      * 在帧里真的起作用 —— UTF-8 文件按 GBK 解会乱码，证明不了什么。
+     *
+     * <p>姓名是<b>数据不是文案</b>，所以不进语言包（翻成英文这张帧就没意义了）；
+     * 但也<strong>不留在 Java 字面量里</strong> —— 那样 `CJK_CEILING` 永远降不到 0，
+     * 只能靠注释豁免，而豁免口子一旦开就有人拿它躲真文案。
+     * 放进资源文件，源文件保持 UTF-8 可读可 diff，<b>写盘时才转 GBK</b>：
+     * 转码这一步本来就是这张帧要证明的东西。
      */
     private static Path writeDemoImportFile() {
         Path file = Path.of(System.getProperty("java.io.tmpdir"), "adb-demo-import-gbk.csv");
-        String text = "id,name,email\n"
-                + "101,张三,zhangsan@example.com\n"
-                + "102,李四,lisi@example.com\n"
-                + "103,王五,wangwu@example.com\n";
-        try {
+        try (java.io.InputStream in = AppShell.class.getResourceAsStream(
+                "/io/agenticdb/ui/demo-import-utf8.csv")) {
+            if (in == null) {
+                return null;
+            }
+            String text = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
             Files.writeString(file, text, java.nio.charset.Charset.forName("GBK"));
             return file;
         } catch (IOException e) {
@@ -544,7 +555,7 @@ public final class AppShell extends StackPane {
     /** 表清单动作的统一入口：没有打开的清单页时给一句人话，不静默 no-op。 */
     private void withActiveTableList(java.util.function.Consumer<TableListPage> action) {
         if (activeTableListPage == null) {
-            status("请先打开「表清单」");
+            status(I18n.t("shell.needTableList"));
             return;
         }
         action.accept(activeTableListPage);
@@ -571,7 +582,7 @@ public final class AppShell extends StackPane {
             case TRUNCATE_TABLE -> ddl.truncateTable(connectionId, request.tableName());
             case RENAME_TABLE -> ddl.renameTable(connectionId, request.tableName());
             case DROP_TABLE -> ddl.dropTable(connectionId, request.tableName());
-            default -> status("这个动作还没有接上");
+            default -> status(I18n.t("shell.actionNotWired"));
         }
     }
 
@@ -783,14 +794,14 @@ public final class AppShell extends StackPane {
     private void openRoutine(String name, boolean procedure, boolean event) {
         DbSession current = session;
         if (current == null) {
-            status("请先连接一个数据库");
+            status(I18n.t("shell.needConnection"));
             return;
         }
         RoutinePage page = new RoutinePage(name, procedure, event, current, new SchemaService(),
                 executors.forConnection(activeProfileId()), this::status);
         String id = "routine:" + activeProfileId() + ":" + name;
         openTab(new TabItem(id, name, TabKind.ROUTINE, name, activeProfileId(), page));
-        status("打开定义体：" + name);
+        status(I18n.t("shell.openDefinition", name));
     }
 
     /**
@@ -819,7 +830,7 @@ public final class AppShell extends StackPane {
             applyConnectedUi(profile, objects);
         } catch (Exception e) {
             session = null;
-            status("连接失败：" + readable(e));
+            status(I18n.t("shell.connectFailed", readable(e)));
             if (appBar != null) {
                 appBar.setConnectionState(false, true);
             }
@@ -850,7 +861,7 @@ public final class AppShell extends StackPane {
             resortConnections();
             connectionStore.save(touched);
         }
-        status("正在连接 " + profile.name() + "…");
+        status(I18n.t("shell.connecting", profile.name()));
 
         // ⭐ A15/A16：连接与内省在**该连接自己的执行器**上跑，不占 UI 线程，
         //    也不阻塞别的连接。
@@ -865,7 +876,7 @@ public final class AppShell extends StackPane {
                 String reason = readable(e);
                 Platform.runLater(() -> {
                     session = null;
-                    status("连接失败：" + reason);
+                    status(I18n.t("shell.connectFailed", reason));
                     if (appBar != null) {
                         appBar.setConnectionState(false, true);
                     }
@@ -922,7 +933,7 @@ public final class AppShell extends StackPane {
         sideBar.setDialect(dialectName);
         statusBar.setReadonly(true);
         statusBar.setRange("—");
-        status("已连接 " + profile.name() + " · " + objects.size() + " 个对象");
+        status(I18n.t("shell.connectedObjects", profile.name(), objects.size()));
         closeOrphanSessions();
     }
 
@@ -966,9 +977,9 @@ public final class AppShell extends StackPane {
             }
             List<SchemaObject> objects = schemaService.listObjects(session, schema);
             sideBar.setObjects(objects);
-            status("当前 schema：" + schema + " · " + objects.size() + " 个对象");
+            status(I18n.t("shell.currentSchema", schema, objects.size()));
         } catch (SQLException e) {
-            status("切换 schema 失败：" + readable(e));
+            status(I18n.t("shell.schemaSwitchFailed", readable(e)));
         }
     }
 
@@ -993,7 +1004,7 @@ public final class AppShell extends StackPane {
                 objectsByConnection.put(profile.id(), objects);
                 Platform.runLater(() -> {
                     sideBar.setObjects(profile.id(), objects);
-                    status("已读取 " + profile.name() + " 的 " + objects.size() + " 个对象");
+                    status(I18n.t("shell.objectsLoaded", profile.name(), objects.size()));
                     // ⭐ U1：会话开好了 —— 补一次 catalog 清单。选中一个
                     //    没连过的连接时，loadCatalogsFor 会因会话未开而跳过，
                     //    这里补上，库一层才不会永远缺席。
@@ -1001,7 +1012,7 @@ public final class AppShell extends StackPane {
                 });
             } catch (Exception e) {
                 Platform.runLater(() ->
-                        status("读取 " + profile.name() + " 的对象失败：" + readable(e)));
+                        status(I18n.t("shell.objectsLoadFailed", profile.name(), readable(e))));
             }
         });
     }
@@ -1020,7 +1031,7 @@ public final class AppShell extends StackPane {
         DbSession session = sessionFor(connectionId);
         if (session == null) {
             sideBar.setColumns(connectionId, table, List.of());
-            status("连接未建立，读不到 " + table + " 的列");
+            status(I18n.t("shell.noColumns", table));
             return;
         }
         executorFor(connectionId).execute(() -> {
@@ -1034,7 +1045,7 @@ public final class AppShell extends StackPane {
                 String reason = readable(e);
                 Platform.runLater(() -> {
                     sideBar.setColumns(connectionId, table, List.of());
-                    status("读取 " + table + " 的列失败：" + reason);
+                    status(I18n.t("shell.columnsFailed", table, reason));
                 });
             }
         });
@@ -1080,7 +1091,7 @@ public final class AppShell extends StackPane {
             }
             Platform.runLater(() -> {
                 if (entries.isEmpty()) {
-                    status(parent.name() + " 没有可见的数据库");
+                    status(I18n.t("shell.noDatabases", parent.name()));
                 } else {
                     sideBar.setCatalogs(connectionId, entries);
                 }
@@ -1105,7 +1116,7 @@ public final class AppShell extends StackPane {
                 : request.connectionId();
         ConnectionProfile parent = profileById(parentId);
         if (parent == null) {
-            status("找不到连接：" + parentId);
+            status(I18n.t("shell.connectionNotFound", parentId));
             return;
         }
         if (request.catalog().equals(parent.database())) {
@@ -1116,7 +1127,7 @@ public final class AppShell extends StackPane {
         String variantId = ConnectionProfile.catalogVariantId(parent.id(), request.catalog());
         if (activeProfile != null && activeProfile.id().equals(variantId)
                 && sessions.isOpen(variantId)) {
-            status("当前数据库：" + request.catalog());
+            status(I18n.t("shell.currentDatabase", request.catalog()));
             return;
         }
         connectCatalog(variantProfile(variantId));
@@ -1152,13 +1163,13 @@ public final class AppShell extends StackPane {
      */
     private void connectCatalog(ConnectionProfile variant) {
         if (variant == null) {
-            status("打不开这个数据库的连接");
+            status(I18n.t("shell.cannotOpenDatabase"));
             return;
         }
         activeProfile = variant;
         connectionName = variant.name();
         session = null;
-        status("正在连接 " + variant.name() + "…");
+        status(I18n.t("shell.connecting", variant.name()));
         executors.forConnection(variant.id()).execute(() -> {
             DbSession opened = null;
             List<SchemaObject> objects = List.of();
@@ -1169,7 +1180,7 @@ public final class AppShell extends StackPane {
                 String reason = readable(e);
                 Platform.runLater(() -> {
                     session = null;
-                    status("连接失败：" + reason);
+                    status(I18n.t("shell.connectFailed", reason));
                     if (appBar != null) {
                         appBar.setConnectionState(false, true);
                     }
@@ -1256,7 +1267,7 @@ public final class AppShell extends StackPane {
     }
 
     private void openConnections() {
-        openTab(new TabItem("connections", "连接管理", TabKind.CONNECTIONS));
+        openTab(new TabItem("connections", I18n.t("shell.tab.connections"), TabKind.CONNECTIONS));
     }
 
     private ConnectionsPage createConnectionsPage(TabItem tab) {
@@ -1286,7 +1297,7 @@ public final class AppShell extends StackPane {
         }
         String trimmed = newName == null ? "" : newName.trim();
         if (trimmed.isEmpty()) {
-            status("连接名称不能为空");
+            status(I18n.t("shell.nameRequired"));
             return;
         }
         if (trimmed.equals(profile.name())) {
@@ -1294,7 +1305,7 @@ public final class AppShell extends StackPane {
         }
         replaceProfile(profile.withName(trimmed));
         connectionStore.rename(profile.id(), trimmed);
-        status("已重命名连接：" + trimmed);
+        status(I18n.t("shell.renamed", trimmed));
     }
 
     /** ⭐ P5-1：把连接移进分组（空串 = 移出分组）；同样不动会话。 */
@@ -1309,8 +1320,8 @@ public final class AppShell extends StackPane {
         replaceProfile(profile.withGroup(group));
         connectionStore.moveToGroup(profile.id(), group);
         status(group.isEmpty()
-                ? "已移出分组：" + profile.name()
-                : "已移到分组「" + group + "」：" + profile.name());
+                ? I18n.t("shell.ungrouped", profile.name())
+                : I18n.t("shell.movedToGroup", group, profile.name()));
     }
 
     /** 用改好的档案替换内存里的同一 id 项，并同步顺序 / 顶栏 / 侧栏 / 标签标题。 */
@@ -1336,7 +1347,7 @@ public final class AppShell extends StackPane {
         resortConnections();
         connectionStore.save(copy);
         refreshProfiles();
-        status("已复制连接：" + copy.name());
+        status(I18n.t("shell.duplicated", copy.name()));
     }
 
     private void deleteConnection(ConnectionProfile profile) {
@@ -1370,17 +1381,17 @@ public final class AppShell extends StackPane {
             }
         }
         refreshProfiles();
-        status("已删除连接：" + profile.name());
+        status(I18n.t("shell.deleted", profile.name()));
     }
 
     // ⛔ 别再手写 ButtonType("删除", OK_DONE) —— OK_DONE 是默认按钮，回车即删。
     //    统一走 DestructiveConfirm：破坏性按钮用 OTHER，默认按钮落在「取消」上。
     private boolean confirmDeleteConnection(ConnectionProfile profile) {
         DestructiveConfirm confirm = DestructiveConfirm.of(
-                "删除连接",
-                "删除 " + profile.name() + "？",
-                "连接元数据与系统凭据会被移除；数据库本身不受影响。",
-                "删除");
+                I18n.t("shell.deleteTitle"),
+                I18n.t("shell.deleteQuestion", profile.name()),
+                I18n.t("shell.deleteBody"),
+                    I18n.t("common.delete"));
         styleDialog(confirm.alert());
         return confirm.confirmed();
     }
@@ -1394,7 +1405,7 @@ public final class AppShell extends StackPane {
      */
     private void disconnectConnection() {
         if (activeProfile == null) {
-            status("当前没有连接");
+            status(I18n.t("shell.noConnections"));
             return;
         }
         String id = activeProfile.id();
@@ -1405,7 +1416,7 @@ public final class AppShell extends StackPane {
             if (!tabBar.close(tab.id())) {
                 // 用户在关闭确认里选择了「保留」—— 那就不断开：
                 // 会话还开着，页面还能用；强行断开等于偷偷丢掉未保存的编辑。
-                status("已取消断开：仍有标签页在用这个连接");
+                status(I18n.t("shell.disconnectCancelled"));
                 return;
             }
         }
@@ -1426,12 +1437,12 @@ public final class AppShell extends StackPane {
         // ⭐ UX-5：断开要让侧栏那颗绿点一起变灰 —— 这条路径不重建连接清单，
         //    不重画的话「已断开」的连接会一直顶着绿点（比没有点更误导人）。
         sideBar.refreshConnectionLiveness();
-        status("已断开连接：" + activeProfile.name());
+        status(I18n.t("shell.disconnected", activeProfile.name()));
     }
 
     private void reconnectConnection() {
         if (activeProfile == null) {
-            status("当前没有连接");
+            status(I18n.t("shell.noConnections"));
             return;
         }
         // ⭐ U2：重连 = **强制换一条新会话**（SessionManager.reopen），
@@ -1439,7 +1450,7 @@ public final class AppShell extends StackPane {
         try {
             sessions.reopen(activeProfile.id(), specOf(activeProfile));
         } catch (java.sql.SQLException e) {
-            status("重连失败：" + readable(e));
+            status(I18n.t("shell.reconnectFailed", readable(e)));
             return;
         }
         session = null;
@@ -1616,7 +1627,7 @@ public final class AppShell extends StackPane {
         if (flag("adb.import", "ADB_IMPORT")) {
             Path demo = writeDemoImportFile();
             if (demo == null) {
-                status("导入演示文件写入失败，这一帧拍不到导入向导");
+                status(I18n.t("shell.demoImportFailed"));
             } else {
                 poseImportWizardWhenReady(demo, 0);
             }
@@ -1654,7 +1665,7 @@ public final class AppShell extends StackPane {
         //    必须 runLater —— 直接 showAndWait 会开嵌套事件循环，把截图调度挡住。
         if (flag("adb.errorDemo", "ADB_ERROR_DEMO")) {
             Platform.runLater(() -> ErrorDetailsDialog.show(stage,
-                    ErrorDetails.of("执行查询失败",
+                    ErrorDetails.of(I18n.t("shell.queryFailed"),
                             new java.sql.SQLException("no such table: user_profiles"),
                             "SELECT id, name, email\nFROM user_profiles\nWHERE active = 1;")));
         }
@@ -1665,7 +1676,7 @@ public final class AppShell extends StackPane {
                     : initialQuery;
             String id = "query:" + activeProfileId() + ":" + System.nanoTime();
             initialQuerySql.put(id, sql);
-            openTab(new TabItem(id, "查询示例", TabKind.QUERY, null, activeProfileId()));
+            openTab(new TabItem(id, I18n.t("shell.sampleQuery"), TabKind.QUERY, null, activeProfileId()));
             QueryPage page = workspace.activeQuery();
             if (page != null) {
                 page.markClean();
@@ -1844,7 +1855,7 @@ public final class AppShell extends StackPane {
                 I18n.t("action.edit.copy"), "Mod+C"), I18n.t("category.edit"), null, () -> {
             DataGridPage grid = workspace.activeGrid();
             if (grid == null) {
-                status("复制只在数据页可用");
+                status(I18n.t("shell.copyNeedsGrid"));
                 return;
             }
             grid.copyFocusedCellValue();
@@ -1853,38 +1864,38 @@ public final class AppShell extends StackPane {
         actions.register("query.run", I18n.t("action.query.run"), I18n.t("category.query"),
                 key("Shortcut+R"), () -> {
                     if (!workspace.runQuery()) {
-                        status("请先新建一个查询页");
+                        status(I18n.t("shell.needQueryPage"));
                     }
                 });
         actions.register("query.run-all", I18n.t("action.query.run-all"), I18n.t("category.query"),
                 key("Shift+Shortcut+R"), () -> {
                     if (!workspace.runAllQuery()) {
-                        status("请先新建一个查询页");
+                        status(I18n.t("shell.needQueryPage"));
                     }
                 });
         actions.register("query.cancel", I18n.t("action.query.cancel"), I18n.t("category.query"),
                 key("Shortcut+Period"), () -> {
                     if (!workspace.cancelQuery()) {
-                        status("当前没有正在执行的查询");
+                        status(I18n.t("shell.noRunningQuery"));
                     }
                 });
         actions.register("query.explain", I18n.t("action.query.explain"), I18n.t("category.query"),
                 key("Shortcut+E"), () -> {
                     if (!workspace.explainQuery()) {
-                        status("请先新建一个查询页");
+                        status(I18n.t("shell.needQueryPage"));
                     }
                 });
         actions.register("query.format", I18n.t("action.query.format"), I18n.t("category.query"),
                 key("Alt+Shift+F"), () -> {
                     if (!workspace.formatQuery()) {
-                        status("请先新建一个查询页");
+                        status(I18n.t("shell.needQueryPage"));
                     }
                 });
         // ⭐ Q6：代码片段库（与「已保存查询」同源，但用法不同：插入而非执行）。
         actions.register("query.save-snippet", I18n.t("action.query.save-snippet"), I18n.t("category.query"), null, () -> {
             QueryPage page = workspace.activeQuery();
             if (page == null) {
-                status("请先新建一个查询页");
+                status(I18n.t("shell.needQueryPage"));
                 return;
             }
             page.saveSnippet();
@@ -1893,13 +1904,13 @@ public final class AppShell extends StackPane {
         actions.register("query.save", I18n.t("action.query.save"), I18n.t("category.query"),
                 key("Shortcut+S"), () -> {
                     if (!workspace.saveQuery()) {
-                        status("请先新建一个查询页");
+                        status(I18n.t("shell.needQueryPage"));
                     }
                 });
         actions.register("query.comment", I18n.t("action.query.comment"), I18n.t("category.query"),
                 key("Shortcut+Slash"), () -> {
                     if (!workspace.toggleQueryComment()) {
-                        status("请先新建一个查询页");
+                        status(I18n.t("shell.needQueryPage"));
                     }
                 });
 
@@ -1914,8 +1925,8 @@ public final class AppShell extends StackPane {
         actions.register("theme.toggle", I18n.t("action.theme.toggle"), I18n.t("category.view"),
                 null, () -> {
                     themeManager.toggle();
-                    status("主题：" + themeManager.mode().label());
-                    toast("主题：" + themeManager.mode().label());
+                    status(I18n.t("shell.theme", themeManager.mode().label()));
+                    toast(I18n.t("shell.theme", themeManager.mode().label()));
                 });
         actions.register("density-dense", I18n.t("action.density-dense"), I18n.t("category.view"),
                 null, () -> changeDensity("dense"));
@@ -1980,7 +1991,7 @@ public final class AppShell extends StackPane {
                 null, this::openSavedQueries);
         actions.register("settings", I18n.t("action.settings"), I18n.t("category.tools"),
                 key("Shortcut+Comma"),
-                () -> openTab(new TabItem("settings", "设置", TabKind.SETTINGS)));
+                () -> openTab(new TabItem("settings", I18n.t("window.pageType.settings"), TabKind.SETTINGS)));
 
         actions.register("window.minimize", I18n.t("action.window.minimize"), I18n.t("category.window"),
                 key("Shortcut+M"), () -> {
@@ -1998,13 +2009,9 @@ public final class AppShell extends StackPane {
         actions.register("shortcuts", I18n.t("action.shortcuts"), I18n.t("category.help"),
                 key("F1"), this::showShortcuts);
         actions.register("about", I18n.t("action.about"), I18n.t("category.help"),
-                null, () -> showInfo("关于 AIDB",
-                        "AIDB " + io.agenticdb.ui.AppVersion.DISPLAY
-                                + "\nJavaFX 25 · 原生桌面\n\n"
-                                + "SQLite 演示库 · 真实内省 · 分页数据页 · SQL 编辑器\n"
-                                + "执行清单：NAVICAT-TODO.md\n"
-                                + "不内嵌浏览器，不启动 HTTP 端口。\n\n"
-                                + startupText(),
+                null, () -> showInfo(I18n.t("action.about"),
+                        I18n.t("shell.aboutBody", io.agenticdb.ui.AppVersion.DISPLAY,
+                                startupText()),
                         Icons.Icon.BRAND));
         updateQueryActions();
     }
@@ -2146,7 +2153,8 @@ public final class AppShell extends StackPane {
         detailsVisible = !detailsVisible;
         settings.setBoolean("ui.details.visible", detailsVisible);
         applyDetailsVisibility();
-        status("对象详情面板：" + (detailsVisible ? "已显示" : "已隐藏"));
+        status(I18n.t("shell.detailsPanel",
+                detailsVisible ? I18n.t("shell.shown") : I18n.t("shell.hidden")));
     }
 
     /** 树里选中了新对象：面板关着就什么都不做（省掉一次白读的元数据查询）。 */
@@ -2277,7 +2285,7 @@ public final class AppShell extends StackPane {
                                    java.util.function.Consumer<String> onError) {
         DbSession session = sessionFor(subject.connectionId());
         if (session == null) {
-            onError.accept("连接未建立，读不到 " + subject.name() + " 的元数据");
+            onError.accept(I18n.t("shell.noMetadata", subject.name()));
             return;
         }
         executorFor(subject.connectionId()).execute(() -> {
@@ -2308,32 +2316,39 @@ public final class AppShell extends StackPane {
         Long rows = safeCount(session, subject.name());
 
         List<ObjectDetailsPanel.Fact> facts = new ArrayList<>();
-        facts.add(new ObjectDetailsPanel.Fact("名称", subject.name()));
-        facts.add(new ObjectDetailsPanel.Fact("类型", structure.view() ? "视图" : "表"));
-        facts.add(new ObjectDetailsPanel.Fact("所属数据库", blankToNull(subject.database())));
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("column.name"), subject.name()));
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.type"),
+                structure.view() ? I18n.t("detail.kind.view") : I18n.t("detail.kind.table")));
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.database"),
+                blankToNull(subject.database())));
         if (subject.schema() != null && !subject.schema().isBlank()) {
             facts.add(new ObjectDetailsPanel.Fact("Schema", subject.schema()));
         }
-        facts.add(new ObjectDetailsPanel.Fact("行数", rows == null ? null : String.valueOf(rows)));
-        facts.add(new ObjectDetailsPanel.Fact("字段数",
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.rows"),
+                rows == null ? null : String.valueOf(rows)));
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.fields"),
                 String.valueOf(structure.columns().size())));
-        facts.add(new ObjectDetailsPanel.Fact("主键",
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.primaryKey"),
                 String.valueOf(structure.primaryKeys().size())));
-        facts.add(new ObjectDetailsPanel.Fact("索引",
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.indexes"),
                 String.valueOf(structure.indexes().size())));
-        facts.add(new ObjectDetailsPanel.Fact("外键",
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.foreignKeys"),
                 String.valueOf(structure.foreignKeys().size())));
-        facts.add(new ObjectDetailsPanel.Fact("触发器",
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.triggers"),
                 String.valueOf(structure.triggers().size())));
         if (meta != null) {
-            facts.add(new ObjectDetailsPanel.Fact("数据长度", meta.sizeText()));
-            facts.add(new ObjectDetailsPanel.Fact("引擎", blankToNull(meta.engine())));
-            facts.add(new ObjectDetailsPanel.Fact("排序规则", blankToNull(meta.collation())));
-            facts.add(new ObjectDetailsPanel.Fact("创建时间", blankToNull(meta.createdAt())));
-            facts.add(new ObjectDetailsPanel.Fact("修改时间", blankToNull(meta.updatedAt())));
+            facts.add(new ObjectDetailsPanel.Fact(I18n.t("column.dataLength"), meta.sizeText()));
+            facts.add(new ObjectDetailsPanel.Fact(I18n.t("column.engine"),
+                    blankToNull(meta.engine())));
+            facts.add(new ObjectDetailsPanel.Fact(I18n.t("column.collation"),
+                    blankToNull(meta.collation())));
+            facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.createdAt"),
+                    blankToNull(meta.createdAt())));
+            facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.updatedAt"),
+                    blankToNull(meta.updatedAt())));
         }
         if (!structure.comment().isBlank()) {
-            facts.add(new ObjectDetailsPanel.Fact("注释", structure.comment()));
+            facts.add(new ObjectDetailsPanel.Fact(I18n.t("column.comment"), structure.comment()));
         }
 
         List<String> columns = new ArrayList<>();
@@ -2347,7 +2362,7 @@ public final class AppShell extends StackPane {
         }
         List<String> foreignKeys = new ArrayList<>();
         for (io.agenticdb.introspect.ForeignKeyDef key : structure.foreignKeys()) {
-            foreignKeys.add(key.displayName() + "："
+            foreignKeys.add(key.displayName() + I18n.t("detail.listSeparator")
                     + String.join(", ", key.columns()) + " → "
                     + key.referencedTable() + "("
                     + String.join(", ", key.referencedColumns()) + ")");
@@ -2358,10 +2373,10 @@ public final class AppShell extends StackPane {
         }
         List<String> notes = new ArrayList<>();
         if (meta == null) {
-            notes.add("该数据库不提供「数据长度 / 引擎 / 排序规则 / 创建时间」，已省略对应项。");
+            notes.add(I18n.t("detail.note.noMeta"));
         }
         if (structure.view()) {
-            notes.add("视图没有行数统计 —— 它取决于底层表的实时数据。");
+            notes.add(I18n.t("detail.note.viewRows"));
         }
         // ⭐ P2-3：这张表最近被怎么查过（历史按表名筛，最新在前）。
         List<String> recent = new ArrayList<>();
@@ -2377,9 +2392,11 @@ public final class AppShell extends StackPane {
             ObjectDetailsPanel.Subject subject) throws Exception {
         DbSession session = sessionFor(subject.connectionId());
         List<ObjectDetailsPanel.Fact> facts = new ArrayList<>();
-        facts.add(new ObjectDetailsPanel.Fact("数据库", subject.database()));
-        facts.add(new ObjectDetailsPanel.Fact("类型", session.dialect().displayName()));
-        facts.add(new ObjectDetailsPanel.Fact("连接状态", "已连接"));
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.database"), subject.database()));
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.type"),
+                session.dialect().displayName()));
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.connectionState"),
+                I18n.t("detail.connected")));
         List<SchemaObject> objects = schemaService.listObjects(session);
         int tables = 0;
         int views = 0;
@@ -2393,14 +2410,16 @@ public final class AppShell extends StackPane {
                 }
             }
         }
-        facts.add(new ObjectDetailsPanel.Fact("对象总数", String.valueOf(objects.size())));
-        facts.add(new ObjectDetailsPanel.Fact("表", String.valueOf(tables)));
-        facts.add(new ObjectDetailsPanel.Fact("视图", String.valueOf(views)));
-        facts.add(new ObjectDetailsPanel.Fact("触发器", String.valueOf(triggers)));
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.objectCount"),
+                String.valueOf(objects.size())));
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.tables"), String.valueOf(tables)));
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.views"), String.valueOf(views)));
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.triggers"),
+                String.valueOf(triggers)));
         // ⭐ §29.2：连接档案路径是**真实可复制的信息**（备份 / 迁移 / 排查时
         //    用户第一件事就是找它）。显示的是 ConnectionStore 实际读写的那个文件，
         //    不是硬编码的 `~/.agenticdb` —— 测试和自定义启动会覆盖它。
-        facts.add(new ObjectDetailsPanel.Fact("连接档案",
+        facts.add(new ObjectDetailsPanel.Fact(I18n.t("detail.profile"),
                 connectionStore.file().toString()));
         return new ObjectDetailsPanel.Snapshot(subject, facts, List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of());
@@ -2519,10 +2538,10 @@ public final class AppShell extends StackPane {
             return true;
         }
         DestructiveConfirm confirm = DestructiveConfirm.of(
-                "未保存的修改",
-                tab.title() + " 有 " + count + " 处未保存修改",
-                "关闭标签会丢弃这些修改。取消后编辑缓冲原样保留。",
-                "放弃修改");
+                I18n.t("shell.unsavedTitle"),
+                I18n.t("shell.unsavedTabBody", tab.title(), count),
+                I18n.t("shell.unsavedTabHint"),
+                I18n.t("shell.discardChanges"));
         styleDialog(confirm.alert());
         return confirm.confirmed();
     }
@@ -2532,10 +2551,10 @@ public final class AppShell extends StackPane {
             return true;
         }
         DestructiveConfirm confirm = DestructiveConfirm.of(
-                "未保存的修改",
-                "仍有标签包含未保存修改",
-                "退出会丢弃所有编辑缓冲。",
-                "放弃并退出");
+                I18n.t("shell.unsavedTitle"),
+                I18n.t("shell.unsavedAnyBody"),
+                I18n.t("shell.unsavedQuitHint"),
+                I18n.t("shell.discardAndQuit"));
         styleDialog(confirm.alert());
         return confirm.confirmed();
     }
@@ -2556,7 +2575,7 @@ public final class AppShell extends StackPane {
             disableTableListActions();
         }
         workspace.closeTab(tab.id());
-        status("已关闭：" + tab.title());
+        status(I18n.t("shell.closed", tab.title()));
         if (tabBar.closableCount() == 0) {
             // ⭐ S5：常驻的「对象」标签是落点 —— 不再回��一片空白。
             String permanent = tabBar.permanentId();
@@ -2595,12 +2614,12 @@ public final class AppShell extends StackPane {
     private void openStructure(String connectionId, String name) {
         openTab(new TabItem("structure:" + connectionId + ":" + name, name,
                 TabKind.STRUCTURE, name, connectionId));
-        status("打开结构：" + name);
+        status(I18n.t("shell.openStructure", name));
     }
 
     private void openTool(String title) {
         openTab(new TabItem("tool:" + title, title, TabKind.TOOL));
-        status("打开工具：" + title);
+        status(I18n.t("shell.openTool", title));
     }
 
     // ─────────────────────────── 数据页 ───────────────────────────
@@ -2646,7 +2665,7 @@ public final class AppShell extends StackPane {
             page.setOnSaveSnippet((snippetName, snippetSql) ->
                     savedQueries.saveSnippet(snippetName, snippetSql));
             page.setSnippetSource(() -> savedQueries.snippets());
-            status("已保存查询：" + name);
+            status(I18n.t("shell.savedQuery", name));
         });
         if (file != null) {
             page.setCurrentFile(file);
@@ -2782,7 +2801,7 @@ public final class AppShell extends StackPane {
     private void openTableList() {
         DbSession current = session;
         if (current == null) {
-            status("请先连接一个数据库");
+            status(I18n.t("shell.needConnection"));
             return;
         }
         // ⭐ U1：这个清单页绑的是**当前连接**（可能是 catalog 虚拟连接）——
@@ -2855,7 +2874,7 @@ public final class AppShell extends StackPane {
                 settings, pageConnection);
         page.setDensity(currentDensity());
         activeTableListPage = page;
-        openTab(new TabItem("tables:" + pageConnection, "表清单", TabKind.TOOL,
+        openTab(new TabItem("tables:" + pageConnection, I18n.t("category.tableList"), TabKind.TOOL,
                 null, pageConnection, page));
     }
 
@@ -2904,12 +2923,12 @@ public final class AppShell extends StackPane {
     private void insertSnippet() {
         QueryPage page = workspace.activeQuery();
         if (page == null) {
-            status("请先新建一个查询页");
+            status(I18n.t("shell.needQueryPage"));
             return;
         }
         List<SavedQueries.Entry> snippets = page.snippets();
         if (snippets.isEmpty()) {
-            status("还没有代码片段 —— 选中一段 SQL 后点「存为代码片段」");
+            status(I18n.t("shell.noSnippets"));
             return;
         }
         // ChoiceDialog 的「默认项」只能通过构造器给（没有 setter）。
@@ -2918,8 +2937,8 @@ public final class AppShell extends StackPane {
         javafx.scene.control.ChoiceDialog<SavedQueries.Entry> dialog =
                 new javafx.scene.control.ChoiceDialog<>(first,
                         rest.toArray(new SavedQueries.Entry[0]));
-        dialog.setTitle("插入代码片段");
-        dialog.setHeaderText("选一个片段插入到光标处");
+        dialog.setTitle(I18n.t("shell.insertSnippet"));
+        dialog.setHeaderText(I18n.t("shell.insertSnippetHint"));
         dialog.showAndWait().ifPresent(page::insertSnippet);
     }
 
@@ -2942,11 +2961,11 @@ public final class AppShell extends StackPane {
         String connection = request.connectionId() == null || request.connectionId().isBlank()
                 ? activeProfileId() : request.connectionId();
         String name = request.name() == null || request.name().isBlank()
-                ? "未命名查询 " + queryCounter : request.name();
+                ? I18n.t("shell.unnamedQuery", queryCounter) : request.name();
         String id = "query:" + connection + ":" + System.nanoTime();
         initialQuerySql.put(id, request.sql());
         openTab(new TabItem(id, name, TabKind.QUERY, null, connection));
-        status("已载入已保存查询：" + name);
+        status(I18n.t("shell.loadedSavedQuery", name));
     }
 
     /**
@@ -2958,7 +2977,7 @@ public final class AppShell extends StackPane {
     private void openTransferHub() {
         DbSession current = session;
         if (current == null) {
-            status("请先连接一个数据库");
+            status(I18n.t("shell.needConnection"));
             return;
         }
         List<String> tables = objectsByConnection.getOrDefault(activeProfileId(), List.of())
@@ -2980,7 +2999,7 @@ public final class AppShell extends StackPane {
     private void copyActiveTabTarget(boolean asSelect) {
         TabItem tab = tabBar.active();
         if (tab == null || tab.target() == null || tab.target().isBlank()) {
-            status("当前标签没有可复制的表名");
+            status(I18n.t("shell.noTableName"));
             return;
         }
         String target = tab.target();
@@ -2990,15 +3009,15 @@ public final class AppShell extends StackPane {
         javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
         content.putString(text);
         javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
-        status("已复制：" + text);
+        status(I18n.t("shell.copied", text));
     }
 
     private void openNewQuery() {
         queryCounter++;
-        String title = "未命名查询 " + queryCounter;
+        String title = I18n.t("shell.unnamedQuery", queryCounter);
         openTab(new TabItem("query:" + activeProfileId() + ":" + System.nanoTime(), title,
                 TabKind.QUERY, null, activeProfileId()));
-        status("新建查询：" + title);
+        status(I18n.t("shell.newQuery", title));
     }
 
     /**
@@ -3006,16 +3025,16 @@ public final class AppShell extends StackPane {
      */
     private void openQueryWith(String sql) {
         queryCounter++;
-        String title = "未命名查询 " + queryCounter;
+        String title = I18n.t("shell.unnamedQuery", queryCounter);
         String id = "query:" + activeProfileId() + ":" + System.nanoTime();
         initialQuerySql.put(id, sql);
         openTab(new TabItem(id, title, TabKind.QUERY, null, activeProfileId()));
-        status("已载入历史查询：" + title);
+        status(I18n.t("shell.loadedHistoryQuery", title));
     }
 
     private void openSqlFile() {
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("打开 SQL 文件");
+        chooser.setTitle(I18n.t("shell.openSqlTitle"));
         chooser.getExtensionFilters().add(
                 new FileChooser.ExtensionFilter("SQL", "*.sql", "*.txt"));
         File file = chooser.showOpenDialog(stage);
@@ -3026,15 +3045,15 @@ public final class AppShell extends StackPane {
         try {
             sql = Files.readString(file.toPath(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            status("打开失败：" + readable(e));
-            toast("打开失败：" + readable(e));
+            status(I18n.t("shell.openFailed", readable(e)));
+            toast(I18n.t("shell.openFailed", readable(e)));
             return;
         }
         String id = "query:" + activeProfileId() + ":" + System.nanoTime();
         initialQuerySql.put(id, sql);
         initialQueryFile.put(id, file);
         openTab(new TabItem(id, file.getName(), TabKind.QUERY, null, activeProfileId()));
-        status("已打开：" + file.getName());
+        status(I18n.t("shell.opened", file.getName()));
     }
 
     private void updateQueryActions() {
@@ -3068,7 +3087,7 @@ public final class AppShell extends StackPane {
     private void editUndo() {
         DataGridPage grid = workspace.activeGrid();
         if (grid == null) {
-            status("撤销只在数据页可用");
+            status(I18n.t("shell.undoNeedsGrid"));
             return;
         }
         if (grid.canUndo()) {
@@ -3082,7 +3101,7 @@ public final class AppShell extends StackPane {
     private void editRedo() {
         DataGridPage grid = workspace.activeGrid();
         if (grid == null) {
-            status("重做只在数据页可用");
+            status(I18n.t("shell.redoNeedsGrid"));
             return;
         }
         grid.redo();
@@ -3093,10 +3112,10 @@ public final class AppShell extends StackPane {
         ConnectionProfile profile = profileFor(connectionId);
         DbSession target = profile == null ? null : sessionFor(profile.id());
         if (target == null) {
-            status("连接未打开，无法刷新对象");
+            status(I18n.t("shell.refreshNeedsConnection"));
             return;
         }
-        status("正在刷新对象…");
+        status(I18n.t("shell.refreshingObjects"));
         executors.forConnection(activeProfileId()).execute(() -> {
             try {
                 List<SchemaObject> objects = schemaService.listObjects(target);
@@ -3104,10 +3123,10 @@ public final class AppShell extends StackPane {
                     objectsByConnection.put(profile.id(), objects);
                     // ⭐ 侧栏按连接 id 收对象 —— 非当前连接也要更新它的那棵树。
                     sideBar.setObjects(profile.id(), objects);
-                    status("对象已刷新 · " + objects.size() + " 个");
+                    status(I18n.t("shell.objectsRefreshed", objects.size()));
                 });
             } catch (SQLException e) {
-                String message = "刷新对象失败：" + readable(e);
+                String message = I18n.t("shell.refreshObjectsFailed", readable(e));
                 Platform.runLater(() -> status(message));
             }
         });
@@ -3125,9 +3144,9 @@ public final class AppShell extends StackPane {
         error.getStyleClass().add("adb-grid__state-text--error");
         error.setWrapText(true);
 
-        Button retry = new Button("重试");
+        Button retry = new Button(I18n.t("shell.retry"));
         retry.getStyleClass().addAll("adb-button", "adb-button--ghost");
-        retry.setOnAction(event -> status("请重启应用以重新连接演示库"));
+        retry.setOnAction(event -> status(I18n.t("shell.restartForDemo")));
         page.getChildren().addAll(title, error, retry);
         return page;
     }
@@ -3136,11 +3155,11 @@ public final class AppShell extends StackPane {
 
     private void refresh() {
         if (workspace.refreshActive()) {
-            status("刷新当前页 · " + LocalTime.now().withNano(0));
-            toast("已刷新");
+            status(I18n.t("shell.pageRefreshed", LocalTime.now().withNano(0)));
+            toast(I18n.t("shell.refreshed"));
         } else {
-            status("当前没有可刷新的数据页");
-            toast("当前页没有数据");
+            status(I18n.t("shell.noRefreshablePage"));
+            toast(I18n.t("shell.pageEmpty"));
         }
     }
 
@@ -3164,12 +3183,12 @@ public final class AppShell extends StackPane {
 
     private void changeDensity(String density) {
         String value = applyDensity(density);
-        status("密度：" + switch (value) {
-            case "dense" -> "密集";
-            case "compact" -> "紧凑";
-            case "comfort" -> "宽松";
-            default -> "标准";
-        });
+        status(I18n.t("shell.density", switch (value) {
+            case "dense" -> I18n.t("action.density-dense");
+            case "compact" -> I18n.t("action.density-compact");
+            case "comfort" -> I18n.t("action.density-comfort");
+            default -> I18n.t("action.density-normal");
+        }));
     }
 
     private String applyDensity(String density) {
@@ -3277,10 +3296,10 @@ public final class AppShell extends StackPane {
     private String startupText() {
         long millis = startup.firstScreenMillis();
         String line = millis > 0
-                ? "本次启动 " + millis + " ms（进程启动 → 首屏）"
-                : "本次启动耗时未记录";
-        return line + (startup.slow() ? "，超过 2s 目标" : "")
-                + "\n启动日志：~/.agenticdb/logs/startup.log";
+                ? I18n.t("shell.startupElapsed", millis)
+                : I18n.t("shell.startupUnrecorded");
+        return line + (startup.slow() ? I18n.t("shell.startupSlow") : "")
+                + "\n" + I18n.t("shell.startupLog");
     }
 
     private void showInfo(String title, String content) {
@@ -3319,43 +3338,43 @@ public final class AppShell extends StackPane {
     private void showShortcuts() {
         // {语义按键, 动作}；按键为 null 的行是分节标题。
         List<String[]> rows = List.of(
-                new String[]{null, "连接与窗口"},
-                new String[]{"Mod+N", "新建连接…"},
-                new String[]{"Mod+O", "打开 SQL 文件…"},
-                new String[]{"Shift+Mod+N", "新建查询"},
-                new String[]{"Mod+W", "关闭标签"},
-                new String[]{"Shift+Mod+W", "关闭窗口"},
-                new String[]{"Mod+M", "最小化"},
-                new String[]{"Mod+Q", "退出 AIDB"},
-                new String[]{null, "编辑与数据页"},
-                new String[]{"Mod+K", "命令面板"},
-                new String[]{"Mod+F", "搜索对象 / 页内查找"},
-                new String[]{"Mod+Z", "撤销上一处编辑"},
-                new String[]{"Shift+Mod+Z", "重做"},
-                new String[]{"Mod+C", "复制单元格 / 矩形选区"},
-                new String[]{"Alt+Mod+C", "复制选中行为 TSV"},
-                new String[]{"Shift+Mod+C", "复制选中行为 INSERT"},
-                new String[]{"Mod+A", "全选当前页"},
-                new String[]{"Mod+UP", "跳到当前页首行"},
-                new String[]{"Mod+DOWN", "跳到当前页末行"},
-                new String[]{"ESCAPE", "取消选区 / 关闭详情抽屉"},
-                new String[]{null, "查询"},
-                new String[]{"Mod+ENTER", "执行当前语句"},
-                new String[]{"Shift+Mod+ENTER", "执行全部语句"},
-                new String[]{"Mod+R", "执行当前语句（菜单）"},
-                new String[]{"Shift+Mod+R", "执行全部语句（菜单）"},
-                new String[]{"Mod+PERIOD", "取消执行"},
-                new String[]{"Mod+E", "解释执行计划"},
-                new String[]{"Alt+Shift+F", "格式化 SQL"},
-                new String[]{"Mod+S", "保存 SQL"},
-                new String[]{"Mod+SLASH", "注释 / 取消注释"},
-                new String[]{"Mod+G", "查找下一处"},
-                new String[]{"F5", "刷新 / 重跑当前语句"},
-                new String[]{null, "视图"},
-                new String[]{"Mod+BACKSLASH", "折叠 / 展开侧栏"},
-                new String[]{"Mod+Alt+D", "显示 / 隐藏对象详情"},
-                new String[]{"Mod+COMMA", "设置…"},
-                new String[]{"F1", "本表"});
+                new String[]{null, I18n.t("shortcut.section.session")},
+                new String[]{"Mod+N", I18n.t("action.new-connection")},
+                new String[]{"Mod+O", I18n.t("action.open-sql")},
+                new String[]{"Shift+Mod+N", I18n.t("action.new-query")},
+                new String[]{"Mod+W", I18n.t("action.tab.close")},
+                new String[]{"Shift+Mod+W", I18n.t("action.window.close")},
+                new String[]{"Mod+M", I18n.t("action.window.minimize")},
+                new String[]{"Mod+Q", I18n.t("action.app.quit")},
+                new String[]{null, I18n.t("shortcut.section.editing")},
+                new String[]{"Mod+K", I18n.t("action.command-palette")},
+                new String[]{"Mod+F", I18n.t("shortcut.search")},
+                new String[]{"Mod+Z", I18n.t("shortcut.undo")},
+                new String[]{"Shift+Mod+Z", I18n.t("action.edit.redo")},
+                new String[]{"Mod+C", I18n.t("shortcut.copyCell")},
+                new String[]{"Alt+Mod+C", I18n.t("shortcut.copyTsv")},
+                new String[]{"Shift+Mod+C", I18n.t("shortcut.copyInsert")},
+                new String[]{"Mod+A", I18n.t("shortcut.selectAll")},
+                new String[]{"Mod+UP", I18n.t("shortcut.firstRow")},
+                new String[]{"Mod+DOWN", I18n.t("shortcut.lastRow")},
+                new String[]{"ESCAPE", I18n.t("shortcut.escape")},
+                new String[]{null, I18n.t("menu.query")},
+                new String[]{"Mod+ENTER", I18n.t("action.query.run")},
+                new String[]{"Shift+Mod+ENTER", I18n.t("action.query.run-all")},
+                new String[]{"Mod+R", I18n.t("shortcut.runMenu")},
+                new String[]{"Shift+Mod+R", I18n.t("shortcut.runAllMenu")},
+                new String[]{"Mod+PERIOD", I18n.t("action.query.cancel")},
+                new String[]{"Mod+E", I18n.t("action.query.explain")},
+                new String[]{"Alt+Shift+F", I18n.t("action.query.format")},
+                new String[]{"Mod+S", I18n.t("action.query.save")},
+                new String[]{"Mod+SLASH", I18n.t("action.query.comment")},
+                new String[]{"Mod+G", I18n.t("shortcut.findNext")},
+                new String[]{"F5", I18n.t("shortcut.refreshRun")},
+                new String[]{null, I18n.t("menu.view")},
+                new String[]{"Mod+BACKSLASH", I18n.t("action.sidebar.toggle")},
+                new String[]{"Mod+Alt+D", I18n.t("action.details.toggle")},
+                new String[]{"Mod+COMMA", I18n.t("action.settings")},
+                new String[]{"F1", I18n.t("shortcut.thisTable")});
 
         GridPane grid = new GridPane();
         grid.getStyleClass().add("adb-shortcuts");
@@ -3384,8 +3403,9 @@ public final class AppShell extends StackPane {
         }
 
         Dialog<Void> dialog = new Dialog<>();
-        dialog.setTitle("快捷键");
-        dialog.setHeaderText("键盘快捷键（" + (io.agenticdb.ui.Shortcuts.mac() ? "macOS" : "Windows / Linux") + "）");
+        dialog.setTitle(I18n.t("shortcut.title"));
+        dialog.setHeaderText(I18n.t("shortcut.heading",
+                io.agenticdb.ui.Shortcuts.mac() ? "macOS" : "Windows / Linux"));
         dialog.getDialogPane().setContent(grid);
         dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
         DialogStyles.apply(dialog, stage);

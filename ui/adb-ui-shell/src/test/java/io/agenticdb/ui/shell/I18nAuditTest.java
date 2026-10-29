@@ -55,8 +55,8 @@ class I18nAuditTest {
      * 允许残留的 CJK 字面量条数。⚠️ <b>只许降不许升。</b>
      *
      * <p>抽取进度：2216（R34 开工实测）→ 2154（顶区四件套）→ 2011（动作层 71 个动作）
-     * → 1917（表清单页）→ <b>1504</b>（本批：数据网格 {@code DataGridPage} 413 条清零，
-     * 302 个键进两份资源包）。
+     * → 1917（表清单页）→ 1504（数据网格 {@code DataGridPage} 413 条清零）
+     * → <b>1306</b>（本批：外壳 {@code AppShell} 198 条清零，598 键进两份资源包）。
      *
      * <p>调小它之前先量一次，别照抄上一轮文档里的数字 —— 本轮开工时就发现
      * README 与真源记的「1108 条 / 134 类」实测是「1107 / 133」，
@@ -73,7 +73,7 @@ class I18nAuditTest {
      * 而本类是先 {@code stripComments} 再计数。口径不同的两个数放在一起，
      * 只会让人以为棘轮又涨了。
      */
-    private static final int CJK_CEILING = 1504;
+    private static final int CJK_CEILING = 1306;
 
     /** 源码里对 {@link I18n#t(String, Object...)} 的键引用。 */
     private static final Pattern KEY_REFERENCE = Pattern.compile("I18n\\.t\\(\\s*\"([^\"]+)\"");
@@ -156,6 +156,186 @@ class I18nAuditTest {
         assertThat(problems)
                 .as("源码引用了但资源里没有的键 —— 界面上会长出 ⚠key")
                 .isEmpty();
+    }
+
+    /**
+     * ⭐ R34 N1-b 第五批：调用点<b>递进去几个实参</b>，两份资源里就该有几个占位符。
+     *
+     * <p>上一条门禁只证明「键存在」，证明不了「键用得对」。把
+     * {@code status("已连接 " + name + " · " + n + " 个对象")} 抽成
+     * {@code I18n.t("shell.connectedObjects", name, n)} 之后，两类错都<b>静默不报错</b>：
+     * <ul>
+     *   <li>少写一个 {@code {1}} → 界面上多出一段没人认领的 {@code · 3}，或者干脆看不见对象数；</li>
+     *   <li>多写一个 {@code {2}} → 状态栏上直接长出字面量 {@code {2}}。</li>
+     * </ul>
+     * 两种都要到<b>验收帧</b>才看得见，而状态条文案是瞬时的、帧不一定抓得到那一刻 ——
+     * 所以这里静态对账：实参数 == 占位符数，<b>en 与 zh 各判一次</b>
+     * （两侧占位符数可以不一样，那就是这条门禁要抓的东西）。
+     *
+     * <p>顺带要求占位符从 {@code {0}} 起<b>连续</b>：{@code {0}} 和 {@code {2}} 缺 {@code {1}}
+     * 会让第二个实参无处安放。
+     */
+    @Test
+    void callSitesPassAsManyArgumentsAsTheBundlesHavePlaceholders() throws IOException {
+        Properties en = bundle(Locale.ENGLISH);
+        Properties zh = bundle(Locale.CHINESE);
+        List<String> problems = new ArrayList<>();
+        int parameterized = 0;
+        for (Path file : uiSources()) {
+            String source = stripComments(read(file));
+            for (CallSite site : callSites(source)) {
+                String enText = en.getProperty(site.key());
+                String zhText = zh.getProperty(site.key());
+                // 键不存在由上一条门禁负责报，这里不重复报。
+                if (enText == null || zhText == null) {
+                    continue;
+                }
+                int expectedEn = placeholders(enText);
+                int expectedZh = placeholders(zhText);
+                if (expectedEn > 0 || expectedZh > 0 || site.args() > 0) {
+                    parameterized++;
+                }
+                if (site.args() != expectedEn) {
+                    problems.add(relative(file) + " " + site.key()
+                            + " 递了 " + site.args() + " 个实参，en 侧有 " + expectedEn + " 个占位符");
+                }
+                if (site.args() != expectedZh) {
+                    problems.add(relative(file) + " " + site.key()
+                            + " 递了 " + site.args() + " 个实参，zh 侧有 " + expectedZh + " 个占位符");
+                }
+            }
+        }
+        assertThat(parameterized)
+                .as("一个带占位符的调用点都没扫到 —— 解析失效，这条门禁在空转")
+                .isGreaterThan(20);
+        assertThat(problems)
+                .as("实参个数与占位符个数对不上（界面上会露出字面 {0} 或少一段话）：\n  %s",
+                        String.join("\n  ", problems))
+                .isEmpty();
+    }
+
+    /** 一个 {@code I18n.t("key", a, b)} 调用点：键名与<b>顶层实参个数</b>（不含键本身）。 */
+    private record CallSite(String key, int args) {
+    }
+
+    /**
+     * 按名读某一种语言的资源表原文。
+     *
+     * <p>不走 {@code ResourceBundle}（它会按机器 locale 级联，中文机器上的基包会推翻
+     * 「默认英文」），也不走 {@code I18n.t(...)}（那会做替换、还会记缺失）。
+     * ⚠️ 必须 {@code Reader} + UTF-8：{@code Properties.load(InputStream)} 永远按
+     * ISO-8859-1 解，中文静默乱码 —— 与 {@link I18n} 里同一套读法。
+     */
+    private static Properties bundle(Locale locale) throws IOException {
+        String resource = I18n.CHINESE.equals(locale)
+                ? I18n.ZH_RESOURCE : I18n.EN_RESOURCE;
+        Properties values = new Properties();
+        try (java.io.InputStream in = I18n.class.getResourceAsStream(resource)) {
+            assertThat(in).as("找不到资源 " + resource).isNotNull();
+            try (java.io.Reader reader = new java.io.InputStreamReader(in,
+                    java.nio.charset.StandardCharsets.UTF_8)) {
+                values.load(reader);
+            }
+        }
+        return values;
+    }
+
+    /**
+     * 括号/引号/花括号配平地扫一遍，取出每个 {@code I18n.t(} 的顶层参数。
+     * 第一个参数不是纯字符串字面量的（拼出来的键）直接跳过 —— 那种由动作穷举那条门禁管。
+     */
+    private static List<CallSite> callSites(String source) {
+        List<CallSite> sites = new ArrayList<>();
+        String marker = "I18n.t(";
+        int at = 0;
+        while ((at = source.indexOf(marker, at)) >= 0) {
+            int open = at + marker.length() - 1;
+            List<String> args = splitTopLevel(source, open);
+            if (!args.isEmpty()) {
+                String first = args.get(0).trim();
+                if (first.length() >= 2 && first.charAt(0) == '"'
+                        && first.charAt(first.length() - 1) == '"'
+                        && first.substring(1, first.length() - 1).indexOf('"') < 0) {
+                    sites.add(new CallSite(first.substring(1, first.length() - 1), args.size() - 1));
+                }
+            }
+            at = open;
+        }
+        return sites;
+    }
+
+    /** 从 {@code open} 指向的左括号开始，按<b>顶层逗号</b>切参数（嵌套括号、字符串内的逗号不算）。 */
+    private static List<String> splitTopLevel(String source, int open) {
+        List<String> parts = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int depth = 0;
+        boolean inString = false, inChar = false, escaped = false;
+        for (int i = open; i < source.length(); i++) {
+            char c = source.charAt(i);
+            if (inString) {
+                current.append(c);
+                if (escaped) {
+                    escaped = false;
+                } else if (c == '\\') {
+                    escaped = true;
+                } else if (c == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+            if (inChar) {
+                current.append(c);
+                if (c == '\\') {
+                    escaped = true;
+                } else if (c == '\'') {
+                    inChar = false;
+                } else if (escaped) {
+                    escaped = false;
+                }
+                continue;
+            }
+            if (c == '"') {
+                inString = true;
+                current.append(c);
+                continue;
+            }
+            if (c == '\'') {
+                inChar = true;
+                current.append(c);
+                continue;
+            }
+            if (c == '(' || c == '{' || c == '[') {
+                depth++;
+                if (depth == 1) {
+                    continue;
+                }
+            } else if (c == ')' || c == '}' || c == ']') {
+                depth--;
+                if (depth == 0) {
+                    if (!current.toString().isBlank()) {
+                        parts.add(current.toString());
+                    }
+                    return parts;
+                }
+            } else if (c == ',' && depth == 1) {
+                parts.add(current.toString());
+                current.setLength(0);
+                continue;
+            }
+            current.append(c);
+        }
+        return List.of();
+    }
+
+    /** 文案里占位符的个数（要求从 {0} 起连续；不连续按最大下标 + 1 计，让调用点对不上号）。 */
+    private static int placeholders(String text) {
+        int highest = -1;
+        java.util.regex.Matcher matcher =
+                Pattern.compile("\\{(\\d+)}").matcher(text);
+        while (matcher.find()) {
+            highest = Math.max(highest, Integer.parseInt(matcher.group(1)));
+        }
+        return highest + 1;
     }
 
     /**
