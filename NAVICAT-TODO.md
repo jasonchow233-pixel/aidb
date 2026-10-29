@@ -186,7 +186,7 @@ Navicat 把保存的查询当**对象**管：树里 `Queries` 分组 → 选中�
 
 | 编号 | 差距 | 目标 | 现状 | 成本 |
 |---|---|---|---|---|
-| **N1** | 无 i18n 层 | 两套资源包（en 默认 / zh），键名按区命名空间 | **层已建**（`I18n.java` + 两份 `.properties`，598 键对称）。抽取进度：出现 **2216 → 1306**、去重 **930** 条待抽，剩 **52 个文件**；`AppShell`(198→0) / `DataGridPage`(413→0) / `TableListPage`(70→0) / 顶区 / 动作层已收 | 8–12 |
+| **N1** | 无 i18n 层 | 两套资源包（en 默认 / zh），键名按区命名空间 | **层已建**（`I18n.java` + 两份 `.properties`，701 键对称）。抽取进度：出现 **2216 → 1145**、去重 **810** 条待抽，剩 **51 个文件**；`QueryPage`(161→0) / `AppShell`(198→0) / `DataGridPage`(413→0) / `TableListPage`(70→0) / 顶区 / 动作层已收 | 8–12 |
 | **N2** | 菜单标签与项集 | `File/Edit/View/Query/Format/Favorites/Tools/Window/Help` | `文件/编辑/视图/数据库/对象/收藏夹/工具/窗口/帮助`（`MenuBarFactory.java:27-31`，9 组但项集不同） | 并入 N1 |
 
 落点：新增 `ui/adb-ui-core/.../I18n.java` + `messages_en.properties` / `messages_zh.properties`；
@@ -432,6 +432,51 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
 逐颗格子比 `label.getWidth()` 与 `label.prefWidth(-1)`，同时反向钉「六格合计不得顶出 1280 外壳」。
 先红后绿：改 CSS 前它报出上面那两个数（这就是变异验证），改完 13 条全绿。
 
+**第六批（`QueryPage` 161 → 0）抓到的边界问题：文案可以在 `ui/` 之外**
+
+- 抽完查询页去重钉断言时，`AppShellTest` 报 `expected "Read Only" but was "只读"` ——
+  那颗风险徽章的文字来自 `Danger.label()`，而这个枚举在 **`core/adb-model`** 里，
+  `CJK_LITERAL` 只扫 `ui/**/src/main`，所以**默认英文的界面上钉着一颗中文、棘轮一条都不红**。
+  更糟的是 `DataGridTransactionTest` 早就把这条缺陷**编进了期望值**
+  （`I18n.t("grid.save.headPlain", n, Danger.MUTATING.label())` —— 测试自己调中文 label 去拼 expected，
+  于是它一直是绿的，绿的还是「界面上就该显示中文」）。
+- 修法是把边界划清，不是把枚举搬过来：新增 `DangerLabels.t(Danger)` 做键映射
+  （`READ_ONLY` 复用 `status.readOnly`，其余三个新铸 `danger.*`），
+  模型层管语义（要不要确认 / 要不要审批），界面层管文案。7 个调用点全换。
+- ⭐ 新立第 12 条门禁 `modelLayerDangerLabelsNeverReachTheUiDirectly`：
+  ui 主源码里不许出现 `danger.label()` / `Danger.X.label()`。
+  它补的不是"又一条尺"，是**扫描范围的边界** —— 文案只要能绕开 `ui/` 进界面，棘轮就是漏的。
+  变异验证：把 `QueryPage:612` 改回 `danger.label()` → 这条红并点名文件；还原 → 12 条全绿。
+- ⚠️ 一次工具坑值得记：本仓库工作副本是 **CRLF**，codemod 的多行模式里写 `\n` 会**整批 MISS**
+  （第五批踩的是缩进猜错，这次踩的是行尾）。而且**干跑看不出来** ——
+  dry 模式不改 `src`，被前一条模式吃掉的字面量在 dry 下"还在"、在 apply 下才报 MISS，
+  所以 dry/apply 各跑一次才算数（本轮 apply 第一次就抓到 5 条漏网 + 1 条重复）。
+- 断言一律改成按资源比（`contains(I18n.t("query.resultTab", 1))`，不抄中文原句），
+  换语言就不用改测试。`query.doneStatus` 因此把「执行完成」抬头做成 `{0}` 传参 ——
+  门禁只比抬头那一小段，不必知道后面跟了几个字段，也不必跟着模板改。
+
+**D-8：同一批重拍帧又抓到查询页分页条整排挤成半截字**（"Previous Pa…" / "Per p…" / "Copy This Pa…" / "Exp…" / "Go to pa"）
+
+- 两条根因，都不是"英文太长"这么笼统：
+  ① 查询页的翻页键用 `IconButtons.of`（**图标 + 文字**），而数据页同一排用的是 `IconButtons.icon`
+    （**纯图标** + tooltip/accessibleText）。中文「第一页」三个字装得下，英文 "Previous Page" 装不下。
+    Navicat 的纪录导航本来就是纯图标 —— 所以改回图标不是"挤不下才退让"，是本来就该长这样。
+  ② 文字项没钉 `USE_PREF_SIZE`，HBox 一挤就往 min 压，于是切成半截而不是整项收起。
+- 跳页框的"宽度跟着提示文字量"从 `DataGridPage` 抽成 **`FieldFits.prompt(TextField)`** 两页共用：
+  第四批在网格上踩过一次（64px 装不下 "Go to page"），第六批在查询页**又踩一次** ——
+  同一条规则写两遍就一定会漏一遍，这就是抽出来的理由。
+- ⭐ 新门禁 `QueryPageTest.queryPagerItemsAreNeverSqueezedIntoEllipsis` 有两个坑值得记：
+  ① **不去改窗口尺寸**。第一版把 `stage.setWidth()` 拉到 1280 再量，实测它**不会同步落到场景上** ——
+    全靠顺手加的那条"先确认场景真的到了 1280"才发现自己静默量在 900 宽（那就是下一条假绿）。
+    现在改成**推导预算**：此刻「场景宽 − 分页条实得宽」就是分页条以外的固定开销，
+    1280 下的预算 = 1280 − 那个开销，再比 `bar.prefWidth(-1)`。
+  ② 逐项比的是**计算后的** `minWidth(-1)`，不是 `getMinWidth()` 属性 ——
+    后者默认 `-1` 是 `USE_COMPUTED_SIZE`（意思是"按 pref 算"），拿属性值去比 pref
+    会把每一颗都报成"可压缩"，第一版因此**假红了 9 条**。
+    与第四批那条 `minWidth` 恒真的坑正好是同一个属性的两个方向。
+- 变异验证按自然顺序走了一遍：加门禁 → 红 3 条并点名（Per page / Copy This Page / Export）
+  → 钉 `USE_PREF_SIZE` → 18 条全绿；shell 模块 619 条全绿。
+
 每条改判配一次变异验证（破坏 → 恰好 N 红 → 还原 → 绿），口径见本文 §7。
 
 ---
@@ -463,14 +508,14 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
 
 ---
 
-## 8. 当前基线（2026-10-29 R34 第五批之后实测）
+## 8. 当前基线（2026-10-29 R34 第六批之后实测）
 
-- 门禁 **1175 条 / 134 类 / 0 失败 / 48 环境跳过**。
+- 门禁 **1177 条 / 134 类 / 0 失败 / 48 环境跳过**。
   **量法（照抄，别再凭记忆写数）**：`./mvnw -o test` 之后
   `grep -aoP 'Tests run: \K[0-9]+(?=, Failures: [0-9]+, Errors: \d+, Skipped: \d+, Time elapsed)' 日志 | awk '{s+=$1;n++} END{print n,s}'`
-  → **150 组 / 1175 条**，与各模块汇总行相加一致；类数按 `**/target/surefire-reports/*.txt` 计数 = **134**
+  → **150 组 / 1177 条**，与各模块汇总行相加一致；类数按 `**/target/surefire-reports/*.txt` 计数 = **134**
   （150 与 134 的差是 `@Nested` 内部类：一行一组、一份报告）。
-  ⚠️ 本文上一版写 **1116**、ROADMAP 写 **1119**、本轮中途又记过 **1122 / 1173 / 1174** —— 都对不上，
+  ⚠️ 本文上一版写 **1116**、ROADMAP 写 **1119**、本轮中途又记过 **1122 / 1173 / 1174 / 1175 / 1176** —— 都对不上，
   差的就是「按模块汇总」与「按报告文件累加」两种口径混用。以后一律用上面那条命令。
   ⚠️ 全量必须用 JDK 25+：`JAVA_HOME` 留在系统默认的 21 上，enforcer 直接 BUILD FAILURE
   （本机可用 `C:\Users\Administrator\.jdks\openjdk-27.0.1.0.2`）。
@@ -503,8 +548,9 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
   ⚠️ 加尺寸核对时先踩了一坑：写成 `git show … | od` 会被 `set -o pipefail` + `set -e`
   直接打死脚本（od 吃 8 字节就退出 → git 收 SIGPIPE 以 141 退出 → 命令替换失败 →
   日志停在「拍摄 p2-find」、rc=255，完全看不出原因）。改成先落临时文件再读。
-- **N1 进度**：ui 主源码 CJK 字面量 **2216 → 2011 → 1917 → 1504 → 1306 次出现**（去重 930 条），
-  资源包 **598 键**（en/zh 各 598，对称；`grid.*` 298 / `shell.*` 84 / `detail.*` 21 / `shortcut.*` 18）。
+- **N1 进度**：ui 主源码 CJK 字面量 **2216 → 2011 → 1917 → 1504 → 1306 → 1145 次出现**（去重 810 条），
+  资源包 **701 键**（en/zh 各 701，对称；`grid.*` 298 / `query.*` 100 / `shell.*` 84 / `action.*` 72 /
+  `detail.*` 21 / `shortcut.*` 18 / `danger.*` 3）。
   ⚠️ **上一批记的「472 键 / grid 296」是错的**：`git show HEAD:…messages_en.properties` 实测
   **474 / 298** —— 那批收尾时又补了 `grid.overview.pkSeparator`、`grid.form.nullPrompt` 两个键，
   数没回量就写进文档和提交信息了。同一个坑（数字是记上去的不是量出来的）第三次踩，
@@ -516,6 +562,8 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
   第三批 = 表清单页 `TableListPage` 70 → 0（2011 → 1917）。
   **第四批 = 数据网格 `DataGridPage` 413 → 0**（1917 → **1504**），333 处 `I18n.t(...)`。
   **第五批 = 外壳 `AppShell` 198 → 0**（1504 → **1306**），85 处一次 codemod 落完。
+  **第六批 = 查询页 `QueryPage` 161 → 0**（1306 → **1145**），100 个 `query.*` 键 + 3 个 `danger.*` 键，
+  并顺带修掉 D-7（模型层中文标签越界）与 D-8（分页条挤成半截字）。
   这是 R34 最大的一块，也是**第一个把「文字长度」变成缺陷的页**：英文比中文宽，
   工具条与分页器两处都因此改判（见 §5 末三行）。
   棘轮 `CJK_CEILING = 1306` 只许降不许升；**还剩 52 个文件**，大头
@@ -529,7 +577,7 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
   修法不是把 `CJK_CEILING` 从 1504 涨到 1536（那等于给同一笔债立两张账，还当场破掉「只许降」），
   而是新立 `filesThatClaimToBeCleanAreAlsoFreeOfFullwidthPunctuation`：
   **汉字清零的文件，全角也必须清零**。当前 **26 个文件**做到零汉字且零全角（第五批之后由 `node tools/cjk-count.mjs` 实测）。
-- **N1-a ✅ / N1-c ✅**（`I18nAuditTest` 现 **11 条**断言）；**N1-b 进行中（第五批已收，52 个文件待抽）**；**N2 ✅**。
+- **N1-a ✅ / N1-c ✅**（`I18nAuditTest` 现 **12 条**断言）；**N1-b 进行中（第六批已收，51 个文件待抽）**；**N2 ✅**。
 - ✅ **D-5 已修（第五批重拍帧目视发现）**：命令带 `Import / Export`、`Saved Queries` 两个标签被裁成省略号
   —— `.adb-ribbon__button` 写死 62px 定宽（按中文量的），英文要 74 / 69px 而实得只有 56px。
   改成内容驱动宽度 + 62px 下限，并新立 `AppBarTest.ribbonLabelsAreNeverEllipsised`（先红后绿，见 §5 末）。
@@ -544,6 +592,20 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
   （只在「没有浮窗」时续，避免叠两层菜单），于是快门按下时菜单最多 1.5 岁。
   验证：9000ms 这一档从红变绿；重拍的帧里日志打了两次 `menu posed`（菜单确实中途收过一次、被续回来了）。
   ⚠️ 证据面没打折：拍的还是同一个 `setOnContextMenuRequested` 处理器开出来的真菜单。
+- ✅ **D-7 已修（第六批重钉断言时发现）：文案可以绕开棘轮的扫描范围**。
+  查询页的风险徽章渲染 `Danger.label()`，中文枚举常量长在 `core/adb-model`，
+  而 `CJK_LITERAL` 只扫 `ui/**/src/main` —— 默认英文的界面上钉着「只读」，**棘轮一条都不红**。
+  ⚠️ 更糟的是 `DataGridTransactionTest` 拿 `Danger.MUTATING.label()` 拼 expected，
+  于是那条测试一直是绿的，绿的还是「界面上就该显示中文」—— **测试把缺陷固化成了契约**。
+  修法：新增 `DangerLabels.t(Danger)` 做键映射（`READ_ONLY` 复用 `status.readOnly`，
+  其余三个新铸 `danger.*`），7 个调用点全换；新立第 12 条门禁钉住这条边界。详见 §5 末。
+- ✅ **D-8 已修（第六批重拍帧目视发现）**：查询页分页条整排挤成半截字
+  （"Previous Pa…" / "Per p…" / "Copy This Pa…" / "Exp…" / "Go to pa"）。
+  两条根因：翻页键用的是「图标 + 文字」而数据页同一排是「纯图标」（Navicat 也是纯图标），
+  以及文字项没钉 `USE_PREF_SIZE` 被 HBox 压向 min。跳页框的宽度测量抽成 `FieldFits.prompt()` 两页共用。
+  新立 `QueryPageTest.queryPagerItemsAreNeverSqueezedIntoEllipsis`（推导 1280 下的预算，不去改窗口尺寸）。
+  两个坑写在 §5 末，其中「`getMinWidth()` 属性 vs `minWidth(-1)` 计算值」会把同一排 9 颗全报成可压缩 ——
+  与第四批那条 `minWidth` 恒真是同一个属性的反方向。
 - ⚠️ **D-1 未结，别当已修完**：分页器降级阶梯拿的输入是**盒子自己的宽度**，
   而对象详情面板是浮在右端的 —— p2-details 实测盒子右边缘在场景 x=1082、面板从 x≈990 起，
   **右边约 90px 被压在面板底下**，「每页」下拉框露出半截。
