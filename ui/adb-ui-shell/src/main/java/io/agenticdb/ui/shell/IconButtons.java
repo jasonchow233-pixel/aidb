@@ -31,6 +31,7 @@ final class IconButtons {
     /** 图标 + 文字的按钮。 */
     static Button of(Icons.Icon icon, String text) {
         Button button = new Button(text);
+        button.setMnemonicParsing(false);
         button.setGraphic(Icons.of(icon));
         button.setGraphicTextGap(GAP);
         return button;
@@ -64,11 +65,18 @@ final class IconButtons {
         return labeled(button, icon, text, hint, Icons.SIZE_TOOLBAR);
     }
 
-    /** 工具条主操作，指定图标尺寸（对象首页用 {@link Icons#SIZE_PRIMARY}）。 */
+    /** 工具条主操作，指定图标尺寸（对象首页用 {@link Icons#SIZE_PRIMARY}）。
+     *
+     * <p>⚠️ 文字关掉了助记符解析：R34 之后按钮文字来自资源包，而资源里合法地会出现
+     * {@code &}（Navicat 自己的词就是 "Filter & Sort"）。JavaFX 默认把 {@code &X}
+     * 当成助记符，于是 "Filter & Sort" 会画成 "Filter  Sort" 并把 S 加下划线 ——
+     * 少一个字符、多一条下划线，而且门禁全绿，只有肉眼能看出来。
+     */
     static <T extends ButtonBase> T labeled(T button, Icons.Icon icon, String text, String hint,
                                             double size) {
         button.setGraphic(Icons.of(icon, size));
         button.setText(text);
+        button.setMnemonicParsing(false);
         button.setGraphicTextGap(GAP);
         button.setTooltip(new Tooltip(hint));
         button.setAccessibleText(hint);

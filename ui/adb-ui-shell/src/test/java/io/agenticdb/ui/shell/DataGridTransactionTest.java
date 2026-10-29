@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.editing.EditSqlBuilder;
 import io.agenticdb.fixtures.DemoDatabase;
 import io.agenticdb.introspect.SchemaService;
@@ -222,17 +223,21 @@ class DataGridTransactionTest {
                         "UPDATE \"keyed\" SET \"label\" = ? WHERE \"code\" = ?",
                         List.of("X", "a"))));
         try {
+            // 措辞按资源比，不抄中文原句 —— 默认换英文后原句就不存在了。
+            // 比的是「这一档该用哪条文案」，所以两条各钉一次。
+            String plain = I18n.t("grid.save.headPlain", plan.size(), Danger.MUTATING.label());
+            String inTx = I18n.t("grid.save.headTx", plan.size(), Danger.MUTATING.label());
             assertThat(headerOf(page, plan))
-                    .as("自动提交下才是「单事务执行 · 失败回滚」")
-                    .contains("单事务执行");
+                    .as("自动提交下才是「单事务执行 · 失败回滚」那套措辞")
+                    .isEqualTo(plain);
 
             fire(page, "data-begin-tx");
             await(page::transactionOpen);
 
             assertThat(headerOf(page, plan))
                     .as("事务里保存不能谎称会自己提交 —— 提交权在用户手上")
-                    .contains("写入当前事务")
-                    .doesNotContain("单事务执行");
+                    .isEqualTo(inTx)
+                    .isNotEqualTo(plain);
         } finally {
             close(page);
         }
@@ -245,17 +250,21 @@ class DataGridTransactionTest {
             Dialog<ButtonType> dialog = onFx(page::buildRollbackDialog);
             DialogPane pane = dialog.getDialogPane();
             ButtonType rollback = pane.getButtonTypes().stream()
-                    .filter(type -> "回滚".equals(type.getText())).findFirst().orElseThrow();
+                    .filter(type -> I18n.t("grid.tx.rollbackButton").equals(type.getText())).findFirst().orElseThrow();
             ButtonType cancel = pane.getButtonTypes().stream()
-                    .filter(type -> "取消".equals(type.getText())).findFirst().orElseThrow();
+                    .filter(type -> I18n.t("common.cancel").equals(type.getText())).findFirst().orElseThrow();
 
             assertThat(rollback.getButtonData().isDefaultButton())
                     .as("回车绝不能落在「回滚」上")
                     .isFalse();
             assertThat(cancel.getButtonData().isCancelButton()).isTrue();
             assertThat(((Label) pane.getHeader()).getText())
-                    .as("必须说清两边都会丢：事务里未提交的写入 + 网格里未保存的编辑")
-                    .contains("尚未提交").contains("未保存").contains("不能恢复");
+                    .as("回滚确认的正文必须就是那条资源文案")
+                    .isEqualTo(I18n.t("grid.tx.rollbackHeader"));
+            // 意图不能随语言丢掉：这句话必须同时点到「未提交的写入」与「未保存的编辑」。
+            assertThat(I18n.t("grid.tx.rollbackHeader").toLowerCase())
+                    .as("文案漏掉任何一边，这条门禁就退化成同义反复")
+                    .contains("uncommitted", "unsaved");
         } finally {
             close(page);
         }

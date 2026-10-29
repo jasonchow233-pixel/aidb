@@ -158,7 +158,14 @@ for shot in "${SHOTS[@]}"; do
   step "拍摄 $name"
   rm -f "$SHOTS_DIR/$name.png"
 
-  # 每张图一个干净环境：用子 shell 隔离，ADB_* 不会泄漏到下一张。
+  # 读 PNG 的宽高：IHDR 从第 12 字节起，宽在 16–19、高在 20–23（大端）。
+# 尺寸都远小于 65536，所以只取第 3、4 字节即可。
+png_dims() {
+  od -An -tu1 -j16 -N8 "$1" | tr -s ' ' \
+    | awk '{printf "%dx%d", $3 * 256 + $4, $7 * 256 + $8}'
+}
+
+# 每张图一个干净环境：用子 shell 隔离，ADB_* 不会泄漏到下一张。
   # （不能写成 `env A=1 run_with_timeout ...` —— env 只认可执行文件，
   #   认不出 shell 函数。）
   (
@@ -172,7 +179,28 @@ for shot in "${SHOTS[@]}"; do
 
   if [ -f "$SHOTS_DIR/$name.png" ]; then
     size="$(wc -c <"$SHOTS_DIR/$name.png" | tr -d ' ')"
-    ok "$name.png（${size} 字节）"
+    # ⭐ 尺寸要核对，而且要和**上一版**比。踩过一次：p2-find 拍出 1920×1017
+    #   （窗口被最大化），其余全是 1280×800 —— 只看字节数看不出来，
+    #   而宽屏帧会把「1280 下不溢出」这类结论整个带偏。
+    #   不写死期望值：主窗口 1280×800、弹窗各有各的尺寸，列名单迟早漏一张；
+    #   和已入库的那版比，变了就是变了。本机没有 PIL/identify，直接读 PNG IHDR。
+    dims="$(png_dims "$SHOTS_DIR/$name.png")"
+    rel="docs/screenshots/$name.png"
+    # ⚠️ 别写成 `git show ... | od`：od 只吃 8 个字节就退出，git 收到 SIGPIPE
+    #    以 141 退出，`set -o pipefail` 让整条命令 substitution 失败，
+    #    而本脚本开了 `set -e` —— 结果拍第一张就整个脚本死掉（实测 rc=255，
+    #    且日志停在「拍摄 p2-find」一行，看不出原因）。先落临时文件再读。
+    prev_png="/tmp/adb-shot-prev-$name.png"
+    prev=""
+    if git -C "$PROJECT_ROOT" show "HEAD:$rel" >"$prev_png" 2>/dev/null; then
+      prev="$(png_dims "$prev_png")"
+    fi
+    rm -f "$prev_png"
+    if [ -n "$prev" ] && [ "$prev" != "$dims" ]; then
+      warn "$name.png（${size} 字节 · ${dims}）—— 尺寸与已入库版本（${prev}）不一致"
+    else
+      ok "$name.png（${size} 字节 · ${dims}）"
+    fi
     captured=$((captured + 1))
   else
     warn "$name.png 没生成，看日志：/tmp/adb-shot-$name.log"

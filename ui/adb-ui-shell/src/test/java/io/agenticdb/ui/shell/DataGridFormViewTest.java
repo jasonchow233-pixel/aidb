@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
@@ -115,7 +116,7 @@ class DataGridFormViewTest {
         assertThat(table().isManaged()).isFalse();
         assertThat(formPosition().getText())
                 .as("表单头必须说清当前看的是第几条")
-                .isEqualTo("记录 1 / 3");
+                .isEqualTo(I18n.t("grid.form.position", 1, 3));
         assertThat(field("name").getText()).isEqualTo("Alice");
         assertThat(field("id").isDisabled())
                 .as("主键列与格子内联编辑同一口径：不许改")
@@ -162,21 +163,21 @@ class DataGridFormViewTest {
         click("#data-record-next");
         assertThat(formPosition().getText())
                 .as("下一行：表单头与字段必须一起翻")
-                .isEqualTo("记录 2 / 3");
+                .isEqualTo(I18n.t("grid.form.position", 2, 3));
         assertThat(field("name").getText()).isEqualTo("Bob");
 
         click("#data-record-last");
-        assertThat(formPosition().getText()).isEqualTo("记录 3 / 3");
+        assertThat(formPosition().getText()).isEqualTo(I18n.t("grid.form.position", 3, 3));
         assertThat(field("name").getText()).isEqualTo("Cara");
 
         click("#data-record-first");
-        assertThat(formPosition().getText()).isEqualTo("记录 1 / 3");
+        assertThat(formPosition().getText()).isEqualTo(I18n.t("grid.form.position", 1, 3));
         assertThat(field("name").getText()).isEqualTo("Alice");
 
         click("#data-record-prev");
         assertThat(formPosition().getText())
                 .as("已到第一条，再往回不许跑到 0 / 3 或 -1")
-                .isEqualTo("记录 1 / 3");
+                .isEqualTo(I18n.t("grid.form.position", 1, 3));
     }
 
     @Test
@@ -189,7 +190,10 @@ class DataGridFormViewTest {
                 .isEmpty();
         assertThat(note.getPromptText())
                 .as("空输入框要能看出这里是 NULL，而不是空串")
-                .isEqualTo("（NULL）");
+                .isEqualTo(io.agenticdb.ui.I18n.t("grid.form.nullPrompt"));
+        assertThat(note.getPromptText())
+                .as("占位符不能是 ⚠key（键没配到资源包里时界面会长出这个）")
+                .doesNotStartWith("⚠");
 
         selectRow(1);
         assertThat(note.getText()).isEqualTo("second");
@@ -264,7 +268,7 @@ class DataGridFormViewTest {
                 .isZero();
         assertThat(lastStatus.get())
                 .as("要给用户一句人话，而不是静默吞掉输入")
-                .contains("无效值");
+                .startsWith(I18n.t("grid.msg.invalidValue", "").trim());
         assertThat(field("amount").getText())
                 .as("打回原值 —— 输入框不能停在一个永远不会被保存的字符串上")
                 .isEqualTo("10");
@@ -276,7 +280,7 @@ class DataGridFormViewTest {
         assertThat(page.dirtyCount()).isZero();
         assertThat(lastStatus.get())
                 .as("NOT NULL 列清空要指名道姓地说不允许 NULL")
-                .contains("不允许 NULL");
+                .isEqualTo(I18n.t("grid.msg.invalidNotNull", "amount"));
         assertThat(field("amount").getText()).isEqualTo("10");
     }
 
@@ -342,22 +346,25 @@ class DataGridFormViewTest {
     /**
      * 表单视图 + 选中一行 = 工具条最宽的状态（多一颗「删除记录」）。
      *
-     * <p>实拍踩过（`p2-form` 帧）：窗口 1280、侧栏 240、工具条可用 1040，
-     * 而选中行之后带文字的需求是 1093px —— 这一排收成图标本来是对的，但紧接着的<b>第二次重判</b>
-     * 把需求宽量成 556px：收起时只装回了文字、没摘掉 `adb-button--icon`
+     * <p>实拍踩过（`p2-form` 帧）：选中行之后带文字的需求超过可用宽度，
+     * 这一排收成图标本来是对的，但紧接着的<b>第二次重判</b>
+     * 把需求宽量成图标档：收起时只装回了文字、没摘掉 `adb-button--icon`
      * （它把 minWidth 钉成 30px），而 CSS 的 min-width 不同步重算，读到的还是 30px。
-     * 556 < 1040 于是「放得下」，文字全涨回来，最右的搜索框被裁到只剩一个「本」字。
+     * 于是「放得下」，文字全涨回来，最右的搜索框被裁到只剩一个字。
      *
      * <p>这里连「收字 → 再判一次」这个时序一起钉住：选中第一行让这一排收字，
      * 再选中第二行触发第二次重判 —— 文字不许自己涨回来，框也不许出窗。
+     *
+     * <p>⚠️ 窗口宽度按 R34 N1-b 的分工重算过：编辑键退成图标后，
+     * 文字全开的需求从 1093 降到 <b>899</b>，选中行多出的那颗图标只加 30px（→ 929）。
+     * 所以可用宽度必须落在 899 与 929 之间，「选中 → 收字」这个前提才成立：
+     * 1154 − 240 侧栏 − ≈4 边距 ≈ 910。
      */
     @Test
     @SuppressWarnings("unchecked")
     void formViewWithSelectionKeepsTheToolbarInsideTheWindow() throws Exception {
-        // 与实拍帧同一套几何：1280 - 240(侧栏) = 1040px 可用。
-        // 没有选中行时（需求 994）放得下，选中行多出「删除记录」（需求 1093）
-        // 就放不下 —— 前提可控，判据才有意义。
-        final int width = 1280;
+        // 可用宽度落在「没选中放得下、选中放不下」的窄带里（见上面那段）。
+        final int width = 1154;
         AtomicReference<DataGridPage> pageRef = new AtomicReference<>();
         AtomicReference<Stage> stageRef = new AtomicReference<>();
         try {
@@ -391,7 +398,7 @@ class DataGridFormViewTest {
             Node search = view.lookup("#data-search");
             assertThat(toolbar).as("找不到 #data-toolbar").isNotNull();
             assertThat(search).as("找不到 #data-search").isNotNull();
-            assertThat(((Labeled) view.lookup("#data-save")).getText())
+            assertThat(((Labeled) view.lookup("#data-columns")).getText())
                     .as("前置条件：没有选中行时这一排应该带文字（否则这条门禁证不了收字）")
                     .isNotBlank();
 
@@ -401,13 +408,13 @@ class DataGridFormViewTest {
                 view.setFormView(true);
             });
             WaitForAsyncUtils.waitForFxEvents(3);
-            assertThat(((Labeled) view.lookup("#data-save")).getText())
+            assertThat(((Labeled) view.lookup("#data-columns")).getText())
                     .as("表单视图 + 选中行放不下文字时应收成图标").isBlank();
 
             // 第二次重判：选中另一行，重走一次性判断 —— 文字不许涨回来。
             interact(() -> table.getSelectionModel().select(1));
             WaitForAsyncUtils.waitForFxEvents(3);
-            assertThat(((Labeled) view.lookup("#data-save")).getText())
+            assertThat(((Labeled) view.lookup("#data-columns")).getText())
                     .as("收字后的第二次重判把文字又放回来了（需求宽被量成了图标档）")
                     .isBlank();
 
@@ -415,7 +422,7 @@ class DataGridFormViewTest {
             // 这一趟这才真正走到「收起时去量需求宽」那条路（不上一步会先合法展开）。
             interact(() -> table.getSelectionModel().select(2));
             WaitForAsyncUtils.waitForFxEvents(3);
-            assertThat(((Labeled) view.lookup("#data-save")).getText())
+            assertThat(((Labeled) view.lookup("#data-columns")).getText())
                     .as("收起状态下重判时需求宽被量成图标档（556px），文字又涨回来了")
                     .isBlank();
 

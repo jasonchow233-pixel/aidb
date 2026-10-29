@@ -5,6 +5,7 @@ import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.JdbcSession;
+import io.agenticdb.ui.I18n;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
@@ -131,7 +132,7 @@ class GridInteractionTest {
         Label position = (Label) page.lookup("#data-record-position");
         assertThat(position.getText())
                 .as("行数要在数据加载后更新（不能停在「共 0 行」）")
-                .contains("200 行");
+                .isEqualTo(I18n.t("grid.record.position", 1, 200));
     }
 
     @Test
@@ -191,7 +192,7 @@ class GridInteractionTest {
         boolean anyMarked = page.lookupAll(".adb-grid__column-type").stream()
                 .filter(node -> node instanceof javafx.scene.control.Label label)
                 .map(node -> ((javafx.scene.control.Label) node).getText())
-                .anyMatch(text -> text != null && text.contains("自增"));
+                .anyMatch(text -> text != null && text.contains(I18n.t("grid.head.autoInc")));
         assertThat(anyMarked)
                 .as("自增列要在列头上标出来 —— 否则用户会以为得自己填主键")
                 .isTrue();
@@ -215,11 +216,11 @@ class GridInteractionTest {
                 .isEqualTo("name");
         assertThat(headerType("id"))
                 .as("主键与自增都写进第二行，和 非空 同一种读法")
-                .contains("主键")
-                .contains("自增");
+                .contains(I18n.t("grid.head.pk"))
+                .contains(I18n.t("grid.head.autoInc"));
         assertThat(headerType("name"))
                 .as("非空要用文字，不是一个没人解释的符号")
-                .contains("非空");
+                .contains(I18n.t("grid.head.notNull"));
         assertThat(page.lookupAll(".adb-grid__column-name").stream()
                 .filter(node -> node instanceof javafx.scene.control.Label)
                 .map(node -> ((javafx.scene.control.Label) node).getText())
@@ -364,10 +365,12 @@ class GridInteractionTest {
                 .toList();
         assertThat(texts)
                 .as("排序 / 移动 / 筛选 / 隐藏 / 自适应 / 冻结都要在列头右键里")
-                .contains("按此列升序", "按此列降序", "清除此列排序",
-                        "向左移动一列", "向右移动一列", "移到最前", "移到最后",
-                        "筛选此列…", "隐藏此列", "自适应列宽",
-                        "冻结到此列", "取消冻结列");
+                .contains(I18n.t("grid.head.sortAsc"), I18n.t("grid.head.sortDesc"),
+                        I18n.t("grid.head.clearSort"), I18n.t("grid.head.moveLeft"),
+                        I18n.t("grid.head.moveRight"), I18n.t("grid.head.moveFirst"),
+                        I18n.t("grid.head.moveLast"), I18n.t("grid.head.filterColumn"),
+                        I18n.t("grid.head.hideColumn"), I18n.t("grid.head.fit"),
+                        I18n.t("grid.head.freezeHere"), I18n.t("grid.head.unfreezeColumns"));
         hide(menu);
     }
 

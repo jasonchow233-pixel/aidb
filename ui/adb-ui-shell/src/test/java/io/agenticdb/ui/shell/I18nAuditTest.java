@@ -36,6 +36,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li><b>悄悄回潮</b> —— 有人图省事直接 {@code setText("新建")}，
  *       门禁若只查「有没有资源文件」就永远发现不了。
  *       → {@link #hardcodedChineseIsRatchetedDown()}。</li>
+ *   <li><b>尺子的盲区</b> —— 汉字棘轮只认 U+4E00–U+9FFF，
+ *       {@code "（NULL）"} 这种<b>纯全角标点</b>的中文残留它看不见，
+ *       于是「清零」的文件其实还没清。→ 见
+ *       {@link #filesThatClaimToBeCleanAreAlsoFreeOfFullwidthPunctuation()}。</li>
  * </ol>
  *
  * <h2>棘轮（ratchet）而不是清零</h2>
@@ -50,19 +54,26 @@ class I18nAuditTest {
     /**
      * 允许残留的 CJK 字面量条数。⚠️ <b>只许降不许升。</b>
      *
-     * <p>抽取进度：2216（R34 开工实测）→ 本批（顶区四件套：菜单标题 / Ribbon /
-     * 连接胶囊 / 搜索 / 主题 / ⋯ / 状态栏 / 页签右键菜单）→ 当前值。
+     * <p>抽取进度：2216（R34 开工实测）→ 2154（顶区四件套）→ 2011（动作层 71 个动作）
+     * → 1917（表清单页）→ <b>1504</b>（本批：数据网格 {@code DataGridPage} 413 条清零，
+     * 302 个键进两份资源包）。
      *
      * <p>调小它之前先量一次，别照抄上一轮文档里的数字 —— 本轮开工时就发现
      * README 与真源记的「1108 条 / 134 类」实测是「1107 / 133」，
-     * <b>文档里的基线本身就没复现</b>。量法（find 的 path 参数写成
-     * 星号+src/main+星号，别在注释里放完整的 glob —— 星号斜杠会提前关掉这段注释，
-     * 这个坑本轮真的踩了一次）：
+     * <b>文档里的基线本身就没复现</b>。量法是 <code>node tools/cjk-count.mjs</code>
+     * （与本类的 {@code stripComments} + 正则同构，实测与这里逐字一致）。
      *
-     * <pre><code>find ui -path '*src/main*' -name '*.java' -print0 \
-     *   | xargs -0 grep -hoP '"[^"[:cntrl:]]*[han][^"[:cntrl:]]*"' | wc -l</code></pre>
+     * <p>⚠️ <b>别用 grep 数</b>：
+     * <pre>{@code
+     * find ui -path '*src/main*' -name '*.java' -print0 \
+     *   | xargs -0 grep -hoP '"[^"[:cntrl:]]*[\x{4e00}-\x{9fff}][^"[:cntrl:]]*"' | wc -l
+     * }</pre>
+     * 这条实测给 <b>1530</b>，比门禁多 26 条 —— 差的全在<b>注释里</b>：grep 剥不掉注释
+     * （注释里的引号、跨行的块注释、字符串里的 {@code //} 都会骗过正则），
+     * 而本类是先 {@code stripComments} 再计数。口径不同的两个数放在一起，
+     * 只会让人以为棘轮又涨了。
      */
-    private static final int CJK_CEILING = 1917;
+    private static final int CJK_CEILING = 1504;
 
     /** 源码里对 {@link I18n#t(String, Object...)} 的键引用。 */
     private static final Pattern KEY_REFERENCE = Pattern.compile("I18n\\.t\\(\\s*\"([^\"]+)\"");
@@ -82,6 +93,21 @@ class I18nAuditTest {
     /** 含中文的字符串字面量（不含跨行文本块，够用且不会漏普通字面量）。 */
     private static final Pattern CJK_LITERAL =
             Pattern.compile("\"[^\"\\n]*[\\x{4e00}-\\x{9fff}][^\"\\n]*\"");
+
+    /**
+     * ⭐ R34 N1-b 补的第二把尺：<b>只含全角标点、不含汉字</b>的字面量。
+     *
+     * <p>{@link #CJK_LITERAL} 只认 U+4E00–U+9FFF，于是 {@code "（NULL）"}、
+     * {@code String.join("、", keys)}、{@code "SQL："} 这一类<b>从棘轮底下钻过去了</b> ——
+     * 数据网格「清零」之后重拍帧，才发现表单视图的空值提示还是全角括号。
+     * 这类串在英文界面上照样露出中文标点，属于同一笔债。
+     *
+     * <p>为什么单开一条而不是将旧尺加宽：把全角并进 {@code CJK_CEILING} 会让
+     * 数字从 1504 涨到 1536，<b>「只许降不许升」当场破功</b> —— 而涨的原因
+     * 只是尺子变细了，不是有人新写了中文。两条各自单调递减，谁也别想借对方涨一次。
+     */
+    private static final Pattern FULLWIDTH_LITERAL =
+            Pattern.compile("\"[^\"\\n]*[\\x{3000}-\\x{303f}\\x{ff01}-\\x{ff60}][^\"\\n]*\"");
 
     @AfterEach
     void restoreDefaultLocale() {
@@ -243,8 +269,47 @@ class I18nAuditTest {
         assertThat(total)
                 .as("ui 主源码里的 CJK 字面量条数超过棘轮上限。"
                         + "新增硬编码中文请改成 I18n.t(...)；抽完一批请把 CJK_CEILING 调小。\n"
-                        + "当前残留（按文件）：" + String.join("\n  ", byFile))
+                        + "当前残留 %d 条（上限 %d，按文件）：%s",
+                        total, CJK_CEILING, String.join("  ", byFile))
                 .isLessThanOrEqualTo(CJK_CEILING);
+    }
+
+    /**
+     * ⭐ 补的第二把尺：<b>已经抽干净的文件，也不许留全角标点</b>。
+     *
+     * <p>{@link #CJK_LITERAL} 只认 U+4E00–U+9FFF，于是 {@code "（NULL）"}、
+     * {@code String.join("、", keys)} 这类<b>从棘轮底下钻了过去</b> —— 数据网格「清零」
+     * 之后重拍帧才看见表单视图的空值提示仍是全角括号。英文界面露出中文括号，
+     * 和露出中文汉字是同一笔债。
+     *
+     * <p>为什么不做成「全角字面量总数 ≤ N」的第二条棘轮：那样数是 366，
+     * 但其中绝大多数本来就压在汉字棘轮上（一条中文串两边各计一次），
+     * 等于给同一笔债立两张账，还得多养一个只能靠人记得调的数字。
+     * 这条按文件判：<b>你说自己干净，就得真干净</b>；汉字棘轮降到 0 的那天，
+     * 这条自动变成「全库零全角」，不需要再改。
+     */
+    @Test
+    void filesThatClaimToBeCleanAreAlsoFreeOfFullwidthPunctuation() throws IOException {
+        List<String> dirty = new ArrayList<>();
+        List<String> clean = new ArrayList<>();
+        for (Path file : uiSources()) {
+            String source = stripComments(read(file));
+            int han = count(CJK_LITERAL, source);
+            int fullwidth = count(FULLWIDTH_LITERAL, source);
+            if (han == 0 && fullwidth > 0) {
+                dirty.add(relative(file) + " 残留 " + fullwidth + " 条全角标点字面量");
+            } else if (han == 0) {
+                clean.add(relative(file));
+            }
+        }
+        assertThat(clean)
+                .as("一个「汉字清零」的文件都没有 —— 这条门禁在空转，假绿")
+                .isNotEmpty();
+        assertThat(dirty)
+                .as("这些文件汉字残留已经清零，却还留着全角标点（分隔符/括号也是文案，"
+                        + "抽进资源包，别在代码里拼）：\n  %s\n（当前 %d 个文件做到零汉字且零全角）",
+                        String.join("\n  ", dirty), clean.size())
+                .isEmpty();
     }
 
     /**

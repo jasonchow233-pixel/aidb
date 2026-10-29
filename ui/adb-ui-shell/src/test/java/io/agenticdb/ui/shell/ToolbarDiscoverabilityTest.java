@@ -37,31 +37,60 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * UX-3 工具条可发现性门禁。
  *
- * <p>一条工具栏里「保存」有文字、「导出」只有图标，用户就只能猜 ——
- * 猜错的代价是点错按钮。所以这里钉四件事：
+ * <p>一条工具栏里有的带文字、有的只有图标，用户就只能猜 —— 猜错的代价是点错按钮。
+ * 所以这里钉五件事：
  * <ol>
- *   <li>主操作（保存 / 筛选与排序 / 列 / 视图 / 导入 / 导出）必须
+ *   <li><b>具名操作</b>（Begin Transaction / Filter &amp; Sort / Columns / History）必须
  *       <b>图标 + 文字 + tooltip + accessibleText</b> 四样齐全；</li>
+ *   <li><b>瞬时编辑键</b>（新增 / 撤销 / 重做 / 保存 / 删除 / 视图 / 导入 / 导出）
+ *       <b>只有图标</b>，但 tooltip 与 accessibleText 一样不许少 ——
+ *       这条分工是 2026-10-28 按 Navicat 实拍改判的，见 {@code MAIN_OPERATIONS} 的注释；</li>
  *   <li>窗口窄到放不下文字时<b>退成图标</b>，但 tooltip 与 accessibleText 不许跟着丢；
  *       宽度回来文字必须自己复原（不能靠重开页面）；</li>
  *   <li>工具条按语义分组（组间有分隔线）、删除走 danger 色，且 1280 宽下不溢出；</li>
  *   <li>U4：文字要么完整、要么整颗收成图标 —— 不许出现「筛 …」这种压扁的文字，
- *       且详情抽屉是浮层，开关都不改变工具条宽度；</li>
- *   <li>数据页「导入…」开出来的向导必须把<b>当前表</b>预选成目标表。</li>
+ *       且详情抽屉是浮层，开关都不改变工具条宽度。</li>
  * </ol>
+ *
+ * <p>数据页「导入…」开出来的向导必须把<b>当前表</b>预选成目标表（最后一条门禁）。
  */
 @ExtendWith(ApplicationExtension.class)
 class ToolbarDiscoverabilityTest {
 
-    /** 宽窗口档：主操作带文字。 */
+    /** 宽窗口档：具名操作带文字。 */
     private static final int WIDE_WIDTH = 1280;
     /** 窄窗口档（低于 {@code DataGridPage.TOOLBAR_LABEL_MIN_WIDTH}）：收字。 */
     private static final int NARROW_WIDTH = 900;
 
-    /** 必须带文字的主操作（按工具条从左到右）。 */
+    /**
+     * 必须带文字的<b>具名操作</b>（按工具条从左到右）。
+     *
+     * <p>⭐ 2026-10-28 R34 N1-b 改判。名单从六颗换成四颗，删掉的是
+     * {@code data-save / data-view / data-import / data-export}，补进的是
+     * {@code data-begin-tx / data-history}。两条理由：
+     * <ol>
+     *   <li><b>实拍分工</b>：Navicat 数据网格工具条（帧
+     *       {@code docs/screenshots/navicat/navicat17-data-grid-2026-10-27.png}）上
+     *       {@code + ✓ ✗ C ■} 这一簇全是纯图标，带文字的只有
+     *       {@code Begin Transaction} {@code Column Filter} {@code Filter & Sort}
+     *       {@code Columns} {@code History} 这类具名操作；</li>
+     *   <li><b>英文档放不下</b>：这一排在 1280 窗口实测只有 1036px，
+     *       中文档九颗文字全开刚好 1026px（贴着上限），换英文后同样九颗要 1153px。
+     *       原来的兜底是「放不下就整排收字」，那会把该带文字的具名操作一起收掉 ——
+     *       反而比中文档更不像 Navicat。按实拍的分工重排后实测 899px，留 137px 余量。</li>
+     * </ol>
+     *
+     * <p>「保存 3」这个待保存计数随按钮文字一并退场，由状态栏
+     * {@code status.pending}（"{0} pending"）报同一个数；
+     * 保存期间的转圈由 {@code IconButtons.loading} 负责，按钮宽度不变。
+     */
     private static final List<String> MAIN_OPERATIONS = List.of(
-            "data-save", "data-filter", "data-columns", "data-view",
-            "data-import", "data-export");
+            "data-begin-tx", "data-filter", "data-columns", "data-history");
+
+    /** 只有图标的瞬时编辑键：文字必须为空，但提示与朗读必须齐全。 */
+    private static final List<String> ICON_ONLY_EDITS = List.of(
+            "data-add", "data-undo", "data-redo", "data-save", "data-delete-rows",
+            "data-view", "data-export", "data-import");
 
     private static Path demoDirectory;
     private static String prefsNode;
@@ -166,6 +195,47 @@ class ToolbarDiscoverabilityTest {
         return page != null && findById(page, "data-save") != null;
     }
 
+    /**
+     * ⭐ 宽窗口下「文字全开」必须<b>真的放得下</b> —— 直接比这两个实测数。
+     *
+     * <p>为什么单独立一条：其余门禁量的都是「按钮有没有文字」，而本轮的失败恰恰是
+     * <b>有文字却放不下</b> —— 英文档九颗文字键要 1153px，工具条只分到 1036px，
+     * 于是兜底逻辑把整排收字，门禁才红。只看结果（"文字为空"）永远说不出是
+     * 「按分工该空」还是「挤不下被迫空」，这条门禁量的就是这个差。
+     *
+     * <p>换语言、换措辞、加按钮，都会先在这里红，而不是等到验收帧才发现。
+     */
+    @Test
+    void namedLabelsActuallyFitTheWideToolbar(FxRobot robot) throws Exception {
+        Node page = WaitForAsyncUtils.asyncFx(
+                () -> robot.lookup(".adb-grid-page").tryQuery().orElse(null)).get();
+        assertThat(page).as("没打开数据页，量不了").isNotNull();
+        double[] pair = WaitForAsyncUtils.asyncFx(() -> {
+            try {
+                java.lang.reflect.Method req = page.getClass().getDeclaredMethod("labelRequirement");
+                java.lang.reflect.Method avail = page.getClass()
+                        .getDeclaredMethod("availableToolbarWidth");
+                req.setAccessible(true);
+                avail.setAccessible(true);
+                return new double[]{(double) req.invoke(page), (double) avail.invoke(page)};
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }).get();
+        double requirement = pair[0];
+        double available = pair[1];
+        assertThat(available)
+                .as("%dpx 窗口没量到工具条可用宽度（%.1f）—— 量不出来这条门禁就是空气",
+                        WIDE_WIDTH, available)
+                .isGreaterThan(0);
+        assertThat(requirement)
+                .as("带文字的具名操作在 %dpx 窗口下放不下：要 %.0fpx，实得 %.0fpx。"
+                        + "要么按 Navicat 的分工把文字留给具名操作（见 MAIN_OPERATIONS），"
+                        + "要么等 R38 N18 的 >> 折叠菜单；不许悄悄缩短 Navicat 的原词。",
+                        WIDE_WIDTH, requirement, available)
+                .isLessThanOrEqualTo(available + 0.5);
+    }
+
     @Test
     void mainOperationsCarryIconTextAndHint(FxRobot robot) throws Exception {
         for (String id : MAIN_OPERATIONS) {
@@ -214,7 +284,26 @@ class ToolbarDiscoverabilityTest {
         assertThat(delete.getStyleClass())
                 .as("删除是这一排唯一会丢数据的动作，必须用 danger 色")
                 .contains("adb-button--danger");
-        assertThat(((Labeled) delete).getText()).as("删除在宽窗口下也要带文字").isNotBlank();
+    }
+
+    /**
+     * 瞬时编辑键的分工：只有图标，但提示与朗读一样不许少。
+     *
+     * <p>这条门禁是改判的另一半 —— 只钉「具名操作有文字」不够，
+     * 因为把编辑键的文字加回来也能让它全绿，而那一加就把 117px 欠债重新欠上。
+     * 所以反向钉住：这一簇<b>不许</b>带文字，同时<b>不许</b>因为没文字就变成哑按钮。
+     */
+    @Test
+    void editClusterIsIconOnlyButNeverSilent(FxRobot robot) throws Exception {
+        for (String id : ICON_ONLY_EDITS) {
+            Node button = require(robot, id);
+            Labeled labeled = (Labeled) button;
+            assertThat(labeled.getText())
+                    .as("%s 属于瞬时编辑键，按 Navicat 的分工只该有图标（带文字会顶爆这一排）", id)
+                    .isBlank();
+            assertThat(labeled.getGraphic()).as("%s 只有图标，图标本身不能丢", id).isNotNull();
+            assertHint(id, button);
+        }
     }
 
     @Test

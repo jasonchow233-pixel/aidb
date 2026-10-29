@@ -1,6 +1,8 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.ui.App;
+import io.agenticdb.ui.I18n;
+import io.agenticdb.ui.Icons;
 import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.Parent;
@@ -53,6 +55,55 @@ class IconAuditTest {
         preferences.put("ui.theme", "light");
         preferences.putBoolean("ui.sidebar.collapsed", false);
         new App().start(stage);
+    }
+
+    /**
+     * ⭐ R34 N1-b：语言包里的 {@code &} 不许被 JavaFX 当成助记符吃掉。
+     *
+     * <p>Navicat 自己工具条上的词就是 "Filter &amp; Sort"。而 JavaFX 的 {@code Labeled}
+     * 默认开着助记符解析，于是 "Filter &amp; Sort" 会画成 "Filter&nbsp;&nbsp;Sort" 并给 S
+     * 加一条下划线 —— <b>文字被吃掉一个字符，但 {@code getText()} 仍然返回原文</b>，
+     * 所以任何只比字符串的门禁都看不见它，只有帧能看见。
+     *
+     * <p>三段各管一件事：① 资源里确实有 {@code &}（否则这条门禁是空气）；
+     * ② 造文字控件的工厂关掉了助记符；③ 场景里现存每一个带 {@code &} 的控件都关掉了
+     * —— 第 ③ 段是给未来漏网的调用点准备的（绕过 {@code IconButtons} 直接 {@code new Button}）。
+     */
+    @Test
+    void ampersandsFromTheLanguagePackAreNotEatenAsMnemonics(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+
+        List<String> withAmpersand = io.agenticdb.ui.I18n.keys(Locale.ENGLISH).stream()
+                .filter(key -> key.startsWith("grid."))
+                .filter(key -> I18n.t(key).indexOf('&') >= 0)
+                .sorted()
+                .toList();
+        assertThat(withAmpersand)
+                .as("grid 资源里一个含 & 的词都没有 —— 这条门禁证不了任何事（Navicat 的原词是 Filter & Sort）")
+                .isNotEmpty();
+
+        List<Boolean> parsed = onFx(() -> List.of(
+                IconButtons.of(Icons.Icon.SAVE, "Filter & Sort").isMnemonicParsing(),
+                IconButtons.labeled(new javafx.scene.control.MenuButton(), Icons.Icon.FILTER,
+                        "Filter & Sort", "hint").isMnemonicParsing()));
+        assertThat(parsed)
+                .as("IconButtons 造出来的文字控件必须关掉助记符解析（true = 会吃字符）")
+                .containsOnly(false);
+
+        List<String> violations = onFx(() -> {
+            List<String> found = new ArrayList<>();
+            walk(stage.getScene().getRoot(), node -> {
+                if (node instanceof Labeled labeled && labeled.getText() != null
+                        && labeled.getText().indexOf('&') >= 0 && labeled.isMnemonicParsing()) {
+                    found.add(describe(node, labeled.getText()));
+                }
+            });
+            return found;
+        });
+        assertThat(violations)
+                .as("场景里带 & 的控件还开着助记符解析（会少一个字符 + 多一条下划线）：\n  %s",
+                        String.join("\n  ", violations))
+                .isEmpty();
     }
 
     @Test

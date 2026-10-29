@@ -49,6 +49,21 @@ public final class ScreenshotSession {
         String clickId = prop("adb.shots.click", "ADB_SHOTS_CLICK");
         long waitMs = parseLong(prop("adb.shots.wait", "ADB_SHOTS_WAIT"), 2500);
 
+        // ⭐ 窗口一旦被最大化，拍出来的就不是 1280×800 而是整屏（实测 1920×1017），
+        //   而「1280 下不溢出」这类结论全部作废 —— 字节数看不出差别，只能比尺寸。
+        //   来源不是本应用：偏好节点里没有 ui.window.* 两条（查过注册表），
+        //   代码里也只有 Window 菜单那一项会 setMaximized，而截图模式不点它。
+        //   是 Windows 把「同一个可执行文件上一次的窗口摆放」还给了新窗口
+        //   （每张帧是一个新 JVM，但都是 java.exe）。取消最大化会退回创建时的 1280×800。
+        runOnFx(() -> {
+            if (stage.isMaximized()) {
+                // 这条日志本身必须保持 ASCII：它是主源码里的字符串字面量，
+                // 写成中文会直接顶穿 I18nAuditTest 的棘轮（踩过，1504 → 1505）。
+                System.out.println("[screenshot] window came up maximized; un-maximizing");
+                stage.setMaximized(false);
+            }
+        });
+
         Thread worker = new Thread(() -> {
             sleep(waitMs);
             if (!clickId.isEmpty()) {
@@ -69,6 +84,7 @@ public final class ScreenshotSession {
             scene.getRoot().applyCss();
             scene.getRoot().layout();
             System.out.println("[screenshot] theme=" + scene.getRoot().getStyleClass()
+                    + " scene=" + (int) scene.getWidth() + "x" + (int) scene.getHeight()
                     + " css=" + scene.getStylesheets().size()
                     + " refreshBtn=" + (scene.getRoot().lookup("#refresh-button") != null)
                     + " toolbar=" + (scene.getRoot().lookup(".adb-toolbar") != null));

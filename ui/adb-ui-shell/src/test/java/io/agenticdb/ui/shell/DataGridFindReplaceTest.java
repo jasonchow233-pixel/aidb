@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
@@ -128,21 +129,21 @@ class DataGridFindReplaceTest {
         findField().setText("find me");
 
         interact(() -> fireFindNext());
-        assertThat(lastStatus.get()).contains("第 1 / 3 个匹配");
+        assertThat(lastStatus.get()).isEqualTo(I18n.t("grid.find.found", "find me", 1, 3));
         assertThat(focusedCell()).isEqualTo(new int[] {0, 2});
 
         interact(() -> fireFindNext());
-        assertThat(lastStatus.get()).contains("第 2 / 3 个匹配");
+        assertThat(lastStatus.get()).isEqualTo(I18n.t("grid.find.found", "find me", 2, 3));
         assertThat(focusedCell()).isEqualTo(new int[] {1, 2});
 
         interact(() -> fireFindNext());
-        assertThat(lastStatus.get()).contains("第 3 / 3 个匹配");
+        assertThat(lastStatus.get()).isEqualTo(I18n.t("grid.find.found", "find me", 3, 3));
         assertThat(focusedCell()).isEqualTo(new int[] {3, 1});
 
         interact(() -> fireFindNext());
         assertThat(lastStatus.get())
                 .as("到底必须回绕到第一个，不能停在「没有更多」")
-                .contains("第 1 / 3 个匹配");
+                .isEqualTo(I18n.t("grid.find.found", "find me", 1, 3));
         assertThat(focusedCell()).isEqualTo(new int[] {0, 2});
     }
 
@@ -153,14 +154,14 @@ class DataGridFindReplaceTest {
         interact(() -> fireFindNext());
         assertThat(lastStatus.get())
                 .as("默认不区分大小写：ALPHA 应命中 Alpha / Alpha again")
-                .contains("第 1 / 2 个匹配");
+                .isEqualTo(I18n.t("grid.find.found", "ALPHA", 1, 2));
 
         CheckBox toggle = (CheckBox) page.lookup("#data-find-case");
         interact(toggle::fire);
         assertThat(toggle.isSelected()).isTrue();
         assertThat(lastStatus.get())
                 .as("勾上区分大小写后数据里没有全大写 ALPHA —— 必须报 0")
-                .contains("共 0 个匹配");
+                .isEqualTo(I18n.t("grid.find.countOnPage", "ALPHA", 0));
     }
 
     // ─────────────────────── 替换 ───────────────────────
@@ -195,7 +196,9 @@ class DataGridFindReplaceTest {
         replaceField().setText("GONE");
 
         interact(() -> replaceAll().fire());
-        assertThat(lastStatus.get()).contains("已替换 3 处");
+        assertThat(lastStatus.get())
+                .isEqualTo(I18n.t("grid.find.replaced", 3, "",
+                        io.agenticdb.ui.Shortcuts.of("Mod+Z")));
         assertThat(cellText(0, "note")).isEqualTo("GONE");
         assertThat(cellText(1, "note")).isEqualTo("GONE too");
         assertThat(cellText(3, "name")).isEqualTo("GONE again");
@@ -217,8 +220,7 @@ class DataGridFindReplaceTest {
         interact(() -> replaceAll().fire());
         assertThat(lastStatus.get())
                 .as("id=1 是主键、amount=10 是非文本 —— 两处都跳过并报数")
-                .contains("跳过 2")
-                .contains("没有可替换");
+                .isEqualTo(I18n.t("grid.find.noneSkipped", 2));
         assertThat(cellText(0, "id"))
                 .as("主键一个字都不许动")
                 .isEqualTo("1");

@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.editing.EditSqlBuilder;
 import io.agenticdb.fixtures.DemoDatabase;
 import io.agenticdb.introspect.SchemaService;
@@ -143,9 +144,9 @@ class DataGridSaveGuardTest {
         DialogPane pane = dialog.getDialogPane();
 
         ButtonType execute = pane.getButtonTypes().stream()
-                .filter(type -> "执行".equals(type.getText())).findFirst().orElseThrow();
+                .filter(type -> I18n.t("grid.save.execute").equals(type.getText())).findFirst().orElseThrow();
         ButtonType cancel = pane.getButtonTypes().stream()
-                .filter(type -> "取消".equals(type.getText())).findFirst().orElseThrow();
+                .filter(type -> I18n.t("common.cancel").equals(type.getText())).findFirst().orElseThrow();
 
         // ⚠️ Monocle 无头下真正 show() 会在 notifyMouse 上 NPE，
         //    所以用独立 DialogPane 造 skin，直接验默认按钮钉法。
@@ -225,7 +226,7 @@ class DataGridSaveGuardTest {
 
             assertThat(status.get())
                     .as("必须明确告诉用户主键列不能批量改")
-                    .contains("主键");
+                    .isEqualTo(I18n.t("grid.batch.primaryKey", "code"));
             assertThat(dirty.get())
                     .as("主键列不能进入编辑缓冲")
                     .isNotEqualTo(1);

@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.fixtures.DemoDatabase;
 import io.agenticdb.introspect.DataQuery;
 import io.agenticdb.introspect.FilterCondition;
@@ -179,7 +180,7 @@ class DataGridPageTest {
                     () -> page.lookup("#data-batch-bar") != null
                             && page.lookup("#data-batch-bar").isVisible());
             Label label = (Label) page.lookup("#data-batch-label");
-            assertThat(label.getText()).isEqualTo("已选 3 行");
+            assertThat(label.getText()).isEqualTo(I18n.t("grid.batch.selected", 3));
 
             WaitForAsyncUtils.asyncFx(() ->
                     ((Button) page.lookup("#data-batch-delete")).fire()).get();
@@ -280,7 +281,7 @@ class DataGridPageTest {
                     () -> tableOf(page).getSelectionModel().getSelectedItems().size() == 200);
             assertThat(page.lookup("#data-batch-bar").isVisible()).isTrue();
             assertThat(((Label) page.lookup("#data-batch-label")).getText())
-                    .isEqualTo("已选 200 行");
+                    .isEqualTo(I18n.t("grid.batch.selected", 200));
 
             WaitForAsyncUtils.asyncFx(() ->
                     ((CheckBox) tableOf(page).getColumns().getFirst().getGraphic()).fire()).get();
@@ -403,7 +404,7 @@ class DataGridPageTest {
 
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> {
                 Label state = (Label) page.lookup(".adb-grid__state-text");
-                return state != null && state.getText().startsWith("加载失败");
+                return state != null && state.getText().startsWith(I18n.t("grid.msg.loadFailed", "").trim());
             });
 
             Label state = (Label) page.lookup(".adb-grid__state-text");
@@ -475,7 +476,7 @@ class DataGridPageTest {
             WaitForAsyncUtils.waitForFxEvents();
             pressShortcut(page, javafx.scene.input.KeyCode.C, false, false);
             WaitForAsyncUtils.waitForFxEvents();
-            assertThat(messages).anyMatch(message -> message.contains("已复制单元格值"));
+            assertThat(messages).anyMatch(message -> message.contains(I18n.t("grid.msg.copiedCellValue")));
             assertThat(clipboardText()).isNotNull();
             assertThat(firstRow).isNotNull();
 
@@ -557,8 +558,8 @@ class DataGridPageTest {
             WaitForAsyncUtils.asyncFx(() ->
                     jump.fireEvent(new javafx.event.ActionEvent())).get();
             WaitForAsyncUtils.waitForFxEvents();
-            assertThat(messages).anyMatch(message -> message.contains("最大页码 2"));
-            assertThat(pageLabel.getText()).as("越界跳页不应改变页码").contains("2 / 2");
+            assertThat(messages).anyMatch(message -> message.equals(I18n.t("grid.pager.jumpPageMax", 2)));
+            assertThat(pageLabel.getText()).as("越界跳页不应改变页码").isEqualTo(I18n.t("grid.pager.pageOf", 2, 2));
 
             // 回到第 1 页
             WaitForAsyncUtils.asyncFx(first::fire).get();
@@ -769,7 +770,7 @@ class DataGridPageTest {
                             .stream()
                             .map(node -> ((Label) node).getText())
                             .toList()).get();
-            assertThat(labels).containsExactly("记录", "页面");
+            assertThat(labels).containsExactly(I18n.t("grid.form.record"), I18n.t("grid.pager.pageLabel"));
 
             // 两组按钮都得在 —— 这是「分辨」而不是「删掉一组」。
             assertThat(WaitForAsyncUtils.asyncFx(() ->
@@ -914,7 +915,7 @@ class DataGridPageTest {
             Label hint = (Label) page.lookup("#overview-hint");
             assertThat(hint.getText())
                     .as("缺的项要说明为什么缺，而不是留白")
-                    .contains("SQLite", "不提供表大小");
+                    .isEqualTo(I18n.t("grid.overview.metaAbsent", "SQLite"));
 
             // ⭐ U17：属性表补的三项必须来自真实内省，且「没有」与「读不到」两种写法要分开。
             io.agenticdb.introspect.SchemaService.TableSchema structure =

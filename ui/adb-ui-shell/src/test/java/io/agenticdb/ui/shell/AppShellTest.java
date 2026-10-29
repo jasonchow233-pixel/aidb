@@ -314,7 +314,7 @@ class AppShellTest {
         assertThat(robot.lookup("#data-range").queryAs(Label.class).getText())
                 .isEqualTo("1–200 / 200");
         assertThat(robot.lookup("#data-page").queryAs(Label.class).getText())
-                .isEqualTo("第 1 / 1 页");
+                .isEqualTo(I18n.t("grid.pager.pageOf", 1, 1));
         assertThat(robot.lookup(".adb-status__range").queryAs(Label.class).getText())
                 .isEqualTo("1–200 / 200");
         assertThat(robot.lookup("#data-prev").queryAs(javafx.scene.control.Button.class).isDisabled())
@@ -457,20 +457,20 @@ class AppShellTest {
         openTable(robot, "notes");
 
         WaitForAsyncUtils.waitFor(8, TimeUnit.SECONDS, () ->
-                robot.lookup("#data-range").queryAs(Label.class).getText().equals("0 行"));
+                robot.lookup("#data-range").queryAs(Label.class).getText().equals(I18n.t("grid.pager.zeroRows")));
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(table(robot).getItems()).isEmpty();
         assertThat(robot.lookup("#data-page").queryAs(Label.class).getText())
-                .isEqualTo("第 0 / 0 页");
+                .isEqualTo(I18n.t("grid.pager.pageZero"));
         // ⭐ 空表不再是「没有数据」四个字 —— 要有图标 + 说明 + 一个真能点的出口。
         assertThat(robot.lookup(".adb-grid .placeholder .adb-empty__title")
                 .queryAs(Label.class).getText())
-                .isEqualTo("这张表还是空的");
+                .isEqualTo(I18n.t("grid.empty.title"));
         assertThat(robot.lookup(".adb-grid .placeholder .button")
                 .queryAs(Button.class).getText())
                 .as("空表必须给用户一个出口，而不只是陈述事实")
-                .isEqualTo("新增一行");
+                .isEqualTo(I18n.t("grid.empty.action"));
     }
 
     /**
