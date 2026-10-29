@@ -225,8 +225,8 @@ class DataGridTransactionTest {
         try {
             // 措辞按资源比，不抄中文原句 —— 默认换英文后原句就不存在了。
             // 比的是「这一档该用哪条文案」，所以两条各钉一次。
-            String plain = I18n.t("grid.save.headPlain", plan.size(), Danger.MUTATING.label());
-            String inTx = I18n.t("grid.save.headTx", plan.size(), Danger.MUTATING.label());
+            String plain = I18n.t("grid.save.headPlain", plan.size(), DangerLabels.t(Danger.MUTATING));
+            String inTx = I18n.t("grid.save.headTx", plan.size(), DangerLabels.t(Danger.MUTATING));
             assertThat(headerOf(page, plan))
                     .as("自动提交下才是「单事务执行 · 失败回滚」那套措辞")
                     .isEqualTo(plain);

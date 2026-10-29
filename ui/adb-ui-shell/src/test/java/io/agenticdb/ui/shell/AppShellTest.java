@@ -656,11 +656,11 @@ class AppShellTest {
         WaitForAsyncUtils.waitForFxEvents();
 
         TabPane results = robot.lookup("#query-results").queryAs(TabPane.class);
-        assertThat(results.getTabs().getFirst().getText()).contains("结果 1");
+        assertThat(results.getTabs().getFirst().getText()).contains(I18n.t("query.resultTab", 1));
         assertThat(robot.lookup("#query-status").queryAs(Label.class).getText())
-                .contains("执行完成");
+                .contains(I18n.t("query.done"));
         assertThat(robot.lookup("#query-risk").queryAs(Label.class).getText())
-                .isEqualTo("只读");
+                .isEqualTo(I18n.t("status.readOnly"));
 
         QueryPage query = robot.lookup(".adb-query-page").queryAs(QueryPage.class);
         WaitForAsyncUtils.waitForAsyncFx(5_000, query::markClean);

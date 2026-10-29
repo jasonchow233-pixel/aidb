@@ -1054,7 +1054,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         if (danger.requiresApproval()) {
             DestructiveConfirm confirm = DestructiveConfirm.of(
                     I18n.t("grid.save.title"),
-                    I18n.t("grid.save.changesRisk", plan.size(), danger.label()),
+                    I18n.t("grid.save.changesRisk", plan.size(), DangerLabels.t(danger)),
                     transactionOpen
                             ? I18n.t("grid.save.sqlTxIntro") + plan.preview()
                             : I18n.t("grid.save.sqlPlainIntro") + plan.preview(),
@@ -1096,8 +1096,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle(I18n.t("grid.save.title"));
         dialog.setHeaderText(transactionOpen
-                        ? I18n.t("grid.save.headTx", plan.size(), danger.label())
-                        : I18n.t("grid.save.headPlain", plan.size(), danger.label()));
+                        ? I18n.t("grid.save.headTx", plan.size(), DangerLabels.t(danger))
+                        : I18n.t("grid.save.headPlain", plan.size(), DangerLabels.t(danger)));
         ButtonType execute = executeButtonType();
         ButtonType cancel = cancelButtonType();
         dialog.getDialogPane().getButtonTypes().addAll(execute, cancel);
@@ -1110,7 +1110,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         sql.setPrefColumnCount(72);
         sql.setPrefRowCount(Math.min(18, Math.max(4, plan.size() + 2)));
 
-        Label badge = new Label(danger.label());
+        Label badge = new Label(DangerLabels.t(danger));
         badge.getStyleClass().add("adb-query__risk");
         badge.getStyleClass().add(riskStyleClass(danger));
 
@@ -2150,24 +2150,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /** 把两个跳转框的偏好宽与最小宽一起抬到「放得下自己的提示文字」。 */
     private void fitJumpFieldWidths() {
         for (TextField field : new TextField[]{jumpField, jumpRowField}) {
-            String prompt = field.getPromptText();
-            if (prompt == null || prompt.isEmpty()) {
-                continue;
-            }
-            field.applyCss();
-            javafx.scene.text.Text probe = new javafx.scene.text.Text(prompt);
-            probe.setFont(field.getFont());
-            // 16 = -fx-padding 左右各 8px；再留 4px 给光标与圆角边框。
-            double need = Math.ceil(probe.getLayoutBounds().getWidth()) + 20;
-            if (field.getPrefWidth() < need) {
-                field.setPrefWidth(need);
-            }
-            // ⚠️ 只抬 pref 没用：实测英文档 p2-find 里框仍被 HBox 压回原来的
-            //    minWidth 56（提示要 70），照样切成「Go to pa」。
-            //    min 一起抬上来，放不下时由降级阶梯<b>整项收起</b> —— 这才是这一排的规矩。
-            if (field.getMinWidth() < need) {
-                field.setMinWidth(need);
-            }
+            FieldFits.prompt(field);
         }
     }
 

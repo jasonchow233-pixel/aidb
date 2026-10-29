@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.JdbcSession;
+import io.agenticdb.ui.I18n;
 import javafx.scene.Scene;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
@@ -82,7 +83,7 @@ class QueryPageTest {
         });
         waitForTabs(1);
 
-        assertThat(page.statusText()).contains("执行完成");
+        assertThat(page.statusText()).contains(I18n.t("query.done"));
         assertThat(page.resultTabCount()).isEqualTo(1);
         assertThat(page.statusText()).doesNotContain("2 条");
     }
@@ -97,8 +98,8 @@ class QueryPageTest {
 
         TabPane results = (TabPane) page.lookup("#query-results");
         assertThat(results.getTabs()).hasSize(2);
-        assertThat(results.getTabs().get(0).getText()).contains("结果 1");
-        assertThat(results.getTabs().get(1).getText()).contains("结果 2");
+        assertThat(results.getTabs().get(0).getText()).contains(I18n.t("query.resultTab", 1));
+        assertThat(results.getTabs().get(1).getText()).contains(I18n.t("query.resultTab", 2));
     }
 
     @Test
@@ -110,7 +111,7 @@ class QueryPageTest {
         waitForTabs(1);
 
         TabPane results = (TabPane) page.lookup("#query-results");
-        assertThat(results.getTabs().getFirst().getText()).contains("消息 1");
+        assertThat(results.getTabs().getFirst().getText()).contains(I18n.t("query.messageTab", 1));
     }
 
     @Test
@@ -123,12 +124,12 @@ class QueryPageTest {
 
         TabPane results = (TabPane) page.lookup("#query-results");
         assertThat(results.getTabs()).hasSize(2);
-        assertThat(results.getTabs().get(1).getText()).contains("失败");
+        assertThat(results.getTabs().get(1).getText()).contains(I18n.t("query.statementFailed", 2));
         assertThat(results.getTabs().get(1).getContent().lookup("#query-error-details"))
                 .as("⭐ P2-2：错误页签必须给一个「查看详情」入口 —— "
                         + "页签只放下一步要改什么，完整证据在弹窗里")
                 .isNotNull();
-        assertThat(page.statusText()).contains("执行失败");
+        assertThat(page.statusText()).contains(I18n.t("query.runFailedTitle"));
     }
 
     @Test
@@ -208,9 +209,9 @@ class QueryPageTest {
         });
         waitForTabs(1);
 
-        assertThat(page.statusText()).contains("执行计划");
+        assertThat(page.statusText()).contains(I18n.t("query.explain"));
         TabPane results = (TabPane) page.lookup("#query-results");
-        assertThat(results.getTabs().getFirst().getText()).contains("结果");
+        assertThat(results.getTabs().getFirst().getText()).contains(I18n.t("query.resultTab", 1));
     }
 
     @Test
@@ -227,10 +228,113 @@ class QueryPageTest {
         assertThat(page.lookup("#query-result-pager")).isNotNull();
         TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
         waitFor(() -> table.getItems().size() == 200);
-        assertThat(pageLabel()).isEqualTo("第 1 / 2 页");
-        assertThat(rangeLabel()).isEqualTo("250 行");
+        assertThat(pageLabel()).isEqualTo(I18n.t("query.pageOfTotal", 1, 2));
+        assertThat(rangeLabel()).isEqualTo(I18n.t("status.rows", 250));
         // 第 1 页装的应是前 200 行（id 1..200），绝对行号从 1 开始。
         assertThat(firstRowText(table)).contains("1");
+    }
+
+    /**
+     * ⭐ 分页条上的每一项**不许被压成省略号**（第六批的重拍帧抓到 "Previous Pa…" / "Per p…" /
+     * "Go to pa" / "Exp…" —— 中文三四个字装得下的写死宽度，换英文就是半截字）。
+     *
+     * <p>钉的是结果不是手段：无论是把翻页键退回纯图标、还是把输入框抬到装得下提示文字，
+     * 只要这一排里有任何一个控件实得宽度小于它想要的宽度，这条就红。
+     */
+    @Test
+    void queryPagerItemsAreNeverSqueezedIntoEllipsis() throws Exception {
+        seedRows(250);
+        interact(() -> {
+            page.setSql("SELECT * FROM users ORDER BY id;");
+            page.runAll();
+        });
+        waitForTabs(1);
+        TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        waitFor(() -> table.getItems().size() == 200);
+
+        // 喂布局与读几何必须在**同一条 FX 任务**里（第四批的教训：分开两次调用，
+        // 中间能插入布局事件，读到自相矛盾的帧），lookup 本身也必须在 FX 线程上。
+        java.util.List<String> squeezed = org.testfx.util.WaitForAsyncUtils.asyncFx(() -> {
+            javafx.scene.Scene scene = page.getScene();
+            // ⚠️ 必须挂样式表：本类的 @Start 建的是裸场景（别的测试只比行为，不比几何），
+            //    而字号/内边距全来自 app.css —— 不挂 CSS 量出来的宽度与实拍对不上，
+            //    这条门禁会变成"永远绿"的假闸（第四批踩过同一坑）。
+            if (scene.getStylesheets().size() < 2) {
+                scene.getStylesheets().add(getClass()
+                        .getResource("/io/agenticdb/ui/theme-light.css").toExternalForm());
+                scene.getStylesheets().add(getClass()
+                        .getResource("/io/agenticdb/ui/app.css").toExternalForm());
+                scene.getRoot().getStyleClass().add("theme-light");
+            }
+            page.applyCss();
+            page.layout();
+            javafx.scene.layout.HBox bar =
+                    (javafx.scene.layout.HBox) page.lookup("#query-result-pager");
+            assertThat(bar).as("分页条 #query-result-pager 必须在场景里").isNotNull();
+            assertThat(bar.getWidth())
+                    .as("分页条根本没布局（宽度 0 就是这条门禁在空转）")
+                    .isGreaterThan(0);
+
+            // ⭐ 不去改窗口尺寸：实测 `stage.setWidth()` 在这套 harness 里**不会同步落到场景上**
+            //    （第一版就是这么静默量在 900 宽，靠"确认场景到 1280"那条断言才没变成假绿）。
+            //    改成推导验收宽度下的预算：此刻「场景宽 − 分页条实得宽」就是分页条以外的固定开销，
+            //    1280 宽下分页条的预算 = 1280 − 那个开销。整排**想要**的宽度超过预算，
+            //    HBox 就把每一项往 min 上压 —— 实拍里 "Previous Pa…" 那半截字就是这么来的。
+            double overhead = scene.getWidth() - bar.getWidth();
+            double budget = 1280 - overhead;
+            double wanted = bar.prefWidth(-1);
+            java.util.List<String> bad = new java.util.ArrayList<>();
+            if (wanted + 0.5 > budget) {
+                bad.add("整排想要 " + Math.round(wanted) + "px > 1280 宽下的预算 "
+                        + Math.round(budget) + "px");
+            }
+            // 逐项点一次名：哪一颗可以被压，改的时候才知道该动谁。
+            // ⚠️ 读的是**计算后的** `minWidth(-1)`，不是 `getMinWidth()` 属性 ——
+            //    后者默认是 -1（USE_COMPUTED_SIZE，意思是"按 pref 算"），
+            //    拿属性值比 pref 会把每一颗都报成可压缩，门禁当场变成假红。
+            java.util.function.Consumer<javafx.scene.Node> check = node -> {
+                if (node instanceof javafx.scene.control.Labeled labeled) {
+                    labeled.applyCss();
+                    double want = labeled.prefWidth(-1);
+                    if (labeled.minWidth(-1) + 0.5 < want) {
+                        bad.add(who(labeled) + "「" + labeled.getText() + "」下限 "
+                                + Math.round(labeled.minWidth(-1)) + "px < 想要 "
+                                + Math.round(want) + "px");
+                    }
+                }
+                if (node instanceof javafx.scene.control.TextField field) {
+                    field.applyCss();
+                    String prompt = field.getPromptText();
+                    if (prompt != null && !prompt.isEmpty()) {
+                        javafx.scene.text.Text probe = new javafx.scene.text.Text(prompt);
+                        probe.setFont(field.getFont());
+                        double want = Math.ceil(probe.getLayoutBounds().getWidth()) + 20;
+                        if (field.minWidth(-1) + 0.5 < want) {
+                            bad.add(who(field) + " 的提示「" + prompt + "」要 "
+                                    + Math.round(want) + "px 而下限只有 "
+                                    + Math.round(field.minWidth(-1)) + "px");
+                        }
+                    }
+                }
+            };
+            for (javafx.scene.Node node : bar.getChildren()) {
+                check.accept(node);
+                if (node instanceof javafx.scene.layout.Pane pane) {
+                    pane.getChildren().forEach(check);
+                }
+            }
+            return bad;
+        }).get();
+
+        assertThat(squeezed)
+                .as("分页条在 1280 验收宽度下会被挤成半截字 —— 英文比中文宽，"
+                        + "文字项要钉 USE_PREF_SIZE（压不了就只能整项收起），宽度不许按中文写死")
+                .isEmpty();
+    }
+
+    /** 报错时点名用：优先 id，没有 id 就用样式类。 */
+    private static String who(javafx.scene.Node node) {
+        return node.getId() != null ? "#" + node.getId() : node.getStyleClass().toString();
     }
 
     @Test
@@ -246,7 +350,7 @@ class QueryPageTest {
         waitFor(() -> table.getItems().size() == 200);
 
         interact(() -> ((javafx.scene.control.Button) page.lookup("#query-result-next")).fire());
-        waitFor(() -> "第 2 / 2 页".equals(pageLabel()));
+        waitFor(() -> I18n.t("query.pageOfTotal", 2, 2).equals(pageLabel()));
         // 第 2 页只有剩下的 50 行，且按 ORDER BY id 应为 id 201..250。
         assertThat(table.getItems()).hasSize(50);
         assertThat(firstRowText(table)).contains("201");
@@ -263,7 +367,7 @@ class QueryPageTest {
         waitFor(() -> table.getItems().size() == 1);
         // 单行结果也走分页路径：分页条仍在，只是只有 1 页 —— 行为一致、无回归。
         assertThat(page.lookup("#query-result-pager")).isNotNull();
-        assertThat(pageLabel()).isEqualTo("第 1 / 1 页");
+        assertThat(pageLabel()).isEqualTo(I18n.t("query.pageOfTotal", 1, 1));
     }
 
     // ─────────────── P6-2：导出范围菜单与「全部结果」 ───────────────

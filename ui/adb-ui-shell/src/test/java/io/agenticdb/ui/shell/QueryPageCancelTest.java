@@ -5,6 +5,7 @@ import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.jdbc.ExecutionResult;
 import io.agenticdb.model.RowPage;
+import io.agenticdb.ui.I18n;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
@@ -73,7 +74,7 @@ class QueryPageCancelTest {
 
         assertThat(session.cancelCalled).isTrue();
         assertThat(page.isRunning()).isFalse();
-        assertThat(page.statusText()).contains("取消");
+        assertThat(page.statusText()).contains(I18n.t("query.cancelRequested"));
         assertThat(page.resultTabCount()).isZero();
     }
 

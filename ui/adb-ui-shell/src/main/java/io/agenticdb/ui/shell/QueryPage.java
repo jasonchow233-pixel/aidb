@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.RowHeights;
 import io.agenticdb.ui.Icons;
 import io.agenticdb.jdbc.DbSession;
@@ -105,17 +106,17 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private final List<PagedLoader> pagers = new ArrayList<>();
     /** 密度档位 → 行高（结果网格按 D1 比档位低一档，初值 = {@code RowHeights.grid("normal")}）。 */
     private int rowHeight = RowHeights.grid("normal");
-    private final Label status = new Label("就绪");
-    private final Label risk = new Label("只读");
+    private final Label status = new Label(I18n.t("query.ready"));
+    private final Label risk = new Label(I18n.t("status.readOnly"));
     private final Label range = new Label("—");
     private final Label duration = new Label("— ms");
-    private final MenuButton historyButton = new MenuButton("历史");
-    private final Button run = IconButtons.of(Icons.Icon.RUN, "执行");
-    private final Button runAll = IconButtons.of(Icons.Icon.RUN_ALL, "全部执行");
-    private final Button cancel = IconButtons.of(Icons.Icon.STOP, "停止");
-    private final Button explain = IconButtons.of(Icons.Icon.EXPLAIN, "执行计划");
-    private final Button format = new Button("格式化");
-    private final Button save = new Button("保存");
+    private final MenuButton historyButton = new MenuButton(I18n.t("grid.toolbar.history"));
+    private final Button run = IconButtons.of(Icons.Icon.RUN, I18n.t("query.run"));
+    private final Button runAll = IconButtons.of(Icons.Icon.RUN_ALL, I18n.t("query.runAll"));
+    private final Button cancel = IconButtons.of(Icons.Icon.STOP, I18n.t("query.stop"));
+    private final Button explain = IconButtons.of(Icons.Icon.EXPLAIN, I18n.t("query.explain"));
+    private final Button format = new Button(I18n.t("query.beautify"));
+    private final Button save = new Button(I18n.t("query.save"));
     private final HBox findBar = new HBox(6);
     private final TextField findField = new TextField();
     private final TextField replaceField = new TextField();
@@ -164,20 +165,20 @@ public final class QueryPage extends VBox implements AutoCloseable {
         String selected = editor.area().getSelectedText();
         String text = selected == null || selected.isBlank() ? editor.text() : selected;
         if (text == null || text.isBlank()) {
-            feedback.status("编辑器是空的，没什么可存");
+            feedback.status(I18n.t("query.nothingToSave"));
             return;
         }
         javafx.scene.control.TextInputDialog dialog =
-                new javafx.scene.control.TextInputDialog("片段 " + (++saveCounter));
-        dialog.setTitle("存为代码片段");
-        dialog.setHeaderText("给这段 SQL 起个名字（之后可插入到光标处）");
+                new javafx.scene.control.TextInputDialog(I18n.t("query.snippetDefault", ++saveCounter));
+        dialog.setTitle(I18n.t("action.query.save-snippet"));
+        dialog.setHeaderText(I18n.t("query.snippetNamePrompt"));
         dialog.setContentText(text.length() > 120 ? text.substring(0, 120) + "…" : text);
         java.util.Optional<String> name = dialog.showAndWait();
         if (name.isEmpty() || name.get().isBlank()) {
             return;
         }
         onSaveSnippet.accept(name.get().trim(), text);
-        feedback.status("已保存片段：" + name.get().trim());
+        feedback.status(I18n.t("query.snippetSaved", name.get().trim()));
     }
 
     /**
@@ -195,7 +196,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         area.replaceSelection(text);
         area.moveTo(Math.min(caret + text.length(), area.getText().length()));
         editor.requestEditorFocus();
-        feedback.status("已插入片段：" + entry.name());
+        feedback.status(I18n.t("query.snippetInserted", entry.name()));
     }
 
     /** ⭐ Q6：片段列表（供弹窗与命令面板用）。 */
@@ -208,20 +209,20 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private void saveNamed() {
         String sql = editor.text();
         if (sql == null || sql.isBlank()) {
-            feedback.status("编辑器是空的，没什么可存");
+            feedback.status(I18n.t("query.nothingToSave"));
             return;
         }
         javafx.scene.control.TextInputDialog dialog =
-                new javafx.scene.control.TextInputDialog("查询 " + (++saveCounter));
-        dialog.setTitle("存为命名查询");
-        dialog.setHeaderText("给这条 SQL 起个名字");
+                new javafx.scene.control.TextInputDialog(I18n.t("query.namedDefault", ++saveCounter));
+        dialog.setTitle(I18n.t("query.saveNamed"));
+        dialog.setHeaderText(I18n.t("query.queryNamePrompt"));
         dialog.setContentText(sql.length() > 120 ? sql.substring(0, 120) + "…" : sql);
         java.util.Optional<String> name = dialog.showAndWait();
         if (name.isEmpty() || name.get().isBlank()) {
             return;
         }
         onSaveNamed.accept(name.get().trim(), sql);
-        feedback.status("已保存查询：" + name.get().trim());
+        feedback.status(I18n.t("query.namedSaved", name.get().trim()));
     }
 
     public QueryPage(DbSession session, String connectionName, String initialSql,
@@ -252,7 +253,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
     // ─────────────────────────── 构建 ───────────────────────────
 
     private void buildUi() {
-        Label title = new Label("SQL 查询");
+        Label title = new Label(I18n.t("query.title"));
         title.getStyleClass().add("adb-page__title");
 
         Label connection = new Label(connectionName);
@@ -264,7 +265,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
         historyButton.setId("query-history");
         historyButton.getStyleClass().add("adb-button");
-        historyButton.getItems().add(new MenuItem("暂无历史"));
+        historyButton.getItems().add(new MenuItem(I18n.t("query.noHistory")));
 
         HBox header = new HBox(8, title, connection, spacer, historyButton);
         header.getStyleClass().add("adb-query__header");
@@ -272,12 +273,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
         run.setId("query-run");
         run.getStyleClass().addAll("adb-button", "adb-button--primary");
-        run.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("执行光标所在语句", "Mod+Enter")));
+        run.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(I18n.t("query.tip.run"), "Mod+Enter")));
         run.setOnAction(event -> runCurrent());
 
         runAll.setId("query-run-all");
         runAll.getStyleClass().add("adb-button");
-        runAll.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("按顺序执行全部语句", "Shift+Mod+Enter")));
+        runAll.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(I18n.t("query.tip.runAll"), "Shift+Mod+Enter")));
         runAll.setOnAction(event -> runAll());
 
         cancel.setId("query-cancel");
@@ -286,39 +287,39 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
         explain.setId("query-explain");
         explain.getStyleClass().add("adb-button");
-        explain.setTooltip(new Tooltip("EXPLAIN / EXPLAIN QUERY PLAN 当前语句"));
+        explain.setTooltip(new Tooltip(I18n.t("query.tip.explain")));
         explain.setOnAction(event -> explainCurrent());
 
         format.setId("query-format");
         format.getStyleClass().add("adb-button");
-        format.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("格式化当前 SQL", "Alt+Shift+F")));
+        format.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(I18n.t("query.tip.beautify"), "Alt+Shift+F")));
         format.setOnAction(event -> formatSql());
 
         save.setId("query-save");
         save.getStyleClass().add("adb-button");
-        save.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("保存为 .sql 文件", "Mod+S")));
+        save.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(I18n.t("query.tip.save"), "Mod+S")));
         save.setOnAction(event -> save());
 
-        Button saveNamed = new Button("存为命名查询");
+        Button saveNamed = new Button(I18n.t("query.saveNamed"));
         saveNamed.setId("query-save-named");
         saveNamed.getStyleClass().add("adb-button");
-        saveNamed.setTooltip(new Tooltip("给当前 SQL 起个名字，之后从「已保存查询」一键打开"));
+        saveNamed.setTooltip(new Tooltip(I18n.t("query.tip.saveNamed")));
         saveNamed.setOnAction(event -> saveNamed());
 
         // ⭐ Q2：变量按钮 —— 语句里有 ? / :name 就亮起来
-        Button variables = new Button("变量");
+        Button variables = new Button(I18n.t("query.params"));
         variables.setId("query-variables");
         variables.getStyleClass().add("adb-button");
-        variables.setTooltip(new Tooltip("填写语句里的参数（? 与 :name）"));
+        variables.setTooltip(new Tooltip(I18n.t("query.tip.params")));
         variables.setOnAction(event -> runWithVariables());
 
-        Button clear = new Button("清空");
+        Button clear = new Button(I18n.t("query.clear"));
         clear.getStyleClass().add("adb-button");
         clear.setOnAction(event -> editor.setText(""));
 
         risk.setId("query-risk");
         risk.getStyleClass().addAll("adb-badge", "adb-query__risk");
-        risk.setTooltip(new Tooltip("危险分级来自 DangerClassifier；写操作执行前会确认"));
+        risk.setTooltip(new Tooltip(I18n.t("query.tip.risk")));
 
         Region toolbarSpacer = new Region();
         HBox.setHgrow(toolbarSpacer, Priority.ALWAYS);
@@ -391,31 +392,31 @@ public final class QueryPage extends VBox implements AutoCloseable {
         findBar.setManaged(false);
 
         findField.setId("query-find");
-        findField.setPromptText("查找");
+        findField.setPromptText(I18n.t("grid.find.prompt"));
         findField.setPrefWidth(180);
         findField.getStyleClass().add("adb-query__find-field");
 
         replaceField.setId("query-replace");
-        replaceField.setPromptText("替换为");
+        replaceField.setPromptText(I18n.t("grid.find.replacePrompt"));
         replaceField.setPrefWidth(180);
         replaceField.getStyleClass().add("adb-query__find-field");
 
-        Button next = new Button("下一个");
+        Button next = new Button(I18n.t("grid.find.next"));
         next.setId("query-find-next");
         next.getStyleClass().add("adb-button");
         next.setOnAction(event -> findNext());
 
-        Button replaceOne = new Button("替换");
+        Button replaceOne = new Button(I18n.t("grid.find.replace"));
         replaceOne.setId("query-replace-one");
         replaceOne.getStyleClass().add("adb-button");
         replaceOne.setOnAction(event -> replaceCurrent());
 
-        Button replaceAll = new Button("全部替换");
+        Button replaceAll = new Button(I18n.t("grid.find.replaceAll"));
         replaceAll.setId("query-replace-all");
         replaceAll.getStyleClass().add("adb-button");
         replaceAll.setOnAction(event -> replaceAll());
 
-        Button close = IconButtons.icon(Icons.Icon.CLOSE, "关闭");
+        Button close = IconButtons.icon(Icons.Icon.CLOSE, I18n.t("tab.close"));
         close.getStyleClass().add("adb-icon-button");
         close.setOnAction(event -> hideFind());
 
@@ -561,11 +562,11 @@ public final class QueryPage extends VBox implements AutoCloseable {
             index = text.indexOf(needle);
         }
         if (index < 0) {
-            status.setText("未找到：" + needle);
+            status.setText(I18n.t("query.find.notFound", needle));
             return;
         }
         editor.select(index, index + needle.length());
-        status.setText("找到 " + needle + " · 第 " + (index + 1) + " 个字符");
+        status.setText(I18n.t("query.find.found", needle, index + 1));
     }
 
     private void replaceCurrent() {
@@ -576,7 +577,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         String selected = editor.area().getSelectedText();
         if (needle.equals(selected)) {
             editor.area().replaceSelection(replaceField.getText());
-            status.setText("已替换");
+            status.setText(I18n.t("query.find.replaced"));
         }
         findNext();
     }
@@ -589,11 +590,11 @@ public final class QueryPage extends VBox implements AutoCloseable {
         String text = editor.text();
         int count = countOccurrences(text, needle);
         if (count == 0) {
-            status.setText("未找到：" + needle);
+            status.setText(I18n.t("query.find.notFound", needle));
             return;
         }
         editor.setText(text.replace(needle, replaceField.getText()));
-        status.setText("已替换 " + count + " 处");
+        status.setText(I18n.t("query.find.replacedCount", count));
     }
 
     private static int countOccurrences(String text, String needle) {
@@ -608,7 +609,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
     private void updateRisk() {
         Danger danger = DangerClassifier.classify(editor.text());
-        risk.setText(danger.label());
+        risk.setText(DangerLabels.t(danger));
         risk.getStyleClass().removeAll("adb-risk--read", "adb-risk--write",
                 "adb-risk--structure", "adb-risk--admin");
         risk.getStyleClass().add(switch (danger) {
@@ -637,8 +638,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
         List<SqlStatement> statements = SqlSplitter.statementAt(editor.text(), editor.caret())
                 .map(statement -> List.of(statement)).orElseGet(List::of);
         if (statements.isEmpty()) {
-            status.setText("没有可执行语句");
-            feedback.status("没有可执行语句");
+            status.setText(I18n.t("query.noStatement"));
+            feedback.status(I18n.t("query.noStatement"));
             return;
         }
         execute(statements, false);
@@ -647,8 +648,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
     public void runAll() {
         List<SqlStatement> statements = SqlSplitter.split(editor.text());
         if (statements.isEmpty()) {
-            status.setText("没有可执行语句");
-            feedback.status("没有可执行语句");
+            status.setText(I18n.t("query.noStatement"));
+            feedback.status(I18n.t("query.noStatement"));
             return;
         }
         execute(statements, false);
@@ -658,7 +659,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         List<SqlStatement> statements = SqlSplitter.statementAt(editor.text(), editor.caret())
                 .map(statement -> List.of(statement)).orElseGet(List::of);
         if (statements.isEmpty()) {
-            status.setText("没有可解释语句");
+            status.setText(I18n.t("query.noExplainStatement"));
             return;
         }
         execute(statements, true);
@@ -671,8 +672,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
         }
         editor.setText(formatted);
         setDirty(true);
-        status.setText("已格式化");
-        feedback.status("SQL 已格式化");
+        status.setText(I18n.t("query.formatted"));
+        feedback.status(I18n.t("query.formattedFeedback"));
     }
 
     /** ⌘/：给选中行（或当前行）加/去 `-- ` 注释。 */
@@ -727,7 +728,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         editor.setText(next);
         editor.select(blockStart, blockStart + replacement.length());
         setDirty(true);
-        status.setText(comment ? "已取消注释" : "已注释");
+        status.setText(comment ? I18n.t("query.uncommented") : I18n.t("query.commented"));
     }
 
     public void cancel() {
@@ -741,8 +742,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
         if (inFlight != null) {
             inFlight.cancel(true);
         }
-        status.setText("已请求取消");
-        feedback.status("已请求取消查询");
+        status.setText(I18n.t("query.cancelRequested"));
+        feedback.status(I18n.t("query.cancelRequestedFeedback"));
         updateButtons();
     }
 
@@ -762,7 +763,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         List<SqlStatement> statements = SqlSplitter.statementAt(editor.text(), editor.caret())
                 .map(statement -> List.of(statement)).orElseGet(List::of);
         if (statements.isEmpty()) {
-            status.setText("没有可执行语句");
+            status.setText(I18n.t("query.noStatement"));
             return;
         }
         String sql = statements.getFirst().text();
@@ -775,7 +776,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
                 io.agenticdb.sql.SqlParameters.toPositional(sql, bound.named(),
                         bound.positional(), missing);
         if (!missing.isEmpty()) {
-            status.setText("有参数没填值：" + String.join(", ", missing));
+            status.setText(I18n.t("query.missingParams", String.join(", ", missing)));
             return;
         }
         execute(prepared.sql(), prepared.values(), statements, false);
@@ -794,7 +795,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
                 .reduce((a, b) -> a + "\n" + b).orElse("");
         Danger danger = DangerClassifier.classify(joined);
         if (!explainPlan && danger.requiresConfirm() && !confirmation.test(danger)) {
-            status.setText("已取消执行");
+            status.setText(I18n.t("query.confirmDeclined"));
             return;
         }
 
@@ -803,7 +804,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         running = true;
         updateButtons();
         results.getTabs().clear();
-        status.setText((explainPlan ? "正在生成执行计划…" : "正在执行…"));
+        status.setText((explainPlan ? I18n.t("query.explaining") : I18n.t("query.running")));
         feedback.status(status.getText());
         feedback.duration(-1);
 
@@ -845,8 +846,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
             updateButtons();
             if (cancelled) {
                 cancelled = false;
-                status.setText("已取消");
-                feedback.status("已取消查询");
+                status.setText(I18n.t("query.cancelled"));
+                feedback.status(I18n.t("query.cancelledFeedback"));
                 return;
             }
             apply(task.getValue(), explainPlan);
@@ -859,17 +860,17 @@ public final class QueryPage extends VBox implements AutoCloseable {
             updateButtons();
             Throwable error = task.getException();
             String message = readable(error);
-            status.setText("执行失败：" + message);
-            feedback.status("查询失败：" + message);
+            status.setText(I18n.t("query.runFailed", message));
+            feedback.status(I18n.t("query.queryFailed", message));
             feedback.duration(-1);
-            showErrorTab("执行失败", error, null, -1);
+            showErrorTab(I18n.t("query.runFailedTitle"), error, null, -1);
         });
         task.setOnCancelled(event -> {
             if (request == requestSequence) {
                 running = false;
                 updateButtons();
-                status.setText("已取消");
-                feedback.status("已取消查询");
+                status.setText(I18n.t("query.cancelled"));
+                feedback.status(I18n.t("query.cancelledFeedback"));
             }
         });
         inFlight = submit(task);
@@ -893,13 +894,13 @@ public final class QueryPage extends VBox implements AutoCloseable {
                     : messageTab(execution, i + 1));
         }
         if (result.error() != null) {
-            showErrorTab("语句 " + (result.failedIndex() + 1) + " 失败",
+            showErrorTab(I18n.t("query.statementFailed", result.failedIndex() + 1),
                     result.error(), result.failed(),
                     result.failedIndex() + 1);
-            status.setText("执行失败 · 已完成 " + result.results().size() + " 条");
+            status.setText(I18n.t("query.failedAfter", result.results().size()));
             range.setText("—");
             duration.setText(result.durationMs() + " ms");
-            feedback.status("查询失败：" + readable(result.error()));
+            feedback.status(I18n.t("query.queryFailed", readable(result.error())));
             feedback.range("—");
             feedback.duration(result.durationMs());
             // ⭐ UX-5-D：失败时更要给出语句（拿去改正是用户下一步要做的事），
@@ -907,14 +908,17 @@ public final class QueryPage extends VBox implements AutoCloseable {
             feedback.sql(result.executedText());
         } else {
             long rows = result.results().stream().mapToLong(ExecutionResult::rowCount).sum();
-            range.setText(rows + " 行");
+            range.setText(I18n.t("status.rows", rows));
             duration.setText(result.durationMs() + " ms");
-            status.setText((explainPlan ? "执行计划" : "执行完成")
-                    + " · " + result.results().size() + " 条语句 · " + result.durationMs() + " ms");
+            // 抬头当参数递进去而不是拼两遍模板：门禁要断言「状态说完成了」时
+            // 只需比 `I18n.t("query.done")`，不必知道后面跟了什么、也不必跟着语言改。
+            status.setText(I18n.t("query.doneStatus",
+                    I18n.t(explainPlan ? "query.explain" : "query.done"),
+                    result.results().size(), result.durationMs()));
             // U8（p3-query 实拍第二拍）：行数与耗时各有自己的段，
             // 「执行完成 · N 条语句」把它们再念一遍就是消息段该沉默的时刻。
             feedback.status("");
-            feedback.range(rows + " 行");
+            feedback.range(I18n.t("status.rows", rows));
             feedback.duration(result.durationMs());
             // ⭐ UX-5-D：状态栏给出「跑的是哪条、这屏结果是什么时候落地的」。
             feedback.sql(result.executedText());
@@ -997,8 +1001,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
         table.getStyleClass().addAll("adb-grid", "adb-query__result-table");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         // ⭐ E5：0 行结果以前只有一行字。空态要说清「这是正常结果」+ 下一步怎么办。
-        table.setPlaceholder(EmptyState.of(Icons.Icon.TABLE, "查询成功，但没有返回行",
-                "这是正常的空结果 —— 检查 WHERE 条件，或确认目标表里确实没有数据。"));
+        table.setPlaceholder(EmptyState.of(Icons.Icon.TABLE, I18n.t("query.emptyTitle"),
+                I18n.t("query.emptyBody")));
         // ⭐ U25：结果网格的右键菜单（复制单元格 / 行 / 列名 / 全部）——
         // 分页与非分页两条路径共用同一张表，挂一次就都覆盖。
         attachResultContextMenu(table);
@@ -1041,7 +1045,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             table.getColumns().add(column);
         }
 
-        Tab tab = new Tab("结果 " + index);
+        Tab tab = new Tab(I18n.t("query.resultTab", index));
         tab.setClosable(false);
 
         // ⭐ Q5：可分页的 SELECT 走服务端分页；其余保留「整段取回 + 截断提示」。
@@ -1058,14 +1062,14 @@ public final class QueryPage extends VBox implements AutoCloseable {
         }
 
         table.setItems(FXCollections.observableArrayList(result.rows()));
-        Label meta = new Label(result.rowCount() + " 行 · " + result.durationMs() + " ms");
+        Label meta = new Label(I18n.t("query.rowsAndDuration", result.rowCount(), result.durationMs()));
         meta.getStyleClass().add("adb-query__result-meta");
 
-        Button copy = new Button("复制 TSV");
+        Button copy = new Button(I18n.t("query.copyTsv"));
         copy.getStyleClass().add("adb-button");
         copy.setOnAction(event -> copyResultTsv(result));
 
-        Button export = new Button("导出 CSV");
+        Button export = new Button(I18n.t("query.exportCsv"));
         export.getStyleClass().add("adb-button");
         export.setOnAction(event -> exportCsv(result));
 
@@ -1075,11 +1079,10 @@ public final class QueryPage extends VBox implements AutoCloseable {
         HBox toolbar;
         if (result.isTruncated()) {
             // ⭐ 静默截断比不分页更糟：用户会以为看到的就是全部。
-            meta.setText(meta.getText() + " · 已截断");
+            meta.setText(meta.getText() + I18n.t("query.truncatedSuffix"));
             // U10：警示标记是**矢量图标**，不是文本「⚠」——
             // 文本符号不吃主题色、不吃字号，暗色下几乎看不见。
-            Label warning = new Label("结果已截断，上限 "
-                    + io.agenticdb.model.QueryLimits.MAX_PAGE_SIZE + " 行");
+            Label warning = new Label(I18n.t("query.truncated", io.agenticdb.model.QueryLimits.MAX_PAGE_SIZE));
             warning.setGraphic(Icons.of(Icons.Icon.ALERT, Icons.SIZE_BADGE));
             warning.setId("query-result-truncated");
             warning.getStyleClass().add("adb-query__result-truncated");
@@ -1110,10 +1113,10 @@ public final class QueryPage extends VBox implements AutoCloseable {
             TableView<java.util.Map<String, Object>> table) {
         table.setOnContextMenuRequested(event -> {
             ContextMenu menu = new ContextMenu();
-            MenuItem copyCell = new MenuItem("复制此单元格");
-            MenuItem copyRow = new MenuItem("复制此行（TSV）");
-            MenuItem copyName = new MenuItem("复制列名");
-            MenuItem copyAll = new MenuItem("复制全部结果（TSV）");
+            MenuItem copyCell = new MenuItem(I18n.t("query.ctx.copyCell"));
+            MenuItem copyRow = new MenuItem(I18n.t("query.ctx.copyRow"));
+            MenuItem copyName = new MenuItem(I18n.t("grid.head.copyName"));
+            MenuItem copyAll = new MenuItem(I18n.t("query.ctx.copyAll"));
             copyCell.setId("result-copy-cell");
             copyRow.setId("result-copy-row");
             copyName.setId("result-copy-column-name");
@@ -1137,7 +1140,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             copyCell.setOnAction(action -> {
                 Object value = row.get(key);
                 putOnClipboard(value == null ? "" : String.valueOf(value));
-                status.setText("已复制单元格（" + columnName + "）");
+                status.setText(I18n.t("query.copiedCell", columnName));
             });
             copyRow.setOnAction(action -> {
                 StringBuilder line = new StringBuilder();
@@ -1149,11 +1152,11 @@ public final class QueryPage extends VBox implements AutoCloseable {
                     line.append(value == null ? "" : String.valueOf(value));
                 }
                 putOnClipboard(line.toString());
-                status.setText("已复制第 " + (cell.getIndex() + 1) + " 行");
+                status.setText(I18n.t("query.copiedRow", cell.getIndex() + 1));
             });
             copyName.setOnAction(action -> {
                 putOnClipboard(columnName);
-                status.setText("已复制列名 " + columnName);
+                status.setText(I18n.t("query.copiedColumnName", columnName));
             });
             copyAll.setOnAction(action -> {
                 StringBuilder text = new StringBuilder();
@@ -1170,8 +1173,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
                     text.append('\n');
                 }
                 putOnClipboard(text.toString());
-                status.setText("已复制 " + table.getItems().size() + " 行 TSV");
-                feedback.status("已复制查询结果 TSV");
+                status.setText(I18n.t("query.copiedRowsTsv", table.getItems().size()));
+                feedback.status(I18n.t("query.copiedResultsTsv"));
             });
 
             if (row != null) {
@@ -1352,19 +1355,23 @@ public final class QueryPage extends VBox implements AutoCloseable {
         private final Label rangeLabel = new Label();
         private final Label pageLabel = new Label();
         private final ComboBox<Integer> pageSizeBox = new ComboBox<>();
-        private final Button first = IconButtons.of(Icons.Icon.FIRST, "第一页");
-        private final Button previous = IconButtons.of(Icons.Icon.PREVIOUS, "上一页");
-        private final Button next = IconButtons.of(Icons.Icon.NEXT, "下一页");
-        private final Button last = IconButtons.of(Icons.Icon.LAST, "最后一页");
+        // ⭐ 与数据页 `#data-*` 的翻页键同一形态：**纯图标 + tooltip/accessibleText**。
+        //    以前这里是 `IconButtons.of`（图标 + 文字），中文「第一页」三个字装得下，
+        //    换成英文 "Previous Page" 就在一排里挤成 "Previous Pa…"（第六批重拍帧目视抓到）。
+        //    Navicat 的纪录导航也是纯图标，所以这不是"挤不下才退让"，是本来就该长这样。
+        private final Button first = IconButtons.icon(Icons.Icon.FIRST, I18n.t("grid.pager.first"));
+        private final Button previous = IconButtons.icon(Icons.Icon.PREVIOUS, I18n.t("grid.toolbar.previousPage"));
+        private final Button next = IconButtons.icon(Icons.Icon.NEXT, I18n.t("grid.toolbar.nextPage"));
+        private final Button last = IconButtons.icon(Icons.Icon.LAST, I18n.t("grid.pager.last"));
         private final TextField jumpField = new TextField();
         // §2.6：以前输入框旁边还挂一颗「跳转」按钮 —— 输入框本身已支持回车跳转，
         //      按钮只会让这一对读起来像「一个禁用 + 一个可点」的两件事（实拍确认）。
-        private final Button copy = new Button("复制本页");
+        private final Button copy = new Button(I18n.t("query.copyPage"));
         /** ⭐ P6-2：导出范围 —— 本页 / 选中行 / 全部结果。 */
-        private final MenuButton export = new MenuButton("导出");
-        private final MenuItem exportPage = new MenuItem("导出本页…");
-        private final MenuItem exportSelected = new MenuItem("导出选中行…");
-        private final MenuItem exportAll = new MenuItem("导出全部结果…");
+        private final MenuButton export = new MenuButton(I18n.t("grid.toolbar.export"));
+        private final MenuItem exportPage = new MenuItem(I18n.t("query.exportPage"));
+        private final MenuItem exportSelected = new MenuItem(I18n.t("query.exportSelected"));
+        private final MenuItem exportAll = new MenuItem(I18n.t("query.exportAll"));
         private final Region spacer = new Region();
 
         PagedLoader(Tab tab, int index, TableView<java.util.Map<String, Object>> table,
@@ -1439,25 +1446,37 @@ public final class QueryPage extends VBox implements AutoCloseable {
                 load();
             });
 
-            Label perPage = new Label("每页");
+            Label perPage = new Label(I18n.t("grid.toolbar.perPage"));
             perPage.getStyleClass().add("adb-muted");
+            // ⭐ 文字项一律钉住下限：HBox 一挤就把它们压成 "Per p…" / "Copy This Pa…" / "Exp…"
+            //    （第六批重拍帧目视抓到）。**压不了**才是对的 —— 放不下时该整项收起，
+            //    而不是把一句话切成半截让人猜。与数据网格分页器同一条规矩（第四批定的）。
+            perPage.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
             jumpField.setId("query-result-jump");
             // ⭐ 第十八轮：与数据页 `#data-jump` 同一规格 —— 以前这里只有 id + 宽度，
             //    没有占位文字、没有 tooltip、也没有 accessibleText：截图上就是**一个空白框**，
             //    读屏只念得出「编辑框」。同一种控件在两页必须长得一样、能读的一样。
             jumpField.getStyleClass().add("adb-grid__jump");
-            jumpField.setPromptText("跳至页");
-            jumpField.setTooltip(new javafx.scene.control.Tooltip("输入页码后回车跳转"));
-            jumpField.setAccessibleText("跳至指定页");
+            jumpField.setPromptText(I18n.t("grid.pager.jumpPagePrompt"));
+            jumpField.setTooltip(new javafx.scene.control.Tooltip(I18n.t("grid.pager.jumpPageTip")));
+            jumpField.setAccessibleText(I18n.t("grid.pager.jumpPageAria"));
             jumpField.setPrefWidth(64);
             jumpField.setMinWidth(56);
+            // 宽度跟着提示文字量（与数据页同一规则）；要等挂上场景才量得准。
+            bar.sceneProperty().addListener((obs, was, now) -> {
+                if (now != null) {
+                    FieldFits.prompt(jumpField);
+                }
+            });
             jumpField.setOnAction(event -> jumpToPage(jumpField.getText()));
 
             copy.getStyleClass().add("adb-button");
+            copy.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
             copy.setOnAction(event -> copyResultTsv(currentResult()));
             export.setId("query-export");
             export.getStyleClass().add("adb-button");
-            export.setTooltip(new Tooltip("选择导出范围：本页 / 选中行 / 全部结果"));
+            export.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+            export.setTooltip(new Tooltip(I18n.t("query.exportScopeHint")));
             exportPage.setId("query-export-page");
             exportPage.setOnAction(event -> chooseAndExport(this::exportCurrentTo,
                     "query-result-page.csv"));
@@ -1513,7 +1532,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
                     return;
                 }
                 loading = false;
-                String message = "分页查询失败：" + readable(task.getException());
+                String message = I18n.t("query.pagedFailed", readable(task.getException()));
                 status.setText(message);
                 feedback.status(message);
                 updateButtons();
@@ -1537,10 +1556,11 @@ public final class QueryPage extends VBox implements AutoCloseable {
         private void updatePager() {
             long pages = QueryLimits.totalPages(total, pageSize);
             long current = QueryLimits.pageNumberOf(offset, pageSize);
-            pageLabel.setText(pages < 0 ? "第 " + current + " 页"
-                    : "第 " + current + " / " + pages + " 页");
-            rangeLabel.setText(total < 0 ? "总行数未知" : (total + " 行"));
-            tab.setText("结果 " + index + " · " + (total < 0 ? "?" : total) + " 行");
+            pageLabel.setText(pages < 0 ? I18n.t("query.pageOf", current)
+                    : I18n.t("query.pageOfTotal", current, pages));
+            rangeLabel.setText(total < 0 ? I18n.t("query.totalUnknown") : I18n.t("status.rows", total));
+            tab.setText(I18n.t("query.tabWithRows", I18n.t("query.resultTab", index),
+                    total < 0 ? "?" : total));
             updateButtons();
         }
 
@@ -1552,8 +1572,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
                 target = 0;
             }
             if (QueryLimits.exceedsOffsetLimit(target)) {
-                String message = "已到达 OFFSET 上限 " + QueryLimits.MAX_OFFSET
-                        + "，请改用筛选条件而不是继续翻页";
+                String message = I18n.t("query.offsetCap", QueryLimits.MAX_OFFSET);
                 status.setText(message);
                 feedback.status(message);
                 return;
@@ -1577,22 +1596,21 @@ public final class QueryPage extends VBox implements AutoCloseable {
             try {
                 page = Long.parseLong(text);
             } catch (NumberFormatException e) {
-                feedback.status("跳页失败：「" + text + "」不是页码");
+                feedback.status(I18n.t("query.jumpNotNumber", text));
                 return;
             }
             if (page < 1) {
-                feedback.status("跳页失败：页码从 1 开始");
+                feedback.status(I18n.t("grid.pager.jumpPageZero"));
                 return;
             }
             long pages = QueryLimits.totalPages(total, pageSize);
             if (pages >= 0 && page > pages) {
-                feedback.status("跳页失败：最大页码 " + pages);
+                feedback.status(I18n.t("query.jumpTooBig", pages));
                 return;
             }
             long target = (page - 1) * pageSize;
             if (QueryLimits.exceedsOffsetLimit(target)) {
-                String message = "已到达 OFFSET 上限 " + QueryLimits.MAX_OFFSET
-                        + "，请改用筛选条件而不是继续翻页";
+                String message = I18n.t("query.offsetCap", QueryLimits.MAX_OFFSET);
                 status.setText(message);
                 feedback.status(message);
                 return;
@@ -1624,7 +1642,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         /** 选文件 → 后台写出；失败落状态行，不影响结果集。 */
         private void chooseAndExport(WriterAction action, String initialName) {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("导出查询结果（CSV）");
+            chooser.setTitle(I18n.t("query.exportCsvTitle"));
             chooser.setInitialFileName(initialName);
             chooser.getExtensionFilters().add(
                     new FileChooser.ExtensionFilter("CSV", "*.csv"));
@@ -1644,11 +1662,11 @@ public final class QueryPage extends VBox implements AutoCloseable {
                 }
             };
             task.setOnSucceeded(event -> {
-                status.setText("已导出：" + file.getName());
-                feedback.status("已导出查询结果");
+                status.setText(I18n.t("query.exported", file.getName()));
+                feedback.status(I18n.t("query.exportedFeedback"));
             });
             task.setOnFailed(event -> {
-                String message = "导出失败：" + readable(task.getException());
+                String message = I18n.t("query.exportFailed", readable(task.getException()));
                 status.setText(message);
                 feedback.status(message);
             });
@@ -1734,7 +1752,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         text.setEditable(false);
         text.setWrapText(false);
         text.getStyleClass().add("adb-query__message");
-        Tab tab = new Tab("消息 " + index, text);
+        Tab tab = new Tab(I18n.t("query.messageTab", index), text);
         tab.setClosable(false);
         return tab;
     }
@@ -1750,7 +1768,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         String message = readable(error);
         StringBuilder body = new StringBuilder();
         if (statementIndex > 0) {
-            body.append("语句：").append(statementIndex).append("\n\n");
+            body.append(I18n.t("query.errorStatement", statementIndex)).append("\n\n");
         }
         if (statement != null) {
             body.append(statement.text()).append("\n\n");
@@ -1758,15 +1776,14 @@ public final class QueryPage extends VBox implements AutoCloseable {
         body.append(message);
         String advice = ErrorLocator.explainConstraintViolation(message);
         if (!advice.isBlank()) {
-            body.append("\n\n建议：").append(advice);
+            body.append(I18n.t("query.errorAdvice", advice));
         }
 
         if (statement != null) {
             Optional<ErrorLocator.Position> position =
                     ErrorLocator.locate(message, statement.text());
             position.ifPresent(pos -> {
-                body.append("\n\n位置：第 ").append(pos.line()).append(" 行，第 ")
-                        .append(pos.column()).append(" 列");
+                body.append(I18n.t("query.errorPosition", pos.line(), pos.column()));
                 int offset = statement.start()
                         + offsetOf(statement.text(), pos.line(), pos.column());
                 editor.moveTo(offset);
@@ -1778,7 +1795,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         text.setWrapText(true);
         text.getStyleClass().add("adb-query__message");
 
-        Button detailsButton = new Button("查看详情");
+        Button detailsButton = new Button(I18n.t("query.details"));
         detailsButton.setId("query-error-details");
         ErrorDetails details = ErrorDetails.of(title, error,
                 statement == null ? "" : statement.text());
@@ -1825,13 +1842,13 @@ public final class QueryPage extends VBox implements AutoCloseable {
         ClipboardContent content = new ClipboardContent();
         content.putString(text.toString());
         Clipboard.getSystemClipboard().setContent(content);
-        status.setText("已复制 " + result.rowCount() + " 行 TSV");
-        feedback.status("已复制查询结果 TSV");
+        status.setText(I18n.t("query.copiedRowsTsv", result.rowCount()));
+        feedback.status(I18n.t("query.copiedResultsTsv"));
     }
 
     private void exportCsv(ExecutionResult result) {
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("导出查询结果");
+        chooser.setTitle(I18n.t("query.exportTitle"));
         chooser.setInitialFileName("query-result.csv");
         chooser.getExtensionFilters().add(
                 new FileChooser.ExtensionFilter("CSV", "*.csv"));
@@ -1850,11 +1867,11 @@ public final class QueryPage extends VBox implements AutoCloseable {
         try {
             Files.writeString(file.toPath(), "\uFEFF" + CsvExporter.csv(headers, rows),
                     StandardCharsets.UTF_8);
-            status.setText("已导出：" + file.getName());
-            feedback.status("已导出查询结果");
+            status.setText(I18n.t("query.exported", file.getName()));
+            feedback.status(I18n.t("query.exportedFeedback"));
         } catch (IOException e) {
-            status.setText("导出失败：" + readable(e));
-            feedback.status("导出失败：" + readable(e));
+            status.setText(I18n.t("query.exportFailed", readable(e)));
+            feedback.status(I18n.t("query.exportFailed", readable(e)));
         }
     }
 
@@ -1864,7 +1881,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         Window window = getScene() == null ? null : getScene().getWindow();
         if (currentFile == null) {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("保存 SQL");
+            chooser.setTitle(I18n.t("action.query.save"));
             chooser.setInitialFileName("query.sql");
             chooser.getExtensionFilters().add(
                     new FileChooser.ExtensionFilter("SQL", "*.sql"));
@@ -1876,10 +1893,10 @@ public final class QueryPage extends VBox implements AutoCloseable {
         try {
             Files.writeString(currentFile.toPath(), editor.text(), StandardCharsets.UTF_8);
             setDirty(false);
-            status.setText("已保存：" + currentFile.getName());
+            status.setText(I18n.t("query.saved", currentFile.getName()));
             feedback.status(status.getText());
         } catch (IOException e) {
-            status.setText("保存失败：" + readable(e));
+            status.setText(I18n.t("query.saveFailed", readable(e)));
             feedback.status(status.getText());
         }
     }
@@ -1910,7 +1927,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         historyButton.getItems().clear();
         List<String> recent = history.recent();
         if (recent.isEmpty()) {
-            MenuItem empty = new MenuItem("暂无历史");
+            MenuItem empty = new MenuItem(I18n.t("query.noHistory"));
             empty.setDisable(true);
             historyButton.getItems().add(empty);
             return;
@@ -1924,27 +1941,27 @@ public final class QueryPage extends VBox implements AutoCloseable {
             item.setOnAction(event -> {
                 editor.setText(sql);
                 editor.requestEditorFocus();
-                status.setText("已载入历史 SQL");
+                status.setText(I18n.t("query.historyLoaded"));
             });
             historyButton.getItems().add(item);
         }
-        MenuItem clear = new MenuItem("清空历史");
+        MenuItem clear = new MenuItem(I18n.t("query.clearHistory"));
         clear.setOnAction(event -> {
             history.clear();
             refreshHistory();
-            status.setText("历史已清空");
+            status.setText(I18n.t("query.historyCleared"));
         });
         historyButton.getItems().add(new SeparatorMenuItem());
         historyButton.getItems().add(clear);
     }
 
     private boolean confirmDanger(Danger danger) {
-        ButtonType execute = new ButtonType("执行 " + danger.label(),
+        ButtonType execute = new ButtonType(I18n.t("query.confirmRunButton", DangerLabels.t(danger)),
                 ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancelType = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType cancelType = new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setTitle("确认执行");
-        alert.setHeaderText("这条 SQL 的风险等级：" + danger.label());
+        alert.setTitle(I18n.t("query.confirmRunTitle"));
+        alert.setHeaderText(I18n.t("query.riskLevel", DangerLabels.t(danger)));
         String preview = editor.text().strip();
         if (preview.length() > 1200) {
             preview = preview.substring(0, 1200) + "\n…";

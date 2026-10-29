@@ -56,6 +56,92 @@ function stripComments(src) {
 }
 
 const files = walk('ui');
+
+/**
+ * `node tools/cjk-count.mjs --reuse QueryPage.java` —— 抽某一页之前先问「哪些字面量
+ * 资源包里已经有现成的键」。第五批定的规矩：**两侧都对得上**才许复用，
+ * 所以这里同时打印 zh 与 en 的值，只匹配 zh 的那一半不算数。
+ * （手工 grep 中文容易漏：值里带 `{0}`、带全角空格、或者 en 侧其实不一样。）
+ */
+const reuseAt = process.argv.indexOf('--reuse');
+if (reuseAt >= 0) {
+  const want = (process.argv[reuseAt + 1] || '').toLowerCase();
+  const hit = files.filter(f => path.basename(f).toLowerCase().includes(want));
+  if (hit.length === 0) {
+    console.error(`没有文件名匹配「${want}」`);
+    process.exit(1);
+  }
+  const bundleDir = 'ui/adb-ui-core/src/main/resources/io/agenticdb/ui';
+  const readProps = p => {
+    const map = new Map();
+    for (const line of fs.readFileSync(p, 'utf8').split('\n')) {
+      const m = line.match(/^\s*([^#!=\s][^=]*)=(.*)$/);
+      if (m) map.set(m[1].trim(), m[2]);
+    }
+    return map;
+  };
+  const zh = readProps(`${bundleDir}/messages_zh.properties`);
+  const en = readProps(`${bundleDir}/messages_en.properties`);
+  for (const f of hit) {
+    const stripped = stripComments(fs.readFileSync(f, 'utf8'));
+    const lits = new Map();
+    for (const m of stripped.matchAll(hanPattern)) {
+      const v = m[0].slice(1, -1);
+      lits.set(v, (lits.get(v) || 0) + 1);
+    }
+    const reusable = [];
+    for (const [lit, n] of lits) {
+      for (const [key, val] of zh) {
+        if (val === lit) reusable.push([lit, n, key, en.get(key) ?? '(en 缺)']);
+      }
+    }
+    reusable.sort((a, b) => b[1] - a[1]);
+    console.log(`\n── ${path.basename(f)}：${lits.size} 条去重，其中 ${reusable.length} 处有 zh 完全相同的现成键 ──`);
+    for (const [lit, n, key, enVal] of reusable) {
+      console.log(`  ${String(n).padStart(2)}×  ${JSON.stringify(lit)}  →  ${key}  = ${JSON.stringify(enVal)}`);
+    }
+  }
+  process.exit(0);
+}
+
+/**
+ * `node tools/cjk-count.mjs --list QueryPage.java` —— 抽某一页之前的清单：
+ * 按「出现次数 × 行号」列出该文件里所有含汉字/全角的字面量。
+ * 之所以进这个脚本而不是每次现写：抽文案的每一批第一步都是这份清单，
+ * 而现写的版本要用 shell 传正则，转义一次踩一次（本轮踩过）。
+ */
+const listAt = process.argv.indexOf('--list');
+if (listAt >= 0) {
+  const want = (process.argv[listAt + 1] || '').toLowerCase();
+  const hit = files.filter(f => path.basename(f).toLowerCase().includes(want));
+  if (hit.length === 0) {
+    console.error(`没有文件名匹配「${want}」（在 ui/ 的 src/main 下）`);
+    process.exit(1);
+  }
+  for (const f of hit) {
+    const raw = fs.readFileSync(f, 'utf8');
+    const stripped = stripComments(raw);
+    const tally = new Map();
+    for (const [re, kind] of [[hanPattern, 'han'], [fullwidthPattern, 'full']]) {
+      for (const m of stripped.matchAll(re)) {
+        const line = stripped.slice(0, m.index).split('\n').length;
+        const key = m[0];
+        if (!tally.has(key)) tally.set(key, { n: 0, kind, line });
+        const rec = tally.get(key);
+        rec.n += 1;
+        if (kind === 'han' && rec.kind === 'full') rec.kind = 'han';
+      }
+    }
+    const rows = [...tally.entries()].sort((a, b) => b[1].n - a[1].n || a[1].line - b[1].line);
+    const total = rows.reduce((s, [, r]) => s + r.n, 0);
+    console.log(`\n── ${path.basename(f)}：${total} 次出现 / ${rows.length} 条去重 ──`);
+    for (const [lit, r] of rows) {
+      console.log(`  ${String(r.n).padStart(2)}×  L${String(r.line).padStart(4)}  ${lit}`);
+    }
+  }
+  process.exit(0);
+}
+
 let hanTotal = 0;
 const unique = new Set();
 const rows = [];

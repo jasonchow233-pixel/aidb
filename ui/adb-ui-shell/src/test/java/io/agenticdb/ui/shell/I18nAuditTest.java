@@ -73,7 +73,7 @@ class I18nAuditTest {
      * 而本类是先 {@code stripComments} 再计数。口径不同的两个数放在一起，
      * 只会让人以为棘轮又涨了。
      */
-    private static final int CJK_CEILING = 1306;
+    private static final int CJK_CEILING = 1145;
 
     /** 源码里对 {@link I18n#t(String, Object...)} 的键引用。 */
     private static final Pattern KEY_REFERENCE = Pattern.compile("I18n\\.t\\(\\s*\"([^\"]+)\"");
@@ -489,6 +489,37 @@ class I18nAuditTest {
                 .as("这些文件汉字残留已经清零，却还留着全角标点（分隔符/括号也是文案，"
                         + "抽进资源包，别在代码里拼）：\n  %s\n（当前 %d 个文件做到零汉字且零全角）",
                         String.join("\n  ", dirty), clean.size())
+                .isEmpty();
+    }
+
+    /**
+     * ⭐ 界面**不许直接渲染模型层的中文标签**（第六批撞上的：棘轮只扫 {@code ui/}，
+     * 而 {@code Danger.label()} 的「只读 / 写数据 / 改结构 / 管理操作」长在
+     * {@code core/adb-model} 里 —— 默认英文的查询页上钉着一颗「只读」，
+     * 汉字棘轮一条都不红）。
+     *
+     * <p>这条不是"再一把尺子"，它补的是**扫描范围的边界**：文案可以在 ui/ 之外，
+     * 只要它最终进界面，就得走 {@link DangerLabels} 这样的键映射，而不是把枚举字段直接 {@code setText}。
+     */
+    @Test
+    void modelLayerDangerLabelsNeverReachTheUiDirectly() throws IOException {
+        List<String> offenders = new ArrayList<>();
+        for (Path file : uiSources()) {
+            String source = stripComments(read(file));
+            List<String> hits = new ArrayList<>();
+            var matcher = java.util.regex.Pattern.compile(
+                    "danger\\.label\\(\\)|Danger\\.[A-Z_]+\\.label\\(\\)").matcher(source);
+            while (matcher.find()) {
+                hits.add(matcher.group());
+            }
+            if (!hits.isEmpty()) {
+                offenders.add(relative(file) + " → " + String.join(", ", hits));
+            }
+        }
+        assertThat(offenders)
+                .as("界面直接渲染了 Danger.label()（模型层的中文标签，不在棘轮扫描范围内）——"
+                        + " 换成 DangerLabels.t(danger)：\n  %s",
+                        String.join("\n  ", offenders))
                 .isEmpty();
     }
 
