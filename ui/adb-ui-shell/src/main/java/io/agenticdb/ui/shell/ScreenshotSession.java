@@ -77,7 +77,58 @@ public final class ScreenshotSession {
         worker.start();
     }
 
+    /**
+     * ⭐ 兜底「发现最大化就取消」到底有没有用，之前只是**没被触发过**、没被证明过。
+     * 设 {@code ADB_SHOTS_MAXIMIZE=1} 就在按快门前自己最大化一次，逼这条路径走一遍：
+     * 帧若仍是 1280×800，就证明的是恢复本身而不是运气。
+     */
+    private static final boolean FORCE_MAXIMIZE =
+            !prop("adb.shots.maximize", "ADB_SHOTS_MAXIMIZE").isEmpty();
+    private static boolean forceMaximizeArmed = FORCE_MAXIMIZE;
+
     private static void capture(Stage stage, Path dir, String name) {
+        capture(stage, dir, name, 0);
+    }
+
+    /**
+     * 第 0 步：该修的一律修完并重新排一次；第 1 步：修完之后再排一次，
+     * 因为**每一次**改尺寸都要隔一个布局脉冲才在 Scene 上读得到新值
+     * （同一帧里读会拿到旧值 —— 实测把 setWidth 和 snapshot 放同一条 FX 任务里，
+     * 快照仍是 1264×761）。第 2 步及以后：只拍。
+     */
+    private static void capture(Stage stage, Path dir, String name, int step) {
+        // ⭐ 启动时那一次「发现最大化就取消」不够：Windows 可以在 stage 已经显示之后
+        //   才把上次的窗口摆放置回来（2026-10-29 实测到 p2-find 仍是 1920×1017）。
+        if (step == 0 && forceMaximizeArmed) {
+            forceMaximizeArmed = false;
+            System.out.println("[screenshot] forcing maximized state to exercise the guard");
+            stage.setMaximized(true);
+            schedule(600, () -> capture(stage, dir, name, 0));
+            return;
+        }
+        if (step == 0 && stage.isMaximized()) {
+            System.out.println("[screenshot] maximized at capture time; un-maximizing");
+            stage.setMaximized(false);
+            schedule(600, () -> capture(stage, dir, name, 1));
+            return;
+        }
+        if (step == 1) {
+            // ⭐ 只取消最大化不够：JavaFX 还原的是**外框**，取消后场景实测缩成 1264×761
+            //   （差一圈边框 + 标题栏）。Scene.setWidth/setHeight 是 private，
+            //   所以按「外框 − 场景」的差值反过来钉窗口尺寸，让场景回到 1280×800。
+            Scene scene = stage.getScene();
+            if (scene != null) {
+                double decoW = stage.getWidth() - scene.getWidth();
+                double decoH = stage.getHeight() - scene.getHeight();
+                System.out.println("[screenshot] restoring scene size: stage="
+                        + (int) stage.getWidth() + "x" + (int) stage.getHeight()
+                        + " scene=" + (int) scene.getWidth() + "x" + (int) scene.getHeight());
+                stage.setWidth(io.agenticdb.ui.App.SHOT_SCENE_WIDTH + decoW);
+                stage.setHeight(io.agenticdb.ui.App.SHOT_SCENE_HEIGHT + decoH);
+                schedule(600, () -> capture(stage, dir, name, 2));
+                return;
+            }
+        }
         try {
             Scene scene = targetScene(stage);
             // 样式表切换后强制走一遍 CSS + 布局，避免快照落在重排中途。
@@ -197,6 +248,14 @@ public final class ScreenshotSession {
         Platform.runLater(action);
         // runOnFx 无法等待 FX 队列清空，调用方用固定 sleep 兜底。
         sleep(300);
+    }
+
+    /** 在 FX 线程上延后一件事（必须在调用时已处于 FX 线程）。 */
+    private static void schedule(long millis, Runnable action) {
+        javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(
+                javafx.util.Duration.millis(millis));
+        pause.setOnFinished(event -> action.run());
+        pause.play();
     }
 
     private static String prop(String key, String envKey) {

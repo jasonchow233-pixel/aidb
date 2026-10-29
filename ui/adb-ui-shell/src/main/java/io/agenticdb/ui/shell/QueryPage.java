@@ -1201,31 +1201,78 @@ public final class QueryPage extends VBox implements AutoCloseable {
     /**
      * ⭐ U25 验收帧的摆位：给第一个数据格投递**真的** CONTEXT_MENU_REQUESTED ——
      * 拍到的是同一处理器开出来的真菜单，而不是手搓的「菜单的样子」。
-     * 结果是异步灌进来的，所以要轮询等行就绪（与 AppShell 的 WhenReady 同一形态）。
+     *
+     * <p>两段式，因为实测撞到两件不同的事：
+     * ① 结果是异步灌的，要轮询等行就绪（预算 200×100ms；旧的 60 次会在冷启动里放弃）；
+     * ② 菜单**打开之后约 8.5s 会自己收起** —— 实测等待 1500/3000/5000/7000/8000ms 都拍得到，
+     *   9000ms 就只剩主窗口，而本帧的固定等待是 8000ms，正好压在边界上（同一份代码两次跑，
+     *   一次成一次败）。收起的触发者没查到：主源码里没有 5–10s 的 FX 计时器，
+     *   最可能是 JavaFX 在窗口失焦时收掉 PopupWindow。
+     *   所以这里**持续续摆**：每 1500ms 看一眼，菜单不在了就重新摆一次，
+     *   于是快门按下时菜单的年龄最多 1.5s，不再和那 8.5s 赛跑。
+     *   只在「没有浮窗」时续摆，避免叠出两层菜单。
      */
     void poseContextMenuWhenReady() {
-        poseContextMenu(60);
+        awaitResultCell(200);
     }
 
-    private void poseContextMenu(int attemptsLeft) {
+    private void awaitResultCell(int attemptsLeft) {
         javafx.scene.Node cell = firstResultDataCell();
-        if (cell != null) {
-            double x = cell.getBoundsInLocal().getWidth() / 2;
-            double y = cell.getBoundsInLocal().getHeight() / 2;
-            javafx.geometry.Point2D screen = cell.localToScreen(x, y);
-            if (screen != null) {
-                cell.fireEvent(new javafx.scene.input.ContextMenuEvent(
-                        javafx.scene.input.ContextMenuEvent.CONTEXT_MENU_REQUESTED,
-                        x, y, screen.getX(), screen.getY(), false, null));
+        if (cell == null) {
+            if (attemptsLeft <= 0) {
+                System.out.println("[screenshot] menu pose gave up: no result cell");
                 return;
             }
-        }
-        if (attemptsLeft <= 0) {
+            schedule(100, () -> awaitResultCell(attemptsLeft - 1));
             return;
         }
-        javafx.animation.PauseTransition pause =
-                new javafx.animation.PauseTransition(javafx.util.Duration.millis(100));
-        pause.setOnFinished(event -> poseContextMenu(attemptsLeft - 1));
+        poseOn(cell);
+        keepMenuUp(20);
+    }
+
+    /** 菜单收起就重新摆一次；进程在快门按下时退出，所以这里只需要覆盖截图窗口。 */
+    private void keepMenuUp(int ticksLeft) {
+        if (ticksLeft <= 0) {
+            return;
+        }
+        schedule(1_500, () -> {
+            if (!menuUp()) {
+                javafx.scene.Node cell = firstResultDataCell();
+                if (cell != null) {
+                    poseOn(cell);
+                }
+            }
+            keepMenuUp(ticksLeft - 1);
+        });
+    }
+
+    /** ContextMenu 的浮窗不是 Stage（是 PopupWindow），主窗口的快照拍不到它。 */
+    private static boolean menuUp() {
+        return javafx.stage.Window.getWindows().stream()
+                .anyMatch(w -> !(w instanceof javafx.stage.Stage)
+                        && w.isShowing() && w.getScene() != null);
+    }
+
+    /** 日志必须 ASCII：主源码里的中文字面量会顶穿 I18nAuditTest 的棘轮。 */
+    private void poseOn(javafx.scene.Node cell) {
+        double x = cell.getBoundsInLocal().getWidth() / 2;
+        double y = cell.getBoundsInLocal().getHeight() / 2;
+        javafx.geometry.Point2D screen = cell.localToScreen(x, y);
+        if (screen == null) {
+            System.out.println("[screenshot] menu pose skipped: cell has no screen coords");
+            return;
+        }
+        cell.fireEvent(new javafx.scene.input.ContextMenuEvent(
+                javafx.scene.input.ContextMenuEvent.CONTEXT_MENU_REQUESTED,
+                x, y, screen.getX(), screen.getY(), false, null));
+        System.out.println("[screenshot] menu posed, windows="
+                + javafx.stage.Window.getWindows().size());
+    }
+
+    private void schedule(long millis, Runnable action) {
+        javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(
+                javafx.util.Duration.millis(millis));
+        pause.setOnFinished(event -> action.run());
         pause.play();
     }
 

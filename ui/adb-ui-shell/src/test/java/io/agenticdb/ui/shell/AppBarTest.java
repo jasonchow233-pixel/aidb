@@ -149,6 +149,62 @@ class AppBarTest {
                         "ribbon-saved-queries", "ribbon-favorites.open");
     }
 
+    /**
+     * ⭐ 命令带的六个标签**一个都不许被裁成省略号**。
+     *
+     * <p>格子原本写死 `min=pref=62px` —— 那是按中文量出来的（"已保存查询" 五个字 62px 装得下）。
+     * 换成英文之后 "Saved Queries" 要 ~72px、"Import / Export" 要 ~78px，
+     * 实拍里直接长成 "Saved Qu…" / "Import / …"（2026-10-29 第五批重拍帧目视发现）。
+     * 这条门禁钉的是**结果**不是手段：只要标签实得宽度小于它想要的宽度就红，
+     * 无论是格子写死、字号变大还是文案变长引起的。
+     */
+    @Test
+    void ribbonLabelsAreNeverEllipsised(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        // 喂宽度和读几何必须在**同一条 FX 任务**里（第四批的教训：分开两次调用，
+        // 中间能插入布局事件，读到自相矛盾的帧）。lookup 也必须在 FX 线程上 ——
+        // Parent.lookup 会在测试线程遍历场景树，那本身就是竞态。
+        List<String> squeezed = WaitForAsyncUtils.asyncFx(() -> {
+            bar.applyCss();
+            bar.layout();
+            List<String> bad = new ArrayList<>();
+            for (Button button : bar.lookupAll(".adb-ribbon__button").stream()
+                    .filter(Button.class::isInstance).map(Button.class::cast).toList()) {
+                if (!(button.getGraphic() instanceof VBox box)) {
+                    continue;
+                }
+                box.getChildren().stream()
+                        .filter(Label.class::isInstance).map(Label.class::cast)
+                        .findFirst().ifPresent(label -> {
+                            label.applyCss();
+                            label.requestLayout();
+                            double want = label.prefWidth(-1);
+                            if (label.getWidth() + 0.5 < want) {
+                                bad.add(button.getId() + "「" + label.getText() + "」"
+                                        + " 实得 " + Math.round(label.getWidth())
+                                        + "px < 需要 " + Math.round(want) + "px");
+                            }
+                        });
+            }
+            return bad;
+        }).get();
+        assertThat(squeezed)
+                .as("命令带标签被裁 —— 英文比中文宽，格子宽度不能按中文写死")
+                .isEmpty();
+
+        // 反向的一半：宽度改成跟着内容算之后，六颗格子加起来不许顶出命令带。
+        List<Double> ribbonWidth = WaitForAsyncUtils.asyncFx(() -> {
+            bar.applyCss();
+            bar.layout();
+            var box = bar.lookup("#adb-ribbon");
+            return List.of(box.prefWidth(-1), bar.getWidth());
+        }).get();
+        assertThat(ribbonWidth.get(0))
+                .as("命令带总需求（%.0fpx）不得超过 1280 宽的外壳（%.0fpx）",
+                        ribbonWidth.get(0), ribbonWidth.get(1))
+                .isLessThanOrEqualTo(ribbonWidth.get(1));
+    }
+
     @Test
     void theConnectionPillShowsTheRealConnectionName(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();

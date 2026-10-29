@@ -19,6 +19,14 @@ public class App extends Application {
 
     static final String APP_TITLE = "AIDB";
 
+    /**
+     * 验收帧的固定场景尺寸。⚠️ 不只是"初始大小"：窗口一旦被最大化再取消，
+     * JavaFX 还原的是**外框**（实测场景缩成 1264×761，差一圈边框 + 标题栏），
+     * 所以 {@link io.agenticdb.ui.shell.ScreenshotSession} 取消最大化之后要按这两个值把场景拉回来。
+     */
+    public static final double SHOT_SCENE_WIDTH = 1280;
+    public static final double SHOT_SCENE_HEIGHT = 800;
+
     private AppShell shell;
 
     @Override
@@ -44,7 +52,7 @@ public class App extends Application {
         startup.mark("locale");
 
         shell = new AppShell(settings, themeManager, startup);
-        Scene scene = new Scene(shell, 1280, 800);
+        Scene scene = new Scene(shell, SHOT_SCENE_WIDTH, SHOT_SCENE_HEIGHT);
         startup.mark("scene");
 
         themeManager.attach(scene);

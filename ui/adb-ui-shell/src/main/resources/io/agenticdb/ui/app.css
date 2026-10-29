@@ -270,11 +270,14 @@
     -fx-border-color: transparent;
     -fx-background-radius: 3px;
     -fx-border-radius: 3px;
+    /* 62 是**下限**不是定宽：按中文量出来的格子装不下 "Import / Export"（要 74px）
+       和 "Saved Queries"（要 69px），写死 pref 会把两个标签裁成省略号。
+       现在宽度跟着内容走，短标签（中文档）仍保持 62 的下限。 */
     -fx-min-width: 62;
-    -fx-pref-width: 62;
+    -fx-pref-width: -1;
     -fx-min-height: 58;
     -fx-pref-height: 58;
-    -fx-padding: 4px 2px;
+    -fx-padding: 4px 6px;
     -fx-cursor: hand;
 }
 
