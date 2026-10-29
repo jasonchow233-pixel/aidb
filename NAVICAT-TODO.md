@@ -25,7 +25,7 @@
   `tools/Crop.java`（<b>裁剪 + 整数倍放大</b>：1280 宽的原图上肉眼看不出 1px 的重叠与半截字，
   本轮「History 是不是被裁了」就是靠 8× 裁图判的 —— 结论是没裁，量到文字 37.6px 在 88px 的标签区里，
   差点凭错觉去改 CSS）；棘轮计数走 `node tools/cjk-count.mjs`（与 `I18nAuditTest` 同构，
-  ⚠️ `grep -hoP` 数出来是 1530 而不是 1504，差在注释里）。
+  ⚠️ `grep -hoP` 数出来是 **1530** 而棘轮是 **1504**（第四批那次），差在注释里 —— 两个口径混用就会看起来「棘轮又涨了」。）。
   裁图产物 `docs/screenshots/*-crop-*.png` 是**临时件**，看完就删 —— 留在里面会被
   `shots.sh` 的 md5 去重当成假帧报出来。
 
@@ -186,7 +186,7 @@ Navicat 把保存的查询当**对象**管：树里 `Queries` 分组 → 选中�
 
 | 编号 | 差距 | 目标 | 现状 | 成本 |
 |---|---|---|---|---|
-| **N1** | 无 i18n 层 | 两套资源包（en 默认 / zh），键名按区命名空间 | **层已建**（`I18n.java` + 两份 `.properties`，472 键对称）。抽取进度：出现 **2216 → 1504**、去重 **1404 → 1062** 条待抽，剩 **53 个文件**；`DataGridPage`(413→0) / `TableListPage`(70→0) / 顶区 / 动作层已收 | 8–12 |
+| **N1** | 无 i18n 层 | 两套资源包（en 默认 / zh），键名按区命名空间 | **层已建**（`I18n.java` + 两份 `.properties`，598 键对称）。抽取进度：出现 **2216 → 1306**、去重 **930** 条待抽，剩 **52 个文件**；`AppShell`(198→0) / `DataGridPage`(413→0) / `TableListPage`(70→0) / 顶区 / 动作层已收 | 8–12 |
 | **N2** | 菜单标签与项集 | `File/Edit/View/Query/Format/Favorites/Tools/Window/Help` | `文件/编辑/视图/数据库/对象/收藏夹/工具/窗口/帮助`（`MenuBarFactory.java:27-31`，9 组但项集不同） | 并入 N1 |
 
 落点：新增 `ui/adb-ui-core/.../I18n.java` + `messages_en.properties` / `messages_zh.properties`；
@@ -337,7 +337,7 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
 |---|---|---|---|
 | `ContrastTest.java:39`（`MIN_NORMAL = 4.5`）+ `:65`（`反色文字 / 主色` 配对） | `text-inverse/accent` ≥ 4.5:1 | 阈值降到 4.4:1 并注释「2026-10-28 用户裁定取 Navicat 原值 `#0078D7`，实测 4.498:1，主动放弃 AA」 | 拍板 4 |
 | `TokenParityTest.java:63` | 命令带 64px | 140px 顶区 / Ribbon 91px / 磁贴 70×90 | N5/N6 |
-| `AppBarTest.java:137-149,224-231` | 恰好 6 个 `ribbon-*`、高 64 | 恰好 12 格、高 90、激活态 `#C0DCF3`+`#90C8F6`、组间 `#DBDBDB` | N6 |
+| `AppBarTest`：`theRibbonKeepsOnlyCommandsThatHaveNoSecondHome` / `theBarHasOneFixedHeightAndDoesNotGrowWithContent` | 恰好 6 个 `ribbon-*`、高 64 | 恰好 12 格、高 90、激活态 `#C0DCF3`+`#90C8F6`、组间 `#DBDBDB` | N6 |
 | `AppShellTest.java:161-182` | 顶区两行、工具件在 `#adb-chrome-row` | 顶区三行（菜单/Ribbon/页签）、页签行**只有页签** | N5/N7 |
 | `BrandMarkAuditTest` | 禁 `appbar-brand` | 维持（Navicat 顶区也没有品牌块），但窗口标题格式改 Navicat 式 `<对象> - Query - <产品名>` | N26 |
 | `LucideIconTest.java:129,213-233` | 自绘集恰 `{BRAND,DOT}`、源 SVG `stroke-width=2` | 新增彩色资源命名空间与校验规则（多 path、逐 path paint、色值落在实测色板内） | N3/N4 |
@@ -374,6 +374,43 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
   `println("[screenshot] 窗口被系统还原成最大化，已取消")` → `ScreenshotSession` 从 8 涨到 9、
   总数 1504 → 1505、门禁红。改成 ASCII 日志（解释留在注释里，注释会被剥掉）后回到 1504。
   这条正是「只许降不许升」存在的意义：**顺手写的诊断也算字面量**。
+
+**第五批（`AppShell` 198 → 0）的三条纪律**（都来自"合并键"与"数据不是文案"这两个坑）：
+
+- **英文术语一律取自本地 Navicat 帧**，帧里没有的在资源包里标了 inferred：
+  `navicat17-object-list` 给 Name / **Rows** / **Data Length** / **Engine** / **Modified Date** /
+  Comment 与页脚 "22 Tables"；`navicat17-designer-fields` 给页签 **Indexes / Foreign Keys / Triggers**、
+  工具条 **Primary Key**、页脚 **"Number of Fields: 15"**、属性区 **Collation**。
+  顺手证伪了两个我原本会写的词：不是 "Row Count" 也不是 "Creation Time"。
+- **复用键的前提是两侧中文/英文都和原文一样**，否则就是偷改文案：
+  `column.rows` 中文是「行」而详情面板原文是「行数」、`column.created` 是「创建日期」而原文是
+  「创建时间」—— 这两条（加 `detail.updatedAt`）**另立键**，只复用 `column.name/dataLength/engine/
+  collation/comment` 这五条两侧完全一致的。同理标签页标题用 `window.pageType.object`（"Objects"）
+  而不是 `category.object`（单数 "Object"，当页面标题读着不对），中文两侧本来就都是「对象」。
+- **快捷键表 37 行里 21 行复用 `action.*` / `menu.*`** —— 表里写的就是同一个动作，
+  跟着动作改名才对。但 "撤销上一处编辑" / "全选当前页" 两行虽然与 `grid.tip.undo`、
+  `grid.batch.selectAllTip` **文字相同**，那是别的界面上的 tooltip，借过来就成了
+  「改一句网格提示词，顺手改掉 F1 快捷键表」，所以另立 `shortcut.*`。
+- ⭐ **数据不是文案，但也不许留在 Java 字面量里**：`writeDemoImportFile()` 那三行
+  张三/李四/王五 是**故意用 GBK 写盘**的演示 CSV —— 中文姓名正是让导入向导的「编码」选择器
+  在帧里真起作用的理由，翻成英文这张帧就没意义了，所以**不能进语言包**。
+  但留在源码里会让 `CJK_CEILING` 永远降不到 0，只能开注释豁免口子，
+  而豁免口子一旦开就有人拿它躲真文案。落点是资源文件
+  `demo-import-utf8.csv`（源文件 UTF-8 可读可 diff），**写盘时才转 GBK** —— 转码这一步本来就是
+  那张帧要证明的东西。
+- ⭐ **新立第 11 条门禁** `callSitesPassAsManyArgumentsAsTheBundlesHavePlaceholders`：
+  第五批一次引入约 40 个带 `{0}/{1}` 的键，而「键存在」那条证明不了「键用得对」——
+  少写一个占位符就少一段话、多写一个就在状态栏上长出字面 `{2}`，**两种都不报错**。
+  这条按顶层逗号解析每个 `I18n.t(...)` 的实参数，与 en / zh **两侧**的占位符数各比一次
+  （两侧不一样正是要抓的东西），并要求占位符从 `{0}` 起连续。
+  两次变异验证各红一次：调用点少递一个实参 → 报
+  「`shell.connectedObjects` 递了 1 个实参，en 侧有 2 个占位符」；
+  资源里多写一个 `{2}` → 报「`shell.deleteBody` 递了 0 个实参，en 侧有 3 个占位符」。
+  非空转由「至少扫到 20 个带参调用点」这条断言兜住（实测扫到 >20）。
+- ⚠️ codemod 85 条**先干跑再落盘**：4 条多行模式因缩进猜错而 MISS（干跑报出来，改成 16 空格后
+  85/85 各命中一次才 apply）。落盘后编译又抓出一条干跑看不见的：`shell.density` 把
+  `"密度：" + switch (value) {…}` 改成嵌套实参后**少了一个右括号** —— 结构改动光靠字符串比对
+  验不出来，必须编译。
 - ⚠️ 顺手抓到的两个非文案缺陷：① `IconButtons` 没关助记符解析，资源里的 `"Filter & Sort"`
   被 JavaFX 画成「Filter  Sort」（`&S` 下划线），而 `getText()` 仍返回原串 ——
   所有按字符串比对的门禁都看不见它。已在工厂里 `setMnemonicParsing(false)` 并新立
@@ -381,6 +418,19 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
   ② 阶梯门禁把「喂宽度」和「读可见性」分成两次跨线程调用，中间允许插入宽度监听器的
   `runLater`，实测到过自相矛盾的一帧（`pref=960` 像全展开、`jumpRow.isVisible()=false` 像已收起），
   单跑永远复现不了 —— 改成**同一条 FX 任务里喂完立刻读**。
+
+**第五批重拍帧目视时新抓到的一个缺陷（记为 D-5，已修）**：命令带六颗格子里有两颗被裁成省略号 ——
+`Import / …` 与 `Saved Qu…`。根因和第四批那三处同源但**在另一个文件里**：
+`app.css` 的 `.adb-ribbon__button` 写死 `-fx-min-width: -fx-pref-width: 62`，
+62px 是**按中文量的**（"已保存查询" 五个字装得下），换英文后 "Import / Export" 要 74px、
+"Saved Queries" 要 69px，而标签实得只有 56px（62 减去左右各 2px 填充）。
+⚠️ 这个缺陷**不是第五批引入的**：`git show HEAD:docs/screenshots/p0-shell.png` 裁出顶区一看，
+第四批那版一模一样地裁着 —— 它是首批（顶区四件套）就埋下的，只是此前 33 帧的目视没往顶区看，
+而且**没有任何一条门禁量过标签宽度**（`theBarHasOneFixedHeight...` 量的是高度）。
+修法：`-fx-pref-width: -1`（跟着内容算）+ 填充 2px→6px，`min-width: 62` 留着当中文档的下限。
+新立 `AppBarTest.ribbonLabelsAreNeverEllipsised`：钉的是**结果**不是手段 ——
+逐颗格子比 `label.getWidth()` 与 `label.prefWidth(-1)`，同时反向钉「六格合计不得顶出 1280 外壳」。
+先红后绿：改 CSS 前它报出上面那两个数（这就是变异验证），改完 13 条全绿。
 
 每条改判配一次变异验证（破坏 → 恰好 N 红 → 还原 → 绿），口径见本文 §7。
 
@@ -413,15 +463,15 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
 
 ---
 
-## 8. 当前基线（2026-10-29 R34 第四批之后实测）
+## 8. 当前基线（2026-10-29 R34 第五批之后实测）
 
-- 门禁 **1173 条 / 134 类 / 0 失败 / 48 环境跳过**。
+- 门禁 **1175 条 / 134 类 / 0 失败 / 48 环境跳过**。
   **量法（照抄，别再凭记忆写数）**：`./mvnw -o test` 之后
   `grep -aoP 'Tests run: \K[0-9]+(?=, Failures: [0-9]+, Errors: \d+, Skipped: \d+, Time elapsed)' 日志 | awk '{s+=$1;n++} END{print n,s}'`
-  → **150 组 / 1173 条**，与各模块汇总行相加一致；类数按 `**/target/surefire-reports/*.txt` 计数 = **134**
+  → **150 组 / 1175 条**，与各模块汇总行相加一致；类数按 `**/target/surefire-reports/*.txt` 计数 = **134**
   （150 与 134 的差是 `@Nested` 内部类：一行一组、一份报告）。
-  ⚠️ 本文上一版写 **1116**、ROADMAP 写 **1119**、本轮中途又记过 **1122** —— 三个数都对不上
-  1173，差的就是「按模块汇总」与「按报告文件累加」两种口径混用。以后一律用上面那条命令。
+  ⚠️ 本文上一版写 **1116**、ROADMAP 写 **1119**、本轮中途又记过 **1122 / 1173 / 1174** —— 都对不上，
+  差的就是「按模块汇总」与「按报告文件累加」两种口径混用。以后一律用上面那条命令。
   ⚠️ 全量必须用 JDK 25+：`JAVA_HOME` 留在系统默认的 21 上，enforcer 直接 BUILD FAILURE
   （本机可用 `C:\Users\Administrator\.jdks\openjdk-27.0.1.0.2`）。
 - ✅ **R33 与 R34 首批已落库**：`34ffb8f`（R33 全部 + R34 顶区与动作层抽取，合成一笔 ——
@@ -431,31 +481,45 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
   实测是 **1107 / 133**（133 个 `*Test.java` 全部出了 surefire 报告，没有静默跳过的类），
   也就是说那个数字是**记上去的，不是量出来的**。本轮起基线一律附量法。
   R34 首批之后 +6 条（`I18nAuditTest`）+1 类 = 1113 / 134。
-- 验收帧 **33 张**（28 亮 / 5 暗）—— 第四批之后**已全量重拍为英文档**，逐张目视 + md5 两两去重。
-  ⚠️ 中英混排仍在：侧栏（`SideBar` 96 条）、单元格详情抽屉（`CellDetailsDrawer` 39 条）、
-  对象详情面板等还没抽，帧里那些位置照旧是中文。
-  `scripts/shots.sh` 现在会把每张帧的 **宽×高** 打出来并和已入库的那版比：
-  全量重拍 33 张时它**当场抓到** p4-ddl 拍出 **1920×1017**（窗口被最大化）而其余全是 1280×800 ——
-  只看字节数发现不了，而宽屏帧会把「1280 下不溢出」这类结论整个带偏（本轮早前 p2-find 也出现过一次）。
-  来源查过：偏好节点里没有 `ui.window.*` 两条（查了注册表），代码里也只有 Window 菜单那一项调
+- 验收帧 **33 张**（28 亮 / 5 暗）—— 第五批 + D-5 修复之后**再次全量重拍为英文档**，
+  逐张目视 + md5 两两去重 + 逐张比尺寸。⚠️ 中英混排仍在：侧栏（`SideBar` 96 条）、
+  单元格详情抽屉（`CellDetailsDrawer` 39 条）、对象详情面板的字段/索引小节（`ObjectSectionsPanel` 40 条）、
+  查询页（`QueryPage` 161 条）等还没抽，帧里那些位置照旧是中文 —— **这是中间态不是验收态**。
+  ⭐ 目视这一步本轮**真的抓到了东西**（前三轮的"目视"漏了）：命令带两个标签被裁成省略号 = D-5，见 §5 末。
+  `scripts/shots.sh` 会把每张帧的 **宽×高** 打出来并和已入库的那版比 ——
+  本轮它抓到两张：`p4-ddl`（上一轮）与 **`p2-find` 又 1920×1017**、
+  以及 `p3-query-menu` 从 203×172 变成 1280×800（**弹窗没了**）。
+  ⚠️ 尺寸守卫**也会指错方向**：p3-query-menu 报"和已入库不一致"，但这次是**新帧错了**、
+  旧帧（真菜单）才对 —— 守卫只说"变了"，对不对还得人看。
+  最大化那张的来源查过：偏好节点里没有 `ui.window.*` 两条（查了注册表），代码里也只有 Window 菜单那一项调
   `setMaximized` 而截图模式不点菜单 —— 是 Windows 把「同一个可执行文件上次的窗口摆放」还给了新窗口。
-  `ScreenshotSession` 加了「发现最大化就取消」的兜底，但重拍那一次**没触发它**（帧本来就是好的）：
-  所以已证明的是**检测**，兜底只是尽力，别当已修。
-  ⚠️ 加这个守卫时先踩了一坑：写成 `git show … | od` 会被 `set -o pipefail` + `set -e`
+  ⭐ 本轮把它从"尽力"变成了**已证明**：`ADB_SHOTS_MAXIMIZE=1` 让 `ScreenshotSession`
+  在按快门前自己最大化一次，逼兜底走真路径。第一版兜底**是坏的** —— 只取消最大化，
+  帧拍回来是 **1264×761**（JavaFX 还原的是外框，场景差一圈边框 + 标题栏），
+  而且把 `stage.setWidth()` 和 `snapshot()` 放同一条 FX 任务里读不到新尺寸，仍是 1264×761。
+  现在是**三步**：取消最大化 → 排一拍 → 按「外框 − 场景」的差值钉回 1280×800 → 再排一拍 → 拍。
+  实测日志 `forcing maximized… → maximized at capture time → restoring scene size:
+  stage=1280x800 scene=1264x761 → scene=1280x800`，PNG 就是 1280×800。
+  ⚠️ 加尺寸核对时先踩了一坑：写成 `git show … | od` 会被 `set -o pipefail` + `set -e`
   直接打死脚本（od 吃 8 字节就退出 → git 收 SIGPIPE 以 141 退出 → 命令替换失败 →
   日志停在「拍摄 p2-find」、rc=255，完全看不出原因）。改成先落临时文件再读。
-- **N1 进度**：ui 主源码 CJK 字面量 **2216 → 2011 → 1917 → 1504 次出现**（去重 1062 条），
-  资源包 **472 键**（en/zh 各 472，对称；其中 `grid.*` 296 键）。
+- **N1 进度**：ui 主源码 CJK 字面量 **2216 → 2011 → 1917 → 1504 → 1306 次出现**（去重 930 条），
+  资源包 **598 键**（en/zh 各 598，对称；`grid.*` 298 / `shell.*` 84 / `detail.*` 21 / `shortcut.*` 18）。
+  ⚠️ **上一批记的「472 键 / grid 296」是错的**：`git show HEAD:…messages_en.properties` 实测
+  **474 / 298** —— 那批收尾时又补了 `grid.overview.pkSeparator`、`grid.form.nullPrompt` 两个键，
+  数没回量就写进文档和提交信息了。同一个坑（数字是记上去的不是量出来的）第三次踩，
+  以后**键数也一律在最后一次改动之后量**。
   **棘轮量法**：`node tools/cjk-count.mjs` —— 与 `I18nAuditTest` 的 `stripComments` + 正则同构，
-  逐字一致。⚠️ 用 `grep -hoP` 数会得 **1530**（多出来的 26 条全在注释里，grep 剥不掉注释），
+  逐字一致。⚠️ 用 `grep -hoP` 数会得多出一截（第四批那次 1530 vs 1504，多出来的 26 条全在注释里，grep 剥不掉注释），
   两个口径混用就会看起来「棘轮又涨了」。
   第一批 = 顶区四件套（2216 → 2154）。第二批 = **动作层** 71 个动作（2154 → 2011）。
   第三批 = 表清单页 `TableListPage` 70 → 0（2011 → 1917）。
   **第四批 = 数据网格 `DataGridPage` 413 → 0**（1917 → **1504**），333 处 `I18n.t(...)`。
+  **第五批 = 外壳 `AppShell` 198 → 0**（1504 → **1306**），85 处一次 codemod 落完。
   这是 R34 最大的一块，也是**第一个把「文字长度」变成缺陷的页**：英文比中文宽，
   工具条与分页器两处都因此改判（见 §5 末三行）。
-  棘轮 `CJK_CEILING = 1504` 只许降不许升；**还剩 53 个文件**，大头
-  `AppShell`(198) / `QueryPage`(161) / `StructurePage`(156) / `SideBar`(96) /
+  棘轮 `CJK_CEILING = 1306` 只许降不许升；**还剩 52 个文件**，大头
+  `QueryPage`(161) / `StructurePage`(156) / `SideBar`(96) /
   `ConnectionWizard`(89) / `ObjectHomePage`(83) / `NewTableDialog`(75) / `ImportWizard`(61)。
   ⚠️ 此前按「含 CJK 的行数」排优先级是错的 —— 那个数把注释也算进去了（`DataGridPage` 1037 行 vs 实际 415 条字面量）。
 - ⭐ **第四批新立的一条尺，顺带暴露了老尺子的盲区**：`CJK_LITERAL` 只认 U+4E00–U+9FFF，
@@ -464,8 +528,22 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
   实测全库含全角标点的字面量共 **366 条**（绝大多数与汉字棘轮重叠）。
   修法不是把 `CJK_CEILING` 从 1504 涨到 1536（那等于给同一笔债立两张账，还当场破掉「只许降」），
   而是新立 `filesThatClaimToBeCleanAreAlsoFreeOfFullwidthPunctuation`：
-  **汉字清零的文件，全角也必须清零**。当前 **25 个文件**做到零汉字且零全角（那个数是在变异验证时读的，那时 DataGridPage 被故意弄脏）。
-- **N1-a ✅ / N1-c ✅**（`I18nAuditTest` 现 **10 条**断言）；**N1-b 进行中（第四批已收，53 个文件待抽）**；**N2 未动**。
+  **汉字清零的文件，全角也必须清零**。当前 **26 个文件**做到零汉字且零全角（第五批之后由 `node tools/cjk-count.mjs` 实测）。
+- **N1-a ✅ / N1-c ✅**（`I18nAuditTest` 现 **11 条**断言）；**N1-b 进行中（第五批已收，52 个文件待抽）**；**N2 ✅**。
+- ✅ **D-5 已修（第五批重拍帧目视发现）**：命令带 `Import / Export`、`Saved Queries` 两个标签被裁成省略号
+  —— `.adb-ribbon__button` 写死 62px 定宽（按中文量的），英文要 74 / 69px 而实得只有 56px。
+  改成内容驱动宽度 + 62px 下限，并新立 `AppBarTest.ribbonLabelsAreNeverEllipsised`（先红后绿，见 §5 末）。
+  ⚠️ 缺陷本身是**首批**埋的，第四批那版帧就裁着 —— 说明「重拍了 33 帧」不等于「逐张看了 33 帧」。
+- ✅ **D-6 已修：`p3-query-menu` 连续两轮拍到主窗口而不是右键菜单**。
+  第一次归因为「冷启动没等到行」是**错的** —— 加了摆位日志之后实测 `menu posed, windows=2`
+  说明菜单**开出来了**，是快门按下时它已经不在了。逐档试等待时长定位边界：
+  1500 / 3000 / 5000 / 7000 / 8000ms 都拍得到，**9000ms 拍不到**，
+  而本帧固定等 8000ms —— 正好压在菜单的寿命边界上，所以同一份代码一次成一次败。
+  菜单自己收起的触发者**没查到**（主源码里没有 5–10s 的 FX 计时器，最像窗口失焦时 JavaFX 收掉 PopupWindow）。
+  修法不去赌那个原因，而是**续摆**：每 1500ms 看一眼，没有浮窗了就重新投递一次真事件
+  （只在「没有浮窗」时续，避免叠两层菜单），于是快门按下时菜单最多 1.5 岁。
+  验证：9000ms 这一档从红变绿；重拍的帧里日志打了两次 `menu posed`（菜单确实中途收过一次、被续回来了）。
+  ⚠️ 证据面没打折：拍的还是同一个 `setOnContextMenuRequested` 处理器开出来的真菜单。
 - ⚠️ **D-1 未结，别当已修完**：分页器降级阶梯拿的输入是**盒子自己的宽度**，
   而对象详情面板是浮在右端的 —— p2-details 实测盒子右边缘在场景 x=1082、面板从 x≈990 起，
   **右边约 90px 被压在面板底下**，「每页」下拉框露出半截。
