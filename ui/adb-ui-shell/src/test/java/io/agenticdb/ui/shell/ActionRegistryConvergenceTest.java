@@ -102,6 +102,71 @@ class ActionRegistryConvergenceTest {
                         "object.diagnostics");
     }
 
+    /**
+     * ⭐ R34 第八批：菜单项的**文字**也必须来自动作自己。
+     *
+     * <p>上一版这里 28 个 `menuItem(id, …)` 里有 27 个带中文覆盖，其中 21 个与动作的
+     * label 逐字相同 —— 那层覆盖本身就是本地化 bug：{@code menuItemFor} 是
+     * {@code labelOverride == null ? action.label() : labelOverride}，于是英文构建里
+     * 本地化好的动作名又被中文盖回去。删掉覆盖之后，这条钉住"删了之后真的生效了"。
+     *
+     * <p>⚠️ 这条闸补的是**证据面**的洞：对象树的右键菜单不在任何一张验收帧里，
+     * 上面那条 ids 断言只比 id、不比文字 —— 没有这条，21 处改动等于没人看过。
+     * 剩下 6 处覆盖是**故意的**（措辞确实和动作名不同：「编辑连接」「打开查询」
+     * 「刷新」「打开」，以及收藏/取消收藏那一对照），列在下面，不在名单里的一律算漂移。
+     */
+    @Test
+    void objectTreeMenuLabelsComeFromTheActionsThemselves(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        robot.doubleClickOn(treeCell(robot, "users"));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        List<String> drifted = onFx(() -> {
+            List<String> found = new ArrayList<>();
+            ContextMenu menu = shell(robot).sideBar().contextMenuForTest();
+            if (menu == null) {
+                return List.of("右键菜单为 null —— 这条门禁在空转");
+            }
+            ActionRegistry registry = shell(robot).actionRegistry();
+            int checked = 0;
+            for (MenuItem item : menu.getItems()) {
+                if (item.getId() == null || DELIBERATE_OVERRIDES.contains(item.getId())) {
+                    continue;
+                }
+                checked++;
+                Action action = registry.find(item.getId()).orElse(null);
+                if (action == null) {
+                    found.add(item.getId() + " 不在注册表里");
+                } else if (!action.label().equals(item.getText())) {
+                    found.add(item.getId() + " 显示「" + item.getText()
+                            + "」而动作名叫「" + action.label() + "」");
+                }
+            }
+            if (checked < 8) {
+                found.add("表节点菜单只比了 " + checked + " 项（应有 9 项走注册表）"
+                        + " —— 白名单写宽了，这条闸在空转");
+            }
+            return found;
+        });
+
+        assertThat(drifted)
+                .as("菜单项文字与动作 label 不一致（一个动作一个名字；要换措辞就改动作，"
+                        + "或在 DELIBERATE_OVERRIDES 里说明为什么这里必须不同）：\n  %s",
+                        String.join("\n  ", drifted))
+                .isEmpty();
+    }
+
+    /**
+     * 表节点菜单里刻意与动作 label 不同的覆盖。
+     *
+     * <p>只有这一条：「收藏 / 取消收藏」随当前状态二选一，动作自己的 label 是
+     * 合并写法（{@code action.object.favorite=收藏 / 取消收藏}），不能直接当菜单文字。
+     * 其余四处覆盖（连接节点的「编辑连接」、已保存查询分组行的「刷新」、
+     * 查询节点的「打开查询」、default 分支的「打开」）长在**别的节点种类**上，
+     * 本用例走的是表节点，不进这份名单 —— 写宽了就会把表节点那 9 项一起放过。
+     */
+    private static final List<String> DELIBERATE_OVERRIDES = List.of("object.favorite");
+
     @Test
     void objectTreeActionsAreRegisteredAndDiscoverable(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();

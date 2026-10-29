@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.ui.App;
+import io.agenticdb.ui.I18n;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import org.fxmisc.richtext.CodeArea;
@@ -87,7 +88,7 @@ class WorkspaceToolsPageTest {
         WaitForAsyncUtils.waitForFxEvents();
 
         // 侧栏的「查询历史」入口。
-        clickSidebar(robot, "查询历史");
+        clickSidebar(robot, I18n.t("sidebar.tool.history"));
         WaitForAsyncUtils.waitForFxEvents();
 
         ListView<?> list = robot.lookup("#history-list").queryAs(ListView.class);
@@ -105,7 +106,7 @@ class WorkspaceToolsPageTest {
 
         // 选中对象树里的 users，再从侧栏的「诊断」入口进。
         selectTreeCell(robot, "users");
-        clickSidebar(robot, "诊断");
+        clickSidebar(robot, I18n.t("action.object.diagnostics"));
         WaitForAsyncUtils.waitForFxEvents();
 
         Label title = robot.lookup("#diagnostics-title").queryAs(Label.class);

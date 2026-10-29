@@ -73,7 +73,7 @@ class I18nAuditTest {
      * 而本类是先 {@code stripComments} 再计数。口径不同的两个数放在一起，
      * 只会让人以为棘轮又涨了。
      */
-    private static final int CJK_CEILING = 989;
+    private static final int CJK_CEILING = 890;
 
     /**
      * ⭐ R34 N1-b 第七批补的第三把尺：<b>模型层</b>（core / workbench）的汉字字面量。

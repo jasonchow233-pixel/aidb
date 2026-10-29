@@ -2617,11 +2617,6 @@ public final class AppShell extends StackPane {
         status(I18n.t("shell.openStructure", name));
     }
 
-    private void openTool(String title) {
-        openTab(new TabItem("tool:" + title, title, TabKind.TOOL));
-        status(I18n.t("shell.openTool", title));
-    }
-
     // ─────────────────────────── 数据页 ───────────────────────────
 
     private Node createGridPage(TabItem tab) {

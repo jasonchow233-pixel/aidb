@@ -595,18 +595,18 @@ public final class SideBar extends VBox {
         // ⭐ Navicat 的侧栏只有**一棵树**：标题「我的连接」下面直接是连接，
         //    没有「收藏 / 连接 / 工作台 / 工具」这些分段标题，也没有连接下拉。
         //    连接切换在顶部应用栏与树里都能做；查询入口跟着连接走（右键 / ⌘K）。
-        Label title = new Label("我的连接");
+        Label title = new Label(I18n.t("sidebar.myConnections"));
         title.setId("sidebar-title");
         title.getStyleClass().add("adb-sidebar__title");
 
         Region headerSpacer = new Region();
         HBox.setHgrow(headerSpacer, Priority.ALWAYS);
 
-        Button newQuery = IconButtons.icon(Icons.Icon.QUERY, "新建查询");
+        Button newQuery = IconButtons.icon(Icons.Icon.QUERY, I18n.t("action.object.new-query"));
         newQuery.setId("sidebar-new-query");
-        newQuery.setAccessibleText("新建查询");
+        newQuery.setAccessibleText(I18n.t("action.object.new-query"));
         newQuery.getStyleClass().add("adb-icon-button");
-        newQuery.setTooltip(new Tooltip("在该连接上新建查询"));
+        newQuery.setTooltip(new Tooltip(I18n.t("sidebar.newQueryHint")));
         newQuery.setOnAction(event -> openQuery(queryTargetConnectionId(), null));
 
         HBox header = new HBox(6, title, headerSpacer, newQuery);
@@ -629,7 +629,7 @@ public final class SideBar extends VBox {
             }
         });
 
-        search.setPromptText("搜索表、视图");
+        search.setPromptText(I18n.t("sidebar.searchPrompt"));
         search.getStyleClass().add("adb-sidebar__search");
         search.setPrefHeight(io.agenticdb.ui.Tokens.H_INPUT_LIGHT);
         search.setMinWidth(120);
@@ -637,11 +637,11 @@ public final class SideBar extends VBox {
 
         // ⭐ S4：搜索框在**底部**（Navicat 就是这个位置），
         //    和 ★ 收藏、« 折叠按钮同一行 —— 不是在顶上单独占一行。
-        Button onlyFavorites = IconButtons.icon(Icons.Icon.STAR, "只看收藏");
+        Button onlyFavorites = IconButtons.icon(Icons.Icon.STAR, I18n.t("sidebar.onlyFavorites"));
         onlyFavorites.setId("sidebar-favorites-filter");
-        onlyFavorites.setAccessibleText("只看收藏");
+        onlyFavorites.setAccessibleText(I18n.t("sidebar.onlyFavorites"));
         onlyFavorites.getStyleClass().add("adb-icon-button");
-        onlyFavorites.setTooltip(new Tooltip("只看收藏"));
+        onlyFavorites.setTooltip(new Tooltip(I18n.t("sidebar.onlyFavorites")));
         onlyFavorites.setOnAction(event -> {
             showOnlyFavorites = !showOnlyFavorites;
             if (showOnlyFavorites) {
@@ -650,14 +650,14 @@ public final class SideBar extends VBox {
                 onlyFavorites.getStyleClass().remove("adb-icon-button--active");
             }
             refreshTree();
-            status.accept(showOnlyFavorites ? "只看收藏" : "显示全部对象");
+            status.accept(showOnlyFavorites ? I18n.t("sidebar.onlyFavorites") : I18n.t("sidebar.showAllObjects"));
         });
 
-        Button collapse = IconButtons.icon(Icons.Icon.CHEVRON_LEFT, "折叠侧栏");
-        collapse.setAccessibleText("折叠侧栏");
+        Button collapse = IconButtons.icon(Icons.Icon.CHEVRON_LEFT, I18n.t("sidebar.collapse"));
+        collapse.setAccessibleText(I18n.t("sidebar.collapse"));
         collapse.setId("sidebar-collapse");
         collapse.getStyleClass().add("adb-icon-button");
-        collapse.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled("折叠侧栏", "Mod+Backslash")));
+        collapse.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(I18n.t("sidebar.collapse"), "Mod+Backslash")));
         collapse.setOnAction(event -> actions.run("sidebar.toggle"));
 
         HBox bottomBar = new HBox(6, search, onlyFavorites, collapse);
@@ -669,14 +669,15 @@ public final class SideBar extends VBox {
         //    查询历史与诊断是**真功能**（HistoryPage / DiagnosticsPage），项目规则是
         //    「占位要么接要么删」—— 这里接的是真功能，就必须留入口，否则功能变成不可达。
         //    Navicat 模型是「一棵树 + 底部工具」，所以这里**不加分段标题**，平铺在底栏上方。
-        Button history = navButton("sidebar-history", Icons.Icon.HISTORY, "查询历史",
-                () -> openTool("查询历史"));
+        Button history = navButton("sidebar-history", Icons.Icon.HISTORY,
+                I18n.t("sidebar.tool.history"),
+                () -> openTool(TOOL_HISTORY, I18n.t("sidebar.tool.history")));
         // 诊断对象树里当前选中的表；没选中时 onSelected 会给提示而不是崩。
-        Button diagnostics = navButton("sidebar-diagnostics", Icons.Icon.DIAGNOSTICS, "诊断",
+        Button diagnostics = navButton("sidebar-diagnostics", Icons.Icon.DIAGNOSTICS, I18n.t("action.object.diagnostics"),
                 () -> actions.run("object.diagnostics"));
         // 导入 / 导出（P6）：菜单与工具栏也有入口，这里补回侧栏让三个工具成一行，
         // 同时让 TRANSFER 图标重新被使用（否则 IconSystemAuditTest 判它是死代码）。
-        Button transfer = navButton("sidebar-transfer", Icons.Icon.TRANSFER, "导入 / 导出",
+        Button transfer = navButton("sidebar-transfer", Icons.Icon.TRANSFER, I18n.t("action.import-export"),
                 () -> actions.run("import-export"));
         VBox tools = new VBox(2, history, diagnostics, transfer);
         tools.getStyleClass().add("adb-sidebar__tools");
@@ -689,7 +690,7 @@ public final class SideBar extends VBox {
 
         tree.getStyleClass().add("adb-object-tree");
         // ⭐ P7：树本身没有文字，读屏只会读「树」—— 给一个明确的名称。
-        tree.setAccessibleText("数据库对象树");
+        tree.setAccessibleText(I18n.t("sidebar.treeAccessible"));
         // ⭐ 树根不显示：标题已经是「我的连接」，再显示一行同名根节点
         //    就是重复占位（Navicat 的树直接从连接开始）。
         tree.setShowRoot(false);
@@ -840,26 +841,26 @@ public final class SideBar extends VBox {
         rail.setAlignment(Pos.TOP_CENTER);
         rail.setPadding(new Insets(8, 0, 8, 0));
 
-        Button expand = railButton(Icons.Icon.CHEVRON_RIGHT, io.agenticdb.ui.Shortcuts.labelled("展开侧栏", "Mod+Backslash"), () -> actions.run("sidebar.toggle"));
+        Button expand = railButton(Icons.Icon.CHEVRON_RIGHT, io.agenticdb.ui.Shortcuts.labelled(I18n.t("sidebar.expand"), "Mod+Backslash"), () -> actions.run("sidebar.toggle"));
         expand.setId("sidebar-expand");
         Button connection = railButton(Icons.Icon.CONNECT, connectionName,
-                () -> status.accept("连接：" + connectionName));
-        Button favorites = railButton(Icons.Icon.STAR, "收藏", () -> {
+                () -> status.accept(I18n.t("sidebar.connectionPrefix", connectionName)));
+        Button favorites = railButton(Icons.Icon.STAR, I18n.t("sidebar.favorites"), () -> {
             setCollapsed(false);
             refreshTree();
         });
-        String firstTable = tables.isEmpty() ? "表" : tables.getFirst().name();
+        String firstTable = tables.isEmpty() ? I18n.t("detail.kind.table") : tables.getFirst().name();
         Button users = railButton(Icons.Icon.TABLE, firstTable, () -> {
             if (!tables.isEmpty()) {
                 openGrid(tables.getFirst().name());
             }
         });
-        Button find = railButton(Icons.Icon.SEARCH, io.agenticdb.ui.Shortcuts.labelled("搜索", "Mod+F"), this::focusSearch);
+        Button find = railButton(Icons.Icon.SEARCH, io.agenticdb.ui.Shortcuts.labelled(I18n.t("sidebar.search"), "Mod+F"), this::focusSearch);
         // ⚠️ 这里原来直接 openTool("诊断")，但 WorkspaceView 解析诊断页时会做
         //    title.substring("诊断 · ".length()) —— 标题只有「诊断」两个字会越界崩溃。
         //    统一走 object.diagnostics 动作，由它按「当前选中的对象」拼出
         //    「诊断 · <表名>」，没有选中对象时只给提示。
-        Button tools = railButton(Icons.Icon.DIAGNOSTICS, "诊断", () -> actions.run("object.diagnostics"));
+        Button tools = railButton(Icons.Icon.DIAGNOSTICS, I18n.t("action.object.diagnostics"), () -> actions.run("object.diagnostics"));
 
         Region spacer = new Region();
         VBox.setVgrow(spacer, Priority.ALWAYS);
@@ -867,7 +868,7 @@ public final class SideBar extends VBox {
         // 4.5-11：这里以前是写死的「DEV」。现在显示当前连接的方言 —— 真信息。
         Label dialect = new Label(dialectName);
         dialect.getStyleClass().add("adb-rail__dialect");
-        dialect.setAccessibleText("当前数据库方言：" + dialectName);
+        dialect.setAccessibleText(I18n.t("sidebar.dialectAccessible", dialectName));
 
         rail.getChildren().addAll(expand, connection, favorites, users, find, tools, spacer, dialect);
     }
@@ -878,7 +879,7 @@ public final class SideBar extends VBox {
         if (rail.getChildren().size() > 0) {
             Label last = (Label) rail.getChildren().get(rail.getChildren().size() - 1);
             last.setText(dialectName);
-            last.setAccessibleText("当前数据库方言：" + dialectName);
+            last.setAccessibleText(I18n.t("sidebar.dialectAccessible", dialectName));
         }
     }
 
@@ -907,7 +908,7 @@ public final class SideBar extends VBox {
         //    会被 DialectBranchAuditTest 拦下（而且本来就该避免）。
         List<ConnectionProfile> entries = new ArrayList<>(connections);
         TreeItem<DemoNode> root = new TreeItem<>(
-                new DemoNode("我的连接", NodeKind.ROOT, Icons.Icon.DATABASE));
+                new DemoNode(I18n.t("sidebar.myConnections"), NodeKind.ROOT, Icons.Icon.DATABASE));
         root.setExpanded(true);
 
         if (entries.isEmpty()) {
@@ -996,7 +997,7 @@ public final class SideBar extends VBox {
             return null;
         }
         TreeItem<DemoNode> group = new TreeItem<>(new DemoNode(
-                "已保存查询", NodeKind.SAVED_GROUP, Icons.Icon.SAVE, "",
+                I18n.t("sidebar.group.savedQueries"), NodeKind.SAVED_GROUP, Icons.Icon.SAVE, "",
                 servingConnectionId, visible.size()));
         group.setExpanded(true);
         for (SavedQueries.Entry entry : visible) {
@@ -1034,7 +1035,7 @@ public final class SideBar extends VBox {
     private void openSavedQuery(String targetConnection, String name) {
         SavedQueries.Entry entry = savedQueryByName(name);
         if (entry == null) {
-            status.accept("这条已保存查询已经不在了：" + name);
+            status.accept(I18n.t("sidebar.savedQueryGone", name));
             return;
         }
         onOpenSavedQuery.accept(new SavedQueryRequest(targetConnection, entry.name(), entry.sql()));
@@ -1086,14 +1087,14 @@ public final class SideBar extends VBox {
                 .filter(object -> object.kind() == ObjectKind.EVENT).toList();
 
         return List.of(
-                kindGroup("表", NodeKind.TABLE, profileTables, needle, servingConnectionId),
-                kindGroup("视图", NodeKind.VIEW, profileViews, needle, servingConnectionId),
+                kindGroup(I18n.t("sidebar.group.tables"), NodeKind.TABLE, profileTables, needle, servingConnectionId),
+                kindGroup(I18n.t("sidebar.group.views"), NodeKind.VIEW, profileViews, needle, servingConnectionId),
                 // ⭐ S3：过程 / 函数 / 触发器（Navicat 的对象浏览层）
-                kindGroup("过程", NodeKind.PROCEDURE, profileProcedures, needle, servingConnectionId),
-                kindGroup("函数", NodeKind.FUNCTION, profileFunctions, needle, servingConnectionId),
-                kindGroup("触发器", NodeKind.TRIGGER, profileTriggers, needle, servingConnectionId),
+                kindGroup(I18n.t("sidebar.group.procedures"), NodeKind.PROCEDURE, profileProcedures, needle, servingConnectionId),
+                kindGroup(I18n.t("sidebar.group.functions"), NodeKind.FUNCTION, profileFunctions, needle, servingConnectionId),
+                kindGroup(I18n.t("sidebar.group.triggers"), NodeKind.TRIGGER, profileTriggers, needle, servingConnectionId),
                 // ⭐ O1：事件分组（空分组会被摘掉，所以非 MySQL 看不到它）。
-                kindGroup("事件", NodeKind.EVENT, profileEvents, needle, servingConnectionId));
+                kindGroup(I18n.t("sidebar.group.events"), NodeKind.EVENT, profileEvents, needle, servingConnectionId));
     }
 
 
@@ -1139,7 +1140,7 @@ public final class SideBar extends VBox {
                 // ⭐ 占位子节点：既是箭头的由头，也是诚实的「正在读」状态 ——
                 //    展开时加载会立刻开始，读到列就换掉它。
                 item.getChildren().add(new TreeItem<>(
-                        new DemoNode("读取列…", NodeKind.COLUMN, Icons.Icon.COLUMNS,
+                        new DemoNode(I18n.t("sidebar.columnsLoading"), NodeKind.COLUMN, Icons.Icon.COLUMNS,
                                 "", connectionId)));
                 item.expandedProperty().addListener((obs, was, is) -> {
                     if (is) {
@@ -1188,7 +1189,7 @@ public final class SideBar extends VBox {
             attemptedColumns.remove(key);
             if (node != null) {
                 node.getChildren().setAll(new TreeItem<>(new DemoNode(
-                        "列读取失败（展开重试）", NodeKind.COLUMN, Icons.Icon.COLUMNS,
+                        I18n.t("sidebar.columnsFailed"), NodeKind.COLUMN, Icons.Icon.COLUMNS,
                         "", connectionId)));
             }
             return;
@@ -1318,7 +1319,7 @@ public final class SideBar extends VBox {
         boolean nothing = searching && countObjects(tree.getRoot()) == 0;
         searchEmpty.setVisible(nothing);
         if (nothing) {
-            searchEmpty.setText("没有匹配「" + filter.trim() + "」的对象");
+            searchEmpty.setText(I18n.t("sidebar.searchEmpty", filter.trim()));
         }
     }
 
@@ -1356,14 +1357,14 @@ public final class SideBar extends VBox {
      */
     public void clearStarred() {
         if (starred.isEmpty()) {
-            status.accept("没有收藏");
+            status.accept(I18n.t("sidebar.noFavorites"));
             return;
         }
         int count = starred.size();
         starred.clear();
         settings.set(STARRED_KEY, "");
         refreshTree();
-        status.accept("已清空 " + count + " 个收藏");
+        status.accept(I18n.t("sidebar.favoritesCleared", count));
     }
 
     public List<String> starredNames() {
@@ -1410,7 +1411,7 @@ public final class SideBar extends VBox {
         }
         saveStarred();
         refreshTree();
-        status.accept(starred.contains(name) ? "已收藏 " + name : "已取消收藏 " + name);
+        status.accept(starred.contains(name) ? I18n.t("sidebar.starred", name) : I18n.t("sidebar.unstarred", name));
     }
 
     /** 供门禁检查右键菜单是否来自注册表（4.5-8）。 */
@@ -1427,59 +1428,63 @@ public final class SideBar extends VBox {
         ContextMenu menu = new ContextMenu();
         switch (node.kind()) {
             case TABLE, VIEW -> menu.getItems().addAll(
-                    actions.menuItem("object.open-data", "打开数据"),
-                    actions.menuItem("object.open-structure", "打开结构"),
-                    actions.menuItem("object.new-query", "新建查询"),
+                    actions.menuItem("object.open-data"),
+                    actions.menuItem("object.open-structure"),
+                    actions.menuItem("object.new-query"),
                     new SeparatorMenuItem(),
                     actions.menuItem("object.favorite",
-                            starred.contains(node.name()) ? "取消收藏" : "收藏"),
-                    actions.menuItem("object.copy-name", "复制名称"),
-                    actions.menuItem("object.copy-select", "复制 SELECT"),
+                            starred.contains(node.name())
+                                    ? I18n.t("sidebar.favoriteRemove")
+                                    : I18n.t("sidebar.favoriteAdd")),
+                    actions.menuItem("object.copy-name"),
+                    actions.menuItem("object.copy-select"),
                     new SeparatorMenuItem(),
-                    actions.menuItem("object.diagnostics", "诊断"),
+                    actions.menuItem("object.diagnostics"),
                     new SeparatorMenuItem(),
-                    actions.menuItem("object.truncate-table", "清空表…"),
-                    actions.menuItem("object.rename-table", "重命名表…"),
-                    actions.menuItem("object.drop-table", "删除表…"));
+                    actions.menuItem("object.truncate-table"),
+                    actions.menuItem("object.rename-table"),
+                    actions.menuItem("object.drop-table"));
             case CONNECTION -> menu.getItems().addAll(
-                    actions.menuItem("new-connection", "编辑连接"),
-                    actions.menuItem("object.refresh-objects", "刷新对象"),
+                    actions.menuItem("new-connection", I18n.t("sidebar.editConnection")),
+                    actions.menuItem("object.refresh-objects"),
                     new SeparatorMenuItem(),
-                    actions.menuItem("object.new-table", "新建表…"),
-                    actions.menuItem("object.new-query", "新建查询"));
+                    actions.menuItem("object.new-table"),
+                    actions.menuItem("object.new-query"));
             // ⭐ U1：库节点 —— 切过去 / 在里面建表 / 查数据。
             case CATALOG -> menu.getItems().addAll(
-                    actions.menuItem("object.switch-catalog", "切换到此数据库"),
+                    actions.menuItem("object.switch-catalog"),
                     new SeparatorMenuItem(),
-                    actions.menuItem("object.new-query", "新建查询"),
-                    actions.menuItem("object.new-table", "新建表…"),
-                    actions.menuItem("object.refresh-objects", "刷新对象"));
+                    actions.menuItem("object.new-query"),
+                    actions.menuItem("object.new-table"),
+                    actions.menuItem("object.refresh-objects"));
             // ⭐ P5-1：分组节点只装连接 —— 菜单只留「新建连接」。
             case CONNECTION_GROUP -> menu.getItems().add(
                     actions.menuItem("new-connection"));
             case GROUP -> menu.getItems().addAll(
-                    actions.menuItem("object.refresh-objects", "刷新对象"),
+                    actions.menuItem("object.refresh-objects"),
                     new SeparatorMenuItem(),
-                    actions.menuItem("object.new-table", "新建表…"));
+                    actions.menuItem("object.new-table"));
             // ⭐ S-3：列只有一件事可做 —— 复制列名。它没有数据页 / 结构页，
             //    也不能收藏（收藏的是表），所以不复用对象那一整串。
             case COLUMN -> menu.getItems().add(
-                    actions.menuItem("object.copy-name", "复制名称"));
+                    actions.menuItem("object.copy-name"));
             // ⭐ S3：过程 / 函数 / 触发器没有数据页，也没有结构页 ——
             //    只给「复制名称 / 新建查询」（调用它）/ 收藏。
             case PROCEDURE, FUNCTION, TRIGGER -> menu.getItems().addAll(
-                    actions.menuItem("object.new-query", "新建查询"),
+                    actions.menuItem("object.new-query"),
                     new SeparatorMenuItem(),
                     actions.menuItem("object.favorite",
-                            starred.contains(node.name()) ? "取消收藏" : "收藏"),
-                    actions.menuItem("object.copy-name", "复制名称"));
+                            starred.contains(node.name())
+                                    ? I18n.t("sidebar.favoriteRemove")
+                                    : I18n.t("sidebar.favoriteAdd")),
+                    actions.menuItem("object.copy-name"));
             // ⭐ UX-6：已保存查询 —— 只有「打开」一件事。
             case SAVED_QUERY -> menu.getItems().add(
-                    actions.menuItem("saved-query.open", "打开查询"));
+                    actions.menuItem("saved-query.open", I18n.t("sidebar.menuOpenSavedQuery")));
             case SAVED_GROUP -> menu.getItems().add(
-                    actions.menuItem("object.refresh-objects", "刷新"));
+                    actions.menuItem("object.refresh-objects", I18n.t("action.refresh")));
             default -> menu.getItems().add(
-                    actions.menuItem("object.open-data", "打开"));
+                    actions.menuItem("object.open-data", I18n.t("sidebar.menuOpen")));
         }
         return menu;
     }
@@ -1488,12 +1493,12 @@ public final class SideBar extends VBox {
     private void onSelected(SideBarObject action) {
         DemoNode node = selectedNode;
         if (node == null) {
-            status.accept("请先在对象树里选中一个对象");
+            status.accept(I18n.t("sidebar.needObject"));
             return;
         }
         // ⭐ P5-1：分组只是归类容器 —— 它不属于任何一个连接，不能拿它执行对象动作。
         if (node.kind() == NodeKind.CONNECTION_GROUP) {
-            status.accept("分组节点只用于归类连接，请选中其中的连接");
+            status.accept(I18n.t("sidebar.groupNodeOnly"));
             return;
         }
         boolean isObject = node.kind() == NodeKind.TABLE || node.kind() == NodeKind.VIEW;
@@ -1507,14 +1512,14 @@ public final class SideBar extends VBox {
                 if (isObject) {
                     openGrid(owner, node.name());
                 } else {
-                    status.accept("只有表和视图能打开数据");
+                    status.accept(I18n.t("sidebar.onlyTableOpensData"));
                 }
             }
             case OPEN_STRUCTURE -> {
                 if (isObject) {
                     openStructure(owner, node.name());
                 } else {
-                    status.accept("只有表和视图有结构页");
+                    status.accept(I18n.t("sidebar.onlyTableHasStructure"));
                 }
             }
             case NEW_QUERY -> openQuery(owner, isObject ? node.name() : null);
@@ -1522,7 +1527,7 @@ public final class SideBar extends VBox {
                 if (isObject) {
                     toggleStar(node.name());
                 } else {
-                    status.accept("只有表和视图可以收藏");
+                    status.accept(I18n.t("sidebar.onlyTableFavoritable"));
                 }
             }
             case COPY_NAME -> {
@@ -1537,13 +1542,14 @@ public final class SideBar extends VBox {
             }
             case DIAGNOSTICS -> {
                 if (isObject) {
-                    openTool("诊断 · " + node.name());
+                    openTool(TOOL_DIAGNOSTICS + node.name(),
+                            I18n.t("sidebar.tool.diagnostics", node.name()));
                 }
             }
             case REFRESH_OBJECTS -> {
                 // ⭐ 刷节点所属的连接（可能是虚拟连接），不是当前活跃连接。
                 onRefreshObjects.accept(owner);
-                status.accept("已刷新 " + node.name());
+                status.accept(I18n.t("sidebar.refreshed", node.name()));
             }
             // ⭐ 表级生命周期：侧栏只负责把「点的是谁」说清楚，执行在 TableDdl。
             case NEW_TABLE ->
@@ -1552,7 +1558,7 @@ public final class SideBar extends VBox {
                 if (isObject) {
                     onTableDdl.accept(new TableRequest(action, node.name(), owner));
                 } else {
-                    status.accept("只有表能" + labelOf(action));
+                    status.accept(I18n.t(onlyTableProblemKey(action)));
                 }
             }
             // ⭐ U1：切库（重连由外壳做）。
@@ -1560,7 +1566,7 @@ public final class SideBar extends VBox {
                 if (node.kind() == NodeKind.CATALOG) {
                     onSwitchCatalog.accept(new CatalogSwitch(owner, node.name()));
                 } else {
-                    status.accept("只有数据库节点能切换");
+                    status.accept(I18n.t("sidebar.onlyCatalogSwitchable"));
                 }
             }
             // ⭐ UX-6：已保存查询 → 新查询页 + 预填 SQL。
@@ -1568,18 +1574,24 @@ public final class SideBar extends VBox {
                 if (node.kind() == NodeKind.SAVED_QUERY) {
                     openSavedQuery(owner, node.name());
                 } else {
-                    status.accept("请先在对象树里选中一条已保存查询");
+                    status.accept(I18n.t("sidebar.needSavedQuery"));
                 }
             }
         }
     }
 
-    private static String labelOf(SideBarObject action) {
+    /**
+     * 「只有表能做这件事」的按动作整句键。
+     *
+     * <p>不拼「只有表能 + 动词」：英文里 "Only tables can clear" 说不通（清什么？），
+     * 而中文原文正好能这么省。整句一个键，两侧各自成句。
+     */
+    private static String onlyTableProblemKey(SideBarObject action) {
         return switch (action) {
-            case TRUNCATE_TABLE -> "清空";
-            case RENAME_TABLE -> "重命名";
-            case DROP_TABLE -> "删除";
-            default -> "操作";
+            case TRUNCATE_TABLE -> "sidebar.onlyTable.truncate";
+            case RENAME_TABLE -> "sidebar.onlyTable.rename";
+            case DROP_TABLE -> "sidebar.onlyTable.drop";
+            default -> "sidebar.onlyTable.generic";
         };
     }
 
@@ -1645,7 +1657,7 @@ public final class SideBar extends VBox {
         String id = targetConnection == null ? connectionId : targetConnection;
         openTab.accept(new TabItem("grid:" + id + ":" + name, name, TabKind.GRID,
                 name, id));
-        status.accept("打开表：" + name);
+        status.accept(I18n.t("sidebar.openTable", name));
     }
 
     private void openStructure(String name) {
@@ -1656,7 +1668,7 @@ public final class SideBar extends VBox {
         String id = targetConnection == null ? connectionId : targetConnection;
         openTab.accept(new TabItem("structure:" + id + ":" + name, name,
                 TabKind.STRUCTURE, name, id));
-        status.accept("打开结构：" + name);
+        status.accept(I18n.t("shell.openStructure", name));
     }
 
     private void openQuery(String name) {
@@ -1665,10 +1677,10 @@ public final class SideBar extends VBox {
 
     private void openQuery(String targetConnection, String name) {
         String id = targetConnection == null ? connectionId : targetConnection;
-        String title = name == null ? "未命名查询" : "查询 · " + name;
+        String title = name == null ? I18n.t("sidebar.queryUntitled") : I18n.t("sidebar.queryTitle", name);
         openTab.accept(new TabItem("query:" + id + ":" + System.nanoTime(), title,
                 TabKind.QUERY, null, id));
-        status.accept("新建查询");
+        status.accept(I18n.t("action.object.new-query"));
     }
 
     /**
@@ -1686,10 +1698,31 @@ public final class SideBar extends VBox {
         return connectionId;
     }
 
-    private void openTool(String title) {
-        openTab.accept(new TabItem("tool:" + title, title, TabKind.TOOL));
-        status.accept("打开工具：" + title);
+    /**
+     * 打开一个工具页签。
+     *
+     * <p>⚠️ {@code route} 是**路由键**，{@code title} 只是给人看的标题。
+     * 以前这里只有 title，{@code WorkspaceView} 靠 {@code title.startsWith("诊断")}
+     * 反解析要开哪一页、表名也从标题里切出来 —— 于是文案一换语言，
+     * 诊断页与查询历史页就双双退回「该工具只保留入口」的空壳（{@link TabItem} 的
+     * {@code target} 参数注释早就写明「不能从标题反解析」，这一处是漏网的）。
+     * id 里带上表名，保持"每张表一个诊断页签"的原行为。
+     */
+    private void openTool(String route, String title) {
+        openTab.accept(new TabItem("tool:" + route, title, TabKind.TOOL, route));
+        status.accept(I18n.t("shell.openTool", title));
     }
+
+    /**
+     * 工具页签的路由键，写在 {@link TabItem#target()} 里。
+     *
+     * <p>公开是因为 {@code WorkspaceView} 要按它开页 —— 两边各写一遍字面量，
+     * 拼错的那一边不会编译失败，只会静默退回「该工具只保留入口」的空壳。
+     */
+    public static final String TOOL_HISTORY = "history";
+
+    /** 诊断页的路由前缀，后面跟表名（每张表一个页签，与抽取前的 id 行为一致）。 */
+    public static final String TOOL_DIAGNOSTICS = "diagnostics:";
 
     private static void copy(String text) {
         ClipboardContent content = new ClipboardContent();
@@ -1777,7 +1810,7 @@ public final class SideBar extends VBox {
                 SVGPath dot = Icons.of(Icons.Icon.DOT, Icons.SIZE_DOT);
                 dot.getStyleClass().addAll("adb-tree__dot", alive
                         ? "adb-tree__dot--online" : "adb-tree__dot--offline");
-                dot.setAccessibleText(alive ? "已连接" : "未连接");
+                dot.setAccessibleText(alive ? I18n.t("sidebar.connected") : I18n.t("sidebar.disconnected"));
                 box.getChildren().add(1, dot);
             }
 
@@ -1799,7 +1832,7 @@ public final class SideBar extends VBox {
             if ((item.kind() == NodeKind.TABLE || item.kind() == NodeKind.VIEW)
                     && starred.contains(item.name())) {
                 SVGPath star = Icons.of(Icons.Icon.STAR, Icons.SIZE_BADGE);
-                star.setAccessibleText("收藏");
+                star.setAccessibleText(I18n.t("sidebar.favorites"));
                 star.getStyleClass().add("adb-tree__star");
                 box.getChildren().add(star);
             }

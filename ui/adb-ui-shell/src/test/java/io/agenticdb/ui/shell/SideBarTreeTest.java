@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.session.ConnectionProfile;
 import javafx.application.Platform;
@@ -51,7 +52,7 @@ class SideBarTreeTest {
 
         assertThat(String.valueOf(root.getValue()))
                 .as("树根应该是「我的连接」而不是某个连接")
-                .contains("我的连接");
+                .contains(I18n.t("sidebar.myConnections"));
         assertThat(root.getChildren())
                 .as("每个连接一个节点")
                 .hasSize(2);
@@ -161,7 +162,7 @@ class SideBarTreeTest {
         collect(rootOf(treeOf(sideBar)), names);
         assertThat(String.join(" | ", names))
                 .contains("name=trg_after_insert")
-                .contains("name=触发器");
+                .contains("name=" + I18n.t("sidebar.group.triggers"));
     }
 
     /**
@@ -201,11 +202,11 @@ class SideBarTreeTest {
         assertThat(ordersNode).as("orders 库节点存在").isNotNull();
         assertThat(ordersNode.getChildren())
                 .as("库节点下是「表」分组")
-                .anyMatch(item -> String.valueOf(valueOf(item)).contains("表"));
+                .anyMatch(item -> String.valueOf(valueOf(item)).contains(I18n.t("sidebar.group.tables")));
         TreeItem auditNode = findNode(root, "audit");
         assertThat(auditNode.getChildren())
                 .as("另一个库的分组也在它自己下面")
-                .anyMatch(item -> String.valueOf(valueOf(item)).contains("表"));
+                .anyMatch(item -> String.valueOf(valueOf(item)).contains(I18n.t("sidebar.group.tables")));
     }
 
     /**
@@ -226,7 +227,7 @@ class SideBarTreeTest {
         TreeItem connection = (TreeItem) root.getChildren().getFirst();
         assertThat(connection.getChildren())
                 .as("SQLite 没有 catalog —— 「表」分组直接挂在连接下")
-                .anyMatch(item -> String.valueOf(valueOf(item)).contains("表"));
+                .anyMatch(item -> String.valueOf(valueOf(item)).contains(I18n.t("sidebar.group.tables")));
     }
 
     /** ⭐ U1：选中一个库节点 → 去读**那个库**的对象（Serve 它的是虚拟连接）。 */
@@ -361,7 +362,7 @@ class SideBarTreeTest {
                 .hasSize(1);
         assertThat(String.valueOf(valueOf(users.getChildren().get(0))))
                 .as("占位节点要说自己正在读，而不是假装是某一列")
-                .contains("读取列");
+                .contains(I18n.t("sidebar.columnsLoading"));
 
         onFxRun(() -> users.setExpanded(true));
         assertThat(asked)
@@ -484,7 +485,7 @@ class SideBarTreeTest {
 
         assertThat(childNames(users))
                 .as("失败要说出来 —— 不是删掉占位节点装作这张表没有列")
-                .containsExactly("列读取失败（展开重试）");
+                .containsExactly(I18n.t("sidebar.columnsFailed"));
 
         onFxRun(() -> users.setExpanded(false));
         onFxRun(() -> users.setExpanded(true));
@@ -527,8 +528,8 @@ class SideBarTreeTest {
         assertThat(demoConnection).isNotNull();
         assertThat(otherConnection).isNotNull();
 
-        TreeItem demoGroup = findExact(demoConnection, "已保存查询");
-        TreeItem otherGroup = findExact(otherConnection, "已保存查询");
+        TreeItem demoGroup = findExact(demoConnection, I18n.t("sidebar.group.savedQueries"));
+        TreeItem otherGroup = findExact(otherConnection, I18n.t("sidebar.group.savedQueries"));
         assertThat(demoGroup).as("连接节点下要有「已保存查询」分组").isNotNull();
         assertThat(otherGroup).as("每个连接都直接列一份").isNotNull();
         assertThat(childNames(demoGroup))
@@ -563,12 +564,12 @@ class SideBarTreeTest {
         onFxRun(() -> sideBar.setSavedQuerySource(() -> List.copyOf(store)));
 
         TreeItem demoConnection = findExact(rootOf(treeOf(sideBar)), "演示库");
-        TreeItem group = findExact(demoConnection, "已保存查询");
+        TreeItem group = findExact(demoConnection, I18n.t("sidebar.group.savedQueries"));
         assertThat(childNames(group)).containsExactlyInAnyOrder("活跃用户", "月度报表");
 
         TextField search = searchFieldOf(sideBar);
         onFxRun(() -> search.setText("月度"));
-        group = findExact(findExact(rootOf(treeOf(sideBar)), "演示库"), "已保存查询");
+        group = findExact(findExact(rootOf(treeOf(sideBar)), "演示库"), I18n.t("sidebar.group.savedQueries"));
         assertThat(childNames(group))
                 .as("搜索词同样过滤已保存查询")
                 .containsExactly("月度报表");
@@ -578,13 +579,13 @@ class SideBarTreeTest {
             search.setText("");
             sideBar.refreshSavedQueries();
         });
-        group = findExact(findExact(rootOf(treeOf(sideBar)), "演示库"), "已保存查询");
+        group = findExact(findExact(rootOf(treeOf(sideBar)), "演示库"), I18n.t("sidebar.group.savedQueries"));
         assertThat(childNames(group))
                 .as("保存后不必重启，刷新就能看到新条目")
                 .contains("活跃用户归档");
 
         onFxRun(() -> sideBar.setSavedQuerySource(List::of));
-        assertThat(findExact(rootOf(treeOf(sideBar)), "已保存查询"))
+        assertThat(findExact(rootOf(treeOf(sideBar)), I18n.t("sidebar.group.savedQueries")))
                 .as("一条都没有时不摆空分组")
                 .isNull();
     }

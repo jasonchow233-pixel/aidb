@@ -454,11 +454,16 @@ public final class WorkspaceView extends StackPane {
                     "连接配置不可用时无法管理连接。请重启应用后重试。"));
             case TOOL -> {
                 // ⭐ 查询历史与诊断有真功能可接，不再是空壳。
-                if ("查询历史".equals(tab.title()) && history != null) {
+                // ⚠️ 路由看 {@link TabItem#target()}，**不看标题** —— 以前这里判
+                //    {@code title.startsWith("诊断")} 再从标题里切表名，于是 R34 第八批
+                //    把标题换进资源包之后，两页都会静默退回下面那个「只保留入口」的空壳。
+                //    键由 {@link SideBar} 公开，拼错编译不过（见 SideBar.TOOL_*）。
+                String route = tab.target() == null ? "" : tab.target();
+                if (SideBar.TOOL_HISTORY.equals(route) && history != null) {
                     body.getChildren().add(new HistoryPage(history, onUseHistory));
-                } else if (tab.title() != null && tab.title().startsWith("诊断")
+                } else if (route.startsWith(SideBar.TOOL_DIAGNOSTICS)
                         && diagnosticSession != null) {
-                    String table = tab.title().substring("诊断 · ".length()).trim();
+                    String table = route.substring(SideBar.TOOL_DIAGNOSTICS.length()).trim();
                     body.getChildren().add(new DiagnosticsPage(diagnosticSession,
                             diagnosticSchemaService, table, diagnosticExecutor));
                 } else {
