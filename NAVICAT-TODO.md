@@ -186,7 +186,7 @@ Navicat 把保存的查询当**对象**管：树里 `Queries` 分组 → 选中�
 
 | 编号 | 差距 | 目标 | 现状 | 成本 |
 |---|---|---|---|---|
-| **N1** | 无 i18n 层 | 两套资源包（en 默认 / zh），键名按区命名空间 | **层已建**（`I18n.java` + 两份 `.properties`，701 键对称）。抽取进度：出现 **2216 → 1145**、去重 **810** 条待抽，剩 **51 个文件**；`QueryPage`(161→0) / `AppShell`(198→0) / `DataGridPage`(413→0) / `TableListPage`(70→0) / 顶区 / 动作层已收 | 8–12 |
+| **N1** | 无 i18n 层 | 两套资源包（en 默认 / zh），键名按区命名空间 | **层已建**（`I18n.java` + 两份 `.properties`，795 键对称）。抽取进度：出现 **2216 → 989**、去重 **737** 条待抽，剩 **50 个文件**；`StructurePage`(156→0) / `QueryPage`(161→0) / `AppShell`(198→0) / `DataGridPage`(413→0) / `TableListPage`(70→0) / 顶区 / 动作层已收；模型层另有 277 条由第 13 条棘轮单独钉（D-9） | 8–12 |
 | **N2** | 菜单标签与项集 | `File/Edit/View/Query/Format/Favorites/Tools/Window/Help` | `文件/编辑/视图/数据库/对象/收藏夹/工具/窗口/帮助`（`MenuBarFactory.java:27-31`，9 组但项集不同） | 并入 N1 |
 
 落点：新增 `ui/adb-ui-core/.../I18n.java` + `messages_en.properties` / `messages_zh.properties`；
@@ -477,6 +477,47 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
 - 变异验证按自然顺序走了一遍：加门禁 → 红 3 条并点名（Per page / Copy This Page / Export）
   → 钉 `USE_PREF_SIZE` → 18 条全绿；shell 模块 619 条全绿。
 
+**第七批（`StructurePage` 156 → 0）抓到的边界问题：模型层的中文 producers 比调用点更该修**
+
+- 抽结构页时按 D-7 的老路去查"这一页还渲染了谁的文案"，撞到两个：
+  ① `structure.kindLabel()` —— 中文长在 `workbench/adb-introspect`，**就在 p4-structure 帧上**
+    （概览区那行孤零零的「表」）。② `plan.title()` —— `StructureSqlBuilder` 用中文拼的
+    17 个标题（"新增列 id" / "删除列 x" / "重建表以修改列 a"…），顺着状态条、吐司
+    和 `StructurePlanRunner` 的确认弹窗流到界面。两个都不在棘轮视野内，**三道尺全绿**。
+- ①的修法和 D-7 不同，而且更好：`kindLabel()` 换完之后**一个调用点都不剩**，
+  于是直接把这个方法从模型层删掉 —— 生产者没了，就不需要再立一条"不许调用"的闸。
+  ⭐ 记这条判据：**能删掉中文生产者，就别在调用点加映射**（`Danger` 那边有 7 个调用点、
+  删不掉，才需要 `DangerLabels`）。映射helper 是退路，不是首选。
+- ②**没修，记为 D-9**：`StructurePlan` 是个 record，标题要改成「键 + 参数」得同时动
+  17 个 producer、4 个 consumer 和 adb-introspect 那一层的断言，是独立一批的量级。
+  而且它不在任何一帧上（确认弹窗没有验收帧），所以不是"验收面缺陷"，是"英文构建会露中文"的债。
+- ⭐ 把这条边界**变成数字**而不是又一条正则：新增第 13 条门禁
+  `modelLayerChineseIsRatchetedDown`，对 `core/` + `workbench/` 的 main 源码立一条
+  同样只许降不许升的棘轮（`MODEL_CJK_CEILING = 277`，实测）。它不证明"哪些会流到界面"，
+  它证明的是**没人再新写**，并且把 D-9 这类债变成有数字的队列 —— 而不是每次靠实拍帧撞见。
+  口径与主尺同构，`node tools/cjk-count.mjs --model` 复现同一个 277（Java 侧报的
+  按文件明细与它逐文件一致）。变异验证：上限调到 276 → 这条红并打出 277 与 37 个文件。
+- ⭐ 另立一条 `StructurePageTest.structureToolbarsFitTheAcceptanceWidth`。
+  这条**不是**因为拍到了裁字（这两帧没有），是因为 D-5、D-8 连续两批在同一类形状上翻车，
+  而结构页这一排正是「五个文字按钮一条 HBox」；后面还有 50 个文件要抽。
+  写的时候踩到/绕开了三个坑，全部沿用前面批次的教训：
+  ① 自证写错了 —— 第一版把"扫到的排数"断言成了"违规列表非空"，它**当场红**并打出
+    "一排内联工具条都没有"。这条自证救了自己一次：不写它，这就会是一条永远绿的假闸。
+  ② **TabPane 只把选中页签的内容挂进场景图**，`lookupAll` 因此只看得见「列」那一排 ——
+    一条声称量每一排、实际只量到一排的门禁比没有门禁更坏（与 `I18nAuditTest`
+    的 `ACTION_REGISTRATION` 漏掉 `new Action` 那一支是同一个形状）。改成逐页签 select
+    再 layout，并用 `hasSizeGreaterThanOrEqualTo(4)` 钉住"四排都量到了"。
+  ③ 不去改窗口尺寸，按 D-8 的**推导预算**：`overhead = 场景宽 − 这一排实得宽`，
+    `budget = 1280 − overhead`，再比 `bar.prefWidth(-1)`。
+  变异验证：预算改 300 → 红并点名「Add Field」那一排（需 528px）与「New Foreign Key」
+  那一排（需 293px）；还原 → 12 条全绿。实测主工具条在 1280 下余量很大（528 / 约 1264）。
+- 术语按 Navicat 的**分工**走，不按我们的中文对齐：设计器页签是 **Fields**、
+  工具条是 **Add Field / Delete Field**、表头是 **Name / Type / Key / Comment**
+  （`navicat17-designer-fields-2026-10-27.png`）；而数据网格那条工具栏 Navicat 自己写的是
+  **Columns** —— 所以「列」这一个中文词在两个位置落成两个英文词是**照抄 Navicat**，不是漂移。
+  「可空」**没有**照抄成 `Not null`：Navicat 那一列勾上=非空，我们这列勾上=可空，
+  照抄会把语义反掉，因此叫 `Nullable` 并标 (inferred)。
+
 每条改判配一次变异验证（破坏 → 恰好 N 红 → 还原 → 绿），口径见本文 §7。
 
 ---
@@ -508,12 +549,12 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
 
 ---
 
-## 8. 当前基线（2026-10-29 R34 第六批之后实测）
+## 8. 当前基线（2026-10-29 R34 第七批之后实测）
 
-- 门禁 **1177 条 / 134 类 / 0 失败 / 48 环境跳过**。
+- 门禁 **1179 条 / 134 类 / 0 失败 / 48 环境跳过**。
   **量法（照抄，别再凭记忆写数）**：`./mvnw -o test` 之后
   `grep -aoP 'Tests run: \K[0-9]+(?=, Failures: [0-9]+, Errors: \d+, Skipped: \d+, Time elapsed)' 日志 | awk '{s+=$1;n++} END{print n,s}'`
-  → **150 组 / 1177 条**，与各模块汇总行相加一致；类数按 `**/target/surefire-reports/*.txt` 计数 = **134**
+  → **150 组 / 1179 条**，与各模块汇总行相加一致；类数按 `**/target/surefire-reports/*.txt` 计数 = **134**
   （150 与 134 的差是 `@Nested` 内部类：一行一组、一份报告）。
   ⚠️ 本文上一版写 **1116**、ROADMAP 写 **1119**、本轮中途又记过 **1122 / 1173 / 1174 / 1175 / 1176** —— 都对不上，
   差的就是「按模块汇总」与「按报告文件累加」两种口径混用。以后一律用上面那条命令。
@@ -528,8 +569,11 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
   R34 首批之后 +6 条（`I18nAuditTest`）+1 类 = 1113 / 134。
 - 验收帧 **33 张**（28 亮 / 5 暗）—— 第五批 + D-5 修复之后**再次全量重拍为英文档**，
   逐张目视 + md5 两两去重 + 逐张比尺寸。⚠️ 中英混排仍在：侧栏（`SideBar` 96 条）、
-  单元格详情抽屉（`CellDetailsDrawer` 39 条）、对象详情面板的字段/索引小节（`ObjectSectionsPanel` 40 条）、
-  查询页（`QueryPage` 161 条）等还没抽，帧里那些位置照旧是中文 —— **这是中间态不是验收态**。
+  连接向导（`ConnectionWizard` 89 条）、对象主页（`ObjectHomePage` 83 条）、
+  新建表弹窗（`NewTableDialog` 75 条）、单元格详情抽屉（`CellDetailsDrawer` 39 条）等还没抽，
+  帧里那些位置照旧是中文 —— **这是中间态不是验收态**。
+  第七批只重拍了结构页那两张（`p4-structure` / `p4-ddl`）：整页英文，
+  工具条 528px 需求 vs 约 1264px 预算，**没有裁字**；两帧 1280×800、无重复帧。
   ⭐ 目视这一步本轮**真的抓到了东西**（前三轮的"目视"漏了）：命令带两个标签被裁成省略号 = D-5，见 §5 末。
   `scripts/shots.sh` 会把每张帧的 **宽×高** 打出来并和已入库的那版比 ——
   本轮它抓到两张：`p4-ddl`（上一轮）与 **`p2-find` 又 1920×1017**、
@@ -548,9 +592,9 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
   ⚠️ 加尺寸核对时先踩了一坑：写成 `git show … | od` 会被 `set -o pipefail` + `set -e`
   直接打死脚本（od 吃 8 字节就退出 → git 收 SIGPIPE 以 141 退出 → 命令替换失败 →
   日志停在「拍摄 p2-find」、rc=255，完全看不出原因）。改成先落临时文件再读。
-- **N1 进度**：ui 主源码 CJK 字面量 **2216 → 2011 → 1917 → 1504 → 1306 → 1145 次出现**（去重 810 条），
-  资源包 **701 键**（en/zh 各 701，对称；`grid.*` 298 / `query.*` 100 / `shell.*` 84 / `action.*` 72 /
-  `detail.*` 21 / `shortcut.*` 18 / `danger.*` 3）。
+- **N1 进度**：ui 主源码 CJK 字面量 **2216 → 2011 → 1917 → 1504 → 1306 → 1145 → 989 次出现**（去重 737 条），
+  资源包 **795 键**（en/zh 各 795，对称；`grid.*` 298 / `query.*` 100 / `structure.*` 93 / `shell.*` 84 /
+  `action.*` 72 / `tableList` 23 / `detail.*` 21 / `status.*` 18 / `shortcut.*` 18 / `danger.*` 3）。
   ⚠️ **上一批记的「472 键 / grid 296」是错的**：`git show HEAD:…messages_en.properties` 实测
   **474 / 298** —— 那批收尾时又补了 `grid.overview.pkSeparator`、`grid.form.nullPrompt` 两个键，
   数没回量就写进文档和提交信息了。同一个坑（数字是记上去的不是量出来的）第三次踩，
@@ -566,9 +610,12 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
   并顺带修掉 D-7（模型层中文标签越界）与 D-8（分页条挤成半截字）。
   这是 R34 最大的一块，也是**第一个把「文字长度」变成缺陷的页**：英文比中文宽，
   工具条与分页器两处都因此改判（见 §5 末三行）。
-  棘轮 `CJK_CEILING = 1306` 只许降不许升；**还剩 52 个文件**，大头
-  `QueryPage`(161) / `StructurePage`(156) / `SideBar`(96) /
-  `ConnectionWizard`(89) / `ObjectHomePage`(83) / `NewTableDialog`(75) / `ImportWizard`(61)。
+  **第七批 = 结构页 `StructurePage` 156 → 0**（1145 → **989**），93 个 `structure.*` 键 + `common.ok`。
+  这一批的产出不在字数上，在**扫描范围的边界**上：量出模型层还有 277 条中文（第 13 条棘轮），
+  并把 D-9（`StructurePlan.title()` 的 17 个中文标题）变成有数字的债而不是又一次实拍撞见。
+  棘轮 `CJK_CEILING = 989` 只许降不许升；**还剩 50 个文件**，大头
+  `SideBar`(96) / `ConnectionWizard`(89) / `ObjectHomePage`(83) /
+  `NewTableDialog`(75) / `ImportWizard`(61) / `CellDetailsDrawer`(39)。
   ⚠️ 此前按「含 CJK 的行数」排优先级是错的 —— 那个数把注释也算进去了（`DataGridPage` 1037 行 vs 实际 415 条字面量）。
 - ⭐ **第四批新立的一条尺，顺带暴露了老尺子的盲区**：`CJK_LITERAL` 只认 U+4E00–U+9FFF，
   于是 `"（NULL）"`、`String.join("、", keys)`、`"SQL："` 这类**纯全角标点**的残留一路钻过去 ——
@@ -576,8 +623,8 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
   实测全库含全角标点的字面量共 **366 条**（绝大多数与汉字棘轮重叠）。
   修法不是把 `CJK_CEILING` 从 1504 涨到 1536（那等于给同一笔债立两张账，还当场破掉「只许降」），
   而是新立 `filesThatClaimToBeCleanAreAlsoFreeOfFullwidthPunctuation`：
-  **汉字清零的文件，全角也必须清零**。当前 **26 个文件**做到零汉字且零全角（第五批之后由 `node tools/cjk-count.mjs` 实测）。
-- **N1-a ✅ / N1-c ✅**（`I18nAuditTest` 现 **12 条**断言）；**N1-b 进行中（第六批已收，51 个文件待抽）**；**N2 ✅**。
+  **汉字清零的文件，全角也必须清零**。当前 **30 个文件**做到零汉字且零全角（第七批之后由 `node tools/cjk-count.mjs` 实测）。
+- **N1-a ✅ / N1-c ✅**（`I18nAuditTest` 现 **13 条**断言）；**N1-b 进行中（第七批已收，50 个文件待抽）**；**N2 ✅**。
 - ✅ **D-5 已修（第五批重拍帧目视发现）**：命令带 `Import / Export`、`Saved Queries` 两个标签被裁成省略号
   —— `.adb-ribbon__button` 写死 62px 定宽（按中文量的），英文要 74 / 69px 而实得只有 56px。
   改成内容驱动宽度 + 62px 下限，并新立 `AppBarTest.ribbonLabelsAreNeverEllipsised`（先红后绿，见 §5 末）。
@@ -606,6 +653,15 @@ SVG↔枚举 1:1 无死资源）与 `IconSystemAuditTest.java:136`（`SIZE_RIBBO
   新立 `QueryPageTest.queryPagerItemsAreNeverSqueezedIntoEllipsis`（推导 1280 下的预算，不去改窗口尺寸）。
   两个坑写在 §5 末，其中「`getMinWidth()` 属性 vs `minWidth(-1)` 计算值」会把同一排 9 颗全报成可压缩 ——
   与第四批那条 `minWidth` 恒真是同一个属性的反方向。
+- ⚠️ **D-9 未结（第七批量出来的，别当已修）**：`StructureSqlBuilder` 用中文拼
+  `StructurePlan.title()` 的 17 个标题（"新增列 id" / "删除列 x" / "重建表以修改列 a" …），
+  经 `StructurePage` 的状态条与吐司、`StructurePlanRunner` 的确认弹窗流到界面 ——
+  该文件独占 **104** 条模型层字面量，是 `MODEL_CJK_CEILING = 277` 里最大的一块。
+  它**不在任何验收帧上**（确认弹窗没有帧），所以只能靠这条数字看见，不能指望实拍。
+  修法是把 `StructurePlan` 改成携带「键 + 参数」由界面渲染：17 个 producer、
+  4 个 consumer（结构页 2 + 弹窗 2）与 adb-introspect 层按 `title()` 拼的断言要一起动，
+  是独立一批的量级。同批顺手清掉 `core/adb-model/Danger.java` 剩下的 4 条生产者
+  （第六批只加了界面侧映射，模型层那 4 条一直在）。
 - ⚠️ **D-1 未结，别当已修完**：分页器降级阶梯拿的输入是**盒子自己的宽度**，
   而对象详情面板是浮在右端的 —— p2-details 实测盒子右边缘在场景 x=1082、面板从 x≈990 起，
   **右边约 90px 被压在面板底下**，「每页」下拉框露出半截。
