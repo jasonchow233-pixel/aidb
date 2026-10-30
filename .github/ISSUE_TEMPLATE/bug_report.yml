@@ -1,0 +1,124 @@
+name: 🐞 Bug 报告
+description: 报一个能复现的缺陷（崩溃 / 数据错 / UI 不对 / 性能异常）
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先做三件事，省得来回问：
+        1. **拉到 `main` 最新提交再试一次** —— 很多缺陷已经在最近几轮修掉了（看 `CHANGELOG.md`）。
+        2. 确认它**不是** `docs/ROADMAP.md` 里写明的「明确不做 / 还没做」：jlink 打包、自动更新、代码签名/公证目前就是 ⛔。
+        3. **安全类问题不要发公开 Issue**，走 [SECURITY.md](https://github.com/jasonchow233-pixel/aidb/blob/main/SECURITY.md) 的私密通道。
+
+        这个项目里有一条硬规则：**每个「已修复」都要有一条能重现该缺陷的门禁断言。**
+        所以你给的复现步骤越具体，修它的把握越大——尤其是「在哪个界面、点了什么、期望什么、实际什么」。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      description: 期望的行为 vs 实际的行为。一句话说清「哪一步开始不对」。
+      placeholder: |
+        双击表节点 → 数据页 → 改第 3 列的一个值 → 点保存。
+        期望：只有那一行变脏标记，保存后读回新值。
+        实际：保存按钮点了没反应，状态栏脏计数停在 1。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从冷启动开始编号，别省略「看起来不重要」的那一步。
+      placeholder: |
+        1. `./scripts/dev.sh` 启动
+        2. 连接演示库（SQLite）→ 展开 `notes` 表
+        3. ……
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及的区域
+      multiple: true
+      description: 对应仓库里的模块，帮我少猜一轮。
+      options:
+        - 连接与凭据（adb-session / 钥匙串 / 凭据管理器）
+        - 对象树与侧栏（SideBar / 多连接同树）
+        - 数据页（DataGridPage / 行内编辑 / 筛选 / 排序 / 分页）
+        - 结构页（列 / 索引 / 外键 / 检查 / 触发器 / 建表改表）
+        - 查询页（SQL 执行 / 结果导出）
+        - 导入导出（CSV / TSV / JSON / SQL / xlsx）
+        - 外观（图标 / 主题 / 暗色档 / 字体密度）
+        - 启动与性能（冷启动 / 卡顿 / 崩溃）
+        - 其它 / 不确定
+    validations:
+      required: true
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: 连的是哪个数据库
+      description: 当前支持矩阵只有这三种；选了「其它」请说明你期望什么（那是功能请求，不是 bug）。
+      options:
+        - SQLite（含演示库）
+        - MySQL 5.7 / 8.x
+        - PostgreSQL
+        - 不涉及数据库（纯 UI / 启动 / 打包）
+        - 其它（Oracle / SQL Server / MariaDB …）
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本 / 提交号
+      description: 在仓库根目录跑 `git rev-parse --short HEAD` 贴过来。没有提交号 = 我无法判断你跑的是哪一版。
+      placeholder: e.g. c019f87
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: 系统与 JDK
+      description: |
+        操作系统（含架构）+ JDK 版本。这两项会让结论完全不同——
+        凭据存储分平台（Windows 凭据管理器 / macOS 钥匙串 / Linux Secret Service），
+        窗口装饰和系统菜单栏也是分平台的。
+      placeholder: macOS 15.7 x64 / JDK 25.0.4
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 控制台输出
+      description: |
+        把启动终端里 `[adb]` 开头的行贴进来（有异常栈就整段贴，用 ``` 包起来）。
+        ⚠️ **贴之前把口令、生产数据、真实主机名删掉或打码** —— Issue 是公开的。
+      render: shell
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图 / 录屏
+      description: |
+        外观类问题几乎必须给图。请注意：拖进 Issue 就行，不用改尺寸。
+        如果你是在跟 `docs/screenshots/` 的验收帧对比，请说明是**哪一帧**（主窗口和弹窗的尺寸不一样）。
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 已拉到最新 `main` 复测，问题仍在
+          required: true
+        - label: 已确认不是 `docs/ROADMAP.md` 里标注的「明确不做 / 还没做」
+          required: true
+        - label: 贴出的日志和截图里不含口令、真实主机名或生产数据
+          required: true
+        - label: 这不是安全类问题（安全类走 SECURITY.md 的私密通道）
+          required: true

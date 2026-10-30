@@ -1,0 +1,59 @@
+AIDB (AgenticDB)
+Copyright 2026 The AIDB (AgenticDB) Authors
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+===============================================================================
+Third-party notices
+===============================================================================
+
+The full dependency list with versions and licenses is maintained in
+docs/COMPONENT-SELECTION.md. The following notices are required by the
+licenses themselves.
+
+JavaFX (org.openjfx)
+    Copyright (c) 2013, 2025, Oracle and/or its affiliates.
+    GPL-2.0-with-classpath-exception. Distributed with this application under
+    the Class Path Exception; see https://openjdk.org/legal/gplv2+ce.html
+
+ControlsFX (org.controlsfx)
+    Copyright (c) 2013, 2025, DXoSS and Contributors. BSD-3-Clause.
+
+RichTextFX (org.fxmisc.richtext)
+    Copyright (c) 2013, 2025, Tomasz Gąsior and others. BSD-2-Clause.
+
+Jackson (com.fasterxml.jackson)
+    Apache-2.0.
+
+HikariCP (com.zaxxer)
+    Apache-2.0.
+
+JNA (net.java.dev.jna)
+    Copyright (c) 2007-2024 Wayne Meissner. Apache-2.0 / LGPL-2.1 dual license;
+    this project uses the Apache-2.0 option.
+
+Apache POI (org.apache.poi)
+    Apache-2.0.
+
+PostgreSQL JDBC Driver (org.postgresql)
+    Copyright (c) 1997-2025, PostgreSQL Global Development Group. BSD-2-Clause.
+
+MySQL Connector/J (com.mysql)
+    Copyright (c) 1997, 2025, Oracle and/or its affiliates.
+    GPL-2.0 with Universal FOSS Exception, Version 1.0. Review this exception
+    before redistributing this application in a closed-source build.
+
+SQLite JDBC (org.xerial)
+    Apache-2.0. The bundled native SQLite library is public domain.
+
+Lucide icon path data (icons/lucide/, icons/color/)
+    Copyright (c) 2026 Lucide Icons and Contributors. ISC.
+    Only SVG path geometry is reused; the license text ships next to the
+    assets (src/main/resources/io/agenticdb/ui/icons/*/ISC-LICENSE.txt) as
+    the ISC license requires.
+
+TestFX / AssertJ / JUnit Jupiter / Monocle
+    BSD-2-Clause / Apache-2.0 / EPL-2.0 / GPL-2.0 respectively. Test-scope only;
+    not part of the distributed application. (Testcontainers is planned for the
+    same scope and not yet in the build.)

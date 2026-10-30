@@ -1,0 +1,82 @@
+name: CI
+
+# 这个工作流只做一件事：**跑和本地一样的那条命令** `./scripts/build.sh`
+# （= `./mvnw -B clean verify` + `java tools/TestCount.java` 的最低门禁数断言）。
+# 不在 CI 里另写一套 `mvn test -Dexclude…`：本仓库的门禁文化是
+# 「每条已完成都要有断言，改绿不算修好」，CI 换成子集就等于把红线挪到没人看的地方。
+#
+# 已知不在 CI 里做的事，别误以为它被覆盖了：
+#   · 验收帧（scripts/shots.sh）需要真实窗口与显示环境，Monocle 无头跑不出可信的帧。
+#   · 真库集成测试（MySQL / PostgreSQL）由环境变量门控，没有配就没有跑（会显示为 skipped）。
+#   · 少数按平台构造的断言（如 Windows 按键序）在 Linux runner 上是环境门控跳过，不是失败。
+#
+# 首次上线要看的一件事：Linux runner 上的 JavaFX 无头（Monocle + `prism.order=sw`）
+# 是本地没验证过的环境组合。若 `gates` 在**加载原生图形库**这一步就红
+# （`UnsatisfiedLinkError` / `libglass` 相关），那是 runner 缺库，不是产品缺陷 ——
+# 补 `apt-get install` 依赖并把这条结论写进 CHANGELOG，别改门禁期望值。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: 完整门禁（编译 + 全部测试 + 用例计数）
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      # pom.xml 的 enforcer 要求 JDK [25,28)，且只允许 ./mvnw（仓库不假设 runner 装了 Maven）。
+      - name: 设置 JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: 门禁
+        run: ./scripts/build.sh
+
+      # 失败时把 surefire 报告留下来：门禁数、失败断言的期望/实际值都在这里。
+      # 没有它，一次跨平台的远程失败基本只能靠重跑猜。
+      - name: 上传测试报告
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports/'
+          retention-days: 7
+
+  build-smoke:
+    name: 三平台编译冒烟（不跑测试）
+    # 桌面客户端的依赖里有一堆平台相关的东西（JavaFX classifier、JNA、各驱动）。
+    # 这个 job 只回答一个问题：在 mac/windows 上还能不能构建。测试在 Linux 那一份里跑。
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: 编译并安装（跳过测试）
+        run: ./scripts/build.sh --no-tests
+        shell: bash

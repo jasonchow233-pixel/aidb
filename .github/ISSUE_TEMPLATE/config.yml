@@ -1,0 +1,13 @@
+# 保留空白 Issue 入口：提问、经验反馈、以及「我自己也说不清该用哪个模板」的情况。
+# 代价是维护者要多问一轮，但关掉它等于让第一次来的人无处开口。
+blank_issues_enabled: true
+contact_links:
+  - name: 🔒 安全问题（不要开公开 Issue）
+    url: https://github.com/jasonchow233-pixel/aidb/security/advisories/new
+    about: 口令泄露、不受信文件解析、SQL 生成缺陷等，走私密报告通道。
+  - name: 📋 下一步做什么 / 已承诺的路线
+    url: https://github.com/jasonchow233-pixel/aidb/blob/main/docs/ROADMAP.md
+    about: 先在这里确认你要的东西是不是已经在做，或者已经被明确判定为不做。
+  - name: 🛠 想提 PR 但不知道从哪切入
+    url: https://github.com/jasonchow233-pixel/aidb/blob/main/CONTRIBUTING.md
+    about: 环境、三条命令、四条硬规则（门禁断言 / 变异验证 / 令牌唯一真相 / 改判写明理由）都在这里。

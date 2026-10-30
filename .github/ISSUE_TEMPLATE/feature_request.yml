@@ -1,0 +1,78 @@
+name: ✨ 功能请求
+description: 想要一个新能力，或者希望某处更像 Navicat 的交互
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提之前先看一眼 [docs/ROADMAP.md](https://github.com/jasonchow233-pixel/aidb/blob/main/docs/ROADMAP.md) 的三张表：
+        **支持矩阵 / 进行中 / 明确不做**。已经在「进行中」的不用重复提；在「明确不做」里的，
+        请连着「为什么这个决定错了」一起写——那才是能推动改判的信息，否则只会得到一个「不做，理由见 ROADMAP」。
+
+        本项目有几条不会为单个请求让步的边界，请提前对照：
+        - **不内嵌 WebView**、**不启动本地 HTTP 端口**：所有数据走 JDBC。想要「内置浏览器预览」这类请求会直接关。
+        - **颜色只允许来自设计令牌**（`tokens.json` 唯一真相），业务代码里的颜色字面量会被门禁拒掉。
+        - **诚实条款**：不做「看起来一样但点了没反应」的控件。所以「先放个按钮占位」不是有效方案，
+          要么给出真实可达的后端能力，要么别放。
+
+  - type: textarea
+    id: need
+    attributes:
+      label: 你想解决什么问题
+      description: 用你的工作场景描述，不要只写「希望有 X 按钮」。我需要知道缺这一步时你怎么绕过它。
+      placeholder: |
+        我手上有一批 MySQL 5.7 的老库要迁到 PostgreSQL，需要逐表比对列类型。
+        现在只能在两边各开一个查询页手抄，10 张表就抄错了 2 次。
+    validations:
+      required: true
+
+  - type: textarea
+    id: want
+    attributes:
+      label: 你期望的样子
+      description: 具体到「点哪里 → 出现什么 → 数据从哪来」。如果参照某个产品，说清是哪个产品的哪个界面。
+    validations:
+      required: true
+
+  - type: textarea
+    id: alt
+    attributes:
+      label: 你想过的替代方案
+      description: 包括「用别的工具做」——如果 DBeaver / Navicat / mycli 已经能做得很好，请直说，我会据此判断值不值得做。
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 落在哪一层
+      description: 决定这个请求的工作量差一个数量级（UI 层能直接复用现有服务；驱动层要新增内省实现）。
+      options:
+        - UI / 交互（现有能力换个更好用的入口）
+        - 数据页能力（编辑、筛选、排序、导出）
+        - 结构与 DDL（建表、改列、索引、外键、触发器）
+        - 新方言 / 新数据库（Oracle、SQL Server、MariaDB …）
+        - 传输（导入 / 导出 / 格式）
+        - 分发与打包（安装包、签名、自动更新）
+        - AI / 自动化（这是仓库名里那个 AgenticDB，欢迎具体化）
+    validations:
+      required: true
+
+  - type: textarea
+    id: cost
+    attributes:
+      label: 你会怎么用（频率）
+      description: 每天用 / 每次迁移用一次 / 一次性。频率决定我把它排在哪。
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 已看过 docs/ROADMAP.md，这不是「明确不做」里的条目（或者是，且我给了推翻它的理由）
+          required: true
+        - label: 这个请求不需要内嵌浏览器或本地 HTTP 服务
+          required: true
+        - label: 我愿意在实现后当第一个试用的人（并回报真实数据上的问题）
+          required: false

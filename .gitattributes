@@ -1,0 +1,32 @@
+# 行尾策略：仓库内存 LF，检出时也别偷偷改。
+#
+# 为什么必须写这个文件：Windows 上的 Git 发行版默认 core.autocrlf=true，
+# 检出会把 scripts/*.sh 和 mvnw 的换行改成 CRLF —— bash 读到
+# `#!/usr/bin/env bash\r` 会直接报 `$'\r': command not found`，
+# 而失败信息出现在 CI 的 Windows job 里，本地 mac 上永远复现不了。
+# Maven 官方 wrapper 文档给的也是同一条处置。
+
+* text=auto
+
+# 必须在所有平台保持 LF 的可执行脚本
+*.sh          text eol=lf
+mvnw          text eol=lf
+*.js          text eol=lf
+*.json        text eol=lf
+*.java        text
+*.css         text
+*.svg         text
+*.md          text
+
+# 必须在 Windows 上是 CRLF 的批处理
+mvnw.cmd      text eol=crlf
+*.cmd         text eol=crlf
+*.bat         text eol=crlf
+
+# 二进制：不要让 Git 尝试规范化，也不要在 diff 里塞乱码
+*.png binary
+*.ico binary
+*.icns binary
+*.jar binary
+*.db binary
+*.xlsx binary
