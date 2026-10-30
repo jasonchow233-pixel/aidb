@@ -55,6 +55,10 @@ SHOTS=(
   #   切面标签 id 是动态拼的（object-tab-<id>），不能当静态点击目标；
   #   ADB_OVERVIEW=1 与 ADB_DDL 同型，等页面建好后程序化切换。
   "p2-overview||7000|ADB_OPEN=users ADB_OVERVIEW=1 ADB_THEME_FORCE=light"
+  # ⭐ R34 第十六批：只读切面那一帧 —— ObjectSectionsPanel 的索引表（列头 /
+  #   是·否 / 来源 / 空态）以前没有任何帧覆盖，i18n 抽完只能靠单测。
+  #   ADB_SECTION=<切面 id> 与 ADB_OVERVIEW 同型，等页面建好后程序化切换。
+  "p2-section-indexes||7000|ADB_OPEN=users ADB_SECTION=indexes ADB_THEME_FORCE=light"
   "p2-details||7000|ADB_OPEN=users ADB_DETAILS=1 ADB_THEME_FORCE=light"
   # ⭐ UX-5-F：唯一拍到「交互态」的一帧 —— 选中行 + 光标格 + 抽屉编辑器。
   #   ADB_CELL=1 让数据页自己摆状态，点击真按「编辑」按钮进入编辑态。

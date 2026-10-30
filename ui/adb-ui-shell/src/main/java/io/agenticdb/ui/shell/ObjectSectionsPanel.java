@@ -7,6 +7,7 @@ import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.introspect.TriggerDef;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.ColumnDef;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -100,47 +101,65 @@ final class ObjectSectionsPanel extends VBox {
         columnsTable.getStyleClass().add("adb-structure__table");
         columnsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         // U24：四类空态各说一句「为什么是空的」——「没有索引」和「读不到索引」不是一回事。
-        columnsTable.setPlaceholder(EmptyState.of(Icons.Icon.COLUMNS, "读不到这张表的列",
-                "列是表的结构本体，正常不会读空 —— 多半是表刚被删掉，或当前账号没有读结构的权限。"
-                        + "切到「数据」再切回来会重读一次。"));
-        columnsTable.getColumns().add(column("列名", ColumnDef::name, 180));
-        columnsTable.getColumns().add(column("类型", value -> value.displayType(), 140));
-        columnsTable.getColumns().add(column("可空", value -> value.nullable() ? "是" : "否", 60));
-        columnsTable.getColumns().add(column("主键", value -> value.primaryKey() ? "是" : "", 60));
-        columnsTable.getColumns().add(column("默认值", ColumnDef::defaultValue, 120));
-        columnsTable.getColumns().add(column("注释", ColumnDef::comment, 160));
+        columnsTable.setPlaceholder(EmptyState.of(Icons.Icon.COLUMNS,
+                I18n.t("sections.empty.columns.title"),
+                I18n.t("sections.empty.columns.note")));
+        columnsTable.getColumns().add(column(I18n.t("sections.col.name"), ColumnDef::name, 180));
+        columnsTable.getColumns().add(column(I18n.t("detail.type"),
+                value -> value.displayType(), 140));
+        columnsTable.getColumns().add(column(I18n.t("structure.col.nullable"),
+                value -> value.nullable() ? I18n.t("details.meta.yes")
+                        : I18n.t("details.meta.no"), 60));
+        columnsTable.getColumns().add(column(I18n.t("structure.col.key"),
+                value -> value.primaryKey() ? I18n.t("details.meta.yes") : "", 60));
+        columnsTable.getColumns().add(column(I18n.t("structure.col.default"),
+                ColumnDef::defaultValue, 120));
+        columnsTable.getColumns().add(column(I18n.t("column.comment"),
+                ColumnDef::comment, 160));
 
         indexesTable.setId("object-indexes-table");
         indexesTable.getStyleClass().add("adb-structure__table");
         indexesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        indexesTable.setPlaceholder(EmptyState.of(Icons.Icon.INDEX, "这张表没有索引",
-                "没有索引时，按任何列过滤都要整表扫 —— 查询慢先看这里。"));
-        indexesTable.getColumns().add(column("索引名", IndexDef::name, 200));
-        indexesTable.getColumns().add(column("唯一", value -> value.unique() ? "是" : "否", 60));
-        indexesTable.getColumns().add(column("列", IndexDef::columnsLabel, 220));
-        indexesTable.getColumns().add(column("来源", IndexDef::origin, 100));
+        indexesTable.setPlaceholder(EmptyState.of(Icons.Icon.INDEX,
+                I18n.t("sections.empty.indexes.title"),
+                I18n.t("sections.empty.indexes.note")));
+        indexesTable.getColumns().add(column(I18n.t("idx.name.prompt"), IndexDef::name, 200));
+        indexesTable.getColumns().add(column(I18n.t("structure.col.unique"),
+                value -> value.unique() ? I18n.t("details.meta.yes")
+                        : I18n.t("details.meta.no"), 60));
+        indexesTable.getColumns().add(column(I18n.t("structure.col.columns"),
+                IndexDef::columnsLabel, 220));
+        indexesTable.getColumns().add(column(I18n.t("sections.col.origin"),
+                IndexDef::origin, 100));
 
         foreignKeysTable.setId("object-foreign-keys-table");
         foreignKeysTable.getStyleClass().add("adb-structure__table");
         foreignKeysTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        foreignKeysTable.setPlaceholder(EmptyState.of(Icons.Icon.TRANSFER, "这张表没有外键",
-                "没有外键不代表设计有问题 —— 很多库把引用完整性放在应用层。"
-                        + "但少了外键，库里就可能留下指向已删除行的孤儿值。"));
-        foreignKeysTable.getColumns().add(column("约束名", ForeignKeyDef::displayName, 160));
-        foreignKeysTable.getColumns().add(column("列", value -> String.join(", ", value.columns()), 160));
-        foreignKeysTable.getColumns().add(column("引用", ForeignKeyDef::referencedTable, 140));
-        foreignKeysTable.getColumns().add(column("引用列",
+        foreignKeysTable.setPlaceholder(EmptyState.of(Icons.Icon.TRANSFER,
+                I18n.t("sections.empty.fks.title"),
+                I18n.t("sections.empty.fks.note")));
+        foreignKeysTable.getColumns().add(column(I18n.t("sections.fk.constraint"),
+                ForeignKeyDef::displayName, 160));
+        foreignKeysTable.getColumns().add(column(I18n.t("structure.col.columns"),
+                value -> String.join(", ", value.columns()), 160));
+        foreignKeysTable.getColumns().add(column(I18n.t("sections.fk.references"),
+                ForeignKeyDef::referencedTable, 140));
+        foreignKeysTable.getColumns().add(column(I18n.t("structure.fk.referencedColumns"),
                 value -> String.join(", ", value.referencedColumns()), 160));
-        foreignKeysTable.getColumns().add(column("删除时", ForeignKeyDef::onDelete, 100));
+        foreignKeysTable.getColumns().add(column(I18n.t("sections.fk.onDelete"),
+                ForeignKeyDef::onDelete, 100));
 
         triggersTable.setId("object-triggers-table");
         triggersTable.getStyleClass().add("adb-structure__table");
         triggersTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        triggersTable.setPlaceholder(EmptyState.of(Icons.Icon.TRIGGER, "这张表没有触发器",
-                "触发器是库在写入时自动执行的 SQL。这里为空，说明这张表的写入没有任何库侧的附带逻辑。"));
-        triggersTable.getColumns().add(column("名称", TriggerDef::name, 180));
-        triggersTable.getColumns().add(column("时机", TriggerDef::timingLabel, 80));
-        triggersTable.getColumns().add(column("事件", TriggerDef::eventLabel, 80));
+        triggersTable.setPlaceholder(EmptyState.of(Icons.Icon.TRIGGER,
+                I18n.t("sections.empty.triggers.title"),
+                I18n.t("sections.empty.triggers.note")));
+        triggersTable.getColumns().add(column(I18n.t("column.name"), TriggerDef::name, 180));
+        triggersTable.getColumns().add(column(I18n.t("structure.trigger.timing"),
+                TriggerDef::timingLabel, 80));
+        triggersTable.getColumns().add(column(I18n.t("structure.trigger.event"),
+                TriggerDef::eventLabel, 80));
     }
 
     private void buildSql() {
@@ -150,7 +169,7 @@ final class ObjectSectionsPanel extends VBox {
         sqlView.getStyleClass().add("adb-sql-preview");
         sqlNote.setId("object-sql-note");
         sqlNote.getStyleClass().add("adb-muted");
-        sqlNote.setText("数据库返回的建表语句 + 数据页实际使用的查询");
+        sqlNote.setText(I18n.t("sections.sql.note"));
         // ⭐ 文本区要吃满剩余高度 —— 上面不加 grow 的话它只有默认的 5 行高，
         //    剩下的空间是一片灰，看着像「没加载出来」。
         VBox.setVgrow(sqlView, javafx.scene.layout.Priority.ALWAYS);
@@ -218,7 +237,7 @@ final class ObjectSectionsPanel extends VBox {
         }
         loading = true;
         loaded = false;
-        showLoading("正在读取 " + tableName + " 的结构…");
+        showLoading(I18n.t("sections.loading", tableName));
 
         dbExecutor.execute(() -> {
             TableStructure result;
@@ -235,7 +254,7 @@ final class ObjectSectionsPanel extends VBox {
                 loading = false;
                 if (finalResult == null) {
                     lastError = finalFailure;
-                    showError("读取结构失败：" + finalFailure);
+                    showError(I18n.t("sections.readFailed", finalFailure));
                     return;
                 }
                 loaded = true;
@@ -266,10 +285,11 @@ final class ObjectSectionsPanel extends VBox {
         if (ddl != null && !ddl.isBlank()) {
             text.append(ddl.strip()).append("\n\n");
         } else {
-            text.append("-- 该数据库未返回 DDL\n\n");
+            text.append(I18n.t("sections.sql.noDdl")).append("\n\n");
         }
         String quoted = session.dialect().quote(tableName);
-        text.append("-- 数据页使用的查询\nSELECT * FROM ").append(quoted).append(" LIMIT 200;");
+        text.append(I18n.t("sections.sql.dataQuery"))
+                .append("\nSELECT * FROM ").append(quoted).append(" LIMIT 200;");
         return text.toString();
     }
 
@@ -317,7 +337,7 @@ final class ObjectSectionsPanel extends VBox {
 
     private static String readable(Throwable error) {
         if (error == null) {
-            return "未知错误";
+            return I18n.t("sections.unknownError");
         }
         String message = error.getMessage();
         return message == null || message.isBlank() ? error.getClass().getSimpleName() : message;

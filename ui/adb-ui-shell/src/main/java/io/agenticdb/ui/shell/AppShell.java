@@ -457,6 +457,20 @@ public final class AppShell extends StackPane {
         });
     }
 
+    /** ⭐ 截图 / 验收（R34 第十六批）：切到某个只读切面（索引 / 外键 / 触发器 / SQL）。 */
+    private void showSectionWhenReady(String sectionId, int attempt) {
+        Platform.runLater(() -> {
+            DataGridPage grid = workspace.activeGrid();
+            if (grid == null) {
+                if (attempt < POP_READY_MAX_POLLS) {
+                    pollAgain(attempt, () -> showSectionWhenReady(sectionId, attempt + 1));
+                }
+                return;
+            }
+            grid.selectSection(sectionId);
+        });
+    }
+
     /** 截图用：等 users 网格真的把行灌进来，再摆出选中 / 光标 / 抽屉三个交互态。 */
     private void poseGridCellWhenReady(int attempt) {
         Platform.runLater(() -> {
@@ -1659,6 +1673,12 @@ public final class AppShell extends StackPane {
         //    不允许点它；这里与 ADB_DDL 同型，等页面建好后程序化切换。
         if (flag("adb.overview", "ADB_OVERVIEW")) {
             showOverviewWhenReady(0);
+        }
+        // ⭐ 截图 / 验收（R34 第十六批）：ObjectSectionsPanel 的四张只读表
+        //    以前没有任何帧覆盖（i18n 抽完只能靠单测），这里补一个切面摆态。
+        String sectionPose = text("adb.section", "ADB_SECTION").trim();
+        if (!sectionPose.isEmpty()) {
+            showSectionWhenReady(sectionPose, 0);
         }
         // ⭐ 截图 / 验收（P2-2）：启动即弹「错误详情」。
         //    JavaFX 的 Dialog 是独立 Stage，ScreenshotSession 会优先拍模态窗口；
