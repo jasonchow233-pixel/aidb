@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.introspect.StructurePlan;
 import io.agenticdb.introspect.StructureSqlBuilder;
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.ui.I18n;
 import javafx.application.Platform;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
@@ -90,7 +91,7 @@ final class TableDdl {
     void createTable(String connectionId, String pose) {
         DbSession current = sessionFor.apply(connectionId);
         if (current == null) {
-            status.accept("这个连接还没打开，请先在对象树里点它一下");
+            status.accept(I18n.t("ddl.noSession"));
             return;
         }
         NewTableDialog dialog = NewTableDialog.create(current,
@@ -100,7 +101,7 @@ final class TableDdl {
         }
         Optional<StructurePlan> plan = dialog.show(owner.get(), stylesheets.get());
         if (plan.isEmpty()) {
-            status.accept("已取消新建表");
+            status.accept(I18n.t("ddl.cancelled.create"));
             return;
         }
         run(connectionId, plan.get());
@@ -110,11 +111,11 @@ final class TableDdl {
     void truncateTable(String connectionId, String table) {
         DbSession current = sessionFor.apply(connectionId);
         if (current == null) {
-            status.accept("这个连接还没打开，请先在对象树里点它一下");
+            status.accept(I18n.t("ddl.noSession"));
             return;
         }
         if (blank(table)) {
-            status.accept("请先选中一张表");
+            status.accept(I18n.t("ddl.pickTable"));
             return;
         }
         run(connectionId, StructureSqlBuilder.truncateTable(current, table));
@@ -124,16 +125,16 @@ final class TableDdl {
     void renameTable(String connectionId, String table) {
         DbSession current = sessionFor.apply(connectionId);
         if (current == null) {
-            status.accept("这个连接还没打开，请先在对象树里点它一下");
+            status.accept(I18n.t("ddl.noSession"));
             return;
         }
         if (blank(table)) {
-            status.accept("请先选中一张表");
+            status.accept(I18n.t("ddl.pickTable"));
             return;
         }
         TextInputDialog dialog = new TextInputDialog(table);
-        dialog.setTitle("重命名表");
-        dialog.setHeaderText("把「" + table + "」改名为");
+        dialog.setTitle(I18n.t("ddl.rename.title"));
+        dialog.setHeaderText(I18n.t("ddl.rename.header", table));
         dialog.getEditor().setId("rename-table-input");
         if (owner.get() != null) {
             dialog.initOwner(owner.get());
@@ -143,7 +144,7 @@ final class TableDdl {
         DialogStyles.apply(dialog, owner.get());
         Optional<String> answer = dialog.showAndWait();
         if (answer.isEmpty()) {
-            status.accept("已取消重命名");
+            status.accept(I18n.t("ddl.cancelled.rename"));
             return;
         }
         String next = answer.get() == null ? "" : answer.get().trim();
@@ -151,7 +152,7 @@ final class TableDdl {
         if (problem != null) {
             status.accept(problem);
             Alert alert = new Alert(Alert.AlertType.ERROR, problem, ButtonType.OK);
-            alert.setHeaderText("改不了这个表名");
+            alert.setHeaderText(I18n.t("ddl.rename.rejected"));
             if (owner.get() != null) {
                 alert.initOwner(owner.get());
             }
@@ -171,11 +172,11 @@ final class TableDdl {
     void renameTable(String connectionId, String table, String next) {
         DbSession current = sessionFor.apply(connectionId);
         if (current == null) {
-            status.accept("这个连接还没打开，请先在对象树里点它一下");
+            status.accept(I18n.t("ddl.noSession"));
             return;
         }
         if (blank(table)) {
-            status.accept("请先选中一张表");
+            status.accept(I18n.t("ddl.pickTable"));
             return;
         }
         String problem = tableNameProblem(connectionId, next, current, table);
@@ -191,11 +192,11 @@ final class TableDdl {
     void dropTable(String connectionId, String table) {
         DbSession current = sessionFor.apply(connectionId);
         if (current == null) {
-            status.accept("这个连接还没打开，请先在对象树里点它一下");
+            status.accept(I18n.t("ddl.noSession"));
             return;
         }
         if (blank(table)) {
-            status.accept("请先选中一张表");
+            status.accept(I18n.t("ddl.pickTable"));
             return;
         }
         run(connectionId, StructureSqlBuilder.dropTable(current, table));
@@ -214,7 +215,7 @@ final class TableDdl {
     void dropTables(String connectionId, List<String> tables) {
         DbSession current = sessionFor.apply(connectionId);
         if (current == null) {
-            status.accept("这个连接还没打开，请先在对象树里点它一下");
+            status.accept(I18n.t("ddl.noSession"));
             return;
         }
         List<String> names = tables == null ? List.of() : tables.stream()
@@ -223,26 +224,26 @@ final class TableDdl {
                 .distinct()
                 .toList();
         if (names.isEmpty()) {
-            status.accept("请先选中要删除的表");
+            status.accept(I18n.t("ddl.pickTables"));
             return;
         }
         StructurePlan plan = StructureSqlBuilder.dropTables(current, names);
         if (!confirmation.test(plan)) {
-            status.accept("已取消：" + plan.title());
+            status.accept(I18n.t("ddl.cancelled", plan.title()));
             return;
         }
         if (!running.compareAndSet(false, true)) {
-            status.accept("已有结构变更正在执行");
+            status.accept(I18n.t("ddl.busy"));
             return;
         }
-        status.accept("正在删除 " + names.size() + " 张表…");
+        status.accept(I18n.t("ddl.dropping", names.size()));
         executorFor.apply(connectionId).execute(() -> {
             List<String> failures = new ArrayList<>();
             for (String name : names) {
                 try {
                     StructurePlanRunner.execute(current, StructureSqlBuilder.dropTable(current, name));
                 } catch (Exception e) {
-                    failures.add(name + "：" + readable(e));
+                    failures.add(I18n.t("ddl.failure", name, readable(e)));
                 }
             }
             Platform.runLater(() -> {
@@ -250,10 +251,10 @@ final class TableDdl {
                 onChanged.accept(connectionId);
                 int deleted = names.size() - failures.size();
                 if (failures.isEmpty()) {
-                    status.accept("已删除 " + deleted + " 张表");
+                    status.accept(I18n.t("ddl.dropped", deleted));
                 } else {
-                    status.accept("已删除 " + deleted + "/" + names.size()
-                            + " 张表；失败：" + String.join("、", failures));
+                    status.accept(I18n.t("ddl.droppedPartial", deleted, names.size(),
+                            String.join(I18n.t("ddl.listSeparator"), failures)));
                     showFailureReport(names.size(), deleted, failures);
                 }
             });
@@ -263,7 +264,8 @@ final class TableDdl {
     /** 批量删除的失败明细 —— 状态栏一行放不下，给一份可复制的汇总报告。 */
     private void showFailureReport(int total, int deleted, List<String> failures) {
         BatchSummaryDialog.show(owner.get(),
-                BatchSummary.of("删除表", "删除", "张表", total, deleted, failures));
+                BatchSummary.of(I18n.t("ddl.summary.title"), I18n.t("ddl.summary.action"),
+                        I18n.t("ddl.summary.unit"), total, deleted, failures));
     }
 
     /** 表名的校验（重命名时用；建表走 {@link StructureSqlBuilder#createTable}）。 */
@@ -286,30 +288,30 @@ final class TableDdl {
     private void run(String connectionId, StructurePlan plan) {
         DbSession current = sessionFor.apply(connectionId);
         if (current == null) {
-            status.accept("连接已断开");
+            status.accept(I18n.t("ddl.disconnected"));
             return;
         }
         if (!confirmation.test(plan)) {
-            status.accept("已取消：" + plan.title());
+            status.accept(I18n.t("ddl.cancelled", plan.title()));
             return;
         }
         if (!running.compareAndSet(false, true)) {
-            status.accept("已有结构变更正在执行");
+            status.accept(I18n.t("ddl.busy"));
             return;
         }
-        status.accept("正在执行：" + plan.title());
+        status.accept(I18n.t("ddl.executing", plan.title()));
         executorFor.apply(connectionId).execute(() -> {
             try {
                 StructurePlanRunner.execute(current, plan);
                 Platform.runLater(() -> {
                     running.set(false);
-                    status.accept(plan.title() + " 已完成");
+                    status.accept(I18n.t("ddl.done", plan.title()));
                     onChanged.accept(connectionId);
                 });
             } catch (Exception e) {
                 Platform.runLater(() -> {
                     running.set(false);
-                    status.accept(plan.title() + " 失败：" + readable(e));
+                    status.accept(I18n.t("ddl.failed", plan.title(), readable(e)));
                 });
             }
         });

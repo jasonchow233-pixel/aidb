@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.StructurePlan;
 import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.ui.I18n;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -48,7 +49,7 @@ class TableDdlTest {
 
         assertThat(session.executed())
                 .containsExactly("DROP TABLE \"orders\"");
-        assertThat(statuses).last().asString().contains("已完成");
+        assertThat(statuses).last().asString().endsWith(I18n.t("ddl.done", "").trim());
         assertThat(changes.get())
                 .as("删完表必须刷新对象树，否则树上还挂着一张已经不存在的表")
                 .isEqualTo(1);
@@ -113,7 +114,7 @@ class TableDdlTest {
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(session.executed()).isEmpty();
-        assertThat(statuses).last().asString().contains("这个连接还没打开");
+        assertThat(statuses).last().asString().isEqualTo(I18n.t("ddl.noSession"));
     }
 
     @Test
@@ -129,7 +130,7 @@ class TableDdlTest {
                 .containsExactly("DROP TABLE \"orders\"", "DROP TABLE \"logs\"",
                         "DROP TABLE \"audit\"");
         assertThat(statuses).last().asString()
-                .contains("已删除 2/3")
+                .contains(I18n.t("ddl.droppedPartial", 2, 3, "").trim())
                 .contains("logs");
         assertThat(changes.get()).isEqualTo(1);
         assertThat(session.inTransaction())
@@ -145,7 +146,7 @@ class TableDdlTest {
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(session.executed()).isEmpty();
-        assertThat(statuses).last().asString().contains("已取消");
+        assertThat(statuses).last().asString().contains(I18n.t("ddl.cancelled", "").trim());
     }
 
     @Test
