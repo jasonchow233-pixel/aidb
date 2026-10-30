@@ -20,6 +20,7 @@ import javafx.collections.FXCollections;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
@@ -618,8 +619,11 @@ public final class StructurePage extends VBox implements AutoCloseable {
      * 索引页签的行首图标列。
      *
      * <p>为什么加：索引表和列表、外键表长得一模一样，用户扫一眼分不出「这是索引」。
-     * 一个 14px 的钥匙图标 + 索引类型色（{@code -adb-kind-index}）就能区分开 ——
-     * 与对象树里「表 / 视图 / 触发器」各用一种类型色是同一套逻辑。
+     * 一个 14px 的有序清单图标就能区分开 —— 与对象树里「表 / 视图 / 触发器」
+     * 各用一种形状是同一套逻辑。
+     *
+     * <p>R35 N3：有彩色资产就分层上色（与导航树、对象首页同一口径），
+     * 没有才回退单色并照旧吃 {@code -adb-kind-index}。
      */
     private void addIndexIconColumn() {
         TableColumn<IndexDef, IndexDef> column = new TableColumn<>("");
@@ -635,9 +639,15 @@ public final class StructurePage extends VBox implements AutoCloseable {
                     setGraphic(null);
                     return;
                 }
-                SVGPath icon = Icons.of(Icons.Icon.INDEX, Icons.SIZE_LABEL);
-                icon.getStyleClass().add("adb-structure__index-icon");
-                setGraphic(icon);
+                Node graphic;
+                if (Icons.hasColoredVariant(Icons.Icon.INDEX)) {
+                    graphic = Icons.colored(Icons.Icon.INDEX, Icons.SIZE_LABEL);
+                } else {
+                    SVGPath icon = Icons.of(Icons.Icon.INDEX, Icons.SIZE_LABEL);
+                    icon.getStyleClass().add("adb-structure__index-icon");
+                    graphic = icon;
+                }
+                setGraphic(graphic);
             }
         });
         indexes.getColumns().add(column);

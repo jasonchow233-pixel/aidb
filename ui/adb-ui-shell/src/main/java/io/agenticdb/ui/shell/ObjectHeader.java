@@ -11,7 +11,6 @@ import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
-import javafx.scene.shape.SVGPath;
 
 /**
  * ⭐ 对象标题栏（§6.1）。
@@ -28,7 +27,7 @@ import javafx.scene.shape.SVGPath;
  */
 public final class ObjectHeader extends HBox {
 
-    private final SVGPath icon;
+    private final Node icon;
     private final Label title = new Label();
     private final Label type = new Label();
     private final Label count = new Label();
@@ -47,7 +46,12 @@ public final class ObjectHeader extends HBox {
         setAlignment(Pos.CENTER_LEFT);
         setSpacing(8);
 
-        icon = Icons.of(iconType, Icons.SIZE_TOOLBAR);
+        // R35 N3：对象类型图标有彩色资产就分层上色，没有才回退单色
+        // （单色那条线吃 .adb-object-header__icon 的类型色）。
+        // 类名照旧挂在返回的节点上（门禁与测试按 .adb-object-header__icon 找它）。
+        icon = Icons.hasColoredVariant(iconType)
+                ? Icons.colored(iconType, Icons.SIZE_TOOLBAR)
+                : Icons.of(iconType, Icons.SIZE_TOOLBAR);
         icon.getStyleClass().add("adb-object-header__icon");
 
         title.setText(name);
