@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,7 +36,34 @@ class StartupTraceTest {
                 assertThat(mark.totalMillis())
                         .as("进程启动到该阶段的耗时不能小于打点内部耗时")
                         .isGreaterThanOrEqualTo(mark.elapsedMillis()));
-        assertThat(trace.slow()).as("真实测试里首屏不应超过 2s").isFalse();
+        // ⚠️ 这里**不**断言「首屏 < 2s」——2026-10-30 改判，理由记在 CHANGELOG：
+        //   这个 `trace` 的起点是**当前 JVM 的进程启动时刻**，在共享的 surefire fork 里
+        //   它必然把前面几十个测试类的时间算进来，于是「全量跑必红、单跑本类全绿」——
+        //   那条断言测的是测试运行器的进程年龄，不是产品的启动性能。
+        //   阈值本身改由下面那条**注入起点**的门禁钉住；真实冷启动耗时只在真启动时才有意义，
+        //   量法是 `~/.agenticdb/logs/startup.log`（对外记的 3.5–3.9 s 就是从那儿读的）。
+    }
+
+    @Test
+    void theTwoSecondBudgetIsEnforcedInBothDirections() {
+        StartupTrace fast = new StartupTrace(Instant.now().minusMillis(500));
+        fast.firstScreen();
+        assertThat(fast.firstScreenMillis())
+                .as("起点交给我们之后，首屏耗时应读作约 0.5s")
+                .isBetween(400L, 1_500L);
+        assertThat(fast.slow()).as("0.5s 的首屏不能判成慢启动").isFalse();
+
+        StartupTrace slow = new StartupTrace(Instant.now().minusMillis(2_500));
+        slow.firstScreen();
+        assertThat(slow.slow())
+                .as("越过 " + StartupTrace.SLOW_FIRST_SCREEN_MILLIS + " ms 必须判成慢启动（规格：冷启动 <2s）")
+                .isTrue();
+        assertThat(slow.summary())
+                .as("判了慢就得在日志里喊出来，否则 slow() 是个没人看的布尔值")
+                .contains("(SLOW, over " + StartupTrace.SLOW_FIRST_SCREEN_MILLIS + " ms");
+        assertThat(fast.summary())
+                .as("没越线就不能在日志里喊慢")
+                .doesNotContain("SLOW");
     }
 
     @Test

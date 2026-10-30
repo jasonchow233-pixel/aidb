@@ -191,6 +191,16 @@ class DialogButtonOrderTest {
         Dialog<String> dialog = onFx(() -> {
             Dialog<String> d = new Dialog<>();
             d.getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
+            // ⚠️ 显式喂 Windows 预设，而不是「把宿主平台的预设当成 Windows 预设」。
+            //   ButtonBar 的初始 order 串是**按平台**选的：macOS 上是
+            //   "L_HE+U+FBIX_NYA_R"（里面既没有 'O' 也没有 'C'，长度也短 3），
+            //   而 DialogStyles 对不认识的串**故意不动**（那是 anUnrecognisedPlatformOrderIsLeftAlone
+            //   钉住的规则）。于是这条门禁在 macOS 上必然拿「没被改过的 macOS 串」去比 Windows 串
+            //   —— 假红，且红得跟产品没关系（2026-10-30 实测：Windows 全绿、macOS 单条红）。
+            //   这条要钉的是「给定 Windows 预设 → 只换 O / C 两槽」，与跑在哪个平台上无关；
+            //   macOS 上按钮的真实位置由本类里断言坐标的那几条守（它们直接量 layoutX，
+            //   与 order 串按平台选成什么无关）。
+            buttonBarOf(d.getDialogPane()).setButtonOrder(JAVA_FX_WINDOWS_PRESET);
             DialogStyles.apply(d, stage);
             return d;
         });

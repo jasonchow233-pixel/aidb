@@ -41,12 +41,25 @@ public final class StartupTrace {
     }
 
     private final long createdNanos = System.nanoTime();
-    private final Instant processStart = startInstant();
+    private final Instant processStart;
     private final List<Mark> marks = new ArrayList<>();
     private long firstScreenMillis = -1;
     private boolean written;
 
     public StartupTrace() {
+        this(startInstant());
+    }
+
+    /**
+     * 把「进程启动时刻」交给调用方 —— 只给测试用（同包）。
+     *
+     * <p>为什么开这个口子：{@code firstScreenMillis} 量的是「进程启动 → 首屏」，
+     * 在共享的 surefire fork 里这个差值等于**测试运行器已经跑了多久**，
+     * 于是「首屏 < 2s」这类断言在全量跑时必红、单跑时必绿。要确定性地把
+     * 快 / 慢两种首屏都造出来，只能把起点交出来。
+     */
+    StartupTrace(Instant processStart) {
+        this.processStart = processStart;
         mark("trace.created");
     }
 
