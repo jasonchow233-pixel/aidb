@@ -180,7 +180,7 @@ for shot in "${SHOTS[@]}"; do
 # 尺寸都远小于 65536，所以只取第 3、4 字节即可。
 png_dims() {
   od -An -tu1 -j16 -N8 "$1" | tr -s ' ' \
-    | awk '{printf "%dx%d", $3 * 256 + $4, $7 * 256 + $8}'
+    | awk 'NF >= 8 {printf "%dx%d", $3 * 256 + $4, $7 * 256 + $8}'
 }
 
 # 每张图一个干净环境：用子 shell 隔离，ADB_* 不会泄漏到下一张。
@@ -253,7 +253,10 @@ if [ "$captured" -gt 0 ]; then
     [ -f "$png" ] || continue
     digest="$(png_digest "$png")"
     base="$(basename "$png")"
-    prior="$(printf '%s\n' "$seen_list" | grep -F "$digest " | head -1 | cut -d' ' -f2-)"
+    # ⚠️ `|| true` 不能省：本脚本 source 了 `set -euo pipefail`，而 grep **没匹配时返回 1** ——
+    #    第一张帧之前去重表是空的，那条 substitution 直接把整个脚本带走（和上面
+    #    `git show | od` 的 SIGPIPE 是同一类坑，实测 rc=1、日志停在「帧去重」一行）。
+    prior="$(printf '%s\n' "$seen_list" | grep -F "$digest " | head -1 | cut -d' ' -f2- || true)"
     if [ -n "$prior" ] && [ "$prior" != "$base" ]; then
       warn "$base 与 $prior 像素完全相同 —— 其中一张是假帧"
       duplicates=$((duplicates + 1))
