@@ -47,3 +47,7 @@ __pycache__/
 
 # ── AI 工具的本地记忆目录，不进版本库 ──
 .workbuddy/
+
+# ── 内部执行战报（会话视图，不进公开仓库） ──
+# 真源仍在本地 docs/internal/，公开仓库只留 README + docs 真文档。
+docs/internal/

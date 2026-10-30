@@ -16,7 +16,7 @@
 
 > **第八轮之后**：D2+D4（MySQL/PG 列注释读回）已修；B5-S1（索引可编辑）已落地；
 > **T1–T4（建表 / 清空 / 重命名 / 删表）已落地**（T1=弹窗，按形态裁定）；9 张验收截图完成。
-> **第九轮**：新增对外汇报版 `docs/EXEC-SUMMARY.md` + GitHub 开源对标 `docs/GITHUB-COMPARE.md`。
+> **第九轮**：新增 GitHub 开源对标 `docs/GITHUB-COMPARE.md`（对外汇报版已下线，对外口径见 `docs/ROADMAP.md`）。
 >
 > - ✅ **D3「SQLite 改列丢失 CHECK 约束」已修**（第十一轮）：CHECK 现在能内省、展示，
 >   而且**改列整表重建时会搬运** —— 并且门禁断言「改列后约束**仍然拦得住违规数据**」。
@@ -25,10 +25,10 @@
 >   （各驱动码表不同）→ **带外键的表改列必失败**（`ON UPDATE 3` 语法错误）。
 > - 其余遗留：B5-S2/S3、B5-S4/O1/O2、U-B6、空白态 E5–E9、架构收尾 A10/A12/A15/A16。
 >
-> **完整清单、逐域对比、像素级参数与下一轮规划见 `NAVICAT-TODO.md`（2026-10-26 重建）**；
+> **对外路线（支持矩阵 / 进行中 / 明确不做）见 `docs/ROADMAP.md`**；
 > 启动可观测性 `StartupTrace` + 可访问性（六区焦点顺序 / 标签与切面键盘可达 / 逐页可朗读名称）已落地；
 > **冷启动 <2s 未达标（实测 3.5–3.9 s，地板 ≈2.35 s）**；jlink ⛔（自动模块）·
-> 自动更新 🚫（无发布渠道）· 签名/公证 ⛔（缺证书）—— 见 `NAVICAT-TODO.md` §8。
+> 自动更新 🚫（无发布渠道）· 签名/公证 ⛔（缺证书）。
 
 | 能力 | 状态 | 证据 |
 |---|---|---|
@@ -96,7 +96,7 @@
 | **多连接并存**（每连接一条执行器，同连接串行、跨连接不互堵） | ✅ | `DbExecutors` / `SessionManager` |
 | **连接建立移出 UI 线程**（连接慢不再冻窗口） | ✅ | `AppShell.connectProfile` |
 | **崩溃日志**（`~/.agenticdb/logs/crash-*.log`） | ✅ | `CrashLog` |
-| **启动耗时日志**（`~/.agenticdb/logs/startup.log`：进程启动 → 首屏分段打点） | ✅ | `StartupTrace`（**注意：冷启动 <2s 目标未达成**，实测 3.5–3.9 s，见 `NAVICAT-TODO.md` §8） |
+| **启动耗时日志**（`~/.agenticdb/logs/startup.log`：进程启动 → 首屏分段打点） | ✅ | `StartupTrace`（**注意：冷启动 <2s 目标未达成**，实测 3.5–3.9 s） |
 | **一键出包**（jpackage：app-image / dmg / msi / deb） | ✅ | `scripts/package.sh` |
 | **连接属性 7 页**（常规/高级/数据库/SSL/SSH/HTTP/备注；SSL 真写驱动属性，SSH/HTTP 明说未实现） | ✅ | `ConnectionWizard`（第三十三轮） |
 | 结构安全编辑：加列 / 改列 / 重命名列 / 删列 + 两级危险确认 | ✅ | `StructureSqlBuilder` + `StructurePlan` |
@@ -108,7 +108,7 @@
 | HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
 | TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
 | **键盘可达：六区焦点顺序 + 标签/切面键盘切换 + 逐页可朗读名称** | ✅ | `AccessibilityAuditTest`（第二十六轮）+ `TabBar` / `ObjectTabBar` / `ObjectHomePage` / `TableListPage` |
-| **启动耗时可观测（进程 → 首屏，分段打点 + 日志 + 关于回显）** | ✅ | `StartupTrace` + `StartupTraceTest`（**冷启动 <2s 未达标**：实测 3.5–3.9 s，见 `NAVICAT-TODO.md` §8） |
+| **启动耗时可观测（进程 → 首屏，分段打点 + 日志 + 关于回显）** | ✅ | `StartupTrace` + `StartupTraceTest`（**冷启动 <2s 未达标**：实测 3.5–3.9 s） |
 | **Lucide 矢量图标 + 语义彩色**（对象类型/状态彩色，动作单色） | ✅ | `Icons`（第二十七轮）+ `LucideIconTest` |
 | **统一控件层：五档按钮 × 五态 + 输入/复选/下拉/清单/弹窗同套规则** | ✅ | `app.css` 控件段 + `UnifiedControlTest` |
 | **新建索引弹窗**（单列表 + 拖拽/Alt+↑↓ 保序 + 「添加列」下拉 + 方言能力门控 + SQL 预览即执行语句） | ✅ | `IndexDialog` + `IndexDialogTest` / `IndexDdlTest` |
@@ -211,17 +211,18 @@ TestFX 默认用 Monocle 无头模式；在本机想看真实窗口，去掉父 
 
 | 文档 | 回答什么问题 |
 |---|---|
-| **`NAVICAT-TODO.md`** | ⭐ **唯一真源（2026-10-26 重建）**：对标 Navicat Premium 17 的官方手册 + 像素级实测对比、逐组件/功能/流程差距清单（G1–G14）、第三十~三十二轮规划与决策项、已裁定口径、不做边界、每轮验收口径 |
+| **`docs/ROADMAP.md`** | ⭐ **对外路线**：现在支持什么（数据库/平台/能力矩阵）· 进行中 · 接下来按用户价值排序 · 明确不做 |
+| **`docs/STAR-PLAN.md`** | ⭐ **开源发布与增长规划**：定位（原生桌面 / 不内嵌浏览器 / 不开 HTTP 端口）、与 DBeaver·Beekeeper 的差异化、发布工程清单（LICENSE / CI / Release）、文档卫生口径 |
 | `docs/ARCHITECTURE.md` | 模块、数据流、线程模型、编辑/SQL/撤销不变量、结构页与连接层模型 |
 | `docs/UI-GUIDE.md` | 视觉基线、七区、组件与交互规则、令牌生成、图标约定、弹窗规范 |
 | **`docs/UI-VISUAL-SPEC.md`** | ⭐ **可照着实现的 UI 规格书**：7 档字号落到哪个角色 · 102 个令牌语义 · 图标清单 · 间距/圆角/固定尺寸 · 七区与四种页面骨架 · 组件规格 · 弹窗骨架与按钮区规则 · 交互态矩阵 · 键盘表 · 文案措辞 |
 | **`docs/GITHUB-COMPARE.md`** | ⭐ **GitHub 上开源数据库管理软件**扫描（DBeaver / Chat2DB / Beekeeper Studio / TablePro / sqlpad / SQLTools…）：与 AIDB 的可比性、独特定位、借鉴项 |
-| **`docs/EXEC-SUMMARY.md`** | ⭐ **对外汇报版**（2026-10-22）：架构 / Todolist / 截图 / Navicat / GitHub / 六维 / 还缺什么 / 本轮交付物 / 汇报要点 |
 | **`docs/UI-FORMS-AND-STATES.md`** | ⭐ **形态与状态规范**：新能力该做**弹窗还是标签页**（含待建能力的裁定表，防「新建表做成标签页」这类错误）+ 默认态 8 项 + 空白态 9 处清单 + `EmptyState` 组件约定 |
 | `docs/COMPONENT-SELECTION.md` | 开源组件选型、版本、许可证、禁入清单 |
 
-> 📌 **对外汇报**：`docs/EXEC-SUMMARY.md`（一句话结论 + 六维全景 + 还缺什么）与
-> `docs/GITHUB-COMPARE.md`（GitHub 开源数据库管理软件对照）于 2026-10-22 新增。
+> 📌 **对外口径**：`docs/ROADMAP.md`（支持矩阵 + 路线 + 明确不做）与
+> `docs/STAR-PLAN.md`（发布与增长规划：定位 / 差异化 / 发布工程清单）。
+> 逐轮执行清单与验收口径属内部材料，不在本仓库发布。
 
 **脚本**（`scripts/`，2026-10-21 新增）：`dev.sh` 一键编译启动 ·
 `build.sh` 门禁 · `shots.sh` 重拍截图 · `package.sh` **一键出包**（jpackage）·
@@ -316,10 +317,10 @@ bootstrap/
 - **MySQL 5.7.44 真库已联调**（9 例）；**PostgreSQL 仍缺测试库**（未配置，跳过）。
 - ⚠️ **冷启动未达标**：目标 < 2 s，实测 **3.5–3.9 s**（Windows 10 + JDK 27，`StartupTrace` 打点）。
   地板来自 JVM/Toolkit ~0.95 s + 第一个 JavaFX 控件（Modena 样式表解析）~0.5 s +
-  `stage.show()` 首趟 CSS/布局 ~0.86 s；**AppCDS 在开发启动路径试过不通**。→ `NAVICAT-TODO.md` §8
+  `stage.show()` 首趟 CSS/布局 ~0.86 s；**AppCDS 在开发启动路径试过不通**
 - ⚠️ **没有自动更新 / 版本检查**（无发布渠道 + 离线环境 + 无安装包签名）；
   **签名与公证未做**（需 Apple Developer ID 与 Windows 代码签名证书，属外部资源）；
-  **jlink 自定义运行时不可行**（RichTextFX / ControlFX 是自动模块）。→ `NAVICAT-TODO.md` §8
+  **jlink 自定义运行时不可行**（RichTextFX / ControlFX 是自动模块）
 - `core/adb-declarations` 与根目录 `declarations/` 已于 2026-10-24 删除（运行时从未引用；
   方言差异现由 `Dialect` 抽象层承担），基线因此减少 43 条测试。
 - 主题“跟随系统”目前只探测 macOS；Windows/Linux 默认亮色。

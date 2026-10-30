@@ -3,7 +3,7 @@
 > **2026-10-22 新增**（第九轮对外汇报的一部分）。
 > 回答：**GitHub 上还有哪些开源的、可与 AgenticDB 正面比较的数据库管理软件？**
 >
-> 对照对象：AgenticDB（`NAVICAT-TODO.md` 里对 Navicat 的对拍；`docs/EXEC-SUMMARY.md` 全景）。
+> 对照对象：AgenticDB（能力面见 `docs/ROADMAP.md`；发布定位见 `docs/STAR-PLAN.md`；Navicat 逐组件对拍属内部材料，不随公开仓库发布）。
 > 本文件只做「开源候选」的横向扫描，不重复 Navicat 对照。
 
 ---
@@ -60,7 +60,8 @@
 
 ## 5. 相关文档
 
-- `NAVICAT-TODO.md` — Navicat 对标（本文件是对 Navicat **之外**的开源扫描）。
-- `docs/EXEC-SUMMARY.md` — 对外汇报版（含本章引用）。
+- `docs/internal/NAVICAT-TODO.md` — Navicat 对标（本文件是对 Navicat **之外**的开源扫描）。
+- `docs/ROADMAP.md` — 对外路线（支持矩阵 + 接下来 + 明确不做）。
+- `docs/STAR-PLAN.md` — 发布与增长规划（本文件的定位结论在彼处落地为 README 首屏）。
 - `docs/COMPONENT-SELECTION.md` — 组件选型（JavaFX/ControlsFX/RichTextFX…）。
 - `docs/ARCHITECTURE.md` — 架构。

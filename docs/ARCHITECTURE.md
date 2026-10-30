@@ -1,8 +1,8 @@
 # AgenticDB 架构（Java 25 + JavaFX 25）
 
 > 当前唯一技术路线。旧 Rust / Vue / Python 实现与构建产物已删除，不再作为运行时依赖。
-> 执行清单见 `NAVICAT-TODO.md`；组件选型见 `docs/COMPONENT-SELECTION.md`；
-> UI 规则见 `docs/UI-GUIDE.md`；Navicat 对标与差距见 `NAVICAT-TODO.md`。
+> 执行清单见 `docs/internal/NAVICAT-TODO.md`；组件选型见 `docs/COMPONENT-SELECTION.md`；
+> UI 规则见 `docs/UI-GUIDE.md`；Navicat 对标与差距见 `docs/internal/NAVICAT-TODO.md`。
 
 ---
 
@@ -257,7 +257,7 @@ PostgreSQL 注释用独立的 `COMMENT ON`、DDL 只能由内省生成。
 
 - `ActionRegistry` 是菜单、工具栏、右键、命令面板的唯一动作来源，统一 enabled/快捷键。
   **已知例外（4 处）**：侧栏树的右键菜单、侧栏导航按钮、工具栏图标按钮、
-  标签栏右键菜单仍走独立路径（→ `NAVICAT-TODO.md` 4.5-8 / 4.5-9 / 4.5-10 / 4.5-29）。
+  标签栏右键菜单仍走独立路径（→ `docs/internal/NAVICAT-TODO.md` 4.5-8 / 4.5-9 / 4.5-10 / 4.5-29）。
 - `AppShell` 负责窗口、会话、标签、状态栏、Toast；页面只通过 `Feedback` 回报。
 - 设计令牌：`ui/adb-ui-core/src/main/resources/tokens/tokens.json` 是唯一真相。
   生成器：`java tools/GenTokens.java`。
@@ -403,4 +403,4 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 
 > **P4.5 的真实状态**（2026-10-21 第四轮逐文件复核）：
 > 4.5-4（危险分级 fail-closed）**从未实现**，4.5-2（截断）**只做了查询页**，
-> 4.5-5（图标统一）**只拆了一半**。完整清单见 `NAVICAT-TODO.md` §5。
+> 4.5-5（图标统一）**只拆了一半**。完整清单见 `docs/internal/NAVICAT-TODO.md` §5。

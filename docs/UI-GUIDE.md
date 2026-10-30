@@ -2,7 +2,7 @@
 
 > 面向实现的 UI 规则。数值令牌以
 > `ui/adb-ui-core/src/main/resources/tokens/tokens.json` 为唯一真相；
-> 交互清单与**与 Navicat 的差距（含像素级实测）以 `NAVICAT-TODO.md` 为准**；
+> 交互清单与**与 Navicat 的差距（含像素级实测）以 `docs/internal/NAVICAT-TODO.md` 为准**；
 > **可照着实现的完整规格（字号落到哪个角色、颜色语义、图标清单、弹窗骨架、
 > 交互态矩阵、键盘表、缺口清单）见 `docs/UI-VISUAL-SPEC.md`（第十轮建立）**。
 
@@ -57,7 +57,7 @@ java tools/GenTokens.java
 
 `TokenParityTest` 校验 JSON 键与 `Tokens.ALL_KEYS` 完全一致，并扫描业务 CSS。
 
-**已知缺口**（→ `NAVICAT-TODO.md` 4.5-14）：
+**已知缺口**（→ `docs/internal/NAVICAT-TODO.md` 4.5-14）：
 
 - 生成器把 **color 类型**令牌导出成 CSS 变量；其余 **38 个**（35 个尺寸 + 3 个时长）
   导出成 `Tokens.java` 常量，供 Java 布局代码引用。
@@ -277,4 +277,4 @@ Windows 上常见字体可能替换或缺失。长期方向是**内嵌 SVG 图�
   见 `docs/UI-VISUAL-SPEC.md` §14。
 - **启动耗时是用户体验的一部分**：`StartupTrace` 把「进程启动 → 首屏」分段写进
   `~/.agenticdb/logs/startup.log`，「关于 AIDB」回显本次耗时。⚠️ 当前**冷启动 3.5–3.9 s，未达 < 2s 目标**
-  （归因见 `NAVICAT-TODO.md` §8）。
+  （归因见 `docs/internal/NAVICAT-TODO.md` §8）。
