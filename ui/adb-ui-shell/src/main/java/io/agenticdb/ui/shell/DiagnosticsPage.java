@@ -5,6 +5,7 @@ import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.SchemaService.TableSchema;
 import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.ui.I18n;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
@@ -64,12 +65,12 @@ public final class DiagnosticsPage extends VBox {
                 TableStructure structure = schemaService.structure(session, tableName);
                 TableSchema schema = schemaService.describe(session, tableName);
                 long rows = schemaService.count(session, tableName);
-                header = tableName + " · " + (structure.view() ? "视图" : "表")
-                        + " · " + rows + " 行";
+                header = I18n.t("diag.header", tableName,
+                        I18n.t(structure.view() ? "detail.kind.view" : "detail.kind.table"), rows);
                 findings.addAll(analyze(structure, rows));
             } catch (Exception e) {
-                header = tableName + " · 诊断失败";
-                findings.add(new Finding("错误", e.getMessage() == null
+                header = I18n.t("diag.header.failed", tableName);
+                findings.add(new Finding(I18n.t("diag.finding.error"), e.getMessage() == null
                         ? e.toString() : e.getMessage(), true));
             }
             String finalHeader = header;
@@ -89,38 +90,46 @@ public final class DiagnosticsPage extends VBox {
     private List<Finding> analyze(TableStructure structure, long rows) {
         List<Finding> findings = new ArrayList<>();
 
-        findings.add(new Finding("列", structure.columns().size() + " 个"
-                + (structure.primaryKeys().isEmpty() ? "" : " · 主键 " + String.join(", ",
-                structure.primaryKeys())), false));
+        // 「N 个 · 主键 …」整句进模板：把「个」留在代码里拼，英文界面就会长出 "5 个"。
+        findings.add(new Finding(I18n.t("structure.col.columns"),
+                structure.primaryKeys().isEmpty()
+                        ? I18n.t("diag.columns.detail", structure.columns().size())
+                        : I18n.t("diag.columns.withPk", structure.columns().size(),
+                                I18n.t("detail.primaryKey"),
+                                String.join(", ", structure.primaryKeys())),
+                false));
 
         long uniqueIndexes = structure.indexes().stream().filter(IndexDef::unique).count();
-        findings.add(new Finding("索引", structure.indexes().size() + " 个（唯一 " + uniqueIndexes + " 个）",
+        findings.add(new Finding(I18n.t("detail.indexes"),
+                I18n.t("diag.indexes.detail", structure.indexes().size(), uniqueIndexes),
                 structure.indexes().isEmpty()));
 
-        findings.add(new Finding("外键", structure.foreignKeys().size() + " 个", false));
-        findings.add(new Finding("触发器", structure.triggers().size() + " 个", false));
+        findings.add(new Finding(I18n.t("detail.foreignKeys"),
+                I18n.t("diag.count.items", structure.foreignKeys().size()), false));
+        findings.add(new Finding(I18n.t("detail.triggers"),
+                I18n.t("diag.count.items", structure.triggers().size()), false));
 
         if (!structure.view() && structure.primaryKeys().isEmpty()) {
-            findings.add(new Finding("⚠ 无主键",
-                    "没有主键的表无法按主键定位，数据页会退化成只读 —— "
-                            + "编辑会不安全，建议补一个主键或唯一索引。", true));
+            findings.add(new Finding(I18n.t("diag.noPk.title"),
+                    I18n.t("diag.noPk.detail"), true));
         }
         if (!structure.view() && structure.indexes().isEmpty() && rows > 1000) {
-            findings.add(new Finding("⚠ 无索引",
-                    rows + " 行的表一个索引都没有，全表扫描会随数据量线性变慢。", true));
+            findings.add(new Finding(I18n.t("diag.noIndex.title"),
+                    I18n.t("diag.noIndex.detail", rows), true));
         }
         if (structure.view()) {
-            findings.add(new Finding("视图", "视图是只读的，数据页的编辑功能不可用。", false));
+            findings.add(new Finding(I18n.t("detail.kind.view"),
+                    I18n.t("diag.view.readonly"), false));
         }
         if (findings.stream().noneMatch(Finding::warning)) {
-            findings.add(new Finding("✅ 未发现明显问题",
-                    "主键、索引、外键结构都正常。", false));
+            findings.add(new Finding(I18n.t("diag.allGood.title"),
+                    I18n.t("diag.allGood.detail"), false));
         }
         return findings;
     }
 
     private Label render(Finding finding) {
-        Label label = new Label(finding.title() + " —— " + finding.detail());
+        Label label = new Label(I18n.t("diag.finding.line", finding.title(), finding.detail()));
         label.setWrapText(true);
         label.getStyleClass().add(finding.warning() ? "adb-risk--write" : "adb-muted");
         if (finding.warning()) {

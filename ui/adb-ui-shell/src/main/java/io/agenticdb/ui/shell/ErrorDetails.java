@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.safety.ErrorClassifier;
+import io.agenticdb.ui.I18n;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,7 +18,7 @@ record ErrorDetails(String title, ErrorClassifier.Kind kind, String summary,
                     String advice, String detail, String exception, String sql) {
 
     ErrorDetails {
-        title = blank(title) ? "错误详情" : title.trim();
+        title = blank(title) ? I18n.t("error.defaultTitle") : title.trim();
         kind = kind == null ? ErrorClassifier.Kind.OTHER : kind;
         summary = clean(summary);
         advice = clean(advice);
@@ -34,17 +35,17 @@ record ErrorDetails(String title, ErrorClassifier.Kind kind, String summary,
                 exceptionTypeOf(error), sql);
     }
 
-    /** 分类的中文名 —— 弹窗上的徽标文案。 */
+    /** 分类的显示名 —— 弹窗上的徽标文案。键在这里（渲染时）才解析，切语言不影响构造。 */
     String kindLabel() {
         return switch (kind) {
-            case CONNECTION_LOST -> "连接断开";
-            case PERMISSION_DENIED -> "权限不足";
-            case NOT_FOUND -> "对象不存在";
-            case TIMEOUT -> "超时";
-            case LOCK_CONFLICT -> "锁冲突";
-            case CONSTRAINT_VIOLATION -> "约束冲突";
-            case SYNTAX -> "语法错误";
-            case OTHER -> "其它";
+            case CONNECTION_LOST -> I18n.t("error.kind.connectionLost");
+            case PERMISSION_DENIED -> I18n.t("error.kind.permissionDenied");
+            case NOT_FOUND -> I18n.t("error.kind.notFound");
+            case TIMEOUT -> I18n.t("error.kind.timeout");
+            case LOCK_CONFLICT -> I18n.t("error.kind.lockConflict");
+            case CONSTRAINT_VIOLATION -> I18n.t("error.kind.constraintViolation");
+            case SYNTAX -> I18n.t("error.kind.syntax");
+            case OTHER -> I18n.t("error.kind.other");
         };
     }
 
@@ -53,11 +54,16 @@ record ErrorDetails(String title, ErrorClassifier.Kind kind, String summary,
      *
      * <p>分类名与说明重复时（例如「对象不存在」），把驱动原文顶上来 ——
      * 只写「对象不存在」，用户还得去正文里找是哪张表。
+     *
+     * <p>⚠️ 这条判重比的是<b>文本</b>，而 {@link ErrorClassifier.Diagnosis#summary()}
+     * 是模型层的中文（D-9）：英文界面下 {@code kindLabel()} 已经是英文，对不上那句中文
+     * 说明，于是顶不上去。等 D-9 把 summary 抽成「键 + 参数」，这里才能改成按 kind 判定。
      */
     String headline() {
         if (summary.isEmpty() || summary.equals(kindLabel())) {
             String specific = headlineDetail();
-            return specific.isEmpty() ? kindLabel() : kindLabel() + "：" + specific;
+            return specific.isEmpty() ? kindLabel()
+                    : I18n.t("error.join.colon", kindLabel(), specific);
         }
         return kindLabel() + " · " + summary;
     }
@@ -68,23 +74,23 @@ record ErrorDetails(String title, ErrorClassifier.Kind kind, String summary,
         boolean promotedToHeadline = detailInHeadline()
                 && !detail.equals(summary) && !detail.contains("\n");
         if (!detail.isEmpty() && !detail.equals(summary) && !promotedToHeadline) {
-            sections.add("驱动原文：\n" + detail);
+            sections.add(I18n.t("error.section.driver") + detail);
         }
         if (!advice.isEmpty()) {
-            sections.add("建议：\n" + advice);
+            sections.add(I18n.t("error.section.advice") + advice);
         }
         if (!exception.isEmpty()) {
-            sections.add("异常类型：\n" + exception);
+            sections.add(I18n.t("error.section.exception") + exception);
         }
         if (!sql.isEmpty()) {
-            sections.add("SQL：\n" + sql);
+            sections.add(I18n.t("error.section.sql") + sql);
         }
         return String.join("\n\n", sections);
     }
 
     /** 一键复制的文本：标题 + 标题行 + 完整正文。 */
     String copyText() {
-        String head = title + "：" + headline();
+        String head = I18n.t("error.join.colon", title, headline());
         String body = body();
         return body.isEmpty() ? head : head + "\n\n" + body;
     }

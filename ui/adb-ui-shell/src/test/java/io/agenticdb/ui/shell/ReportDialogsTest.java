@@ -10,6 +10,7 @@ import javafx.scene.control.TextArea;
 import javafx.scene.input.Clipboard;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.testfx.api.FxRobot;
@@ -45,8 +46,17 @@ class ReportDialogsTest {
         stage.show();
     }
 
+    /** 错误详情那个用例会临时切中文（判重依赖模型层中文 summary，D-9），跑完复位。 */
+    @AfterEach
+    void restoreDefaultLocale() {
+        I18n.setLocale(I18n.DEFAULT_LOCALE);
+    }
+
     @Test
     void errorDialogShowsKindDetailAndCopiesEverything(FxRobot robot) throws Exception {
+        // 「原文顶到标题栏、正文不重复」这条判重比的是模型层中文 summary（D-9），
+        // 只有中文界面下成立 —— 理由同 ErrorDetailsTest，@AfterEach 复位默认英文。
+        I18n.setLocale(I18n.CHINESE);
         ErrorDetails details = ErrorDetails.of("保存失败",
                 new SQLException("no such table: user_profiles"),
                 "UPDATE user_profiles SET name = 'x'");
@@ -55,22 +65,23 @@ class ReportDialogsTest {
                 ErrorDetailsDialog.create(details)).get();
         assertThat(alert.getAlertType()).isEqualTo(Alert.AlertType.ERROR);
         assertThat(alert.getTitle()).isEqualTo("保存失败");
-        assertThat(alert.getHeaderText()).contains("对象不存在").contains("no such table");
+        assertThat(alert.getHeaderText())
+                .contains(I18n.t("error.kind.notFound")).contains("no such table");
 
         VBox content = (VBox) alert.getDialogPane().getContent();
         Label kind = (Label) content.lookup("#error-details-kind");
         assertThat(kind)
                 .as("分类徽标必须真的画出来 —— 只剩正文的话用户扫一眼分不清权限还是语法")
                 .isNotNull();
-        assertThat(kind.getText()).isEqualTo("对象不存在");
+        assertThat(kind.getText()).isEqualTo(I18n.t("error.kind.notFound"));
         assertThat(kind.getStyleClass()).contains("adb-badge", "adb-error-kind");
 
         TextArea text = (TextArea) content.lookup("#error-details-text");
         assertThat(text).isNotNull();
         assertThat(text.getText())
-                .contains("建议：")
-                .contains("SQL：\nUPDATE user_profiles")
-                .doesNotContain("驱动原文：\nno such table")
+                .contains(I18n.t("error.section.advice"))
+                .contains(I18n.t("error.section.sql") + "UPDATE user_profiles")
+                .doesNotContain(I18n.t("error.section.driver") + "no such table")
                 .as("原文已顶到标题栏，正文不重复");
 
         Button copy = (Button) content.lookup("#error-details-copy");

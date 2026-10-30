@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import javafx.geometry.Pos;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
@@ -44,7 +45,7 @@ final class ErrorDetailsDialog {
         text.setPrefColumnCount(64);
         text.setPrefRowCount(rowCount(details));
 
-        Button copy = new Button("复制详情");
+        Button copy = new Button(I18n.t("error.dialog.copyDetails"));
         copy.setId("error-details-copy");
         copy.setOnAction(event -> copy(details.copyText()));
 
