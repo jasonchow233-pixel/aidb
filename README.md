@@ -131,14 +131,16 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 演示库首次启动自动生成：4 张表（`users` 200 行、`orders` 500 行、`products` 80 行、`notes` 空表）+ 1 个视图。
 已有有效演示库不会被覆盖；`-Dadb.demo.db=/path/to/file.db` 可指定其他文件。
 
-真实窗口截图：`docs/screenshots/` 共 **33 张**（亮色 28 + 暗色 5）——
+真实窗口截图：`docs/screenshots/` 共 **40 张**（亮色 35 + 暗色 5）——
 `p0-shell`、`p2-users`、`p2-users-dark`、`p2-overview`、`p2-details`、`p2-cell`、`p2-error`、
-`p2-transaction`、`p2-find`、`p2-form`、
+`p2-transaction`、`p2-find`、`p2-form`、`p2-filter`、
 `p3-query`、`p3-query-menu`、`p4-structure`、`p4-ddl`、`p5-connections`、`p5-dark`、
 `p5-connect-type`、`p5-connect-general`、`p5-connect-ssl`、`p5-connect-ssh`、
 `p6-tables`、`p6-tables-grid`、`p6-new-table`、`p6-new-table-fields`、`p6-new-table-fields-dark`、
 `p6-new-table-comment`、`p6-new-table-index`、`p6-new-table-sql`、`p6-new-table-dark`、
-`p7-new-index`、`p7-new-index-dark`、`p8-import`、`p8-export`
+`p6-rename-table`、
+`p7-new-index`、`p7-new-index-dark`、`p8-import`、`p8-export`、
+`p9-settings`、`p9-diagnostics`、`p9-favorites`、`p9-saved-queries`
 （`docs/screenshots/navicat/` 另存 Navicat Premium Lite 15 实拍 3 张 + 等比例并排图：
 `navicat-tablelist.png` / `navicat-toolbar.png` / `side-by-side-2026-10.png`，
 以及 2026-10-24 新增的两张高保真实拍 `navicat-data-grid-2026-10-24.png` / `navicat-table-list-2026-10-24.png`），
@@ -166,7 +168,7 @@ java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
 # 3. 完整门禁：编译 + 全部测试 + 用例计数
 ./scripts/build.sh
 
-# 4. 重拍 docs/screenshots/ 的 33 张验收截图
+# 4. 重拍 docs/screenshots/ 的 40 张验收截图
 ./scripts/shots.sh
 
 # 5. 出包（jpackage；产物在 bootstrap/adb-desktop/target/dist/，实测可启动）
@@ -322,5 +324,5 @@ bootstrap/
   方言差异现由 `Dialect` 抽象层承担），基线因此减少 43 条测试。
 - 主题“跟随系统”目前只探测 macOS；Windows/Linux 默认亮色。
 - 令牌体系 102 个全部被用到；密度四档（19/20/21/26，默认 normal；数据网格 +2 = 21/22/23/28）覆盖数据网格 / 查询结果 / 对象清单 / 对象树 / 结构页。
-- `docs/screenshots/` 的 33 张图（亮 28 + 暗 5）已按当前代码重拍。
+- `docs/screenshots/` 的 40 张图（亮 35 + 暗 5）已按当前代码重拍。
 - 首版不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务。

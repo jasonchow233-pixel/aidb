@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（33 张）。
+# 重拍 docs/screenshots/ 的验收截图（40 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 28 张 + 暗色 5 张）
+#   ./scripts/shots.sh              # 全部重拍（亮色 35 张 + 暗色 5 张）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
 #
 # 为什么需要这个脚本（历史上踩过的坑，全部在这里被绕开）：
@@ -123,6 +123,20 @@ SHOTS=(
   #   弹窗还没开就拍，得到一张与 p0-shell 同 md5 的假帧（U7 去重门禁抓到过，
   #   单帧重拍即真）。留出余量，假帧仍由去重门禁兜底。
   "p2-error||8000|ADB_ERROR_DEMO=1 ADB_THEME_FORCE=light"
+  # ── R34 收官：第二十至二十五批那 275 条文案的零覆盖面补帧 ──────────────
+  #   这些批只降了棘轮、没有一张帧，等于「抽完没人看过」。六个开关各摆一面：
+  #   设置页 / 诊断页 / 收藏夹管理器 / 已存查询管理器 / 重命名弹窗 / 列筛选浮窗。
+  "p9-settings||5000|ADB_SETTINGS=1 ADB_THEME_FORCE=light"
+  "p9-diagnostics||8000|ADB_DIAGNOSTICS=1 ADB_THEME_FORCE=light"
+  "p9-favorites||6000|ADB_FAVORITES=1 ADB_THEME_FORCE=light"
+  "p9-saved-queries||6000|ADB_SAVED=1 ADB_THEME_FORCE=light"
+  # 9000ms：两轮轮询（连接 → 行数据灌进来）都要等够，列表空着时
+  # renameSelected() 只会在状态栏报「先选中一张表」，弹窗根本不开。
+  "p6-rename-table||9000|ADB_RENAME=users ADB_THEME_FORCE=light"
+  # 列筛选浮窗：锚点那颗漏斗的 id 是动态拼的（data-filter-<列>），静态审计只认源码里
+  # 字面存在的 setId，脚本点不到 —— 所以由 ADB_FILTER 在数据页里 fire 那颗按钮。
+  # 9000ms：表结构与列头是异步建的，列头没建出来 poseFilterPanel 一直返回 false。
+  "p2-filter||9000|ADB_OPEN=users ADB_FILTER=1 ADB_THEME_FORCE=light"
 )
 
 step "编译并安装（否则拍到的是旧界面）"

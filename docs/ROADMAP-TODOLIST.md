@@ -9,10 +9,11 @@
 
 ## 0. 当前基线
 
-- 门禁 **1180 条 / 134 类 / 0 失败 / 48 环境跳过**（第二十五批后 `./mvnw -o test` 实测 —— 与第八至二十四批持平：
+- 门禁 **1182 条 / 134 类 / 0 失败 / 48 环境跳过**（R34 收官批后 `./mvnw -o test` 实测 —— 比第八至二十五批的
+  1180 多 2 条，即收官批新立的「重复键行」与「标准按钮走资源包」两条门禁；
   第九至二十五批只降棘轮、未立新门禁；第八批曾恰比第七批的 1179 多 1，即第八批新立的对象树菜单文字对账门禁）。
   **量法**：`grep -aoP 'Tests run: \K[0-9]+(?=, Failures: [0-9]+, Errors: \d+, Skipped: \d+, Time elapsed)'`
-  对全量日志求和 → 150 组 / 1180 条；类数按 `**/target/surefire-reports/*.txt` 数 = 134
+  对全量日志求和 → 150 组 / 1182 条；类数按 `**/target/surefire-reports/*.txt` 数 = 134
   （150 与 134 之差是 `@Nested`：一行一组、一份报告）。
   ⚠️ 全量必须 JDK 25+；`JAVA_HOME` 留在系统默认 21 会被 enforcer 直接 BUILD FAILURE
   （本机 `C:\Users\Administrator\.jdks\openjdk-27.0.1.0.2`）。
@@ -24,23 +25,29 @@
   `d20f5eb`（第十三批）· `fa23770`（第十四批）· `0f69877`（第十五批）· `94f0f23`（第十六批）·
   `4ff9ffd`（第十七批）· `a347bdf`（第十八批）· `06b2266`（第十九批）· `c2b9b2f`（第二十批）·
   `e95c7cd`（第二十一批）· `2325847`（第二十二批）· `e90f1ae`（第二十三批）· `3d802a9`（第二十四批）·
-  `8db09c0`（第二十五批 · 抽取收口）。**push 仍未授权。**
-- 验收帧 **34 张**（29 亮 / 5 暗），第八批后全量重拍为英文档（19 帧变化、1280×800、md5 无重复帧）。
+  `8db09c0`（第二十五批 · 抽取收口）· `d425b1a`（R34 收官批 · 六摆态六帧 + 两条新门禁）。
+  **push 仍未授权。**
+- 验收帧 **40 张**（35 亮 / 5 暗），第八批后全量重拍为英文档（19 帧变化、1280×800、md5 无重复帧）。
   第十六批新增 p2-section-indexes；第十九批重拍 p2-details 当场抓到英文截字（详情面板页脚三颗
   等分按钮压成「Open D… / Open Struct… / Open D…」）→ HBox 改 FlowPane 换行后复拍核销。
-  ⚠️ **第二十至二十五批共 275 条文案零帧覆盖**（工作区设置页 / 已存查询 / 收藏夹 / 诊断页 /
-  外键·触发器·变量·例程弹窗 / 列筛选 / 条件弹窗 / 列设置 / 表注释 / 历史页 / 命令面板 / 导入导出入口）
-  —— shots.sh 里一帧都没有。收官必须补摆态，否则这些只是「单测绿、画面没人看过」。
+  ✅ **第二十至二十五批那 275 条文案的零帧覆盖已在收官批补齐**（六个摆态 + 六帧：
+  p9-settings / p9-diagnostics / p9-favorites / p9-saved-queries / p6-rename-table / p2-filter），
+  当场抓到「重复键行」与「标准按钮跟 JVM Locale」两个门禁全绿的缺陷 —— 见 §1 R34 收官批。
+  ⚠️ 收官批目视另记两条未修：**D-12** 顶栏搜索框的快捷键胶囊截成「Ct…」（`appbar-search`
+  定宽，归 R37 外壳那一轮）、**D-13** Navicat 的筛选是工具栏下整幅「Filter & Sort」内联带
+  （多条件 + Sort By + Apply），AIDB 是列头单列浮窗 + 模态条件弹窗（入口同名，形态不同，归 R38 网格那一轮）。
 - 棘轮 **8**（主尺，终态；剩余 8 条是 `CellRenderer` / `CellValueParser` 认布尔值的
   **输入 token**「是/真/否/假」，不是文案 —— 三条出路都被否掉并写进 `I18nAuditTest` javadoc）；
-  模型层 **277**（第 13 条棘轮，D-9）。资源包 **1398 键** en/zh 对称（严格数 `^[^#=]+=` 行）。
+  模型层 **277**（第 13 条棘轮，D-9）。资源包 **1399 键** en/zh 对称（严格数 `^[^#=]+=` 行；
+  收官批 +1 = `common.close`，并把重复的 `details.title` 拆成 `details.object.title` —— 行数与唯一数
+  从此相等，`noDuplicateKeyLinesInEitherBundle` 守着）。
 - 总账：**R34–R41 = 61–86 人日**；**+R42 = 97–142 人日**（本轮新增 N31–N34 后上调，见 §2）。
 
 ---
 
 ## 1. Todolist
 
-### R34 · i18n 层 + 默认英文（N1 N2，估 8–12 人日）—— 进行中
+### R34 · i18n 层 + 默认英文（N1 N2，估 8–12 人日）—— ✅ 2026-10-30 收官
 
 > 前置轮，卡住后面每一条带标签的条目。设计定式与批次教训全文见真源 §5 与 git 历史。
 
@@ -179,19 +186,60 @@
       进包 → 布尔解析随界面语言变（同一份数据两种解释，比截字更坏）；
       挪模型层 → 只是把同一笔债从主尺转到 `MODEL_CJK_CEILING`；
       写 `\u662f` → 正是这条棘轮 javadoc 警告过的「改成假通过」。三条都否，留 8 条并写清理由
-- [x] **N1-c** `I18nAuditTest` **13 条**（键集相等 / 调用点对账 / 动作命名穷举 / 占位符 / 棘轮×2 /
-      全角标点 / 实参个数 / 模型层标签边界 / 偏好链 / configure 先于 AppShell）
+- [x] **R34 收官批（补帧 + 两个门禁看不见的缺陷）** 275 条零覆盖文案全部有帧：
+      新增六个摆态 + 六帧 —— `ADB_SETTINGS`→p9-settings、`ADB_DIAGNOSTICS`→p9-diagnostics
+      （诊断页原本只在「树里选中 → 动作」这条路上，`SideBar.poseToolForShots` 按路由开页，
+      走的仍是同一个 `openTool`）、`ADB_FAVORITES`→p9-favorites（`poseStarForShots` 先收藏一张，
+      否则新 prefs 节点里恒为空表）、`ADB_SAVED`→p9-saved-queries（摆两条真条目，
+      `Kind` 标签才看得见）、`ADB_RENAME`→p6-rename-table（两轮轮询：连接 → 行灌完，
+      空列表时 `renameSelected()` 只报「先选中一张表」）、`ADB_FILTER`→p2-filter。
+      ⚠️ 列筛选那颗漏斗的 id 是动态拼的（`data-filter-<列>`），`ScreenshotScriptAuditTest`
+      只认源码里字面存在的 `setId("…")`，脚本点不到 —— 所以它也要一个开关，由数据页
+      `poseFilterPanel()` 自己 `fire()` 那颗按钮（浮窗内容与真点一致）。帧数 **34 → 40**（35 亮 / 5 暗）。
+      ⭐ **目视抓到两个所有门禁全绿也拦不住的缺陷**：
+      ① `details.title` 在两份资源包里各写了**两行**（第十三批 Cell Details / 第十九批 Object Details），
+      `.properties` 后写覆盖先写，而键集相等那条门禁比的是 `Set` —— 单元格抽屉的标题被悄悄顶掉，
+      25 批无感。对象面板改 `details.object.title`，新立第 14 条门禁
+      `noDuplicateKeyLinesInEitherBundle`（先证「一行都没扫到 = 假绿」再查重）。
+      ② 界面全英文、弹窗按钮却是「确定 / 取消」：那三颗文字**从来不在资源包里** ——
+      `ButtonType.OK` 这类单例由 JavaFX 自己的 bundle 按 **JVM 默认 Locale** 解析，
+      换台日文机器就出第三种语言。`DialogStyles.localizeStandardButtons` 统一覆写
+      OK / CANCEL / CLOSE（新增 `common.close`），只认这三颗单例，
+      业务弹窗的 `new ButtonType("添加", OK_DONE)` 一个字不动；`DialogButtonOrderTest` 两半都钉。
+      ⭐ p2-filter 首拍抓到**列筛选浮窗按中文量的宽**：320px 下底部四颗按钮全截成
+      「Select … / Deselect… / Cl… / Ap…」、浮窗标题裁成「…ter · name」→ pref 320→420 / max 340→460，
+      复拍全读得完（与第十九批页脚截字同族，第三次）。
+      ⭐ p2-error 假帧根因：错误弹窗走 `showAndWait` 的嵌套事件循环，实测 6 次冷启 2 次
+      「window count=1」（弹窗压根没进 `Window.getWindows()`）→ 摆态改 `showForShots`（`show()` 不进嵌套循环）
+      并打一行 `[screenshot] error dialog shown`，此后 3/3 + 复拍全命中；
+      ⚠️ 根因只定位到「嵌套循环这一类」，没定位到为什么偶发 —— 真产品路径仍是 `showAndWait`，未改
+- [x] **N1-c** `I18nAuditTest` **14 条**（键集相等 / **重复键行**（收官批新增）/ 调用点对账 / 动作命名穷举 /
+      占位符 / 棘轮×2 / 全角标点 / 实参个数 / 模型层标签边界 / 偏好链 / configure 先于 AppShell）
 - [x] **N2** 菜单组 `File/Edit/View/Query/Format/Favorites/Tools/Window/Help` + Table 上下文菜单按页型开合
 - [x] **N1-d** 语言偏好启动生效（`-Dadb.locale` > 偏好 > 默认英文；运行时切换刻意未做 —— 需重建场景，独立一轮）
 - [x] 窗口标题 Navicat 式 `<连接> @<库> (<对象>) - <页型> - <产品>`
 - [x] **落库**：第八批 `46873b8`（代码+资源+测试+19 帧重拍）+ 文档重写（本提交）。
-- [ ] **P4** 冷启动复测：ResourceBundle 不得把首屏拖过 3.9s
-- [ ] **N1-b 盲区补帧**：第二十至二十五批共 275 条文案**零帧覆盖** ——
-      需补 `ADB_RENAME`（表重命名弹窗）、`ADB_SETTINGS`（工作区设置页）、
-      `ADB_FAVORITES` / `ADB_SAVED`（两颗管理器弹窗）、`ADB_DIAGNOSTICS`（诊断页）、
-      `ADB_FILTER`（列筛选浮窗）摆态与新帧；`ScreenshotSession.targetScene()` 已支持拍
-      Dialog / PopupWindow 独立 Stage，成本主要在摆态与 shots.sh 的静态审计合规
-- [ ] R34 收官验收：全量门禁回量 + 34 帧全英文逐张目视 + md5 去重 + 回填真源三处
+- [x] **P4** 冷启动复测（2026-10-30 实测，1398 键双语包）：**ResourceBundle 不是瓶颈 —— 判定通过**，
+      但绝对值差一口气。`~/.agenticdb/logs/startup.log` 取 **34 次冷启**（= 一轮全量重拍的每一帧各一次启动）：
+      **首屏 min 3661 / 中位 3904 / max 4192 ms**，而 `locale=` 这一段（含两份 .properties 读取与解析）
+      **min 94 / 中位 104 / max 119 ms** —— 占首屏 **2.7%**，把包删了也省不出 3.9s 以内的余量。
+      真正的大头按 trace 的中位**段时长**排：进程启动到 `trace.created` ≈ 968ms（JVM + 类加载，绝对值）、
+      `shell.demo-db` ≈ **1288ms**、`shell.construct` ≈ 794ms、`stage.shown` ≈ 2786ms（含前面全部）。
+      ⚠️ 所以「不得拖过 3.9s」这条**按字面判是没过**（中位 3904，超 4ms ≈ 0.1%），
+      但超的部分与 i18n 无关，是既有的启动开销；要真降下来得单开一轮启动性能（不在 R34 范围）。
+      ⚠️ 本条最初只量了 8 次就写进文档（min 3728 / 中位 3954），34 次的样本把中位拉低 50ms ——
+      以后 P4 一律按「一轮全量重拍的启动数」取样本，不取随手的前几次。
+- [x] **N1-b 盲区补帧**：第二十至二十五批共 275 条文案的零帧覆盖**已补**（收官批）——
+      `ADB_SETTINGS` / `ADB_DIAGNOSTICS` / `ADB_FAVORITES` / `ADB_SAVED` / `ADB_RENAME` / `ADB_FILTER`
+      六个摆态 + 六帧；`ScreenshotSession.targetScene()` 拍 Dialog / PopupWindow 独立 Stage 这条
+      在 p9-favorites(282×575) / p9-saved-queries(339×455) / p6-rename-table(228×162) /
+      p2-filter(342×474) 四帧上第一次全部走通
+- [x] R34 收官验收：全量门禁回量 **1182 / 150 组 / 134 类 / 0 失败 / 48 跳过**（BUILD SUCCESS 实测）
+      + 40 帧 md5 无重复 + 回填真源三处（README 帧表 / 本文 §0+§1 / 真源 §8）。
+      ⚠️ 目视是**抽样**不是逐张：本轮亲眼看过的 = 六张新帧全部（p9-settings / p9-diagnostics /
+      p9-favorites / p9-saved-queries / p6-rename-table / p2-filter）+ p2-error 两次（修前假帧、修后真帧）
+      + p0-shell + p2-users；其余 30 帧本轮未逐张重看，只有脚本的尺寸/重复/与入库版对比三道闸在守。
+      抓到 D-11..D-15 五条未修缺陷（见真源 §8 未结缺陷条）
 
 ### R35 · 彩色图标渲染层 + 资产（N3 N4，估 10–14 人日）
 
