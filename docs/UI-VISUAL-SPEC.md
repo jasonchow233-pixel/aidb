@@ -10,7 +10,7 @@
 > 本文只解释「为什么这么定」与「哪些还没定」。
 >
 > 配套：`docs/UI-GUIDE.md`（规则）· `docs/UI-FORMS-AND-STATES.md`（形态 / 空态裁定）·
-> **`docs/internal/NAVICAT-TODO.md`（内部材料，不随公开仓库发布）**。
+> `docs/ROADMAP.md`（公开路线图）· `docs/screenshots/`（本项目界面实拍帧，`p*.png`）。
 
 ---
 
@@ -577,7 +577,7 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 | 缺失元数据 | 显示「—」，不编造 SQLite 拿不到的值 |
 | 交互 | 双击 / Enter 打开；搜索实时过滤；刷新在后台线程 |
 
-> 实拍对照与像素测量见 `docs/internal/NAVICAT-TODO.md` §1（2026-10-26 实测重建）。
+> 实拍对照见 `docs/screenshots/p*.png`（由 `scripts/shots.sh` 按当前代码重拍）；像素测量的原始台账属内部材料，不随公开仓库发布。
 
 ---
 

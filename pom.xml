@@ -4,7 +4,7 @@
   AgenticDB —— 父 POM
 
   ⭐ 唯一技术路线：Java 25 + JavaFX 25 原生桌面（不再有 Rust / Vue / WebView）
-  ⭐ 执行清单：NAVICAT-TODO.md
+  ⭐ 公开路线图：docs/ROADMAP.md
   ⭐ 架构：docs/ARCHITECTURE.md
   ⭐ 组件选型：docs/COMPONENT-SELECTION.md
 

@@ -8,8 +8,7 @@
 > 动手前必须先把形态定死 —— 「新建表做成标签页」这种错误一旦落地，
 > 后面每个页面都要跟着改一遍。
 >
-> 对照：`docs/internal/NAVICAT-TODO.md`（内部材料，不随公开仓库发布） ·
-> `docs/UI-GUIDE.md`（视觉规范） · `docs/UI-VISUAL-SPEC.md`（组件规格）。
+> 对照：`docs/UI-GUIDE.md`（视觉规范） · `docs/UI-VISUAL-SPEC.md`（组件规格）。
 
 ---
 
@@ -244,7 +243,7 @@ dialog.getDialogPane().getStyleClass().add("adb-dialog");
 | ⬜ `EmptyStateTest`（待补） | E5/E7/E8/E9 各自有空态；每个空态都有图标+标题+说明 |
 
 > 门禁策略：**空态属于"呈现"**，只测行为测不到它（控件根本不渲染）。
-> 所以一律用 `lookupAll(".adb-empty")` 这类**呈现门禁**，见 `docs/internal/NAVICAT-TODO.md` §9（验收口径）。
+> 所以一律用 `lookupAll(".adb-empty")` 这类**呈现门禁**（验收口径：空态必须被查到，不是被点到）。
 
 ---
 

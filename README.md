@@ -215,7 +215,7 @@ TestFX 默认用 Monocle 无头模式；在本机想看真实窗口，去掉父 
 | **`docs/STAR-PLAN.md`** | ⭐ **开源发布与增长规划**：定位（原生桌面 / 不内嵌浏览器 / 不开 HTTP 端口）、与 DBeaver·Beekeeper 的差异化、发布工程清单（LICENSE / CI / Release）、文档卫生口径 |
 | `docs/ARCHITECTURE.md` | 模块、数据流、线程模型、编辑/SQL/撤销不变量、结构页与连接层模型 |
 | `docs/UI-GUIDE.md` | 视觉基线、七区、组件与交互规则、令牌生成、图标约定、弹窗规范 |
-| **`docs/UI-VISUAL-SPEC.md`** | ⭐ **可照着实现的 UI 规格书**：7 档字号落到哪个角色 · 102 个令牌语义 · 图标清单 · 间距/圆角/固定尺寸 · 七区与四种页面骨架 · 组件规格 · 弹窗骨架与按钮区规则 · 交互态矩阵 · 键盘表 · 文案措辞 |
+| **`docs/UI-VISUAL-SPEC.md`** | ⭐ **可照着实现的 UI 规格书**：7 档字号落到哪个角色 · 106 个令牌语义 · 图标清单 · 间距/圆角/固定尺寸 · 七区与四种页面骨架 · 组件规格 · 弹窗骨架与按钮区规则 · 交互态矩阵 · 键盘表 · 文案措辞 |
 | **`docs/GITHUB-COMPARE.md`** | ⭐ **GitHub 上开源数据库管理软件**扫描（DBeaver / Chat2DB / Beekeeper Studio / TablePro / sqlpad / SQLTools…）：与 AIDB 的可比性、独特定位、借鉴项 |
 | **`docs/UI-FORMS-AND-STATES.md`** | ⭐ **形态与状态规范**：新能力该做**弹窗还是标签页**（含待建能力的裁定表，防「新建表做成标签页」这类错误）+ 默认态 8 项 + 空白态 9 处清单 + `EmptyState` 组件约定 |
 | `docs/COMPONENT-SELECTION.md` | 开源组件选型、版本、许可证、禁入清单 |
@@ -263,7 +263,7 @@ bootstrap/
 
 ## 工程约束
 
-1. **设计令牌唯一真相**：`ui/adb-ui-core/src/main/resources/tokens/tokens.json`（102 个：64 颜色 / 35 尺寸 / 3 时长）。
+1. **设计令牌唯一真相**：`ui/adb-ui-core/src/main/resources/tokens/tokens.json`（106 个：68 颜色 / 35 尺寸 / 3 时长）。
    改完运行 `java tools/GenTokens.java` 重新生成 `Tokens.java` 与 `theme-dark/light.css`。
 2. **业务代码禁止颜色字面量**：只能引用 `-adb-*` looked-up colors。
    `TokenParityTest` 会扫描 `app.css`，出现 `#rrggbb` / `rgba(...)` 直接失败。
@@ -283,7 +283,7 @@ bootstrap/
 
 - 危险分级**第三层（驱动侧复查）仍不存在**：`DbSession.execute(sql)` 没有 `danger`
   参数。前两层（fail-closed 分类 + UI 确认）已落地。→ §10 A6
-- 设计令牌已收敛到 102 个且全部被用到；`TokenParityTest` 门禁守着不会再长回摆设
+- 设计令牌已收敛到 106 个且全部被用到；`TokenParityTest` 门禁守着不会再长回摆设
   （40px 档 `fs-4xl` 于 2026-10-23 移除 —— 唯一消费者是欢迎页 logo 的 `font-size`；
   20px 档 `fs-2xl` 于 2026-10-24 随 S-7 移除 —— 唯一消费者是那张**不可达**欢迎页卡片的标题。
   两次都是删令牌，不给令牌硬造消费者）。
@@ -324,6 +324,6 @@ bootstrap/
 - `core/adb-declarations` 与根目录 `declarations/` 已于 2026-10-24 删除（运行时从未引用；
   方言差异现由 `Dialect` 抽象层承担），基线因此减少 43 条测试。
 - 主题“跟随系统”目前只探测 macOS；Windows/Linux 默认亮色。
-- 令牌体系 102 个全部被用到；密度四档（19/20/21/26，默认 normal；数据网格 +2 = 21/22/23/28）覆盖数据网格 / 查询结果 / 对象清单 / 对象树 / 结构页。
+- 令牌体系 106 个全部被用到；密度四档（19/20/21/26，默认 normal；数据网格 +2 = 21/22/23/28）覆盖数据网格 / 查询结果 / 对象清单 / 对象树 / 结构页。
 - `docs/screenshots/` 的 40 张图（亮 35 + 暗 5）已按当前代码重拍。
 - 首版不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务。

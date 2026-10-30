@@ -16,7 +16,7 @@
 #   Automatic-Module-Name，没有 module-info），jlink **收不进去**。
 #   jpackage 不指定 --runtime-image 时会直接用当前 JDK（不跑 jlink），
 #   所以能用；代价是安装包里的运行时偏大。
-#   等这两个库模块化之后，再加 jlink profile 裁剪（jlink 边界见 docs/internal/NAVICAT-TODO.md §8，内部文档不随公开仓库发布）。
+#   等这两个库模块化之后，再加 jlink profile 裁剪（jlink 边界就是「只收具名模块」这一条）。
 
 source "$(cd "$(dirname "$0")" && pwd)/_env.sh"
 

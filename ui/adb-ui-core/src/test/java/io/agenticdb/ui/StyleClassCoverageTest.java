@@ -38,8 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <h2>本门禁的策略</h2>
  * <ul>
- *   <li><b>已知洞进白名单</b>：这 43 个类已经在 {@code docs/internal/NAVICAT-TODO.md}（内部文档）§18 S-1…S-6 排期，
- *       逐批补齐；补完一个就从白名单里删一个。</li>
+ *   <li><b>已知洞进白名单</b>：历史缺口逐批补齐；补完一个就从白名单里删一个。</li>
  *   <li><b>白名单外的未定义样式类 = 失败</b>：新写的 {@code adb-*} 类必须同时在 CSS 里落地。
  *       这才是本门禁真正的价值：<b>防止洞继续扩大</b>。</li>
  * </ul>
@@ -61,7 +60,7 @@ class StyleClassCoverageTest {
     /**
      * 已知未定义样式类（待补）。
      *
-     * <p>第十轮把 43 个已知缺口**全部补齐**了（`docs/internal/NAVICAT-TODO.md` §18 S-1…S-6），
+     * <p>第十轮把当时的已知缺口**全部补齐**了，
      * 所以这份白名单现在是空的 —— 以后再出现「Java 用了、CSS 没定义」的类，
      * 门禁会**立刻失败**。
      *

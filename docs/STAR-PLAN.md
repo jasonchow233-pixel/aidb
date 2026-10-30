@@ -1,8 +1,12 @@
 # STAR-PLAN — 从「内部工程」到「有人 star 的开源产品」
 
 > 2026-10-30 新增。回答一个问题：**AIDB 现在离「GitHub 上有人愿意 star」差什么，按什么顺序补。**
-> 本文不替代 `NAVICAT-TODO.md`（产品对拍真源）；本文是**发布/增长视角**，与它是两个维度。
+> 本文不替代内部对拍台账 `NAVICAT-TODO.md`（产品对拍真源）；本文是**发布/增长视角**，与它是两个维度。
 > 结论与 Navicat 对拍规划冲突处，**显式列出冲突**，由你拍板（§7）。
+>
+> ⚠️ **阅读口径**：文中提到的 `NAVICAT-TODO.md`、`ROADMAP-TODOLIST.md`、`docs/internal/*`
+> 是内部执行台账，**不随公开仓库发布**。这里保留提及是为了交代决策依据，不是给读者的入口 ——
+> 对外文档只有 `README.md` 与 `docs/` 下其余文件。
 
 ---
 
@@ -259,7 +263,7 @@
 
 ## 9. 相关文档
 
-- `NAVICAT-TODO.md` — 产品对拍真源（本文不改它的功能结论，只改发布/叙事优先级）
+- `NAVICAT-TODO.md` — 内部对拍台账（产品对拍真源，**不随公开仓库发布**；本文不改它的功能结论，只改发布/叙事优先级）
 - `docs/GITHUB-COMPARE.md` — 开源竞品扫描（§2.1 定位句的来源；需按 C-2 更新）
 - `docs/UI-VISUAL-SPEC.md` / `docs/UI-FORMS-AND-STATES.md` — 设计系统与形态裁定（阶段 A 的 README 视觉素材来源）
 - `docs/ARCHITECTURE.md` — 架构（保留，README 指向它）

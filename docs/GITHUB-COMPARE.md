@@ -60,7 +60,6 @@
 
 ## 5. 相关文档
 
-- `docs/internal/NAVICAT-TODO.md` — Navicat 对标（本文件是对 Navicat **之外**的开源扫描）。
 - `docs/ROADMAP.md` — 对外路线（支持矩阵 + 接下来 + 明确不做）。
 - `docs/STAR-PLAN.md` — 发布与增长规划（本文件的定位结论在彼处落地为 README 首屏）。
 - `docs/COMPONENT-SELECTION.md` — 组件选型（JavaFX/ControlsFX/RichTextFX…）。
