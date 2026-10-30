@@ -816,8 +816,8 @@ public final class AppShell extends StackPane {
                     settings, this::activeProfileId);
             // 对象首页也要跟密度（它不在 WorkspaceView 的页面缓存里）。
             objectHome.setDensity(currentDensity());
-            // ⭐ P2-1：对象首页的列宽也要记住（与表清单页各存各的）。
-            objectHome.rememberColumnsIn(settings);
+            // 列宽记忆已在 ObjectHomePage 构造器里接好（settings → ColumnLayoutMemory），
+            // 这里不再二次接线 —— 合并提交带进来的 rememberColumnsIn() 调用没有对应实现。
         }
         // 每次切到对象首页都重新读一遍 —— 对象可能刚被别处改了。
         objectHome.reload();
@@ -3006,8 +3006,8 @@ public final class AppShell extends StackPane {
                 view -> settings.set("ui.tableList.view", view),
                 settings, pageConnection);
         page.setDensity(currentDensity());
-        // ⭐ P2-1：表清单的列宽要记住（拖过一次，下次打开还是那个宽度）。
-        page.rememberColumnsIn(settings);
+        // 列宽记忆已在 TableListPage 构造器里接好（settings → ColumnLayoutMemory），
+        // 这里不再二次接线 —— 合并提交带进来的 rememberColumnsIn() 调用没有对应实现。
         activeTableListPage = page;
         openTab(new TabItem("tables:" + pageConnection, I18n.t("category.tableList"), TabKind.TOOL,
                 null, pageConnection, page));
