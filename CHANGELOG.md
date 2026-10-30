@@ -23,6 +23,15 @@
 
 ### Changed
 
+- **启动耗时门禁改判**（2026-10-30）：`StartupTraceTest` 里那条「首屏不应超过 2s」删掉了。
+  它断言的 `firstScreenMillis()` 量的是「**JVM 进程启动 → 走到断言那一行**」，
+  在共享的 surefire fork 里这个差值等于测试运行器已经跑了多久 ——
+  所以「全量跑必红、单跑这个类全绿」，它测的是运行器的进程年龄，不是产品的冷启动。
+  真实冷启动只在真启动时才有意义，量法仍是 `~/.agenticdb/logs/startup.log`（对外记的 3.5–3.9 s 从那儿读）。
+  2 秒这条规格**没有放弃**，改由新门禁 `theTwoSecondBudgetIsEnforcedInBothDirections` 钉住：
+  `StartupTrace` 开一个包内构造器接收注入的「进程启动时刻」，测试据此确定性地造出
+  0.5s（判快）与 2.5s（判慢，且摘要里必须喊 `SLOW`）两种首屏。
+  变异验证：把 `slow()` 改成恒 `false` → 该门禁立刻红（已实测）。
 - **功能区图标尺寸维持 26px**（原计划放大到 30px）。改判理由：Navicat 17 实测里，那一排大图标是全界面最彩的部分，
   需要的是彩色档而不是更大的单色图标；30px 留到 R36 重做顶区布局时一起判。
   见 [docs/UI-VISUAL-SPEC.md](file:///Users/jason/Documents/GitHub/aidb/docs/UI-VISUAL-SPEC.md) §4.5。
@@ -32,17 +41,27 @@
 
 ### Fixed
 
+- **弹窗按钮序门禁在 macOS 上假红**（长期红，2026-10-30 修）：
+  `DialogButtonOrderTest.theOrderStringOnlySwapsThoseTwoSlots` 拿 `DialogStyles.apply` 之后的
+  order 串去比 **Windows 预设**，但 `ButtonBar` 的初始串是**按宿主平台**选的
+  （macOS 那份是 `L_HE+U+FBIX_NYA_R`，既没有 `O` 也没有 `C`），而生产代码对不认识的预设
+  故意不动（那是另一条门禁钉住的规则）。结果 Windows 全绿、macOS 必红，且与产品无关。
+  现在测试**显式喂 Windows 预设**再断言「只换 O / C 两槽」，跨平台一致。
+  变异验证：把 `DialogStyles` 的换槽分支短路 → 该门禁在 macOS 上立刻红在第 214 行
+  「取消 C 要在主动作 O 左边」（已实测，不是推测）。
 - `scripts/shots.sh` 的**帧去重门禁在本机（macOS）从来没真正跑过**：脚本用了 bash 4 的 `declare -A` 和 GNU `md5sum`，
   在系统自带 bash 3.2 上直接失败，但脚本仍然打印成功——等于「验收帧里有两张一模一样」这种缺陷不会被拦住。
   现在改成可移植实现（`md5` / `md5sum` 二选一 + 明文列表比对）。
 - 帧尺寸核对不再写死期望值：与已入库版本比对，避免窗口被最大化时拍出的宽屏帧把「1280 下不溢出」这类结论带偏。
+- 验收帧整套在 macOS 重拍，不再「Windows 旧帧 + macOS 新帧」混着 —— 混平台的帧会让
+  「1280 宽度下不溢出」这类按尺寸的结论失去意义（主窗口 1280×800 与 1280×792 差的就是平台窗口度量）。
 
 ### Known issues（已记录，待裁定）
 
-- `StartupTraceTest` 有顺序依赖：全量跑偶发红，单跑 4/4 绿。
-- `DialogButtonOrderTest` 的部分断言按 Windows 平台构造，macOS 上环境门控跳过。
 - 冷启动实测 3.5–3.9 s，未达 <2 s 目标（当前地板约 2.35 s）。
 - jlink 打包 ⛔（自动模块限制）、自动更新 🚫（无发布渠道）、签名/公证 ⛔（缺证书）。
+- ~~两条长期红已归因并修好~~（2026-10-30）：`StartupTraceTest` 断言的是测试运行器的进程年龄，
+  `DialogButtonOrderTest` 把宿主平台的按钮预设当成 Windows 预设 —— 见上面两段改判与修复。
 
 ### Not yet released
 

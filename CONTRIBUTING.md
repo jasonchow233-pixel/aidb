@@ -47,7 +47,8 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 25)   # macOS 示例
 | `testing/adb-fixtures` | 测试夹具 |
 
 细节见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)；界面口径见
-[docs/UI-VISUAL-SPEC.md](docs/UI-VISUAL-SPEC.md) 与 [docs/UI-GUIDE.md](docs/UI-GUIDE.md)。
+[docs/UI-VISUAL-SPEC.md](docs/UI-VISUAL-SPEC.md) 与 [docs/UI-GUIDE.md](docs/UI-GUIDE.md)；
+现状与限制的完整清单（含**唯一一处**验证基线数字）在 [docs/STATUS.md](docs/STATUS.md)。
 
 ## 4. 这个仓库的几条硬规矩
 
@@ -74,7 +75,8 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 25)   # macOS 示例
    `data-paint="edge|tone-a|tone-b|tone-c|accent"`，颜色由 `app.css` 的
    `-adb-icon-*` 提供。没有彩色资产时 `Icons.colored()` 自动回退单色。
    ⚠️ 分层返回的是 `Group`，它没有任何可绘属性 —— 类型色必须用**后代选择器**
-   落到子层，挂在容器上的规则是死规则（见 §4.5）。
+   落到子层，挂在容器上的规则是死规则（彩色档规则见
+   [docs/UI-VISUAL-SPEC.md](docs/UI-VISUAL-SPEC.md) §4.5）。
 
 ## 6. 提交与 PR
 

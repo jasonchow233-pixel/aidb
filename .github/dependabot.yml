@@ -1,0 +1,57 @@
+# 依赖机器人：只提**补丁/次版本**与 Java 生态的常规升级，不自动碰大版本。
+#
+# 为什么限制这么紧：本仓库的依赖不是「装了就完」的库，
+# JavaFX / ControlsFX / RichTextFX 的升级会直接改控件的测量与渲染结果，
+# 而 UI 门禁断言的是计算后的颜色与尺寸（不是像素对比），
+# 所以一次升级 = 一轮人工验收（含 `./scripts/shots.sh` 重拍），不能让机器人合。
+#
+# 三条硬口径（与 docs/COMPONENT-SELECTION.md 一致）：
+#   · 版本只写在父 POM 的 `<dependencyManagement>`，子模块不带 `<version>` —— 所以只在根目录扫一次。
+#   · 新增依赖必须同步 `docs/COMPONENT-SELECTION.md` 的许可表，PR 里没这条 = 不打。
+#   · Maven wrapper 自身的升级要看得到（`./mvnw` 的行为变化会影响所有人）。
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    # 大版本（JavaFX 26、Jackson 3…）人工评估，不让机器人一次开一堆。
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      javafx:
+        patterns:
+          - "org.openjfx:*"
+      jackson:
+        patterns:
+          - "com.fasterxml.jackson*:*"
+      test-stack:
+        patterns:
+          - "org.testfx:*"
+          - "org.assertj:*"
+          - "org.junit.jupiter:*"
+          - "org.mockito:*"
+    labels:
+      - dependencies
+    commit-message:
+      prefix: build
+    pull-request-branch-name:
+      separator: "-"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+    commit-message:
+      prefix: ci

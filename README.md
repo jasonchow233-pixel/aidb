@@ -1,329 +1,194 @@
-# AIDB (AgenticDB)
+# AIDB — a native desktop database client
 
-> 跨平台数据库管理桌面客户端 · **AI 原生数据库工作台**
-> **Java 25 + JavaFX 25 原生桌面**，不内嵌 WebView，不启动 HTTP 端口。
+**Java 25 + JavaFX 25. No Electron, no embedded WebView, no local HTTP server.**
+One process, one window, every byte to your database over JDBC — and nothing else.
 
-![AIDB logo](ui/adb-ui-shell/src/main/resources/io/agenticdb/ui/app-icon-128.png)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![CI](https://github.com/jasonchow233-pixel/aidb/actions/workflows/ci.yml/badge.svg)](https://github.com/jasonchow233-pixel/aidb/actions/workflows/ci.yml)
+![JDK](https://img.shields.io/badge/JDK-25%20to%2027-orange.svg)
+![Platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-lightgrey.svg)
+![Status](https://img.shields.io/badge/status-pre--release-yellow.svg)
 
-目标是 Navicat 级的交互顺手程度：对象树 → 双击表 → 数据页 → 编辑/保存，全程键盘可达。
+<p align="center">
+  <img src="docs/screenshots/p0-shell.png" alt="AIDB object browser: connection tree on the left, colored object list on the right, command ribbon across the top" width="100%">
+</p>
 
----
+## Who it's for
 
-## 当前状态（2026-10-26）
+You live in a database all day and want the window in front of you to behave like a desktop
+application: keyboard-reachable everything, no browser engine holding a few hundred megabytes,
+no localhost port a firewall or an auditor has to bless, and no telemetry — because apart from
+the JDBC connection you configured, this app contains no network code.
 
-**P0–P6 已完成、UIUX 专项 UX-0…UX-6 已全部收官、P7 能自动化的部分已收尾、UI/UX 重构任务书 V1.0（U-ICON / U-CTRL / U-IDX / U-POLISH）已落地。**
-门禁 **964 条 / 123 类 / 0 失败**（2026-10-26 · 第二十八轮 Windows 实机实测；另有 48 条环境门控跳过 —— 需 Docker / MySQL 真库环境变量）。
+If you want ER diagrams, notebooks, or an AI copilot, use DBeaver or Chat2DB. This project
+deliberately does not do those things ([why](#explicitly-not-on-the-roadmap)).
 
-> **第八轮之后**：D2+D4（MySQL/PG 列注释读回）已修；B5-S1（索引可编辑）已落地；
-> **T1–T4（建表 / 清空 / 重命名 / 删表）已落地**（T1=弹窗，按形态裁定）；9 张验收截图完成。
-> **第九轮**：新增 GitHub 开源对标 `docs/GITHUB-COMPARE.md`（对外汇报版已下线，对外口径见 `docs/ROADMAP.md`）。
->
-> - ✅ **D3「SQLite 改列丢失 CHECK 约束」已修**（第十一轮）：CHECK 现在能内省、展示，
->   而且**改列整表重建时会搬运** —— 并且门禁断言「改列后约束**仍然拦得住违规数据**」。
-> - ✅ **外键 / 触发器可增删**（第十一轮，B5-S2/S3）：结构页新增「外键」「检查」页签的增删入口 + 两个弹窗。
-> - ⭐ 顺带修掉一个**潜伏很久的真 bug**：外键的 ON UPDATE/ON DELETE 动作码没翻译
->   （各驱动码表不同）→ **带外键的表改列必失败**（`ON UPDATE 3` 语法错误）。
-> - 其余遗留：B5-S2/S3、B5-S4/O1/O2、U-B6、空白态 E5–E9、架构收尾 A10/A12/A15/A16。
->
-> **对外路线（支持矩阵 / 进行中 / 明确不做）见 `docs/ROADMAP.md`**；
-> 启动可观测性 `StartupTrace` + 可访问性（六区焦点顺序 / 标签与切面键盘可达 / 逐页可朗读名称）已落地；
-> **冷启动 <2s 未达标（实测 3.5–3.9 s，地板 ≈2.35 s）**；jlink ⛔（自动模块）·
-> 自动更新 🚫（无发布渠道）· 签名/公证 ⛔（缺证书）。
+## Databases
 
-| 能力 | 状态 | 证据 |
-|---|---|---|
-| 七区布局（菜单/功能区/侧栏/标签栏/对象工具栏/内容区/状态栏） | ✅ | `AppShell` + `AppBar` |
-| 原生窗口装饰 + macOS 系统菜单栏 | ✅ | `StageStyle.DECORATED` + `MenuBar.setUseSystemMenuBar(true)` |
-| 统一动作注册表（菜单/工具栏/右键/命令面板） | ✅ | `ActionRegistry` |
-| 侧栏 250px / 折叠 48px / 拖动改宽 200–360 | ✅ | `SideBar` + `AppShell` |
-| 对象切面条（数据/结构/索引/外键/触发器/SQL，真实内省） | ✅ | `ObjectTabBar` + `ObjectSectionsPanel` |
-| 对象标题栏（类型图标 / 名称 / 类型 / 真实行数 / 动作） | ✅ | `ObjectHeader` |
-| 弹窗统一主题（`-adb-*` 令牌在 DialogPane 上真正生效） | ✅ | `DialogStyles` |
-| 真实 SQLite 对象树（表/视图，**多连接同树**） | ✅ | `SchemaService` + `SideBar` |
-| 对象树表节点可展开出列（**懒加载** / 失败可重试） | ✅ | `SideBar.objectNode` + `AppShell.loadColumnsFor` |
-| 新建表列网格 Tab / 方向键导航 | ✅ | `NewTableDialog.installGridNavigation` |
-| 演示库（固定种子，可重建） | ✅ | `~/.agenticdb/agenticdb-demo.db`，`DemoDatabase` |
-| 数据页：服务端分页、选择列、行号、类型行 | ✅ | `DataGridPage` |
-| 底部分页条：100/200/500/1000 | ✅ | `DataGridPage` |
-| 状态栏：连接、行范围、耗时、脏计数 | ✅ | `StatusBar` + `DataGridPage.Feedback` |
-| 空态 / 加载 / 错误三态 | ✅ | 演示库 `notes` 空表 + 失败重试 |
-| 标签独立数据（切表不串、分页位置保留） | ✅ | `WorkspaceView` 按 tab id 缓存 |
-| 单列/最多 3 级排序，下推 `ORDER BY` | ✅ | `SortSpec` + `DataSqlBuilder` |
-| 列头值筛选：候选值、计数、级联、NULL/空串、高基数降级 | ✅ | `ColumnFilterPanel` |
-| 条件构造器 + 可删除 chip + 全部清除 | ✅ | `ConditionDialog` + `DataGridPage` |
-| 列宽/顺序/显隐 + `java.util.prefs` 持久化 | ✅ | `DataGridPage` 列布局 |
-| 行内编辑、类型转换、按主键定位 | ✅ | `ValueCell` + `RowIdentity` |
-| NULL / 空串独立操作 | ✅ | 单元格右键 + 批量条 |
-| `EditBuffer`、撤销/重做、脏标记、关闭确认 | ✅ | `adb-editing` |
-| 导入导出向导（流式 CSV/TSV/JSON/SQL/xlsx，字段映射，按目标列类型转换，坏行报告） | ✅ | `adb-transfer` |
-| 查询结果导出：本页 / 选中行 / 全部结果（CSV / TSV / JSON / SQL / xlsx） | ✅ | `QueryPage` 导出菜单 + `TableExporter.exportSql` |
-| 新增行 / 删除 / 克隆（草稿行、一次撤销） | ✅ | 淡绿新增、淡红删除、`●` 脏行 |
-| 多选 + 批量条：TSV / INSERT / 克隆 / 设 NULL / 设空串 / 删除 | ✅ | 表头全选仅当前页 |
-| SQL 预览 → 单事务保存 → 刷新 → Toast 反向撤销 | ✅ | `EditSqlBuilder` + `DataGridPage` |
-| 单元格详情抽屉：文本 / JSON / Hex / 图片 / 元数据 | ✅ | `CellDetailsDrawer` |
-| 本页搜索（⌘F）、隐藏 NULL/空串、只读转置 | ✅ | `DataGridPage` 视图菜单 |
-| 当前页 CSV 导出 / TSV / INSERT 复制 | ✅ | `CsvExporter` + `DataGridPage` |
-| 双主题（暗/亮，跟随系统，本地记忆）+ 密度档位 | ✅ | `ThemeManager` + `theme-*.css` |
-| 命令面板 ⌘K | ✅ | `CommandPalette` |
-| SQLite JDBC 会话（参数化查询/事务/类型映射/限流） | ✅ | `JdbcSession` |
-| SQL 词法/分句/格式化内核 | ✅ | `adb-sql`：`SqlLexer` / `SqlSplitter` / `SqlFormatter` |
-| RichTextFX SQL 编辑器：高亮、行号、当前行、查找替换 | ✅ | `SqlEditor` / `SqlHighlighter` / `QueryPage` |
-| 查询页：`⌘R` 当前语句、`⇧⌘R` 全部、`⌘.` 取消 | ✅ | `QueryPage` + `AppShell` 动作 |
-| 多语句结果页签：结果集 / 消息 / 错误 | ✅ | `QueryPage` |
-| 查询结果服务端分页：翻页条 + 每页下拉 + 跳页 + 绝对行号 | ✅ | `QueryPaginator` + `QueryPage.PagedLoader` |
-| 查询结果列类型条（与数据页同一套视觉规格） | ✅ | `adb-query__result-types` |
-| 数据网格**单元格区域选择**：拖选 / Shift 扩展 / 复制矩形 | ✅ | `DataGridPage.selectRectangle` + `adb-grid__cell--rect` |
-| 数据网格**冻结列**（左/右两表并排，滚动 + 选择同步） | ✅ | `DataGridPage.setFrozenColumnCount` |
-| 执行计划、错误定位、查询历史（最近 50 条） | ✅ | `QueryPage` / `ErrorLocator` / `QueryHistory` |
-| 查询结果只读表格、复制 TSV/SQL、CSV 导出 | ✅ | `CellRenderer` / `CsvExporter` |
-| 结构页六页签：列 / 索引 / 外键 / 检查 / 触发器 / DDL | ✅ | `StructurePage` + `TableStructure` |
-| **CHECK 约束**：内省 + 展示 + **整表重建时搬运** | ✅ | `CheckDef` / `CheckParser` / `CheckConstraintTest` |
-| **外键增删**（SQLite 重建 / PG·MySQL ALTER） | ✅ | `ForeignKeyDialog` / `ForeignKeyTriggerDdlTest` |
-| **触发器增删**（PG = 函数 + 触发器两条） | ✅ | `TriggerDialog` / `ForeignKeyTriggerDdlTest` |
-| **表注释**：读得回 / 改得了 / 清得掉（SQLite 无 → 按钮禁用） | ✅ | `TableCommentDialog` / `TableCommentDdlTest` |
-| **函数 / 过程定义体**（只读标签页，三方言来源不同） | ✅ | `RoutinePage` / `Dialect.readRoutineDefinition` / `RoutineDefinitionTest` |
-| **MySQL 调度事件**（对象树「事件」分组 + 定义体） | ✅ | `ObjectKind.EVENT` / `Dialect.eventsListSql` |
-| **多连接并存**（切连接不关掉另一个的会话） | ✅ | `SessionManager.open` 复用 / `reopen` |
-| **语句超时**（30s，超时给建议）+ **连接池归还** | ✅ | `QueryLimits` / `JdbcSession` / `ConnectionPool` |
-| **错误归类**（连接断开/权限/不存在/超时/锁/约束/语法） | ✅ | `ErrorClassifier` / `ErrorClassifierTest` |
-| **代码片段库**（存选中的 SQL → 插入到光标处） | ✅ | `SavedQueries`（查询/片段两种类型） |
-| **侧栏「已保存查询」分组**（双击 / 回车 / 右键载入新查询） | ✅ | `SideBar.setSavedQuerySource` + `AppShell.openSavedQuery` |
-| **连接分组 / 重命名**（分组列、按分组搜索、侧栏文件夹） | ✅ | `ConnectionProfile.group` / `ConnectionStore` |
-| **对象首页列表 / 网格切换**（视图记忆、选中同步） | ✅ | `ObjectHomePage.showView` + `ui.objectHome.view` |
-| **数据页「概览」**（行数 / 大小 / 引擎 / 索引数 / 最近操作） | ✅ | `DataGridPage.buildOverview` + `SchemaService.indexCount` |
-| **结构页「选项」**（MySQL 引擎 / 排序规则 / 自增 / 行格式；其它方言「—」） | ✅ | `SchemaService.tableOptions` + `Dialect.tableOptionsSql` |
-| **查询历史带对象上下文**（连接 / 命中表 / 时间，按表筛） | ✅ | `QueryHistory.Entry` + 详情面板「最近操作」 |
-| **多连接并存**（每连接一条执行器，同连接串行、跨连接不互堵） | ✅ | `DbExecutors` / `SessionManager` |
-| **连接建立移出 UI 线程**（连接慢不再冻窗口） | ✅ | `AppShell.connectProfile` |
-| **崩溃日志**（`~/.agenticdb/logs/crash-*.log`） | ✅ | `CrashLog` |
-| **启动耗时日志**（`~/.agenticdb/logs/startup.log`：进程启动 → 首屏分段打点） | ✅ | `StartupTrace`（**注意：冷启动 <2s 目标未达成**，实测 3.5–3.9 s） |
-| **一键出包**（jpackage：app-image / dmg / msi / deb） | ✅ | `scripts/package.sh` |
-| **连接属性 7 页**（常规/高级/数据库/SSL/SSH/HTTP/备注；SSL 真写驱动属性，SSH/HTTP 明说未实现） | ✅ | `ConnectionWizard`（第三十三轮） |
-| 结构安全编辑：加列 / 改列 / 重命名列 / 删列 + 两级危险确认 | ✅ | `StructureSqlBuilder` + `StructurePlan` |
-| 结构变更单事务 + 失败回滚 + 全页面联动刷新 | ✅ | `StructurePage.applyPlan` |
-| 连接管理页：列表 / 搜索 / 收藏 / 打开 / 编辑 / 复制 / 删除 | ✅ | `ConnectionsPage` |
-| 连接向导：类型磁贴（3 种真实库型 + 搜索 + URI）→ 7 页属性 → 测试 → 保存 | ✅ | `ConnectionWizard` |
-| 凭据存系统凭据库（不落盘） | ✅ | `WindowsCredentialStore`（WinCred）/ `KeychainCredentialStore` / `SecretToolCredentialStore` |
-| 连接档案落盘 `~/.agenticdb/connections.json`（0600） | ✅ | `ConnectionStore` |
-| HikariCP 连接池（PG/MySQL），SQLite 直连 | ✅ | `ConnectionPool` |
-| TestFX 冒烟 + 数据页/编辑/查询页/结构页/连接页门禁 | ✅ | `AppShellTest` / `DataGridPageTest` / `QueryPageTest` / `StructurePageTest` / `ConnectionsPageTest` / `ConnectionWizardTest` |
-| **键盘可达：六区焦点顺序 + 标签/切面键盘切换 + 逐页可朗读名称** | ✅ | `AccessibilityAuditTest`（第二十六轮）+ `TabBar` / `ObjectTabBar` / `ObjectHomePage` / `TableListPage` |
-| **启动耗时可观测（进程 → 首屏，分段打点 + 日志 + 关于回显）** | ✅ | `StartupTrace` + `StartupTraceTest`（**冷启动 <2s 未达标**：实测 3.5–3.9 s） |
-| **Lucide 矢量图标 + 语义彩色**（对象类型/状态彩色，动作单色） | ✅ | `Icons`（第二十七轮）+ `LucideIconTest` |
-| **统一控件层：五档按钮 × 五态 + 输入/复选/下拉/清单/弹窗同套规则** | ✅ | `app.css` 控件段 + `UnifiedControlTest` |
-| **新建索引弹窗**（单列表 + 拖拽/Alt+↑↓ 保序 + 「添加列」下拉 + 方言能力门控 + SQL 预览即执行语句） | ✅ | `IndexDialog` + `IndexDialogTest` / `IndexDdlTest` |
-
-当前门禁：**1108 条 / 134 类 / 0 失败**（2026-10-28 · 第三十三轮 R33 Windows 实机实测；`./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`）；另有 48 条环境门控跳过 —— Docker / MySQL 真库不可用时会跳过，**不影响 0 失败这条硬门禁**）。统一命令：`./mvnw -B clean verify`。
-
-> ⚠️ **本机环境**：`java` 默认不在 PATH。可用的 JDK：
-> - Windows 10：`~/.jdks/openjdk-27.0.1.0.2`（pom 的 enforcer 区间为 `[25,28)`）
-> - macOS：IntelliJ 自带 JDK 25 —— `export JAVA_HOME="/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home"`
-
-统计口径用工具兜底（`@Nested` 的测试类在 surefire XML 里会写成 `tests="0"`）：
-
-```bash
-java tools/TestCount.java      # 按 <testcase> 计数，并断言总数 ≥ 300
-```
-
-> ⚠️ **统计口径**：4 个测试类用 `@Nested`，surefire XML 里写成 `tests="0"`（真实用例在内层类条目里）。
-> 按 XML 的 `tests=` 属性统计只有 159，**少算 109 条**。CI 与覆盖率工具按 `<testcase>` 计数。
-
-演示库首次启动自动生成：4 张表（`users` 200 行、`orders` 500 行、`products` 80 行、`notes` 空表）+ 1 个视图。
-已有有效演示库不会被覆盖；`-Dadb.demo.db=/path/to/file.db` 可指定其他文件。
-
-真实窗口截图：`docs/screenshots/` 共 **40 张**（亮色 35 + 暗色 5）——
-`p0-shell`、`p2-users`、`p2-users-dark`、`p2-overview`、`p2-details`、`p2-cell`、`p2-error`、
-`p2-transaction`、`p2-find`、`p2-form`、`p2-filter`、
-`p3-query`、`p3-query-menu`、`p4-structure`、`p4-ddl`、`p5-connections`、`p5-dark`、
-`p5-connect-type`、`p5-connect-general`、`p5-connect-ssl`、`p5-connect-ssh`、
-`p6-tables`、`p6-tables-grid`、`p6-new-table`、`p6-new-table-fields`、`p6-new-table-fields-dark`、
-`p6-new-table-comment`、`p6-new-table-index`、`p6-new-table-sql`、`p6-new-table-dark`、
-`p6-rename-table`、
-`p7-new-index`、`p7-new-index-dark`、`p8-import`、`p8-export`、
-`p9-settings`、`p9-diagnostics`、`p9-favorites`、`p9-saved-queries`
-（`docs/screenshots/navicat/` 另存 Navicat Premium Lite 15 实拍 3 张 + 等比例并排图：
-`navicat-tablelist.png` / `navicat-toolbar.png` / `side-by-side-2026-10.png`，
-以及 2026-10-24 新增的两张高保真实拍 `navicat-data-grid-2026-10-24.png` / `navicat-table-list-2026-10-24.png`），
-由 `ScreenshotSession`（`ADB_SHOTS` 等环境变量）可复现生成，用法见 §12.2。
-弹窗帧靠 `ADB_NEW_TABLE=1` / `ADB_INDEX=1` 启动开关（§16.3）；
-右键菜单帧 `p3-query-menu` 靠 `ADB_MENU_POSE=1` 注入真 `ContextMenuEvent`。
-
----
-
-## 快速开始
-
-要求：JDK 25–27（`pom.xml` 的 enforcer 区间 `[25,28)`）、Maven 3.9+（或直接用仓库自带 `./mvnw`）。
-
-> ⭐ **用 `scripts/` 下的脚本，不要手工敲命令** —— 启动流程里有两个坑：
-> JDK 版本不对时报错埋在日志深处；**不先 `install` 会跑 `~/.m2` 里的旧 jar**
-> （实测踩过：改了半天 CSS 界面一点没变）。脚本把这两个都挡在前面了。
-
-```bash
-# 1. ⭐ 一键编译 + 启动（最常用）
-./scripts/dev.sh
-
-# 2. 启动并直接打开某张表（验收时用）
-./scripts/dev.sh users
-
-# 3. 完整门禁：编译 + 全部测试 + 用例计数
-./scripts/build.sh
-
-# 4. 重拍 docs/screenshots/ 的 40 张验收截图
-./scripts/shots.sh
-
-# 5. 出包（jpackage；产物在 bootstrap/adb-desktop/target/dist/，实测可启动）
-./scripts/package.sh            # 当前平台默认类型
-./scripts/package.sh app-image  # 只出免安装目录
-```
-
-### 手工命令（脚本的内部实现，供排查用）
-
-```bash
-# 编译 + 跑全部测试
-./mvnw -B clean verify
-
-# 安装模块到本地仓库（javafx:run 需要）
-./mvnw -B -DskipTests install
-
-# 启动桌面端
-./mvnw -pl bootstrap/adb-desktop javafx:run
-
-# 打开某张表 / 查询页 / 结构页
-ADB_OPEN=users ./mvnw -pl bootstrap/adb-desktop javafx:run
-ADB_QUERY=1    ./mvnw -pl bootstrap/adb-desktop javafx:run
-ADB_STRUCTURE=users ./mvnw -pl bootstrap/adb-desktop javafx:run
-```
-
-> ⚠️ 两个脚本**不要并发跑** —— 都做 `clean install`，会互相删 jar。
-
-只跑 UI 门禁：
-
-```bash
-./mvnw -B -pl ui/adb-ui-shell -am test
-```
-
-TestFX 默认用 Monocle 无头模式；在本机想看真实窗口，去掉父 POM 里
-`testfx.headless` / `glass.platform` 两个系统属性即可。
-
----
-
-## 文档地图
-
-| 文档 | 回答什么问题 |
+| | |
 |---|---|
-| **`docs/ROADMAP.md`** | ⭐ **对外路线**：现在支持什么（数据库/平台/能力矩阵）· 进行中 · 接下来按用户价值排序 · 明确不做 |
-| **`docs/STAR-PLAN.md`** | ⭐ **开源发布与增长规划**：定位（原生桌面 / 不内嵌浏览器 / 不开 HTTP 端口）、与 DBeaver·Beekeeper 的差异化、发布工程清单（LICENSE / CI / Release）、文档卫生口径 |
-| `docs/ARCHITECTURE.md` | 模块、数据流、线程模型、编辑/SQL/撤销不变量、结构页与连接层模型 |
-| `docs/UI-GUIDE.md` | 视觉基线、七区、组件与交互规则、令牌生成、图标约定、弹窗规范 |
-| **`docs/UI-VISUAL-SPEC.md`** | ⭐ **可照着实现的 UI 规格书**：7 档字号落到哪个角色 · 106 个令牌语义 · 图标清单 · 间距/圆角/固定尺寸 · 七区与四种页面骨架 · 组件规格 · 弹窗骨架与按钮区规则 · 交互态矩阵 · 键盘表 · 文案措辞 |
-| **`docs/GITHUB-COMPARE.md`** | ⭐ **GitHub 上开源数据库管理软件**扫描（DBeaver / Chat2DB / Beekeeper Studio / TablePro / sqlpad / SQLTools…）：与 AIDB 的可比性、独特定位、借鉴项 |
-| **`docs/UI-FORMS-AND-STATES.md`** | ⭐ **形态与状态规范**：新能力该做**弹窗还是标签页**（含待建能力的裁定表，防「新建表做成标签页」这类错误）+ 默认态 8 项 + 空白态 9 处清单 + `EmptyState` 组件约定 |
-| `docs/COMPONENT-SELECTION.md` | 开源组件选型、版本、许可证、禁入清单 |
+| **SQLite** | ✅ supported — file-based, plus the bundled demo database |
+| **MySQL** | ✅ 5.7 and 8.x |
+| **PostgreSQL** | ✅ |
+| Oracle / SQL Server / MariaDB |  next — see [docs/ROADMAP.md](docs/ROADMAP.md) |
 
-> 📌 **对外口径**：`docs/ROADMAP.md`（支持矩阵 + 路线 + 明确不做）与
-> `docs/STAR-PLAN.md`（发布与增长规划：定位 / 差异化 / 发布工程清单）。
-> 逐轮执行清单与验收口径属内部材料，不在本仓库发布。
+Dialect differences sit behind one `Dialect` abstraction, so introspection, DDL generation and
+type mapping behave the same on every server — including where they genuinely cannot, such as
+SQLite table comments, which show up **disabled** rather than pretending to work.
 
-**脚本**（`scripts/`，2026-10-21 新增）：`dev.sh` 一键编译启动 ·
-`build.sh` 门禁 · `shots.sh` 重拍截图 · `package.sh` **一键出包**（jpackage）·
-`_env.sh` 公共环境预检。
-用法见上文「快速开始」，设计取舍见 `scripts/` 各脚本头部注释。
+## What it looks like to use
 
-旧 Rust / Vue / Python 实现、构建产物和过时规划已删除；git 历史仍可追溯。
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/p2-users.png" alt="Data grid with inline editing, row numbers, type row and pager bar" width="100%"><br><b>Edit data in place.</b> Server-side paging, column filters with value counts, a condition builder, up to 3-level sorting, frozen columns, rectangle selection, undo / redo.</td>
+    <td width="50%"><img src="docs/screenshots/p3-query.png" alt="SQL editor with syntax highlighting, result tabs and messages" width="100%"><br><b>Write SQL, not mouse strokes.</b> Highlighted editor with line numbers, run the current statement or all of them, cancel a running query, multi-statement result tabs, execution plan, error locator, query history, snippets.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/p4-structure.png" alt="Table structure page: columns, indexes, foreign keys, triggers, checks" width="100%"><br><b>Change structure safely.</b> Add / alter / rename / drop columns, indexes, foreign keys, triggers, CHECK constraints and table comments — applied in one transaction, and every open page refreshes with it.</td>
+    <td width="50%"><img src="docs/screenshots/p6-new-table.png" alt="New table dialog with a live SQL preview" width="100%"><br><b>See the statement before it runs.</b> Every dialog that writes shows the exact SQL it is about to execute, so nothing is explained after the fact.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/p2-users-dark.png" alt="Dark theme data grid" width="100%"><br><b>Two themes, one source of truth.</b> Light and dark, 106 design tokens, four density levels — and icon colors resolved from those same tokens, so a theme switch needs no second icon set.</td>
+    <td width="50%"><img src="docs/screenshots/p8-import.png" alt="Import wizard with field mapping and a bad row report" width="100%"><br><b>Get data in and out.</b> Streaming CSV / TSV / JSON Lines / SQL / xlsx, field mapping, conversion to the target column's type, and a report that names every bad row.</td>
+  </tr>
+</table>
 
----
+## The safety model
 
-## 模块
+Writing to a real database should be boring and strict.
 
+1. **Classify first, fail closed.** Every statement is graded by danger before it runs. If the
+   grader cannot tell what a statement does, it is treated as dangerous — the default is caution.
+2. **Preview, confirm, one transaction.** Destructive changes need an explicit confirmation;
+   structure edits are previewed as SQL and applied in a single transaction, so a failure rolls
+   back instead of leaving half a table rebuilt. After a save, one click undoes it.
+3. **Not finished: a driver-side second opinion.** `DbSession.execute(sql)` takes no danger
+   argument, so a caller that skips the UI layer is not stopped. Two of the three layers exist —
+   that is open work, not a claim.
+
+**Credentials never touch disk.** Passwords go to the OS secure store — macOS Keychain, Windows
+Credential Manager, Linux Secret Service — and fall back to process memory with a loud warning if
+no service is found. `~/.agenticdb/connections.json` keeps the non-sensitive fields only:
+`password`, `secret`, `token`, `sslkey` and friends are stripped before writing. No telemetry, no
+update pinger, no listening socket.
+
+## Keyboard and accessibility
+
+`⌘K` / `Ctrl+K` opens a command palette over every action. Menus, ribbon, toolbar, context menus
+and the palette are views onto one action registry, so an action disabled in one place is disabled
+in all of them. Focus walks the six shell zones in a documented order, tab strips and section
+switchers are keyboard-operable, and each page carries a name a screen reader can read aloud.
+The UI checks assert computed colors and geometry rather than pixels, so they hold at any display
+scale and on any platform.
+
+## Install
+
+**There are no prebuilt binaries yet**, and that is not a placeholder I can wave away: a
+downloadable build needs an Apple Developer ID and a Windows code-signing certificate, which are
+external resources this project does not have. Until then, run it from source:
+
+```bash
+git clone https://github.com/jasonchow233-pixel/aidb.git
+cd aidb
+./scripts/dev.sh          # builds and launches — JDK 25–27, no Maven install needed
 ```
-core/
-  adb-model          领域模型（ColumnDef / RowPage / Danger / QueryLimits）
-  adb-safety         危险分级与错误定位
-  adb-sql            SQL 词法、分句、格式化内核
 
-workbench/
-  adb-jdbc           统一 JDBC 会话、方言抽象层、类型映射
-  adb-introspect     对象列表、列定义、主键、行数、分页/筛选/排序 SQL、结构内省与结构变更 SQL
-  adb-session        连接档案、凭据存储、连接池、会话生命周期
-  adb-editing        编辑缓冲、撤销/重做、SQL 计划、反向撤销
-  adb-transfer       导入导出引擎：流式 CSV/TSV/JSON/SQL 读写、字段映射、坏行报告
+Add an argument to open straight into a table (`./scripts/dev.sh users`). The first launch creates
+a demo database (`~/.agenticdb/agenticdb-demo.db`: four tables, 780 rows, one view, one trigger)
+so there is something real to click on before you point it at your own data.
+`./scripts/package.sh` produces a `jpackage` app-image / `.dmg` / `.msi` / `.deb` for your platform
+— it works, it is just unsigned.
 
-ui/
-  adb-ui-core        设计令牌（tokens.json → Tokens.java + theme CSS）
-  adb-ui-shell       JavaFX 七区外壳、应用栏、命令面板、数据页、查询页、结构页、连接页
+## Why this exists next to DBeaver and Beekeeper
 
-testing/
-  adb-fixtures       演示库与测试夹具（固定种子）
+| | Stack | Shape | What AIDB does differently |
+|---|---|---|---|
+| **DBeaver** | Java on Eclipse RCP | desktop + web | Same language, different premise: one native toolkit, one token system, one action registry — no plugin graph, no driver downloader, no perspectives to learn. |
+| **Beekeeper Studio** | Electron / React | desktop | Modern UI, but a Chromium window. AIDB renders with JavaFX: no bundled browser, no renderer process per window. |
+| **Navicat** | native | proprietary desktop | The interaction bar to clear. Object tree → double-click → data page → edit → save, entirely by keyboard — as a free, auditable Apache-2.0 codebase. |
 
-bootstrap/
-  adb-desktop        唯一启动入口；后续 jlink/jpackage
+## Explicitly not on the roadmap
+
+- **No embedded WebView, no Electron** — native rendering is the reason the project exists.
+- **No local HTTP server** — a desktop tool should not need a port.
+- **No cloud sync, no multi-user permission system** — single-user desktop, on purpose.
+- **No AI assistant as a core dependency** — you write the SQL; local rules enforce safety rather
+  than a model's judgment.
+
+## Development
+
+```bash
+./scripts/build.sh        # compile + full test suite + test-count floor — this is what CI runs
+./scripts/dev.sh          # build and launch
+./scripts/shots.sh        # regenerate the screenshots above from current code
+./scripts/package.sh      # jpackage bundle for the current platform
 ```
 
+Maven is vendored (`./mvnw`), so there is nothing to install beyond a JDK.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the environment gotchas, the module map and the rules
+every pull request is reviewed against. Design rules are in
+[docs/UI-VISUAL-SPEC.md](docs/UI-VISUAL-SPEC.md), structure in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and what is honest-but-imperfect in
+[docs/STATUS.md](docs/STATUS.md).
+
+<details>
+<summary><b>More screenshots</b></summary>
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/p2-details.png" alt="Row details drawer" width="380"><br>Row inspector</td>
+    <td><img src="docs/screenshots/p2-cell.png" alt="Cell inspector with text, JSON, hex and image payloads" width="380"><br>Cell payload as text / JSON / hex / image</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/p2-find.png" alt="Find and replace in the grid" width="380"><br>Find &amp; replace</td>
+    <td><img src="docs/screenshots/p2-form.png" alt="Read-only form view of a row" width="380"><br>Transposed form view</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/p5-connect-ssl.png" alt="Connection wizard SSL page writing real driver properties" width="380"><br>Connection wizard — SSL writes actual driver properties</td>
+    <td><img src="docs/screenshots/p7-new-index.png" alt="New index dialog with live DDL preview" width="380"><br>Index dialog with live DDL</td>
+  </tr>
+</table>
+
+</details>
+
+## Known limits, stated plainly
+
+- Cold start measures **3.5–3.9 s** against a <2 s goal. The floor is JVM + toolkit init and the
+  first CSS/layout pass, not application code.
+- "Follow system theme" only detects macOS today; Windows and Linux start in light mode.
+- Tables without a primary key, and views, are read-only. Undo-after-save covers the last save.
+- No auto-update, no code signing, no `jlink` runtime image (RichTextFX / ControlsFX ship as
+  automatic modules).
+- SSH tunnelling is **not implemented** — the connection wizard says so on that page instead of
+  letting you discover it later.
+- The full list, with the date every number was measured: [docs/STATUS.md](docs/STATUS.md).
+
+## License · Acknowledgements
+
+Apache-2.0 — see [LICENSE](LICENSE), and [NOTICE](NOTICE) for third-party terms (including
+MySQL Connector/J, which is GPL-2.0 with the Universal FOSS Exception).
+
+Built on [JavaFX](https://openjfx.io/) (GPL-2.0 with Classpath Exception),
+[RichTextFX](https://github.com/FXMisc/RichTextFX) and [ControlsFX](https://github.com/controlsfx/controlsfx)
+(BSD), [HikariCP](https://github.com/brettwooldridge/HikariCP), [Jackson](https://github.com/FasterXML/jackson),
+[Apache POI](https://poi.apache.org/), [JNA](https://github.com/java-native-access/jna) (Apache-2.0), and
+[Lucide](https://lucide.dev/) icons (ISC — the license text ships next to the assets).
+
+Report security issues privately: [SECURITY.md](SECURITY.md).
+
 ---
 
-## 工程约束
+## 中文简述
 
-1. **设计令牌唯一真相**：`ui/adb-ui-core/src/main/resources/tokens/tokens.json`（106 个：68 颜色 / 35 尺寸 / 3 时长）。
-   改完运行 `java tools/GenTokens.java` 重新生成 `Tokens.java` 与 `theme-dark/light.css`。
-2. **业务代码禁止颜色字面量**：只能引用 `-adb-*` looked-up colors。
-   `TokenParityTest` 会扫描 `app.css`，出现 `#rrggbb` / `rgba(...)` 直接失败。
-3. **动作唯一真相**：菜单、工具栏、右键、命令面板全部走 `ActionRegistry`；
-   禁止在组件里各写一套 enabled 判断。
-4. **不内嵌浏览器、不启动 HTTP 端口**；所有数据经 JDBC。
-5. **所有 JDBC 调用串行**：共享单线程执行器 `adb-db`；UI 更新回 JavaFX 线程。
-6. **编辑按主键定位**：无主键表/视图只读；保存前预览 SQL，单事务执行。
-7. **每条“已完成”必须有门禁断言**；写不出断言就当没做。
-8. **Dialog 按钮的坑**：`DialogPane.createButton` 会给按钮栏里的每个按钮挂
-   `setResultAndClose` 处理器，自定义导航按钮放进按钮栏会被一键关掉。详见架构文档 §7.1。
-9. 新增三方依赖先写进父 POM 的 `<dependencyManagement>`，子模块不带 `<version>`。
+AIDB 是一个**原生桌面数据库客户端**：Java 25 + JavaFX 25，不内嵌浏览器、不启动本地 HTTP 端口，
+所有数据直接走 JDBC。当前支持 SQLite / MySQL 5.7–8.x / PostgreSQL，Oracle、SQL Server、MariaDB 在路线上。
 
----
+界面照 Navicat 的交互习惯做：对象树 → 双击表 → 数据页 → 行内编辑 → 预览 SQL → 单事务保存 → 保存后撤销，
+全程键盘可达（⌘K 命令面板）。写操作 fail-closed 分级 + 两级确认；口令只进系统钥匙串 / 凭据管理器，明文不落盘。
+暗亮双主题、106 个设计令牌单一真相、四档密度、中英文界面。
 
-## 已知限制
+**目前没有可下载的安装包**（缺 Apple 公证与 Windows 代码签名证书），只能源码运行：`./scripts/dev.sh`。
+冷启动实测 3.5–3.9 秒，未达 <2 秒目标 —— 这些写在 [docs/STATUS.md](docs/STATUS.md) 里，不藏在截图后面。
 
-- 危险分级**第三层（驱动侧复查）仍不存在**：`DbSession.execute(sql)` 没有 `danger`
-  参数。前两层（fail-closed 分类 + UI 确认）已落地。→ §10 A6
-- 设计令牌已收敛到 106 个且全部被用到；`TokenParityTest` 门禁守着不会再长回摆设
-  （40px 档 `fs-4xl` 于 2026-10-23 移除 —— 唯一消费者是欢迎页 logo 的 `font-size`；
-  20px 档 `fs-2xl` 于 2026-10-24 随 S-7 移除 —— 唯一消费者是那张**不可达**欢迎页卡片的标题。
-  两次都是删令牌，不给令牌硬造消费者）。
-- 保存反向撤销对“无主键/主键为空的新增行”不完整；UI 会明确提示。
-- 反向撤销只覆盖最近一次保存；发生新编辑后不再提供。
-- 转置视图只读，不参与批量选择。
-- 本页搜索/隐藏只作用于当前页，不改变服务端分页。
-- 数据页加载 / 保存无法真正取消 JDBC 语句（`⌘.` 只作用于查询页，见 4.5-13）。
-- 连接建立与内省跑在 JavaFX 线程；全局单线程执行器会让一个连接的慢查询阻塞其它连接。
-- ✅ **表级生命周期已落地**（T1–T4）：建表（弹窗 + 实时 SQL 预览）/ 清空 / 重命名 / 删除，
-  入口为对象树右键、数据库菜单、⌘K；三种方言各走自己的语法
-  （SQLite 没有 `TRUNCATE` 走 `DELETE FROM`；MySQL 用 `RENAME TABLE`）。→ §15.4d
-  - 仍缺：建表后自动打开该表；视图不能增删改。
-- ✅ **列注释已能读回**（D2/D4 已修）：改列不再抹掉注释；PG 也能清空注释。→ §16.1
-- ✅ **索引可增删**（S1）：结构页「索引」页签右键 + 按钮，弹窗录入、实时 SQL 预览；
-  数据库自动建的索引（`sqlite_autoindex_*` / MySQL `PRIMARY`）拒绝删除。→ §16.2
-- ⚠️ **建表暂不支持外键 / 索引**（生成器支持，弹窗里还没有录入区）→ §14.5 S2/S3
-- ✅ **CHECK 约束已能内省 / 展示 / 重建搬运**（第十一轮）；⚠️ 但**建表 UI 里还不能录入 CHECK**。
-- ✅ **表注释可读可改**（第十一轮·续）；⚠️ SQLite 没有表注释（按钮禁用）。
-- ✅ **函数 / 过程定义体可看**（第十一轮·续二，只读标签页）；⚠️ SQLite 没有 SQL 层函数。
-- ⚠️ **点对象首页的「函数 / 过程 / 触发器」会被告知暂不支持**（D1 已修，不再报错，
-  但还不能看定义体）。
-- ✅ **外键 / 触发器可增删**（第十一轮 B5-S2/S3，弹窗 + 实时 SQL 预览）；结构页的列 / 索引 /
-  外键 / 触发器 / CHECK 都已可编辑。
-- 表注释 / 外键 / 触发器 / CHECK / 函数·过程定义体均已支持；MySQL EVENT 已建模；
-  剩余的是视图增删改（V1）与表清单工具条的新建/删除/设计入口（N1–N3）。
-- ✅ **导入导出已补齐**（P6-1 / P6-2 / P6-3）：CSV / TSV / JSON Lines / SQL 导出 + 查询结果三档导出
-  （本页 / 选中 / 全部）、**xlsx 导入导出**（POI SXSSF 流式写 + SAX 流式读，与 CSV 共用同一条 `Ingest`）、
-  导入按目标列**类型转换**（数字 / 布尔 / 日期含中文格式，空值→NULL），坏行带列名与原文。
-- 侧栏的查询历史 / 诊断 / 导入导出 / 已保存查询四个入口都已接真功能。
-- **MySQL 5.7.44 真库已联调**（9 例）；**PostgreSQL 仍缺测试库**（未配置，跳过）。
-- ⚠️ **冷启动未达标**：目标 < 2 s，实测 **3.5–3.9 s**（Windows 10 + JDK 27，`StartupTrace` 打点）。
-  地板来自 JVM/Toolkit ~0.95 s + 第一个 JavaFX 控件（Modena 样式表解析）~0.5 s +
-  `stage.show()` 首趟 CSS/布局 ~0.86 s；**AppCDS 在开发启动路径试过不通**
-- ⚠️ **没有自动更新 / 版本检查**（无发布渠道 + 离线环境 + 无安装包签名）；
-  **签名与公证未做**（需 Apple Developer ID 与 Windows 代码签名证书，属外部资源）；
-  **jlink 自定义运行时不可行**（RichTextFX / ControlFX 是自动模块）
-- `core/adb-declarations` 与根目录 `declarations/` 已于 2026-10-24 删除（运行时从未引用；
-  方言差异现由 `Dialect` 抽象层承担），基线因此减少 43 条测试。
-- 主题“跟随系统”目前只探测 macOS；Windows/Linux 默认亮色。
-- 令牌体系 106 个全部被用到；密度四档（19/20/21/26，默认 normal；数据网格 +2 = 21/22/23/28）覆盖数据网格 / 查询结果 / 对象清单 / 对象树 / 结构页。
-- `docs/screenshots/` 的 40 张图（亮 35 + 暗 5）已按当前代码重拍。
-- 首版不做：自绘标题栏、AI 面板、插件系统、ER 图、用户权限、计划任务。
+完整文档：[对外路线](docs/ROADMAP.md) · [架构](docs/ARCHITECTURE.md) · [UI 规格](docs/UI-VISUAL-SPEC.md) ·
+[组件选型与许可](docs/COMPONENT-SELECTION.md) · [贡献指南](CONTRIBUTING.md)。

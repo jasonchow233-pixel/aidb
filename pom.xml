@@ -25,6 +25,32 @@
   <packaging>pom</packaging>
   <name>AIDB</name>
   <description>跨平台多数据库管理桌面客户端</description>
+  <url>https://github.com/jasonchow233-pixel/aidb</url>
+  <inceptionYear>2026</inceptionYear>
+
+  <!-- 许可与源码位置写进 POM 是发布工程的第一步：Maven 中央仓库的元数据、
+       `mvn license:third-party-report`、以及 IDE 的依赖视图都读这里。
+       与根目录 LICENSE / NOTICE 三个文件必须一致：本仓库 Apache-2.0，
+       三方许可（含 MySQL Connector/J 的 GPLv2 + Universal FOSS Exception）见 NOTICE。 -->
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <scm>
+    <url>https://github.com/jasonchow233-pixel/aidb</url>
+    <connection>scm:git:https://github.com/jasonchow233-pixel/aidb.git</connection>
+    <developerConnection>scm:git:git@github.com:jasonchow233-pixel/aidb.git</developerConnection>
+    <tag>HEAD</tag>
+  </scm>
+
+  <issueManagement>
+    <system>GitHub Issues</system>
+    <url>https://github.com/jasonchow233-pixel/aidb/issues</url>
+  </issueManagement>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
