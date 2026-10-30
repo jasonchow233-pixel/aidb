@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.SchemaService;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.ui.Icons;
 import javafx.geometry.Pos;
@@ -51,9 +52,10 @@ final class RoutinePage extends VBox {
 
         meta.getStyleClass().add("adb-muted");
         meta.setId("routine-meta");
-        meta.setText(scheduledEvent ? "调度事件" : (procedure ? "存储过程" : "函数"));
+        meta.setText(scheduledEvent ? I18n.t("routine.kind.event")
+                : (procedure ? I18n.t("object.kind.procedure") : I18n.t("object.kind.function")));
 
-        Button copy = IconButtons.of(Icons.Icon.COPY, "复制定义体");
+        Button copy = IconButtons.of(Icons.Icon.COPY, I18n.t("routine.copy"));
         copy.setId("routine-copy");
         copy.getStyleClass().add("adb-button");
         copy.setOnAction(event -> {
@@ -61,7 +63,7 @@ final class RoutinePage extends VBox {
             content.putString(body.getText() == null ? "" : body.getText());
             javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
             if (status != null) {
-                status.accept("已复制定义体");
+                status.accept(I18n.t("routine.copied"));
             }
         });
 
@@ -91,7 +93,7 @@ final class RoutinePage extends VBox {
         getChildren().addAll(header, content);
 
         if (session == null) {
-            fail("尚未连接");
+            fail(I18n.t("routine.noSession"));
             return;
         }
         load(name, procedure, scheduledEvent, session, schemaService, dbExecutor);
@@ -100,7 +102,7 @@ final class RoutinePage extends VBox {
     private void load(String name, boolean procedure, boolean scheduledEvent, DbSession session,
                        SchemaService schemaService, Executor dbExecutor) {
         if (dbExecutor == null) {
-            fail("没有可用的执行器");
+            fail(I18n.t("routine.noExecutor"));
             return;
         }
         dbExecutor.execute(() -> {
@@ -109,7 +111,7 @@ final class RoutinePage extends VBox {
                     : schemaService.routineDefinition(session, name, procedure);
             javafx.application.Platform.runLater(() -> {
                 if (definition == null || definition.isBlank()) {
-                    fail(session.dialect().displayName() + " 读不到「" + name + "」的定义体");
+                    fail(I18n.t("routine.readFailed", session.dialect().displayName(), name));
                     return;
                 }
                 body.setText(definition);

@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.StructureSqlBuilder;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.ui.Icons;
@@ -82,15 +83,15 @@ final class TriggerDialog {
     }
 
     private void buildUi() {
-        dialog.setTitle("新建触发器");
+        dialog.setTitle(I18n.t("structure.trigger.add"));
         // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
         dialog.getDialogPane().setPrefWidth(DialogSizes.LONG_TEXT);
         dialog.getDialogPane().setMinWidth(DialogSizes.LONG_TEXT);
 
-        dialog.setHeaderText("在 " + (table == null ? "?" : table.name()) + " 上新建触发器");
+        dialog.setHeaderText(I18n.t("trg.header", table == null ? "?" : table.name()));
 
         name.setId("trigger-dialog-name");
-        name.setPromptText("触发器名");
+        name.setPromptText(I18n.t("trg.namePrompt"));
         name.textProperty().addListener((observable, oldValue, newValue) -> refreshPreview());
 
         timing.setId("trigger-dialog-timing");
@@ -104,7 +105,7 @@ final class TriggerDialog {
         event.valueProperty().addListener((observable, oldValue, newValue) -> refreshPreview());
 
         body.setId("trigger-dialog-body");
-        body.setPromptText("触发器体（SQL）");
+        body.setPromptText(I18n.t("trg.bodyPrompt"));
         body.setPrefRowCount(5);
         body.textProperty().addListener((observable, oldValue, newValue) -> refreshPreview());
 
@@ -122,16 +123,17 @@ final class TriggerDialog {
         bodyHint.setWrapText(true);
 
         VBox bodyBox = new VBox(10,
-                labeled("名称", name),
-                new HBox(10, labeled("时机", timing), labeled("事件", event)),
-                labeled("触发器体", bodyBoxWithHint(body, bodyHint)),
-                labeled("将执行", preview),
+                labeled(I18n.t("column.name"), name),
+                new HBox(10, labeled(I18n.t("structure.trigger.timing"), timing),
+                        labeled(I18n.t("structure.trigger.event"), event)),
+                labeled(I18n.t("trg.bodyLabel"), bodyBoxWithHint(body, bodyHint)),
+                labeled(I18n.t("structure.preview.execute"), preview),
                 error);
         bodyBox.getStyleClass().add("adb-form");
         dialog.getDialogPane().setContent(bodyBox);
 
-        ButtonType ok = new ButtonType("确定", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType ok = new ButtonType(I18n.t("common.ok"), ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
         dialog.getDialogPane().getButtonTypes().setAll(ok, cancel);
         dialog.getDialogPane().lookupButton(ok).addEventFilter(ActionEvent.ACTION, event -> {
             if (!validate()) {
@@ -167,10 +169,10 @@ final class TriggerDialog {
 
     private String problem() {
         if (name.getText() == null || name.getText().isBlank()) {
-            return "触发器名不能为空";
+            return I18n.t("trg.error.noName");
         }
         if (currentBody().isEmpty()) {
-            return "触发器体不能为空";
+            return I18n.t("trg.error.noBody");
         }
         return null;
     }

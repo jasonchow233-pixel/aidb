@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.sql.SqlParameters;
+import io.agenticdb.ui.I18n;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
@@ -46,7 +47,7 @@ final class VariableDialog {
     VariableDialog(List<SqlParameters.Parameter> parameters) {
         this.parameters = parameters;
 
-        Label hint = new Label("填写变量的值 —— 执行时按参数绑定，不做字符串替换");
+        Label hint = new Label(I18n.t("var.hint"));
         hint.getStyleClass().add("adb-muted");
         hint.setWrapText(true);
 
@@ -65,13 +66,14 @@ final class VariableDialog {
             label.getStyleClass().add("adb-muted");
             TextField field = new TextField();
             field.setId("variable-" + i);
-            field.setPromptText(parameter.named() ? "值" : "第 " + (i + 1) + " 个参数");
+            field.setPromptText(parameter.named() ? I18n.t("var.valuePrompt")
+                    : I18n.t("var.positionalPrompt", i + 1));
             grid.add(label, 0, i);
             grid.add(field, 1, i);
             fields.add(field);
         }
 
-        Button ok = new Button("确定");
+        Button ok = new Button(I18n.t("common.ok"));
         ok.setId("variable-ok");
         ok.getStyleClass().addAll("adb-button", "adb-button--primary");
         ok.setOnAction(event -> {
@@ -79,7 +81,7 @@ final class VariableDialog {
             close();
         });
 
-        Button cancel = new Button("取消");
+        Button cancel = new Button(I18n.t("common.cancel"));
         cancel.setId("variable-cancel");
         cancel.getStyleClass().addAll("adb-button", "adb-button--ghost");
         cancel.setOnAction(event -> close());
@@ -94,7 +96,7 @@ final class VariableDialog {
         content.setPadding(new Insets(16));
         content.getStyleClass().add("adb-wizard__content");
 
-        dialog.setTitle("变量");
+        dialog.setTitle(I18n.t("query.params"));
 
         // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
 
@@ -102,7 +104,7 @@ final class VariableDialog {
 
         dialog.getDialogPane().setMinWidth(DialogSizes.FORM);
 
-        dialog.setHeaderText("共 " + parameters.size() + " 个参数");
+        dialog.setHeaderText(I18n.t("var.summary", parameters.size()));
         dialog.getDialogPane().getButtonTypes().clear();
         dialog.getDialogPane().setContent(content);
     }

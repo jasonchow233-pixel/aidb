@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.ForeignKeyDef;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.introspect.StructureSqlBuilder;
 import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.jdbc.DbSession;
@@ -99,21 +100,21 @@ final class ForeignKeyDialog {
     // ─────────────────────────── 界面 ───────────────────────────
 
     private void buildUi() {
-        dialog.setTitle("新建外键");
+        dialog.setTitle(I18n.t("structure.fk.add"));
         // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
         dialog.getDialogPane().setPrefWidth(DialogSizes.WIDE);
         dialog.getDialogPane().setMinWidth(DialogSizes.WIDE);
 
-        dialog.setHeaderText("在 " + (table == null ? "?" : table.name()) + " 上新建外键");
+        dialog.setHeaderText(I18n.t("fk.header", table == null ? "?" : table.name()));
         name.setId("fk-dialog-name");
-        name.setPromptText("约束名（可留空）");
+        name.setPromptText(I18n.t("fk.namePrompt"));
         name.textProperty().addListener((observable, oldValue, newValue) -> refreshPreview());
 
         available.setAll(table == null ? List.of()
                 : table.columns().stream().map(column -> column.name()).toList());
 
         referencedTable.setId("fk-dialog-referenced-table");
-        referencedTable.setPromptText("被引用的表");
+        referencedTable.setPromptText(I18n.t("fk.referencedTable"));
         referencedTable.setEditable(true);
         referencedTable.getItems().addAll(tableNames());
         referencedTable.valueProperty().addListener((observable, oldValue, newValue) -> {
@@ -129,11 +130,11 @@ final class ForeignKeyDialog {
         availableList.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 
         chosenList.setId("fk-dialog-chosen");
-        chosenList.setPlaceholder(EmptyState.pickerHint("从左边选中列，按「添加」或双击加入"));
+        chosenList.setPlaceholder(EmptyState.pickerHint(I18n.t("fk.chosenHint")));
         referencedList.setId("fk-dialog-referenced");
-        referencedList.setPlaceholder(EmptyState.pickerHint("先从左边选一个引用列，这里才会给出候选"));
+        referencedList.setPlaceholder(EmptyState.pickerHint(I18n.t("fk.refHint")));
 
-        Button add = IconButtons.of(Icons.Icon.ADD, "添加");
+        Button add = IconButtons.of(Icons.Icon.ADD, I18n.t("fk.add"));
         add.setId("fk-dialog-add");
         add.setOnAction(event -> {
             chosen.addAll(availableList.getSelectionModel().getSelectedItems());
@@ -144,7 +145,7 @@ final class ForeignKeyDialog {
             refreshPreview();
         });
 
-        Button remove = IconButtons.of(Icons.Icon.DELETE, "移除");
+        Button remove = IconButtons.of(Icons.Icon.DELETE, I18n.t("newtable.objects.remove"));
         remove.setId("fk-dialog-remove");
         remove.setOnAction(event -> {
             String selected = chosenList.getSelectionModel().getSelectedItem();
@@ -156,7 +157,7 @@ final class ForeignKeyDialog {
             refreshPreview();
         });
 
-        Button refAdd = IconButtons.of(Icons.Icon.ADD, "添加引用列");
+        Button refAdd = IconButtons.of(Icons.Icon.ADD, I18n.t("fk.refAdd"));
         refAdd.setId("fk-dialog-ref-add");
         refAdd.setOnAction(event -> {
             // 补齐到与本表列同样多（默认用同名列）
@@ -166,7 +167,7 @@ final class ForeignKeyDialog {
             refreshPreview();
         });
 
-        Button refRemove = IconButtons.of(Icons.Icon.DELETE, "移除引用列");
+        Button refRemove = IconButtons.of(Icons.Icon.DELETE, I18n.t("fk.refRemove"));
         refRemove.setId("fk-dialog-ref-remove");
         refRemove.setOnAction(event -> {
             String selected = referencedList.getSelectionModel().getSelectedItem();
@@ -206,18 +207,19 @@ final class ForeignKeyDialog {
         error.getStyleClass().add("adb-error");
 
         VBox body = new VBox(10,
-                labeled("约束名", name),
-                labeled("被引用的表", referencedTable),
-                labeled("列（左边是本表列，右边是被引用列，顺序一一对应）", picker),
+                labeled(I18n.t("sections.fk.constraint"), name),
+                labeled(I18n.t("fk.referencedTable"), referencedTable),
+                labeled(I18n.t("fk.columnsLabel"), picker),
                 new HBox(10, labeled("ON UPDATE", onUpdate), labeled("ON DELETE", onDelete)),
                 // 草稿表没有「将执行」这回事：外键在建表时内联进去，单独执行不了。
-                labeled(draft ? "将写进 CREATE TABLE（外键在新建表时内联）" : "将执行", preview),
+                labeled(draft ? I18n.t("structure.preview.inline")
+                        : I18n.t("structure.preview.execute"), preview),
                 error);
         body.getStyleClass().add("adb-form");
         dialog.getDialogPane().setContent(body);
 
-        ButtonType ok = new ButtonType("确定", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType ok = new ButtonType(I18n.t("common.ok"), ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
         dialog.getDialogPane().getButtonTypes().setAll(ok, cancel);
         dialog.getDialogPane().lookupButton(ok).addEventFilter(ActionEvent.ACTION, event -> {
             if (!validate()) {
@@ -271,21 +273,21 @@ final class ForeignKeyDialog {
     /** 校验口径与 {@link StructureSqlBuilder#addForeignKey} 一致（纵深防御）。 */
     private String problem() {
         if (chosen.isEmpty()) {
-            return "请至少选择一列";
+            return I18n.t("idx.error.noColumns");
         }
         if (referencedTable.getValue() == null || referencedTable.getValue().isBlank()) {
-            return "请选择被引用的表";
+            return I18n.t("fk.error.noRefTable");
         }
         if (referenced.isEmpty()) {
-            return "请至少选择一个被引用列";
+            return I18n.t("fk.error.noRefColumn");
         }
         if (chosen.size() != referenced.size()) {
-            return "本表列与被引用列的个数必须一致";
+            return I18n.t("fk.error.countMismatch");
         }
         if (table != null) {
             for (String column : chosen) {
                 if (table.column(column) == null) {
-                    return "表里没有这一列: " + column;
+                    return I18n.t("fk.error.noSuchColumn", column);
                 }
             }
         }
