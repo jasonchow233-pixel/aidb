@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -67,7 +68,7 @@ class ObjectHeaderAndTabsTest {
         robot.interact(() -> {
             header.setCount(null);
             assertThat(((Label) header.lookup(".adb-object-header__count")).getText())
-                    .isEqualTo("行数未知");
+                    .isEqualTo(I18n.t("details.rows.unknown"));
             header.setCount("200 行");
             assertThat(((Label) header.lookup(".adb-object-header__count")).getText())
                     .isEqualTo("200 行");

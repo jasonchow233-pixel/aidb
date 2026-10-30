@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.SchemaService.ObjectKind;
+import io.agenticdb.ui.I18n;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.testfx.framework.junit5.ApplicationExtension;
@@ -191,7 +192,7 @@ class ObjectDetailsPanelTest {
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(textsOf(withClass(panel, "adb-details-panel__section-title")))
-                .contains("最近操作 1");
+                .contains(I18n.t("grid.overview.recent") + " 1");
         assertThat(textsOf(withClass(panel, "adb-details-panel__list-item")))
                 .contains("11:20 · SELECT * FROM users;");
 
@@ -202,9 +203,9 @@ class ObjectDetailsPanelTest {
         WaitForAsyncUtils.asyncFx(() -> fresh.showObject(USERS)).get();
         WaitForAsyncUtils.waitForFxEvents();
         assertThat(textsOf(withClass(fresh, "adb-details-panel__section-title")))
-                .contains("最近操作");
+                .contains(I18n.t("grid.overview.recent"));
         assertThat(textsOf(withClass(fresh, "adb-details-panel__list-item")))
-                .anyMatch(text -> text.contains("还没有执行过"));
+                .anyMatch(text -> text.equals(I18n.t("details.recent.none")));
     }
 
     // ─────────────────────────── 切换对象不串内容 ───────────────────────────    @Test
@@ -274,12 +275,12 @@ class ObjectDetailsPanelTest {
         WaitForAsyncUtils.asyncFx(() -> panel.showObject(connection)).get();
         WaitForAsyncUtils.waitForFxEvents();
 
-        assertThat(connection.typeLabel()).isEqualTo("数据库");
+        assertThat(connection.typeLabel()).isEqualTo(I18n.t("category.database"));
         assertThat(withClass(panel, "adb-details-panel__empty")).isEmpty();
         // 连接没有「打开数据 / 打开结构」—— 这两个按钮必须是禁用的。
         assertThat(buttons(panel).stream()
-                .filter(button -> "打开数据".equals(button.getText())
-                        || "打开结构".equals(button.getText()))
+                .filter(button -> I18n.t("action.object.open-data").equals(button.getText())
+                        || I18n.t("action.object.open-structure").equals(button.getText()))
                 .allMatch(javafx.scene.control.Button::isDisable)).isTrue();
     }
 
@@ -288,7 +289,8 @@ class ObjectDetailsPanelTest {
     @Test
     void columnLineMarksPrimaryKeyAndNotNull() {
         assertThat(ObjectDetailsPanel.columnLine("id", "INTEGER", true, false))
-                .isEqualTo("id INTEGER · 主键 / 非空");
+                .isEqualTo("id INTEGER · " + I18n.t("detail.primaryKey")
+                        + " / " + I18n.t("grid.head.notNull"));
         assertThat(ObjectDetailsPanel.columnLine("bio", "TEXT", false, true))
                 .isEqualTo("bio TEXT");
         // 可空、无类型的列 → 只有名字，不补任何装饰。
@@ -311,7 +313,7 @@ class ObjectDetailsPanelTest {
             assertThat(subject.typeLabel()).isNotBlank();
         }
         assertThat(ObjectDetailsPanel.Subject.connection("demo", "db").typeLabel())
-                .isEqualTo("数据库");
+                .isEqualTo(I18n.t("category.database"));
     }
 
     @Test

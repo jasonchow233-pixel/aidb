@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -59,7 +60,7 @@ public final class ObjectHeader extends HBox {
         type.setTooltip(new Tooltip(typeLabel));
 
         count.getStyleClass().add("adb-object-header__count");
-        count.setText("行数未知");
+        count.setText(I18n.t("details.rows.unknown"));
 
         context.getStyleClass().addAll("adb-muted", "adb-object-header__context");
 
@@ -113,7 +114,7 @@ public final class ObjectHeader extends HBox {
      * @param text 已知的记录数文案（「200 行」）；传 null 显示「行数未知」。
      */
     public void setCount(String text) {
-        count.setText(text == null || text.isBlank() ? "行数未知" : text);
+        count.setText(text == null || text.isBlank() ? I18n.t("details.rows.unknown") : text);
     }
 
     /**

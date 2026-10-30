@@ -2,12 +2,14 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.SchemaService.ObjectKind;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
@@ -61,17 +63,17 @@ public final class ObjectDetailsPanel extends VBox {
         }
 
         public String typeLabel() {
-            return kind == null ? "数据库" : kindLabel(kind);
+            return kind == null ? I18n.t("category.database") : kindLabel(kind);
         }
 
         private static String kindLabel(ObjectKind kind) {
             return switch (kind) {
-                case TABLE -> "表";
-                case VIEW -> "视图";
-                case TRIGGER -> "触发器";
-                case FUNCTION -> "函数";
-                case PROCEDURE -> "过程";
-                case EVENT -> "事件";
+                case TABLE -> I18n.t("detail.kind.table");
+                case VIEW -> I18n.t("detail.kind.view");
+                case TRIGGER -> I18n.t("object.kind.trigger");
+                case FUNCTION -> I18n.t("object.kind.function");
+                case PROCEDURE -> I18n.t("details.kind.procedure");
+                case EVENT -> I18n.t("object.kind.event");
             };
         }
     }
@@ -138,12 +140,12 @@ public final class ObjectDetailsPanel extends VBox {
     private final VBox notes = new VBox(4);
     // U15：动词与代码、与其他入口统一成「打开」——「查看数据 / 打开表」说的是同一件事，
     // 却给了用户两个词，让人怀疑是两个去处。
-    private final Button openData = new Button("打开数据");
-    private final Button openStructure = new Button("打开结构");
-    private final Button openDdl = new Button("打开 DDL");
+    private final Button openData = new Button(I18n.t("action.object.open-data"));
+    private final Button openStructure = new Button(I18n.t("action.object.open-structure"));
+    private final Button openDdl = new Button(I18n.t("details.openDdl"));
     private final Button refresh = new Button();
-    private final Label empty = new Label("选择左侧的一个数据库对象，在这里查看它的概况。");
-    private final Label loading = new Label("正在读取元数据…");
+    private final Label empty = new Label(I18n.t("details.empty"));
+    private final Label loading = new Label(I18n.t("details.loading"));
     private final Label error = new Label();
 
     private Loader loader = (subject, onLoaded, onError) -> onLoaded.accept(null);
@@ -179,8 +181,8 @@ public final class ObjectDetailsPanel extends VBox {
 
         close.setGraphic(Icons.of(Icons.Icon.CLOSE, Icons.SIZE_LABEL));
         close.getStyleClass().addAll("adb-icon-button", "adb-details-panel__close");
-        close.setTooltip(new javafx.scene.control.Tooltip("隐藏详情面板"));
-        close.setAccessibleText("隐藏详情面板");
+        close.setTooltip(new javafx.scene.control.Tooltip(I18n.t("details.closeTip")));
+        close.setAccessibleText(I18n.t("details.closeTip"));
         close.setOnAction(event -> setVisible(false));
 
         HBox header = new HBox(8, title, subtitle, close);
@@ -203,16 +205,16 @@ public final class ObjectDetailsPanel extends VBox {
         openDdl.setOnAction(event -> actions.openDdl(subject));
         refresh.setGraphic(Icons.of(Icons.Icon.REFRESH, Icons.SIZE_LABEL));
         refresh.getStyleClass().addAll("adb-icon-button", "adb-details-panel__refresh");
-        refresh.setTooltip(new javafx.scene.control.Tooltip("重新读取该对象的元数据"));
-        refresh.setAccessibleText("刷新对象详情");
+        refresh.setTooltip(new javafx.scene.control.Tooltip(I18n.t("details.refreshTip")));
+        refresh.setAccessibleText(I18n.t("details.refreshAccessible"));
         refresh.setOnAction(event -> reload());
 
-        HBox footer = new HBox(4, openData, openStructure, openDdl, refresh);
+        // ⭐ FlowPane 不是 HBox：英文标签比中文长一截（Open Structure vs 打开结构），
+        //    三等分的窄栏会把三颗全截成「Open D…」—— p2-details 实拍抓到。
+        //    装不下就换行，字必须读得完。
+        FlowPane footer = new FlowPane(4, 4, openData, openStructure, openDdl, refresh);
         footer.getStyleClass().add("adb-details-panel__footer");
         footer.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(openData, Priority.ALWAYS);
-        HBox.setHgrow(openStructure, Priority.ALWAYS);
-        HBox.setHgrow(openDdl, Priority.ALWAYS);
 
         empty.getStyleClass().addAll("adb-details-panel__empty", "adb-muted");
         empty.setWrapText(true);
@@ -252,7 +254,7 @@ public final class ObjectDetailsPanel extends VBox {
     /** 没有选中对象：空态，操作按钮全禁用。 */
     public void showEmpty() {
         this.subject = null;
-        title.setText("对象详情");
+        title.setText(I18n.t("details.title"));
         subtitle.setText("");
         facts.getChildren().clear();
         sections.getChildren().clear();
@@ -327,10 +329,10 @@ public final class ObjectDetailsPanel extends VBox {
                 || !snapshot.indexes().isEmpty() || !snapshot.foreignKeys().isEmpty()
                 || !snapshot.triggers().isEmpty() || !snapshot.recent().isEmpty();
         if (hasContent) {
-            addSection("字段", snapshot.columns());
-            addSection("索引", snapshot.indexes());
-            addSection("外键", snapshot.foreignKeys());
-            addSection("触发器", snapshot.triggers());
+            addSection(I18n.t("newtable.tab.fields"), snapshot.columns());
+            addSection(I18n.t("detail.indexes"), snapshot.indexes());
+            addSection(I18n.t("detail.foreignKeys"), snapshot.foreignKeys());
+            addSection(I18n.t("detail.triggers"), snapshot.triggers());
             // ⭐ P2-3：对象一级始终给「最近操作」一节 —— 没有记录时说明「还没有」，
             //    而不是整节消失，否则用户永远不知道这里能看按表的执行历史。
             if (snapshot.subject().isObject()) {
@@ -351,7 +353,7 @@ public final class ObjectDetailsPanel extends VBox {
     }
 
     public void showError(String message) {
-        error.setText(message == null || message.isBlank() ? "读取元数据失败" : message);
+        error.setText(message == null || message.isBlank() ? I18n.t("details.readFailed") : message);
         error.setVisible(true);
         error.setManaged(true);
     }
@@ -394,12 +396,13 @@ public final class ObjectDetailsPanel extends VBox {
     }
 
     private void addRecentSection(List<String> items) {
-        Label heading = new Label(items.isEmpty() ? "最近操作" : "最近操作 " + items.size());
+        String recentTitle = I18n.t("grid.overview.recent");
+        Label heading = new Label(items.isEmpty() ? recentTitle : recentTitle + " " + items.size());
         heading.getStyleClass().add("adb-details-panel__section-title");
         VBox list = new VBox(2);
         list.getStyleClass().add("adb-details-panel__list");
         if (items.isEmpty()) {
-            Label none = new Label("还没有执行过针对该对象的 SQL。");
+            Label none = new Label(I18n.t("details.recent.none"));
             none.getStyleClass().addAll("adb-details-panel__list-item", "adb-muted");
             none.setWrapText(true);
             list.getChildren().add(none);
@@ -424,10 +427,10 @@ public final class ObjectDetailsPanel extends VBox {
         }
         List<String> marks = new ArrayList<>();
         if (primaryKey) {
-            marks.add("主键");
+            marks.add(I18n.t("detail.primaryKey"));
         }
         if (!nullable) {
-            marks.add("非空");
+            marks.add(I18n.t("grid.head.notNull"));
         }
         if (!marks.isEmpty()) {
             line.append(" · ").append(String.join(" / ", marks));
