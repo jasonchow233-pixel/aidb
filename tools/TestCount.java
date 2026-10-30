@@ -45,6 +45,20 @@ public final class TestCount {
     private TestCount() {
     }
 
+    /**
+     * 这份报告所属的模块还在不在（{@code <module>/target/surefire-reports/}）。
+     *
+     * <p>{@code clean} 只会清掉**还在的**模块；删掉的模块会把
+     * {@code target/} 整个留在磁盘上，于是它上一次的报告会永久地计入总数 ——
+     * 数字看着在涨，其实有一部分来自一个已经不存在的模块。
+     */
+    private static boolean moduleStillExists(Path report) {
+        Path module = report.getParent() == null ? null
+                : report.getParent().getParent() == null ? null
+                : report.getParent().getParent().getParent();
+        return module != null && Files.exists(module.resolve("pom.xml"));
+    }
+
     public static void main(String[] args) throws IOException {
         int minimum = args.length > 0 ? Integer.parseInt(args[0]) : DEFAULT_MINIMUM;
         Path root = findRoot();
@@ -53,7 +67,11 @@ public final class TestCount {
             paths.filter(p -> p.getFileName().toString().startsWith("TEST-")
                             && p.getFileName().toString().endsWith(".xml")
                             && p.getParent() != null
-                            && p.getParent().getFileName().toString().equals("surefire-reports"))
+                            && p.getParent().getFileName().toString().equals("surefire-reports")
+                            // ⭐ 删掉的模块会把 target/ 留在磁盘上，里面的旧报告会被
+                            //    算进总数（实测 declarations 已删，却仍贡献 40 条）。
+                            //    模块目录里没有 pom.xml 就是「这个模块不存在了」。
+                            && moduleStillExists(p))
                     .forEach(reports::add);
         }
         if (reports.isEmpty()) {

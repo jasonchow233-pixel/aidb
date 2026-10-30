@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.ui.I18n;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.agenticdb.model.ByteSizes;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnType;
 
@@ -185,21 +186,9 @@ final class CellRenderer {
         return value == null || (value instanceof String text && text.isEmpty());
     }
 
+    /** ⭐ 与表清单的 {@code TableMeta.sizeText} 共用 {@link ByteSizes} —— 不再各写一份。 */
     static String sizeLabel(long bytes) {
-        if (bytes < 1024) {
-            return bytes + " B";
-        }
-        double value = bytes / 1024.0;
-        if (value < 1024) {
-            return String.format(Locale.ROOT, "%.1f KB", value);
-        }
-        value /= 1024.0;
-        if (value < 1024) {
-            return String.format(Locale.ROOT, "%.1f MB", value);
-        }
-        // 大对象（图片 / 文档 / 音视频）在真实业务表里就是 GB 级，
-        // 不补这一档就会显示成 "1536.0 MB" 这种没法扫读的数字。
-        return String.format(Locale.ROOT, "%.1f GB", value / 1024.0);
+        return ByteSizes.format(bytes);
     }
 
     static String compact(String text) {
