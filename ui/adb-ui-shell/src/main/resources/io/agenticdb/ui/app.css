@@ -319,6 +319,30 @@
     -fx-stroke: -adb-kind-function;
 }
 
+/* ── 功能区彩色档（R35 N4-a）──────────────────────────────────────────
+ *    上面那四条单类规则挂在 Group 上是**死规则**（Group 没有 -fx-stroke），
+ *    它们只服务「没有彩色资产 → 回落单色 SVGPath」那条路径。
+ *    真拿到彩色资产时，命令色必须靠后代选择器打在子层 .adb-icon-edge 上
+ *    —— 与 §4.5 第 7 条（树 / 页签的类型色）同一个机制、同一个理由。
+ *    只有 edge 层吃命令色，tone-* 保持中性：一屏里同时喊八种颜色就是调色盘。
+ *    门禁：IconKindHueTest.ribbonCommandsKeepTheirToneOnTheEdgeLayer */
+.adb-ribbon__icon--connect .adb-icon-edge,
+.adb-ribbon__icon--table .adb-icon-edge {
+    -fx-stroke: -adb-kind-table;
+}
+
+.adb-ribbon__icon--query .adb-icon-edge {
+    -fx-stroke: -adb-kind-procedure;
+}
+
+.adb-ribbon__icon--transfer .adb-icon-edge {
+    -fx-stroke: -adb-kind-view;
+}
+
+.adb-ribbon__icon--favorite .adb-icon-edge {
+    -fx-stroke: -adb-kind-function;
+}
+
 .adb-ribbon__separator {
     -fx-background-color: -adb-border;
     -fx-min-width: 1;

@@ -281,7 +281,11 @@ public final class AppBar extends VBox {
      */
     private Button ribbonButton(String actionId, Icons.Icon icon, String label, String toneClass) {
         Action action = actions.require(actionId);
-        SVGPath glyph = Icons.of(icon, Icons.SIZE_RIBBON);
+        // R35 N4-a：功能区是「一眼认命令」的地方，Navicat 实测整条带子是全 UI 最彩的，
+        // 所以走彩色档。没有彩色资产时 colored() 自己回落单色，不必在这里判断。
+        // ⚠️ toneClass 只能当**宿主类**：彩色返回的是 Group（无可绘属性），
+        //    颜色必须靠 app.css 里「宿主类 + 后代 .adb-icon-edge」那条规则打在子层上。
+        Node glyph = Icons.colored(icon, Icons.SIZE_RIBBON);
         glyph.getStyleClass().add("adb-ribbon__icon");
         if (toneClass != null) {
             glyph.getStyleClass().add(toneClass);

@@ -91,6 +91,25 @@ class IconKindHueTest {
                 .isEqualTo(Color.web(Tokens.KIND_TABLE_DARK));
     }
 
+    @Test
+    void ribbonCommandsKeepTheirToneOnTheEdgeLayer() {
+        // R35 N4-a：功能区那四条命令色走的是同一套「宿主类 + 后代 .adb-icon-edge」规则。
+        // 单类那条 .adb-ribbon__icon--table 挂在 Group 上是**死的** —— 这条门禁防的正是
+        // 「把死规则当成生效规则，彩色档静默掉回身份色」（第一批就是这么把类型色弄丢的）。
+        assertThat(edgeStroke(Icons.Icon.ADD, "adb-ribbon__icon--table", false))
+                .as("新建表：轮廓吃 -adb-kind-table")
+                .isEqualTo(Color.web(Tokens.KIND_TABLE_LIGHT));
+        assertThat(edgeStroke(Icons.Icon.TRANSFER, "adb-ribbon__icon--transfer", false))
+                .as("导入导出：轮廓吃 -adb-kind-view")
+                .isEqualTo(Color.web(Tokens.KIND_VIEW_LIGHT));
+        assertThat(edgeStroke(Icons.Icon.STAR, "adb-ribbon__icon--favorite", false))
+                .as("收藏夹：轮廓吃 -adb-kind-function")
+                .isEqualTo(Color.web(Tokens.KIND_FUNCTION_LIGHT));
+        assertThat(edgeStroke(Icons.Icon.QUERY, "adb-ribbon__icon--query", true))
+                .as("暗色档：新建查询的轮廓跟着主题走，不出第二套资产")
+                .isEqualTo(Color.web(Tokens.KIND_PROCEDURE_DARK));
+    }
+
     // ─────────────────────────── 工具 ───────────────────────────
 
     /** 造一个彩色图标、挂上类型色类、走完 CSS，返回<b>轮廓层</b>的计算描边色。 */

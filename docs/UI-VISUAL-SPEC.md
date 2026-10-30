@@ -282,7 +282,7 @@
 | **I-1** | ~~缺 **20px 图标档**（功能栏用 16px 顶着大字标）~~ | — | ✅ **已修**（UX-1）：新增 `Icons.SIZE_PRIMARY = 20`，对象主工具条使用 |
 | **I-2** | ~~标签栏 11px、rail 16px、功能栏 16px 三档不统一~~ | 同一语义在不同处大小不一致 | ✅ **已修**（UX-1）：命名档位 14/16/20 三个常量，调用点写数字被门禁拦下 |
 | **I-3** | ~~无应用图标~~ | 窗口标题栏无品牌标识 | ✅ **已修**：`App` 把多尺寸品牌图标注册进 `stage.getIcons()`（门禁：`BrandMarkAuditTest`） |
-| **I-4** | 彩色档只覆盖**导航词表**（树 / 页签 / 页签栏 / 对象头 / 结构页），Ribbon、工具条、连接磁贴仍是单色 | 同一图标在 Ribbon 上和树上两种画法 | 🚧 R35 N4-a / N4-c 进行中；**门禁已钉住词表**（`IconSystemAuditTest.theNavigationVocabularyIsFullyColored`），新增图标若没配彩色资产会直接红 |
+| **I-4** | 彩色档覆盖**导航词表 + 功能区**（18 枚资产），16px 内联工具条与连接磁贴仍是单色 | 同一图标在树上和工具条上两种画法 | 🚧 R35 N4-c；**门禁已钉住导航词表与功能区 6 条命令**（`theNavigationVocabularyIsFullyColored` / `theRibbonVocabularyIsFullyColored`），新增图标若没配彩色资产会直接红 |
 
 ### 4.5 彩色档（R35）
 
@@ -290,7 +290,7 @@
 
 | # | 规矩 | 门禁 |
 |---|---|---|
-| 1 | **谁能上色**：只在「一眼要认出类型」的地方 —— 对象树、页签、页签栏、对象头、结构页索引列。工具条动作、危险动作保持单色。 | `IconSystemAuditTest.theNavigationVocabularyIsFullyColored` |
+| 1 | **谁能上色**：一切「一眼要认出是什么」的大图标 —— 对象树、页签、页签栏、对象头、结构页索引列、**功能区 6 条命令**。小工具条（16px 内联）与危险动作仍走单色。 | `IconSystemAuditTest.theNavigationVocabularyIsFullyColored` · `IconSystemAuditTest.theRibbonVocabularyIsFullyColored` |
 | 2 | **资产放哪**：`ui/adb-ui-core/src/main/resources/io/agenticdb/ui/icons/color/*.svg`，文件名与单色档同源，且**不许有没人用的资产**。 | `ColoredIconTest.everyColoredAssetIsReferencedByAnIcon` |
 | 3 | **资产里不许有颜色**：只写 `data-paint="edge\|tone-a\|tone-b\|tone-c\|accent"`，一个 `fill`/`stroke` 字面量都不许出现。 | `ColoredIconTest.coloredAssetsDeclareRolesInsteadOfColors` |
 | 4 | **颜色从令牌来**：五个角色色是 `-adb-icon-*` looked-up color，由 `app.css` 的 `.adb-icon-*` 提供 —— 业务代码零颜色字面量。 | `ColoredIconTest.everyRoleCssRuleSetsBothFillAndStroke` · `StyleClassCoverageTest` · `TokenParityTest` |
@@ -303,6 +303,15 @@
 > 彩色档返回的是 `Group`，同一条规则搬到 Group 上就**静默失效**（表格图标丢了青绿、视图丢了紫）。
 > 测试也因此不能只 `applyCss()` 父节点 —— JavaFX 的 `applyCss()` **不向下级联**，
 > 必须父节点与每个子节点分别调用，否则读到的是控件默认色，断言等于没测。
+
+> 📌 **第 1 条在 N4-a 改过一次判**（不是「改绿」，是原来写窄了）：本条第一版写的是
+> 「功能区保持单色」。翻 `docs/screenshots/navicat/navicat17-object-list-2026-10-27.png`
+> 逐像素看，Navicat 17 那一排大图标恰恰是**全界面最彩的**（蓝插头、绿加号、
+> 橙用户、粉紫 BI 渐变）。C-1 拍板是「完全照 Navicat」，所以功能区必须进彩色范围；
+> 16px 内联工具条与危险动作仍留单色。同批量的还有尺寸：功能区图标实测 ≈30px，
+> 但那是 **90px 双行带**里的 30px；R32-D 已把带子砍到 64px 单行，等比下来 26px
+> 反而比参考更宽松 —— 所以 `SIZE_RIBBON` **维持 26**，30px 等 R36 重做顶区
+> （140px / 12 磁贴）时和布局一起判。
 
 ---
 
@@ -344,7 +353,7 @@
 |---|---|---|
 | 菜单栏 | 系统默认（macOS 进系统菜单栏） | — |
 | **命令带（Ribbon）** | **64px** 单行；2026-10-28 起全局工具件并入页签行，顶区合计 **114px**（菜单 24 + 64 + 页签行 26） | `h-appbar`（`Tokens.H_APPBAR_LIGHT/DARK`）/ `.adb-ribbon` |
-| Ribbon 命令按钮 | **62×58**，图标 `Icons.SIZE_RIBBON`（26）+ 11px 标签；只摆没有第二入口的 6 条命令 | `.adb-ribbon__button` / `.adb-ribbon__label` |
+| Ribbon 命令按钮 | **62×58**，图标 `Icons.SIZE_RIBBON`（26，**彩色档**：命令色只打在轮廓层，见 §4.5）+ 11px 标签；只摆没有第二入口的 6 条命令 | `.adb-ribbon__button` / `.adb-ribbon__label` / `.adb-ribbon__icon--*` |
 | 页签行（兼全局工具行） | **26px**，白底 + 1px 下边界；右侧连接 pill / 全局搜索 220px / 主题 / ⋯ | `h-tabbar` / `.adb-tabbar` / `#adb-chrome-row` / `.adb-appbar__utility` |
 | 页签行紧凑形态 | 行宽 **<780px** 触发：收掉连接副标题与搜索提示词，搜索框缩为 30px 放大镜 | `.adb-appbar__utility--compact` |
 | 对象标题栏 | **40px** | `.adb-object-header` |

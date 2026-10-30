@@ -89,7 +89,7 @@ Windows 上常见字体可能替换或缺失。这条已经**不再是方向而�
 
 | 口径 | 规则 | 门禁 |
 |---|---|---|
-| 谁能上色 | **对象类型与导航词汇表**（表 / 视图 / 函数 / 触发器 / 事件 / 索引 / 列 / 连接 / 库 / 文件夹 / 保存的查询 / 结构 / 设置 / 诊断）；**动作图标永远单色线性** —— 染色会把「可点的」和「是东西」混成一类 | `IconSystemAuditTest.theNavigationVocabularyIsFullyColored` |
+| 谁能上色 | **对象类型与导航词汇表**（表 / 视图 / 函数 / 触发器 / 事件 / 索引 / 列 / 连接 / 库 / 文件夹 / 保存的查询 / 结构 / 设置 / 诊断）**+ 功能区 6 条大命令**（连接 / 新建查询 / 新建表 / 导入导出 / 已保存查询 / 收藏夹）。⚠️ 本条 2026-10-30 改过判：第一版写「动作图标永远单色」，但逐像素看 Navicat 17 的功能区恰恰是全界面最彩的一排，而 C-1 拍板是「完全照 Navicat」—— 于是**大图标动作进彩色，16px 内联动作与危险动作仍单色线性**（那两处参考也是低饱和的，染色才会把「可点的」和「是东西」混成一类） | `IconSystemAuditTest.theNavigationVocabularyIsFullyColored` · `theRibbonVocabularyIsFullyColored` |
 | 资产放哪 | `icons/color/<同名>.svg`（自有资产）。同名彩色资产不存在时 `Icons.colored()` **自动回退单色**，所以档可以一批批铺，每个中间状态都是能看的 | `ColoredIconTest.everyColoredAssetIsReferencedByAnIcon` |
 | 颜色从哪来 | 资产里**只标角色**（`data-paint="edge / tone-a / tone-b / tone-c / accent"`），一个色值都不写；颜色一律由 `app.css` 的 `-adb-icon-*` 取自 `tokens.json` | `ColoredIconTest.coloredAssetsDeclareRolesInsteadOfColors` |
 | 暗色档 | **不需要第二套资产**：角色吃令牌，令牌跟主题 → 同一张 svg 在两套主题里各自换色 | `IconKindHueTest.theKindHueFollowsTheThemeWithoutASecondAssetSet` |
@@ -129,7 +129,7 @@ Windows 上常见字体可能替换或缺失。这条已经**不再是方向而�
 | 区域 | 高度 | 规则 |
 |---|---|---|
 | 菜单栏 | 原生 24 | 原生菜单；macOS 使用系统菜单栏；所有项走 `ActionRegistry` |
-| 命令带 | 64 | **6 条无第二入口的命令**（连接 / 新建查询 / 新建表 / 导入导出 / 已保存查询 / 收藏夹），62×58 按钮、26px 图标在上、11px 文字在下，组间 1px 竖线 |
+| 命令带 | 64 | **6 条无第二入口的命令**（连接 / 新建查询 / 新建表 / 导入导出 / 已保存查询 / 收藏夹），62×58 按钮、26px **彩色**图标在上、11px 文字在下，组间 1px 竖线（命令色只打在轮廓层，见「彩色档」） |
 | 页签行 | 26 | 左侧文档页签；右侧全局工具件：当前连接（状态点 / 切换 / 重连 / 断开）+ ⌘K 搜索 + 主题 + ⋯；<780px 自动降级 |
 | 侧栏 | 250 / 折叠 48，可拖 200–360 | 对象树按连接 → 类型分组 → 对象。**搜索框在底部**（与 ★、« 同行，Navicat 形态） |
 | 对象工具栏 | 30 | 对象级动作（打开 / 刷新 / 结构 / 设计…），随当前对象启用 |

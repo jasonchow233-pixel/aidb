@@ -1,0 +1,7 @@
+<!-- AIDB 自有彩色资产（R35 N4-a）：新建（圆盘 + 加号，对齐 Navicat「New Table」的圆底加号）。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <circle data-paint="tone-a" cx="12" cy="12" r="8.6"/>
+  <circle data-paint="edge" cx="12" cy="12" r="8.6"/>
+  <path data-paint="edge" d="M7.6 12h8.8"/>
+  <path data-paint="edge" d="M12 7.6v8.8"/>
+</svg>

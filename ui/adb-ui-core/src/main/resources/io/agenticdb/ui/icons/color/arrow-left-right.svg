@@ -1,0 +1,9 @@
+<!-- AIDB 自有彩色资产（R35 N4-a）：导入 / 导出（两个方向的箭头，头部分色、杆走轮廓）。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <polygon data-paint="tone-a" points="8,3 4,7 8,11"/>
+  <polygon data-paint="tone-c" points="16,13 20,17 16,21"/>
+  <path data-paint="edge" d="M8 3 4 7l4 4"/>
+  <path data-paint="edge" d="M4 7h16"/>
+  <path data-paint="edge" d="M16 21 20 17 16 13"/>
+  <path data-paint="edge" d="M20 17H4"/>
+</svg>

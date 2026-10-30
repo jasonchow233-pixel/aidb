@@ -188,6 +188,20 @@ class IconSystemAuditTest {
     }
 
     @Test
+    void theRibbonVocabularyIsFullyColored() {
+        // AppBar 的 6 条功能区命令（R32-D 精简后的全集）。Navicat 实测整条功能区
+        // 是全 UI 最彩的一排，所以这 6 枚**必须**都有彩色资产：少一枚就是
+        // 「六个大按钮里有一个是灰的」，比全灰更扎眼。
+        for (Icons.Icon icon : List.of(Icons.Icon.CONNECT, Icons.Icon.QUERY,
+                Icons.Icon.ADD, Icons.Icon.TRANSFER, Icons.Icon.HISTORY,
+                Icons.Icon.STAR)) {
+            assertThat(Icons.hasColoredVariant(icon))
+                    .as("功能区命令 %s 的图标没有彩色资产 —— 大图标档会掉回单色", icon)
+                    .isTrue();
+        }
+    }
+
+    @Test
     void theDomainLayerKnowsNothingAboutIcons() throws IOException {
         // ObjectKind 是领域概念，不该带图标 —— 图标是 UI 的映射。
         Path kind = Path.of("..", "..", "workbench", "adb-introspect", "src", "main",
