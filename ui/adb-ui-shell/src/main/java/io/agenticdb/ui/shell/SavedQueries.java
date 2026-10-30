@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.agenticdb.ui.I18n;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,18 +32,18 @@ final class SavedQueries {
      */
     enum Kind {
         /** 完整查询：双击 → 新开查询页并载入。 */
-        QUERY("查询"),
+        QUERY("category.query"),
         /** 代码片段：双击 → **插入到当前查询页的光标处**。 */
-        SNIPPET("片段");
+        SNIPPET("saved.kind.snippet");
 
-        private final String label;
+        private final String labelKey;
 
-        Kind(String label) {
-            this.label = label;
+        Kind(String labelKey) {
+            this.labelKey = labelKey;
         }
 
         public String label() {
-            return label;
+            return I18n.t(labelKey);
         }
     }
 

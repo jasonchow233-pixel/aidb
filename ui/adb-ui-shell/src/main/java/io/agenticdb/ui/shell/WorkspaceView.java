@@ -4,6 +4,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.scene.control.Label;
 import javafx.scene.control.Separator;
@@ -420,14 +421,14 @@ public final class WorkspaceView extends StackPane {
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
         Label context = new Label(switch (tab.kind()) {
-            case GRID -> connectionName + " · 只读";
-            case QUERY -> "未执行";
+            case GRID -> I18n.t("workspace.context.grid", connectionName);
+            case QUERY -> I18n.t("workspace.context.notRun");
             case STRUCTURE -> connectionName;
-            case CONNECTIONS -> "多连接管理";
-            case TOOL -> "工具";
-            case SETTINGS -> "本地设置";
+            case CONNECTIONS -> I18n.t("workspace.context.connections");
+            case TOOL -> I18n.t("category.tools");
+            case SETTINGS -> I18n.t("workspace.context.settings");
             case OBJECT -> connectionName;
-            case ROUTINE -> connectionName + " · 定义体";
+            case ROUTINE -> I18n.t("workspace.context.routine", connectionName);
         });
         context.getStyleClass().add("adb-muted");
         // ⚠️ 徽标与右侧说明同文时（「工具」/「工具」）右侧那份是纯噪音 —— 藏掉。
@@ -444,14 +445,14 @@ public final class WorkspaceView extends StackPane {
 
         switch (tab.kind()) {
             case QUERY -> body.getChildren().add(emptyState(
-                    Icons.Icon.QUERY, "查询页不可用",
-                    "演示数据库未连接，查询页无法创建。请重启应用后重试。"));
+                    Icons.Icon.QUERY, I18n.t("workspace.empty.query.title"),
+                    I18n.t("workspace.empty.query.body")));
             case STRUCTURE -> body.getChildren().add(emptyState(
-                    Icons.Icon.STRUCTURE, "结构页不可用",
-                    "连接未打开时无法读取表结构。请重新连接后再试。"));
+                    Icons.Icon.STRUCTURE, I18n.t("workspace.empty.structure.title"),
+                    I18n.t("workspace.empty.structure.body")));
             case CONNECTIONS -> body.getChildren().add(emptyState(
-                    Icons.Icon.CONNECT, "连接管理不可用",
-                    "连接配置不可用时无法管理连接。请重启应用后重试。"));
+                    Icons.Icon.CONNECT, I18n.t("workspace.empty.connections.title"),
+                    I18n.t("workspace.empty.connections.body")));
             case TOOL -> {
                 // ⭐ 查询历史与诊断有真功能可接，不再是空壳。
                 // ⚠️ 路由看 {@link TabItem#target()}，**不看标题** —— 以前这里判
@@ -469,7 +470,7 @@ public final class WorkspaceView extends StackPane {
                 } else {
                     body.getChildren().add(emptyState(
                             Icons.Icon.DIAGNOSTICS, tab.title(),
-                            "该工具只保留入口；功能按 NAVICAT-TODO 的 P5/P6 接入。"));
+                            I18n.t("workspace.tool.stub")));
                 }
             }
             case SETTINGS -> body.getChildren().add(settingsSkeleton());
@@ -483,39 +484,39 @@ public final class WorkspaceView extends StackPane {
     }
 
     private VBox settingsSkeleton() {
-        Label theme = new Label("外观");
+        Label theme = new Label(I18n.t("workspace.settings.appearance"));
         theme.getStyleClass().add("adb-section-title");
 
-        Label mode = new Label("主题跟随系统，可用下方「切换主题」按钮或应用栏的主题图标切换（"
-                + io.agenticdb.ui.Shortcuts.of("Mod+K") + " 搜索「主题」也可）");
+        Label mode = new Label(I18n.t("workspace.settings.modeHint",
+                io.agenticdb.ui.Shortcuts.of("Mod+K")));
         mode.getStyleClass().add("adb-muted");
 
-        Button toggle = IconButtons.of(Icons.Icon.THEME, "切换主题");
+        Button toggle = IconButtons.of(Icons.Icon.THEME, I18n.t("action.theme.toggle"));
         toggle.getStyleClass().addAll("adb-button");
         toggle.setOnAction(event -> actions.run("theme.toggle"));
 
         // ⭐ 密度也是**真实设置**（行高令牌），放在设置页比只留在菜单里好找。
-        Label density = new Label("密度");
+        Label density = new Label(I18n.t("workspace.settings.density"));
         density.getStyleClass().add("adb-section-title");
 
-        Label densityHint = new Label("影响数据网格、对象树、查询结果与表清单的行高");
+        Label densityHint = new Label(I18n.t("workspace.settings.densityHint"));
         densityHint.getStyleClass().add("adb-muted");
 
         HBox densityRow = new HBox(6);
         densityRow.getStyleClass().add("adb-toolbar__group");
         densityRow.getChildren().addAll(
-                densityButton("density-compact", "紧凑"),
-                densityButton("density-normal", "标准"),
-                densityButton("density-comfort", "宽松"));
+                densityButton("density-compact", I18n.t("action.density-compact")),
+                densityButton("density-normal", I18n.t("action.density-normal")),
+                densityButton("density-comfort", I18n.t("action.density-comfort")));
 
-        Label shortcuts = new Label("快捷键");
+        Label shortcuts = new Label(I18n.t("shortcut.title"));
         shortcuts.getStyleClass().add("adb-section-title");
 
-        Button palette = IconButtons.of(Icons.Icon.PALETTE, "打开命令面板");
+        Button palette = IconButtons.of(Icons.Icon.PALETTE, I18n.t("workspace.settings.openPalette"));
         palette.getStyleClass().addAll("adb-button");
         palette.setOnAction(event -> actions.run("command-palette"));
 
-        Button sheet = IconButtons.of(Icons.Icon.HISTORY, "快捷键速查");
+        Button sheet = IconButtons.of(Icons.Icon.HISTORY, I18n.t("workspace.settings.shortcutSheet"));
         sheet.getStyleClass().addAll("adb-button");
         sheet.setOnAction(event -> actions.run("shortcuts"));
 

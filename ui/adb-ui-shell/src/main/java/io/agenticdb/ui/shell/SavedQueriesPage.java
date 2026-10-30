@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
@@ -47,8 +48,7 @@ final class SavedQueriesPage extends VBox {
         list.setMinHeight(120);
         // 与历史页同一套列表外观（否则弹窗里是一块默认皮肤的白框）。
         list.getStyleClass().add("adb-history__list");
-        list.setPlaceholder(new javafx.scene.control.Label("还没有保存的查询 —— "
-                + "在查询页写好 SQL 后按「存为命名查询」"));
+        list.setPlaceholder(new javafx.scene.control.Label(I18n.t("saved.placeholder")));
         list.setCellFactory(view -> new ListCell<>() {
             @Override
             protected void updateItem(SavedQueries.Entry item, boolean empty) {
@@ -65,24 +65,24 @@ final class SavedQueriesPage extends VBox {
         VBox.setVgrow(list, Priority.ALWAYS);
 
         nameField.setId("saved-name");
-        nameField.setPromptText("新名字");
+        nameField.setPromptText(I18n.t("saved.namePrompt"));
 
-        Button rename = new Button("重命名");
+        Button rename = new Button(I18n.t("structure.field.rename"));
         rename.setId("saved-rename");
         rename.getStyleClass().addAll("adb-button");
         rename.setOnAction(event -> renameSelected());
 
-        Button delete = new Button("删除");
+        Button delete = new Button(I18n.t("common.delete"));
         delete.setId("saved-delete");
         delete.getStyleClass().addAll("adb-button", "adb-button--danger");
         delete.setOnAction(event -> deleteSelected());
 
-        Button open = new Button("打开");
+        Button open = new Button(I18n.t("sidebar.menuOpen"));
         open.setId("saved-open");
         open.getStyleClass().addAll("adb-button", "adb-button--primary");
         open.setOnAction(event -> openSelected());
 
-        Button close = new Button("关闭");
+        Button close = new Button(I18n.t("tab.close"));
         close.setId("saved-close");
         close.getStyleClass().addAll("adb-button", "adb-button--ghost");
         close.setOnAction(event -> close());
@@ -100,8 +100,8 @@ final class SavedQueriesPage extends VBox {
         content.setPadding(new Insets(16));
         content.getStyleClass().add("adb-wizard__content");
 
-        dialog.setTitle("已保存查询");
-        dialog.setHeaderText("命名查询，随时打开");
+        dialog.setTitle(I18n.t("action.saved-queries"));
+        dialog.setHeaderText(I18n.t("saved.header"));
         dialog.getDialogPane().getButtonTypes().clear();
         dialog.getDialogPane().setContent(content);
         refresh();
@@ -129,13 +129,13 @@ final class SavedQueriesPage extends VBox {
     /** 重新读一遍（保存 / 删除后调用）。 */
     void refresh() {
         list.getItems().setAll(saved.all());
-        summary.setText("共 " + list.getItems().size() + " 条已保存查询");
+        summary.setText(I18n.t("saved.summary", list.getItems().size()));
     }
 
     private void openSelected() {
         SavedQueries.Entry entry = list.getSelectionModel().getSelectedItem();
         if (entry == null) {
-            status.accept("先选一条查询");
+            status.accept(I18n.t("saved.pickFirst"));
             return;
         }
         onOpen.accept(entry.sql());
@@ -145,28 +145,28 @@ final class SavedQueriesPage extends VBox {
     private void renameSelected() {
         SavedQueries.Entry entry = list.getSelectionModel().getSelectedItem();
         if (entry == null) {
-            status.accept("先选一条查询");
+            status.accept(I18n.t("saved.pickFirst"));
             return;
         }
         String name = nameField.getText();
         if (name == null || name.isBlank()) {
-            status.accept("请先填新名字");
+            status.accept(I18n.t("saved.needName"));
             return;
         }
         saved.rename(entry.name(), name);
         nameField.clear();
         refresh();
-        status.accept("已重命名为 " + name.trim());
+        status.accept(I18n.t("saved.renamed", name.trim()));
     }
 
     private void deleteSelected() {
         SavedQueries.Entry entry = list.getSelectionModel().getSelectedItem();
         if (entry == null) {
-            status.accept("先选一条查询");
+            status.accept(I18n.t("saved.pickFirst"));
             return;
         }
         saved.delete(entry.name());
         refresh();
-        status.accept("已删除 " + entry.name());
+        status.accept(I18n.t("saved.deleted", entry.name()));
     }
 }

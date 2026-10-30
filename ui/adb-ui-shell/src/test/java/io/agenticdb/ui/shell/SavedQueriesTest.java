@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -103,7 +104,7 @@ class SavedQueriesTest {
                     .satisfies(entry -> {
                         assertThat(entry.name()).isEqualTo("去重子句");
                         assertThat(entry.snippet()).isTrue();
-                        assertThat(entry.kind().label()).isEqualTo("片段");
+                        assertThat(entry.kind().label()).isEqualTo(I18n.t("saved.kind.snippet"));
                     });
             assertThat(saved.all().stream().filter(e -> !e.snippet()).count())
                     .as("查询条目不是片段")

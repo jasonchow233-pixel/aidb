@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -41,8 +42,8 @@ final class FavoritesPage extends VBox {
 
         list.setId("favorites-list");
         // ⭐ E9：收藏为空时给一句「怎么收藏」的引导，而不是空白列表。
-        list.setPlaceholder(EmptyState.of(Icons.Icon.STAR, "还没有收藏任何对象",
-                "在左侧对象树里右键表或视图，选「收藏」即可加入；收藏会落盘，重启还在。"));
+        list.setPlaceholder(EmptyState.of(Icons.Icon.STAR, I18n.t("fav.empty.title"),
+                I18n.t("fav.empty.body")));
         list.setCellFactory(view -> new ListCell<>() {
             @Override
             protected void updateItem(String item, boolean empty) {
@@ -54,7 +55,7 @@ final class FavoritesPage extends VBox {
                 // ⭐ 收藏项用矢量实心星 + 文字。
                 setText(item);
                 SVGPath star = Icons.of(Icons.Icon.STAR_FILLED, Icons.SIZE_BADGE);
-                star.setAccessibleText("收藏");
+                star.setAccessibleText(I18n.t("fav.accessible"));
                 setGraphic(star);
                 setGraphicTextGap(6);
             }
@@ -69,12 +70,12 @@ final class FavoritesPage extends VBox {
         summary.setId("favorites-summary");
         summary.getStyleClass().add("adb-muted");
 
-        Button open = new Button("打开");
+        Button open = new Button(I18n.t("sidebar.menuOpen"));
         open.setId("favorites-open");
         open.getStyleClass().addAll("adb-button", "adb-button--primary");
         open.setOnAction(event -> openSelected());
 
-        Button close = new Button("关闭");
+        Button close = new Button(I18n.t("tab.close"));
         close.setId("favorites-close");
         close.getStyleClass().addAll("adb-button", "adb-button--ghost");
         close.setOnAction(event -> close());
@@ -89,8 +90,8 @@ final class FavoritesPage extends VBox {
         content.setPadding(new Insets(16));
         content.getStyleClass().add("adb-wizard__content");
 
-        dialog.setTitle("收藏夹");
-        dialog.setHeaderText("收藏的对象");
+        dialog.setTitle(I18n.t("category.favorites"));
+        dialog.setHeaderText(I18n.t("fav.header"));
         dialog.getDialogPane().getButtonTypes().clear();
         dialog.getDialogPane().setContent(content);
         refresh();
@@ -123,14 +124,14 @@ final class FavoritesPage extends VBox {
     private void refresh() {
         list.getItems().setAll(names);
         summary.setText(names.isEmpty()
-                ? "还没有收藏 —— 在对象树里右键 → 收藏"
-                : "共 " + names.size() + " 个收藏");
+                ? I18n.t("fav.emptyHint")
+                : I18n.t("fav.summary", names.size()));
     }
 
     private void openSelected() {
         String name = list.getSelectionModel().getSelectedItem();
         if (name == null) {
-            status.accept("先选一个收藏");
+            status.accept(I18n.t("fav.pickFirst"));
             return;
         }
         onOpen.accept(name);
