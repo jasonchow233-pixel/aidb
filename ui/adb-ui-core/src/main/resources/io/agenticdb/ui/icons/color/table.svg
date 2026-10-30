@@ -1,0 +1,8 @@
+<!-- AIDB 自有彩色资产（R35 N4-b）：只标角色，颜色见 app.css 的 -adb-icon-* 令牌。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path data-paint="tone-a" d="M3 9 L21 9 L21 18.5 C21 19.3 20.3 20 19.5 20 L4.5 20 C3.7 20 3 19.3 3 18.5 Z"/>
+  <path data-paint="tone-c" d="M3 5.5 C3 4.7 3.7 4 4.5 4 L19.5 4 C20.3 4 21 4.7 21 5.5 L21 9 L3 9 Z"/>
+  <path data-paint="edge" d="M3 5.5 C3 4.7 3.7 4 4.5 4 L19.5 4 C20.3 4 21 4.7 21 5.5 L21 18.5 C21 19.3 20.3 20 19.5 20 L4.5 20 C3.7 20 3 19.3 3 18.5 Z"/>
+  <path data-paint="edge" d="M3 9 L21 9"/>
+  <path data-paint="edge" d="M10 9 L10 20"/>
+</svg>

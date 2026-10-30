@@ -4,8 +4,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import javafx.scene.Group;
+import javafx.scene.Node;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.SVGPath;
 import javafx.scene.shape.StrokeLineCap;
@@ -40,6 +45,10 @@ import javafx.scene.shape.StrokeLineJoin;
  *   <li>动作类图标<b>全部单色线性</b>，颜色由 CSS 的 {@code .adb-icon} 类接管，
  *       切主题自动跟色；<b>对象类型与连接状态</b>才允许语义彩色（低饱和，
  *       {@code -adb-kind-*} / 状态令牌），不许把普通按钮染色；</li>
+ *   <li>彩色走 {@link #colored(Icon, double)} + {@code icons/color/*.svg}：资产里<b>只标角色</b>
+ *       （{@code data-paint="tone-a"}，见 {@link IconPaint}），颜色一律来自 CSS 的
+ *       {@code -adb-*} 令牌 —— 于是暗色档自动跟随，<b>不需要画第二套</b>；
+ *       同名彩色资产还不存在时自动回退单色，所以资产可以一批批铺；</li>
  *   <li>例外：{@link #BRAND}（品牌 mark，Lucide 没有等价物）、{@link #DOT}
  *       （实心状态点，Lucide 只有描边的 circle-dot）为自绘路径。</li>
  * </ul>
@@ -78,8 +87,24 @@ public final class Icons {
     /** Lucide SVG 资源目录（相对 classpath 根）。 */
     static final String LUCIDE_DIR = "/io/agenticdb/ui/icons/lucide/";
 
+    /**
+     * 彩色变体资源目录（相对 classpath 根）。
+     *
+     * <p>这里放的是<b>自有资产</b>（同风格的多彩图形，逐元素标 {@code data-paint} 角色），
+     * 不是 Lucide —— Lucide 是线性图标集，天生单色。
+     * <b>不许</b>把竞品或任何第三方位图/图标资产放进来（他人版权素材）。
+     */
+    static final String COLOR_DIR = "/io/agenticdb/ui/icons/color/";
+
     /** 转换结果缓存：每个图标只在首次使用时解析一次 SVG。 */
     private static final ConcurrentHashMap<String, String> PATH_CACHE = new ConcurrentHashMap<>();
+
+    /** 彩色分层缓存（键 = 资产名）。 */
+    private static final ConcurrentHashMap<String, List<LucideConverter.Layer>> LAYER_CACHE =
+            new ConcurrentHashMap<>();
+
+    /** 确认过「没有彩色资产」的名字 —— 避免每次落库都重新查一遍 classpath。 */
+    private static final Set<String> ABSENT_COLOR_ASSETS = ConcurrentHashMap.newKeySet();
 
     private Icons() {
     }
@@ -298,14 +323,121 @@ public final class Icons {
     }
 
     private static String readResource(String path) {
+        String text = readResourceOrNull(path);
+        if (text == null) {
+            throw new IllegalStateException("missing icon resource: " + path);
+        }
+        return text;
+    }
+
+    private static String readResourceOrNull(String path) {
         try (InputStream in = Icons.class.getResourceAsStream(path)) {
             if (in == null) {
-                throw new IllegalStateException("missing icon resource: " + path);
+                return null;
             }
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    // ─────────────────────────── 彩色通道（对象类型 / 连接状态） ───────────────────────────
+
+    /**
+     * 这个图标有没有彩色变体（{@code icons/color/&lt;同名&gt;.svg} 在不在）。
+     *
+     * <p>给门禁做「资产 ↔ 引用一一对应」审计，也给调用方在「彩色档还没铺完」时判断回退。
+     */
+    public static boolean hasColoredVariant(Icon icon) {
+        return layersFor(icon) != null;
+    }
+
+    /**
+     * 造一个<b>彩色</b>图标 —— 有彩色资产就分层上色，没有就原样退回 {@link #of(Icon, double)}。
+     *
+     * <h2>为什么允许回退</h2>
+     * 彩色资产是一批一批铺的（导航树 → Ribbon → 工具条 → 连接磁贴）。
+     * 回退意味着「还没铺到的位置继续用单色」，而不是显示空白或半套配色 ——
+     * 每个中间状态都是一个能看、能过门禁的版本。
+     *
+     * <h2>返回 {@code Node} 而不是 {@code SVGPath}</h2>
+     * 分层就是多个 {@code SVGPath}，必须有个容器兜住；单色回退时给的就是 {@code SVGPath}
+     * 本身。调用方按 {@code Node} 用（挂进父容器、加类名、做尺寸）即可，
+     * <b>不要</b>再往下转型 —— 转型就把自己锁死在「只能是单色」上了。
+     *
+     * <p>⚠️ 与单色同样一条限制：返回的 {@code Group}/{@code SVGPath} 不是 {@code Control}，
+     * <b>挂不了 {@code Tooltip}</b>，需要提示时挂到外层 {@code Control} 上或用
+     * {@code Tooltip.install(node, tip)}。
+     *
+     * @param size 目标边长（像素）
+     */
+    public static Node colored(Icon icon, double size) {
+        List<LucideConverter.Layer> layers = layersFor(icon);
+        if (layers == null) {
+            return of(icon, size);
+        }
+        double scale = size / VIEW_BOX;
+        Group group = new Group();
+        for (LucideConverter.Layer layer : layers) {
+            SVGPath path = new SVGPath();
+            path.setContent(layer.path());
+            path.getStyleClass().add(layer.paint().styleClass());
+            if (layer.paint() == IconPaint.EDGE) {
+                // 线层与单色图标同一套粗细口径（缩放反向补偿，视觉恒为 1.5px）。
+                path.setStrokeWidth(STROKE / scale);
+                path.setStrokeLineCap(StrokeLineCap.ROUND);
+                path.setStrokeLineJoin(StrokeLineJoin.ROUND);
+            }
+            group.getChildren().add(path);
+        }
+        // ⚠️ 容器（Group）不上类名：它在 JavaFX 里没有可声明的绘制属性，
+        // 而 StyleClassCoverageTest 要求「Java 里出现过的 adb-* 类必须在 CSS 有规则」。
+        // 门禁要认「这是彩色实例」，查子层的角色类（如 .adb-icon-edge）即可。
+        group.setScaleX(scale);
+        group.setScaleY(scale);
+        return group;
+    }
+
+    /** 彩色变体的默认档 —— 与单色同一口径，尺寸只从 {@code Icons.SIZE_*} 来。 */
+    public static Node colored(Icon icon) {
+        return colored(icon, SIZE_TOOLBAR);
+    }
+
+    /** 分层解析（带缓存与「确认缺失」缓存）。 */
+    private static List<LucideConverter.Layer> layersFor(Icon icon) {
+        String key = colorAssetKey(icon);
+        if (ABSENT_COLOR_ASSETS.contains(key)) {
+            return null;
+        }
+        List<LucideConverter.Layer> cached = LAYER_CACHE.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        String svg = readResourceOrNull(COLOR_DIR + key + ".svg");
+        if (svg == null) {
+            ABSENT_COLOR_ASSETS.add(key);
+            return null;
+        }
+        List<LucideConverter.Layer> layers = LucideConverter.toLayers(svg, VIEW_BOX);
+        LAYER_CACHE.put(key, layers);
+        return layers;
+    }
+
+    /**
+     * 彩色资产的文件名（不含扩展名）。
+     *
+     * <p>Lucide 来源的图标沿用其源文件名（同名对齐，一眼能看出「这是同一个图形的彩色版」）；
+     * 自绘图标（{@link Icon#BRAND} / {@link Icon#DOT}）用枚举名的小写。
+     */
+    static String colorAssetKey(Icon icon) {
+        return icon.lucideResource() != null
+                ? icon.lucideResource()
+                : icon.name().toLowerCase(Locale.ROOT);
+    }
+
+    /** 已缓存的彩色分层 —— 给门禁断言「每层角色都在允许集合内、至少一层是 EDGE」。 */
+    static List<LucideConverter.Layer> cachedLayers(Icon icon) {
+        return LAYER_CACHE.get(colorAssetKey(icon));
     }
 
     /** 标准尺寸的图标。 */

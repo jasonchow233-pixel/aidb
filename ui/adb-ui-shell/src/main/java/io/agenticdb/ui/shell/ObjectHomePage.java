@@ -772,8 +772,7 @@ final class ObjectHomePage extends VBox {
     }
 
     private VBox buildCard(ObjectRow row) {
-        SVGPath icon = Icons.of(iconOf(row.object().kind()), Icons.SIZE_LABEL);
-        icon.getStyleClass().addAll("adb-icon", iconStyleClass(row.object().kind()));
+        Node icon = typeIcon(row.object().kind());
         Label name = new Label(row.object().name());
         name.getStyleClass().add("adb-table-card__name");
         HBox title = new HBox(6, icon, name);
@@ -945,11 +944,8 @@ final class ObjectHomePage extends VBox {
                     return;
                 }
                 ObjectRow row = getTableRow() == null ? null : getTableRow().getItem();
-                SVGPath icon = Icons.of(iconOf(row == null
-                        ? SchemaService.ObjectKind.TABLE : row.object().kind()),
-                        Icons.SIZE_LABEL);
-                icon.getStyleClass().addAll("adb-icon", iconStyleClass(row == null
-                        ? SchemaService.ObjectKind.TABLE : row.object().kind()));
+                Node icon = typeIcon(row == null
+                        ? SchemaService.ObjectKind.TABLE : row.object().kind());
                 Label label = new Label(name);
                 HBox box = new HBox(6, icon, label);
                 box.setAlignment(Pos.CENTER_LEFT);
@@ -1370,6 +1366,23 @@ final class ObjectHomePage extends VBox {
             case TRIGGER -> "adb-tree__icon--trigger";
             case EVENT -> "adb-tree__icon--event";
         };
+    }
+
+    /**
+     * 对象类型图标（14px 标签档）。
+     *
+     * <p>R35 N3：有彩色资产就分层上色，没有就回退单色并照旧吃类型色 ——
+     * 与 {@code SideBar} 的导航树同一口径，否则同一个图标在树里是彩色、
+     * 在对象首页是单色染色，读者会以为是两种对象。
+     */
+    private static Node typeIcon(SchemaService.ObjectKind kind) {
+        Icons.Icon icon = iconOf(kind);
+        if (Icons.hasColoredVariant(icon)) {
+            return Icons.colored(icon, Icons.SIZE_LABEL);
+        }
+        SVGPath path = Icons.of(icon, Icons.SIZE_LABEL);
+        path.getStyleClass().add(iconStyleClass(kind));
+        return path;
     }
 
     /**

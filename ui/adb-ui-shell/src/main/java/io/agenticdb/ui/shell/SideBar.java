@@ -18,6 +18,7 @@ import javafx.scene.control.Tooltip;
 import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
+import javafx.scene.Node;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.HBox;
@@ -1816,8 +1817,21 @@ public final class SideBar extends VBox {
             }
 
             // ⭐ 矢量图标（不是 Unicode 符号）。
-            SVGPath icon = Icons.of(item.icon(), Icons.SIZE_LABEL);
-            icon.getStyleClass().addAll("adb-tree__icon", iconStyleClass(item.kind()));
+            //    R35 N3：有彩色资产就分层上色，没有就回退单色 —— 于是
+            //    「对象类型色」（.adb-tree__icon--table 之类）只在**回退的单色**上继续生效：
+            //    彩色分层自己已经用 icon-edge / tone-* 表达了身份，再叠一层类型色就是两套语言。
+            //    ⚠️ 这是一处可见的语义变化（此前表/视图/函数/触发器的图标描边吃类型色），
+            //    彩色档铺满之后要不要把类型色找回图标上，属于 R35 目视批的待裁定项。
+            boolean colored = Icons.hasColoredVariant(item.icon());
+            Node icon = colored
+                    ? Icons.colored(item.icon(), Icons.SIZE_LABEL)
+                    : Icons.of(item.icon(), Icons.SIZE_LABEL);
+            if (colored) {
+                icon.getStyleClass().add("adb-tree__icon");
+            } else {
+                icon.getStyleClass().addAll(
+                        "adb-tree__icon", iconStyleClass(item.kind()));
+            }
 
             Label name = new Label(item.name());
             name.getStyleClass().add("adb-tree__name");

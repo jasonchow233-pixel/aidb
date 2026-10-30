@@ -26,8 +26,52 @@ final class LucideConverter {
     private LucideConverter() {
     }
 
-    /** SVG 文本 → 目标视框的绝对路径 d 字符串。 */
+    /** SVG 文本 → 目标视框的绝对路径 d 字符串（所有元素压成一条 —— 单色图标够用）。 */
     static String toPath(String svg, double targetViewBox) {
+        double scale = scaleOf(svg, targetViewBox);
+        List<String> segments = new ArrayList<>();
+        for (Element element : elements(svg)) {
+            segments.add(elementToPath(element.tag(), element.attrs(), scale));
+        }
+        if (segments.isEmpty()) {
+            throw new IllegalStateException("no convertible graphic elements");
+        }
+        return String.join(" ", segments).replaceAll("\\s+", " ").trim();
+    }
+
+    /**
+     * SVG 文本 → **逐元素分层**的路径，每层带上色角色。彩色图标走这条通道。
+     *
+     * <p>与 {@link #toPath} 的区别就是要保住「哪个图形元素该吃哪个色」——
+     * 压成一条 {@code d} 之后色彩信息无从谈起（{@code Icons.colored()} 的前提）。
+     *
+     * @param svg      源文本；每个元素可用 {@code data-paint="tone-a"} 标注角色
+     * @return 不可变的分层列表，顺序即绘制顺序（先画的在下层）
+     */
+    static List<Layer> toLayers(String svg, double targetViewBox) {
+        double scale = scaleOf(svg, targetViewBox);
+        List<Element> found = elements(svg);
+        if (found.isEmpty()) {
+            throw new IllegalStateException("no convertible graphic elements");
+        }
+        List<Layer> layers = new ArrayList<>(found.size());
+        for (Element element : found) {
+            layers.add(new Layer(
+                    elementToPath(element.tag(), element.attrs(), scale),
+                    IconPaint.fromAsset(attribute(element.attrs(), "data-paint"))));
+        }
+        return List.copyOf(layers);
+    }
+
+    /** 一条分层路径：JavaFX 兼容的绝对路径 + 上色角色。 */
+    record Layer(String path, IconPaint paint) {
+    }
+
+    /** 源 SVG 里的一个可转换元素。 */
+    private record Element(String tag, String attrs) {
+    }
+
+    private static double scaleOf(String svg, double targetViewBox) {
         Matcher view = Pattern.compile(
                 "viewBox\\s*=\\s*\"\\s*([0-9.\\-]+)\\s+([0-9.\\-]+)\\s+([0-9.\\-]+)\\s+([0-9.\\-]+)")
                 .matcher(svg);
@@ -41,20 +85,18 @@ final class LucideConverter {
                 || Math.abs(Double.parseDouble(view.group(2))) > 1e-6) {
             throw new IllegalStateException("viewBox must be a square starting at the origin");
         }
-        double scale = targetViewBox / width;
+        return targetViewBox / width;
+    }
 
-        List<String> segments = new ArrayList<>();
+    private static List<Element> elements(String svg) {
+        List<Element> found = new ArrayList<>();
         Matcher element = Pattern.compile(
                 "<(path|circle|ellipse|rect|line|polyline|polygon)\\b([^>]*?)/?>",
                 Pattern.CASE_INSENSITIVE).matcher(svg);
         while (element.find()) {
-            segments.add(elementToPath(element.group(1).toLowerCase(Locale.ROOT),
-                    element.group(2), scale));
+            found.add(new Element(element.group(1).toLowerCase(Locale.ROOT), element.group(2)));
         }
-        if (segments.isEmpty()) {
-            throw new IllegalStateException("no convertible graphic elements");
-        }
-        return String.join(" ", segments).replaceAll("\\s+", " ").trim();
+        return found;
     }
 
     private static String elementToPath(String tag, String attrs, double scale) {

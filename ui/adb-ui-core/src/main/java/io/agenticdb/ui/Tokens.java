@@ -10,7 +10,7 @@ import java.util.List;
  */
 public final class Tokens {
 
-    public static final int COUNT = 102;
+    public static final int COUNT = 106;
 
     /** bg-canvas (color) */
     public static final String BG_CANVAS_DARK = "#0B1220";
@@ -228,7 +228,7 @@ public final class Tokens {
     public static final String SYN_ERROR_DARK = "#F87171";
     public static final String SYN_ERROR_LIGHT = "#DC2626";
 
-    /** h-appbar (size) —— 2026-10-28 顶区精简：只剩 64px 命令带（工具行并入标签栏行）。 */
+    /** h-appbar (size) */
     public static final int H_APPBAR_DARK = 64;
     public static final int H_APPBAR_LIGHT = 64;
 
@@ -416,6 +416,22 @@ public final class Tokens {
     public static final String KIND_EVENT_DARK = "#F9A8D4";
     public static final String KIND_EVENT_LIGHT = "#BE185D";
 
+    /** icon-edge (color) */
+    public static final String ICON_EDGE_DARK = "#5AB0EE";
+    public static final String ICON_EDGE_LIGHT = "#077ED5";
+
+    /** icon-tone-a (color) */
+    public static final String ICON_TONE_A_DARK = "#17395A";
+    public static final String ICON_TONE_A_LIGHT = "#CDE8FF";
+
+    /** icon-tone-b (color) */
+    public static final String ICON_TONE_B_DARK = "#1E4A71";
+    public static final String ICON_TONE_B_LIGHT = "#B8DFFF";
+
+    /** icon-tone-c (color) */
+    public static final String ICON_TONE_C_DARK = "#2A628E";
+    public static final String ICON_TONE_C_LIGHT = "#96D0FF";
+
     /** row-tree (size) */
     public static final int ROW_TREE_DARK = 21;
     public static final int ROW_TREE_LIGHT = 21;
@@ -437,7 +453,8 @@ public final class Tokens {
             "sp-3", "sp-4", "sp-5", "sp-6", "sp-7", "r-sm",
             "r-md", "r-lg", "r-xl", "r-full", "dur-toast", "dur-toast-action",
             "dur-toast-result", "kind-table", "kind-view", "kind-function", "kind-trigger", "kind-procedure",
-            "overlay", "shadow-1", "shadow-2", "kind-index", "kind-event", "row-tree"
+            "overlay", "shadow-1", "shadow-2", "kind-index", "kind-event", "icon-edge",
+            "icon-tone-a", "icon-tone-b", "icon-tone-c", "row-tree"
     );
 
     private Tokens() { }

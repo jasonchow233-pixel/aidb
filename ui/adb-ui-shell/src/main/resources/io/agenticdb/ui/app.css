@@ -877,6 +877,39 @@
     -fx-stroke: transparent;
 }
 
+/* ── 彩色图标分层（R35 N3）────────────────────────────────────────────
+ * 资产（icons/color/*.svg）里每个元素只标角色 data-paint="…"，颜色一律从这里取。
+ * 于是：① 颜色只有 tokens.json 一个来源（TokenParityTest 管着）；
+ *       ② 暗色档自动跟随主题，不必画第二套资产 —— 两套位图必然漂移。
+ * 角色定义见 IconPaint；轮廓色由 ContrastTest 卡 ≥3:1（非文字元素口径）。
+ * ⚠️ 这些规则不与 .adb-icon 共用类名：单色的 hover/primary/disabled 改的是
+ *    「跟随正文色」，彩色图标的身份色恰恰**不该**跟着正文变色。
+ * ─────────────────────────────────────────────────────────────────── */
+.adb-icon-edge {
+    -fx-fill: transparent;
+    -fx-stroke: -adb-icon-edge;
+}
+
+.adb-icon-tone-a {
+    -fx-fill: -adb-icon-tone-a;
+    -fx-stroke: transparent;
+}
+
+.adb-icon-tone-b {
+    -fx-fill: -adb-icon-tone-b;
+    -fx-stroke: transparent;
+}
+
+.adb-icon-tone-c {
+    -fx-fill: -adb-icon-tone-c;
+    -fx-stroke: transparent;
+}
+
+.adb-icon-accent {
+    -fx-fill: -adb-accent;
+    -fx-stroke: transparent;
+}
+
 .adb-button:hover .adb-icon,
 .adb-icon-button:hover .adb-icon,
 .adb-appbar__action:hover .adb-icon {

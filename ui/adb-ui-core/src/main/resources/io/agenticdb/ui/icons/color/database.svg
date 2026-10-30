@@ -1,0 +1,11 @@
+<!-- AIDB 自有彩色资产（R35 N4-b）。
+     只标 data-paint 角色（edge / tone-a / tone-b / tone-c / accent），不写颜色 ——
+     颜色一律来自 app.css 的 -adb-icon-* 令牌，于是暗色档自动跟随、令牌仍是唯一真相。
+     ⚠️ 本目录禁止出现任何第三方或竞品的位图/图标资产（他人版权素材）。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path data-paint="tone-a" d="M5 6.5 L5 17.5 C5 19.2 8.1 20.5 12 20.5 C15.9 20.5 19 19.2 19 17.5 L19 6.5 Z"/>
+  <path data-paint="tone-b" d="M5 12.6 L5 16 C5 17.4 8.1 18.5 12 18.5 C15.9 18.5 19 17.4 19 16 L19 12.6 C19 14 15.9 15.1 12 15.1 C8.1 15.1 5 14 5 12.6 Z"/>
+  <ellipse data-paint="tone-c" cx="12" cy="6.5" rx="7" ry="3.5"/>
+  <path data-paint="edge" d="M5 6.5 L5 17.5 C5 19.2 8.1 20.5 12 20.5 C15.9 20.5 19 19.2 19 17.5 L19 6.5"/>
+  <ellipse data-paint="edge" cx="12" cy="6.5" rx="7" ry="3.5"/>
+</svg>

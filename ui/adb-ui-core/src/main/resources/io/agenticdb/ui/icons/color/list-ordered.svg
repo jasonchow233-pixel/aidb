@@ -1,0 +1,11 @@
+<!-- AIDB 自有彩色资产（R35 N4-b）：索引（有序列 —— 复合索引的命脉是列顺序）。
+     ⚠️ 序号点一律用 tone-c：14px 档下 tone-a（#CDE8FF）在这颗 r=2.2 的点上等于看不见，
+     梯度层次留给面积大的面（表体 / 文件夹面板），不硬塞进 1.3px 的小圆。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <circle data-paint="tone-c" cx="4.5" cy="6" r="2.2"/>
+  <circle data-paint="tone-c" cx="4.5" cy="12" r="2.2"/>
+  <circle data-paint="tone-c" cx="4.5" cy="18" r="2.2"/>
+  <line data-paint="edge" x1="9.5" y1="6" x2="20" y2="6"/>
+  <line data-paint="edge" x1="9.5" y1="12" x2="17.5" y2="12"/>
+  <line data-paint="edge" x1="9.5" y1="18" x2="15" y2="18"/>
+</svg>

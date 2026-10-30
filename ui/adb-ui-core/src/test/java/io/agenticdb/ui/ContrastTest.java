@@ -159,6 +159,28 @@ class ContrastTest {
                 .isEmpty();
     }
 
+    /**
+     * ⭐ R35：彩色图标的**轮廓色**必须与两种主题的背景都拉开 ≥3:1。
+     *
+     * <p>图标是**非文字元素**，WCAG 的要求是 3:1 而不是 4.5:1
+     * （与上面的焦点环同一判据、同一理由：这里卡的不是可读性，是「看不看得出这是个图形」）。
+     *
+     * <p>为什么只卡 {@code icon-edge}：分层里 tone-a/b/c 是**装饰性内填充**，
+     * 不承担识别 —— 图形身份全靠那圈线。线一糊，整个图标在暗色下就是一团黑（正是 P3
+     * 「暗色帧黑底黑标」要防的那个失败模式）。
+     */
+    @Test
+    void coloredIconEdgesStandOutAgainstTheBackground() throws IOException {
+        JsonNode tokens = new ObjectMapper()
+                .readTree(readResource("/tokens/tokens.json")).path("tokens");
+        for (String theme : new String[]{"light", "dark"}) {
+            double ratio = contrast(tokens, "icon-edge", "bg-canvas", "bg-canvas", theme);
+            assertThat(ratio)
+                    .as("%s 主题：彩色图标轮廓与页面底的对比度必须 ≥ 3:1", theme)
+                    .isGreaterThanOrEqualTo(3.0);
+        }
+    }
+
     // ─────────────────────────── 颜色计算 ───────────────────────────
 
     /** 对比度：前景文字 vs 背景（背景先合成到 base 上）。 */

@@ -65,4 +65,8 @@
     -adb-shadow-2: rgba(15,23,42,.16);
     -adb-kind-index: #64748B;
     -adb-kind-event: #BE185D;
+    -adb-icon-edge: #077ED5;
+    -adb-icon-tone-a: #CDE8FF;
+    -adb-icon-tone-b: #B8DFFF;
+    -adb-icon-tone-c: #96D0FF;
 }
