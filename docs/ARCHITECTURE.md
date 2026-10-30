@@ -331,8 +331,11 @@ app.css          →  业务样式，引用 -adb-* 令牌
 
 ### 7.2 图标体系
 
-- **矢量图标**：`ui/adb-ui-core` 的 `Icons` 维护 53 个手绘 `SVGPath`（16×16，1.5px
-  描边），按钮、菜单、树、标签页统一走它；业务按钮里**没有任何 Unicode 图标字符**。
+- **矢量图标**：`ui/adb-ui-core` 的 `Icons` 维护 **55** 个 `SVGPath`（16×16，1.5px 描边）
+  —— 53 个取自 Lucide 路径数据（ISC，见 `docs/COMPONENT-SELECTION.md` §1.6），2 个自绘（`BRAND` / `DOT`）；
+  按钮、菜单、树、标签页统一走它，业务按钮里**没有任何 Unicode 图标字符**。
+  R35 起对象树 / 页签 / 页签栏 / 对象头走**彩色档**（`Icons.colored`）：同一批字形按 `data-paint` 分层，
+  颜色全部来自设计令牌，暗色主题不出第二套资产。
 - **品牌图**：`app-icon-*.png`（由 `tools/GenLogo.java` 从 SVG 生成 7 档，16–1024）
   只给 **OS** 用 —— 窗口图标 / Dock / 任务栏 / 安装包；界面内的品牌位是工具行那个
   20px 方块（`SIZE_LABEL` 14px 字形），走**矢量** `Icons.Icon.BRAND`（S-7：PNG 不随主题换色、放大会糊，

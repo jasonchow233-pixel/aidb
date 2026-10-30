@@ -53,6 +53,16 @@ POI 已在 P6-3 落地（`XlsxCodec` / `XlsxStreamWriter`），不再属于「�
 无。原 `core/adb-declarations` 已于 2026-10-24 删除（`snakeyaml` /
 `json-schema-validator` 同步移除），见 `docs/ARCHITECTURE.md` §2.1。
 
+### 1.6 非 POM 素材（不进依赖管理，但受许可约束）
+
+| 素材 | 来源 | 许可 | 落点 |
+|---|---|---|---|
+| Lucide 图标路径数据 | [lucide](https://lucide.dev) 的 SVG `d` 属性（逐条借用，不引运行时库） | **ISC** | `ui/adb-ui-core/.../ui/icons/lucide/*.svg` 与 `icons/color/*.svg`；两份目录各带一份 `ISC-LICENSE.txt`，随安装包分发 |
+
+ISC 只要求「副本里保留版权声明与许可原文」——所以许可文件必须和资产放在**同一资源目录**，
+而不是只写在文档里。（`Icons.Icon` 共 **55** 个字形：53 个取自 Lucide 路径、2 个自绘 `BRAND` / `DOT`；
+彩色档 15 枚资产凡直接复用 Lucide 路径的都算借用。）
+
 ---
 
 ## 2. 明确不用
@@ -96,6 +106,7 @@ TestFX 两年未大版本更新，但仍是 JavaFX 无头 UI 门禁最成熟的�
 - ControlsFX / RichTextFX / TestFX / AssertJ：BSD/Apache 系，商用友好。
 - Monocle：GPL-2.0，仅 `test` scope，不进安装包。
 - MySQL Connector/J：GPLv2 + FOSS Exception；闭源分发前需复核。
+- Lucide 路径数据：ISC，许可原文随两份图标资源目录各自分发（见 §1.6）。
 - 所有依赖版本只写在父 POM；子模块不写 `<version>`。
 
 ---
@@ -106,3 +117,5 @@ TestFX 两年未大版本更新，但仍是 JavaFX 无头 UI 门禁最成熟的�
 - 数据表格、对话框、编辑器底座用成熟库；编辑语义、SQL 安全、渲染规则自己掌握。
 - P3 的唯一新 UI 依赖是 RichTextFX；P5 引入连接池、Testcontainers 与 JNA；P6-3 引入 POI（SXSSF / SAX 流式）。
 - 图标已是内嵌 **SVGPath** 矢量（`Icons.Icon` 统一字形 + accessible text，S-7 品牌 mark 同源），不引第三方图标字体。
+  R35 起同一批字形有**彩色档**：资产只声明分层角色（`data-paint`），颜色全部来自设计令牌，
+  暗色主题不换资产（见 `docs/UI-VISUAL-SPEC.md` §4.5）。

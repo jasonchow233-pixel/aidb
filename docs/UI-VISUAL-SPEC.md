@@ -128,20 +128,26 @@
 
 ## 3. 颜色与语义
 
-### 3.1 令牌分层（`tokens.json` 共 **97** 个）
+### 3.1 令牌分层（`tokens.json` 共 **106** 个：**68 颜色 / 35 尺寸 / 3 时长**）
+
+> 下表的数量与名字是从 `tokens.json` 现量出来的（不是回忆）；
+> `TokenParityTest` 钉住 `meta.count`，任何一处对不上就红。
 
 | 层 | 数量 | 令牌 | 语义 |
 |---|---|---|---|
-| 背景 | 11 | `bg-canvas` `bg-sidebar` `bg-surface` `bg-subtle` `bg-elevated` `bg-inset` `bg-hover` `bg-active` `bg-selected` `bg-stripe` `bg-disabled` | canvas=页面底 · surface=条带/面板 · subtle=分区底(比 surface 低一档) · elevated=浮层(弹窗/toast/命令面板) · inset=凹陷(输入框/表头/代码区) |
-| 边框 | 4 | `border` `border-subtle` `border-strong` `border-focus` | 普通分隔 / 更淡的行线 / 控件描边 / 焦点环 |
+| 背景 | 13 | `bg-canvas` `bg-chrome` `bg-sidebar` `bg-surface` `bg-subtle` `bg-elevated` `bg-inset` `bg-hover` `bg-active` `bg-selected` `bg-selected-grid` `bg-stripe` `bg-disabled` | canvas=页面底 · chrome=顶区外壳 · surface=条带/面板 · subtle=分区底(比 surface 低一档) · elevated=浮层(弹窗/toast/命令面板) · inset=凹陷(输入框/表头/代码区) |
+| 边框 | 3 | `border` `border-subtle` `border-focus` | 普通分隔 / 更淡的行线 / 焦点环 |
 | 文字 | 6 | `text-primary` `text-secondary` `text-tertiary` `text-muted` `text-disabled` `text-inverse` | 正文 / 次要 / 三级(提示) / 弱化装饰(图标·分隔线) / 禁用 / 反色(主按钮上) |
 | 强调 | 2 | `accent` `accent-hover` | 主色、悬停 |
 | 风险 | 12 | `risk-0..3-{read/write/structure/admin}` + `-bg` + `-border` | **四级风险**（本项目强项） |
-| 状态 | 7 | `success` `warning` `error` `info` + 各自 `-bg` | 成功/警告/错误/信息 |
+| 状态 | 7 | `success` `warning` `error` `info` + `success-bg` `warning-bg` `error-bg` | 成功/警告/错误/信息（`info` 没有 `-bg`） |
+| 未保存 | 2 | `dirty` `dirty-bg` | 页签脏标记 |
 | 语法高亮 | 9 | `syn-keyword/string/number/comment/function/type/ident/param/error` | SQL 编辑器 |
-| 对象类型 | 7 | `kind-table` `kind-view` `kind-function` `kind-trigger` `kind-procedure` `kind-index` `kind-event` | **对象树 / 结构页的类型色** |
-| 尺寸 | 34 | `h-*` `w-*` `row-*` `fs-*` `sp-*` `r-*` `dur-*` | 高度 / 宽度 / 行高 / 字号 / 间距 / 圆角 / 时长 |
-| 遮罩 / 投影 | 2 | `overlay` `shadow-1` | 弹窗遮罩与**唯一一级**浮层投影（UX-1 删 `shadow-2`） |
+| 对象类型 | 7 | `kind-table` `kind-view` `kind-function` `kind-trigger` `kind-procedure` `kind-index` `kind-event` | **对象树 / 结构页的类型色**（§3.4） |
+| 图标分层 | 4 | `icon-edge` `icon-tone-a` `icon-tone-b` `icon-tone-c` | 彩色图标的**角色色**（§4.5）：轮廓 + 三层填充 |
+| 尺寸 | 35 | `h-*`(6) `w-*`(4) `row-*`(5) `fs-*`(7) `sp-*`(8) `r-*`(5) | 高度 / 宽度 / 行高 / 字号 / 间距 / 圆角 |
+| 时长 | 3 | `dur-toast` `dur-toast-action` `dur-toast-result` | toast 动画 |
+| 遮罩 / 投影 | 3 | `overlay` `shadow-1` `shadow-2` | 弹窗遮罩与两级浮层投影 |
 
 > ⚠️ **`text-tertiary` 与 `text-muted` 的区别**（2026-10 重构）：
 > `text-muted`（#94A3B8 / #64748B）是**弱化装饰色**（图标描边、分隔线、占位），
@@ -155,8 +161,8 @@
 |---|---|---|---|
 | 页面底 | `bg-canvas` | — | — |
 | 面板 / 工具条 / 表头 / 分页条 | `bg-surface` | `text-primary` | `border`（下边框） |
-| 浮层：弹窗 / toast / 命令面板 | `bg-elevated` | `text-primary` | `border` / `border-strong` |
-| 输入框 / 代码区 | `bg-inset` | `text-primary` | `border-strong` |
+| 浮层：弹窗 / toast / 命令面板 | `bg-elevated` | `text-primary` | `border` |
+| 输入框 / 代码区 | `bg-inset` | `text-primary` | `border-subtle`（focus → `border-focus`） |
 | hover | `bg-hover` | `text-primary` | — |
 | 按下 | `bg-active` | `text-primary` | — |
 | 选中（树 / 表格 / 命令面板） | `bg-selected` | `text-primary` | — |
@@ -180,16 +186,23 @@
 
 ### 3.4 对象类型色（`kind-*`）
 
+> 数值 2026-10-30 现量自 `tokens.json`（**别信回忆**，这张表以前整列是过期的）。
+> 真相仍是 `tokens.json`；本表只是给人查语义。
+
 | 类型 | 令牌 | 暗色 / 亮色 | 用在哪 |
 |---|---|---|---|
-| 表 | `kind-table` | `#4ec89a` / `#2e8b6a` | 对象树表节点图标 |
-| 视图 | `kind-view` | `#a98bf0` / `#7454c8` | 对象树视图节点图标 |
-| 函数 | `kind-function` | `#e0a24a` / `#9a6700` | 对象树函数节点图标 |
-| 触发器 | `kind-trigger` | `#e8875f` / `#c4552e` | 对象树触发器节点图标 |
-| 过程 | `kind-procedure` | `#6fb3d9` / `#2f6f9e` | 对象树过程节点图标 |
-| 索引 | `kind-index` | `#9aa4b2` / `#6b7280` | **结构页「索引」页签行首图标** |
+| 表 | `kind-table` | `#2DD4BF` / `#0F766E` | 对象树表节点图标、对象首页行首、表清单卡片 |
+| 视图 | `kind-view` | `#C4B5FD` / `#7C3AED` | 对象树视图节点图标 |
+| 函数 | `kind-function` | `#FBBF24` / `#B45309` | 对象树函数节点图标 |
+| 触发器 | `kind-trigger` | `#FDBA74` / `#C2410C` | 对象树触发器节点图标 |
+| 过程 | `kind-procedure` | `#7DD3FC` / `#0369A1` | 对象树过程节点图标 |
+| 索引 | `kind-index` | `#94A3B8` / `#64748B` | **结构页「索引」页签行首图标** |
+| 事件 | `kind-event` | `#F9A8D4` / `#BE185D` | 对象树事件节点图标 |
 
-> 规则：**颜色只上在图标上，文字保持正文色**。彩色文字会让整棵树变成调色盘。
+> 规则一：**颜色只上在图标上，文字保持正文色**。彩色文字会让整棵树变成调色盘。
+> 规则二（R35 N4-b）：彩色档里类型色**只走轮廓层**（`.adb-icon-edge`），
+> 三层 `icon-tone-*` 保持中性浅蓝 —— 一个图形只能有一个语义色道，
+> 开两个道早晚改一处漏一处。门禁：`IconKindHueTest` 读**计算色**。
 
 ### 3.5 硬规则
 
@@ -213,24 +226,26 @@
 ### 4.1 规格
 
 - 视框 **16×16**，描边 **1.5px**，**圆头圆角**（`StrokeLineCap.ROUND`）。
-- 尺寸只从 `Icons.SIZE_*` 取：**14 标签 / 16 工具条 / 20 主工具条**；
+- 尺寸只从 `Icons.SIZE_*` 取：**14 标签 / 16 工具条 / 20 主工具条 / 26 Ribbon**；
   另有语义尺寸 8（状态点）/ 12（徽标）/ 32（空状态）。
-  ⛔ 不许在调用点写数字（门禁：`IconSystemAuditTest.iconSizesComeFromTheNamedScale`）。
+  ⛔ 不许在调用点写数字（门禁：`IconSystemAuditTest.iconSizesComeFromTheNamedScale`，
+  它同时匹配 `Icons.of(...)` 与 `Icons.colored(...)` —— 彩色通道上线后只盯 `of` 等于把棘轮松开）。
   ⛔ 40（`SIZE_BRAND`）已随 S-7 删除 —— 它唯一的消费者是不可达的欢迎页；品牌 mark 走 `SIZE_TOOLBAR`。
 - 缩放时**反向补偿描边**（`STROKE / scale`）——放大后视觉粗细不变。
 - 全部**描边**图标（不填充），少数状态点例外（`STAR_FILLED` / `DOT` 用 `.adb-icon--filled`）。
+  彩色档（§4.5）是唯一的例外：它按 `data-paint` 分层**填充 + 描边**。
 - 颜色由 CSS 接管（`.adb-icon` → `-adb-text-secondary`；hover → `text-primary`；
   主按钮 → `text-inverse`；禁用 → `text-disabled`），**切主题自动跟随**。
   ⚠️ `.adb-icon` 这条通用规则排在 `app.css` **后半段**：任何想脱离 `text-secondary` 的字形
   （品牌方块里的 `text-inverse` 就是第一个）**必须写两类选择器**提高特异性，单类会被后写的通用规则顶掉 ——
   见 §4.3 第 6 条。
 
-### 4.2 图标清单（**53** 个，`io.agenticdb.ui.Icons.Icon`）
+### 4.2 图标清单（**55** 个，`io.agenticdb.ui.Icons.Icon`）
 
 | 分类 | 图标 | 语义 |
 |---|---|---|
 | 通用动作 | `CLOSE` `CHECK` `ADD` `EDIT` `COPY` `DELETE` `SAVE` `REFRESH` `UNDO` `REDO` `SEARCH` `FILTER` `CLEAR` `SETTINGS` `STAR` `STAR_FILLED` `DOT` `MORE` | 关闭 / 勾选（布尔单元格、CHECK 约束）/ 新增 / 编辑 / 复制 / 删除 / 保存 / 刷新 / 撤销 / 重做 / 搜索 / 筛选 / 清除 / 设置 / 收藏 / 收藏实心 / 状态点 / **更多（⋯，页签行的溢出菜单）** |
-| 导航 | `PREVIOUS` `NEXT` `FIRST` `LAST` `CHEVRON_LEFT` `CHEVRON_RIGHT` `FOLDER` | 上/下/首页/末页/左/右 / 连接分组 |
+| 导航 | `PREVIOUS` `NEXT` `FIRST` `LAST` `CHEVRON_LEFT` `CHEVRON_RIGHT` `MOVE_UP` `MOVE_DOWN` `FOLDER` | 上/下/首页/末页/左/右 / 行上下移（主键与列排序编辑器）/ 连接分组 |
 | 传输 | `EXPORT` `IMPORT` `TRANSFER` | 导出 / 导入 / 双向 |
 | 执行 | `RUN` `RUN_ALL` `STOP` `EXPLAIN` | 执行 / 执行全部 / 停止 / 执行计划 |
 | 对象 | `DATABASE` `TABLE` `STRUCTURE` `COLUMNS` `VIEW` `VIEW_OBJECT` `FUNCTION` `TRIGGER` `INDEX` `OPEN` | 连接 / 表 / 结构 / 列 / 视图 / 视图对象 / 函数 / 触发器 / **索引** / 打开选中对象 |
@@ -262,11 +277,32 @@
 
 ### 4.4 现状缺口
 
-| # | 缺口 | 影响 | 修法 |
+| # | 缺口 | 影响 | 状态 |
 |---|---|---|---|
 | **I-1** | ~~缺 **20px 图标档**（功能栏用 16px 顶着大字标）~~ | — | ✅ **已修**（UX-1）：新增 `Icons.SIZE_PRIMARY = 20`，对象主工具条使用 |
-| **I-2** | 标签栏图标 11px、侧栏 rail 16px、功能栏 16px，**三档不统一** | 同一语义在不同处大小不一致 | 固定「标签 14 / 工具栏 16 / 空态 32」三档，其余禁用 |
-| **I-3** | 无应用图标 | 标签栏 / 窗口标题无品牌标识 | 出一个 32×32 应用图标 + 窗口图标 |
+| **I-2** | ~~标签栏 11px、rail 16px、功能栏 16px 三档不统一~~ | 同一语义在不同处大小不一致 | ✅ **已修**（UX-1）：命名档位 14/16/20 三个常量，调用点写数字被门禁拦下 |
+| **I-3** | ~~无应用图标~~ | 窗口标题栏无品牌标识 | ✅ **已修**：`App` 把多尺寸品牌图标注册进 `stage.getIcons()`（门禁：`BrandMarkAuditTest`） |
+| **I-4** | 彩色档只覆盖**导航词表**（树 / 页签 / 页签栏 / 对象头 / 结构页），Ribbon、工具条、连接磁贴仍是单色 | 同一图标在 Ribbon 上和树上两种画法 | 🚧 R35 N4-a / N4-c 进行中；**门禁已钉住词表**（`IconSystemAuditTest.theNavigationVocabularyIsFullyColored`），新增图标若没配彩色资产会直接红 |
+
+### 4.5 彩色档（R35）
+
+单色档是「一个字形 + 一个 CSS 颜色」；彩色档是**同一个 SVGPath 集合按角色分层**。八条规矩，每条后面是它的门禁：
+
+| # | 规矩 | 门禁 |
+|---|---|---|
+| 1 | **谁能上色**：只在「一眼要认出类型」的地方 —— 对象树、页签、页签栏、对象头、结构页索引列。工具条动作、危险动作保持单色。 | `IconSystemAuditTest.theNavigationVocabularyIsFullyColored` |
+| 2 | **资产放哪**：`ui/adb-ui-core/src/main/resources/io/agenticdb/ui/icons/color/*.svg`，文件名与单色档同源，且**不许有没人用的资产**。 | `ColoredIconTest.everyColoredAssetIsReferencedByAnIcon` |
+| 3 | **资产里不许有颜色**：只写 `data-paint="edge\|tone-a\|tone-b\|tone-c\|accent"`，一个 `fill`/`stroke` 字面量都不许出现。 | `ColoredIconTest.coloredAssetsDeclareRolesInsteadOfColors` |
+| 4 | **颜色从令牌来**：五个角色色是 `-adb-icon-*` looked-up color，由 `app.css` 的 `.adb-icon-*` 提供 —— 业务代码零颜色字面量。 | `ColoredIconTest.everyRoleCssRuleSetsBothFillAndStroke` · `StyleClassCoverageTest` · `TokenParityTest` |
+| 5 | **暗色不出第二套资产**：同一批 SVGPath，靠主题类换 `-adb-icon-*` 的值。这样 P3（双套资产漂移）从结构上不存在。 | `IconKindHueTest.theKindHueFollowsTheThemeWithoutASecondAssetSet` |
+| 6 | **分层顺序**：`tone-*` 在下、`edge` 在上 —— 轮廓永远压住填充，放大不糊。坐标一律换算进 16 视框。 | `ColoredIconTest.everyColoredIconKeepsOneEdgeLayerOnTop` · `ColoredIconTest.coloredLayersConvertIntoTheSixteenViewBox` |
+| 7 | **类型色只上在 `edge` 层**：树/页签的 `kind-*` 色用 `.adb-tree__icon--table .adb-icon-edge` 这类**后代选择器**打在子节点上。容器是 `Group`，没有可绘属性，挂在容器上的 `-fx-stroke` 是**死规则**。 | `IconKindHueTest.coloredTreeIconsKeepTheirKindHue` |
+| 8 | ⛔ **素材红线**：不提取 Navicat 原始位图；借用的 Lucide 路径按 ISC 署名 —— `icons/color/ISC-LICENSE.txt` 随资产走。 | `docs/COMPONENT-SELECTION.md` 素材登记 |
+
+> ⚠️ 第 7 条是 R35 第一批踩出来的：单色档时代 `.adb-tree__icon--table` 直接挂在 `SVGPath` 上，
+> 彩色档返回的是 `Group`，同一条规则搬到 Group 上就**静默失效**（表格图标丢了青绿、视图丢了紫）。
+> 测试也因此不能只 `applyCss()` 父节点 —— JavaFX 的 `applyCss()` **不向下级联**，
+> 必须父节点与每个子节点分别调用，否则读到的是控件默认色，断言等于没测。
 
 ---
 
@@ -467,9 +503,9 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 
 | 控件 | 规格 |
 |---|---|
-| 文本框 | `bg-elevated` 底 + `border-strong` 描边 + 3px 圆角 + `4px 8px`；focus 只换描边色（**不改宽度**，避免抖 1px） |
+| 文本框 | `bg-inset` 底 + `border-subtle` 描边 + 6px（`r-md`）圆角 + `4px 8px` + 高度钉 28px；focus 只换描边色（**不改宽度**，避免抖 1px） |
 | 下拉 / 复选 / 数字 | 与文本框同一套（`.combo-box` / `.check-box` / `.spinner` 已在 CSS 统一） |
-| 禁用 | `bg-disabled` + `text-disabled` + 保留边框 + **opacity 还原为 1** |
+| 禁用 | `bg-disabled` + **opacity 还原为 1**；文本框描边转透明，复选框描边退到 `text-disabled`（U23：暗色下 `bg-disabled` 只有 8% 不透明度，描边若也透明，这格就查无此处） |
 | 校验错误 | 字段旁红字（`.adb-error`）+ 边框转 `error`；**错误行常驻**（不随步骤消失） |
 
 > ⚠️ Modena 给所有 `:disabled` 控件加 `-fx-opacity: 0.4` —— 必须显式写 `-fx-opacity: 1`，
@@ -682,7 +718,7 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 | 图标按钮 | 透明 | `bg-hover` + 图标变 `text-primary` | — | 同按钮 | 同上 | `.adb-icon-button--active`（**当前无样式**） | — |
 | 树节点 | 透明 | `bg-hover` | — | 边框 + 光晕 | — | 满行 `bg-selected` + 正文色字 | — |
 | 表格行 | canvas / 斑马 | `bg-hover` | — | 边框 + 光晕 | — | `bg-selected` | — |
-| 输入框 | elevated + `border-strong` | — | — | 描边换 `border-focus`（不改宽度） | `bg-disabled` | — | — |
+| 输入框 | `bg-inset` + `border-subtle` | — | — | 描边换 `border-focus`（不改宽度） | `bg-disabled`（描边转透明） | — | — |
 | 标签 | 透明 | `bg-hover` | — | 边框 + 光晕 | — | 底部 2px accent 边 | — |
 | chip | elevated + 描边 | `bg-hover` | — | 边框 + 光晕 | — | `--active`：accent 边 + accent 字 | — |
 | 菜单项 | 透明 | `bg-hover` | — | `bg-active` | `text-disabled` | — | — |

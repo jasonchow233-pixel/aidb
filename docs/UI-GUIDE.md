@@ -19,7 +19,7 @@
   强调色 `#0067B8`（Navicat 实测 `#0078D7`，为 WCAG AA 压暗）。
 - **圆角/间距**：**5 档 + pill**：`r-sm` 2 / `r-md` 3 / `r-lg` 4 / `r-xl` 6 / `r-full` 999，外层 ≥ 内层；
   7 档 4px 间距阶梯；页面外边距 16px，工具栏 8px。
-- **图标**：**矢量图标**（`io.agenticdb.ui.Icons`，**53** 个）。
+- **图标**：**矢量图标**（`io.agenticdb.ui.Icons`，**55** 个 = 53 个 Lucide 源 + 2 个自绘）。
   统一 16×16 视框、1.5px 描边；6 档尺寸 **8 / 12 / 14 / 16 / 20 / 26**（dot / badge / label / toolbar / primary / ribbon）。
   颜色由 CSS 的 `.adb-icon` 接管 → 切主题自动跟着变。
   ⛔ **按钮里不许再出现 Unicode 符号**（`IconSystemAuditTest` 守着）。
@@ -81,7 +81,22 @@ java tools/GenTokens.java
 | `🔍` `🔑` | 非 BMP 彩色 emoji，与相邻的 `•` 视觉重量不一致 | ✅ 已换单色符号，PK 用 `[PK]` |
 
 **跨平台缺字**：`⚙ ▤ ▦ ⌕ ▇ ⬢ ⇅ ⌷ ◈` 属 Miscellaneous Technical / Geometric Shapes，
-Windows 上常见字体可能替换或缺失。长期方向是**内嵌 SVG 图标集**（JavaFX 原生支持，无需图标字体）。
+Windows 上常见字体可能替换或缺失。这条已经**不再是方向而是现状**：
+界面里所有图标都是内嵌 SVG（`icons/lucide/*.svg`，Lucide 静态集 ISC 许可，许可证随目录分发），
+没有图标字体、没有位图。
+
+### 彩色档（R35）
+
+| 口径 | 规则 | 门禁 |
+|---|---|---|
+| 谁能上色 | **对象类型与导航词汇表**（表 / 视图 / 函数 / 触发器 / 事件 / 索引 / 列 / 连接 / 库 / 文件夹 / 保存的查询 / 结构 / 设置 / 诊断）；**动作图标永远单色线性** —— 染色会把「可点的」和「是东西」混成一类 | `IconSystemAuditTest.theNavigationVocabularyIsFullyColored` |
+| 资产放哪 | `icons/color/<同名>.svg`（自有资产）。同名彩色资产不存在时 `Icons.colored()` **自动回退单色**，所以档可以一批批铺，每个中间状态都是能看的 | `ColoredIconTest.everyColoredAssetIsReferencedByAnIcon` |
+| 颜色从哪来 | 资产里**只标角色**（`data-paint="edge / tone-a / tone-b / tone-c / accent"`），一个色值都不写；颜色一律由 `app.css` 的 `-adb-icon-*` 取自 `tokens.json` | `ColoredIconTest.coloredAssetsDeclareRolesInsteadOfColors` |
+| 暗色档 | **不需要第二套资产**：角色吃令牌，令牌跟主题 → 同一张 svg 在两套主题里各自换色 | `IconKindHueTest.theKindHueFollowsTheThemeWithoutASecondAssetSet` |
+| 分层顺序 | 自下而上画，**轮廓层（EDGE）收尾**；轮廓与单色同一套 1.5px 粗细口径 | `ColoredIconTest.everyColoredIconKeepsOneEdgeLayerOnTop` |
+| 类型色 | ⭐ 「形状 + 颜色」是**一对**线索，彩色档不许删掉其中一条：轮廓层经 `.adb-tree__icon--table .adb-icon-edge` 吃 `-adb-kind-*`，三层 tone 保持中性浅蓝（类型色只走轮廓这一条道） | `IconKindHueTest`（读**计算色**，不读 CSS 文本） |
+| 容器不能挂色 | 分层返回的是 `Group`，它在 JavaFX 里没有任何可声明的绘制属性 —— 把 `-fx-stroke` 打在容器上等于空转。类名挂在容器上，**颜色规则必须写后代选择器**落到子层 | 同上 |
+| ⛔ 素材红线 | 竞品（Navicat 等）的位图/图标属**他人版权素材**，一律不许进 `icons/`；像素复刻 ≠ 素材入库 | `ColoredIconTest` 头部注释 + 人工审计 |
 
 **可访问性**：所有图标按钮必须调用 `setAccessibleText("刷新")` 这类文本，
 读屏软件才能读出语义而不是读出符号。工厂方法（`SideBar.railButton` /
