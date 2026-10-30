@@ -22,13 +22,16 @@
   `7e8b6f7`/`82ea100`（第六批）· `88a4576`/`ff2e7d4`（第七批）· `46873b8`（第八批 + 本文重写）·
   `f0c1044`（第九批）· `6e99d60`（第十批）· `ed41207`（第十一批）· `7def1cf`（第十二批）·
   `d20f5eb`（第十三批）· `fa23770`（第十四批）· `0f69877`（第十五批）· `94f0f23`（第十六批）·
-  `4ff9ffd`（第十七批）· `a347bdf`（第十八批）。**push 仍未授权。**
+  `4ff9ffd`（第十七批）· `a347bdf`（第十八批）· `06b2266`（第十九批）。**push 仍未授权。**
 - 验收帧 **34 张**（29 亮 / 5 暗），第八批后全量重拍为英文档（19 帧变化、1280×800、md5 无重复帧）。
   第十六批新增 p2-section-indexes（只读切面此前无帧覆盖）。
-  中英混排仍是中间态：`ObjectDetailsPanel`(27) / `WorkspaceView`(25) / `DiagnosticsPage`(24)
-  等 37 个文件未抽（第十八批重拍 p4-ddl 无回归，但 TableDdl 那 34 条是状态栏/弹窗文案，
-  ⚠️ 至今**一帧未覆盖** —— 只有单测在钉，盲区与第十六批同型，补 pose 尚未做）。
-- 棘轮 **327**（主尺，只许降）；模型层 **277**（第 13 条棘轮，D-9）。资源包 **1226 键** en/zh 对称。
+  第十九批重拍 p2-details：详情面板全英，并当场抓到英文截字 —— 页脚三颗等分按钮压成
+  「Open D… / Open Struct… / Open D…」（中文 4 字撑得住、英文撑不住），HBox → FlowPane 换行后复拍核销。
+  中英混排仍是中间态：`WorkspaceView`(25) / `DiagnosticsPage`(24) / `ForeignKeyDialog`(23)
+  等 35 个文件未抽。⚠️ `TableDdl` 那 34 条至今**一帧未覆盖** —— 只有单测在钉，
+  盲区与第十六批同型，补 pose 尚未做）。
+- 棘轮 **298**（主尺，只许降）；模型层 **277**（第 13 条棘轮，D-9）。资源包 **1238 键** en/zh 对称
+  （严格数 `^[^#=]+=` 行；第十八批记的 1226 是同口径尾差，实测 1227）。
 - 总账：**R34–R41 = 61–86 人日**；**+R42 = 97–142 人日**（本轮新增 N31–N34 后上调，见 §2）。
 
 ---
@@ -126,6 +129,18 @@
       TableDdl 的文案全在状态栏与重命名弹窗里，**没有任何帧覆盖**，本批只有单测在钉。
       补 `ADB_RENAME` 摆态（`ScreenshotSession.targetScene` 已支持拍 Dialog 独立 Stage）
       记为收尾待办，与第十六批的盲区同型
+- [x] **N1-b 第十九批** `ObjectDetailsPanel`(27) + `ObjectHeader`(2)（29→0）：→ **298**，
+      1238 键（新增 11 键 `details.*`，**复用 15 个既有键** —— 这批的复用率是十八批里最高的一次：
+      类型标签 `detail.kind.table|view` + `object.kind.trigger|function|event` + `category.database`、
+      节标题 `detail.indexes|foreignKeys|triggers` + `newtable.tab.fields`、
+      动作 `action.object.open-data|open-structure`、列标记 `detail.primaryKey` + `grid.head.notNull`、
+      最近操作 `grid.overview.recent`）。⭐ 复用一律按「zh 与 en 双侧全等」判，
+      只有一边相同不算（`object.kind.procedure`=存储过程 ≠ 过程，另立 `details.kind.procedure`）。
+      ⭐ **实拍抓到英文截字**：详情面板 300px 窄栏里三颗等分按钮被压成
+      「Open D… / Open Struct… / Open D…」—— 中文「打开数据」四字撑得住，英文撑不住；
+      页脚 HBox → FlowPane（装不下换行），复拍后三颗全读得完。
+      与第十一列「自增列头 46px 截成 Auto …」同族：**列宽/按钮宽是按中文量的**，
+      每批抽完必须按英文再目视一次。测试重钉 8 处（ObjectDetailsPanelTest 7 + ObjectHeaderAndTabsTest 1）
 - [x] **N1-c** `I18nAuditTest` **13 条**（键集相等 / 调用点对账 / 动作命名穷举 / 占位符 / 棘轮×2 /
       全角标点 / 实参个数 / 模型层标签边界 / 偏好链 / configure 先于 AppShell）
 - [x] **N2** 菜单组 `File/Edit/View/Query/Format/Favorites/Tools/Window/Help` + Table 上下文菜单按页型开合
@@ -251,7 +266,7 @@
 
 ```
 R30–R33 ✅ 已提交。功能资产保住；视觉裁定多数被推翻（真源 §3 台账）
-R34     i18n 十八批已收（棘轮 327，已落库）→ 收尾 1–3          ← 当前
+R34     i18n 十九批已收（棘轮 298，已落库）→ 收尾 1–3          ← 当前
 R35     彩色图标渲染层 + 50 枚资产 + 暗色档             （10–14） 前置卡所有视觉
 R36     顶区 140px / 12 格 Ribbon / 页签行 / #F0F0F0   （5–7）   ⚠️ 撤销 R32-D
 R37     树 20px 五组 / 库级树 / 对象页合一 / 6 列 7 键  （8–11）  ⭐ N32 N33 本轮新增
