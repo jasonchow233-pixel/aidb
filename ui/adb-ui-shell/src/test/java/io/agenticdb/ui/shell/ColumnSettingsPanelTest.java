@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnType;
+import io.agenticdb.ui.I18n;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.VBox;
@@ -60,7 +61,7 @@ class ColumnSettingsPanelTest {
         WaitForAsyncUtils.waitForFxEvents();
         assertThat(robot.lookup("#columns-count").queryAs(javafx.scene.control.Label.class)
                 .getText())
-                .isEqualTo("5 / 5 列");
+                .isEqualTo(I18n.t("colset.count", 5, 5));
     }
 
     @Test
@@ -72,7 +73,7 @@ class ColumnSettingsPanelTest {
         assertThat(robot.lookup("#columns-count").queryAs(javafx.scene.control.Label.class)
                 .getText())
                 .as("搜索必须真的过滤列表")
-                .isEqualTo("2 / 5 列");
+                .isEqualTo(I18n.t("colset.count", 2, 5));
     }
 
     @Test
@@ -84,7 +85,7 @@ class ColumnSettingsPanelTest {
 
         assertThat(robot.lookup("#columns-count").queryAs(javafx.scene.control.Label.class)
                 .getText())
-                .isEqualTo("5 / 5 列");
+                .isEqualTo(I18n.t("colset.count", 5, 5));
     }
 
     @Test

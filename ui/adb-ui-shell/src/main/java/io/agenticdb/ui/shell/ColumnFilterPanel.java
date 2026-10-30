@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.DataQuery;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.introspect.DataSqlBuilder;
 import io.agenticdb.introspect.FilterCondition;
 import io.agenticdb.introspect.FilterOperator;
@@ -75,9 +76,9 @@ final class ColumnFilterPanel extends VBox {
     private final Label status = new Label();
     private final ProgressIndicator spinner = new ProgressIndicator();
     private final VBox highCardinality = new VBox(6);
-    private final Button apply = new Button("应用");
-    private final Button clear = new Button("清除");
-    private final Button retry = new Button("重试");
+    private final Button apply = new Button(I18n.t("details.action.apply"));
+    private final Button clear = new Button(I18n.t("filter.clear"));
+    private final Button retry = new Button(I18n.t("grid.toolbar.retry"));
     private final PopOver popover = new PopOver();
 
     private boolean highCardinalityMode;
@@ -112,7 +113,7 @@ final class ColumnFilterPanel extends VBox {
 
     private void configurePopover() {
         popover.setContentNode(this);
-        popover.setTitle("筛选 · " + column.name());
+        popover.setTitle(I18n.t("filter.title", column.name()));
         popover.setHeaderAlwaysVisible(true);
         popover.setCloseButtonEnabled(true);
         popover.setAnimated(false);
@@ -145,11 +146,11 @@ final class ColumnFilterPanel extends VBox {
     }
 
     private void buildUi() {
-        Label hint = new Label("候选值来自当前表；计数已排除本列筛选");
+        Label hint = new Label(I18n.t("filter.hint"));
         hint.getStyleClass().add("adb-muted");
         hint.setWrapText(true);
 
-        search.setPromptText("搜索候选值…");
+        search.setPromptText(I18n.t("filter.searchPrompt"));
         search.getStyleClass().add("adb-filter-panel__search");
         search.textProperty().addListener((observable, oldValue, newValue) -> {
             String needle = newValue == null ? "" : newValue.trim().toLowerCase(Locale.ROOT);
@@ -161,9 +162,8 @@ final class ColumnFilterPanel extends VBox {
         valueList.setPrefHeight(260);
         valueList.setCellFactory(view -> new ValueCell());
         // U24：候选值读空是有原因的（整列 NULL / 还没加载完），一句话说清，别让人猜。
-        valueList.setPlaceholder(EmptyState.of(Icons.Icon.FILTER, "没有候选值",
-                "这一列在当前页里没有可枚举的值 —— 可能整列都是 NULL，"
-                        + "也可能值还在从库里读。"));
+        valueList.setPlaceholder(EmptyState.of(Icons.Icon.FILTER, I18n.t("filter.empty.title"),
+                I18n.t("filter.empty.body")));
 
         spinner.setPrefSize(22, 22);
         spinner.getStyleClass().add("adb-filter-panel__spinner");
@@ -171,7 +171,7 @@ final class ColumnFilterPanel extends VBox {
         status.getStyleClass().add("adb-muted");
         status.setWrapText(true);
 
-        Button all = new Button("全选");
+        Button all = new Button(I18n.t("action.table-list.select-all"));
         all.getStyleClass().addAll("adb-button", "adb-button--ghost");
         all.setOnAction(event -> {
             selected.clear();
@@ -181,7 +181,7 @@ final class ColumnFilterPanel extends VBox {
             valueList.refresh();
         });
 
-        Button none = new Button("取消选择");
+        Button none = new Button(I18n.t("filter.selectNone"));
         none.getStyleClass().addAll("adb-button", "adb-button--ghost");
         none.setOnAction(event -> {
             selected.clear();
@@ -208,12 +208,12 @@ final class ColumnFilterPanel extends VBox {
         retry.setVisible(false);
         retry.setManaged(false);
 
-        Label highTitle = new Label("候选值超过 " + MAX_CANDIDATES + " 个");
+        Label highTitle = new Label(I18n.t("filter.highCardinality", MAX_CANDIDATES));
         highTitle.getStyleClass().add("adb-section-title");
-        Label highHint = new Label("该列基数过高，已切换为精确匹配。");
+        Label highHint = new Label(I18n.t("filter.highCardinalityHint"));
         highHint.getStyleClass().add("adb-muted");
         highHint.setWrapText(true);
-        exact.setPromptText("输入精确值");
+        exact.setPromptText(I18n.t("filter.exactPrompt"));
         highCardinality.getChildren().addAll(highTitle, highHint, exact);
         highCardinality.getStyleClass().add("adb-filter-panel__high-cardinality");
         highCardinality.setVisible(false);
@@ -230,7 +230,7 @@ final class ColumnFilterPanel extends VBox {
             inFlight.cancel(true);
         }
         setLoading(true);
-        status.setText("正在读取候选值…");
+        status.setText(I18n.t("filter.loading"));
         DataQuery cascading = query.withoutFiltersFor(column.name());
 
         Task<Candidates> task = new Task<>() {
@@ -272,7 +272,7 @@ final class ColumnFilterPanel extends VBox {
             search.setVisible(!highCardinalityMode);
             search.setManaged(!highCardinalityMode);
             status.setText(highCardinalityMode
-                    ? "已切换为精确匹配" : "共 " + values.size() + " 个候选值");
+                    ? I18n.t("filter.switchedExact") : I18n.t("filter.count", values.size()));
         });
 
         task.setOnFailed(event -> {
@@ -282,7 +282,8 @@ final class ColumnFilterPanel extends VBox {
             inFlight = null;
             setLoading(false);
             Throwable error = task.getException();
-            status.setText("读取候选值失败：" + (error == null ? "未知错误" : error.getMessage()));
+            status.setText(I18n.t("filter.readFailed",
+                    error == null ? I18n.t("sections.unknownError") : error.getMessage()));
             retry.setVisible(true);
             retry.setManaged(true);
         });
@@ -293,7 +294,7 @@ final class ColumnFilterPanel extends VBox {
         } catch (RuntimeException e) {
             inFlight = null;
             setLoading(false);
-            status.setText("读取候选值失败：" + e.getMessage());
+            status.setText(I18n.t("filter.readFailed", e.getMessage()));
         }
     }
 

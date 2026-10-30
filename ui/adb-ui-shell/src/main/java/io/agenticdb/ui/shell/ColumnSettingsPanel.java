@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.model.ColumnDef;
+import io.agenticdb.ui.I18n;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -52,7 +53,7 @@ final class ColumnSettingsPanel extends VBox {
         all.setAll(columns == null ? List.of() : columns);
 
         search.setId("columns-search");
-        search.setPromptText("搜索列名");
+        search.setPromptText(I18n.t("colset.searchPrompt"));
         search.getStyleClass().add("adb-sidebar__search");
         search.setPrefHeight(io.agenticdb.ui.Tokens.H_INPUT_LIGHT);
         search.textProperty().addListener((observable, previous, value) -> refresh());
@@ -68,12 +69,12 @@ final class ColumnSettingsPanel extends VBox {
         count.setId("columns-count");
         count.getStyleClass().add("adb-muted");
 
-        Button showAll = new Button("全部显示");
+        Button showAll = new Button(I18n.t("colset.showAll"));
         showAll.setId("columns-show-all");
         showAll.getStyleClass().addAll("adb-button", "adb-button--ghost");
         showAll.setOnAction(event -> onShowAll.run());
 
-        Button reset = new Button("恢复默认");
+        Button reset = new Button(I18n.t("colset.reset"));
         reset.setId("columns-reset");
         reset.getStyleClass().addAll("adb-button", "adb-button--ghost");
         reset.setOnAction(event -> onReset.run());
@@ -97,7 +98,7 @@ final class ColumnSettingsPanel extends VBox {
                 visible.add(definition);
             }
         }
-        count.setText(visible.size() + " / " + all.size() + " 列");
+        count.setText(I18n.t("colset.count", visible.size(), all.size()));
     }
 
     /** 恢复搜索框的初始状态（打开弹层时调用）。 */

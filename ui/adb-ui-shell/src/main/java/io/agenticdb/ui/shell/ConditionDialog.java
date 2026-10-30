@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.FilterCondition;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.introspect.FilterOperator;
 import io.agenticdb.introspect.SchemaService.TableSchema;
 import io.agenticdb.model.ColumnDef;
@@ -29,18 +30,18 @@ final class ConditionDialog {
     static Optional<FilterCondition> show(Window owner, TableSchema schema,
                                           Collection<String> stylesheets) {
         Dialog<FilterCondition> dialog = new Dialog<>();
-        dialog.setTitle("添加筛选条件");
+        dialog.setTitle(I18n.t("cond.title"));
         // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
         dialog.getDialogPane().setPrefWidth(DialogSizes.FORM);
         dialog.getDialogPane().setMinWidth(DialogSizes.FORM);
 
-        dialog.setHeaderText("按列构造条件");
+        dialog.setHeaderText(I18n.t("cond.header"));
         if (owner != null) {
             dialog.initOwner(owner);
         }
 
-        ButtonType add = new ButtonType("添加", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType add = new ButtonType(I18n.t("fk.add"), ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
         dialog.getDialogPane().getButtonTypes().addAll(add, cancel);
 
         ComboBox<String> columnBox = new ComboBox<>();
@@ -56,15 +57,15 @@ final class ConditionDialog {
         operatorBox.setMaxWidth(Double.MAX_VALUE);
 
         TextField value = new TextField();
-        value.setPromptText("值");
+        value.setPromptText(I18n.t("var.valuePrompt"));
         TextField second = new TextField();
-        second.setPromptText("上限");
+        second.setPromptText(I18n.t("cond.upperBound"));
 
         Label error = new Label();
         error.getStyleClass().add("adb-grid__state-text--error");
         error.setWrapText(true);
 
-        Label to = new Label("到");
+        Label to = new Label(I18n.t("cond.to"));
         to.visibleProperty().bind(second.visibleProperty());
         to.managedProperty().bind(second.visibleProperty());
 
@@ -72,9 +73,9 @@ final class ConditionDialog {
         grid.setHgap(10);
         grid.setVgap(10);
         grid.setPadding(new Insets(16, 8, 4, 8));
-        grid.addRow(0, new Label("列"), columnBox);
-        grid.addRow(1, new Label("操作符"), operatorBox);
-        grid.addRow(2, new Label("值"), value);
+        grid.addRow(0, new Label(I18n.t("structure.col.columns")), columnBox);
+        grid.addRow(1, new Label(I18n.t("cond.operator")), operatorBox);
+        grid.addRow(2, new Label(I18n.t("var.valuePrompt")), value);
         grid.addRow(3, to, second);
         grid.add(error, 0, 4, 2, 1);
         GridPane.setHgrow(columnBox, javafx.scene.layout.Priority.ALWAYS);
@@ -132,17 +133,17 @@ final class ConditionDialog {
                 .filter(candidate -> candidate.name().equals(columnName))
                 .findFirst()
                 .orElse(null);
-        field.setPromptText(column == null ? "值" : prompt(column));
+        field.setPromptText(column == null ? I18n.t("var.valuePrompt") : prompt(column));
     }
 
     private static String prompt(ColumnDef column) {
         return switch (column.type()) {
-            case NUMBER -> "数字";
+            case NUMBER -> I18n.t("cond.kindNumber");
             case BOOLEAN -> "1 / 0 / true / false";
             case DATE -> "YYYY-MM-DD";
             case TIMESTAMP -> "YYYY-MM-DD HH:MM:SS";
             case TIME -> "HH:MM:SS";
-            default -> "值（空串保留为空串）";
+            default -> I18n.t("cond.kindText");
         };
     }
 
@@ -151,27 +152,27 @@ final class ConditionDialog {
         ColumnDef column = schema.columns().stream()
                 .filter(candidate -> candidate.name().equals(columnName))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("请选择列"));
+                .orElseThrow(() -> new IllegalArgumentException(I18n.t("cond.error.noColumn")));
         if (operator == null) {
-            throw new IllegalArgumentException("请选择操作符");
+            throw new IllegalArgumentException(I18n.t("cond.error.noOperator"));
         }
         if (!operator.acceptsValue()) {
             return switch (operator) {
                 case IS_NULL -> FilterCondition.isNull(column.name());
                 case IS_NOT_NULL -> FilterCondition.isNotNull(column.name());
-                default -> throw new IllegalArgumentException("该操作符不需要值");
+                default -> throw new IllegalArgumentException(I18n.t("cond.error.noValueNeeded"));
             };
         }
 
         String text = raw == null ? "" : raw;
         if (text.isEmpty() && requiresNonEmpty(column.type())) {
-            throw new IllegalArgumentException("请输入有效的" + prompt(column));
+            throw new IllegalArgumentException(I18n.t("cond.error.invalidValue", prompt(column)));
         }
         Object first = CellValueParser.parse(column, text);
         if (operator.acceptsSecondValue()) {
             String secondText = rawSecond == null ? "" : rawSecond;
             if (secondText.isEmpty() && requiresNonEmpty(column.type())) {
-                throw new IllegalArgumentException("请输入上限值");
+                throw new IllegalArgumentException(I18n.t("cond.error.noUpperBound"));
             }
             Object second = CellValueParser.parse(column, secondText);
             return FilterCondition.between(column.name(), first, second);
