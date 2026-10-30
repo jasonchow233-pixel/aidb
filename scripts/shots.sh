@@ -236,18 +236,31 @@ ok "已产出 $captured 张 → $SHOTS_DIR"
 # 这一步把「靠人眼发现重复」变成脚本自己报错。
 if [ "$captured" -gt 0 ]; then
   step "帧去重（同画面即假帧）"
-  declare -A seen=()
-  duplicates=0
-  while IFS= read -r png; do
-    digest="$(md5sum "$png" | cut -d' ' -f1)"
-    base="$(basename "$png")"
-    if [ -n "${seen[$digest]:-}" ]; then
-      warn "$base 与 ${seen[$digest]} 像素完全相同 —— 其中一张是假帧"
-      duplicates=$((duplicates + 1))
+  # ⚠️ 不能用 `declare -A`：macOS 自带 /bin/bash 是 3.2，没有关联数组 ——
+  #    实测这条在这里直接 `declare: -A: invalid option` 退出，
+  #    于是「假帧门禁」在开发机上**从来没跑过**（脚本还显示拍摄成功）。
+  #    同理 md5sum 是 GNU 的，macOS 只有 md5。两个都用兜底。
+  png_digest() {
+    if command -v md5sum >/dev/null 2>&1; then
+      md5sum "$1" | cut -d' ' -f1
     else
-      seen[$digest]="$base"
+      md5 -q "$1"
     fi
-  done < <(ls "$SHOTS_DIR"/*.png 2>/dev/null)
+  }
+  seen_list=""
+  duplicates=0
+  for png in "$SHOTS_DIR"/*.png; do
+    [ -f "$png" ] || continue
+    digest="$(png_digest "$png")"
+    base="$(basename "$png")"
+    prior="$(printf '%s\n' "$seen_list" | grep -F "$digest " | head -1 | cut -d' ' -f2-)"
+    if [ -n "$prior" ] && [ "$prior" != "$base" ]; then
+      warn "$base 与 $prior 像素完全相同 —— 其中一张是假帧"
+      duplicates=$((duplicates + 1))
+    fi
+    seen_list="$seen_list
+$digest $base"
+  done
   if [ "$duplicates" -gt 0 ]; then
     warn "共 $duplicates 组重复帧：核对对应页面的预置变量（ADB_*）与弹窗模态是否真的生效。"
   else
