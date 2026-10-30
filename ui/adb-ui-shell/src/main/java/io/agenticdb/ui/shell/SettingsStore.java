@@ -71,7 +71,7 @@ public final class SettingsStore {
                 node.clear();
                 node.flush();
             } catch (BackingStoreException e) {
-                System.err.println("[adb] 清理截图偏好失败: " + e.getMessage());
+                System.err.println("[adb] failed to clear screenshot prefs: " + e.getMessage());
             }
         }
         return node;

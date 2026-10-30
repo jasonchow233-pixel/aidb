@@ -156,12 +156,12 @@ public final class I18n {
         try (InputStream in = I18n.class.getResourceAsStream(resource)) {
             if (in == null) {
                 throw new IllegalStateException(
-                        "语言包缺失：" + resource + "（classpath 资源没打进包里，检查 pom 的 resources 配置）");
+                        "missing language bundle: " + resource + " (the classpath resource was not packaged; check the pom resources config)");
             }
             // ⚠️ 必须是 Reader 入口。InputStream 入口永远按 ISO-8859-1 解，中文静默变乱码。
             props.load(new InputStreamReader(in, StandardCharsets.UTF_8));
         } catch (IOException e) {
-            throw new UncheckedIOException("读不了语言包：" + resource, e);
+            throw new UncheckedIOException("cannot read the language bundle: " + resource, e);
         }
         Map<String, String> copy = new TreeMap<>();
         for (String name : props.stringPropertyNames()) {

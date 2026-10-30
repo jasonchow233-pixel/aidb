@@ -102,7 +102,7 @@ public final class ThemeManager {
     private URL resource(String path) {
         URL url = ThemeManager.class.getResource(path);
         if (url == null) {
-            throw new IllegalStateException("缺少样式资源: " + path);
+            throw new IllegalStateException("missing stylesheet resource: " + path);
         }
         return url;
     }

@@ -45,7 +45,7 @@ class StartupTraceTest {
         trace.firstScreen();
 
         assertThat(trace.summary())
-                .contains("首屏 " + trace.firstScreenMillis() + " ms")
+                .contains("first paint " + trace.firstScreenMillis() + " ms")
                 .contains("trace.created=")
                 .contains("shell.chrome=")
                 .contains("first-screen=")
@@ -62,7 +62,7 @@ class StartupTraceTest {
         assertThat(file.getFileName().toString()).isEqualTo("startup.log");
         List<String> lines = Files.readAllLines(file);
         assertThat(lines).hasSize(1);
-        assertThat(lines.getFirst()).contains("首屏 ").contains("first-screen=");
+        assertThat(lines.getFirst()).contains("first paint ").contains("first-screen=");
 
         assertThat(trace.writeSummary(directory))
                 .as("同一次启动只写一行（第二轮启动会新建 StartupTrace）")

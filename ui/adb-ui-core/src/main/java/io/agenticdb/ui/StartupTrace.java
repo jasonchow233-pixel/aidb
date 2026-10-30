@@ -82,12 +82,12 @@ public final class StartupTrace {
     public synchronized String summary() {
         StringBuilder text = new StringBuilder();
         if (firstScreenMillis >= 0) {
-            text.append("首屏 ").append(firstScreenMillis).append(" ms");
+            text.append("first paint ").append(firstScreenMillis).append(" ms");
             if (slow()) {
-                text.append(" ⚠️ 超过 ").append(SLOW_FIRST_SCREEN_MILLIS).append(" ms");
+                text.append(" (SLOW, over ").append(SLOW_FIRST_SCREEN_MILLIS).append(" ms");
             }
         } else {
-            text.append("首屏未就绪");
+            text.append("first paint not reached");
         }
         text.append(" | ");
         for (Mark mark : marks) {

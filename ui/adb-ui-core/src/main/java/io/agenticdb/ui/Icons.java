@@ -300,7 +300,7 @@ public final class Icons {
     private static String readResource(String path) {
         try (InputStream in = Icons.class.getResourceAsStream(path)) {
             if (in == null) {
-                throw new IllegalStateException("缺少图标资源: " + path);
+                throw new IllegalStateException("missing icon resource: " + path);
             }
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {

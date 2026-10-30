@@ -32,14 +32,14 @@ final class LucideConverter {
                 "viewBox\\s*=\\s*\"\\s*([0-9.\\-]+)\\s+([0-9.\\-]+)\\s+([0-9.\\-]+)\\s+([0-9.\\-]+)")
                 .matcher(svg);
         if (!view.find()) {
-            throw new IllegalStateException("没有 viewBox");
+            throw new IllegalStateException("no viewBox");
         }
         double width = Double.parseDouble(view.group(3));
         double height = Double.parseDouble(view.group(4));
         if (Math.abs(width - height) > 1e-6
                 || Math.abs(Double.parseDouble(view.group(1))) > 1e-6
                 || Math.abs(Double.parseDouble(view.group(2))) > 1e-6) {
-            throw new IllegalStateException("viewBox 必须是从原点开始的正方形");
+            throw new IllegalStateException("viewBox must be a square starting at the origin");
         }
         double scale = targetViewBox / width;
 
@@ -52,7 +52,7 @@ final class LucideConverter {
                     element.group(2), scale));
         }
         if (segments.isEmpty()) {
-            throw new IllegalStateException("没有可转换的图形元素");
+            throw new IllegalStateException("no convertible graphic elements");
         }
         return String.join(" ", segments).replaceAll("\\s+", " ").trim();
     }
@@ -62,7 +62,7 @@ final class LucideConverter {
             case "path": {
                 String d = attribute(attrs, "d");
                 if (d == null) {
-                    throw new IllegalStateException("path 没有 d");
+                    throw new IllegalStateException("path has no d");
                 }
                 return normalize(d, scale);
             }
@@ -113,11 +113,11 @@ final class LucideConverter {
             case "polygon": {
                 String points = attribute(attrs, "points");
                 if (points == null) {
-                    throw new IllegalStateException(tag + " 没有 points");
+                    throw new IllegalStateException(tag + " has no points");
                 }
                 String[] tokens = points.trim().split("[\\s,]+");
                 if (tokens.length < 4 || tokens.length % 2 != 0) {
-                    throw new IllegalStateException(tag + " points 数量异常");
+                    throw new IllegalStateException(tag + " has an unexpected point count");
                 }
                 StringBuilder sb = new StringBuilder("M ");
                 for (int i = 0; i < tokens.length; i += 2) {
@@ -132,7 +132,7 @@ final class LucideConverter {
                 return sb.toString();
             }
             default:
-                throw new IllegalStateException("不支持的元素: " + tag);
+                throw new IllegalStateException("unsupported element: " + tag);
         }
     }
 
@@ -185,7 +185,7 @@ final class LucideConverter {
                 }
             }
             if (digitsBeforeDot == 0 && digitsAfterDot == 0) {
-                throw new IllegalStateException("不是数字（位置 " + start + "）");
+                throw new IllegalStateException("not a number (position " + start + ")");
             }
             if (pos < text.length() && (text.charAt(pos) == 'e' || text.charAt(pos) == 'E')) {
                 int save = pos;
@@ -212,7 +212,7 @@ final class LucideConverter {
                 pos++;
             }
             if (pos >= text.length() || !Character.isDigit(text.charAt(pos))) {
-                throw new IllegalStateException("缺少弧标志（位置 " + pos + "）");
+                throw new IllegalStateException("missing arc flag (position " + pos + ")");
             }
             pos++;
             return Double.parseDouble(text.substring(start, pos));
@@ -355,7 +355,7 @@ final class LucideConverter {
                         break;
                     }
                     default:
-                        throw new IllegalStateException("不支持的命令: " + command);
+                        throw new IllegalStateException("unsupported command: " + command);
                 }
                 // M 的隐式重复按 L 处理。
                 if (command == 'M') {
@@ -457,7 +457,7 @@ final class LucideConverter {
     private static double number(String attrs, String name) {
         Double v = optionalNumber(attrs, name);
         if (v == null) {
-            throw new IllegalStateException("缺少属性 " + name);
+            throw new IllegalStateException("missing attribute " + name);
         }
         return v;
     }

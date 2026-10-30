@@ -202,11 +202,11 @@ class LucideIconTest {
         assertThatThrownBy(() -> LucideConverter.toPath(
                 svg("<path d=\"M2 2 K5 5\"/>"), 16))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("不是数字");
+                .hasMessageContaining("not a number");
         assertThatThrownBy(() -> LucideConverter.toPath(
                 "<svg viewBox=\"0 0 24 16\"><path d=\"M2 2 L8 8\"/></svg>", 16))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("正方形");
+                .hasMessageContaining("square");
     }
 
     @Test

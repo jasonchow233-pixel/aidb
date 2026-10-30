@@ -145,7 +145,7 @@ public final class ScreenshotSession {
             writePng(image, target);
             System.out.println("[screenshot] " + target.toAbsolutePath());
         } catch (Exception e) {
-            System.err.println("[screenshot] 失败：" + e);
+            System.err.println("[screenshot] failed: " + e);
             e.printStackTrace();
         } finally {
             Platform.exit();
@@ -178,7 +178,7 @@ public final class ScreenshotSession {
                 continue;
             }
             if (!(window instanceof Stage)) {
-                System.out.println("[screenshot] 拍到浮窗（右键菜单）：窗口类="
+                System.out.println("[screenshot] popup captured (context menu): window class="
                         + window.getClass().getSimpleName());
                 return window.getScene();
             }
@@ -193,7 +193,7 @@ public final class ScreenshotSession {
                 continue;
             }
             if (candidate.getModality() != Modality.NONE) {
-                System.out.println("[screenshot] 拍到模态窗口：" + candidate.getTitle());
+                System.out.println("[screenshot] modal captured: " + candidate.getTitle());
                 return candidate.getScene();
             }
             if (candidate.getOwner() == stage) {
@@ -202,11 +202,11 @@ public final class ScreenshotSession {
             }
         }
         if (owned != null) {
-            System.out.println("[screenshot] 没有模态窗口，拍到主窗口的从属弹窗：" + ownedTitle);
+            System.out.println("[screenshot] no modal; capturing an owned dialog of the main window: " + ownedTitle);
             return owned;
         }
-        System.out.println("[screenshot] 没有弹窗，拍主窗口"
-                + "（窗口总数=" + Window.getWindows().size() + "）");
+        System.out.println("[screenshot] no popup; capturing the main window"
+                + " (window count=" + Window.getWindows().size() + ")");
         return stage.getScene();
     }
 
@@ -236,7 +236,7 @@ public final class ScreenshotSession {
             }
             Node node = scene.getRoot().lookup("#" + trimmed);
             if (node == null) {
-                System.err.println("[screenshot] 找不到节点 #" + trimmed + "，跳过点击");
+                System.err.println("[screenshot] node #" + trimmed + " not found; skipping the click");
                 continue;
             }
             if (node instanceof Button button) {
