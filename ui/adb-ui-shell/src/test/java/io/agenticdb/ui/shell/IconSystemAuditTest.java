@@ -55,9 +55,9 @@ class IconSystemAuditTest {
     private static final Pattern BUTTON = Pattern.compile(
             "new\\s+(?:Button|MenuButton|MenuItem|ToggleButton)\\s*\\(\\s*\"([^\"]*)\"");
 
-    /** 直接写数字的图标尺寸：{@code Icons.of(icon, 16)}。 */
+    /** 直接写数字的图标尺寸：{@code Icons.of(icon, 16)} / {@code Icons.colored(icon, 16)}。 */
     private static final Pattern ICON_WITH_NUMERIC_SIZE = Pattern.compile(
-            "Icons\\.of\\([^)]*?,\\s*[0-9]+(?:\\.[0-9]+)?\\s*\\)");
+            "Icons\\.(?:of|colored)\\([^)]*?,\\s*[0-9]+(?:\\.[0-9]+)?\\s*\\)");
 
     @Test
     void noButtonStartsWithAnIconGlyph() throws IOException {
@@ -129,6 +129,8 @@ class IconSystemAuditTest {
     @Test
     void iconSizesComeFromTheNamedScale() throws IOException {
         // ⭐ UX-1：14 标签 / 16 工具条 / 20 主工具条 —— 尺寸只能从 Icons 常量来。
+        //    R35 N4-b：彩色通道上线后这条必须同时管 Icons.colored()，
+        //    否则「把尺寸写死的调用点迁到彩色 API」就等于把棘轮松开。
         assertThat(Icons.SIZE_LABEL).as("标签档").isEqualTo(14);
         assertThat(Icons.SIZE_TOOLBAR).as("工具条档").isEqualTo(16);
         assertThat(Icons.SIZE_PRIMARY).as("主工具条档").isEqualTo(20);
@@ -146,6 +148,43 @@ class IconSystemAuditTest {
                 .as("图标尺寸必须用 Icons.SIZE_* 常量，不许写数字：\n  %s",
                         String.join("\n  ", violations))
                 .isEmpty();
+    }
+
+    /**
+     * ⭐ R35 N4-b：**导航词汇表必须整本上色**。
+     *
+     * <p>彩色通道是一批一批铺的，最怕的状态不是「还没铺」，是<b>铺了一半自己不知道</b>：
+     * 页签栏里数据页是彩的、查询页是单的，用户会读成两类东西；同一条树里表是彩的、
+     * 列是单的，「列」看起来就不像对象的一部分。
+     *
+     * <p>所以这里钉两张清单：① {@link TabKind} 的全部页签图标（编译期就能穷举）；
+     * ② 导航树 / 对象首页 / 结构页用到的对象类型图标（按 {@code Icons.Icon} 显式列出 ——
+     * 词汇表在 {@code SideBar} 与 {@code ObjectHomePage} 的 switch 里，那两处一改，
+     * 这里必须跟着改，否则等于漏了一个没上色的节点类型）。
+     *
+     * <p>⚠️ 这条<span>不</span>管动作图标（刷新 / 保存按钮 / 关闭）——
+     * 按约定它们永远是单色线性（见 {@code docs/UI-GUIDE.md} 图标节），
+     * 把它们染色会把「可点的」和「是东西」混成一类。
+     */
+    @Test
+    void theNavigationVocabularyIsFullyColored() {
+        for (TabKind kind : TabKind.values()) {
+            assertThat(Icons.hasColoredVariant(kind.icon()))
+                    .as("页签类型 %s 的图标 %s 没有彩色资产 —— 标签栏会一半彩一半单色",
+                            kind, kind.icon())
+                    .isTrue();
+        }
+
+        for (Icons.Icon icon : List.of(Icons.Icon.TABLE, Icons.Icon.VIEW_OBJECT,
+                Icons.Icon.FUNCTION, Icons.Icon.TRIGGER, Icons.Icon.HISTORY,
+                Icons.Icon.INDEX, Icons.Icon.COLUMNS, Icons.Icon.QUERY,
+                Icons.Icon.STRUCTURE, Icons.Icon.DATABASE, Icons.Icon.CONNECT,
+                Icons.Icon.FOLDER, Icons.Icon.SAVE, Icons.Icon.SETTINGS,
+                Icons.Icon.DIAGNOSTICS)) {
+            assertThat(Icons.hasColoredVariant(icon))
+                    .as("导航词汇表里的 %s 没有彩色资产", icon)
+                    .isTrue();
+        }
     }
 
     @Test

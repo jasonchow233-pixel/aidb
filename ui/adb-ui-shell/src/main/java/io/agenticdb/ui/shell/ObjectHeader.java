@@ -46,12 +46,10 @@ public final class ObjectHeader extends HBox {
         setAlignment(Pos.CENTER_LEFT);
         setSpacing(8);
 
-        // R35 N3：对象类型图标有彩色资产就分层上色，没有才回退单色
-        // （单色那条线吃 .adb-object-header__icon 的类型色）。
+        // R35 N3/N4-b：对象类型图标走彩色档 —— 没有彩色资产时 colored() 自己退回单色
+        // （单色那条线吃 .adb-object-header__icon 的描边色）。
         // 类名照旧挂在返回的节点上（门禁与测试按 .adb-object-header__icon 找它）。
-        icon = Icons.hasColoredVariant(iconType)
-                ? Icons.colored(iconType, Icons.SIZE_TOOLBAR)
-                : Icons.of(iconType, Icons.SIZE_TOOLBAR);
+        icon = Icons.colored(iconType, Icons.SIZE_TOOLBAR);
         icon.getStyleClass().add("adb-object-header__icon");
 
         title.setText(name);

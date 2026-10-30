@@ -51,7 +51,6 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
-import javafx.scene.shape.SVGPath;
 
 import java.util.List;
 import java.util.Optional;
@@ -639,14 +638,10 @@ public final class StructurePage extends VBox implements AutoCloseable {
                     setGraphic(null);
                     return;
                 }
-                Node graphic;
-                if (Icons.hasColoredVariant(Icons.Icon.INDEX)) {
-                    graphic = Icons.colored(Icons.Icon.INDEX, Icons.SIZE_LABEL);
-                } else {
-                    SVGPath icon = Icons.of(Icons.Icon.INDEX, Icons.SIZE_LABEL);
-                    icon.getStyleClass().add("adb-structure__index-icon");
-                    graphic = icon;
-                }
+                // R35 N4-b：彩色 / 单色两档都挂索引类型色类 —— 彩色时容器上的类
+                // 经 `.adb-structure__index-icon .adb-icon-edge` 只染轮廓层。
+                Node graphic = Icons.colored(Icons.Icon.INDEX, Icons.SIZE_LABEL);
+                graphic.getStyleClass().add("adb-structure__index-icon");
                 setGraphic(graphic);
             }
         });

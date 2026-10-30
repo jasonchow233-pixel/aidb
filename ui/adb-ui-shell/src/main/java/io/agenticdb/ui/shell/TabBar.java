@@ -15,7 +15,6 @@ import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.HBox;
-import javafx.scene.shape.SVGPath;
 import javafx.scene.layout.Priority;
 
 import java.util.ArrayList;
@@ -366,7 +365,9 @@ public final class TabBar extends HBox {
 
     private Node buildTab(TabItem tab) {
         // ⭐ 矢量图标（16×16）；标签栏是用户一直在看的地方，不能靠 Unicode 符号的字形运气。
-        SVGPath icon = Icons.of(tab.kind().icon(), Icons.SIZE_LABEL);
+        //    R35 N4-b：页签图标走彩色档 —— {@code colored()} 自己会在没有彩色资产时
+        //    退回单色，所以调用方不需要判断（判断一次就多一条会写错的分叉）。
+        Node icon = Icons.colored(tab.kind().icon(), Icons.SIZE_LABEL);
         icon.getStyleClass().add("adb-tab__icon");
 
         Label title = new Label(tab.title());

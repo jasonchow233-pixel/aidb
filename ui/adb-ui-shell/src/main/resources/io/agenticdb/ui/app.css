@@ -910,6 +910,53 @@
     -fx-stroke: transparent;
 }
 
+/* ── 彩色图标的类型色（R35 N4-b）───────────────────────────────────────
+ * ⭐ 分层通道换掉的是「单色描边」，不该把**类型色**这条线索一起丢掉。
+ *    UI-GUIDE 的口径是「形状 + 颜色」一对线索：表 / 视图 / 触发器一旦统一成
+ *    同一种蓝，就只剩形状差别 —— 14px 下形状差别本来就薄，快速扫视和
+ *    色弱用户都吃亏。
+ * 做法：只把**轮廓层（EDGE）**改吃类型色，三层 tone 保持中性浅蓝。
+ *    这样「同一个图形的彩色版 / 单色版」是同一族颜色，切档不会跳色；
+ *    类型色依旧是唯一能识别「这是视图不是表」的语义位。
+ * 特异性 (0,2,0) 压过角色自身的 (0,1,0)；类名挂在容器（Group）上，
+ *    真正吃到颜色的是子层 .adb-icon-edge。
+ * 门禁：IconKindHueTest 用**计算色**验证（读 SVGPath.getStroke()），
+ *    不是读 CSS 文本 —— 规则没生效时颜色会静默退回 -adb-icon-edge。
+ * ─────────────────────────────────────────────────────────────────── */
+.adb-tree__icon--table .adb-icon-edge {
+    -fx-stroke: -adb-kind-table;
+}
+
+.adb-tree__icon--view .adb-icon-edge {
+    -fx-stroke: -adb-kind-view;
+}
+
+.adb-tree__icon--function .adb-icon-edge {
+    -fx-stroke: -adb-kind-function;
+}
+
+.adb-tree__icon--procedure .adb-icon-edge {
+    -fx-stroke: -adb-kind-procedure;
+}
+
+.adb-tree__icon--trigger .adb-icon-edge {
+    -fx-stroke: -adb-kind-trigger;
+}
+
+.adb-tree__icon--event .adb-icon-edge {
+    -fx-stroke: -adb-kind-event;
+}
+
+.adb-tree__icon--catalog .adb-icon-edge,
+.adb-tree__icon--column .adb-icon-edge,
+.adb-tree__icon--connection .adb-icon-edge {
+    -fx-stroke: -adb-text-secondary;
+}
+
+.adb-structure__index-icon .adb-icon-edge {
+    -fx-stroke: -adb-kind-index;
+}
+
 .adb-button:hover .adb-icon,
 .adb-icon-button:hover .adb-icon,
 .adb-appbar__action:hover .adb-icon {

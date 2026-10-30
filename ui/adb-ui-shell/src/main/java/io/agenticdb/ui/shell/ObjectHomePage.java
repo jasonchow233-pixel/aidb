@@ -39,7 +39,6 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import javafx.scene.shape.SVGPath;
 
 import java.text.NumberFormat;
 import java.util.ArrayList;
@@ -1371,18 +1370,17 @@ final class ObjectHomePage extends VBox {
     /**
      * 对象类型图标（14px 标签档）。
      *
-     * <p>R35 N3：有彩色资产就分层上色，没有就回退单色并照旧吃类型色 ——
-     * 与 {@code SideBar} 的导航树同一口径，否则同一个图标在树里是彩色、
-     * 在对象首页是单色染色，读者会以为是两种对象。
+     * <p>R35 N3：有彩色资产就分层上色，没有就回退单色。
+     * N4-b：两档都挂类型色类 —— 单色时描边自己吃 {@code -adb-kind-*}，
+     * 彩色时容器上的类经 {@code .adb-tree__icon--table .adb-icon-edge}
+     * 只染轮廓层（见 app.css 的「彩色图标的类型色」块）。
+     * 与 {@code SideBar} 的导航树同一口径，否则同一个图标在树里是一种颜色、
+     * 在对象首页是另一种，读者会以为是两种对象。
      */
     private static Node typeIcon(SchemaService.ObjectKind kind) {
-        Icons.Icon icon = iconOf(kind);
-        if (Icons.hasColoredVariant(icon)) {
-            return Icons.colored(icon, Icons.SIZE_LABEL);
-        }
-        SVGPath path = Icons.of(icon, Icons.SIZE_LABEL);
-        path.getStyleClass().add(iconStyleClass(kind));
-        return path;
+        Node node = Icons.colored(iconOf(kind), Icons.SIZE_LABEL);
+        node.getStyleClass().add(iconStyleClass(kind));
+        return node;
     }
 
     /**

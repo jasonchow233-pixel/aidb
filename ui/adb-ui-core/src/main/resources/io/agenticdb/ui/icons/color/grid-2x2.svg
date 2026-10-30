@@ -1,0 +1,9 @@
+<!-- AIDB 自有彩色资产（R35 N4-b）：列 / 四格矩阵（导航树的列叶子、列设置）。
+     左上格用重一档的 tone-c —— 它是「被选中的那一列」的隐喻，也顺手让四格不至于糊成一块。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <rect data-paint="tone-b" x="3" y="3" width="18" height="18" rx="2"/>
+  <rect data-paint="tone-c" x="3" y="3" width="9" height="9" rx="2"/>
+  <path data-paint="edge" d="M12 3v18"/>
+  <path data-paint="edge" d="M3 12h18"/>
+  <rect data-paint="edge" x="3" y="3" width="18" height="18" rx="2"/>
+</svg>

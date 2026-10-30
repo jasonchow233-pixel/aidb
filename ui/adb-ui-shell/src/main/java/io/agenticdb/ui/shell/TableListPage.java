@@ -468,8 +468,8 @@ final class TableListPage extends VBox {
                     setGraphic(null);
                     return;
                 }
-                SVGPath icon = Icons.of(Icons.Icon.TABLE, Icons.SIZE_LABEL);
-                icon.getStyleClass().addAll("adb-icon", "adb-tree__icon--table");
+                Node icon = Icons.colored(Icons.Icon.TABLE, Icons.SIZE_LABEL);
+                icon.getStyleClass().add("adb-tree__icon--table");
                 Label label = new Label(name);
                 HBox box = new HBox(6, icon, label);
                 box.setAlignment(Pos.CENTER_LEFT);
@@ -634,8 +634,8 @@ final class TableListPage extends VBox {
     }
 
     private VBox buildCard(TableMeta meta) {
-        SVGPath icon = Icons.of(Icons.Icon.TABLE, Icons.SIZE_LABEL);
-        icon.getStyleClass().addAll("adb-icon", "adb-tree__icon--table");
+        Node icon = Icons.colored(Icons.Icon.TABLE, Icons.SIZE_LABEL);
+        icon.getStyleClass().add("adb-tree__icon--table");
         Label name = new Label(meta.name());
         name.getStyleClass().add("adb-table-card__name");
         HBox title = new HBox(6, icon, name);

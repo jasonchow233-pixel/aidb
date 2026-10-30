@@ -1817,21 +1817,14 @@ public final class SideBar extends VBox {
             }
 
             // ⭐ 矢量图标（不是 Unicode 符号）。
-            //    R35 N3：有彩色资产就分层上色，没有就回退单色 —— 于是
-            //    「对象类型色」（.adb-tree__icon--table 之类）只在**回退的单色**上继续生效：
-            //    彩色分层自己已经用 icon-edge / tone-* 表达了身份，再叠一层类型色就是两套语言。
-            //    ⚠️ 这是一处可见的语义变化（此前表/视图/函数/触发器的图标描边吃类型色），
-            //    彩色档铺满之后要不要把类型色找回图标上，属于 R35 目视批的待裁定项。
-            boolean colored = Icons.hasColoredVariant(item.icon());
-            Node icon = colored
-                    ? Icons.colored(item.icon(), Icons.SIZE_LABEL)
-                    : Icons.of(item.icon(), Icons.SIZE_LABEL);
-            if (colored) {
-                icon.getStyleClass().add("adb-tree__icon");
-            } else {
-                icon.getStyleClass().addAll(
-                        "adb-tree__icon", iconStyleClass(item.kind()));
-            }
+            //    R35 N3：有彩色资产就分层上色，没有就回退单色（回退在 colored() 内部，
+            //    调用方不分叉）。
+            //    R35 N4-b 定档：两档**都**挂类型色类 —— 差别只在吃法的层级：
+            //    单色时描边自己吃 -adb-kind-*；彩色时容器上的类经
+            //    `.adb-tree__icon--table .adb-icon-edge` 把轮廓层染成类型色，
+            //    三层 tone 保持中性浅蓝（形状 + 颜色是一对线索，彩色档没资格删掉一条）。
+            Node icon = Icons.colored(item.icon(), Icons.SIZE_LABEL);
+            icon.getStyleClass().addAll("adb-tree__icon", iconStyleClass(item.kind()));
 
             Label name = new Label(item.name());
             name.getStyleClass().add("adb-tree__name");

@@ -1,0 +1,9 @@
+<!-- AIDB 自有彩色资产（R35 N4-b）：SQL 编辑器 / 查询（双尖括号）。
+     只标 data-paint 角色，不写颜色 —— 颜色来自 app.css 的 -adb-icon-* 令牌。
+     ⚠️ 本目录禁止出现任何第三方或竞品的图标资产（他人版权素材）。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <polygon data-paint="tone-c" points="8,4.6 1.4,12 8,19.4 8,15.4 4.6,12 8,8.6"/>
+  <polygon data-paint="tone-a" points="16,4.6 22.6,12 16,19.4 16,15.4 19.4,12 16,8.6"/>
+  <polygon data-paint="edge" points="8,4.6 1.4,12 8,19.4 8,15.4 4.6,12 8,8.6"/>
+  <polygon data-paint="edge" points="16,4.6 22.6,12 16,19.4 16,15.4 19.4,12 16,8.6"/>
+</svg>
