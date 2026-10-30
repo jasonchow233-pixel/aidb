@@ -1414,6 +1414,29 @@ public final class SideBar extends VBox {
         status.accept(starred.contains(name) ? I18n.t("sidebar.starred", name) : I18n.t("sidebar.unstarred", name));
     }
 
+    /**
+     * 截图用（R34 收官）：往收藏里摆一颗，收藏夹管理器才有内容可拍。
+     *
+     * <p>验收脚本每次都换新 prefs 节点（{@code ADB_PREFS_NODE} + RESET），
+     * starred 于是恒为空 —— 拍出来是一张空表，证不了分组与「打开」这一列。
+     */
+    void poseStarForShots(String name) {
+        if (!starred.contains(name)) {
+            toggleStar(name);
+        }
+    }
+
+    /**
+     * 截图用（R34 收官）：按路由直接开一个工具页签。
+     *
+     * <p>工具页原本只在「树里选中 → 动作」这条路上（{@code onSelected} 读
+     * selectedNode），而树节点没有公开的选中入口，摆态只能从路由这一层进去；
+     * 后面开的仍是同一个 {@code openTool}，页签内容一模一样。
+     */
+    void poseToolForShots(String route, String title) {
+        openTool(route, title);
+    }
+
     /** 供门禁检查右键菜单是否来自注册表（4.5-8）。 */
     ContextMenu contextMenuForTest() {
         return selectedNode == null ? null : menuFor(selectedNode);

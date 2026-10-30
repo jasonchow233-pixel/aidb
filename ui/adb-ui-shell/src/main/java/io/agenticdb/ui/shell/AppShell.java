@@ -429,6 +429,72 @@ public final class AppShell extends StackPane {
                         SideBar.InspectTarget.Topic.TABLE)));
     }
 
+    /**
+     * 截图用（R34 收官）：等连接就绪后按路由开一页诊断。
+     *
+     * <p>诊断页原本只在「树里选中表 → 诊断」这条路上（{@code SideBar.onSelected}
+     * 读的是 selectedNode），而树节点没有公开的选中入口 —— 与 {@code ADB_DETAILS}
+     * 同一个绕法：直接喂路由，走的仍是 {@code openTool} 那条真路径。
+     */
+    private void poseDiagnosticsWhenReady(int attempt) {
+        if (session == null) {
+            if (attempt >= POP_READY_MAX_POLLS) {
+                return;
+            }
+            pollAgain(attempt, () -> poseDiagnosticsWhenReady(attempt + 1));
+            return;
+        }
+        Platform.runLater(() -> sideBar.poseToolForShots(SideBar.TOOL_DIAGNOSTICS + "users",
+                I18n.t("sidebar.tool.diagnostics", "users")));
+    }
+
+    /**
+     * 截图用（R34 收官）：表清单 → 选中一行 → 「重命名」弹窗。
+     *
+     * <p>两轮轮询各有各的理由：连接是异步建的（第一轮），行数据也是异步灌的
+     * （第二轮 —— 空列表时 {@code renameSelected()} 只会报「先选中一张表」）。
+     * {@code openTableList()} 每调一次就新造一个页，所以只在还没有页时开。
+     */
+    private void poseRenameWhenReady(String table, int attempt) {
+        if (session == null) {
+            if (attempt >= POP_READY_MAX_POLLS) {
+                return;
+            }
+            pollAgain(attempt, () -> poseRenameWhenReady(table, attempt + 1));
+            return;
+        }
+        Platform.runLater(() -> {
+            if (activeTableListPage == null) {
+                openTableList();
+            }
+            TableListPage page = activeTableListPage;
+            javafx.collections.ObservableList<io.agenticdb.introspect.TableMeta> items =
+                    page == null ? null : page.table().getItems();
+            if (items == null || items.isEmpty()) {
+                if (attempt < POP_READY_MAX_POLLS) {
+                    pollAgain(attempt, () -> poseRenameWhenReady(table, attempt + 1));
+                }
+                return;
+            }
+            int index = 0;
+            for (int i = 0; i < items.size(); i++) {
+                if (items.get(i).name().equals(table)) {
+                    index = i;
+                    break;
+                }
+            }
+            page.table().getSelectionModel().select(index);
+            page.renameSelected();
+        });
+    }
+
+    /** 截图用（R34 收官）：收藏夹与已存查询两个管理器在新 prefs 节点里是空的。 */
+    private void poseSeedSavedQueriesForShots() {
+        savedQueries.save("users-top-100",
+                "SELECT id, name, email FROM users ORDER BY id LIMIT 100;");
+        savedQueries.saveSnippet("count-rows", "SELECT COUNT(*) FROM users;");
+    }
+
     /** 截图用：等结构页真的建出来再跳到 DDL 子页签（页签是异步开的）。 */
     private void showDdlWhenReady(int attempt) {
         Platform.runLater(() -> {
@@ -498,6 +564,22 @@ public final class AppShell extends StackPane {
             }
             if (attempt < POP_READY_MAX_POLLS) {
                 pollAgain(attempt, () -> poseGridFindWhenReady(attempt + 1));
+            }
+        });
+    }
+
+    /**
+     * 截图用（R34 收官）：等列头建出来再点开那颗漏斗，摆出「按值筛选」浮窗。
+     * 与 {@link #poseGridFindWhenReady} 同一契约：页没就位就继续轮询。
+     */
+    private void poseGridFilterWhenReady(int attempt) {
+        Platform.runLater(() -> {
+            DataGridPage grid = workspace.activeGrid();
+            if (grid != null && grid.poseFilterPanel("name")) {
+                return;
+            }
+            if (attempt < POP_READY_MAX_POLLS) {
+                pollAgain(attempt, () -> poseGridFilterWhenReady(attempt + 1));
             }
         });
     }
@@ -1681,13 +1763,47 @@ public final class AppShell extends StackPane {
             showSectionWhenReady(sectionPose, 0);
         }
         // ⭐ 截图 / 验收（P2-2）：启动即弹「错误详情」。
-        //    JavaFX 的 Dialog 是独立 Stage，ScreenshotSession 会优先拍模态窗口；
-        //    必须 runLater —— 直接 showAndWait 会开嵌套事件循环，把截图调度挡住。
+        //    JavaFX 的 Dialog 是独立 Stage，ScreenshotSession 会优先拍模态窗口。
+        //    ⚠️ 走 showForShots 而不是 show：show 里的 showAndWait 开嵌套事件循环，
+        //    实测 6 次冷启有 2 次弹窗根本没进 Window.getWindows()（截图拍到主窗口，
+        //    被 U7 去重门禁判成假帧）。摆态只需要「拍的那一刻它可见」，不必阻塞。
         if (flag("adb.errorDemo", "ADB_ERROR_DEMO")) {
-            Platform.runLater(() -> ErrorDetailsDialog.show(stage,
+            Platform.runLater(() -> ErrorDetailsDialog.showForShots(stage,
                     ErrorDetails.of(I18n.t("shell.queryFailed"),
                             new java.sql.SQLException("no such table: user_profiles"),
                             "SELECT id, name, email\nFROM user_profiles\nWHERE active = 1;")));
+        }
+        // ⭐ 截图 / 验收（R34 收官）：第二十至二十五批共 275 条文案抽进资源包后
+        //    一帧都没拍过 —— 只有单测在守。下面六个开关把缺的六个面各摆一帧：
+        //    设置页 / 诊断页 / 收藏夹管理器 / 已存查询管理器 / 重命名弹窗 / 列筛选浮窗。
+        //    列筛选那颗漏斗的 id 是动态拼的（data-filter-<列>），脚本点不到，
+        //    所以它也要一个开关，由数据页自己 fire 那颗按钮。
+        if (flag("adb.settings", "ADB_SETTINGS")) {
+            Platform.runLater(() -> actions.run("settings"));
+        }
+        if (flag("adb.diagnostics", "ADB_DIAGNOSTICS")) {
+            poseDiagnosticsWhenReady(0);
+        }
+        if (flag("adb.favorites", "ADB_FAVORITES")) {
+            Platform.runLater(() -> {
+                sideBar.poseStarForShots("users");
+                openFavorites();
+            });
+        }
+        if (flag("adb.saved", "ADB_SAVED")) {
+            Platform.runLater(() -> {
+                poseSeedSavedQueriesForShots();
+                openSavedQueries();
+            });
+        }
+        if (flag("adb.filter", "ADB_FILTER")) {
+            poseGridFilterWhenReady(0);
+        }
+        String renamePose = text("adb.rename", "ADB_RENAME").trim();
+        if (!renamePose.isEmpty()) {
+            String table = renamePose.equals("1") || renamePose.equalsIgnoreCase("true")
+                    ? "users" : renamePose;
+            poseRenameWhenReady(table, 0);
         }
         String initialQuery = System.getProperty("adb.query",
                 System.getenv().getOrDefault("ADB_QUERY", "")).trim();        if (!initialQuery.isEmpty()) {

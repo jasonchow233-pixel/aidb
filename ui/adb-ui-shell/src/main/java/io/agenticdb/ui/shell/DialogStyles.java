@@ -1,7 +1,9 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import javafx.scene.Node;
 import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.DialogPane;
 import javafx.stage.Window;
@@ -72,6 +74,58 @@ final class DialogStyles {
         }
         clampToScreen(pane, owner);
         orderButtonsNavicatStyle(pane);
+        localizeStandardButtons(dialog);
+    }
+
+    /**
+     * ⭐ R34 收官：把 JavaFX **自带**的标准按钮文字收进资源包。
+     *
+     * <p>「确定 / 取消」不是我们写的 Label：{@code Alert} / {@code TextInputDialog}
+     * 的按钮文字来自 {@code com.sun.javafx.scene.control.resources}，按 <b>JVM 默认
+     * Locale</b> 解析 —— 本机 zh_CN 就出「确定」，换台日文机器就出第三种语言。
+     * 界面默认英文、按钮却是中文，这一半不是「没抽干净」而是<b>抽不到</b>：
+     * 文字从来不在我们的源码里，25 批 i18n 全绿也拦不住它（p2-error / p6-rename-table
+     * 两张实拍帧抓到）。收口点只有这里：所有弹窗都过 {@link #apply}。
+     *
+     * <p>⚠️ 只认 {@link ButtonType#OK} / {@link ButtonType#CANCEL} /
+     * {@link ButtonType#CLOSE} 这三颗单例。业务弹窗里的自定义 ButtonType
+     * （{@code new ButtonType(I18n.t("fk.add"), OK_DONE)} 那一族）文字本来就在我们手里，
+     * 按 ButtonData 一律覆写会把「添加」改成「OK」。
+     */
+    private static <T> void localizeStandardButtons(Dialog<T> dialog) {
+        DialogPane pane = dialog.getDialogPane();
+        pane.getButtonTypes().addListener(
+                (javafx.collections.ListChangeListener<ButtonType>) change ->
+                        localizeStandardButtons(pane));
+        localizeStandardButtons(pane);
+    }
+
+    private static void localizeStandardButtons(DialogPane pane) {
+        for (ButtonType type : pane.getButtonTypes()) {
+            String key = standardButtonKey(type);
+            if (key == null) {
+                continue;
+            }
+            // DialogPane 没有公开的 getButton(...)；lookupButton 返回的就是那颗 Button
+            // （JavaFX 内部已按需建好），改它的 text 即生效。
+            if (pane.lookupButton(type) instanceof javafx.scene.control.Button button) {
+                button.setText(I18n.t(key));
+            }
+        }
+    }
+
+    /** 标准按钮单例 → 资源键；不是单例（业务自定义文字）返回 null，一律不动。 */
+    private static String standardButtonKey(ButtonType type) {
+        if (type == ButtonType.OK) {
+            return "common.ok";
+        }
+        if (type == ButtonType.CANCEL) {
+            return "common.cancel";
+        }
+        if (type == ButtonType.CLOSE) {
+            return "common.close";
+        }
+        return null;
     }
 
     /**

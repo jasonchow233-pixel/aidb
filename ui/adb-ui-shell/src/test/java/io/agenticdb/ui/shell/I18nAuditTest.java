@@ -156,6 +156,44 @@ class I18nAuditTest {
                 .containsExactlyElementsOf(new TreeSet<>(zh));
     }
 
+    /**
+     * ⭐ R34 收官：键集相等<b>看不见重复行</b>。
+     *
+     * <p>{@code .properties} 是后写覆盖先写，而两边都比的是 {@code Set} ——
+     * 同一个键写两行、值不一样，这份审计照样绿。实测踩过：第十九批给对象详情面板
+     * 写 {@code details.title=Object Details}，把第十三批的
+     * {@code details.title=Cell Details} 顶掉了 —— 单元格抽屉的标题在两种语言里
+     * 都变成「Object Details」，25 批全程门禁无感，是补帧目视才发现的。
+     */
+    @Test
+    void noDuplicateKeyLinesInEitherBundle() throws IOException {
+        for (String language : List.of("en", "zh")) {
+            Path bundle = repositoryRoot().resolve(
+                    "ui/adb-ui-core/src/main/resources/io/agenticdb/ui/messages_"
+                            + language + ".properties");
+            List<String> keys = new ArrayList<>();
+            for (String line : Files.readAllLines(bundle, StandardCharsets.UTF_8)) {
+                String trimmed = line.trim();
+                if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                    continue;
+                }
+                int equals = trimmed.indexOf('=');
+                if (equals > 0) {
+                    keys.add(trimmed.substring(0, equals).trim());
+                }
+            }
+            assertThat(keys)
+                    .as("messages_%s.properties 一个键都没扫到 —— 解析失效，假绿", language)
+                    .isNotEmpty();
+            Set<String> once = new LinkedHashSet<>();
+            List<String> dupes = keys.stream().filter(key -> !once.add(key)).distinct().toList();
+            assertThat(dupes)
+                    .as("messages_%s.properties 里这些键写了不止一行：后写的覆盖先写的，"
+                            + "而键集相等那条门禁（Set 比较）抓不到", language)
+                    .isEmpty();
+        }
+    }
+
     @Test
     void everyKeyReferencedInSourceExists() throws IOException {
         Set<String> referenced = new LinkedHashSet<>();

@@ -95,8 +95,11 @@ final class ColumnFilterPanel extends VBox {
         this.onClear = Objects.requireNonNull(onClear, "onClear");
 
         getStyleClass().add("adb-filter-panel");
-        setPrefWidth(320);
-        setMaxWidth(340);
+        // ⭐ R34 收官：320/340 是按中文量的（「全选 / 取消 / 清空 / 应用」四个词很短）。
+        // 默认英文后底部四颗加spacer 要 ~410px，p2-filter 实拍抓到全被截成
+        // 「Select …  Deselect…  Cl…  Ap…」，浮窗标题也被裁成「…ter · name」。
+        setPrefWidth(420);
+        setMaxWidth(460);
         seedSelection();
         buildUi();
         configurePopover();

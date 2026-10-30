@@ -75,6 +75,27 @@ final class ErrorDetailsDialog {
         alert.showAndWait();
     }
 
+    /**
+     * ⭐ 只给验收截图用（ADB_ERROR_DEMO）：摆出来但不进嵌套事件循环。
+     *
+     * <p>{@link #show} 走的 {@code showAndWait} 会开一个嵌套事件循环，而这条路径实测
+     * 间歇性失灵（6 次冷启 2 次「window count=1」—— 弹窗压根没进
+     * {@code Window.getWindows()}，于是 p2-error 拍成主窗口，与 p0-shell 同 md5，
+     * 被 U7 去重门禁抓为假帧）。摆态只要「拍的那一瞬间它是可见的」，
+     * 不需要阻塞业务线程，所以这里用 {@code show()}。
+     */
+    static void showForShots(Window owner, ErrorDetails details) {
+        if (owner == null) {
+            return;
+        }
+        Alert alert = create(details);
+        alert.initOwner(owner);
+        alert.initModality(Modality.APPLICATION_MODAL);
+        DialogStyles.apply(alert, owner);
+        alert.show();
+        System.out.println("[screenshot] error dialog shown (non-blocking pose)");
+    }
+
     private static int rowCount(ErrorDetails details) {
         String body = details.body();
         int lines = body.isEmpty() ? 1 : body.split("\n", -1).length;

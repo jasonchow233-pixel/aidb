@@ -254,7 +254,12 @@ public final class ObjectDetailsPanel extends VBox {
     /** 没有选中对象：空态，操作按钮全禁用。 */
     public void showEmpty() {
         this.subject = null;
-        title.setText(I18n.t("details.title"));
+        // ⭐ R34 收官：这里原本写的是 details.title —— 与第十三批单元格抽屉的
+        // details.title=Cell Details 撞键（.properties 后写覆盖先写，两份资源包里
+        // 各有一行 details.title）。键集相等那条门禁是 Set 比较，看不见重复行，
+        // 于是抽屉标题被悄悄改成「Object Details」。现在各用各的键，
+        // 重复键行由 I18nAuditTest.noDuplicateKeyLinesInEitherBundle 守着。
+        title.setText(I18n.t("details.object.title"));
         subtitle.setText("");
         facts.getChildren().clear();
         sections.getChildren().clear();

@@ -4537,6 +4537,26 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     /**
+     * 截图 / 验收（R34 收官）：把某一列的「按值筛选」浮窗摆出来。
+     *
+     * <p>锚点那颗漏斗的 id 是动态拼的（{@code data-filter-<列名>}），而
+     * {@code ScreenshotScriptAuditTest} 只认源码里字面存在的 {@code setId("...")} ——
+     * 脚本点不到它。所以这里程序化点：查到那颗按钮就 {@code fire()}，
+     * 走的仍是它自己那条 {@code showFilterPanel} 路径，浮窗内容与真点一致。
+     * 返回 false = 列头还没建出来（表结构是异步读的），调用方继续轮询。
+     */
+    boolean poseFilterPanel(String column) {
+        if (tableSchema == null) {
+            return false;
+        }
+        if (lookup("#data-filter-" + column) instanceof Button button) {
+            button.fire();
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * 截图 / 验收（R32 G4）：切到表单视图并选中第一条记录。
      * 返回 false = 行还没灌进来，调用方继续轮询（与 {@link #poseFindBar} 同一契约）。
      * 「翻到下一条」不在这摆：截图脚本真点 {@code #data-record-next}，

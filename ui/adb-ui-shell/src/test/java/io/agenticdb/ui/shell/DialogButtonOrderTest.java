@@ -136,6 +136,51 @@ class DialogButtonOrderTest {
                 .isGreaterThanOrEqualTo(okRightInBarAndBarWidth[1] - 24);
     }
 
+    /**
+     * ⭐ R34 收官：{@code Alert} / {@code TextInputDialog} 那几颗<b>JavaFX 自带</b>的
+     * 标准按钮，文字必须来自我们的资源包，而不是 JVM 默认 Locale。
+     *
+     * <p>「确定 / 取消」从来不在源码里 —— 它们是 {@link ButtonType#OK} 这类单例由
+     * JavaFX 自己的 bundle 按 <b>JVM Locale</b> 解析出来的，所以 25 批 i18n 全绿也拦不住：
+     * 界面默认英文、弹窗按钮却跟着系统语言走（本机 zh_CN 实拍 p2-error / p6-rename-table
+     * 两张帧抓到）。这条断言连 JVM 语言都不设，只比「按钮文字 == 资源包」，
+     * 机器是中文还是日文都该绿。
+     *
+     * <p>另一半同样要守：业务弹窗里 {@code new ButtonType("添加", OK_DONE)} 那种自定义，
+     * 文字本来就在我们手里，按 ButtonData 一律覆写会把它改成「OK」。
+     */
+    @Test
+    @DisplayName("标准按钮（OK / CANCEL / CLOSE）走资源包，自定义按钮一个字不动")
+    void standardButtonsComeFromOurBundleNotTheJvmLocale() {
+        Map<String, String> texts = onFx(() -> {
+            Dialog<String> d = new Dialog<>();
+            d.getDialogPane().getButtonTypes().setAll(
+                    ButtonType.OK, ButtonType.CANCEL, ButtonType.CLOSE);
+            DialogStyles.apply(d, stage);
+            DialogPane pane = d.getDialogPane();
+            Map<String, String> out = new LinkedHashMap<>();
+            out.put("ok", ((Button) pane.lookupButton(ButtonType.OK)).getText());
+            out.put("cancel", ((Button) pane.lookupButton(ButtonType.CANCEL)).getText());
+            out.put("close", ((Button) pane.lookupButton(ButtonType.CLOSE)).getText());
+            return out;
+        });
+
+        assertThat(texts.get("ok")).isEqualTo(io.agenticdb.ui.I18n.t("common.ok"));
+        assertThat(texts.get("cancel")).isEqualTo(io.agenticdb.ui.I18n.t("common.cancel"));
+        assertThat(texts.get("close")).isEqualTo(io.agenticdb.ui.I18n.t("common.close"));
+
+        String custom = onFx(() -> {
+            Dialog<String> d = new Dialog<>();
+            ButtonType add = new ButtonType("添加", ButtonBar.ButtonData.OK_DONE);
+            d.getDialogPane().getButtonTypes().setAll(add);
+            DialogStyles.apply(d, stage);
+            return ((Button) d.getDialogPane().lookupButton(add)).getText();
+        });
+        assertThat(custom)
+                .as("自定义的 OK_DONE 那颗（条件弹窗的「添加」就是它）不能被顶成「OK」")
+                .isEqualTo("添加");
+    }
+
     @Test
     @DisplayName("换槽只动 O / C 两个槽，其余槽一个不动")
     void theOrderStringOnlySwapsThoseTwoSlots() {
