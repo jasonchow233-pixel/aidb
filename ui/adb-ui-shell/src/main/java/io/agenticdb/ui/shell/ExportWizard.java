@@ -5,6 +5,7 @@ import io.agenticdb.introspect.DataSqlBuilder;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.QueryLimits;
 import io.agenticdb.model.RowPage;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.transfer.ExportFormat;
 import io.agenticdb.transfer.ExportOptions;
 import io.agenticdb.transfer.TableExporter;
@@ -56,21 +57,21 @@ import java.util.function.Consumer;
  */
 final class ExportWizard {
 
-    /** 导出范围。 */
+    /** 导出范围。⭐ 存键、渲染时解析（第九批 SslMode 同规）—— 枚举值本身不进文案。 */
     enum Scope {
-        CURRENT_PAGE("当前页"),
-        SELECTED("选中行"),
-        WHOLE_TABLE("整表");
+        CURRENT_PAGE("export.scope.page"),
+        SELECTED("export.scope.selected"),
+        WHOLE_TABLE("export.scope.whole");
 
-        private final String label;
+        private final String labelKey;
 
-        Scope(String label) {
-            this.label = label;
+        Scope(String labelKey) {
+            this.labelKey = labelKey;
         }
 
         @Override
         public String toString() {
-            return label;
+            return I18n.t(labelKey);
         }
     }
 
@@ -125,16 +126,16 @@ final class ExportWizard {
     private final ComboBox<Scope> scopeBox = new ComboBox<>();
     private final ComboBox<ExportFormat> formatBox = new ComboBox<>();
     private final ComboBox<Charset> charsetBox = new ComboBox<>();
-    private final CheckBox headerBox = new CheckBox("写表头行");
-    private final CheckBox quoteBox = new CheckBox("所有字段加引号");
+    private final CheckBox headerBox = new CheckBox(I18n.t("export.header.check"));
+    private final CheckBox quoteBox = new CheckBox(I18n.t("export.quote.check"));
     private final VBox columnBox = new VBox(3);
     private final List<CheckBox> columnChecks = new ArrayList<>();
     private final TextField targetField = new TextField();
     private final TextArea log = new TextArea();
     private final ProgressIndicator spinner = new ProgressIndicator();
     private final Label summary = new Label();
-    private final Button exportButton = new Button("开始导出");
-    private final Button closeButton = new Button("关闭");
+    private final Button exportButton = new Button(I18n.t("export.start"));
+    private final Button closeButton = new Button(I18n.t("tab.close"));
 
     private final RowCounter counter;
     private final Confirmation confirmation;
@@ -217,11 +218,11 @@ final class ExportWizard {
         columnScroll.setPrefHeight(Math.min(Math.max(this.columns.size(), 4), 7) * 24 + 12);
         columnScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
 
-        Button allColumns = new Button("全选");
+        Button allColumns = new Button(I18n.t("action.table-list.select-all"));
         allColumns.setId("export-columns-all");
         allColumns.getStyleClass().addAll("adb-button", "adb-button--ghost");
         allColumns.setOnAction(event -> selectAllColumns(true));
-        Button noColumns = new Button("全不选");
+        Button noColumns = new Button(I18n.t("export.columns.none"));
         noColumns.setId("export-columns-none");
         noColumns.getStyleClass().addAll("adb-button", "adb-button--ghost");
         noColumns.setOnAction(event -> selectAllColumns(false));
@@ -238,7 +239,7 @@ final class ExportWizard {
 
         targetField.setId("export-target");
         targetField.setText(defaultTarget == null ? "" : defaultTarget.toString());
-        targetField.setPromptText("导出到的文件");
+        targetField.setPromptText(I18n.t("export.target.prompt"));
 
         log.setId("export-log");
         log.setEditable(false);
@@ -249,7 +250,7 @@ final class ExportWizard {
         spinner.setVisible(false);
 
         summary.setId("export-summary");
-        summary.setText("选好范围与格式，点「开始导出」");
+        summary.setText(I18n.t("export.summary.initial"));
         summary.getStyleClass().add("adb-muted");
 
         exportButton.setId("export-start");
@@ -274,13 +275,13 @@ final class ExportWizard {
         optionRow.setAlignment(Pos.CENTER_LEFT);
 
         content.getChildren().addAll(
-                field("范围", scopeBox),
-                field("格式", formatBox),
-                field("目标文件", targetField),
-                new Label("字段"),
+                field(I18n.t("export.field.scope"), scopeBox),
+                field(I18n.t("menu.format"), formatBox),
+                field(I18n.t("export.field.target"), targetField),
+                new Label(I18n.t("newtable.tab.fields")),
                 columnScroll,
                 fieldActions,
-                field("编码", charsetBox),
+                field(I18n.t("import.field.encoding"), charsetBox),
                 optionRow,
                 summary,
                 log,
@@ -288,7 +289,7 @@ final class ExportWizard {
         content.setPadding(new Insets(16));
         content.getStyleClass().add("adb-wizard__content");
 
-        dialog.setTitle("导出 " + tableName);
+        dialog.setTitle(I18n.t("export.title", tableName));
 
         // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
 
@@ -296,7 +297,7 @@ final class ExportWizard {
 
         dialog.getDialogPane().setMinWidth(DialogSizes.WIDE);
 
-        dialog.setHeaderText("范围 → 字段 → 格式与选项");
+        dialog.setHeaderText(I18n.t("export.steps"));
         // ⛔ 不放任何按钮到按钮栏 —— 放了会被 setResultAndClose 一键关掉。
         dialog.getDialogPane().getButtonTypes().clear();
         dialog.getDialogPane().setContent(content);
@@ -339,8 +340,7 @@ final class ExportWizard {
             scopeBox.getSelectionModel().select(Scope.WHOLE_TABLE);
         }
         targetField.setText(withExtension(targetField.getText(), formatBox.getValue()));
-        log.setText("XML/HTML 按行嵌套：每行一个 <row>，NULL 写成空元素；"
-                + "字段勾选决定导出哪些列。");
+        log.setText(I18n.t("export.pose.log"));
     }
 
     /** 供门禁直接驱动。 */
@@ -378,8 +378,7 @@ final class ExportWizard {
     }
 
     private String fieldCountText() {
-        int checked = selectedColumns().size();
-        return checked + "/" + columnChecks.size() + " 字段";
+        return I18n.t("export.field.count", selectedColumns().size(), columnChecks.size());
     }
 
     /** 勾选的字段（保持表结构顺序）。 */
@@ -400,12 +399,12 @@ final class ExportWizard {
         }
         String text = targetField.getText() == null ? "" : targetField.getText().trim();
         if (text.isBlank()) {
-            summary.setText("请先选一个目标文件");
+            summary.setText(I18n.t("export.summary.pickTarget"));
             return;
         }
         List<String> selected = selectedColumns();
         if (selected.isEmpty()) {
-            summary.setText("请至少勾选一个字段");
+            summary.setText(I18n.t("export.summary.pickField"));
             return;
         }
         Path target = Path.of(text);
@@ -415,7 +414,7 @@ final class ExportWizard {
         running = true;
         exportButton.setDisable(true);
         spinner.setVisible(true);
-        summary.setText("正在统计 " + tableName + " 的行数 …");
+        summary.setText(I18n.t("export.counting", tableName));
 
         ExportOptions options = new ExportOptions(format, headerBox.isSelected(), 500, 0,
                 quoteBox.isSelected(), charsetBox.getValue());
@@ -434,21 +433,21 @@ final class ExportWizard {
                 rows = -1;
             }
             if (rows > 0 && QueryLimits.exportRequiresConfirmation(rows)) {
-                String message = "将读取 " + NumberFormat.getInstance().format(rows) + " 行"
-                        + "（超过 " + NumberFormat.getInstance().format(QueryLimits.MAX_EXPORT_ROWS)
-                        + " 行的确认阈值）。确定继续吗？";
+                String message = I18n.t("export.confirm",
+                        NumberFormat.getInstance().format(rows),
+                        NumberFormat.getInstance().format(QueryLimits.MAX_EXPORT_ROWS));
                 Platform.runLater(() -> {
                     if (confirmation.confirm(message)) {
                         runExport(target, options, scope, selected, snapshot);
                     } else {
-                        finish("已取消导出：" + message);
+                        finish(I18n.t("export.cancelled", message));
                     }
                 });
                 return;
             }
             if (rows < 0) {
                 Platform.runLater(() ->
-                        summary.setText("无法统计行数，仍继续导出 " + tableName + " …"));
+                        summary.setText(I18n.t("export.countUnknown", tableName)));
             }
             runExport(target, options, scope, selected, snapshot);
         });
@@ -460,12 +459,12 @@ final class ExportWizard {
             String message;
             try {
                 long rows = run(target, options, scope, selected, snapshot);
-                message = "已导出 " + rows + " 行 → " + target
-                        + "（" + scope + " · " + options.format().label()
-                        + " · " + selected.size() + " 字段"
-                        + " · " + options.charset().name() + "）";
+                message = I18n.t("export.done", rows) + I18n.t("export.done.detail",
+                        target, scope, options.format().label(), selected.size(),
+                        options.charset().name());
             } catch (Exception e) {
-                message = "导出失败：" + (e.getMessage() == null ? e.toString() : e.getMessage());
+                message = I18n.t("export.failed",
+                        e.getMessage() == null ? e.toString() : e.getMessage());
             }
             String finalMessage = message;
             Platform.runLater(() -> finish(finalMessage));
@@ -512,8 +511,8 @@ final class ExportWizard {
     private boolean askUser(String message) {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION, message,
                 ButtonType.OK, ButtonType.CANCEL);
-        alert.setTitle("导出确认");
-        alert.setHeaderText("这张表很大");
+        alert.setTitle(I18n.t("export.confirm.title"));
+        alert.setHeaderText(I18n.t("export.confirm.header"));
         DialogStyles.apply(alert, owner);
         return alert.showAndWait().filter(button -> button == ButtonType.OK).isPresent();
     }

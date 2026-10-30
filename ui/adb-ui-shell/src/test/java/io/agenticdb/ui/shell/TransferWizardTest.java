@@ -80,7 +80,7 @@ class TransferWizardTest {
             assertThat(csv).contains("User 001");
 
             Label summary = onFx(() -> (Label) wizard.content().lookup("#export-summary"));
-            assertThat(summary.getText()).contains("已导出");
+            assertThat(summary.getText()).contains(I18n.t("export.done", 200));
         } finally {
             executor.shutdownNow();
             session.close();
@@ -110,7 +110,7 @@ class TransferWizardTest {
                 clickButton(wizard, "export-start");
             });
 
-            assertThat(waitForSummary(wizard, "已取消", 5000))
+            assertThat(waitForSummary(wizard, I18n.t("export.cancelled", ""), 5000))
                     .as("超过阈值必须先问，用户取消就不该写文件").isTrue();
             assertThat(asked.get())
                     .as("提示里必须写出真实行数，不能只问一个抽象的「确定吗」")
@@ -223,7 +223,7 @@ class TransferWizardTest {
                 clickButton(wizard, "export-start");
             });
             Label summary = onFx(() -> (Label) wizard.content().lookup("#export-summary"));
-            assertThat(summary.getText()).contains("目标文件");
+            assertThat(summary.getText()).contains(I18n.t("export.summary.pickTarget"));
         } finally {
             executor.shutdownNow();
             session.close();
@@ -461,7 +461,7 @@ class TransferWizardTest {
             });
 
             Label summary = onFx(() -> (Label) wizard.content().lookup("#export-summary"));
-            assertThat(summary.getText()).contains("至少勾选一个字段");
+            assertThat(summary.getText()).contains(I18n.t("export.summary.pickField"));
             assertThat(Files.exists(target)).isFalse();
         } finally {
             executor.shutdownNow();
