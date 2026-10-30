@@ -4,6 +4,7 @@ import io.agenticdb.introspect.IndexDef;
 import io.agenticdb.introspect.StructureSqlBuilder;
 import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
@@ -111,7 +112,7 @@ final class IndexDialog {
 
     private final TextField name = new TextField();
     private final ComboBox<String> type = new ComboBox<>();
-    private final CheckBox unique = new CheckBox("唯一索引");
+    private final CheckBox unique = new CheckBox(I18n.t("idx.unique"));
     private final Label error = new Label();
     private final Label chosenHeader = new Label();
     private final SqlEditor preview = new SqlEditor();
@@ -122,8 +123,9 @@ final class IndexDialog {
     private final MenuButton add = new MenuButton();
     /** 拖拽中的行下标；{@code -1} = 没有在本列表内拖（拖放只接受自己人）。 */
     private int dragFrom = -1;
-    private final Button copySql = IconButtons.of(Icons.Icon.COPY, "复制 SQL");
-    private final Button collapseSql = IconButtons.of(Icons.Icon.CHEVRON_RIGHT, "折叠 SQL 预览");
+    private final Button copySql = IconButtons.of(Icons.Icon.COPY, I18n.t("newtable.sql.copy"));
+    private final Button collapseSql = IconButtons.of(Icons.Icon.CHEVRON_RIGHT,
+            I18n.t("idx.sql.collapse"));
     private final Region sqlGap = new Region();
     private final VBox picker = new VBox(8);
     private boolean sqlVisible = true;
@@ -163,7 +165,7 @@ final class IndexDialog {
     // ─────────────────────────── 界面 ───────────────────────────
 
     private void buildUi() {
-        dialog.setTitle("新建索引");
+        dialog.setTitle(I18n.t("structure.index.add"));
         // ⭐ V-11：宽度走档位规范。U21 之前它是 PICKER=800 —— 那一档是为「两个列表并排
         //    + 中间四颗按钮」开的；单列表之后 720 就放得下「序号 + 列名 + 方向 + ×」，
         //    再宽只是让 SQL 预览两侧留白。
@@ -180,7 +182,7 @@ final class IndexDialog {
         dialog.setResizable(true);
 
         name.setId("index-dialog-name");
-        name.setPromptText("索引名");
+        name.setPromptText(I18n.t("idx.name.prompt"));
         name.textProperty().addListener((observable, oldValue, newValue) -> refreshPreview());
 
         unique.setId("index-dialog-unique");
@@ -202,8 +204,8 @@ final class IndexDialog {
         VBox.setVgrow(picker, Priority.ALWAYS);
         dialog.getDialogPane().setContent(body);
 
-        ButtonType ok = new ButtonType("确定", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType ok = new ButtonType(I18n.t("common.ok"), ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
         dialog.getDialogPane().getButtonTypes().setAll(ok, cancel);
         // ⭐ 校验不过就吞掉这次关闭 —— 否则用户点确定什么也没发生，还以为卡了。
         dialog.getDialogPane().lookupButton(ok).addEventFilter(ActionEvent.ACTION, event -> {
@@ -218,14 +220,14 @@ final class IndexDialog {
 
     /** A 区标题栏：新建索引 + 真实的表 / 库 / 方言 + 关闭。 */
     private HBox buildHeader() {
-        Label title = new Label("新建索引");
+        Label title = new Label(I18n.t("structure.index.add"));
         title.getStyleClass().add("adb-dialog__title");
         // ⭐ 表名 / 库名 / 方言全部来自真实上下文，不写死示例（§6.2 A）。
         //    会话标签本身就是「方言 · 库」（见 JdbcSession.of），再补一遍方言就成了
         //    「SQLite · 文件 · SQLite」—— 实测截图里就是这么重复的。
-        Label context = DialogStyles.contextLabel("表 " + (table == null ? "?" : table.name())
-                + " · " + session.label());
-        Button close = IconButtons.icon(Icons.Icon.CLOSE, "关闭");
+        Label context = DialogStyles.contextLabel(I18n.t("idx.context",
+                table == null ? "?" : table.name(), session.label()));
+        Button close = IconButtons.icon(Icons.Icon.CLOSE, I18n.t("tab.close"));
         close.setId("index-dialog-close");
         close.getStyleClass().addAll("adb-icon-button", "adb-dialog__close");
         close.setOnAction(event -> close());
@@ -238,7 +240,7 @@ final class IndexDialog {
 
     /** B 区基本信息：名称 +（方言支持时的）类型 + 唯一索引。 */
     private VBox buildBasicSection() {
-        VBox nameBox = labelledField("索引名称", name);
+        VBox nameBox = labelledField(I18n.t("idx.field.name"), name);
         name.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(nameBox, Priority.ALWAYS);
         HBox row;
@@ -246,11 +248,11 @@ final class IndexDialog {
             row = new HBox(nameBox);
         } else {
             buildTypeChooser();
-            VBox typeBox = labelledField("索引类型", type);
+            VBox typeBox = labelledField(I18n.t("idx.field.type"), type);
             typeBox.setPrefWidth(200);
             row = new HBox(12, nameBox, typeBox);
         }
-        return section("基本信息", row, unique);
+        return section(I18n.t("idx.section.basic"), row, unique);
     }
 
     /**
@@ -261,10 +263,10 @@ final class IndexDialog {
     private void buildTypeChooser() {
         type.setId("index-dialog-type");
         type.getItems().setAll(indexTypes);
-        type.setPromptText("默认");
+        type.setPromptText(I18n.t("idx.type.prompt"));
         type.setMaxWidth(Double.MAX_VALUE);
-        type.setTooltip(new Tooltip("不选则用 " + session.dialect().displayName()
-                + " 的默认索引类型"));
+        type.setTooltip(new Tooltip(I18n.t("idx.type.tooltip",
+                session.dialect().displayName())));
         type.valueProperty().addListener((observable, oldValue, newValue) -> refreshPreview());
     }
 
@@ -272,8 +274,8 @@ final class IndexDialog {
     private VBox buildPickerSection() {
         buildPicker();
         chosenHeader.getStyleClass().add("adb-dialog__section-title");
-        Label hint = new Label("拖动行改顺序 · 行尾 × 或 "
-                + io.agenticdb.ui.Shortcuts.of("Delete") + " 移除");
+        Label hint = new Label(I18n.t("idx.pick.hint",
+                io.agenticdb.ui.Shortcuts.of("Delete")));
         hint.getStyleClass().add("adb-muted");
         Region headGap = new Region();
         HBox.setHgrow(headGap, Priority.ALWAYS);
@@ -284,7 +286,7 @@ final class IndexDialog {
         chosenList.setMinHeight(140);
         // 220 → 200：给 D 区（SQL 预览）留出一行半以上的余量，见 buildUi 的高度注释。
         picker.setPrefHeight(200);
-        return section("索引列（顺序决定复合索引能否被用上）", picker);
+        return section(I18n.t("idx.section.columns"), picker);
     }
 
     /**
@@ -295,7 +297,7 @@ final class IndexDialog {
         chosenList.setId("index-dialog-chosen");
         chosenList.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
         chosenList.setPlaceholder(EmptyState.pickerHint(
-                "还没有索引列 —— 点右上角「添加列」选第一列。"));
+                I18n.t("idx.picker.empty")));
         chosenList.setCellFactory(list -> new PickedCell());
         chosenList.setOnKeyPressed(event -> {
             if (event.getCode() == KeyCode.DELETE || event.getCode() == KeyCode.BACK_SPACE) {
@@ -310,7 +312,8 @@ final class IndexDialog {
             }
         });
 
-        IconButtons.labeled(add, Icons.Icon.ADD, "添加列", "从可用列里挑一列加入索引");
+        IconButtons.labeled(add, Icons.Icon.ADD, I18n.t("idx.add.label"),
+                I18n.t("idx.add.tooltip"));
         add.setId("index-dialog-add");
         // 与 U4 同一口径：宁可让窄弹窗里出现滚动，也不把带文字的按钮压成光秃图标。
         add.setMinWidth(Region.USE_PREF_SIZE);
@@ -371,12 +374,12 @@ final class IndexDialog {
                 : table.columns().stream().map(column -> column.name()).toList());
         remaining.removeAll(picked);
         available.setAll(remaining);
-        chosenHeader.setText("索引列（" + chosen.size() + "）");
+        chosenHeader.setText(I18n.t("idx.chosen.header", chosen.size()));
         // 计数写在按钮上：可用列不再有独立列表，这一颗下拉就是它唯一的入口和证据。
-        add.setText("添加列（" + remaining.size() + "）");
+        add.setText(I18n.t("idx.add.count", remaining.size()));
         add.setDisable(remaining.isEmpty());
         String hint = remaining.isEmpty()
-                ? "所有列都已加入索引" : "从可用列里挑一列加入索引";
+                ? I18n.t("idx.add.allPicked") : I18n.t("idx.add.tooltip");
         add.setTooltip(new Tooltip(hint));
         add.setAccessibleText(hint);
         List<MenuItem> items = new ArrayList<>();
@@ -390,7 +393,7 @@ final class IndexDialog {
 
     /** D 区：SQL 预览（等宽、行号、可折叠），与真正执行的那条同源。 */
     private VBox buildSqlSection() {
-        Label title = new Label("将执行的 SQL");
+        Label title = new Label(I18n.t("idx.sql.title"));
         title.getStyleClass().add("adb-dialog__section-title");
         sqlGap.setMinWidth(Region.USE_PREF_SIZE);
         HBox header = new HBox(8, title, sqlGap, copySql, collapseSql);
@@ -403,7 +406,7 @@ final class IndexDialog {
         preview.setId("index-dialog-sql");
         // ⭐ 预览是只读的、也**不能执行**：SqlEditor 默认那句「⌘↵ 执行当前语句」
         //    在这儿是误导（用户会去敲键盘，然后什么都没发生）。
-        preview.setHint("填好名称并选择列后，这里显示将要执行的语句");
+        preview.setHint(I18n.t("idx.sql.hint"));
         preview.setPrefHeight(96);
         // ⭐ 预览是 D 区，不是一条装订线：不给最小高度，VBox 在高度紧张时
         //    会把它压到只剩一行（560px 窗口下实测 16px），用户看不到完整语句。
@@ -417,7 +420,7 @@ final class IndexDialog {
         preview.setManaged(visible);
         collapseSql.setGraphic(Icons.of(visible
                 ? Icons.Icon.CHEVRON_RIGHT : Icons.Icon.CHEVRON_LEFT));
-        collapseSql.setText(visible ? "折叠 SQL 预览" : "展开 SQL 预览");
+        collapseSql.setText(visible ? I18n.t("idx.sql.collapse") : I18n.t("idx.sql.expand"));
     }
 
     private void copyPreview() {
@@ -454,18 +457,18 @@ final class IndexDialog {
     String problem() {
         String raw = name.getText() == null ? "" : name.getText().trim();
         if (raw.isEmpty()) {
-            return "请填索引名";
+            return I18n.t("idx.error.noName");
         }
         if (!raw.matches("[A-Za-z_][A-Za-z0-9_$]*")) {
-            return "索引名只能包含字母、数字、下划线或 $，且不能以数字开头";
+            return I18n.t("idx.error.badName");
         }
         for (String existing : existingIndexNames) {
             if (existing.equalsIgnoreCase(raw)) {
-                return "已经有一个叫「" + raw + "」的索引了";
+                return I18n.t("idx.error.duplicate", raw);
             }
         }
         if (chosen.isEmpty()) {
-            return "请至少选择一列";
+            return I18n.t("idx.error.noColumns");
         }
         return null;
     }
@@ -521,19 +524,21 @@ final class IndexDialog {
             cells.add(order);
             cells.add(column);
             if (directionSupported) {
-                ComboBox<String> box =
-                        new ComboBox<>(FXCollections.observableArrayList("升序", "降序"));
+                // ⭐ 比较用同一个取好的值，不再 "降序".equals —— 翻译后字面量必然失配。
+                String descendingValue = I18n.t("idx.direction.desc");
+                ComboBox<String> box = new ComboBox<>(FXCollections.observableArrayList(
+                        I18n.t("idx.direction.asc"), descendingValue));
                 box.setPrefWidth(76);
-                box.setTooltip(new Tooltip("该列在索引里的排序方向（"
-                        + io.agenticdb.ui.Shortcuts.of("Alt+UP") + " / "
-                        + io.agenticdb.ui.Shortcuts.of("Alt+DOWN") + " 调整列的顺序）"));
+                box.setTooltip(new Tooltip(I18n.t("idx.direction.tooltip",
+                        io.agenticdb.ui.Shortcuts.of("Alt+UP"),
+                        io.agenticdb.ui.Shortcuts.of("Alt+DOWN"))));
                 // 用值变化而不是 onAction：方向是这一列的**状态**，不是一次动作，
                 // 而且程序化选择（默认值回填、单测）也要走同一条路。
                 box.valueProperty().addListener((observable, oldValue, newValue) -> {
                     if (bound == null) {
                         return;
                     }
-                    bound.setDescending("降序".equals(newValue));
+                    bound.setDescending(descendingValue.equals(newValue));
                     refreshPreview();
                 });
                 direction = box;
@@ -542,7 +547,7 @@ final class IndexDialog {
                 direction = null;
             }
             remove = IconButtons.icon(Icons.Icon.CLOSE,
-                    "移出索引（" + io.agenticdb.ui.Shortcuts.of("Delete") + "）");
+                    I18n.t("idx.remove.tooltip", io.agenticdb.ui.Shortcuts.of("Delete")));
             remove.getStyleClass().add("adb-icon-button");
             remove.setMinWidth(Region.USE_PREF_SIZE);
             remove.setCursor(Cursor.HAND);

@@ -5,6 +5,7 @@ import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnType;
+import io.agenticdb.ui.I18n;
 import javafx.application.Platform;
 
 import javafx.scene.Node;
@@ -78,22 +79,24 @@ class IndexDialogTest {
         IndexDialog dialog = mounted(FakeDbSession.of(DialectKind.SQLITE), table(List.of()));
 
         assertThat(text(dialog, ".adb-dialog__context")).contains("users").contains("SQLite");
-        assertThat(text(dialog, ".adb-dialog__title")).isEqualTo("新建索引");
+        assertThat(text(dialog, ".adb-dialog__title")).isEqualTo(I18n.t("structure.index.add"));
     }
 
     @Test
     @DisplayName("计数来自真实列表：加一列，「添加列」减一、「索引列」加一")
     void listCountsComeFromTheRealData() {
         IndexDialog dialog = mounted(FakeDbSession.of(DialectKind.SQLITE), table(List.of()));
-        assertThat(dialog.addButton().getText()).isEqualTo("添加列（4）");
-        assertThat(dialog.chosenHeader().getText()).isEqualTo("索引列（0）");
+        assertThat(dialog.addButton().getText())
+                .isEqualTo(I18n.t("idx.add.count", 4));
+        assertThat(dialog.chosenHeader().getText())
+                .isEqualTo(I18n.t("idx.chosen.header", 0));
         // 下拉里就是可用列本身 —— 少了「可用列」列表，可选的东西必须在这一颗按钮里。
         assertThat(itemTexts(dialog)).containsExactly("id", "email", "first", "last");
 
         addColumn(dialog, "email");
 
-        assertThat(dialog.addButton().getText()).isEqualTo("添加列（3）");
-        assertThat(dialog.chosenHeader().getText()).isEqualTo("索引列（1）");
+        assertThat(dialog.addButton().getText()).isEqualTo(I18n.t("idx.add.count", 3));
+        assertThat(dialog.chosenHeader().getText()).isEqualTo(I18n.t("idx.chosen.header", 1));
         assertThat(itemTexts(dialog)).containsExactly("id", "first", "last");
     }
 
@@ -112,7 +115,7 @@ class IndexDialogTest {
 
         assertThat(dialog.availableColumns()).isEmpty();
         assertThat(dialog.addButton().isDisabled()).as("4 列全进索引 → 下拉里没有东西可选").isTrue();
-        assertThat(dialog.addButton().getText()).isEqualTo("添加列（0）");
+        assertThat(dialog.addButton().getText()).isEqualTo(I18n.t("idx.add.count", 0));
     }
 
     @Test
@@ -264,13 +267,13 @@ class IndexDialogTest {
         onFxRun(() -> dialog.nameField().setText("idx_email"));
         addColumn(dialog, "email");
 
-        assertThat(dialog.problem()).contains("已经有一个叫「idx_email」的索引");
+        assertThat(dialog.problem()).contains(I18n.t("idx.error.duplicate", "idx_email"));
 
         onFxRun(() -> dialog.nameField().setText("2bad"));
-        assertThat(dialog.problem()).contains("不能以数字开头");
+        assertThat(dialog.problem()).contains(I18n.t("idx.error.badName"));
 
         onFxRun(() -> dialog.nameField().setText(""));
-        assertThat(dialog.problem()).isEqualTo("请填索引名");
+        assertThat(dialog.problem()).isEqualTo(I18n.t("idx.error.noName"));
     }
 
     @Test
@@ -280,8 +283,8 @@ class IndexDialogTest {
         DialogPane pane = dialog.dialogPane();
 
         assertThat(pane.getButtonTypes()).hasSize(2);
-        assertThat(buttonData(pane, "确定").isDefaultButton()).isTrue();
-        assertThat(buttonData(pane, "取消").isCancelButton()).isTrue();
+        assertThat(buttonData(pane, I18n.t("common.ok")).isDefaultButton()).isTrue();
+        assertThat(buttonData(pane, I18n.t("common.cancel")).isCancelButton()).isTrue();
     }
 
     @Test
@@ -305,7 +308,7 @@ class IndexDialogTest {
                 .as("加的是这张表真实的前两列，不是写死的示例列名")
                 .containsExactly("id", "email");
         assertThat(dialog.availableColumns()).containsExactly("first", "last");
-        assertThat(dialog.addButton().getText()).isEqualTo("添加列（2）");
+        assertThat(dialog.addButton().getText()).isEqualTo(I18n.t("idx.add.count", 2));
         assertThat(dialog.previewText())
                 .isEqualTo("CREATE INDEX \"idx_users_id\" ON \"users\" (\"id\", \"email\")");
         // 摆完得是「点得动确定」的态 —— 否则这一帧拍的还是空弹窗。
