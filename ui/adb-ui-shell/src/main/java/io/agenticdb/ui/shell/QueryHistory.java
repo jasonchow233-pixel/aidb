@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -78,10 +79,10 @@ final class QueryHistory {
         String detail() {
             StringBuilder detail = new StringBuilder(sql);
             if (!connection.isBlank()) {
-                detail.append("\n连接：").append(connection);
+                detail.append(I18n.t("query.detailConnection", connection));
             }
             if (!tables.isEmpty()) {
-                detail.append("\n表：").append(String.join(", ", tables));
+                detail.append(I18n.t("query.detailTables", String.join(", ", tables)));
             }
             return detail.toString();
         }

@@ -35,12 +35,12 @@ class CellDisplayTest {
         assertThat(nullCell.styleClass()).as("NULL 走 --null（灰 + 斜体）")
                 .isEqualTo("adb-grid__cell--null");
         assertThat(nullCell.tooltip()).as("NULL 的 tooltip 要说清它不是空串")
-                .contains("NULL").contains("不是空串");
+                .isEqualTo(io.agenticdb.ui.I18n.t("cell.nullHint")).contains("NULL");
 
         CellRenderer.Rendered empty = CellRenderer.render(text, "");
         assertThat(empty.text()).as("空串显示引号").isEqualTo("\"\"");
         assertThat(empty.styleClass()).isEqualTo("adb-grid__cell--empty");
-        assertThat(empty.tooltip()).contains("空串").contains("不是 NULL");
+        assertThat(empty.tooltip()).isEqualTo(io.agenticdb.ui.I18n.t("cell.emptyStringHint"));
 
         byte[] blob = new byte[4096];
         CellRenderer.Rendered binary = CellRenderer.render(column("avatar", ColumnType.BINARY), blob);
@@ -48,7 +48,7 @@ class CellDisplayTest {
         assertThat(binary.styleClass()).isEqualTo("adb-grid__cell--binary");
         assertThat(binary.tooltip())
                 .as("tooltip 给精确字节数，并告诉用户去哪看内容")
-                .contains("4096 字节").contains("详情");
+                .isEqualTo(io.agenticdb.ui.I18n.t("cell.blob", 4096)).contains("4096");
     }
 
     /**

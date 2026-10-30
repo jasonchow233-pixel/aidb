@@ -29,7 +29,7 @@ class CellRendererTest {
         ColumnDef dateOnly = column("day", ColumnType.DATE, null);
 
         assertThat(CellRenderer.render(json, "{\"a\":1,\"b\":2}").text())
-                .startsWith("{…} 2 字段");
+                .startsWith(io.agenticdb.ui.I18n.t("cell.jsonObject", 2, "").trim());
         assertThat(CellRenderer.render(date, LocalDateTime.of(2026, 10, 20, 9, 5, 3)).text())
                 .isEqualTo("2026-10-20 09:05:03");
         assertThat(CellRenderer.render(dateOnly, LocalDate.of(2026, 10, 20)).text())

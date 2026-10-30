@@ -1,18 +1,19 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import java.util.Locale;
 
 public enum ThemeMode {
-    SYSTEM("system", "跟随系统"),
-    LIGHT("light", "亮色"),
-    DARK("dark", "暗色");
+    SYSTEM("system", "theme.mode.system"),
+    LIGHT("light", "theme.mode.light"),
+    DARK("dark", "theme.mode.dark");
 
     private final String id;
-    private final String label;
+    private final String labelKey;
 
-    ThemeMode(String id, String label) {
+    ThemeMode(String id, String labelKey) {
         this.id = id;
-        this.label = label;
+        this.labelKey = labelKey;
     }
 
     public String id() {
@@ -20,7 +21,7 @@ public enum ThemeMode {
     }
 
     public String label() {
-        return label;
+        return I18n.t(labelKey);
     }
 
     public static ThemeMode of(String id) {

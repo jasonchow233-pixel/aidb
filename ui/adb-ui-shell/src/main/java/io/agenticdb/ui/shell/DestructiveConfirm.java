@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
@@ -40,7 +41,7 @@ public final class DestructiveConfirm {
                                String destructiveLabel) {
         // ⭐ OTHER：不是默认按钮，因此回车不会落在它上面。
         this.destructive = new ButtonType(destructiveLabel, ButtonBar.ButtonData.OTHER);
-        this.cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        this.cancel = new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
         this.alert = new Alert(Alert.AlertType.CONFIRMATION);
         alert.setTitle(title);
         alert.setHeaderText(header);

@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.introspect.StructureSqlBuilder;
 import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.jdbc.DbSession;
@@ -61,15 +62,15 @@ final class TableCommentDialog {
     }
 
     private void buildUi() {
-        dialog.setTitle("表注释");
+        dialog.setTitle(I18n.t("structure.tableComment.button"));
         // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
         dialog.getDialogPane().setPrefWidth(DialogSizes.FORM);
         dialog.getDialogPane().setMinWidth(DialogSizes.FORM);
 
-        dialog.setHeaderText("表 " + (table == null ? "?" : table.name()) + " 的注释");
+        dialog.setHeaderText(I18n.t("comment.header", table == null ? "?" : table.name()));
 
         comment.setId("table-comment-dialog-text");
-        comment.setPromptText("表注释（留空 = 清除注释）");
+        comment.setPromptText(I18n.t("comment.prompt"));
         comment.setPrefRowCount(3);
         comment.setText(table == null ? "" : table.comment());
         comment.textProperty().addListener((observable, oldValue, newValue) -> refreshPreview());
@@ -82,14 +83,14 @@ final class TableCommentDialog {
         error.getStyleClass().add("adb-error");
 
         VBox body = new VBox(10,
-                labeled("表注释", comment),
-                labeled("将执行", preview),
+                labeled(I18n.t("structure.tableComment.button"), comment),
+                labeled(I18n.t("structure.preview.execute"), preview),
                 error);
         body.getStyleClass().add("adb-form");
         dialog.getDialogPane().setContent(body);
 
-        ButtonType ok = new ButtonType("确定", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType ok = new ButtonType(I18n.t("common.ok"), ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
         dialog.getDialogPane().getButtonTypes().setAll(ok, cancel);
         dialog.getDialogPane().lookupButton(ok).addEventFilter(ActionEvent.ACTION, event -> {
             if (!validate()) {
@@ -115,10 +116,10 @@ final class TableCommentDialog {
 
     private String problem() {
         if (table == null) {
-            return "请先选中一张表";
+            return I18n.t("ddl.pickTable");
         }
         if (!session.dialect().supportsTableComment()) {
-            return session.dialect().displayName() + " 不支持表注释";
+            return I18n.t("comment.unsupported", session.dialect().displayName());
         }
         return null;
     }

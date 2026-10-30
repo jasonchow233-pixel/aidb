@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agenticdb.model.ColumnDef;
@@ -106,14 +107,14 @@ final class CellRenderer {
         //   而这两种情况要做的处理完全不同。空串同理显示成 ""，三种状态各有各的字形。
         if (value == null) {
             return new Rendered("(NULL)", "adb-grid__cell--null",
-                    "NULL —— 这一格没有值（不是空串，也不是内容为 NULL 的文本）", false);
+                    I18n.t("cell.nullHint"), false);
         }
         if (value instanceof String text && text.isEmpty()) {
-            return new Rendered("\"\"", "adb-grid__cell--empty", "空串（不是 NULL）", false);
+            return new Rendered("\"\"", "adb-grid__cell--empty", I18n.t("cell.emptyStringHint"), false);
         }
         if (value instanceof byte[] bytes) {
             return new Rendered("BLOB · " + sizeLabel(bytes.length), "adb-grid__cell--binary",
-                    "BLOB · " + bytes.length + " 字节 · 双击查看详情", false);
+                    I18n.t("cell.blob", bytes.length), false);
         }
         if (value instanceof Boolean bool) {
             return Rendered.bool(bool, bool ? "true" : "false");
@@ -127,7 +128,7 @@ final class CellRenderer {
         if (definition.isEnum()) {
             String label = enumLabel(definition, value);
             return new Rendered(label, "adb-grid__cell--enum",
-                    label.equals(String.valueOf(value)) ? "枚举值 " + value
+                    label.equals(String.valueOf(value)) ? I18n.t("cell.enumValue", value)
                             : value + " → " + label, false);
         }
         if (definition.type() == ColumnType.NUMBER || value instanceof Number) {
@@ -136,7 +137,7 @@ final class CellRenderer {
             // 展示值被收敛过时（浮点噪声），tooltip 给出原值 ——
             // 显示可以更干净，但不能瞒着用户真实值是什么。
             return new Rendered(text, "adb-grid__cell--number",
-                    text.equals(raw) ? text : "原值 " + raw, false);
+                    text.equals(raw) ? text : I18n.t("cell.raw", raw), false);
         }
         if (definition.type() == ColumnType.DATE
                 || definition.type() == ColumnType.TIME
@@ -241,7 +242,7 @@ final class CellRenderer {
                 ? data : String.valueOf(value == null ? "" : value)
                 .getBytes(StandardCharsets.UTF_8);
         if (bytes.length == 0) {
-            return "(空)";
+            return I18n.t("cell.empty");
         }
         StringBuilder text = new StringBuilder(bytes.length * 4);
         for (int offset = 0; offset < bytes.length; offset += 16) {
@@ -374,10 +375,10 @@ final class CellRenderer {
         try {
             JsonNode node = JSON.readTree(raw);
             if (node.isObject()) {
-                return "{…} " + node.size() + " 字段 · " + truncate(JSON.writeValueAsString(node));
+                return I18n.t("cell.jsonObject", node.size(), truncate(JSON.writeValueAsString(node)));
             }
             if (node.isArray()) {
-                return "[…] " + node.size() + " 项 · " + truncate(JSON.writeValueAsString(node));
+                return I18n.t("cell.jsonArray", node.size(), truncate(JSON.writeValueAsString(node)));
             }
             return truncate(JSON.writeValueAsString(node));
         } catch (Exception ignored) {

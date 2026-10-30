@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
@@ -43,11 +44,11 @@ public final class CommandPalette extends StackPane {
         scrim.getStyleClass().add("adb-palette__scrim");
         scrim.setOnMouseClicked(event -> hidePalette());
 
-        Label hint = new Label("命令");
+        Label hint = new Label(I18n.t("palette.hint"));
         hint.getStyleClass().add("adb-palette__hint");
 
         query.getStyleClass().add("adb-palette__input");
-        query.setPromptText("输入动作名，例如「主题」「侧栏」「新建查询」");
+        query.setPromptText(I18n.t("palette.prompt"));
         query.textProperty().addListener((observable, oldValue, newValue) -> filter(newValue));
         query.setOnKeyPressed(event -> {
             if (event.getCode() == KeyCode.ESCAPE) {

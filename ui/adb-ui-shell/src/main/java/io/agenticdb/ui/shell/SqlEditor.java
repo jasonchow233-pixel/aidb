@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.sql.SqlBrackets;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -21,7 +22,9 @@ import java.util.function.Consumer;
 public final class SqlEditor extends StackPane {
 
     private final CodeArea area = new CodeArea();
-    private final Label hint = new Label("输入 SQL，" + io.agenticdb.ui.Shortcuts.of("Mod+Enter") + " 执行当前语句，" + io.agenticdb.ui.Shortcuts.of("Shift+Mod+Enter") + " 执行全部");
+    private final Label hint = new Label(I18n.t("editor.hint",
+            io.agenticdb.ui.Shortcuts.of("Mod+Enter"),
+            io.agenticdb.ui.Shortcuts.of("Shift+Mod+Enter")));
 
     public SqlEditor() {
         getStyleClass().add("adb-query__editor-box");

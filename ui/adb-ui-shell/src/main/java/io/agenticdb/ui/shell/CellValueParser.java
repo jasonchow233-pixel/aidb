@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnType;
 
@@ -26,7 +27,7 @@ final class CellValueParser {
             return "NULL";
         }
         if (value instanceof String text && text.isEmpty()) {
-            return "\"\"（空串）";
+            return I18n.t("parse.emptyStringLabel");
         }
         return String.valueOf(value);
     }
@@ -44,7 +45,7 @@ final class CellValueParser {
         try {
             return Double.valueOf(trimmed);
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("不是有效数字: " + text);
+            throw new IllegalArgumentException(I18n.t("parse.notNumber", text));
         }
     }
 
@@ -54,7 +55,7 @@ final class CellValueParser {
             case "1", "true", "yes", "y", "on", "是", "真" -> true;
             case "0", "false", "no", "n", "off", "否", "假" -> false;
             case "" -> "";
-            default -> throw new IllegalArgumentException("不是有效布尔值: " + text);
+            default -> throw new IllegalArgumentException(I18n.t("parse.notBoolean", text));
         };
     }
 }

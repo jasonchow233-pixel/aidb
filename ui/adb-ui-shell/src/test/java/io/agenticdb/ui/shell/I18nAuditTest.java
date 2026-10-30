@@ -72,8 +72,18 @@ class I18nAuditTest {
      * （注释里的引号、跨行的块注释、字符串里的 {@code //} 都会骗过正则），
      * 而本类是先 {@code stripComments} 再计数。口径不同的两个数放在一起，
      * 只会让人以为棘轮又涨了。
+     *
+     * <p>⭐ <b>终态不是 0，是 8 —— 这 8 条是「输入 token」不是文案。</b>
+     * {@code CellRenderer} 与 {@code CellValueParser} 各自用
+     * {@code case "1", "true", "yes", "y", "on", "是", "真"} 认布尔值：
+     * 中文那两项是<b>用户真会打进格子里的字面量</b>（导入 CSV、手填布尔列），
+     * 翻成 "yes" 就等于把「输入 是 表示真」这条能力删掉。
+     * 三条路都不通：进资源包会让布尔解析随界面语言变（同一份数据两种解释，比截字更坏）；
+     * 挪到模型层只是把账从主尺转到 {@code MODEL_CJK_CEILING}，同一笔债记两次；
+     * 写成 {@code \u662f} 转义则正好是这条门禁的 javadoc 警告过的「改成假通过」。
+     * 所以留 8 条、写清理由，比凑一个好看的 0 更诚实。
      */
-    private static final int CJK_CEILING = 72;
+    private static final int CJK_CEILING = 8;
 
     /**
      * ⭐ R34 N1-b 第七批补的第三把尺：<b>模型层</b>（core / workbench）的汉字字面量。

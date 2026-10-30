@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.control.DialogPane;
@@ -87,7 +88,7 @@ class DestructiveConfirmTest {
                 "删除连接", "删除 Demo？", "不可恢复。", "删除"));
 
         assertThat(confirm.destructive().getText()).isEqualTo("删除");
-        assertThat(confirm.cancel().getText()).isEqualTo("取消");
+        assertThat(confirm.cancel().getText()).isEqualTo(I18n.t("common.cancel"));
         assertThat(confirm.destructive().getButtonData().isCancelButton()).isFalse();
     }
 

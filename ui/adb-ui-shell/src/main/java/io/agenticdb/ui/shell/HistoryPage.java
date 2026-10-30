@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 
 import javafx.geometry.Insets;
@@ -32,10 +33,10 @@ public final class HistoryPage extends VBox {
     /** ⭐ P2-3：列表显示「时间 · SQL」；悬停给完整 SQL + 连接 / 表。 */
     private final ListView<QueryHistory.Entry> list = new ListView<>();
     /** ⭐ E8：空态用统一的 {@link EmptyState}（图标 + 标题 + 说明），不再是一行字。 */
-    private final EmptyState empty = EmptyState.of(Icons.Icon.HISTORY, "还没有执行过 SQL",
-            "执行过的语句会出现在这里：最近 50 条，去重后落本地偏好，重启还在。");
-    private final Button use = new Button("载入到新查询");
-    private final Button clear = new Button("清空历史");
+    private final EmptyState empty = EmptyState.of(Icons.Icon.HISTORY, I18n.t("history.emptyTitle"),
+            I18n.t("history.emptyBody"));
+    private final Button use = new Button(I18n.t("history.loadNew"));
+    private final Button clear = new Button(I18n.t("query.clearHistory"));
 
     public HistoryPage(QueryHistory history, Consumer<String> onUse) {
         this.history = history;
@@ -44,7 +45,7 @@ public final class HistoryPage extends VBox {
         setPadding(new Insets(0));
         getStyleClass().add("adb-page__body");
 
-        Label hint = new Label("最近执行过的 SQL（最多 50 条 · 落本地偏好，重启还在）");
+        Label hint = new Label(I18n.t("history.hint"));
         hint.getStyleClass().add("adb-muted");
 
         list.setId("history-list");

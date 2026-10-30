@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.ColumnDef;
@@ -37,9 +38,9 @@ final class TransferHub {
     private final Dialog<Void> dialog = new Dialog<>();
     private final VBox content = new VBox(10);
     private final ComboBox<String> tableBox = new ComboBox<>();
-    private final Button exportButton = IconButtons.of(Icons.Icon.EXPORT, "导出…");
-    private final Button importButton = IconButtons.of(Icons.Icon.IMPORT, "导入…");
-    private final Button closeButton = new Button("关闭");
+    private final Button exportButton = IconButtons.of(Icons.Icon.EXPORT, I18n.t("hub.export"));
+    private final Button importButton = IconButtons.of(Icons.Icon.IMPORT, I18n.t("hub.import"));
+    private final Button closeButton = new Button(I18n.t("tab.close"));
 
     TransferHub(DbSession session, List<String> tables, Executor dbExecutor,
                 Consumer<String> status) {
@@ -81,17 +82,17 @@ final class TransferHub {
         actions.setAlignment(Pos.CENTER_RIGHT);
 
         Label hint = new Label(this.tables.isEmpty()
-                ? "这个连接里还没有可用的表"
-                : "选一张表，然后导入或导出");
+                ? I18n.t("hub.noTablesHint")
+                : I18n.t("hub.pickTableHint"));
         hint.getStyleClass().add("adb-muted");
 
         content.getChildren().addAll(hint, tableBox, actions);
         content.setPadding(new Insets(16));
         content.getStyleClass().add("adb-wizard__content");
 
-        dialog.setTitle("导入 / 导出");
+        dialog.setTitle(I18n.t("ribbon.importExport"));
         // ⚠️ 标题与题头同文时（「导入 / 导出」/「导入 / 导出」）题头是纯噪音。
-        dialog.setHeaderText("选一张表");
+        dialog.setHeaderText(I18n.t("hub.chooseTable"));
         dialog.getDialogPane().getButtonTypes().clear();
         dialog.getDialogPane().setContent(content);
     }

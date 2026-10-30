@@ -34,7 +34,7 @@ public final class ActionRegistry {
     public Action register(String id, String label, String category,
                            KeyCombination accelerator, Runnable handler) {
         if (actions.containsKey(id)) {
-            throw new IllegalArgumentException("动作 id 重复: " + id);
+            throw new IllegalArgumentException("duplicate action id: " + id);
         }
         Action action = new Action(id, label, category, accelerator, handler);
         // 读字段而不是捕获值：feedback 可能在注册之后才被设置。
@@ -47,7 +47,7 @@ public final class ActionRegistry {
     public Action require(String id) {
         Action action = actions.get(id);
         if (action == null) {
-            throw new IllegalArgumentException("未注册的动作: " + id);
+            throw new IllegalArgumentException("unregistered action id: " + id);
         }
         return action;
     }
@@ -177,13 +177,13 @@ public final class ActionRegistry {
             String previous = seen.putIfAbsent(action.accelerator(), action.id());
             if (previous != null) {
                 throw new IllegalStateException(
-                        "快捷键冲突: " + action.accelerator()
-                                + " 同时绑定 " + previous + " 与 " + action.id());
+                        "accelerator conflict: " + action.accelerator()
+                                + " bound to both " + previous + " and " + action.id());
             }
         }
     }
 
     public void requireExists(String id) {
-        Objects.requireNonNull(actions.get(id), () -> "动作不存在: " + id);
+        Objects.requireNonNull(actions.get(id), () -> "no such action: " + id);
     }
 }

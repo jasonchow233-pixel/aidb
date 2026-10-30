@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.ui.I18n;
 import io.agenticdb.introspect.StructurePlan;
 import io.agenticdb.jdbc.DbSession;
 import javafx.scene.control.Alert;
@@ -82,25 +83,25 @@ public final class StructurePlanRunner {
      * @return 用户确实点了「继续 / 确认执行」才为真
      */
     static boolean confirm(Window owner, List<String> stylesheets, StructurePlan plan) {
-        if (!showPlanAlert(owner, stylesheets, plan, plan.title(), "继续")) {
+        if (!showPlanAlert(owner, stylesheets, plan, plan.title(), I18n.t("grid.save.proceed"))) {
             return false;
         }
         if (!plan.approvalRequired()) {
             return true;
         }
-        return showPlanAlert(owner, stylesheets, plan, "高风险结构变更：" + plan.title(),
-                "确认执行");
+        return showPlanAlert(owner, stylesheets, plan, I18n.t("plan.riskyTitle", plan.title()),
+                I18n.t("query.confirmRunTitle"));
     }
 
     private static boolean showPlanAlert(Window owner, List<String> stylesheets,
                                          StructurePlan plan, String title, String okLabel) {
         // ⭐ OTHER 而不是 OK_DONE —— 破坏性按钮不能是默认按钮，回车不能落在它上面。
         ButtonType ok = new ButtonType(okLabel, ButtonBar.ButtonData.OTHER);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType cancel = new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setTitle("结构变更确认");
+        alert.setTitle(I18n.t("plan.title"));
         alert.setHeaderText(title);
-        alert.setContentText("将按顺序执行以下 SQL（单事务，失败回滚）：");
+        alert.setContentText(I18n.t("plan.body"));
         TextArea area = new TextArea(plan.sql());
         area.setEditable(false);
         area.setWrapText(false);

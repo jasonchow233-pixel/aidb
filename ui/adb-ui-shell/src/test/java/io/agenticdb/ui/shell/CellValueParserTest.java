@@ -24,16 +24,16 @@ class CellValueParserTest {
     void rejectsInvalidNumbersAndBooleans() {
         assertThatThrownBy(() -> CellValueParser.parse(column(ColumnType.NUMBER), "abc"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("数字");
+                .hasMessageContaining(io.agenticdb.ui.I18n.t("parse.notNumber", "abc"));
         assertThatThrownBy(() -> CellValueParser.parse(column(ColumnType.BOOLEAN), "maybe"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("布尔");
+                .hasMessageContaining(io.agenticdb.ui.I18n.t("parse.notBoolean", "maybe"));
     }
 
     @Test
     void nullAndEmptyStringHaveDistinctDisplay() {
         assertThat(CellValueParser.display(null)).isEqualTo("NULL");
-        assertThat(CellValueParser.display("")).contains("空串");
+        assertThat(CellValueParser.display("")).isEqualTo(io.agenticdb.ui.I18n.t("parse.emptyStringLabel"));
     }
 
     private static ColumnDef column(ColumnType type) {
