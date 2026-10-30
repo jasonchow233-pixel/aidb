@@ -1011,6 +1011,43 @@
     -fx-fill: -adb-text-disabled;
 }
 
+/* ── 彩色分层在按钮态里的翻色（R35 N4-c）────────────────────────────────
+ * 16px 工具条走彩色通道之后，按钮态必须同时覆盖**子层类名**：
+ * 上面那三条单色规则改的是 .adb-icon，而分层图标的子层叫
+ * .adb-icon-edge / .adb-icon-tone-* / .adb-icon-accent，一条都不会命中。
+ * 不补的后果不是「不够好看」，是两条硬伤：
+ *   ① 主动作按钮蓝底 + 蓝边 = 图标整个看不见（淡蓝填充压在蓝底上是一坨）；
+ *   ② 禁用态还亮着 = 「看起来能点」，撞诚实条款（本仓库的禁用感由**颜色**
+ *      表达，Modena 的 -fx-opacity: 0.4 在上面 DISABLED 段被显式还原成 1）。
+ * 门禁：ToolbarIconChannelTest 读**计算色**（getStroke/getFill），不是读 CSS 文本。
+ * ─────────────────────────────────────────────────────────────────── */
+.adb-button--primary .adb-icon-edge {
+    -fx-stroke: -adb-text-inverse;
+}
+
+.adb-button--primary .adb-icon-tone-a,
+.adb-button--primary .adb-icon-tone-b,
+.adb-button--primary .adb-icon-tone-c,
+.adb-button--primary .adb-icon-accent {
+    -fx-fill: transparent;
+}
+
+.adb-button:disabled .adb-icon-edge,
+.adb-icon-button:disabled .adb-icon-edge {
+    -fx-stroke: -adb-text-disabled;
+}
+
+.adb-button:disabled .adb-icon-tone-a,
+.adb-button:disabled .adb-icon-tone-b,
+.adb-button:disabled .adb-icon-tone-c,
+.adb-button:disabled .adb-icon-accent,
+.adb-icon-button:disabled .adb-icon-tone-a,
+.adb-icon-button:disabled .adb-icon-tone-b,
+.adb-icon-button:disabled .adb-icon-tone-c,
+.adb-icon-button:disabled .adb-icon-accent {
+    -fx-fill: -adb-bg-disabled;
+}
+
 /* ── 侧栏 ───────────────────────────────────────────────────────────── */
 
 .adb-sidebar {

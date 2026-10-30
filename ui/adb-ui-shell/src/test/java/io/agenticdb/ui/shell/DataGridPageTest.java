@@ -79,6 +79,101 @@ class DataGridPageTest {
         }
     }
 
+    /**
+     * ⭐ 关页签必须摘掉还在防抖里的列宽落盘。
+     *
+     * <p>症状（2026-10-30 实测）：列宽的 400ms 防抖由 FX 时钟驱动，页签关掉之后它照点一次
+     * {@code persistLayout()} —— 往已拆卸的场景里读列、往可能已被回收的 prefs 节点写值，
+     * 抛 {@code IllegalStateException: Node has been removed}。在测试里它表现为
+     * 「跟在本页之后跑的别的用例突然红一条」，在界面里它是崩溃日志里的一条噪音。
+     *
+     * <p>断言读的是**防抖还在不在跑**，不是等 400ms 看有没有异常 ——
+     * 后者只在特定时序下才红，等于一条会漏的门禁。
+     */
+    @Test
+    void closingThePageCancelsThePendingLayoutSave() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("close.db"))));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
+                    "close-" + System.nanoTime(), noOpFeedback(), name -> { }, executor,
+                    new SettingsStore());
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                    page.lookup("#data-table") != null && !tableItems(page).isEmpty());
+
+            WaitForAsyncUtils.asyncFx(() -> {
+                @SuppressWarnings("unchecked")
+                TableView<Map<String, Object>> table =
+                        (TableView<Map<String, Object>>) page.lookup("#data-table");
+                table.getColumns().get(1).setVisible(false);
+            }).get();
+            assertThat(WaitForAsyncUtils.asyncFx(page::layoutSavePending).get())
+                    .as("刚改完一列（visibleProperty 也挂同一个防抖）：待写的盘必须在（不在就等于这条没在验东西）")
+                    .isTrue();
+
+            WaitForAsyncUtils.asyncFx(page::close).get();
+            assertThat(WaitForAsyncUtils.asyncFx(page::layoutSavePending).get())
+                    .as("页签都关了还留着待写的盘 = 往已拆卸的场景里写")
+                    .isFalse();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    /**
+     * ⭐ R35 N4-c：16px 图标的**两区画法**必须在真实页面上成立。
+     *
+     * <p>逐像素看 Navicat 的数据页（{@code docs/screenshots/navicat/navicat-data-grid-2026-10-24.png}）：
+     * 上沿工具条是蓝色实心小图形，贴在网格左下的行操作条（{@code + − ✓ ✗}）是灰的单线。
+     * 所以「工具条走彩色通道」不等于「所有 16px 都彩」—— 行操作条必须继续单色，
+     * 否则彩色的编辑开关会盖过数据本身。
+     *
+     * <p>这条从**真页面**的按钮上读图形类型，不是再造一个按钮：
+     * 造出来的按钮只能验工厂，验不了「这一排到底用的哪个工厂」。
+     */
+    @Test
+    void theTopToolbarIsColoredWhileTheRowStripStaysMonochrome() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("zones.db"))));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
+                    "test.db", noOpFeedback(), name -> { }, executor);
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                    page.lookup("#data-table") != null
+                            && !tableItems(page).isEmpty());
+            WaitForAsyncUtils.waitForFxEvents();
+
+            List<String> colored = List.of("data-save", "data-columns", "data-add");
+            List<String> monochrome = List.of("data-row-add", "data-row-apply", "data-row-cancel");
+            for (String id : colored) {
+                assertThat(WaitForAsyncUtils.asyncFx(() -> graphicClass(page, id)).get())
+                        .as("上沿工具条 #%s：SAVE/COLUMNS/ADD 都有彩色资产，掉回单色就是 I-4 的两种画法", id)
+                        .isEqualTo("group");
+            }
+            for (String id : monochrome) {
+                assertThat(WaitForAsyncUtils.asyncFx(() -> graphicClass(page, id)).get())
+                        .as("行操作条 #%s：Navicat 这一排是灰的单线，彩了会抢过数据本身", id)
+                        .isEqualTo("path");
+            }
+            page.close();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    /** 按钮图形的画法：{@code group} = 彩色分层，{@code path} = 单色回退，{@code null} = 没图形。 */
+    private static String graphicClass(DataGridPage page, String id) {
+        Button button = (Button) page.lookup("#" + id);
+        if (button == null || button.getGraphic() == null) {
+            return null;
+        }
+        return button.getGraphic() instanceof javafx.scene.Group ? "group" : "path";
+    }
+
     @Test
     void persistsColumnVisibilityAcrossPages() throws Exception {
         DbSession session = JdbcSession.open(ConnectionSpec.sqlite(

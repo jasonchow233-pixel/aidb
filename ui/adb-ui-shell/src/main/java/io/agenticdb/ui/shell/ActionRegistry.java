@@ -157,7 +157,7 @@ public final class ActionRegistry {
         Objects.requireNonNull(action, "action");
         // ⭐ 矢量图标（不是 Unicode 符号 —— 符号的字形随系统字体变）。
         Button button = new Button();
-        button.setGraphic(Icons.of(icon));
+        button.setGraphic(Icons.colored(icon));
         button.getStyleClass().addAll("adb-icon-button");
         button.setId(action.id());
         button.setTooltip(new javafx.scene.control.Tooltip(action.hintWithShortcut(tooltip)));

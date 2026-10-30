@@ -4,7 +4,7 @@
 
 - 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 - **当前状态：尚未发布任何正式版本。** 仓库版本是 `1.0.0-SNAPSHOT`，没有任何 git tag。
-  首个 tag 会在 macOS 公证 / 签名与分发渠道确定后切（见 [docs/ROADMAP.md](file:///Users/jason/Documents/GitHub/aidb/docs/ROADMAP.md)）。
+  首个 tag 会在 macOS 公证 / 签名与分发渠道确定后切（见 [docs/ROADMAP.md](docs/ROADMAP.md)）。
 - **不回填历史。** tag 之前的 170+ 次提交请查 `git log --oneline`；本文件从「有意对外发布」那一刻开始维护。
 
 ## [Unreleased]
@@ -23,6 +23,21 @@
 
 ### Changed
 
+- **16px 内联工具条进彩色档**（2026-10-30，R35 N4-c；改的是 `docs/UI-VISUAL-SPEC.md` §4.5 第 1 条规矩）。
+  旧规矩把「16px 内联工具条」整体划在单色区，依据是想当然的「小图标彩了会糊」；
+  逐像素翻 Navicat 数据页实拍帧（`docs/screenshots/navicat/navicat-data-grid-2026-10-24.png`）后确认
+  **Navicat 的 16px 本身分两区**：上沿工具条是蓝色实心小图形（和树上同一族颜色），
+  贴在网格左下的行操作条 `+ − ✓ ✗ ` 是灰的单线。
+  于是「同一个图标在树上彩、在工具条上单色」按对手口径是**缺陷**（I-4），修法：
+  工具条默认工厂走 `Icons.colored`（无彩色资产自动回退单色），行操作条显式走新的
+  `IconButtons.iconMono`。门禁 `ToolbarIconChannelTest` 双向钉（彩的必须彩、单色的必须单色），
+  `DataGridPageTest.theTopToolbarIsColoredWhileTheRowStripStaysMonochrome` 从真实页面的按钮上验两区。
+  ⚠️ 连带必须补的一条：分层返回 `Group`，只认 `.adb-icon` 的按钮态规则命中不了子层 ——
+  不补就是蓝底上蓝边看不见图标、禁用还亮着蓝边（后者撞诚实条款）。
+  `app.css` 新增「彩色分层在按钮态里的翻色」段（`--primary` 翻白 + `:disabled` 塌灰），
+  门禁读**计算色**而不是 CSS 文本。
+  变异验证（三条都已实测）：工厂改回 `Icons.of` → 18 枚图标全部报「掉回单色」；
+  删 `:disabled` 那条边色规则 → 禁用态门禁红在轮廓断言；删 `--primary` 那条 → 主动作门禁红。
 - **启动耗时门禁改判**（2026-10-30）：`StartupTraceTest` 里那条「首屏不应超过 2s」删掉了。
   它断言的 `firstScreenMillis()` 量的是「**JVM 进程启动 → 走到断言那一行**」，
   在共享的 surefire fork 里这个差值等于测试运行器已经跑了多久 ——
@@ -34,13 +49,22 @@
   变异验证：把 `slow()` 改成恒 `false` → 该门禁立刻红（已实测）。
 - **功能区图标尺寸维持 26px**（原计划放大到 30px）。改判理由：Navicat 17 实测里，那一排大图标是全界面最彩的部分，
   需要的是彩色档而不是更大的单色图标；30px 留到 R36 重做顶区布局时一起判。
-  见 [docs/UI-VISUAL-SPEC.md](file:///Users/jason/Documents/GitHub/aidb/docs/UI-VISUAL-SPEC.md) §4.5。
+  见 [docs/UI-VISUAL-SPEC.md](docs/UI-VISUAL-SPEC.md) §4.5。
 - 对象类型色回到 `edge`（轮廓）层，`tone` 三层保持中性——同一个对象只保留一处颜色来源。
 - 视觉文档与实现对齐：设计令牌数校正为 106（68 色 / 35 尺寸 / 3 时长），移除不存在的 `border-strong` 记录，
   图标台账改为 55 枚（53 枚 Lucide + 2 枚自绘）。
 
 ### Fixed
 
+- **关掉数据页签之后，列宽防抖还会照点一次落盘**（2026-10-30）：`scheduleLayoutSave()` 用 400ms 的
+  `PauseTransition` 去抖，`close()` 只取消了在跑的查询、没摘这个定时器。页签没了它照样触发一次
+  `persistLayout()` —— 往已拆卸的场景里读列、往可能已被回收的 prefs 节点写值，
+  抛 `IllegalStateException: Node has been removed`。
+  症状很误导人：崩的是**跟在这页之后跑的别的用例**，崩溃日志里也长期躺着这条噪音。
+  现在 `close()` 显式 `stop()` 定时器（只停不补写：最多丢一次「拖完 400ms 内就关页签」的宽度，
+  换来关页之后不再有任何写）。门禁：`closingThePageCancelsThePendingLayoutSave`
+  断言的是**防抖还在不在跑**，不是等 400ms 看有没有异常。
+  变异验证：删掉那三行 `stop()` → 本类两条用例同时红（已实测）。
 - **弹窗按钮序门禁在 macOS 上假红**（长期红，2026-10-30 修）：
   `DialogButtonOrderTest.theOrderStringOnlySwapsThoseTwoSlots` 拿 `DialogStyles.apply` 之后的
   order 串去比 **Windows 预设**，但 `ButtonBar` 的初始串是**按宿主平台**选的
@@ -66,4 +90,4 @@
 ### Not yet released
 
 本条不是变更，是一句实话：**上面所有能力都还没有面向使用者的发布产物**（无安装包、无 tag、无更新通道）。
-现在能用的安装方式是「拉源码本地跑」，命令见 [CONTRIBUTING.md](file:///Users/jason/Documents/GitHub/aidb/CONTRIBUTING.md) §1–2。
+现在能用的安装方式是「拉源码本地跑」，命令见 [CONTRIBUTING.md](CONTRIBUTING.md) §1–2。

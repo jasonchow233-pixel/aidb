@@ -27,11 +27,11 @@
 
 - **口令不落盘。** 数据库口令只写入系统安全存储：Windows 凭据管理器（WinCred）、
   macOS 钥匙串、Linux Secret Service；检测不到系统服务时退回进程内存，并在 stderr 明确警告。
-  见 [workbench/adb-session/src/main/java/io/agenticdb/session/CredentialStore.java](file:///Users/jason/Documents/GitHub/aidb/workbench/adb-session/src/main/java/io/agenticdb/session/CredentialStore.java)。
+  见 [workbench/adb-session/src/main/java/io/agenticdb/session/CredentialStore.java](workbench/adb-session/src/main/java/io/agenticdb/session/CredentialStore.java)。
 - **连接配置落盘前剔除敏感键。** `~/.agenticdb/connections.json` 只保存非敏感字段；
   `password` / `secret` / `token` / `sslkey` / `sslcertificate` 等一整套键名（大小写、连字符、下划线不敏感）
   在落盘和建连两处都会被 `sanitizedOptions()` 过滤掉。
-  见 [workbench/adb-session/src/main/java/io/agenticdb/session/ConnectionProfile.java:139](file:///Users/jason/Documents/GitHub/aidb/workbench/adb-session/src/main/java/io/agenticdb/session/ConnectionProfile.java#L139)。
+  见 [workbench/adb-session/src/main/java/io/agenticdb/session/ConnectionProfile.java:139](workbench/adb-session/src/main/java/io/agenticdb/session/ConnectionProfile.java#L139)。
 - **没有遥测、没有 HTTP、没有监听端口。** 生产代码里不存在 `HttpClient` / `HttpURLConnection` /
   `ServerSocket` / 内嵌 WebView；唯一的出站连接是你自己在连接配置里填的那个数据库地址。
   任何「AIDB 会向第三方发送数据」的结论都需要给出抓包证据。
@@ -56,7 +56,7 @@
 - 需要攻击者已经拿到用户机执行权限才能成立的一切（读内存、挂钩 `security`/`secret-tool`、改 `~/.agenticdb/`）。
 - DoS / 刷连接数打自己的数据库；扫描、爆破、钓鱼等对基础设施的动作。
 - 文档里已明确标注的**未实现能力**（签名/公证、自动更新）——它们是路线图上的缺口，不是漏洞。
-  见 [docs/ROADMAP.md](file:///Users/jason/Documents/GitHub/aidb/docs/ROADMAP.md)。
+  见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 - 版本策略：只修 **`main` 当前 HEAD** 上仍存在的问题。首个正式 tag 发布前，没有「历史版本」可回补。
 
 ## 5. 报告请附上

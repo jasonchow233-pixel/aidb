@@ -332,10 +332,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      * 不在这里重写一遍判断 —— 两处状态不一致比少一排按钮更糟。
      */
     private final HBox rowActions = new HBox(4);
-    private final Button rowAddButton = IconButtons.icon(Icons.Icon.ADD, I18n.t("grid.toolbar.addRow"));
-    private final Button rowDeleteButton = IconButtons.icon(Icons.Icon.DELETE, I18n.t("grid.batch.deleteSelected"));
-    private final Button rowApplyButton = IconButtons.icon(Icons.Icon.SAVE, I18n.t("grid.batch.apply"));
-    private final Button rowCancelButton = IconButtons.icon(Icons.Icon.CLOSE, I18n.t("grid.batch.discard"));
+    private final Button rowAddButton = IconButtons.iconMono(Icons.Icon.ADD, I18n.t("grid.toolbar.addRow"));
+    private final Button rowDeleteButton = IconButtons.iconMono(Icons.Icon.DELETE, I18n.t("grid.batch.deleteSelected"));
+    private final Button rowApplyButton = IconButtons.iconMono(Icons.Icon.SAVE, I18n.t("grid.batch.apply"));
+    private final Button rowCancelButton = IconButtons.iconMono(Icons.Icon.CLOSE, I18n.t("grid.batch.discard"));
     private final Label recordPosition = new Label("—");
     private final Label batchLabel = new Label();
     private final Button batchNull = new Button(I18n.t("grid.batch.setNull"));
@@ -2980,6 +2980,18 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         return "ui.grid." + connectionName + "." + tableName + "." + suffix;
     }
 
+    /**
+     * 列宽防抖是否还在跑（只给门禁看，同包）。
+     *
+     * <p>开这个口子的理由和 {@code StartupTrace} 那条一样：要断言的是
+     * 「关页签之后不再有待写的盘」，从外部只能靠等 400ms 再看有没有异常，
+     * 那种断言既慢又只在特定调度下才红。
+     */
+    boolean layoutSavePending() {
+        return layoutSaveTimer != null
+                && layoutSaveTimer.getStatus() == javafx.animation.Animation.Status.RUNNING;
+    }
+
     private void scheduleLayoutSave() {
         if (settings == null || tableSchema == null) {
             return;
@@ -5318,7 +5330,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      * 保存期间的转圈由 {@link IconButtons#loading} 负责，宽度不变。
      */
     private <T extends ButtonBase> T toolbarIcon(T button, Icons.Icon icon, String hint) {
-        button.setGraphic(Icons.of(icon, Icons.SIZE_TOOLBAR));
+        button.setGraphic(Icons.colored(icon, Icons.SIZE_TOOLBAR));
         button.setTooltip(new Tooltip(hint));
         button.setAccessibleText(hint);
         button.setMinWidth(Region.USE_PREF_SIZE);
@@ -6199,6 +6211,15 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         if (inFlight != null) {
             inFlight.cancel(true);
             inFlight = null;
+        }
+        // ⭐ 关页签必须**摘掉还在防抖里的列宽落盘**：400ms 的 PauseTransition 由 FX 时钟驱动，
+        //   页签已经没了它还会照点一次 persistLayout() —— 往已拆卸的场景里读列、
+        //   再往可能已被回收的 prefs 节点写值（实测抛 IllegalStateException: Node has been removed，
+        //   在测试里表现为「跟在本页之后跑的别的用例突然红一条」）。
+        //   这里只 stop，不补写：最多丢一次「拖完 400ms 内就关页签」的宽度，
+        //   换来的是关页之后不再有任何写。
+        if (layoutSaveTimer != null) {
+            layoutSaveTimer.stop();
         }
         detailsDrawer.close();
     }

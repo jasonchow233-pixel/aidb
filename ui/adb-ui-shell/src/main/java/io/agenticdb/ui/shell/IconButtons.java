@@ -14,11 +14,17 @@ import javafx.scene.control.Tooltip;
  *
  * <p>统一三件事，免得每个地方各写一遍、各漏一遍：
  * <ol>
- *   <li>图形来自 {@link Icons}（16×16 矢量，1.5px 描边）；</li>
+ *   <li>图形来自 {@link Icons#colored(Icons.Icon, double)}（16×16 矢量，1.5px 描边）——
+ *       有彩色资产就走彩色分层，没有就自动回退单色。工具条**不选边**：
+ *       同一个图标在树上彩、在工具条上单色，就是 UI-VISUAL-SPEC I-4 记的那条缺陷；</li>
  *   <li><b>只有图标</b>的按钮必须同时有 Tooltip（鼠标可发现）与
  *       accessibleText（读屏可朗读）—— 少一个都不合格（见 {@code IconAuditTest}）；</li>
  *   <li>图标与文字之间留一点间距，别挤在一起。</li>
  * </ol>
+ *
+ * <p>⚠️ 彩色分层返回的是 {@code Group}（子层 {@code .adb-icon-edge} 等），
+ * 主动作按钮（蓝底）与禁用态必须把这两类子层一起翻色，否则「蓝边压蓝底」看不见图标、
+ * 「禁用还亮着」等于骗用户能点 —— 见 {@code app.css} 的彩色分层段。
  */
 final class IconButtons {
 
@@ -32,7 +38,7 @@ final class IconButtons {
     static Button of(Icons.Icon icon, String text) {
         Button button = new Button(text);
         button.setMnemonicParsing(false);
-        button.setGraphic(Icons.of(icon));
+        button.setGraphic(Icons.colored(icon));
         button.setGraphicTextGap(GAP);
         return button;
     }
@@ -45,7 +51,29 @@ final class IconButtons {
     /** 只有图标的按钮，指定尺寸（页面主工具条用 {@link Icons#SIZE_PRIMARY}）。 */
     static Button icon(Icons.Icon icon, String hint, double size) {
         Button button = new Button();
-        button.setGraphic(Icons.of(icon, size));
+        button.setGraphic(Icons.colored(icon, size));
+        button.setTooltip(new Tooltip(hint));
+        button.setAccessibleText(hint);
+        return button;
+    }
+
+    /**
+     * ⭐ **单色**图标按钮 —— 只在「贴着数据网格的行操作条」这一类位置用。
+     *
+     * <p>为什么不是一律彩色：Navicat 的 16px 图标其实分两区，逐像素看
+     * {@code docs/screenshots/navicat/navicat-data-grid-2026-10-24.png} ——
+     * 上沿工具条（Table Profile / Begin Transaction / Cell Editor / Filter & Sort /
+     * Columns / History）是**蓝色实心小图形**，而贴在网格左下的行操作条
+     * （{@code + − ✓ ✗ ↺}）是**灰的单线**。两区画法不同是刻意的：
+     * 上沿在说「能做什么」，下沿在说「这一行的编辑开关」，彩了反而抢过数据本身。
+     *
+     * <p>所以本类的默认工厂走彩色通道，行操作条这类调用点显式走这条单色道。
+     * 门禁：{@code ToolbarIconChannelTest} 两个方向都钉（彩的必须彩、单色的必须单色），
+     * {@code DataGridPageTest} 从真实页面上验。
+     */
+    static Button iconMono(Icons.Icon icon, String hint) {
+        Button button = new Button();
+        button.setGraphic(Icons.of(icon, Icons.SIZE_TOOLBAR));
         button.setTooltip(new Tooltip(hint));
         button.setAccessibleText(hint);
         return button;
@@ -74,7 +102,7 @@ final class IconButtons {
      */
     static <T extends ButtonBase> T labeled(T button, Icons.Icon icon, String text, String hint,
                                             double size) {
-        button.setGraphic(Icons.of(icon, size));
+        button.setGraphic(Icons.colored(icon, size));
         button.setText(text);
         button.setMnemonicParsing(false);
         button.setGraphicTextGap(GAP);
@@ -92,7 +120,7 @@ final class IconButtons {
      */
     static Label iconLabel(Icons.Icon icon, double size, String hint, String accessibleText) {
         Label label = new Label();
-        label.setGraphic(Icons.of(icon, size));
+        label.setGraphic(Icons.colored(icon, size));
         label.setTooltip(new Tooltip(hint));
         label.setAccessibleText(accessibleText);
         return label;
@@ -100,7 +128,7 @@ final class IconButtons {
 
     /** 给已有的按钮装上图标（保持原有文字与提示）。 */
     static <T extends Button> T withIcon(T button, Icons.Icon icon) {
-        button.setGraphic(Icons.of(icon));
+        button.setGraphic(Icons.colored(icon));
         button.setGraphicTextGap(GAP);
         return button;
     }
@@ -109,14 +137,14 @@ final class IconButtons {
      * 纯图标的**下拉**按钮（提示由调用方设置 —— 菜单按钮的提示各不相同）。
      */
     static <T extends MenuButton> T iconMenu(T button, Icons.Icon icon, String accessibleText) {
-        button.setGraphic(Icons.of(icon));
+        button.setGraphic(Icons.colored(icon));
         button.setAccessibleText(accessibleText);
         return button;
     }
 
     /** 给已有的下拉按钮装上图标。 */
     static <T extends MenuButton> T withIcon(T button, Icons.Icon icon) {
-        button.setGraphic(Icons.of(icon));
+        button.setGraphic(Icons.colored(icon));
         button.setGraphicTextGap(GAP);
         return button;
     }

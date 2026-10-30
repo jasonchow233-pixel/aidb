@@ -282,7 +282,7 @@
 | **I-1** | ~~缺 **20px 图标档**（功能栏用 16px 顶着大字标）~~ | — | ✅ **已修**（UX-1）：新增 `Icons.SIZE_PRIMARY = 20`，对象主工具条使用 |
 | **I-2** | ~~标签栏 11px、rail 16px、功能栏 16px 三档不统一~~ | 同一语义在不同处大小不一致 | ✅ **已修**（UX-1）：命名档位 14/16/20 三个常量，调用点写数字被门禁拦下 |
 | **I-3** | ~~无应用图标~~ | 窗口标题栏无品牌标识 | ✅ **已修**：`App` 把多尺寸品牌图标注册进 `stage.getIcons()`（门禁：`BrandMarkAuditTest`） |
-| **I-4** | 彩色档覆盖**导航词表 + 功能区**（18 枚资产），16px 内联工具条与连接磁贴仍是单色 | 同一图标在树上和工具条上两种画法 | 🚧 R35 N4-c；**门禁已钉住导航词表与功能区 6 条命令**（`theNavigationVocabularyIsFullyColored` / `theRibbonVocabularyIsFullyColored`），新增图标若没配彩色资产会直接红 |
+| **I-4** | 彩色档覆盖**导航词表 + 功能区 + 页面级 16px 内联工具条**（18 枚资产，无资产的图标自动回退单色）；只剩**连接磁贴**仍是单色 | ~~同一图标在树上和工具条上两种画法~~ —— 已消；磁贴那 48 枚等厂商标志的裁定 | ✅ 工具条部分（R35 N4-c，门禁 `ToolbarIconChannelTest` 双向钉 + `DataGridPageTest` 从真实页面验两区画法）；🚧 连接磁贴部分等 owner 裁定（第三方 logo 是商标资产） |
 
 ### 4.5 彩色档（R35）
 
@@ -290,7 +290,7 @@
 
 | # | 规矩 | 门禁 |
 |---|---|---|
-| 1 | **谁能上色**：一切「一眼要认出是什么」的大图标 —— 对象树、页签、页签栏、对象头、结构页索引列、**功能区 6 条命令**。小工具条（16px 内联）与危险动作仍走单色。 | `IconSystemAuditTest.theNavigationVocabularyIsFullyColored` · `IconSystemAuditTest.theRibbonVocabularyIsFullyColored` |
+| 1 | **谁能上色**：一切「一眼要认出是什么」的图标 —— 对象树、页签、页签栏、对象头、结构页索引列、**功能区 6 条命令**、**页面级 16px 内联工具条**（上沿那一排：筛选 / 列 / 历史 / 保存 / 新增行…）。仍走单色的三处：贴着网格的**行操作条**（`+ − ✓ ✗`）、危险动作、以及一切**没有彩色资产**的图标（自动回退）。 | `IconSystemAuditTest.theNavigationVocabularyIsFullyColored` · `IconSystemAuditTest.theRibbonVocabularyIsFullyColored` · `ToolbarIconChannelTest` · `DataGridPageTest.theTopToolbarIsColoredWhileTheRowStripStaysMonochrome` |
 | 2 | **资产放哪**：`ui/adb-ui-core/src/main/resources/io/agenticdb/ui/icons/color/*.svg`，文件名与单色档同源，且**不许有没人用的资产**。 | `ColoredIconTest.everyColoredAssetIsReferencedByAnIcon` |
 | 3 | **资产里不许有颜色**：只写 `data-paint="edge\|tone-a\|tone-b\|tone-c\|accent"`，一个 `fill`/`stroke` 字面量都不许出现。 | `ColoredIconTest.coloredAssetsDeclareRolesInsteadOfColors` |
 | 4 | **颜色从令牌来**：五个角色色是 `-adb-icon-*` looked-up color，由 `app.css` 的 `.adb-icon-*` 提供 —— 业务代码零颜色字面量。 | `ColoredIconTest.everyRoleCssRuleSetsBothFillAndStroke` · `StyleClassCoverageTest` · `TokenParityTest` |
@@ -312,6 +312,20 @@
 > 但那是 **90px 双行带**里的 30px；R32-D 已把带子砍到 64px 单行，等比下来 26px
 > 反而比参考更宽松 —— 所以 `SIZE_RIBBON` **维持 26**，30px 等 R36 重做顶区
 > （140px / 12 磁贴）时和布局一起判。
+
+> 📌 **第 1 条在 N4-c 又改了一次判**（2026-10-30，同样不是「改绿」）：第一版把
+> 「16px 内联工具条」整体划在单色区，依据是想当然的「小图标彩了会糊」。
+> 逐像素翻 `docs/screenshots/navicat/navicat-data-grid-2026-10-24.png` 的两条横带，
+> 结论是**Navicat 的 16px 分两区**：
+> ① 上沿工具条（Table Profile / Begin Transaction / Cell Editor / Filter & Sort /
+> Columns / History / Import / Export）是**蓝色实心小图形**，和树上同一族颜色；
+> ② 贴在网格左下的行操作条（`+ − ✓ ✗ ↺`）是**灰的单线**。
+> 于是 I-4 那条「同一图标在树上和工具条上两种画法」是**真缺陷**，按 ① 修：
+> 工具条默认走 `Icons.colored`，行操作条按 ② 显式走 `IconButtons.iconMono`。
+> ⚠️ 换通道带来一条必须同时补的规则：分层返回的是 `Group`，只认 `.adb-icon` 的
+> 按钮态规则（hover / `--primary` / `:disabled`）**一条都命中不了子层** ——
+> 不补就是「蓝底上蓝边看不见图标」与「禁用还亮着蓝边」，后者撞诚实条款。
+> 补色规则见 `app.css` 的「彩色分层在按钮态里的翻色」段，门禁读**计算色**。
 
 ---
 
