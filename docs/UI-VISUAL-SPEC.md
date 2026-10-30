@@ -297,7 +297,7 @@
 | 5 | **暗色不出第二套资产**：同一批 SVGPath，靠主题类换 `-adb-icon-*` 的值。这样 P3（双套资产漂移）从结构上不存在。 | `IconKindHueTest.theKindHueFollowsTheThemeWithoutASecondAssetSet` |
 | 6 | **分层顺序**：`tone-*` 在下、`edge` 在上 —— 轮廓永远压住填充，放大不糊。坐标一律换算进 16 视框。 | `ColoredIconTest.everyColoredIconKeepsOneEdgeLayerOnTop` · `ColoredIconTest.coloredLayersConvertIntoTheSixteenViewBox` |
 | 7 | **类型色只上在 `edge` 层**：树/页签的 `kind-*` 色用 `.adb-tree__icon--table .adb-icon-edge` 这类**后代选择器**打在子节点上。容器是 `Group`，没有可绘属性，挂在容器上的 `-fx-stroke` 是**死规则**。 | `IconKindHueTest.coloredTreeIconsKeepTheirKindHue` |
-| 8 | ⛔ **素材红线**：不提取 Navicat 原始位图；借用的 Lucide 路径按 ISC 署名 —— `icons/color/ISC-LICENSE.txt` 随资产走。 | `docs/COMPONENT-SELECTION.md` 素材登记 |
+| 8 | ⛔ **素材红线**：不提取 Navicat 原始位图；借用的 Lucide 路径按 ISC 署名 —— 许可原文与资产**同目录**分发（`icons/lucide/` 与 `icons/color/` 各一份）。 | `ColoredIconTest.everyBorrowedAssetDirectoryShipsItsLicense` · `docs/COMPONENT-SELECTION.md` §1.6 |
 
 > ⚠️ 第 7 条是 R35 第一批踩出来的：单色档时代 `.adb-tree__icon--table` 直接挂在 `SVGPath` 上，
 > 彩色档返回的是 `Group`，同一条规则搬到 Group 上就**静默失效**（表格图标丢了青绿、视图丢了紫）。

@@ -226,6 +226,38 @@ class ColoredIconTest {
                 .isGreaterThan(0);
     }
 
+    @Test
+    void everyBorrowedAssetDirectoryShipsItsLicense() {
+        // ISC 的义务是「副本里保留版权声明与许可原文」。许可文件只写在 docs 里、
+        // 不跟着资源走，等于借了路径数据却没署名 —— 而这两个目录都会打进 jar。
+        List<Path> dirs = List.of(COLOR_DIR, COLOR_DIR.getParent().resolve("lucide"));
+        List<String> problems = new ArrayList<>();
+        for (Path dir : dirs) {
+            long borrowed;
+            try (Stream<Path> files = Files.list(dir)) {
+                borrowed = files.filter(path -> path.toString().endsWith(".svg")).count();
+            } catch (IOException e) {
+                problems.add(dir + " → 目录读不出来：" + e);
+                continue;
+            }
+            Path license = dir.resolve("ISC-LICENSE.txt");
+            if (borrowed == 0) {
+                continue;
+            }
+            if (!Files.isRegularFile(license)) {
+                problems.add(dir + " → 有 " + borrowed + " 枚借用资产，却没有 ISC-LICENSE.txt");
+                continue;
+            }
+            String text = read(license);
+            if (!text.contains("ISC License") || !text.contains("Lucide")) {
+                problems.add(license + " → 许可原文缺版权声明头（ISC License / Lucide）");
+            }
+        }
+        assertThat(problems)
+                .as("借用素材的署名义务不能靠人记：\n  %s", String.join("\n  ", problems))
+                .isEmpty();
+    }
+
     // ─────────────────────────── 工具 ───────────────────────────
 
     private static List<String> assetNames() throws IOException {
