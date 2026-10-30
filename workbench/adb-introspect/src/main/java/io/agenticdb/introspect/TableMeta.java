@@ -1,5 +1,7 @@
 package io.agenticdb.introspect;
 
+import io.agenticdb.model.ByteSizes;
+
 /**
  * 表的元信息 —— Navicat「表清单」那一行的内容。
  *
@@ -46,28 +48,9 @@ public record TableMeta(
     }
 
     public String sizeText() {
-        if (sizeBytes == null) {
-            return "—";
-        }
-        if (sizeBytes < 1024) {
-            return sizeBytes + " B";
-        }
-        double value;
-        String unit;
-        if (sizeBytes < 1024L * 1024) {
-            value = sizeBytes / 1024.0;
-            unit = "KB";
-        } else if (sizeBytes < 1024L * 1024 * 1024) {
-            value = sizeBytes / 1024.0 / 1024.0;
-            unit = "MB";
-        } else {
-            // 大表 / 带 BLOB 的表在真实库里就是 GB 级；不补这一档会显示成
-            // 「1536.0 MB」这种没法扫读的数字（与 CellRenderer.sizeLabel 同口径）。
-            value = sizeBytes / 1024.0 / 1024.0 / 1024.0;
-            unit = "GB";
-        }
-        // Locale.ROOT：小数点是「.」，不随系统区域变成逗号。
-        return String.format(java.util.Locale.ROOT, "%.1f %s", value, unit);
+        // 与数据网格的 BLOB 标签共用一份格式化 —— ByteSizes 是这条语义的唯一真相
+        // （负值 = 来源不可信，讲「—」；进位后保留一位小数会顶成 1024.0 的先升一档）。
+        return sizeBytes == null ? "—" : ByteSizes.format(sizeBytes);
     }
 
     public String engineText() {
