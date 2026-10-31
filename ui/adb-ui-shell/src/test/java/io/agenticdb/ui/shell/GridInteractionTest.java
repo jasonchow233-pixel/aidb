@@ -8,6 +8,7 @@ import io.agenticdb.jdbc.JdbcSession;
 import io.agenticdb.ui.I18n;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
@@ -104,8 +105,15 @@ class GridInteractionTest {
     }
 
     @Test
-    void theRecordNavigatorWalksTheRows() {
+    void theRecordNavigatorWalksTheRows() throws Exception {
+        // ⭐ N20：网格里点一行就是导航；记录导航条只在表单视图里出现。
+        WaitForAsyncUtils.asyncFx(() -> {
+            page.setFormView(true);
+            return null;
+        }).get();
+        WaitForAsyncUtils.waitForFxEvents();
         assertThat(page.lookup("#data-record-nav")).as("记录导航条").isNotNull();
+        assertThat(page.lookup("#data-record-nav").isVisible()).as("表单视图里导航条可见").isTrue();
         assertThat(page.lookup("#data-record-first")).as("首行").isNotNull();
         assertThat(page.lookup("#data-record-prev")).as("上一行").isNotNull();
         assertThat(page.lookup("#data-record-next")).as("下一行").isNotNull();
@@ -185,29 +193,32 @@ class GridInteractionTest {
     }
 
     @Test
-    void theGridMarksTheAutoIncrementColumn() {
+    void theGridMarksTheAutoIncrementColumnInTheTypeHint() {
         javafx.scene.control.Label type = (javafx.scene.control.Label)
                 page.lookup(".adb-grid__column-type");
         assertThat(type).isNotNull();
+        // N19 之后第二行只放类型，约束在 tooltip —— 自增列必须仍能被找出来。
         boolean anyMarked = page.lookupAll(".adb-grid__column-type").stream()
-                .filter(node -> node instanceof javafx.scene.control.Label label)
-                .map(node -> ((javafx.scene.control.Label) node).getText())
-                .anyMatch(text -> text != null && text.contains(I18n.t("grid.head.autoInc")));
+                .filter(javafx.scene.control.Label.class::isInstance)
+                .map(javafx.scene.control.Label.class::cast)
+                .anyMatch(label -> label.getTooltip() != null
+                        && label.getTooltip().getText() != null
+                        && label.getTooltip().getText().contains(I18n.t("grid.head.autoInc")));
         assertThat(anyMarked)
                 .as("自增列要在列头上标出来 —— 否则用户会以为得自己填主键")
                 .isTrue();
     }
 
     /**
-     * ⭐ U5（2026-10-26）：列头**第一行只有列名**，约束全部并进第二行读法
-     * （{@code number · 主键 · 自增} / {@code text · 非空}）。
+     * ⭐ U5 + N19（2026-10-31 改判）：第一行只有列名，第二行只有类型
+     * （数值带 {@code #} 前缀，与 Navicat 帧一致）；约束改用类型标签的 tooltip 说明。
      *
-     * <p>以前是两套互不相干的语法挤在第一行：{@code id [PK]} 和一个没人解释的
-     * {@code name •}。圆点表示 NOT NULL 无处说明，而主键列本身也非空却被
-     * {@code [PK]} 顶掉 —— 「非空」这件事在表头时有时无。
+     * <p>U5 的动机没变：不要出现 {@code id [PK]} 和没人解释的 {@code name •}。
+     * N19 只是把「解释约束」从可见的第二行挪进 tooltip —— 信息不丢，第二行
+     * 回到「一眼认出类型」这一件事。
      */
     @Test
-    void everyConstraintMovesToTheHeaderSecondLine() {
+    void headerSecondLineShowsOnlyTheTypeAndTheHintKeepsTheConstraints() {
         assertThat(headerName("id"))
                 .as("第一行只剩列名 —— [PK] 徽章退场")
                 .isEqualTo("id");
@@ -215,11 +226,21 @@ class GridInteractionTest {
                 .as("第一行不许再挂那个没有解释的圆点")
                 .isEqualTo("name");
         assertThat(headerType("id"))
-                .as("主键与自增都写进第二行，和 非空 同一种读法")
+                .as("数值列第二行是 `# 类型`，不再带约束文案")
+                .startsWith("# ")
+                .doesNotContain(I18n.t("grid.head.pk"))
+                .doesNotContain(I18n.t("grid.head.autoInc"))
+                .doesNotContain(I18n.t("grid.head.notNull"));
+        assertThat(headerType("name"))
+                .as("非数值列第二行只有类型")
+                .doesNotContain(I18n.t("grid.head.notNull"))
+                .doesNotContain("·");
+        assertThat(headerTypeHint("id"))
+                .as("主键与自增仍在 tooltip 里说清楚")
                 .contains(I18n.t("grid.head.pk"))
                 .contains(I18n.t("grid.head.autoInc"));
-        assertThat(headerType("name"))
-                .as("非空要用文字，不是一个没人解释的符号")
+        assertThat(headerTypeHint("name"))
+                .as("非空仍在 tooltip 里说清楚，不是没人解释的符号")
                 .contains(I18n.t("grid.head.notNull"));
         assertThat(page.lookupAll(".adb-grid__column-name").stream()
                 .filter(node -> node instanceof javafx.scene.control.Label)
@@ -242,6 +263,17 @@ class GridInteractionTest {
                 page.lookup("#data-header-" + column);
         javafx.scene.layout.VBox labels = (javafx.scene.layout.VBox) name.getParent();
         return ((javafx.scene.control.Label) labels.getChildren().get(1)).getText();
+    }
+
+    /** 第二行（类型）标签的 tooltip —— N19 之后约束写在这里。 */
+    private String headerTypeHint(String column) {
+        javafx.scene.control.Label name = (javafx.scene.control.Label)
+                page.lookup("#data-header-" + column);
+        javafx.scene.layout.VBox labels = (javafx.scene.layout.VBox) name.getParent();
+        javafx.scene.control.Label type =
+                (javafx.scene.control.Label) labels.getChildren().get(1);
+        assertThat(type.getTooltip()).as("列头 %s 的类型标签必须有 tooltip", column).isNotNull();
+        return type.getTooltip().getText();
     }
 
     @SuppressWarnings("unchecked")
@@ -497,58 +529,59 @@ class GridInteractionTest {
     // ─────────────────────── UX-4：行操作条（网格左下） ───────────────────────
 
     /**
-     * 行操作条的四个动作必须和工具条**是同一批** —— 可用态一致，
-     * 而不是在底部另写一遍 if。这里是这条约束的看守。
+     * ⭐ N19：编辑簇整排搬进网格左下的行操作条（{@code + − ✓ ✗ ⋯}），
+     * 顶栏不再有第二份同名按钮 —— 一簇状态只有一份真相。
+     *
+     * <p>本用例钉住：五颗都在这一条里、新增可用 / 保存与取消灰着、
+     * 删除随选中行出现、改一笔后保存与取消一起亮。
      */
     @Test
-    void theRowActionBarSharesTheToolbarState() throws Exception {
-        Button toolbarAdd = (Button) page.lookup("#data-add");
-        Button toolbarDelete = (Button) page.lookup("#data-delete-rows");
-        Button toolbarSave = (Button) page.lookup("#data-save");
-        Button rowAdd = (Button) page.lookup("#data-row-add");
-        Button rowDelete = (Button) page.lookup("#data-row-delete");
-        Button rowApply = (Button) page.lookup("#data-row-apply");
-        Button rowCancel = (Button) page.lookup("#data-row-cancel");
-        assertThat(page.lookup("#data-row-actions")).as("行操作条本体").isNotNull();
+    void theRowActionBarOwnsTheEditState() throws Exception {
+        Button add = (Button) page.lookup("#data-add");
+        Button delete = (Button) page.lookup("#data-delete-rows");
+        Button save = (Button) page.lookup("#data-save");
+        Button cancel = (Button) page.lookup("#data-row-cancel");
+        ButtonBase more = (ButtonBase) page.lookup("#data-row-more");
+        HBox bar = (HBox) page.lookup("#data-row-actions");
+        assertThat(bar).as("行操作条本体").isNotNull();
+        assertThat(bar.getChildren())
+                .as("编辑簇只在行操作条里出现一次：+ − ✓ ✗ ⋯")
+                .containsExactly(add, delete, save, cancel, more);
 
-        // 刚打开、还没改任何东西：能新增，但「保存 / 应用」必须还灰着。
-        // ⭐ 这两组状态**必须不同** —— 否则随便绑错一颗都验不出来。
-        WaitForAsyncUtils.waitFor(10, TimeUnit.SECONDS, () -> !toolbarAdd.isDisabled());
-        assertThat(rowAdd.isDisabled())
-                .as("可编辑表刚打开时「新增」就该可用")
-                .isFalse();
-        assertThat(rowApply.isDisabled())
-                .as("没东西可保存时底部「应用」必须和工具条「保存」一起灰着")
-                .isEqualTo(toolbarSave.isDisabled())
+        // 刚打开、还没改任何东西：能新增，但「保存 / 取消」必须还灰着。
+        WaitForAsyncUtils.waitFor(10, TimeUnit.SECONDS, () -> !add.isDisabled());
+        assertThat(save.isDisabled())
+                .as("没东西可保存时「保存」必须灰着")
+                .isTrue();
+        assertThat(cancel.isDisabled())
+                .as("「取消」跟着「保存」一起灰 —— 没有可放弃的改动")
                 .isTrue();
 
-        // 没选中行：删除两处都不可见（底部不许摆一颗点不动的删除）
-        assertThat(rowDelete.isVisible())
-                .as("没有选中行时，底部的删除和工具条一起消失")
-                .isEqualTo(toolbarDelete.isVisible())
+        // 没选中行：删除不占位（底部不许摆一颗点不动的删除）
+        assertThat(delete.isVisible())
+                .as("没有选中行时删除消失")
                 .isFalse();
 
-        // 选中一行：两处的删除同时出现、同时可用
-        click("#data-record-next");
-        assertThat(rowDelete.isVisible())
-                .as("选中行之后底部删除要跟着出现")
-                .isEqualTo(toolbarDelete.isVisible())
+        // 选中一行：删除出现且可用（网格视图里点行 = 选中，不再有记录导航条）
+        WaitForAsyncUtils.asyncFx(() -> {
+            ((TableView<?>) page.lookup("#data-table")).getSelectionModel().select(0);
+            return null;
+        }).get();
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(delete.isVisible())
+                .as("选中行之后删除要跟着出现")
                 .isTrue();
-        assertThat(rowDelete.isDisabled())
-                .as("可用态只有一份真相")
-                .isEqualTo(toolbarDelete.isDisabled())
-                .isFalse();
+        assertThat(delete.isDisabled()).isFalse();
 
-        // 改一笔：保存 / 应用 / 取消三处一起亮
+        // 改一笔：保存 / 取消一起亮
         click("#data-add");
-        assertThat(rowApply.isDisabled())
-                .as("缓冲脏了，底部「应用」和工具条「保存」必须同时可点")
-                .isEqualTo(toolbarSave.isDisabled())
+        assertThat(save.isDisabled())
+                .as("缓冲脏了，「保存」必须可点")
                 .isFalse();
-        assertThat(rowCancel.isDisabled()).isFalse();
-        assertThat(rowAdd.isDisabled())
-                .as("新增按钮的可用态也只有一个来源")
-                .isEqualTo(toolbarAdd.isDisabled());
+        assertThat(cancel.isDisabled()).isFalse();
+        assertThat(add.isDisabled())
+                .as("草稿行已经加进来，新增仍然可用")
+                .isFalse();
     }
 
     /**
@@ -569,8 +602,8 @@ class GridInteractionTest {
         assertThat(table.getItems().size())
                 .as("点「取消」要把草稿行退回去")
                 .isEqualTo(before);
-        assertThat(((Button) page.lookup("#data-row-apply")).isDisabled())
-                .as("缓冲空了，「应用」必须重新变灰")
+        assertThat(((Button) page.lookup("#data-save")).isDisabled())
+                .as("缓冲空了，「保存」必须重新变灰")
                 .isTrue();
 
         // ⭐ 只读：视图没有主键 → editable() = false → 整排不该出现

@@ -544,6 +544,12 @@
     -fx-text-fill: -adb-text-disabled;
 }
 
+/* ToggleButton 套图标按钮样式时，按下态 = :selected（N20 的放大镜 / 视图切换）。 */
+.adb-icon-button:selected {
+    -fx-background-color: -adb-bg-selected;
+    -fx-text-fill: -adb-accent;
+}
+
 /* schema 切换器：只在真的有多个 schema 时才出现（侧栏的次要控件）。 */
 .adb-schema-picker {
     -fx-background-color: -adb-bg-inset;
@@ -733,8 +739,8 @@
     -fx-font-size: 12px;
     -fx-text-fill: -adb-text-primary;
     /* 16px 的方框 + 上下各 4px = 24px 行高档；左右各 6px 让文字前面也能点。
-       表格单元格里的复选框把内边距归零（.adb-grid__select-column、
-       .adb-table__bool-box）—— 那里整格本身就是可点区，不需要再撑。 */
+       表格单元格里的布尔复选框把内边距归零（.adb-table__bool-box）——
+       那里整格本身就是可点区，不需要再撑。 */
     -fx-padding: 4px 6px;
     -fx-graphic-text-gap: 8px;
     -fx-cursor: hand;
@@ -1758,6 +1764,14 @@
     -fx-alignment: center-left;
 }
 
+/* ⭐ N17：光标所在列的表头整格着蓝 tint —— 帧 6 实测 #AED4F2（token bg-header-current）。
+   TableColumnHeader 会把 TableColumn 上的样式类复制到表头单元格，所以这个类
+   由 DataGridPage 挂在 TableColumn 上（markCurrentHeaderColumn），不是挂在 graphic 上 ——
+   graphic 只染到文字那一块，盖不满整格。 */
+.adb-grid .column-header.adb-grid__column--current {
+    -fx-background-color: -adb-bg-header-current;
+}
+
 .adb-grid .filler {
     -fx-background-color: -adb-bg-surface;
 }
@@ -1839,11 +1853,19 @@
     -fx-font-size: 11px;
 }
 
-.adb-grid__row-number {
-    -fx-text-fill: -adb-text-tertiary;
-    -fx-font-size: 11px;
-    /* ⭐ 行号右对齐：它是定位信息，右对齐才能和下面的数据列对齐成一条线。 */
-    -fx-alignment: center-right;
+.adb-grid__gutter {
+    /* ⭐ N16：行首槽 —— 帧 3/4/6 实测是 ~12px 的空白窄槽；这里 16px 给
+       12px 状态图标留余量，且把默认单元格内边距归零。 */
+    -fx-padding: 0px;
+    -fx-alignment: center;
+}
+
+/* ⭐ N16：行首槽的列级标记（TableColumn 的样式类会同时落到表头与正文格）。
+   表头没有文字也没有排序箭头，但它默认仍带 8px 内边距 —— 会把这 16px
+   的槽撑成一条比数据列表头更胖的空块，垂直网格线也跟着歪。 */
+.adb-grid .column-header.adb-grid__gutter-column,
+.adb-grid .table-cell.adb-grid__gutter-column {
+    -fx-padding: 0px;
 }
 
 .adb-grid__header {
@@ -1952,6 +1974,129 @@
 
 .adb-chip--muted {
     -fx-text-fill: -adb-text-secondary;
+}
+
+/* ── N31 · 网格内嵌 Filter & Sort 生成器 ─────────────────────────────
+   与列头漏斗的 .adb-filter-panel（候选值浮窗）是两套东西：这里是常驻
+   在工具带与网格之间的一条，按下工具条按钮才占高度。                  */
+.adb-filter-builder {
+    -fx-background-color: -adb-bg-subtle;
+    -fx-border-color: -adb-border-subtle;
+    -fx-border-width: 0 0 1 0;
+}
+
+.adb-filter-builder__title {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -adb-text-primary;
+}
+
+.adb-filter-builder__mode {
+    -fx-font-size: 11px;
+    -fx-text-fill: -adb-text-secondary;
+}
+
+.adb-filter-builder__row {
+    -fx-padding: 4px;
+    -fx-background-radius: 4px;
+}
+
+/* 当前编辑行浅蓝高亮（§1.9 第二行的状态语言）。 */
+.adb-filter-builder__row--active {
+    -fx-background-color: -adb-bg-selected;
+}
+
+.adb-filter-builder__field {
+    -fx-font-size: 11px;
+    -fx-text-fill: -adb-accent;
+    -fx-border-color: transparent;
+    -fx-padding: 0px 2px;
+}
+
+.adb-filter-builder__field:hover {
+    -fx-underline: true;
+}
+
+.adb-filter-builder__operator,
+.adb-filter-builder__value {
+    -fx-font-size: 11px;
+    -fx-pref-height: 24px;
+}
+
+.adb-filter-builder__connector {
+    -fx-font-size: 11px;
+    -fx-text-fill: -adb-text-secondary;
+}
+
+.adb-filter-builder__remove,
+.adb-filter-builder__sort-direction {
+    -fx-background-color: transparent;
+}
+
+.adb-icon-button--small {
+    -fx-padding: 2px;
+    -fx-min-width: 20px;
+    -fx-min-height: 20px;
+}
+
+.adb-filter-builder__add {
+    -fx-padding: 2px 8px;
+    -fx-font-size: 12px;
+}
+
+.adb-filter-builder__row-actions {
+    -fx-padding: 0px 0px 0px 2px;
+}
+
+.adb-filter-builder__label {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -adb-text-secondary;
+}
+
+.adb-filter-builder__hint {
+    -fx-font-size: 10px;
+    -fx-text-fill: -adb-text-tertiary;
+}
+
+.adb-filter-builder__text {
+    -fx-font-family: "JetBrains Mono", "Menlo", monospace;
+    -fx-font-size: 11px;
+}
+
+.adb-filter-builder__sort-row {
+    -fx-padding: 2px 0px;
+}
+
+.adb-filter-builder__sort-chip {
+    -fx-padding: 2px 4px;
+}
+
+.adb-filter-builder__sort-field {
+    -fx-background-color: transparent;
+    -fx-font-size: 11px;
+    -fx-text-fill: -adb-text-primary;
+    -fx-padding: 0px 2px;
+}
+
+.adb-filter-builder__sort-field > .arrow-button {
+    -fx-padding: 0px 2px;
+}
+
+.adb-filter-builder__footer {
+    -fx-padding: 2px 0px 0px 0px;
+}
+
+.adb-filter-builder__dirty {
+    -fx-font-size: 11px;
+    -fx-font-style: italic;
+    -fx-text-fill: -adb-text-tertiary;
+}
+
+/* 工具条里带按下态的开关（N31 的 Filter & Sort）。 */
+.adb-button:selected {
+    -fx-background-color: -adb-bg-selected;
+    -fx-text-fill: -adb-accent;
 }
 
 /* ── 列头筛选面板 ───────────────────────────────────────────────────── */
@@ -2084,20 +2229,6 @@
     -fx-background-radius: 4px;
 }
 
-.adb-grid__search {
-    -fx-background-color: -adb-bg-inset;
-    -fx-text-fill: -adb-text-primary;
-    -fx-prompt-text-fill: -adb-text-tertiary;
-    -fx-border-color: transparent;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
-    -fx-padding: 4px 8px;
-    -fx-font-size: 12px;
-}
-
-.adb-grid__search:focused {
-    -fx-border-color: -adb-border-focus;
-}
 
 .adb-grid--transpose .table-cell {
     -fx-font-size: 11px;
@@ -2202,6 +2333,17 @@
     -fx-border-color: -adb-border-focus;
 }
 
+/* ⭐ N17：行内编辑盒 —— 帧 6 实测（Frame 6 · row 2653 · createtime 格）：
+   白底 **#FFFFFF** + 2px **#0078D7**（border-focus）方框，贴着整格画，值进入编辑即全选。
+   规则排在 dirty / rect 之后：编辑态要盖过这两层语义色（它们在编辑中没有意义）。
+   旧版是「淡底 + 6px 圆角 + 蓝细框」的浮起输入框，和 Navicat 的贴格框不是一回事。 */
+.adb-grid .table-cell.adb-grid__cell--editing {
+    -fx-background-color: -adb-bg-surface;
+    -fx-border-color: -adb-border-focus;
+    -fx-border-width: 2px;
+    -fx-padding: 0px;
+}
+
 /* ⭐ G1：冻结区（左半张表）。右表能横向滚动，左表不能 —— 无边框语言里
    这是**允许保留**的分隔线：用略重的实色画一条右界，否则用户看不出
    「这两块其实是一张表」。注意：不能给左表加纵向滚动条，两表共用一个滚动位置。 */
@@ -2216,23 +2358,26 @@
 }
 
 .adb-grid__editor {
-    -fx-background-color: -adb-bg-elevated;
+    /* ⭐ N17：白底 + 蓝框由所在格子（.adb-grid__cell--editing）画，
+       输入框自己透明、无框、贴满整格 —— 编辑盒的边界就是格子边界。 */
+    -fx-background-color: transparent;
     -fx-text-fill: -adb-text-primary;
-    -fx-border-color: -adb-border-focus;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
-    -fx-padding: 2px 4px;
+    -fx-border-color: transparent;
+    -fx-background-radius: 0px;
+    -fx-border-radius: 0px;
+    -fx-padding: 0px 2px;
     -fx-font-size: 12px;
     /* ⭐ 显式比表单输入框矮一档：上面那条 `.text-field { -fx-min-height: 28 }`
        是给弹窗 / 表单的，而编辑器长在数据行里 —— 不压回来的话
        一进编辑态整行会被撑高（跳动 = 「表格坏了」的观感）。
-       26 = 28 行高 - 上下各 1px 余量（默认档 normal）。 */
-    -fx-min-height: 26;
-    -fx-pref-height: 26;
+       18 = 24 行高 - 格子 2px 边框上下各 2px - 余量。 */
+    -fx-min-height: 18;
+    -fx-pref-height: 18;
 }
 
 .adb-grid__editor--error {
-    -fx-border-color: -adb-error;
+    /* 校验失败只换输入框底色 —— 边框已经归格子，改它会把文字挤动 1px。 */
+    -fx-background-color: -adb-error-bg;
 }
 
 .adb-sql-preview {
@@ -2262,57 +2407,19 @@
     -fx-background-color: derive(-adb-success-bg, -8%);
 }
 
-.adb-grid__row-number--dirty {
-    -fx-text-fill: -adb-dirty;
-    -fx-font-weight: bold;
+/* 行首槽的状态图标（U10 + N16：「＋ × ●」文本符号早已换成矢量图标；
+   行号本身按帧实测取消，槽里只剩状态）。
+   图标颜色不继承 -fx-text-fill，描边/填充要各点一次。 */
+.adb-grid__gutter--dirty .adb-icon {
+    -fx-stroke: -adb-dirty;
 }
 
-.adb-grid__row-number--new {
-    -fx-text-fill: -adb-success;
-    -fx-font-weight: bold;
-}
-
-.adb-grid__row-number--deleted {
-    -fx-text-fill: -adb-error;
-    -fx-font-weight: bold;
-}
-
-/* 行号列的状态图标（U10：「＋ × ●」这些文本符号换成了矢量图标）。
-   图标颜色不继承 -fx-text-fill，描边/填充要各点一次 —— 实心点走 --filled，
-   加号与叉是描边图标。 */
-.adb-grid__row-number--dirty .adb-icon--filled {
-    -fx-fill: -adb-dirty;
-}
-
-.adb-grid__row-number--new .adb-icon {
+.adb-grid__gutter--new .adb-icon {
     -fx-stroke: -adb-success;
 }
 
-.adb-grid__row-number--deleted .adb-icon {
+.adb-grid__gutter--deleted .adb-icon {
     -fx-stroke: -adb-error;
-}
-
-.adb-grid__select-column {
-    -fx-alignment: CENTER;
-}
-
-.adb-grid__select-column .check-box {
-    -fx-padding: 0px;
-}
-
-/* ── 批量操作条 ─────────────────────────────────────────────────────── */
-
-.adb-batch-bar {
-    -fx-background-color: -adb-bg-elevated;
-    -fx-padding: 8px 16px;
-    /* 浮在内容之上的一条操作带：一层一级弥散投影代替顶边线。 */
-    -fx-effect: dropshadow(gaussian, -adb-shadow-1, 8, 0.1, 0, -1);
-}
-
-.adb-batch-bar__count {
-    -fx-text-fill: -adb-text-primary;
-    -fx-font-size: 12px;
-    -fx-font-weight: bold;
 }
 
 .adb-button--danger {
@@ -2349,14 +2456,19 @@
     -fx-max-height: 38;
 }
 
-.adb-grid__range {
-    -fx-text-fill: -adb-text-secondary;
+/* ⭐ N20：页码框 —— 底栏唯一的页号显示，同时是跳页输入（回车跳转）。 */
+.adb-grid__page {
+    -fx-background-color: -adb-bg-inset;
+    -fx-text-fill: -adb-text-primary;
+    -fx-border-color: -adb-border-subtle;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+    -fx-padding: 2px 6px;
     -fx-font-size: 11px;
 }
 
-.adb-grid__page {
-    -fx-text-fill: -adb-text-tertiary;
-    -fx-font-size: 11px;
+.adb-grid__page:focused {
+    -fx-border-color: -adb-border-focus;
 }
 
 .adb-page-size {
@@ -3785,12 +3897,7 @@
     -fx-border-color: -adb-border-focus;
 }
 
-/* 行号列：右对齐 + 三级色（它是定位信息，不是数据）。
-   注意：`.adb-grid__number-column` 挂在 TableColumn 上，而 TableColumn 不在场景图里，
-   样式类对它无效 —— 真正生效的是单元格上的 `.adb-grid__row-number`。 */
-.adb-grid__row-number {
-    -fx-alignment: center-right;
-}
+/* 行首槽：12px 状态图标居中（N16 后没有行号文字了）。 */
 
 /* ── 侧栏 ───────────────────────────────────────────────────────────── */
 

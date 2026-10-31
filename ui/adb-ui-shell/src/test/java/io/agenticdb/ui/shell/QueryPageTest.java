@@ -556,7 +556,7 @@ class QueryPageTest {
 
         // 以前这里只有 id + 宽度 —— 截图上是一个**没有占位、读屏念不出用途**的空白框。
         assertThat(jump.getPromptText())
-                .as("跳页框必须有占位提示（数据页 #data-jump 是「跳至页」，两页要一致）")
+                .as("跳页框必须有占位提示（数据页的页码框也带「跳至页」提示，两页要一致）")
                 .isNotEmpty();
         assertThat(jump.getAccessibleText())
                 .as("跳页框必须有 accessibleText（同数据页）")

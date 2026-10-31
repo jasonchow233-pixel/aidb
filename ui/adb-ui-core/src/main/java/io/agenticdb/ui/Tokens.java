@@ -10,7 +10,7 @@ import java.util.List;
  */
 public final class Tokens {
 
-    public static final int COUNT = 106;
+    public static final int COUNT = 107;
 
     /** bg-canvas (color) */
     public static final String BG_CANVAS_DARK = "#0B1220";
@@ -55,6 +55,10 @@ public final class Tokens {
     /** bg-selected-grid (color) */
     public static final String BG_SELECTED_GRID_DARK = "rgba(76,158,234,.24)";
     public static final String BG_SELECTED_GRID_LIGHT = "#C4E0F7";
+
+    /** bg-header-current (color) */
+    public static final String BG_HEADER_CURRENT_DARK = "rgba(76,158,234,.32)";
+    public static final String BG_HEADER_CURRENT_LIGHT = "#AED4F2";
 
     /** bg-stripe (color) */
     public static final String BG_STRIPE_DARK = "rgba(148,163,184,.035)";
@@ -438,23 +442,23 @@ public final class Tokens {
 
     public static final List<String> ALL_KEYS = List.of(
             "bg-canvas", "bg-sidebar", "bg-chrome", "bg-surface", "bg-subtle", "bg-elevated",
-            "bg-inset", "bg-hover", "bg-active", "bg-selected", "bg-selected-grid", "bg-stripe",
-            "bg-disabled", "border", "border-subtle", "border-focus", "text-primary", "text-secondary",
-            "text-tertiary", "text-muted", "text-disabled", "text-inverse", "accent", "accent-hover",
-            "risk-0-read", "risk-1-write", "risk-2-structure", "risk-3-admin", "risk-0-bg", "risk-0-border",
-            "risk-1-bg", "risk-1-border", "risk-2-bg", "risk-2-border", "risk-3-bg", "risk-3-border",
-            "success", "success-bg", "warning", "warning-bg", "dirty", "dirty-bg",
-            "error", "error-bg", "info", "syn-keyword", "syn-string", "syn-number",
-            "syn-comment", "syn-function", "syn-type", "syn-ident", "syn-param", "syn-error",
-            "h-appbar", "h-toolbar", "h-tabbar", "h-statusbar", "h-input", "h-button",
-            "w-sidebar-min", "w-sidebar", "w-sidebar-max", "w-sidebar-collapsed", "row-dense", "row-compact",
-            "row-normal", "row-comfort", "fs-2xs", "fs-xs", "fs-sm", "fs-md",
-            "fs-lg", "fs-xl", "fs-3xl", "sp-1", "sp-1h", "sp-2",
-            "sp-3", "sp-4", "sp-5", "sp-6", "sp-7", "r-sm",
-            "r-md", "r-lg", "r-xl", "r-full", "dur-toast", "dur-toast-action",
-            "dur-toast-result", "kind-table", "kind-view", "kind-function", "kind-trigger", "kind-procedure",
-            "overlay", "shadow-1", "shadow-2", "kind-index", "kind-event", "icon-edge",
-            "icon-tone-a", "icon-tone-b", "icon-tone-c", "row-tree"
+            "bg-inset", "bg-hover", "bg-active", "bg-selected", "bg-selected-grid", "bg-header-current",
+            "bg-stripe", "bg-disabled", "border", "border-subtle", "border-focus", "text-primary",
+            "text-secondary", "text-tertiary", "text-muted", "text-disabled", "text-inverse", "accent",
+            "accent-hover", "risk-0-read", "risk-1-write", "risk-2-structure", "risk-3-admin", "risk-0-bg",
+            "risk-0-border", "risk-1-bg", "risk-1-border", "risk-2-bg", "risk-2-border", "risk-3-bg",
+            "risk-3-border", "success", "success-bg", "warning", "warning-bg", "dirty",
+            "dirty-bg", "error", "error-bg", "info", "syn-keyword", "syn-string",
+            "syn-number", "syn-comment", "syn-function", "syn-type", "syn-ident", "syn-param",
+            "syn-error", "h-appbar", "h-toolbar", "h-tabbar", "h-statusbar", "h-input",
+            "h-button", "w-sidebar-min", "w-sidebar", "w-sidebar-max", "w-sidebar-collapsed", "row-dense",
+            "row-compact", "row-normal", "row-comfort", "fs-2xs", "fs-xs", "fs-sm",
+            "fs-md", "fs-lg", "fs-xl", "fs-3xl", "sp-1", "sp-1h",
+            "sp-2", "sp-3", "sp-4", "sp-5", "sp-6", "sp-7",
+            "r-sm", "r-md", "r-lg", "r-xl", "r-full", "dur-toast",
+            "dur-toast-action", "dur-toast-result", "kind-table", "kind-view", "kind-function", "kind-trigger",
+            "kind-procedure", "overlay", "shadow-1", "shadow-2", "kind-index", "kind-event",
+            "icon-edge", "icon-tone-a", "icon-tone-b", "icon-tone-c", "row-tree"
     );
 
     private Tokens() { }

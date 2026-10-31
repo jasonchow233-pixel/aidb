@@ -9,8 +9,10 @@ import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableCell;
+import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
 import javafx.stage.Stage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -187,6 +189,105 @@ class SelectionStateTest {
         assertThat(requireCell(requireRow(table, 1)).getStyleClass())
                 .as("上一格的光标类必须摘掉 —— 留着就是两个光标")
                 .doesNotContain("adb-grid__cell--cursor");
+    }
+
+    /**
+     * ⭐ N17：光标所在列的表头整格着蓝 tint（帧 6 实测 `#AED4F2`），换列即换。
+     *
+     * <p>样式类挂在 {@code TableColumn} 上 —— {@code TableColumnHeader} 会把它复制到
+     * 表头单元格。所以这里既断言列上的类，也断言场景图里真的有一个表头单元格带着它
+     * （挂在 graphic 上也能让「列上有类」为真，但染不满整格）。
+     *
+     * <p>变异：只给列加类、不给表头节点 —— 第二条断言红；换列不摘旧类 —— 第三条红。
+     */
+    @Test
+    void theCurrentColumnHeaderIsTintedAndTheTintFollowsTheCursor() throws IOException {
+        TableView<?> table = requireTable();
+        TableColumn<?, ?> nameColumn = dataColumn(table, "name");
+        TableColumn<?, ?> scoreColumn = dataColumn(table, "score");
+
+        WaitForAsyncUtils.asyncFx(() -> {
+            focusCell(table, 1, nameColumn);
+            return null;
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(nameColumn.getStyleClass())
+                .as("光标列（name）要带 current 类")
+                .contains("adb-grid__column--current");
+        assertThat(page.lookupAll(".column-header.adb-grid__column--current"))
+                .as("表头单元格自己要带上这个类 —— 只挂在列上，CSS 染不到整格")
+                .isNotEmpty();
+        assertThat(ruleBody(css(), ".adb-grid .column-header.adb-grid__column--current"))
+                .as("表头 tint 必须走令牌，不是随手写的色值")
+                .contains("-adb-bg-header-current");
+
+        WaitForAsyncUtils.asyncFx(() -> {
+            focusCell(table, 1, scoreColumn);
+            return null;
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(scoreColumn.getStyleClass())
+                .as("光标换到 score")
+                .contains("adb-grid__column--current");
+        assertThat(nameColumn.getStyleClass())
+                .as("旧列的表头 tint 必须摘掉")
+                .doesNotContain("adb-grid__column--current");
+    }
+
+    /**
+     * ⭐ N17：进编辑态 = 格子变成白底蓝框的编辑盒，值全选；退出后还原。
+     *
+     * <p>帧 6 实测：编辑格白底 `#FFFFFF` + 2px `#0078D7`（border-focus）方框，
+     * 贴着整格画，不是浮起的圆角输入框。
+     *
+     * <p>变异：不摘 {@code adb-grid__cell--editing} → 取消编辑后仍是编辑盒，红。
+     */
+    @Test
+    void startingAnInlineEditTurnsTheCellIntoASelectedEditorBox() throws IOException {
+        TableView<?> table = requireTable();
+        TableColumn<?, ?> nameColumn = dataColumn(table, "name");
+
+        WaitForAsyncUtils.asyncFx(() -> {
+            editCell(table, 1, nameColumn);
+            return null;
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        TableCell<?, ?> cell = requireCell(requireRow(table, 1), "name");
+        assertThat(cell.getStyleClass())
+                .as("编辑中的格子要带 editing 类")
+                .contains("adb-grid__cell--editing");
+        assertThat(cell.getGraphic())
+                .as("编辑盒是格子里的 TextField")
+                .isInstanceOf(TextField.class);
+        TextField editor = (TextField) cell.getGraphic();
+        assertThat(editor.getSelectedText())
+                .as("进入编辑即全选，免得连旧值一起敲掉")
+                .isEqualTo(editor.getText());
+        assertThat(requireRow(table, 1).isSelected())
+                .as("编辑行同时是选中行 —— 整行色带来自身选中态")
+                .isTrue();
+
+        String editingRule = ruleBody(css(), ".adb-grid .table-cell.adb-grid__cell--editing");
+        assertThat(editingRule)
+                .as("白底 + 2px 蓝框，且都走令牌")
+                .contains("-adb-bg-surface")
+                .contains("-adb-border-focus")
+                .contains("2px");
+        assertThat(ruleBody(css(), ".adb-grid__editor"))
+                .as("输入框自己不许再画框 —— 编辑盒边界由格子给")
+                .contains("-fx-border-color: transparent");
+
+        WaitForAsyncUtils.asyncFx(() -> {
+            cell.cancelEdit();
+            return null;
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(requireCell(requireRow(table, 1), "name").getStyleClass())
+                .as("退出编辑必须摘掉 editing 类")
+                .doesNotContain("adb-grid__cell--editing");
     }
 
     /** 悬停在已选中的行上，选中态不能被顶掉（顺序门禁见 CSS 侧）。 */
@@ -562,6 +663,32 @@ class SelectionStateTest {
             return null;
         });
         WaitForAsyncUtils.waitForFxEvents();
+    }
+
+    /** 按列名取数据列（行首槽与隐藏列不算）。 */
+    private static TableColumn<?, ?> dataColumn(TableView<?> table, String name) {
+        for (TableColumn<?, ?> column : table.getColumns()) {
+            if (name.equals(column.getUserData())) {
+                return column;
+            }
+        }
+        throw new AssertionError("没有这一列: " + name);
+    }
+
+    /**
+     * 把键盘光标放到某一格 —— {@code TableView<?>} 的通配符会让
+     * {@code FocusModel.focus(..)} 的泛型对不上，这里用 raw 调一次。
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void focusCell(TableView<?> table, int row, TableColumn<?, ?> column) {
+        ((TableView) table).getFocusModel().focus(row, column);
+    }
+
+    /** 选中并进入行内编辑（与真实双击走同一条 {@code TableView.edit(..)}）。 */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void editCell(TableView<?> table, int row, TableColumn<?, ?> column) {
+        ((TableView) table).getSelectionModel().clearAndSelect(row, column);
+        ((TableView) table).edit(row, column);
     }
 
     /** 选择器的粗粒度权重（#id=100、类/伪类=10、元素=1），够用来比「谁压谁」。 */

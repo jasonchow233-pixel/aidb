@@ -318,13 +318,13 @@ class AppShellTest {
                 table(robot).getItems().size() == 200);
         WaitForAsyncUtils.waitForFxEvents();
 
-        assertThat(table(robot).getColumns()).hasSize(9); // 选择 + # + 7 columns
-        assertThat(robot.lookup("#data-range").queryAs(Label.class).getText())
-                .isEqualTo("1–200 / 200");
-        assertThat(robot.lookup("#data-page").queryAs(Label.class).getText())
-                .isEqualTo(I18n.t("grid.pager.pageOf", 1, 1));
+        // ⭐ N16：行首只剩一条 16px 空白槽（选择列与行号列合并），外加 7 个数据列。
+        assertThat(table(robot).getColumns()).hasSize(8);
+        // ⭐ N20：记录范围只在状态栏；底栏的页码框显示当前页号。
         assertThat(robot.lookup(".adb-status__range").queryAs(Label.class).getText())
                 .isEqualTo("1–200 / 200");
+        assertThat(robot.lookup("#data-page").queryAs(javafx.scene.control.TextField.class)
+                .getText()).isEqualTo("1");
         assertThat(robot.lookup("#data-prev").queryAs(javafx.scene.control.Button.class).isDisabled())
                 .isTrue();
         assertThat(robot.lookup("#data-next").queryAs(javafx.scene.control.Button.class).isDisabled())
@@ -384,13 +384,13 @@ class AppShellTest {
         //    它的脏标记是不可见的，直接 lookup 会找错节点。
         assertThat(dirtyMarkerOf(robot, "grid:demo:users").isVisible()).isTrue();
 
-        robot.clickOn("#data-undo");
+        fireRowMenuItem(page, "data-row-undo");
         WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> page.dirtyCount() == 0);
         assertThat(dirtyMarkerOf(robot, "grid:demo:users").isVisible()).isFalse();
 
-        robot.clickOn("#data-redo");
+        fireRowMenuItem(page, "data-row-redo");
         WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> page.dirtyCount() == 1);
-        robot.clickOn("#data-undo");
+        fireRowMenuItem(page, "data-row-undo");
         WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> page.dirtyCount() == 0);
     }
 
@@ -436,12 +436,12 @@ class AppShellTest {
 
         WaitForAsyncUtils.waitFor(8, TimeUnit.SECONDS, () ->
                 table(robot).getItems().size() == 200);
-        assertThat(robot.lookup("#data-range").queryAs(Label.class).getText())
+        assertThat(robot.lookup(".adb-status__range").queryAs(Label.class).getText())
                 .isEqualTo("1–200 / 500");
 
         robot.clickOn("#data-next");
         WaitForAsyncUtils.waitFor(8, TimeUnit.SECONDS, () ->
-                robot.lookup("#data-range").queryAs(Label.class).getText()
+                robot.lookup(".adb-status__range").queryAs(Label.class).getText()
                         .equals("201–400 / 500"));
         WaitForAsyncUtils.waitForFxEvents();
         assertThat(table(robot).getItems()).hasSize(200);
@@ -453,7 +453,7 @@ class AppShellTest {
                 table(robot).getItems().size() == 200);
         assertThat(robot.lookup(".adb-page__title").queryAs(Label.class).getText())
                 .isEqualTo("users");
-        assertThat(robot.lookup("#data-range").queryAs(Label.class).getText())
+        assertThat(robot.lookup(".adb-status__range").queryAs(Label.class).getText())
                 .isEqualTo("1–200 / 200");
     }
 
@@ -462,12 +462,13 @@ class AppShellTest {
         openTable(robot, "notes");
 
         WaitForAsyncUtils.waitFor(8, TimeUnit.SECONDS, () ->
-                robot.lookup("#data-range").queryAs(Label.class).getText().equals(I18n.t("grid.pager.zeroRows")));
+                robot.lookup(".adb-status__range").queryAs(Label.class).getText()
+                        .equals(I18n.t("grid.pager.zeroRows")));
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(table(robot).getItems()).isEmpty();
-        assertThat(robot.lookup("#data-page").queryAs(Label.class).getText())
-                .isEqualTo(I18n.t("grid.pager.pageZero"));
+        assertThat(robot.lookup("#data-page").queryAs(javafx.scene.control.TextField.class)
+                .getText()).as("没有数据时页码框留空").isEmpty();
         // ⭐ 空表不再是「没有数据」四个字 —— 要有图标 + 说明 + 一个真能点的出口。
         assertThat(robot.lookup(".adb-grid .placeholder .adb-empty__title")
                 .queryAs(Label.class).getText())
@@ -524,6 +525,14 @@ class AppShellTest {
     private static Label dirtyMarkerOf(FxRobot robot, String tabId) {
         return robot.lookup("#" + TabBar.nodeId(tabId) + " .adb-tab__dirty")
                 .queryAs(Label.class);
+    }
+
+    /** N19：撤销 / 重做在行操作条第 5 颗的菜单里，按菜单项触发。 */
+    private static void fireRowMenuItem(DataGridPage page, String itemId) throws Exception {
+        WaitForAsyncUtils.asyncFx(() -> ((javafx.scene.control.MenuButton)
+                page.lookup("#data-row-more")).getItems().stream()
+                .filter(item -> itemId.equals(item.getId()))
+                .findFirst().orElseThrow().fire()).get();
     }
 
     /**

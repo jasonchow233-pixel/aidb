@@ -624,6 +624,19 @@ public final class AppShell extends StackPane {
         });
     }
 
+    /** 截图用（R38 N31）：等网格出数据后打开内嵌 Filter & Sort 面板并摆出草稿。 */
+    private void poseGridFilterSortWhenReady(int attempt) {
+        Platform.runLater(() -> {
+            DataGridPage grid = workspace.activeGrid();
+            if (grid != null && grid.poseFilterSortPanel()) {
+                return;
+            }
+            if (attempt < POP_READY_MAX_POLLS) {
+                pollAgain(attempt, () -> poseGridFilterSortWhenReady(attempt + 1));
+            }
+        });
+    }
+
     /** 截图用：等数据页读完表结构再弹导入向导（showAndWait 只能从事件里开）。 */
     private void poseImportWizardWhenReady(Path file, int attempt) {
         Platform.runLater(() -> {
@@ -1895,6 +1908,11 @@ public final class AppShell extends StackPane {
         }
         if (flag("adb.filter", "ADB_FILTER")) {
             poseGridFilterWhenReady(0);
+        }
+        // ⭐ R38 N31：内嵌 Filter & Sort 面板那一帧 —— 工具条按下态 + 条件行 + Sort By
+        //    芯片 + Criteria Edited 都在画面里，背面网格仍是真数据。
+        if (flag("adb.filterSort", "ADB_FILTER_SORT")) {
+            poseGridFilterSortWhenReady(0);
         }
         String renamePose = text("adb.rename", "ADB_RENAME").trim();
         if (!renamePose.isEmpty()) {

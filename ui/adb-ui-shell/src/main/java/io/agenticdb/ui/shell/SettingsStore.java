@@ -27,12 +27,12 @@ public final class SettingsStore {
     }
 
     public void set(String key, String value) {
-        prefs.put(key, value);
+        write(preferences -> preferences.put(key, value));
     }
 
     /** 删掉一个键（`put(key, null)` 会 NPE —— java.util.prefs 的 remove 才是删除）。 */
     public void remove(String key) {
-        prefs.remove(key);
+        write(preferences -> preferences.remove(key));
     }
 
     public int getInt(String key, int fallback) {
@@ -40,7 +40,7 @@ public final class SettingsStore {
     }
 
     public void setInt(String key, int value) {
-        prefs.putInt(key, value);
+        write(preferences -> preferences.putInt(key, value));
     }
 
     public boolean getBoolean(String key, boolean fallback) {
@@ -48,7 +48,26 @@ public final class SettingsStore {
     }
 
     public void setBoolean(String key, boolean value) {
-        prefs.putBoolean(key, value);
+        write(preferences -> preferences.putBoolean(key, value));
+    }
+
+    /**
+     * 写入偏好；节点已经被外部删掉时**丢弃**这次写入。
+     *
+     * <p>⭐ 2026-10-31：{@code DataGridPage} 的列宽落盘是 400ms 防抖 ——
+     * 回调在 FX 时钟上跑，回来时存储可能已经不在了（测试隔离扩展每个用例
+     * 结束都会 {@code removeNode()}）。{@code AbstractPreferences.put}
+     * 此时抛 {@code IllegalStateException: Node has been removed}，
+     * 它发生在脉冲里，TestFX 会把它记成「延迟异常」并算到**后面**的用例头上：
+     * 一条 400ms 前的写盘能把整批网格用例连带打红。
+     * 存储不存在时这次写本来也无处可去，丢掉它才是这个边界上唯一说得通的行为。
+     */
+    private void write(java.util.function.Consumer<Preferences> action) {
+        try {
+            action.accept(prefs);
+        } catch (IllegalStateException removed) {
+            // 只吞「节点没了」这一种：java.util.prefs 的写操作只有它会抛 ISE。
+        }
     }
 
     /**

@@ -27,6 +27,7 @@ import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.framework.junit5.Start;
 import org.testfx.util.WaitForAsyncUtils;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -346,24 +347,17 @@ class DataGridFormViewTest {
     /**
      * 表单视图 + 选中一行 = 工具条最宽的状态（多一颗「删除记录」）。
      *
-     * <p>实拍踩过（`p2-form` 帧）：选中行之后带文字的需求超过可用宽度，
-     * 这一排收成图标本来是对的，但紧接着的<b>第二次重判</b>
-     * 把需求宽量成图标档：收起时只装回了文字、没摘掉 `adb-button--icon`
-     * （它把 minWidth 钉成 30px），而 CSS 的 min-width 不同步重算，读到的还是 30px。
-     * 于是「放得下」，文字全涨回来，最右的搜索框被裁到只剩一个字。
-     *
-     * <p>这里连「收字 → 再判一次」这个时序一起钉住：选中第一行让这一排收字，
-     * 再选中第二行触发第二次重判 —— 文字不许自己涨回来，框也不许出窗。
-     *
-     * <p>⚠️ 窗口宽度按 R34 N1-b 的分工重算过：编辑键退成图标后，
-     * 文字全开的需求从 1093 降到 <b>899</b>，选中行多出的那颗图标只加 30px（→ 929）。
-     * 所以可用宽度必须落在 899 与 929 之间，「选中 → 收字」这个前提才成立：
-     * 1154 − 240 侧栏 − ≈4 边距 ≈ 910。
+     * <p>N18/N19 之后合法的降级只有一种：放不下的具名键从右往左折进 »，
+     * <b>文字不许被压成省略号</b>，» 与每一颗可见键都必须留在窗内。
+     * 旧实拍（{@code p2-form}）踩的是「整排收字 → 第二次重判又把文字涨回来 →
+     * 最右的搜索框被裁成一个字」；收字逻辑已经换成折叠之后，
+     * 这条门禁改为连「选中 → 重判 → 再选中」的时序一起钉住：
+     * 折叠集合在两帧之间不许抖动，也不许出现半截文字。
      */
     @Test
     @SuppressWarnings("unchecked")
     void formViewWithSelectionKeepsTheToolbarInsideTheWindow() throws Exception {
-        // 可用宽度落在「没选中放得下、选中放不下」的窄带里（见上面那段）。
+        // 1154 − 240 侧栏 ≈ 910px 可用：13 个具名键必然有几颗要折进 »。
         final int width = 1154;
         AtomicReference<DataGridPage> pageRef = new AtomicReference<>();
         AtomicReference<Stage> stageRef = new AtomicReference<>();
@@ -395,44 +389,36 @@ class DataGridFormViewTest {
             TableView<Map<String, Object>> table =
                     (TableView<Map<String, Object>>) view.lookup("#data-table");
             Region toolbar = (Region) view.lookup("#data-toolbar");
-            Node search = view.lookup("#data-search");
             assertThat(toolbar).as("找不到 #data-toolbar").isNotNull();
-            assertThat(search).as("找不到 #data-search").isNotNull();
-            assertThat(((Labeled) view.lookup("#data-columns")).getText())
-                    .as("前置条件：没有选中行时这一排应该带文字（否则这条门禁证不了收字）")
-                    .isNotBlank();
+            assertToolbarIsHonest(view, toolbar, width);
+            assertThat(WaitForAsyncUtils.asyncFx(view::foldedToolbarKeysForTest).get())
+                    .as("910px 可用宽度下 13 个具名键不可能全放得下（前置条件：这条门禁在验折叠）")
+                    .isNotEmpty();
 
-            // 第一次：选中行 → 多一颗「删除记录」→ 放不下 → 收字。
+            // 第一次：选中行 + 表单视图 —— 删除记录出现在左下条里，顶部宽度不变。
             interact(() -> {
                 table.getSelectionModel().select(0);
                 view.setFormView(true);
             });
             WaitForAsyncUtils.waitForFxEvents(3);
-            assertThat(((Labeled) view.lookup("#data-columns")).getText())
-                    .as("表单视图 + 选中行放不下文字时应收成图标").isBlank();
+            assertToolbarIsHonest(view, toolbar, width);
+            List<String> foldedAfterFirst = ids(
+                    WaitForAsyncUtils.asyncFx(view::foldedToolbarKeysForTest).get());
 
-            // 第二次重判：选中另一行，重走一次性判断 —— 文字不许涨回来。
+            // 第二次重判：选中另一行 —— 折叠集合不许抖。
             interact(() -> table.getSelectionModel().select(1));
             WaitForAsyncUtils.waitForFxEvents(3);
-            assertThat(((Labeled) view.lookup("#data-columns")).getText())
-                    .as("收字后的第二次重判把文字又放回来了（需求宽被量成了图标档）")
-                    .isBlank();
+            assertThat(ids(WaitForAsyncUtils.asyncFx(view::foldedToolbarKeysForTest).get()))
+                    .as("收拢后的第二次重判把折叠集合改了 —— 按钮会在两帧之间来回跳")
+                    .isEqualTo(foldedAfterFirst);
 
-            // 第三次：再选一行，仍是「收着字」的状态下重判 ——
-            // 这一趟这才真正走到「收起时去量需求宽」那条路（不上一步会先合法展开）。
+            // 第三次：再选一行，仍是同一集合。
             interact(() -> table.getSelectionModel().select(2));
             WaitForAsyncUtils.waitForFxEvents(3);
-            assertThat(((Labeled) view.lookup("#data-columns")).getText())
-                    .as("收起状态下重判时需求宽被量成图标档（556px），文字又涨回来了")
-                    .isBlank();
-
-            double sceneRight = stageRef.get().getScene().getWidth();
-            assertThat(toolbar.localToScene(toolbar.getBoundsInLocal()).getMaxX())
-                    .as("表单视图 + 选中行把工具条撑出了窗口（%d 场景）—— 它不肯收字", width)
-                    .isLessThanOrEqualTo(sceneRight + 0.5);
-            assertThat(search.localToScene(search.getBoundsInLocal()).getMaxX())
-                    .as("最右的搜索框被裁到窗外（它必须整颗在框内）")
-                    .isLessThanOrEqualTo(sceneRight + 0.5);
+            assertThat(ids(WaitForAsyncUtils.asyncFx(view::foldedToolbarKeysForTest).get()))
+                    .as("第三次重判又改折叠集合")
+                    .isEqualTo(foldedAfterFirst);
+            assertToolbarIsHonest(view, toolbar, width);
         } finally {
             if (pageRef.get() != null) {
                 DataGridPage closing = pageRef.get();
@@ -445,6 +431,56 @@ class DataGridFormViewTest {
                 });
             }
         }
+    }
+
+    /**
+     * 工具条的「诚实状态」：可见的具名键文字完整、被折进 » 的不占位、
+     * » 在需要时出现，整排（含 »）不出窗。
+     */
+    private static void assertToolbarIsHonest(DataGridPage view, Region toolbar, int width)
+            throws Exception {
+        List<javafx.scene.control.ButtonBase> named =
+                WaitForAsyncUtils.asyncFx(view::namedToolbarKeysForTest).get();
+        List<javafx.scene.control.ButtonBase> folded =
+                WaitForAsyncUtils.asyncFx(view::foldedToolbarKeysForTest).get();
+        assertThat(named).as("13 个具名键").hasSize(13);
+
+        double sceneRight = toolbar.getScene().getWidth();
+        double toolbarRight = toolbar.localToScene(toolbar.getBoundsInLocal()).getMaxX();
+        assertThat(toolbarRight)
+                .as("%dpx 窗口里工具条被撑出去（%.0f > %.0f）", width, toolbarRight, sceneRight)
+                .isLessThanOrEqualTo(sceneRight + 0.5);
+        for (javafx.scene.control.ButtonBase key : named) {
+            if (folded.contains(key)) {
+                assertThat(key.isManaged())
+                        .as("#%s 已经折进 » 却还占着位", key.getId()).isFalse();
+                continue;
+            }
+            assertThat(key.isVisible()).as("#%s 既没显示也没折叠 —— 动作丢了", key.getId()).isTrue();
+            Labeled labeled = (Labeled) key;
+            assertThat(labeled.getText())
+                    .as("#%s 可见时必须是完整文字，不许收成空", key.getId()).isNotBlank();
+            assertThat(((javafx.scene.control.Control) key).getWidth())
+                    .as("#%s 的文字被压扁了（实际 %.0f < 需要 %.0f）", key.getId(),
+                            ((javafx.scene.control.Control) key).getWidth(), labeled.prefWidth(-1))
+                    .isGreaterThanOrEqualTo(labeled.prefWidth(-1) - 0.5);
+            assertThat(key.localToScene(key.getBoundsInLocal()).getMaxX())
+                    .as("#%s 越出工具条右边缘", key.getId())
+                    .isLessThanOrEqualTo(toolbarRight + 0.5);
+        }
+        Node overflow = view.lookup("#data-toolbar-overflow");
+        assertThat(overflow.isManaged())
+                .as("有键被折叠时 » 必须出现；没有折叠时必须让位")
+                .isEqualTo(!folded.isEmpty());
+        if (overflow.isManaged()) {
+            assertThat(overflow.localToScene(overflow.getBoundsInLocal()).getMaxX())
+                    .as("» 自己被挤出了窗口")
+                    .isLessThanOrEqualTo(sceneRight + 0.5);
+        }
+    }
+
+    private static List<String> ids(List<javafx.scene.control.ButtonBase> keys) {
+        return keys.stream().map(Node::getId).toList();
     }
 
     // ───────────────────────────── 工具 ─────────────────────────────

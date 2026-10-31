@@ -2,13 +2,19 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.ui.App;
 import javafx.scene.Node;
+import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Control;
 import javafx.scene.control.Labeled;
+import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.TableView;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Region;
 import javafx.stage.Stage;
@@ -35,62 +41,53 @@ import java.util.prefs.Preferences;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * UX-3 工具条可发现性门禁。
+ * 工具条可发现性门禁（N18 / N19 改判后）。
  *
- * <p>一条工具栏里有的带文字、有的只有图标，用户就只能猜 —— 猜错的代价是点错按钮。
- * 所以这里钉五件事：
+ * <p>Navicat 17 的数据网格顶栏是 <b>13 个具名键</b>
+ * （{@code docs/internal/NAVICAT-TODO.md} §1.4 的清单），每个都带图标 + 文字 +
+ * tooltip + accessibleText。放不下时<b>不再把整排文字收成图标</b> ——
+ * 那样会把 {@code Begin Transaction} 这类本来就该带文字的键一起收掉；
+ * 现在从右往左把放不下的键折进右端的 {@code »} 菜单，文字与动作原样保留，
+ * 且 {@code »} 可以用键盘（Tab + Enter）到达。
+ *
+ * <p>编辑簇（{@code + − ✓ ✗ ⋯}）不在这 13 个里：N19 把它们移到了网格左下的
+ * 行操作条，那里只有图标，但提示与朗读一样不许少。
+ *
+ * <p>这里钉五件事：
  * <ol>
- *   <li><b>具名操作</b>（Begin Transaction / Filter &amp; Sort / Columns / History）必须
- *       <b>图标 + 文字 + tooltip + accessibleText</b> 四样齐全；</li>
- *   <li><b>瞬时编辑键</b>（新增 / 撤销 / 重做 / 保存 / 删除 / 视图 / 导入 / 导出）
- *       <b>只有图标</b>，但 tooltip 与 accessibleText 一样不许少 ——
- *       这条分工是 2026-10-28 按 Navicat 实拍改判的，见 {@code MAIN_OPERATIONS} 的注释；</li>
- *   <li>窗口窄到放不下文字时<b>退成图标</b>，但 tooltip 与 accessibleText 不许跟着丢；
- *       宽度回来文字必须自己复原（不能靠重开页面）；</li>
- *   <li>工具条按语义分组（组间有分隔线）、删除走 danger 色，且 1280 宽下不溢出；</li>
- *   <li>U4：文字要么完整、要么整颗收成图标 —— 不许出现「筛 …」这种压扁的文字，
- *       且详情抽屉是浮层，开关都不改变工具条宽度。</li>
+ *   <li>具名键项集与顺序和 Navicat 对账，四样（图标 / 文字 / tooltip / accessibleText）齐全；</li>
+ *   <li>折叠只发生在右端 —— 可见的永远是前缀，折叠的是连续后缀；</li>
+ *   <li>可见键的文字要么完整、要么整颗折进菜单，绝不许出现「筛 …」；</li>
+ *   <li>{@code »} 键盘可达，菜单项与折叠键一一对应（且保留禁用态）；</li>
+ *   <li>行操作条只有图标与提示，且与顶栏不重复；工具条按语义分组、删除走 danger 色。</li>
  * </ol>
- *
- * <p>数据页「导入…」开出来的向导必须把<b>当前表</b>预选成目标表（最后一条门禁）。
  */
 @ExtendWith(ApplicationExtension.class)
 class ToolbarDiscoverabilityTest {
 
-    /** 宽窗口档：具名操作带文字。 */
+    /** 1280 是验收帧的宽度。 */
     private static final int WIDE_WIDTH = 1280;
-    /** 窄窗口档（低于 {@code DataGridPage.TOOLBAR_LABEL_MIN_WIDTH}）：收字。 */
+    /** 窄窗口档：13 个键必然折掉大半。 */
     private static final int NARROW_WIDTH = 900;
 
     /**
-     * 必须带文字的<b>具名操作</b>（按工具条从左到右）。
+     * ⭐ N19：Navicat 数据页顶栏的 13 个具名键（按视觉顺序）。
      *
-     * <p>⭐ 2026-10-28 R34 N1-b 改判。名单从六颗换成四颗，删掉的是
-     * {@code data-save / data-view / data-import / data-export}，补进的是
-     * {@code data-begin-tx / data-history}。两条理由：
-     * <ol>
-     *   <li><b>实拍分工</b>：Navicat 数据网格工具条（帧
-     *       {@code docs/screenshots/navicat/navicat17-data-grid-2026-10-27.png}）上
-     *       {@code + ✓ ✗ C ■} 这一簇全是纯图标，带文字的只有
-     *       {@code Begin Transaction} {@code Column Filter} {@code Filter & Sort}
-     *       {@code Columns} {@code History} 这类具名操作；</li>
-     *   <li><b>英文档放不下</b>：这一排在 1280 窗口实测只有 1036px，
-     *       中文档九颗文字全开刚好 1026px（贴着上限），换英文后同样九颗要 1153px。
-     *       原来的兜底是「放不下就整排收字」，那会把该带文字的具名操作一起收掉 ——
-     *       反而比中文档更不像 Navicat。按实拍的分工重排后实测 899px，留 137px 余量。</li>
-     * </ol>
-     *
-     * <p>「保存 3」这个待保存计数随按钮文字一并退场，由状态栏
-     * {@code status.pending}（"{0} pending"）报同一个数；
-     * 保存期间的转圈由 {@code IconButtons.loading} 负责，按钮宽度不变。
+     * <p>名单来自 {@code docs/internal/NAVICAT-TODO.md} §1.4 的实拍清单：
+     * {@code Table Profile▾ · Begin Transaction · Cell Editor · Filter & Sort ·
+     * Columns · History · Fill with AI▾ · Data Profiling · Import · Export ·
+     * Data Generation · Data Masking · Create BI Workspace}。
+     * 右端另有两颗小键：视图菜单（≡▾）与溢出（»），它们不算具名键。
      */
-    private static final List<String> MAIN_OPERATIONS = List.of(
-            "data-begin-tx", "data-filter", "data-columns", "data-history");
+    private static final List<String> NAMED_KEYS = List.of(
+            "data-table-profile", "data-begin-tx", "data-cell-editor", "data-filter",
+            "data-columns", "data-history", "data-fill-ai", "data-profiling",
+            "data-import", "data-export", "data-generation", "data-masking",
+            "data-bi-workspace");
 
-    /** 只有图标的瞬时编辑键：文字必须为空，但提示与朗读必须齐全。 */
-    private static final List<String> ICON_ONLY_EDITS = List.of(
-            "data-add", "data-undo", "data-redo", "data-save", "data-delete-rows",
-            "data-view", "data-export", "data-import");
+    /** N19：编辑簇在网格左下的行操作条里，只有图标但提示齐全。 */
+    private static final List<String> ROW_STRIP_KEYS = List.of(
+            "data-add", "data-delete-rows", "data-save", "data-row-cancel", "data-row-more");
 
     private static Path demoDirectory;
     private static String prefsNode;
@@ -195,79 +192,118 @@ class ToolbarDiscoverabilityTest {
         return page != null && findById(page, "data-save") != null;
     }
 
-    /**
-     * ⭐ 宽窗口下「文字全开」必须<b>真的放得下</b> —— 直接比这两个实测数。
-     *
-     * <p>为什么单独立一条：其余门禁量的都是「按钮有没有文字」，而本轮的失败恰恰是
-     * <b>有文字却放不下</b> —— 英文档九颗文字键要 1153px，工具条只分到 1036px，
-     * 于是兜底逻辑把整排收字，门禁才红。只看结果（"文字为空"）永远说不出是
-     * 「按分工该空」还是「挤不下被迫空」，这条门禁量的就是这个差。
-     *
-     * <p>换语言、换措辞、加按钮，都会先在这里红，而不是等到验收帧才发现。
-     */
     @Test
-    void namedLabelsActuallyFitTheWideToolbar(FxRobot robot) throws Exception {
-        Node page = WaitForAsyncUtils.asyncFx(
-                () -> robot.lookup(".adb-grid-page").tryQuery().orElse(null)).get();
-        assertThat(page).as("没打开数据页，量不了").isNotNull();
-        double[] pair = WaitForAsyncUtils.asyncFx(() -> {
-            try {
-                java.lang.reflect.Method req = page.getClass().getDeclaredMethod("labelRequirement");
-                java.lang.reflect.Method avail = page.getClass()
-                        .getDeclaredMethod("availableToolbarWidth");
-                req.setAccessible(true);
-                avail.setAccessible(true);
-                return new double[]{(double) req.invoke(page), (double) avail.invoke(page)};
-            } catch (ReflectiveOperationException e) {
-                throw new IllegalStateException(e);
-            }
-        }).get();
-        double requirement = pair[0];
-        double available = pair[1];
-        assertThat(available)
-                .as("%dpx 窗口没量到工具条可用宽度（%.1f）—— 量不出来这条门禁就是空气",
-                        WIDE_WIDTH, available)
-                .isGreaterThan(0);
-        assertThat(requirement)
-                .as("带文字的具名操作在 %dpx 窗口下放不下：要 %.0fpx，实得 %.0fpx。"
-                        + "要么按 Navicat 的分工把文字留给具名操作（见 MAIN_OPERATIONS），"
-                        + "要么等 R38 N18 的 >> 折叠菜单；不许悄悄缩短 Navicat 的原词。",
-                        WIDE_WIDTH, requirement, available)
-                .isLessThanOrEqualTo(available + 0.5);
-    }
+    void namedKeysMatchTheNavicatToolbarAndCarryAllFourClues(FxRobot robot) throws Exception {
+        DataGridPage page = page(robot);
+        List<String> ids = WaitForAsyncUtils.asyncFx(page::namedToolbarKeysForTest).get()
+                .stream().map(Node::getId).toList();
+        assertThat(ids)
+                .as("13 个具名键的项集与顺序必须和 Navicat 对账（§1.4 清单）")
+                .containsExactlyElementsOf(NAMED_KEYS);
 
-    @Test
-    void mainOperationsCarryIconTextAndHint(FxRobot robot) throws Exception {
-        for (String id : MAIN_OPERATIONS) {
-            Node button = require(robot, id);
-            Labeled labeled = (Labeled) button;
-            assertThat(labeled.getText()).as("%s 在宽窗口下必须有文字", id).isNotBlank();
-            assertThat(labeled.getGraphic()).as("%s 必须带图标", id).isNotNull();
-            assertThat(button.getStyleClass())
-                    .as("%s 带文字时不许挂 adb-button--icon（会把宽度钉成 30px）", id)
+        List<ButtonBase> keys = WaitForAsyncUtils.asyncFx(page::namedToolbarKeysForTest).get();
+        for (ButtonBase key : keys) {
+            assertThat(key.getGraphic()).as("%s 必须带图标", key.getId()).isNotNull();
+            assertHint(key.getId(), key);
+            assertThat(key.getStyleClass())
+                    .as("%s 是具名键，不许挂 adb-button--icon（会把文字钉没）", key.getId())
                     .doesNotContain("adb-button--icon");
-            assertHint(id, button);
+            if (key.isVisible()) {
+                assertThat(((Labeled) key).getText())
+                        .as("%s 可见时必须带完整文字", key.getId()).isNotBlank();
+            }
         }
     }
 
     @Test
-    void narrowWindowCollapsesTextButNeverTheHints(FxRobot robot) throws Exception {
-        resize(NARROW_WIDTH);
-        for (String id : MAIN_OPERATIONS) {
-            Node button = require(robot, id);
-            Labeled labeled = (Labeled) button;
-            assertThat(labeled.getText())
-                    .as("%s 在 %dpx 窗口下应收成纯图标", id, NARROW_WIDTH).isBlank();
-            assertThat(button.getStyleClass())
-                    .as("%s 收字后必须回到 30px 图标档", id).contains("adb-button--icon");
-            assertThat(labeled.getGraphic()).as("%s 收字后图标不能丢", id).isNotNull();
-            assertHint(id, button);
-        }
-        // 宽度回来，文字必须自己复原 —— 不能靠重开页面。
+    void wideWindowFoldsOnlyTheRightEnd(FxRobot robot) throws Exception {
         resize(WIDE_WIDTH);
-        for (String id : MAIN_OPERATIONS) {
-            assertThat(((Labeled) require(robot, id)).getText())
-                    .as("%s 回到宽窗口后文字要复原", id).isNotBlank();
+        DataGridPage page = page(robot);
+        List<ButtonBase> named = WaitForAsyncUtils.asyncFx(page::namedToolbarKeysForTest).get();
+        List<ButtonBase> folded = WaitForAsyncUtils.asyncFx(page::foldedToolbarKeysForTest).get();
+
+        assertThat(ids(folded))
+                .as("折叠必须从右往左连续发生，不许跳过中间某颗")
+                .isEqualTo(ids(named.subList(named.size() - folded.size(), named.size())));
+        for (ButtonBase key : named) {
+            if (folded.contains(key)) {
+                assertThat(key.isManaged()).as("%s 折进 » 后仍占位", key.getId()).isFalse();
+            } else {
+                assertThat(key.isVisible()).as("%s 既没显示也没折叠 —— 动作丢了", key.getId()).isTrue();
+                assertVisibleKeyIsNotSqueezed(key, WIDE_WIDTH);
+            }
+        }
+        Node overflow = overflow(toolbar(robot));
+        assertThat(overflow.isManaged())
+                .as("宽窗口下折叠与否都要与 » 的可见性一致").isEqualTo(!folded.isEmpty());
+        assertThat(((Labeled) require(robot, "data-table-profile")).getText())
+                .as("第一颗具名键在任何宽度下都不该被折掉").isNotBlank();
+        assertToolbarFits(robot, WIDE_WIDTH);
+    }
+
+    @Test
+    void narrowWindowFoldsButEveryActionStaysKeyboardReachable(FxRobot robot) throws Exception {
+        resize(NARROW_WIDTH);
+        DataGridPage page = page(robot);
+        List<ButtonBase> folded = WaitForAsyncUtils.asyncFx(page::foldedToolbarKeysForTest).get();
+        assertThat(folded)
+                .as("%dpx 下 13 个键不可能全放得下（前置条件：这条门禁在验折叠）", NARROW_WIDTH)
+                .isNotEmpty();
+        for (ButtonBase key : folded) {
+            assertHint(key.getId(), key);
+        }
+
+        Node overflow = overflow(toolbar(robot));
+        assertThat(overflow.isManaged()).as("有键折叠时 » 必须出现").isTrue();
+        assertThat(overflow.isVisible()).isTrue();
+
+        // 键盘：焦点落在 » 上按回车 —— 菜单必须列出所有折叠键，禁用态跟着原按钮走。
+        WaitForAsyncUtils.asyncFx(() -> {
+            overflow.requestFocus();
+            overflow.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.ENTER,
+                    false, false, false, false));
+        }).get();
+        WaitForAsyncUtils.waitForFxEvents(3);
+
+        List<MenuItem> items = WaitForAsyncUtils.asyncFx(
+                () -> List.copyOf(page.toolbarOverflowMenuForTest().getItems())).get();
+        assertThat(items)
+                .as("» 菜单项必须与折叠键一一对应（键盘用户靠它够到被折的动作）")
+                .hasSize(folded.size());
+        for (int i = 0; i < items.size(); i++) {
+            ButtonBase key = folded.get(i);
+            assertThat(items.get(i).getText()).as("菜单项文字").isNotBlank();
+            assertThat(items.get(i).isDisable())
+                    .as("菜单项 %s 的禁用态必须跟原按钮一致", items.get(i).getText())
+                    .isEqualTo(key.isDisabled());
+        }
+        WaitForAsyncUtils.asyncFx(() -> page.toolbarOverflowMenuForTest().hide()).get();
+
+        // 可见前缀仍是完整文字。
+        List<ButtonBase> named = WaitForAsyncUtils.asyncFx(page::namedToolbarKeysForTest).get();
+        for (ButtonBase key : named) {
+            if (!folded.contains(key)) {
+                assertVisibleKeyIsNotSqueezed(key, NARROW_WIDTH);
+            }
+        }
+        assertToolbarFits(robot, NARROW_WIDTH);
+    }
+
+    @Test
+    void labelsAreNeverSqueezedIntoEllipsis(FxRobot robot) throws Exception {
+        DataGridPage page = page(robot);
+        for (int width : new int[]{1100, 1180, 1280}) {
+            resize(width);
+            List<ButtonBase> named = WaitForAsyncUtils.asyncFx(page::namedToolbarKeysForTest).get();
+            List<ButtonBase> folded =
+                    WaitForAsyncUtils.asyncFx(page::foldedToolbarKeysForTest).get();
+            for (ButtonBase key : named) {
+                if (folded.contains(key)) {
+                    continue; // 折进 » 是合法降级，提示在菜单项里仍念得出来。
+                }
+                assertVisibleKeyIsNotSqueezed(key, width);
+            }
+            assertToolbarFits(robot, width);
         }
     }
 
@@ -277,52 +313,69 @@ class ToolbarDiscoverabilityTest {
         collect(toolbar(robot), node -> node.getStyleClass().contains("adb-toolbar__separator"),
                 separators);
         assertThat(separators.size())
-                .as("工具条要按语义分组（编辑 / 查询与显示 / 数据交换），组间一条竖线")
+                .as("工具条要按语义分组（表 / 事务 / 查询 / 视图 / 洞察 / 交换），组间一条竖线")
                 .isGreaterThanOrEqualTo(2);
 
-        Node delete = require(robot, "data-delete-rows");
+        DataGridPage page = page(robot);
+        Node delete = findById(page, "data-delete-rows");
+        assertThat(delete).as("行操作条里的删除键").isNotNull();
         assertThat(delete.getStyleClass())
-                .as("删除是这一排唯一会丢数据的动作，必须用 danger 色")
+                .as("删除是唯一会丢数据的动作，必须用 danger 色")
                 .contains("adb-button--danger");
     }
 
-    /**
-     * 瞬时编辑键的分工：只有图标，但提示与朗读一样不许少。
-     *
-     * <p>这条门禁是改判的另一半 —— 只钉「具名操作有文字」不够，
-     * 因为把编辑键的文字加回来也能让它全绿，而那一加就把 117px 欠债重新欠上。
-     * 所以反向钉住：这一簇<b>不许</b>带文字，同时<b>不许</b>因为没文字就变成哑按钮。
-     */
     @Test
-    void editClusterIsIconOnlyButNeverSilent(FxRobot robot) throws Exception {
-        for (String id : ICON_ONLY_EDITS) {
-            Node button = require(robot, id);
-            Labeled labeled = (Labeled) button;
-            assertThat(labeled.getText())
-                    .as("%s 属于瞬时编辑键，按 Navicat 的分工只该有图标（带文字会顶爆这一排）", id)
-                    .isBlank();
-            assertThat(labeled.getGraphic()).as("%s 只有图标，图标本身不能丢", id).isNotNull();
-            assertHint(id, button);
+    void theEditClusterLivesInTheBottomRecordStrip(FxRobot robot) throws Exception {
+        DataGridPage page = page(robot);
+        HBox strip = WaitForAsyncUtils.asyncFx(
+                () -> (HBox) page.lookup("#data-row-actions")).get();
+        assertThat(strip).as("网格左下的行操作条 #data-row-actions").isNotNull();
+
+        List<String> stripIds = WaitForAsyncUtils.asyncFx(() -> strip.getChildren().stream()
+                .map(Node::getId).toList()).get();
+        assertThat(stripIds)
+                .as("编辑簇只在行操作条里出现一次：+ − ✓ ✗ ⋯")
+                .containsExactlyElementsOf(ROW_STRIP_KEYS);
+
+        for (String id : ROW_STRIP_KEYS) {
+            // ⚠️ 用 findById 而不是 lookup：没有选中行时删除是 visible=false，
+            //    lookup 的可见性过滤会把它当成「不存在」。
+            Node key = findById(page, id);
+            assertThat(key).as("行操作条里找不到 #%s", id).isNotNull();
+            assertThat(((Labeled) key).getText())
+                    .as("%s 在行操作条里只该有图标", id).isBlank();
+            assertThat(((Labeled) key).getGraphic()).as("%s 图标不能丢", id).isNotNull();
+            assertHint(id, key);
         }
+
+        // 顶栏不再有第二份同名按钮（状态只有一个来源）。
+        for (String id : ROW_STRIP_KEYS) {
+            assertThat(findById(toolbar(robot), id))
+                    .as("%s 不该再出现在顶部工具条里（N19 已整排下移）", id)
+                    .isNull();
+        }
+
+        // 撤销 / 重做进了第 5 颗的菜单，动作仍是完整动作。
+        MenuButton more = (MenuButton) findById(page, "data-row-more");
+        assertThat(WaitForAsyncUtils.asyncFx(() -> more.getItems().stream()
+                .map(MenuItem::getId).toList()).get())
+                .as("撤销 / 重做 / 复制的菜单项")
+                .contains("data-row-undo", "data-row-redo", "data-row-copy", "data-row-copy-sql");
+        assertThat(WaitForAsyncUtils.asyncFx(() -> more.getItems().stream()
+                .filter(item -> "data-row-undo".equals(item.getId()))
+                .findFirst().orElseThrow().getText()).get())
+                .isNotBlank();
     }
 
     @Test
     void labeledToolbarStillFitsInAWideWindow(FxRobot robot) throws Exception {
-        Node toolbar = toolbar(robot);
-        Node search = require(robot, "data-search");
-        double toolbarRight = toolbar.localToScene(toolbar.getBoundsInLocal()).getMaxX();
-        double searchRight = search.localToScene(search.getBoundsInLocal()).getMaxX();
-        assertThat(searchRight)
-                .as("带文字之后工具条不能溢出：%dpx 窗口里搜索框还在框内", WIDE_WIDTH)
-                .isLessThanOrEqualTo(toolbarRight + 0.5);
+        resize(WIDE_WIDTH);
+        assertToolbarFits(robot, WIDE_WIDTH);
     }
 
     /**
-     * 选中一行之后这一排多了一颗「删除记录」—— 不许因此把右边挤出框外。
-     *
-     * <p>实拍踩过（`p2-cell` 帧）：选中行 →「删除记录」整颗出现 → 总宽超过可用宽度，
-     * 最右的「本页搜索」被裁到只剩一个「本」字。成因是收字档只在<b>工具条宽度变化</b>
-     * 时重判，而这次变的是<b>按钮个数</b>：宽度没动，判据一次都没跑。
+     * 选中一行之后左下条多了一颗「删除记录」—— 它不再影响顶栏宽度；
+     * 但顶栏这一排本身仍必须整颗在框内，且文字不被压扁。
      */
     @Test
     void selectingARowKeepsTheToolbarInsideItsEdge(FxRobot robot) throws Exception {
@@ -336,75 +389,26 @@ class ToolbarDiscoverabilityTest {
         WaitForAsyncUtils.asyncFx(() -> table.getSelectionModel().select(0)).get();
         WaitForAsyncUtils.waitForFxEvents(3);
 
-        Node delete = findById(toolbar(robot), "data-delete-rows");
+        DataGridPage page = page(robot);
+        Node delete = findById(page, "data-delete-rows");
         assertThat(delete).as("找不到 #data-delete-rows").isNotNull();
         assertThat(delete.isManaged())
                 .as("选中行后「删除记录」没占位，这条门禁证不了任何事").isTrue();
-        // 摆不下就整排退图标（合法降级），但绝不许压扁某个按钮。
-        for (String id : MAIN_OPERATIONS) {
-            Labeled labeled = (Labeled) require(robot, id);
-            if (labeled.getText().isBlank()) {
-                assertThat(labeled.getStyleClass())
-                        .as("%s 收字后必须回到图标档", id).contains("adb-button--icon");
-            } else {
-                assertThat(((Control) labeled).getWidth())
-                        .as("%s 带文字时被压扁了（%.0f < %.0f）", id,
-                                ((Control) labeled).getWidth(), labeled.prefWidth(-1))
-                        .isGreaterThanOrEqualTo(labeled.prefWidth(-1) - 0.5);
+
+        List<ButtonBase> folded = WaitForAsyncUtils.asyncFx(page::foldedToolbarKeysForTest).get();
+        for (ButtonBase key : WaitForAsyncUtils.asyncFx(page::namedToolbarKeysForTest).get()) {
+            if (!folded.contains(key)) {
+                assertVisibleKeyIsNotSqueezed(key, WIDE_WIDTH);
             }
         }
         assertToolbarFits(robot, WIDE_WIDTH);
     }
 
     /**
-     * U4（其一）：文字档的每一档宽度里，主操作按钮要么**完整**，要么**收成图标**。
-     *
-     * <p>工具条是 HBox —— 放不下时它会**逐个压窄**子节点，
-     * 「筛选」就变成「筛 …」。收字阈值原先只看**窗口**宽度，
-     * 而窗口 ≠ 工具条宽度（侧栏和边距要吃掉几百 px），所以过了阈值不代表真放得下。
-     * 现在多一条工具条自己的实测判据：整排带文字放不下就退回图标 ——
-     * 于是合法状态只有两种，「压扁的文字」必须是 0 个。
-     */
-    @Test
-    void labelsAreNeverSqueezedIntoEllipsis(FxRobot robot) throws Exception {
-        for (int width : new int[]{1100, 1180, 1280}) {
-            resize(width);
-            for (String id : MAIN_OPERATIONS) {
-                Node node = require(robot, id);
-                Labeled labeled = (Labeled) node;
-                if (labeled.getText().isBlank()) {
-                    // 收成纯图标是**合法降级**：尺寸档、图标、tooltip 一样都不能少。
-                    assertThat(node.getStyleClass())
-                            .as("%s 在 %dpx 档收成了图标，就必须回到 30px 图标档", id, width)
-                            .contains("adb-button--icon");
-                    assertThat(labeled.getGraphic())
-                            .as("%s 在 %dpx 档收字后图标不能丢", id, width).isNotNull();
-                    assertHint(id, node);
-                } else {
-                    Control button = (Control) node;
-                    assertThat(button.getWidth())
-                            .as("%s 在 %dpx 档被压扁了：实际 %.0fpx < 需要的 %.0fpx"
-                                            + "（文字会被截成省略号）",
-                                    id, width, button.getWidth(), button.prefWidth(-1))
-                            .isGreaterThanOrEqualTo(button.prefWidth(-1) - 0.5);
-                }
-            }
-            assertToolbarFits(robot, width);
-        }
-        // 1280 是全套验收帧的宽度：这一档必须真的给文字，
-        // 否则「主操作图标 + 文字」这条承诺等于没有。
-        resize(WIDE_WIDTH);
-        for (String id : MAIN_OPERATIONS) {
-            assertThat(((Labeled) require(robot, id)).getText())
-                    .as("%s 在 %dpx 档应该带文字", id, WIDE_WIDTH).isNotBlank();
-        }
-    }
-
-    /**
-     * U4（其二）：详情抽屉是浮层，开与关都不许改变工具条的宽度。
+     * 详情抽屉是浮层，开与关都不许改变工具条的宽度。
      *
      * <p>抽屉原来和数据区并排在同一个 HBox 里 —— 一开就把工具条挤窄，
-     * 「筛 …」「导 …」就是这么来的。现在它挂在 body 的 StackPane 上，
+     * 于是折叠集合跟着变、按钮在眼皮底下跳。现在它挂在 body 的 StackPane 上，
      * 不参与宽度分配。这里钉住这个结构：宽度必须**一模一样**。
      */
     @Test
@@ -417,8 +421,7 @@ class ToolbarDiscoverabilityTest {
         assertThat(grid).as("数据网格里找不到 #data-table").isNotNull();
         @SuppressWarnings("unchecked")
         TableView<Map<String, Object>> table = (TableView<Map<String, Object>>) grid;
-        DataGridPage page = WaitForAsyncUtils.asyncFx(
-                () -> robot.lookup(".adb-grid-page").queryAs(DataGridPage.class)).get();
+        DataGridPage page = page(robot);
         Map<String, Object> row = table.getItems().get(0);
         WaitForAsyncUtils.asyncFx(() -> page.showDetails(row,
                 new io.agenticdb.model.ColumnDef("name", io.agenticdb.model.ColumnType.TEXT,
@@ -446,20 +449,77 @@ class ToolbarDiscoverabilityTest {
                 .isFalse();
     }
 
-    /** 工具条整排（含搜索框）都在自己的框内 —— 不是只查搜索框那一个点。 */
+    /**
+     * 导入向导必须把当前表预选成目标表 —— 这是数据页「导入…」存在的全部理由。
+     *
+     * <p>走 {@code createImportWizard} 这个接缝：{@code show()} 是模态的，
+     * 一点就卡住 FX 线程，门禁拿不到断言时机。
+     */
+    @Test
+    void importWizardPreselectsTheCurrentTable(FxRobot robot) throws Exception {
+        DataGridPage page = page(robot);
+        ImportWizard wizard = WaitForAsyncUtils.asyncFx(
+                () -> page.createImportWizard(List.of("orders", "users", "notes"))).get();
+        ComboBox<?> box = WaitForAsyncUtils.asyncFx(
+                () -> (ComboBox<?>) wizard.content().lookup("#import-table")).get();
+        assertThat(box).as("导入向导里没有 #import-table").isNotNull();
+        @SuppressWarnings("unchecked")
+        ComboBox<String> tableBox = (ComboBox<String>) box;
+        assertThat(tableBox.getItems()).as("当前表排第一，且不能重复出现")
+                .containsExactly("users", "orders", "notes");
+        assertThat(tableBox.getValue()).as("目标表预选成当前表").isEqualTo("users");
+    }
+
+    // ─────────────────────────── 助手 ───────────────────────────
+
+    /** 可见的具名键不许被压扁：实际宽度 ≥ 带文字的需求宽。 */
+    private static void assertVisibleKeyIsNotSqueezed(ButtonBase key, int width) {
+        Labeled labeled = (Labeled) key;
+        assertThat(labeled.getText())
+                .as("%s 在 %dpx 档可见时必须是完整文字，不许收成空", key.getId(), width)
+                .isNotBlank();
+        Control control = (Control) key;
+        assertThat(control.getWidth())
+                .as("%s 在 %dpx 档被压扁了：实际 %.0fpx < 需要 %.0fpx（会截成省略号）",
+                        key.getId(), width, control.getWidth(), labeled.prefWidth(-1))
+                .isGreaterThanOrEqualTo(labeled.prefWidth(-1) - 0.5);
+    }
+
+    private static void assertHint(String id, Node button) {
+        Tooltip tooltip = ((Control) button).getTooltip();
+        assertThat(tooltip).as("%s 必须有 tooltip", id).isNotNull();
+        assertThat(tooltip.getText()).as("%s 的 tooltip 不能是空的", id).isNotBlank();
+        assertThat(button.getAccessibleText())
+                .as("%s 必须有 accessibleText（读屏要念得出来）", id).isNotBlank();
+    }
+
+    private static List<String> ids(List<ButtonBase> keys) {
+        return keys.stream().map(Node::getId).toList();
+    }
+
+    /** 改窗口宽度并等布局跑完。 */
+    private void resize(int width) throws Exception {
+        WaitForAsyncUtils.asyncFx(() -> stage.setWidth(width)).get();
+        WaitForAsyncUtils.waitForFxEvents(3);
+        assertThat(stage.getWidth())
+                .as("窗口没能设到 %dpx（实际 %.0f）", width, stage.getWidth())
+                .isGreaterThan(0);
+    }
+
+    /** 工具条整排（含 »）都在自己的框内 —— 不是只查某一个点。 */
     private void assertToolbarFits(FxRobot robot, int width) throws Exception {
         Region toolbar = toolbar(robot);
         double toolbarRight =
                 toolbar.localToScene(toolbar.getBoundsInLocal()).getMaxX();
         // ⭐ 框自己也不许被撑出场景：minWidth 钉死时溢出的是**整条**，
-        //    子节点个个都在「自己的框」里，可框有一大截在窗外（p2-cell 实拍 1406 > 1280）。
+        //    子节点个个都在「自己的框」里，可框有一大截在窗外。
         //    ⚠️ 1100 档不查这条：那一档是**分页器**的最小宽度把整页撑出去的
         //    （G12 / R32-D 的「1280 宽下分页器被裁」），跟工具条无关。
         if (width >= 1180) {
             double sceneRight = toolbar.getScene() == null
                     ? Double.MAX_VALUE : toolbar.getScene().getWidth();
             assertThat(toolbarRight)
-                    .as("工具条在 %dpx 档被撑出场景（右边缘 %.0f > 场景 %.0f）—— 它不肯收缩",
+                    .as("工具条在 %dpx 档被撑出场景（右边缘 %.0f > 场景 %.0f）—— 它不肯折叠",
                             width, toolbarRight, sceneRight)
                     .isLessThanOrEqualTo(sceneRight + 0.5);
         }
@@ -479,60 +539,16 @@ class ToolbarDiscoverabilityTest {
                         : node.getStyleClass().toString();
     }
 
-    /** 工具条里所有**可见且占位**的后代（隐藏的按钮不算溢出）。 */
+    /** 工具条里所有**可见且占位**的后代（隐藏 / 折叠的按钮不算溢出）。 */
     private static List<Node> cascade(Region toolbar) {
         List<Node> all = new ArrayList<>();
         collect(toolbar, node -> node != toolbar && node.isVisible() && node.isManaged(), all);
         return all;
     }
 
-    /**
-     * 导入向导必须把当前表预选成目标表 —— 这是数据页「导入…」存在的全部理由。
-     *
-     * <p>走 {@code createImportWizard} 这个接缝：{@code show()} 是模态的，
-     * 一点就卡住 FX 线程，门禁拿不到断言时机。
-     */
-    @Test
-    void importWizardPreselectsTheCurrentTable(FxRobot robot) throws Exception {
-        DataGridPage page = WaitForAsyncUtils.asyncFx(
+    private DataGridPage page(FxRobot robot) throws Exception {
+        return WaitForAsyncUtils.asyncFx(
                 () -> robot.lookup(".adb-grid-page").queryAs(DataGridPage.class)).get();
-        ImportWizard wizard = WaitForAsyncUtils.asyncFx(
-                () -> page.createImportWizard(List.of("orders", "users", "notes"))).get();
-        ComboBox<?> box = WaitForAsyncUtils.asyncFx(
-                () -> (ComboBox<?>) wizard.content().lookup("#import-table")).get();
-        assertThat(box).as("导入向导里没有 #import-table").isNotNull();
-        @SuppressWarnings("unchecked")
-        ComboBox<String> tableBox = (ComboBox<String>) box;
-        assertThat(tableBox.getItems()).as("当前表排第一，且不能重复出现")
-                .containsExactly("users", "orders", "notes");
-        assertThat(tableBox.getValue()).as("目标表预选成当前表").isEqualTo("users");
-    }
-
-    // ─────────────────────────── 助手 ───────────────────────────
-
-    private static void assertHint(String id, Node button) {
-        Tooltip tooltip = ((Control) button).getTooltip();
-        assertThat(tooltip).as("%s 必须有 tooltip", id).isNotNull();
-        assertThat(tooltip.getText()).as("%s 的 tooltip 不能是空的", id).isNotBlank();
-        assertThat(button.getAccessibleText())
-                .as("%s 必须有 accessibleText（读屏要念得出来）", id).isNotBlank();
-    }
-
-    /**
-     * 改窗口宽度并等布局跑完。
-     *
-     * <p>⚠️ Monocle 无头窗口有最小宽度（实测 900 会被抬到 960），
-     * 所以这里不断言「正好多少 px」，只断言「确实跨过了收字阈值」——
-     * 前提成立即可，收没收到字由各用例自己判。
-     */
-    private void resize(int width) throws Exception {
-        WaitForAsyncUtils.asyncFx(() -> stage.setWidth(width)).get();
-        WaitForAsyncUtils.waitForFxEvents(3);
-        boolean requestedWide = width >= DataGridPage.TOOLBAR_LABEL_MIN_WIDTH;
-        assertThat(stage.getWidth() >= DataGridPage.TOOLBAR_LABEL_MIN_WIDTH)
-                .as("窗口没能跨过收字阈值（请求 %dpx，实际 %s px）",
-                        width, String.format("%.0f", stage.getWidth()))
-                .isEqualTo(requestedWide);
     }
 
     /**
@@ -556,6 +572,10 @@ class ToolbarDiscoverabilityTest {
         Node button = findById(toolbar(robot), id);
         assertThat(button).as("工具条里找不到 #%s", id).isNotNull();
         return button;
+    }
+
+    private Node overflow(Region toolbar) {
+        return findById(toolbar, "data-toolbar-overflow");
     }
 
     /**

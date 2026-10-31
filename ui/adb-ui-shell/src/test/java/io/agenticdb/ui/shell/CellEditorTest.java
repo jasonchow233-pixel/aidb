@@ -122,8 +122,8 @@ class CellEditorTest {
         assertThat(((TextArea) page.lookup("#data-details-text")).isEditable())
                 .as("应用完就是查看态，不能停在编辑中")
                 .isFalse();
-        assertThat(((Button) page.lookup("#data-row-apply")).isDisabled())
-                .as("缓冲脏了，行操作条的「应用」同时亮起")
+        assertThat(((Button) page.lookup("#data-save")).isDisabled())
+                .as("缓冲脏了，行操作条的「保存」同时亮起")
                 .isFalse();
     }
 

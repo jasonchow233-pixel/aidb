@@ -50,32 +50,42 @@ class DataGridNavigationTest {
                             && !((javafx.scene.control.TableView<?>)
                             page.lookup("#data-table")).getItems().isEmpty());
 
-            TextField jumpRow = (TextField) page.lookup("#data-jump-row");
-            assertThat(jumpRow).as("G7：行级导航的输入框要在").isNotNull();
+            assertThat(page.lookup("#data-page-jump-row"))
+                    .as("⭐ N20：跳至记录收进齿轮菜单，底栏不再常驻行号输入框")
+                    .isNull();
 
-            // 跳到第 150 行 —— 超过一页（200 行一页时在第 1 页；
-            // 这里用 1 行的页大小更容易验证跨页）。
+            // 用 1 行的页大小更容易验证跨页。
             page.setPageSizeForTest(1);
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
                     ((javafx.scene.control.TableView<?>) page.lookup("#data-table"))
                             .getItems().size() == 1);
 
-            // 非法输入不崩，且状态栏给出解释
-            jumpRow.setText("abc");
-            WaitForAsyncUtils.asyncFx(() -> jumpRow.getOnAction().handle(new javafx.event.ActionEvent())).get();
+            // 非法输入不崩（状态栏给出解释）
+            WaitForAsyncUtils.asyncFx(() -> {
+                page.jumpToRow("abc");
+                return null;
+            }).get();
             WaitForAsyncUtils.waitForFxEvents();
 
             // 越界也不崩
-            jumpRow.setText("999999");
-            WaitForAsyncUtils.asyncFx(() -> jumpRow.getOnAction().handle(new javafx.event.ActionEvent())).get();
+            WaitForAsyncUtils.asyncFx(() -> {
+                page.jumpToRow("999999");
+                return null;
+            }).get();
             WaitForAsyncUtils.waitForFxEvents();
 
-            // 合法输入：跳到第 3 行
-            jumpRow.setText("3");
-            WaitForAsyncUtils.asyncFx(() -> jumpRow.getOnAction().handle(new javafx.event.ActionEvent())).get();
-            WaitForAsyncUtils.waitForFxEvents();
-
-            assertThat(jumpRow).isNotNull();
+            // 合法输入：跳到第 3 行 —— 跨页落到第 3 页
+            WaitForAsyncUtils.asyncFx(() -> {
+                page.jumpToRow("3");
+                return null;
+            }).get();
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> {
+                TextField box = (TextField) page.lookup("#data-page");
+                javafx.scene.control.TableView<?> table =
+                        (javafx.scene.control.TableView<?>) page.lookup("#data-table");
+                return box != null && "3".equals(box.getText())
+                        && table.getItems().size() == 1;
+            });
             page.close();
         } finally {
             executor.shutdownNow();
@@ -84,7 +94,7 @@ class DataGridNavigationTest {
     }
 
     @Test
-    void batchBarHasExportSelected() throws Exception {
+    void batchMenuHasExportSelected() throws Exception {
         DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
                 DemoDatabase.create(temp.resolve("demo2.db"))));
         executor = Executors.newSingleThreadExecutor();
@@ -94,9 +104,10 @@ class DataGridNavigationTest {
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
                     page.lookup("#data-table") != null);
 
-            assertThat(page.lookup("#data-batch-export"))
-                    .as("G8：批量条要有「导出选中」")
-                    .isNotNull();
+            assertThat(page.batchMenuForTest().getItems().stream()
+                    .anyMatch(item -> "data-batch-export".equals(item.getId())))
+                    .as("N16：批量菜单要有「导出选中」")
+                    .isTrue();
             page.close();
         } finally {
             executor.shutdownNow();

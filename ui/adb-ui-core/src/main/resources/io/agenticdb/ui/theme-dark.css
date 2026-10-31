@@ -12,6 +12,7 @@
     -adb-bg-active: rgba(76,158,234,.24);
     -adb-bg-selected: rgba(76,158,234,.30);
     -adb-bg-selected-grid: rgba(76,158,234,.24);
+    -adb-bg-header-current: rgba(76,158,234,.32);
     -adb-bg-stripe: rgba(148,163,184,.035);
     -adb-bg-disabled: rgba(148,163,184,.08);
     -adb-border: #2C3B52;

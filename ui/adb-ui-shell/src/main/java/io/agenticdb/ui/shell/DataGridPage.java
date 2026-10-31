@@ -31,16 +31,17 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.CheckMenuItem;
-import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.Labeled;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ProgressIndicator;
@@ -54,6 +55,7 @@ import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.input.Clipboard;
@@ -77,7 +79,6 @@ import java.sql.SQLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -203,64 +204,58 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /** 概览的元信息只读一次；表大小会变，由用户点「刷新概览」或数据刷新来更新。 */
     private boolean overviewLoaded;
     private boolean overviewLoading;
-    /** 工具栏左组（数据操作）。 */
-    private final HBox toolGroupData = new HBox(4);
-    /** 工具栏中组（查询与显示）。 */
-    private final HBox toolGroupQuery = new HBox(4);
-    /** ⭐ UX-3：工具栏数据交换组（导入 / 导出）。 */
-    private final HBox toolGroupTransfer = new HBox(4);
     /**
-     * ⭐ UX-3：工具条上的「图标 + 文字」主操作 —— 按钮 -&gt; 完整文字。
-     *
-     * <p>收起来时要清空文字、展开时要复原，靠这张表记住原文，
-     * 不在按钮上塞自定义属性。
+     * ⭐ N19：工具条分六段，顺序照 Navicat 帧 3：
+     * 表概览｜事务｜单元格编辑 + 筛选｜列 + 历史｜AI + 数据剖析｜导入导出 + 三个能力面。
      */
-    private final Map<ButtonBase, String> toolbarLabels = new LinkedHashMap<>();
-    /** ⭐ U4：工具条本体要参与「放不放得下文字」的判断，不能只当局部变量。 */
+    private final HBox toolGroupProfile = new HBox(4);
+    private final HBox toolGroupTx = new HBox(4);
+    private final HBox toolGroupQuery = new HBox(4);
+    private final HBox toolGroupView = new HBox(4);
+    private final HBox toolGroupInsight = new HBox(4);
+    private final HBox toolGroupTransfer = new HBox(4);
+    /** ⭐ N18：13 个具名键（视觉顺序）—— 放不下时从右端折进 {@code >>}。 */
+    private final List<ButtonBase> namedToolbarKeys = new ArrayList<>();
+    /** 当前折进溢出菜单的键（菜单每次展开时按这份名单重建）。 */
+    private final List<ButtonBase> foldedToolbarKeys = new ArrayList<>();
+    private final Button toolbarOverflowButton = new Button();
+    private final ContextMenu toolbarOverflowMenu = new ContextMenu();
+    /** 工具条本体要参与溢出判断，不能只当局部变量。 */
     private final HBox toolbar = new HBox(8);
-    /** 工具条当前是否显示文字；null = 还没量过窗口宽度。 */
-    private Boolean toolbarTextVisible;
-    /** U4：窗口宽度这一档（侧栏收起、边距吃掉的宽度由工具条实测宽度负责）。 */
-    private boolean windowAllowsLabels = true;
-    /** 正在监听的窗口宽度（换窗口时必须摘掉旧的监听）。 */
-    private ObservableValue<? extends Number> boundWindowWidth;
-    private final ChangeListener<Number> windowWidthListener =
-            (observable, oldValue, newValue) -> {
-                windowAllowsLabels = newValue.doubleValue() >= TOOLBAR_LABEL_MIN_WIDTH;
-                applyToolbarLabels();
-            };
-    /** 工具条宽度一变就重判「这一排文字到底放不放得下」。 */
+    /** 工具条宽度一变就重判「有没有键要被折进 >>」。 */
     private final ChangeListener<Number> toolbarWidthListener =
-            (observable, oldValue, newValue) -> applyToolbarLabels();
+            (observable, oldValue, newValue) -> updateToolbarOverflow();
     /** 删除选中行（工具栏左组的危险操作）。 */
     private final Button deleteRowsButton = new Button();
     private final VBox stateBox = new VBox(10);
     private final ProgressIndicator spinner = new ProgressIndicator();
     private final Label stateText = new Label();
     private final Button retry = IconButtons.of(Icons.Icon.REFRESH, I18n.t("grid.toolbar.retry"));
-    private final Label rangeLabel = new Label("—");
-    private final Label pageLabel = new Label("—");
-    private final Button previous = IconButtons.icon(Icons.Icon.PREVIOUS, I18n.t("grid.toolbar.previousPage"));
-    private final Button next = IconButtons.icon(Icons.Icon.NEXT, I18n.t("grid.toolbar.nextPage"));
-    private final Button firstPageButton = IconButtons.icon(Icons.Icon.FIRST, I18n.t("grid.toolbar.firstPage"));
-    private final Button lastPageButton = IconButtons.icon(Icons.Icon.LAST, I18n.t("grid.toolbar.lastPage"));
-    private final TextField jumpField = new TextField();
-    /** ⭐ G7：行级导航（跳到第 N 行）。 */
-    private final TextField jumpRowField = new TextField();
-    private final ComboBox<Integer> pageSizeBox = new ComboBox<>();
-    /** ⭐ D-1：分页器本体 —— 窄宽降级按它的<b>实际</b>宽度决定收起哪几项。 */
+    /** ⭐ N20：底栏唯一的页码输入框（Navicat 的 `[页码]`，回车跳页）。 */
+    private final TextField pageField = new TextField();
+    private final Button previous = IconButtons.iconMono(Icons.Icon.PREVIOUS, I18n.t("grid.toolbar.previousPage"));
+    private final Button next = IconButtons.iconMono(Icons.Icon.NEXT, I18n.t("grid.toolbar.nextPage"));
+    private final Button firstPageButton = IconButtons.iconMono(Icons.Icon.FIRST, I18n.t("grid.toolbar.firstPage"));
+    private final Button lastPageButton = IconButtons.iconMono(Icons.Icon.LAST, I18n.t("grid.toolbar.lastPage"));
+    /** ⭐ N20：齿轮 —— 页大小与「跳至记录」都收进这里，底栏不再摆文字控件。 */
+    private final Button pageOptionsButton = IconButtons.iconMono(Icons.Icon.SETTINGS, I18n.t("grid.pager.options"));
+    private final ContextMenu pageOptionsMenu = new ContextMenu();
+    /** ⭐ N20：放大镜 —— 开合本页查找条。 */
+    private final ToggleButton findToggle = new ToggleButton();
+    /** ⭐ N20：右下两枚视图切换（网格 / 表单），与 ≡▾ 菜单同一状态。 */
+    private final ToggleButton gridToggle = new ToggleButton();
+    private final ToggleButton formToggle = new ToggleButton();
+    /** ⭐ D-1：分页器本体 —— 窄宽降级按真实可用宽度决定收起哪几项。 */
     private HBox pagerBox;
-    /** R34 N1-b：两组方向键的常驻区分标签（「记录」/「页面」），窄宽时整项收起而不是压扁。 */
-    private Label recordNavLabel;
-    private Label pageNavLabel;
-    /** D-1：「每页」文字标签（下拉框本身永远留着，必要时靠 tooltip 认）。 */
-    private final Label perPageLabel = new Label(I18n.t("grid.toolbar.perPage"));
-    private final Button filterButton = IconButtons.icon(Icons.Icon.FILTER, I18n.t("grid.toolbar.filter"));
+    /** ⭐ N31：Filter & Sort 内嵌面板（按下态开合），草稿经 Apply 才成查询。 */
+    private final ToggleButton filterButton = new ToggleButton();
+    private final VBox filterPanelHost = new VBox();
+    private FilterSortPanel filterPanel;
     private final Button clearQueryButton = IconButtons.icon(Icons.Icon.CLEAR, I18n.t("grid.toolbar.clearConditions"));
     private final Button undoButton = IconButtons.icon(Icons.Icon.UNDO, I18n.t("grid.toolbar.undo"));
     private final Button redoButton = IconButtons.icon(Icons.Icon.REDO, I18n.t("grid.toolbar.redo"));
     private final Button saveButton = new Button();
-    private final Button addRowButton = IconButtons.icon(Icons.Icon.ADD, I18n.t("grid.toolbar.addRow"));
+    private final Button addRowButton = IconButtons.iconMono(Icons.Icon.ADD, I18n.t("grid.toolbar.addRow"));
     /**
      * ⭐ G2：事务三键。「开始事务」常驻，「提交 / 回滚」只在事务中现身 ——
      * 这两颗按钮<b>在不在</b>本身就是事务状态的显示器（跟本页「删除记录」同一套可见性口径）。
@@ -273,7 +268,23 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final Button columnsButton = IconButtons.icon(Icons.Icon.COLUMNS, I18n.t("grid.toolbar.columns"));
     /** ⭐ 列设置弹层（带列名搜索）。 */
     private ColumnSettingsPanel columnPanel;
-    private final MenuButton viewButton = IconButtons.iconMenu(new MenuButton(), Icons.Icon.VIEW, I18n.t("grid.toolbar.view"));
+    /** ⭐ N19：表概览（真功能：切到 overview 段 / 刷新概览）。 */
+    private final MenuButton tableProfileButton =
+            IconButtons.iconMenu(new MenuButton(), Icons.Icon.TABLE, I18n.t("grid.toolbar.tableProfile"));
+    /** ⭐ N19：单元格编辑器 —— 用现有的详情抽屉，光标在哪一格就开哪一格。 */
+    private final Button cellEditorButton = IconButtons.icon(Icons.Icon.EDIT, I18n.t("grid.toolbar.cellEditor"));
+    /** ⭐ N19：AI 与三个能力面——本版本没有对应后端，按诚实条款给如实说明页。 */
+    private final MenuButton fillWithAiButton =
+            IconButtons.iconMenu(new MenuButton(), Icons.Icon.AI, I18n.t("grid.toolbar.fillWithAi"));
+    private final Button profilingButton = IconButtons.icon(Icons.Icon.DIAGNOSTICS,
+            I18n.t("grid.toolbar.dataProfiling"));
+    private final Button generationButton = IconButtons.icon(Icons.Icon.GRID,
+            I18n.t("grid.toolbar.dataGeneration"));
+    private final Button maskingButton = IconButtons.icon(Icons.Icon.LOCK,
+            I18n.t("grid.toolbar.dataMasking"));
+    private final Button biWorkspaceButton = IconButtons.icon(Icons.Icon.VIEW,
+            I18n.t("grid.toolbar.biWorkspace"));
+    private final MenuButton viewButton = IconButtons.iconMenu(new MenuButton(), Icons.Icon.LIST, I18n.t("grid.toolbar.view"));
     private final MenuButton exportButton = IconButtons.iconMenu(new MenuButton(), Icons.Icon.EXPORT, I18n.t("grid.toolbar.export"));
     /** ⭐ UX-3：数据页直接导入（目标表预选本表），不用再绕侧栏的「导入 / 导出」。 */
     private final Button importButton = new Button();
@@ -321,9 +332,15 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private Map<String, Object> detailsRow;
     private ColumnDef detailsDefinition;
     private final FlowPane chipBar = new FlowPane(6, 6);
-    private final HBox batchBar = new HBox(8);
     /** ⭐ 记录导航条（Navicat 形态）：首 / 上 / 下 / 末 + 当前行号。 */
     private final HBox recordNav = new HBox(4);
+    /**
+     * ⭐ N20：表单视图 = 记录导航 + 字段表单。
+     *
+     * <p>网格里点一行就算导航，不需要再摆一套方向键；表单视图没有网格，
+     * 行导航只有从这里走 —— 所以它跟着表单块一起显隐，不再占底栏。
+     */
+    private final VBox formSection = new VBox(recordNav, formPane);
     /**
      * ⭐ UX-4：贴在网格左下的**行操作条**（+ / − / 应用 / 取消）。
      *
@@ -332,17 +349,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      * 不在这里重写一遍判断 —— 两处状态不一致比少一排按钮更糟。
      */
     private final HBox rowActions = new HBox(4);
-    private final Button rowAddButton = IconButtons.iconMono(Icons.Icon.ADD, I18n.t("grid.toolbar.addRow"));
-    private final Button rowDeleteButton = IconButtons.iconMono(Icons.Icon.DELETE, I18n.t("grid.batch.deleteSelected"));
-    private final Button rowApplyButton = IconButtons.iconMono(Icons.Icon.SAVE, I18n.t("grid.batch.apply"));
     private final Button rowCancelButton = IconButtons.iconMono(Icons.Icon.CLOSE, I18n.t("grid.batch.discard"));
+    /** ⭐ N19：第 5 颗展开菜单（撤销 / 重做 / 复制）。 */
+    private final MenuButton moreButton = IconButtons.iconMenu(new MenuButton(),
+            Icons.Icon.MORE, I18n.t("grid.toolbar.rowMore"));
     private final Label recordPosition = new Label("—");
-    private final Label batchLabel = new Label();
-    private final Button batchNull = new Button(I18n.t("grid.batch.setNull"));
-    private final Button batchEmpty = new Button(I18n.t("grid.batch.setEmpty"));
-    private final Button batchDelete = IconButtons.of(Icons.Icon.DELETE, I18n.t("grid.batch.delete"));
-    private final Button batchClone = IconButtons.of(Icons.Icon.COPY, I18n.t("grid.batch.clone"));
-    private final CheckBox selectAllBox = new CheckBox();
     private final Map<String, HeaderView> headers = new LinkedHashMap<>();
     /** ⭐ G2：正在被拖动的列。 */
     private TableColumn<Map<String, Object>, ?> draggedColumn;
@@ -351,17 +362,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private double dragLastSceneX;
     /** 拖动超过这个位移就算「拖」而不是「点」—— 点列头是排序。 */
     private static final double DRAG_THRESHOLD = 6;
-    /**
-     * ⭐ UX-3：窗口窄于这个宽度时，工具条主操作退回「图标 + tooltip」。
-     *
-     * <p>量的是**窗口**而不是页面：侧栏收起会让页面变宽，但用户能一眼扫完的
-     * 工具条宽度取决于整窗给多少地方 —— 1100px 以下文字会开始互相挤。
-     */
-    static final double TOOLBAR_LABEL_MIN_WIDTH = 1100;
-
     // ─────────────── G4：单元格区域选择 ───────────────
     /**
-     * ⭐ G4：矩形选区。列下标是「可见数据列」的下标（行号列 / 选择列不算），
+     * ⭐ G4：矩形选区。列下标是「可见数据列」的下标（行首槽不算），
      * 行下标是当前页 {@code items} 的下标 —— 都取用户眼睛看到的坐标，
      * 不被「列被隐藏」「列被拖到别处」这些内部顺序干扰。
      */
@@ -382,6 +385,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      */
     private int cursorRow = -1;
     private String cursorColumnName;
+    /**
+     * ⭐ N17：光标所在列的 {@link TableColumn} —— 表头整格着蓝 tint 靠它带样式类。
+     *
+     * <p>样式类必须挂在 {@code TableColumn} 上（{@code TableColumnHeader} 会把列上的
+     * 样式类复制到表头单元格），挂在列头 graphic 上只会染到文字那块，盖不满整格。
+     */
+    private TableColumn<?, ?> currentHeaderColumn;
 
     /** 一个单元格坐标（行 + 可见数据列下标）。 */
     private record GridCell(int row, int column) {
@@ -435,11 +445,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
     // ─────────────── G1：冻结列 ───────────────
     /**
-     * ⭐ G1：冻结在左侧的**数据列**个数（不含选择列与行号列，那两列天然跟着冻结）。
+     * ⭐ G1：冻结在左侧的**数据列**个数（不含行首槽，它天然跟着冻结）。
      * 0 = 不冻结 —— 此时左表整体隐藏，布局和以前完全一样。
      */
     private int frozenColumnCount;
-    /** 左半张表：选择列 + 行号列 + 前 N 个数据列。 */
+    /** 左半张表：行首槽 + 前 N 个数据列。 */
     private final TableView<Map<String, Object>> frozenGrid = new TableView<>();
     /** 两张表并排的容器（左表不冻结时宽度为 0）。 */
     private final HBox gridRow = new HBox();
@@ -683,7 +693,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             saveUndoPlan = null;
         }
         updateEditControls();
-        updateBatchBar();
         feedback.dirty(count);
         dirtyListener.accept(count);
         // ⭐ 缓冲一变，表单里显示的值就变了（编辑 / 撤销 / 重做 / 清空都走这里）。
@@ -728,7 +737,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         //    收字判据原先只在工具条宽度变化时跑，于是「多一颗按钮」把需求顶到
         //    1093px 也没人重判（1280 下可用只有 1026px），最右的搜索框被裁掉
         //    （p2-cell 实拍踩到）。按钮进出必须跟着重判。
-        applyToolbarLabels();
+        updateToolbarOverflow();
     }
 
     private void saveChanges() {
@@ -987,7 +996,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         rollbackTxButton.setVisible(transactionOpen);
         rollbackTxButton.setManaged(transactionOpen);
         // 事务开关换掉的是三颗按钮 —— 与「删除记录」同理，宽度要重判一次。
-        applyToolbarLabels();
+        updateToolbarOverflow();
     }
 
     /**
@@ -1203,42 +1212,41 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         //    （p2-details / p2-cell 实拍就是这么被裁的：1026 的框，需求 994 或 1093）。
         toolbar.setMinWidth(0);
 
-        toolGroupData.setAlignment(Pos.CENTER_LEFT);
-        toolGroupData.getStyleClass().add("adb-toolbar__group");
-        toolGroupQuery.setAlignment(Pos.CENTER_LEFT);
-        toolGroupQuery.getStyleClass().add("adb-toolbar__group");
-        toolGroupTransfer.setAlignment(Pos.CENTER_LEFT);
-        toolGroupTransfer.getStyleClass().add("adb-toolbar__group");
+        for (HBox group : List.of(toolGroupProfile, toolGroupTx, toolGroupQuery,
+                toolGroupView, toolGroupInsight, toolGroupTransfer)) {
+            group.setAlignment(Pos.CENTER_LEFT);
+            group.getStyleClass().add("adb-toolbar__group");
+        }
 
         Region toolbarSpacer = new Region();
         HBox.setHgrow(toolbarSpacer, Priority.ALWAYS);
 
+        // ── 行操作三键（新增 / 删除 / 保存）──────────────
+        //   ⭐ N19：这三颗不再放在顶部工具条 —— Navicat 把它们放在网格左下
+        //   的记录操作条里（+ − ✓ ✗），贴着光标。这里的节点本体就是
+        //   rowActions 里的那四颗（见 buildRowActions），id 与可用态判断都在。
         addRowButton.setId("data-add");
-        addRowButton.getStyleClass().addAll("adb-button", "adb-button--icon");
+        addRowButton.getStyleClass().setAll("adb-icon-button");
         addRowButton.setTooltip(new Tooltip(I18n.t("grid.tip.addRow")));
         addRowButton.setDisable(true);
         addRowButton.setOnAction(event -> addRow());
 
-        undoButton.setId("data-undo");
-        undoButton.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-button--icon");
-        undoButton.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(I18n.t("grid.tip.undo"), "Mod+Z")));
-        undoButton.setOnAction(event -> undo());
-
-        redoButton.setId("data-redo");
-        redoButton.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-button--icon");
-        redoButton.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(I18n.t("grid.toolbar.redo"), "Shift+Mod+Z")));
-        redoButton.setOnAction(event -> redo());
-
         saveButton.setId("data-save");
-        saveButton.getStyleClass().addAll("adb-button", "adb-button--primary");
-        toolbarIcon(saveButton, Icons.Icon.SAVE, io.agenticdb.ui.Shortcuts.labelled(I18n.t("grid.tip.save"), "Mod+S"));
+        saveButton.getStyleClass().setAll("adb-icon-button", "adb-button--primary");
+        // ⭐ N19：这四颗已经搬进网格左下的行操作条 —— 那一排按 Navicat 是灰的单线，
+        //    彩色分层会抢过数据本身（R35 N4-c 的两区口径，见 IconButtons#iconMono）。
+        saveButton.setGraphic(Icons.of(Icons.Icon.SAVE, Icons.SIZE_TOOLBAR));
+        String saveHint = io.agenticdb.ui.Shortcuts.labelled(I18n.t("grid.tip.save"), "Mod+S");
+        saveButton.setTooltip(new Tooltip(saveHint));
+        saveButton.setAccessibleText(saveHint);
         saveButton.setOnAction(event -> saveChanges());
 
         deleteRowsButton.setId("data-delete-rows");
         // ⭐ 删除是这一排里唯一会丢数据的动作 —— 用 danger 色，别和「保存」穿同一件衣服。
-        deleteRowsButton.getStyleClass().addAll("adb-button", "adb-button--danger");
-        toolbarIcon(deleteRowsButton, Icons.Icon.DELETE,
-                I18n.t("grid.tip.deleteRows"));
+        deleteRowsButton.getStyleClass().setAll("adb-icon-button", "adb-button--danger");
+        deleteRowsButton.setGraphic(Icons.of(Icons.Icon.DELETE, Icons.SIZE_TOOLBAR));
+        deleteRowsButton.setTooltip(new Tooltip(I18n.t("grid.tip.deleteRows")));
+        deleteRowsButton.setAccessibleText(I18n.t("grid.tip.deleteRows"));
         deleteRowsButton.setDisable(true);
         // ⚠️ 没有选中行时**整颗按钮消失**，而不是摆在那里灰着 ——
         //    「删除」在不可用状态占着位置，只会让人反复去点它。
@@ -1246,7 +1254,24 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         deleteRowsButton.setManaged(false);
         deleteRowsButton.setOnAction(event -> deleteSelectedRows());
 
-        // ── ⭐ G2：事务三键 ────────────────────────────────────────────
+        // ── ① 表概览 ──────────────────────────────────────────────────
+        tableProfileButton.setId("data-table-profile");
+        tableProfileButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        toolbarOp(tableProfileButton, Icons.Icon.TABLE, I18n.t("grid.toolbar.tableProfile"),
+                I18n.t("grid.tip.tableProfile"));
+        MenuItem profileOverview = new MenuItem(I18n.t("grid.profile.overview"));
+        profileOverview.setId("data-table-profile-overview");
+        profileOverview.setOnAction(event -> objectTabs.setSelected("overview"));
+        MenuItem profileRefresh = new MenuItem(I18n.t("grid.profile.refresh"));
+        profileRefresh.setId("data-table-profile-refresh");
+        profileRefresh.setOnAction(event -> {
+            overviewLoaded = false;
+            objectTabs.setSelected("overview");
+            loadOverview(true);
+        });
+        tableProfileButton.getItems().setAll(profileOverview, profileRefresh);
+
+        // ── ② 事务三键 ────────────────────────────────────────────────
         //    Navicat 的数据页工具栏常驻「开始事务」，事务打开后才有「提交 / 回滚」。
         //    作用域是<b>连接</b>：一个连接一个会话，同一连接上的查询页、结构页共用这个事务。
         beginTxButton.setId("data-begin-tx");
@@ -1256,11 +1281,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 I18n.t("grid.tip.beginTx"));
         beginTxButton.setOnAction(event -> beginTransaction());
 
-        // ⚠️ 提交 / 回滚<b>只有图标</b>，不带文字，也不进 toolbarLabels。
-        //    这一排 1280 窗口实测只有 1026px，文字全开已经要 1026px ——
-        //    再给两颗文字键，事务一打开整排文字就被判「放不下」而集体退成图标，
-        //    「保存」这种主操作反而丢了文字。这两颗只在事务里出现，
-        //    出现本身就是状态，图标 + 提示足够；事务状态由状态栏那一段常显。
+        // 提交 / 回滚只在事务里出现 —— 出现本身就是状态，图标 + 提示足够
+        //（事务状态由状态栏那一段常显）。
         commitTxButton.setId("data-commit-tx");
         commitTxButton.getStyleClass()
                 .addAll("adb-button", "adb-button--ghost", "adb-button--icon");
@@ -1282,22 +1304,22 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             button.setManaged(false);
         }
 
-        toolGroupData.getChildren().addAll(addRowButton, undoButton, redoButton, saveButton,
-                deleteRowsButton, beginTxButton, commitTxButton, rollbackTxButton);
+        // ── ③ 单元格编辑 + 筛选 ──────────────────────────────────────
+        cellEditorButton.setId("data-cell-editor");
+        cellEditorButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        cellEditorButton.setDisable(true);
+        toolbarOp(cellEditorButton, Icons.Icon.EDIT, I18n.t("grid.toolbar.cellEditor"),
+                I18n.t("grid.tip.cellEditor"));
+        cellEditorButton.setOnAction(event -> openCellEditor());
 
         filterButton.setId("data-filter");
         filterButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         filterButton.setDisable(true);
         toolbarOp(filterButton, Icons.Icon.FILTER, I18n.t("grid.toolbar.filter"),
                 I18n.t("grid.tip.filter"));
-        filterButton.setOnAction(event -> showConditionDialog());
+        filterButton.setOnAction(event -> setFilterPanelOpen(filterButton.isSelected()));
 
-        clearQueryButton.setId("data-clear-query");
-        clearQueryButton.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-button--icon");
-        clearQueryButton.setDisable(true);
-        clearQueryButton.setTooltip(new Tooltip(I18n.t("grid.tip.clearConditions")));
-        clearQueryButton.setOnAction(event -> clearQuery());
-
+        // ── ④ 列 + 历史 ──────────────────────────────────────────────
         columnsButton.setId("data-columns");
         columnsButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         columnsButton.setDisable(true);
@@ -1305,11 +1327,32 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 I18n.t("grid.tip.columns"));
         columnsButton.setOnAction(event -> openColumnPanel());
 
+        // ── ⑤ AI + 数据剖析（能力面未建 → 如实说明页）───────────────
+        fillWithAiButton.setId("data-fill-ai");
+        fillWithAiButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        toolbarOp(fillWithAiButton, Icons.Icon.AI, I18n.t("grid.toolbar.fillWithAi"),
+                I18n.t("grid.tip.fillWithAi"));
+        MenuItem fillColumn = new MenuItem(I18n.t("grid.ai.fill"));
+        fillColumn.setId("data-fill-ai-column");
+        fillColumn.setOnAction(event -> showCapabilityNotice(I18n.t("grid.toolbar.fillWithAi"), "grid.capability.fillAi"));
+        MenuItem explainTable = new MenuItem(I18n.t("grid.ai.explain"));
+        explainTable.setId("data-fill-ai-explain");
+        explainTable.setOnAction(event -> showCapabilityNotice(I18n.t("grid.toolbar.fillWithAi"), "grid.capability.fillAi"));
+        fillWithAiButton.getItems().setAll(fillColumn, explainTable);
+
+        profilingButton.setId("data-profiling");
+        profilingButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        toolbarOp(profilingButton, Icons.Icon.DIAGNOSTICS, I18n.t("grid.toolbar.dataProfiling"),
+                I18n.t("grid.tip.dataProfiling"));
+        profilingButton.setOnAction(event ->
+                showCapabilityNotice(I18n.t("grid.toolbar.dataProfiling"), "grid.capability.profiling"));
+
+        // 视图菜单（≡▾）：冻结、隐藏空值、表单视图等 AIDB 已有的显示开关。
         viewButton.setId("data-view");
-        viewButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        viewButton.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-button--icon");
+        viewButton.setTooltip(new Tooltip(I18n.t("grid.tip.view")));
+        viewButton.setAccessibleText(I18n.t("grid.tip.view"));
         viewButton.setDisable(true);
-        toolbarIcon(viewButton, Icons.Icon.VIEW,
-                I18n.t("grid.tip.view"));
         hideNullItem.setId("data-hide-null");
         hideNullItem.setOnAction(event -> setHideNullRows(hideNullItem.isSelected()));
         hideEmptyItem.setId("data-hide-empty");
@@ -1341,10 +1384,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 new SeparatorMenuItem(), summaryItem, transposeItem, formItem,
                 new SeparatorMenuItem(), freezeMenu);
 
+        // ── ⑥ 导入 / 导出 + 三个能力面 ──────────────────────────────
         exportButton.setId("data-export");
         exportButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         exportButton.setDisable(true);
-        toolbarIcon(exportButton, Icons.Icon.EXPORT,
+        toolbarOp(exportButton, Icons.Icon.EXPORT, I18n.t("grid.toolbar.export"),
                 I18n.t("grid.tip.export"));
         MenuItem exportCsv = new MenuItem(I18n.t("grid.export.csvPage"));
         exportCsv.setId("data-export-csv");
@@ -1365,10 +1409,35 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         importButton.setId("data-import");
         importButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         importButton.setDisable(true);
-        toolbarIcon(importButton, Icons.Icon.IMPORT,
+        toolbarOp(importButton, Icons.Icon.IMPORT, I18n.t("grid.toolbar.import"),
                 I18n.t("grid.tip.import"));
         importButton.setOnAction(event -> openImportWizard());
 
+        generationButton.setId("data-generation");
+        generationButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        toolbarOp(generationButton, Icons.Icon.GRID, I18n.t("grid.toolbar.dataGeneration"),
+                I18n.t("grid.tip.dataGeneration"));
+        generationButton.setOnAction(event ->
+                showCapabilityNotice(I18n.t("grid.toolbar.dataGeneration"),
+                        "grid.capability.generation"));
+
+        maskingButton.setId("data-masking");
+        maskingButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        toolbarOp(maskingButton, Icons.Icon.LOCK, I18n.t("grid.toolbar.dataMasking"),
+                I18n.t("grid.tip.dataMasking"));
+        maskingButton.setOnAction(event ->
+                showCapabilityNotice(I18n.t("grid.toolbar.dataMasking"),
+                        "grid.capability.masking"));
+
+        biWorkspaceButton.setId("data-bi-workspace");
+        biWorkspaceButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        toolbarOp(biWorkspaceButton, Icons.Icon.VIEW, I18n.t("grid.toolbar.biWorkspace"),
+                I18n.t("grid.tip.biWorkspace"));
+        biWorkspaceButton.setOnAction(event ->
+                showCapabilityNotice(I18n.t("grid.toolbar.biWorkspace"),
+                        "grid.capability.bi"));
+
+        // ── ④ 列 + 历史（继续）────────────────────────────────────────
         historyButton.setId("data-history");
         historyButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         toolbarOp(historyButton, Icons.Icon.HISTORY, I18n.t("grid.toolbar.history"),
@@ -1376,31 +1445,63 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         // 每次展开时重建 —— 历史可能在别的查询页里刚增长，缓存一份只会给出旧列表。
         historyButton.setOnShowing(event -> rebuildHistoryMenu());
 
-        searchField.setId("data-search");
-        searchField.getStyleClass().add("adb-grid__search");
-        searchField.setPromptText(I18n.t("grid.search.prompt"));
-        searchField.setPrefWidth(180);
-        searchField.setMinWidth(110);
-        // ⭐ G3 之后 ⌘F 归网格查找条：这里不再挂快捷键，只说它做什么。
-        searchField.setTooltip(new Tooltip(I18n.t("grid.search.tooltip")));
-        searchField.textProperty().addListener((observable, previous, value) -> rebuildItems());
+        // ⭐ N19：这一排的 13 个具名键（视觉顺序与折叠顺序同一份名单）。
+        namedToolbarKeys.addAll(List.of(
+                tableProfileButton, beginTxButton, cellEditorButton, filterButton,
+                columnsButton, historyButton, fillWithAiButton, profilingButton,
+                importButton, exportButton, generationButton, maskingButton, biWorkspaceButton));
 
-        // ⭐ UX-3：按语义分三组 —— 编辑 / 查询与显示 / 数据交换，组间一条竖线。
-        //    以前「导出」混在查询组里、「新增行」和「撤销」挨着，
-        //    眼睛得把一排按钮重新分类一遍才知道哪组管什么。
-        toolGroupQuery.getChildren().addAll(filterButton, clearQueryButton, historyButton,
-                columnsButton, viewButton);
-        toolGroupTransfer.getChildren().addAll(importButton, exportButton);
+        toolGroupProfile.getChildren().add(tableProfileButton);
+        toolGroupTx.getChildren().addAll(beginTxButton, commitTxButton, rollbackTxButton);
+        toolGroupQuery.getChildren().addAll(cellEditorButton, filterButton);
+        toolGroupView.getChildren().addAll(columnsButton, historyButton);
+        toolGroupInsight.getChildren().addAll(fillWithAiButton, profilingButton);
+        toolGroupTransfer.getChildren().addAll(importButton, exportButton,
+                generationButton, maskingButton, biWorkspaceButton);
 
-        toolbar.getChildren().addAll(toolGroupData, toolbarSeparator(), toolGroupQuery,
-                toolbarSeparator(), toolGroupTransfer, toolbarSpacer, searchField);
-        bindToolbarLabels();
+        // ⭐ N18：右端两颗小键 —— 视图菜单（≡▾）+ 溢出（»）。
+        //    放不下的具名键从右往左折进 » 的菜单里，不再把整排文字收掉。
+        toolbarOverflowButton.setId("data-toolbar-overflow");
+        toolbarOverflowButton.setGraphic(Icons.colored(Icons.Icon.CHEVRON_RIGHT, Icons.SIZE_TOOLBAR));
+        toolbarOverflowButton.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-button--icon");
+        toolbarOverflowButton.setTooltip(new Tooltip(I18n.t("grid.toolbar.overflow")));
+        toolbarOverflowButton.setAccessibleText(I18n.t("grid.toolbar.overflow"));
+        toolbarOverflowButton.setFocusTraversable(true);
+        toolbarOverflowButton.setVisible(false);
+        toolbarOverflowButton.setManaged(false);
+        toolbarOverflowMenu.setId("data-toolbar-overflow-menu");
+        toolbarOverflowButton.setOnAction(event -> showToolbarOverflow());
+        // Button 默认只认空格，回车要自己接 —— 键盘用户同样要够得到折叠键。
+        toolbarOverflowButton.setOnKeyPressed(event -> {
+            if (event.getCode() == javafx.scene.input.KeyCode.ENTER) {
+                showToolbarOverflow();
+                event.consume();
+            }
+        });
+
+        toolbar.getChildren().addAll(
+                toolGroupProfile, toolbarSeparator(),
+                toolGroupTx, toolbarSeparator(),
+                toolGroupQuery, toolbarSeparator(),
+                toolGroupView, toolbarSeparator(),
+                toolGroupInsight, toolbarSeparator(),
+                toolGroupTransfer,
+                toolbarSpacer, viewButton, toolbarOverflowButton);
+        bindToolbarOverflow();
 
         chipBar.setId("data-query-chips");
         chipBar.getStyleClass().add("adb-query-chips");
         chipBar.setAlignment(Pos.CENTER_LEFT);
         chipBar.setVisible(false);
         chipBar.setManaged(false);
+        // ⭐ N19：清除条件跟着 chip 条走 —— 它只在「有条件下」才有意义，
+        //    占据顶部那一排会给 13 个具名键多挤一格。
+        clearQueryButton.setId("data-clear-query");
+        clearQueryButton.getStyleClass().setAll("adb-chip", "adb-chip--muted");
+        clearQueryButton.setTooltip(new Tooltip(I18n.t("grid.tip.clearConditions")));
+        clearQueryButton.setAccessibleText(I18n.t("grid.tip.clearConditions"));
+        clearQueryButton.setDisable(true);
+        clearQueryButton.setOnAction(event -> clearQuery());
 
         grid.setId("data-table");
         grid.getStyleClass().add("adb-grid");
@@ -1435,19 +1536,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         grid.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
         bindFocusCursor(grid);
         bindFocusCursor(frozenGrid);
-        selectAllBox.setId("data-select-all");
-        selectAllBox.setAccessibleText(I18n.t("grid.batch.selectAllAria"));
-        selectAllBox.setTooltip(new Tooltip(I18n.t("grid.batch.selectAllTip")));
-        selectAllBox.setOnAction(event -> {
-            if (selectAllBox.isSelected()) {
-                grid.getSelectionModel().selectAll();
-            } else {
-                grid.getSelectionModel().clearSelection();
-            }
-        });
         grid.getSelectionModel().getSelectedItems().addListener(
                 (javafx.collections.ListChangeListener<Map<String, Object>>) change -> {
-                    updateBatchBar();
                     updateSelectAllState();
                     updateDeleteButton();
                     // 4.5-11：把选中行数报给状态栏。
@@ -1510,6 +1600,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         formRows.getStyleClass().add("adb-grid__form-rows");
         formRows.setFillWidth(true);
         formPane.setContent(formRows);
+        VBox.setVgrow(formPane, Priority.ALWAYS);
+        formSection.setId("data-form-section");
+        formSection.setVisible(false);
+        formSection.setManaged(false);
         formPane.setVisible(false);
         formPane.setManaged(false);
 
@@ -1532,7 +1626,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         HBox.setHgrow(grid, Priority.ALWAYS);
         grid.setMaxWidth(Double.MAX_VALUE);
         gridRow.getChildren().addAll(frozenGrid, grid);
-        body.getChildren().addAll(gridRow, transposeTable, formPane, stateBox, summaryLabel, detailsDrawer);
+        body.getChildren().addAll(gridRow, transposeTable, formSection, stateBox, summaryLabel, detailsDrawer);
         VBox.setVgrow(body, Priority.ALWAYS);
         bindFrozenSelection();
         bindFrozenScroll();
@@ -1545,11 +1639,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         buildRecordNav();
         HBox pager = buildPager();
 
-        buildBatchBar();
         buildFindBar();
 
         // ── ④ 组装 ────────────────────────────────────────────────────
-        //    数据切面 = 工具栏 + 条件 chips + 查找条 + 网格 + 批量条 + 分页器。
+        //    数据切面 = 工具栏 + 条件 chips + 查找条 + 网格 + 分页器。
+        //    ⭐ N16：不再有「N 行已选 · 复制 · …」批量条 —— 它把网格
+        //    往上顶一行，而且每选一行就闪一次。批量动作改走右键菜单
+        //    （网格内任何一格）与贴网格左下的行操作条。
         //    其它切面（结构 / 索引 / 外键 / 触发器 / SQL）共用同一个 StackPane，
         //    切换时不丢数据页的任何状态（编辑缓冲、分页、滚动位置都在）。
         //
@@ -1558,7 +1654,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         //    窗口的 1/3 处（实测：284px 的 chrome 里它占了 28px）。
         //    两套导航（翻行 / 翻页）放在一起，语义更清楚，还省一行。
         //    ⭐ G3 查找条默认 unmanaged（不占高度），打开时才把网格往下推一格。
-        dataSection = new VBox(toolbar, chipBar, findBar, body, batchBar, pager);
+        //    ⭐ N31：Filter & Sort 面板同一条「插在工具带与网格之间」的规则 ——
+        //    按钮按下才出现，把网格往下推，不做浮层遮挡。
+        filterPanelHost.setId("data-filter-panel-host");
+        filterPanelHost.setVisible(false);
+        filterPanelHost.setManaged(false);
+        dataSection = new VBox(toolbar, chipBar, filterPanelHost, findBar, body, pager);
         dataSection.getStyleClass().add("adb-grid-page__data");
         VBox.setVgrow(body, Priority.ALWAYS);
 
@@ -1857,7 +1958,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         //     是连在一起看的，不会逐个悬停。加一个常驻标签是最省的解法。
         Label recordLabel = new Label(I18n.t("grid.form.record"));
         recordLabel.getStyleClass().add("adb-record-nav__label");
-        recordNavLabel = recordLabel;
         // ⭐ R34 N1-b：这一排的文字标签一律钉成「不许压缩」。
         //    英文比中文宽（记录 24px → Record 45px），没钉的话 HBox 会把它们
         //    压成「Rec…」「P…」—— 正是 U4 立誓要禁掉的那种压扁文字。
@@ -1899,61 +1999,70 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                         : I18n.t("grid.record.position", index + 1, size));
     }
 
-    private void buildBatchBar() {
-        batchBar.setId("data-batch-bar");
-        batchBar.getStyleClass().add("adb-batch-bar");
-        batchBar.setAlignment(Pos.CENTER_LEFT);
-        batchBar.setVisible(false);
-        batchBar.setManaged(false);
+    /**
+     * ⭐ N16：批量动作菜单 —— 行多选后在网格里任意一格（或行首槽）右键打开。
+     *
+     * <p>旧的「N 行已选 · 复制 · …」批量条每选一行就多占一行高度、还会闪一下；
+     * Navicat 的批量入口就是右键菜单 + 贴网格左下的行操作条（帧 3/4/6 复核）。
+     * 逐项可用态与旧批量条**同一套判断**（这里改一遍，行操作条仍绑定工具条）。
+     */
+    private ContextMenu buildBatchMenu(List<Map<String, Object>> rows) {
+        ContextMenu menu = new ContextMenu();
+        menu.setId("data-batch-menu");
 
-        batchLabel.setId("data-batch-label");
-        batchLabel.getStyleClass().add("adb-batch-bar__count");
+        MenuItem count = new MenuItem(I18n.t("grid.batch.selected", rows.size()));
+        count.setId("data-batch-label");
+        count.setDisable(true);
 
-        Button copy = IconButtons.of(Icons.Icon.COPY, I18n.t("grid.batch.copy"));
+        boolean editable = tableSchema != null && tableSchema.editable();
+        ColumnDef focused = focusedColumn();
+        // ⛔ 主键列不能批量改（同 applyColumnValue）。
+        boolean pkColumn = focused != null && focused.primaryKey();
+
+        MenuItem copy = new MenuItem(I18n.t("grid.batch.copy"));
         copy.setId("data-batch-copy");
-        copy.getStyleClass().addAll("adb-button", "adb-button--ghost");
         copy.setOnAction(event -> copySelectedAsTsv());
 
-        Button copySql = new Button(I18n.t("grid.copy.asSql"));
+        MenuItem copySql = new MenuItem(I18n.t("grid.copy.asSql"));
         copySql.setId("data-batch-sql");
-        copySql.getStyleClass().addAll("adb-button", "adb-button--ghost");
         copySql.setOnAction(event -> copySelectedAsSql());
 
-        batchClone.setId("data-batch-clone");
-        batchClone.getStyleClass().addAll("adb-button", "adb-button--ghost");
-        batchClone.setTooltip(new Tooltip(I18n.t("grid.batch.cloneTip")));
-        batchClone.setOnAction(event -> cloneSelectedRows());
-
-        batchNull.setId("data-batch-null");
-        batchNull.getStyleClass().addAll("adb-button", "adb-button--ghost");
-        batchNull.setTooltip(new Tooltip(I18n.t("grid.batch.setNullTip")));
-        batchNull.setOnAction(event -> setFocusedColumnValue(null));
-
-        batchEmpty.setId("data-batch-empty");
-        batchEmpty.getStyleClass().addAll("adb-button", "adb-button--ghost");
-        batchEmpty.setTooltip(new Tooltip(I18n.t("grid.batch.setEmptyTip")));
-        batchEmpty.setOnAction(event -> setFocusedColumnValue(""));
-
-        batchDelete.setId("data-batch-delete");
-        batchDelete.getStyleClass().addAll("adb-button", "adb-button--danger");
-        batchDelete.setOnAction(event -> deleteSelectedRows());
-
-        // ⭐ G8：导出选中行（以前批量条只有复制，没有导出）
-        Button export = IconButtons.of(Icons.Icon.EXPORT, I18n.t("grid.batch.export"));
+        MenuItem export = new MenuItem(I18n.t("grid.batch.export"));
         export.setId("data-batch-export");
-        export.getStyleClass().addAll("adb-button", "adb-button--ghost");
-        export.setTooltip(new Tooltip(I18n.t("grid.batch.exportTip")));
         export.setOnAction(event -> exportSelectedCsv());
 
-        Button clear = new Button(I18n.t("grid.batch.clearSelection"));
+        MenuItem clone = new MenuItem(I18n.t("grid.batch.clone"));
+        clone.setId("data-batch-clone");
+        clone.setDisable(!editable);
+        clone.setOnAction(event -> cloneSelectedRows());
+
+        MenuItem setNull = new MenuItem(I18n.t("grid.batch.setNull"));
+        setNull.setId("data-batch-null");
+        setNull.setDisable(!editable || focused == null || !focused.nullable() || pkColumn);
+        setNull.setOnAction(event -> setFocusedColumnValue(null));
+
+        MenuItem setEmpty = new MenuItem(I18n.t("grid.batch.setEmpty"));
+        setEmpty.setId("data-batch-empty");
+        setEmpty.setDisable(!editable || focused == null || !textual(focused.type()) || pkColumn);
+        setEmpty.setOnAction(event -> setFocusedColumnValue(""));
+
+        MenuItem delete = new MenuItem(I18n.t("grid.batch.delete"));
+        delete.setId("data-batch-delete");
+        delete.setDisable(!editable);
+        delete.setOnAction(event -> deleteSelectedRows());
+
+        MenuItem clear = new MenuItem(I18n.t("grid.batch.clearSelection"));
         clear.setId("data-batch-clear");
-        clear.getStyleClass().addAll("adb-button", "adb-button--ghost");
         clear.setOnAction(event -> grid.getSelectionModel().clearSelection());
 
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        batchBar.getChildren().addAll(batchLabel, copy, copySql, export, batchClone,
-                batchNull, batchEmpty, batchDelete, spacer, clear);
+        menu.getItems().addAll(count, new SeparatorMenuItem(), copy, copySql, export,
+                clone, setNull, setEmpty, new SeparatorMenuItem(), delete, clear);
+        return menu;
+    }
+
+    /** 测试用：按当前选中行构造批量菜单（不弹出）。 */
+    ContextMenu batchMenuForTest() {
+        return buildBatchMenu(List.copyOf(grid.getSelectionModel().getSelectedItems()));
     }
 
     /**
@@ -1969,44 +2078,99 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     /**
-     * ⭐ UX-4：网格左下的行操作条。
+     * ⭐ N19：网格左下的记录操作条 —— {@code + − ✓ ✗} 四颗 + 第 5 颗展开菜单。
      *
-     * <p>四个动作与工具条**同一批**：点击直接调同一组方法，可用态用
-     * {@code bind} 挂在工具条按钮上 —— 这里再写一遍 if 迟早和上面不一致。
+     * <p>Navicat 帧 3 的底栏左边就是这一簇纯图标；它们<b>不再占顶部工具条</b>，
+     * 顶部只留 13 个具名键。按钮本体（{@code data-add / data-delete-rows /
+     * data-save}）直接挪到这里，可用态判断仍走 {@link #updateEditControls()}，
+     * 不做第二份 if。
+     *
+     * <p>撤销 / 重做放进第 5 颗展开菜单：它们仍是完整动作（菜单项可用态
+     * 绑在原按钮上），只是不像 Navicat 那样常驻顶栏。
      */
     private HBox buildRowActions() {
         rowActions.setId("data-row-actions");
         rowActions.getStyleClass().add("adb-grid__row-actions");
         rowActions.setAlignment(Pos.CENTER_LEFT);
 
-        rowAddButton.setId("data-row-add");
-        rowAddButton.getStyleClass().add("adb-icon-button");
-        rowAddButton.setOnAction(event -> addRow());
-
-        rowDeleteButton.setId("data-row-delete");
-        rowDeleteButton.getStyleClass().addAll("adb-icon-button", "adb-button--danger");
-        rowDeleteButton.setOnAction(event -> deleteSelectedRows());
-
-        rowApplyButton.setId("data-row-apply");
-        rowApplyButton.getStyleClass().addAll("adb-icon-button", "adb-button--primary");
-        rowApplyButton.setOnAction(event -> saveChanges());
-
         rowCancelButton.setId("data-row-cancel");
-        rowCancelButton.getStyleClass().add("adb-icon-button");
+        rowCancelButton.getStyleClass().setAll("adb-icon-button");
         rowCancelButton.setOnAction(event -> discardChanges());
-
-        rowAddButton.disableProperty().bind(addRowButton.disableProperty());
-        rowDeleteButton.disableProperty().bind(deleteRowsButton.disableProperty());
-        // 没有选中行时工具条那颗「删除」整颗消失，这里跟着一起消失 ——
-        // 摆一颗灰掉的删除按钮在光标旁边，比没有更危险。
-        rowDeleteButton.visibleProperty().bind(deleteRowsButton.visibleProperty());
-        rowDeleteButton.managedProperty().bind(deleteRowsButton.visibleProperty());
-        rowApplyButton.disableProperty().bind(saveButton.disableProperty());
         rowCancelButton.disableProperty().bind(saveButton.disableProperty());
 
-        rowActions.getChildren().addAll(rowAddButton, rowDeleteButton,
-                rowApplyButton, rowCancelButton);
+        moreButton.setId("data-row-more");
+        moreButton.getStyleClass().setAll("adb-icon-button");
+        // 整条行操作条同一画法：灰的单线（彩色的编辑开关会盖过数据本身）。
+        moreButton.setGraphic(Icons.of(Icons.Icon.MORE, Icons.SIZE_TOOLBAR));
+        moreButton.setTooltip(new Tooltip(I18n.t("grid.toolbar.rowMore")));
+        moreButton.setAccessibleText(I18n.t("grid.toolbar.rowMore"));
+        MenuItem undoItem = new MenuItem(I18n.t("grid.toolbar.undo"));
+        undoItem.setId("data-row-undo");
+        undoItem.disableProperty().bind(undoButton.disableProperty());
+        undoItem.setOnAction(event -> undo());
+        MenuItem redoItem = new MenuItem(I18n.t("grid.toolbar.redo"));
+        redoItem.setId("data-row-redo");
+        redoItem.disableProperty().bind(redoButton.disableProperty());
+        redoItem.setOnAction(event -> redo());
+        MenuItem copyItem = new MenuItem(I18n.t("grid.batch.copy"));
+        copyItem.setId("data-row-copy");
+        copyItem.setOnAction(event -> copyRowsAsTsv(rowsForCopy(),
+                I18n.t("grid.scope.selected")));
+        MenuItem copySqlItem = new MenuItem(I18n.t("grid.copy.asSql"));
+        copySqlItem.setId("data-row-copy-sql");
+        copySqlItem.setOnAction(event -> copyRowsAsSql(rowsForCopy(),
+                I18n.t("grid.scope.selected")));
+        moreButton.getItems().addAll(undoItem, redoItem, new SeparatorMenuItem(),
+                copyItem, copySqlItem);
+
+        rowActions.getChildren().addAll(addRowButton, deleteRowsButton, saveButton,
+                rowCancelButton, moreButton);
         return rowActions;
+    }
+
+    /**
+     * ⭐ N19：Cell Editor —— 光标所在格的详情抽屉。
+     *
+     * <p>长文本 / JSON / CLOB 的多行编辑本来就在抽屉里完成；这颗键只是把它
+     * 从双击与右键之外的第三条路摆到台面上（Navicat 的工具条上也有它）。
+     * 没有光标时按钮是灰的 —— 不摆一颗点了没反应的键。
+     */
+    private void openCellEditor() {
+        if (tableSchema == null || cursorRow < 0 || cursorColumnName == null
+                || cursorRow >= grid.getItems().size()) {
+            feedback.status(I18n.t("grid.msg.cellEditorNoCell"));
+            return;
+        }
+        ColumnDef definition = tableSchema.columns().stream()
+                .filter(column -> column.name().equals(cursorColumnName))
+                .findFirst().orElse(null);
+        if (definition != null) {
+            showDetails(grid.getItems().get(cursorRow), definition);
+        }
+    }
+
+    /**
+     * ⭐ N19：能力面还没建的三颗键 —— 真按钮 + 如实说明页。
+     *
+     * <p>{@code Fill with AI / Data Profiling / Data Generation / Data Masking /
+     * Create BI Workspace} 依赖 R42 的能力面；这一版没有后端，点开必须看到
+     * 「本版本未提供」，而不是什么也不发生（死按钮）或假装在执行。
+     */
+    void showCapabilityNotice(String title, String capabilityKey) {
+        Alert alert = capabilityAlert(title, capabilityKey);
+        alert.initOwner(getScene() == null ? null : getScene().getWindow());
+        alert.showAndWait();
+    }
+
+    /** 门禁接缝：说明页本体（不显示），断言标题与原因都可以在这里做。 */
+    Alert capabilityAlert(String title, String capabilityKey) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        DialogStyles.apply(alert, getScene() == null ? null : getScene().getWindow());
+        alert.getDialogPane().setId("capability-notice");
+        alert.setTitle(I18n.t("grid.capability.windowTitle"));
+        alert.setHeaderText(title + " — " + I18n.t("grid.capability.title"));
+        alert.setContentText(I18n.t("grid.capability.body", I18n.t(capabilityKey)));
+        return alert;
     }
 
     /**
@@ -2027,196 +2191,261 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         feedback.status(I18n.t("grid.msg.discarded", count));
     }
 
+    /**
+     * ⭐ N20：底栏 = 左下记录操作条 + 右下「五键翻页 · 页码框 · 齿轮 · 放大镜 · 两枚视图切换」。
+     *
+     * <p>Navicat 底栏没有任何行数 / 页大小 / 「跳至页」文字控件（§1.4）：记录计数在状态栏
+     * （仍由 {@code feedback.range(...)} 送过去），页大小与「跳至记录」收进齿轮，
+     * 页码框本身兼作跳页输入。
+     *
+     * <p>⭐ D-1：可用宽度按场景坐标量，并把详情浮层盖住的那一截让出来 ——
+     * 浮层在 body 里向下溢出时 JavaFX 默认不裁边，正好压在底栏右端。
+     */
     private HBox buildPager() {
-        HBox pager = new HBox(8);
+        HBox pager = new HBox(6);
         pagerBox = pager;
         pager.setId("data-pager");
         pager.getStyleClass().add("adb-grid__pager");
         pager.setAlignment(Pos.CENTER_LEFT);
-        // ⭐ D-1：1280 宽 + 右侧详情面板打开时，底栏右端会被裁掉半截「跳至页」。
-        //    分页器自己按真实宽度收起低优先级项，绝不把文字切成半边。
-        pager.widthProperty().addListener((observable, oldValue, newValue) -> {
-            // ⚠️ 不能在布局过程中直接改 managed —— 实测会把同一场景里对象标题栏
-            //    的标签也挤成「u…」（多一轮布局把宽度传成了极窄值）。推迟到本轮
-            //    布局结束再收，宽度是稳定的。
-            javafx.application.Platform.runLater(() -> fitPagerWidth(newValue.doubleValue()));
-        });
-
-        rangeLabel.setId("data-range");
-        rangeLabel.getStyleClass().add("adb-grid__range");
+        // ⚠️ 不能在布局过程中直接改 managed —— 实测会把同一场景里对象标题栏
+        //    的标签也挤成「u…」（多一轮布局把宽度传成了极窄值）。推迟到本轮
+        //    布局结束再收，宽度是稳定的。
+        pager.widthProperty().addListener((observable, oldValue, newValue) ->
+                javafx.application.Platform.runLater(this::fitPagerToAvailableWidth));
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
         previous.setId("data-prev");
-        previous.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        previous.getStyleClass().add("adb-icon-button");
         previous.setOnAction(event -> previousPage());
 
         firstPageButton.setId("data-first");
-        firstPageButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        firstPageButton.getStyleClass().add("adb-icon-button");
         firstPageButton.setTooltip(new Tooltip(I18n.t("grid.pager.first")));
         firstPageButton.setAccessibleText(I18n.t("grid.pager.first"));
         firstPageButton.setOnAction(event -> firstPage());
 
-        pageLabel.setId("data-page");
-        pageLabel.getStyleClass().add("adb-grid__page");
-
         next.setId("data-next");
-        next.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        next.getStyleClass().add("adb-icon-button");
         next.setOnAction(event -> nextPage());
 
         lastPageButton.setId("data-last");
-        lastPageButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        lastPageButton.getStyleClass().add("adb-icon-button");
         lastPageButton.setTooltip(new Tooltip(I18n.t("grid.pager.last")));
         lastPageButton.setAccessibleText(I18n.t("grid.pager.last"));
         lastPageButton.setOnAction(event -> lastPage());
 
-        jumpField.setId("data-jump");
-        jumpField.getStyleClass().add("adb-grid__jump");
-        jumpField.setPromptText(I18n.t("grid.pager.jumpPagePrompt"));
-        jumpField.setTooltip(new Tooltip(I18n.t("grid.pager.jumpPageTip")));
-        jumpField.setAccessibleText(I18n.t("grid.pager.jumpPageAria"));
-        jumpField.setPrefWidth(64);
-        jumpField.setMinWidth(56);
-        jumpField.setOnAction(event -> jumpToPage(jumpField.getText()));
-        // ⭐ G7：行级导航 —— 页码之上还有行号。
-        jumpRowField.setId("data-jump-row");
-        jumpRowField.getStyleClass().add("adb-grid__jump");
-        jumpRowField.setPromptText(I18n.t("grid.pager.jumpRowPrompt"));
-        jumpRowField.setTooltip(new Tooltip(I18n.t("grid.pager.jumpRowTip")));
-        jumpRowField.setAccessibleText(I18n.t("grid.pager.jumpRowAria"));
-        jumpRowField.setPrefWidth(64);
-        jumpRowField.setMinWidth(56);
-        jumpRowField.setOnAction(event -> jumpToRow(jumpRowField.getText()));
-
-        perPageLabel.setId("data-per-page");
-        perPageLabel.getStyleClass().add("adb-muted");
-        // ⭐ 这些文字标签**不许被压扁** —— 「第 1 / 1 页」被截成「第 1/…」，
-        //    用户就不知道当前在第几页了。宁可让别的东西收缩。
-        pageLabel.setMinWidth(Region.USE_PREF_SIZE);
-        perPageLabel.setMinWidth(Region.USE_PREF_SIZE);
-        rangeLabel.setMinWidth(Region.USE_PREF_SIZE);
-
-        pageSizeBox.setId("data-page-size");
-        pageSizeBox.setAccessibleText(I18n.t("grid.pager.pageSizeAria"));
-        pageSizeBox.getStyleClass().add("adb-page-size");
-        // ⭐ 档位来自 PageSize 枚举（唯一真相），不再在 UI 里写死一份数组。
-        pageSizeBox.getItems().setAll(Arrays.stream(PageSize.values())
-                .map(PageSize::value).toList());
-        // ⚠️ 必须装箱：`select(int)` 是**按下标**选（items 只有 0–3 四项），
-        //    传原生 int 会静默选中失败，「每页」框渲染成空白 —— 实测截图就是空的。
-        //    `select(Integer)` 才是「按值选」这条重载。
-        pageSizeBox.getSelectionModel()
-                .select(Integer.valueOf(PageSize.nearest(pageSize).value()));
-        // ⚠️ 宽度要够渲染最宽的档位「1000」—— 实测截图里 78px 会把「200」截成「2…」
-            //    （按钮单元格吃掉宽度，框右侧还剩 23px 空白却已经省略号了）。
-            pageSizeBox.setPrefWidth(96);
-        pageSizeBox.setOnAction(event -> {
-            Integer value = pageSizeBox.getValue();
-            if (value == null || value == pageSize) {
-                return;
+        pageField.setId("data-page");
+        pageField.getStyleClass().add("adb-grid__page");
+        pageField.setPromptText(I18n.t("grid.pager.jumpPagePrompt"));
+        pageField.setTooltip(new Tooltip(I18n.t("grid.pager.jumpPageTip")));
+        pageField.setAccessibleText(I18n.t("grid.pager.jumpPageAria"));
+        pageField.setPrefWidth(58);
+        pageField.setMinWidth(48);
+        pageField.setMaxWidth(72);
+        pageField.setAlignment(Pos.CENTER);
+        pageField.setOnAction(event -> {
+            jumpToPage(pageField.getText());
+            pageField.selectAll();
+        });
+        pageField.focusedProperty().addListener((observable, was, focused) -> {
+            if (!focused) {
+                resetPageFieldText();
             }
-            pageSize = value;
-            offset = 0;
-            load(false);
         });
 
-        // ⭐ 与「记录」对称：翻页那一组也要有常驻标签。
-        //     没有它，两组图标相同的方向键并排放着，用户只能靠猜。
-        Label pageLabelText = new Label(I18n.t("grid.pager.pageLabel"));
-        pageLabelText.getStyleClass().add("adb-record-nav__label");
-        pageLabelText.setId("data-page-label");
-        pageLabelText.setMinWidth(Region.USE_PREF_SIZE);
-        pageNavLabel = pageLabelText;
+        pageOptionsButton.setId("data-page-options");
+        pageOptionsButton.getStyleClass().add("adb-icon-button");
+        pageOptionsButton.setOnAction(event -> showPageOptions());
+        pageOptionsButton.setOnKeyPressed(event -> {
+            if (event.getCode() == javafx.scene.input.KeyCode.ENTER) {
+                showPageOptions();
+                event.consume();
+            }
+        });
+        pageOptionsMenu.setId("data-page-options-menu");
+
+        findToggle.setId("data-find-toggle");
+        findToggle.getStyleClass().add("adb-icon-button");
+        findToggle.setGraphic(Icons.of(Icons.Icon.SEARCH, Icons.SIZE_TOOLBAR));
+        findToggle.setTooltip(new Tooltip(I18n.t("grid.find.toggle")));
+        findToggle.setAccessibleText(I18n.t("grid.find.toggle"));
+        findToggle.setOnAction(event -> {
+            if (findToggle.isSelected()) {
+                showFindBar();
+            } else {
+                hideFindBar();
+            }
+            findToggle.setSelected(findBar.isVisible());
+        });
+
+        styleViewToggle(gridToggle, Icons.Icon.GRID, "data-view-grid", I18n.t("grid.view.gridMode"));
+        gridToggle.setSelected(true);
+        gridToggle.setOnAction(event -> {
+            if (formView) {
+                setFormView(false);
+            }
+            syncViewToggles();
+        });
+        styleViewToggle(formToggle, Icons.Icon.LIST, "data-view-form", I18n.t("grid.view.form"));
+        formToggle.setOnAction(event -> {
+            setFormView(formToggle.isSelected());
+            syncViewToggles();
+        });
+
+        // ⭐ D-1：浮层开合 / 改变尺寸都会改右侧可用宽度，实时重算。
+        detailsDrawer.visibleProperty().addListener((observable, was, visible) ->
+                javafx.application.Platform.runLater(this::fitPagerToAvailableWidth));
+        detailsDrawer.layoutBoundsProperty().addListener(
+                (observable, oldBounds, newBounds) -> fitPagerToAvailableWidth());
 
         pager.getChildren().addAll(buildRowActions(),
+                new Separator(javafx.geometry.Orientation.VERTICAL), spacer,
+                firstPageButton, previous, pageField, next, lastPageButton,
                 new Separator(javafx.geometry.Orientation.VERTICAL),
-                rangeLabel, recordNav, spacer, pageLabelText,
-                firstPageButton, previous, pageLabel, next, lastPageButton,
-                jumpField, jumpRowField,
-                new Separator(javafx.geometry.Orientation.VERTICAL), perPageLabel, pageSizeBox);
-        // ⭐ 跳转框的宽度跟着<b>提示文字</b>走。64px 是照中文提示定的
-        //    （跳至页 ≈ 21px + 左右 8px 内边距），换英文 "Go to page" 要 55px 文字，
-        //    于是 p2-find 实拍切成「Go to pa」。字号 11px 来自 app.css，
-        //    构造期还没挂样式表，量不到真字体 —— 挂上场景后补一次。
-        sceneProperty().addListener((observable, oldScene, scene) -> {
-            if (scene != null) {
-                javafx.application.Platform.runLater(this::fitJumpFieldWidths);
-            }
-        });
+                pageOptionsButton, findToggle, gridToggle, formToggle);
         return pager;
     }
 
-    /** 把两个跳转框的偏好宽与最小宽一起抬到「放得下自己的提示文字」。 */
-    private void fitJumpFieldWidths() {
-        for (TextField field : new TextField[]{jumpField, jumpRowField}) {
-            FieldFits.prompt(field);
+    private static void styleViewToggle(ToggleButton toggle, Icons.Icon icon, String id, String hint) {
+        toggle.setId(id);
+        toggle.getStyleClass().add("adb-icon-button");
+        toggle.setGraphic(Icons.of(icon, Icons.SIZE_TOOLBAR));
+        toggle.setTooltip(new Tooltip(hint));
+        toggle.setAccessibleText(hint);
+    }
+
+    /** ⭐ N20：齿轮菜单 —— 每页行数 + 跳至记录（Navicat 把页大小收进齿轮）。 */
+    private void showPageOptions() {
+        pageOptionsMenu.getItems().clear();
+        javafx.scene.control.Label header = new javafx.scene.control.Label(
+                I18n.t("grid.pager.pageSizeAria"));
+        header.setDisable(true);
+        pageOptionsMenu.getItems().add(
+                new javafx.scene.control.CustomMenuItem(header, false));
+        for (PageSize option : PageSize.values()) {
+            javafx.scene.control.RadioMenuItem item = new javafx.scene.control.RadioMenuItem(
+                    I18n.t("grid.pager.pageSizeOption", option.value()));
+            item.setId("data-page-size-" + option.value());
+            item.setSelected(option.value() == pageSize);
+            item.setDisable(loading);
+            item.setOnAction(event -> {
+                pageSize = option.value();
+                offset = 0;
+                load(false);
+            });
+            pageOptionsMenu.getItems().add(item);
+        }
+        pageOptionsMenu.getItems().add(new SeparatorMenuItem());
+        MenuItem jump = new MenuItem(I18n.t("grid.pager.jumpRowMenu"));
+        jump.setId("data-page-jump-row");
+        jump.setDisable(loading);
+        jump.setOnAction(event -> promptJumpToRow());
+        pageOptionsMenu.getItems().add(jump);
+        // 没挂进场景时没有可用的弹窗宿主（ContextMenu.show 会 NPE），菜单项照建不弹。
+        if (pageOptionsButton.getScene() != null) {
+            pageOptionsMenu.show(pageOptionsButton, javafx.geometry.Side.BOTTOM, 0, 0);
         }
     }
 
+    private void promptJumpToRow() {
+        javafx.scene.control.TextInputDialog dialog =
+                new javafx.scene.control.TextInputDialog();
+        dialog.setTitle(I18n.t("grid.pager.jumpRowAria"));
+        dialog.setHeaderText(null);
+        dialog.setContentText(I18n.t("grid.pager.jumpRowPrompt"));
+        DialogStyles.apply(dialog, getScene() == null ? null : getScene().getWindow());
+        dialog.showAndWait().ifPresent(this::jumpToRow);
+    }
+
+    /** 页码框 → 当前页（`total` 未知时也照实显示算出来的页号）。 */
+    private void resetPageFieldText() {
+        pageField.setText(total == 0
+                ? "" : String.valueOf(QueryLimits.pageNumberOf(offset, pageSize)));
+    }
+
+    private void syncViewToggles() {
+        boolean form = formView && !transpose;
+        formToggle.setSelected(form);
+        gridToggle.setSelected(!form);
+    }
+
     /**
-     * ⭐ D-1：分页器窄宽降级 —— 按「重复度 / 优先级」依次收起，绝不裁半截字。
+     * ⭐ D-1（N20 收尾）：底栏窄宽降级 —— 只撤「视图切换 + 放大镜」，五键翻页 / 页码框 /
+     * 齿轮永远留着（撤了它们就翻不了页、改不了页大小、开不了查找）。
      *
-     * <p>1280 宽 + 右侧详情面板打开时分页器只剩约 700px，右端的「跳至页 / 每页」
-     * 被父容器裁成半个词（p2-details 实拍）。这里用真实测量判断而不写
-     * 死阈值：字体、主题、语言一变，阈值就错了。
+     * <p>判据用 {@code prefWidth} 而不是 {@code minWidth}：{@code minWidth} 会被布局
+     * 恒等地满足（{@code width ≥ minWidth}），降级循环第一项就 break，一项都不收 ——
+     * R34 N1-b 实测踩过，记在这里防再犯。
      *
-     * <p>收起顺序：行号跳转 → 页码跳转 → 行范围 → 记录导航 → 「每页」标签
-     * → 「页面」标签。前两项在网格里有等价操作；行范围在状态栏还有一份；
-     * 记录导航也能用方向键代替。
-     * <b>「每页」文字留到倒数第二档</b> —— 先撤它，右端就剩一个孤零零的「200」，
-     * 读起来像页码。页码导航与每页框本身终归不清除 —— 没了它们就翻不了页 / 改不了页大小。
-     *
-     * <p>⚠️ R34 N1-b 两次改判，都被实拍/门禁打过脸，记录在这里防再犯：
-     * <ol>
-     *   <li><b>文字标签钉 {@code USE_PREF_SIZE}</b>（本轮）。英文比中文宽（记录 24px →
-     *       Record 41px），没钉时 HBox 优先压缩「能压的孩子」（Label 的计算 min 只有几 px），
-     *       于是压出「Rec…」「P…」「Go to p…」—— 正是 U4 立誓禁掉的那种压扁。</li>
-     *   <li><b>判据必须留在 {@code prefWidth}，不能换成 {@code minWidth}</b>。
-     *       中间一版换成了 minWidth，理由是「钉死后真正少要的是 min 之和」——
-     *       听起来对，实际<b>整条降级逻辑失效</b>：这里的 {@code width} 是
-     *       {@code pager.widthProperty()} 即<b>盒子自己的宽度</b>，而布局永远保证
-     *       {@code width ≥ minWidth}，于是 {@code minWidth <= width} <b>恒真</b>，
-     *       循环第一项就 break，一项都不收。实测（1280→900 逐档量）：
-     *       900 档 pref=953 &gt; w=900，六个可收项却全部还挂着。
-     *       更糟的是它把 891px 的 min 传给了父容器 —— 外壳里侧栏 + 抽屉一占位，
-     *       整页被顶到 1300px 以上，<b>工具条整排溢出窗口</b>
-     *       （ToolbarDiscoverabilityTest 两条 + DataGridFormViewTest 一条红）。
-     *       pref 是「这一排想要多少」，min 是「硬底线」；降级要看的是前者。</li>
-     * </ol>
-     *
-     * <p>补最后一档「页面」标签：英文比中文宽 ≈20px，前五档全撤完仍可能差这一点；
-     * 撤整项标签符合它自己的定位（方向键的含义由「Page 1 / 1」那段承担），
-     * 压成「P…」则两头不靠。
-     *
-     * <p>实测（1280 窗口 + 侧栏，英文档，p2-find）：分页器实得 1016px，
-     * 满配 pref=1073 / min=1027 —— 差 57px，于是第一档「Go to row」整项收起，
-     * 收起后 pref 落到 996 &lt; 1016，「Go to page」保住了。
-     * 这正是阶梯该有的样子：<b>少一个输入框，而不是把两个词各裁一半</b>。
-     *
-     * <p>⚠️ <b>D-1 未结，别把这条当已修完</b>：阶梯拿到的 {@code width} 是
-     * {@code pager.widthProperty()}，也就是<b>盒子自己的宽度</b>。对象详情面板
-     * 打开时它会盖在这一排的右端上面 —— p2-details 实测盒子右边缘在场景
-     * x=1082，而面板从 x≈990 开始，<b>右边约 90px 被压在面板底下</b>。
-     * 阶梯按 818 判「放得下」，实际只有 721 能看见，于是「每页」下拉框露出半截。
-     * 分页器自己看不见浮层，得由外壳把<b>可用宽度</b>递进来（与
-     * {@link #availableToolbarWidth()} 同一类问题，工具条那边已经按场景坐标量了）。
-     * 归 R38 N19/N20（工具条/底栏溢出进 {@code >>}）一起做，本轮不在此处硬凑。
+     * <p>可用宽度按场景坐标量（{@link #availablePagerWidth()}），不是盒子自己的宽度：
+     * 详情浮层向下溢出时 JavaFX 不裁边，会直接压在底栏右端约 90px 上；
+     * 按盒子宽度判「放得下」，那 90px 就永远露不出来。
      */
-    void fitPagerWidth(double width) {
-        if (pagerBox == null || width <= 0) {
+    private void fitPagerToAvailableWidth() {
+        if (pagerBox == null || pagerBox.getScene() == null) {
             return;
         }
-        javafx.scene.Node[] droppable = {
-                jumpRowField, jumpField, rangeLabel, recordNav, perPageLabel, pageNavLabel};
+        double available = availablePagerWidth();
+        if (available > 0) {
+            foldPagerTo(available);
+        }
+    }
+
+    /** 从右往左整项收起：表单视图 → 网格视图 → 放大镜；五键 / 页码框 / 齿轮永不收。 */
+    private void foldPagerTo(double available) {
+        javafx.scene.Node[] droppable = {formToggle, gridToggle, findToggle};
         for (javafx.scene.Node node : droppable) {
             showPagerPart(node, true);
         }
         for (javafx.scene.Node node : droppable) {
-            if (pagerBox.prefWidth(-1) <= width) {
+            if (pagerBox.prefWidth(-1) <= available) {
                 break;
             }
             showPagerPart(node, false);
+        }
+    }
+
+    /** 底栏真正**能看见**的宽度：场景右缘 / 父容器右缘 / 详情浮层左缘，三者取小。 */
+    private double availablePagerWidth() {
+        if (pagerBox == null || pagerBox.getScene() == null) {
+            return 0;
+        }
+        javafx.geometry.Bounds self = pagerBox.localToScene(pagerBox.getBoundsInLocal());
+        double left = self.getMinX();
+        double right = Math.min(self.getMaxX(), pagerBox.getScene().getWidth());
+        if (pagerBox.getParent() instanceof Region parent) {
+            right = Math.min(right,
+                    parent.localToScene(parent.getBoundsInLocal()).getMaxX()
+                            - parent.getInsets().getRight());
+        }
+        if (detailsDrawer.isVisible() && detailsDrawer.getScene() != null) {
+            javafx.geometry.Bounds drawer =
+                    detailsDrawer.localToScene(detailsDrawer.getBoundsInLocal());
+            boolean overlapsRow = drawer.getMaxY() > self.getMinY()
+                    && drawer.getMinY() < self.getMaxY();
+            if (overlapsRow) {
+                right = Math.min(right, drawer.getMinX() - 8);
+            }
+        }
+        return Math.max(0, right - left);
+    }
+
+    /** 门禁接缝：齿轮菜单（每页行数 + 跳至记录）。 */
+    ContextMenu pageOptionsMenuForTest() {
+        return pageOptionsMenu;
+    }
+
+    /** 门禁接缝：底栏此刻真正能看见的宽度（D-1 要看浮层压掉多少）。 */
+    double availablePagerWidthForTest() {
+        return availablePagerWidth();
+    }
+
+    /** 门禁接缝：底栏窄宽降级按合成宽度跑一次。 */
+    void fitPagerWidthForTest(double width) {
+        if (pagerBox != null) {
+            foldPagerTo(width);
         }
     }
 
@@ -2266,7 +2495,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     /** 跳页：页码从 1 开始；越界或非法输入不动作并给出行内提示。 */
-    private void jumpToPage(String raw) {
+    void jumpToPage(String raw) {
         if (loading) {
             return;
         }
@@ -2296,18 +2525,18 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             return;
         }
         if (target == offset) {
-            jumpField.clear();
+            resetPageFieldText();
             return;
         }
         offset = target;
-        jumpField.clear();
+        resetPageFieldText();
         load(false);
     }
 
     /**
      * ⭐ G7：跳到第 N 行（跨页也能跳）。
      *
-     * <p>行号是**绝对行号**（跟网格左侧的 # 一致），所以先算出目标行所在的页，
+     * <p>记录号是**绝对记录号**（与底栏「Record N of M」同一口径），所以先算出目标行所在的页，
      * 必要时翻页，再把焦点落到那一行。
      */
     void jumpToRow(String raw) {
@@ -2338,7 +2567,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             showError(I18n.t("grid.pager.offsetLimit", QueryLimits.MAX_OFFSET));
             return;
         }
-        jumpRowField.clear();
         if (targetOffset != offset) {
             offset = targetOffset;
             load(false);
@@ -2459,9 +2687,22 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
     private void apply(LoadResult result) {
         if (result.metadataFresh()) {
+            java.util.List<String> before = tableSchema == null ? java.util.List.of()
+                    : tableSchema.columns().stream().map(ColumnDef::name).toList();
+            java.util.List<String> after = result.schema().columns().stream()
+                    .map(ColumnDef::name).toList();
+            boolean columnsChanged = !before.equals(after);
             tableSchema = result.schema();
             renderColumns(result.schema());
             filterButton.setDisable(false);
+            // 列集变了，旧面板的行引用的是旧 schema —— 直接重建，别让草稿指向不存在的列。
+            if (columnsChanged && filterPanel != null) {
+                filterPanelHost.getChildren().clear();
+                filterPanel = null;
+                filterPanelHost.setVisible(false);
+                filterPanelHost.setManaged(false);
+                filterButton.setSelected(false);
+            }
         }
         total = result.total();
         renderQueryState();
@@ -2488,7 +2729,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         rebuildItems();
         hideState();
         updatePager();
-        updateBatchBar();
         updateViewControls();
         feedback.range(rangeText());
         feedback.duration(result.elapsedMs);
@@ -2574,7 +2814,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
     // ─────────────── G1：冻结列 ───────────────
 
-    /** 冻结前 N 个数据列（不含选择列 / 行号列，那两列天然跟着冻结）。0 = 解冻。 */
+    /** 冻结前 N 个数据列（不含行首槽，它天然跟着冻结）。0 = 解冻。 */
     public void setFrozenColumnCount(int count) {
         int next = Math.max(0, count);
         if (next == frozenColumnCount) {
@@ -2611,10 +2851,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             frozenGrid.setManaged(false);
             return;
         }
-        // 前 2 列是选择列 + 行号列，它们永远跟着冻结区走；
+        // 第 1 列是行首槽（N16），它永远跟着冻结区走；
         // 至少给右表留一列，否则「冻结」就变成把整张表搬走了。
-        int move = Math.min(2 + frozenColumnCount, all.size() - 1);
-        if (move <= 2) {
+        int move = Math.min(1 + frozenColumnCount, all.size() - 1);
+        if (move <= 1) {
             frozenColumnCount = 0;
             frozenGrid.getColumns().clear();
             grid.getColumns().clear();
@@ -2721,98 +2961,78 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         grid.getColumns().clear();
         headers.clear();
         columnByDefinition.clear();
+        // 列实例重建了 —— 旧的光标列表头已经不在场景图里，别留着引用。
+        currentHeaderColumn = null;
         grid.setEditable(schema.editable());
 
-        TableColumn<Map<String, Object>, Void> select = new TableColumn<>();
-        select.getStyleClass().add("adb-grid__select-column");
-        select.setSortable(false);
-        select.setResizable(false);
-        select.setPrefWidth(36);
-        select.setMinWidth(36);
-        select.setMaxWidth(36);
-        select.setGraphic(selectAllBox);
-        select.setCellFactory(column -> new TableCell<>() {
-            private final CheckBox box = new CheckBox();
-
+        // ⭐ N16：行首槽 —— 帧 3/4/6 8–12× 复核（2026-10-31）实测是一条
+        //    ~12px 的空白窄槽：没有行号、没有复选框，也没有铅笔；铅笔只在
+        //    「这一行有未保存修改」时出现。所以这里不给表头文字，只在脏行 /
+        //    草稿行 / 待删行放状态图标；批量入口改走右键菜单（N16）。
+        TableColumn<Map<String, Object>, Void> gutter = new TableColumn<>();
+        gutter.getStyleClass().add("adb-grid__gutter-column");
+        gutter.setSortable(false);
+        gutter.setResizable(false);
+        // 16px = 实测 12px 槽 + 12px 图标（SIZE_BADGE）居中所需的余量。
+        gutter.setPrefWidth(16);
+        gutter.setMinWidth(16);
+        gutter.setMaxWidth(16);
+        gutter.setCellFactory(column -> new TableCell<>() {
             {
+                getStyleClass().add("adb-grid__gutter");
                 setAlignment(Pos.CENTER);
-                box.setAccessibleText(I18n.t("grid.aria.selectRow"));
-                box.setOnAction(event -> {
-                    if (isEmpty() || getIndex() < 0) {
+                setOnContextMenuRequested(event -> {
+                    if (isEmpty() || getIndex() < 0 || getIndex() >= grid.getItems().size()) {
                         return;
                     }
-                    if (box.isSelected()) {
-                        grid.getSelectionModel().select(getIndex());
-                    } else {
-                        grid.getSelectionModel().clearSelection(getIndex());
+                    Map<String, Object> row = getTableRow() == null
+                            ? null : getTableRow().getItem();
+                    if (row == null) {
+                        return;
                     }
+                    if (!grid.getSelectionModel().isSelected(getIndex())) {
+                        grid.getSelectionModel().clearAndSelect(getIndex());
+                    }
+                    buildBatchMenu(List.copyOf(grid.getSelectionModel().getSelectedItems()))
+                            .show(this, event.getScreenX(), event.getScreenY());
+                    event.consume();
                 });
             }
 
             @Override
             protected void updateItem(Void item, boolean empty) {
                 super.updateItem(item, empty);
+                getStyleClass().removeAll("adb-grid__gutter--dirty",
+                        "adb-grid__gutter--new", "adb-grid__gutter--deleted");
+                setText(null);
+                setGraphic(null);
                 if (empty) {
-                    setGraphic(null);
-                    return;
-                }
-                box.setSelected(grid.getSelectionModel().isSelected(getIndex()));
-                setGraphic(box);
-            }
-        });
-        grid.getColumns().add(select);
-
-        TableColumn<Map<String, Object>, Void> number = new TableColumn<>("#");
-        // ⛔ 这里原来加的是 `adb-grid__number-column` —— TableColumn 不在场景图里，
-        //    样式类对它**完全无效**（真正生效的是单元格上的 `adb-grid__row-number`）。
-        //    留着它只会让人以为「行号列已经上过样式」。
-        number.setSortable(false);
-        number.setResizable(false);
-        number.setPrefWidth(52);
-        number.setMinWidth(52);
-        number.setMaxWidth(52);
-        number.setCellFactory(column -> new TableCell<>() {
-            @Override
-            protected void updateItem(Void item, boolean empty) {
-                super.updateItem(item, empty);
-                getStyleClass().removeAll("adb-grid__row-number",
-                        "adb-grid__row-number--dirty",
-                        "adb-grid__row-number--new",
-                        "adb-grid__row-number--deleted");
-                getStyleClass().add("adb-grid__row-number");
-                setAlignment(Pos.CENTER_RIGHT);
-                if (empty) {
-                    setText(null);
-                    setGraphic(null);
                     return;
                 }
                 Map<String, Object> row = getTableRow() == null
                         ? null : getTableRow().getItem();
-                Long draftId = draftId(row);
-                if (draftId != null) {
-                    setText(null);
-                    setGraphic(rowStateGlyph(Icons.Icon.ADD));
-                    getStyleClass().add("adb-grid__row-number--new");
+                if (row == null) {
                     return;
                 }
-                long number = offset + Math.max(0, getIndex()
-                        - editBuffer.drafts().size()) + 1;
+                if (draftId(row) != null) {
+                    setGraphic(rowStateGlyph(Icons.Icon.ADD));
+                    getStyleClass().add("adb-grid__gutter--new");
+                    return;
+                }
                 RowIdentity identity = identity(row);
-                if (identity != null && editBuffer.isDeleted(identity)) {
-                    setText(Long.toString(number));
+                if (identity == null) {
+                    return;
+                }
+                if (editBuffer.isDeleted(identity)) {
                     setGraphic(rowStateGlyph(Icons.Icon.CLOSE));
-                    getStyleClass().add("adb-grid__row-number--deleted");
-                } else if (identity != null && editBuffer.hasRowEdits(identity)) {
-                    setText(Long.toString(number));
-                    setGraphic(rowStateGlyph(Icons.Icon.DOT));
-                    getStyleClass().add("adb-grid__row-number--dirty");
-                } else {
-                    setText(Long.toString(number));
-                    setGraphic(null);
+                    getStyleClass().add("adb-grid__gutter--deleted");
+                } else if (editBuffer.hasRowEdits(identity)) {
+                    setGraphic(rowStateGlyph(Icons.Icon.EDIT));
+                    getStyleClass().add("adb-grid__gutter--dirty");
                 }
             }
         });
-        grid.getColumns().add(number);
+        grid.getColumns().add(gutter);
 
         Set<String> hidden = savedHiddenColumns();
         for (ColumnDef definition : orderedColumns(schema)) {
@@ -2928,16 +3148,16 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /**
      * 这一列的表头至少要占多宽才能读出来。
      *
-     * <p>列头是两行：列名 + 类型与约束（{@link #columnConstraintLabel}），
+     * <p>列头是两行：列名 + 类型（{@link #columnTypeLabel}），
      * 右侧还有排序徽标与筛选漏斗。只按列名算会漏掉
      * 这些固定装饰，于是又回到 72px 的老问题。
      */
     /**
-     * 行号列的状态标记（U10）：新增 / 待保存 / 标记删除。
+     * 行首槽的状态标记（U10）：新增 / 待保存 / 标记删除。
      *
      * <p>以前是文本符号「＋ × ●」拼在行号前面 —— 符号随字体走、颜色只能整格继承，
-     * 在中文行字体下三颗标记大小不一。现在是矢量图标，颜色由
-     * {@code .adb-grid__row-number--*} 的 {@code -fx-stroke} 规则给。
+     * 在中文行字体下三颗标记大小不一。现在是矢量图标（N16 后行号本身取消），
+     * 颜色由 {@code .adb-grid__gutter--*} 的 {@code -fx-stroke} 规则给。
      */
     private static javafx.scene.shape.SVGPath rowStateGlyph(Icons.Icon icon) {
         // Icons.of 已经挂 .adb-icon / .adb-icon--filled，这里不再叠一个只有 Java 侧认识的类。
@@ -2945,17 +3165,26 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     private double readableMinWidth(ColumnDef definition) {
-        return ColumnWidths.dataColumnMin(definition.name(), columnConstraintLabel(definition));
+        return ColumnWidths.dataColumnMin(definition.name(), columnTypeLabel(definition));
     }
 
     /**
-     * 列头第二行：类型 + 约束摘要（{@code number · 主键 · 自增} / {@code text · 非空}）。
+     * ⭐ N19：列头第二行**只放类型**（Navicat 帧 3/6 实测）。
      *
-     * <p>⭐ U5（2026-10-26）：主键与 NOT NULL 以前挤在第一行，写成
-     * {@code id  [PK]} 和 {@code name  •} 两套互不相干的语法 —— 那个圆点没有任何
-     * 地方解释它是 NOT NULL，而且主键列本身也非空，却被 {@code [PK]} 顶掉，
-     * 于是「非空」这件事在表头时有时无。约束统一并入第二行，
-     * 第一行只放列名，和 {@code · 自增} 走同一种读法。
+     * <p>数值列带 {@code #} 前缀（帧上写作 {@code # int(11)} / {@code # bigint(20)}），
+     * 其余类型原样。约束（主键 / 非空 / 自增）不再挤进这一行 —— 它们改由
+     * 类型标签的 tooltip 说明，信息不丢，第二行回到「一眼认出类型」这一件事。
+     */
+    private static String columnTypeLabel(ColumnDef definition) {
+        String label = typeLabel(definition);
+        return definition.type() == ColumnType.NUMBER ? "# " + label : label;
+    }
+
+    /**
+     * 类型 + 约束摘要（{@code number · 主键 · 自增} / {@code text · 非空}）。
+     *
+     * <p>⭐ U5 的信息保留在这里：约束仍然写得明白，只是从列头第二行挪到
+     * 类型标签的 tooltip（N19 之后第二行只放类型）。
      */
     private String columnConstraintLabel(ColumnDef definition) {
         boolean autoIncrement = tableSchema != null
@@ -3092,7 +3321,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
     // ─────────────────────────── G2：列拖拽重排 ───────────────────────────
 
-    /** 可见的**数据列**（排除选择列与行号列 —— 那两列固定在左边）。 */
+    /** 可见的**数据列**（排除行首槽 —— 它固定在左边）。 */
     private List<TableColumn<Map<String, Object>, ?>> dataColumns() {
         List<TableColumn<Map<String, Object>, ?>> result = new ArrayList<>();
         for (TableColumn<Map<String, Object>, ?> column : grid.getColumns()) {
@@ -3143,7 +3372,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /**
      * 场景坐标落在哪个数据列上。
      *
-     * @return 数据列的序号；落在固定列（选择列 / 行号列）上或不在网格里时返回 -1
+     * @return 数据列的序号；落在行首槽上或不在网格里时返回 -1
      */
     private int dataColumnIndexAtSceneX(double sceneX) {
         double x = grid.localToScene(0, 0).getX();
@@ -3168,7 +3397,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /**
      * 把某列挪到数据列的第 target 位。
      *
-     * <p>选择列与行号列**固定在左边**，不参与重排 —— 和 Navicat 一致。
+     * <p>行首槽**固定在左边**，不参与重排 —— 和 Navicat 一致。
      */
     private void moveColumnTo(TableColumn<Map<String, Object>, ?> column, int target) {
         List<TableColumn<Map<String, Object>, ?>> all = new ArrayList<>(grid.getColumns());
@@ -3263,19 +3492,21 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
     private javafx.scene.Node columnHeader(TableColumn<Map<String, Object>, Object> column,
                                        ColumnDef definition) {
-        // ⭐ G6：标出自增列 —— 新增行时这一列**留空**就行，数据库自动赋值。
+        // ⭐ G6：自增列必须标出来 —— 新增行时这一列**留空**就行，数据库自动赋值。
         //    不标出来，用户会以为得自己填，然后撞主键。
-        // ⭐ U5：约束（主键 / 非空 / 自增）统一落在第二行，第一行只有列名。
+        // ⭐ N19：第一行只有列名，第二行只有类型；约束进类型标签的 tooltip。
         Label name = new Label(definition.name());
         name.setId("data-header-" + definition.name());
         name.getStyleClass().add("adb-grid__column-name");
         if (definition.comment() != null && !definition.comment().isBlank()) {
-            // 约束已经在第二行写明白了，tooltip 只补「列注释」这一件第二行装不下的事。
+            // 第二行只放类型，列注释仍需要一个出口。
             name.setTooltip(new Tooltip(definition.comment()));
         }
 
-        Label type = new Label(columnConstraintLabel(definition));
+        Label type = new Label(columnTypeLabel(definition));
         type.getStyleClass().add("adb-grid__column-type");
+        type.setTooltip(new Tooltip(columnConstraintLabel(definition)));
+        type.setAccessibleText(definition.name() + " " + columnConstraintLabel(definition));
 
         Label sortBadge = new Label();
         sortBadge.getStyleClass().add("adb-grid__sort-badge");
@@ -3520,15 +3751,43 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         panel.show(anchor);
     }
 
-    private void showConditionDialog() {
-        if (tableSchema == null || getScene() == null) {
+    /**
+     * ⭐ N31：Filter & Sort 面板的开合与工具条按钮按下态是同一个状态。
+     * 打开时用**已应用的**查询播种草稿；关掉不应用任何未提交的改动。
+     */
+    private void setFilterPanelOpen(boolean open) {
+        if (tableSchema == null || (open && !ensureFilterPanel())) {
+            filterButton.setSelected(false);
             return;
         }
-        ConditionDialog.show(getScene().getWindow(), tableSchema, getScene().getStylesheets())
-                .ifPresent(condition -> {
-                    applyFilter(condition);
-                    feedback.status(I18n.t("grid.msg.filtered", condition.summary()));
-                });
+        filterButton.setSelected(open);
+        filterPanelHost.setVisible(open);
+        filterPanelHost.setManaged(open);
+        if (open) {
+            filterPanel.seed(query);
+            filterPanel.requestFocus();
+        }
+    }
+
+    private boolean ensureFilterPanel() {
+        if (filterPanel != null) {
+            return true;
+        }
+        if (tableSchema == null) {
+            return false;
+        }
+        filterPanel = new FilterSortPanel(tableSchema, this::applyCriteria,
+                () -> showCapabilityNotice(I18n.t("filter.panel.addGroup"),
+                        "grid.capability.filterGroup"));
+        filterPanelHost.getChildren().setAll(filterPanel);
+        return true;
+    }
+
+    /** 面板里按下 Apply 才走到这里 —— 生成新查询、重查一次，并刷新 chip / 表头徽标。 */
+    private void applyCriteria(DataQuery next) {
+        query = next;
+        invalidateFilters();
+        feedback.status(I18n.t("grid.msg.criteriaApplied"));
     }
 
     private void applyFilter(FilterCondition condition) {
@@ -3596,10 +3855,19 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             chipBar.getChildren().add(clearSorts);
         }
         boolean visible = !query.isDefault();
+        if (visible) {
+            clearQueryButton.setDisable(false);
+            chipBar.getChildren().add(clearQueryButton);
+        }
         chipBar.setVisible(visible);
         chipBar.setManaged(visible);
         clearQueryButton.setDisable(query.isDefault());
         updateHeaderSortBadges();
+        // ⭐ N31：外部改查询（列头排序、漏斗、清除 chip）时，面板在**没有脏草稿**的
+        //    前提下跟着重播种；用户正在编辑的草稿不被悄悄覆盖。
+        if (filterPanel != null && filterPanelHost.isVisible()) {
+            filterPanel.adopt(query);
+        }
     }
 
     private Button chip(String text, Runnable action) {
@@ -3712,14 +3980,18 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         frozenGrid.setManaged(!transpose && !form && frozenColumnCount > 0);
         transposeTable.setVisible(transpose);
         transposeTable.setManaged(transpose);
+        formSection.setVisible(form);
+        formSection.setManaged(form);
         formPane.setVisible(form);
         formPane.setManaged(form);
+        // ⭐ 行导航是表单的内嵌子块：可见性必须跟父块一致，别只靠「父隐藏」。
+        recordNav.setVisible(form);
+        recordNav.setManaged(form);
         if (transpose) {
             rebuildTranspose(visible);
         }
         // ⭐ G4：行 / 页 / 筛选变了，表单按「当前选中行」重刷（没开表单是空操作）。
         refreshForm();
-        updateBatchBar();
         updateSelectAllState();
         updateViewControls();
     }
@@ -3846,6 +4118,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             formItem.setSelected(false);
         }
         rebuildItems();
+        syncViewToggles();
         feedback.status(value ? I18n.t("grid.view.transposed") : I18n.t("grid.view.backToGrid"));
     }
 
@@ -3862,6 +4135,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             setTranspose(false);
         }
         rebuildItems();
+        syncViewToggles();
         feedback.status(value ? I18n.t("grid.view.formMode") : I18n.t("grid.view.backToGrid"));
     }
 
@@ -4095,10 +4369,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     private void updateSelectAllState() {
-        int total = grid.getItems().size();
         int selected = grid.getSelectionModel().getSelectedItems().size();
-        selectAllBox.setSelected(total > 0 && selected == total);
-        selectAllBox.setIndeterminate(selected > 0 && selected < total);
         // 4.5-11：状态栏的「选择」段接真实数据。
         feedback.selection(selected);
     }
@@ -4285,26 +4556,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         }
     }
 
-    private void updateBatchBar() {
-        int count = transpose ? 0 : grid.getSelectionModel().getSelectedItems().size();
-        boolean visible = count > 0;
-        batchBar.setVisible(visible);
-        batchBar.setManaged(visible);
-        if (!visible) {
-            return;
-        }
-        batchLabel.setText(I18n.t("grid.batch.selected", count));
-        boolean editable = tableSchema != null && tableSchema.editable();
-        ColumnDef focused = focusedColumn();
-        batchDelete.setDisable(!editable);
-        batchClone.setDisable(!editable);
-        // ⛔ 主键列不能批量改（见 applyColumnValue）——按钮也要跟着禁用，
-        //    不能让用户点下去才发现什么也没发生。
-        boolean pkColumn = focused != null && focused.primaryKey();
-        batchNull.setDisable(!editable || focused == null || !focused.nullable() || pkColumn);
-        batchEmpty.setDisable(!editable || focused == null || !textual(focused.type()) || pkColumn);
-    }
-
     private ColumnDef focusedColumn() {
         javafx.scene.control.TablePosition<?, ?> position =
                 grid.getFocusModel().getFocusedCell();
@@ -4393,14 +4644,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         return names;
     }
 
-    /** ⌘A：全选当前页（含勾选列同步）。 */
+    /** ⌘A：全选当前页。 */
     private void selectAllCurrentPage() {
         if (grid.getItems().isEmpty()) {
             feedback.status(I18n.t("grid.batch.noneToSelect"));
             return;
         }
         grid.getSelectionModel().selectAll();
-        selectAllBox.setSelected(true);
         feedback.status(I18n.t("grid.batch.pageSelected", grid.getItems().size()));
     }
 
@@ -4492,8 +4742,20 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         close.getStyleClass().add("adb-icon-button");
         close.setOnAction(event -> hideFindBar());
 
+        // ⭐ N19：本页筛选从工具条挪进查找条 —— 顶部那一排只放 Navicat 的
+        //    13 个具名键与右端两颗小键。⌘F 打开查找条后两个输入框都在：
+        //    前方是逐格查找，末尾是本页行过滤。
+        searchField.setId("data-search");
+        searchField.getStyleClass().add("adb-grid__find-field");
+        searchField.setPromptText(I18n.t("grid.search.prompt"));
+        searchField.setPrefWidth(180);
+        searchField.setMinWidth(110);
+        searchField.setTooltip(new Tooltip(I18n.t("grid.search.tooltip")));
+        searchField.textProperty().addListener((observable, previous, value) -> rebuildItems());
+
         findBar.getChildren().addAll(findField, findNextButton, replaceField,
-                replaceOneButton, replaceAllButton, findCaseBox, close);
+                replaceOneButton, replaceAllButton, findCaseBox,
+                new Separator(javafx.geometry.Orientation.VERTICAL), searchField, close);
     }
 
     /**
@@ -4509,6 +4771,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         }
         findBar.setVisible(true);
         findBar.setManaged(true);
+        findToggle.setSelected(true);
         if (findField.getText() == null || findField.getText().isEmpty()) {
             String focused = focusedCellText();
             if (focused != null && !focused.isEmpty()) {
@@ -4524,6 +4787,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private void hideFindBar() {
         findBar.setVisible(false);
         findBar.setManaged(false);
+        findToggle.setSelected(false);
         grid.requestFocus();
     }
 
@@ -4566,6 +4830,25 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             return true;
         }
         return false;
+    }
+
+    /**
+     * 截图 / 验收（R38 N31）：打开内嵌 Filter & Sort 面板并摆出一条完整草稿。
+     *
+     * <p>只摆不应用 —— 面板打开与草稿内容由这一帧看，Apply 的生效路径由
+     * {@code FilterPanelAuditTest} 真点按钮验收。
+     * 返回 false = 表结构 / 行还没就绪，调用方继续轮询。
+     */
+    boolean poseFilterSortPanel() {
+        if (tableSchema == null || grid.getItems().isEmpty()) {
+            return false;
+        }
+        setFilterPanelOpen(true);
+        if (filterPanel == null || !filterPanelHost.isVisible()) {
+            return false;
+        }
+        filterPanel.poseForShots();
+        return true;
     }
 
     /**
@@ -4900,8 +5183,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /**
      * 参与矩形选区的列 = 可见的**数据列**。
      *
-     * <p>行号列与勾选列没有 {@code userData}，天然被排除 —— 框选时用户框的是数据，
-     * 不是行号。用「可见」而不是「全部」是因为隐藏的列用户根本看不到，
+     * <p>行首槽没有 {@code userData}，天然被排除 —— 框选时用户框的是数据，
+     * 不是行首槽。用「可见」而不是「全部」是因为隐藏的列用户根本看不到，
      * 若按全部列算下标，隐藏一列就会让矩形整体错位。
      */
     private List<TableColumn<Map<String, Object>, ?>> rectangleColumns() {
@@ -4958,16 +5241,35 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             }
             cursorRow = row;
             cursorColumnName = column;
+            // ⭐ N19：Cell Editor 跟随光标 —— 没有落点就没有可编辑的那一格。
+            cellEditorButton.setDisable(row < 0 || column == null);
+            // ⭐ N17：当前列的表头整格着蓝 tint（帧 6 实测 #AED4F2）。
+            markCurrentHeaderColumn(now == null ? null : now.getTableColumn());
             // TableView 不会自己因为 focusModel 变了重画格子。
             grid.refresh();
             frozenGrid.refresh();
         });
     }
 
+    /** 光标所在列的表头着色；换列时把上一列的样式类摘掉。 */
+    private void markCurrentHeaderColumn(TableColumn<?, ?> column) {
+        if (currentHeaderColumn == column) {
+            return;
+        }
+        if (currentHeaderColumn != null) {
+            currentHeaderColumn.getStyleClass().remove("adb-grid__column--current");
+        }
+        currentHeaderColumn = column;
+        if (currentHeaderColumn != null
+                && !currentHeaderColumn.getStyleClass().contains("adb-grid__column--current")) {
+            currentHeaderColumn.getStyleClass().add("adb-grid__column--current");
+        }
+    }
+
     /**
      * 这一格是不是当前光标格。
      *
-     * <p>行号列 / 勾选列没有 {@code userData}，拿不到列名 → 不参与，
+     * <p>行首槽没有 {@code userData}，拿不到列名 → 不参与，
      * 光标只在数据列之间走。
      */
     private boolean isCursor(int row, String column) {
@@ -5300,41 +5602,15 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     /**
-     * ⭐ UX-3：工具条主操作 = 图标 + 文字 + tooltip + accessibleText，
-     * 同时登记进「窄窗口收字」名单。
+     * ⭐ N19：具名键 = 图标 + 文字 + tooltip + accessibleText。
+     *
+     * <p>文字按钮一律不许被 HBox 压扁（{@code minWidth = USE_PREF_SIZE}）。
+     * 放不下时不再把文字收掉 —— 整颗键从右往左折进 » 菜单（N18），
+     * 文字与提示原样保留在菜单项里。
      */
     private <T extends ButtonBase> T toolbarOp(T button, Icons.Icon icon, String text, String hint) {
         IconButtons.labeled(button, icon, text, hint);
-        toolbarLabels.put(button, text);
-        // ⭐ U4：文字按钮一律不许被 HBox 压扁（「保存」被挤成图标 = 认不出是保存）。
-        // 放不下时走上面那条实测判据：整排退回图标 + tooltip，而不是压某个按钮。
         button.setMinWidth(Region.USE_PREF_SIZE);
-        return button;
-    }
-
-    /**
-     * ⭐ R34 N1-b 改判（2026-10-28）：工具条上的**瞬时编辑键**只给图标 + 提示，不带文字。
-     *
-     * <p>依据是 Navicat 数据网格实拍（{@code docs/screenshots/navicat/navicat17-data-grid-2026-10-27.png}）：
-     * {@code + ✓ ✗ C ■} 这一簇全是纯图标，带文字的只有 {@code Begin Transaction}
-     * {@code Filter & Sort} {@code Columns} {@code History} 这类<b>具名操作</b>。
-     *
-     * <p>为什么本轮非改不可：这一排在 1280 窗口实测只分到 <b>1036px</b>，
-     * 中文档文字全开刚好 1026px（贴着上限），换英文后同样九颗要 <b>1153px</b> ——
-     * 溢出 117px。原来的兜底是「放不下就整排收字」，那会把
-     * {@code Begin Transaction} 这类<b>本来就该带文字</b>的具名操作一起收掉，
-     * 反而比中文档更不像 Navicat。所以按实拍重新分工，而不是缩短 Navicat 的原词。
-     *
-     * <p>代价与补偿：「保存 3」这个待保存计数从按钮上消失 ——
-     * 状态栏的 {@code status.pending}（"{0} pending"）本来就在报同一个数，
-     * 保存期间的转圈由 {@link IconButtons#loading} 负责，宽度不变。
-     */
-    private <T extends ButtonBase> T toolbarIcon(T button, Icons.Icon icon, String hint) {
-        button.setGraphic(Icons.colored(icon, Icons.SIZE_TOOLBAR));
-        button.setTooltip(new Tooltip(hint));
-        button.setAccessibleText(hint);
-        button.setMinWidth(Region.USE_PREF_SIZE);
-        button.getStyleClass().add("adb-button--icon");
         return button;
     }
 
@@ -5345,64 +5621,131 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         return separator;
     }
 
-    /** 把「窗口宽度 → 工具条收字」接上；还没进窗口时先按带文字渲染。 */
-    private void bindToolbarLabels() {
+    /** 把「工具条宽度 → 溢出折叠」接上；还没进场景时先全展开，进场景后再判一次。 */
+    private void bindToolbarOverflow() {
         toolbar.widthProperty().addListener(toolbarWidthListener);
         sceneProperty().addListener((observable, oldScene, scene) -> {
-            if (scene != null && scene.getWindow() != null) {
-                attachWindowWidth(scene.getWindow());
+            if (scene != null) {
+                javafx.application.Platform.runLater(this::updateToolbarOverflow);
             }
         });
-        if (getScene() != null && getScene().getWindow() != null) {
-            attachWindowWidth(getScene().getWindow());
-        } else {
-            windowAllowsLabels = true;
-            applyToolbarLabels();
-        }
-    }
-
-    private void attachWindowWidth(Window window) {
-        if (boundWindowWidth != null) {
-            boundWindowWidth.removeListener(windowWidthListener);
-        }
-        boundWindowWidth = window.widthProperty();
-        boundWindowWidth.addListener(windowWidthListener);
-        windowAllowsLabels = boundWindowWidth.getValue().doubleValue() >= TOOLBAR_LABEL_MIN_WIDTH;
-        applyToolbarLabels();
+        updateToolbarOverflow();
     }
 
     /**
-     * 宽窗口给文字、窄窗口退回图标 + tooltip。
+     * ⭐ N18：放不下的具名键从右往左折进右端的 » 菜单。
      *
-     * <p>⚠️ 收字时补上 {@code adb-button--icon}（固定 30px 宽），
-     * 展开时必须摘掉 —— 留着的话「保存」会被钉成 30px，文字直接看不见。
+     * <p>与 R32-G19b 的「整排退成图标」互斥：那条会把 Begin Transaction 这类
+     * 本来就该带文字的具名键也收成图标，菜单里反而要重新认一遍。Navicat 的做法是
+     * 文字保持完整，只把最右端放不下的几颗折叠起来。
      *
-     * <p>⭐ U4：光按<b>窗口</b>宽度假装放得下是不够的 —— 窗口宽 ≠ 工具条宽
-     * （侧栏、边距、搜索框都要吃宽度）。实测过 1100px 档：工具条给「筛选」60px，
-     * 它要 71px，HBox 就把文字压成「筛 …」。所以加一条<b>工具条自己说的算</b>的判据：
-     * 只有这一排带文字真的放得下，才给文字。
+     * <p>可用宽度按场景坐标量（{@link #availableToolbarWidth()}），不用自身的
+     * {@code widthProperty}：这一排被自身 minWidth 撑宽时，后者会永远「放得下」。
+     * 折叠后空出来的分隔线一并收起，避免连着两条竖线。
      */
-    private void applyToolbarLabels() {
-        double available = availableToolbarWidth();
-        boolean showText = windowAllowsLabels
-                // 还没布局过时（宽度 0）没有可信的实测值，先按窗口档位走。
-                && (available <= 0 || available + 0.5 >= labelRequirement());
-        if (toolbarTextVisible != null && toolbarTextVisible.booleanValue() == showText) {
+    private void updateToolbarOverflow() {
+        if (toolbar.getScene() == null && toolbar.getWidth() <= 0) {
             return;
         }
-        toolbarTextVisible = showText;
-        renderToolbarLabels(showText);
+        // 先全部展开，再按宽度从右往左折 —— 顺序与视觉顺序相反才有意义。
+        for (ButtonBase key : foldedToolbarKeys) {
+            showPagerPart(key, true);
+        }
+        foldedToolbarKeys.clear();
+        // 先让 » 退场再量：它还在场时 prefWidth 已经把它算进去了，
+        // 再加 reserve 就会多折一颗。
+        showPagerPart(toolbarOverflowButton, false);
+        double available = availableToolbarWidth();
+        if (available > 0) {
+            double reserve = toolbarOverflowButton.prefWidth(-1) + toolbar.getSpacing();
+            for (int i = namedToolbarKeys.size() - 1; i >= 0; i--) {
+                if (toolbar.prefWidth(-1) + reserve <= available + 0.5) {
+                    break;
+                }
+                ButtonBase key = namedToolbarKeys.get(i);
+                showPagerPart(key, false);
+                foldedToolbarKeys.add(0, key);
+            }
+        }
+        showPagerPart(toolbarOverflowButton, !foldedToolbarKeys.isEmpty());
+        hideOrphanedSeparators();
     }
 
-    /** 把这一排画成文字档或图标档（样式类与文字必须一起动，见 {@link #labelRequirement()}）。 */
-    private void renderToolbarLabels(boolean showText) {
-        toolbarLabels.forEach((button, text) -> {
-            button.setText(showText ? text : "");
-            button.getStyleClass().remove("adb-button--icon");
-            if (!showText) {
-                button.getStyleClass().add("adb-button--icon");
+    /** 组里一颗可见键都不剩时，那条竖分隔线也一起收起。 */
+    private void hideOrphanedSeparators() {
+        List<javafx.scene.Node> children = toolbar.getChildren();
+        for (int i = 0; i < children.size(); i++) {
+            if (!isToolbarSeparator(children.get(i))) {
+                continue;
             }
-        });
+            boolean before = false;
+            for (int j = i - 1; j >= 0 && !isToolbarSeparator(children.get(j)); j--) {
+                if (hasVisibleContent(children.get(j))) {
+                    before = true;
+                    break;
+                }
+            }
+            boolean after = false;
+            for (int j = i + 1; j < children.size() && !isToolbarSeparator(children.get(j)); j++) {
+                if (hasVisibleContent(children.get(j))) {
+                    after = true;
+                    break;
+                }
+            }
+            showPagerPart(children.get(i), before && after);
+        }
+    }
+
+    private static boolean isToolbarSeparator(javafx.scene.Node node) {
+        return node.getStyleClass().contains("adb-toolbar__separator");
+    }
+
+    private static boolean hasVisibleContent(javafx.scene.Node node) {
+        if (!node.isVisible() || !node.isManaged()) {
+            return false;
+        }
+        if (node instanceof javafx.scene.Parent parent) {
+            for (javafx.scene.Node child : parent.getChildrenUnmodifiable()) {
+                if (child.isVisible() && child.isManaged()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return true;
+    }
+
+    /** 键盘与鼠标共用的溢出入口：菜单项按折叠顺序，点击等于点原按钮。 */
+    private void showToolbarOverflow() {
+        toolbarOverflowMenu.getItems().clear();
+        for (ButtonBase key : foldedToolbarKeys) {
+            String text = key instanceof Labeled labeled && !labeled.getText().isBlank()
+                    ? labeled.getText() : key.getAccessibleText();
+            MenuItem item = new MenuItem(text);
+            item.setDisable(key.isDisabled());
+            item.setOnAction(event -> key.fire());
+            toolbarOverflowMenu.getItems().add(item);
+        }
+        if (toolbarOverflowMenu.getItems().isEmpty()) {
+            return;
+        }
+        toolbarOverflowMenu.show(toolbarOverflowButton,
+                javafx.geometry.Side.BOTTOM, 0, 0);
+    }
+
+    /** 门禁接缝：13 个具名键（按视觉顺序，含当前被折进 » 的）。 */
+    List<ButtonBase> namedToolbarKeysForTest() {
+        return List.copyOf(namedToolbarKeys);
+    }
+
+    /** 门禁接缝：当前被折进 » 的键（按视觉顺序）。 */
+    List<ButtonBase> foldedToolbarKeysForTest() {
+        return List.copyOf(foldedToolbarKeys);
+    }
+
+    /** 门禁接缝：溢出菜单本体。 */
+    ContextMenu toolbarOverflowMenuForTest() {
+        return toolbarOverflowMenu;
     }
 
     /**
@@ -5427,51 +5770,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                             - parent.getInsets().getRight());
         }
         return right > left ? right - left : toolbar.getWidth();
-    }
-
-    /**
-     * 标签全开时工具条<b>最少</b>要多宽。
-     *
-     * <p>收着字也要量得出来：临时把文字装回去算一次再还原。
-     * 文字按钮的 {@code minWidth} 被钉成 {@code USE_PREF_SIZE}（U4：不许把「筛选」压成「筛 …」），
-     * 所以这一趟量到的是「每个按钮文字完整 + 搜索框退到它自己的下限」。
-     *
-     * <p>⚠️ 不能用 {@code toolbar.prefWidth(-1)}：那会按搜索框的 <b>180px 偏好宽</b>记账，
-     * 凭空多要 70px。1280 窗口实测工具条只有 1026px，用 prefWidth 判就会把
-     * 「其实挤得动搜索框」误判成「放不下文字」，整排退成图标。
-     * 真的连下限都不够时，HBox 自己会把搜索框压到 110px —— 那才是这一排该付的代价。
-     */
-    private double labelRequirement() {
-        // 一律摆成「文字档」再量：图标档的按钮被 `adb-button--icon` 钉成 30px，
-        // 读到的会是「一整排图标」（实测 556 而不是 1093），下一次重判就会
-        // 「放得下」把文字涨回来 —— p2-form 帧「刚收完字又涨回去、搜索框被裁成『本』」
-        // 就是这么来的。
-        // ⚠️ 光改样式类不够：`-fx-min-width` 是 CSS 算出来的，JavaFX 要等一次样式重算
-        //    才更新 minWidth()，同步读到的还是旧值。所以两档切换后都当场 applyCss。
-        renderToolbarLabels(true);
-        toolbar.applyCss();
-        try {
-            return rowMinimumWidth(toolbar);
-        } finally {
-            renderToolbarLabels(toolbarTextVisible == null || toolbarTextVisible);
-            toolbar.applyCss();
-        }
-    }
-
-    /** 一个横排在其<b>托管</b>子节点都不折叠的前提下最少要多宽（未托管的按钮不占位、不计宽）。 */
-    private static double rowMinimumWidth(HBox row) {
-        List<javafx.scene.Node> managed = new ArrayList<>();
-        for (javafx.scene.Node child : row.getChildren()) {
-            if (child.isManaged()) {
-                managed.add(child);
-            }
-        }
-        double total = Math.max(0, row.getSpacing()) * Math.max(0, managed.size() - 1);
-        for (javafx.scene.Node child : managed) {
-            double min = child.minWidth(-1);
-            total += Double.isNaN(min) || min < 0 ? child.prefWidth(-1) : min;
-        }
-        return total;
     }
 
     private void exportCsv() {
@@ -5683,7 +5981,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 "adb-grid__cell--null", "adb-grid__cell--empty", "adb-grid__cell--number",
                 "adb-grid__cell--boolean", "adb-grid__cell--binary", "adb-grid__cell--dirty",
                 "adb-grid__cell--json", "adb-grid__cell--enum", "adb-grid__cell--date",
-                "adb-grid__cell--long-text", "adb-grid__cell--rect", "adb-grid__cell--cursor");
+                "adb-grid__cell--long-text", "adb-grid__cell--rect", "adb-grid__cell--cursor",
+                "adb-grid__cell--editing");
 
         private final ColumnDef definition;
         private TextField editor;
@@ -5695,8 +5994,19 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                         || getTableRow().getItem() == null) {
                     return;
                 }
-                buildCellMenu(getTableRow().getItem()).show(
-                        this, event.getScreenX(), event.getScreenY());
+                Map<String, Object> row = getTableRow().getItem();
+                // ⭐ N16：多选后右键选中行里的任一格 = 批量菜单；否则还是这一格的动作。
+                //    先把光标挪到被点的格，批量「设 NULL / 设空串」才有目标列。
+                if (grid.getSelectionModel().getSelectedItems().size() > 1
+                        && grid.getSelectionModel().getSelectedItems().contains(row)) {
+                    if (getIndex() >= 0 && getTableColumn() != null) {
+                        grid.getFocusModel().focus(getIndex(), getTableColumn());
+                    }
+                    buildBatchMenu(List.copyOf(grid.getSelectionModel().getSelectedItems()))
+                            .show(this, event.getScreenX(), event.getScreenY());
+                } else {
+                    buildCellMenu(row).show(this, event.getScreenX(), event.getScreenY());
+                }
                 event.consume();
             });
             // ⭐ G4：按下定锚点、拖动扩展矩形、松开收尾。
@@ -5740,6 +6050,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             setTooltip(null);
             setAlignment(Pos.CENTER_LEFT);
             setGraphic(isEditing() ? editor : null);
+            // ⭐ N17：行内编辑盒 = 白底 + 2px 蓝框（帧 6 实测 #0078D7），方角贴满整格。
+            if (isEditing()) {
+                getStyleClass().add("adb-grid__cell--editing");
+            }
 
             if (empty) {
                 setText(null);
@@ -5833,8 +6147,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             Object value = cellValue(row, definition);
             super.startEdit();
             editor = new TextField(editorText(value));
-            editor.getStyleClass().add("adb-grid__editor");
-            editor.setOnAction(event -> commitEditor());
+            editor.getStyleClass().add("adb-grid__editor");            editor.setOnAction(event -> commitEditor());
             editor.setOnKeyPressed(event -> {
                 if (event.getCode() == KeyCode.ESCAPE) {
                     cancelEdit();
@@ -5858,9 +6171,14 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             });
             setText(null);
             setGraphic(editor);
+            getStyleClass().add("adb-grid__cell--editing");
             Platform.runLater(() -> {
-                editor.selectAll();
-                editor.requestFocus();
+                // 编辑可能在这次 runLater 之前就撤掉了（双击后立刻 Esc / 焦点被抢），
+                // 那时 editor 已经是 null —— 全选没有对象，跳过。
+                if (editor != null) {
+                    editor.selectAll();
+                    editor.requestFocus();
+                }
             });
         }
 
@@ -6122,17 +6440,26 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
     private void updatePager() {
         long pages = QueryLimits.totalPages(total, pageSize);
-        pageLabel.setText(pages < 0 ? I18n.t("grid.pager.pageUnknown")
-                        : pages == 0 ? I18n.t("grid.pager.pageZero")
-                        : I18n.t("grid.pager.pageOf", QueryLimits.pageNumberOf(offset, pageSize), pages));
-        rangeLabel.setText(rangeText());
+        String pageText = pages < 0 ? I18n.t("grid.pager.pageUnknown")
+                : pages == 0 ? I18n.t("grid.pager.pageZero")
+                : I18n.t("grid.pager.pageOf", QueryLimits.pageNumberOf(offset, pageSize), pages);
+        pageField.setTooltip(new Tooltip(pageText));
+        pageField.setAccessibleText(I18n.t("grid.pager.jumpPageAria") + " · " + pageText);
+        if (!pageField.isFocused()) {
+            resetPageFieldText();
+        }
+        // ⭐ N20：记录计数只在状态栏（feedback.range），底栏不再重复一份。
         previous.setDisable(loading || offset <= 0);
         next.setDisable(loading || (total >= 0 && offset + pageSize >= total));
         firstPageButton.setDisable(loading || offset <= 0);
         lastPageButton.setDisable(loading || total <= 0
                 || (total - 1) / pageSize * pageSize == offset);
-        jumpField.setDisable(loading || total < 0);
-        pageSizeBox.setDisable(loading);
+        pageField.setDisable(loading || total < 0);
+        pageOptionsButton.setDisable(loading);
+        boolean noSchema = tableSchema == null;
+        gridToggle.setDisable(noSchema);
+        formToggle.setDisable(noSchema);
+        syncViewToggles();
     }
 
     private String rangeText() {

@@ -11,8 +11,10 @@ import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.JdbcSession;
 import javafx.scene.control.Button;
-import javafx.scene.control.CheckBox;
+import javafx.scene.control.ButtonBase;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import org.junit.jupiter.api.Test;
@@ -123,12 +125,12 @@ class DataGridPageTest {
     }
 
     /**
-     * ⭐ R35 N4-c：16px 图标的**两区画法**必须在真实页面上成立。
+     * ⭐ R35 N4-c + N19：16px 图标的**两区画法**必须在真实页面上成立。
      *
      * <p>逐像素看 Navicat 的数据页（{@code docs/screenshots/navicat/navicat-data-grid-2026-10-24.png}）：
      * 上沿工具条是蓝色实心小图形，贴在网格左下的行操作条（{@code + − ✓ ✗}）是灰的单线。
-     * 所以「工具条走彩色通道」不等于「所有 16px 都彩」—— 行操作条必须继续单色，
-     * 否则彩色的编辑开关会盖过数据本身。
+     * N19 把编辑簇整排搬进行操作条之后，这条分工反而更清楚了 ——
+     * 顶上 13 个具名键全彩，左下五颗全灰；彩色的编辑开关会盖过数据本身。
      *
      * <p>这条从**真页面**的按钮上读图形类型，不是再造一个按钮：
      * 造出来的按钮只能验工厂，验不了「这一排到底用的哪个工厂」。
@@ -146,11 +148,12 @@ class DataGridPageTest {
                             && !tableItems(page).isEmpty());
             WaitForAsyncUtils.waitForFxEvents();
 
-            List<String> colored = List.of("data-save", "data-columns", "data-add");
-            List<String> monochrome = List.of("data-row-add", "data-row-apply", "data-row-cancel");
+            List<String> colored = List.of("data-columns", "data-history", "data-export");
+            List<String> monochrome = List.of("data-add", "data-delete-rows", "data-save",
+                    "data-row-cancel", "data-row-more");
             for (String id : colored) {
                 assertThat(WaitForAsyncUtils.asyncFx(() -> graphicClass(page, id)).get())
-                        .as("上沿工具条 #%s：SAVE/COLUMNS/ADD 都有彩色资产，掉回单色就是 I-4 的两种画法", id)
+                        .as("上沿工具条 #%s：COLUMNS/HISTORY/EXPORT 都有彩色资产，掉回单色就是 I-4 的两种画法", id)
                         .isEqualTo("group");
             }
             for (String id : monochrome) {
@@ -167,7 +170,7 @@ class DataGridPageTest {
 
     /** 按钮图形的画法：{@code group} = 彩色分层，{@code path} = 单色回退，{@code null} = 没图形。 */
     private static String graphicClass(DataGridPage page, String id) {
-        Button button = (Button) page.lookup("#" + id);
+        ButtonBase button = (ButtonBase) page.lookup("#" + id);
         if (button == null || button.getGraphic() == null) {
             return null;
         }
@@ -271,20 +274,22 @@ class DataGridPageTest {
 
             WaitForAsyncUtils.asyncFx(() -> tableOf(page)
                     .getSelectionModel().selectIndices(0, 1, 2)).get();
-            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
-                    () -> page.lookup("#data-batch-bar") != null
-                            && page.lookup("#data-batch-bar").isVisible());
-            Label label = (Label) page.lookup("#data-batch-label");
+            WaitForAsyncUtils.waitForFxEvents();
+            javafx.scene.control.ContextMenu menu =
+                    WaitForAsyncUtils.asyncFx(page::batchMenuForTest).get();
+            MenuItem label = menu.getItems().stream()
+                    .filter(item -> "data-batch-label".equals(item.getId()))
+                    .findFirst().orElseThrow();
             assertThat(label.getText()).isEqualTo(I18n.t("grid.batch.selected", 3));
 
-            WaitForAsyncUtils.asyncFx(() ->
-                    ((Button) page.lookup("#data-batch-delete")).fire()).get();
+            WaitForAsyncUtils.asyncFx(() -> menu.getItems().stream()
+                    .filter(item -> "data-batch-delete".equals(item.getId()))
+                    .findFirst().orElseThrow().fire()).get();
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> page.dirtyCount() == 3);
             WaitForAsyncUtils.waitForFxEvents();
             assertThat(page.query().isDefault()).isTrue();
 
-            WaitForAsyncUtils.asyncFx(() ->
-                    ((Button) page.lookup("#data-undo")).fire()).get();
+            fireRowUndo(page);
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> page.dirtyCount() == 0);
             page.close();
         } finally {
@@ -312,8 +317,7 @@ class DataGridPageTest {
             assertThat(tableOf(page).getItems().getFirst())
                     .containsKey(io.agenticdb.editing.EditBuffer.DRAFT_KEY);
 
-            WaitForAsyncUtils.asyncFx(() ->
-                    ((Button) page.lookup("#data-undo")).fire()).get();
+            fireRowUndo(page);
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
                     () -> tableOf(page).getItems().size() == 200);
             assertThat(page.dirtyCount()).isZero();
@@ -338,7 +342,10 @@ class DataGridPageTest {
 
             WaitForAsyncUtils.asyncFx(() -> {
                 tableOf(page).getSelectionModel().select(0);
-                ((Button) page.lookup("#data-batch-clone")).fire();
+                MenuItem clone = page.batchMenuForTest().getItems().stream()
+                        .filter(item -> "data-batch-clone".equals(item.getId()))
+                        .findFirst().orElseThrow();
+                clone.fire();
             }).get();
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
                     () -> tableOf(page).getItems().size() == 201);
@@ -347,8 +354,7 @@ class DataGridPageTest {
             assertThat(draft.get("name")).isEqualTo(source.get("name"));
             assertThat(page.dirtyCount()).isEqualTo(1);
 
-            WaitForAsyncUtils.asyncFx(() ->
-                    ((Button) page.lookup("#data-undo")).fire()).get();
+            fireRowUndo(page);
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
                     () -> tableOf(page).getItems().size() == 200);
             assertThat(page.dirtyCount()).isZero();
@@ -359,10 +365,45 @@ class DataGridPageTest {
         }
     }
 
+    /**
+     * ⭐ N16：行首槽 = 16px 空白窄槽，不是「复选框 + 行号」两列。
+     *
+     * <p>帧 3/4/6 8–12× 复核（2026-10-31）实测：Navicat 的行首是一条 ~12px
+     * 空白槽，没有行号、没有复选框；这里实现为 16px（容纳 12px 状态图标）。
+     * 选择走行多选（单击 / Ctrl / Shift），批量动作走右键菜单。
+     */
     @Test
-    void selectAllCheckboxSelectsCurrentPageAndShowsBatchBar() throws Exception {
+    void theRowHeaderIsABlankGutterWithoutCheckboxOrRowNumber() throws Exception {
         DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
-                DemoDatabase.create(temp.resolve("select-all.db"))));
+                DemoDatabase.create(temp.resolve("gutter.db"))));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
+                    "test.db", noOpFeedback(), name -> { }, executor);
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> page.lookup("#data-table") != null
+                    && tableOf(page).getItems().size() == 200);
+
+            TableColumn<Map<String, Object>, ?> gutter =
+                    tableOf(page).getColumns().getFirst();
+            assertThat(gutter.getWidth()).isEqualTo(16.0);
+            assertThat(gutter.getText()).isEmpty();
+            assertThat(gutter.getGraphic()).isNull();
+            assertThat(gutter.getUserData()).isNull();
+            assertThat(page.lookup("#data-select-all")).isNull();
+            page.close();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    /**
+     * ⭐ N16：批量菜单跟着选中行走 —— 计数、清空选择。
+     */
+    @Test
+    void batchMenuReportsSelectionAndCanClearIt() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("batch-menu.db"))));
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
@@ -371,18 +412,20 @@ class DataGridPageTest {
                     && tableOf(page).getItems().size() == 200);
 
             WaitForAsyncUtils.asyncFx(() ->
-                    ((CheckBox) tableOf(page).getColumns().getFirst().getGraphic()).fire()).get();
-            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
-                    () -> tableOf(page).getSelectionModel().getSelectedItems().size() == 200);
-            assertThat(page.lookup("#data-batch-bar").isVisible()).isTrue();
-            assertThat(((Label) page.lookup("#data-batch-label")).getText())
-                    .isEqualTo(I18n.t("grid.batch.selected", 200));
+                    tableOf(page).getSelectionModel().selectAll()).get();
+            WaitForAsyncUtils.waitForFxEvents();
+            javafx.scene.control.ContextMenu menu =
+                    WaitForAsyncUtils.asyncFx(page::batchMenuForTest).get();
+            MenuItem label = menu.getItems().stream()
+                    .filter(item -> "data-batch-label".equals(item.getId()))
+                    .findFirst().orElseThrow();
+            assertThat(label.getText()).isEqualTo(I18n.t("grid.batch.selected", 200));
 
-            WaitForAsyncUtils.asyncFx(() ->
-                    ((CheckBox) tableOf(page).getColumns().getFirst().getGraphic()).fire()).get();
-            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
-                    () -> tableOf(page).getSelectionModel().getSelectedItems().isEmpty());
-            assertThat(page.lookup("#data-batch-bar").isVisible()).isFalse();
+            WaitForAsyncUtils.asyncFx(() -> menu.getItems().stream()
+                    .filter(item -> "data-batch-clear".equals(item.getId()))
+                    .findFirst().orElseThrow().fire()).get();
+            WaitForAsyncUtils.waitForFxEvents();
+            assertThat(tableOf(page).getSelectionModel().getSelectedItems()).isEmpty();
             page.close();
         } finally {
             executor.shutdownNow();
@@ -455,14 +498,26 @@ class DataGridPageTest {
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> page.dirtyCount() == 2);
             assertThat(bioIndex).isGreaterThan(0);
 
-            WaitForAsyncUtils.asyncFx(() ->
-                    ((Button) page.lookup("#data-undo")).fire()).get();
+            fireRowUndo(page);
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> page.dirtyCount() == 0);
             page.close();
         } finally {
             executor.shutdownNow();
             session.close();
         }
+    }
+
+    /**
+     * N19 之后撤销不在顶栏常驻：它跟重做一起进了行操作条第 5 颗的菜单。
+     * 门禁走菜单项，和用户点到的路径一致。
+     */
+    private static void fireRowUndo(DataGridPage page) throws Exception {
+        WaitForAsyncUtils.asyncFx(() -> {
+            MenuButton more = (MenuButton) page.lookup("#data-row-more");
+            more.getItems().stream()
+                    .filter(item -> "data-row-undo".equals(item.getId()))
+                    .findFirst().orElseThrow().fire();
+        }).get();
     }
 
     @SuppressWarnings("unchecked")
@@ -588,6 +643,7 @@ class DataGridPageTest {
                 DemoDatabase.create(temp.resolve("pager.db"))));
         ExecutorService executor = Executors.newSingleThreadExecutor();
         List<String> messages = new java.util.ArrayList<>();
+        List<String> ranges = new java.util.ArrayList<>();
         DataGridPage.Feedback feedback = new DataGridPage.Feedback() {
             @Override
             public void status(String message) {
@@ -596,6 +652,7 @@ class DataGridPageTest {
 
             @Override
             public void range(String text) {
+                ranges.add(text);
             }
 
             @Override
@@ -608,62 +665,58 @@ class DataGridPageTest {
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
                     page.lookup("#data-table") != null && tableOf(page).getItems().size() == 200);
 
-            // 每页改成 100 → users 200 行分 2 页
-            // ⚠️ 程序化 select 在部分 JavaFX 版本不触发 onAction，这里显式补发与用户操作等价的事件。
-            @SuppressWarnings("unchecked")
-            javafx.scene.control.ComboBox<Integer> sizeBox =
-                    (javafx.scene.control.ComboBox<Integer>) page.lookup("#data-page-size");
-            WaitForAsyncUtils.asyncFx(() -> {
-                if (!Integer.valueOf(100).equals(sizeBox.getValue())) {
-                    sizeBox.getSelectionModel().select(Integer.valueOf(100));
-                }
-                sizeBox.fireEvent(new javafx.event.ActionEvent());
-            }).get();
-            javafx.scene.control.Label pageLabel =
-                    (javafx.scene.control.Label) page.lookup("#data-page");
+            // 每页改成 100 → users 200 行分 2 页（N20：页大小在齿轮菜单里）
+            page.setPageSizeForTest(100);
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
-                    pageLabel.getText().contains("1 / 2"));
+                    tableOf(page).getItems().size() == 100);
+            javafx.scene.control.TextField pageBox =
+                    (javafx.scene.control.TextField) page.lookup("#data-page");
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                    "1".equals(pageBox.getText())
+                            && pageBox.getTooltip() != null
+                            && pageBox.getTooltip().getText().contains("1 / 2"));
             WaitForAsyncUtils.waitForFxEvents();
 
             javafx.scene.control.Button first =
                     (javafx.scene.control.Button) page.lookup("#data-first");
             javafx.scene.control.Button last =
                     (javafx.scene.control.Button) page.lookup("#data-last");
-            javafx.scene.control.TextField jump =
-                    (javafx.scene.control.TextField) page.lookup("#data-jump");
 
             assertThat(first.isDisable()).as("第 1 页时首页按钮禁用").isTrue();
             assertThat(last.isDisable()).as("第 1 页时末页按钮可用").isFalse();
 
-            // 跳页到 2
-            WaitForAsyncUtils.asyncFx(() -> jump.setText("2")).get();
-            WaitForAsyncUtils.asyncFx(() ->
-                    jump.fireEvent(new javafx.event.ActionEvent())).get();
+            // 跳页到 2 —— 页码框本身就是跳页输入
+            WaitForAsyncUtils.asyncFx(() -> {
+                page.jumpToPage("2");
+                return null;
+            }).get();
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
-                    pageLabel.getText().contains("2 / 2"));
+                    "2".equals(pageBox.getText())
+                            && pageBox.getTooltip().getText().contains("2 / 2"));
             WaitForAsyncUtils.waitForFxEvents();
 
             assertThat(tableOf(page).getItems()).hasSize(100);
             assertThat(first.isDisable()).as("第 2 页时首页按钮可用").isFalse();
             assertThat(last.isDisable()).as("第 2 页时末页按钮禁用").isTrue();
-            assertThat(jump.getText()).as("跳转后输入框应清空").isEmpty();
+            assertThat(pageBox.getText()).as("跳转后页码框显示当前页").isEqualTo("2");
 
             // 越界跳页：给状态提示，不翻页
-            WaitForAsyncUtils.asyncFx(() -> jump.setText("9")).get();
-            WaitForAsyncUtils.asyncFx(() ->
-                    jump.fireEvent(new javafx.event.ActionEvent())).get();
+            WaitForAsyncUtils.asyncFx(() -> {
+                page.jumpToPage("9");
+                return null;
+            }).get();
             WaitForAsyncUtils.waitForFxEvents();
             assertThat(messages).anyMatch(message -> message.equals(I18n.t("grid.pager.jumpPageMax", 2)));
-            assertThat(pageLabel.getText()).as("越界跳页不应改变页码").isEqualTo(I18n.t("grid.pager.pageOf", 2, 2));
+            assertThat(pageBox.getText()).as("越界跳页不应改变页码").isEqualTo("2");
 
             // 回到第 1 页
             WaitForAsyncUtils.asyncFx(first::fire).get();
-            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
-                    pageLabel.getText().contains("1 / 2"));
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> "1".equals(pageBox.getText()));
             WaitForAsyncUtils.waitForFxEvents();
             assertThat(tableOf(page).getItems()).hasSize(100);
-            assertThat(((javafx.scene.control.Label) page.lookup("#data-range")).getText())
-                    .isEqualTo("1–100 / 200");
+            assertThat(ranges)
+                    .as("⭐ N20：记录范围只在状态栏（feedback.range），底栏不再重复")
+                    .contains("1–100 / 200");
 
             page.close();
         } finally {
@@ -860,18 +913,31 @@ class DataGridPageTest {
                     page.lookup("#data-table") != null && tableItems(page).size() == 200);
             WaitForAsyncUtils.waitForFxEvents();
 
+            // ⭐ N20：网格视图只有一套翻页键，配页码框与齿轮 —— 不会和行导航混淆。
+            assertThat(WaitForAsyncUtils.asyncFx(() ->
+                    page.lookup("#data-first") != null
+                            && page.lookup("#data-page") != null
+                            && page.lookup("#data-page-options") != null).get()).isTrue();
+            assertThat(WaitForAsyncUtils.asyncFx(() ->
+                    page.lookup("#data-record-nav") == null
+                            || !page.lookup("#data-record-nav").isVisible()).get())
+                    .as("网格视图不摆行导航 —— 点行就是导航")
+                    .isTrue();
+
+            // 表单视图里才出现「记录」标签的行导航，且只有这一组。
+            WaitForAsyncUtils.asyncFx(() -> {
+                page.setFormView(true);
+                return null;
+            }).get();
+            WaitForAsyncUtils.waitForFxEvents();
             List<String> labels = WaitForAsyncUtils.asyncFx(() ->
                     page.lookupAll(".adb-record-nav__label")
                             .stream()
                             .map(node -> ((Label) node).getText())
                             .toList()).get();
-            assertThat(labels).containsExactly(I18n.t("grid.form.record"), I18n.t("grid.pager.pageLabel"));
-
-            // 两组按钮都得在 —— 这是「分辨」而不是「删掉一组」。
+            assertThat(labels).containsExactly(I18n.t("grid.form.record"));
             assertThat(WaitForAsyncUtils.asyncFx(() ->
-                    page.lookup("#data-record-first") != null).get()).isTrue();
-            assertThat(WaitForAsyncUtils.asyncFx(() ->
-                    page.lookup("#data-first") != null).get()).isTrue();
+                    page.lookup("#data-record-first").isVisible()).get()).isTrue();
 
             page.close();
         } finally {
@@ -883,7 +949,7 @@ class DataGridPageTest {
     // ───────────────── 第十八轮：每页档位必须真的选中 ─────────────────
 
     @Test
-    void pageSizeSelectorShowsTheConfiguredValueInsteadOfAnEmptyBox() throws Exception {
+    void theGearMenuShowsTheConfiguredPageSize() throws Exception {
         DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
                 DemoDatabase.create(temp.resolve("pagesize.db"))));
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -891,30 +957,31 @@ class DataGridPageTest {
             DataGridPage page = new DataGridPage(session, new SchemaService(), "users",
                     "pagesize.db", noOpFeedback(), name -> { }, executor);
             WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
-                    page.lookup("#data-page-size") != null);
-
-            @SuppressWarnings("unchecked")
-            javafx.scene.control.ComboBox<Integer> box =
-                    (javafx.scene.control.ComboBox<Integer>) page.lookup("#data-page-size");
+                    page.lookup("#data-page-options") != null);
             WaitForAsyncUtils.waitForFxEvents();
 
-            // ⚠️ 回归守卫：`select(int)` 是按下标选（items 只有 0–3 四项），
-            //    传原生 int 会静默失败，「每页」框渲染成空白 —— 截图里就是空的。
-            assertThat(box.getValue())
-                    .as("「每页」必须显示当前档位（DEFAULT_PAGE_SIZE=200），不能是空框")
-                    .isNotNull()
-                    .isEqualTo(200);
-            assertThat(box.getSelectionModel().getSelectedIndex())
-                    .as("按值选中后下标应当落在 items 范围内")
-                    .isBetween(0, box.getItems().size() - 1);
+            WaitForAsyncUtils.asyncFx(() -> {
+                ((javafx.scene.control.Button) page.lookup("#data-page-options")).fire();
+                return null;
+            }).get();
+            WaitForAsyncUtils.waitForFxEvents();
 
-            // ⚠️ 第十八轮实测补的回归守卫：**选中了不等于显示得出来**。
-            //    78px 时截图里「200」被截成「2…」（按钮单元格吃掉宽度，右侧还剩 23px
-            //    空白却已经出省略号）；96px 才完整渲染。这里锁住「至少够渲染最宽的
-            //    档位 1000」这条底线，防止有人再把宽度改小。
-            assertThat(box.getPrefWidth())
-                    .as("「每页」框要够渲染最宽档位「1000」—— 实测 78px 会把「200」截成「2…」")
-                    .isGreaterThanOrEqualTo(90);
+            List<javafx.scene.control.RadioMenuItem> radios = page.pageOptionsMenuForTest()
+                    .getItems().stream()
+                    .filter(javafx.scene.control.RadioMenuItem.class::isInstance)
+                    .map(javafx.scene.control.RadioMenuItem.class::cast)
+                    .toList();
+            assertThat(radios)
+                    .as("⭐ N20：每页档位在齿轮菜单里（DEFAULT_PAGE_SIZE=200）")
+                    .isNotEmpty();
+            assertThat(radios.stream().filter(javafx.scene.control.MenuItem::isDisable)
+                    .toList()).as("加载完成后档位可选").isEmpty();
+            assertThat(radios.stream()
+                    .filter(javafx.scene.control.RadioMenuItem::isSelected)
+                    .map(item -> item.getId())
+                    .toList())
+                    .as("当前档位要真的被选中")
+                    .containsExactly("data-page-size-200");
         } finally {
             executor.shutdownNow();
             session.close();
