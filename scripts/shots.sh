@@ -109,7 +109,7 @@ SHOTS=(
   # ⭐ R33-G6：导出向导 —— 摆「取消勾选一列 + XML 格式 + 目标路径」，
   #   证的是列选择与 XML/HTML 两种新格式在界面上真的可选、可用性跟着格式走。
   "p8-export||9000|ADB_OPEN=users ADB_EXPORT=xml ADB_THEME_FORCE=light"
-  # ⭐ R33-G20：连接向导的类型选择页 —— 三张真实库型磁贴 + 搜索 + URI 入口。
+  # ⭐ R33-G20：连接向导的类型选择页 —— 六张真实库型磁贴 + 搜索 + URI 入口。
   #   不需要数据库连接，弹得快；4000ms 只等启动。
   "p5-connect-type||4000|ADB_CONNECT_WIZARD=type ADB_THEME_FORCE=light"
   # ⭐ R33-G8/G20：7 页属性 —— 常规 / SSL / SSH 各一帧。
