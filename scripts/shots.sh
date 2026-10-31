@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（40 张）。
+# 重拍 docs/screenshots/ 的验收截图（41 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 35 张 + 暗色 5 张）
+#   ./scripts/shots.sh              # 全部重拍（亮色 36 张 + 暗色 5 张）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
 #
 # 为什么需要这个脚本（历史上踩过的坑，全部在这里被绕开）：
@@ -137,6 +137,10 @@ SHOTS=(
   # 字面存在的 setId，脚本点不到 —— 所以由 ADB_FILTER 在数据页里 fire 那颗按钮。
   # 9000ms：表结构与列头是异步建的，列头没建出来 poseFilterPanel 一直返回 false。
   "p2-filter||9000|ADB_OPEN=users ADB_FILTER=1 ADB_THEME_FORCE=light"
+  # ⭐ R38 N31：内嵌 Filter & Sort 面板 —— 工具条按钮呈按下态，面板把网格往下推；
+  #   两行条件 + and 连接词 + Sort By 芯片 + Criteria Edited 脏标记都在画面里。
+  #   10000ms：连接 → 表结构 → 行 两轮轮询都要等够，面板才有列可摆。
+  "p2-filter-sort||10000|ADB_OPEN=users ADB_FILTER_SORT=1 ADB_THEME_FORCE=light"
 )
 
 step "编译并安装（否则拍到的是旧界面）"

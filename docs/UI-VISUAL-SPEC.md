@@ -128,14 +128,14 @@
 
 ## 3. 颜色与语义
 
-### 3.1 令牌分层（`tokens.json` 共 **106** 个：**68 颜色 / 35 尺寸 / 3 时长**）
+### 3.1 令牌分层（`tokens.json` 共 **107** 个：**69 颜色 / 35 尺寸 / 3 时长**）
 
 > 下表的数量与名字是从 `tokens.json` 现量出来的（不是回忆）；
 > `TokenParityTest` 钉住 `meta.count`，任何一处对不上就红。
 
 | 层 | 数量 | 令牌 | 语义 |
 |---|---|---|---|
-| 背景 | 13 | `bg-canvas` `bg-chrome` `bg-sidebar` `bg-surface` `bg-subtle` `bg-elevated` `bg-inset` `bg-hover` `bg-active` `bg-selected` `bg-selected-grid` `bg-stripe` `bg-disabled` | canvas=页面底 · chrome=顶区外壳 · surface=条带/面板 · subtle=分区底(比 surface 低一档) · elevated=浮层(弹窗/toast/命令面板) · inset=凹陷(输入框/表头/代码区) |
+| 背景 | 14 | `bg-canvas` `bg-chrome` `bg-sidebar` `bg-surface` `bg-subtle` `bg-elevated` `bg-inset` `bg-hover` `bg-active` `bg-selected` `bg-selected-grid` `bg-header-current` `bg-stripe` `bg-disabled` | canvas=页面底 · chrome=顶区外壳 · surface=条带/面板 · subtle=分区底(比 surface 低一档) · elevated=浮层(弹窗/toast/命令面板) · inset=凹陷(输入框/表头/代码区) · header-current=网格光标列表头 tint（Navicat 实测 `#AED4F2`） |
 | 边框 | 3 | `border` `border-subtle` `border-focus` | 普通分隔 / 更淡的行线 / 焦点环 |
 | 文字 | 6 | `text-primary` `text-secondary` `text-tertiary` `text-muted` `text-disabled` `text-inverse` | 正文 / 次要 / 三级(提示) / 弱化装饰(图标·分隔线) / 禁用 / 反色(主按钮上) |
 | 强调 | 2 | `accent` `accent-hover` | 主色、悬停 |
@@ -402,6 +402,7 @@
 | 网格 / 清单 / 结构单元格（compact 及以上） | `4px 8px`（清单 `0 8px`） |
 | 网格 / 清单 / 结构单元格（dense） | `2px 6px`（清单 `0 6px`，使用 `sp-1h`） |
 | 面板 / 卡片 | `12px` / `16px` |
+| Filter & Sort 面板 | `8px 12px`（条件行 `4px`，行间距 `6px`） |
 
 ---
 
@@ -451,13 +452,19 @@
 ```
 objectHeader（类型图标 + 表名 + 类型徽标 + 真实行数 | 刷新·结构 | 连接·可写性）
 objectTabs（数据 / 结构 / 索引 / 外键 / 触发器 / SQL —— 当前切面下划线）
-├ 数据切面
-│   toolbar（左组：新增·撤销·重做·保存·删除 ｜ 右组：筛选·清除·列·视图·导出·搜索）
-│   chips（已生效的筛选 / 排序条件，可单个删除 + 全部清除）
-│   recordNav（首/上/下/末 + 记录号输入 + 「本页 N 行」）
-│   grid（列头两行：列名+类型行 / 行号列 / 选择列）
-│   batchBar（选中行时出现：计数 + 批量动作）
-│   pager（每页档位 + 范围 + 首/上/页码/下/末 + 跳至行）
+├ 数据切面（N19 / N20 / N31）
+│   数据工具条：13 具名键 —— Table Profile▾ ｜ Begin Transaction ｜ Cell Editor · Filter & Sort ｜
+│                Columns · History ｜ Fill with AI▾ · Data Profiling ｜
+│                Import · Export · Data Generation · Data Masking · Create BI Workspace
+│              + 右端 2 小键：视图 ≡▾ · 溢出 »（放不下的具名键从右往左折进 »，键盘可到达）
+│   chips（已生效的筛选 / 排序条件，可单个删除 + 全部清除；无条件下整条隐藏）
+│   Filter & Sort 面板（工具条按钮按下态打开，内嵌在工具条与网格之间，把网格往下推 —— 见 §7.3）
+│   findBar（⌘F 本页搜索，内嵌在网格上方，不弹窗）
+│   body（网格 / 表单视图二选一；batch 入口 = 行多选 + 右键菜单，无批量条）
+│   底栏：左 = 行操作条（+ − ✓ ✗，纯图标灰单线，只读表整排消失）｜
+│         右 = 首 / 上 / [页码框] / 下 / 末 · 齿轮▾（每页行数 + 跳至记录）· 放大镜 · 网格/表单切换
+│         （记录计数不在这排 —— 由状态栏呈现；窄宽时从右往左收掉 表单 → 网格 → 放大镜，
+│          五键 / 页码框 / 齿轮永不收，可用宽度还会让出详情浮层压住的那一截）
 └ 其它切面
     结构 / 索引 / 外键 / 触发器 / SQL（真实内省结果，只读）
 ```
@@ -542,18 +549,22 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 | 列头右键 | 排序升/降/清除 · 移到左/右/首/尾 · 筛选 · 隐藏 · 自适应 · **冻结到此列 / 取消冻结** · 复制列名。**做不到的事必须禁用**，不能点了给一个和菜单文字不符的结果（最后一列冻结 = 右边一列不剩 → 禁用；已冻的列「冻结到此列」禁用） |
 | 自适应 | 双击列头 = 按内容自适应，与菜单项同一算法（不是两条实现） |
 | 筛选漏斗 | **常态 opacity 0（仍占位）**，悬停列头浮现；**该列有筛选条件时常显**（状态不是装饰） |
-| 行号列 | 宽 52，11px；脏行号加粗变色（黄/绿/红） |
-| 选择列 | 宽 36，表头全选**只作用于当前页** |
+| 行首槽 | 宽 **16px**，空白无字（N16 实测：帧 3/4/6 8–12× 复核是一条 ~12px 空槽，没有行号也没有常显铅笔）；只在草稿 / 脏行 / 待删行放 12px 状态图标（`＋` / 铅笔 / `×`）。批量入口 = 行多选 + 右键菜单 + 底部行操作条 |
 | 正文 | 12px，`4px 8px`（dense `2px 6px`）；NULL 斜体灰、空串浅灰、枚举绿粗体、JSON 蓝等宽、数字等宽 |
 | **空值三态** | ⭐ **`NULL` 显示 `(NULL)`**，不是 `NULL`。带括号的原因：TEXT 列里真的会出现**内容为 "NULL" 的字符串**（CSV 导入、日志表、外部系统写的），灰斜体的 `NULL` 和一条值为 NULL 的文本在 12px 网格里分不出来，而这两种情况要做的处理完全不同。空串显示 `""`，BLOB 显示大小（补 **GB 档**，不显示 `1536.0 MB`）。三者各有 tooltip |
 | 斑马纹 | 奇数行 `bg-stripe`（亮 `#F9F9F9` / 暗 `rgba(148,163,184,.035)`）—— **网格三层里最轻的一层**，必须轻于选中 tint 和 hover。⚠️ 实现上条纹档**只许带 `:odd` 一个伪类**：多带一个 `:filled` 就比 `:hover` / `:selected` / `--deleted` / `--new` 重一档，会反过来把行态底色整条压掉，且**只有奇数行错**（第三十一轮实拍抓到，门禁 `SelectionStateTest.stateRulesOutweighTheZebraStripeInEveryTableScope`） |
 | 网格线 | 横线 + 竖线都是 `border-subtle` 1px（Navicat 17 实测：列边界 `#F0F0F0`）。**宽度写在基础规则里，状态规则只改颜色**（见下方「槽位常留」） |
 | 选中 | `bg-selected-grid`（Navicat 实测 `#C4E0F7`）+ 正文色字（不蓝字）+ **左侧 2px `accent` 强调条**；`hover` 规则排在 `selected` **之前**，悬停已选行仍是选中色 |
-| 当前格（键盘光标） | ⭐ **不是 `.table-cell:focused`** —— 行选模式下 `TableCell.updateFocus()` 会主动清掉 `:focused`，那条伪类在这张表上永远不匹配。由 `DataGridPage` 盯 `focusModel` 打样式类 `adb-grid__cell--cursor`：**内描边 `border-focus` + `bg-active` 淡底**，只有左右两条边（行高 23px，上下再吃 4px 就把正文挤没）。光标**按列名**记，不按 `TableColumn` 实例记（冻结区的列是从右表搬过去的同一批实例） |
+| 当前格（键盘光标） | ⭐ **不是 `.table-cell:focused`** —— 行选模式下 `TableCell.updateFocus()` 会主动清掉 `:focused`，那条伪类在这张表上永远不匹配。由 `DataGridPage` 盯 `focusModel` 打样式类 `adb-grid__cell--cursor`：**内描边 `border-focus` + `bg-active` 淡底**，只有左右两条边（行高 23px，上下再吃 4px 就把正文挤没）。光标**按列名**记，不按 `TableColumn` 实例记（冻结区的列是从右表搬过去的同一批实例）。⭐ N17 改判：规划里写的「当前格橙黄 `#FFB666`/`#FFFFB6`」是整帧散落的 ClearType 子像素边缘色（文字抗锯齿），**不是**格子填充；帧 3/6 里没有橙黄当前格，本轮不实现 |
+| 当前列表头 | 光标所在列的表头**整格着蓝 tint** `bg-header-current`（Navicat 帧 6 实测 `#AED4F2`）。样式类挂在 `TableColumn` 上（`adb-grid__column--current`），`TableColumnHeader` 会把它复制到表头单元格；换列即摘旧类 |
+| 行内编辑盒 | 编辑中的格子 = 白底 `bg-surface` + **2px `border-focus` 方框**（帧 6 实测 `#0078D7`），方角贴满整格，进入编辑即全选；行仍是选中态（整行色带）。输入框自己透明无框，边界由格子画 |
 | 脏单元格 | 左侧 2px 黄条 + `warning-bg` |
 | 新增行 / 删除行 | 绿底 / 红底（删除行文字降为 tertiary） |
 | 行操作条 | 网格左下 `+ / − / 应用 / 取消`，**纯图标不加文字**（贴着光标，越短越不挡视线）。可用态**绑定**工具条同一批按钮，不重写判断；只读表**整排消失**（一排永远点不动的按钮只会引人反复试） |
-| 编辑器 | 格内单行输入：3px 圆角 + `border-focus` 描边，出错转 `error`。⭐ 长文本 / JSON / CLOB 走**详情抽屉文本页就地编辑**（不是弹窗）：回填**原始值**、**Ctrl+Enter 应用**（多行编辑器里回车是换行，不能拿来提交）、**Esc 只放弃本次编辑不关抽屉**、**切页签同样放弃编辑**（提交目标在进编辑态时钉死，绝不随当前页变 —— 否则「文本页敲字 → 切 JSON 页 → 应用」会把美化过的 JSON 整段写进 TEXT 列）、写进**同一个 `EditBuffer`**；主键列与只读表不出现编辑器 |
+| 数据工具条 | **13 具名键**（视觉顺序 = 折叠顺序）：`Table Profile▾` · `Begin Transaction` · `Cell Editor` · `Filter & Sort`（开关，按下态 = 面板开着）· `Columns` · `History` · `Fill with AI▾` · `Data Profiling` · `Import` · `Export` · `Data Generation` · `Data Masking` · `Create BI Workspace`。右端恒留 2 小键：视图 `≡▾`、溢出 `»`。放不下时从右往左把具名键折进 `»` 菜单（按 `prefWidth` 判，不靠 `minWidth`），`»` 可 Tab / Enter 到达。能力面未建的四颗（Fill with AI / Data Profiling / Data Generation / Data Masking / Create BI Workspace）点开是**如实说明页**，不是死按钮 |
+| 底栏 | 一行：左 = 行操作条；右 = `首 / 上 / [页码框] / 下 / 末` + 齿轮 `▾`（每页行数 100/200/500/1000 + 跳至记录）+ 放大镜 + 网格/表单切换。**没有行数 / 页大小 / 「跳至页」文字控件**，记录计数只在状态栏。页码框兼作跳页输入；窄宽降级按可**见**宽度（场景坐标 − 父容器右内边距 − 覆盖底栏的详情浮层）从右往左收 `表单 → 网格 → 放大镜`，五键 / 页码框 / 齿轮永不收 |
+| **Filter & Sort 面板（N31）** | 工具条 `Filter & Sort` 按钮**按下态**打开，内嵌在工具条与网格之间（把网格往下推，不是弹窗/浮层）。面板 = 标题行（`Filter` + 升降序快捷键 + `Builder / Text` 模式切换）+ 条件行列表（每行：启用勾选 · 字段链接 · 操作符 ▾ · 值 / `<?>` 占位 · `and` 连接词 · 删除）+ `[+]` 加条件 · `[Ω]` 加组 + `Sort By` 芯片（字段 ▾ · 升降序 · 删除）+ 底部 `Apply Filter & Sort` 主按钮与 `Criteria Edited` 脏标记。**显式应用**，不是即输即查；未点 Apply 不动查询。Text 模式是**只读**的生成表达式（真要做自由 SQL 请去查询页）。`[Ω]`（OR 组）本版本不给真功能 —— 点开如实说明页；`IN` 条件无法用扁平 AND 生成器表达，保留列头漏斗按候选值筛选，应用面板时原样保留。列名变（表结构变化）时面板清空重建，避免拿旧列名拼 SQL |
+| 编辑器 | 格内单行输入 = 上面「行内编辑盒」（N17：白底 + 2px `border-focus` 贴格框，方角；出错只换 `error-bg` 底色）。⭐ 长文本 / JSON / CLOB 走**详情抽屉文本页就地编辑**（不是弹窗）：回填**原始值**、**Ctrl+Enter 应用**（多行编辑器里回车是换行，不能拿来提交）、**Esc 只放弃本次编辑不关抽屉**、**切页签同样放弃编辑**（提交目标在进编辑态时钉死，绝不随当前页变 —— 否则「文本页敲字 → 切 JSON 页 → 应用」会把美化过的 JSON 整段写进 TEXT 列）、写进**同一个 `EditBuffer`**；主键列与只读表不出现编辑器 |
 
 > ⭐ **槽位常留（UX-4 的排版不变量）**：行 `border-width: 0 0 1 2`、单元格 `0 1 0 2` ——
 > 左侧 2px、右侧 1px 由**基础规则**留成透明空槽，选中条 / 脏值条 / 光标环 / 矩形选区
@@ -602,6 +613,9 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 | 事务 | `事务中` / `自动提交` | 真实事务状态 |
 | 只读 | `只读` / `可写` | — |
 | 版本 | `v1.0.0` | **来自构建产物，不硬编码**（当前仍是硬编码 → 缺口 X-1） |
+
+> ⭐ N20：数据页底栏不再摆记录数 / 页大小 / 「跳至页」文字控件 —— 行范围与耗时**只在这里**呈现，
+> 页大小与跳至记录收进底栏齿轮菜单。
 
 ### 7.7 反馈
 

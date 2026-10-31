@@ -47,7 +47,7 @@ SQLite table comments, which show up **disabled** rather than pretending to work
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/p2-users.png" alt="Data grid with inline editing, row numbers, type row and pager bar" width="100%"><br><b>Edit data in place.</b> Server-side paging, column filters with value counts, a condition builder, up to 3-level sorting, frozen columns, rectangle selection, undo / redo.</td>
+    <td width="50%"><img src="docs/screenshots/p2-users.png" alt="Data grid with inline editing, an inline Filter & Sort builder and a pager bar" width="100%"><br><b>Edit data in place.</b> Server-side paging, an inline Filter &amp; Sort builder, value pickers on every column header, up to 3-level sorting, frozen columns, rectangle selection, undo / redo.</td>
     <td width="50%"><img src="docs/screenshots/p3-query.png" alt="SQL editor with syntax highlighting, result tabs and messages" width="100%"><br><b>Write SQL, not mouse strokes.</b> Highlighted editor with line numbers, run the current statement or all of them, cancel a running query, multi-statement result tabs, execution plan, error locator, query history, snippets.</td>
   </tr>
   <tr>
@@ -55,7 +55,7 @@ SQLite table comments, which show up **disabled** rather than pretending to work
     <td width="50%"><img src="docs/screenshots/p6-new-table.png" alt="New table dialog with a live SQL preview" width="100%"><br><b>See the statement before it runs.</b> Every dialog that writes shows the exact SQL it is about to execute, so nothing is explained after the fact.</td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/p2-users-dark.png" alt="Dark theme data grid" width="100%"><br><b>Two themes, one source of truth.</b> Light and dark, 106 design tokens, four density levels — and icon colors resolved from those same tokens, so a theme switch needs no second icon set.</td>
+    <td width="50%"><img src="docs/screenshots/p2-users-dark.png" alt="Dark theme data grid" width="100%"><br><b>Two themes, one source of truth.</b> Light and dark, 107 design tokens, four density levels — and icon colors resolved from those same tokens, so a theme switch needs no second icon set.</td>
     <td width="50%"><img src="docs/screenshots/p8-import.png" alt="Import wizard with field mapping and a bad row report" width="100%"><br><b>Get data in and out.</b> Streaming CSV / TSV / JSON Lines / SQL / xlsx, field mapping, conversion to the target column's type, and a report that names every bad row.</td>
   </tr>
 </table>
@@ -151,8 +151,12 @@ every pull request is reviewed against. Design rules are in
     <td><img src="docs/screenshots/p2-form.png" alt="Read-only form view of a row" width="380"><br>Transposed form view</td>
   </tr>
   <tr>
+    <td><img src="docs/screenshots/p2-filter-sort.png" alt="Inline Filter and Sort builder inside the data grid" width="380"><br>Inline Filter &amp; Sort builder</td>
     <td><img src="docs/screenshots/p5-connect-ssl.png" alt="Connection wizard SSL page writing real driver properties" width="380"><br>Connection wizard — SSL writes actual driver properties</td>
+  </tr>
+  <tr>
     <td><img src="docs/screenshots/p7-new-index.png" alt="New index dialog with live DDL preview" width="380"><br>Index dialog with live DDL</td>
+    <td></td>
   </tr>
 </table>
 
@@ -193,7 +197,7 @@ AIDB 是一个**原生桌面数据库客户端**：Java 25 + JavaFX 25，不内�
 
 界面照 Navicat 的交互习惯做：对象树 → 双击表 → 数据页 → 行内编辑 → 预览 SQL → 单事务保存 → 保存后撤销，
 全程键盘可达（⌘K 命令面板）。写操作 fail-closed 分级 + 两级确认；口令只进系统钥匙串 / 凭据管理器，明文不落盘。
-暗亮双主题、106 个设计令牌单一真相、四档密度、中英文界面。
+暗亮双主题、107 个设计令牌单一真相、四档密度、中英文界面。
 
 **目前没有可下载的安装包**（缺 Apple 公证与 Windows 代码签名证书），只能源码运行：`./scripts/dev.sh`。
 冷启动实测 3.5–3.9 秒，未达 <2 秒目标 —— 这些写在 [docs/STATUS.md](docs/STATUS.md) 里，不藏在截图后面。
