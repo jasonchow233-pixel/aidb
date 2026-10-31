@@ -50,16 +50,23 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
- * 表清单页 —— Navicat 的「表清单」那一层。
+ * 表清单页 —— Navicat 的「表对象清单」那一层，也是本项目**唯一的对象清单页**。
  *
- * <p>列与 Navicat 的「表」对象清单一致：**名称 / 行 / 数据长度 / 引擎 /
- * 创建日期 / 修改日期 / 排序规则 / 注释**（官方截图实拍）。方言拿不到的列显示「—」——
- * 显示「—」比编一个看起来像真的值诚实。
+ * <p>⭐ R37 N33：以前另有一张「对象首页」（药丸总览 + 类型筛选），Navicat 没有这个概念；
+ * 现在常驻的「对象」标签直接托管本页，表以外的对象在左侧树里浏览。
  *
- * <p>顶部工具条提供**新建 / 删除 / 设计 / 搜索 / 打开 / 刷新 / 视图切换**：
+ * <p>列与 Navicat 的「表」对象清单一致（N14，官方截图实拍）：
+ * **名称 / 行 / 数据长度 / 引擎 / 修改日期 / 注释**。方言拿不到的格显示「—」——
+ * 显示「—」比编一个看起来像真的值诚实；列本身不再按数据整列隐藏，
+ * 六列在任何方言下都会出现（恒空的列按「—」读，位置不随数据跳动）。
+ *
+ * <p>顶部工具条是 N15 的七键：**打开表 / 设计表 / 新建表 / 用 AI 新建表 /
+ * 删除表 / 导入向导 / 导出向导**：
  * <ul>
  *   <li>危险动作（删除）选中后才会亮，并且一定先展示 SQL 再执行；</li>
  *   <li>多选后删除会先给一张汇总确认页，执行完再报告失败行；</li>
+ *   <li>导入 / 导出在单选时直接进向导；没选或多选时先进「选一张表」对话框；</li>
+ *   <li>「用 AI 新建表」的能力面还没建，按诚实条款打开如实说明页；</li>
  *   <li>双击行或按 Enter 打开数据页（与对象树的操作一致）。</li>
  * </ul>
  *
@@ -71,6 +78,14 @@ final class TableListPage extends VBox {
     interface Host {
 
         default void newTable() {
+        }
+
+        /**
+         * 「用 AI 新建表」—— 能力面还没建，外壳打开如实说明页。
+         *
+         * <p>默认空实现只为老的测试假 Host 不炸；生产外壳必须覆盖。
+         */
+        default void newTableWithAi() {
         }
 
         default void openTable(String name) {
@@ -113,7 +128,8 @@ final class TableListPage extends VBox {
      */
     record Actions(Action create, Action open, Action design, Action rename,
                    Action truncate, Action drop, Action refresh,
-                   Action selectAll, Action viewList, Action viewGrid) {
+                   Action selectAll, Action viewList, Action viewGrid,
+                   Action createAi, Action importWizard, Action exportWizard) {
     }
 
     private final DbSession session;
@@ -141,21 +157,8 @@ final class TableListPage extends VBox {
     private final Set<String> gridSelection = new LinkedHashSet<>();
     private final BooleanProperty listView = new SimpleBooleanProperty(true);
 
-    // ─────────── 可选列（方言相关）的引用 ───────────
-    // ⭐ 第十九轮 S-1：这 6 列是「方言拿不到就显示 —」的可选列。留引用是为了
-    //    在数据加载后按内容决定整列显不显示（见 applyColumnVisibility）。
-    //    「名称 / 行」是核心列，不参与判定、永远显示。
-    private TableColumn<TableMeta, String> sizeColumn;
-    private TableColumn<TableMeta, String> engineColumn;
-    private TableColumn<TableMeta, String> createdColumn;
-    private TableColumn<TableMeta, String> updatedColumn;
-    private TableColumn<TableMeta, String> collationColumn;
-    private TableColumn<TableMeta, String> commentColumn;
-
     private Button listButton;
     private Button gridButton;
-    /** ⭐ UX-3：清单页的「导入 / 导出」入口（预选当前选中表）。 */
-    private final Button transferButton = new Button();
     private String anchorName;
     /** 防重入：统计没跑完时再点刷新只会排一次队。 */
     private boolean loading;
@@ -208,8 +211,11 @@ final class TableListPage extends VBox {
     private HBox buildToolbar() {
         search.setId("table-list-search");
         search.setPromptText(I18n.t("tableList.searchPrompt"));
-        search.setPrefWidth(160);
-        search.setMinWidth(120);
+        // 120 是这条工具条的上限：七颗键 + 列表/网格切换已经排到窗口右缘，
+        // 放宽到 150 会把第二颗切换键挤出可视区（2026-10-31 帧核对）。
+        // 占位符因此用短文案（"Search tables" / "搜索表名"），不靠省略号收尾。
+        search.setPrefWidth(120);
+        search.setMinWidth(90);
         search.getStyleClass().add("adb-table-list__search");
         search.textProperty().addListener((observable, oldValue, newValue) -> applyFilter(newValue));
         search.focusedProperty().addListener((observable, was, now) -> {
@@ -220,59 +226,41 @@ final class TableListPage extends VBox {
 
         summary.setId("table-list-summary");
         summary.getStyleClass().add("adb-muted");
+        // 空文案不占位：常态下工具条只有 Navicat 的七颗键（数量不摆在这一行）。
+        summary.managedProperty().bind(summary.textProperty().isNotEmpty());
 
         spinner.setId("table-list-spinner");
         spinner.setMaxSize(14, 14);
         spinner.setVisible(false);
         spinner.getStyleClass().add("adb-grid__spinner");
 
-        Button create = IconButtons.withIcon(
-                ActionRegistry.buttonFor(actions.create()), Icons.Icon.ADD);
-        create.setId("table-list-new");
-        Button drop = IconButtons.withIcon(
-                ActionRegistry.buttonFor(actions.drop()), Icons.Icon.DELETE);
-        drop.setId("table-list-drop");
-        Button design = IconButtons.withIcon(
-                ActionRegistry.buttonFor(actions.design()), Icons.Icon.STRUCTURE);
-        design.setId("table-list-design");
-        Button open = IconButtons.withIcon(
-                ActionRegistry.buttonFor(actions.open()), Icons.Icon.OPEN);
-        open.setId("table-list-open");
-        Button refresh = IconButtons.withIcon(
-                ActionRegistry.buttonFor(actions.refresh()), Icons.Icon.REFRESH);
-        refresh.setId("table-list-refresh");
-
-        // 文字按钮不许被 HBox 压到省略号（"打开…" 比只有图标更难懂）：
-        // 挤不下时让搜索框变窄，动作名保持完整。
-        for (Button button : List.of(create, drop, design, open, refresh)) {
-            button.setMinWidth(Region.USE_PREF_SIZE);
-        }
+        // ⭐ N15：七颗带文字的键 —— 光看图标猜不出「导入」和「打开」的区别。
+        //    Navicat 的对象工具条没有「刷新」键：刷新留在右键菜单 / 菜单栏。
+        Button open = labeledGhost(actions.open(), Icons.Icon.OPEN, "table-list-open");
+        Button design = labeledGhost(actions.design(), Icons.Icon.STRUCTURE, "table-list-design");
+        Button create = labeledGhost(actions.create(), Icons.Icon.ADD, "table-list-new");
+        Button createAi = labeledGhost(actions.createAi(), Icons.Icon.AI, "table-list-new-ai");
+        Button drop = labeledGhost(actions.drop(), Icons.Icon.DELETE, "table-list-drop");
+        Button importWizard = labeledGhost(actions.importWizard(), Icons.Icon.IMPORT,
+                "table-list-import");
+        Button exportWizard = labeledGhost(actions.exportWizard(), Icons.Icon.EXPORT,
+                "table-list-export");
 
         listButton = ActionRegistry.iconButtonFor(actions.viewList(), Icons.Icon.LIST,
                 I18n.t("action.table-list.view-list"), I18n.t("action.table-list.view-list"));
         gridButton = ActionRegistry.iconButtonFor(actions.viewGrid(), Icons.Icon.GRID,
                 I18n.t("action.table-list.view-grid"), I18n.t("action.table-list.view-grid"));
 
-        // ⭐ UX-3：清单页直接进导入 / 导出 —— 预选当前选中的那张表。
-        //    以前只能绕侧栏，选中了 orders 却要在弹窗里再找一遍。
-        transferButton.setId("table-list-transfer");
-        transferButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
-        IconButtons.labeled(transferButton, Icons.Icon.TRANSFER, I18n.t("action.import-export"),
-                I18n.t("tableList.transferTooltip"));
-        transferButton.setMinWidth(Region.USE_PREF_SIZE);
-        transferButton.setOnAction(event -> openTransferHub());
-
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        // ⭐ UX-3：按语义分四组，组间一条竖线 —— 一排 11 颗按钮不分堆，
-        //    等于没有顺序，眼睛每颗都要读一遍。
-        HBox groupObject = grouped(open, design, refresh);
-        HBox groupEdit = grouped(create, drop);
-        HBox groupTransfer = grouped(transferButton);
+        // 按语义分三组，组间一条竖线 —— 一排按钮不分堆等于没有顺序。
+        HBox groupObject = grouped(open, design);
+        HBox groupEdit = grouped(create, createAi, drop);
+        HBox groupTransfer = grouped(importWizard, exportWizard);
         HBox groupView = grouped(listButton, gridButton);
 
-        HBox toolbar = new HBox(8, groupObject, toolbarSeparator(), groupEdit,
+        HBox toolbar = new HBox(6, groupObject, toolbarSeparator(), groupEdit,
                 toolbarSeparator(), groupTransfer, spacer, search, summary, spinner,
                 toolbarSeparator(), groupView);
         toolbar.getStyleClass().addAll("adb-inline-toolbar", "adb-table-list__toolbar");
@@ -280,9 +268,24 @@ final class TableListPage extends VBox {
         return toolbar;
     }
 
+    /**
+     * 带文字的透明底按钮（N15 的七键）。
+     *
+     * <p>{@code USE_PREF_SIZE} 防止 HBox 把动作名压成省略号 ——
+     * 挤不下时该收缩的是搜索框，不是「导入向导」这四个字。
+     */
+    private static Button labeledGhost(Action action, Icons.Icon icon, String id) {
+        Button button = IconButtons.labeled(ActionRegistry.buttonFor(action), icon,
+                action.label(), action.label());
+        button.setId(id);
+        button.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        button.setMinWidth(Region.USE_PREF_SIZE);
+        return button;
+    }
+
     /** 工具条的一组（同一语义的动作）。 */
     private static HBox grouped(Node... nodes) {
-        HBox group = new HBox(4, nodes);
+        HBox group = new HBox(3, nodes);
         group.setAlignment(Pos.CENTER_LEFT);
         group.getStyleClass().add("adb-toolbar__group");
         return group;
@@ -315,9 +318,37 @@ final class TableListPage extends VBox {
         return List.copyOf(names);
     }
 
-    private void openTransferHub() {
+    /**
+     * 导入 / 导出向导。
+     *
+     * <p>N15：单选一张表时直接进向导（省一步选表）；没选或多选时先给
+     * {@link TransferHub} 的选表对话框 —— 两边的候选来自同一份清单。
+     */
+    void openImport() {
+        openTransfer(false);
+    }
+
+    void openExport() {
+        openTransfer(true);
+    }
+
+    private void openTransfer(boolean export) {
+        if (rows.isEmpty()) {
+            status.accept(I18n.t("tableList.noTablesForTransfer"));
+            return;
+        }
+        javafx.stage.Window owner = getScene() == null ? null : getScene().getWindow();
+        List<String> selected = selectedNames();
+        if (selected.size() == 1) {
+            if (export) {
+                TransferHub.exportSingle(session, selected.getFirst(), dbExecutor, status, owner);
+            } else {
+                TransferHub.importSingle(session, selected.getFirst(), dbExecutor, status, owner);
+            }
+            return;
+        }
         TransferHub hub = new TransferHub(session, transferCandidates(), dbExecutor, status);
-        hub.show(getScene() == null ? null : getScene().getWindow());
+        hub.show(owner);
     }
 
     // ─────────────────────────── 清单 ───────────────────────────
@@ -325,6 +356,7 @@ final class TableListPage extends VBox {
     private void buildTable() {
         table.setId("table-list");
         table.getStyleClass().add("adb-table-list");
+        table.setAccessibleText(I18n.t("tableList.aria.list"));
         table.setEditable(false);
         // U24：空态不是一行灰字 —— 图标说清「这是空，不是坏了」，说明给出路。
         table.setPlaceholder(EmptyState.of(Icons.Icon.SEARCH, I18n.t("tableList.noMatches"),
@@ -337,27 +369,16 @@ final class TableListPage extends VBox {
         table.setFixedCellSize(rowHeight);
         table.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 
-        // ⭐ 第十九轮 S-1：可选列要留引用，才能按数据决定显不显示。
-        //    「名称 / 行」是核心列，永远显示；其余 6 列是方言相关的可选列。
-        sizeColumn = sizeColumn();
-        engineColumn = keyed(textColumn(I18n.t("column.engine"), 100, 80, TableMeta::engineText), "engine");
-        createdColumn = keyed(textColumn(I18n.t("column.created"), 150, 140, TableMeta::createdText), "created");
-        // ⭐ 本轮补的三列：Navicat 的表清单有「修改日期 / 排序规则 / 注释」。
-        updatedColumn = keyed(textColumn(I18n.t("column.updated"), 150, 140, TableMeta::updatedText), "updated");
-        collationColumn = keyed(textColumn(I18n.t("column.collation"), 120, 112,
-                TableMeta::collationText, true), "collation");
-        commentColumn = keyed(textColumn(I18n.t("column.comment"), 180, 120,
-                TableMeta::commentText, true, true), "comment");
-
+        // ⭐ N14：Navicat 的「表」清单是**六列**，且六列恒在 ——
+        //    方言拿不到的格显示「—」，列本身不随数据整列消失（位置不跳动）。
         table.getColumns().setAll(List.of(
                 nameColumn(),
                 rowsColumn(),
-                sizeColumn,
-                engineColumn,
-                createdColumn,
-                updatedColumn,
-                collationColumn,
-                commentColumn));
+                sizeColumn(),
+                keyed(textColumn(I18n.t("column.engine"), 90, 80, TableMeta::engineText), "engine"),
+                keyed(textColumn(I18n.t("column.updated"), 150, 120, TableMeta::updatedText), "updated"),
+                keyed(textColumn(I18n.t("column.comment"), 170, 110,
+                        TableMeta::commentText, true, true), "comment")));
 
         // ⭐ P2-1：列宽按连接记忆（与数据网格同一套「拖完就记住」的预期）。
         columnMemory = new ColumnLayoutMemory(table, settings,
@@ -928,6 +949,15 @@ final class TableListPage extends VBox {
         host.newTable();
     }
 
+    /** 「用 AI 新建表」—— 能力面还没建，外壳会打开如实说明页。 */
+    void createTableAi() {
+        if (host == null) {
+            status.accept(I18n.t("tableList.connectFirst"));
+            return;
+        }
+        host.newTableWithAi();
+    }
+
     void openSelected() {
         List<TableMeta> selected = selectedMetas();
         if (selected.size() != 1) {
@@ -1009,6 +1039,10 @@ final class TableListPage extends VBox {
         actions.truncate.setEnabled(single);
         actions.drop.setEnabled(count >= 1);
         actions.create.setEnabled(host != null);
+        actions.createAi.setEnabled(host != null);
+        // 导入 / 导出要有一张表可选；单选时直接进向导，否则先选表。
+        actions.importWizard.setEnabled(!rows.isEmpty());
+        actions.exportWizard.setEnabled(!rows.isEmpty());
         actions.refresh.setEnabled(!loading);
         actions.selectAll.setEnabled(!filtered.isEmpty());
         updateViewActionStates();
@@ -1054,25 +1088,7 @@ final class TableListPage extends VBox {
     /** 直接喂数据（单测用；真实路径走 {@link #reload()} 的后台读取）。 */
     void render(List<TableMeta> metas) {
         rows.setAll(metas == null ? List.of() : metas);
-        applyColumnVisibility();
         updateSelectionState();
-    }
-
-    /**
-     * ⭐ 第十九轮 S-1：按**已加载的数据**决定 6 个可选列显不显示。
-     *
-     * <p>只在「每一行都是占位符」时整列隐藏；有一行有真值就留着。
-     * 判定依据是 {@link #rows}（全部已加载），不是 {@link #filtered}，
-     * 所以搜索时列不会凭空消失/出现。核心列「名称 / 行」不参与判定。
-     */
-    private void applyColumnVisibility() {
-        List<TableMeta> all = List.copyOf(rows);
-        sizeColumn.setVisible(MetadataColumns.hasAnyValue(all, TableMeta::sizeText));
-        engineColumn.setVisible(MetadataColumns.hasAnyValue(all, TableMeta::engineText));
-        createdColumn.setVisible(MetadataColumns.hasAnyValue(all, TableMeta::createdText));
-        updatedColumn.setVisible(MetadataColumns.hasAnyValue(all, TableMeta::updatedText));
-        collationColumn.setVisible(MetadataColumns.hasAnyValue(all, TableMeta::collationText));
-        commentColumn.setVisible(MetadataColumns.hasAnyValue(all, TableMeta::commentText));
     }
 
     /** 搜索框（供门禁验证过滤真的生效）。 */
@@ -1101,7 +1117,9 @@ final class TableListPage extends VBox {
                 && filtered.size() != rows.size()) {
             summary.setText(I18n.t("tableList.showingOf", filtered.size(), rows.size()));
         } else {
-            summary.setText(I18n.t("tableList.totalTables", rows.size()));
+            // ⭐ N15：Navicat 的对象工具条没有「N 张表」这一项 —— 常态留空，
+            //    只有搜索过滤时回一句「显示 X / Y」，否则七颗键会被挤出窗口。
+            summary.setText("");
         }
     }
 
@@ -1112,7 +1130,7 @@ final class TableListPage extends VBox {
         }
         loading = true;
         spinner.setVisible(true);
-        summary.setText(I18n.t("tableList.counting"));
+        summary.setText("");
         updateSelectionState();
         dbExecutor.execute(() -> {
             List<TableMeta> metas;
@@ -1129,7 +1147,6 @@ final class TableListPage extends VBox {
                 loading = false;
                 spinner.setVisible(false);
                 rows.setAll(finalMetas);
-                applyColumnVisibility();
                 updateSummary();
                 updateSelectionState();
                 if (finalError != null) {
@@ -1198,6 +1215,15 @@ final class TableListPage extends VBox {
                         category, null, () -> showView("list")),
                 new Action("table-list.view-grid",
                         io.agenticdb.ui.I18n.t("action.table-list.view-grid"),
-                        category, null, () -> showView("grid")));
+                        category, null, () -> showView("grid")),
+                new Action("table-list.new-ai",
+                        io.agenticdb.ui.I18n.t("action.table-list.new-ai"),
+                        category, null, this::createTableAi),
+                new Action("table-list.import",
+                        io.agenticdb.ui.I18n.t("action.table-list.import"),
+                        category, null, this::openImport),
+                new Action("table-list.export",
+                        io.agenticdb.ui.I18n.t("action.table-list.export"),
+                        category, null, this::openExport));
     }
 }

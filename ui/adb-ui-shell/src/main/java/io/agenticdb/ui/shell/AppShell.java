@@ -56,6 +56,7 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -106,8 +107,14 @@ public final class AppShell extends StackPane {
     private final TabBar tabBar = new TabBar(actions);
     private final SideBar sideBar;
     private final WorkspaceView workspace;
-    /** ⭐ S5：常驻的「对象」首页。 */
-    private ObjectHomePage objectHome;
+    /**
+     * ⭐ N33：常驻的「对象」标签托管对象清单页（就是表清单页）。
+     *
+     * <p>按连接构建 —— {@link #objectPageConnection} 记着它是哪个库的；
+     * 切库后 {@link #refreshObjectHome()} 会让 WorkspaceView 重新走工厂。
+     */
+    private TableListPage objectPage;
+    private String objectPageConnection;
     /** ⭐ N1–N5：当前可操作的表清单页（工具栏 / 右键动作按它取选择）。 */
     private TableListPage activeTableListPage;
     /**
@@ -196,6 +203,9 @@ public final class AppShell extends StackPane {
         this.sideBar.setOnSwitchCatalog(this::switchCatalog);
         // ⭐ T1–T4 表级生命周期：右键菜单 / 数据库菜单 / 命令面板三条入口进同一个 TableDdl。
         this.sideBar.setOnTableDdl(this::runTableDdl);
+        // ⭐ N33：对象首页撤掉后，例程定义体由树的双击 / Enter 打开。
+        this.sideBar.setOnOpenRoutine(request -> openRoutine(request.connectionId(),
+                request.name(), request.procedure()));
         // ⭐ UX-6：连接节点下直接列「已保存查询」；点一条 = 新查询页 + 预填 SQL。
         this.sideBar.setSavedQuerySource(savedQueries::all);
         this.sideBar.setOnOpenSavedQuery(this::openSavedQuery);
@@ -679,7 +689,8 @@ public final class AppShell extends StackPane {
         for (String id : List.of("table-list.new", "table-list.open", "table-list.design",
                 "table-list.rename", "table-list.truncate", "table-list.drop",
                 "table-list.refresh", "table-list.select-all", "table-list.view-list",
-                "table-list.view-grid")) {
+                "table-list.view-grid", "table-list.new-ai", "table-list.import",
+                "table-list.export")) {
             actions.find(id).ifPresent(action -> action.setEnabled(false));
         }
     }
@@ -787,58 +798,109 @@ public final class AppShell extends StackPane {
         return sessions.openIds().stream().anyMatch(open -> open.startsWith(prefix));
     }
 
-    /** 激活一个连接：打开（或复用）会话、读取对象树、同步侧栏与工具栏。 */
     /**
-     * ⭐ S5：常驻的「对象」首页。
+     * ⭐ N33：常驻的「对象」标签 = 当前库的**对象清单页**（表清单页）。
      *
-     * <p>Navicat 的标签栏第一个就是常驻的「对象」标签（官方截图实拍）——
-     * 它是浏览的起点，点它回到对象总览，而不是回到一片空白。
+     * <p>Navicat 的标签栏第一个永远是「对象」，它列的就是这个库的对象。
+     * 以前这里是一张自制的「对象首页」（药丸总览 + 类型筛选），Navicat 没有这个概念 ——
+     * 本轮撤掉，六项表元数据 + 七个操作键全部收进这一页。
+     *
+     * <p>页面按连接构建：切换 / 重连后 {@link #refreshObjectHome()} 会让
+     * {@code WorkspaceView} 重走这个工厂，清单落到新库上。
      */
     private Node objectHomePage() {
-        if (objectHome == null) {
-            // 第 6 个参数 = 「未连接」空态上那个「新建连接」按钮的动作。
-            // 第 7 个参数 = 对象级工具条（打开 / 设计 / 新建 / 删除）的宿主。
-            objectHome = new ObjectHomePage(() -> session, schemaService,
-                    executors.forConnection(activeProfileId()),
-                    this::openObject, this::status, this::openConnectionWizard,
-                    new ObjectHomePage.Host() {
-                        @Override
-                        public void newTable() {
-                            tableDdl().createTable(activeProfileId());
-                        }
-
-                        @Override
-                        public void design(SchemaService.SchemaObject object) {
-                            openStructure(activeProfileId(), object.name());
-                        }
-
-                        @Override
-                        public void dropTables(List<String> tables) {
-                            tableDdl().dropTables(activeProfileId(), tables);
-                        }
-
-                        @Override
-                        public void inspect(SchemaService.SchemaObject object) {
-                            if (!detailsVisible) {
-                                return;
-                            }
-                            if (object == null) {
-                                details.showEmpty();
-                                return;
-                            }
-                            inspectTarget(new SideBar.InspectTarget(activeProfileId(),
-                                    object.name(), null, topicOf(object.kind())));
-                        }
-                    },
-                    settings, this::activeProfileId);
-            // 对象首页也要跟密度（它不在 WorkspaceView 的页面缓存里）。
-            objectHome.setDensity(currentDensity());
-            // 列宽记忆已在 ObjectHomePage 构造器里接好（settings → ColumnLayoutMemory），
-            // 这里不再二次接线 —— 合并提交带进来的 rememberColumnsIn() 调用没有对应实现。
+        String connectionId = activeProfileId();
+        DbSession current = session;
+        if (current == null) {
+            objectPage = null;
+            objectPageConnection = null;
+            return EmptyState.of(Icons.Icon.CONNECT,
+                    I18n.t("object.empty.notConnected"),
+                    I18n.t("object.empty.notConnectedDetail"),
+                    I18n.t("object.newConnection"), this::openConnectionWizard);
         }
-        // 每次切到对象首页都重新读一遍 —— 对象可能刚被别处改了。
-        objectHome.reload();
-        return objectHome;
+        if (objectPage == null || !Objects.equals(objectPageConnection, connectionId)) {
+            objectPage = new TableListPage(current, schemaService,
+                    executors.forConnection(connectionId),
+                    name -> openTab(new TabItem("grid:" + connectionId + ":" + name, name,
+                            TabKind.GRID, name, connectionId)),
+                    this::status,
+                    tableListActions(),
+                    objectListHost(connectionId),
+                    tableListInitialView(),
+                    view -> settings.set("ui.tableList.view", view),
+                    settings, connectionId);
+            objectPageConnection = connectionId;
+            objectPage.setDensity(currentDensity());
+        }
+        // 每次切到对象标签都重读一遍 —— 表可能刚被别处改了。
+        objectPage.reload();
+        return objectPage;
+    }
+
+    /**
+     * 对象清单页的行为宿主：打开 / 设计 / 改名 / 清空 / 删除 / 详情联动。
+     *
+     * <p>全部落在 {@code connectionId} 这个库上（可能是 catalog 虚拟连接），
+     * 不是「当前连接」—— 对象清单属于它显示的库。
+     */
+    private TableListPage.Host objectListHost(String connectionId) {
+        return new TableListPage.Host() {
+            @Override
+            public void newTable() {
+                tableDdl().createTable(connectionId);
+            }
+
+            @Override
+            public void newTableWithAi() {
+                openRibbonTool(SideBar.TOOL_NEW_TABLE_AI,
+                        I18n.t("tool.title.new-table-ai"));
+            }
+
+            @Override
+            public void openTable(String name) {
+                openTab(new TabItem("grid:" + connectionId + ":" + name, name,
+                        TabKind.GRID, name, connectionId));
+            }
+
+            @Override
+            public void designTable(String name) {
+                openStructure(connectionId, name);
+            }
+
+            @Override
+            public void renameTable(String name) {
+                tableDdl().renameTable(connectionId, name);
+            }
+
+            @Override
+            public void truncateTable(String name) {
+                tableDdl().truncateTable(connectionId, name);
+            }
+
+            @Override
+            public void dropTables(List<String> names) {
+                tableDdl().dropTables(connectionId, names);
+            }
+
+            @Override
+            public void selectionChanged(String text) {
+                statusBar.setSelectionText(text);
+            }
+
+            @Override
+            public void inspectTable(String name) {
+                if (!detailsVisible) {
+                    return;
+                }
+                if (name == null || name.isBlank()) {
+                    details.showEmpty();
+                    return;
+                }
+                inspectTarget(new SideBar.InspectTarget(connectionId, name, null,
+                        SideBar.InspectTarget.Topic.TABLE));
+            }
+        };
     }
 
     /**
@@ -857,65 +919,36 @@ public final class AppShell extends StackPane {
         });
     }
 
-    /** 连接就绪后刷新对象首页的内容。 */
-    private void refreshObjectHome() {
-        if (objectHome != null) {
-            objectHome.reload();
-        }
-    }
-
     /**
-     * 打开对象首页里的某个对象。
+     * ⭐ N33：对象标签的内容跟着连接走。
      *
-     * <p>⭐ <b>按 {@code kind} 分派</b>。之前这里只收一个表名、无条件开数据页，
-     * 于是点「函数 / 过程 / 触发器」会去 SELECT 一张根本不存在的表，
-     * 甩给用户一个看不懂的错（截图审计 D1）。
-     * 现在这几类明确告知"暂不支持"，而不是假装它们是表。
+     * <p>同一个库上只是重读清单；换了库（或刚连上）就让 WorkspaceView 重走工厂 ——
+     * 页面绑的是会话，旧页面上还挂着旧连接。
      */
-    private void openObject(SchemaObject object) {
-        if (object == null || object.name().isBlank()) {
-            return;
+    private void refreshObjectHome() {
+        if (objectPage != null && Objects.equals(objectPageConnection, activeProfileId())) {
+            objectPage.reload();
+        } else {
+            workspace.refreshObjectPage();
         }
-        // ⭐ 能不能开数据页由 ObjectHomePage 一句话判定 —— 判据只有一份，
-        //    避免外壳和对象页各写一套 switch 然后慢慢跑偏。
-        String reason = ObjectHomePage.unsupportedReason(object.kind(), object.name());
-        if (reason != null) {
-            status(reason);
-            return;
-        }
-        String name = object.name();
-        // ⭐ O2：函数 / 存储过程 → 打开**定义体**标签页（只读）。
-        if (object.kind() == SchemaService.ObjectKind.FUNCTION
-                || object.kind() == SchemaService.ObjectKind.PROCEDURE
-                || object.kind() == SchemaService.ObjectKind.EVENT) {
-            openRoutine(name, object.kind() == SchemaService.ObjectKind.PROCEDURE,
-                    object.kind() == SchemaService.ObjectKind.EVENT);
-            return;
-        }
-        openTab(new TabItem("grid:" + activeProfileId() + ":" + name, name,
-                TabKind.GRID, name, activeProfileId()));
     }
 
     /**
      * O2：打开函数 / 存储过程的定义体（只读标签页）。
      *
      * <p>形态依据 {@code docs/UI-FORMS-AND-STATES.md} §4：定义体要**长期停留读代码**
-     * → 标签页（不是弹窗）。
+     * → 标签页（不是弹窗）。N33 之后唯一入口是左侧对象树的双击 / Enter。
      */
-    private void openRoutine(String name, boolean procedure) {
-        openRoutine(name, procedure, false);
-    }
-
-    private void openRoutine(String name, boolean procedure, boolean event) {
-        DbSession current = session;
+    private void openRoutine(String connectionId, String name, boolean procedure) {
+        DbSession current = sessionFor(connectionId);
         if (current == null) {
             status(I18n.t("shell.needConnection"));
             return;
         }
-        RoutinePage page = new RoutinePage(name, procedure, event, current, new SchemaService(),
-                executors.forConnection(activeProfileId()), this::status);
-        String id = "routine:" + activeProfileId() + ":" + name;
-        openTab(new TabItem(id, name, TabKind.ROUTINE, name, activeProfileId(), page));
+        RoutinePage page = new RoutinePage(name, procedure, false, current, new SchemaService(),
+                executors.forConnection(connectionId), this::status);
+        String id = "routine:" + connectionId + ":" + name;
+        openTab(new TabItem(id, name, TabKind.ROUTINE, name, connectionId, page));
         status(I18n.t("shell.openDefinition", name));
     }
 
@@ -2111,9 +2144,10 @@ public final class AppShell extends StackPane {
         //    按诚实条款先落**如实说明页**（工具页签 + 「本版本未提供」），不留死磁贴。
         //    门禁：RibbonCapabilityAuditTest 逐格钉「有注册动作 + 有真实落点」。
         actions.register("ribbon.view", I18n.t("action.ribbon.view"), I18n.t("category.object"),
-                null, () -> openObjectKind(io.agenticdb.introspect.SchemaService.ObjectKind.VIEW));
+                null, () -> openRibbonTool(SideBar.TOOL_OBJECT_VIEWS, I18n.t("tool.title.views")));
         actions.register("ribbon.function", I18n.t("action.ribbon.function"), I18n.t("category.object"),
-                null, () -> openObjectKind(io.agenticdb.introspect.SchemaService.ObjectKind.FUNCTION));
+                null, () -> openRibbonTool(SideBar.TOOL_OBJECT_FUNCTIONS,
+                        I18n.t("tool.title.functions")));
         actions.register("ribbon.others", I18n.t("action.ribbon.others"), I18n.t("category.object"),
                 null, this::openAllObjects);
         actions.register("ribbon.user", I18n.t("action.ribbon.user"), I18n.t("category.tools"),
@@ -2149,9 +2183,16 @@ public final class AppShell extends StackPane {
                 () -> withActiveTableList(page -> page.showView("list")));
         actions.register("table-list.view-grid", I18n.t("action.table-list.view-grid"), I18n.t("category.tableList"), null,
                 () -> withActiveTableList(page -> page.showView("grid")));
+        actions.register("table-list.new-ai", I18n.t("action.table-list.new-ai"), I18n.t("category.tableList"), null,
+                () -> withActiveTableList(TableListPage::createTableAi));
+        actions.register("table-list.import", I18n.t("action.table-list.import"), I18n.t("category.tableList"), null,
+                () -> withActiveTableList(TableListPage::openImport));
+        actions.register("table-list.export", I18n.t("action.table-list.export"), I18n.t("category.tableList"), null,
+                () -> withActiveTableList(TableListPage::openExport));
         for (String id : List.of("table-list.open", "table-list.design", "table-list.rename",
                 "table-list.truncate", "table-list.drop", "table-list.refresh",
-                "table-list.select-all", "table-list.view-list", "table-list.view-grid")) {
+                "table-list.select-all", "table-list.view-list", "table-list.view-grid",
+                "table-list.new-ai", "table-list.import", "table-list.export")) {
             actions.find(id).ifPresent(action -> action.setEnabled(false));
         }
         // ⭐ S6：顶级「收藏夹」菜单的入口
@@ -2349,18 +2390,6 @@ public final class AppShell extends StackPane {
             return;
         }
         details.showObject(subject);
-    }
-
-    /** 对象类型 → 详情面板的树主题（两者是同一组类型，只是分属不同包的枚举）。 */
-    private static SideBar.InspectTarget.Topic topicOf(SchemaService.ObjectKind kind) {
-        return switch (kind) {
-            case TABLE -> SideBar.InspectTarget.Topic.TABLE;
-            case VIEW -> SideBar.InspectTarget.Topic.VIEW;
-            case TRIGGER -> SideBar.InspectTarget.Topic.TRIGGER;
-            case FUNCTION -> SideBar.InspectTarget.Topic.FUNCTION;
-            case PROCEDURE -> SideBar.InspectTarget.Topic.PROCEDURE;
-            case EVENT -> SideBar.InspectTarget.Topic.EVENT;
-        };
     }
 
     /**
@@ -2677,7 +2706,10 @@ public final class AppShell extends StackPane {
             }
         }
         workspace.showTab(tab);
-        if (tab.view() instanceof TableListPage page) {
+        // ⭐ N33：常驻「对象」标签本身没有 view，页面在 WorkspaceView 里托管。
+        TableListPage page = tab.view() instanceof TableListPage direct
+                ? direct : workspace.tableListPage(tab.id());
+        if (page != null) {
             activeTableListPage = page;
             page.refreshSelectionStatus();
         } else {
@@ -2705,7 +2737,7 @@ public final class AppShell extends StackPane {
             //    也没有取数时刻 —— 整段收掉，不能拿上一页的语句冒充这一页在看什么。
             statusBar.setSql(null);
             statusBar.setRefreshedAt(-1);
-            if (!(tab.view() instanceof TableListPage)) {
+            if (page == null) {
                 statusBar.setSelection(0);
             }
         }
@@ -2970,90 +3002,25 @@ public final class AppShell extends StackPane {
     }
 
     /**
-     * 打开表清单（Navicat 的「表清单」那一层）。
+     * 打开对象清单 —— 就是常驻的「对象」标签。
      *
-     * <p>以前对象树里只有表名 —— 用户想知道「这张表有多少行、多大」只能自己去查。
+     * <p>⭐ N33：清单不再单独占一个 {@code tables:<conn>} 标签页；
+     * Navicat 的第一个标签既是对象浏览的起点，也是表清单。
+     * 所以这里只「切到对象标签」并让它重读（{@link #objectHomePage()} 负责构建）。
      */
     private void openTableList() {
-        DbSession current = session;
-        if (current == null) {
+        if (session == null) {
             status(I18n.t("shell.needConnection"));
             return;
         }
-        // ⭐ U1：这个清单页绑的是**当前连接**（可能是 catalog 虚拟连接）——
-        //    页面里的建表 / 删表全部落在它身上，不是别的库。
-        String pageConnection = activeProfileId();
-        TableListPage page = new TableListPage(current, schemaService,
-                executors.forConnection(pageConnection),
-                name -> openTab(new TabItem("grid:" + pageConnection + ":" + name, name,
-                        TabKind.GRID, name, pageConnection)),
-                this::status,
-                tableListActions(),
-                new TableListPage.Host() {
-                    @Override
-                    public void newTable() {
-                        tableDdl().createTable(pageConnection);
-                    }
-
-                    @Override
-                    public void openTable(String name) {
-                        openTab(new TabItem("grid:" + pageConnection + ":" + name, name,
-                                TabKind.GRID, name, pageConnection));
-                    }
-
-                    @Override
-                    public void designTable(String name) {
-                        openStructure(pageConnection, name);
-                    }
-
-                    @Override
-                    public void renameTable(String name) {
-                        tableDdl().renameTable(pageConnection, name);
-                    }
-
-                    @Override
-                    public void truncateTable(String name) {
-                        tableDdl().truncateTable(pageConnection, name);
-                    }
-
-                    @Override
-                    public void dropTables(List<String> names) {
-                        tableDdl().dropTables(pageConnection, names);
-                    }
-
-                    @Override
-                    public void selectionChanged(String text) {
-                        statusBar.setSelectionText(text);
-                    }
-
-                    /**
-                     * 表清单里的选中项同步给右侧详情面板（规格 §6.3）。
-                     *
-                     * <p>面板关着就什么都不做（省一次白读的元数据查询）；
-                     * 多选 / 空选时页面传 {@code null}，此时切回空态。
-                     */
-                    @Override
-                    public void inspectTable(String name) {
-                        if (!detailsVisible) {
-                            return;
-                        }
-                        if (name == null || name.isBlank()) {
-                            details.showEmpty();
-                            return;
-                        }
-                        inspectTarget(new SideBar.InspectTarget(pageConnection, name, null,
-                                SideBar.InspectTarget.Topic.TABLE));
-                    }
-                },
-                tableListInitialView(),
-                view -> settings.set("ui.tableList.view", view),
-                settings, pageConnection);
-        page.setDensity(currentDensity());
-        // 列宽记忆已在 TableListPage 构造器里接好（settings → ColumnLayoutMemory），
-        // 这里不再二次接线 —— 合并提交带进来的 rememberColumnsIn() 调用没有对应实现。
-        activeTableListPage = page;
-        openTab(new TabItem("tables:" + pageConnection, I18n.t("category.tableList"), TabKind.TOOL,
-                null, pageConnection, page));
+        String permanent = tabBar.permanentId();
+        if (permanent != null) {
+            tabBar.activate(permanent);
+        } else {
+            openTab(new TabItem("object-home", I18n.t("window.pageType.object"),
+                    TabKind.OBJECT));
+        }
+        status(I18n.t("category.tableList"));
     }
 
     /** 表清单页共用注册表里的动作；页面只负责按选择改 enabled。 */
@@ -3068,7 +3035,10 @@ public final class AppShell extends StackPane {
                 actions.require("table-list.refresh"),
                 actions.require("table-list.select-all"),
                 actions.require("table-list.view-list"),
-                actions.require("table-list.view-grid"));
+                actions.require("table-list.view-grid"),
+                actions.require("table-list.new-ai"),
+                actions.require("table-list.import"),
+                actions.require("table-list.export"));
     }
 
     /** 截图可强制视图；正常启动读上次选择。 */
@@ -3085,32 +3055,14 @@ public final class AppShell extends StackPane {
      * 打开收藏夹（菜单栏的顶级「收藏夹」入口）。
      */
     /**
-     * ⭐ R36：Ribbon 的 View / Function 格 —— 打开常驻对象首页并把筛选切到该类型。
-     * 真页面、真筛选，不是说明页（视图/函数的编辑器才归 N28）。
-     */
-    private void openObjectKind(io.agenticdb.introspect.SchemaService.ObjectKind kind) {
-        String home = tabBar.permanentId();
-        if (home != null) {
-            tabBar.activate(home);
-        }
-        if (objectHome != null) {
-            objectHome.showKind(kind);
-        }
-        status(I18n.t("shell.openObjectKind", kind.name()));
-    }
-
-    /**
-     * ⭐ R36：Others 格 —— 对象首页切「全部」再清掉搜索词。
-     * 诚实：它只做「回到完整清单」这一件真事，不装成一个更大的能力面。
+     * ⭐ R36 / N33：Others 格 —— 回到完整的对象清单（常驻「对象」标签）。
+     *
+     * <p>它只做「回到完整清单」这一件真事，不装成一个更大的能力面。
      */
     private void openAllObjects() {
         String home = tabBar.permanentId();
         if (home != null) {
             tabBar.activate(home);
-        }
-        if (objectHome != null) {
-            objectHome.showKind(null);
-            objectHome.clearSearch();
         }
         status(I18n.t("shell.openAllObjects"));
     }
@@ -3436,8 +3388,8 @@ public final class AppShell extends StackPane {
         if (workspace != null) {
             workspace.applyDensity(value);
         }
-        if (objectHome != null) {
-            objectHome.setDensity(value);
+        if (objectPage != null) {
+            objectPage.setDensity(value);
         }
         if (sideBar != null) {
             sideBar.setDensity(value);

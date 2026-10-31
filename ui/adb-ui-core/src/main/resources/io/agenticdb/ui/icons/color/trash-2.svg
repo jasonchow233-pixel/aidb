@@ -1,0 +1,9 @@
+<!-- AIDB 自有彩色资产（R37 N15）：删除表（桶身 + 桶盖），对齐 Delete Table。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path data-paint="tone-a" d="M5.4 7.5 L18.6 7.5 L17.5 19.6 C17.4 20.4 16.8 21 16 21 L8 21 C7.2 21 6.6 20.4 6.5 19.6 Z"/>
+  <path data-paint="edge" d="M4 7.5 L20 7.5"/>
+  <path data-paint="edge" d="M9.5 7.5 L9.5 4.5 C9.5 4.2 9.7 4 10 4 L14 4 C14.3 4 14.5 4.2 14.5 4.5 L14.5 7.5"/>
+  <path data-paint="edge" d="M5.4 7.5 L18.6 7.5 L17.5 19.6 C17.4 20.4 16.8 21 16 21 L8 21 C7.2 21 6.6 20.4 6.5 19.6 Z"/>
+  <path data-paint="edge" d="M10 11 L10 17.5"/>
+  <path data-paint="edge" d="M14 11 L14 17.5"/>
+</svg>

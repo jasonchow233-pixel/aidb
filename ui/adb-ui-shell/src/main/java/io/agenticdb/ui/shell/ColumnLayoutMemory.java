@@ -58,6 +58,14 @@ final class ColumnLayoutMemory {
             }
         }
         track();
+        // 页面离开场景（关标签 / 切连接）时把还没落盘的那一拖补写完。
+        // 不补的话，400ms 内的最后一点调整会丢；不停的话，计时器会活过页面生命周期，
+        // 在偏好节点已经被清理时往 FX 脉冲线程抛 IllegalStateException。
+        table.sceneProperty().addListener((observable, oldScene, newScene) -> {
+            if (newScene == null) {
+                flushPending();
+            }
+        });
         restoreIfScopeChanged();
     }
 
@@ -106,6 +114,12 @@ final class ColumnLayoutMemory {
         if (settings == null || currentScope() == null) {
             return;
         }
+        // ⭐ 只有用户眼前的表格才值得记：没挂到场景上的宽度变化是恢复列宽 / 换主题
+        //    引起的布局抖动。排进去的话，计时器会比页面活得久（测试隔离清理偏好节点
+        //    时正好撞上，见 IsolatedPreferencesExtension）。
+        if (table.getScene() == null) {
+            return;
+        }
         Map<String, Integer> snapshot = snapshot();
         if (snapshot.isEmpty()) {
             return;
@@ -121,12 +135,26 @@ final class ColumnLayoutMemory {
         saveTimer.playFromStart();
     }
 
+    /** 停掉防抖并立刻写入待存的宽度（页面离开场景时调用）。 */
+    private void flushPending() {
+        if (saveTimer == null) {
+            return;
+        }
+        saveTimer.stop();
+        persistFor(pendingScope, pendingWidths);
+    }
+
     private void persistFor(String targetScope, Map<String, Integer> widths) {
         if (settings == null || targetScope == null || widths.isEmpty()) {
             return;
         }
-        for (Map.Entry<String, Integer> entry : widths.entrySet()) {
-            settings.setInt(key(targetScope, entry.getKey()), entry.getValue());
+        try {
+            for (Map.Entry<String, Integer> entry : widths.entrySet()) {
+                settings.setInt(key(targetScope, entry.getKey()), entry.getValue());
+            }
+        } catch (IllegalStateException removed) {
+            // 偏好节点已经不在了（应用退出 / 测试隔离清理）。列宽是尽力而为的记忆，
+            // 不是数据 —— 这里抛出去只会打断 FX 脉冲线程，没有别的作用。
         }
     }
 

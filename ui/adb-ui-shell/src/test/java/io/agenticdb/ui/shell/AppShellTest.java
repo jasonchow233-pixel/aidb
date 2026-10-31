@@ -130,9 +130,9 @@ class AppShellTest {
         assertThat(robot.lookup(".adb-sidebar").tryQuery()).isPresent();
         assertThat(robot.lookup(".adb-workspace").tryQuery()).isPresent();
         assertThat(robot.lookup(".adb-statusbar").tryQuery()).isPresent();
-        // ⭐ S5：启动时停在**常驻的「对象」首页**（Navicat 同形），
-        //    不再是空白欢迎页。
-        assertThat(robot.lookup(".adb-object-home").tryQuery()).isPresent();
+        // ⭐ N33：启动时停在**常驻的「对象」标签**，它托管的就是对象清单页
+        //    （Navicat 同形），不再是空白欢迎页。
+        assertThat(robot.lookup(".adb-table-list-page").tryQuery()).isPresent();
 
         javafx.scene.control.MenuBar menuBar =
                 robot.lookup(".menu-bar").queryAs(javafx.scene.control.MenuBar.class);
@@ -305,8 +305,8 @@ class AppShellTest {
         // ⭐ S5：关掉数据页后落回**常驻的「对象」标签**（不是空白欢迎页）。
         assertThat(robot.lookup(".adb-tab").queryAs(javafx.scene.layout.HBox.class).getId())
                 .isEqualTo(TabBar.nodeId("object-home"));
-        assertThat(robot.lookup(".adb-object-home").tryQuery())
-                .as("对象首页")
+        assertThat(robot.lookup(".adb-table-list-page").tryQuery())
+                .as("对象清单页（常驻「对象」标签的内容）")
                 .isPresent();
     }
 
@@ -917,7 +917,8 @@ class AppShellTest {
                 "table-list.new", "table-list.open", "table-list.design",
                 "table-list.rename", "table-list.truncate", "table-list.drop",
                 "table-list.refresh", "table-list.select-all",
-                "table-list.view-list", "table-list.view-grid")
+                "table-list.view-list", "table-list.view-grid",
+                "table-list.new-ai", "table-list.import", "table-list.export")
                 .stream().allMatch(id -> shell.actionRegistry().find(id).isPresent())))
                 .as("表清单动作必须全部进注册表（工具条 / 右键 / 命令面板同一份）")
                 .isTrue();

@@ -132,6 +132,7 @@ public final class SideBar extends VBox {
      */
     private Consumer<String> onRefreshObjects = id -> { };
     private Consumer<TableRequest> onTableDdl = request -> { };
+    private Consumer<RoutineRequest> onOpenRoutine = request -> { };
     /** ⭐ UX-6：连接节点下的「已保存查询」来源（外壳给 savedQueries::all）。 */
     private Supplier<List<SavedQueries.Entry>> savedQuerySource = List::of;
     /** ⭐ UX-6：双击 / 回车一条已保存查询 → 外壳建查询页并预填 SQL。 */
@@ -315,6 +316,20 @@ public final class SideBar extends VBox {
     public record CatalogSwitch(String connectionId, String catalog) {
     }
 
+    /**
+     * ⭐ R37 N33：双击过程 / 函数 —— 打开只读定义体。
+     *
+     * <p>以前这条路挂在对象首页的行点击上；对象首页撤掉后，树成为唯一入口。
+     * 树只有 Tables / Views / Functions / Queries 四组（N12），事件不在树上，
+     * 所以这里只有过程 / 函数两种。
+     *
+     * @param connectionId 对象所属连接（可能是 catalog 虚拟连接）
+     * @param name         例程名
+     * @param procedure    {@code true} = 存储过程，{@code false} = 函数
+     */
+    public record RoutineRequest(String connectionId, String name, boolean procedure) {
+    }
+
     /** 设置某个连接的 catalog 清单（U1；空清单 = 这个连接没有库一层）。 */
     public void setCatalogs(String connectionId, List<CatalogEntry> entries) {
         if (connectionId == null) {
@@ -352,6 +367,11 @@ public final class SideBar extends VBox {
     /** 表级生命周期（T1–T4）交给外壳执行。 */
     public void setOnTableDdl(Consumer<TableRequest> onTableDdl) {
         this.onTableDdl = onTableDdl == null ? request -> { } : onTableDdl;
+    }
+
+    /** ⭐ R37 N33：双击 / Enter 例程 → 打开定义体（外壳负责建只读页）。 */
+    public void setOnOpenRoutine(Consumer<RoutineRequest> handler) {
+        this.onOpenRoutine = handler == null ? request -> { } : handler;
     }
 
     /**
@@ -736,6 +756,11 @@ public final class SideBar extends VBox {
                 DemoNode node = selected.getValue();
                 if (node.kind() == NodeKind.TABLE || node.kind() == NodeKind.VIEW) {
                     openGrid(node.connectionId(), node.name());
+                } else if (node.kind() == NodeKind.PROCEDURE
+                        || node.kind() == NodeKind.FUNCTION) {
+                    // ⭐ R37 N33：例程的定义体从这里打开（对象首页撤掉后的唯一入口）。
+                    onOpenRoutine.accept(new RoutineRequest(node.connectionId(), node.name(),
+                            node.kind() == NodeKind.PROCEDURE));
                 } else if (node.kind() == NodeKind.SAVED_QUERY) {
                     // ⭐ UX-6：双击已保存查询 = 新开查询页并载入它。
                     openSavedQuery(node.connectionId(), node.name());
@@ -756,6 +781,11 @@ public final class SideBar extends VBox {
                 DemoNode node = selected.getValue();
                 if (node.kind() == NodeKind.TABLE || node.kind() == NodeKind.VIEW) {
                     openGrid(node.connectionId(), node.name());
+                    event.consume();
+                } else if (node.kind() == NodeKind.PROCEDURE
+                        || node.kind() == NodeKind.FUNCTION) {
+                    onOpenRoutine.accept(new RoutineRequest(node.connectionId(), node.name(),
+                            node.kind() == NodeKind.PROCEDURE));
                     event.consume();
                 } else if (node.kind() == NodeKind.SAVED_QUERY) {
                     openSavedQuery(node.connectionId(), node.name());
@@ -1763,9 +1793,27 @@ public final class SideBar extends VBox {
     public static final String TOOL_MODEL = "model";
     public static final String TOOL_BI = "bi";
 
+    /**
+     * ⭐ R37 N33：Ribbon 的 View / Function 两格。
+     *
+     * <p>对象清单页只列表（N14）—— 视图 / 函数的**编辑器**归 N28，还没建。
+     * 这两格因此落在如实说明页（「本版本未提供 + 去左侧树看」），
+     * 而不是死磁贴，也不是一块假装是对象总览的旧页面。
+     */
+    public static final String TOOL_OBJECT_VIEWS = "object-views";
+    public static final String TOOL_OBJECT_FUNCTIONS = "object-functions";
+
+    /** 没有真编辑器的对象类型格 —— {@code WorkspaceView} 给对象类说明页。 */
+    public static final java.util.Set<String> TOOL_OBJECT_ROUTES =
+            java.util.Set.of(TOOL_OBJECT_VIEWS, TOOL_OBJECT_FUNCTIONS);
+
+    /** ⭐ R37 N15：「用 AI 新建表」的能力面未建，落如实说明页。 */
+    public static final String TOOL_NEW_TABLE_AI = "new-table-ai";
+
     /** 上述五格的集合 —— {@code WorkspaceView} 按它给「本版本未提供」而不是通用空壳文案。 */
     public static final java.util.Set<String> TOOL_UNAVAILABLE_ROUTES =
-            java.util.Set.of(TOOL_USERS, TOOL_BACKUP, TOOL_AUTOMATION, TOOL_MODEL, TOOL_BI);
+            java.util.Set.of(TOOL_USERS, TOOL_BACKUP, TOOL_AUTOMATION, TOOL_MODEL, TOOL_BI,
+                    TOOL_NEW_TABLE_AI);
 
     private static void copy(String text) {
         ClipboardContent content = new ClipboardContent();

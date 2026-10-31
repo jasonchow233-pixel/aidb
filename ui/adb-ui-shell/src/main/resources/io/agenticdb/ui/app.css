@@ -1603,14 +1603,6 @@
     -fx-font-weight: bold;
 }
 
-/* ⭐ U16：对象首页的页头不再重复 tab 名，改放真实上下文（连接名 › 方言）。
-   它回答的是「我在哪个库」，不是「这是什么页」，所以比标题低一档。 */
-.adb-page__breadcrumb {
-    -fx-text-fill: -adb-text-secondary;
-    -fx-font-size: 13px;
-    -fx-font-weight: bold;
-}
-
 .adb-page__body {
     -fx-padding: 8px 12px 12px 12px;
 }
@@ -1789,7 +1781,7 @@
     -fx-background-color: -adb-bg-stripe;
 }
 
-/* 空行不参与斑马纹（见 .adb-object-list 同名规则的说明）。 */
+/* 空行不参与斑马纹（与 .adb-grid 的条纹档同权重、声明在后）。 */
 .adb-grid .table-row-cell:empty {
     -fx-background-color: -adb-bg-surface;
     -fx-border-color: transparent;
@@ -1901,133 +1893,6 @@
     -fx-background-color: -adb-bg-hover;
     -fx-text-fill: -adb-text-primary;
     -fx-background-radius: 4px;
-}
-
-/* ── 对象首页（S5：常驻的「对象」标签）─────────────────────────────── */
-
-.adb-object-home {
-    -fx-background-color: -adb-bg-canvas;
-}
-
-/* ── 表清单（对象首页的主体）────────────────────────────────────────
- * ⭐ 以前这里是「按类型分组的一排按钮（chip）」：4 张表还好，40 张表时
- *    变成一堵墙，而且**零信息量** —— 看不出哪张表大、哪张表刚改过、
- *    哪张是空表。Navicat 的对象页是一张带元数据的清单（行数 / 数据长度 /
- *    引擎 / 创建时间 / 排序规则 / 注释），本项目的内省层
- *    （SchemaService.listTableMeta）早就有这些数据，只是没呈现。
- * ─────────────────────────────────────────────────────────────────── */
-
-.adb-object-list {
-    /* 无边框容器：外框由色差 + 圆角表达。 */
-    -fx-background-color: -adb-bg-canvas;
-    -fx-border-color: transparent;
-    -fx-border-radius: 4px;
-    -fx-background-radius: 4px;
-    -fx-padding: 0px;
-    -fx-table-cell-border-color: transparent;
-}
-
-.adb-object-list .virtual-flow,
-.adb-object-list .virtual-flow .clipped-container,
-.adb-object-list .virtual-flow .sheet {
-    -fx-background-color: transparent;
-}
-
-.adb-object-list .column-header-background {
-    -fx-background-color: -adb-bg-surface;
-    -fx-border-color: transparent transparent -adb-border-subtle transparent;
-}
-
-.adb-object-list .column-header {
-    -fx-background-color: transparent;
-    /* Navicat 17 表清单实测：表头有 1px 竖线（#E5E5E5），表体是纯白、无任何分隔线。 */
-    -fx-border-color: transparent -adb-border-subtle transparent transparent;
-    -fx-border-width: 0px 1px 0px 0px;
-    -fx-padding: 6px 8px;
-}
-
-.adb-object-list .column-header .label {
-    -fx-alignment: center-left;
-    -fx-text-fill: -adb-text-secondary;
-    /* 与表清单一致：Navicat 表头 12px 加粗。 */
-    -fx-font-size: 12px;
-    -fx-font-weight: bold;
-}
-
-.adb-object-list .table-row-cell {
-    -fx-background-color: -adb-bg-surface;
-    -fx-background-insets: 0;
-    /* Navicat 17 表清单实测：表体纯白，行与行之间**没有**横线；分隔只靠表头竖线 + 列间距。 */
-    -fx-border-color: transparent;
-    -fx-border-width: 0;
-}
-
-/* ⭐ Navicat 的对象清单是**纯白行 + 横线**，没有斑马纹（实拍见
-   docs/screenshots/navicat/navicat-tablelist.png）。行多时靠横线分隔，
-   再加条纹会显得比 Navicat 更花。:odd 必须显式覆盖，
-   否则 Modena 默认会把奇数行画成 -fx-control-inner-background-alt。
-   ⭐ R31：伪类只带 `:odd` 一个，理由见 .adb-grid 同名规则（多带 `:filled` 会压掉选中档）。 */
-.adb-object-list .table-row-cell:odd {
-    -fx-background-color: -adb-bg-surface;
-}
-
-/* 空行（表格没填满时的留白）**不画横线、不留底色** ——
-   否则表只有 6 行时，下面十几行空白会被画成一排排线，
-   看起来像「还有数据没加载出来」。 */
-.adb-object-list .table-row-cell:empty {
-    -fx-background-color: transparent;
-    -fx-background-insets: 0;
-    -fx-border-color: transparent;
-    -fx-border-width: 0;
-}
-
-.adb-object-list .table-row-cell:selected {
-    -fx-background-color: -adb-bg-selected;
-}
-
-.adb-object-list .table-cell {
-    -fx-padding: 4px 8px;
-    /* ⭐ 对象清单是「扫读」界面，跟 Navicat 一样用 12px；
-       数据网格仍用 13px（长时间读单元格内容，宁可多 1px）。 */
-    -fx-font-size: 12px;
-    -fx-text-fill: -adb-text-primary;
-    -fx-border-color: transparent;
-}
-
-.adb-object-list .table-row-cell:selected .table-cell {
-    -fx-text-fill: -adb-text-primary;
-}
-
-/* 数字列（行数 / 大小）右对齐更好比较，靠单元格样式类控制 */
-.adb-object-list .adb-object-list__number {
-    -fx-alignment: center-right;
-    -fx-text-fill: -adb-text-secondary;
-}
-
-.adb-object-list__filters {
-    -fx-padding: 0px 0px 8px 0px;
-}
-
-.adb-filter-chip {
-    -fx-background-color: -adb-bg-inset;
-    -fx-text-fill: -adb-text-secondary;
-    -fx-border-color: transparent;
-    -fx-border-radius: 999px;
-    -fx-background-radius: 999px;
-    -fx-padding: 4px 12px;
-    -fx-font-size: 11px;
-    -fx-cursor: hand;
-}
-
-.adb-filter-chip:hover {
-    -fx-background-color: derive(-adb-bg-inset, -6%);
-    -fx-text-fill: -adb-text-primary;
-}
-
-.adb-filter-chip--active {
-    -fx-background-color: -adb-bg-active;
-    -fx-text-fill: -adb-accent;
-    -fx-border-color: transparent;
 }
 
 /* ── 记录导航条（Navicat 形态）───────────────────────────────────────
@@ -2865,14 +2730,6 @@
 .density-dense .adb-grid .column-header,
 .density-dense .adb-structure__table .column-header,
 .density-dense .adb-connections__table .column-header {
-    -fx-padding: 2px 6px;
-}
-
-.density-dense .adb-object-list .table-cell {
-    -fx-padding: 0px 6px;
-}
-
-.density-dense .adb-object-list .column-header {
     -fx-padding: 2px 6px;
 }
 
@@ -4045,6 +3902,13 @@
 
 .adb-table-list__toolbar {
     -fx-padding: 0px 0px 8px 0px;
+}
+
+/* ⭐ N15：七颗带文字的键要能并排装进 1280 窗口 —— 透明底按钮收窄内边距，
+   文字仍完整（minWidth 钉在 USE_PREF_SIZE 上，压缩的是搜索框）。 */
+.adb-table-list__toolbar .adb-button--ghost {
+    /* N15：七个带文字的键要在 1280 宽内同排放下（对象工具条 30px 高）。 */
+    -fx-padding: 4px 6px;
 }
 
 .adb-table-list__search {

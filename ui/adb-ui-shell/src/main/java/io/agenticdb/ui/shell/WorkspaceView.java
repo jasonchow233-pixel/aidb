@@ -43,6 +43,9 @@ public final class WorkspaceView extends StackPane {
     private QueryPage activeQuery;
     private StructurePage activeStructure;
     private ConnectionsPage activeConnections;
+    /** ⭐ N33：常驻「对象」标签现在托管表清单页；记住它，切连接后能重新渲染。 */
+    private TabItem activeObjectTab;
+    private TableListPage activeObjectPage;
 
     /** 查询历史（真实功能，只是以前侧栏按钮开错了页面）。 */
     private QueryHistory history;
@@ -133,17 +136,28 @@ public final class WorkspaceView extends StackPane {
 
     public void showTab(TabItem tab) {
         if (tab.kind() == TabKind.OBJECT) {
-            // ⭐ S5：常驻的「对象」首页。
+            // ⭐ N33：常驻的「对象」标签托管表清单页（Navicat 的「对象」同形）。
             Node page = objectHomeFactory.apply(tab);
             activeGrid = null;
             activeQuery = null;
             activeStructure = null;
             activeConnections = null;
+            activeObjectTab = tab;
+            if (page instanceof TableListPage tableList) {
+                activeObjectPage = tableList;
+                // 缓存一份，密度与「建表后重读」都靠它找到页面。
+                tableListPages.put(tab.id(), tableList);
+            } else {
+                activeObjectPage = null;
+                tableListPages.remove(tab.id());
+            }
             if (page != null) {
                 getChildren().setAll(page);
             }
             return;
         }
+        activeObjectTab = null;
+        activeObjectPage = null;
         if (tab.kind() == TabKind.GRID) {
             DataGridPage page = gridPages.get(tab.id());
             if (page == null) {
@@ -318,6 +332,28 @@ public final class WorkspaceView extends StackPane {
         }
     }
 
+    /**
+     * 某个标签（含常驻「对象」标签）托管的表清单页；没有则 {@code null}。
+     *
+     * <p>{@code AppShell.showTab} 靠它把「活动表清单页」从常驻 OBJECT 标签上取回 ——
+     * TabItem 自身没有 view，只看 {@code tab.view()} 会漏掉整张对象页。
+     */
+    public TableListPage tableListPage(String id) {
+        return tableListPages.get(id);
+    }
+
+    /**
+     * ⭐ N33 / 连接切换：重新渲染常驻「对象」标签。
+     *
+     * <p>对象页按连接构建 —— 切库 / 重连后必须再走一次工厂，
+     * 否则清单还挂在旧会话上（读的是旧库的表）。
+     */
+    public void refreshObjectPage() {
+        if (activeObjectTab != null) {
+            showTab(activeObjectTab);
+        }
+    }
+
     /** ⌘F：查询页优先打开自己的查找栏。 */
     public boolean focusSearch() {
         if (activeQuery != null) {
@@ -467,6 +503,12 @@ public final class WorkspaceView extends StackPane {
                     String table = route.substring(SideBar.TOOL_DIAGNOSTICS.length()).trim();
                     body.getChildren().add(new DiagnosticsPage(diagnosticSession,
                             diagnosticSchemaService, table, diagnosticExecutor));
+                } else if (SideBar.TOOL_OBJECT_ROUTES.contains(route)) {
+                    // ⭐ N33：视图 / 函数的**编辑器**还没建，而对象清单页只列表 ——
+                    // 按诚实条款给如实说明页，并说清去哪儿看它们（左侧树）。
+                    body.getChildren().add(emptyState(
+                            Icons.Icon.STRUCTURE, tab.title(),
+                            I18n.t("workspace.tool.objectKind")));
                 } else if (SideBar.TOOL_UNAVAILABLE_ROUTES.contains(route)) {
                     // ⭐ R36 N6：Ribbon 的 User/Backup/Automation/Model/BI 五格 ——
                     // 能力面（N28）没建，按诚实条款给**如实说明页**，不留死磁贴。

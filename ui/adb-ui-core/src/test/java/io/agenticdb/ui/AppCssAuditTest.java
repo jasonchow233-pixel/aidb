@@ -168,7 +168,7 @@ class AppCssAuditTest {
         assertThat(fontSizeOf(css, ".adb-grid .table-cell"))
                 .as("数据网格正文")
                 .isEqualTo("12px");
-        assertThat(fontSizeOf(css, ".adb-object-list .table-cell"))
+        assertThat(fontSizeOf(css, ".adb-table-list .table-cell"))
                 .as("对象清单正文")
                 .isEqualTo("12px");
         assertThat(fontSizeOf(css, ".adb-tree__name"))

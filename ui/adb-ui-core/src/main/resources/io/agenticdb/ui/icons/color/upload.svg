@@ -1,0 +1,6 @@
+<!-- AIDB 自有彩色资产（R37 N15）：导入（托盘 + 上箭头），对齐 Import Wizard。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path data-paint="tone-a" d="M12 2.5 L17.5 8.5 L14.5 8.5 L14.5 14 L9.5 14 L9.5 8.5 L6.5 8.5 Z"/>
+  <path data-paint="edge" d="M12 2.5 L17.5 8.5 L14.5 8.5 L14.5 14 L9.5 14 L9.5 8.5 L6.5 8.5 Z"/>
+  <path data-paint="edge" d="M4 15.5 L4 19 C4 20.1 4.9 21 6 21 L18 21 C19.1 21 20 20.1 20 19 L20 15.5"/>
+</svg>

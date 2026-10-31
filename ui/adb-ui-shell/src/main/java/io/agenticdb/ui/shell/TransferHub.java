@@ -120,11 +120,7 @@ final class TransferHub {
         if (table == null) {
             return;
         }
-        List<ColumnDef> columns = describe(table);
-        ExportWizard wizard = new ExportWizard(session, table,
-                columns.stream().map(ColumnDef::name).toList(),
-                ExportWizard.Scope.WHOLE_TABLE, defaultTarget(table), dbExecutor, status);
-        wizard.show(owner());
+        exportSingle(session, table, dbExecutor, status, owner());
     }
 
     private void openImport() {
@@ -132,13 +128,31 @@ final class TransferHub {
         if (table == null) {
             return;
         }
-        List<ColumnDef> columns = describe(table);
-        ImportWizard wizard = new ImportWizard(session, table, columns, tables, null,
-                dbExecutor, status);
-        wizard.show(owner());
+        importSingle(session, table, dbExecutor, status, owner());
     }
 
-    private List<ColumnDef> describe(String table) {
+    /**
+     * 直接给一张表开导出向导（表清单页单选时走这条，省掉「再选一次表」）。
+     */
+    static void exportSingle(DbSession session, String table, Executor dbExecutor,
+                             Consumer<String> status, javafx.stage.Window owner) {
+        List<ColumnDef> columns = describe(session, table);
+        ExportWizard wizard = new ExportWizard(session, table,
+                columns.stream().map(ColumnDef::name).toList(),
+                ExportWizard.Scope.WHOLE_TABLE, defaultTarget(table), dbExecutor, status);
+        wizard.show(owner);
+    }
+
+    /** 直接给一张表开导入向导（同 {@link #exportSingle}）。 */
+    static void importSingle(DbSession session, String table, Executor dbExecutor,
+                             Consumer<String> status, javafx.stage.Window owner) {
+        List<ColumnDef> columns = describe(session, table);
+        ImportWizard wizard = new ImportWizard(session, table, columns, List.of(table), null,
+                dbExecutor, status);
+        wizard.show(owner);
+    }
+
+    private static List<ColumnDef> describe(DbSession session, String table) {
         try {
             return new io.agenticdb.introspect.SchemaService()
                     .describe(session, table).columns();

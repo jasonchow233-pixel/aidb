@@ -246,6 +246,16 @@ public final class Icons {
         /** 诊断（lucide: activity，心电波）。 */
         DIAGNOSTICS(null, "activity"),
         /**
+         * AI 星芒（自绘，16×16）：一颗四角主星 + 右上一颗小星。
+         *
+         * <p>「New Table with AI」用它 —— Navicat 17 实测那一格也是星芒，
+         * 但库里的 Lucide 集没有 sparkles，于是自绘（形状与品牌标右上角那颗同源）。
+         */
+        AI("M9.5 1.8 L11.2 6.3 L15.7 8 L11.2 9.7 L9.5 14.2"
+                + " L7.8 9.7 L3.3 8 L7.8 6.3 Z"
+                + " M13.6 11.4 L14.2 13 L15.8 13.6 L14.2 14.2"
+                + " L13.6 15.8 L13 14.2 L11.4 13.6 L13 13 Z", null),
+        /**
          * 警示（lucide: triangle-alert）。
          *
          * <p>替代查询页里当图标用的文本「⚠」—— 文本符号不吃主题色、不吃字号，

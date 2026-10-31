@@ -135,6 +135,47 @@ class SideBarTreeTest {
     }
 
     /**
+     * ⭐ R37 N33：例程（过程 / 函数）的定义体从树打开 —— 对象首页撤掉后的唯一入口。
+     *
+     * <p>Enter 与双击走同一段分派逻辑，这里守 Enter：把 (节点自己的连接, 名字, 种类)
+     * 交给外壳，且 catalog 虚拟连接不能被换成父连接。
+     */
+    @Test
+    void routinesOpenTheirDefinitionFromTheTree() {
+        ActionRegistry actions = new ActionRegistry();
+        List<SideBar.RoutineRequest> opened = new ArrayList<>();
+        ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "srv-1", List.of(mysql), p -> { }));
+        sideBar.setOnOpenRoutine(opened::add);
+        onFxRun(() -> sideBar.setCatalogs("srv-1", List.of(
+                new SideBar.CatalogEntry("audit", "srv-1@audit"))));
+        onFxRun(() -> sideBar.setObjects("srv-1@audit", List.of(
+                new SchemaService.SchemaObject("sync_orders", SchemaService.ObjectKind.PROCEDURE),
+                new SchemaService.SchemaObject("calc_total", SchemaService.ObjectKind.FUNCTION))));
+
+        TreeView tree = treeOf(sideBar);
+        TreeItem procedure = findNode(rootOf(tree), "sync_orders");
+        assertThat(procedure).as("过程在 audit 库的「函数」组里").isNotNull();
+
+        onFxRun(() -> {
+            tree.getSelectionModel().select(procedure);
+            tree.fireEvent(new javafx.scene.input.KeyEvent(
+                    javafx.scene.input.KeyEvent.KEY_PRESSED, "", "",
+                    javafx.scene.input.KeyCode.ENTER, false, false, false, false));
+        });
+
+        assertThat(opened).hasSize(1);
+        assertThat(opened.getFirst().connectionId())
+                .as("用节点自己的虚拟连接，不是父连接")
+                .isEqualTo("srv-1@audit");
+        assertThat(opened.getFirst().name()).isEqualTo("sync_orders");
+        assertThat(opened.getFirst().procedure()).as("过程 → 过程定义体").isTrue();
+    }
+
+    /**
      * ⭐ R37 N12：触发器不再在对象树里占一个分组。
      *
      * <p>Navicat 的树只有 Tables / Views / Functions / Queries 四组；

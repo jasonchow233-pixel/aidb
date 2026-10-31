@@ -43,6 +43,7 @@ class TableListPageTest {
     private final List<String> opened = new ArrayList<>();
     private final List<String> designed = new ArrayList<>();
     private final List<List<String>> dropped = new ArrayList<>();
+    private final List<String> aiRequests = new ArrayList<>();
     private final List<String> messages = new ArrayList<>();
     private final List<String> selections = new ArrayList<>();
     /** 报给右侧「对象详情面板」的表名；{@code null} = 没有单一对象可看。 */
@@ -63,6 +64,11 @@ class TableListPageTest {
     }
 
     private final TableListPage.Host host = new TableListPage.Host() {
+        @Override
+        public void newTableWithAi() {
+            aiRequests.add("requested");
+        }
+
         @Override
         public void openTable(String name) {
             opened.add(name);
@@ -108,10 +114,11 @@ class TableListPageTest {
     }
 
     @Test
-    void showsTheEightNavicatColumns() {
+    void showsTheSixNavicatColumns() {
         assertThat(page.table().getColumns().stream().map(column -> column.getText()).toList())
-                .containsExactly(I18n.t("column.name"), I18n.t("column.rows"), I18n.t("column.dataLength"), I18n.t("column.engine"),
-                        I18n.t("column.created"), I18n.t("column.updated"), I18n.t("column.collation"), I18n.t("column.comment"));
+                .containsExactly(I18n.t("column.name"), I18n.t("column.rows"),
+                        I18n.t("column.dataLength"), I18n.t("column.engine"),
+                        I18n.t("column.updated"), I18n.t("column.comment"));
     }
 
     /** S-6 / C3：详情面板挤窄表清单时，列不能被压成省略号。 */
@@ -126,11 +133,9 @@ class TableListPageTest {
                 .as("%s 列的最小宽度", column.getText())
                 .isGreaterThanOrEqualTo(72.0));
         assertThat(table.getColumns().stream().mapToDouble(TableColumn::getMinWidth).sum())
-                .as("八列的可读下限总和")
-                .isGreaterThanOrEqualTo(800.0);
+                .as("六列的可读下限总和")
+                .isGreaterThanOrEqualTo(600.0);
     }
-
-    // ─────────────────────── 第十九轮 S-1 列可见性 ───────────────────────
 
     /** 当前**可见**的列标题（顺序同 getColumns()）。 */
     private List<String> visibleTitles() {
@@ -141,63 +146,27 @@ class TableListPageTest {
     }
 
     /**
-     * MySQL 形态（每列都有真值）→ 8 列一个都不能少。
+     * ⭐ N14：方言拿不到的格显示「—」，但**列本身不消失**。
      *
-     * <p>这是「不能一刀切砍列」的反向门禁：S-1 只在**全空**时才藏列。
+     * <p>以前的「按数据整列隐藏」让 SQLite 上只剩两列，且搜索时列会跳动；
+     * Navicat 的六列是固定布局 —— 空就空着，位置不挪。
      */
     @Test
-    void mysqlLikeDataKeepsEveryColumnVisible() {
-        assertThat(visibleTitles())
-                .as("MySQL 连接下 8 列全有值 → 一列都不能藏")
-                .containsExactly(I18n.t("column.name"), I18n.t("column.rows"), I18n.t("column.dataLength"), I18n.t("column.engine"),
-                        I18n.t("column.created"), I18n.t("column.updated"), I18n.t("column.collation"), I18n.t("column.comment"));
-    }
-
-    /**
-     * SQLite 形态（只有行数）→ 6 个方言相关列全是「—」→ 整列隐藏，只留「名称 / 行」。
-     *
-     * <p>逐像素实测：SQLite 演示库 8 列有 6 列恒为「—」，占首选宽度 72%，
-     * 横向滚动才看得到有内容的「名称」。
-     */
-    @Test
-    void sqliteLikeDataHidesTheAllPlaceholderColumns(FxRobot robot) {
+    void everyColumnStaysVisibleRegardlessOfDialect(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
         robot.interact(() -> page.render(List.of(
                 new TableMeta("users", 200L, null, null, null, null, null, null),
-                new TableMeta("logs", 1000L, null, null, null, null, null, null),
-                new TableMeta("audit", 0L, null, null, null, null, null, null))));
+                new TableMeta("logs", 1000L, null, null, null, null, null, null))));
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(visibleTitles())
-                .as("SQLite 拿不到引擎/日期/排序规则/注释/长度 → 全是「—」的列整列隐藏")
-                .containsExactly(I18n.t("column.name"), I18n.t("column.rows"));
+                .as("SQLite 只有行数 —— 其余五列仍要在，格子里读「—」")
+                .containsExactly(I18n.t("column.name"), I18n.t("column.rows"),
+                        I18n.t("column.dataLength"), I18n.t("column.engine"),
+                        I18n.t("column.updated"), I18n.t("column.comment"));
     }
 
-    /**
-     * 混合场景：只要有一行有真值，整列就留着。
-     *
-     * <p>这是「看数据不看方言」比白名单稳的地方 —— 一个没填注释的表，
-     * 不该连累整个注释列被藏掉。
-     */
-    @Test
-    void oneRowWithARealValueKeepsTheColumnVisible(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        robot.interact(() -> page.render(List.of(
-                new TableMeta("plain", 1L, null, null, null, null, null, null),
-                new TableMeta("documented", 1L, null, "InnoDB", null, null, null, "有注释"))));
-        WaitForAsyncUtils.waitForFxEvents();
-
-        assertThat(visibleTitles())
-                .as("混合场景：有行有引擎/注释 → 这两列要留着，其余全空的列仍然隐藏")
-                .containsExactly(I18n.t("column.name"), I18n.t("column.rows"), I18n.t("column.engine"), I18n.t("column.comment"));
-    }
-
-    /**
-     * 判定必须基于**整批已加载数据**，不是搜索后的子集。
-     *
-     * <p>否则用户一搜「users」（唯一有引擎的表），引擎列就会凭空出现，
-     * 清空搜索又消失 —— 界面在脚下动。
-     */
+    /** 搜索只过滤行，不许动列布局（六列恒在）。 */
     @Test
     void searchDoesNotChangeColumnVisibility(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
@@ -205,14 +174,15 @@ class TableListPageTest {
                 new TableMeta("users", 1L, null, "InnoDB", null, null, null, null),
                 new TableMeta("logs", 1L, null, null, null, null, null, null))));
         WaitForAsyncUtils.waitForFxEvents();
-        assertThat(visibleTitles()).contains(I18n.t("column.engine"));
 
         robot.interact(() -> page.searchField().setText("logs"));
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(visibleTitles())
-                .as("搜索只过滤行，不许动列布局")
-                .containsExactly(I18n.t("column.name"), I18n.t("column.rows"), I18n.t("column.engine"));
+                .as("搜索只过滤行，六列一列都不许动")
+                .containsExactly(I18n.t("column.name"), I18n.t("column.rows"),
+                        I18n.t("column.dataLength"), I18n.t("column.engine"),
+                        I18n.t("column.updated"), I18n.t("column.comment"));
     }
 
     // ─────────────────────── 第十九轮 S-2 卡片不摆「—」 ───────────────────────
@@ -319,10 +289,16 @@ class TableListPageTest {
         assertThat(button("#table-list-new").isDisable())
                 .as("新建表不依赖行选择")
                 .isFalse();
+        assertThat(button("#table-list-new-ai").isDisable())
+                .as("「用 AI 新建表」也不依赖行选择")
+                .isFalse();
         assertThat(button("#table-list-drop").isDisable())
                 .as("没选行时删除必须禁用")
                 .isTrue();
         assertThat(button("#table-list-design").isDisable()).isTrue();
+        assertThat(button("#table-list-import").isDisable())
+                .as("有表可导时导入向导可直接进（没选表时先选表）")
+                .isFalse();
 
         robot.interact(() -> page.table().getSelectionModel().select(0));
         WaitForAsyncUtils.waitForFxEvents();
@@ -332,6 +308,19 @@ class TableListPageTest {
 
         robot.interact(() -> button("#table-list-design").fire());
         assertThat(designed).containsExactly("users");
+    }
+
+    /**
+     * ⭐ N15：「用 AI 新建表」不是死按钮 —— 它把请求交给宿主，
+     * 生产环境里宿主打开如实说明页（能力面还没建）。
+     */
+    @Test
+    void theAiEntryHandsOffToTheHost(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        robot.interact(() -> button("#table-list-new-ai").fire());
+        assertThat(aiRequests)
+                .as("点「用 AI 新建表」必须真的触发宿主，而不是静默 no-op")
+                .hasSize(1);
     }
 
     /**
@@ -346,12 +335,15 @@ class TableListPageTest {
     @Test
     void toolbarLabelsAreNotAllowedToShrinkIntoAnEllipsis() {
         for (String id : List.of("#table-list-open", "#table-list-design",
-                "#table-list-new", "#table-list-drop", "#table-list-refresh",
-                "#table-list-transfer")) {
+                "#table-list-new", "#table-list-new-ai", "#table-list-drop",
+                "#table-list-import", "#table-list-export")) {
             assertThat(button(id).getMinWidth())
                     .as("%s 的文字不能被压成省略号", id)
                     .isEqualTo(Region.USE_PREF_SIZE);
         }
+        assertThat(page.lookup("#table-list-refresh"))
+                .as("Navicat 的对象工具条没有刷新键（刷新仍在右键菜单）")
+                .isNull();
     }
 
     // ─────────────────────── N2 右键菜单 ───────────────────────
@@ -506,13 +498,15 @@ class TableListPageTest {
      * 所以门禁断言这个顺序就够了，不必真点（点了是模态弹窗，会卡住 FX 线程）。
      */
     @Test
-    void transferEntryIsLabeledAndPreselectsTheSelectedTable(FxRobot robot) {
-        Button transfer = button("#table-list-transfer");
-        assertThat(transfer.getText()).as("清单页的导入/导出必须带文字").isNotBlank();
-        assertThat(transfer.getGraphic()).as("同时要有图标").isNotNull();
-        assertThat(transfer.getTooltip()).as("带文字的按钮也要有 tooltip").isNotNull();
-        assertThat(transfer.getTooltip().getText()).isNotBlank();
-        assertThat(transfer.getAccessibleText()).isNotBlank();
+    void transferEntriesAreLabeledAndPreselectTheSelectedTable(FxRobot robot) {
+        for (String id : List.of("#table-list-import", "#table-list-export")) {
+            Button button = button(id);
+            assertThat(button.getText()).as("%s 必须带文字（图标猜不出语义）", id).isNotBlank();
+            assertThat(button.getGraphic()).as("同时要有图标").isNotNull();
+            assertThat(button.getTooltip()).as("带文字的按钮也要有 tooltip").isNotNull();
+            assertThat(button.getTooltip().getText()).isNotBlank();
+            assertThat(button.getAccessibleText()).isNotBlank();
+        }
 
         assertThat(page.transferCandidates())
                 .as("没选中时按清单原序").containsExactly("users", "logs", "audit");
@@ -565,7 +559,7 @@ class TableListPageTest {
         TableListPage other = pageWithLayout(settings, layoutScopePrefix + "-b");
         assertThat(other.table().getColumns().get(3).getPrefWidth())
                 .as("另一个连接必须用默认列宽，不能串用")
-                .isEqualTo(100);
+                .isEqualTo(90);
     }
 
     /**

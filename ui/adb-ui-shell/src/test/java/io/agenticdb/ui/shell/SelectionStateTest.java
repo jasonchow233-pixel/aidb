@@ -382,7 +382,7 @@ class SelectionStateTest {
     }
 
     /**
-     * 四个表格作用域里的行态档（悬停 / 选中 / 新增 / 删除）都必须压得过自家条纹档。
+     * 三个表格作用域里的行态档（悬停 / 选中 / 新增 / 删除）都必须压得过自家条纹档。
      *
      * <p>⭐ R31 实拍抓到两类同源缺陷：弹窗字段网格选中的那一行只剩一圈蓝色描边、
      * 数据网格 {@code p2-cell} 选中的 {@code User 002} 整行是白的 —— 而按 Navicat，选中就该整行铺底。
@@ -398,7 +398,7 @@ class SelectionStateTest {
                 .as("弹窗表格的选中行必须整行铺 bg-selected，不是只剩单元格描边")
                 .contains("-adb-bg-selected");
 
-        for (String scope : List.of(".adb-grid", ".adb-object-list", ".adb-table-list",
+        for (String scope : List.of(".adb-grid", ".adb-table-list",
                 ".adb-dialog .table-view")) {
             // 条纹档按「:odd 结尾」找，把选择器本身当参照物 —— 它被改回 :filled:odd 时，
             // 门禁要比的是「行态档压不压得动改后的它」，而不是先抱怨参照物没了。
