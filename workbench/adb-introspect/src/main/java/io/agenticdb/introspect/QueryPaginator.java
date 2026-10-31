@@ -1,8 +1,8 @@
 package io.agenticdb.introspect;
 
+import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.model.QueryLimits;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -10,12 +10,14 @@ import java.util.List;
  *
  * <p>查询页以前把结果集一次性塞进 {@code ObservableList}（上限 1000 行），
  * 用户看不到 1000 行之后的数据，且大结果集占满内存。这里提供与数据页
- * 一致的<b>服务端分页</b>：外层套一层 {@code SELECT * FROM (<原句>) AS _p}，
- * 再 {@code LIMIT ? OFFSET ?} 取某一页；总行数用 {@code COUNT(*)} 套同一层得到。
+ * 一致的<b>服务端分页</b>：外层套一层取某一页，总行数用 {@code COUNT(*)} 套同一层得到。
  *
- * <p>三种方言（MySQL / PostgreSQL / SQLite）都支持 {@code LIMIT ? OFFSET ?} 与
- * 带别名的派生表，所以这里<b>不分方言</b> —— 与 {@link DataSqlBuilder} 的
- * 分页写法保持一致，不引入第二套方言分支。
+ * <p>⭐ D-2/D-3 改判：分页写法<b>不再写死在这里</b> —— 曾经「三种方言都支持
+ * {@code LIMIT ? OFFSET ?}，所以不分方言」是成立的；SQL Server 与 Oracle 用
+ * {@code OFFSET ? ROWS FETCH NEXT ? ROWS ONLY}（参数顺序相反，SQL Server 还要求
+ * {@code ORDER BY}、且不许派生表内带 {@code ORDER BY}）。包装策略落回
+ * {@link Dialect#pagedSelect} / {@link Dialect#countedSelect}，这里只管
+ * 判定可分页性与剥尾分号。
  *
  * <p>只对纯只读结果集（SELECT / WITH 开头）生效；DML、DDL、含 {@code FOR UPDATE}
  * 或 {@code INTO} 的语句不在此分页，沿用原来的「整段取回 + 截断提示」逻辑。
@@ -49,29 +51,23 @@ public final class QueryPaginator {
         return !lower.contains("for update") && !lower.contains(" into ");
     }
 
-    /** 总行数查询：{@code SELECT COUNT(*) FROM (<sql>) AS _p}。 */
-    public static PagedSql countSql(String sql, List<Object> params) {
-        String source = stripTrailingSemicolon(sql);
-        List<Object> bound = params == null ? List.of() : List.copyOf(params);
-        return new PagedSql("SELECT COUNT(*) AS adb_count FROM (" + source + ") AS _p", bound);
+    /** 总行数查询：由方言决定怎么包装（{@code COUNT(*)} 套同一层）。 */
+    public static Dialect.PagedSql countSql(Dialect dialect, String sql, List<Object> params) {
+        return dialect.countedSelect(stripTrailingSemicolon(sql), params);
     }
 
     /**
      * 取第 {@code offset} 行起 {@code limit} 行。
      *
-     * <p>参数顺序：原句的占位符在前，{@code limit} / {@code offset} 在后 —— 与
-     * 驱动按出现顺序绑定占位符的语义一致。
+     * <p>参数顺序与占位符出现顺序一致 —— 由 {@link Dialect#pagedSelect} 保证
+     * （LIMIT 族是 limit 在前；OFFSET/FETCH 族是 offset 在前）。
      */
-    public static PagedSql pageSql(String sql, List<Object> params, int limit, long offset) {
+    public static Dialect.PagedSql pageSql(Dialect dialect, String sql, List<Object> params,
+                                           int limit, long offset) {
         String source = stripTrailingSemicolon(sql);
         int safeLimit = QueryLimits.clampPageSize(limit);
         long safeOffset = Math.max(0, offset);
-        List<Object> bound = new ArrayList<>(params == null ? List.of() : params);
-        bound.add(safeLimit);
-        // offset 恒在 int 范围内（L4 上限 500_000），显式转 int 避免与 limit 的 Integer 类型不一致。
-        bound.add((int) safeOffset);
-        return new PagedSql(
-                "SELECT * FROM (" + source + ") AS _p LIMIT ? OFFSET ?", bound);
+        return dialect.pagedSelect(source, params, safeLimit, safeOffset);
     }
 
     /** 剥离单个末尾分号（含前后空白），中间的分号不动。 */
@@ -81,12 +77,5 @@ public final class QueryPaginator {
             return text.substring(0, text.length() - 1).trim();
         }
         return text;
-    }
-
-    /** 一条分页 SQL 与其参数（占位符顺序即绑定顺序）。 */
-    public record PagedSql(String sql, List<Object> params) {
-        public PagedSql {
-            params = List.copyOf(params == null ? List.of() : params);
-        }
     }
 }

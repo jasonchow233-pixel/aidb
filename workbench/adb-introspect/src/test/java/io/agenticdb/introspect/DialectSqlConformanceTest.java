@@ -140,6 +140,42 @@ class DialectSqlConformanceTest {
                 .containsExactly("ALTER TABLE \"users\" DROP COLUMN \"email\"");
     }
 
+    /**
+     * ⭐ D-1：MariaDB 的 SQL 快照 = MySQL 的快照，逐字。
+     *
+     * <p>{@link io.agenticdb.jdbc.MariaDbDialect} 走「继承 + 只 override 驱动/URL/排序规则」，
+     * 这条路的前提是<b>结构 SQL 文本两边一致</b>。这里在<b>装配层</b>再钉一遍：
+     * 将来谁给 MySQL 改了写法而 MariaDB 其实不支持（或反过来），
+     * 对照断言会立刻红 —— 而不是等真库联调才发现。
+     */
+    @Test
+    void mariadbProducesTheSameSqlSnapshotsAsMysql() {
+        ColumnSpec column = new ColumnSpec("email", "TEXT", true, null, "邮箱", false, false);
+        assertThat(addColumn(DialectKind.MARIADB, column).statements())
+                .isEqualTo(addColumn(DialectKind.MYSQL, column).statements());
+
+        ColumnSpec next = new ColumnSpec("email", "VARCHAR(128)", false, null, null, false, false);
+        assertThat(alterColumn(DialectKind.MARIADB, "email", next, "TEXT").statements())
+                .isEqualTo(alterColumn(DialectKind.MYSQL, "email", next, "TEXT").statements());
+
+        assertThat(StructureSqlBuilder.renameColumn(session(DialectKind.MARIADB),
+                table(), "old", "new").statements())
+                .isEqualTo(StructureSqlBuilder.renameColumn(session(DialectKind.MYSQL),
+                        table(), "old", "new").statements())
+                .as("MariaDB 10.5.2+ 才有 RENAME COLUMN，但 CHANGE COLUMN 两边都吃 —— 沿用 MySQL 写法")
+                .containsExactly("ALTER TABLE `users` CHANGE COLUMN `old` `new` VARCHAR(64) NOT NULL");
+
+        List<ColumnDef> columns = List.of(
+                new ColumnDef("id", ColumnType.NUMBER, false, true, null, null,
+                        null, null, null, null, false, "INTEGER"));
+        assertThat(StructureSqlBuilder.createTableSql(session(DialectKind.MARIADB),
+                "users", columns, List.of("id"), List.of(), List.of()))
+                .isEqualTo(StructureSqlBuilder.createTableSql(session(DialectKind.MYSQL),
+                        "users", columns, List.of("id"), List.of(), List.of()))
+                .as("建表同样钉 utf8mb4：MariaDB 老版本默认字符集也不是 utf8mb4")
+                .endsWith("DEFAULT CHARSET=utf8mb4");
+    }
+
     // ─────────────────────────── 建表 DDL ───────────────────────────
 
     @Test

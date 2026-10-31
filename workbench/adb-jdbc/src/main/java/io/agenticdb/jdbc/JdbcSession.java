@@ -76,6 +76,8 @@ public final class JdbcSession implements DbSession {
         }
 
         Properties props = new Properties();
+        // ⭐ D-3：方言级超时先落地，options 还能覆盖它（真库联调要能改）。
+        spec.kind().dialect().connectionProperties().forEach(props::setProperty);
         // ⭐ R4：先应用 options，再设 user / password。
         //    以前顺序相反 —— options 里的 password 会**覆盖**钥匙串里的口令，
         //    落盘的明文 options 反而赢了安全存储的口令。
@@ -118,16 +120,22 @@ public final class JdbcSession implements DbSession {
         }
     }
 
+    /**
+     * 由已建好的连接的 URL 反查方言。
+     *
+     * <p>⭐ D-3：改成<b>遍历方言的 {@code uriScheme()}</b> —— 以前这里是
+     * {@code startsWith("jdbc:mysql:")} 之类的一串硬分支，加一种库就得回来改它，
+     * 漏了就退化成 SQLite（等于连对了库却用错方言）。
+     */
     private static Dialect inferDialect(Connection connection) {
         try {
             String url = connection.getMetaData().getURL();
             if (url != null) {
                 String normalized = url.toLowerCase(java.util.Locale.ROOT);
-                if (normalized.startsWith("jdbc:postgresql:")) {
-                    return DialectKind.POSTGRESQL.dialect();
-                }
-                if (normalized.startsWith("jdbc:mysql:")) {
-                    return DialectKind.MYSQL.dialect();
+                for (DialectKind kind : DialectKind.values()) {
+                    if (normalized.startsWith("jdbc:" + kind.dialect().uriScheme() + ":")) {
+                        return kind.dialect();
+                    }
                 }
             }
         } catch (SQLException ignored) {

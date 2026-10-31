@@ -52,6 +52,16 @@ public final class PostgresDialect implements Dialect {
     }
 
     @Override
+    public String uriScheme() {
+        return "postgresql";
+    }
+
+    @Override
+    public List<String> uriAliases() {
+        return List.of("postgresql", "postgres");
+    }
+
+    @Override
     public String driverClassName() {
         return "org.postgresql.Driver";
     }
@@ -74,6 +84,41 @@ public final class PostgresDialect implements Dialect {
     @Override
     public boolean supportsColumnComment() {
         return true;
+    }
+
+    /** PostgreSQL 的加密开关就是一个 {@code sslmode} 档位串，五档全能表达。 */
+    @Override
+    public java.util.Map<String, String> sslOptions(SslLevel level) {
+        String value = switch (level) {
+            case OFF -> null;
+            case PREFER -> "prefer";
+            case REQUIRE -> "require";
+            case VERIFY_CA -> "verify-ca";
+            case VERIFY_IDENTITY -> "verify-full";
+        };
+        return value == null ? java.util.Map.of()
+                : java.util.Map.of("sslmode", value);
+    }
+
+    @Override
+    public SslLevel sslLevel(java.util.Map<String, String> options) {
+        String raw = options == null ? null : options.get("sslmode");
+        if (raw == null || raw.isBlank()) {
+            return SslLevel.OFF;
+        }
+        return switch (raw.trim().toLowerCase(java.util.Locale.ROOT).replace('-', '_')) {
+            case "allow" -> SslLevel.PREFER;
+            case "prefer" -> SslLevel.PREFER;
+            case "require" -> SslLevel.REQUIRE;
+            case "verify_ca" -> SslLevel.VERIFY_CA;
+            case "verify_full" -> SslLevel.VERIFY_IDENTITY;
+            default -> SslLevel.OFF;
+        };
+    }
+
+    @Override
+    public String sslRootCertOption() {
+        return "sslrootcert";
     }
 
     @Override

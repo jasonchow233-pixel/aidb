@@ -13,8 +13,13 @@ import java.util.List;
  * 列注释写在<b>列定义里</b>（{@code COMMENT '...'}）；
  * 改列必须一条 {@code MODIFY COLUMN} 带完整定义 ——
  * MySQL 没有独立的 {@code SET NOT NULL} / {@code SET DEFAULT}。
+ *
+ * <p>⭐ 不是 {@code final}：{@link MariaDbDialect} 继承它 ——
+ * 两者同源，反引号 / {@code MODIFY COLUMN} / {@code SHOW CREATE TABLE} /
+ * {@code information_schema.CHECK_CONSTRAINTS} 全部一致，
+ * 真正有差异的只有驱动、URL 参数与排序规则族，各 override 各的。
  */
-public final class MySqlDialect implements Dialect {
+public class MySqlDialect implements Dialect {
 
     @Override
     public DialectKind kind() {
@@ -57,6 +62,11 @@ public final class MySqlDialect implements Dialect {
     }
 
     @Override
+    public String uriScheme() {
+        return "mysql";
+    }
+
+    @Override
     public String driverClassName() {
         return "com.mysql.cj.jdbc.Driver";
     }
@@ -79,6 +89,47 @@ public final class MySqlDialect implements Dialect {
     @Override
     public boolean supportsColumnComment() {
         return true;
+    }
+
+    /**
+     * Connector/J 8 的档位参数名是 {@code sslMode}，取值是大写那五个
+     * （驱动 {@code getPropertyInfo} 实测：default=PREFERRED，
+     * choices=DISABLED | PREFERRED | REQUIRED | VERIFY_CA | VERIFY_IDENTITY）。
+     */
+    @Override
+    public java.util.Map<String, String> sslOptions(SslLevel level) {
+        String value = switch (level) {
+            case OFF -> null;
+            case PREFER -> "PREFERRED";
+            case REQUIRE -> "REQUIRED";
+            case VERIFY_CA -> "VERIFY_CA";
+            case VERIFY_IDENTITY -> "VERIFY_IDENTITY";
+        };
+        return value == null ? java.util.Map.of() : java.util.Map.of("sslMode", value);
+    }
+
+    @Override
+    public SslLevel sslLevel(java.util.Map<String, String> options) {
+        String raw = options == null ? null : options.get("sslMode");
+        if (raw == null || raw.isBlank()) {
+            return SslLevel.OFF;
+        }
+        return switch (raw.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "PREFERRED" -> SslLevel.PREFER;
+            case "REQUIRED" -> SslLevel.REQUIRE;
+            case "VERIFY_CA" -> SslLevel.VERIFY_CA;
+            case "VERIFY_IDENTITY" -> SslLevel.VERIFY_IDENTITY;
+            default -> SslLevel.OFF;
+        };
+    }
+
+    /**
+     * CA 文件的参数名本轮<b>没有验证</b>（驱动参数表里没直接给出），所以返回 null：
+     * 界面据此禁用输入框，而不是收下一个填了不生效的路径。
+     */
+    @Override
+    public String sslRootCertOption() {
+        return null;
     }
 
     @Override

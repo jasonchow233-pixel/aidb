@@ -37,6 +37,9 @@ class DialectBranchAuditTest {
             "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/SqliteDialect.java",
             "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/PostgresDialect.java",
             "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/MySqlDialect.java",
+            "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/MariaDbDialect.java",
+            "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/SqlServerDialect.java",
+            "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/OracleDialect.java",
             "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/JdbcSession.java",
             "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/ConnectionSpec.java",
             "workbench/adb-session/src/main/java/io/agenticdb/session/ConnectionProfile.java",
@@ -53,7 +56,7 @@ class DialectBranchAuditTest {
      * </ol>
      */
     private static final Pattern BRANCH = Pattern.compile(
-            "DialectKind\\s*\\.\\s*(SQLITE|POSTGRESQL|MYSQL)"
+            "DialectKind\\s*\\.\\s*(SQLITE|POSTGRESQL|MYSQL|MARIADB|SQLSERVER|ORACLE)"
                     + "|(?:dialect|dialectKind)\\(\\)\\s*(?:==|!=)"
                     + "|switch\\s*\\(\\s*(?:session\\.)?dialect\\(\\)");
 

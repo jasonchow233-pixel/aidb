@@ -87,11 +87,13 @@ class CreateTableColumnOptionsTest {
     @Test
     void autoIncrementMustBeAnIntegerInEveryDialect() {
         for (DialectKind kind : DialectKind.values()) {
+            // Oracle 的说法是「数值型」：IDENTITY 收 NUMBER / INTEGER，NUMBER 本身不是整型。
+            String expected = kind == DialectKind.ORACLE ? "数值型" : "整型";
             assertThatThrownBy(() -> plan(kind,
                     new ColumnSpec("id", "TEXT", false, null, null, false, true, true, null, null)))
                     .as(kind + " 的自增列必须是整型")
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("整型");
+                    .hasMessageContaining(expected);
         }
     }
 

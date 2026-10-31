@@ -4,7 +4,9 @@ import io.agenticdb.model.ColumnSpec;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -43,9 +45,51 @@ public interface Dialect {
 
     String jdbcUrl(String host, int port, String database);
 
+    /**
+     * JDBC URL 的方案名（不含 {@code jdbc:} 前缀与结尾冒号），如 {@code "mysql"}。
+     *
+     * <p>两个用途：① 已连接的会话<b>反查方言</b>（{@code JdbcSession.inferDialect}）；
+     * ② 连接向导解析 {@code mysql://…} 这类简写 URI。两边都遍历本方法与
+     * {@link #uriAliases()}，不再各写一串 {@code startsWith} 分支 ——
+     * 加一种库只改方言自己。
+     */
+    String uriScheme();
+
+    /** 简写 URI 里额外认得的别名（PostgreSQL 认 {@code postgres://}）。 */
+    default List<String> uriAliases() {
+        return List.of(uriScheme());
+    }
+
     String driverClassName();
 
     int defaultPort();
+
+    /**
+     * 连接串是否用 {@code ;} 分隔参数（SQL Server 风格：
+     * {@code jdbc:sqlserver://host:1433;databaseName=shop;encrypt=false}）。
+     *
+     * <p>界面的 URI 输入框要据此决定去哪找参数：按 {@code ?} 切会把
+     * {@code ;databaseName=shop} 当成库名的一部分，填进去就是一个连不上错库的连接。
+     */
+    default boolean usesSemicolonParameters() {
+        return false;
+    }
+
+    /** 「库名 / 服务名」写在参数串里时的参数名；{@code null} 表示它只在路径上。 */
+    default String databaseOptionKey() {
+        return null;
+    }
+
+    /**
+     * ⭐ D-3：只能走 {@code Properties}、进不了 URL 查询串的驱动级参数。
+     *
+     * <p>MySQL / PostgreSQL / MariaDB 把超时写在 URL 里就够了；Oracle 的
+     * {@code oracle.net.CONNECT_TIMEOUT} / {@code oracle.jdbc.ReadTimeout}
+     * 只认连接属性。没有这类参数的方言返回空 Map。
+     */
+    default java.util.Map<String, String> connectionProperties() {
+        return java.util.Map.of();
+    }
 
     /** 是否走连接池。SQLite 是单文件直连，不池化。 */
     boolean pooled();
@@ -65,6 +109,76 @@ public interface Dialect {
      * 否则就是永远填不进、读不出的死控件（4.5-22）。
      */
     boolean supportsColumnComment();
+
+    /**
+     * ⭐ D-3：连接向导要不要摆「TLS 档位 + 根证书」那一组控件。
+     *
+     * <p>MySQL / PostgreSQL / MariaDB 的加密开关就是<b>一个档位字符串</b>
+     * （{@code sslmode=require} / {@code sslMode=REQUIRED}），界面能如实表达。
+     * SQL Server 要 {@code encrypt} 与 {@code trustServerCertificate} 两个参数配对，
+     * Oracle 走的是钱包 + {@code oracle.net.*} 一整套 —— 拿 MySQL 那六个档位去套，
+     * 用户填了<b>不生效</b>的参数，比没有这个面板更糟。所以这两家先收起整组控件，
+     * 在界面上说明「本轮请按驱动参数写在附加参数里」。
+     */
+    default boolean supportsSslOptionsUi() {
+        return true;
+    }
+
+    /**
+     * ⭐ D-3：连接向导 TLS 页的档位 —— 界面语言，不带驱动色彩。
+     *
+     * <p>「档位在界面上是同一个词，落到不同驱动是三套完全不同的拼写」这件事，
+     * 以前写在界面里（界面 switch 方言）。现在界面只问方言两件事：
+     * 这一家<b>能表达哪几档</b>（{@link #sslLevels()}），以及<b>这一档变成什么参数</b>
+     * （{@link #sslOptions(SslLevel)}）。摆界面填不进、也不生效的参数 = 骗人。
+     */
+    enum SslLevel {
+        OFF, PREFER, REQUIRE, VERIFY_CA, VERIFY_IDENTITY
+    }
+
+    /** 本方言能表达的档位（默认五档全给；驱动里没有 {@code prefer} 这一说的就收掉）。 */
+    default List<SslLevel> sslLevels() {
+        return List.of(SslLevel.values());
+    }
+
+    /**
+     * 档位 → 驱动参数。
+     *
+     * <p>{@link SslLevel#OFF} 与「本方言不摆 TLS 页」时返回空 Map —— 意思是
+     * <b>不写任何加密参数</b>，而不是写一个 {@code sslmode=disable}：
+     * 各家驱动的默认值不同，留空才是「按服务端默认来」这句实话。
+     */
+    default Map<String, String> sslOptions(SslLevel level) {
+        return Map.of();
+    }
+
+    /** 从已保存的 options 还原档位（识别不了按 {@link SslLevel#OFF}）。 */
+    default SslLevel sslLevel(Map<String, String> options) {
+        return SslLevel.OFF;
+    }
+
+    /**
+     * 根证书文件的参数名；{@code null} 表示这一家的 TLS 页<b>不单独收 CA 文件</b>。
+     *
+     * <p>PostgreSQL 有 {@code sslrootcert}，MariaDB 有 {@code serverSslCert}（驱动参数表实测），
+     * MySQL Connector/J 8 的 CA 参数本轮未验证 → 给 null，界面把输入框禁用，
+     * 比摆一个填了不生效的框诚实。
+     */
+    default String sslRootCertOption() {
+        return null;
+    }
+
+    /**
+     * TLS 页收起时给用户的说明，返回的是<b>资源键</b>而不是文案
+     * （{@link #supportsSslOptionsUi()} 为 false 时该给）。
+     *
+     * <p>这是界面文案，不是驱动事实：写成中文字面量会让英文界面也长出一段中文
+     * （D-7 那一类），也会让模型层的汉字棘轮为了一句 UI 文案上涨。方言只说
+     * 「我这份说明在资源包的哪个键上」，两种语言由界面各自去取。
+     */
+    default String sslOptionsNoticeKey() {
+        return null;
+    }
 
     /** 结果集元数据是否带声明类型与默认值（SQLite 不带，要读 PRAGMA）。 */
     boolean readsColumnsViaJdbcMetadata();
@@ -157,6 +271,17 @@ public interface Dialect {
     /** 删除外键的 SQL；返回 {@code null} = 要整表重建。 */
     default String dropForeignKeySql(String table, String constraintName) {
         return null;
+    }
+
+    /**
+     * ⭐ D-3：这个库的外键能不能声明 {@code ON UPDATE} 动作。
+     *
+     * <p>MySQL / PostgreSQL / SQL Server 能；<b>Oracle 不能</b>（引用动作只有
+     * {@code ON DELETE}，更新级联要靠触发器）。界面据此收起「ON UPDATE」选择器 ——
+     * ⛔ 不能让用户填一个根本不写进语句的动作，还以为它生效了。
+     */
+    default boolean supportsForeignKeyOnUpdate() {
+        return true;
     }
 
     /** 该方言改外键是否必须整表重建（SQLite = true）。 */
@@ -653,6 +778,79 @@ public interface Dialect {
         return tableCommentSql(table, "");
     }
 
+    // ─────────────────────────── 分页 / 元数据探测 ───────────────────────────
+
+    /**
+     * ⭐ D-2/D-3：一条分页取数 SQL 与它的绑定参数（占位符顺序即绑定顺序）。
+     */
+    record PagedSql(String sql, List<Object> params) {
+        public PagedSql {
+            params = List.copyOf(params == null ? List.of() : params);
+        }
+    }
+
+    /**
+     * 把一条<b>已裁边界</b>的只读 SELECT 包成分页取数语句。
+     *
+     * <p>以前这句写死在 {@code QueryPaginator} 里（"三种库都吃
+     * {@code LIMIT ? OFFSET ?}"）—— SQL Server 与 Oracle 用
+     * {@code OFFSET ? ROWS FETCH NEXT ? ROWS ONLY}，且参数顺序相反、
+     * SQL Server 还强制要求 {@code ORDER BY}。分支只能落回方言层（A1 承诺）。
+     *
+     * <p>注意<b>包装策略也不同</b>：LIMIT 族用派生表包一层最稳；
+     * SQL Server 的派生表里不许出现 {@code ORDER BY}（不带 TOP），
+     * 所以它直接把子句<b>追加在原句尾部</b>。
+     */
+    default PagedSql pagedSelect(String source, List<Object> params,
+                                 int limit, long offset) {
+        List<Object> bound = new ArrayList<>(
+                params == null ? List.of() : params);
+        bound.add(limit);
+        bound.add((int) offset);
+        return new PagedSql("SELECT * FROM (" + source + ") AS _p LIMIT ? OFFSET ?", bound);
+    }
+
+    /** 同上，但取总行数：{@code SELECT COUNT(*) AS adb_count FROM (原句) AS _p}。 */
+    default PagedSql countedSelect(String source, List<Object> params) {
+        return new PagedSql("SELECT COUNT(*) AS adb_count FROM (" + source + ") AS _p",
+                params == null ? List.of() : params);
+    }
+
+    /**
+     * 数据页的<b>字面量</b>分页子句（拼在一条已含 WHERE / ORDER BY 的 SELECT 尾部）。
+     *
+     * <p>与 {@link #pagedSelect} 的分工：那条服务「任意用户 SELECT」（派生表包装、
+     * 参数绑定）；这条服务内省器自己拼的定长语句（表名/分页尺寸都是可信整数，
+     * 走字面量，和旧行为一致）。{@code hasOrderBy} = 原句尾部是否已有
+     * {@code ORDER BY} —— SQL Server 的 {@code OFFSET/FETCH} 必须跟在它后面。
+     */
+    default String pagingClause(long limit, long offset, boolean hasOrderBy) {
+        return " LIMIT " + limit + " OFFSET " + offset;
+    }
+
+    /**
+     * 取列元数据的空页探测语句（0 行）—— 只用结果集元数据，不真读数据。
+     *
+     * <p>SQL Server 没有 {@code LIMIT}，这里必须跟着方言走。
+     */
+    default String probeColumnsSql(String table) {
+        return "SELECT * FROM " + quote(table) + " LIMIT 0";
+    }
+
+    /**
+     * 「整表取第 {@code offset} 行起 {@code limit} 行」的完整语句 —— 无 WHERE、无排序。
+     *
+     * <p>用它的是那些「直接对整张表取一页」的地方：表预览、树/结构页上
+     * 「复制成 SELECT」、对象 SQL 切面展示的取数语句。
+     *
+     * <p>⚠️ 返回值<b>不含结尾分号</b> —— 由调用方决定语句风格。
+     * 界面各处以前各自写着 {@code SELECT * FROM "t" LIMIT 200;}：双引号对 MySQL
+     * 是错的，{@code LIMIT} 对 SQL Server / Oracle 直接语法不通。
+     */
+    default String plainPageSql(String table, long limit, long offset) {
+        return "SELECT * FROM " + quote(table) + pagingClause(limit, offset, false);
+    }
+
     // ─────────────────────────── 执行计划 ───────────────────────────
 
     /**
@@ -665,6 +863,22 @@ public interface Dialect {
         return null;
     }
 
-    /** 执行计划语句。SQLite 用 {@code EXPLAIN QUERY PLAN}，其余用 {@code EXPLAIN}。 */
+    /**
+     * 执行计划语句。SQLite 用 {@code EXPLAIN QUERY PLAN}，PostgreSQL / MySQL 用
+     * {@code EXPLAIN}。不支持的方言（见 {@link #supportsExplainPlan()}）不会被调用。
+     */
     String explainSql(String sql);
+
+    /**
+     * ⭐ D-3：这个库能不能用<b>一条语句</b>拿到执行计划。
+     *
+     * <p>SQL Server 的计划要 {@code SET SHOWPLAN_ALL ON} → 跑语句 → {@code OFF}
+     * 三段会话级设置；Oracle 要 {@code EXPLAIN PLAN FOR} 再读 {@code PLAN_TABLE}
+     * （或 {@code DBMS_XPLAN}）两条语句。查询页的执行按钮只发一条语句，
+     * 所以这两条方言先判「不支持」，界面把按钮收起并注明原因 ——
+     * ⛔ 不能摆一个「点了什么也不会发生」的按钮。
+     */
+    default boolean supportsExplainPlan() {
+        return true;
+    }
 }

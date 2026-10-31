@@ -60,7 +60,7 @@ public final class DataSqlBuilder {
                         .append(sort.ascending() ? " ASC" : " DESC");
             }
         }
-        sql.append(" LIMIT ").append(limit).append(" OFFSET ").append(safeOffset);
+        sql.append(session.dialect().pagingClause(limit, safeOffset, query.hasSorts()));
         return new Sql(sql.toString(), where.params());
     }
 
@@ -78,7 +78,7 @@ public final class DataSqlBuilder {
                 + where.text()
                 + " GROUP BY " + quotedColumn
                 + " ORDER BY adb_count DESC, adb_value ASC"
-                + " LIMIT " + cap;
+                + session.dialect().pagingClause(cap, 0, true);
         return new Sql(sql, where.params());
     }
 

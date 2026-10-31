@@ -40,7 +40,7 @@ class DialectTest {
 
     @Test
     void dialectKindsAreDistinct() {
-        assertThat(DialectKind.values()).hasSize(3);
+        assertThat(DialectKind.values()).hasSize(6);
         assertThat(java.util.Arrays.stream(DialectKind.values())
                 .map(DialectKind::id).toList()).doesNotHaveDuplicates();
     }
@@ -48,16 +48,28 @@ class DialectTest {
     // ─────────────────────────── 标识符引用 ───────────────────────────
 
     @Test
-    void mysqlUsesBackticksOthersUseDoubleQuotes() {
+    void eachFamilyUsesItsOwnIdentifierQuotes() {
         assertThat(DialectKind.MYSQL.dialect().quote("users")).isEqualTo("`users`");
+        assertThat(DialectKind.MARIADB.dialect().quote("users"))
+                .as("MariaDB 继承 MySQL 的反引号（同源，写法逐字一致）")
+                .isEqualTo("`users`");
         assertThat(DialectKind.POSTGRESQL.dialect().quote("users")).isEqualTo("\"users\"");
         assertThat(DialectKind.SQLITE.dialect().quote("users")).isEqualTo("\"users\"");
+        assertThat(DialectKind.ORACLE.dialect().quote("users"))
+                .as("Oracle 与 PG 同用双引号（但大小写敏感：不加引号折成大写）")
+                .isEqualTo("\"users\"");
+        assertThat(DialectKind.SQLSERVER.dialect().quote("users"))
+                .as("⭐ SQL Server 是方括号 —— 既不是反引号也不是双引号")
+                .isEqualTo("[users]");
     }
 
     @Test
     void quotingEscapesTheQuoteCharacter() {
         assertThat(DialectKind.MYSQL.dialect().quote("a`b")).isEqualTo("`a``b`");
         assertThat(DialectKind.SQLITE.dialect().quote("a\"b")).isEqualTo("\"a\"\"b\"");
+        assertThat(DialectKind.SQLSERVER.dialect().quote("a]b"))
+                .as("方括号里的右括号写两遍（T-SQL 的转义只有这一种）")
+                .isEqualTo("[a]]b]");
     }
 
     @Test

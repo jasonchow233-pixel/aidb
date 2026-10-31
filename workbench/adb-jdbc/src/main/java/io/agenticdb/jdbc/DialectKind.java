@@ -7,16 +7,22 @@ import java.util.Locale;
  * 支持的数据库方言。
  *
  * <p>这个枚举是<b>持久化的判别式</b>（{@code connections.json} 里的 {@code kind} 字段），
- * 而<b>行为</b>在 {@link Dialect} 的三个实现里。
+ * 而<b>行为</b>在 {@link Dialect} 的实现里。
  *
  * <p>加一种数据库 = 写一个 {@code Dialect} 实现 + 在这里加一项。
  * 以前行为散在五个文件的 {@code switch} 里，加一种库要同时改五处。
+ *
+ * <p>⭐ 顺序 = 连接向导里磁贴的顺序（{@code DialectKind.values()}）：
+ * 先本地文件，再三种最常见的服务端库，最后是新加的两种。
  */
 public enum DialectKind {
 
     SQLITE("sqlite", "SQLite", new SqliteDialect()),
     POSTGRESQL("postgresql", "PostgreSQL", new PostgresDialect()),
-    MYSQL("mysql", "MySQL", new MySqlDialect());
+    MYSQL("mysql", "MySQL", new MySqlDialect()),
+    MARIADB("mariadb", "MariaDB", new MariaDbDialect()),
+    SQLSERVER("sqlserver", "SQL Server", new SqlServerDialect()),
+    ORACLE("oracle", "Oracle", new OracleDialect());
 
     private final String id;
     private final String displayName;

@@ -34,6 +34,9 @@ JavaFX 内置 `TableView` 底层是 `VirtualFlow`，只创建可见行的 Node�
 | `org.xerial:sqlite-jdbc` | 3.45.1.0 | Apache-2.0 | 第一阶段数据库 |
 | `org.postgresql:postgresql` | 42.7.14 | BSD-2-Clause | P5 PostgreSQL |
 | `com.mysql:mysql-connector-j` | 8.2.0 | GPLv2 + FOSS Exception | P5 MySQL |
+| `org.mariadb.jdbc:mariadb-java-client` | 3.3.3 | **LGPL-2.1** | D-1 MariaDB（见下方许可说明） |
+| `com.microsoft.sqlserver:mssql-jdbc` | 12.8.1.jre11 | MIT | D-3 SQL Server |
+| `com.oracle.database.jdbc:ojdbc11` | 23.5.0.24.07 | **Oracle Free Use Terms and Conditions (FUTC)** | D-3 Oracle（见下方许可说明） |
 | `org.junit.jupiter:junit-jupiter` | 5.10.2 | EPL-2.0 | 单元/集成测试 |
 | `org.assertj:assertj-core` | 3.27.6 | Apache-2.0 | 断言 |
 | `org.testfx:testfx-junit5` | 4.0.18 | BSD-2-Clause | UI 门禁 |
@@ -47,6 +50,15 @@ JavaFX 内置 `TableView` 底层是 `VirtualFlow`，只创建可见行的 Node�
 
 CSV 首版由 `CsvExporter` 自写（RFC 4180 引号/换行转义），暂不引入 commons-csv。
 POI 已在 P6-3 落地（`XlsxCodec` / `XlsxStreamWriter`），不再属于「计划采用」。
+
+**D-3 三条新增驱动的许可结论**（许可字样取自各 POM 的 `<licenses>`，版本同左表）：
+
+| 驱动 | 结论 | 依据与约束 |
+|---|---|---|
+| MariaDB Connector/J 3.3.3（LGPL-2.1） | 可用，按**动态链接**方式使用 | 只在运行时放进 classpath、不修改、不静态内嵌；随包分发时附 LGPL 原文与「获取源码」说明。若将来要做单文件 fat-jar 发行，需要重新评估（内嵌 = 可能触发 LGPL 的整包开源义务） |
+| mssql-jdbc（MIT） | 可用，无附加义务 | 保留版权与许可声明 |
+| ojdbc11（Oracle FUTC） | 可用，**仅限本机/内部使用** | FUTC 允许随应用分发但不允许单独再分发驱动；商业再发行前须逐条复核 FUTC 原文。本项目的「自带驱动」安装包策略需在发布清单里单独标注 |
+
 
 ### 1.5 已在 POM 里但运行时未使用的模块
 

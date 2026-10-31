@@ -48,6 +48,11 @@ public final class SqliteDialect implements Dialect {
     }
 
     @Override
+    public String uriScheme() {
+        return "sqlite";
+    }
+
+    @Override
     public String driverClassName() {
         return "org.sqlite.JDBC";
     }
@@ -70,6 +75,12 @@ public final class SqliteDialect implements Dialect {
 
     @Override
     public boolean supportsColumnComment() {
+        return false;
+    }
+
+    /** 本地文件没有网络传输，也就没有 TLS 页（说明文案由界面给，见 {@link #sslOptionsNoticeKey()}）。 */
+    @Override
+    public boolean supportsSslOptionsUi() {
         return false;
     }
 

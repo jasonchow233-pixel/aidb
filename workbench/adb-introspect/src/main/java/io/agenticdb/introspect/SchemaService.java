@@ -408,9 +408,9 @@ public final class SchemaService {
         return rs.wasNull() ? null : value;
     }
 
-    /** 用 {@code SELECT * FROM t LIMIT 0} 拿结果集元数据，表与视图共用。 */
+    /** 用方言的空页探测语句拿结果集元数据，表与视图共用。 */
     public TableSchema describe(DbSession session, String name) throws SQLException {
-        String sql = "SELECT * FROM " + session.dialect().quote(name) + " LIMIT 0";
+        String sql = session.dialect().probeColumnsSql(name);
         RowPage page = session.query(sql, 1);
         Set<String> primaryKeys = primaryKeys(session, name);
         // ⭐ 自增列：新增行时这一列留空，交给数据库赋值。
@@ -1218,7 +1218,8 @@ public final class SchemaService {
     }
 
     /**
-     * 服务端分页 SQL。SQLite / PostgreSQL / MySQL 都支持 {@code LIMIT n OFFSET m}。
+     * 服务端分页 SQL。分页子句由方言给（D-2/D-3：SQLite / MySQL / PostgreSQL 是
+     * {@code LIMIT n OFFSET m}，SQL Server / Oracle 是 {@code OFFSET n ROWS FETCH NEXT m ROWS ONLY}）。
      *
      * <p>深翻页直接拒绝，避免用户在百万行表上把 UI 卡成「假死」。
      */
@@ -1230,8 +1231,7 @@ public final class SchemaService {
                     "OFFSET " + safeOffset + " 超过上限 " + QueryLimits.MAX_OFFSET
                             + "，请改用筛选条件");
         }
-        return "SELECT * FROM " + session.dialect().quote(name)
-                + " LIMIT " + pageSize + " OFFSET " + safeOffset;
+        return session.dialect().plainPageSql(name, pageSize, safeOffset);
     }
 
     private static boolean isSystemObject(String name) {

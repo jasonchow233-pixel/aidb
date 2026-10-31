@@ -43,6 +43,21 @@ class DialectTimeoutTest {
     }
 
     @Test
+    void mariadbUrlCarriesTheSameTimeoutsOnItsOwnScheme() {
+        String url = new MariaDbDialect().jdbcUrl("db.local", 3306, "shop");
+
+        assertThat(url).startsWith("jdbc:mariadb://db.local:3306/shop?");
+        assertThat(url)
+                .as("mariadb-java-client 的超时参数与 mysql-connector-j 同名（毫秒）")
+                .contains("connectTimeout=" + MySqlDialect.CONNECT_TIMEOUT_MS)
+                .contains("socketTimeout=" + MySqlDialect.SOCKET_TIMEOUT_MS);
+        assertThat(url)
+                .as("serverTimezone / useUnicode 是 mysql-connector-j 的私有参数，MariaDB 驱动不认")
+                .doesNotContain("serverTimezone")
+                .doesNotContain("useUnicode");
+    }
+
+    @Test
     void theTimeoutsAreReasonable() {
         assertThat(MySqlDialect.CONNECT_TIMEOUT_MS)
                 .as("连接超时不能太短（跨机房网络要留余量），也不能太长（界面等不起）")
