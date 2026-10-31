@@ -11,7 +11,7 @@
 |---|---|
 | 命令 | `./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`） |
 | 最近一次全量回量 | 2026-10-31 · macOS 15.7 x64 · JDK 25.0.4（IntelliJ JBR） |
-| 结果 | **1175 条 / 140 类 / 0 失败**（另有 53 条环境门控跳过）—— R37-b 对象页二合一后回量（`./scripts/build.sh` 全绿；较上一版 −28 条 / −2 类：删掉对象首页与其工具条的 `ObjectHomePageTest` 18 + `ObjectHomeToolbarTest` 5，`MetadataColumnsTest` 随「列恒在」收窄 6 → 1，新增 `SideBarTreeTest.routinesOpenTheirDefinitionFromTheTree`） |
+| 结果 | **1180 条 / 140 类 / 0 失败**（另有 53 条环境门控跳过）—— R37-c 库级树（N32 + N7-b）后回量（`./scripts/build.sh` 全绿；较上一版 +5 条 / ±0 类：`CatalogTreeTest` 覆盖 PG / SQL Server 的库清单与系统库过滤、新增 schema 切换器判据 2 条，`CatalogVariantProfileTest` 补 PG / SQL Server 的 URL 切库 1 条，`TabBarTest` 补「无库名退回 `@<连接>`」1 条） |
 
 **口径警告（改数字前必读）**：4 个测试类用 `@Nested`，surefire 的 XML 会把外层类写成 `tests="0"`
 （真实用例在内层类条目里）。按 `tests=` 属性统计会少算一百多条 —— 所以计数一律走

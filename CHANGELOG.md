@@ -23,6 +23,13 @@
 
 ### Changed
 
+- **对象树升到「连接 → 库 → 分组」三级，页签 / 状态栏带库名**（2026-10-31，R37-c）：
+  PostgreSQL（`pg_database`，模板库排除）与 SQL Server（`sys.databases`，master / tempdb / model / msdb 过滤）
+  跟 MySQL / MariaDB 一样，按「一个连接绑一个库」的方式管理多库——双击库 = 切到它（换连接），
+  查询页、对象清单和会话都跟着库走。对象树里当前库加粗，SQLite 单文件仍平铺直挂，Oracle 一条连接一个服务。
+  页签全名改为 `<对象> @<库> (<连接>)`（SQLite 没有库名时退回 `@<连接>`），
+  状态栏的当前连接同样补上库名；schema 切换器只在「切了真能影响查询」的方言上出现
+  （PG 的 `SET search_path`、Oracle 的 `ALTER SESSION`），不再给 SQL Server 摆一个只改树不改查询的开关。
 - **顶区与外壳按 Navicat 17 重排**（2026-10-31，R36）：顶区 140px = 菜单 24 + Ribbon 91 + 页签行 25；
   命令带按内容生长、放不下时横向滚动（不再截断英文标签），页签行只放页签；
   User / Backup / Automation / Model / BI 五格走**如实说明页**，不摆死磁贴。
