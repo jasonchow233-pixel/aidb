@@ -77,7 +77,8 @@ class TokenParityTest {
         assertThat(Tokens.ROW_COMPACT_DARK).isEqualTo(20);
         assertThat(Tokens.ROW_NORMAL_DARK).isEqualTo(21);
         assertThat(Tokens.ROW_COMFORT_DARK).isEqualTo(26);
-        assertThat(Tokens.ROW_TREE_DARK).as("导航树 = Navicat 21").isEqualTo(21);
+        // R37 N11：树行距 21 → 20（对象清单保持 21，两者不同源）。
+        assertThat(Tokens.ROW_TREE_DARK).as("导航树 = Navicat 20").isEqualTo(20);
     }
 
     @Test

@@ -37,7 +37,6 @@ class FocusRingAuditTest {
             ".adb-appbar__action",
             ".adb-appbar__connection",
             ".adb-rail__button",
-            ".adb-sidebar__nav",
             ".adb-tab",
             ".adb-object-tab",
             ".adb-toast__action",

@@ -65,6 +65,7 @@ class AppBarTest {
         actions.register("object.tables", "表清单", "对象", null, () -> { });
         actions.register("import-export", "导入 / 导出", "工具", null, () -> { });
         actions.register("diagnostics", "诊断", "工具", null, () -> { });
+        actions.register("query-history", "查询历史", "工具", null, () -> { });
         actions.register("shortcuts", "快捷键", "帮助", null, () -> { });
         actions.register("about", "关于", "帮助", null, () -> { });
         actions.register("connection.reconnect", "重新连接", "数据库", null, () -> { });

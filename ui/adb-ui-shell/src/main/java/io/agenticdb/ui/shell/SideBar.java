@@ -681,22 +681,10 @@ public final class SideBar extends VBox {
         bottomBar.setAlignment(Pos.CENTER_LEFT);
         bottomBar.getStyleClass().add("adb-sidebar__bottom");
 
-        // ⭐ U-B7：去掉「工作台 / 工具」分段**不等于**把入口一起删掉。
-        //    查询历史与诊断是**真功能**（HistoryPage / DiagnosticsPage），项目规则是
-        //    「占位要么接要么删」—— 这里接的是真功能，就必须留入口，否则功能变成不可达。
-        //    Navicat 模型是「一棵树 + 底部工具」，所以这里**不加分段标题**，平铺在底栏上方。
-        Button history = navButton("sidebar-history", Icons.Icon.HISTORY,
-                I18n.t("sidebar.tool.history"),
-                () -> openTool(TOOL_HISTORY, I18n.t("sidebar.tool.history")));
-        // 诊断对象树里当前选中的表；没选中时 onSelected 会给提示而不是崩。
-        Button diagnostics = navButton("sidebar-diagnostics", Icons.Icon.DIAGNOSTICS, I18n.t("action.object.diagnostics"),
-                () -> actions.run("object.diagnostics"));
-        // 导入 / 导出（P6）：菜单与工具栏也有入口，这里补回侧栏让三个工具成一行，
-        // 同时让 TRANSFER 图标重新被使用（否则 IconSystemAuditTest 判它是死代码）。
-        Button transfer = navButton("sidebar-transfer", Icons.Icon.TRANSFER, I18n.t("action.import-export"),
-                () -> actions.run("import-export"));
-        VBox tools = new VBox(2, history, diagnostics, transfer);
-        tools.getStyleClass().add("adb-sidebar__tools");
+        // ⭐ R37 N13：侧栏底部的三个导航项（查询历史 / 诊断 / 导入导出）撤掉 ——
+        //    Navicat 的侧栏只有树和底栏，工具入口统一在菜单与功能区。
+        //    查询历史此前只在这里有入口，所以同时补了「工具」菜单项
+        //    （AppShell 的 query-history 动作）；诊断与导入导出菜单里本来就有。
 
         searchEmpty.setId("sidebar-search-empty");
         searchEmpty.getStyleClass().add("adb-muted");
@@ -710,10 +698,11 @@ public final class SideBar extends VBox {
         // ⭐ 树根不显示：标题已经是「我的连接」，再显示一行同名根节点
         //    就是重复占位（Navicat 的树直接从连接开始）。
         tree.setShowRoot(false);
-        // ⭐ 行高固定 22px（Navicat 密度）。默认行高由字体 + 内边距撑到 26px 以上，
+        // ⭐ 行高固定（Navicat 密度）。默认行高由字体 + 内边距撑到 26px 以上，
         //    同样是 480px 高的侧栏，能看见的对象少 4 行 —— 而侧栏存在的意义
         //    就是「一屏扫完这个库有什么」。
-        //    22px 来自 `row-tree` 令牌（唯一真相），不写死 —— 改密度只改令牌。
+        //    R37 N11：对象树行距取 20px（Navicat 实测），来自 `row-tree` 令牌
+        //    （唯一真相），不写死 —— 改密度只改令牌。
         tree.setFixedCellSize(Tokens.ROW_TREE_LIGHT);
         tree.setCellFactory(view -> new DemoCell());
         tree.setRoot(buildTreeModel(""));
@@ -797,7 +786,7 @@ public final class SideBar extends VBox {
             menu.show(tree, event.getScreenX(), event.getScreenY());
         });
 
-        expanded.getChildren().addAll(header, schemaPicker, tree, searchEmpty, tools, bottomBar);
+        expanded.getChildren().addAll(header, schemaPicker, tree, searchEmpty, bottomBar);
         VBox.setVgrow(tree, Priority.ALWAYS);
     }
 
@@ -836,18 +825,6 @@ public final class SideBar extends VBox {
         box.getStyleClass().add("adb-sidebar__section");
         box.getChildren().addAll(content);
         return box;
-    }
-
-    /** 侧栏导航项：图标 + 文字。 */
-    private Button navButton(String id, Icons.Icon icon, String text, Runnable handler) {
-        Button button = IconButtons.of(icon, text);
-        button.setId(id);
-        button.setAccessibleText(text);
-        button.getStyleClass().add("adb-sidebar__nav");
-        button.setMaxWidth(Double.MAX_VALUE);
-        button.setAlignment(Pos.CENTER_LEFT);
-        button.setOnAction(event -> handler.run());
-        return button;
     }
 
     // ─────────────────────────── 折叠态 ───────────────────────────
@@ -1013,8 +990,8 @@ public final class SideBar extends VBox {
             return null;
         }
         TreeItem<DemoNode> group = new TreeItem<>(new DemoNode(
-                I18n.t("sidebar.group.savedQueries"), NodeKind.SAVED_GROUP, Icons.Icon.SAVE, "",
-                servingConnectionId, visible.size()));
+                I18n.t("sidebar.group.queries"), NodeKind.SAVED_GROUP, Icons.Icon.SAVE, "",
+                servingConnectionId));
         group.setExpanded(true);
         for (SavedQueries.Entry entry : visible) {
             group.getChildren().add(new TreeItem<>(new DemoNode(
@@ -1092,43 +1069,36 @@ public final class SideBar extends VBox {
                 .filter(object -> object.kind() == ObjectKind.TABLE).toList();
         List<SchemaObject> profileViews = objects.stream()
                 .filter(object -> object.kind() == ObjectKind.VIEW).toList();
-        List<SchemaObject> profileProcedures = objects.stream()
-                .filter(object -> object.kind() == ObjectKind.PROCEDURE).toList();
-        List<SchemaObject> profileFunctions = objects.stream()
-                .filter(object -> object.kind() == ObjectKind.FUNCTION).toList();
-        List<SchemaObject> profileTriggers = objects.stream()
-                .filter(object -> object.kind() == ObjectKind.TRIGGER).toList();
-        // ⭐ O1：调度事件（只有 MySQL 有；其它方言这一组是空的 → 自动摘除）。
-        List<SchemaObject> profileEvents = objects.stream()
-                .filter(object -> object.kind() == ObjectKind.EVENT).toList();
+        // ⭐ R37 N12：过程并入「函数」一组 —— Navicat 的树只有 Tables / Views /
+        //    Functions / Queries 四组；过程单独一组会多出一个日常几乎不展开的层级。
+        //    触发器仍按表归属（数据页的只读切面），事件在树上没有家 —— 两者都不再
+        //    占一个空分组，避免用户点开一个永远为空的「触发器」。
+        List<SchemaObject> profileRoutines = objects.stream()
+                .filter(object -> object.kind() == ObjectKind.FUNCTION
+                        || object.kind() == ObjectKind.PROCEDURE).toList();
 
         return List.of(
                 kindGroup(I18n.t("sidebar.group.tables"), NodeKind.TABLE, profileTables, needle, servingConnectionId),
                 kindGroup(I18n.t("sidebar.group.views"), NodeKind.VIEW, profileViews, needle, servingConnectionId),
-                // ⭐ S3：过程 / 函数 / 触发器（Navicat 的对象浏览层）
-                kindGroup(I18n.t("sidebar.group.procedures"), NodeKind.PROCEDURE, profileProcedures, needle, servingConnectionId),
-                kindGroup(I18n.t("sidebar.group.functions"), NodeKind.FUNCTION, profileFunctions, needle, servingConnectionId),
-                kindGroup(I18n.t("sidebar.group.triggers"), NodeKind.TRIGGER, profileTriggers, needle, servingConnectionId),
-                // ⭐ O1：事件分组（空分组会被摘掉，所以非 MySQL 看不到它）。
-                kindGroup(I18n.t("sidebar.group.events"), NodeKind.EVENT, profileEvents, needle, servingConnectionId));
+                kindGroup(I18n.t("sidebar.group.functions"), NodeKind.FUNCTION, profileRoutines, needle, servingConnectionId));
     }
 
 
-    /** 一个分组节点（表 / 视图）。 */
+    /** 一个分组节点（表 / 视图 / 函数）。 */
     private TreeItem<DemoNode> kindGroup(String label, NodeKind kind,
                                         List<SchemaObject> objects, String needle,
                                         String connectionId) {
-        // ⭐ 先按搜索词过滤，再建节点 —— 这样分组标题上的计数是
-        //    「当前可见的数量」，而不是总数（搜 `user` 时显示 3 而不是 12）。
+        // ⭐ 先按搜索词过滤，再建节点。
         List<SchemaObject> visible = objects.stream()
                 .filter(object -> matches(object.name(), needle))
                 .toList();
+        // ⭐ R37 N12：分组标题不再挂计数徽标 —— Navicat 的树没有数字，
+        //    展开一眼能数完；数字还会随搜索词变化，读起来像一个会撒谎的统计。
         TreeItem<DemoNode> group = new TreeItem<>(
-                new DemoNode(label, NodeKind.GROUP, groupIcon(kind), "", connectionId,
-                        visible.size()));
+                new DemoNode(label, NodeKind.GROUP, groupIcon(kind), "", connectionId));
         group.setExpanded(true);
         for (SchemaObject object : visible) {
-            group.getChildren().add(objectNode(object, kind, connectionId));
+            group.getChildren().add(objectNode(object, kindOf(object.kind()), connectionId));
         }
         return group;
     }
@@ -1254,6 +1224,18 @@ public final class SideBar extends VBox {
             case TRIGGER -> Icons.Icon.TRIGGER;
             case EVENT -> Icons.Icon.HISTORY;
             default -> Icons.Icon.TABLE;
+        };
+    }
+
+    /** 领域对象类型 → 树节点类型（节点的展开 / 图标 / 着色都按对象自身类型走）。 */
+    private static NodeKind kindOf(ObjectKind kind) {
+        return switch (kind) {
+            case TABLE -> NodeKind.TABLE;
+            case VIEW -> NodeKind.VIEW;
+            case PROCEDURE -> NodeKind.PROCEDURE;
+            case FUNCTION -> NodeKind.FUNCTION;
+            case TRIGGER -> NodeKind.TRIGGER;
+            case EVENT -> NodeKind.EVENT;
         };
     }
 
@@ -1820,23 +1802,16 @@ public final class SideBar extends VBox {
      *
      * @param schema       所属 schema（表/视图节点用；其它节点为空串）
      * @param connectionId 所属连接（连接节点与其下的对象用；其它节点为空串）
-     * @param count        分组节点下的可见对象数（非分组节点为 0）——
-     *                     用来在「表」后面显示计数徽标
      */
     private record DemoNode(String name, NodeKind kind, Icons.Icon icon, String schema,
-                            String connectionId, int count) {
+                            String connectionId) {
 
         private DemoNode(String name, NodeKind kind, Icons.Icon icon) {
-            this(name, kind, icon, "", "", 0);
+            this(name, kind, icon, "", "");
         }
 
         private DemoNode(String name, NodeKind kind, Icons.Icon icon, String connectionId) {
-            this(name, kind, icon, "", connectionId, 0);
-        }
-
-        private DemoNode(String name, NodeKind kind, Icons.Icon icon, String schema,
-                         String connectionId) {
-            this(name, kind, icon, schema, connectionId, 0);
+            this(name, kind, icon, "", connectionId);
         }
     }
 
@@ -1879,14 +1854,6 @@ public final class SideBar extends VBox {
                         ? "adb-tree__dot--online" : "adb-tree__dot--offline");
                 dot.setAccessibleText(alive ? I18n.t("sidebar.connected") : I18n.t("sidebar.disconnected"));
                 box.getChildren().add(1, dot);
-            }
-
-            // ⭐ 分组标题右侧的对象计数 —— 让用户不用展开就知道这个库里
-            //    有多少张表（Navicat 也是这个形态）。
-            if (item.kind() == NodeKind.GROUP && item.count() > 0) {
-                Label count = new Label(String.valueOf(item.count()));
-                count.getStyleClass().add("adb-tree__count");
-                box.getChildren().add(count);
             }
 
             // ⭐ U1：当前正在用的库加粗标出（Navicat 也是这样标当前数据库的）。

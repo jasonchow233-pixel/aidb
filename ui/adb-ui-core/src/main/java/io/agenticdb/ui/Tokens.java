@@ -433,8 +433,8 @@ public final class Tokens {
     public static final String ICON_TONE_C_LIGHT = "#96D0FF";
 
     /** row-tree (size) */
-    public static final int ROW_TREE_DARK = 21;
-    public static final int ROW_TREE_LIGHT = 21;
+    public static final int ROW_TREE_DARK = 20;
+    public static final int ROW_TREE_LIGHT = 20;
 
     public static final List<String> ALL_KEYS = List.of(
             "bg-canvas", "bg-sidebar", "bg-chrome", "bg-surface", "bg-subtle", "bg-elevated",

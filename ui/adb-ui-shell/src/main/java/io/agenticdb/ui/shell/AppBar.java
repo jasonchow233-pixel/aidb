@@ -280,6 +280,7 @@ public final class AppBar extends VBox {
                 actions.menuItem("connections.manage"),
                 actions.menuItem("new-query"),
                 actions.menuItem("object.tables"),
+                actions.menuItem("query-history"),
                 actions.menuItem("import-export"),
                 new SeparatorMenuItem(),
                 actions.menuItem("refresh"),

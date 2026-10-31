@@ -51,7 +51,8 @@ class MenuBarFactoryTest {
             "object.refresh-objects",
             "query.run", "query.run-all", "query.cancel", "query.explain",
             "query.format", "query.save", "query.save-snippet", "query.insert-snippet",
-            "favorites.open", "favorites.clear", "diagnostics", "import-export", "settings",
+            "favorites.open", "favorites.clear", "diagnostics", "query-history",
+            "import-export", "settings",
             "window.minimize", "shortcuts", "about");
 
     @Start
@@ -221,7 +222,7 @@ class MenuBarFactoryTest {
                 .containsExactly("label-query.format", "label-query.comment", null,
                         "label-query.save-snippet", "label-query.insert-snippet");
         assertThat(group(menuBar, "menu.tools").getItems().stream().map(MenuItem::getText))
-                .containsExactly("label-object.tables", "label-diagnostics",
+                .containsExactly("label-object.tables", "label-query-history", "label-diagnostics",
                         "label-import-export", null, "label-settings");
 
         assertThat(group(menuBar, "menu.table").isVisible())

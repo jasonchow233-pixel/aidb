@@ -2159,6 +2159,11 @@ public final class AppShell extends StackPane {
                 null, this::openFavorites);
         actions.register("diagnostics", I18n.t("action.diagnostics"), I18n.t("category.tools"),
                 null, () -> actions.run("object.diagnostics"));
+        // ⭐ R37 N13：侧栏导航项撤掉后，查询历史必须还有入口（功能不可变成不可达）。
+        //    工具页签的路由键与 WorkspaceView 共用 SideBar.TOOL_HISTORY。
+        actions.register("query-history", I18n.t("action.query-history"), I18n.t("category.tools"),
+                null, () -> openTab(new TabItem("tool:" + SideBar.TOOL_HISTORY,
+                        I18n.t("action.query-history"), TabKind.TOOL, SideBar.TOOL_HISTORY)));
         // P6 的「导入 / 导出」向导还没做：入口先从侧栏撤掉，
         // 不留「点了只有一句提示」的死 UI（TODO §12.1「要么接要么删」）。
         actions.register("import-export", I18n.t("action.import-export"), I18n.t("category.tools"),

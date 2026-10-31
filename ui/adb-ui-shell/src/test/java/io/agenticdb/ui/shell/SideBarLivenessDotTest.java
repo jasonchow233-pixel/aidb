@@ -139,8 +139,14 @@ class SideBarLivenessDotTest {
             Object value = cell.getTreeItem() == null ? null : cell.getTreeItem().getValue();
             // ⚠️ 只认 CONNECTION 格：ROOT（「我的连接」）也挂 adb-tree-cell--connection，
             //    但它没有 connectionId —— 匹配串不能命中它。
-            if (value == null
-                    || !String.valueOf(value).contains("connectionId=" + connectionId + ",")) {
+            //    R37：DemoNode 去掉了尾部的 count，connectionId 成了 record 的最后一个
+            //    组件（toString 里紧跟 `]`），所以匹配边界是 `]` 而不是 `,`。
+            if (value == null) {
+                continue;
+            }
+            String text = String.valueOf(value);
+            if (!text.contains("kind=CONNECTION")
+                    || !text.contains("connectionId=" + connectionId + "]")) {
                 continue;
             }
             return cell.getGraphic() instanceof HBox box ? box : null;

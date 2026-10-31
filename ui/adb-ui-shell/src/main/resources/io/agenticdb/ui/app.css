@@ -452,7 +452,6 @@
 .adb-icon-button:disabled,
 .adb-menu-item:disabled,
 .adb-tree__star:disabled,
-.adb-sidebar__nav:disabled,
 .check-box:disabled {
     -fx-opacity: 1;
 }
@@ -578,7 +577,6 @@
 .adb-appbar__action:focused,
 .adb-appbar__connection:focused,
 .adb-rail__button:focused,
-.adb-sidebar__nav:focused,
 .adb-tab:focused,
 .adb-object-tab:focused,
 .adb-toast__action:focused,
@@ -1148,12 +1146,6 @@
     -fx-spacing: 4;
 }
 
-/* 侧栏底部的工具行（查询历史 / 诊断）：Navicat 是「一棵树 + 底部工具」，
-   不再给它们套「工作台 / 工具」分段标题。 */
-.adb-sidebar__tools {
-    -fx-spacing: 2;
-}
-
 .adb-sidebar__search {
     -fx-background-color: -adb-bg-inset;
     -fx-text-fill: -adb-text-primary;
@@ -1168,19 +1160,6 @@
 .adb-sidebar__search:focused {
     -fx-border-color: -adb-border-focus;
     -fx-border-radius: 6px;
-}
-
-.adb-sidebar__nav {
-    -fx-background-color: transparent;
-    -fx-text-fill: -adb-text-secondary;
-    -fx-padding: 6px 8px;
-    -fx-font-size: 12px;
-    -fx-background-radius: 6px;
-}
-
-.adb-sidebar__nav:hover {
-    -fx-background-color: -adb-bg-hover;
-    -fx-text-fill: -adb-text-primary;
 }
 
 .adb-object-tree {
@@ -1313,13 +1292,6 @@
    作用域与 :selected 一致（都是 3 个类），同色所以谁覆盖谁看不出差别。 */
 .adb-object-tree .tree-cell.adb-tree-cell--current {
     -fx-background-color: -adb-bg-selected;
-}
-
-/* 分组右侧的对象计数（「表 12」里的 12） */
-.adb-tree__count {
-    -fx-text-fill: -adb-text-tertiary;
-    -fx-font-size: 11px;
-    -fx-padding: 0px 0px 0px 4px;
 }
 
 .adb-tree__icon {

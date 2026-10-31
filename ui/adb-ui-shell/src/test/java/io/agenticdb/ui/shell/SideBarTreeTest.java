@@ -135,20 +135,15 @@ class SideBarTreeTest {
     }
 
     /**
-     * ⭐ S3：过程 / 函数 / 触发器也进对象树。
+     * ⭐ R37 N12：触发器不再在对象树里占一个分组。
      *
-     * <p>触发器用真 SQLite 建一个 —— JDBC 元数据没有触发器列表，
-     * 这条路径走的是方言给的 {@code triggersListSql}。
+     * <p>Navicat 的树只有 Tables / Views / Functions / Queries 四组；
+     * 触发器按表归属（数据页的只读切面里看），树上没有它的家。
+     * 这里把一个 TRIGGER 对象喂给树，树也只出表 / 视图 / 函数三组 ——
+     * 不是「触发器读不到」，而是「读到了也不该在这一层出现」。
      */
     @Test
-    void triggersShowUpInTheTree() throws Exception {
-        io.agenticdb.jdbc.DbSession session = io.agenticdb.jdbc.JdbcSession.open(
-                io.agenticdb.jdbc.ConnectionSpec.sqliteMemory());
-        try (java.sql.Statement statement = session.connection().createStatement()) {
-            statement.execute("CREATE TABLE t (id INTEGER)");
-            statement.execute("CREATE TRIGGER trg_after_insert AFTER INSERT ON t BEGIN"
-                    + " SELECT 1; END");
-        }
+    void triggersNoLongerGetTheirOwnGroupInTheTree() {
         ActionRegistry actions = new ActionRegistry();
         SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "内存库",
                 tab -> { }, message -> { }, "demo", List.of(profile("demo", "内存库")),
@@ -160,9 +155,10 @@ class SideBarTreeTest {
 
         List<String> names = new ArrayList<>();
         collect(rootOf(treeOf(sideBar)), names);
-        assertThat(String.join(" | ", names))
-                .contains("name=trg_after_insert")
-                .contains("name=" + I18n.t("sidebar.group.triggers"));
+        String tree = String.join(" | ", names);
+        assertThat(tree).as("表分组照常").contains("name=" + I18n.t("sidebar.group.tables"));
+        assertThat(tree).as("触发器对象不单独成组、也不作为叶子出现")
+                .doesNotContain("trg_after_insert");
     }
 
     /**
@@ -528,8 +524,8 @@ class SideBarTreeTest {
         assertThat(demoConnection).isNotNull();
         assertThat(otherConnection).isNotNull();
 
-        TreeItem demoGroup = findExact(demoConnection, I18n.t("sidebar.group.savedQueries"));
-        TreeItem otherGroup = findExact(otherConnection, I18n.t("sidebar.group.savedQueries"));
+        TreeItem demoGroup = findExact(demoConnection, I18n.t("sidebar.group.queries"));
+        TreeItem otherGroup = findExact(otherConnection, I18n.t("sidebar.group.queries"));
         assertThat(demoGroup).as("连接节点下要有「已保存查询」分组").isNotNull();
         assertThat(otherGroup).as("每个连接都直接列一份").isNotNull();
         assertThat(childNames(demoGroup))
@@ -564,12 +560,12 @@ class SideBarTreeTest {
         onFxRun(() -> sideBar.setSavedQuerySource(() -> List.copyOf(store)));
 
         TreeItem demoConnection = findExact(rootOf(treeOf(sideBar)), "演示库");
-        TreeItem group = findExact(demoConnection, I18n.t("sidebar.group.savedQueries"));
+        TreeItem group = findExact(demoConnection, I18n.t("sidebar.group.queries"));
         assertThat(childNames(group)).containsExactlyInAnyOrder("活跃用户", "月度报表");
 
         TextField search = searchFieldOf(sideBar);
         onFxRun(() -> search.setText("月度"));
-        group = findExact(findExact(rootOf(treeOf(sideBar)), "演示库"), I18n.t("sidebar.group.savedQueries"));
+        group = findExact(findExact(rootOf(treeOf(sideBar)), "演示库"), I18n.t("sidebar.group.queries"));
         assertThat(childNames(group))
                 .as("搜索词同样过滤已保存查询")
                 .containsExactly("月度报表");
@@ -579,13 +575,13 @@ class SideBarTreeTest {
             search.setText("");
             sideBar.refreshSavedQueries();
         });
-        group = findExact(findExact(rootOf(treeOf(sideBar)), "演示库"), I18n.t("sidebar.group.savedQueries"));
+        group = findExact(findExact(rootOf(treeOf(sideBar)), "演示库"), I18n.t("sidebar.group.queries"));
         assertThat(childNames(group))
                 .as("保存后不必重启，刷新就能看到新条目")
                 .contains("活跃用户归档");
 
         onFxRun(() -> sideBar.setSavedQuerySource(List::of));
-        assertThat(findExact(rootOf(treeOf(sideBar)), I18n.t("sidebar.group.savedQueries")))
+        assertThat(findExact(rootOf(treeOf(sideBar)), I18n.t("sidebar.group.queries")))
                 .as("一条都没有时不摆空分组")
                 .isNull();
     }

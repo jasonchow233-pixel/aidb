@@ -155,6 +155,7 @@ public final class MenuBarFactory {
     private Menu toolsMenu() {
         return new Menu(I18n.t("menu.tools"), null,
                 actions.menuItem("object.tables"),
+                actions.menuItem("query-history"),
                 actions.menuItem("diagnostics"),
                 actions.menuItem("import-export"),
                 new SeparatorMenuItem(),
