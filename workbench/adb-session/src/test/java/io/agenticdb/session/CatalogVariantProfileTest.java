@@ -77,6 +77,23 @@ class CatalogVariantProfileTest {
     }
 
     @Test
+    void everyReconnectDialectSwitchesTheDatabaseInItsUrl() {
+        for (DialectKind kind : java.util.List.of(
+                DialectKind.MYSQL, DialectKind.POSTGRESQL, DialectKind.SQLSERVER)) {
+            ConnectionProfile parent = new ConnectionProfile("id-" + kind.id(), "生产库", kind,
+                    "db.internal", kind.dialect().defaultPort(), "main", "user",
+                    false, 0, "", Map.of());
+            ConnectionProfile variant = parent.catalogVariant("audit");
+
+            assertThat(variant.database())
+                    .as("%s 的库名要换掉", kind).isEqualTo("audit");
+            assertThat(variant.spec(null).jdbcUrl())
+                    .as("%s 的连接串要指向新库，而不是继续连旧库", kind)
+                    .contains("audit").doesNotContain("main");
+        }
+    }
+
+    @Test
     void sqliteProfilesNeverLookLikeVariants() {
         ConnectionProfile sqlite = ConnectionProfile.sqlite("demo", "演示库", "/tmp/x.db");
 

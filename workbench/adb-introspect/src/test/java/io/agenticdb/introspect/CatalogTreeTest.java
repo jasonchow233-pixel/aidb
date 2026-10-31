@@ -20,13 +20,16 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * ⭐ U1：catalog（数据库）树的后端门禁。
+ * ⭐ U1/N32：catalog（数据库）树的后端门禁。
  *
  * <p>守三件事：
  * <ol>
- *   <li><b>只有 MySQL 这类「切库要重连」的方言提供 catalog 清单</b> ——
- *       PG 的连接本身绑在一个库上，SQLite 没有库的概念。不假装有；</li>
- *   <li><b>系统库被过滤</b>（information_schema / mysql / performance_schema / sys）——
+ *   <li><b>「一条连接绑一个库」的方言才提供 catalog 清单</b> ——
+ *       MySQL / MariaDB、PostgreSQL、SQL Server 都是切库 = 换连接；
+ *       SQLite 没有库的概念、Oracle 一条连接绑一个服务。不假装有；</li>
+ *   <li><b>系统库被过滤</b>（方言各判各的：MySQL 的
+ *       information_schema / mysql / performance_schema / sys，
+ *       SQL Server 的 master / tempdb / model / msdb）——
  *       它们是服务本身，不是用户的库；</li>
  *   <li><b>取不到就返回空列表</b>，不炸对象树。</li>
  * </ol>
@@ -34,19 +37,45 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CatalogTreeTest {
 
     @Test
-    void onlyReconnectDialectsOfferCatalogs() {
-        assertThat(DialectKind.MYSQL.dialect().switchesCatalogByReconnect())
-                .as("MySQL 的 schema 就是数据库，切库只能重连").isTrue();
-        assertThat(DialectKind.POSTGRESQL.dialect().switchesCatalogByReconnect())
-                .as("PostgreSQL 切 schema 走 SET search_path，不用重连").isFalse();
-        assertThat(DialectKind.SQLITE.dialect().switchesCatalogByReconnect())
-                .as("SQLite 没有 catalog 概念").isFalse();
-
+    void reconnectDialectsOfferCatalogs() {
+        for (DialectKind kind : List.of(DialectKind.MYSQL, DialectKind.MARIADB,
+                DialectKind.POSTGRESQL, DialectKind.SQLSERVER)) {
+            assertThat(kind.dialect().switchesCatalogByReconnect())
+                    .as("%s 的一条连接只落在一个库上，切库只能重连", kind)
+                    .isTrue();
+            assertThat(kind.dialect().catalogsSql())
+                    .as("%s 要给出库清单 SQL", kind)
+                    .isNotBlank();
+        }
         assertThat(DialectKind.MYSQL.dialect().catalogsSql())
                 .as("MySQL 从 information_schema.SCHEMATA 读（不要 SHOW 权限）")
                 .contains("information_schema.SCHEMATA");
-        assertThat(DialectKind.POSTGRESQL.dialect().catalogsSql()).isNull();
+        assertThat(DialectKind.POSTGRESQL.dialect().catalogsSql())
+                .as("PG 从 pg_database 读，模板库在 SQL 里排除")
+                .contains("pg_database", "NOT datistemplate");
+        assertThat(DialectKind.SQLSERVER.dialect().catalogsSql())
+                .as("SQL Server 从 sys.databases 读")
+                .contains("sys.databases");
+
+        assertThat(DialectKind.SQLITE.dialect().switchesCatalogByReconnect())
+                .as("SQLite 没有 catalog 概念").isFalse();
         assertThat(DialectKind.SQLITE.dialect().catalogsSql()).isNull();
+        assertThat(DialectKind.ORACLE.dialect().switchesCatalogByReconnect())
+                .as("Oracle 一条连接绑一个服务，没有可切的库名").isFalse();
+        assertThat(DialectKind.ORACLE.dialect().catalogsSql()).isNull();
+    }
+
+    @Test
+    void onlySessionSwitchDialectsGetASchemaPicker() {
+        // UI 的 schema 切换器只在「切了真能影响查询」时才出现：
+        // PG 的 SET search_path、Oracle 的 ALTER SESSION 都算；
+        // MySQL 的 schema 就是库（入口在树上的库一层），SQL Server 没有会话级路径。
+        assertThat(DialectKind.POSTGRESQL.dialect().switchesSchemaInSession()).isTrue();
+        assertThat(DialectKind.ORACLE.dialect().switchesSchemaInSession()).isTrue();
+        assertThat(DialectKind.MYSQL.dialect().switchesSchemaInSession()).isFalse();
+        assertThat(DialectKind.MARIADB.dialect().switchesSchemaInSession()).isFalse();
+        assertThat(DialectKind.SQLSERVER.dialect().switchesSchemaInSession()).isFalse();
+        assertThat(DialectKind.SQLITE.dialect().switchesSchemaInSession()).isFalse();
     }
 
     @Test
@@ -62,15 +91,15 @@ class CatalogTreeTest {
     }
 
     @Test
-    void postgresHasNoCatalogListEither() throws SQLException {
-        // PG 的 FakeDialectSession.connection() 是 null —— 能跑到这里还没 NPE，
+    void oracleNeverTouchesTheConnectionForCatalogs() throws SQLException {
+        // Oracle 的 FakeDialectSession.connection() 是 null —— 能跑到这里还没 NPE，
         // 就证明 catalogsSql() 为 null 时根本没碰连接。
-        assertThat(new SchemaService().listCatalogs(FakeDialectSession.of(DialectKind.POSTGRESQL)))
+        assertThat(new SchemaService().listCatalogs(FakeDialectSession.of(DialectKind.ORACLE)))
                 .isEmpty();
     }
 
     @Test
-    void systemSchemasAreFilteredAndTheRestIsSorted() throws SQLException {
+    void mysqlSystemSchemasAreFilteredAndTheRestIsSorted() throws SQLException {
         List<String> databases = List.of("orders_db", "information_schema", "mysql",
                 "audit_db", "sys", "performance_schema");
         DbSession session = catalogsSession(DialectKind.MYSQL, databases);
@@ -78,6 +107,27 @@ class CatalogTreeTest {
         assertThat(new SchemaService().listCatalogs(session))
                 .as("系统库不进对象树；剩下的按名称排（大小写不敏感）")
                 .containsExactly("audit_db", "orders_db");
+    }
+
+    @Test
+    void sqlServerSystemDatabasesAreFiltered() throws SQLException {
+        List<String> databases = List.of("master", "Sales", "tempdb", "model", "msdb",
+                "Operations");
+        DbSession session = catalogsSession(DialectKind.SQLSERVER, databases);
+
+        assertThat(new SchemaService().listCatalogs(session))
+                .as("master / tempdb / model / msdb 是实例自带库，不是用户的库")
+                .containsExactly("Operations", "Sales");
+    }
+
+    @Test
+    void postgresListsEveryRealDatabase() throws SQLException {
+        DbSession session = catalogsSession(DialectKind.POSTGRESQL,
+                List.of("postgres", "app", "audit"));
+
+        assertThat(new SchemaService().listCatalogs(session))
+                .as("模板库在 SQL 里已排除，这里拿到的都该留下")
+                .containsExactly("app", "audit", "postgres");
     }
 
     @Test

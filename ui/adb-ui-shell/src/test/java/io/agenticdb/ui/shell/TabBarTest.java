@@ -35,8 +35,9 @@ class TabBarTest {
         actions.register("tab.copy-name", "复制表名", "tab", null, () -> { });
         actions.register("tab.copy-select", "复制 SELECT", "tab", null, () -> { });
         tabBar = new TabBar(actions);
-        // 标签只认识 id；名字是外壳给的（档案里才有）。
+        // 标签只认识 id；名字与库名是外壳给的（档案里才有）。
         tabBar.setConnectionLabels(id -> "pg".equals(id) ? "生产库" : "演示库");
+        tabBar.setConnectionCatalogs(id -> "pg".equals(id) ? "prod_db" : "demo_db");
         stage.setScene(new javafx.scene.Scene(tabBar, 900, 200));
         stage.show();
     }
@@ -49,7 +50,7 @@ class TabBarTest {
         assertThat(titles())
                 .as("重名的**每一个**都要补连接名 —— 只补后开的那个，"
                         + "先开的看起来像「本尊」，可两张表完全平权")
-                .containsExactly("users @ 演示库", "users @ 生产库");
+                .containsExactly("users @demo_db (演示库)", "users @prod_db (生产库)");
     }
 
     @Test
@@ -61,7 +62,7 @@ class TabBarTest {
                 .containsExactly("users");
         assertThat(tooltips())
                 .as("不重名也要在 tooltip 里给全名：这张表在哪个库，鼠标停上去就该知道")
-                .containsExactly("users @ 演示库");
+                .containsExactly("users @demo_db (演示库)");
     }
 
     @Test
@@ -72,11 +73,21 @@ class TabBarTest {
 
         assertThat(titles())
                 .as("剩下那张已经没有对手了，标题必须退回干净 —— "
-                        + "留着「@ 生产库」是在陈述一个已经不成立的事实")
+                        + "留着「@prod_db (生产库)」是在陈述一个已经不成立的事实")
                 .containsExactly("users");
         assertThat(tooltips())
                 .as("退回干净标题不等于丢掉信息：全名留在 tooltip 里")
-                .containsExactly("users @ 演示库");
+                .containsExactly("users @demo_db (演示库)");
+    }
+
+    @Test
+    void aConnectionWithoutDatabaseFallsBackToItsName() {
+        run(() -> tabBar.setConnectionCatalogs(id -> ""));
+        open("sqlite:demo:users", "users", "demo");
+
+        assertThat(tooltips())
+                .as("SQLite 没有库名 —— 标题只写连接名，不空着摆一个 @")
+                .containsExactly("users @演示库");
     }
 
     // ─────────────────────────── 脚手架 ───────────────────────────

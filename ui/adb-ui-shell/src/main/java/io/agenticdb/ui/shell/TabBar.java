@@ -52,6 +52,8 @@ public final class TabBar extends HBox {
      * 没注入时退回 id —— 至少不骗人。
      */
     private Function<String, String> connectionLabel = id -> id;
+    /** ⭐ N7-b：连接 id → 库名（空串 = 没有库名）。 */
+    private Function<String, String> connectionCatalog = id -> "";
 
     public TabBar(ActionRegistry actions) {
         this.actions = actions;
@@ -109,6 +111,18 @@ public final class TabBar extends HBox {
     }
 
     /**
+     * ⭐ N7-b：注入「连接 id → 库名」。
+     *
+     * <p>页签标题的格式是 {@code <对象> @<库> (<连接>)} —— 库名只有外壳知道
+     * （catalog 虚拟连接的库名在 id 后缀里，父连接的在档案里）。
+     * 返回空串 = 这个连接没有库名（SQLite 单文件），标题退回 {@code @<连接>}。
+     */
+    public void setConnectionCatalogs(Function<String, String> connectionCatalog) {
+        this.connectionCatalog = connectionCatalog == null ? id -> "" : connectionCatalog;
+        refreshTitles();
+    }
+
+    /**
      * ⭐ UX-5：重名标签加连接后缀，每个标签都挂上「全名」提示。
      *
      * <p>多连接之下两张 {@code users} 表并排站着，标题一模一样 —— 点哪个
@@ -143,7 +157,12 @@ public final class TabBar extends HBox {
         }
     }
 
-    /** 带连接名的全名；没有归属连接（设置页这类全局标签）就只给标题。 */
+    /**
+     * 带库名与连接名的全名（N7-b：{@code <对象> @<库> (<连接>)}）。
+     *
+     * <p>没有归属连接（设置页这类全局标签）就只给标题；没有库名
+     * （SQLite 单文件）退回 {@code @<连接>}，不空着占位。
+     */
     private String qualified(TabItem tab) {
         String connectionId = tab.connectionId();
         if (connectionId == null || connectionId.isBlank()) {
@@ -151,7 +170,12 @@ public final class TabBar extends HBox {
         }
         String label = connectionLabel.apply(connectionId);
         // 解析不出名字（档案已删）时宁可显示 id，也不冒充「未知连接」。
-        return tab.title() + " @ " + (label == null || label.isBlank() ? connectionId : label);
+        String connection = label == null || label.isBlank() ? connectionId : label;
+        String catalog = connectionCatalog.apply(connectionId);
+        if (catalog == null || catalog.isBlank()) {
+            return tab.title() + " @" + connection;
+        }
+        return tab.title() + " @" + catalog + " (" + connection + ")";
     }
 
     public List<TabItem> openTabs() {

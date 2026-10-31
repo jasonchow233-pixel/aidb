@@ -289,6 +289,32 @@ public final class SqlServerDialect implements Dialect {
         return null;
     }
 
+    /**
+     * ⭐ N32：一条 SQL Server 连接绑定一个库（JDBC 的 {@code databaseName}），
+     * 跨库 = 换连接。库清单读 {@code sys.databases}。
+     */
+    @Override
+    public boolean switchesCatalogByReconnect() {
+        return true;
+    }
+
+    @Override
+    public String catalogsSql() {
+        return "SELECT name FROM sys.databases ORDER BY name";
+    }
+
+    /** master / tempdb / model / msdb 是实例自带库，不是用户的库。 */
+    @Override
+    public boolean isSystemCatalog(String name) {
+        if (name == null) {
+            return false;
+        }
+        return switch (name.toLowerCase(java.util.Locale.ROOT)) {
+            case "master", "tempdb", "model", "msdb" -> true;
+            default -> false;
+        };
+    }
+
     @Override
     public List<String> dependentViews(Connection connection, String table) throws SQLException {
         return List.of();

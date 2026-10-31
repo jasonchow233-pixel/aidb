@@ -93,9 +93,9 @@ public final class SideBar extends VBox {
     /**
      * ⭐ U1：每个连接的 catalog（数据库）清单。
      *
-     * <p>只有「切 catalog 要重连」的方言有（MySQL）：连接节点下先出库一层，
-     * 库节点下才是表 / 视图分组。没有 catalog 的连接（SQLite / PG）
-     * 这个 map 里没有条目 → 分组直接挂在连接节点下（老形态）。
+     * <p>只有「切 catalog 要重连」的方言有（MySQL / MariaDB、PG、SQL Server）：
+     * 连接节点下先出库一层，库节点下才是表 / 视图分组。没有 catalog 的连接
+     * （SQLite、Oracle）这个 map 里没有条目 → 分组直接挂在连接节点下（老形态）。
      *
      * <p>{@link CatalogEntry#connectionId()} 是**Serve 这个库的连接 id**：
      * 父连接自己的库就是父 id，别的库是虚拟连接 id（{@code 父id@库名}）——

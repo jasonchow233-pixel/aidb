@@ -265,15 +265,15 @@ public final class SchemaService {
     }
 
     /**
-     * ⭐ U1：连接可见的 catalog（数据库）列表。
+     * ⭐ N32：连接可见的 catalog（数据库）列表。
      *
-     * <p>只有「切 catalog 要重连」的方言有（MySQL，见
+     * <p>只有「一条连接绑一个库、切库要重连」的方言有
+     * （MySQL / MariaDB、PostgreSQL、SQL Server，见
      * {@link io.agenticdb.jdbc.Dialect#catalogsSql()}）；其它方言返回**空列表**
      * —— 于是对象树里不会出现 catalog 层，不假装有。
      *
-     * <p>系统库（{@code information_schema} / {@code mysql} /
-     * {@code performance_schema} / {@code sys}）被过滤掉：它们是服务本身，
-     * 不是用户的库（Navicat 也是把它们单独分组）。过滤放在 Java 而不是 SQL 里，
+     * <p>系统库由方言自己判定（{@link io.agenticdb.jdbc.Dialect#isSystemCatalog}）：
+     * 它们是服务本身，不是用户的库。判据放在 Java 而不是 SQL 里，
      * 是为了能对着替身会话单测。
      */
     public List<String> listCatalogs(DbSession session) throws SQLException {
@@ -286,20 +286,13 @@ public final class SchemaService {
              ResultSet rs = statement.executeQuery(sql)) {
             while (rs.next()) {
                 String name = rs.getString(1);
-                if (name != null && !name.isBlank() && isUserCatalog(name)) {
+                if (name != null && !name.isBlank() && !session.dialect().isSystemCatalog(name)) {
                     catalogs.add(name);
                 }
             }
         }
         catalogs.sort(String.CASE_INSENSITIVE_ORDER);
         return List.copyOf(catalogs);
-    }
-
-    /** 系统库不进对象树（大小写不敏感）。 */
-    private static boolean isUserCatalog(String name) {
-        String lower = name.toLowerCase(Locale.ROOT);
-        return !lower.equals("information_schema") && !lower.equals("mysql")
-                && !lower.equals("performance_schema") && !lower.equals("sys");
     }
 
     /**

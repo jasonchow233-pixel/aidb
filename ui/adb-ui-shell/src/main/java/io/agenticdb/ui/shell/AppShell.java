@@ -772,7 +772,24 @@ public final class AppShell extends StackPane {
         //    放在这里（而不是构造时一次注入）：连接**改名**后标题里的后缀也得跟着变。
         tabBar.setConnectionLabels(id -> {
             ConnectionProfile profile = profileById(id);
-            return profile == null ? id : profile.name();
+            if (profile == null) {
+                return id;
+            }
+            // ⭐ N7-b：catalog 虚拟连接的「连接」是它的父连接 —— 标题里的库名
+            //    由下面那条注入，连接名再带一遍库名就重复了。
+            if (ConnectionProfile.isCatalogVariantId(id)) {
+                ConnectionProfile parent = profileById(
+                        ConnectionProfile.parentOfCatalogVariant(id));
+                return parent == null ? profile.name() : parent.name();
+            }
+            return profile.name();
+        });
+        tabBar.setConnectionCatalogs(id -> {
+            ConnectionProfile profile = profileById(id);
+            if (profile == null || !profile.kind().dialect().switchesCatalogByReconnect()) {
+                return "";
+            }
+            return profile.database();
         });
     }
 
@@ -1048,25 +1065,29 @@ public final class AppShell extends StackPane {
 
     /** 连接就绪后的界面刷新（必须在 FX 线程调用）。 */
     private void applyConnectedUi(ConnectionProfile profile, List<SchemaObject> objects) {
-        // ⭐ schema 切换器：列出这个连接能看到的 schema。
-        //    多于一个才显示（SQLite 没有、单 schema 不添乱）。
-        // ⭐ U1：MySQL 这类「切 catalog 要重连」的方言不走 schema 切换器 ——
-        //    它的 schema 就是数据库，切换入口在对象树的 catalog 层。
-        //    两个入口管同一件事必然打架，只留一个。
-        if (session != null && session.dialect().switchesCatalogByReconnect()) {
-            sideBar.setSchemas(List.of());
-            // 虚拟连接的库清单就是父连接的（父连接接入时已经读过）—— 不重复读。
-            if (!ConnectionProfile.isCatalogVariantId(profile.id())) {
+        if (session != null) {
+            var dialect = session.dialect();
+            // ⭐ N32：库一层（MySQL / MariaDB、PG、SQL Server）。虚拟连接本身
+            //    就是一个库，不再往自己下面套一层 —— 父连接的清单在接入时已读过。
+            if (dialect.switchesCatalogByReconnect()
+                    && !ConnectionProfile.isCatalogVariantId(profile.id())) {
                 loadCatalogsFor(profile.id());
             }
-        } else {
-            try {
-                sideBar.setSchemas(schemaService.listSchemas(session));
-            } catch (SQLException e) {
+            // ⭐ schema 切换器只给「会话内能切」的方言（PG 的 search_path、
+            //    Oracle 的 CURRENT_SCHEMA）。MySQL 的 schema 就是库（入口在树上的
+            //    库一层）、SQL Server 没有会话级搜索路径 —— 两处都不摆一个
+            //    切了却不影响查询的假开关。
+            if (dialect.switchesSchemaInSession()) {
+                try {
+                    sideBar.setSchemas(schemaService.listSchemas(session));
+                } catch (SQLException e) {
+                    sideBar.setSchemas(List.of());
+                }
+            } else {
                 sideBar.setSchemas(List.of());
             }
         }
-        statusBar.setConnection(profile.name());
+        statusBar.setConnection(connectionTitle(profile));
         if (appBar != null) {
             appBar.setConnectionState(true, false);
         }
@@ -1083,6 +1104,22 @@ public final class AppShell extends StackPane {
         statusBar.setRange("—");
         status(I18n.t("shell.connectedObjects", profile.name(), objects.size()));
         closeOrphanSessions();
+    }
+
+    /**
+     * ⭐ N32：状态栏的「连接 · 库」。
+     *
+     * <p>库名跟着连接走：catalog 虚拟连接的档案名本来就是
+     * {@code 父连接 · 库名}，不再重复拼；SQLite 没有库名，只显示连接名。
+     */
+    private static String connectionTitle(ConnectionProfile profile) {
+        String database = profile.database();
+        if (database.isBlank()
+                || !profile.kind().dialect().switchesCatalogByReconnect()) {
+            return profile.name();
+        }
+        String suffix = " · " + database;
+        return profile.name().endsWith(suffix) ? profile.name() : profile.name() + suffix;
     }
 
     /**
@@ -1200,10 +1237,10 @@ public final class AppShell extends StackPane {
     }
 
     /**
-     * ⭐ U1：读某个连接的 catalog（数据库）清单，推进对象树。
+     * ⭐ N32：读某个连接的 catalog（数据库）清单，推进对象树。
      *
-     * <p>只有「切 catalog 要重连」的方言读得到东西（MySQL）；其它方言
-     * 读到空清单 → 侧栏不会加库一层，形态与以前完全一样。
+     * <p>只有「切 catalog 要重连」的方言读得到东西（MySQL / MariaDB、PG、
+     * SQL Server）；SQLite / Oracle 读到空清单 → 侧栏不加库一层，不假装有。
      */
     private void loadCatalogsFor(String connectionId) {
         // ⭐ 虚拟连接本身就是一个库 —— 它下面不再套库一层。
@@ -1225,9 +1262,17 @@ public final class AppShell extends StackPane {
         executors.forConnection(connectionId).execute(() -> {
             List<String> catalogs;
             try {
-                catalogs = schemaService.listCatalogs(target);
+                catalogs = new ArrayList<>(schemaService.listCatalogs(target));
             } catch (Exception e) {
-                catalogs = List.of();
+                catalogs = new ArrayList<>();
+            }
+            // ⭐ N32：父连接自己落在的那个库**必须**出现在树里 —— SQL Server 常以
+            //    master 接入（系统库被过滤掉了），PG 也可能连到模板库；缺了它，
+            //    当前连接的对象在树上没有归属，用户会以为库是空的。
+            String own = parent.database();
+            if (!own.isBlank() && catalogs.stream().noneMatch(name -> name.equalsIgnoreCase(own))) {
+                catalogs.add(own);
+                catalogs.sort(String.CASE_INSENSITIVE_ORDER);
             }
             List<SideBar.CatalogEntry> entries = new ArrayList<>();
             for (String catalog : catalogs) {

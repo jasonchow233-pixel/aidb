@@ -418,15 +418,16 @@ public interface Dialect {
     }
 
     /**
-     * 切换 catalog 是否必须**重连**。
+     * ⭐ N32：对象树是否出 catalog（数据库）一层，且切库必须**重连**。
      *
-     * <p>MySQL 的 schema 就是数据库：一条连接绑定一个库，切库只能重连
-     * （{@code USE} 对连接池里的每条连接都要发，管不过来）。
-     * PostgreSQL 切 schema 走 {@link #setSchemaSql}（{@code SET search_path}），
-     * SQLite 没有 catalog 概念 —— 两者都返回 {@code false}。
+     * <p>MySQL / MariaDB 的 schema 就是数据库：一条连接绑定一个库，切库只能重连
+     * （{@code USE} 对连接池里的每条连接都要发，管不过来）。PostgreSQL 与
+     * SQL Server 的一个连接也只落在<b>一个库</b>上，跨库同样靠换连接 ——
+     * 三者都返回 {@code true}。SQLite 没有库的概念，Oracle 一条连接就是一个
+     * 服务、库名不可切 —— 两者返回 {@code false}。
      *
-     * <p>UI 据此二选一：{@code true} → 对象树出 catalog 层（切库 = 换连接）；
-     * {@code false} → schema 切换器（{@link #setSchemaSql} 非空时）。
+     * <p>UI 据此出 catalog 层：{@code true} → 连接 → 库 → 分组；
+     * {@code false} → 连接 → 分组（Oracle 仍有 schema 切换器）。
      */
     default boolean switchesCatalogByReconnect() {
         return false;
@@ -435,13 +436,36 @@ public interface Dialect {
     /**
      * catalog（数据库）列表查询：**第 1 列 = 库名**。
      *
-     * <p>只有「切 catalog 要重连」的方言提供（MySQL，读
-     * {@code information_schema.SCHEMATA}）；其它方言返回 {@code null}
-     * （PG 的连接本身绑在一个库上，SQLite 没有库的概念）——
-     * 于是对象树里不会出现 catalog 层，不假装有。
+     * <p>MySQL 读 {@code information_schema.SCHEMATA}（不需要 SHOW 权限），
+     * PostgreSQL 读 {@code pg_database}，SQL Server 读 {@code sys.databases}。
+     * 其它方言返回 {@code null}（SQLite 没有库的概念；Oracle 一条连接绑一个服务）
+     * —— 于是对象树里不会出现 catalog 层，不假装有。
      */
     default String catalogsSql() {
         return null;
+    }
+
+    /**
+     * 系统库判据（catalog 层用）：这些名字是服务本身，不进对象树。
+     *
+     * <p>按方言各判各的，不做一张跨库黑名单 —— MySQL 的 {@code sys}
+     * 与 SQL Server 的 {@code msdb} 不是一回事，混在一张表里迟早误伤。
+     * 默认没有系统库（PG 的模板库已在 {@link #catalogsSql()} 里排除）。
+     */
+    default boolean isSystemCatalog(String name) {
+        return false;
+    }
+
+    /**
+     * 当前 schema 能不能**在会话内切换**（{@link #setSchemaSql} 真能改解析路径）。
+     *
+     * <p>PostgreSQL 用 {@code SET search_path}、Oracle 用
+     * {@code ALTER SESSION SET CURRENT_SCHEMA} —— 两者返回 {@code true}，
+     * UI 才显示 schema 切换器。MySQL 的 schema 就是库（切库 = 重连）、
+     * SQL Server 没有会话级搜索路径 —— 两者返回 {@code false}。
+     */
+    default boolean switchesSchemaInSession() {
+        return false;
     }
 
     /**

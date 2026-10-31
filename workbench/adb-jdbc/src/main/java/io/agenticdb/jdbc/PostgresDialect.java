@@ -280,6 +280,26 @@ public final class PostgresDialect implements Dialect {
     }
 
     @Override
+    public boolean switchesSchemaInSession() {
+        return true;
+    }
+
+    /**
+     * ⭐ N32：一条 PG 连接只落在 {@code /database} 上，跨库只能换连接
+     * （{@code \c} 在 psql 里也是重连）。库清单读 {@code pg_database}，
+     * 模板库在 SQL 里就排除掉。
+     */
+    @Override
+    public boolean switchesCatalogByReconnect() {
+        return true;
+    }
+
+    @Override
+    public String catalogsSql() {
+        return "SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY datname";
+    }
+
+    @Override
     public List<String> dependentViews(Connection connection, String table) throws SQLException {
         // 只有 SQLite 的整表重建需要拆视图。
         return List.of();

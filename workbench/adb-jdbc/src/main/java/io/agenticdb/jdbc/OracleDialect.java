@@ -300,6 +300,11 @@ public final class OracleDialect implements Dialect {
     }
 
     @Override
+    public boolean switchesSchemaInSession() {
+        return true;
+    }
+
+    @Override
     public List<String> dependentViews(Connection connection, String table) throws SQLException {
         return List.of();
     }

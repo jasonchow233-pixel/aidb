@@ -325,11 +325,26 @@ public class MySqlDialect implements Dialect {
      *
      * <p>走 {@code information_schema.SCHEMATA} 而不是 {@code SHOW DATABASES}：
      * 后者要 SHOW 权限，前者只要能看到 information_schema。
-     * 系统库的过滤在 {@code SchemaService.listCatalogs} 里做（可测）。
+     * 系统库的过滤在这里声明、由 {@code SchemaService.listCatalogs} 执行（可测）。
      */
     @Override
     public String catalogsSql() {
         return "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME";
+    }
+
+    /**
+     * MySQL 的四个系统库：它们是服务本身（账号表、性能表、information_schema 视图
+     * 与 sys 的存储过程），不是用户的库。MariaDB 同名同义。
+     */
+    @Override
+    public boolean isSystemCatalog(String name) {
+        if (name == null) {
+            return false;
+        }
+        return switch (name.toLowerCase(java.util.Locale.ROOT)) {
+            case "information_schema", "mysql", "performance_schema", "sys" -> true;
+            default -> false;
+        };
     }
 
     @Override
