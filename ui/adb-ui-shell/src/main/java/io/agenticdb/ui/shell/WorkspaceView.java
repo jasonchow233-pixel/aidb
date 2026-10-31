@@ -467,6 +467,12 @@ public final class WorkspaceView extends StackPane {
                     String table = route.substring(SideBar.TOOL_DIAGNOSTICS.length()).trim();
                     body.getChildren().add(new DiagnosticsPage(diagnosticSession,
                             diagnosticSchemaService, table, diagnosticExecutor));
+                } else if (SideBar.TOOL_UNAVAILABLE_ROUTES.contains(route)) {
+                    // ⭐ R36 N6：Ribbon 的 User/Backup/Automation/Model/BI 五格 ——
+                    // 能力面（N28）没建，按诚实条款给**如实说明页**，不留死磁贴。
+                    body.getChildren().add(emptyState(
+                            Icons.Icon.DIAGNOSTICS, tab.title(),
+                            I18n.t("workspace.tool.unavailable")));
                 } else {
                     body.getChildren().add(emptyState(
                             Icons.Icon.DIAGNOSTICS, tab.title(),

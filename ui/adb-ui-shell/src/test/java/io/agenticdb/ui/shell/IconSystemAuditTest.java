@@ -189,14 +189,16 @@ class IconSystemAuditTest {
 
     @Test
     void theRibbonVocabularyIsFullyColored() {
-        // AppBar 的 6 条功能区命令（R32-D 精简后的全集）。Navicat 实测整条功能区
-        // 是全 UI 最彩的一排，所以这 6 枚**必须**都有彩色资产：少一枚就是
-        // 「六个大按钮里有一个是灰的」，比全灰更扎眼。
+        // AppBar 的 12 格磁贴（R36 按 Navicat 17 实拍重排后的全集）。Navicat 实测整条
+        // 功能区是全 UI 最彩的一排，所以这 11 枚图标**必须**都有彩色资产：
+        // 少一枚就是「十几个大按钮里有一个是灰的」，比全灰更扎眼。
+        // （Query 与 New Query 共用 QUERY，所以 12 格只有 11 枚不同图标。）
         for (Icons.Icon icon : List.of(Icons.Icon.CONNECT, Icons.Icon.QUERY,
-                Icons.Icon.ADD, Icons.Icon.TRANSFER, Icons.Icon.HISTORY,
-                Icons.Icon.STAR)) {
+                Icons.Icon.ADD, Icons.Icon.VIEW, Icons.Icon.FUNCTION,
+                Icons.Icon.USER, Icons.Icon.FOLDER, Icons.Icon.SAVE,
+                Icons.Icon.HISTORY, Icons.Icon.STRUCTURE, Icons.Icon.GRID)) {
             assertThat(Icons.hasColoredVariant(icon))
-                    .as("功能区命令 %s 的图标没有彩色资产 —— 大图标档会掉回单色", icon)
+                    .as("功能区磁贴 %s 的图标没有彩色资产 —— 大图标档会掉回单色", icon)
                     .isTrue();
         }
     }

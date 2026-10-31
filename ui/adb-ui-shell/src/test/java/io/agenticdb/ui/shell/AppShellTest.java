@@ -162,35 +162,40 @@ class AppShellTest {
     }
 
     /**
-     * ⭐ 2026-10-28 顶区精简的门禁：**三行变两行**。
+     * ⭐ 2026-10-30 R36 顶区重做的门禁：**页签行只放页签，工具件回到 Ribbon 右端**。
      *
-     * <p>原来 140px：菜单 24 + 90（26 工具行 + 64 命令带）+ 标签栏 26。
-     * 现在 114px：菜单 24 + 64 + 26 —— 原来那条独立工具行整行取消，
-     * 连接胶囊 / 全局搜索 / 主题 / 更多 与标签栏**同一行**（{@code #adb-chrome-row}）。
+     * <p>顶区 = 菜单 24 + Ribbon 91 + 页签行 25 = 140px，逐行对回 Navicat 17 实拍
+     *（真源 §1.1）。10-28 那版把工具条塞进标签行的精简被撤销 —— 用户裁定完全照
+     * Navicat：12 格磁贴 + 右端工具件，标签行回归纯页签（N7）。
      *
-     * <p>钉三件事：工具条确实搬进了标签栏那一行；命令带是令牌高度；品牌块没回来。
-     * 任一条回退，用户那条「顶部太多栏目了」就复活了。
+     * <p>钉三件事：{@code #adb-chrome-row} 里只有页签栏；工具件住在 Ribbon 行里；
+     * Ribbon 是令牌高度 91。任一条回退，「顶部栏目乱」或「页签行混进全局控件」就复活了。
      */
     @Test
-    void theTopChromeIsTwoRowsAndTheUtilitySharesTheTabRow(FxRobot robot) {
+    void theTabRowHoldsOnlyTabsAndTheUtilityLivesInTheRibbon(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
 
         javafx.scene.layout.HBox row =
                 robot.lookup("#adb-chrome-row").queryAs(javafx.scene.layout.HBox.class);
-        javafx.scene.Node utility = robot.lookup("#appbar-utility").query();
-        assertThat(utility.getParent())
-                .as("工具条必须挂在标签栏那一行，而不是自己再占一行")
-                .isEqualTo(row);
         assertThat(row.getChildren())
-                .as("同一行里：左边标签栏、右边全局工具条")
-                .contains(robot.lookup(".adb-tabbar").query(), utility);
+                .as("页签行只放页签栏（R36 N7）")
+                .singleElement()
+                .isSameAs(robot.lookup(".adb-tabbar").query());
+        assertThat(row.getChildren().stream()
+                .anyMatch(n -> "appbar-utility".equals(n.getId())))
+                .as("全局工具条不许再回到页签行")
+                .isFalse();
+
+        javafx.scene.Node ribbonRow = robot.lookup("#appbar-utility").query().getParent();
+        assertThat(ribbonRow.getStyleClass()).as("工具件住在 Ribbon 行右端")
+                .contains("adb-appbar__row");
 
         javafx.scene.layout.Region appBar =
                 robot.lookup(".adb-appbar").queryAs(javafx.scene.layout.Region.class);
         assertThat(appBar.getHeight())
-                .as("命令带 64px（旧 90px 含已删的 26px 工具行）")
+                .as("Ribbon 91px（Navicat 实拍：菜单 23 + 带子 91 + 页签 25 = 顶区 140，我们菜单取 24）")
                 .isEqualTo(io.agenticdb.ui.Tokens.H_APPBAR_LIGHT)
-                .isEqualTo(64);
+                .isEqualTo(91);
 
         assertThat(robot.lookup("#appbar-brand-name").tryQuery())
                 .as("AIDB 品牌块已随顶区精简删除（品牌在窗口标题与任务栏图标）")

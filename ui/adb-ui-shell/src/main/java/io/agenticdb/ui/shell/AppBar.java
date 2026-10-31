@@ -9,6 +9,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
@@ -21,23 +22,23 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * 顶部 64px 大图标命令带（2026-10-26 用户裁定：保持和 Navicat 一样）。
+ * 顶部 91px Ribbon（2026-10-30 R36：按 Navicat 17 实拍逐像素对回来）。
  *
- * <p>⭐ 2026-10-28 顶区精简（用户裁定：AIDB 品牌那一行是多余的，顶部栏目太多）：
- * 原来 90px = 26px 工具行（品牌 / 连接 / 搜索 / 主题 / 更多）+ 64px 命令带，
- * 现在**工具行整行取消** —— 那几只控件由外壳挂到标签栏那一行（{@link #utilityBar()}），
- * 品牌块直接删掉（品牌由窗口标题与任务栏图标承担，见 {@code BrandMarkAuditTest}）。
- * 顶区从 140px（菜单 24 + 90 + 标签 26）压到 114px（菜单 24 + 64 + 标签 26）。
+ * <p>⭐ 2026-10-30 R36 顶区重做（撤销 R32-D 的精简，用户裁定「完全照 Navicat」）：
+ * Ribbon 64px 单行 6 格 → **91px、12 格磁贴**（Connection · New Query · Table · View ·
+ * Function · User · Others ｜ Query · Backup · Automation · Model · BI，真源 §1.2 顺序）。
+ * 全局工具件（连接胶囊 / 搜索 / 主题 / ⋯）从页签行挪进 **Ribbon 右端** ——
+ * 页签行只放页签（N7）。顶区 = 菜单 24 + Ribbon 91 + 页签行 25 = 140px。
  *
- * <p>命令带同时裁掉四个**与侧栏 / 页内工具条 / ⋯ 菜单重复**的命令
- * （表清单、刷新、诊断、设置）：它们仍可从菜单、侧栏与 ⌘K 到达，
- * 但不再在顶栏出现第二遍。剩下六个是全局新建/入口语义。
+ * <p>12 格里的 View / User / Backup / Automation / Model / BI 背后是还没建的能力面
+ * （N28，R42）—— 按诚实条款它们落到**如实说明页**（工具页签 + 一句「本版本未提供」），
+ * 不留死按钮；门禁 {@code RibbonCapabilityAuditTest} 逐格钉「必须落到真实目标」。
  *
  * <p>所有按钮的行为仍来自 {@link ActionRegistry}，没有装饰性假按钮。
  */
 public final class AppBar extends VBox {
 
-    /** 命令带与工具条合计低于这个宽度时，工具条切紧凑形态（搜索降级成图标）。 */
+    /** Ribbon 行低于这个宽度时工具条切紧凑形态（搜索降级成图标）。 */
     private static final double COMPACT_CHROME_WIDTH = 780;
 
     private final MenuButton connectionMenu = new MenuButton();
@@ -47,6 +48,8 @@ public final class AppBar extends VBox {
     private final Label searchHint = new Label();
     private final Label searchKbd = new Label();
     private final HBox utility;
+    /** 磁贴排（Ribbon 里可横向滚动的那一段，窄窗口时靠滚动而不是截标签）。 */
+    private final HBox tiles;
     /** 动作注册表 —— 菜单项与大图标都走同一条命令通道。 */
     private final ActionRegistry actions;
 
@@ -64,53 +67,68 @@ public final class AppBar extends VBox {
         setMaxHeight(height);
         this.onSelectConnection = onSelectConnection == null ? profile -> { } : onSelectConnection;
 
-        HBox ribbon = new HBox(2,
-                ribbonButton("new-connection", Icons.Icon.CONNECT, I18n.t("ribbon.newConnection"),
-                        "adb-ribbon__icon--connect"),
-                ribbonSeparator(),
-                ribbonButton("new-query", Icons.Icon.QUERY, I18n.t("ribbon.newQuery"),
-                        "adb-ribbon__icon--query"),
-                ribbonButton("object.new-table", Icons.Icon.ADD, I18n.t("ribbon.newTable"),
-                        "adb-ribbon__icon--table"),
-                ribbonSeparator(),
-                ribbonButton("import-export", Icons.Icon.TRANSFER, I18n.t("ribbon.importExport"),
-                        "adb-ribbon__icon--transfer"),
-                ribbonSeparator(),
-                ribbonButton("saved-queries", Icons.Icon.HISTORY, I18n.t("ribbon.savedQueries"),
-                        "adb-ribbon__icon--query"),
-                ribbonButton("favorites.open", Icons.Icon.STAR, I18n.t("ribbon.favorites"),
-                        "adb-ribbon__icon--favorite"),
-                spacer());
-        ribbon.setId("adb-ribbon");
-        ribbon.getStyleClass().add("adb-ribbon");
-        ribbon.setAlignment(Pos.CENTER_LEFT);
-        getChildren().add(ribbon);
-
-        // ⚠️ 工具条必须在构造函数里建好 —— connectionPill() 内部会用空列表初始化一次，
-        //    晚建就会把传进来的连接覆盖成「未连接」。建完立刻灌真实连接。
+        // ⚠️ 工具条必须先建好：connectionPill() 内部会用空列表初始化一次，
+        //    晚建会把传进来的真实连接覆盖成「未连接」。
         utility = new HBox(8, connectionPill(actions), separator(), globalSearch(actions),
                 themeButton(actions), overflow(actions));
         utility.setId("appbar-utility");
         utility.getStyleClass().add("adb-appbar__utility");
         utility.setAlignment(Pos.CENTER_LEFT);
+
+        tiles = new HBox(2,
+                ribbonButton("new-connection", Icons.Icon.CONNECT, I18n.t("ribbon.newConnection"),
+                        "adb-ribbon__icon--connect"),
+                ribbonButton("new-query", Icons.Icon.QUERY, I18n.t("ribbon.newQuery"),
+                        "adb-ribbon__icon--query"),
+                ribbonButton("object.new-table", Icons.Icon.ADD, I18n.t("ribbon.newTable"),
+                        "adb-ribbon__icon--table"),
+                ribbonButton("ribbon.view", Icons.Icon.VIEW, I18n.t("ribbon.view"),
+                        "adb-ribbon__icon--view"),
+                ribbonButton("ribbon.function", Icons.Icon.FUNCTION, I18n.t("ribbon.function"),
+                        "adb-ribbon__icon--function"),
+                ribbonButton("ribbon.user", Icons.Icon.USER, I18n.t("ribbon.user"),
+                        "adb-ribbon__icon--user"),
+                ribbonButton("ribbon.others", Icons.Icon.FOLDER, I18n.t("ribbon.others"),
+                        "adb-ribbon__icon--others"),
+                ribbonSeparator(),
+                ribbonButton("saved-queries", Icons.Icon.QUERY, I18n.t("ribbon.query"),
+                        "adb-ribbon__icon--query"),
+                ribbonButton("ribbon.backup", Icons.Icon.SAVE, I18n.t("ribbon.backup"),
+                        "adb-ribbon__icon--backup"),
+                ribbonButton("ribbon.automation", Icons.Icon.HISTORY, I18n.t("ribbon.automation"),
+                        "adb-ribbon__icon--automation"),
+                ribbonButton("ribbon.model", Icons.Icon.STRUCTURE, I18n.t("ribbon.model"),
+                        "adb-ribbon__icon--model"),
+                ribbonButton("ribbon.bi", Icons.Icon.GRID, I18n.t("ribbon.bi"),
+                        "adb-ribbon__icon--bi"));
+        tiles.setId("adb-ribbon");
+        tiles.getStyleClass().add("adb-ribbon");
+        tiles.setAlignment(Pos.CENTER_LEFT);
+
+        // ⭐ 12 格按英文标签排开就超过 1050px，再加右端工具件必然超过 1280 宽窗口。
+        //    Navicat 磁贴定宽 70 吃的是中文；我们的英文标签截不得（标签不许省略号门禁）。
+        //    所以磁贴排包进横向 ScrollPane：宽窗不出条，窄窗滚动而不是裁字；
+        //    右端工具件（连接 / 搜索 / 主题 / ⋯）在滚动区之外，任何宽度下都可达。
+        ScrollPane tileScroll = new ScrollPane(tiles);
+        tileScroll.getStyleClass().add("adb-ribbon__scroll");
+        tileScroll.setFitToHeight(true);
+        tileScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        tileScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        tileScroll.setPannable(true);
+
+        HBox ribbon = new HBox(tileScroll, spacer(), utility);
+        ribbon.getStyleClass().add("adb-appbar__row");
+        ribbon.setAlignment(Pos.CENTER_LEFT);
+        getChildren().add(ribbon);
+
         setConnections(profiles, activeConnectionId);
     }
 
     /**
-     * 全局工具条：连接胶囊 / 全局搜索 / 主题 / 更多。
+     * 按 Ribbon 行的可用宽度调整工具条形态。
      *
-     * <p>外壳把它挂到标签栏同一行（{@code adb-chrome-row}）—— 它就是原来那条
-     * 26px 工具行，只是不再单独占一行。
-     */
-    public Node utilityBar() {
-        return utility;
-    }
-
-    /**
-     * 按这一行的可用宽度调整工具条形态。
-     *
-     * <p>窄窗（侧栏 + 详情面板同时打开时主区可能只剩 400 多像素）放不下
-     * 220px 的搜索框：搜索降级成图标按钮、连接胶囊只留名字。
+     * <p>⭐ R36 之后磁贴排本身可滚动，这里收的仍是**工具条外观**：
+     * 窄窗口下搜索降级成图标按钮、连接胶囊只留名字，把右端留给磁贴排。
      * 命令面板本身仍可 ⌘K 直达，所以收起的是**外观**不是入口。
      */
     public void fitChromeWidth(double rowWidth) {
@@ -273,11 +291,14 @@ public final class AppBar extends VBox {
     }
 
     /**
-     * Navicat 式大图标按钮：26px 图标在上、11px 标签在下。
+     * Navicat 式磁贴：26px 彩色图标在上、11px 标签在下（实测磁贴 ≈70×90）。
      *
      * <p>按钮的启用态绑定到动作本身 —— 不可用时是灰的，不是「点了没反应」。
      * {@code toneClass} 传**完整类名字面量**（不用拼接）：样式类覆盖门禁按字面量扫描，
      * 拼接出来的前缀会被当成「Java 用了、CSS 没定义」。
+     *
+     * <p>⚠️ DOM id 里动作 id 的 {@code :} 与 {@code .} 要换成短横线 —— CSS id 选择器
+     * 里它们是分隔符/伪类符，{@code lookup("#ribbon-object.new-table")} 会查不到节点。
      */
     private Button ribbonButton(String actionId, Icons.Icon icon, String label, String toneClass) {
         Action action = actions.require(actionId);
@@ -296,7 +317,7 @@ public final class AppBar extends VBox {
         content.setAlignment(Pos.CENTER);
 
         Button button = new Button();
-        button.setId("ribbon-" + actionId);
+        button.setId("ribbon-" + actionId.replaceAll("[^a-zA-Z0-9_-]", "-"));
         button.getStyleClass().add("adb-ribbon__button");
         button.setGraphic(content);
         button.setAccessibleText(label);

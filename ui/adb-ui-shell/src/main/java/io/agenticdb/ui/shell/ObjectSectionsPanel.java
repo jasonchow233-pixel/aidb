@@ -287,9 +287,8 @@ final class ObjectSectionsPanel extends VBox {
         } else {
             text.append(I18n.t("sections.sql.noDdl")).append("\n\n");
         }
-        String quoted = session.dialect().quote(tableName);
         text.append(I18n.t("sections.sql.dataQuery"))
-                .append("\nSELECT * FROM ").append(quoted).append(" LIMIT 200;");
+                .append("\n").append(session.dialect().plainPageSql(tableName, 200, 0)).append(';');
         return text.toString();
     }
 

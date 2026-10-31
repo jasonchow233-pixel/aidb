@@ -99,8 +99,14 @@ class I18nAuditTest {
      * 所以 {@code node tools/cjk-count.mjs --model} 能复现这个数字。
      * 只许降不许升 —— 它不证明「哪些会流到界面」，那只证明<b>没人新写</b>，
      * 并且把 D-9 这类债变成有数字的队列，而不是每次实拍帧撞见才发现。
+     *
+     * <p>⭐ 277 → 290 的唯一一次上调（D-3，2026-10-31）：新增 SQL Server / Oracle
+     * 两种方言，带来 13 条<b>驱动级校验/提示</b>字面量（SqlServer 6、Oracle 7，
+     * 例如「标识符不能为空」「自增列必须是整型」）。它们和既有方言里的同款文案
+     * 是同一笔债，不是新长出来的界面文案 —— 向导的 TLS 说明已经改成资源键
+     * （{@code wizard.ssl.notice.*}），正文在资源包里由界面渲染。
      */
-    private static final int MODEL_CJK_CEILING = 277;
+    private static final int MODEL_CJK_CEILING = 290;
 
     /** 源码里对 {@link I18n#t(String, Object...)} 的键引用。 */
     private static final Pattern KEY_REFERENCE = Pattern.compile("I18n\\.t\\(\\s*\"([^\"]+)\"");

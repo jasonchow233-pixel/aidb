@@ -99,11 +99,11 @@ class IconKindHueTest {
         assertThat(edgeStroke(Icons.Icon.ADD, "adb-ribbon__icon--table", false))
                 .as("新建表：轮廓吃 -adb-kind-table")
                 .isEqualTo(Color.web(Tokens.KIND_TABLE_LIGHT));
-        assertThat(edgeStroke(Icons.Icon.TRANSFER, "adb-ribbon__icon--transfer", false))
-                .as("导入导出：轮廓吃 -adb-kind-view")
+        assertThat(edgeStroke(Icons.Icon.VIEW, "adb-ribbon__icon--view", false))
+                .as("视图：轮廓吃 -adb-kind-view")
                 .isEqualTo(Color.web(Tokens.KIND_VIEW_LIGHT));
-        assertThat(edgeStroke(Icons.Icon.STAR, "adb-ribbon__icon--favorite", false))
-                .as("收藏夹：轮廓吃 -adb-kind-function")
+        assertThat(edgeStroke(Icons.Icon.FUNCTION, "adb-ribbon__icon--function", false))
+                .as("函数：轮廓吃 -adb-kind-function")
                 .isEqualTo(Color.web(Tokens.KIND_FUNCTION_LIGHT));
         assertThat(edgeStroke(Icons.Icon.QUERY, "adb-ribbon__icon--query", true))
                 .as("暗色档：新建查询的轮廓跟着主题走，不出第二套资产")

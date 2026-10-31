@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.jdbc.ConnectionSpec;
+import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.CredentialStore;
@@ -31,18 +32,22 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
+import javafx.util.StringConverter;
 
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -71,80 +76,74 @@ public final class ConnectionWizard {
         String test(ConnectionSpec spec);
     }
 
-    /** SSL 档位。对用户是中性的说明，落进 options 时按方言换成驱动认识的值。 */
-    enum SslMode {
-        OFF("wizard.ssl.mode.off"),
-        PREFER("wizard.ssl.mode.prefer"),
-        REQUIRE("wizard.ssl.mode.require"),
-        VERIFY_CA("wizard.ssl.mode.verifyCa"),
-        VERIFY_IDENTITY("wizard.ssl.mode.verifyIdentity");
-
-        private final String key;
-
-        SslMode(String key) {
-            this.key = key;
-        }
-
-        @Override
-        public String toString() {
-            return I18n.t(key);
-        }
-
-        /** PostgreSQL {@code sslmode} 的取值。 */
-        String postgres() {
-            return switch (this) {
-                case OFF -> "disable";
-                case PREFER -> "prefer";
-                case REQUIRE -> "require";
-                case VERIFY_CA -> "verify-ca";
-                case VERIFY_IDENTITY -> "verify-full";
-            };
-        }
-
-        /** MySQL Connector/J 8 {@code sslMode} 的取值。 */
-        String mysql() {
-            return switch (this) {
-                case OFF -> "DISABLED";
-                case PREFER -> "PREFERRED";
-                case REQUIRE -> "REQUIRED";
-                case VERIFY_CA -> "VERIFY_CA";
-                case VERIFY_IDENTITY -> "VERIFY_IDENTITY";
-            };
-        }
-
-        static SslMode of(Map<String, String> options, DialectKind kind) {
-            String raw = kind == DialectKind.MYSQL
-                    ? options.get(OPT_SSL_MODE_MYSQL) : options.get(OPT_SSL_MODE_PG);
-            if (raw == null || raw.isBlank()) {
-                return OFF;
-            }
-            String normalized = raw.trim().toLowerCase(Locale.ROOT).replace('-', '_');
-            return switch (normalized) {
-                case "prefer", "preferred" -> PREFER;
-                case "require", "required" -> REQUIRE;
-                case "verify_ca" -> VERIFY_CA;
-                case "verify_full", "verify_identity" -> VERIFY_IDENTITY;
-                default -> OFF;
-            };
-        }
+    /**
+     * ⭐ D-3：档位（{@link Dialect.SslLevel}）只是界面语言，
+     * <b>能表达哪几档、落成什么参数</b>全部问方言。
+     *
+     * <p>以前这里挂着 {@code postgres()} / {@code mysql()} 两张表，界面自己 switch 方言 ——
+     * MariaDB 因此拿到了 PostgreSQL 的 {@code sslmode}（它的驱动认 {@code sslMode}，
+     * 而且没有 prefer 这一档），填进去的参数根本不被识别。
+     */
+    static String labelOf(Dialect.SslLevel level) {
+        return switch (level) {
+            case OFF -> I18n.t("wizard.ssl.mode.off");
+            case PREFER -> I18n.t("wizard.ssl.mode.prefer");
+            case REQUIRE -> I18n.t("wizard.ssl.mode.require");
+            case VERIFY_CA -> I18n.t("wizard.ssl.mode.verifyCa");
+            case VERIFY_IDENTITY -> I18n.t("wizard.ssl.mode.verifyIdentity");
+        };
     }
 
     /** URI 解析结果（口令只回填到输入框，不写进 options）。 */
     record UriTarget(DialectKind kind, String host, int port, String database,
-                     String username, String password) {
+                     String username, String password, Map<String, String> options) {
+
+        UriTarget {
+            options = options == null ? Map.of() : Map.copyOf(options);
+        }
+
+        UriTarget(DialectKind kind, String host, int port, String database,
+                  String username, String password) {
+            this(kind, host, port, database, username, password, Map.of());
+        }
     }
 
     static final String OPT_QUERY_TIMEOUT = "queryTimeout";
     static final String OPT_CHARSET = "characterEncoding";
-    static final String OPT_SSL_MODE_PG = "sslmode";
-    static final String OPT_SSL_MODE_MYSQL = "sslMode";
-    static final String OPT_SSL_ROOT = "sslrootcert";
     static final String OPT_REMARKS = "remarks";
 
+    /**
+     * 所有方言的 TLS 参数名（档位参数 + 根证书参数）—— 由方言层自报，不在界面硬编码。
+     *
+     * <p>这些键由 TLS 页渲染，必须从「附加参数」框里<b>隐藏</b>：否则同一个键在两个地方
+     * 各写一遍，保存时后写的赢，用户在附加参数里看到的档位就不是界面显示的那个。
+     */
+    private static final List<String> SSL_KEYS = collectSslKeys();
+
+    private static List<String> collectSslKeys() {
+        Set<String> keys = new LinkedHashSet<>();
+        for (DialectKind kind : DialectKind.values()) {
+            Dialect dialect = kind.dialect();
+            for (Dialect.SslLevel level : Dialect.SslLevel.values()) {
+                keys.addAll(dialect.sslOptions(level).keySet());
+            }
+            String root = dialect.sslRootCertOption();
+            if (root != null) {
+                keys.add(root);
+            }
+        }
+        return List.copyOf(keys);
+    }
+
     /** 由本向导自己渲染的键：不从「附加参数」框里回显，也不许用户在框里覆盖。 */
-    private static final List<String> MANAGED_KEYS = List.of(
-            OPT_QUERY_TIMEOUT, OPT_CHARSET, OPT_SSL_MODE_PG, OPT_SSL_MODE_MYSQL,
-            OPT_SSL_ROOT, OPT_REMARKS);
+    private static final List<String> MANAGED_KEYS = managedKeys();
+
+    private static List<String> managedKeys() {
+        List<String> all = new java.util.ArrayList<>(
+                List.of(OPT_QUERY_TIMEOUT, OPT_CHARSET, OPT_REMARKS));
+        all.addAll(SSL_KEYS);
+        return List.copyOf(all);
+    }
 
     private final Dialog<ConnectionProfile> dialog = new Dialog<>();
     private final ToggleGroup typeGroup = new ToggleGroup();
@@ -171,7 +170,9 @@ public final class ConnectionWizard {
     private final TextField queryTimeout = new TextField();
     private final TextField charset = new TextField();
     private final TextArea extra = new TextArea();
-    private final ComboBox<SslMode> sslMode = new ComboBox<>();
+    private final ComboBox<Dialect.SslLevel> sslMode = new ComboBox<>();
+    /** TLS 页的容器：档位控件与如实说明是两套内容，随选中的数据库换。 */
+    private final StackPane sslHost = new StackPane();
     private final TextField sslRoot = new TextField();
     private final Label sslHint = new Label();
     private final TextArea remarks = new TextArea();
@@ -244,8 +245,18 @@ public final class ConnectionWizard {
         extra.setPrefRowCount(5);
 
         sslMode.setId("wizard-ssl-mode");
-        sslMode.getItems().setAll(SslMode.values());
-        sslMode.getSelectionModel().select(SslMode.OFF);
+        // 档位名是界面文案，枚举在方言层 —— 用 converter 把两者接上。
+        sslMode.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(Dialect.SslLevel level) {
+                return level == null ? "" : labelOf(level);
+            }
+
+            @Override
+            public Dialect.SslLevel fromString(String text) {
+                return null;
+            }
+        });
         sslMode.setMaxWidth(Double.MAX_VALUE);
         sslMode.valueProperty().addListener((observable, old, mode) -> updateSslHint());
         sslRoot.setId("wizard-ssl-root");
@@ -351,6 +362,9 @@ public final class ConnectionWizard {
             case SQLITE -> I18n.t("wizard.tile.sqlite");
             case POSTGRESQL -> I18n.t("wizard.tile.postgresql");
             case MYSQL -> I18n.t("wizard.tile.mysql");
+            case MARIADB -> I18n.t("wizard.tile.mariadb");
+            case SQLSERVER -> I18n.t("wizard.tile.sqlserver");
+            case ORACLE -> I18n.t("wizard.tile.oracle");
         };
     }
 
@@ -374,9 +388,30 @@ public final class ConnectionWizard {
         String current = port.getText();
         if (current == null || current.isBlank()
                 || current.equals(String.valueOf(ConnectionProfile.defaultPort(previous)))) {
-            port.setText(kind == DialectKind.SQLITE ? ""
+            port.setText(kind.dialect().usesFilePath() ? ""
                     : String.valueOf(ConnectionProfile.defaultPort(kind)));
         }
+        applySslLevels(kind);
+        refreshSslPane();
+    }
+
+    /**
+     * 换类型时刷新 TLS 页：下拉只列<b>这一家驱动真能表达</b>的档位。
+     *
+     * <p>原选中值在新一家里不存在就退回「不加密」—— 留着不存在的档位，
+     * 保存的就是一个没人认的参数。
+     */
+    private void applySslLevels(DialectKind kind) {
+        if (sslMode == null || sslRoot == null) {
+            return;
+        }
+        Dialect dialect = kind.dialect();
+        List<Dialect.SslLevel> levels = dialect.sslLevels();
+        Dialect.SslLevel previous = sslMode.getValue();
+        sslMode.getItems().setAll(levels);
+        sslMode.getSelectionModel().select(
+                previous != null && levels.contains(previous) ? previous : Dialect.SslLevel.OFF);
+        sslRoot.setDisable(dialect.sslRootCertOption() == null);
     }
 
     void toggleUriRow(boolean visible) {
@@ -410,6 +445,9 @@ public final class ConnectionWizard {
         database.setText(target.database());
         username.setText(target.username() == null ? "" : target.username());
         password.setText(target.password() == null ? "" : target.password());
+        if (!target.options().isEmpty()) {
+            applyOptions(target.options());
+        }
         toggleUriRow(false);
         step = 2;
         updateStep();
@@ -419,9 +457,10 @@ public final class ConnectionWizard {
     /**
      * 解析连接 URI。
      *
-     * <p>支持 {@code sqlite:文件路径}、{@code postgresql://…}、{@code postgres://…}、
-     * {@code mysql://…}；也接受带 {@code jdbc:} 前缀的写法。查询串里的参数
-     * <b>原样</b>进「附加参数」（口令除外，它只回填到口令框）。
+     * <p><b>支持哪家由方言自己报 scheme</b>（{@link Dialect#uriScheme()} 与
+     * {@link Dialect#uriAliases()}）—— 加一种数据库不必回来改这段判断。
+     * 参数串两种写法都认：{@code ?k=v&k2=v2}，以及 SQL Server 的 {@code ;k=v;}。
+     * 口令只回填口令框；TLS 页自己管的键回填档位下拉，其余原样进「附加参数」。
      */
     static UriTarget parseUri(String text) {
         String raw = text == null ? "" : text.trim();
@@ -433,8 +472,14 @@ public final class ConnectionWizard {
             raw = raw.substring("jdbc:".length());
             normalized = raw.toLowerCase(Locale.ROOT);
         }
-        if (normalized.startsWith("sqlite:")) {
-            String path = raw.substring("sqlite:".length());
+        // Oracle 的 EZConnect 写法是 oracle:thin:@//host:1521/服务名，换成本项目的通用形态。
+        if (normalized.startsWith("oracle:thin:@//")) {
+            raw = "oracle://" + raw.substring("oracle:thin:@//".length());
+            normalized = raw.toLowerCase(Locale.ROOT);
+        }
+        String sqliteScheme = DialectKind.SQLITE.dialect().uriScheme();
+        if (normalized.startsWith(sqliteScheme + ":")) {
+            String path = raw.substring(sqliteScheme.length() + 1);
             if (path.startsWith("//")) {
                 path = path.substring(2);
             }
@@ -444,15 +489,34 @@ public final class ConnectionWizard {
             return new UriTarget(DialectKind.SQLITE, "", 0, path, "", "");
         }
 
-        DialectKind kind = normalized.startsWith("postgresql://") || normalized.startsWith("postgres://")
-                ? DialectKind.POSTGRESQL
-                : normalized.startsWith("mysql://") ? DialectKind.MYSQL : null;
+        DialectKind kind = kindOfScheme(normalized);
         if (kind == null) {
             throw new IllegalArgumentException(I18n.t("wizard.uri.unsupported"));
         }
+        Dialect dialect = kind.dialect();
+
+        Map<String, String> params = new LinkedHashMap<>();
+        String address = raw;
+        if (dialect.usesSemicolonParameters()) {
+            // 分号族：第一段是地址，后面每段都是 k=v（大小写按驱动原样保留）。
+            String[] segments = raw.split(";");
+            address = segments[0];
+            for (int i = 1; i < segments.length; i++) {
+                addPair(params, segments[i]);
+            }
+        } else {
+            int query = raw.indexOf('?');
+            if (query >= 0) {
+                for (String pair : raw.substring(query + 1).split("&")) {
+                    addPair(params, pair);
+                }
+                address = raw.substring(0, query);
+            }
+        }
+
         URI uri;
         try {
-            uri = URI.create(raw);
+            uri = URI.create(address);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(I18n.t("wizard.uri.malformed", e.getMessage()));
         }
@@ -468,9 +532,37 @@ public final class ConnectionWizard {
             secret = colon < 0 ? "" : decode(info.substring(colon + 1));
         }
         String db = uri.getPath() == null ? "" : uri.getPath().replaceFirst("^/", "");
+        // SQL Server 把库名放在参数串上（databaseName=…），路径是空的。
+        String dbKey = dialect.databaseOptionKey();
+        if (dbKey != null && params.get(dbKey) != null && !params.get(dbKey).isBlank()) {
+            db = params.get(dbKey);
+        }
         int portValue = uri.getPort() > 0 ? uri.getPort()
                 : ConnectionProfile.defaultPort(kind);
-        return new UriTarget(kind, uri.getHost(), portValue, decode(db), user, secret);
+        return new UriTarget(kind, uri.getHost(), portValue, decode(db), user, secret, params);
+    }
+
+    /** 按方言自报的 scheme / 别名认类型（SQLite 走文件路径，不在这条路上）。 */
+    private static DialectKind kindOfScheme(String normalized) {
+        for (DialectKind kind : DialectKind.values()) {
+            if (kind == DialectKind.SQLITE) {
+                continue;
+            }
+            for (String alias : kind.dialect().uriAliases()) {
+                if (normalized.startsWith(alias.toLowerCase(Locale.ROOT) + "://")) {
+                    return kind;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static void addPair(Map<String, String> into, String pair) {
+        int equals = pair.indexOf('=');
+        if (equals <= 0) {
+            return;
+        }
+        into.put(pair.substring(0, equals).trim(), decode(pair.substring(equals + 1).trim()));
     }
 
     private static String decode(String value) {
@@ -619,10 +711,36 @@ public final class ConnectionWizard {
     }
 
     private Node sslPane() {
-        if (type == DialectKind.SQLITE) {
-            return notice(I18n.t("wizard.ssl.sqlite"),
-                    I18n.t("wizard.ssl.sqliteNext"));
+        refreshSslPane();
+        return sslHost;
+    }
+
+    /**
+     * TLS 页的内容<b>随选中的数据库换</b>：能不能摆档位、根证书收不收，都是方言的事。
+     *
+     * <p>页签内容只在第一次构建，类型是之后才选的 —— 不做这一步刷新，
+     * 「SQLite 没有 SSL」的说明会跟着 PostgreSQL 的连接一起留在页面上。
+     */
+    private void refreshSslPane() {
+        if (sslHost == null) {
+            return;
         }
+        sslHost.getChildren().clear();
+        Dialect dialect = type.dialect();
+        sslHost.getChildren().add(dialect.supportsSslOptionsUi()
+                ? sslControls() : sslNotice(dialect));
+    }
+
+    /** 这一家的 TLS 不是档位能表达的：给如实说明，不摆填了不生效的控件。 */
+    private Node sslNotice(Dialect dialect) {
+        String key = dialect.sslOptionsNoticeKey();
+        // SQLite 的文案走界面自己的键（本地文件这句话没有方言专属信息量）。
+        return key == null
+                ? notice(I18n.t("wizard.ssl.sqlite"), I18n.t("wizard.ssl.sqliteNext"))
+                : notice(I18n.t("wizard.ssl.unavailable"), I18n.t(key));
+    }
+
+    private Node sslControls() {
         VBox box = new VBox(10);
         GridPane grid = grid();
         grid.addRow(0, new Label(I18n.t("wizard.ssl.encryption")), sslMode);
@@ -636,11 +754,17 @@ public final class ConnectionWizard {
         if (sslRoot == null || sslHint == null) {
             return;
         }
-        sslRoot.setDisable(type != DialectKind.POSTGRESQL);
-        if (type == DialectKind.MYSQL) {
+        Dialect dialect = type.dialect();
+        sslRoot.setDisable(dialect.sslRootCertOption() == null);
+        Dialect.SslLevel level = sslMode.getValue();
+        // 文案按方言选（界面说话，方言决定参数）：MariaDB 现在收 serverSslCert，
+        // 不能再套 MySQL 那句「本版本不动根证书输入框」。
+        if (dialect.kind() == DialectKind.MYSQL) {
             sslHint.setText(I18n.t("wizard.ssl.mysqlHint"));
-        } else if (sslMode.getValue() == SslMode.VERIFY_CA
-                || sslMode.getValue() == SslMode.VERIFY_IDENTITY) {
+        } else if (dialect.kind() == DialectKind.MARIADB) {
+            sslHint.setText(I18n.t("wizard.ssl.mariadbHint"));
+        } else if (level == Dialect.SslLevel.VERIFY_CA
+                || level == Dialect.SslLevel.VERIFY_IDENTITY) {
             sslHint.setText(I18n.t("wizard.ssl.verifyHint"));
         } else {
             sslHint.setText(I18n.t("wizard.ssl.requireHint"));
@@ -771,7 +895,7 @@ public final class ConnectionWizard {
         queryTimeout.setText("15");
         charset.setText("UTF-8");
         extra.setText("serverTimezone=Asia/Shanghai\nconnectTimeout=5000");
-        sslMode.getSelectionModel().select(SslMode.VERIFY_CA);
+        sslMode.getSelectionModel().select(Dialect.SslLevel.VERIFY_CA);
         sslRoot.setText("/etc/ssl/certs/company-ca.pem");
         remarks.setText("Read-only account; changes go through DBA approval.");
         step = 2;
@@ -950,17 +1074,15 @@ public final class ConnectionWizard {
         }
         put(options, OPT_QUERY_TIMEOUT, queryTimeout.getText());
         put(options, OPT_CHARSET, charset.getText());
-        SslMode mode = sslMode.getValue() == null ? SslMode.OFF : sslMode.getValue();
-        if (type != DialectKind.SQLITE) {
-            if (mode != SslMode.OFF) {
-                if (type == DialectKind.MYSQL) {
-                    options.put(OPT_SSL_MODE_MYSQL, mode.mysql());
-                } else {
-                    options.put(OPT_SSL_MODE_PG, mode.postgres());
-                }
-            }
-            if (type == DialectKind.POSTGRESQL) {
-                put(options, OPT_SSL_ROOT, sslRoot.getText());
+        Dialect dialect = type.dialect();
+        if (dialect.supportsSslOptionsUi()) {
+            Dialect.SslLevel level = sslMode.getValue() == null
+                    ? Dialect.SslLevel.OFF : sslMode.getValue();
+            // 档位 → 驱动参数：键与值都由方言给，界面不再猜。
+            options.putAll(dialect.sslOptions(level));
+            String rootKey = dialect.sslRootCertOption();
+            if (rootKey != null) {
+                put(options, rootKey, sslRoot.getText());
             }
         }
         put(options, OPT_REMARKS, remarks.getText());
@@ -1002,11 +1124,23 @@ public final class ConnectionWizard {
         saved.ifPresent(password::setText);
         savePassword.setSelected(saved.isPresent());
 
-        Map<String, String> options = initial.options();
+        applyOptions(initial.options());
+    }
+
+    /**
+     * 把一批驱动参数回填到界面：TLS 页自己管的键回填档位与证书框，
+     * 超时 / 字符集 / 备注回填各自的框，<b>其余原样进「附加参数」</b>。
+     *
+     * <p>既有连接（{@link #loadInitial()}）和 URI（{@link #applyUri()}）走同一条回填路，
+     * 否则 URI 里带的 {@code ?sslmode=require} 会被静默丢掉，界面上却还显示「不加密」。
+     */
+    private void applyOptions(Map<String, String> options) {
+        Dialect dialect = type.dialect();
         queryTimeout.setText(options.getOrDefault(OPT_QUERY_TIMEOUT, ""));
         charset.setText(options.getOrDefault(OPT_CHARSET, ""));
-        sslMode.getSelectionModel().select(SslMode.of(options, initial.kind()));
-        sslRoot.setText(options.getOrDefault(OPT_SSL_ROOT, ""));
+        sslMode.getSelectionModel().select(dialect.sslLevel(options));
+        String rootKey = dialect.sslRootCertOption();
+        sslRoot.setText(rootKey == null ? "" : options.getOrDefault(rootKey, ""));
         remarks.setText(options.getOrDefault(OPT_REMARKS, ""));
 
         StringBuilder rest = new StringBuilder();

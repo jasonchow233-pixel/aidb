@@ -623,7 +623,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private void updateButtons() {
         run.setDisable(running);
         runAll.setDisable(running);
-        explain.setDisable(running);
+        explain.setDisable(running || !explainsPlans());
+        explain.setTooltip(new Tooltip(explainsPlans()
+                ? I18n.t("query.tip.explain") : I18n.t("query.explain.unsupported")));
         format.setDisable(running);
         save.setDisable(running);
         cancel.setDisable(!running);
@@ -656,6 +658,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
     }
 
     public void explainCurrent() {
+        if (!explainsPlans()) {
+            // ⛔ 死按钮红线：这一家做不到，就不假装去做。
+            status.setText(I18n.t("query.explain.unsupported"));
+            feedback.status(I18n.t("query.explain.unsupported"));
+            return;
+        }
         List<SqlStatement> statements = SqlSplitter.statementAt(editor.text(), editor.caret())
                 .map(statement -> List.of(statement)).orElseGet(List::of);
         if (statements.isEmpty()) {
@@ -663,6 +671,18 @@ public final class QueryPage extends VBox implements AutoCloseable {
             return;
         }
         execute(statements, true);
+    }
+
+    /**
+     * 当前连接的方言能不能出执行计划。
+     *
+     * <p>SQL Server 的 {@code SET SHOWPLAN_ALL ON} 是<b>另一条语句</b>，开了它当前语句
+     * 就不再返回行；Oracle 要 {@code EXPLAIN PLAN FOR} + 再查 {@code TABLE(DBMS_XPLAN)} ——
+     * 一次点击只送一条语句的界面套不进这种两步协议。没有真库验证前，
+     * 与其摆一个必然给错答案的按钮，不如收起并说清楚。
+     */
+    private boolean explainsPlans() {
+        return session != null && session.dialect().supportsExplainPlan();
     }
 
     public void formatSql() {
@@ -1507,10 +1527,10 @@ public final class QueryPage extends VBox implements AutoCloseable {
             Task<PagedData> task = new Task<>() {
                 @Override
                 protected PagedData call() throws Exception {
-                    QueryPaginator.PagedSql pageQ =
-                            QueryPaginator.pageSql(sql, params, pageSize, offset);
+                    var pageQ = QueryPaginator.pageSql(
+                            session.dialect(), sql, params, pageSize, offset);
                     RowPage page = session.query(pageQ.sql(), pageSize, pageQ.params());
-                    QueryPaginator.PagedSql countQ = QueryPaginator.countSql(sql, params);
+                    var countQ = QueryPaginator.countSql(session.dialect(), sql, params);
                     RowPage count = session.query(countQ.sql(), 1, countQ.params());
                     return new PagedData(page, extractTotal(count));
                 }

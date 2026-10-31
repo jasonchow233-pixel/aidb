@@ -56,14 +56,16 @@ class TokenParityTest {
     @Test
     void coreDimensionsMatchSpec() {
         // ⭐ 2026-10-26 裁定「保持和 Navicat 一样」：Ribbon 90 / 标签栏 26 / 工具条 30 /
-        //    状态栏 22（Navicat 实测：菜单 24 + Ribbon 90 + 标签 26 + 工具条 30 = 顶部 170）。
-        // ⭐ 2026-10-28 顶区精简（用户裁定：品牌行多余、顶部栏目太多）：26px 工具行并入
-        //    标签栏那一行，命令带保留 64px ⇒ 顶区 = 菜单 24 + 64 + 标签 26 = 114。
+        //    状态栏 22。
+        // ⭐ 2026-10-28 顶区精简：26px 工具行并入标签栏行，命令带 64 ⇒ 顶区 114。
+        // ⭐ 2026-10-30 R36 撤销精简、按 Navicat 17 逐像素实拍重定：
+        //    Ribbon 91 / 页签行 25 / 状态栏 23 ⇒ 顶区 = 菜单 24 + 91 + 25 = 140
+        //    （Navicat 是 23+91+1 分隔+25=140；我们的分隔线由 .adb-appbar 下边框承担）。
         //    侧栏默认宽仍 260；控件高 28。
-        assertThat(Tokens.H_APPBAR_DARK).isEqualTo(64);
+        assertThat(Tokens.H_APPBAR_DARK).isEqualTo(91);
         assertThat(Tokens.H_TOOLBAR_DARK).isEqualTo(30);
-        assertThat(Tokens.H_STATUSBAR_DARK).isEqualTo(22);
-        assertThat(Tokens.H_TABBAR_DARK).isEqualTo(26);
+        assertThat(Tokens.H_STATUSBAR_DARK).isEqualTo(23);
+        assertThat(Tokens.H_TABBAR_DARK).isEqualTo(25);
         assertThat(Tokens.H_INPUT_DARK).isEqualTo(28);
         assertThat(Tokens.H_BUTTON_DARK).isEqualTo(28);
         assertThat(Tokens.W_SIDEBAR_DARK).isEqualTo(260);

@@ -160,8 +160,9 @@ class ObjectSectionsPanelTest {
         assertThat(sql.getText())
                 .as("SQL 切面必须是数据库返回的真实 DDL + 按方言生成的查询")
                 .contains("CREATE TABLE widgets")
-                // 标识符按方言加引号（SQLite/PG 用双引号，MySQL 用反引号）。
-                .contains("SELECT * FROM \"widgets\" LIMIT 200;");
+                // 标识符与分页子句都按方言生成（SQLite/PG 双引号、MySQL 反引号，
+                // SQL Server / Oracle 则换成 OFFSET…FETCH —— 见 Dialect.plainPageSql）。
+                .contains("SELECT * FROM \"widgets\" LIMIT 200 OFFSET 0;");
     }
 
     @Test

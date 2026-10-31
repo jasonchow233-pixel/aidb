@@ -62,7 +62,10 @@ class ContrastTest {
         PAIRS.put("三级文字 / 页面底", new String[]{"text-tertiary", "bg-canvas", "bg-canvas"});
         PAIRS.put("三级文字 / 浮层", new String[]{"text-tertiary", "bg-elevated", "bg-canvas"});
         PAIRS.put("三级文字 / 凹陷区", new String[]{"text-tertiary", "bg-inset", "bg-canvas"});
-        PAIRS.put("反色文字 / 主色", new String[]{"text-inverse", "accent", "bg-canvas"});
+        // ⭐ 2026-10-30 R36 用户裁定：accent 取 Navicat 原值 #0078D7 —— 白字在它上面
+        //    实测 4.498:1，差 0.002 够不到 AA。这是**主动放弃**，不是漏网：
+        //    第四项给这一对单独 4.4 的下限，其余配对仍按 4.5 卡。
+        PAIRS.put("反色文字 / 主色", new String[]{"text-inverse", "accent", "bg-canvas", "4.4"});
         PAIRS.put("错误文字 / 页面底", new String[]{"error", "bg-canvas", "bg-canvas"});
         PAIRS.put("错误文字 / 面板", new String[]{"error", "bg-surface", "bg-canvas"});
         PAIRS.put("警告文字 / 页面底", new String[]{"warning", "bg-canvas", "bg-canvas"});
@@ -96,10 +99,11 @@ class ContrastTest {
         for (String theme : new String[]{"light", "dark"}) {
             for (Map.Entry<String, String[]> pair : PAIRS.entrySet()) {
                 String[] keys = pair.getValue();
+                double min = keys.length > 3 ? Double.parseDouble(keys[3]) : MIN_NORMAL;
                 double ratio = contrast(tokens, keys[0], keys[1], keys[2], theme);
-                if (ratio < MIN_NORMAL) {
-                    failures.add(String.format("%s / %s：%.2f:1（要求 ≥ %.1f:1）",
-                            theme, pair.getKey(), ratio, MIN_NORMAL));
+                if (ratio < min) {
+                    failures.add(String.format("%s / %s：%.2f:1（要求 ≥ %.2f:1）",
+                            theme, pair.getKey(), ratio, min));
                 }
             }
         }

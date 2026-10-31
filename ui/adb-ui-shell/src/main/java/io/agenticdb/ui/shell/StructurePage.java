@@ -213,8 +213,8 @@ public final class StructurePage extends VBox implements AutoCloseable {
         copySelect.setId("structure-copy-select");
         copySelect.setAccessibleText(I18n.t("tab.copySelect"));
         copySelect.setTooltip(new javafx.scene.control.Tooltip(I18n.t("structure.copySelect.tooltip")));
-        copySelect.setOnAction(event -> copy("SELECT * FROM "
-                + session.dialect().quote(tableName) + " LIMIT 200;"));
+        copySelect.setOnAction(event -> copy(session.dialect()
+                .plainPageSql(tableName, 200, 0) + ";"));
 
         header.addActions(refresh, copyDdl, copySelect);
 
@@ -421,7 +421,8 @@ public final class StructurePage extends VBox implements AutoCloseable {
         MenuItem copySelect = new MenuItem(I18n.t("tab.copySelect"));
         copySelect.setOnAction(event -> copy("SELECT "
                 + session.dialect().quote(column.name()) + " FROM "
-                + session.dialect().quote(tableName) + " LIMIT 200;"));
+                + session.dialect().quote(tableName)
+                + session.dialect().pagingClause(200, 0, false) + ";"));
         return new ContextMenu(editItem, renameItem, dropItem, new SeparatorMenuItem(),
                 copyName, copySelect);
     }

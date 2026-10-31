@@ -97,14 +97,10 @@
     -fx-border-width: 1 0 0 0;
 }
 
-/* ── 顶部功能区（Navicat 式 Ribbon，2026-10-26 裁定）────────────────────
- * Navicat 17 实测：Ribbon 90px（#F0F0F0）+ 标签栏 26 + 对象工具条 30。
- * 边框恢复：面板之间用 1px #D9D9D9 分隔（旧「大面积无边框」裁定作废）。
- *
- * ⭐ 2026-10-28 顶区精简（用户裁定：品牌那一行多余、顶部栏目太多）：
- *   原来 90px = 26px 工具行（品牌/连接/搜索/主题/更多）+ 64px 命令带。
- *   现在工具行**并进标签栏那一行**（`.adb-chrome-row`），品牌块整块删除，
- *   命令带保留 64px ⇒ 顶区 = 菜单 24 + 64 + 标签行 26 = 114px（原 140px）。
+/* ── 顶部功能区（Navicat 式 Ribbon，R36 按实拍重做）─────────────────────
+ * Navicat 17 实测（真源 §1.1）：菜单 23 + Ribbon 91 + 1px #DBDBDB + 页签行 25 = 顶区 140px。
+ * Ribbon #F0F0F0（-adb-bg-chrome），12 格磁贴 ≈70×90，图标在上、标签在下；
+ * 全局工具件（连接/搜索/主题/⋯）挂在 Ribbon 右端，页签行只放页签（N7）。
  * ─────────────────────────────────────────────────────────────────── */
 
 .adb-appbar {
@@ -114,17 +110,35 @@
     -fx-border-width: 0 0 1 0;
 }
 
-/* 标签栏那一行：左边标签、右边全局工具条。底色由 .adb-tabbar 画（白），
-   这一行只负责不画第二条边框。 */
+/* Ribbon 那一行：磁贴滚动区（左，弹性）+ 右端工具件（不滚动，永远可达）。 */
+.adb-appbar__row {
+    -fx-background-color: transparent;
+    -fx-padding: 0px;
+    -fx-spacing: 0px;
+}
+
+/* 磁贴排的横向滚动容器：底色全透，让 .adb-ribbon 的 #F0F0F0 一路铺到边。
+   （滚动条本身走全局 .scroll-bar 主题，不在这里特调。） */
+.adb-ribbon__scroll,
+.adb-ribbon__scroll > .viewport {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 0px;
+    -fx-hgap: 0px;
+}
+
+/* 页签行（R36 后只放页签）：白底，工具件已挪进 Ribbon 右端。
+   下边界由 .adb-tabbar 自己画。 */
 .adb-chrome-row {
     -fx-background-color: -adb-bg-surface;
     -fx-padding: 0px;
 }
 
 .adb-appbar__utility {
-    -fx-min-height: 26;
-    -fx-pref-height: 26;
-    -fx-max-height: 26;
+    /* R36：工具件住在 91px Ribbon 的右端，行高跟着带子走。 */
+    -fx-min-height: 82;
+    -fx-pref-height: 82;
+    -fx-max-height: 82;
     -fx-padding: 0px 8px 0px 0px;
 }
 
@@ -255,12 +269,14 @@
     -fx-border-radius: 2px;
 }
 
-/* ── Ribbon 命令带（64px，Navicat 大图标形态）────────────────────────── */
+/* ── Ribbon 命令带（91px、12 格磁贴，R36 实测对回 Navicat）────────────── */
 
+/* 磁贴排本体（在 ScrollPane 视口里）：91 是带子总高，行高由 .adb-appbar 定，
+   这里只铺底色和横向内边距；宽度跟着内容走（滚动条按 AS_NEEDED 出）。 */
 .adb-ribbon {
-    -fx-min-height: 64;
-    -fx-pref-height: 64;
-    -fx-max-height: 64;
+    -fx-min-height: 91;
+    -fx-pref-height: 91;
+    -fx-max-height: 91;
     -fx-padding: 0px 8px;
     -fx-background-color: -adb-bg-chrome;
 }
@@ -270,13 +286,13 @@
     -fx-border-color: transparent;
     -fx-background-radius: 3px;
     -fx-border-radius: 3px;
-    /* 62 是**下限**不是定宽：按中文量出来的格子装不下 "Import / Export"（要 74px）
-       和 "Saved Queries"（要 69px），写死 pref 会把两个标签裁成省略号。
-       现在宽度跟着内容走，短标签（中文档）仍保持 62 的下限。 */
-    -fx-min-width: 62;
+    /* 70 是 Navicat 实测磁贴宽（激活格填充精确落在 70px），这里同样按**下限**给：
+       按中文量出来的定宽装不下 "New Connection"（≈96px），写死就把标签裁成省略号
+       （AppBarTest 的「标签不许截」门禁盯着）。 */
+    -fx-min-width: 70;
     -fx-pref-width: -1;
-    -fx-min-height: 58;
-    -fx-pref-height: 58;
+    -fx-min-height: 86;
+    -fx-pref-height: 86;
     -fx-padding: 4px 6px;
     -fx-cursor: hand;
 }
@@ -311,11 +327,40 @@
     -fx-stroke: -adb-kind-procedure;
 }
 
-.adb-ribbon__icon--transfer {
+/* R36 裁掉了 import-export / favorites 两格（其宿主类若留着就是「CSS 有、Java 不用」，
+   StyleClassCoverageTest 直接红）—— 不要再把这些类加回来。 */
+
+/* R36 新增的七格宿主类（回落单色路径吃这里；彩色路径吃下面的 edge 规则）。
+   颜色按「对象类型色」分配，与树 / 页签同一张色卡，不新造语义。 */
+.adb-ribbon__icon--view {
     -fx-stroke: -adb-kind-view;
 }
 
-.adb-ribbon__icon--favorite {
+.adb-ribbon__icon--function {
+    -fx-stroke: -adb-kind-function;
+}
+
+.adb-ribbon__icon--user {
+    -fx-stroke: -adb-kind-procedure;
+}
+
+.adb-ribbon__icon--others {
+    -fx-stroke: -adb-text-secondary;
+}
+
+.adb-ribbon__icon--backup {
+    -fx-stroke: -adb-kind-table;
+}
+
+.adb-ribbon__icon--automation {
+    -fx-stroke: -adb-kind-procedure;
+}
+
+.adb-ribbon__icon--model {
+    -fx-stroke: -adb-kind-trigger;
+}
+
+.adb-ribbon__icon--bi {
     -fx-stroke: -adb-kind-function;
 }
 
@@ -327,20 +372,32 @@
  *    只有 edge 层吃命令色，tone-* 保持中性：一屏里同时喊八种颜色就是调色盘。
  *    门禁：IconKindHueTest.ribbonCommandsKeepTheirToneOnTheEdgeLayer */
 .adb-ribbon__icon--connect .adb-icon-edge,
-.adb-ribbon__icon--table .adb-icon-edge {
+.adb-ribbon__icon--table .adb-icon-edge,
+.adb-ribbon__icon--backup .adb-icon-edge {
     -fx-stroke: -adb-kind-table;
 }
 
-.adb-ribbon__icon--query .adb-icon-edge {
+.adb-ribbon__icon--query .adb-icon-edge,
+.adb-ribbon__icon--automation .adb-icon-edge,
+.adb-ribbon__icon--user .adb-icon-edge {
     -fx-stroke: -adb-kind-procedure;
 }
 
-.adb-ribbon__icon--transfer .adb-icon-edge {
+.adb-ribbon__icon--view .adb-icon-edge {
     -fx-stroke: -adb-kind-view;
 }
 
-.adb-ribbon__icon--favorite .adb-icon-edge {
+.adb-ribbon__icon--function .adb-icon-edge,
+.adb-ribbon__icon--bi .adb-icon-edge {
     -fx-stroke: -adb-kind-function;
+}
+
+.adb-ribbon__icon--model .adb-icon-edge {
+    -fx-stroke: -adb-kind-trigger;
+}
+
+.adb-ribbon__icon--others .adb-icon-edge {
+    -fx-stroke: -adb-text-secondary;
 }
 
 .adb-ribbon__separator {
@@ -348,9 +405,9 @@
     -fx-min-width: 1;
     -fx-pref-width: 1;
     -fx-max-width: 1;
-    -fx-min-height: 48;
-    -fx-pref-height: 48;
-    -fx-max-height: 48;
+    -fx-min-height: 72;
+    -fx-pref-height: 72;
+    -fx-max-height: 72;
 }
 
 /* ── 按钮 ───────────────────────────────────────────────────────────── */
@@ -1353,9 +1410,9 @@
 .adb-tab {
     -fx-background-color: transparent;
     -fx-padding: 0px 8px;
-    /* 标签栏令牌 26px，留 2px 给底部活动色条。 */
-    -fx-min-height: 24;
-    -fx-pref-height: 24;
+    /* 标签栏令牌 25px（R36 实测），留 2px 给底部活动色条。 */
+    -fx-min-height: 23;
+    -fx-pref-height: 23;
     -fx-border-width: 0 0 2 0;
     -fx-border-color: transparent;
     -fx-background-radius: 6px;
@@ -1588,10 +1645,12 @@
 
 .adb-inline-toolbar {
     -fx-padding: 0px 0px 2px 0px;
-    /* Navicat 实测对象工具条 30px（28 控件 + 2 内边距）。 */
+    /* Navicat 实测对象工具条 30px（28 控件 + 2 内边距）。
+       R36 N8：页面工具带底色 #F0F0F0（-adb-bg-chrome），与白色内容区分开。 */
     -fx-min-height: 30;
     -fx-pref-height: 30;
     -fx-max-height: 30;
+    -fx-background-color: -adb-bg-chrome;
 }
 
 .adb-badge {

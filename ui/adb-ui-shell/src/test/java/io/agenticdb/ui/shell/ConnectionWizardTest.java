@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.jdbc.ConnectionSpec;
+import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.CredentialStore;
@@ -218,9 +219,92 @@ class ConnectionWizardTest {
         assertThat(mysql.password()).isEmpty();
 
         assertThat(org.assertj.core.api.Assertions.catchThrowable(
-                        () -> ConnectionWizard.parseUri("oracle://host/db")))
+                        () -> ConnectionWizard.parseUri("mongodb://host/db")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining(I18n.t("wizard.uri.unsupported"));
+    }
+
+    @Test
+    void uriParserReadsEveryRegisteredSchemeAndItsParameterStyle() {
+        // Oracle 的 EZConnect 写法（驱动文档口径）也要能粘进 URI 框。
+        ConnectionWizard.UriTarget oracle =
+                ConnectionWizard.parseUri("jdbc:oracle:thin:@//db.local:1521/ORCLPDB");
+        assertThat(oracle.kind()).isEqualTo(DialectKind.ORACLE);
+        assertThat(oracle.port()).isEqualTo(1521);
+        assertThat(oracle.database()).isEqualTo("ORCLPDB");
+
+        // SQL Server 的参数用分号、库名在 databaseName 上 —— 按 ? 切会拿到一个错库名。
+        ConnectionWizard.UriTarget mssql = ConnectionWizard.parseUri(
+                "jdbc:sqlserver://db.local:1433;databaseName=shop;encrypt=true");
+        assertThat(mssql.kind()).isEqualTo(DialectKind.SQLSERVER);
+        assertThat(mssql.database()).isEqualTo("shop");
+        assertThat(mssql.options()).containsEntry("encrypt", "true");
+
+        // 查询串的参数不再被静默丢掉（以前界面上显示「不加密」，URI 里写的是 require）。
+        ConnectionWizard.UriTarget pg = ConnectionWizard.parseUri(
+                "postgresql://app@db.local/shop?sslmode=require");
+        assertThat(pg.options()).containsEntry("sslmode", "require");
+    }
+
+    @Test
+    void uriParametersReachTheTlsControls(FxRobot robot) {
+        open(robot, null);
+        click(robot, "wizard-type-uri");
+        robot.clickOn("#wizard-uri");
+        robot.write("postgresql://app@db.local:5432/shop?sslmode=require");
+        click(robot, "wizard-uri-apply");
+
+        selectTab(robot, "wizard-tab-ssl");
+        @SuppressWarnings("unchecked")
+        ComboBox<Dialect.SslLevel> combo = robot.lookup("#wizard-ssl-mode")
+                .queryAs(ComboBox.class);
+        assertThat(combo.getValue()).as("URI 里的档位要回填下拉，不能显示「不加密」")
+                .isEqualTo(Dialect.SslLevel.REQUIRE);
+        assertThat(robot.lookup("#wizard-extra").queryAs(javafx.scene.control.TextArea.class)
+                .getText()).as("TLS 页管的键不再重复出现在附加参数里").doesNotContain("sslmode");
+    }
+
+    @Test
+    void tlsLevelsAreOnlyWhatTheDriverCanExpress(FxRobot robot) {
+        open(robot, null);
+        goToProperties(robot, DialectKind.MARIADB);
+        robot.clickOn("#wizard-name");
+        robot.write("Maria SSL");
+        robot.clickOn("#wizard-host");
+        robot.write("db.example.com");
+        robot.clickOn("#wizard-database");
+        robot.write("shop");
+
+        selectTab(robot, "wizard-tab-ssl");
+        ComboBox<Dialect.SslLevel> combo = robot.lookup("#wizard-ssl-mode").queryAs(ComboBox.class);
+        assertThat(combo.getItems())
+                .as("mariadb-java-client 的 SslMode 枚举里没有 prefer 这一档")
+                .containsExactly(Dialect.SslLevel.OFF, Dialect.SslLevel.REQUIRE,
+                        Dialect.SslLevel.VERIFY_CA, Dialect.SslLevel.VERIFY_IDENTITY);
+        assertThat(robot.lookup("#wizard-ssl-root").queryTextInputControl().isDisabled())
+                .as("MariaDB 收 serverSslCert，根证书框可用")
+                .isFalse();
+
+        selectSslMode(robot, Dialect.SslLevel.REQUIRE);
+        click(robot, "wizard-save");
+        assertThat(wizard.dialogResult().orElseThrow().options())
+                .as("「必须加密」在 MariaDB 驱动里叫 TRUST，不是 PG 的 require")
+                .containsEntry("sslMode", "TRUST")
+                .doesNotContainKey("sslmode");
+    }
+
+    @Test
+    void dialectsWithoutASelectableTlsLevelSaySoInsteadOfFakeControls(FxRobot robot) {
+        open(robot, null);
+        goToProperties(robot, DialectKind.SQLSERVER);
+        selectTab(robot, "wizard-tab-ssl");
+
+        TabPane tabs = robot.lookup("#wizard-tabs").queryAs(TabPane.class);
+        Tab ssl = tabs.getTabs().get(3);
+        assertThat(ssl.getContent().lookup("#wizard-notice")).isNotNull();
+        assertThat(allText(ssl.getContent()))
+                .as("SQL Server 要两个参数配对，界面必须说清楚去哪填")
+                .contains("trustServerCertificate");
     }
 
     // ─────────────────── 第 2 步：7 个页签 ───────────────────
@@ -268,7 +352,7 @@ class ConnectionWizardTest {
         robot.write("db.example.com");
         robot.clickOn("#wizard-database");
         robot.write("shop");
-        selectSslMode(robot, ConnectionWizard.SslMode.REQUIRE);
+        selectSslMode(robot, Dialect.SslLevel.REQUIRE);
         click(robot, "wizard-save");
 
         assertThat(wizard.dialogResult().orElseThrow().options())
@@ -283,7 +367,7 @@ class ConnectionWizardTest {
         robot.write("db.example.com");
         robot.clickOn("#wizard-database");
         robot.write("shop");
-        selectSslMode(robot, ConnectionWizard.SslMode.REQUIRE);
+        selectSslMode(robot, Dialect.SslLevel.REQUIRE);
         click(robot, "wizard-save");
 
         assertThat(wizard.dialogResult().orElseThrow().options())
@@ -455,7 +539,7 @@ class ConnectionWizardTest {
         assertThat(robot.lookup("#wizard-query-timeout").queryTextInputControl().getText())
                 .isEqualTo("20");
         assertThat(((ComboBox<?>) robot.lookup("#wizard-ssl-mode").queryAs(ComboBox.class))
-                .getValue()).isEqualTo(ConnectionWizard.SslMode.VERIFY_IDENTITY);
+                .getValue()).isEqualTo(Dialect.SslLevel.VERIFY_IDENTITY);
         assertThat(robot.lookup("#wizard-remarks").queryAs(javafx.scene.control.TextArea.class)
                 .getText()).isEqualTo("老连接");
 
@@ -482,13 +566,28 @@ class ConnectionWizardTest {
                 .as("没手改过端口时跟着库型换默认值").isEqualTo("3306");
     }
 
+    @Test
+    void everyRegisteredDialectHasItsOwnTile(FxRobot robot) {
+        open(robot, null);
+        for (DialectKind kind : DialectKind.values()) {
+            ToggleButton tile = robot.lookup("#wizard-tile-" + kind.name())
+                    .queryAs(ToggleButton.class);
+            assertThat(tile.isVisible())
+                    .as("方言层登记了 %s，类型页就必须摆它的磁贴", kind)
+                    .isTrue();
+            assertThat(tile.getGraphic())
+                    .as("磁贴是图标 + 名字 + 一句说明，不是一个纯文字按钮")
+                    .isNotNull();
+        }
+    }
+
     // ───────────────────────────── 工具 ─────────────────────────────
 
     @SuppressWarnings("unchecked")
-    private static void selectSslMode(FxRobot robot, ConnectionWizard.SslMode mode) {
+    private static void selectSslMode(FxRobot robot, Dialect.SslLevel mode) {
         selectTab(robot, "wizard-tab-ssl");
         interact(() -> {
-            ComboBox<ConnectionWizard.SslMode> combo = robot.lookup("#wizard-ssl-mode")
+            ComboBox<Dialect.SslLevel> combo = robot.lookup("#wizard-ssl-mode")
                     .queryAs(ComboBox.class);
             combo.getSelectionModel().select(mode);
         });

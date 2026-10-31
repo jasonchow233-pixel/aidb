@@ -1,0 +1,12 @@
+<!-- AIDB 自有彩色资产（R36）：BI / 报表四象限（功能区 BI 格）。
+     左上格用 tone-c 当「主指标」隐喻，与列矩阵 grid-2x2 同一分层口径。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <rect data-paint="tone-b" x="3" y="3" width="7" height="7" rx="1"/>
+  <rect data-paint="tone-b" x="14" y="3" width="7" height="7" rx="1"/>
+  <rect data-paint="tone-b" x="14" y="14" width="7" height="7" rx="1"/>
+  <rect data-paint="tone-c" x="3" y="14" width="7" height="7" rx="1"/>
+  <rect data-paint="edge" x="3" y="3" width="7" height="7" rx="1"/>
+  <rect data-paint="edge" x="14" y="3" width="7" height="7" rx="1"/>
+  <rect data-paint="edge" x="14" y="14" width="7" height="7" rx="1"/>
+  <rect data-paint="edge" x="3" y="14" width="7" height="7" rx="1"/>
+</svg>

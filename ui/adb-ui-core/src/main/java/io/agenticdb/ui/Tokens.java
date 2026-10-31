@@ -102,11 +102,11 @@ public final class Tokens {
 
     /** accent (color) */
     public static final String ACCENT_DARK = "#4C9EEA";
-    public static final String ACCENT_LIGHT = "#0067B8";
+    public static final String ACCENT_LIGHT = "#0078D7";
 
     /** accent-hover (color) */
     public static final String ACCENT_HOVER_DARK = "#6FB4F2";
-    public static final String ACCENT_HOVER_LIGHT = "#005A9E";
+    public static final String ACCENT_HOVER_LIGHT = "#1A86E0";
 
     /** risk-0-read (color) */
     public static final String RISK_0_READ_DARK = "#4C9EEA";
@@ -229,20 +229,20 @@ public final class Tokens {
     public static final String SYN_ERROR_LIGHT = "#DC2626";
 
     /** h-appbar (size) */
-    public static final int H_APPBAR_DARK = 64;
-    public static final int H_APPBAR_LIGHT = 64;
+    public static final int H_APPBAR_DARK = 91;
+    public static final int H_APPBAR_LIGHT = 91;
 
     /** h-toolbar (size) */
     public static final int H_TOOLBAR_DARK = 30;
     public static final int H_TOOLBAR_LIGHT = 30;
 
     /** h-tabbar (size) */
-    public static final int H_TABBAR_DARK = 26;
-    public static final int H_TABBAR_LIGHT = 26;
+    public static final int H_TABBAR_DARK = 25;
+    public static final int H_TABBAR_LIGHT = 25;
 
     /** h-statusbar (size) */
-    public static final int H_STATUSBAR_DARK = 22;
-    public static final int H_STATUSBAR_LIGHT = 22;
+    public static final int H_STATUSBAR_DARK = 23;
+    public static final int H_STATUSBAR_LIGHT = 23;
 
     /** h-input (size) */
     public static final int H_INPUT_DARK = 28;

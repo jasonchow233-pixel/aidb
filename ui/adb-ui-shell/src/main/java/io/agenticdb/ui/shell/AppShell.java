@@ -206,6 +206,12 @@ public final class AppShell extends StackPane {
         // ⭐ UX-5：连接节点的存活点。**判据只能来自 SessionManager** ——
         //    侧栏没有会话，它自己判断就是第二套真相；外壳也不许替它编一个。
         this.sideBar.setConnectionLiveness(this::isConnectionAlive);
+        // ⭐ D-2：同理，「复制成 SELECT」的语句由**节点所属连接**的方言生成 ——
+        //    侧栏只问「这个连接用哪种写法」，自己不拼 SQL（引号/分页都跟库走）。
+        this.sideBar.setDialectResolver(connectionId -> {
+            DbSession owner = sessionOrCurrent(connectionId);
+            return owner == null ? null : owner.dialect();
+        });
         // ⭐ §6：右侧详情面板。数据必须由外壳提供 —— 它才认识会话、
         //    执行器和 SchemaService；面板自己一个数据库概念都没有，
         //    于是「不编造数据」这条规则在类型上就成立了。
@@ -331,6 +337,17 @@ public final class AppShell extends StackPane {
             return null;
         }
         return sessions.find(connectionId).orElse(null);
+    }
+
+    /**
+     * ⭐ D-2：按连接 id 取会话，取不到回落到当前会话。
+     *
+     * <p>「复制成 SELECT」这类语句必须按**对象所属连接**的方言生成；
+     * 老标签没带 connectionId 时（单连接时代建的）才用当前会话兜底。
+     */
+    private DbSession sessionOrCurrent(String connectionId) {
+        DbSession found = sessionFor(connectionId);
+        return found == null ? session : found;
     }
 
     /** 按连接 id 取执行器（同一连接的库操作必须串行）。 */
@@ -2089,6 +2106,27 @@ public final class AppShell extends StackPane {
         actions.register("object.tables", I18n.t("action.object.tables"), I18n.t("category.object"),
                 null, this::openTableList);
 
+        // ⭐ R36 N6：Ribbon 12 格补齐（真源 §1.2 顺序）。View 落对象首页的视图筛选（真页面）；
+        //    User / Backup / Automation / Model / BI 背后是 N28 的六个能力面（R42 才建）——
+        //    按诚实条款先落**如实说明页**（工具页签 + 「本版本未提供」），不留死磁贴。
+        //    门禁：RibbonCapabilityAuditTest 逐格钉「有注册动作 + 有真实落点」。
+        actions.register("ribbon.view", I18n.t("action.ribbon.view"), I18n.t("category.object"),
+                null, () -> openObjectKind(io.agenticdb.introspect.SchemaService.ObjectKind.VIEW));
+        actions.register("ribbon.function", I18n.t("action.ribbon.function"), I18n.t("category.object"),
+                null, () -> openObjectKind(io.agenticdb.introspect.SchemaService.ObjectKind.FUNCTION));
+        actions.register("ribbon.others", I18n.t("action.ribbon.others"), I18n.t("category.object"),
+                null, this::openAllObjects);
+        actions.register("ribbon.user", I18n.t("action.ribbon.user"), I18n.t("category.tools"),
+                null, () -> openRibbonTool(SideBar.TOOL_USERS, I18n.t("tool.title.users")));
+        actions.register("ribbon.backup", I18n.t("action.ribbon.backup"), I18n.t("category.tools"),
+                null, () -> openRibbonTool(SideBar.TOOL_BACKUP, I18n.t("tool.title.backup")));
+        actions.register("ribbon.automation", I18n.t("action.ribbon.automation"), I18n.t("category.tools"),
+                null, () -> openRibbonTool(SideBar.TOOL_AUTOMATION, I18n.t("tool.title.automation")));
+        actions.register("ribbon.model", I18n.t("action.ribbon.model"), I18n.t("category.tools"),
+                null, () -> openRibbonTool(SideBar.TOOL_MODEL, I18n.t("tool.title.model")));
+        actions.register("ribbon.bi", I18n.t("action.ribbon.bi"), I18n.t("category.tools"),
+                null, () -> openRibbonTool(SideBar.TOOL_BI, I18n.t("tool.title.bi")));
+
         // ⭐ N1–N5：表清单的动作全部进注册表 —— 工具栏、右键菜单、命令面板同一份真相。
         //    选择相关的动作先禁用，等表清单页出现后由页面按选择启用。
         actions.register("table-list.new", I18n.t("action.table-list.new"), I18n.t("category.tableList"), null,
@@ -2161,25 +2199,25 @@ public final class AppShell extends StackPane {
         appBar = new AppBar(actions, connections,
                 activeProfile == null ? "demo" : activeProfile.id(), this::selectConnection);
 
-        // ⭐ 顶区 = 菜单栏 + 64px 命令带；全局工具条（连接/搜索/主题/更多）在
-        //    main 里的标签栏那一行（见下方 chromeRow）。菜单栏在 macOS 上走系统
-        //    菜单栏，在 Windows / Linux 上由 JavaFX 贴在窗口顶部 —— 两种形态都只占一行。
+        // ⭐ 顶区 = 菜单栏 + 91px Ribbon + 页签行 25 = 140px（R36，Navicat 实测）。
+        //    全局工具条（连接/搜索/主题/更多）在 Ribbon 右端（AppBar 内部），
+        //    页签行只放页签（N7）。菜单栏在 macOS 上走系统菜单栏，在
+        //    Windows / Linux 上由 JavaFX 贴在窗口顶部 —— 两种形态都只占一行。
         VBox top = new VBox(menuBar, appBar);
         top.getStyleClass().add("adb-top");
 
         resizer = buildResizer();
         detailsResizer = buildDetailsResizer();
-        // ⭐ 2026-10-28 顶区精简：原来 26px 的独立工具行（品牌/连接/搜索/主题/更多）
-        //    并进标签栏这一行 —— 标签栏本来就是一条横贯主区的 26px 带，
-        //    右端空着一大片。顶区因此少一行：菜单 24 + 命令带 64 + 这一行 26 = 114。
-        HBox chromeRow = new HBox(tabBar, appBar.utilityBar());
+        // ⭐ 2026-10-30 R36：工具条从这一行挪走了（它以前挤在页签行右端）。
+        //    这一行从此只有页签 —— 宽度按整条 Ribbon 走，紧凑档的判据也跟着变。
+        HBox chromeRow = new HBox(tabBar);
         chromeRow.setId("adb-chrome-row");
         chromeRow.getStyleClass().add("adb-chrome-row");
         chromeRow.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(tabBar, Priority.ALWAYS);
         // 侧栏 + 详情面板同时打开时主区可能只剩四百多像素：
-        // 工具条切紧凑形态（搜索降级成图标），而不是让 220px 搜索框把标签栏挤没。
-        chromeRow.widthProperty().addListener((observable, oldWidth, newWidth) ->
+        // Ribbon 右端工具条切紧凑形态（搜索降级成图标），而不是让磁贴排被挤没。
+        appBar.widthProperty().addListener((observable, oldWidth, newWidth) ->
                 appBar.fitChromeWidth(newWidth == null ? 0 : newWidth.doubleValue()));
 
         VBox main = new VBox(chromeRow, workspace);
@@ -3041,6 +3079,47 @@ public final class AppShell extends StackPane {
     /**
      * 打开收藏夹（菜单栏的顶级「收藏夹」入口）。
      */
+    /**
+     * ⭐ R36：Ribbon 的 View / Function 格 —— 打开常驻对象首页并把筛选切到该类型。
+     * 真页面、真筛选，不是说明页（视图/函数的编辑器才归 N28）。
+     */
+    private void openObjectKind(io.agenticdb.introspect.SchemaService.ObjectKind kind) {
+        String home = tabBar.permanentId();
+        if (home != null) {
+            tabBar.activate(home);
+        }
+        if (objectHome != null) {
+            objectHome.showKind(kind);
+        }
+        status(I18n.t("shell.openObjectKind", kind.name()));
+    }
+
+    /**
+     * ⭐ R36：Others 格 —— 对象首页切「全部」再清掉搜索词。
+     * 诚实：它只做「回到完整清单」这一件真事，不装成一个更大的能力面。
+     */
+    private void openAllObjects() {
+        String home = tabBar.permanentId();
+        if (home != null) {
+            tabBar.activate(home);
+        }
+        if (objectHome != null) {
+            objectHome.showKind(null);
+            objectHome.clearSearch();
+        }
+        status(I18n.t("shell.openAllObjects"));
+    }
+
+    /**
+     * ⭐ R36：Ribbon 上还没建能力面的格子（User/Backup/Automation/Model/BI）
+     * 落**如实说明页** —— 走 {@link SideBar#TOOL_USERS} 那族路由键，
+     * {@code WorkspaceView} 的 TOOL 分支对未接路由统一给「本版本未提供」的空态。
+     */
+    private void openRibbonTool(String route, String title) {
+        openTab(new TabItem("tool:" + route, title, TabKind.TOOL, route));
+        status(I18n.t("shell.openTool", title));
+    }
+
     private void openFavorites() {
         FavoritesPage page = new FavoritesPage(sideBar.starredNames(),
                 name -> sideBar.openStarred(name), this::status);
@@ -3137,10 +3216,20 @@ public final class AppShell extends StackPane {
             status(I18n.t("shell.noTableName"));
             return;
         }
-        String target = tab.target();
-        String text = asSelect
-                ? "SELECT * FROM \"" + target + "\" LIMIT 200;"
-                : target;
+        String text;
+        if (!asSelect) {
+            text = tab.target();
+        } else {
+            // ⭐ D-2：语句由标签所属连接的方言生成 —— 引号与分页写法都跟库走，
+            // 写死 "SELECT * FROM \"t\" LIMIT 200" 在 MySQL 上是错引号、
+            // 在 SQL Server / Oracle 上直接跑不通。
+            DbSession tabSession = sessionOrCurrent(tab.connectionId());
+            if (tabSession == null) {
+                status(I18n.t("shell.needConnection"));
+                return;
+            }
+            text = tabSession.dialect().plainPageSql(tab.target(), 200, 0) + ";";
+        }
         javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
         content.putString(text);
         javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);

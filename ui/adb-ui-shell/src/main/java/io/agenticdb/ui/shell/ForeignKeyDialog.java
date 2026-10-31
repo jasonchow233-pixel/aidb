@@ -203,6 +203,18 @@ final class ForeignKeyDialog {
         preview.setEditable(false);
         preview.setPrefRowCount(4);
 
+        // ⛔ 死控件红线：Oracle 的外键约束只有 ON DELETE，ON UPDATE 写不出来。
+        //    控件留着但禁用 + 一句为什么 —— 静默收起会让用户以为是自己填错了。
+        boolean supportsOnUpdate = session == null
+                || session.dialect().supportsForeignKeyOnUpdate();
+        onUpdate.setDisable(!supportsOnUpdate);
+        Label onUpdateNote = new Label(I18n.t("fk.noOnUpdate"));
+        onUpdateNote.setId("fk-dialog-on-update-note");
+        onUpdateNote.getStyleClass().add("adb-muted");
+        onUpdateNote.setWrapText(true);
+        onUpdateNote.setVisible(!supportsOnUpdate);
+        onUpdateNote.setManaged(!supportsOnUpdate);
+
         error.setId("fk-dialog-error");
         error.getStyleClass().add("adb-error");
 
@@ -210,7 +222,9 @@ final class ForeignKeyDialog {
                 labeled(I18n.t("sections.fk.constraint"), name),
                 labeled(I18n.t("fk.referencedTable"), referencedTable),
                 labeled(I18n.t("fk.columnsLabel"), picker),
-                new HBox(10, labeled("ON UPDATE", onUpdate), labeled("ON DELETE", onDelete)),
+                new VBox(4,
+                        new HBox(10, labeled("ON UPDATE", onUpdate), labeled("ON DELETE", onDelete)),
+                        onUpdateNote),
                 // 草稿表没有「将执行」这回事：外键在建表时内联进去，单独执行不了。
                 labeled(draft ? I18n.t("structure.preview.inline")
                         : I18n.t("structure.preview.execute"), preview),

@@ -1298,6 +1298,27 @@ final class ObjectHomePage extends VBox {
         filters.getChildren().setAll(children);
     }
 
+    /**
+     * ⭐ R36：按类型筛选清单（Ribbon 的 View 格走这里）。
+     *
+     * <p>与点 chip 同一条路（{@code filter = kind; applyFilter()}），
+     * chip 条带由 {@link #rebuildCards()} 一侧的类型 chip 重建，活动态自然落位。
+     *
+     * @param kind {@code null} = 全部
+     */
+    public void showKind(SchemaService.ObjectKind kind) {
+        filter = kind;
+        applyFilter();
+        updateToolbarState();
+    }
+
+    /** ⭐ R36：Others 格「回到完整清单」—— 搜索词也要真的清掉（只改控件不改谓词是假清空）。 */
+    public void clearSearch() {
+        search.clear();
+        query = "";
+        applyFilter();
+    }
+
     /** 把「类型 + 搜索词」两个条件一起落到 FilteredList 上。 */
     private void applyFilter() {
         filtered.setPredicate(row -> {

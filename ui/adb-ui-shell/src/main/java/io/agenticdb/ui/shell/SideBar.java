@@ -27,6 +27,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
+import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.SchemaService.ObjectKind;
 import io.agenticdb.introspect.SchemaService.SchemaObject;
@@ -41,6 +42,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -73,6 +75,8 @@ public final class SideBar extends VBox {
      * 宣称「这个连接是离线的」，而侧栏并不知道；界面不许编造状态。
      */
     private Predicate<String> connectionAlive;
+    /** ⭐ D-2：按连接 id 取方言（侧栏不造 SQL 文本，见 {@link #setDialectResolver}）。 */
+    private Function<String, Dialect> dialectFor = connectionId -> null;
     private List<SchemaObject> tables = List.of();
     private List<SchemaObject> views = List.of();
     /** ⭐ S3：过程 / 函数 / 触发器。 */
@@ -385,6 +389,17 @@ public final class SideBar extends VBox {
     public void setConnectionLiveness(Predicate<String> connectionAlive) {
         this.connectionAlive = connectionAlive;
         refreshTree();
+    }
+
+    /**
+     * ⭐ D-2：注入「按连接 id 取方言」。树里每个节点属于**它自己的连接**，
+     * 「复制成 SELECT」必须用那个连接的方言 —— 引号（{@code ` `} / {@code " "} /
+     * {@code [ ]}）和分页写法（{@code LIMIT} / {@code OFFSET…FETCH}）都跟库走。
+     *
+     * <p>侧栏自己**不拼** SQL：和存活判据一样，任何自建判断都会变成第二套真相。
+     */
+    public void setDialectResolver(Function<String, Dialect> dialectFor) {
+        this.dialectFor = dialectFor == null ? connectionId -> null : dialectFor;
     }
 
     /**
@@ -1561,7 +1576,12 @@ public final class SideBar extends VBox {
             }
             case COPY_SELECT -> {
                 if (isObject) {
-                    copy("SELECT * FROM \"" + node.name() + "\" LIMIT 200;");
+                    Dialect dialect = dialectFor.apply(owner);
+                    if (dialect == null) {
+                        status.accept(I18n.t("shell.needConnection"));
+                    } else {
+                        copy(dialect.plainPageSql(node.name(), 200, 0) + ";");
+                    }
                 }
             }
             case DIAGNOSTICS -> {
@@ -1747,6 +1767,23 @@ public final class SideBar extends VBox {
 
     /** 诊断页的路由前缀，后面跟表名（每张表一个页签，与抽取前的 id 行为一致）。 */
     public static final String TOOL_DIAGNOSTICS = "diagnostics:";
+
+    /**
+     * ⭐ R36：Ribbon 上「能力面还没建」的五格路由键（N28 → R42）。
+     *
+     * <p>走 {@code WorkspaceView} 的 TOOL 分支 —— 这些路由没有真页面，
+     * 由 {@link WorkspaceView} 给**如实说明页**（「本版本未提供」），不是死磁贴。
+     * 键公开的理由同 {@link #TOOL_HISTORY}：两边各写一遍字面量，拼错的那边只会静默退回空壳。
+     */
+    public static final String TOOL_USERS = "users";
+    public static final String TOOL_BACKUP = "backup";
+    public static final String TOOL_AUTOMATION = "automation";
+    public static final String TOOL_MODEL = "model";
+    public static final String TOOL_BI = "bi";
+
+    /** 上述五格的集合 —— {@code WorkspaceView} 按它给「本版本未提供」而不是通用空壳文案。 */
+    public static final java.util.Set<String> TOOL_UNAVAILABLE_ROUTES =
+            java.util.Set.of(TOOL_USERS, TOOL_BACKUP, TOOL_AUTOMATION, TOOL_MODEL, TOOL_BI);
 
     private static void copy(String text) {
         ClipboardContent content = new ClipboardContent();

@@ -137,15 +137,15 @@ class ChromeMetricsTest {
 
     @Test
     void chromeHeightsMatchTheDenseBudget(FxRobot robot) throws Exception {
-        // ⭐ 2026-10-26 用户裁定「保持和 Navicat 一样」：标签栏 26、对象工具条 30、
-        //    状态栏 22 —— 全部按 Navicat 17 实测值重定，第二十一轮的
-        //    28 / 34 / 24（无边框呼吸感）同时作废。
-        assertHeight(robot, ".adb-tabbar", 26);
+        // ⭐ 2026-10-30 R36：按 Navicat 17 逐像素实拍再收一档 —— 页签行 26→25、
+        //    状态栏 22→23（实拍值），Ribbon 由 AppBarTest/AppShellTest 钉在 91。
+        //    顶区 24+91+25=140 与 Navicat 140 对齐（他们菜单 23，我们 24）。
+        assertHeight(robot, ".adb-tabbar", 25);
         // 对象标题栏 40 与分页器 38 本轮未动（Navicat 无对应可见框，保留可读性预算）。
         assertHeight(robot, ".adb-object-header", 40);
         assertHeight(robot, "#data-toolbar", 30);
         assertHeight(robot, ".adb-grid__pager", 38);
-        assertHeight(robot, ".adb-statusbar", 22);
+        assertHeight(robot, ".adb-statusbar", 23);
 
         double rowHeight = WaitForAsyncUtils.asyncFx(() ->
                 ((TableView<?>) robot.lookup("#data-table").query()).getFixedCellSize()).get();

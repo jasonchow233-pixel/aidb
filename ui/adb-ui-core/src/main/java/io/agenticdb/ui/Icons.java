@@ -219,6 +219,8 @@ public final class Icons {
         FUNCTION(null, "braces"),
         /** 触发器（lucide: zap）。 */
         TRIGGER(null, "zap"),
+        /** 用户 / 权限（lucide: user）。 */
+        USER(null, "user"),
         /** 数据库连接（插头，lucide: plug）。 */
         CONNECT(null, "plug"),
         /** 打开（lucide: external-link）。 */
