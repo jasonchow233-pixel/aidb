@@ -11,7 +11,7 @@
 |---|---|
 | 命令 | `./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`） |
 | 最近一次全量回量 | 2026-10-31 · macOS 15.7 x64 · JDK 25.0.4（IntelliJ JBR） |
-| 结果 | **1203 条 / 142 类 / 0 失败**（另有 53 条环境门控跳过）—— R36 顶区 + D 系列方言批收官后回量（`./scripts/build.sh` 全绿；较上一版 +37 条 / +3 类，新增 `MariaDbDialectTest` 5 / `OracleDialectTest` 9 / `SqlServerDialectTest` 11） |
+| 结果 | **1175 条 / 140 类 / 0 失败**（另有 53 条环境门控跳过）—— R37-b 对象页二合一后回量（`./scripts/build.sh` 全绿；较上一版 −28 条 / −2 类：删掉对象首页与其工具条的 `ObjectHomePageTest` 18 + `ObjectHomeToolbarTest` 5，`MetadataColumnsTest` 随「列恒在」收窄 6 → 1，新增 `SideBarTreeTest.routinesOpenTheirDefinitionFromTheTree`） |
 
 **口径警告（改数字前必读）**：4 个测试类用 `@Nested`，surefire 的 XML 会把外层类写成 `tests="0"`
 （真实用例在内层类条目里）。按 `tests=` 属性统计会少算一百多条 —— 所以计数一律走
@@ -29,7 +29,7 @@
 | 外壳与布局 | ✅ | 七区（菜单 / 功能区 / 侧栏 / 页签 / 对象工具条 / 内容区 / 状态栏）；侧栏 250px、折叠 48px、可拖 200–360；macOS 用系统菜单栏 |
 | 连接与凭据 | ✅ | 六种方言：SQLite / MySQL 5.7–8.x / PostgreSQL（真库验证过）；MariaDB / SQL Server / Oracle（方言 + 单测门禁已落地，**目录查询未在真库验证**，方言源码逐条标注）。连接分组、收藏、复制、URI（含 Oracle EZConnect 与 SQL Server 分号参数串）；口令进系统凭据服务，**不落盘**；`connections.json` 落盘前剔除敏感键；HikariCP 池化（除 SQLite），SQLite 直连 |
 | 连接向导 | ✅ | 6 个类型磁贴 → 7 页属性 → 测试 → 保存。SSL 页的档位与根证书参数**由方言自报**（PG `sslmode` / MySQL `sslMode` / MariaDB `sslMode`+`serverSslCert`，MariaDB 没有 prefer 档）；SQL Server（encrypt + trustServerCertificate 配对）与 Oracle（钱包 / sqlnet.ora）收起档位并写明去哪里填；SSH / HTTP 页如实标注「未实现」，不是空壳 |
-| 对象树 | ✅ | 真实内省（表 / 视图 / 触发器 / 事件 / 函数·过程）；多连接同树；表节点懒加载展开列，失败可重试 |
+| 对象树 | ✅ | 真实内省（表 / 视图 / 函数·过程；触发器按表归属在结构页，事件本版本不上树）；多连接同树；表节点懒加载展开列，失败可重试 |
 | 数据网格 | ✅ | 服务端分页（100/200/500/1000）、选择列、行号、类型行、列宽/顺序/显隐持久化、冻结列、矩形选择、⌘F 本页搜索、转置只读视图 |
 | 数据页写路径 | ✅ | 行内编辑 + 类型转换 + 按主键定位；NULL / 空串独立操作；批量条（TSV / INSERT / 克隆 / 置 NULL / 置空串 / 删除）；SQL 预览 → 单事务 → 失败回滚 → 保存后一次反向撤销 |
 | 结构编辑 | ✅ | 加列 / 改列 / 重命名 / 删列 + 两级危险确认；索引、外键、触发器、CHECK 可增删；表注释可读可改（SQLite 无 → 按钮禁用）；改列整表重建时搬运 CHECK |
@@ -67,10 +67,9 @@
 - 危险分级**第三层（驱动侧复查）不存在**：`DbSession.execute(sql)` 没有 `danger` 参数，
   绕过 UI 直接调会话层不会被拦。前两层（fail-closed 分类 + UI 确认）已落地。
 - **SSH 隧道未实现**（连接向导里明说）；SSL/TLS 只做到「写驱动属性」，证书链校验与 SNI 待补。
-- 视图不能增删改；函数 / 过程只读定义体（SQLite 没有 SQL 层函数）。
-- 点对象首页的「函数 / 过程 / 触发器」会被告知暂不支持（不再报错，但也不能看定义体）。
+- 视图不能增删改；函数 / 过程只读定义体（SQLite 没有 SQL 层函数），入口是左侧树的双击 / Enter。
+- 事件（MySQL EVENT）不在树上，因此本版本看不到事件定义体；触发器按表归属，在结构页查看。
 - 建表弹窗不能录外键 / 索引 / CHECK（生成器支持，UI 还没有录入区）。
-- 表清单工具条还缺新建 / 删除 / 设计的直达入口。
 
 ### 编辑与选择
 

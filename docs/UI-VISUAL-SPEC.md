@@ -191,7 +191,7 @@
 
 | 类型 | 令牌 | 暗色 / 亮色 | 用在哪 |
 |---|---|---|---|
-| 表 | `kind-table` | `#2DD4BF` / `#0F766E` | 对象树表节点图标、对象首页行首、表清单卡片 |
+| 表 | `kind-table` | `#2DD4BF` / `#0F766E` | 对象树表节点图标、表清单行首、表清单卡片 |
 | 视图 | `kind-view` | `#C4B5FD` / `#7C3AED` | 对象树视图节点图标 |
 | 函数 | `kind-function` | `#FBBF24` / `#B45309` | 对象树函数节点图标 |
 | 触发器 | `kind-trigger` | `#FDBA74` / `#C2410C` | 对象树触发器节点图标 |
@@ -513,7 +513,7 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 - primary **不与 danger 同屏**（保存 vs 删除并排 = 危险）。
 - 破坏性动作**必须**走 `DestructiveConfirm`，默认按钮钉在「取消」。
 - 工具条按语义**分组**，组间 1px 分隔线（`.adb-toolbar__separator`）：数据页「数据动作 | 查询与视图 | 数据交换 | 搜索」、
-  清单页「对象动作 | 表操作 | 数据交换 | 视图」、对象首页「查看 | 编辑」。
+  清单页「对象动作 | 表操作 | 数据交换 | 视图」。
 - **主操作 = 图标 + 文字 + tooltip + accessibleText**（`IconButtons.labeled(...)`）：凡「改数据 / 走网络 / 不可逆」
   的动作必须有文字 —— 保存、筛选与排序、列、视图、导入、导出、删除记录；次要动作（清除条件）保持纯图标。
   旧的「只保存带文字、其余纯图标（Navicat 形态）」已作废：纯图标把「删除」和「刷新」摆成同一颗方块，靠猜。
@@ -622,19 +622,19 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 **新空态一律用五参版**（带「下一步」按钮）；三参版只在确实无处可去时用。
 已知 9 处：E1/E2/E3/E4/E6 已修；**E5（查询 0 行）/ E7（侧栏搜不到）/ E8（历史为空）/ E9（收藏为空）待补**。
 
-### 7.9 清单页（对象首页 / 表清单）
+### 7.9 对象清单页（常驻「对象」标签 = 表清单）
 
 | 元素 | 规格 |
 |---|---|
-| 列（表清单） | 名称 / 行 / 数据长度 / 引擎 / 创建日期 / 修改日期 / 排序规则 / 注释 |
-| 列（对象首页） | 名称 / **类型** / 行数 / 数据长度 / 引擎 / 创建时间 / 修改时间 / 排序规则 / 注释 |
+| 列 | 名称 / 行 / 数据长度 / 引擎 / 修改日期 / 注释（六列固定，取不到值的格显示「—」，不按数据整列隐藏） |
+| 工具条 | 打开表 / 设计表 / 新建表 / 用 AI 新建表 / 删除表 / 导入向导 / 导出向导（带文字与图标，打开弹窗的键按惯例带省略号）＋ 表名过滤框 ＋ 列表 / 网格切换。**没有「刷新」键**（Navicat 的对象工具条也没有；刷新在右键菜单 / 菜单栏），也没有「N 张表」计数 |
 | 行高 | 19 / 20 / **21** / 26（跟随密度令牌，默认标准 = Navicat 21） |
 | 表体 | 12px；**纯白行、无横线、无斑马纹**（Navicat 17 实测）；列分隔由表头竖线承担 |
 | 表头 | 12px bold，`text-secondary`，`bg-surface`；列间 1px `border-subtle` 竖线 |
 | 空行 | **不画线、不铺色**（避免看起来像还有数据） |
 | 数字列 | 右对齐 + **按数值排序**（不按字符串） |
 | 缺失元数据 | 显示「—」，不编造 SQLite 拿不到的值 |
-| 交互 | 双击 / Enter 打开；搜索实时过滤；刷新在后台线程 |
+| 交互 | 双击 / Enter 打开；搜索实时过滤；刷新在后台线程；右键菜单与工具条共用同一组动作 |
 
 > 实拍对照见 `docs/screenshots/p*.png`（由 `scripts/shots.sh` 按当前代码重拍）；像素测量的原始台账属内部材料，不随公开仓库发布。
 
@@ -830,7 +830,7 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 > （第二十九轮重拍实拍抓到网格 / 结构页 / 连接页 / 表清单四处的裁字）。门禁：
 > `AppCssAuditTest.fixedRowCellsLeaveRoomForTheirText`。
 
-覆盖：数据网格 · 查询结果网格 · 表清单 · 对象首页 · 结构页四张表 · 对象树
+覆盖：数据网格 · 查询结果网格 · 表清单 · 结构页四张表 · 对象树
 （`DensityCoverageTest` 四档 × 各页面，`ChromeMetricsTest` 钉 chrome 高度与可见行数）。
 
 ### 12.2 主题
@@ -861,7 +861,6 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 | 状态栏分段 | `adb-status__connection` `__range` `__selection` `__duration` `__transaction` | 分段无独立样式（靠继承，问题不大） | 🟢 P3 |
 | 数据页 | `adb-grid__jump` `adb-grid__number-column` | 跳页输入框/数字列无专属样式 | 🟡 P2 |
 | 侧栏 | `adb-sidebar__bottom` `adb-sidebar__connection` `adb-tree-cell--object` `adb-icon-button--active` | **图标按钮的「激活态」没有样式**（例如筛选激活） | 🟡 P2 |
-| 对象首页 | `adb-object-home` `adb-table-list` | 容器类无样式 | 🟢 P3 |
 | 空态 | `adb-empty__hint` | 空态提示行无样式 | 🟢 P3 |
 | 其它 | `adb-body` `adb-db` `adb-main` `adb-screenshot` `adb-history__list` `adb-form` | 命名类，无样式需求 | 🟢 P3 |
 
@@ -936,6 +935,7 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-10-31 | 第三十七轮 · R37-a/b | **对象页二合一 + 导航树收敛**。R37-a：树收成「库 → 表 / 视图 / 函数·过程」，删掉每组计数徽标、整组触发器节点与树底三颗导航键（查询历史 / 诊断 / 导入·导出，仍在菜单、⌘K 与 ⋯ 菜单）；事件不上树，函数 / 过程只经双击 / Enter 打开定义体 —— 树里没有事件节点，原事件分发是不可达代码，已删。R37-b：对象首页与表清单合并成**常驻「对象」页签**（`TabKind.OBJECT`，切连接只换内容）；清单固定**六列**（名称 / 行 / 数据长度 / 引擎 / 修改日期 / 注释，缺值一律「—」，SQLite 不再整列消失）；工具条对齐 Navicat 的**七颗带文字键**（打开 / 设计 / 新建 / 用 AI 新建 / 删除 / 导入向导 / 导出向导），**去掉刷新键与「N 张表」计数**（Navicat 两样都没有；刷新留右键菜单）。⭐ **帧核对抓到的两条**：① 七键的省略号是文案本身（打开弹窗的惯例），不是挤压，`minWidth = USE_PREF_SIZE` 把「挤不下就缩文字」这条堵死了；② 过滤框 120px 下英文占位符被咬成 `Search table n`，但放宽到 150px 会把右侧列表 / 网格切换挤出可视区（这条工具条已排到窗口右缘）——改成短文案 `Search tables` / `搜索表名`，宽度不动。 |
 | 2026-10-28 | 第三十二轮 · R32-D | **顶区精简（用户拍板方案 B「并入标签栏」）**：删掉整条 26px 全局工具行与品牌块，顶区 **140 → 114px** = 菜单 24 + 命令带 64 + 页签行 26。命令带由双行 90px 收到 **64px 单行**，同时裁掉 4 个有第二入口的重复命令（表 / 诊断 / 刷新 / 设置 —— 仍在菜单、侧栏、⌘K、⋯ 菜单），只留 6 条；连接 pill / 全局搜索 / 主题 / ⋯ 搬进页签行右侧，与文档页签共用 26px；品牌改为**窗口标题 + 窗口图标 + 关于框图形**。新增窄窗降级 `AppBar.fitChromeWidth`（行宽 <780px 收掉连接副标题与搜索提示词，搜索框缩为 30px 放大镜；`p2-details` 在侧栏 + 抽屉同开、内容区 ~420px 时实证）。⭐ **两条新教训**：① CSS 变量靠继承，工具件搬出 AppBar 后脱离挂 `theme-light` / `theme-dark` 的子树 → 连接点算成纯黑 `0x000000ff`，**主题类必须挂在场景根**；② 节点 id 里带 `.`（`ribbon-object.new-table`）会让 `lookup("#…")` 解析失败 —— 改用遍历 `.adb-ribbon__button` 比对 `getId()`。门禁：`AppBarTest` 12 条（品牌块禁止回归 / 命令带只剩 6 条 / 紧凑形态往返 / ⋯ 含刷新）、`AppShellTest` 顶区两行断言、`BrandMarkAuditTest`（品牌只在窗口身份与关于框）、`TokenParityTest`（64px）；两次变异（工具行拆回独立一行 → `AppShellTest` 红；`compact = false` → `AppBarTest` 红）均还原。27 张帧重拍并逐张目视（`ADB_CONNECTIONS` 摆态补齐被删图标的截图入口）。 |
 | 2026-10-28 | 第三十二轮 · R32-G4 | **表单视图（单记录纵向表单）**。一行一个字段：列名 12px 粗（130px）/ 类型 11px 灰（150px）/ 值控件（inset 底 + 6px 圆角，聚焦描 `border-focus`）；行线沿用网格的 `border-subtle`，只读字段用 `bg-subtle` 底 + `text-secondary` 字、`-fx-opacity: 1` 保持可读。八个 `.adb-grid__form*` 样式类先落在 Java 里没有规则，被 `StyleClassCoverageTest` 拦下后补齐；类型栏 110 → 150px 是因为 `BOOLEAN · NOT NULL` 在 110px 下被截成 `BOOLEAN · NOT …`（`p2-form` 实拍）。⭐ **工具条收字判据补两条**：① 按钮个数变化（选中行多出「删除记录」）也要重判，不只盯工具条宽度；② 收起状态下量需求宽必须先把文字装回、摘掉 `adb-button--icon` 并**当场 `applyCss()`** —— 否则读到的还是 30px 图标档（实测 556 / 1093），下一次重判会把文字涨回来、把搜索框裁成「本」。新增帧 `p2-form`（27 张：22 亮 + 5 暗）。 |
 | 2026-10-27 | 第三十一轮 · R31 | **表设计器补成 Navicat 的七页 + 字段页三段**。字段页 = 工具条（添加 / 插入 / 删除 / 上移 / 下移）+ 网格 + 常驻属性面板（默认值 / 字符集 / 排序规则），默认值从网格挪进面板换取长度/小数/自增的列宽；网格行高 30 → **21px**（`RowHeights.of("normal")`，Navicat 实测 22，差 1px 换来与自家密度同档）；九列按 Navicat 顺序排（名称 / 类型 / 长度 / 小数 / 不为空 / 主键 / 唯一 / 自增 / 注释），类型是可编辑下拉、候选来自 `Dialect.columnTypes()`；`字段数：N` 常驻工具条右端。⭐ **置灰一律用颜色，不用 `-fx-opacity`**：新写的 `.adb-dialog .table-view .table-cell:disabled` 本想用 `0.45` 半透明，被 `FocusRingAuditTest.opacityIsNeverUsedToDimContent` 拦下（全文只允许命令面板遮罩一处，半透明会把文字和图标一起稀释），改成 `-fx-opacity: 1` + `text-disabled` 色 —— 与本文件「禁用感完全由颜色表达」这条既有规矩一致。⭐ **方言知识不下 UI**：字符集/排序规则的「支持与否 + 常用候选」全部做成 `Dialect` 默认方法（`supportsColumnCharset` / `columnCharsetPresets` / `columnCollationPresets`），UI 里写 `kind() == MYSQL` 会被 `DialectBranchAuditTest` 判红（本轮真的红过一次）；候选表与建表器校验之间加了 `everyCharsetAndCollationPresetIsAcceptedByTheBuilder` 对账门 —— 变异验证：往 PG 候选里塞一个带点号的 `en_US.UTF-8`（过不了注入防线）只红这条。⭐ **行态档集体栽在权重上**：字段网格选中的那一行实拍只剩一圈单元格描边、底色还是白的，第一版补的裸 `.adb-dialog .table-view .table-row-cell:selected` 门禁全绿、帧照样没色 —— 真根因是四处表格作用域的条纹档写成 `:filled:odd`（比所有行态档多一个伪类 = 重 10），把 `:hover` / `:selected` / `--deleted` / `--new` 整档压掉，表现成**只有奇数行掉色**（`p2-cell` 里选中的 `User 002` 同样是白行，只是此前没有任何一帧选中过奇数行）。修法是把**条纹降回一个伪类** `:odd`（空行不条纹交给同权重、声明在后的 `:empty`），而不是给每条行态档补 `:filled` —— 前者一次修完四个作用域，后者每加一条新态都要记住补。门禁 `SelectionStateTest.stateRulesOutweighTheZebraStripeInEveryTableScope` 随之从「规则在不在」升级成「逐作用域把行态档全捞出、比权重 ≥ 条纹档且声明在后」，变异两处各红一次（条纹写回 `:filled:odd`、选中档挪到条纹档前面）。新增帧 `p6-new-table-fields` / `-fields-dark` / `-comment`（**24 张：19 亮 + 5 暗**）。 |
