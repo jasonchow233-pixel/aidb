@@ -37,8 +37,6 @@ import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
-import javafx.scene.control.MenuButton;
-import javafx.scene.control.MenuItem;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
@@ -304,7 +302,7 @@ final class NewTableDialog {
         HBox.setHgrow(spacer, Priority.ALWAYS);
         // ⭐ N29：Navicat 的字段工具条右端是 Ask AI ▾。本版本没有 AI 后端 ——
         //    每一项打开如实说明页（不留死按钮），并且指路：⌘K 或手动编辑。
-        HBox fieldToolbar = new HBox(8, rowButtons, spacer, fieldCount, buildAskAiMenu());
+        HBox fieldToolbar = new HBox(8, rowButtons, spacer, fieldCount, buildAskAiButton());
         fieldToolbar.setAlignment(Pos.CENTER_LEFT);
 
         // ⭐ R31：Navicat 形态 —— 工具条 / 网格 / 属性面板三段。
@@ -578,39 +576,36 @@ final class NewTableDialog {
     }
 
     /**
-     * ⭐ N29：Navicat 字段工具条右端的 {@code Ask AI ▾}。
+     * ⭐ N29 → R43-b：Navicat 字段工具条右端的 {@code Ask AI}。
      *
-     * <p>本版本没有 AI 服务 —— 每一项都打开<b>如实说明页</b>，
-     * 并在说明里指一条真能走通的路（命令面板 ⌘K / 手动编辑），而不是什么也不发生。
+     * <p>本版本没有 AI 服务。原来这里是一个三项菜单，三项打开的是<b>同一份</b>说明 ——
+     * 三个选项承诺三种能力，点哪个都只有一段「缺什么」，那是装饰不是功能。
+     * 收成一颗按钮：一次点击 = 一份如实说明，并在说明里指一条真能走通的路
+     * （命令面板 ⌘K / 手动编辑），而不是什么也不发生。
      */
-    private MenuButton buildAskAiMenu() {
-        MenuButton askAi = new MenuButton(I18n.t("query.askAi"));
+    private Button buildAskAiButton() {
+        Button askAi = new Button(I18n.t("query.askAi"));
         askAi.setId("new-table-ask-ai");
-        askAi.getStyleClass().add("adb-button");
+        askAi.getStyleClass().addAll("adb-button", "adb-button--ghost");
         askAi.setTooltip(new Tooltip(I18n.t("newtable.askAi.tip")));
-        for (String key : List.of("newtable.askAi.explain", "newtable.askAi.generate",
-                "newtable.askAi.optimize")) {
-            MenuItem item = new MenuItem(I18n.t(key));
-            item.setOnAction(event -> showAskAiNotice(I18n.t(key)));
-            askAi.getItems().add(item);
-        }
+        askAi.setOnAction(event -> showAskAiNotice());
         return askAi;
     }
 
-    /** 打开如实说明页（真弹窗；门禁走 {@link #askAiAlert(String)} 不显示）。 */
-    void showAskAiNotice(String itemTitle) {
-        Alert alert = askAiAlert(itemTitle);
+    /** 打开如实说明页（真弹窗；门禁走 {@link #askAiAlert()} 不显示）。 */
+    void showAskAiNotice() {
+        Alert alert = askAiAlert();
         alert.initOwner(dialog.getOwner());
         alert.showAndWait();
     }
 
     /** 门禁接缝：说明页本体，断言标题与说明文案都在这上面做。 */
-    Alert askAiAlert(String itemTitle) {
+    Alert askAiAlert() {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         DialogStyles.apply(alert, dialog.getOwner());
         alert.getDialogPane().setId("new-table-ask-ai-notice");
         alert.setTitle(I18n.t("grid.capability.windowTitle"));
-        alert.setHeaderText(itemTitle + " — " + I18n.t("grid.capability.title"));
+        alert.setHeaderText(I18n.t("query.askAi") + " — " + I18n.t("grid.capability.title"));
         alert.setContentText(I18n.t("grid.capability.body", I18n.t("grid.capability.askAi")));
         return alert;
     }
@@ -1514,9 +1509,9 @@ final class NewTableDialog {
         return fieldAutoIncrement;
     }
 
-    /** ⭐ N29：字段工具条右端的 {@code Ask AI ▾}（门禁断言每一项都在且真有动作）。 */
-    MenuButton askAiMenu() {
-        return (MenuButton) dialog.getDialogPane().getContent().lookup("#new-table-ask-ai");
+    /** ⭐ N29 → R43-b：字段工具条右端的 {@code Ask AI}（门禁断言它在且一击开说明）。 */
+    Button askAiButton() {
+        return (Button) dialog.getDialogPane().getContent().lookup("#new-table-ask-ai");
     }
 
     /** ⭐ R31：字段数标签（Navicat 底部的 Number of Fields）。 */

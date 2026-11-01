@@ -263,8 +263,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /** ⭐ N19：单元格编辑器 —— 用现有的详情抽屉，光标在哪一格就开哪一格。 */
     private final Button cellEditorButton = IconButtons.icon(Icons.Icon.EDIT, I18n.t("grid.toolbar.cellEditor"));
     /** ⭐ N19：AI 与三个能力面——本版本没有对应后端，按诚实条款给如实说明页。 */
-    private final MenuButton fillWithAiButton =
-            IconButtons.iconMenu(new MenuButton(), Icons.Icon.AI, I18n.t("grid.toolbar.fillWithAi"));
+    private final Button fillWithAiButton = IconButtons.icon(Icons.Icon.AI,
+            I18n.t("grid.toolbar.fillWithAi"));
     private final Button profilingButton = IconButtons.icon(Icons.Icon.DIAGNOSTICS,
             I18n.t("grid.toolbar.dataProfiling"));
     private final Button generationButton = IconButtons.icon(Icons.Icon.GRID,
@@ -1310,13 +1310,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         fillWithAiButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         toolbarOp(fillWithAiButton, Icons.Icon.AI, I18n.t("grid.toolbar.fillWithAi"),
                 I18n.t("grid.tip.fillWithAi"));
-        MenuItem fillColumn = new MenuItem(I18n.t("grid.ai.fill"));
-        fillColumn.setId("data-fill-ai-column");
-        fillColumn.setOnAction(event -> showCapabilityNotice(I18n.t("grid.toolbar.fillWithAi"), "grid.capability.fillAi"));
-        MenuItem explainTable = new MenuItem(I18n.t("grid.ai.explain"));
-        explainTable.setId("data-fill-ai-explain");
-        explainTable.setOnAction(event -> showCapabilityNotice(I18n.t("grid.toolbar.fillWithAi"), "grid.capability.fillAi"));
-        fillWithAiButton.getItems().setAll(fillColumn, explainTable);
+        // R43-b：原来是「用 AI 填充此列 / 解释这张表」两项下拉，两项开的是同一份说明。
+        // 一颗按钮就够 —— 一次点击 = 一份如实说明，不给用户两个都点了个空。
+        fillWithAiButton.setOnAction(event ->
+                showCapabilityNotice(I18n.t("grid.toolbar.fillWithAi"), "grid.capability.fillAi"));
 
         profilingButton.setId("data-profiling");
         profilingButton.getStyleClass().addAll("adb-button", "adb-button--ghost");

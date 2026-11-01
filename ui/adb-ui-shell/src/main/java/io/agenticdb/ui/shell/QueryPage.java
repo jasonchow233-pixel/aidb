@@ -118,7 +118,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private final Button explain = IconButtons.of(Icons.Icon.EXPLAIN, I18n.t("query.explain"));
     private final Button format = new Button(I18n.t("query.beautify"));
     private final Button save = new Button(I18n.t("query.save"));
-    private final MenuButton askAi = new MenuButton(I18n.t("query.askAi"));
+    private final Button askAi = new Button(I18n.t("query.askAi"));
     private MenuButton nameMenu;
     private MenuButton connectionMenu;
     private String queryName;
@@ -323,15 +323,10 @@ public final class QueryPage extends VBox implements AutoCloseable {
         askAi.setId("query-ask-ai");
         askAi.getStyleClass().add("adb-button");
         askAi.setTooltip(new Tooltip(I18n.t("query.tip.askAi")));
-        MenuItem generate = new MenuItem(I18n.t("query.askAi.generate"));
-        generate.setId("query-ask-ai-generate");
-        generate.setOnAction(event ->
-                showCapabilityNotice(I18n.t("query.askAi.generate"), "grid.capability.askAi"));
-        MenuItem explainWithAi = new MenuItem(I18n.t("query.askAi.explain"));
-        explainWithAi.setId("query-ask-ai-explain");
-        explainWithAi.setOnAction(event ->
-                showCapabilityNotice(I18n.t("query.askAi.explain"), "grid.capability.askAi"));
-        askAi.getItems().addAll(generate, explainWithAi);
+        // R43-b：原来这里挂两项（生成 SQL / 解释这条查询），两项打开的是同一段说明。
+        // 菜单留着只是让一次点击多两步 —— 收成一颗按钮，一击 = 一份如实说明。
+        askAi.setOnAction(event ->
+                showCapabilityNotice(I18n.t("query.askAi"), "grid.capability.askAi"));
 
         risk.setId("query-risk");
         risk.getStyleClass().addAll("adb-badge", "adb-query__risk");
