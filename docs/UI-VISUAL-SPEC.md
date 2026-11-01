@@ -289,7 +289,7 @@
 | **I-1** | ~~缺 **20px 图标档**（功能栏用 16px 顶着大字标）~~ | — | ✅ **已修**（UX-1）：新增 `Icons.SIZE_PRIMARY = 20`，对象主工具条使用 |
 | **I-2** | ~~标签栏 11px、rail 16px、功能栏 16px 三档不统一~~ | 同一语义在不同处大小不一致 | ✅ **已修**（UX-1）：命名档位 14/16/20 三个常量，调用点写数字被门禁拦下 |
 | **I-3** | ~~无应用图标~~ | 窗口标题栏无品牌标识 | ✅ **已修**：`App` 把多尺寸品牌图标注册进 `stage.getIcons()`（门禁：`BrandMarkAuditTest`） |
-| **I-4** | 彩色档覆盖**导航词表 + 功能区 + 页面级 16px 内联工具条**（18 枚资产，无资产的图标自动回退单色）；只剩**连接磁贴**仍是单色 | ~~同一图标在树上和工具条上两种画法~~ —— 已消；磁贴那 48 枚等厂商标志的裁定 | ✅ 工具条部分（R35 N4-c，门禁 `ToolbarIconChannelTest` 双向钉 + `DataGridPageTest` 从真实页面验两区画法）；🚧 连接磁贴部分等 owner 裁定（第三方 logo 是商标资产） |
+| **I-4** | 彩色档覆盖**导航词表 + 功能区 + 页面级 16px 内联工具条**（18 枚资产，无资产的图标自动回退单色）+ **六家数据库图形** | ~~同一图标在树上和工具条上两种画法~~ —— 已消；~~连接磁贴仍是单色，等第三方 logo 的裁定~~ —— 已消 | ✅ 工具条部分（R35 N4-c，门禁 `ToolbarIconChannelTest` 双向钉 + `DataGridPageTest` 从真实页面验两区画法）；✅ 厂商部分（R43-a **自绘同风格**六枚，不取原版位图也不碰商标，§4.6；门禁 `VendorGlyphTest`） |
 
 ### 4.5 彩色档（R35）
 
@@ -360,9 +360,10 @@
    图形、品牌色作用域类、显示名同一行给全，向导磁贴与左侧树的连接节点**读同一行**。
    分叉的代价是「同一个 MySQL 在两处两种画法」，正是 N4-c 已经踩过一次的坑。
    `DialectBranchAuditTest` 允许登记，禁止散落。
-2. **只有真有驱动的六家有图形**。`DialectKind.values()` 与图形集合一一对应
-   （`VendorGlyphTest` 的静态块钉住），MongoDB / Redis / Snowflake 与 13 个厂商
-   仍是中性 `DATABASE` / `CONNECT` —— 给连不上的连接配一枚专属图形，等于界面在承诺后端没有的能力。
+2. **只有真有驱动的六家有图形，也只有这六家出现在界面上**。`DialectKind.values()` 与图形集合一一对应
+   （`VendorGlyphTest` 的静态块钉住）。R43-b 之前类型页还摆着 MongoDB / Redis / Snowflake 与 13 个厂商
+   的中性圆柱磁贴 —— 给连不上的连接配一张卡，等于界面在承诺后端没有的能力，收成六张后那十六张连同
+   「无驱动说明页」一起删了。
 3. **品牌色只上 `tone-c`（最深填充面）一层**，轮廓层继续吃 `-adb-icon-edge`。
    理由是 §4.5 第 7 条的同一条：类型线索有两条（形状 + 颜色），而轮廓是「看不看得见」的那条 ——
    把它染成深品牌色，暗色档就糊。两档的品牌色各自过 ≥3:1 对页面底（`ContrastTest`）。
@@ -502,7 +503,7 @@ objectHeader（类型图标 + 表名 + 类型徽标 + 真实行数 | 刷新·结
 objectTabs（数据 / 结构 / 索引 / 外键 / 触发器 / SQL —— 当前切面下划线）
 ├ 数据切面（N19 / N20 / N31）
 │   数据工具条：13 具名键 —— Table Profile▾ ｜ Begin Transaction ｜ Cell Editor · Filter & Sort ｜
-│                Columns · History ｜ Fill with AI▾ · Data Profiling ｜
+│                Columns · History ｜ Fill with AI · Data Profiling ｜
 │                Import · Export · Data Generation · Data Masking · Create BI Workspace
 │              + 右端 2 小键：视图 ≡▾ · 溢出 »（放不下的具名键从右往左折进 »，键盘可到达）
 │   chips（已生效的筛选 / 排序条件，可单个删除 + 全部清除；无条件下整条隐藏）
@@ -525,7 +526,7 @@ objectTabs（数据 / 结构 / 索引 / 外键 / 触发器 / SQL —— 当前�
 
 ```
 toolbar 两行 62px（N21）
-  row1：保存 · 查询构建器 · 美化 · 片段 · Ask AI▾ ·（右）风险徽标 · 历史
+  row1：保存 · 查询构建器 · 美化 · 片段 · Ask AI ·（右）风险徽标 · 历史
   row2：查询名▾ · 连接▾ · ▶ Run▾（主体 = 当前语句；▾ = 当前 / 全部 / 带参数执行）·
         停止 · 解释 ·（右留白）
 findBar（查找替换，内嵌在编辑器上方，不弹窗）
@@ -618,7 +619,7 @@ tabs（列 / 索引 / 外键 / 触发器 / DDL）
 | 脏单元格 | 左侧 2px 黄条 + `warning-bg` |
 | 新增行 / 删除行 | 绿底 / 红底（删除行文字降为 tertiary） |
 | 行操作条 | 网格左下 `+ / − / 应用 / 取消`，**纯图标不加文字**（贴着光标，越短越不挡视线）。可用态**绑定**工具条同一批按钮，不重写判断；只读表**整排消失**（一排永远点不动的按钮只会引人反复试） |
-| 数据工具条 | **13 具名键**（视觉顺序 = 折叠顺序）：`Table Profile▾` · `Begin Transaction` · `Cell Editor` · `Filter & Sort`（开关，按下态 = 面板开着）· `Columns` · `History` · `Fill with AI▾` · `Data Profiling` · `Import` · `Export` · `Data Generation` · `Data Masking` · `Create BI Workspace`。右端恒留 2 小键：视图 `≡▾`、溢出 `»`。放不下时从右往左把具名键折进 `»` 菜单（按 `prefWidth` 判，不靠 `minWidth`），`»` 可 Tab / Enter 到达。能力面未建的四颗（Fill with AI / Data Profiling / Data Generation / Data Masking / Create BI Workspace）点开是**如实说明页**，不是死按钮 |
+| 数据工具条 | **13 具名键**（视觉顺序 = 折叠顺序）：`Table Profile▾` · `Begin Transaction` · `Cell Editor` · `Filter & Sort`（开关，按下态 = 面板开着）· `Columns` · `History` · `Fill with AI` · `Data Profiling` · `Import` · `Export` · `Data Generation` · `Data Masking` · `Create BI Workspace`。右端恒留 2 小键：视图 `≡▾`、溢出 `»`。放不下时从右往左把具名键折进 `»` 菜单（按 `prefWidth` 判，不靠 `minWidth`），`»` 可 Tab / Enter 到达。能力面未建的几颗（Fill with AI / Data Profiling / Data Generation / Data Masking / Create BI Workspace）点开是**如实说明页**，不是死按钮。⭐ R43-b：`Fill with AI` 原来是「填充此列 / 解释此表」两项下拉，两项开的是同一份说明 —— 一次点击能拿到的东西不该摆成两次点击，收成一颗 |
 | 底栏 | 一行：左 = 行操作条；右 = `首 / 上 / [页码框] / 下 / 末` + 齿轮 `▾`（每页行数 100/200/500/1000 + 跳至记录）+ 放大镜 + 网格/表单切换。**没有行数 / 页大小 / 「跳至页」文字控件**，记录计数只在状态栏。页码框兼作跳页输入；窄宽降级按可**见**宽度（场景坐标 − 父容器右内边距 − 覆盖底栏的详情浮层）从右往左收 `表单 → 网格 → 放大镜`，五键 / 页码框 / 齿轮永不收 |
 | **Filter & Sort 面板（N31）** | 工具条 `Filter & Sort` 按钮**按下态**打开，内嵌在工具条与网格之间（把网格往下推，不是弹窗/浮层）。面板 = 标题行（`Filter` + 升降序快捷键 + `Builder / Text` 模式切换）+ 条件行列表（每行：启用勾选 · 字段链接 · 操作符 ▾ · 值 / `<?>` 占位 · `and` 连接词 · 删除）+ `[+]` 加条件 · `[Ω]` 加组 + `Sort By` 芯片（字段 ▾ · 升降序 · 删除）+ 底部 `Apply Filter & Sort` 主按钮与 `Criteria Edited` 脏标记。**显式应用**，不是即输即查；未点 Apply 不动查询。Text 模式是**只读**的生成表达式（真要做自由 SQL 请去查询页）。`[Ω]`（OR 组）本版本不给真功能 —— 点开如实说明页；`IN` 条件无法用扁平 AND 生成器表达，保留列头漏斗按候选值筛选，应用面板时原样保留。列名变（表结构变化）时面板清空重建，避免拿旧列名拼 SQL |
 | 编辑器 | 格内单行输入 = 上面「行内编辑盒」（N17：白底 + 2px `border-focus` 贴格框，方角；出错只换 `error-bg` 底色）。⭐ 长文本 / JSON / CLOB 走**详情抽屉文本页就地编辑**（不是弹窗）：回填**原始值**、**Ctrl+Enter 应用**（多行编辑器里回车是换行，不能拿来提交）、**Esc 只放弃本次编辑不关抽屉**、**切页签同样放弃编辑**（提交目标在进编辑态时钉死，绝不随当前页变 —— 否则「文本页敲字 → 切 JSON 页 → 应用」会把美化过的 JSON 整段写进 TEXT 列）、写进**同一个 `EditBuffer`**；主键列与只读表不出现编辑器 |
@@ -796,7 +797,7 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 | 弹窗 | 触发 | 形态 | 默认按钮 |
 |---|---|---|---|
 | 新建连接向导（两页） | 功能栏 / 侧栏 / ⌘N | 弹窗（内容区导航）· 900×700 | 保存（校验不过 consume） |
-| ↳ 类型页（N27-a） | 向导第 1 步 | 左栏 Connection/Vendor Filter（9+13 复选）+ 右栏 5 列彩色磁贴 + 搜索 + URI 入口；无驱动的库型进如实说明页 | 下一步 |
+| ↳ 类型页（N27-a → R43-b） | 向导第 1 步 | **一行 6 张彩色磁贴**（只摆真有驱动的六家，块在页面中部居中）+ 一行「其它数据库走兼容协议 / URI」的提示 + URI 入口。⭐ 原来照 Navicat 摆 22 张（9 类型 + 13 厂商）配 22 个复选与搜索框，其中 16 张点进去是「本版不支持」—— 那不是它的形态，它摆这些家是因为真连得上去；我们摆出来只是让用户多点十六次空。六张一屏放完，复选栏、搜索框、滚动容器与「无驱动说明页」一起删 | 下一步 |
 | ↳ 常规页（N27-b） | 向导第 2 步 | `AIDB ⟷ Database` 示意图 + 右对齐标签 + 七页签；底部五键（测试连接 / URI… / 上一步 / 取消 / 确定） | 确定 |
 | 新建表（T1） | 树右键 / 数据库菜单 / ⌘K | 弹窗 + **七页设计器**（字段 / 索引 / 外键 / 触发器 / 选项 / 注释 / SQL 预览），字段与三类对象同一计划 | 创建（取消为默认） |
 | 新建视图（V1）/ 设计视图（V2） | 功能区 `View` 格 / 树右键 / 数据库菜单 | 弹窗 · **720 宽档**（`DialogSizes.WIDE`，**高度随内容**：查询体 184 + 预览 160，不写死 —— 写死 560 会在提示行下面留一条一百多像素的死空白）：**三格各有标题**（视图名 / 查询（SELECT）/ 将要执行的 SQL），两格编辑器挨着而没有标题时实拍里根本分不清谁是输入谁是输出；重建模式下名字格**置灰**（本版本无视图重命名）并挂 tooltip 说明替代路径；方言没有 `CREATE OR REPLACE` 时预览显出**两句**并给一句提示 | 创建 / 更新（校验不过 consume，弹窗留在原地） |
@@ -1026,6 +1027,7 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-11-01 | 第四十三轮 · R43-b | **去臃肿：AI 子项收成一次点击 + 连接磁贴 22→6**（用户点名先做）。判据不是「比 Navicat 少几颗」，而是**一个控件承载几个真承诺**。**① AI**：四处 AI 入口全部是 Navicat 有的，所以**键留着**；多余的是下拉叶子 —— `Ask AI`（新建表）三项、`AI 助手`（查询页）两项、`Fill with AI`（数据网格）两项，**七项打开的是同一份说明**。三项承诺三种能力（解释 / 生成 / 优化），点哪个都只有一段「缺什么」，那是装饰不是功能。收成**一次点击 = 一份如实说明**，删掉 7 条子项文案键（`newtable.askAi.*` ×3、`query.askAi.*` ×2、`grid.ai.*` ×2）；`#table-list-new-ai` 本来就是一击开说明，不动。**② 磁贴**：类型页照 Navicat 摆 22 张（9 类型 + 13 厂商）+ 22 个复选 + 搜索框，其中 **16 张点进去是一份「本版不支持」**。这不是 Navicat 的形态 —— 它摆这些家是因为它真连得上去；我们摆出来只是让用户多点十六次空。收成**只带真驱动的六家**（一行六张），连带删掉左栏复选、搜索框、滚动容器、分隔线、`unsupportedStep()` 与 `wizard.unsupported.*`；「其它数据库怎么办」从一张**点得进去**的页面改成页面上**明写的一行**提示（§11：告知要铺路，不能藏在一次空点击后面）。四条 `adb-db--{document,redis,snowflake,cloud}` 作用域规则随死磁贴删除。**留下的判据写进门禁**：`askAiButtonExplainsInsteadOfPretending` 断的是 `isNotInstanceOf(MenuButton)` —— 不许再长出子菜单；`typePageShowsOnlyTheSixDriversItActuallyShips` 断复选栏与搜索框 `isEmpty()`。⚠️ 弹窗宽度 900×700 **保留**：现在撑它的是属性页七页签（库清单与 TLS 表单要用横向空间），不再由磁贴决定，注释已改口径。**帧目视改的一处**：首拍的类型页内容止于 y≈255，下半屏 445px 全空（`TilePane.prefColumns` 只是偏好，900px 宽把 3 列展成了 6 列一行），看着像没做完 —— 于是磁贴块改 `Pos.CENTER` 并把 `prefColumns` 写成六，让代码和画面一致。**第一次改完重拍没变**：`outer` 里没有任何 `vgrow`，多出来的高度根本没交到 `body`/`tiles` 手上，`alignment` 于是在自己的 pref 框里居中 = 空转。补上 `VBox.setVgrow(body, ALWAYS)`（grow 链：outer → body → tiles）才真的把留白分成上下两段。⚠️ 教训：**改对齐/留白必须回拍一张**，布局属性在没有 growable 链路时是静默失效的，单测看不出来（`getAlignment()==CENTER` 照样绿）。门禁同一条里除了 `getAlignment()==CENTER`，还断**整条 grow 链**（`VBox.getVgrow(tiles)` 与 `VBox.getVgrow(tiles.getParent())` 都是 `ALWAYS`）—— 量高度要等布局、会引进时序假红，断属性不会。门禁：`ConnectionWizardTest` 删 3 条（守的控件已不存在）加 2 条、`NewTableDialogTest` 1 条改形态断言、`I18nAuditTest` 两套 bundle 同步；全量 **1260 / 147 / 0**（53 条环境跳过）。帧目视另留两处「看着不对」记为 R43-c（见 ROADMAP 接下来第 8 项）：网格工具条右端一颗只有箭头的 `▾`、建表弹窗四列时字段区与属性面板之间的空白。 |
 | 2026-11-01 | 第四十三轮 · R43-a | **六种数据库的厂商图形**。六家（MySQL / PostgreSQL / SQL Server / Oracle / SQLite / MariaDB）各一枚**自绘**填充图形（不提取 Navicat 原版位图，也不碰厂商商标），形态取各自标志的骨架：MySQL 海豚鳍 + 水滴、PostgreSQL 象头 U 与两牙、SQL Server 六边形环、Oracle 椭圆环、SQLite 叶、MariaDB 球 + 跃弧。图形注册在 `ConnectionCatalog` 的行上（`DialectBranchAuditTest` 的白名单落点），向导磁贴与侧栏连接节点**同一份取值、同一个作用域类** —— 同一个 MySQL 在两处不会一个青一个蓝；没有 profile 的连接退回中性插头 `CONNECT`，不硬造品牌色。品牌色**只上 `adb-icon-tone-c` 这一层**，轮廓层跟随前景，所以深色底上不会糊成一片。六家各一对 `vendor-*` 令牌（亮档深、暗档亮，是**不同**字面值），对比度门禁要求两档对 `bg-canvas` 都 ≥3:1。️ **变异验证抓到一处假门禁**：`connectionNodesWearTheirVendorGlyph` 原本读 `DemoNode.toString()`，把单元格工厂的挂类整段删掉照样全绿 —— 改成断**渲染出来的 cell 里的图标容器**（类在不在）+ **`tone-c` 的计算填充**（色到没到），后者才真正断「后代规则匹配到了节点」，光有类不等于 CSS 命中。同轮 `SideBarLivenessDotTest` 被新字段红过一次（record 加第 6 个分量后 `connectionId=demo]` 的字符串形状不再成立，R37 去尾部 count 时红过同一处），改成按值匹配、边界认 `,` 或 `]`。新增暗色帧 `p5-connect-type-dark`（品牌色两档不同值，只拍亮档等于六家在暗色档一眼没看过），整套 **46 帧（亮 39 + 暗 7）**。门禁：新增 `VendorGlyphTest`（5：六家互不相同 / 作用域类各带各的令牌 / 两档品牌色真的落到填充层 / 脱离作用域保持中性 / 磁贴自带作用域类）、`ContrastTest` +1、`LucideIconTest` 自绘白名单 9 项、`SideBarTreeTest` 重写为渲染层断言；全量 **1262 / 147 / 0**（53 条环境跳过）。 |
 | 2026-11-01 | 第四十二轮 · R42-a | **视图生命周期 V1–V3（N28-a）**。新建 / 设计视图做成 **720 宽档弹窗**（不是标签页：视图没有数据页可停留，做成页签等于留一张关不掉的空页），三格各有标题 —— 视图名 / `查询（SELECT）` / `将要执行的 SQL`；下面那格**只读**，且摘掉「⌘↵ 执行当前语句」那句提示（它执行不了）。**预览即执行**铁律沿用：预览文本与 `StructurePlan.sql()` 逐字同源，一次计算两处用。方言差异摆到台面上：MariaDB / PostgreSQL / Oracle 走 `CREATE OR REPLACE`（一句）、SQL Server 走 `CREATE OR ALTER`、**MySQL 与 SQLite 没有单句形式** → 预览显出 `DROP` + `CREATE` **两句**并给一句灰字提示，同时多要一次确认（第二句之前视图已经不在了）。查询体只收 `SELECT` / `WITH` / 括号开头的组合查询，粘整条 DDL 或塞第二句当场拦下并写明原因。「设计视图」那一格名字**置灰 + tooltip** 说明替代路径（本版本没有视图重命名）。表节点与视图节点的右键菜单**拆开**：视图不再摆「清空表 / 重命名表」这种必失败项。**三处能力面正式裁定不做**（P1）：Automation / Model ER 全量编辑器 / Data Generation —— 磁贴与工具条入口都留着，点进去是如实说明页。⚠️ 视图 DDL 由三方言 SQL 快照 + SQLite 契约钉住，**未在真 MySQL / PostgreSQL 联调**（D-5 需要 Docker）。**四张新帧（`p6-new-view` / `-dark` / `-invalid` / `p6-design-view`）目视后修的三处**：① 预览格没有标题，实拍里两格编辑器长得一模一样，看不出谁是输入谁是输出 → 补 `newview.preview.title`，原挂在格内的 `newview.preview` 改成空态该说的话；② `DialogPane#setPrefHeight(560)` 写死导致正文下方一条一百多像素死空白（`DialogPane` 按各区**首选高度**自上而下排，多出来的高度落在正文区之外，提示行出现时也吃不到）→ 改成高度随内容，由两格编辑器（184 / 160）撑出来；③ **弹窗里的错误行一直是黑的** —— `.adb-dialog .label` (0,2,0) 压过裸 `.adb-error` / `.adb-muted` (0,1,0)，红字只活在单测里，新建表弹窗同病（它的帧没拍到错误态）→ 补两条同特异性后置规则（整套 45 帧重拍、无重复帧，弹窗族帧里的灰字提示这才真的是灰的）。门禁：新增 `ViewLifecycleSqlTest`（11）、`ViewDefinitionTest`（8）、`ViewDesignerDialogTest`（16），`TableDdlTest` +4、`SideBarTreeTest` +2；全量 **1254 / 146 / 0**（53 条环境跳过）。同轮修 `AccessibilityAuditTest` 的开页时序：`doubleClickOn` 在满载时越过连击窗口 → 页签没开，既假红（`lookup` 拿 null）又**假绿**（整棵树的焦点审计在没开页时照样通过），改为重取单元格重试 + 等待页签出现。 |
 | 2026-11-01 | 第四十轮 · R40 | **弹窗系统标题栏 + 连接向导两页（N26 N27）**。六个自绘抬头条（索引 / 新建表 / 表注释 / 外键 / 触发器 / 变量）连同右上 × 全部删除，标题与「表名 · 方言 · 库」拼进 `Dialog#setTitle` 由系统标题栏承载（路径按中段截断，`DialogStyles.shortenContext`），关窗走系统 × 与 Esc；`DialogStyles.apply` 只剩四件事（样式表 / 主题类 / 限高 / 按钮序），**弹窗尺寸记忆随之取消**（拍板 4）。连接向导改两页 **900×700**：类型页左栏 `Connection Filter` 9 + `Vendor Filter` 13 复选、右栏 **5 列 112×108 彩色磁贴** + 搜索（复选与搜索共用一套过滤，两块都滚），左下 `New Connection with URI…`、右下 `Next / Cancel`；**22 张磁贴照 Navicat 全摆，但只有 6 种真有驱动** —— MongoDB / Redis / Snowflake 与 13 个厂商点下一步进**如实说明页**（写明只有 6 种驱动、给协议兼容与 URI 两条替代路径），不摆填了也连不上的表单。常规页补 `AIDB ⟷ Database` 示意图（44px 图标 + 120px 连线，右侧库型名随选择变）、标签右对齐（110px）、`Save password`，底部五键（测试连接 / URI… / 弹簧 / 上一步 / 取消 / 确定）。**帧目视后修的三处**：① `Icons.of/colored` 返回的是带 `scaleX/scaleY` 的 SVGPath，布局边界仍是 16×16 —— 大图标直接叠进 VBox 时文字会压到图形上（p5-connect-type 实拍「MySQL」浮在圆柱体底边），改为把图标 Label 钉成 44×44 并把 `alignment` 设成居中；磁贴名 13→12px、宽度按内容区 88px 算（`Microsoft Azure` 从两行折回一行）。② 属性页七个页签的内容补 16px 内边距（此前 SSL 说明 / 高级 / 备注的文字贴在弹窗左缘 x=0），SSL 表单与常规页同样居中，页脚状态行与五键统一缩进 16px。③ 菜单按钮的文字底部被裁（p3-query 第二排 `agenticdb-demodb` 的 g 没有尾巴、网格工具条 `History` 的 y 被削平）：modena 的 `.menu-button > .label` 另有 4px 竖直内边距，叠在外壳内边距上后 label 内容区只剩 10px，`LabeledText` 按内容区高度裁字；竖直归零、横向保留 8px（左右缩进与箭头间距不变，其他工具条几何零变化）。新增具名图标档 `Icons.SIZE_TILE = 44`（磁贴与示意图），图标尺寸阶梯 8 / 12 / 14 / 16 / 20 / 26 / 32 / 44。门禁：`ConnectionWizardTest` +6（9+13 条目 / 五列 / 复选过滤 / 无驱动说明页 / 五键顺序 / 示意图 / 900×700）、`DialogStylesTest`（apply 不写 pref 尺寸）、`IndexDialogTest` / `NewTableDialogTest`（标题进系统栏、内容区无 `.adb-dialog__context`）；全量 **1204 / 143 / 0**（53 条环境跳过）。同轮修掉门禁自身的一处时序假红：`AppShellTest` 的两条「双击进单元格编辑」在机器满载时两次单击间隔越过连击窗口，改为重取单元格后重试（同一份测试在 R39 的 HEAD 上也偶发）。 |
