@@ -42,9 +42,10 @@ class MenuBarFactoryTest {
             "density-dense", "density-compact", "density-normal", "density-comfort",
             "window.zoom",
             "refresh", "connection.reconnect", "connection.disconnect", "demo.open",
-            // T1–T4 表级生命周期（注册在 SideBar，菜单里补入口，避免成为孤儿动作）
+            // T1–T4 表级 + V1–V3 视图级生命周期（注册在 SideBar，菜单里补入口，避免成为孤儿动作）
             "object.new-table", "object.truncate-table", "object.rename-table",
             "object.drop-table",
+            "object.new-view", "object.design-view", "object.drop-view",
             // ⭐ X5：顶级「对象」菜单（对象动作不再只存在于右键菜单）
             "object.tables", "object.open-data", "object.open-structure", "object.new-query",
             "object.favorite", "object.copy-name", "object.copy-select",

@@ -254,6 +254,15 @@ public final class SideBar extends VBox {
                 () -> onSelected(SideBarObject.RENAME_TABLE));
         actions.register("object.drop-table", I18n.t("action.object.drop-table"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.DROP_TABLE));
+        // ── V1–V3 视图级生命周期（R42 N28-a）──
+        //    与表级同一套路：菜单项来自注册表，所以命令面板里也搜得到，
+        //    禁用时同样变灰 + 给解释，不是「藏在菜单里」。
+        actions.register("object.new-view", I18n.t("action.object.new-view"), I18n.t("category.object"), null,
+                () -> onSelected(SideBarObject.NEW_VIEW));
+        actions.register("object.design-view", I18n.t("action.object.design-view"), I18n.t("category.object"), null,
+                () -> onSelected(SideBarObject.DESIGN_VIEW));
+        actions.register("object.drop-view", I18n.t("action.object.drop-view"), I18n.t("category.object"), null,
+                () -> onSelected(SideBarObject.DROP_VIEW));
         // ⭐ UX-6：侧栏「已保存查询」分组里的条目（打开 = 新查询页 + 预填 SQL）。
         actions.register("saved-query.open", I18n.t("action.saved-query.open"), I18n.t("category.query"), null,
                 () -> onSelected(SideBarObject.OPEN_SAVED_QUERY));
@@ -273,6 +282,10 @@ public final class SideBar extends VBox {
         TRUNCATE_TABLE,
         RENAME_TABLE,
         DROP_TABLE,
+        /** ⭐ R42 N28-a：建视图 / 设计视图 / 删视图（执行同样在 {@link TableDdl}）。 */
+        NEW_VIEW,
+        DESIGN_VIEW,
+        DROP_VIEW,
         /** ⭐ U1：把当前连接切到这个库（重连）。 */
         SWITCH_CATALOG,
         /** ⭐ UX-6：打开一条已保存查询（新查询页 + 预填 SQL）。 */
@@ -1491,7 +1504,11 @@ public final class SideBar extends VBox {
     private ContextMenu menuFor(DemoNode node) {
         ContextMenu menu = new ContextMenu();
         switch (node.kind()) {
-            case TABLE, VIEW -> menu.getItems().addAll(
+            // ⭐ R42 N28-a：表与视图的菜单分家。
+            //    以前两者共用一整串，于是视图节点上挂着「清空表 / 重命名表」——
+            //    点了只会得到一句「只有表能重命名」。能看见却不能做，比看不见更糟。
+            //    视图这一串只留视图真能做的：看数据、看结构、设计视图、删视图。
+            case TABLE -> menu.getItems().addAll(
                     actions.menuItem("object.open-data"),
                     actions.menuItem("object.open-structure"),
                     actions.menuItem("object.new-query"),
@@ -1508,11 +1525,27 @@ public final class SideBar extends VBox {
                     actions.menuItem("object.truncate-table"),
                     actions.menuItem("object.rename-table"),
                     actions.menuItem("object.drop-table"));
+            case VIEW -> menu.getItems().addAll(
+                    actions.menuItem("object.open-data"),
+                    actions.menuItem("object.open-structure"),
+                    actions.menuItem("object.new-query"),
+                    new SeparatorMenuItem(),
+                    actions.menuItem("object.favorite",
+                            starred.contains(node.name())
+                                    ? I18n.t("sidebar.favoriteRemove")
+                                    : I18n.t("sidebar.favoriteAdd")),
+                    actions.menuItem("object.copy-name"),
+                    actions.menuItem("object.copy-select"),
+                    new SeparatorMenuItem(),
+                    actions.menuItem("object.design-view"),
+                    actions.menuItem("object.drop-view"));
             case CONNECTION -> menu.getItems().addAll(
                     actions.menuItem("new-connection", I18n.t("sidebar.editConnection")),
                     actions.menuItem("object.refresh-objects"),
                     new SeparatorMenuItem(),
                     actions.menuItem("object.new-table"),
+                    // ⭐ N28-a：建视图与建表同格 —— 容器节点（连接 / 库 / 分组）都能建。
+                    actions.menuItem("object.new-view"),
                     actions.menuItem("object.new-query"));
             // ⭐ U1：库节点 —— 切过去 / 在里面建表 / 查数据。
             case CATALOG -> menu.getItems().addAll(
@@ -1520,6 +1553,7 @@ public final class SideBar extends VBox {
                     new SeparatorMenuItem(),
                     actions.menuItem("object.new-query"),
                     actions.menuItem("object.new-table"),
+                    actions.menuItem("object.new-view"),
                     actions.menuItem("object.refresh-objects"));
             // ⭐ P5-1：分组节点只装连接 —— 菜单只留「新建连接」。
             case CONNECTION_GROUP -> menu.getItems().add(
@@ -1527,7 +1561,8 @@ public final class SideBar extends VBox {
             case GROUP -> menu.getItems().addAll(
                     actions.menuItem("object.refresh-objects"),
                     new SeparatorMenuItem(),
-                    actions.menuItem("object.new-table"));
+                    actions.menuItem("object.new-table"),
+                    actions.menuItem("object.new-view"));
             // ⭐ S-3：列只有一件事可做 —— 复制列名。它没有数据页 / 结构页，
             //    也不能收藏（收藏的是表），所以不复用对象那一整串。
             case COLUMN -> menu.getItems().add(
@@ -1630,6 +1665,17 @@ public final class SideBar extends VBox {
                     status.accept(I18n.t(onlyTableProblemKey(action)));
                 }
             }
+            // ⭐ R42 N28-a：视图级生命周期。建视图落在<b>容器</b>上（连接 / 库 / 分组都行，
+            //    和建表一样），设计与删除只落在视图节点上 —— 表节点上这两项是灰的。
+            case NEW_VIEW ->
+                    onTableDdl.accept(new TableRequest(SideBarObject.NEW_VIEW, null, owner));
+            case DESIGN_VIEW, DROP_VIEW -> {
+                if (node.kind() == NodeKind.VIEW) {
+                    onTableDdl.accept(new TableRequest(action, node.name(), owner));
+                } else {
+                    status.accept(I18n.t(onlyViewProblemKey(action)));
+                }
+            }
             // ⭐ U1：切库（重连由外壳做）。
             case SWITCH_CATALOG -> {
                 if (node.kind() == NodeKind.CATALOG) {
@@ -1661,6 +1707,15 @@ public final class SideBar extends VBox {
             case RENAME_TABLE -> "sidebar.onlyTable.rename";
             case DROP_TABLE -> "sidebar.onlyTable.drop";
             default -> "sidebar.onlyTable.generic";
+        };
+    }
+
+    /** ⭐ N28-a：视图专属动作落在表 / 库节点上的解释（同上一条的整句键规则）。 */
+    private static String onlyViewProblemKey(SideBarObject action) {
+        return switch (action) {
+            case DESIGN_VIEW -> "sidebar.onlyView.design";
+            case DROP_VIEW -> "sidebar.onlyView.drop";
+            default -> "sidebar.onlyView.generic";
         };
     }
 
@@ -1707,6 +1762,13 @@ public final class SideBar extends VBox {
         setObjectActionEnabled("object.truncate-table", isTable);
         setObjectActionEnabled("object.rename-table", isTable);
         setObjectActionEnabled("object.drop-table", isTable);
+        // ⭐ N28-a：视图级三项 —— 建视图跟建表一样挂在容器上，
+        //    「设计 / 删视图」只挂在视图节点上（表节点上灰掉，理由见右键菜单分家那段）。
+        boolean isView = node != null && node.kind() == NodeKind.VIEW;
+        setObjectActionEnabled("object.new-view",
+                node != null && !isConnectionGroup && !isSavedNode);
+        setObjectActionEnabled("object.design-view", isView);
+        setObjectActionEnabled("object.drop-view", isView);
         // ⭐ U1：切库只挂在库节点上。
         setObjectActionEnabled("object.switch-catalog", isCatalog);
         // ⭐ UX-6：已保存查询只有「打开」可用。
@@ -1807,18 +1869,21 @@ public final class SideBar extends VBox {
     public static final String TOOL_BI = "bi";
 
     /**
-     * ⭐ R37 N33：Ribbon 的 View / Function 两格。
+     * ⭐ R37 N33：Ribbon 的 Function 格。
      *
-     * <p>对象清单页只列表（N14）—— 视图 / 函数的**编辑器**归 N28，还没建。
-     * 这两格因此落在如实说明页（「本版本未提供 + 去左侧树看」），
+     * <p>对象清单页只列表（N14）—— 函数的**编辑器**归 N28，还没建。
+     * 这一格因此落在如实说明页（「本版本未提供 + 去左侧树看」），
      * 而不是死磁贴，也不是一块假装是对象总览的旧页面。
+     *
+     * <p>⚠️ R42 N28-a 之后 <b>View 那格已经不归这里</b>：视图设计器建好了，
+     * Ribbon 的 View 直接开弹窗（{@code AppShell} 里 {@code ribbon.view}），
+     * 再留一条「object-views」说明页路由就是假落点。
      */
-    public static final String TOOL_OBJECT_VIEWS = "object-views";
     public static final String TOOL_OBJECT_FUNCTIONS = "object-functions";
 
     /** 没有真编辑器的对象类型格 —— {@code WorkspaceView} 给对象类说明页。 */
     public static final java.util.Set<String> TOOL_OBJECT_ROUTES =
-            java.util.Set.of(TOOL_OBJECT_VIEWS, TOOL_OBJECT_FUNCTIONS);
+            java.util.Set.of(TOOL_OBJECT_FUNCTIONS);
 
     /** ⭐ R37 N15：「用 AI 新建表」的能力面未建，落如实说明页。 */
     public static final String TOOL_NEW_TABLE_AI = "new-table-ai";

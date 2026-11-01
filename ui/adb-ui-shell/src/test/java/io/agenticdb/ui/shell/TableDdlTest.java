@@ -211,6 +211,75 @@ class TableDdlTest {
         assertThat(used).containsExactly("conn-b");
     }
 
+    // ─────────────────── R42 N28-a：视图级生命周期（V1–V3） ───────────────────
+
+    /**
+     * V3 删视图：SQL 由方言给，且与删表一样要确认。
+     *
+     * <p>钉这条是因为视图「看着像表」—— 一旦复用表那条路径，
+     * 很容易在某个方言上发出 {@code DROP TABLE}（那会连数据一起没）。
+     */
+    @Test
+    void dropViewSendsTheViewsOwnDropStatement() {
+        TableDdl ddl = ddl(List.of(), true);
+
+        ddl.dropView("conn", "v_active_users");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(session.executed())
+                .as("SQLite 的引用符号是双引号，而且必须是 DROP VIEW")
+                .containsExactly("DROP VIEW \"v_active_users\"");
+        assertThat(changes.get()).isEqualTo(1);
+    }
+
+    @Test
+    void cancellingAViewDropSendsNoSql() {
+        TableDdl ddl = ddl(List.of(), false);
+
+        ddl.dropView("conn", "v_active_users");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(session.executed()).isEmpty();
+        assertThat(statuses).last().asString()
+                .contains(I18n.t("view.plan.drop", "v_active_users"));
+    }
+
+    /**
+     * V2 设计视图：读不回定义就<b>不开弹窗、更不发 SQL</b>。
+     *
+     * <p>守的是最坏的一种失败：把读不出形状的视图当成「空正文」打开设计器，
+     * 用户点一次「更新视图」就把库里的原定义覆盖没了。
+     */
+    @Test
+    void designViewStopsWhenTheStoredDefinitionCannotBeRead() {
+        TableDdl ddl = new TableDdl(id -> session, id -> Runnable::run, statuses::add,
+                id -> List.of(), (connectionId, view) -> null,
+                id -> changes.incrementAndGet(), () -> null, List::of);
+        ddl.setConfirmation(plan -> true);
+
+        ddl.designView("conn", "v_active_users");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(statuses).last().asString()
+                .isEqualTo(I18n.t("newview.read.failed", "v_active_users"));
+        assertThat(session.executed())
+                .as("读不出形状时一条 SQL 都不许发出去")
+                .isEmpty();
+        assertThat(changes.get()).isZero();
+    }
+
+    /** 没选中视图（右键落在容器节点上）不能静默去操作第一个视图。 */
+    @Test
+    void designViewWithoutANameAsksForOne() {
+        TableDdl ddl = ddl(List.of(), true);
+
+        ddl.designView("conn", "  ");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(statuses).last().asString().isEqualTo(I18n.t("ddl.pickView"));
+        assertThat(session.executed()).isEmpty();
+    }
+
     /** 顺带钉住：计划里的 SQL 是给人看的，不能是空字符串。 */
     @Test
     void planSqlIsNotEmpty() {

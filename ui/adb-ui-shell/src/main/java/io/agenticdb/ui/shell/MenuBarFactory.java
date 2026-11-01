@@ -109,9 +109,16 @@ public final class MenuBarFactory {
                 actions.menuItem("object.new-query"),
                 new SeparatorMenuItem(),
                 actions.menuItem("object.new-table"),
+                // ⭐ R42 N28-a：视图三项与表四项同列 —— 右键能做的事，
+                //    菜单栏不能看不到（X5 那条「孤儿动作」的教训就在下面这行注释里）。
+                //    选中表时这三项是灰的，选中视图时上面表那三项是灰的：
+                //    enabled 状态统一由 SideBar.updateObjectActionStates 按节点类型给。
+                actions.menuItem("object.new-view"),
                 actions.menuItem("object.truncate-table"),
                 actions.menuItem("object.rename-table"),
                 actions.menuItem("object.drop-table"),
+                actions.menuItem("object.design-view"),
+                actions.menuItem("object.drop-view"),
                 new SeparatorMenuItem(),
                 actions.menuItem("object.favorite"),
                 actions.menuItem("object.copy-name"),

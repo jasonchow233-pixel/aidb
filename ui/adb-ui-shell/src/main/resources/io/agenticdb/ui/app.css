@@ -2942,6 +2942,17 @@
     -fx-text-fill: -adb-text-primary;
 }
 
+/* ⭐ R42 帧目视：上面那条特异性 (0,2,0)，把裸类 `.adb-error` / `.adb-muted` 的 (0,1,0)
+ * 压掉了 —— 弹窗里的校验错误行和提示行全都渲染成正文黑，红字根本不存在。
+ * 新建表弹窗同病（错误行也是 .adb-error），一起补回来。 */
+.adb-dialog .adb-error {
+    -fx-text-fill: -adb-error;
+}
+
+.adb-dialog .adb-muted {
+    -fx-text-fill: -adb-text-tertiary;
+}
+
 /* ① 标题区 */
 .adb-dialog > .header-panel {
     -fx-background-color: -adb-bg-surface;

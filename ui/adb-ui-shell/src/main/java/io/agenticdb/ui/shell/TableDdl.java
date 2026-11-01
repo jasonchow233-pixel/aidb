@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.introspect.StructurePlan;
 import io.agenticdb.introspect.StructureSqlBuilder;
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.model.Danger;
 import io.agenticdb.ui.I18n;
 import javafx.application.Platform;
 import javafx.scene.control.Alert;
@@ -15,18 +16,23 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
- * T1–T4 表级生命周期的协调者：建表 / 清空 / 重命名 / 删表。
+ * T1–T4 表级 + V1–V3 视图级生命周期的协调者：建表 / 清空 / 重命名 / 删表，建视图 / 设计视图 / 删视图。
  *
  * <p>这里是<b>唯一</b>知道「怎么把一次表级变更跑完」的地方：
  * 收输入 → 生成计划 → 给用户看 SQL → 确认 → 后台事务执行 → 刷新对象树。
  * 侧栏右键、数据库菜单、命令面板三条入口都进同一个方法，
  * 于是「从菜单点」和「从右键点」不会有两套行为。
+ *
+ * <p>⭐ R42 N28-a：视图的生命周期（V1 建 / V2 设计 / V3 删）也放在这里，
+ * 因为它走的是<b>同一套</b>「计划 → 预览 → 确认 → 单事务执行 → 刷新」流程。
+ * 拆成两个协调者，早晚会出现「删表要二次确认、删视图忘了」这种分叉。
  *
  * <h2>⭐ U1：一切按「连接 id」分派</h2>
  * 多连接对象树（U2）与 catalog 树（U1）之后，用户右键的节点可能属于
@@ -40,12 +46,20 @@ final class TableDdl {
     private final Function<String, Executor> executorFor;
     private final Consumer<String> status;
     private final Function<String, List<String>> existingTablesFor;
+    /** 读某个视图「已经存在库里的那条查询」；读不出形状时返回 {@code null}。 */
+    private final BiFunction<String, String, String> viewDefinitionFor;
     private final Consumer<String> onChanged;
     private final Supplier<Window> owner;
     private final Supplier<List<String>> stylesheets;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Predicate<StructurePlan> confirmation;
 
+    /**
+     * ⭐ R42：视图的「读定义」这一步是真库查询，必须由调用方给（界面层不碰连接）。
+     *
+     * <p>七参版本留给已存在的单测：那些用例只测表级生命周期，
+     * 没有真库可读，于是走 {@code (连接, 视图) -> null} —— 与「读不出形状」同一个分支。
+     */
     TableDdl(Function<String, DbSession> sessionFor,
              Function<String, Executor> executorFor,
              Consumer<String> status,
@@ -53,10 +67,24 @@ final class TableDdl {
              Consumer<String> onChanged,
              Supplier<Window> owner,
              Supplier<List<String>> stylesheets) {
+        this(sessionFor, executorFor, status, existingTablesFor,
+                (connectionId, view) -> null, onChanged, owner, stylesheets);
+    }
+
+    TableDdl(Function<String, DbSession> sessionFor,
+             Function<String, Executor> executorFor,
+             Consumer<String> status,
+             Function<String, List<String>> existingTablesFor,
+             BiFunction<String, String, String> viewDefinitionFor,
+             Consumer<String> onChanged,
+             Supplier<Window> owner,
+             Supplier<List<String>> stylesheets) {
         this.sessionFor = sessionFor == null ? id -> null : sessionFor;
         this.executorFor = executorFor == null ? id -> Runnable::run : executorFor;
         this.status = status == null ? message -> { } : status;
         this.existingTablesFor = existingTablesFor == null ? id -> List.of() : existingTablesFor;
+        this.viewDefinitionFor = viewDefinitionFor == null
+                ? (id, view) -> null : viewDefinitionFor;
         this.onChanged = onChanged == null ? id -> { } : onChanged;
         this.owner = owner == null ? () -> null : owner;
         this.stylesheets = stylesheets == null ? List::of : stylesheets;
@@ -266,6 +294,124 @@ final class TableDdl {
         BatchSummaryDialog.show(owner.get(),
                 BatchSummary.of(I18n.t("ddl.summary.title"), I18n.t("ddl.summary.action"),
                         I18n.t("ddl.summary.unit"), total, deleted, failures));
+    }
+
+    // ─────────────────── R42 N28-a：视图生命周期（V1–V3） ───────────────────
+
+    /** V1 新建视图。 */
+    void createView(String connectionId) {
+        createView(connectionId, "");
+    }
+
+    /**
+     * V1 新建视图（可指定截图姿势）。
+     *
+     * <p>{@code pose} 与 {@link #createTable(String, String)} 同一个用途：
+     * 弹窗是模态的，验收脚本需要它落在有内容的那一格上（create / invalid）。
+     */
+    void createView(String connectionId, String pose) {
+        DbSession current = sessionFor.apply(connectionId);
+        if (current == null) {
+            status.accept(I18n.t("ddl.noSession"));
+            return;
+        }
+        ViewDesignerDialog dialog = ViewDesignerDialog.create(current,
+                // 表与视图在六种方言里都是<b>同一个命名空间</b>，
+                // 所以这里的清单是「库里全部对象」而不是「全部表」—— 名字叫 existingTablesFor，
+                // 语义是「已经占住的名字」。
+                existingTablesFor.apply(connectionId));
+        if (pose != null && !pose.isBlank()) {
+            dialog.poseForShots(pose);
+        }
+        showPlan(connectionId, dialog.show(owner.get(), stylesheets.get()),
+                I18n.t("newview.cancelled"));
+    }
+
+    /** V2 设计视图：读回库里已经存着的那条查询，再打开设计器。 */
+    void designView(String connectionId, String view) {
+        designView(connectionId, view, "");
+    }
+
+    /**
+     * V2 设计视图。
+     *
+     * <p>读定义是一次<b>真库查询</b>，不能在 FX 线程上跑（点一下菜单界面就冻住）。
+     * 于是：后台读 → 回到 FX 线程开弹窗 → 弹窗给出的计划仍走 {@link #run}。
+     * 读不出形状时<b>不开弹窗</b>，直接说明原因 —— 开一个空白设计器，
+     * 用户点「更新视图」会把原来的定义覆盖成空，那比报错糟得多。
+     */
+    void designView(String connectionId, String view, String pose) {
+        DbSession current = sessionFor.apply(connectionId);
+        if (current == null) {
+            status.accept(I18n.t("ddl.noSession"));
+            return;
+        }
+        if (blank(view)) {
+            status.accept(I18n.t("ddl.pickView"));
+            return;
+        }
+        String name = view.trim();
+        executorFor.apply(connectionId).execute(() -> {
+            String body = readViewBody(connectionId, name);
+            Platform.runLater(() -> {
+                if (body == null) {
+                    status.accept(I18n.t("newview.read.failed", name));
+                    return;
+                }
+                ViewDesignerDialog dialog = ViewDesignerDialog.redesign(current,
+                        existingTablesFor.apply(connectionId), name, body);
+                if (pose != null && !pose.isBlank()) {
+                    dialog.poseForShots(pose);
+                }
+                showPlan(connectionId, dialog.show(owner.get(), stylesheets.get()),
+                        I18n.t("newview.cancelled"));
+            });
+        });
+    }
+
+    /** V3 删除视图。 */
+    void dropView(String connectionId, String view) {
+        DbSession current = sessionFor.apply(connectionId);
+        if (current == null) {
+            status.accept(I18n.t("ddl.noSession"));
+            return;
+        }
+        if (blank(view)) {
+            status.accept(I18n.t("ddl.pickView"));
+            return;
+        }
+        String name = view.trim();
+        try {
+            List<String> statements = StructureSqlBuilder.dropViewStatements(current, name);
+            // 与删表同一档：视图本身不存数据，但依赖它的对象会一起失效，
+            // 所以 approvalRequired 为真 —— 必须先看清 SQL 再确认一次。
+            run(connectionId, new StructurePlan(I18n.t("view.plan.drop", name),
+                    statements, Danger.DESTRUCTIVE, true, false));
+        } catch (IllegalArgumentException e) {
+            status.accept(NewTableDialog.problemText(e));
+        }
+    }
+
+    /** 读某个视图的查询体；失败或形状不认识时返回 {@code null}（不猜）。 */
+    private String readViewBody(String connectionId, String name) {
+        try {
+            return viewDefinitionFor.apply(connectionId, name);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 设计器返回的计划：{@code Optional} 为空 = 用户取消，只报状态、一条 SQL 都不发。
+     *
+     * <p>取消文案由调用方给 —— 「取消建表」和「取消建视图」不是一句话。
+     */
+    private void showPlan(String connectionId, Optional<StructurePlan> plan, String cancelled) {
+        if (plan.isEmpty()) {
+            status.accept(cancelled);
+            return;
+        }
+        run(connectionId, plan.get());
     }
 
     /** 表名的校验（重命名时用；建表走 {@link StructureSqlBuilder#createTable}）。 */

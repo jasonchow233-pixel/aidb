@@ -6,6 +6,7 @@ import io.agenticdb.introspect.SchemaService.SchemaObject;
 import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.jdbc.ViewDefinition;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.ConnectionStore;
 import io.agenticdb.session.CredentialStore;
@@ -327,9 +328,9 @@ public final class AppShell extends StackPane {
         }
     }
 
-    // ─────────────────────── T1–T4 表级生命周期 ───────────────────────
+    // ─────────────────── T1–T4 表级 + V1–V3 视图级生命周期 ───────────────────
 
-    /** 表级 DDL 的协调者。懒建 —— 构造时 stage 还没有。 */
+    /** 表级 / 视图级 DDL 的协调者。懒建 —— 构造时 stage 还没有。 */
     private TableDdl tableDdl() {
         if (tableDdl == null) {
             tableDdl = new TableDdl(
@@ -337,6 +338,7 @@ public final class AppShell extends StackPane {
                     this::executorFor,
                     this::status,
                     this::existingTablesFor,
+                    this::viewDefinitionFor,
                     this::afterTableChanged,
                     () -> stage,
                     () -> getScene() == null ? List.of()
@@ -398,6 +400,43 @@ public final class AppShell extends StackPane {
         String pose = text("adb.newTablePose", "ADB_NEW_TABLE_POSE");
         javafx.application.Platform.runLater(
                 () -> tableDdl().createTable(activeProfileId(), pose));
+    }
+
+    /**
+     * ⭐ R42 N28-a：等 session 就绪再弹「新建视图」。
+     *
+     * <p>与 {@link #popNewTableWhenReady} 完全同形 —— 两个坑都一样：
+     * 模态框要包 runLater（否则截图调度排不上），连接是异步建的（此刻可能还没就绪）。
+     */
+    private void popNewViewWhenReady(int attempt) {
+        if (session == null) {
+            if (attempt >= POP_READY_MAX_POLLS) {
+                return;
+            }
+            pollAgain(attempt, () -> popNewViewWhenReady(attempt + 1));
+            return;
+        }
+        String pose = text("adb.newViewPose", "ADB_NEW_VIEW_POSE");
+        javafx.application.Platform.runLater(
+                () -> tableDdl().createView(activeProfileId(), pose));
+    }
+
+    /**
+     * ⭐ R42 N28-a：等 session 就绪再打开「设计视图」。
+     *
+     * <p>这一条拍的是<b>读回真定义</b>那一态：正文不是脚本填的，
+     * 是从演示库的 {@code v_active_users} 里读出来再切掉 {@code CREATE VIEW} 头的 ——
+     * 「读不出形状就不开弹窗」因此也能在帧里证一次（开出来了 = 读到了）。
+     */
+    private void popDesignViewWhenReady(int attempt) {
+        if (session == null) {
+            if (attempt >= POP_READY_MAX_POLLS) {
+                return;
+            }
+            pollAgain(attempt, () -> popDesignViewWhenReady(attempt + 1));
+            return;
+        }
+        tableDdl().designView(activeProfileId(), "v_active_users");
     }
 
     /** 等到 session 就绪再读结构、弹「新建索引」。 */
@@ -725,6 +764,9 @@ public final class AppShell extends StackPane {
             case TRUNCATE_TABLE -> ddl.truncateTable(connectionId, request.tableName());
             case RENAME_TABLE -> ddl.renameTable(connectionId, request.tableName());
             case DROP_TABLE -> ddl.dropTable(connectionId, request.tableName());
+            case NEW_VIEW -> ddl.createView(connectionId);
+            case DESIGN_VIEW -> ddl.designView(connectionId, request.tableName());
+            case DROP_VIEW -> ddl.dropView(connectionId, request.tableName());
             default -> status(I18n.t("shell.actionNotWired"));
         }
     }
@@ -746,6 +788,32 @@ public final class AppShell extends StackPane {
             return List.of();
         }
         return objects.stream().map(SchemaObject::name).toList();
+    }
+
+    /**
+     * ⭐ R42 N28-a：读某个视图「已经存在库里的那条查询」。
+     *
+     * <p>DDL 的来源仍然是方言（{@code readDdl(..., view=true)}：MySQL 走
+     * {@code SHOW CREATE VIEW}、SQLite 读 sqlite_master、PG 走 pg_get_viewdef），
+     * 这一层只负责把 {@code CREATE VIEW … AS} 的头切掉
+     * （{@link ViewDefinition#selectBody}）。
+     *
+     * <p><b>切不出来就返回 null</b>，让调用方说明原因并<b>不开设计器</b>：
+     * 猜一个正文出来，用户点「更新视图」就把原定义覆盖了。
+     *
+     * <p>这里是同步的 JDBC 调用 —— 只在后台线程走（{@code TableDdl#designView} 负责调度）。
+     */
+    private String viewDefinitionFor(String connectionId, String view) {
+        DbSession target = sessionFor(connectionId);
+        if (target == null) {
+            return null;
+        }
+        try {
+            return ViewDefinition.selectBody(
+                    target.dialect().readDdl(target.connection(), view, true));
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     // ─────────────────────────── 连接管理 ───────────────────────────
@@ -1781,6 +1849,16 @@ public final class AppShell extends StackPane {
         if (flag("adb.newTable", "ADB_NEW_TABLE")) {
             popNewTableWhenReady(0);
         }
+        // ⭐ R42 N28-a：视图设计器。与「新建表」同一个坑、同一个解法
+        //    （模态框要包 runLater + 轮询等 session 就绪）。
+        //    ADB_NEW_VIEW_POSE=create|invalid 落在「有内容的新建」与「校验拒绝」两态；
+        //    ADB_DESIGN_VIEW=1 走的是另一条路：从演示库读回 v_active_users 的定义。
+        if (flag("adb.newView", "ADB_NEW_VIEW")) {
+            popNewViewWhenReady(0);
+        }
+        if (flag("adb.designView", "ADB_DESIGN_VIEW")) {
+            popDesignViewWhenReady(0);
+        }
         // ⭐ 同上：结构页背后 + 「新建索引」弹窗盖在前面。
         if (flag("adb.index", "ADB_INDEX")) {
             openStructure(activeProfileId(), "users");
@@ -2207,12 +2285,15 @@ public final class AppShell extends StackPane {
         actions.register("object.tables", I18n.t("action.object.tables"), I18n.t("category.object"),
                 null, this::openTableList);
 
-        // ⭐ R36 N6：Ribbon 12 格补齐（真源 §1.2 顺序）。View 落对象首页的视图筛选（真页面）；
-        //    User / Backup / Automation / Model / BI 背后是 N28 的六个能力面（R42 才建）——
+        // ⭐ R36 N6：Ribbon 12 格补齐（真源 §1.2 顺序）。
+        //    User / Backup / Automation / Model / BI 背后是 N28 的五个能力面（本轮裁定：
+        //    Automation / Model / 数据生成 <b>不做真功能</b>，其余按 R42-b/c/d 排期）——
         //    按诚实条款先落**如实说明页**（工具页签 + 「本版本未提供」），不留死磁贴。
         //    门禁：RibbonCapabilityAuditTest 逐格钉「有注册动作 + 有真实落点」。
+        // ⭐ R42 N28-a：View 那一格现在有真落点了 —— 与「新建表」同形，
+        //    直接开视图设计器（Navicat 的「新建视图」也是一个窗口，不是一个页签）。
         actions.register("ribbon.view", I18n.t("action.ribbon.view"), I18n.t("category.object"),
-                null, () -> openRibbonTool(SideBar.TOOL_OBJECT_VIEWS, I18n.t("tool.title.views")));
+                null, () -> tableDdl().createView(activeProfileId()));
         actions.register("ribbon.function", I18n.t("action.ribbon.function"), I18n.t("category.object"),
                 null, () -> openRibbonTool(SideBar.TOOL_OBJECT_FUNCTIONS,
                         I18n.t("tool.title.functions")));

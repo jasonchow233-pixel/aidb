@@ -627,6 +627,124 @@ class SideBarTreeTest {
                 .isNull();
     }
 
+    /**
+     * ⭐ R42 N28-a：视图节点给视图的动作，表节点给表的动作。
+     *
+     * <p>以前表与视图共用同一串右键菜单，于是视图上挂着「清空表 / 重命名表」——
+     * 看得见、点下去只会收到一句「只有表能重命名」。这条同时钉住两面：
+     * <ul>
+     *   <li>视图菜单里有 design-view / drop-view，<b>没有</b>表的三项；</li>
+     *   <li>表节点上视图两项变灰，且即使被程序化触发也不许发出请求 ——
+     *       要落回一句解释。</li>
+     * </ul>
+     */
+    @Test
+    void viewAndTableNodesOfferTheirOwnLifecycle() {
+        ActionRegistry actions = new ActionRegistry();
+        List<SideBar.TableRequest> requests = new ArrayList<>();
+        List<String> statuses = new ArrayList<>();
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "内存库",
+                tab -> { }, statuses::add, "demo", List.of(profile("demo", "内存库")),
+                p -> { }));
+        onFxRun(() -> sideBar.setOnTableDdl(requests::add));
+        onFxRun(() -> sideBar.setObjects("demo", List.of(
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE),
+                new SchemaService.SchemaObject("v_users", SchemaService.ObjectKind.VIEW))));
+
+        TreeView tree = treeOf(sideBar);
+        TreeItem view = findNode(rootOf(tree), "v_users");
+        assertThat(view).as("视图在对象树的视图分组里").isNotNull();
+        onFxRun(() -> tree.getSelectionModel().select(view));
+
+        assertThat(menuIds(sideBar))
+                .as("视图菜单要有视图自己那两项")
+                .contains("object.design-view", "object.drop-view");
+        assertThat(menuIds(sideBar))
+                .as("清空 / 重命名 / 删表不该出现在视图菜单里（点了只能报错）")
+                .doesNotContain("object.truncate-table", "object.rename-table",
+                        "object.drop-table");
+        assertThat(actions.find("object.design-view").orElseThrow().isEnabled()).isTrue();
+
+        onFxRun(() -> sideBar.actionForTest("object.drop-view"));
+        assertThat(requests).hasSize(1);
+        assertThat(requests.getFirst().action()).isEqualTo(SideBar.SideBarObject.DROP_VIEW);
+        assertThat(requests.getFirst().tableName()).isEqualTo("v_users");
+        assertThat(requests.getFirst().connectionId())
+                .as("请求带节点自己的连接，DDL 才落得对库")
+                .isEqualTo("demo");
+
+        TreeItem users = findTable(rootOf(tree), "users");
+        onFxRun(() -> tree.getSelectionModel().select(users));
+
+        assertThat(menuIds(sideBar))
+                .as("表菜单回到表那四项，视图两项不出现")
+                .contains("object.truncate-table", "object.rename-table", "object.drop-table")
+                .doesNotContain("object.design-view", "object.drop-view");
+        assertThat(actions.find("object.drop-view").orElseThrow().isEnabled())
+                .as("选中表时「删除视图」必须变灰")
+                .isFalse();
+
+        // ⭐ 变灰的动作在注册表那一层就被拦掉了（run() 对 disabled 直接不执行），
+        //    所以「点了没反应」不需要额外断言。这里再验一次更狠的路径：
+        //    万一 enabled 状态与选中节点不同步（命令面板那条路），
+        //    分派层自己也要挡住 —— 不许拿「设计视图」去操作一张表。
+        actions.require("object.design-view").setEnabled(true);
+        onFxRun(() -> sideBar.actionForTest("object.design-view"));
+        assertThat(requests)
+                .as("灰掉的动作即使被程序化触发，也不许拿去操作一张表")
+                .hasSize(1);
+        assertThat(statuses).last().asString()
+                .isEqualTo(I18n.t("sidebar.onlyView.design"));
+    }
+
+    /** ⭐ N28-a：容器节点（连接 / 库 / 分组）上「新建视图」与「新建表」同格可用。 */
+    @Test
+    void viewCreationSitsOnContainerNodesLikeTableCreation() {
+        ActionRegistry actions = new ActionRegistry();
+        // 连接节点的菜单里有「编辑连接」，那个动作注册在外壳不在侧栏 —— 这里补上，
+        // 否则 menuFor 会在 require() 上抛「unregistered action id」。
+        actions.register("new-connection", "New Connection", "test", null, () -> { });
+        List<SideBar.TableRequest> requests = new ArrayList<>();
+        ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "srv-1", List.of(mysql), p -> { }));
+        onFxRun(() -> sideBar.setOnTableDdl(requests::add));
+
+        TreeView tree = treeOf(sideBar);
+        TreeItem connection = findExact(rootOf(tree), "生产库");
+        assertThat(connection).isNotNull();
+        onFxRun(() -> tree.getSelectionModel().select(connection));
+
+        assertThat(menuIds(sideBar))
+                .as("连接节点的菜单里要能建视图（与建表并列）")
+                .contains("object.new-view", "object.new-table");
+        onFxRun(() -> sideBar.actionForTest("object.new-view"));
+        assertThat(requests).hasSize(1);
+        assertThat(requests.getFirst().action()).isEqualTo(SideBar.SideBarObject.NEW_VIEW);
+        assertThat(requests.getFirst().tableName())
+                .as("新建还没有名字 —— 名字是设计器里填的")
+                .isNull();
+    }
+
+    /** 右键菜单的项 id 清单（{@code contextMenuForTest} 要先有选中节点）。 */
+    private static List<String> menuIds(SideBar sideBar) {
+        return onFx(() -> {
+            List<String> found = new ArrayList<>();
+            javafx.scene.control.ContextMenu menu = sideBar.contextMenuForTest();
+            if (menu != null) {
+                for (javafx.scene.control.MenuItem item : menu.getItems()) {
+                    if (item.getId() != null) {
+                        found.add(item.getId());
+                    }
+                }
+            }
+            return found;
+        });
+    }
+
     // ───────────────────────────── 工具 ─────────────────────────────
 
     /** 原生 TreeItem 的 getChildren() 元素类型是 Object —— 统一在这里转。 */
