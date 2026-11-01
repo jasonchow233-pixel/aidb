@@ -256,7 +256,7 @@ final class ImportWizard {
         if (owner != null) {
             dialog.initOwner(owner);
         }
-        DialogStyles.apply(dialog, owner, "import-wizard");
+        DialogStyles.apply(dialog, owner);
         dialog.showAndWait();
     }
 

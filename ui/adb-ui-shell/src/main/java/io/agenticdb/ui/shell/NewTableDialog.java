@@ -170,7 +170,7 @@ final class NewTableDialog {
         // ⭐ 主题类与 adb-dialog 类必须抄到 DialogPane 上 —— 否则弹窗里所有
         //    -adb-* 查找落空，退回 JavaFX 默认皮肤。这条不能排在 if 里面：
         //    没有外部样式表（单测直接 show(null, List.of())）时同样要挂上。
-        DialogStyles.apply(dialog, owner, "new-table");
+        DialogStyles.apply(dialog, owner);
         if (owner != null) {
             dialog.initOwner(owner);
         }
@@ -180,7 +180,9 @@ final class NewTableDialog {
     // ─────────────────────────── 界面 ───────────────────────────
 
     private void buildUi() {
-        dialog.setTitle(I18n.t("ribbon.newTable"));
+        // ⭐ N26：标题 + 库名进系统标题栏；内容区不再画自绘抬头条。
+        String context = DialogStyles.shortenContext(session.label(), DialogStyles.PATH_BUDGET);
+        dialog.setTitle(I18n.t("ribbon.newTable") + " · " + context);
         // ⭐ 规格 §13.1：850–1000px。720px 下「默认值 / 注释」两列会被压成
         //    一个省略号，改一个默认值先得横向滚 —— 建表是高频操作，不能这样。
         dialog.getDialogPane().setPrefWidth(DialogSizes.TABLE);
@@ -189,8 +191,6 @@ final class NewTableDialog {
         // ⭐ R30-D：有了页签，窗口要比「一屏字段 + 预览」高一点，否则对象页的列表
         //    只剩两行、SQL 预览页要内部滚动。680 仍在 1280×800 下 DialogStyles 的限高内。
         dialog.getDialogPane().setPrefHeight(680);
-        // 不用 setHeaderText：标题栏要同时放「新建表」+ 当前库名 + 关闭按钮
-        // （规格 §13.2），而 JavaFX 的标准 header 只给一行居中的小字。
         dialog.setHeaderText(null);
 
         name.setId("new-table-name");
@@ -306,7 +306,6 @@ final class NewTableDialog {
         // 间距与内边距由 .adb-dialog__body 统一给（CSS 会盖掉这里的构造参数，
         // 写成一致的值只为了读代码的人不被误导）。
         VBox body = new VBox(12,
-                buildHeader(),
                 buildNameSection(),
                 tabs,
                 error);
@@ -540,39 +539,6 @@ final class NewTableDialog {
 
     private static double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
-    }
-
-    /** 标题栏：新建表 + 当前库 / 方言 + 关闭按钮（规格 §13.2）。 */
-    private HBox buildHeader() {
-        Label title = new Label(I18n.t("ribbon.newTable"));
-        title.getStyleClass().add("adb-dialog__title");
-        // ⭐ 会话标签本身就是「方言 · 库」（见 JdbcSession.of）—— 再补一遍方言
-        //    就成了「SQLite · 文件 · SQLite」，与「新建索引」的标题栏重复同一个错。
-        Label context = DialogStyles.contextLabel(session.label());
-        Button close = IconButtons.icon(Icons.Icon.CLOSE, I18n.t("tab.close"));
-        close.setId("new-table-close");
-        close.getStyleClass().addAll("adb-icon-button", "adb-dialog__close");
-        close.setOnAction(event -> close());
-        HBox header = new HBox(8, title, context, close);
-        header.getStyleClass().add("adb-dialog__header");
-        header.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(context, Priority.ALWAYS);
-        return header;
-    }
-
-    /**
-     * 标题栏的 × 与 Esc / 取消走同一个出口：结果为空，调用方什么都不会做。
-     *
-     * <p>只 {@code setResult(null)} 不会关窗（结果要等 showAndWait 返回），
-     * 所以这里还得把窗口关掉 —— 与 {@code IndexDialog#close()} 同一条路。
-     */
-    private void close() {
-        dialog.setResult(null);
-        Window window = dialog.getDialogPane().getScene() == null
-                ? null : dialog.getDialogPane().getScene().getWindow();
-        if (window != null) {
-            window.hide();
-        }
     }
 
     /** 表单行的标签（复用全局的 adb-form__label，不为弹窗另立一套）。 */

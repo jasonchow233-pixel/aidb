@@ -101,7 +101,7 @@ final class TransferHub {
         if (owner != null) {
             dialog.initOwner(owner);
         }
-        DialogStyles.apply(dialog, owner, "transfer");
+        DialogStyles.apply(dialog, owner);
         dialog.showAndWait();
     }
 

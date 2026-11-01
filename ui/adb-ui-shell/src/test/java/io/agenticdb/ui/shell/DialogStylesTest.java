@@ -193,47 +193,23 @@ class DialogStylesTest {
     }
 
     /**
-     * U20：带 sizeKey 的弹窗，用户拉多大下次就多大。
+     * ⭐ N26（2026-11-01）：弹窗<b>不再记忆尺寸</b>。
      *
-     * <p>⭐ U28（2026-10-26）：记的必须是**面板**尺寸。旧实现记窗口尺寸
-     * （含 16px 标题栏/边框）却恢复成面板 prefSize —— 每开一次大 16px，
-     * 新建索引从 720 棘轮到 912 才被实拍帧抓到。这里用「窗口 ≠ 面板」的
-     * 两个不同值把方向钉死：只有面板值允许落进偏好。
+     * <p>U20 的尺寸记忆原本记的是面板尺寸，但自绘标题条下线、改走系统标题栏之后，
+     * 「上次拉多大」与「这次内容多高」不再是一回事：用户把编辑连接拉高到 900，
+     * 下次打开新建连接（磁贴只有一屏）也会被撑成 900 的空白。
+     * 拍板 4 接受了这个取舍 —— 每次打开都从档位默认值开始。
+     * 这里钉住「apply 不碰 prefWidth / prefHeight」，防止尺寸记忆被悄悄加回来。
      */
     @Test
-    void aRememberedSizeRoundTrips(FxRobot robot) throws Exception {
-        WaitForAsyncUtils.waitForFxEvents();
-        String key = "gate-" + System.nanoTime();
-        Dialog<Void> first = WaitForAsyncUtils.asyncFx((Callable<Dialog<Void>>) () -> {
-            Dialog<Void> d = new Dialog<>();
-            DialogStyles.apply(d, owner, key);
-            // 模拟布局后的真实面板尺寸（用户拖完 JavaFX 就是这么改 pane 宽高的）；
-            // 窗口属性故意给一个**不同**的值 —— 它不该进偏好。
-            d.setWidth(900);
-            d.setHeight(700);
-            d.getDialogPane().resize(777, 511);
-            return d;
-        }).get();
-        assertThat(first.getDialogPane().getWidth()).as("面板尺寸得真的变了").isEqualTo(777);
-
-        Dialog<Void> second = WaitForAsyncUtils.asyncFx((Callable<Dialog<Void>>) () -> {
-            Dialog<Void> d = new Dialog<>();
-            DialogStyles.apply(d, owner, key);
-            return d;
-        }).get();
-        assertThat(second.getDialogPane().getPrefWidth())
-                .as("第二次打开必须恢复**面板**尺寸（记窗口尺寸 = 每次 +16px 棘轮）").isEqualTo(777);
-        assertThat(second.getDialogPane().getPrefHeight())
-                .as("第二次打开必须恢复**面板**尺寸").isEqualTo(511);
-    }
-
-    /** 没传 sizeKey 的弹窗（提示框、确认框）不许被上一次的尺寸绑架。 */
-    @Test
-    void aDialogWithoutAKeyKeepsTheTierSize(FxRobot robot) throws Exception {
+    void applyingTheSharedThemeNeverRemembersASize(FxRobot robot) throws Exception {
         WaitForAsyncUtils.waitForFxEvents();
         Dialog<Void> dialog = styled(owner);
         assertThat(dialog.getDialogPane().getPrefWidth())
-                .as("未记忆的弹窗保持 -1（由内容 / 档位决定）")
+                .as("apply 不许给面板塞上次的宽度（N26 取消了尺寸记忆）")
+                .isLessThanOrEqualTo(0);
+        assertThat(dialog.getDialogPane().getPrefHeight())
+                .as("apply 不许给面板塞上次的高度")
                 .isLessThanOrEqualTo(0);
     }
 
@@ -269,9 +245,14 @@ class DialogStylesTest {
         assertThat(padding.getBottom()).as("底部收一档（16）是骨架口径").isEqualTo(16.0);
     }
 
-    /** U20：标题栏的绝对路径按中部截断，完整值留在 tooltip。 */
+    /**
+     * U20：标题里的绝对路径按中部截断 —— N26 之后只用于拼系统标题串。
+     *
+     * <p>系统标题条没有 tooltip，所以这里不再断言「完整值留在 tooltip」；
+     * 截断本身的规则不变：文件名必须留住，非路径段一个字都不动。
+     */
     @Test
-    void theDialogTitleTruncatesThePathInTheMiddle() throws Exception {
+    void theDialogTitleTruncatesThePathInTheMiddle() {
         String path = "C:\\Users\\Administrator\\.agenticdb\\agenticdb-demo.db";
         String text = "表 users · SQLite · " + path;
         String shortened = DialogStyles.shortenContext(text, 28);
@@ -286,16 +267,9 @@ class DialogStylesTest {
                 .startsWith("表 users · SQLite · ");
         assertThat(shortened.length()).isLessThan(text.length());
 
-        // 不带路径的上下文原样返回，也不该长出 tooltip。
-        Label plain = WaitForAsyncUtils.asyncFx(
-                () -> DialogStyles.contextLabel("表 users · SQLite")).get();
-        assertThat(plain.getText()).isEqualTo("表 users · SQLite");
-        assertThat(plain.getTooltip()).as("没截断就不要挂 tooltip").isNull();
-
-        Label withPath = WaitForAsyncUtils.asyncFx(() -> DialogStyles.contextLabel(text)).get();
-        assertThat(withPath.getStyleClass()).contains("adb-dialog__context");
-        assertThat(withPath.getTooltip()).as("截断过的必须能查到全路径").isNotNull();
-        assertThat(withPath.getTooltip().getText()).isEqualTo(text);
+        assertThat(DialogStyles.shortenContext("表 users · SQLite", 28))
+                .as("不带路径的上下文原样返回")
+                .isEqualTo("表 users · SQLite");
     }
 
     /** U22：弹窗里的表头左对齐 —— Modena 默认居中，内容左对齐时看着像整列错位。 */

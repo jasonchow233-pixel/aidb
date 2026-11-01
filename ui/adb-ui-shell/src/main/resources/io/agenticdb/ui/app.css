@@ -2972,27 +2972,8 @@
     -fx-spacing: 16px;
 }
 
-.adb-dialog__header {
-    -fx-padding: 0px 0px 8px 0px;
-    -fx-border-color: transparent transparent -adb-border-subtle transparent;
-    -fx-border-width: 0px 0px 1px 0px;
-}
-
-.adb-dialog__title {
-    -fx-text-fill: -adb-text-primary;
-    -fx-font-size: 14px;
-    -fx-font-weight: bold;
-}
-
-.adb-dialog__context {
-    -fx-text-fill: -adb-text-tertiary;
-    -fx-font-size: 12px;
-}
-
-.adb-dialog__close {
-    -fx-min-height: 24;
-    -fx-pref-height: 24;
-}
+/* ⭐ N26：自绘标题条（.adb-dialog__header/__title/__context/__close）已下线 ——
+ *    标题改由系统标题栏承载，内容区不再重复一遍。 */
 
 .adb-dialog__section-title {
     -fx-text-fill: -adb-text-secondary;
@@ -3857,8 +3838,115 @@
     -fx-font-weight: bold;
 }
 
-.adb-type-tile__hint {
+/* N27-a：磁贴只剩「彩色图标 + 名称」两行（说明收进 tooltip）——
+ * 原来的 .adb-type-tile__hint 随之下线，多一行小字会把 5 列网格挤成 3 列。 */
+
+/* ── 连接类型页（N27-a）：左栏 9+13 复选 / 右栏 5 列彩色磁贴 ───────────
+ * 磁贴一屏放 9 个（5 + 4）加 13 个厂商 = 22 张卡，所以右侧是滚动区；
+ * 左栏同样要滚 —— 22 行复选在小屏上会顶掉底部的 Next / Cancel。
+ * 两个滚动区都去掉边框与底色，让它们看起来是页面的一部分，不是嵌了两个窗。 */
+.adb-wizard__filter-scroll,
+.adb-wizard__tile-scroll {
+    -fx-background-color: transparent;
+    -fx-background: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 0px;
+}
+
+.adb-wizard__filter-scroll > .viewport,
+.adb-wizard__tile-scroll > .viewport {
+    -fx-background-color: transparent;
+}
+
+.adb-wizard__filter {
+    -fx-padding: 2px 8px 8px 0px;
+    -fx-background-color: transparent;
+}
+
+.adb-wizard__filter-title {
+    -fx-text-fill: -adb-text-secondary;
     -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-padding: 0px 0px 2px 0px;
+}
+
+.adb-wizard__filter-check {
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 12px;
+    -fx-padding: 2px 0px 2px 0px;
+    -fx-graphic-text-gap: 6px;
+}
+
+.adb-wizard__tiles-header {
+    -fx-padding: 0px 0px 4px 0px;
+}
+
+.adb-wizard__tiles-title {
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+}
+
+.adb-wizard__tile-sep {
+    -fx-background-color: -adb-border-subtle;
+}
+
+/* 常规页的 `AIDB ⟷ Database` 示意图（N27-b）—— 一根线连两台机器，
+   不是品牌橱窗：右边只写当前选中的库型名。 */
+.adb-wizard__diagram {
+    -fx-padding: 4px 0px 8px 0px;
+}
+
+.adb-wizard__diagram-line {
+    -fx-background-color: -adb-border;
+}
+
+.adb-wizard__diagram-name {
+    -fx-text-fill: -adb-text-secondary;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}
+
+/* 磁贴图标按库型着色。Navicat 17 的磁贴是彩色图标 + 黑字，选色跟着各家品牌走；
+   颜色全部取自现有令牌，不引入新色值（TokenParityTest 只认令牌）。 */
+.adb-db--mysql .adb-icon {
+    -fx-stroke: -adb-syn-keyword;
+}
+
+.adb-db--postgresql .adb-icon {
+    -fx-stroke: -adb-kind-procedure;
+}
+
+.adb-db--sqlserver .adb-icon {
+    -fx-stroke: -adb-error;
+}
+
+.adb-db--oracle .adb-icon {
+    -fx-stroke: -adb-kind-trigger;
+}
+
+.adb-db--sqlite .adb-icon {
+    -fx-stroke: -adb-kind-index;
+}
+
+.adb-db--mariadb .adb-icon {
+    -fx-stroke: -adb-dirty;
+}
+
+.adb-db--document .adb-icon {
+    -fx-stroke: -adb-success;
+}
+
+.adb-db--redis .adb-icon {
+    -fx-stroke: -adb-risk-2-structure;
+}
+
+.adb-db--snowflake .adb-icon {
+    -fx-stroke: -adb-info;
+}
+
+.adb-db--cloud .adb-icon {
+    -fx-stroke: -adb-accent;
 }
 
 /* 导入向导的执行日志：等宽、小一号 —— 它是「一行一条事实」的流水，不是正文。 */

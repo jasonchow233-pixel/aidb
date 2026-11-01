@@ -27,6 +27,7 @@ import org.testfx.util.WaitForAsyncUtils;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -131,9 +132,82 @@ class ConnectionWizardTest {
         }
         // 磁贴总数 = 方言数（不摆没实现的 Oracle / SQL Server 磁贴）
         assertThat(robot.lookup("#wizard-type-tiles")
-                .queryAs(javafx.scene.layout.FlowPane.class)
-                .getChildren()).hasSize(DialectKind.values().length);
+                .queryAs(javafx.scene.layout.TilePane.class)
+                .getChildren()).hasSize(ConnectionCatalog.CONNECTIONS.size());
         assertThat(robot.lookup("#wizard-type-uri").tryQuery()).isPresent();
+    }
+
+    /**
+     * ⭐ N27-a：类型页照 Navicat 17 摆全 22 张磁贴（9 连接类型 + 13 厂商），
+     * 5 列卡片；左栏的复选清单与磁贴是同一份清单。
+     *
+     * <p>「全摆」不等于「全支持」：{@code ConnectionCatalog.Entry#supported()} 为 false 的
+     * 那几张点进去是如实说明页（见 {@link #unsupportedTypeExplainsInsteadOfShowingAFakeForm}）。
+     */
+    @Test
+    void typePageListsEveryConnectionTypeAndVendorInFiveColumns(FxRobot robot) {
+        open(robot, null);
+
+        assertThat(ConnectionCatalog.CONNECTIONS).hasSize(9);
+        assertThat(ConnectionCatalog.VENDORS).hasSize(13);
+        for (ConnectionCatalog.Entry entry : ConnectionCatalog.all()) {
+            assertThat(robot.lookup("#wizard-tile-" + entry.id()).tryQuery())
+                    .as("磁贴：" + entry.name())
+                    .isPresent();
+            assertThat(robot.lookup("#wizard-filter-" + entry.id()).tryQuery())
+                    .as("左栏复选：" + entry.name())
+                    .isPresent();
+        }
+
+        javafx.scene.layout.TilePane connections = robot.lookup("#wizard-type-tiles")
+                .queryAs(javafx.scene.layout.TilePane.class);
+        javafx.scene.layout.TilePane vendors = robot.lookup("#wizard-vendor-tiles")
+                .queryAs(javafx.scene.layout.TilePane.class);
+        assertThat(connections.getPrefColumns()).as("Navicat 的类型页是 5 列").isEqualTo(5);
+        assertThat(vendors.getPrefColumns()).isEqualTo(5);
+        assertThat(connections.getChildren()).hasSize(9);
+        assertThat(vendors.getChildren()).hasSize(13);
+    }
+
+    /** 左栏勾掉一项 → 对应磁贴消失；两项清单一共 22 个复选。 */
+    @Test
+    void uncheckingAFilterHidesItsTile(FxRobot robot) {
+        open(robot, null);
+
+        assertThat(robot.lookup("#wizard-filters").query().lookupAll(".adb-wizard__filter-check"))
+                .as("Connection Filter 9 + Vendor Filter 13")
+                .hasSize(22);
+
+        click(robot, "wizard-filter-SQLITE");
+        assertThat(robot.lookup("#wizard-tile-SQLITE").tryQuery()
+                .map(javafx.scene.Node::isVisible))
+                .as("勾掉 SQLite 后它的磁贴不该还在").contains(false);
+    }
+
+    /** 没有驱动的库型点下一步 → 如实说明页，不是一张填了也连不上的表单。 */
+    @Test
+    void unsupportedTypeExplainsInsteadOfShowingAFakeForm(FxRobot robot) {
+        open(robot, null);
+
+        click(robot, "wizard-tile-MONGODB");
+        click(robot, "wizard-next");
+
+        assertThat(wizard.step()).isEqualTo(2);
+        assertThat(robot.lookup("#wizard-unsupported").tryQuery())
+                .as("没有驱动：给说明页")
+                .isPresent();
+        assertThat(robot.lookup("#wizard-tabs").tryQuery())
+                .as("不许摆属性页 —— 填了也连不上")
+                .isEmpty();
+        assertThat(robot.lookup("#wizard-unsupported").queryAs(javafx.scene.layout.VBox.class)
+                .lookupAll(".label").stream()
+                .map(node -> ((javafx.scene.control.Label) node).getText())
+                .toList())
+                .anyMatch(text -> text.contains("MongoDB"))
+                .anyMatch(text -> text.contains("MySQL"));
+
+        click(robot, "wizard-back");
+        assertThat(wizard.step()).isEqualTo(1);
     }
 
     /**
@@ -163,6 +237,59 @@ class ConnectionWizardTest {
         assertThat(wizard.dialogButtonTypes())
                 .as("dialog 的按钮栏留空 —— 否则会多出一层按钮")
                 .isEmpty();
+    }
+
+    /** N27-b：属性页底部五键 —— 左「测试连接 / URI…」，右「上一步 / 取消 / 确定」，同一行。 */
+    @Test
+    void propertiesPageHasTheFiveButtonFooter(FxRobot robot) {
+        open(robot, null);
+        goToProperties(robot, DialectKind.POSTGRESQL);
+
+        javafx.scene.Node test = robot.lookup("#wizard-test").query();
+        javafx.scene.Node uri = robot.lookup("#wizard-uri-open").query();
+        javafx.scene.Node back = robot.lookup("#wizard-back").query();
+        javafx.scene.Node cancel = robot.lookup("#wizard-cancel").query();
+        javafx.scene.Node save = robot.lookup("#wizard-save").query();
+
+        assertThat(List.of(uri, back, cancel, save))
+                .as("五颗按钮必须同属一行（同一父节点），不许再叠出第二层")
+                .allSatisfy(node -> assertThat(node.getParent()).isSameAs(test.getParent()));
+        javafx.scene.layout.HBox row = (javafx.scene.layout.HBox) test.getParent();
+        assertThat(row.getChildren()).as("左二 + 弹簧 + 右三").hasSize(6);
+        assertThat(row.getChildren().getFirst()).isSameAs(test);
+        assertThat(row.getChildren().get(1)).isSameAs(uri);
+        assertThat(row.getChildren().indexOf(back))
+                .as("左「上一步」，右「取消 / 确定」—— Navicat 的次序")
+                .isLessThan(row.getChildren().indexOf(cancel));
+        assertThat(row.getChildren().indexOf(cancel))
+                .isLessThan(row.getChildren().indexOf(save));
+        assertThat(save).as("主动作贴右缘").isSameAs(row.getChildren().getLast());
+        assertThat(wizard.dialogTitle()).as("N26：标题走系统标题栏")
+                .isEqualTo(I18n.t("wizard.title.new"));
+    }
+
+    /** N27-b：常规页有 `AIDB ⟷ Database` 示意图，右边写当前选中的库型。 */
+    @Test
+    void generalPageShowsTheConnectionDiagram(FxRobot robot) {
+        open(robot, null);
+        goToProperties(robot, DialectKind.POSTGRESQL);
+
+        javafx.scene.Node diagram = robot.lookup("#wizard-general").query()
+                .lookup(".adb-wizard__diagram");
+        assertThat(diagram).as("常规页要有示意图").isNotNull();
+        assertThat(diagram.lookupAll(".adb-wizard__diagram-name").stream()
+                .map(node -> ((javafx.scene.control.Label) node).getText()))
+                .containsExactly("AIDB", DialectKind.POSTGRESQL.displayName());
+    }
+
+    /** N27：Navicat 17 的这对页面是 900×700 —— 720 宽装不下 5 列磁贴。 */
+    @Test
+    void wizardOpensAtTheNavicatSize(FxRobot robot) {
+        open(robot, null);
+        assertThat(wizard.dialogPane().getPrefWidth())
+                .as("类型页要 5 列磁贴 + 212px 复选栏")
+                .isEqualTo(900);
+        assertThat(wizard.dialogPane().getPrefHeight()).isEqualTo(700);
     }
 
     @Test

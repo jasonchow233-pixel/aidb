@@ -154,25 +154,26 @@ class NewTableDialogTest {
     }
 
     /**
-     * 规格 §13.2：标题栏要有「新建表」+ <b>真实库名</b> + 关闭按钮。
+     * 规格 §13.2 + N26：标题走系统标题栏 —— 「新建表」+ <b>真实库名</b>，内容区不再有自绘抬头条。
      *
      * <p>库名来自会话标签，不是写死的示例串 —— 这条断言同时防
-     * 「标题栏退化成一句通用文案」和「拿假库名充数」两种回退。
+     * 「标题退化成一句通用文案」和「拿假库名充数」两种回退。
      */
     @Test
     void headerNamesTheRealDatabaseAndOffersClose() {
         NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
         String label = onFx(session::label);
 
-        List<String> texts = onFx(() -> dialog.dialog().getDialogPane().getContent()
-                .lookupAll(".adb-dialog__context")
-                .stream()
-                .map(node -> ((javafx.scene.control.Labeled) node).getText())
-                .toList());
-        assertThat(texts).anyMatch(text -> text.contains(label));
+        String title = onFx(() -> dialog.dialog().getTitle());
+        assertThat(title)
+                .as("系统标题栏 = 「新建表」+ 真实库名")
+                .startsWith(I18n.t("ribbon.newTable"))
+                .contains(DialogStyles.shortenContext(label, DialogStyles.PATH_BUDGET));
 
         assertThat(onFx(() -> dialog.dialog().getDialogPane().getContent()
-                .lookup("#new-table-close"))).isNotNull();
+                .lookupAll(".adb-dialog__context")))
+                .as("N26：内容区不再画自绘抬头条；关窗走系统标题栏的 × 与 Esc")
+                .isEmpty();
     }
 
     /**

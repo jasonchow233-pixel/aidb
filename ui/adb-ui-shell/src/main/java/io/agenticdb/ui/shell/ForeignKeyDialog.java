@@ -90,7 +90,7 @@ final class ForeignKeyDialog {
         }
         // ⭐ 主题类必须抄到 DialogPane 上 —— 否则弹窗里所有 -adb-* 查找落空，
         //    退回 JavaFX 默认皮肤。没传外部样式表时同样要挂（与「新建表」一致）。
-        DialogStyles.apply(dialog, owner, "foreign-key");
+        DialogStyles.apply(dialog, owner);
         if (owner != null) {
             dialog.initOwner(owner);
         }

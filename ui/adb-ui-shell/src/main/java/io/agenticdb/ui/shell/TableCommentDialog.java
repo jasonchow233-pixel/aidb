@@ -52,9 +52,10 @@ final class TableCommentDialog {
     Optional<String> show(Window owner, Collection<String> stylesheets) {
         if (stylesheets != null && !stylesheets.isEmpty()) {
             dialog.getDialogPane().getStylesheets().addAll(stylesheets);
-            // ⭐ 主题类必须抄到 DialogPane 上 —— 否则弹窗里所有 -adb-* 查找落空。
-        DialogStyles.apply(dialog, owner, "table-comment");
         }
+        // ⭐ 主题类与 adb-dialog 必须抄到 DialogPane 上 —— 否则弹窗里所有 -adb-*
+        //    查找落空。这条不能排在 if 里面（N26 前它就在里面，没有外部样式表时形同虚设）。
+        DialogStyles.apply(dialog, owner);
         if (owner != null) {
             dialog.initOwner(owner);
         }

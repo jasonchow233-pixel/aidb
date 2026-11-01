@@ -74,7 +74,7 @@ final class TriggerDialog {
         if (stylesheets != null && !stylesheets.isEmpty()) {
             dialog.getDialogPane().getStylesheets().addAll(stylesheets);
             // ⭐ 主题类必须抄到 DialogPane 上 —— 否则弹窗里所有 -adb-* 查找落空。
-        DialogStyles.apply(dialog, owner, "trigger");
+        DialogStyles.apply(dialog, owner);
         }
         if (owner != null) {
             dialog.initOwner(owner);

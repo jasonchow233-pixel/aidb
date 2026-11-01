@@ -125,7 +125,7 @@ final class VariableDialog {
             return null;
         }
         VariableDialog panel = new VariableDialog(parameters);
-        DialogStyles.apply(panel.dialog, owner, "variables");
+        DialogStyles.apply(panel.dialog, owner);
         panel.dialog.showAndWait();
         if (!panel.confirmed) {
             return null;

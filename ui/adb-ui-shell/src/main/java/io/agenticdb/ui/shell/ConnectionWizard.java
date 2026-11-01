@@ -7,6 +7,7 @@ import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.CredentialStore;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
+import javafx.geometry.HPos;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -18,21 +19,23 @@ import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.ColumnConstraints;
-import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.TilePane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
@@ -57,10 +60,11 @@ import java.util.function.Consumer;
  * <p>⭐ R33-G8/G20：以前是「类型下拉 → 主机端口 → 复核」三步，没有 SSL / SSH / HTTP，
  * 也没有 URI 入口。现在：
  * <ul>
- *   <li><b>第 1 步</b>：搜索 + 磁贴，只列<b>真实支持</b>的三种库型（SQLite / PostgreSQL / MySQL），
- *       外加「使用 URI 新建连接…」；</li>
- *   <li><b>第 2 步</b>：7 个页签 —— 常规 / 高级 / 数据库 / SSL / SSH / HTTP / 备注，底部
- *       「测试连接 / URI… / 上一步 / 确定」。</li>
+ *   <li><b>第 1 步</b>（N27-a）：左栏 9 + 13 两条复选清单（Connection / Vendor Filter），
+ *       右栏 5 列彩色磁贴 + 搜索，外加「使用 URI 新建连接…」；
+ *       没有驱动的那几张点「下一步」进<b>如实说明页</b>，不摆填了也连不上的表单；</li>
+ *   <li><b>第 2 步</b>（N27-b）：7 个页签 —— 常规 / 高级 / 数据库 / SSL / SSH / HTTP / 备注，
+ *       常规页上方是 `AIDB ⟷ Database` 示意图；底部「测试连接 / URI… / 上一步 / 取消 / 确定」。</li>
  * </ul>
  *
  * <p>⛔ 按钮仍在<b>内容区</b>：{@code DialogPane.createButton} 会给按钮栏里每个按钮挂
@@ -148,15 +152,26 @@ public final class ConnectionWizard {
     private final Dialog<ConnectionProfile> dialog = new Dialog<>();
     private final ToggleGroup typeGroup = new ToggleGroup();
     /**
-     * 类型磁贴用 FlowPane 摆成**一行卡片**（Navicat 的连接类型页是网格，不是竖排大条）。
-     * 以前是 VBox + VGrow，三个磁贴被拉成每个 ~220px 高的空白块（p5-connect-type 实拍）。
+     * 磁贴按「连接类型 / 厂商」分两组，各自一个 5 列 {@link TilePane}。
+     * Navicat 17 的类型页两块之间有一条分隔线，且滚动的是右侧整块而不是左栏。
      */
-    private final FlowPane tiles = new FlowPane(8, 8);
+    private final TilePane tiles = new TilePane(8, 8);
+    private final TilePane vendorTiles = new TilePane(8, 8);
+    private final VBox tileGroups = new VBox(12);
+    private final Region tileSeparator = new Region();
+    private final ScrollPane tileScroll = new ScrollPane();
+    /** 左栏只建一次：来回切步骤时用户勾掉的项要留在原地。 */
+    private Node filterSidebar;
+    /** 左栏复选 → 磁贴；两边都按目录条目登记，过滤只走这一张表。 */
+    private final Map<ConnectionCatalog.Entry, CheckBox> filterBoxes = new LinkedHashMap<>();
+    private final Map<ConnectionCatalog.Entry, ToggleButton> tileByEntry = new LinkedHashMap<>();
     private final Button cancelButton = new Button(I18n.t("common.cancel"));
     private final TextField search = new TextField();
     private final HBox uriRow = new HBox(8);
     private final TextField uriField = new TextField();
     private DialectKind type = DialectKind.SQLITE;
+    /** 选中的是「有目录条目、但没有驱动」的磁贴；非空时第 2 步是如实说明页。 */
+    private ConnectionCatalog.Entry selectedUnsupported;
 
     private final TextField name = new TextField();
     private final TextField file = new TextField();
@@ -193,10 +208,15 @@ public final class ConnectionWizard {
         this.credentials = credentials == null ? CredentialStore.inMemory() : credentials;
         this.tester = tester == null ? spec -> I18n.t("wizard.test.noTester") : tester;
         dialog.initOwner(owner);
-        dialog.setTitle(I18n.t("wizard.title"));
-        // ⭐ V-11：弹窗宽度走档位规范（DialogSizes）。
-        dialog.getDialogPane().setPrefWidth(DialogSizes.WIDE);
-        dialog.getDialogPane().setMinWidth(DialogSizes.WIDE);
+        // ⭐ N26：标题只走系统标题栏（Dialog 的 Stage），内容区不再画题头条。
+        dialog.setTitle(initial == null
+                ? I18n.t("wizard.title.new") : I18n.t("wizard.title.edit"));
+        dialog.setHeaderText(null);
+        // ⭐ N27：Navicat 17 的这一对页面是 900×700；原来的 720 宽装不下 5 列磁贴。
+        dialog.getDialogPane().setPrefWidth(900);
+        dialog.getDialogPane().setMinWidth(760);
+        dialog.getDialogPane().setPrefHeight(700);
+        dialog.getDialogPane().setMinHeight(560);
 
         build();
         loadInitial();
@@ -206,12 +226,10 @@ public final class ConnectionWizard {
     private void build() {
         search.setId("wizard-type-search");
         search.setPromptText(I18n.t("wizard.search.prompt"));
-        search.textProperty().addListener((observable, old, text) -> filterTiles(text));
+        search.setPrefWidth(200);
+        search.textProperty().addListener((observable, old, text) -> applyFilters());
 
-        tiles.setId("wizard-type-tiles");
-        for (DialectKind kind : DialectKind.values()) {
-            tiles.getChildren().add(tile(kind));
-        }
+        buildTileGrid();
 
         uriField.setId("wizard-uri");
         uriField.setPromptText(I18n.t("wizard.uri.example"));
@@ -318,73 +336,171 @@ public final class ConnectionWizard {
 
     // ─────────────────── 第 1 步：类型选择页 ───────────────────
 
-    private ToggleButton tile(DialectKind kind) {
+    /** 右侧磁贴：连接类型一组、厂商一组，各 5 列（N27-a）。 */
+    private void buildTileGrid() {
+        tiles.setId("wizard-type-tiles");
+        vendorTiles.setId("wizard-vendor-tiles");
+        for (TilePane pane : List.of(tiles, vendorTiles)) {
+            pane.setPrefColumns(5);
+            pane.setPrefTileWidth(112);
+            pane.setPrefTileHeight(108);
+            pane.setAlignment(Pos.TOP_LEFT);
+        }
+        for (ConnectionCatalog.Entry entry : ConnectionCatalog.CONNECTIONS) {
+            tiles.getChildren().add(tile(entry));
+        }
+        for (ConnectionCatalog.Entry entry : ConnectionCatalog.VENDORS) {
+            vendorTiles.getChildren().add(tile(entry));
+        }
+        tileSeparator.getStyleClass().add("adb-wizard__tile-sep");
+        tileSeparator.setMinHeight(1);
+        tileSeparator.setPrefHeight(1);
+        tileGroups.getChildren().setAll(tiles, tileSeparator, vendorTiles);
+        tileScroll.setId("wizard-tile-scroll");
+        tileScroll.getStyleClass().add("adb-wizard__tile-scroll");
+        tileScroll.setContent(tileGroups);
+        tileScroll.setFitToWidth(true);
+        tileScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        VBox.setVgrow(tileScroll, Priority.ALWAYS);
+    }
+
+    /**
+     * 一张磁贴 = 彩色图标 + 名称。说明收进 tooltip —— Navicat 的磁贴只有这两行，
+     * 多一行小字会把 5 列网格挤成 3 列。
+     */
+    private ToggleButton tile(ConnectionCatalog.Entry entry) {
         Label icon = new Label();
-        icon.setGraphic(Icons.of(Icons.Icon.DATABASE, Icons.SIZE_PRIMARY));
+        icon.setGraphic(Icons.of(Icons.Icon.DATABASE, Icons.SIZE_TILE));
         icon.getStyleClass().add("adb-type-tile__icon");
 
-        Label title = new Label(kind.displayName());
+        Label title = new Label(entry.name());
         title.getStyleClass().add("adb-type-tile__name");
-        Label hint = new Label(hintOf(kind));
-        hint.getStyleClass().addAll("adb-muted", "adb-type-tile__hint");
-        hint.setWrapText(true);
+        title.setWrapText(true);
+        title.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+        title.setMaxWidth(96);
 
-        VBox box = new VBox(4, icon, title, hint);
+        VBox box = new VBox(6, icon, title);
         box.setAlignment(Pos.CENTER);
-        box.setFillWidth(true);
-        hint.setMaxWidth(132);
-        hint.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
 
         ToggleButton button = new ToggleButton();
-        button.setId("wizard-tile-" + kind.name());
-        button.setUserData(kind);
+        button.setId("wizard-tile-" + entry.id());
+        button.setUserData(entry);
         button.setGraphic(box);
         button.setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
-        button.getStyleClass().add("adb-type-tile");
+        button.getStyleClass().addAll("adb-type-tile", entry.styleClass());
         button.setToggleGroup(typeGroup);
         // 卡片固定尺寸：磁贴是「选一个」，不是「填满整页」。
-        button.setPrefSize(156, 100);
-        button.setMinSize(156, 100);
+        button.setPrefSize(112, 108);
+        button.setMinSize(112, 108);
         button.setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
         button.setAlignment(Pos.CENTER);
+        button.setTooltip(new Tooltip(I18n.t(entry.hintKey())));
         button.setOnAction(event -> {
             // ⛔ 再点一次已选磁贴不允许变成「全不选」。
             if (!button.isSelected()) {
                 button.setSelected(true);
             }
-            selectType(kind);
+            selectEntry(entry);
         });
+        tileByEntry.put(entry, button);
         return button;
     }
 
-    private static String hintOf(DialectKind kind) {
-        return switch (kind) {
-            case SQLITE -> I18n.t("wizard.tile.sqlite");
-            case POSTGRESQL -> I18n.t("wizard.tile.postgresql");
-            case MYSQL -> I18n.t("wizard.tile.mysql");
-            case MARIADB -> I18n.t("wizard.tile.mariadb");
-            case SQLSERVER -> I18n.t("wizard.tile.sqlserver");
-            case ORACLE -> I18n.t("wizard.tile.oracle");
-        };
+    /** 左栏两块复选清单（9 + 13），勾掉即隐藏对应磁贴。 */
+    private Node filterSidebar() {
+        if (filterSidebar != null) {
+            return filterSidebar;
+        }
+        VBox box = new VBox(4);
+        box.getStyleClass().add("adb-wizard__filter");
+        box.getChildren().add(filterTitle(I18n.t("wizard.filter.connection")));
+        for (ConnectionCatalog.Entry entry : ConnectionCatalog.CONNECTIONS) {
+            box.getChildren().add(filterCheck(entry));
+        }
+        Region gap = new Region();
+        gap.setMinHeight(12);
+        box.getChildren().addAll(gap, filterTitle(I18n.t("wizard.filter.vendor")));
+        for (ConnectionCatalog.Entry entry : ConnectionCatalog.VENDORS) {
+            box.getChildren().add(filterCheck(entry));
+        }
+        ScrollPane scroll = new ScrollPane(box);
+        scroll.setId("wizard-filters");
+        scroll.getStyleClass().add("adb-wizard__filter-scroll");
+        scroll.setFitToWidth(true);
+        scroll.setPrefWidth(212);
+        scroll.setMinWidth(212);
+        scroll.setMaxWidth(212);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        filterSidebar = scroll;
+        return scroll;
     }
 
-    private void filterTiles(String text) {
-        String needle = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
-        for (Node node : tiles.getChildren()) {
-            ToggleButton tile = (ToggleButton) node;
-            DialectKind kind = (DialectKind) tile.getUserData();
+    private static Label filterTitle(String text) {
+        Label label = new Label(text);
+        label.getStyleClass().add("adb-wizard__filter-title");
+        return label;
+    }
+
+    private CheckBox filterCheck(ConnectionCatalog.Entry entry) {
+        CheckBox box = new CheckBox(entry.name());
+        box.setId("wizard-filter-" + entry.id());
+        box.setSelected(true);
+        box.setGraphic(Icons.of(Icons.Icon.DATABASE, Icons.SIZE_BADGE));
+        box.getStyleClass().addAll("adb-wizard__filter-check", entry.styleClass());
+        box.selectedProperty().addListener((observable, old, selected) -> applyFilters());
+        filterBoxes.put(entry, box);
+        return box;
+    }
+
+    /** 复选与搜索是同一套过滤：磁贴可见 = 所属复选勾着 且 名字命中搜索词。 */
+    private void applyFilters() {
+        String needle = search.getText() == null
+                ? "" : search.getText().trim().toLowerCase(Locale.ROOT);
+        boolean anyConnection = false;
+        boolean anyVendor = false;
+        for (ConnectionCatalog.Entry entry : ConnectionCatalog.all()) {
+            CheckBox box = filterBoxes.get(entry);
+            ToggleButton button = tileByEntry.get(entry);
+            if (box == null || button == null) {
+                continue;
+            }
             boolean matches = needle.isEmpty()
-                    || kind.displayName().toLowerCase(Locale.ROOT).contains(needle)
-                    || kind.id().contains(needle);
-            tile.setVisible(matches);
-            tile.setManaged(matches);
+                    || entry.name().toLowerCase(Locale.ROOT).contains(needle);
+            boolean visible = box.isSelected() && matches;
+            button.setVisible(visible);
+            button.setManaged(visible);
+            if (visible && entry.group() == ConnectionCatalog.Group.VENDOR) {
+                anyVendor = true;
+            } else if (visible) {
+                anyConnection = true;
+            }
+        }
+        tiles.setVisible(anyConnection);
+        tiles.setManaged(anyConnection);
+        vendorTiles.setVisible(anyVendor);
+        vendorTiles.setManaged(anyVendor);
+        boolean both = anyConnection && anyVendor;
+        tileSeparator.setVisible(both);
+        tileSeparator.setManaged(both);
+    }
+
+    private void selectEntry(ConnectionCatalog.Entry entry) {
+        if (entry.supported()) {
+            selectType(entry.kind());
+        } else {
+            // 没有驱动就不进属性页 —— 第 2 步换成如实说明（N27 拍板）。
+            selectedUnsupported = entry;
         }
     }
 
     void selectType(DialectKind kind) {
         DialectKind previous = type;
         type = kind;
-        typeGroup.getToggles().forEach(toggle -> toggle.setSelected(toggle.getUserData() == kind));
+        // 选到真有驱动的磁贴（或 URI / 既有连接回填）就退出「无驱动」分支。
+        selectedUnsupported = null;
+        typeGroup.getToggles().forEach(toggle -> toggle.setSelected(
+                toggle.getUserData() instanceof ConnectionCatalog.Entry entry
+                        && entry.kind() == kind));
         String current = port.getText();
         if (current == null || current.isBlank()
                 || current.equals(String.valueOf(ConnectionProfile.defaultPort(previous)))) {
@@ -576,19 +692,25 @@ public final class ConnectionWizard {
     // ─────────────────── 第 2 步：属性页（7 个页签） ───────────────────
 
     private Node typeStep() {
-        Label hint = new Label(I18n.t("wizard.type.hint"));
-        hint.getStyleClass().add("adb-muted");
+        Label title = new Label(I18n.t("wizard.type.select"));
+        title.getStyleClass().add("adb-wizard__tiles-title");
+        Region titleGap = new Region();
+        HBox.setHgrow(titleGap, Priority.ALWAYS);
+        HBox header = new HBox(8, title, titleGap, search);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("adb-wizard__tiles-header");
+
+        VBox right = new VBox(10, header, tileScroll);
+        VBox.setVgrow(tileScroll, Priority.ALWAYS);
+        HBox.setHgrow(right, Priority.ALWAYS);
+        HBox body = new HBox(12, filterSidebar(), right);
+        body.setFillHeight(true);
+        VBox.setVgrow(body, Priority.ALWAYS);
 
         Button uriToggle = new Button(I18n.t("wizard.type.uri"));
         uriToggle.setId("wizard-type-uri");
         uriToggle.getStyleClass().addAll("adb-button", "adb-button--ghost");
         uriToggle.setOnAction(event -> toggleUriRow(!uriRow.isVisible()));
-
-        // 磁贴贴顶、留白在下方 —— 竖排大条会让三个磁贴各占 ~220px（实拍过）。
-        Region gap = new Region();
-        VBox.setVgrow(gap, Priority.ALWAYS);
-        VBox box = new VBox(10, search, tiles, hint, uriRow, gap);
-        VBox.setVgrow(box, Priority.ALWAYS);
 
         // Navicat 口径（§6.7）：URI 入口在左，导航与取消在右，**同一行**；
         // 取消在主动作左边、主动作贴右缘 —— 和导入 / 导出向导同一档手感。
@@ -597,9 +719,11 @@ public final class ConnectionWizard {
         HBox nav = new HBox(8, uriToggle, navGap,
                 cancelButton, navButton("wizard-next", I18n.t("wizard.next"), this::goNext));
         nav.setAlignment(Pos.CENTER_LEFT);
-        VBox outer = new VBox(8, box, saveError, nav);
+        VBox outer = new VBox(10, body, uriRow, saveError, nav);
         // 和其他四个向导同一档留白（16px）；属性页的 GridPane 自带 12px，不加类免双份。
         outer.getStyleClass().add("adb-wizard__content");
+        VBox.setVgrow(body, Priority.ALWAYS);
+        applyFilters();
         return outer;
     }
 
@@ -642,9 +766,13 @@ public final class ConnectionWizard {
         saveButton.getStyleClass().addAll("adb-button", "adb-button--primary");
         saveButton.setOnAction(event -> commit());
 
-        HBox nav = new HBox(8, navButton("wizard-back", I18n.t("wizard.back"), this::goBack),
-                uriButton, testButton, cancelButton, saveButton);
-        nav.setAlignment(Pos.CENTER_RIGHT);
+        // N27-b：底部五键 —— 左「测试连接 / URI…」，右「上一步 / 取消 / 确定」。
+        Region navGap = new Region();
+        HBox.setHgrow(navGap, Priority.ALWAYS);
+        HBox nav = new HBox(8, testButton, uriButton, navGap,
+                navButton("wizard-back", I18n.t("wizard.back"), this::goBack),
+                cancelButton, saveButton);
+        nav.setAlignment(Pos.CENTER_LEFT);
 
         VBox box = new VBox(8, tabs, testResult, saveError, nav);
         VBox.setVgrow(tabs, Priority.ALWAYS);
@@ -660,6 +788,7 @@ public final class ConnectionWizard {
 
     private Node generalPane() {
         GridPane grid = grid();
+        grid.setId("wizard-general-grid");
         grid.addRow(0, new Label(I18n.t("wizard.name")), name);
         if (type.dialect().usesFilePath()) {
             Button browse = new Button(I18n.t("wizard.browse"));
@@ -680,15 +809,54 @@ public final class ConnectionWizard {
             HBox.setHgrow(file, Priority.ALWAYS);
             grid.addRow(1, new Label(I18n.t("wizard.file")), fileRow);
             grid.addRow(2, new Label(), new Label(I18n.t("wizard.general.sqliteNote")));
-            return grid;
+        } else {
+            grid.addRow(1, new Label(I18n.t("wizard.host")), host);
+            grid.addRow(2, new Label(I18n.t("wizard.port")), port);
+            grid.addRow(3, new Label(I18n.t("wizard.database")), database);
+            grid.addRow(4, new Label(I18n.t("wizard.username")), username);
+            grid.addRow(5, new Label(I18n.t("wizard.password")), password);
+            grid.addRow(6, new Label(), savePassword);
         }
-        grid.addRow(1, new Label(I18n.t("wizard.host")), host);
-        grid.addRow(2, new Label(I18n.t("wizard.port")), port);
-        grid.addRow(3, new Label(I18n.t("wizard.database")), database);
-        grid.addRow(4, new Label(I18n.t("wizard.username")), username);
-        grid.addRow(5, new Label(I18n.t("wizard.password")), password);
-        grid.addRow(6, new Label(), savePassword);
-        return grid;
+        // Navicat 的常规页把表单摆在示意图下方居中，左右留白靠 GridPane 的档位宽度。
+        HBox centered = new HBox(grid);
+        centered.setAlignment(Pos.CENTER);
+        VBox box = new VBox(20, connectionDiagram(), centered);
+        box.setId("wizard-general");
+        return box;
+    }
+
+    /**
+     * `AIDB ⟷ Database` 示意图（N27-b）。
+     *
+     * <p>不画厂商 logo：右侧只写当前选中的库型名，换类型时它跟着换 —— 一张
+     * 「谁连谁」的示意图，不是品牌橱窗。
+     */
+    private Node connectionDiagram() {
+        Label appIcon = new Label();
+        appIcon.setGraphic(Icons.of(Icons.Icon.BRAND, Icons.SIZE_TILE));
+        Label appName = new Label("AIDB");
+        appName.getStyleClass().add("adb-wizard__diagram-name");
+        VBox app = new VBox(6, appIcon, appName);
+        app.setAlignment(Pos.CENTER);
+
+        Region line = new Region();
+        line.getStyleClass().add("adb-wizard__diagram-line");
+        line.setMinWidth(120);
+        line.setPrefWidth(120);
+        line.setMinHeight(1);
+        line.setMaxHeight(1);
+
+        Label dbIcon = new Label();
+        dbIcon.setGraphic(Icons.colored(Icons.Icon.DATABASE, Icons.SIZE_TILE));
+        Label dbName = new Label(type.displayName());
+        dbName.getStyleClass().add("adb-wizard__diagram-name");
+        VBox database = new VBox(6, dbIcon, dbName);
+        database.setAlignment(Pos.CENTER);
+
+        HBox box = new HBox(18, app, line, database);
+        box.setAlignment(Pos.CENTER);
+        box.getStyleClass().add("adb-wizard__diagram");
+        return box;
     }
 
     private Node advancedPane() {
@@ -819,6 +987,10 @@ public final class ConnectionWizard {
 
     /** 保存：校验通过才关窗，校验失败留在属性页并把原因写在常驻错误行。 */
     void commit() {
+        if (selectedUnsupported != null) {
+            // 说明页没有表单可提交 —— 结果只能是关闭。
+            return;
+        }
         if (!validateType() || !validateDetails()) {
             if (step != 2) {
                 step = 2;
@@ -840,6 +1012,15 @@ public final class ConnectionWizard {
     /** 当前步骤的内容节点（不含 Dialog 外壳）——测试直接挂它。 */
     Node stepContent() {
         return dialog.getDialogPane().getContent();
+    }
+
+    /** 弹窗外壳 —— 门禁查档位尺寸（N27：900×700）与系统标题（N26）。 */
+    javafx.scene.control.DialogPane dialogPane() {
+        return dialog.getDialogPane();
+    }
+
+    String dialogTitle() {
+        return dialog.getTitle();
     }
 
     /** 门禁：dialog 自带的按钮栏必须空着（导航与取消都在内容的同一行）。 */
@@ -916,14 +1097,53 @@ public final class ConnectionWizard {
 
     private void updateStep() {
         if (step == 1) {
-            dialog.setHeaderText(initial == null ? I18n.t("wizard.step1.new")
-                    : I18n.t("wizard.step1.edit"));
             dialog.getDialogPane().setContent(typeStep());
+        } else if (selectedUnsupported != null) {
+            dialog.getDialogPane().setContent(unsupportedStep());
         } else {
-            dialog.setHeaderText(I18n.t("wizard.step2", type.displayName()));
             dialog.getDialogPane().setContent(propertiesStep());
         }
         updateButtons();
+    }
+
+    /**
+     * 磁贴有、驱动没有：给如实说明页，不摆填了也不生效的表单（N27 拍板）。
+     *
+     * <p>说明里必须给替代路径 —— 协议兼容的端点（如云上的 MySQL）可以按那家协议连，
+     * 或走 `New Connection with URI…`；只写「不支持」是 §11 禁止的告知不铺路。
+     */
+    private Node unsupportedStep() {
+        ConnectionCatalog.Entry entry = selectedUnsupported;
+        String name = entry == null ? "" : entry.name();
+
+        Label icon = new Label();
+        icon.setGraphic(Icons.of(Icons.Icon.ALERT, Icons.SIZE_EMPTY));
+        icon.getStyleClass().add("adb-empty__icon");
+
+        Label title = new Label(I18n.t("wizard.unsupported.headline", name));
+        title.getStyleClass().add("adb-empty__title");
+        title.setWrapText(true);
+
+        Label detail = new Label(I18n.t("wizard.unsupported.detail"));
+        detail.getStyleClass().add("adb-muted");
+        detail.setWrapText(true);
+        detail.setMaxWidth(560);
+
+        VBox notice = new VBox(10, icon, title, detail);
+        notice.setId("wizard-unsupported");
+        notice.setPadding(new Insets(24));
+
+        Region gap = new Region();
+        VBox.setVgrow(gap, Priority.ALWAYS);
+        Region navGap = new Region();
+        HBox.setHgrow(navGap, Priority.ALWAYS);
+        HBox nav = new HBox(8, navGap,
+                navButton("wizard-back", I18n.t("wizard.back"), this::goBack), cancelButton);
+        nav.setAlignment(Pos.CENTER_LEFT);
+
+        VBox outer = new VBox(8, notice, gap, nav);
+        outer.getStyleClass().add("adb-wizard__content");
+        return outer;
     }
 
     private Button navButton(String id, String label, Runnable action) {
@@ -946,9 +1166,14 @@ public final class ConnectionWizard {
         grid.setHgap(10);
         grid.setVgap(8);
         grid.setPadding(new Insets(12));
+        grid.setMaxWidth(620);
         ColumnConstraints caption = new ColumnConstraints();
-        caption.setMinWidth(72);
+        // N27-b：标签右对齐，与输入框左缘贴齐后再留 10px —— 扫读时值是一列直线。
+        caption.setMinWidth(110);
+        caption.setPrefWidth(110);
+        caption.setHalignment(HPos.RIGHT);
         ColumnConstraints value = new ColumnConstraints();
+        value.setPrefWidth(430);
         value.setHgrow(Priority.ALWAYS);
         value.setFillWidth(true);
         grid.getColumnConstraints().addAll(caption, value);
@@ -1155,13 +1380,13 @@ public final class ConnectionWizard {
 
     public void show() {
         dialog.setOnHidden(event -> onFinished.accept(Optional.ofNullable(dialog.getResult())));
-        DialogStyles.apply(dialog, dialog.getOwner(), "connection-wizard");
+        DialogStyles.apply(dialog, dialog.getOwner());
         dialog.show();
     }
 
     public Optional<ConnectionProfile> showAndWait() {
         dialog.setOnHidden(event -> onFinished.accept(Optional.ofNullable(dialog.getResult())));
-        DialogStyles.apply(dialog, dialog.getOwner(), "connection-wizard");
+        DialogStyles.apply(dialog, dialog.getOwner());
         return dialog.showAndWait();
     }
 

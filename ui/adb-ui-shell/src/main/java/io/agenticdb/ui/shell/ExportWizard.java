@@ -311,7 +311,7 @@ final class ExportWizard {
         if (owner != null) {
             dialog.initOwner(owner);
         }
-        DialogStyles.apply(dialog, owner, "export-wizard");
+        DialogStyles.apply(dialog, owner);
         dialog.showAndWait();
     }
 

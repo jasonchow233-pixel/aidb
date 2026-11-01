@@ -84,6 +84,12 @@ public final class Icons {
     /** 空状态的大图标：32px。 */
     public static final double SIZE_EMPTY = 32;
 
+    /**
+     * 卡片 / 示意图的大图形：44px（N27 连接类型页的 112×108 磁贴、常规页的
+     * `AIDB ⟷ Database` 示意图）。比空状态大一号 —— 磁贴里图标是主角，不是配图。
+     */
+    public static final double SIZE_TILE = 44;
+
     /** Lucide SVG 资源目录（相对 classpath 根）。 */
     static final String LUCIDE_DIR = "/io/agenticdb/ui/icons/lucide/";
 

@@ -74,12 +74,18 @@ class IndexDialogTest {
     // ─────────────────────────── A / C 区：上下文与计数 ───────────────────────────
 
     @Test
-    @DisplayName("标题栏的表名与方言来自真实上下文，不是写死的示例")
+    @DisplayName("标题栏的表名与方言来自真实上下文，不是写死的示例（N26：走系统标题栏）")
     void headerCarriesTheRealTableAndDialect() {
         IndexDialog dialog = mounted(FakeDbSession.of(DialectKind.SQLITE), table(List.of()));
 
-        assertThat(text(dialog, ".adb-dialog__context")).contains("users").contains("SQLite");
-        assertThat(text(dialog, ".adb-dialog__title")).isEqualTo(I18n.t("structure.index.add"));
+        assertThat(dialog.dialogTitle())
+                .as("标题串 = 「新建索引」+ 表名 + 方言 / 库（系统标题条没有 tooltip，一次说清）")
+                .startsWith(I18n.t("structure.index.add"))
+                .contains("users")
+                .contains("SQLite");
+        assertThat(dialog.dialogPane().lookup(".adb-dialog__context"))
+                .as("N26：内容区不再画自绘抬头条")
+                .isNull();
     }
 
     @Test

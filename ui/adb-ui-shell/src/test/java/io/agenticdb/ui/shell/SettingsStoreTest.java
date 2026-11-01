@@ -40,14 +40,14 @@ class SettingsStoreTest {
         // 唯一节点名：CLEARED 按节点记账，别的测试先跑过也不影响这里。
         String node = "adb-reset-gate-" + System.nanoTime();
         Preferences direct = Preferences.userRoot().node(node);
-        direct.putInt("dialog.size.v2.width.index", 912);
+        direct.putInt("reset-gate.sentinel", 912);
         direct.flush();
         System.setProperty("adb.prefs.node", node);
         System.setProperty("adb.prefs.reset", "1");
         try {
             Preferences opened = SettingsStore.openNode();
-            assertThat(opened.getInt("dialog.size.v2.width.index", -1))
-                    .as("reset=1 的首次 openNode 必须把节点清干净 —— 弹窗尺寸记忆不许串到下一帧")
+            assertThat(opened.getInt("reset-gate.sentinel", -1))
+                    .as("reset=1 的首次 openNode 必须把节点清干净 —— 上一帧的偏好不许串到下一帧")
                     .isEqualTo(-1);
         } finally {
             direct.clear();

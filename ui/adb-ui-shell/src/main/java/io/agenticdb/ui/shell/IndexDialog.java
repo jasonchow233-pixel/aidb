@@ -52,7 +52,7 @@ import java.util.Optional;
  * 而索引本来就是列的附属信息。
  *
  * <h2>五个分区（任务书 §6.2）</h2>
- * A 标题栏（标题 + 真实表名 / 库名 / 方言 + 关闭）· B 基本信息（名称 / 类型 / 唯一）·
+ * A 标题（系统标题栏：标题 + 真实表名 / 库名 / 方言）· B 基本信息（名称 / 类型 / 唯一）·
  * C 索引列（单列表 + 「添加列」下拉，计数来自真实可用列）· D SQL 预览 ·
  * E 底部：左校验提示 + 右取消 / 确定。骨架类与其他弹窗共用 {@code .adb-dialog__*}，
  * 让两个弹窗看起来出自同一个软件（§七）。
@@ -155,7 +155,7 @@ final class IndexDialog {
         }
         // ⭐ 主题类与 .adb-dialog 必须抄到 DialogPane 上 —— 否则弹窗里所有
         //    -adb-* 查找落空，退回 JavaFX 默认皮肤。没有外部样式表时同样要挂。
-        DialogStyles.apply(dialog, owner, "index");
+        DialogStyles.apply(dialog, owner);
         if (owner != null) {
             dialog.initOwner(owner);
         }
@@ -165,7 +165,11 @@ final class IndexDialog {
     // ─────────────────────────── 界面 ───────────────────────────
 
     private void buildUi() {
-        dialog.setTitle(I18n.t("structure.index.add"));
+        // ⭐ N26：标题走系统标题栏 —— 表名 / 方言 / 库拼在标题里，内容区不再画抬头条。
+        String context = DialogStyles.shortenContext(
+                I18n.t("idx.context", table == null ? "?" : table.name(), session.label()),
+                DialogStyles.PATH_BUDGET);
+        dialog.setTitle(I18n.t("structure.index.add") + " · " + context);
         // ⭐ V-11：宽度走档位规范。U21 之前它是 PICKER=800 —— 那一档是为「两个列表并排
         //    + 中间四颗按钮」开的；单列表之后 720 就放得下「序号 + 列名 + 方向 + ×」，
         //    再宽只是让 SQL 预览两侧留白。
@@ -176,8 +180,7 @@ final class IndexDialog {
         dialog.getDialogPane().setMinWidth(DialogSizes.WIDE);
         dialog.getDialogPane().setPrefHeight(620);
         dialog.getDialogPane().setMinHeight(560);
-        // 不用 setHeaderText：A 区要同时放标题 + 真实表名 + 关闭钮，
-        // 标准 header 只给一行居中的小字（与「新建表」共用同一套骨架）。
+        // 不用 setHeaderText：标题与上下文进系统标题栏（N26）。
         dialog.setHeaderText(null);
         dialog.setResizable(true);
 
@@ -195,7 +198,6 @@ final class IndexDialog {
         error.setManaged(false);
 
         VBox body = new VBox(16,
-                buildHeader(),
                 buildBasicSection(),
                 buildPickerSection(),
                 buildSqlSection(),
@@ -216,26 +218,6 @@ final class IndexDialog {
         dialog.setResultConverter(button -> button == ok ? current() : null);
         // ⭐ §6.7 焦点管理：打开落在「索引名称」上，直接能打字。
         dialog.setOnShown(event -> name.requestFocus());
-    }
-
-    /** A 区标题栏：新建索引 + 真实的表 / 库 / 方言 + 关闭。 */
-    private HBox buildHeader() {
-        Label title = new Label(I18n.t("structure.index.add"));
-        title.getStyleClass().add("adb-dialog__title");
-        // ⭐ 表名 / 库名 / 方言全部来自真实上下文，不写死示例（§6.2 A）。
-        //    会话标签本身就是「方言 · 库」（见 JdbcSession.of），再补一遍方言就成了
-        //    「SQLite · 文件 · SQLite」—— 实测截图里就是这么重复的。
-        Label context = DialogStyles.contextLabel(I18n.t("idx.context",
-                table == null ? "?" : table.name(), session.label()));
-        Button close = IconButtons.icon(Icons.Icon.CLOSE, I18n.t("tab.close"));
-        close.setId("index-dialog-close");
-        close.getStyleClass().addAll("adb-icon-button", "adb-dialog__close");
-        close.setOnAction(event -> close());
-        HBox header = new HBox(8, title, context, close);
-        header.getStyleClass().add("adb-dialog__header");
-        header.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(context, Priority.ALWAYS);
-        return header;
     }
 
     /** B 区基本信息：名称 +（方言支持时的）类型 + 唯一索引。 */
@@ -431,16 +413,6 @@ final class IndexDialog {
         javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
         content.putString(sql);
         javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
-    }
-
-    /** 关闭与 Escape / 取消走同一条出口：结果为空，调用方什么都不会做（§6.7）。 */
-    private void close() {
-        dialog.setResult(null);
-        Window window = dialog.getDialogPane().getScene() == null
-                ? null : dialog.getDialogPane().getScene().getWindow();
-        if (window != null) {
-            window.hide();
-        }
     }
 
     // ─────────────────────────── 校验 ───────────────────────────
@@ -704,6 +676,11 @@ final class IndexDialog {
     /** 弹窗外壳 —— 门禁查宽度档位与底部按钮（E 区）。 */
     javafx.scene.control.DialogPane dialogPane() {
         return dialog.getDialogPane();
+    }
+
+    /** N26：标题走系统标题栏，门禁从这里读那个串（内容区不再有抬头条）。 */
+    String dialogTitle() {
+        return dialog.getTitle();
     }
 
     boolean isSqlPreviewVisible() {

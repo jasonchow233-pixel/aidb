@@ -31,6 +31,11 @@ class DialectBranchAuditTest {
      *
      * <p>这些地方要么就是方言本身，要么在做「反查枚举」（按 URL 猜方言）、
      * 工厂方法（造一个 SQLite 连接）、或默认值（向导的初始选择）。
+     *
+     * <p>{@code ConnectionCatalog} 是<b>登记表</b>：它写 {@code DialectKind.MYSQL}
+     * 是在说「这一项有驱动」，不是「MYSQL 时走这条路」。A1 承诺的后半句
+     * 「登记一项」就落在这里，所以它必须在白名单里 —— 但一旦在这里写出
+     * {@code dialect() == …} 之类的比较，下面的正则照样抓得到（白名单只放枚举项）。
      */
     private static final Set<String> ALLOWED = Set.of(
             "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/DialectKind.java",
@@ -43,7 +48,8 @@ class DialectBranchAuditTest {
             "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/JdbcSession.java",
             "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/ConnectionSpec.java",
             "workbench/adb-session/src/main/java/io/agenticdb/session/ConnectionProfile.java",
-            "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/ConnectionWizard.java");
+            "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/ConnectionWizard.java",
+            "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/ConnectionCatalog.java");
 
     /**
      * 散落的方言分支。
