@@ -19,7 +19,8 @@
   强调色 `#0067B8`（Navicat 实测 `#0078D7`，为 WCAG AA 压暗）。
 - **圆角/间距**：**5 档 + pill**：`r-sm` 2 / `r-md` 3 / `r-lg` 4 / `r-xl` 6 / `r-full` 999，外层 ≥ 内层；
   7 档 4px 间距阶梯；页面外边距 16px，工具栏 8px。
-- **图标**：**矢量图标**（`io.agenticdb.ui.Icons`，**55** 个 = 53 个 Lucide 源 + 2 个自绘）。
+- **图标**：**矢量图标**（`io.agenticdb.ui.Icons`，**63** 个 = 54 个 Lucide 源 + 9 个自绘）。
+  9 个自绘 = 品牌标 `BRAND` + 圆点 `DOT` + `AI` + **六家厂商数据库图形** `DB_*`（R43-a，见图标约定节）。
   统一 16×16 视框、1.5px 描边；6 档尺寸 **8 / 12 / 14 / 16 / 20 / 26**（dot / badge / label / toolbar / primary / ribbon）。
   颜色由 CSS 的 `.adb-icon` 接管 → 切主题自动跟着变。
   ⛔ **按钮里不许再出现 Unicode 符号**（`IconSystemAuditTest` 守着）。
@@ -61,7 +62,7 @@ java tools/GenTokens.java
 
 - 生成器把 **color 类型**令牌导出成 CSS 变量；其余 **34 个**（31 个尺寸 + 3 个时长）
   导出成 `Tokens.java` 常量，供 Java 布局代码引用。
-- 当前 **104 个令牌**（70 颜色 / 31 尺寸 / 3 时长）**全部有使用点**；
+- 当前 **110 个令牌**（76 颜色 / 31 尺寸 / 3 时长）**全部有使用点**；
   `TokenParityTest` 断言「JSON 键 = Tokens.ALL_KEYS」且没有未使用令牌。
   （40px 字号档 `fs-4xl` 于 2026-10-23 移除 —— 它唯一的消费者是欢迎页 logo 的
   `font-size`；20px 档 `fs-2xl` 于 2026-10-24 随 S-7 移除 —— 它唯一的消费者是那张
@@ -97,6 +98,7 @@ Windows 上常见字体可能替换或缺失。这条已经**不再是方向而�
 | 暗色档 | **不需要第二套资产**：角色吃令牌，令牌跟主题 → 同一张 svg 在两套主题里各自换色 | `IconKindHueTest.theKindHueFollowsTheThemeWithoutASecondAssetSet` |
 | 分层顺序 | 自下而上画，**轮廓层（EDGE）收尾**；轮廓与单色同一套 1.5px 粗细口径 | `ColoredIconTest.everyColoredIconKeepsOneEdgeLayerOnTop` |
 | 类型色 | ⭐ 「形状 + 颜色」是**一对**线索，彩色档不许删掉其中一条：轮廓层经 `.adb-tree__icon--table .adb-icon-edge` 吃 `-adb-kind-*`，三层 tone 保持中性浅蓝（类型色只走轮廓这一条道） | `IconKindHueTest`（读**计算色**，不读 CSS 文本） |
+| 厂商图形 | ⭐ R43-a：**一家一枚、各自不同形**（MySQL 海豚鳍 / PostgreSQL 獠牙 U / SQL Server 六边形宝石 / Oracle 椭圆环 / SQLite 羽叶 / MariaDB 圆球跃身），登记在 `ConnectionCatalog` 的行上 —— 向导磁贴与左侧树从**同一行**取图形与作用域类，所以两处的 MySQL 不会是两种颜色。图形是**同风格自绘标识**，不是商标图标（见素材红线）；品牌色走 `-adb-vendor-*` 令牌（两档各一个值），只落 `tone-c` 那一层，轮廓层仍吃 `-adb-icon-edge` 保可读 | `VendorGlyphTest`（不同形 / CSS 规则 / **两档计算色** / 磁贴作用域）· `SideBarTreeTest.connectionNodesWearTheirVendorGlyph`（断渲染出的 cell，不断节点取值）· `ContrastTest.vendorBrandColorsStandOutAgainstTheBackground`（≥3:1） |
 | 容器不能挂色 | 分层返回的是 `Group`，它在 JavaFX 里没有任何可声明的绘制属性 —— 把 `-fx-stroke` 打在容器上等于空转。类名挂在容器上，**颜色规则必须写后代选择器**落到子层 | 同上 |
 | ⛔ 素材红线 | 竞品（Navicat 等）的位图/图标属**他人版权素材**，一律不许进 `icons/`；像素复刻 ≠ 素材入库 | `ColoredIconTest` 头部注释 + 人工审计 |
 

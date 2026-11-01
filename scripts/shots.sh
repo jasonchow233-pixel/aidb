@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（45 张）。
+# 重拍 docs/screenshots/ 的验收截图（46 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 39 张 + 暗色 6 张）
+#   ./scripts/shots.sh              # 全部重拍（亮色 39 张 + 暗色 7 张）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
 #
 # 为什么需要这个脚本（历史上踩过的坑，全部在这里被绕开）：
@@ -123,6 +123,9 @@ SHOTS=(
   #   22 张彩色磁贴（其中 6 种真有驱动）+ 搜索 + URI 入口。
   #   不需要数据库连接，弹得快；4000ms 只等启动。
   "p5-connect-type||4000|ADB_CONNECT_WIZARD=type ADB_THEME_FORCE=light"
+  # ⭐ R43-a：厂商图形的暗色档单独一帧。品牌色两档是**不同**的字面值（亮档深、暗档亮），
+  #   只拍亮档等于六家在暗色档一眼都没被看过 —— 而画不出来的症状是「图标糊成一片黑」。
+  "p5-connect-type-dark||4000|ADB_CONNECT_WIZARD=type ADB_THEME_FORCE=dark"
   # ⭐ R33-G8/G20：7 页属性 —— 常规 / SSL / SSH 各一帧。
   #   SSH 页是「明说没有隧道引擎 + 给 ssh -L 替代做法」那一屏，
   #   不摆一帧就等于这条诚实边界没人看过。

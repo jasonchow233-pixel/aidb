@@ -133,7 +133,7 @@
 
 ## 3. 颜色与语义
 
-### 3.1 令牌分层（`tokens.json` 共 **104** 个：**70 颜色 / 31 尺寸 / 3 时长**）
+### 3.1 令牌分层（`tokens.json` 共 **110** 个：**76 颜色 / 31 尺寸 / 3 时长**）
 
 > 下表的数量与名字是从 `tokens.json` 现量出来的（不是回忆）；
 > `TokenParityTest` 钉住 `meta.count`，任何一处对不上就红。
@@ -150,6 +150,7 @@
 | 语法高亮 | 9 | `syn-keyword/string/number/comment/function/type/ident/param/error` | SQL 编辑器 |
 | 对象类型 | 7 | `kind-table` `kind-view` `kind-function` `kind-trigger` `kind-procedure` `kind-index` `kind-event` | **对象树 / 结构页的类型色**（§3.4） |
 | 图标分层 | 4 | `icon-edge` `icon-tone-a` `icon-tone-b` `icon-tone-c` | 彩色图标的**角色色**（§4.5）：轮廓 + 三层填充 |
+| 厂商品牌 | 6 | `vendor-mysql` `vendor-postgresql` `vendor-sqlserver` `vendor-oracle` `vendor-sqlite` `vendor-mariadb` | ⭐ R43-a：六家**真有驱动**的数据库在向导磁贴与左侧树里的品牌色，只落图标的 `tone-c` 层（§4.6）。两档各一个值（亮档压深、暗档提亮），必须在两档下对页面底 ≥3:1（`ContrastTest.vendorBrandColorsStandOutAgainstTheBackground`） |
 | 尺寸 | 31 | `h-*`(6) `w-*`(4) `row-*`(5) `fs-*`(3) `sp-*`(8) `r-*`(5) | 高度 / 宽度 / 行高 / 字号 / 间距 / 圆角 |
 | 时长 | 3 | `dur-toast` `dur-toast-action` `dur-toast-result` | toast 动画 |
 | 遮罩 / 投影 | 3 | `overlay` `shadow-1` `shadow-2` | 弹窗遮罩与两级浮层投影 |
@@ -245,7 +246,7 @@
   （品牌方块里的 `text-inverse` 就是第一个）**必须写两类选择器**提高特异性，单类会被后写的通用规则顶掉 ——
   见 §4.3 第 6 条。
 
-### 4.2 图标清单（**55** 个，`io.agenticdb.ui.Icons.Icon`）
+### 4.2 图标清单（**63** 个，`io.agenticdb.ui.Icons.Icon`）
 
 | 分类 | 图标 | 语义 |
 |---|---|---|
@@ -256,6 +257,7 @@
 | 对象 | `DATABASE` `TABLE` `STRUCTURE` `COLUMNS` `VIEW` `VIEW_OBJECT` `FUNCTION` `TRIGGER` `INDEX` `OPEN` | 连接 / 表 / 结构 / 列 / 视图 / 视图对象 / 函数 / 触发器 / **索引** / 打开选中对象 |
 | 其它 | `CONNECT` `QUERY` `LIST` `GRID` `THEME` `PALETTE` `HISTORY` `DIAGNOSTICS` `LOCK` `ALERT` | 连接 / 查询 / 清单 / 网格 / 主题 / 命令面板 / 历史 / 诊断 / 加密连接 / 警告提示 |
 | 品牌 | `BRAND` | ⭐ **AIDB mark**（数据圆柱 + 右上 AI 四角星芒）—— 只用在**「关于」弹窗的图形**；2026-10-28 顶区精简后，品牌在界面里的落点是窗口标题 + 窗口图标 + 关于框（顶栏不再有品牌块） |
+| 厂商图形 | `DB_MYSQL` `DB_POSTGRESQL` `DB_SQLSERVER` `DB_ORACLE` `DB_SQLITE` `DB_MARIADB` | ⭐ R43-a：**同风格自绘**的六家数据库标识（§4.6）—— 登记在 `ConnectionCatalog` 的行列上，向导磁贴与左侧树的连接节点从同一行取，两处的 MySQL 因此必然同形同色。没有 `DB_MONGODB` 这类：没驱动的厂商不给图形，给了就是承诺一个连不上的连接 |
 
 ### 4.3 硬规则
 
@@ -331,6 +333,47 @@
 > 按钮态规则（hover / `--primary` / `:disabled`）**一条都命中不了子层** ——
 > 不补就是「蓝底上蓝边看不见图标」与「禁用还亮着蓝边」，后者撞诚实条款。
 > 补色规则见 `app.css` 的「彩色分层在按钮态里的翻色」段，门禁读**计算色**。
+
+---
+
+### 4.6 厂商数据库图形（R43-a）
+
+§4.5 那八条**全部适用**（角色分层、颜色只从令牌来、暗色不出第二套资产、轮廓层收尾），
+这里只补厂商这一族特有的口径。
+
+| 家 | 图形取的是该家公开标识里**最能一眼认出的几何特征**（自绘，不是商标图标） | 品牌色 light / dark |
+|---|---|---|
+| MySQL | 一弯朝左下鼓的背鳍 + 右上**独立**的水滴（两笔不相连，14px 下才分得开） | `#00758F` / `#4FC8DE` |
+| PostgreSQL | 两条立柱收进 U 形底（獠牙 / 象鼻的抽象化） | `#336791` / `#7FB3D9` |
+| SQL Server | 六边形环：外圈 + 同心内圈，内圈按 EVEN_ODD 挖空（宝石切面） | `#8A5A00` / `#E3B23C` |
+| Oracle | 横椭圆环：外椭圆 + 同芯内椭圆挖空 | `#C71000` / `#FF7168` |
+| SQLite | 羽叶：一条从右上扫到左下的弧 + 背边，中间一条叶脉 | `#0F83AE` / `#67D4EF` |
+| MariaDB | 圆球里挖出一条跃身海豚的剪影（球 + 一条反剪的弧） | `#003545` / `#8FC9E0` |
+
+两个落点、同一枚图形：连接向导的类型磁贴 **44px**（`SIZE_TILE`）与左侧树的连接节点
+**14px**（`SIZE_LABEL`）。14px 是这六枚的真正考验 —— 帧覆盖两档：磁贴看
+`p5-connect-type` / `p5-connect-type-dark`，树看 `p0-shell` / `p5-dark`。
+
+**四条规矩**：
+
+1. **登记在 `ConnectionCatalog` 的行上**，不是新开一个 `DialectKind` switch 文件 ——
+   图形、品牌色作用域类、显示名同一行给全，向导磁贴与左侧树的连接节点**读同一行**。
+   分叉的代价是「同一个 MySQL 在两处两种画法」，正是 N4-c 已经踩过一次的坑。
+   `DialectBranchAuditTest` 允许登记，禁止散落。
+2. **只有真有驱动的六家有图形**。`DialectKind.values()` 与图形集合一一对应
+   （`VendorGlyphTest` 的静态块钉住），MongoDB / Redis / Snowflake 与 13 个厂商
+   仍是中性 `DATABASE` / `CONNECT` —— 给连不上的连接配一枚专属图形，等于界面在承诺后端没有的能力。
+3. **品牌色只上 `tone-c`（最深填充面）一层**，轮廓层继续吃 `-adb-icon-edge`。
+   理由是 §4.5 第 7 条的同一条：类型线索有两条（形状 + 颜色），而轮廓是「看不看得见」的那条 ——
+   把它染成深品牌色，暗色档就糊。两档的品牌色各自过 ≥3:1 对页面底（`ContrastTest`）。
+4. **认不出方言时不许挑一家画上去**：回落 `CONNECT`（§「诚实条款」）。
+   侧栏那条 `aConnectionWithoutAProfileKeepsTheNeutralPlug` 守的就是这个。
+
+> ⚠️ **变异验证记一条改判**：`SideBarTreeTest` 这一条最初断的是 `DemoNode` 的 `toString()`
+> ——「登记行给了图形」，看起来在测接线，实际把 `SideBar` 里挂作用域类那两行删掉**照样全绿**。
+> 症状是「左树六家全一种颜色」，而这恰好是这条门禁该抓的东西。
+> 现在断的是**渲染出来的 cell 里的图标容器类名 + `tone-c` 层的计算色**：
+> 取值对不对归取值那些用例管，这里只管**画出来**。
 
 ---
 
@@ -983,6 +1026,7 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-11-01 | 第四十三轮 · R43-a | **六种数据库的厂商图形**。六家（MySQL / PostgreSQL / SQL Server / Oracle / SQLite / MariaDB）各一枚**自绘**填充图形（不提取 Navicat 原版位图，也不碰厂商商标），形态取各自标志的骨架：MySQL 海豚鳍 + 水滴、PostgreSQL 象头 U 与两牙、SQL Server 六边形环、Oracle 椭圆环、SQLite 叶、MariaDB 球 + 跃弧。图形注册在 `ConnectionCatalog` 的行上（`DialectBranchAuditTest` 的白名单落点），向导磁贴与侧栏连接节点**同一份取值、同一个作用域类** —— 同一个 MySQL 在两处不会一个青一个蓝；没有 profile 的连接退回中性插头 `CONNECT`，不硬造品牌色。品牌色**只上 `adb-icon-tone-c` 这一层**，轮廓层跟随前景，所以深色底上不会糊成一片。六家各一对 `vendor-*` 令牌（亮档深、暗档亮，是**不同**字面值），对比度门禁要求两档对 `bg-canvas` 都 ≥3:1。️ **变异验证抓到一处假门禁**：`connectionNodesWearTheirVendorGlyph` 原本读 `DemoNode.toString()`，把单元格工厂的挂类整段删掉照样全绿 —— 改成断**渲染出来的 cell 里的图标容器**（类在不在）+ **`tone-c` 的计算填充**（色到没到），后者才真正断「后代规则匹配到了节点」，光有类不等于 CSS 命中。同轮 `SideBarLivenessDotTest` 被新字段红过一次（record 加第 6 个分量后 `connectionId=demo]` 的字符串形状不再成立，R37 去尾部 count 时红过同一处），改成按值匹配、边界认 `,` 或 `]`。新增暗色帧 `p5-connect-type-dark`（品牌色两档不同值，只拍亮档等于六家在暗色档一眼没看过），整套 **46 帧（亮 39 + 暗 7）**。门禁：新增 `VendorGlyphTest`（5：六家互不相同 / 作用域类各带各的令牌 / 两档品牌色真的落到填充层 / 脱离作用域保持中性 / 磁贴自带作用域类）、`ContrastTest` +1、`LucideIconTest` 自绘白名单 9 项、`SideBarTreeTest` 重写为渲染层断言；全量 **1262 / 147 / 0**（53 条环境跳过）。 |
 | 2026-11-01 | 第四十二轮 · R42-a | **视图生命周期 V1–V3（N28-a）**。新建 / 设计视图做成 **720 宽档弹窗**（不是标签页：视图没有数据页可停留，做成页签等于留一张关不掉的空页），三格各有标题 —— 视图名 / `查询（SELECT）` / `将要执行的 SQL`；下面那格**只读**，且摘掉「⌘↵ 执行当前语句」那句提示（它执行不了）。**预览即执行**铁律沿用：预览文本与 `StructurePlan.sql()` 逐字同源，一次计算两处用。方言差异摆到台面上：MariaDB / PostgreSQL / Oracle 走 `CREATE OR REPLACE`（一句）、SQL Server 走 `CREATE OR ALTER`、**MySQL 与 SQLite 没有单句形式** → 预览显出 `DROP` + `CREATE` **两句**并给一句灰字提示，同时多要一次确认（第二句之前视图已经不在了）。查询体只收 `SELECT` / `WITH` / 括号开头的组合查询，粘整条 DDL 或塞第二句当场拦下并写明原因。「设计视图」那一格名字**置灰 + tooltip** 说明替代路径（本版本没有视图重命名）。表节点与视图节点的右键菜单**拆开**：视图不再摆「清空表 / 重命名表」这种必失败项。**三处能力面正式裁定不做**（P1）：Automation / Model ER 全量编辑器 / Data Generation —— 磁贴与工具条入口都留着，点进去是如实说明页。⚠️ 视图 DDL 由三方言 SQL 快照 + SQLite 契约钉住，**未在真 MySQL / PostgreSQL 联调**（D-5 需要 Docker）。**四张新帧（`p6-new-view` / `-dark` / `-invalid` / `p6-design-view`）目视后修的三处**：① 预览格没有标题，实拍里两格编辑器长得一模一样，看不出谁是输入谁是输出 → 补 `newview.preview.title`，原挂在格内的 `newview.preview` 改成空态该说的话；② `DialogPane#setPrefHeight(560)` 写死导致正文下方一条一百多像素死空白（`DialogPane` 按各区**首选高度**自上而下排，多出来的高度落在正文区之外，提示行出现时也吃不到）→ 改成高度随内容，由两格编辑器（184 / 160）撑出来；③ **弹窗里的错误行一直是黑的** —— `.adb-dialog .label` (0,2,0) 压过裸 `.adb-error` / `.adb-muted` (0,1,0)，红字只活在单测里，新建表弹窗同病（它的帧没拍到错误态）→ 补两条同特异性后置规则（整套 45 帧重拍、无重复帧，弹窗族帧里的灰字提示这才真的是灰的）。门禁：新增 `ViewLifecycleSqlTest`（11）、`ViewDefinitionTest`（8）、`ViewDesignerDialogTest`（16），`TableDdlTest` +4、`SideBarTreeTest` +2；全量 **1254 / 146 / 0**（53 条环境跳过）。同轮修 `AccessibilityAuditTest` 的开页时序：`doubleClickOn` 在满载时越过连击窗口 → 页签没开，既假红（`lookup` 拿 null）又**假绿**（整棵树的焦点审计在没开页时照样通过），改为重取单元格重试 + 等待页签出现。 |
 | 2026-11-01 | 第四十轮 · R40 | **弹窗系统标题栏 + 连接向导两页（N26 N27）**。六个自绘抬头条（索引 / 新建表 / 表注释 / 外键 / 触发器 / 变量）连同右上 × 全部删除，标题与「表名 · 方言 · 库」拼进 `Dialog#setTitle` 由系统标题栏承载（路径按中段截断，`DialogStyles.shortenContext`），关窗走系统 × 与 Esc；`DialogStyles.apply` 只剩四件事（样式表 / 主题类 / 限高 / 按钮序），**弹窗尺寸记忆随之取消**（拍板 4）。连接向导改两页 **900×700**：类型页左栏 `Connection Filter` 9 + `Vendor Filter` 13 复选、右栏 **5 列 112×108 彩色磁贴** + 搜索（复选与搜索共用一套过滤，两块都滚），左下 `New Connection with URI…`、右下 `Next / Cancel`；**22 张磁贴照 Navicat 全摆，但只有 6 种真有驱动** —— MongoDB / Redis / Snowflake 与 13 个厂商点下一步进**如实说明页**（写明只有 6 种驱动、给协议兼容与 URI 两条替代路径），不摆填了也连不上的表单。常规页补 `AIDB ⟷ Database` 示意图（44px 图标 + 120px 连线，右侧库型名随选择变）、标签右对齐（110px）、`Save password`，底部五键（测试连接 / URI… / 弹簧 / 上一步 / 取消 / 确定）。**帧目视后修的三处**：① `Icons.of/colored` 返回的是带 `scaleX/scaleY` 的 SVGPath，布局边界仍是 16×16 —— 大图标直接叠进 VBox 时文字会压到图形上（p5-connect-type 实拍「MySQL」浮在圆柱体底边），改为把图标 Label 钉成 44×44 并把 `alignment` 设成居中；磁贴名 13→12px、宽度按内容区 88px 算（`Microsoft Azure` 从两行折回一行）。② 属性页七个页签的内容补 16px 内边距（此前 SSL 说明 / 高级 / 备注的文字贴在弹窗左缘 x=0），SSL 表单与常规页同样居中，页脚状态行与五键统一缩进 16px。③ 菜单按钮的文字底部被裁（p3-query 第二排 `agenticdb-demodb` 的 g 没有尾巴、网格工具条 `History` 的 y 被削平）：modena 的 `.menu-button > .label` 另有 4px 竖直内边距，叠在外壳内边距上后 label 内容区只剩 10px，`LabeledText` 按内容区高度裁字；竖直归零、横向保留 8px（左右缩进与箭头间距不变，其他工具条几何零变化）。新增具名图标档 `Icons.SIZE_TILE = 44`（磁贴与示意图），图标尺寸阶梯 8 / 12 / 14 / 16 / 20 / 26 / 32 / 44。门禁：`ConnectionWizardTest` +6（9+13 条目 / 五列 / 复选过滤 / 无驱动说明页 / 五键顺序 / 示意图 / 900×700）、`DialogStylesTest`（apply 不写 pref 尺寸）、`IndexDialogTest` / `NewTableDialogTest`（标题进系统栏、内容区无 `.adb-dialog__context`）；全量 **1204 / 143 / 0**（53 条环境跳过）。同轮修掉门禁自身的一处时序假红：`AppShellTest` 的两条「双击进单元格编辑」在机器满载时两次单击间隔越过连击窗口，改为重取单元格后重试（同一份测试在 R39 的 HEAD 上也偶发）。 |
 | 2026-10-31 | 第三十九轮 · R39 | **查询页 + 已保存查询 + 状态栏（N21–N25）**。查询工具带改**双行 62px**：第一行 保存 / 查询构建器 / 格式化 / 代码片段 / AI 助手▾（右端 风险提示 · 历史▾），第二行 查询名▾ / 连接▾ / `Run▾` / 停止 / 执行计划；「全部执行 / 带参数执行」进 Run 菜单，「清空」进编辑器右键菜单。语法配色落成令牌（关键字 `#097BF7` 粗 / 字符串 `#FF1744` / 注释 `#929292` / 正文 `#424242` / 表名下划线）。结果区拆 **27px `Message / Summary / Result N`** + **32px `Data / Info`**，网格表头单行 `#E7E7E7`。已保存查询从弹窗改成**工作区对象页**（四列 + 设计 / 新建 / 删除查询，删除默认按钮为取消），侧栏 `Queries` 组双击 / Enter 打开。状态栏改**按页型换段**（查询 / 数据 / 对象三套），「自动提交 · 只读」段连同 CSS、文案、调用点删除。同轮把 §5.3 与 §6.1 遗留的「顶区 114px / Ribbon 64 / 页签行 26 / 状态栏 22」更正为 R36 实拍值 **140 / 91 / 25 / 23**。门禁：`StatusBarTest`（三页型布局）、`SavedQueriesPageTest`、`SqlSyntaxColorTest`；全量 **1199 / 143 / 0**（53 条环境跳过）。 |
