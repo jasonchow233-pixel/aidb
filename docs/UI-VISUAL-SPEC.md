@@ -55,17 +55,20 @@
 > ⚠️ **等宽字体的边界**：只给「需要按位对齐 / 需要看原始内容」的地方用。
 > 表格正文、按钮、菜单一律用界面字体 —— 全表格等宽会让「表名 + 说明」这类中文文案显得稀疏。
 
-### 2.2 7 档字号阶梯（唯一真相：`tokens.json` 的 `fs-*`）
+### 2.2 3 档字号阶梯（唯一真相：`tokens.json` 的 `fs-*`）
 
 | 令牌 | 值 | 允许出现的场景 | 禁止 |
 |---|---|---|---|
-| `fs-2xs` | 10px | **单字符**徽标 / 角标：排序角标、脏标记、快捷键角标 | 任何成句文字 |
-| `fs-xs` | 11px | 辅助信息：状态栏、列类型行、分组标题、树副标题、提示文字、chip、统计条 | 表格正文 |
+| `fs-xs` | 11px | 辅助信息：状态栏、列类型行、分组标题、树副标题、提示文字、chip、角标、快捷键键帽 | 表格正文 |
 | `fs-sm` | 12px | **数据面正文**：网格 / 清单 / 树 / 结构页 / 按钮 / 菜单 | 页面标题、空态标题 |
-| `fs-md` | 13px | **界面基准**（`.root`）：对话框标题、非数据面的说明文字 | 数据面正文 |
-| `fs-lg` | 14px | 区块标题、对话框标题 | — |
-| `fs-xl` | 16px | 应用名、对象标题、空状态标题 | — |
-| `fs-3xl` | 32px | 空状态图标尺寸 | — |
+| `fs-md` | 13px | **界面基准**（`.root`）：页面 / 对象 / 空态 / 对话框标题、命令面板输入、非数据面的说明文字 | 数据面正文 |
+
+> ⚠️ **10px（`fs-2xs`）、14px（`fs-lg`）、16px（`fs-xl`）、32px（`fs-3xl`）已于 2026-11-01
+> 随 R41 · N30 移除**：10px 的角标贴着可读下限，14 / 16px 与 12 / 13px 只差 1–2px，
+> 却让同一屏出现四五个「层级」—— 视觉重量碎掉。现在只有 **11 / 12 / 13** 三档：
+> 层次由 **bold + 颜色** 拉开，而不是靠每级加 1px。
+> 32px 是空状态图标的尺寸，由 `Icons.SIZE_EMPTY` 在 Java 侧给定，字号阶梯不再保留这一档。
+> **删令牌，不给令牌硬造消费者**。
 
 > ⚠️ **40px（`fs-4xl`）已于 2026-10-23 移除**（第十九轮批次 C · S-5）：它唯一的用处是
 > 欢迎页 logo 的 `-fx-font-size`，而 S-5 把 logo 换成了**品牌 PNG** —— 尺寸改由代码定，
@@ -85,7 +88,7 @@
 
 **硬规则**：
 
-- **9px 全面废除**（`AppCssAuditTest` 断言出现 0 次）；10px 只留给单字符徽标。
+- **11px 是下限**：9px / 10px 全部废除（`AppCssAuditTest` 断言出现 0 次）。
 - CSS 里**不得出现字面量字号**，只能引用阶梯值（门禁：`AppCssAuditTest`）。
 - 字号**不随主题变化**（暗色同值）—— 主题只换颜色。
 
@@ -93,7 +96,7 @@
 
 | 界面角色 | 字号 | 样式类 |
 |---|---|---|
-| 页面标题 / 对象名 | 20px bold | `.adb-page__title`、`.adb-object-header__title` |
+| 页面标题 / 对象名 | 13px bold | `.adb-page__title`、`.adb-object-header__title` |
 | 分组标题（侧栏 / 表格页签区） | 11px bold | `.adb-sidebar__section-title`、`.adb-section-title` |
 | 表格正文 | 12px | `.adb-grid .table-cell` |
 | 清单正文（对象 / 表清单） | 12px | `.adb-object-list .table-cell`、`.adb-table-list .table-cell` |
@@ -101,15 +104,17 @@
 | 列名 | 12px bold | `.adb-grid__column-name` |
 | 列类型行 | 11px | `.adb-grid__column-type` |
 | 行号 | 11px | `.adb-grid__row-number` |
-| 排序角标 | 10px bold | `.adb-grid__sort-badge` |
+| 排序角标 | 11px bold | `.adb-grid__sort-badge` |
 | 状态栏 | 11px | `.adb-statusbar .label` |
-| 徽标 / chip | 10–11px | `.adb-badge`、`.adb-chip`、`.adb-filter-chip` |
-| 弹窗标题 | 14px bold | `.adb-dialog > .header-panel .label` |
+| 徽标 / chip | 11px | `.adb-badge`、`.adb-chip`、`.adb-filter-chip` |
+| 快捷键键帽 | 11px | `.adb-appbar__search-kbd`、`.adb-palette__accelerator` |
+| 弹窗标题 | 13px bold | `.adb-dialog > .header-panel .label` |
 | 弹窗按钮 | 12px | `.adb-dialog .button` |
-| 空状态标题 | 16px bold | `.adb-empty__title` |
+| 空状态标题 | 13px bold | `.adb-empty__title` |
 | 空状态说明 | 12px | `.adb-muted` |
+| 空状态图标 | 32px（`Icons.SIZE_EMPTY`，不是字号） | `.adb-empty__icon` |
 | Tooltip | 11px | `.tooltip` |
-| 命令面板输入 | 14px | `.adb-palette__input` |
+| 命令面板输入 | 13px | `.adb-palette__input` |
 
 ### 2.4 字重
 
@@ -122,20 +127,20 @@
 | # | 缺口 | 影响 | 修法 |
 |---|---|---|---|
 | **F-1** | 表格**数字列不右对齐**（数据页、对象清单） | 金额/行数/大小无法竖向比较 | 右对齐 + 等宽字体（`TextAlignment.RIGHT` + `.adb-grid__cell--number`） |
-| **F-2** | 一个控件里可能同时出现 3 个字号（列头：名 12 bold + 类型 11 + 角标 10） | 视觉重量碎 | 规定「一个控件最多 2 个字号」：主体 + 角标 |
+| **F-2** | ~~一个控件里可能同时出现 3 个字号（列头：名 12 bold + 类型 11 + 角标 10）~~ | 视觉重量碎 | ✅ R41 · N30 已收敛：角标 10 → 11，列头只剩 **12 bold 主体 + 11 辅助** 两个字号；规则保留「一个控件最多 2 个字号」 |
 
 ---
 
 ## 3. 颜色与语义
 
-### 3.1 令牌分层（`tokens.json` 共 **107** 个：**69 颜色 / 35 尺寸 / 3 时长**）
+### 3.1 令牌分层（`tokens.json` 共 **104** 个：**70 颜色 / 31 尺寸 / 3 时长**）
 
 > 下表的数量与名字是从 `tokens.json` 现量出来的（不是回忆）；
 > `TokenParityTest` 钉住 `meta.count`，任何一处对不上就红。
 
 | 层 | 数量 | 令牌 | 语义 |
 |---|---|---|---|
-| 背景 | 14 | `bg-canvas` `bg-chrome` `bg-sidebar` `bg-surface` `bg-subtle` `bg-elevated` `bg-inset` `bg-hover` `bg-active` `bg-selected` `bg-selected-grid` `bg-header-current` `bg-stripe` `bg-disabled` | canvas=页面底 · chrome=顶区外壳 · surface=条带/面板 · subtle=分区底(比 surface 低一档) · elevated=浮层(弹窗/toast/命令面板) · inset=凹陷(输入框/表头/代码区) · header-current=网格光标列表头 tint（Navicat 实测 `#AED4F2`） |
+| 背景 | 15 | `bg-canvas` `bg-chrome` `bg-sidebar` `bg-surface` `bg-subtle` `bg-elevated` `bg-inset` `bg-hover` `bg-active` `bg-selected` `bg-selected-grid` `bg-header` `bg-header-current` `bg-stripe` `bg-disabled` | canvas=页面底 · chrome=顶区外壳 · surface=条带/面板 · subtle=分区底(比 surface 低一档) · elevated=浮层(弹窗/toast/命令面板) · inset=凹陷(输入框/表头/代码区) · header=表头底 · header-current=网格光标列表头 tint（Navicat 实测 `#AED4F2`） |
 | 边框 | 3 | `border` `border-subtle` `border-focus` | 普通分隔 / 更淡的行线 / 焦点环 |
 | 文字 | 6 | `text-primary` `text-secondary` `text-tertiary` `text-muted` `text-disabled` `text-inverse` | 正文 / 次要 / 三级(提示) / 弱化装饰(图标·分隔线) / 禁用 / 反色(主按钮上) |
 | 强调 | 2 | `accent` `accent-hover` | 主色、悬停 |
@@ -145,7 +150,7 @@
 | 语法高亮 | 9 | `syn-keyword/string/number/comment/function/type/ident/param/error` | SQL 编辑器 |
 | 对象类型 | 7 | `kind-table` `kind-view` `kind-function` `kind-trigger` `kind-procedure` `kind-index` `kind-event` | **对象树 / 结构页的类型色**（§3.4） |
 | 图标分层 | 4 | `icon-edge` `icon-tone-a` `icon-tone-b` `icon-tone-c` | 彩色图标的**角色色**（§4.5）：轮廓 + 三层填充 |
-| 尺寸 | 35 | `h-*`(6) `w-*`(4) `row-*`(5) `fs-*`(7) `sp-*`(8) `r-*`(5) | 高度 / 宽度 / 行高 / 字号 / 间距 / 圆角 |
+| 尺寸 | 31 | `h-*`(6) `w-*`(4) `row-*`(5) `fs-*`(3) `sp-*`(8) `r-*`(5) | 高度 / 宽度 / 行高 / 字号 / 间距 / 圆角 |
 | 时长 | 3 | `dur-toast` `dur-toast-action` `dur-toast-result` | toast 动画 |
 | 遮罩 / 投影 | 3 | `overlay` `shadow-1` `shadow-2` | 弹窗遮罩与两级浮层投影 |
 
@@ -954,7 +959,7 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 | 门禁 | 断言 |
 |---|---|
 | `TokenParityTest` | 令牌键一致 / 亮暗一致 / CSS 无颜色字面量 / **每个令牌都被用到**（不许摆设） |
-| `AppCssAuditTest` | CSS 内无字面量字号·padding·radius；字号 7 档、圆角 3 档、间距 `0/2/4/6/8/12/16/24/32`；`9px` 0 次；数据面正文必须 12px；**固定行高下 12px 正文 + 上下 padding 不得超行高** |
+| `AppCssAuditTest` | CSS 内无字面量字号·padding·radius；字号 **3 档（11/12/13）**、圆角 3 档、间距 `0/2/4/6/8/12/16/24/32`；`9px` / `10px` 0 次；数据面正文必须 12px；**固定行高下 12px 正文 + 上下 padding 不得超行高** |
 | `FocusRingAuditTest` | 每个可聚焦组件类都有 `:focused`；`-fx-opacity` 只 1 处；禁用态抵消 Modena 透明度 |
 | **`AccessibilityAuditTest`**（✅ 第二十六轮 P7-2 新增） | ① 逐页（首页 / 数据页 / 查询页）遍历**可见交互控件**，每个都要有可朗读名称或自身文字 ② 标签与对象切面必须是 `TAB_ITEM` ③ **六区焦点顺序**（前序：菜单→功能栏→侧栏→标签栏→内容区→状态栏；状态栏**零**停靠点，每区 ≥1）④ 标签栏 `Enter` + `→` 键盘可用 ⑤ 切面标签键盘可用 |
 | **`ThemeManagerTest`**（✅ 第二十六轮 P7-1 新增） | 主题切换只在**窗口已显示**时做强制 CSS/布局 pass（未显示时交给 `stage.show()`，别把整棵场景图算两遍）；两套主题 + 业务 CSS 常驻样式表；根节点必须带 `theme-light`/`theme-dark` 类 |

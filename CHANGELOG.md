@@ -11,6 +11,17 @@
 
 ### Added
 
+- **表设计器补齐 Navicat 17 的列属性**（2026-11-01，R41 N29）：
+  字段网格改为 `Name / Type / Length / Decimals / Not Null / Virtual / Key / Comment` 八列。
+  新增 **`Virtual` 生成列**（表达式在属性面板录入；MySQL / SQLite / Oracle 写 `VIRTUAL`、
+  PostgreSQL 写 `STORED`，SQL Server 如实不支持 —— 填了表达式也建不出来时会拦下并说明是哪一列，
+  绝不悄悄降级成一列永远为空的普通列）。
+  `Key` 合并回**单一下拉**（none / primary / unique），自增移入属性面板且只对整型开放，
+  多列主键按网格勾选顺序编号。属性面板新增 **`Key Length`（前缀索引）** 与 **`Binary`**；
+  键长把主键 / 唯一键写成表级 key part（`PRIMARY KEY (email(20))`），不支持前缀索引的方言直接拦下。
+  工具栏 `Ask AI ▾` 的三项都是**真按钮**，点开是如实说明页（本版本没有 AI 服务，指向 ⌘K 与手工路径）。
+  计数文案统一为 `Number of Fields`。门禁：`NewTableDialogTest` 新增 9 条（DDL 断言覆盖键序 /
+  自增 / 键长 / BINARY / 生成列 / 方言拒绝 / Ask AI 说明页）。
 - **R35 彩色图标通道**：`icons/color/*.svg` 资产只声明语义层（`edge` / `tone-a` / `tone-b` / `tone-c` / `accent`），
   颜色一律来自设计令牌，由 `app.css` 的后代规则打到对应子层。
   暗色档**不需要第二套资产**——同一张 SVG 换主题自动换色。
@@ -23,6 +34,13 @@
 
 ### Changed
 
+- **字号阶梯由 7 档收敛为 11 / 12 / 13 三档**（2026-11-01，R41 N30）：
+  删除 `fs-2xs`(10) / `fs-lg`(14) / `fs-xl`(16) / `fs-3xl`(32) 四档令牌。
+  10px 角标贴着可读下限；14 / 16px 与 12 / 13px 只差 1–2px，同一屏却多出三四层「层级」。
+  现在层次由 **bold + 颜色** 拉开：排序角标 / 徽标 / 键帽落到 11px，页面 / 对象 / 空态 /
+  对话框标题统一 13px bold，空状态图标的 32px 改由 `Icons.SIZE_EMPTY` 在 Java 侧给定。
+  令牌总数 108 → **104**；`AppCssAuditTest` 允许字号集合与「11px 下限」同步收紧
+  （`noFontSizeBelowElevenPixels`），`TokenParityTest` 校验每个令牌仍有消费者。
 - **弹窗去掉自绘标题条，连接向导照 Navicat 17 重做成两页**（2026-11-01，R40 N26 N27）：
   所有弹窗内容区的抬头条与右上角 × 一起删除，标题（表名 / 方言 / 库的上下文拼进去）
   交给系统标题栏，关窗走系统 × 与 Esc；随之取消**弹窗尺寸记忆** —— 上次把某个弹窗拉到
