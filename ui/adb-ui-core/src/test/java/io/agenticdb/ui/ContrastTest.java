@@ -185,6 +185,42 @@ class ContrastTest {
         }
     }
 
+    /**
+     * ⭐ R43-a：厂商<b>品牌色</b>同样是非文字元素，两档主题都得与页面底拉开 ≥3:1。
+     *
+     * <p>为什么单开一条：品牌色是从各家官色<b>抄来的值</b>（MySQL 青、Oracle 红……），
+     * 抄的时候很容易照抄「亮色档那个深度」—— 于是暗色档压在黑底上等于隐形。
+     * {@code -adb-vendor-*} 的每一档都要自己过一遍这个算式，不能靠轮廓层替它担保：
+     * 品牌色走的是<b>填充层</b>，填充面积正是用户读「这是哪家库」的那一块。
+     */
+    @Test
+    void vendorBrandColorsStandOutAgainstTheBackground() throws IOException {
+        JsonNode tokens = new ObjectMapper()
+                .readTree(readResource("/tokens/tokens.json")).path("tokens");
+        List<String> checked = new ArrayList<>();
+        List<String> failures = new ArrayList<>();
+        tokens.fields().forEachRemaining(entry -> {
+            String key = entry.getKey();
+            if (!key.startsWith("vendor-")) {
+                return;
+            }
+            checked.add(key);
+            for (String theme : new String[]{"light", "dark"}) {
+                double ratio = contrast(tokens, key, "bg-canvas", "bg-canvas", theme);
+                if (ratio < 3.0) {
+                    failures.add(String.format("%s 主题：%s 与页面底只差 %.2f:1（要求 ≥ 3:1）",
+                            theme, key, ratio));
+                }
+            }
+        });
+        assertThat(checked)
+                .as("一条品牌色都没扫到 —— 令牌前缀约定改了，这份审计是假绿")
+                .isNotEmpty();
+        assertThat(failures)
+                .as("厂商品牌色在两档主题下都得看得出来：\n  %s", String.join("\n  ", failures))
+                .isEmpty();
+    }
+
     // ─────────────────────────── 颜色计算 ───────────────────────────
 
     /** 对比度：前景文字 vs 背景（背景先合成到 base 上）。 */

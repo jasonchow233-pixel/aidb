@@ -10,7 +10,7 @@ import java.util.List;
  */
 public final class Tokens {
 
-    public static final int COUNT = 104;
+    public static final int COUNT = 110;
 
     /** bg-canvas (color) */
     public static final String BG_CANVAS_DARK = "#0B1220";
@@ -424,6 +424,30 @@ public final class Tokens {
     public static final String ICON_TONE_C_DARK = "#2A628E";
     public static final String ICON_TONE_C_LIGHT = "#96D0FF";
 
+    /** vendor-mysql (color) */
+    public static final String VENDOR_MYSQL_DARK = "#4FC8DE";
+    public static final String VENDOR_MYSQL_LIGHT = "#00758F";
+
+    /** vendor-postgresql (color) */
+    public static final String VENDOR_POSTGRESQL_DARK = "#7FB3D9";
+    public static final String VENDOR_POSTGRESQL_LIGHT = "#336791";
+
+    /** vendor-sqlserver (color) */
+    public static final String VENDOR_SQLSERVER_DARK = "#E3B23C";
+    public static final String VENDOR_SQLSERVER_LIGHT = "#8A5A00";
+
+    /** vendor-oracle (color) */
+    public static final String VENDOR_ORACLE_DARK = "#FF7168";
+    public static final String VENDOR_ORACLE_LIGHT = "#C71000";
+
+    /** vendor-sqlite (color) */
+    public static final String VENDOR_SQLITE_DARK = "#67D4EF";
+    public static final String VENDOR_SQLITE_LIGHT = "#0F83AE";
+
+    /** vendor-mariadb (color) */
+    public static final String VENDOR_MARIADB_DARK = "#8FC9E0";
+    public static final String VENDOR_MARIADB_LIGHT = "#003545";
+
     /** row-tree (size) */
     public static final int ROW_TREE_DARK = 20;
     public static final int ROW_TREE_LIGHT = 20;
@@ -446,7 +470,8 @@ public final class Tokens {
             "r-xl", "r-full", "dur-toast", "dur-toast-action", "dur-toast-result", "kind-table",
             "kind-view", "kind-function", "kind-trigger", "kind-procedure", "overlay", "shadow-1",
             "shadow-2", "kind-index", "kind-event", "icon-edge", "icon-tone-a", "icon-tone-b",
-            "icon-tone-c", "row-tree"
+            "icon-tone-c", "vendor-mysql", "vendor-postgresql", "vendor-sqlserver", "vendor-oracle", "vendor-sqlite",
+            "vendor-mariadb", "row-tree"
     );
 
     private Tokens() { }

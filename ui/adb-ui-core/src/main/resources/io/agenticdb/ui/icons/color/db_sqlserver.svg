@@ -1,0 +1,8 @@
+<!-- AIDB 自有彩色资产（R43-a 厂商图形）：六边形宝石，内芯浅一档。
+     只标 data-paint 角色，颜色来自 app.css 的 -adb-vendor-sqlserver。
+     ⚠️ 本目录禁止出现任何第三方或竞品的位图/图标资产。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <path data-paint="tone-c" d="M 8 2 L 13.2 5 L 13.2 11 L 8 14 L 2.8 11 L 2.8 5 Z"/>
+  <path data-paint="tone-a" d="M 8 5.4 L 10.7 6.9 L 10.7 9.9 L 8 11.4 L 5.3 9.9 L 5.3 6.9 Z"/>
+  <path data-paint="edge" d="M 8 2 L 13.2 5 L 13.2 11 L 8 14 L 2.8 11 L 2.8 5 Z"/>
+</svg>

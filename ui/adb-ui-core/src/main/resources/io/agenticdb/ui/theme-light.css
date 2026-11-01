@@ -71,4 +71,10 @@
     -adb-icon-tone-a: #CDE8FF;
     -adb-icon-tone-b: #B8DFFF;
     -adb-icon-tone-c: #96D0FF;
+    -adb-vendor-mysql: #00758F;
+    -adb-vendor-postgresql: #336791;
+    -adb-vendor-sqlserver: #8A5A00;
+    -adb-vendor-oracle: #C71000;
+    -adb-vendor-sqlite: #0F83AE;
+    -adb-vendor-mariadb: #003545;
 }
