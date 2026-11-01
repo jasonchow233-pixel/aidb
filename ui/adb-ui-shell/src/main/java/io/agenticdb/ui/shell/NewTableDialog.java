@@ -308,8 +308,15 @@ final class NewTableDialog {
         // ⭐ R31：Navicat 形态 —— 工具条 / 网格 / 属性面板三段。
         //    属性面板（默认值 / 字符集 / 排序规则）放在网格下方，选中哪行改哪行；
         //    默认值从网格里挪出来，给「长度 / 小数 / 自增」腾出列宽。
+        // ⭐ R43-c：三段作为一个**整体**在页签内容区里垂直居中，网格不再自己吃掉多余高度
+        //    （原来是 VBox.setVgrow(table, ALWAYS)）。弹窗固定 680px 高（页签之间不许跳），
+        //    只有四列时那条带子有 130px 没主，全落在「网格最后一行与属性面板之间」——
+        //    看着像还有几行没填，正是 fitTableHeight 要治的那个毛病被这句 vgrow 放了回来。
+        //    居中后留白回到上下两端，且工具条与它的网格仍然贴在一起。
+        //    ⚠️ 这里不需要 vgrow：TabPane 把 content 拉满内容区，VBox 的 alignment
+        //    于是真有可分配的空间（R43-b 踩过「容器没被拉长 → 居中=空转」，那一环由重拍帧证）。
         VBox fieldPage = new VBox(8, fieldToolbar, table, buildFieldProperties());
-        VBox.setVgrow(table, Priority.ALWAYS);
+        fieldPage.setAlignment(Pos.CENTER);
         // 还没有选中行：属性面板三格先按「不可编辑」摆出来。
         showProperties(null);
 
