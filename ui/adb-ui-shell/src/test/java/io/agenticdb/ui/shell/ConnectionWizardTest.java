@@ -138,76 +138,78 @@ class ConnectionWizardTest {
     }
 
     /**
-     * ⭐ N27-a：类型页照 Navicat 17 摆全 22 张磁贴（9 连接类型 + 13 厂商），
-     * 5 列卡片；左栏的复选清单与磁贴是同一份清单。
+     * ⭐ R43-b：类型页只摆<b>真有驱动</b>的六家，一行六张 + 一行「其它怎么走」的提示。
      *
-     * <p>「全摆」不等于「全支持」：{@code ConnectionCatalog.Entry#supported()} 为 false 的
-     * 那几张点进去是如实说明页（见 {@link #unsupportedTypeExplainsInsteadOfShowingAFakeForm}）。
+     * <p>原来照 Navicat 17 摆 22 张磁贴（9 类型 + 13 厂商）配 22 个复选与一个搜索框，
+     * 其中 16 张点进去是一份「本版不支持」。那不是 Navicat 的形态 —— 它摆这些家是因为
+     * 真连得上去；我们摆出来只是让用户多点十六次空。所以这条门禁断的是反方向：
+     * 死磁贴、复选栏、搜索框都不许回来。
      */
     @Test
-    void typePageListsEveryConnectionTypeAndVendorInFiveColumns(FxRobot robot) {
+    void typePageShowsOnlyTheSixDriversItActuallyShips(FxRobot robot) {
         open(robot, null);
 
-        assertThat(ConnectionCatalog.CONNECTIONS).hasSize(9);
-        assertThat(ConnectionCatalog.VENDORS).hasSize(13);
-        for (ConnectionCatalog.Entry entry : ConnectionCatalog.all()) {
+        assertThat(ConnectionCatalog.CONNECTIONS).hasSize(6);
+        for (ConnectionCatalog.Entry entry : ConnectionCatalog.CONNECTIONS) {
             assertThat(robot.lookup("#wizard-tile-" + entry.id()).tryQuery())
                     .as("磁贴：" + entry.name())
                     .isPresent();
-            assertThat(robot.lookup("#wizard-filter-" + entry.id()).tryQuery())
-                    .as("左栏复选：" + entry.name())
-                    .isPresent();
         }
+        assertThat(robot.lookup("#wizard-tile-MONGODB").tryQuery())
+                .as("没有驱动的磁贴不许回来")
+                .isEmpty();
+        assertThat(robot.lookup("#wizard-filters").tryQuery())
+                .as("六张磁贴不需要左栏复选")
+                .isEmpty();
+        assertThat(robot.lookup("#wizard-type-search").tryQuery())
+                .as("六张磁贴不需要搜索框")
+                .isEmpty();
 
-        javafx.scene.layout.TilePane connections = robot.lookup("#wizard-type-tiles")
+        javafx.scene.layout.TilePane tiles = robot.lookup("#wizard-type-tiles")
                 .queryAs(javafx.scene.layout.TilePane.class);
-        javafx.scene.layout.TilePane vendors = robot.lookup("#wizard-vendor-tiles")
-                .queryAs(javafx.scene.layout.TilePane.class);
-        assertThat(connections.getPrefColumns()).as("Navicat 的类型页是 5 列").isEqualTo(5);
-        assertThat(vendors.getPrefColumns()).isEqualTo(5);
-        assertThat(connections.getChildren()).hasSize(9);
-        assertThat(vendors.getChildren()).hasSize(13);
+        assertThat(tiles.getPrefColumns())
+                .as("六张摆成一行，不再为 22 张留多列偏好")
+                .isEqualTo(ConnectionCatalog.CONNECTIONS.size());
+        assertThat(tiles.getAlignment())
+                .as("磁贴块在中间带里居中：类型页沿用属性页的高度，贴顶摆会让下半屏空着")
+                .isEqualTo(javafx.geometry.Pos.CENTER);
+        // 居中最容易空转：只要 grow 链断一层，磁贴块就只在自己的 pref 框里居中，
+        // 画面照旧空着下半屏而属性断言全绿（本轮实拍就是这么抓出来的）。
+        // 所以断的是**链路本身**，不是量高度 —— 量高度要等布局，会引进时序假红。
+        assertThat(javafx.scene.layout.VBox.getVgrow(tiles))
+                .as("tiles 要吃下 body 里多出来的高度")
+                .isEqualTo(javafx.scene.layout.Priority.ALWAYS);
+        assertThat(tiles.getParent())
+                .as("磁贴块外面那一层 VBox 也要愿意长")
+                .isInstanceOf(javafx.scene.layout.VBox.class);
+        assertThat(javafx.scene.layout.VBox.getVgrow(tiles.getParent()))
+                .as("body 要吃下 outer 里多出来的高度（少这一句，居中=空转）")
+                .isEqualTo(javafx.scene.layout.Priority.ALWAYS);
+        assertThat(tiles.getChildren()).hasSize(6);
+        assertThat(tiles.getChildren()).allSatisfy(tile ->
+                assertThat(((javafx.scene.Node) tile).isVisible()).isTrue());
+
+        // 告知不铺路（§11）：收成六张之后，「其它数据库怎么办」必须写在页面上，
+        // 而不是像以前那样藏进一张点得进去的说明页里。
+        assertThat(((javafx.scene.control.Label) robot.lookup("#wizard-type-hint").query())
+                .getText()).isEqualTo(I18n.t("wizard.type.hint"));
     }
 
-    /** 左栏勾掉一项 → 对应磁贴消失；两项清单一共 22 个复选。 */
+    /** 选一种进下一步：六家都有表单，不再有「无驱动」分支。 */
     @Test
-    void uncheckingAFilterHidesItsTile(FxRobot robot) {
+    void everyTileLeadsToTheRealForm(FxRobot robot) {
         open(robot, null);
 
-        assertThat(robot.lookup("#wizard-filters").query().lookupAll(".adb-wizard__filter-check"))
-                .as("Connection Filter 9 + Vendor Filter 13")
-                .hasSize(22);
-
-        click(robot, "wizard-filter-SQLITE");
-        assertThat(robot.lookup("#wizard-tile-SQLITE").tryQuery()
-                .map(javafx.scene.Node::isVisible))
-                .as("勾掉 SQLite 后它的磁贴不该还在").contains(false);
-    }
-
-    /** 没有驱动的库型点下一步 → 如实说明页，不是一张填了也连不上的表单。 */
-    @Test
-    void unsupportedTypeExplainsInsteadOfShowingAFakeForm(FxRobot robot) {
-        open(robot, null);
-
-        click(robot, "wizard-tile-MONGODB");
+        click(robot, "wizard-tile-POSTGRESQL");
         click(robot, "wizard-next");
 
         assertThat(wizard.step()).isEqualTo(2);
-        assertThat(robot.lookup("#wizard-unsupported").tryQuery())
-                .as("没有驱动：给说明页")
-                .isPresent();
         assertThat(robot.lookup("#wizard-tabs").tryQuery())
-                .as("不许摆属性页 —— 填了也连不上")
+                .as("真有驱动：直接进属性页")
+                .isPresent();
+        assertThat(robot.lookup("#wizard-unsupported").tryQuery())
+                .as("说明页随死磁贴一起删了")
                 .isEmpty();
-        assertThat(robot.lookup("#wizard-unsupported").queryAs(javafx.scene.layout.VBox.class)
-                .lookupAll(".label").stream()
-                .map(node -> ((javafx.scene.control.Label) node).getText())
-                .toList())
-                .anyMatch(text -> text.contains("MongoDB"))
-                .anyMatch(text -> text.contains("MySQL"));
-
-        click(robot, "wizard-back");
-        assertThat(wizard.step()).isEqualTo(1);
     }
 
     /**
@@ -290,22 +292,6 @@ class ConnectionWizardTest {
                 .as("类型页要 5 列磁贴 + 212px 复选栏")
                 .isEqualTo(900);
         assertThat(wizard.dialogPane().getPrefHeight()).isEqualTo(700);
-    }
-
-    @Test
-    void searchFiltersTheTiles(FxRobot robot) {
-        open(robot, null);
-
-        robot.clickOn("#wizard-type-search");
-        robot.write("my");
-
-        ToggleButton mysql = robot.lookup("#wizard-tile-MYSQL")
-                .queryAs(ToggleButton.class);
-        ToggleButton sqlite = robot.lookup("#wizard-tile-SQLITE")
-                .queryAs(ToggleButton.class);
-        assertThat(mysql.isVisible()).isTrue();
-        assertThat(sqlite.isVisible()).as("搜 my 时 SQLite 不该还在").isFalse();
-        assertThat(sqlite.isManaged()).isFalse();
     }
 
     @Test

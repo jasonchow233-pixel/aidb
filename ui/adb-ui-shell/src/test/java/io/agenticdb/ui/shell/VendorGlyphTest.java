@@ -95,7 +95,6 @@ class VendorGlyphTest {
         for (Vendor vendor : VENDORS) {
             ConnectionCatalog.Entry entry = ConnectionCatalog.forKind(vendor.kind());
             assertThat(entry).as("%s 必须在登记表里有自己的一行", vendor.kind()).isNotNull();
-            assertThat(entry.supported()).as("%s 登记成了无驱动项", vendor.kind()).isTrue();
             Icons.Icon glyph = entry.glyph();
             assertThat(glyph).as("%s 顶的还是通用圆柱 —— 图形没登记", vendor.kind())
                     .isNotEqualTo(Icons.Icon.DATABASE);

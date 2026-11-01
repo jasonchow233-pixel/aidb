@@ -976,22 +976,25 @@ class NewTableDialogTest {
     }
 
     /**
-     * ⭐ N29：{@code Ask AI ▾} 的每一项都是一颗<b>真按钮</b> —— 点开是如实说明页，
-     * 说清本版本没有 AI 服务，而不是什么也不发生。
+     * ⭐ N29 → R43-b：{@code Ask AI} 一击开<b>一份</b>如实说明页。
+     *
+     * <p>原来是三项菜单，三项开的是同一段文字 —— 那等于用两步交互伪装三种能力。
+     * 这条门禁现在断的是反方向：<b>不许</b>再长出子菜单，且一击必须有动作。
      */
     @Test
-    void askAiMenuExplainsInsteadOfPretending() {
+    void askAiButtonExplainsInsteadOfPretending() {
         NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
 
-        javafx.scene.control.MenuButton menu = onFx(dialog::askAiMenu);
-        assertThat(menu).as("字段工具条右端必须有 Ask AI").isNotNull();
-        assertThat(onFx(() -> menu.getItems().size())).isEqualTo(3);
-        assertThat(onFx(() -> menu.getItems().getFirst().getOnAction()))
-                .as("菜单项必须有动作，不能是死按钮")
+        javafx.scene.control.Button button = onFx(dialog::askAiButton);
+        assertThat(button).as("字段工具条右端必须有 Ask AI").isNotNull();
+        assertThat(button)
+                .as("说明只有一份，摆成菜单就是假装有三种能力")
+                .isNotInstanceOf(javafx.scene.control.MenuButton.class);
+        assertThat(onFx(() -> button.getOnAction()))
+                .as("按钮必须有动作，不能是死按钮")
                 .isNotNull();
 
-        javafx.scene.control.Alert alert =
-                onFx(() -> dialog.askAiAlert(I18n.t("newtable.askAi.explain")));
+        javafx.scene.control.Alert alert = onFx(dialog::askAiAlert);
         assertThat(onFx(() -> alert.getDialogPane().getId()))
                 .isEqualTo("new-table-ask-ai-notice");
         assertThat(onFx(alert::getHeaderText)).contains(I18n.t("grid.capability.title"));
