@@ -902,6 +902,17 @@
     -fx-padding: 0px;
 }
 
+/* ⭐ R40 帧目视：菜单按钮的**内层 label** 不能吃竖直内边距。
+ *   modena.css 的 `.menu-button > .label` 是 4px 8px，和外壳（本项目的
+ *   `.adb-button` 4px 12px 等）叠成两层 —— 外壳已经定死 18px 的 label 高度，
+ *   竖直 4+4 一吃，内容区只剩 10px，而 12px 字号的行框是 15px：
+ *   LabeledText 按内容区裁字，p3-query 实拍里「agenticdb-demodb」的 g 没有尾巴、
+ *   「Untitled」底边被削平。竖直归零（横向保留 8px —— 那是已验收的左右缩进，
+ *   也是箭头与文字之间的间距来源），行框 15px 就装得下了。 */
+.menu-button > .label {
+    -fx-padding: 0px 8px 0px 8px;
+}
+
 /* Modena 给箭头按钮画了渐变底、给箭头画了两层高光；这里都压平。 */
 .combo-box .arrow-button {
     -fx-background-color: transparent;
@@ -3209,6 +3220,10 @@
     -fx-pref-height: 62px;
 }
 
+/* 两行各 31px（62 ÷ 2），行内 28px 控件 + 上下各 2px 内边距。
+   ⚠️ 下排两个下拉曾被误判成「行高不够」压扁文字 —— 真正原因是 Modena 给
+   `.menu-button > .label` 的竖直内边距（见「下拉框」段），与这里的行高无关；
+   内边距不能降到 1px：AppCssAuditTest 要求全部落在 2/4/8… 的间距阶梯上。 */
 .adb-query__toolbar-row {
     -fx-padding: 2px 16px;
     -fx-alignment: center-left;
@@ -3834,7 +3849,7 @@
 
 .adb-type-tile__name {
     -fx-text-fill: -adb-text-primary;
-    -fx-font-size: 13px;
+    -fx-font-size: 12px;
     -fx-font-weight: bold;
 }
 
@@ -3905,6 +3920,18 @@
     -fx-text-fill: -adb-text-secondary;
     -fx-font-size: 11px;
     -fx-font-weight: bold;
+}
+
+/* N27-b：七个属性页签的内容统一 16px —— 和类型页 `.adb-wizard__content` 同一档。
+   以前只有 GridPane 自带 12px，SSL 说明 / 高级 / 备注这些页的文字直接贴到 x=0。 */
+.adb-form > .tab-content-area {
+    -fx-padding: 16px;
+}
+
+/* 属性页的页脚（状态行 + 五键）跟着页签内容缩进 —— 不缩的话第一颗按钮
+   和「Not tested yet」贴着弹窗左缘，与上面的页签对不齐。 */
+.adb-wizard__footer {
+    -fx-padding: 0px 16px 0px 16px;
 }
 
 /* 磁贴图标按库型着色。Navicat 17 的磁贴是彩色图标 + 黑字，选色跟着各家品牌走；

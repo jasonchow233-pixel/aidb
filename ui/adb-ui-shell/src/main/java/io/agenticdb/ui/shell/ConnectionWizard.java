@@ -369,17 +369,22 @@ public final class ConnectionWizard {
      * 多一行小字会把 5 列网格挤成 3 列。
      */
     private ToggleButton tile(ConnectionCatalog.Entry entry) {
-        Label icon = new Label();
-        icon.setGraphic(Icons.of(Icons.Icon.DATABASE, Icons.SIZE_TILE));
+        Label icon = bigIcon(Icons.of(Icons.Icon.DATABASE, Icons.SIZE_TILE));
         icon.getStyleClass().add("adb-type-tile__icon");
 
         Label title = new Label(entry.name());
         title.getStyleClass().add("adb-type-tile__name");
         title.setWrapText(true);
+        // 单行文字的对齐看 -fx-alignment，setTextAlignment 只管多行 —— 只设后者，
+        // 「MySQL」会贴在 88px 标签的左缘（实测中心偏左 20px）。
+        title.setAlignment(Pos.CENTER);
         title.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
-        title.setMaxWidth(96);
+        // 磁贴内容区 = 112 − 2×12 内边距 = 88。宽度按内容区算，别让它以为有 96 ——
+        // 多出的 8px 会让本来单行的长名字（Microsoft Azure）折成两行。
+        title.setMaxWidth(88);
 
-        VBox box = new VBox(6, icon, title);
+        // 两行名字也要装得下：44 图标 + 8 间距 + 2×16 行高 = 84，正好等于内容区高度。
+        VBox box = new VBox(8, icon, title);
         box.setAlignment(Pos.CENTER);
 
         ToggleButton button = new ToggleButton();
@@ -404,6 +409,25 @@ public final class ConnectionWizard {
         });
         tileByEntry.put(entry, button);
         return button;
+    }
+
+    /**
+     * 大图标必须自己占住尺寸：{@link Icons#of} 返回的是带 scaleX/scaleY 的 SVGPath，
+     * 布局边界仍是 16×16 —— 直接叠进 VBox，下面的文字会压到图形上（实测帧里
+     * 「MySQL」浮在圆柱体底边上）。把 Label 钉成 44×44，间距才按视觉算。
+     */
+    private static Label bigIcon(Node graphic) {
+        return bigIcon(graphic, Icons.SIZE_TILE);
+    }
+
+    private static Label bigIcon(Node graphic, double size) {
+        Label label = new Label();
+        label.setGraphic(graphic);
+        label.setAlignment(Pos.CENTER);
+        label.setMinSize(size, size);
+        label.setPrefSize(size, size);
+        label.setMaxSize(size, size);
+        return label;
     }
 
     /** 左栏两块复选清单（9 + 13），勾掉即隐藏对应磁贴。 */
@@ -773,8 +797,13 @@ public final class ConnectionWizard {
                 navButton("wizard-back", I18n.t("wizard.back"), this::goBack),
                 cancelButton, saveButton);
         nav.setAlignment(Pos.CENTER_LEFT);
+        // 页签内容有 16px 内边距（CSS），页脚两行也要跟着缩进来 ——
+        // 否则「Not tested yet」与第一颗按钮会贴着弹窗左缘，和上面的页签对不齐。
+        nav.getStyleClass().add("adb-wizard__footer");
+        VBox status = new VBox(2, testResult, saveError);
+        status.getStyleClass().add("adb-wizard__footer");
 
-        VBox box = new VBox(8, tabs, testResult, saveError, nav);
+        VBox box = new VBox(8, tabs, status, nav);
         VBox.setVgrow(tabs, Priority.ALWAYS);
         return box;
     }
@@ -832,8 +861,7 @@ public final class ConnectionWizard {
      * 「谁连谁」的示意图，不是品牌橱窗。
      */
     private Node connectionDiagram() {
-        Label appIcon = new Label();
-        appIcon.setGraphic(Icons.of(Icons.Icon.BRAND, Icons.SIZE_TILE));
+        Label appIcon = bigIcon(Icons.of(Icons.Icon.BRAND, Icons.SIZE_TILE));
         Label appName = new Label("AIDB");
         appName.getStyleClass().add("adb-wizard__diagram-name");
         VBox app = new VBox(6, appIcon, appName);
@@ -846,8 +874,7 @@ public final class ConnectionWizard {
         line.setMinHeight(1);
         line.setMaxHeight(1);
 
-        Label dbIcon = new Label();
-        dbIcon.setGraphic(Icons.colored(Icons.Icon.DATABASE, Icons.SIZE_TILE));
+        Label dbIcon = bigIcon(Icons.colored(Icons.Icon.DATABASE, Icons.SIZE_TILE));
         Label dbName = new Label(type.displayName());
         dbName.getStyleClass().add("adb-wizard__diagram-name");
         VBox database = new VBox(6, dbIcon, dbName);
@@ -913,9 +940,15 @@ public final class ConnectionWizard {
         GridPane grid = grid();
         grid.addRow(0, new Label(I18n.t("wizard.ssl.encryption")), sslMode);
         grid.addRow(1, new Label(I18n.t("wizard.ssl.rootCert")), sslRoot);
-        box.getChildren().addAll(grid, sslHint);
+        // 说明与字段同宽、同左缘：放在 GridPane 里跨两列，不然它自己会回到 x=0（贴弹窗边）。
+        sslHint.setMaxWidth(550);
+        grid.add(sslHint, 0, 2, 2, 1);
+        box.getChildren().add(grid);
         updateSslHint();
-        return box;
+        // 与常规页同一套居中：换页签时表单不该横向跳一格。
+        HBox centered = new HBox(box);
+        centered.setAlignment(Pos.CENTER);
+        return centered;
     }
 
     private void updateSslHint() {
@@ -955,7 +988,8 @@ public final class ConnectionWizard {
         body.setWrapText(true);
         VBox box = new VBox(8, title, body);
         box.setId("wizard-notice");
-        box.setPadding(new Insets(24));
+        // 页签内容自己已有 16px（CSS）—— 这里只补到 Navicat 的 24px 落点，不叠成 40。
+        box.setPadding(new Insets(8));
         return box;
     }
 
@@ -1116,8 +1150,7 @@ public final class ConnectionWizard {
         ConnectionCatalog.Entry entry = selectedUnsupported;
         String name = entry == null ? "" : entry.name();
 
-        Label icon = new Label();
-        icon.setGraphic(Icons.of(Icons.Icon.ALERT, Icons.SIZE_EMPTY));
+        Label icon = bigIcon(Icons.of(Icons.Icon.ALERT, Icons.SIZE_EMPTY), Icons.SIZE_EMPTY);
         icon.getStyleClass().add("adb-empty__icon");
 
         Label title = new Label(I18n.t("wizard.unsupported.headline", name));

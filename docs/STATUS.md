@@ -10,8 +10,8 @@
 | 项 | 值 |
 |---|---|
 | 命令 | `./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`） |
-| 最近一次全量回量 | 2026-10-31 · macOS 15.7 x64 · JDK 25.0.4（IntelliJ JBR） |
-| 结果 | **1199 条 / 143 类 / 0 失败**（另有 53 条环境门控跳过）—— R39 查询编辑器 + 已保存查询 + 状态栏（N21–N25）后回量（`./scripts/build.sh` 全绿；较上一版 **+8 条 / +2 类**：新增 `SqlSyntaxColorTest` 5 条（N22 配色重标定）与 `SavedQueriesPageTest` 4 条（N24 对象页四列 / 设计键 / 删除默认取消 / 刷新），`StatusBarTest` 删掉旧「事务 · 只读」段并补三页型布局 1 条） |
+| 最近一次全量回量 | 2026-11-01 · macOS 15.7 x64 · JDK 25.0.4（IntelliJ JBR） |
+| 结果 | **1204 条 / 143 类 / 0 失败**（另有 53 条环境门控跳过）—— R40 弹窗系统标题栏 + 连接向导两页（N26 N27）后回量（`./scripts/build.sh` 全绿；较上一版 **+5 条**：`ConnectionWizardTest` 新增 6 条（9+13 磁贴五列 / 复选过滤 / 无驱动说明页 / 五键顺序 / 示意图 / 900×700 逐条落测），`DialogStylesTest` 删 2 条尺寸记忆、补 1 条「apply 不写 pref 尺寸」） |
 
 **口径警告（改数字前必读）**：4 个测试类用 `@Nested`，surefire 的 XML 会把外层类写成 `tests="0"`
 （真实用例在内层类条目里）。按 `tests=` 属性统计会少算一百多条 —— 所以计数一律走
@@ -28,7 +28,7 @@
 |---|---|---|
 | 外壳与布局 | ✅ | 七区（菜单 / 功能区 / 侧栏 / 页签 / 对象工具条 / 内容区 / 状态栏）；侧栏 250px、折叠 48px、可拖 200–360；macOS 用系统菜单栏；状态栏按页型换段（查询 / 数据 / 对象三套），不再摆「自动提交 · 只读」 |
 | 连接与凭据 | ✅ | 六种方言：SQLite / MySQL 5.7–8.x / PostgreSQL（真库验证过）；MariaDB / SQL Server / Oracle（方言 + 单测门禁已落地，**目录查询未在真库验证**，方言源码逐条标注）。连接分组、收藏、复制、URI（含 Oracle EZConnect 与 SQL Server 分号参数串）；口令进系统凭据服务，**不落盘**；`connections.json` 落盘前剔除敏感键；HikariCP 池化（除 SQLite），SQLite 直连 |
-| 连接向导 | ✅ | 6 个类型磁贴 → 7 页属性 → 测试 → 保存。SSL 页的档位与根证书参数**由方言自报**（PG `sslmode` / MySQL `sslMode` / MariaDB `sslMode`+`serverSslCert`，MariaDB 没有 prefer 档）；SQL Server（encrypt + trustServerCertificate 配对）与 Oracle（钱包 / sqlnet.ora）收起档位并写明去哪里填；SSH / HTTP 页如实标注「未实现」，不是空壳 |
+| 连接向导 | ✅ | 两页 900×700：类型页左栏 Connection / Vendor Filter（9 + 13 复选）配 5 列彩色磁贴 + 搜索，属性页 7 页签 + `AIDB ⟷ Database` 示意图 + 底部五键。**22 张磁贴照 Navicat 全摆，但只有 6 种真有驱动**；MongoDB / Redis / Snowflake 与 13 个厂商点进去是「如实说明页」（给替代路径，不摆填了也连不上的表单）。SSL 页的档位与根证书参数**由方言自报**（PG `sslmode` / MySQL `sslMode` / MariaDB `sslMode`+`serverSslCert`，MariaDB 没有 prefer 档）；SQL Server（encrypt + trustServerCertificate 配对）与 Oracle（钱包 / sqlnet.ora）收起档位并写明去哪里填；SSH / HTTP 页如实标注「未实现」，不是空壳 |
 | 对象树 | ✅ | 真实内省（表 / 视图 / 函数·过程；触发器按表归属在结构页，事件本版本不上树）；多连接同树；表节点懒加载展开列，失败可重试 |
 | 数据网格 | ✅ | 服务端分页（100/200/500/1000）、行首 16px 状态槽、类型行、列宽/顺序/显隐持久化、冻结列、矩形选择、⌘F 本页搜索、转置只读视图；工具条 13 具名键 + 视图/溢出两小键（放不下折进 `»`）；底栏五键 + 页码框 + 齿轮（页大小/跳至记录）+ 放大镜 + 视图切换；**内嵌 Filter & Sort 生成器**（平铺 AND、Builder/Text 双模式、显式 Apply、Sort By 芯片） |
 | Filter & Sort 面板 | ✅ | 网格内嵌（非弹窗），只改草稿不即输即查；`Criteria Edited` 标脏，`Apply Filter & Sort` 才生效。**边界**：底层 `DataQuery` 只有平铺 AND —— `and` 固定，`[Ω]`（OR 组）给如实说明页；Text 模式只读（自由 SQL 请去查询页）；`IN` 条件无法在行内表达，列头漏斗的按值筛选保留并原样带入 |
