@@ -381,6 +381,13 @@ public class MySqlDialect implements Dialect {
         if (column.collation() != null) {
             definition += " COLLATE " + column.collation();
         }
+        // ⭐ N29：BINARY 与生成列都属于「类型之后、约束之前」这一段。
+        if (column.binary()) {
+            definition += " BINARY";
+        }
+        if (column.generated()) {
+            definition += generatedColumnSql(column.generatedExpression());
+        }
         if (!column.nullable()) {
             definition += " NOT NULL";
         }
@@ -532,6 +539,26 @@ public class MySqlDialect implements Dialect {
     @Override
     public boolean supportsColumnCharset() {
         return true;
+    }
+
+    @Override
+    public boolean supportsColumnBinary() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsIndexPrefixLength() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsGeneratedColumn() {
+        return true;
+    }
+
+    @Override
+    public String generatedColumnSql(String expression) {
+        return " GENERATED ALWAYS AS (" + expression + ") VIRTUAL";
     }
 
     @Override

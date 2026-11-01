@@ -45,7 +45,7 @@ class NewTableDialogTest {
         assertThat(dialog.rows()).hasSize(1);
         NewTableDialog.ColumnRow first = dialog.rows().getFirst();
         assertThat(first.name.get()).isEqualTo("id");
-        assertThat(first.primaryKey.get()).isTrue();
+        assertThat(first.primaryKey()).isTrue();
         assertThat(first.notNull.get())
                 .as("主键列不能为 NULL —— 默认就要是对的，别等用户填完再报错")
                 .isTrue();
@@ -91,9 +91,9 @@ class NewTableDialogTest {
         NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
         NewTableDialog.ColumnRow row = dialog.rows().getFirst();
         onFxRun(() -> {
-            row.primaryKey.set(false);
+            row.key.set("");
             row.notNull.set(false);
-            row.primaryKey.set(true);
+            row.key.set(NewTableDialog.ColumnRow.KEY_PRIMARY);
         });
 
         assertThat(row.notNull.get()).isTrue();
@@ -458,13 +458,13 @@ class NewTableDialogTest {
         NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
 
         NewTableDialog.ColumnRow row = onFx(() -> dialog.rows().getFirst());
-        assertThat(row.unique.get()).isFalse();
+        assertThat(row.virtual.get()).isFalse();
 
-        // 生产在用的布尔单元格，喂给它「唯一」这列的属性访问器。
+        // 生产在用的布尔单元格，喂给它「虚拟」这列的属性访问器。
         // 空格 / 回车的按键处理器最终就是调 toggle()，这里直接驱动同一段逻辑。
-        onFxRun(() -> new NewTableDialog.BooleanCell(r -> r.unique).toggle(row));
+        onFxRun(() -> new NewTableDialog.BooleanCell(r -> r.virtual).toggle(row));
 
-        assertThat(row.unique.get())
+        assertThat(row.virtual.get())
                 .as("布尔单元格的切换必须写回模型 —— 违反「一切键盘可达」硬规则")
                 .isTrue();
     }
@@ -474,7 +474,7 @@ class NewTableDialogTest {
         // 未上屏（无 TableRow）的单元格：handleKey 只按「是不是切换键」判定吃不吃，
         // 方向键 / Tab / 字母键一律交还给 TableView 导航。
         boolean[] consumed = onFx(() -> {
-            NewTableDialog.BooleanCell cell = new NewTableDialog.BooleanCell(r -> r.unique);
+            NewTableDialog.BooleanCell cell = new NewTableDialog.BooleanCell(r -> r.virtual);
             return new boolean[]{
                     cell.handleKey(javafx.scene.input.KeyCode.SPACE),
                     cell.handleKey(javafx.scene.input.KeyCode.ENTER),
@@ -813,9 +813,189 @@ class NewTableDialogTest {
 
         assertThat(headers).containsExactly(I18n.t("column.name"), I18n.t("detail.type"),
                 I18n.t("newtable.col.length"), I18n.t("newtable.col.decimals"),
-                I18n.t("newtable.col.notNull"), I18n.t("structure.col.key"),
-                I18n.t("structure.col.unique"), I18n.t("newtable.col.autoIncrement"),
-                I18n.t("column.comment"));
+                I18n.t("newtable.col.notNull"), I18n.t("newtable.col.virtual"),
+                I18n.t("structure.col.key"), I18n.t("column.comment"));
+    }
+
+    // ─────────────── N29：生成列 / 单一键下拉 / 键长 / BINARY / Ask AI ───────────────
+
+    /** ⭐ N29：勾「虚拟」+ 填表达式 → DDL 里是真正的 {@code GENERATED ALWAYS AS (…)}。 */
+    @Test
+    void virtualColumnEmitsAGeneratedColumnExpression() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        onFxRun(() -> {
+            dialog.nameField().setText("members");
+            NewTableDialog.ColumnRow row = typedRow(dialog, "mail_lc", "VARCHAR(255)");
+            row.virtual.set(true);
+            row.generatedExpression.set("lower(email)");
+            dialog.rows().add(row);
+        });
+
+        assertThat(onFx(() -> dialog.previewArea().getText()))
+                .contains("`mail_lc` VARCHAR(255) GENERATED ALWAYS AS (lower(email)) VIRTUAL");
+    }
+
+    /**
+     * ⭐ N29：勾了虚拟却没写表达式 —— 必须拦在创建之前。
+     *
+     * <p>悄悄降级成普通列是最坏的结局：用户以为自己建了一列算出来的值，
+     * 实际建出来的是一列永远为空的普通列。
+     */
+    @Test
+    void aVirtualColumnWithoutExpressionIsRefused() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        onFxRun(() -> {
+            dialog.nameField().setText("members");
+            NewTableDialog.ColumnRow row = typedRow(dialog, "mail_lc", "VARCHAR(255)");
+            row.virtual.set(true);
+            dialog.rows().add(row);
+        });
+
+        assertThat(onFx(dialog::buildPlan)).isNull();
+        assertThat(onFx(() -> ((javafx.scene.control.Label) dialog.dialog()
+                .getDialogPane().getContent().lookup("#new-table-error")).getText()))
+                .contains(I18n.t("newtable.error.virtualNoExpression", "mail_lc"));
+    }
+
+    /** 方言不支持生成列时不许编一条假 DDL：直接拦下并说明是哪一列。 */
+    @Test
+    void virtualIsRefusedWhereTheDialectHasNoGeneratedColumns() {
+        NewTableDialog sqlServer = onFx(() -> NewTableDialog.create(
+                FakeDbSession.of(DialectKind.SQLSERVER), List.of()));
+        onFxRun(() -> {
+            sqlServer.nameField().setText("members");
+            NewTableDialog.ColumnRow row = typedRow(sqlServer, "mail_lc", "VARCHAR(255)");
+            row.virtual.set(true);
+            row.generatedExpression.set("lower(email)");
+            sqlServer.rows().add(row);
+        });
+
+        assertThat(onFx(sqlServer::buildPlan)).isNull();
+        assertThat(onFx(() -> ((javafx.scene.control.Label) sqlServer.dialog()
+                .getDialogPane().getContent().lookup("#new-table-error")).getText()))
+                .contains(I18n.t("newtable.error.generatedUnsupported", "SQL Server", "mail_lc"));
+    }
+
+    /** ⭐ N29：多列主键按网格顺序编号（列序就是 PRIMARY KEY 子句里的顺序）。 */
+    @Test
+    void multiColumnPrimaryKeyFollowsTheGridOrder() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        onFxRun(() -> {
+            dialog.nameField().setText("members");
+            NewTableDialog.ColumnRow tenant = typedRow(dialog, "tenant", "INTEGER");
+            tenant.key.set(NewTableDialog.ColumnRow.KEY_PRIMARY);
+            dialog.rows().add(tenant);
+        });
+
+        assertThat(onFx(() -> dialog.previewArea().getText()))
+                .contains("PRIMARY KEY (`id`, `tenant`)");
+    }
+
+    /** ⭐ N29：自增住在属性面板，且只在整型列上可用。 */
+    @Test
+    void autoIncrementLivesInThePropertyPanelAndOnlyForIntegerColumns() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        onFxRun(() -> dialog.nameField().setText("members"));
+
+        onFxRun(() -> dialog.columnsTable().getSelectionModel().select(0));
+        assertThat(onFx(() -> dialog.fieldAutoIncrementBox().isDisable())).isFalse();
+        assertThat(onFx(() -> dialog.fieldAutoIncrementBox().isSelected()))
+                .as("默认的 id 主键带着自增")
+                .isTrue();
+
+        onFxRun(() -> dialog.rows().add(typedRow(dialog, "email", "VARCHAR(255)")));
+        onFxRun(() -> dialog.columnsTable().getSelectionModel().select(1));
+        assertThat(onFx(() -> dialog.fieldAutoIncrementBox().isDisable()))
+                .as("VARCHAR 不能自增 —— 格子置灰而不是留着让人填")
+                .isTrue();
+        assertThat(onFx(() -> dialog.previewArea().getText())).contains("AUTO_INCREMENT");
+    }
+
+    /** ⭐ N29：键长把主键写成表级前缀键（MySQL 的 {@code PRIMARY KEY (email(20))}）。 */
+    @Test
+    void keyLengthEmitsATableLevelPrefixKey() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        onFxRun(() -> {
+            dialog.nameField().setText("members");
+            dialog.rows().clear();
+            NewTableDialog.ColumnRow row = typedRow(dialog, "email", "VARCHAR(255)");
+            row.key.set(NewTableDialog.ColumnRow.KEY_PRIMARY);
+            row.keyLength.set("20");
+            dialog.rows().add(row);
+        });
+
+        assertThat(onFx(() -> dialog.previewArea().getText()))
+                .contains("PRIMARY KEY (`email`(20))");
+    }
+
+    /** 不支持前缀索引的方言：键长填了也建不出来 —— 拦下并说明原因。 */
+    @Test
+    void keyLengthIsRefusedWhereTheDialectHasNoPrefixIndexes() {
+        NewTableDialog postgres = onFx(() -> NewTableDialog.create(
+                FakeDbSession.of(DialectKind.POSTGRESQL), List.of()));
+        onFxRun(() -> {
+            postgres.nameField().setText("members");
+            postgres.rows().clear();
+            NewTableDialog.ColumnRow row = typedRow(postgres, "email", "VARCHAR(255)");
+            row.key.set(NewTableDialog.ColumnRow.KEY_PRIMARY);
+            row.keyLength.set("20");
+            postgres.rows().add(row);
+        });
+
+        assertThat(onFx(postgres::buildPlan)).isNull();
+        assertThat(onFx(() -> ((javafx.scene.control.Label) postgres.dialog()
+                .getDialogPane().getContent().lookup("#new-table-error")).getText()))
+                .contains(I18n.t("newtable.error.keyLengthUnsupported", "PostgreSQL", "email"));
+    }
+
+    /** ⭐ N29：BINARY 是 MySQL 的列属性，别的方言不能假装有。 */
+    @Test
+    void binaryAttributeIsEmittedForMySqlAndRefusedElsewhere() {
+        NewTableDialog mysql = onFx(() -> NewTableDialog.create(session, List.of()));
+        onFxRun(() -> {
+            mysql.nameField().setText("members");
+            NewTableDialog.ColumnRow row = typedRow(mysql, "email", "VARCHAR(255)");
+            row.binary.set(true);
+            mysql.rows().add(row);
+        });
+        assertThat(onFx(() -> mysql.previewArea().getText()))
+                .contains("`email` VARCHAR(255) BINARY");
+
+        NewTableDialog postgres = onFx(() -> NewTableDialog.create(
+                FakeDbSession.of(DialectKind.POSTGRESQL), List.of()));
+        onFxRun(() -> {
+            postgres.nameField().setText("members");
+            NewTableDialog.ColumnRow row = typedRow(postgres, "email", "VARCHAR(255)");
+            row.binary.set(true);
+            postgres.rows().add(row);
+        });
+        assertThat(onFx(postgres::buildPlan)).isNull();
+        assertThat(onFx(() -> ((javafx.scene.control.Label) postgres.dialog()
+                .getDialogPane().getContent().lookup("#new-table-error")).getText()))
+                .contains(I18n.t("newtable.error.binaryUnsupported", "PostgreSQL", "email"));
+    }
+
+    /**
+     * ⭐ N29：{@code Ask AI ▾} 的每一项都是一颗<b>真按钮</b> —— 点开是如实说明页，
+     * 说清本版本没有 AI 服务，而不是什么也不发生。
+     */
+    @Test
+    void askAiMenuExplainsInsteadOfPretending() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+
+        javafx.scene.control.MenuButton menu = onFx(dialog::askAiMenu);
+        assertThat(menu).as("字段工具条右端必须有 Ask AI").isNotNull();
+        assertThat(onFx(() -> menu.getItems().size())).isEqualTo(3);
+        assertThat(onFx(() -> menu.getItems().getFirst().getOnAction()))
+                .as("菜单项必须有动作，不能是死按钮")
+                .isNotNull();
+
+        javafx.scene.control.Alert alert =
+                onFx(() -> dialog.askAiAlert(I18n.t("newtable.askAi.explain")));
+        assertThat(onFx(() -> alert.getDialogPane().getId()))
+                .isEqualTo("new-table-ask-ai-notice");
+        assertThat(onFx(alert::getHeaderText)).contains(I18n.t("grid.capability.title"));
+        assertThat(onFx(alert::getContentText)).contains(I18n.t("grid.capability.askAi"));
     }
 
     /** 类型格是「点开才选」的可编辑下拉，候选来自本方言。 */
@@ -1002,8 +1182,8 @@ class NewTableDialogTest {
                 .as("摆完字段页的态，网格必须真的选中一行 —— 否则这一帧证不了「选中行 ↔ 属性面板」")
                 .isNotNull();
         assertThat(((NewTableDialog.ColumnRow) selected).name.get())
-                .as("选中的要是属性面板正在编辑的那一列")
-                .isEqualTo("email");
+                .as("选中的要是属性面板正在编辑的那一列（N29 起摆的是生成列 full_name）")
+                .isEqualTo("full_name");
     }
 
     /**
@@ -1019,10 +1199,10 @@ class NewTableDialogTest {
             plain.autoIncrement.set(true);
             return plain;
         });
-        assertThat(row.primaryKey.get()).isTrue();
+        assertThat(row.primaryKey()).isTrue();
         assertThat(row.notNull.get()).isTrue();
 
-        onFxRun(() -> row.primaryKey.set(false));
+        onFxRun(() -> row.key.set(""));
         assertThat(row.autoIncrement.get())
                 .as("取消主键 → 自增必须跟着取消，否则计划里是一条建不出来的语句")
                 .isFalse();
@@ -1087,6 +1267,10 @@ class NewTableDialogTest {
         assertThat(onFx(() -> dialog.fieldDefaultField().isDisable())).isTrue();
         assertThat(onFx(() -> dialog.fieldCharsetBox().isDisable())).isTrue();
         assertThat(onFx(() -> dialog.fieldCollationBox().isDisable())).isTrue();
+        assertThat(onFx(() -> dialog.fieldKeyLengthField().isDisable())).isTrue();
+        assertThat(onFx(() -> dialog.fieldBinaryBox().isDisable())).isTrue();
+        assertThat(onFx(() -> dialog.fieldExpressionField().isDisable())).isTrue();
+        assertThat(onFx(() -> dialog.fieldAutoIncrementBox().isDisable())).isTrue();
         javafx.scene.Node hint = onFx(() -> dialog.dialog().getDialogPane().getContent()
                 .lookup("#new-table-field-properties-hint"));
         assertThat(hint).isNotNull();

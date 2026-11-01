@@ -6,6 +6,7 @@ import io.agenticdb.introspect.StructurePlan;
 import io.agenticdb.introspect.StructureSqlBuilder;
 import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.introspect.TriggerDef;
+import io.agenticdb.jdbc.ColumnProblem;
 import io.agenticdb.jdbc.ColumnTypes;
 import io.agenticdb.jdbc.ColumnTypeOption;
 import io.agenticdb.jdbc.DbSession;
@@ -17,6 +18,7 @@ import io.agenticdb.ui.Icons;
 import io.agenticdb.ui.RowHeights;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
@@ -25,14 +27,18 @@ import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
@@ -104,6 +110,44 @@ final class NewTableDialog {
     record CellPos(int row, int column) {
     }
 
+    /**
+     * ⭐ N29：「键」下拉的三项。
+     *
+     * <p>模型里存稳定代码（{@link #code()}），下拉里显示本地化文案
+     * （{@link #toString()}）—— 字符串进模型会把界面语言渗进 SQL 计划。
+     */
+    enum KeyChoice {
+        NONE("", "newtable.key.none"),
+        PRIMARY(ColumnRow.KEY_PRIMARY, "newtable.key.primary"),
+        UNIQUE(ColumnRow.KEY_UNIQUE, "newtable.key.unique");
+
+        private final String code;
+        private final String labelKey;
+
+        KeyChoice(String code, String labelKey) {
+            this.code = code;
+            this.labelKey = labelKey;
+        }
+
+        String code() {
+            return code;
+        }
+
+        @Override
+        public String toString() {
+            return I18n.t(labelKey);
+        }
+
+        static KeyChoice of(String code) {
+            for (KeyChoice choice : values()) {
+                if (choice.code.equals(code == null ? "" : code)) {
+                    return choice;
+                }
+            }
+            return NONE;
+        }
+    }
+
     private final Dialog<StructurePlan> dialog = new Dialog<>();
     private final DbSession session;
     private final List<String> existingTables;
@@ -122,6 +166,12 @@ final class NewTableDialog {
     private final TextField fieldDefault = new TextField();
     private final ComboBox<String> fieldCharset = new ComboBox<>();
     private final ComboBox<String> fieldCollation = new ComboBox<>();
+    /** ⭐ N29：前缀索引长度 / BINARY / 生成列表达式 —— Navicat 属性面板同位置的几格。 */
+    private final TextField fieldKeyLength = new TextField();
+    private final CheckBox fieldBinary = new CheckBox(I18n.t("newtable.field.binary"));
+    private final TextField fieldExpression = new TextField();
+    /** ⭐ N29：自增从网格挪进属性面板（它只对当前列有意义，不该占一整列）。 */
+    private final CheckBox fieldAutoIncrement = new CheckBox(I18n.t("newtable.field.autoIncrement"));
     private final Label fieldPropertiesHint = new Label(I18n.t("newtable.properties.hint"));
     /** 面板正在回填选中行的值 —— 这时的控件变化不是用户输入，不能写回模型。 */
     private boolean syncingProperties;
@@ -252,7 +302,9 @@ final class NewTableDialog {
         fieldCount.getStyleClass().add("adb-muted");
         HBox spacer = new HBox();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox fieldToolbar = new HBox(8, rowButtons, spacer, fieldCount);
+        // ⭐ N29：Navicat 的字段工具条右端是 Ask AI ▾。本版本没有 AI 后端 ——
+        //    每一项打开如实说明页（不留死按钮），并且指路：⌘K 或手动编辑。
+        HBox fieldToolbar = new HBox(8, rowButtons, spacer, fieldCount, buildAskAiMenu());
         fieldToolbar.setAlignment(Pos.CENTER_LEFT);
 
         // ⭐ R31：Navicat 形态 —— 工具条 / 网格 / 属性面板三段。
@@ -447,12 +499,12 @@ final class NewTableDialog {
     TableStructure draftStructure() {
         List<ColumnDef> columns = rows.stream()
                 .map(row -> new ColumnDef(row.name.get().trim(), ColumnType.TEXT,
-                        !row.notNull.get(), row.primaryKey.get(),
+                        !row.notNull.get(), row.primaryKey(),
                         blankToNull(row.defaultValue.get()), blankToNull(row.comment.get()),
-                        null, null, null, null, row.unique.get(), row.rawType()))
+                        null, null, null, null, row.uniqueKey(), row.rawType()))
                 .toList();
         List<String> primaryKeys = rows.stream()
-                .filter(row -> row.primaryKey.get())
+                .filter(ColumnRow::primaryKey)
                 .map(row -> row.name.get().trim())
                 .toList();
         String tableName = name.getText() == null ? "" : name.getText().trim();
@@ -526,6 +578,44 @@ final class NewTableDialog {
     }
 
     /**
+     * ⭐ N29：Navicat 字段工具条右端的 {@code Ask AI ▾}。
+     *
+     * <p>本版本没有 AI 服务 —— 每一项都打开<b>如实说明页</b>，
+     * 并在说明里指一条真能走通的路（命令面板 ⌘K / 手动编辑），而不是什么也不发生。
+     */
+    private MenuButton buildAskAiMenu() {
+        MenuButton askAi = new MenuButton(I18n.t("query.askAi"));
+        askAi.setId("new-table-ask-ai");
+        askAi.getStyleClass().add("adb-button");
+        askAi.setTooltip(new Tooltip(I18n.t("newtable.askAi.tip")));
+        for (String key : List.of("newtable.askAi.explain", "newtable.askAi.generate",
+                "newtable.askAi.optimize")) {
+            MenuItem item = new MenuItem(I18n.t(key));
+            item.setOnAction(event -> showAskAiNotice(I18n.t(key)));
+            askAi.getItems().add(item);
+        }
+        return askAi;
+    }
+
+    /** 打开如实说明页（真弹窗；门禁走 {@link #askAiAlert(String)} 不显示）。 */
+    void showAskAiNotice(String itemTitle) {
+        Alert alert = askAiAlert(itemTitle);
+        alert.initOwner(dialog.getOwner());
+        alert.showAndWait();
+    }
+
+    /** 门禁接缝：说明页本体，断言标题与说明文案都在这上面做。 */
+    Alert askAiAlert(String itemTitle) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        DialogStyles.apply(alert, dialog.getOwner());
+        alert.getDialogPane().setId("new-table-ask-ai-notice");
+        alert.setTitle(I18n.t("grid.capability.windowTitle"));
+        alert.setHeaderText(itemTitle + " — " + I18n.t("grid.capability.title"));
+        alert.setContentText(I18n.t("grid.capability.body", I18n.t("grid.capability.askAi")));
+        return alert;
+    }
+
+    /**
      * 字段网格的高度跟着行数走。
      *
      * <p>以前固定 200px：只有一行「id」时下面挂着 170px 空白网格，
@@ -582,10 +672,12 @@ final class NewTableDialog {
                 typeColumn,
                 numberColumn(I18n.t("newtable.col.length"), "length", 58, row -> row.length, this::takesLength),
                 numberColumn(I18n.t("newtable.col.decimals"), "decimals", 58, row -> row.decimals, this::takesDecimals),
-                booleanColumn(I18n.t("newtable.col.notNull"), 58, row -> row.notNull),
-                booleanColumn(I18n.t("structure.col.key"), 46, row -> row.primaryKey),
-                booleanColumn(I18n.t("structure.col.unique"), 46, row -> row.unique),
-                booleanColumn(I18n.t("newtable.col.autoIncrement"), 72, row -> row.autoIncrement),
+                booleanColumn(I18n.t("newtable.col.notNull"), "notNull", 58, row -> row.notNull, row -> true),
+                // ⭐ N29：Navicat 的 Virtual 列 —— 生成列由表达式算出来，不用手填。
+                booleanColumn(I18n.t("newtable.col.virtual"), "virtual", 56, row -> row.virtual,
+                        row -> session.dialect().supportsGeneratedColumn()),
+                // ⭐ N29：主键 / 唯一 / 自增合回一个「键」下拉；自增挪进属性面板。
+                buildKeyColumn(92),
                 textColumn(I18n.t("column.comment"), "comment", 130, row -> row.comment));
         // ⭐ S-4：Tab / 方向键在整张网格里移动（装上去之前，7 列里有 4 列只能靠鼠标点准）。
         installGridNavigation(table);
@@ -615,6 +707,40 @@ final class NewTableDialog {
             row.applyRawType(event.getNewValue());
             normalizeType(row);
         });
+        return column;
+    }
+
+    /**
+     * ⭐ N29：「键」列 —— 一个下拉收掉主键 / 唯一两种选择（Navicat 的 Key 列）。
+     *
+     * <p>自增不再是这一列的一种取值：它只对数值列有意义，放在属性面板里
+     * 才不会被挤成一个 46px 的复选框。
+     *
+     * <p>单元格值用 {@link KeyChoice} 而不是字符串：下拉里要显示本地化文案，
+     * 模型里要存稳定代码 —— {@code toString()} 负责前一半，{@code code()} 负责后一半。
+     */
+    private TableColumn<ColumnRow, KeyChoice> buildKeyColumn(double width) {
+        TableColumn<ColumnRow, KeyChoice> column =
+                new TableColumn<>(I18n.t("structure.col.key"));
+        column.setId("new-table-column-key");
+        column.setPrefWidth(width);
+        column.setCellValueFactory(cell ->
+                new SimpleObjectProperty<>(KeyChoice.of(cell.getValue().key.get())));
+        column.setCellFactory(view -> new ComboBoxTableCell<>(KeyChoice.values()) {
+            @Override
+            public void updateItem(KeyChoice item, boolean empty) {
+                super.updateItem(item, empty);
+                // 生成列不能是键（DDL 层同样拒绝）—— 格子直接置灰，别让人选完才报错。
+                ColumnRow row = empty || getTableRow() == null ? null : getTableRow().getItem();
+                setDisable(row != null && row.virtual.get());
+            }
+        });
+        column.setOnEditCommit(event -> {
+            ColumnRow row = event.getRowValue();
+            row.key.set(event.getNewValue() == null ? "" : event.getNewValue().code());
+            event.getTableView().refresh();
+        });
+        column.setEditable(true);
         return column;
     }
 
@@ -725,6 +851,47 @@ final class NewTableDialog {
             }
         });
 
+        // ⭐ N29：键长（前缀索引）—— MySQL 的 PRIMARY KEY (col(n))。
+        fieldKeyLength.setId("new-table-field-key-length");
+        fieldKeyLength.setPrefWidth(120);
+        fieldKeyLength.textProperty().addListener((observable, oldValue, newValue) -> {
+            ColumnRow row = selectedRow();
+            if (!syncingProperties && row != null) {
+                row.keyLength.set(newValue == null ? "" : newValue.trim());
+            }
+        });
+
+        // ⭐ N29：BINARY 列属性（MySQL 的 VARCHAR(10) BINARY）。
+        fieldBinary.setId("new-table-field-binary");
+        fieldBinary.selectedProperty().addListener((observable, oldValue, newValue) -> {
+            ColumnRow row = selectedRow();
+            if (!syncingProperties && row != null) {
+                row.binary.set(Boolean.TRUE.equals(newValue));
+            }
+        });
+
+        // ⭐ N29：生成列表达式（勾了「虚拟」才可填；空表达式在点创建时被拒）。
+        fieldExpression.setId("new-table-field-expression");
+        fieldExpression.setPrefWidth(300);
+        fieldExpression.textProperty().addListener((observable, oldValue, newValue) -> {
+            ColumnRow row = selectedRow();
+            if (!syncingProperties && row != null) {
+                row.generatedExpression.set(newValue == null ? "" : newValue.trim());
+            }
+        });
+
+        // ⭐ N29：自增从网格挪到这里 —— 它只对当前列有意义。
+        fieldAutoIncrement.setId("new-table-field-auto-increment");
+        fieldAutoIncrement.selectedProperty().addListener((observable, oldValue, newValue) -> {
+            ColumnRow row = selectedRow();
+            if (!syncingProperties && row != null) {
+                row.autoIncrement.set(Boolean.TRUE.equals(newValue));
+            }
+        });
+
+        HBox keyOptions = new HBox(16, fieldKeyLength, fieldBinary);
+        keyOptions.setAlignment(Pos.CENTER_LEFT);
+
         GridPane grid = new GridPane();
         grid.getStyleClass().add("adb-new-table__properties");
         grid.setHgap(12);
@@ -735,6 +902,12 @@ final class NewTableDialog {
         grid.add(fieldCharset, 1, 1);
         grid.add(formLabel(I18n.t("column.collation")), 0, 2);
         grid.add(fieldCollation, 1, 2);
+        grid.add(formLabel(I18n.t("newtable.field.keyLength")), 0, 3);
+        grid.add(keyOptions, 1, 3);
+        grid.add(formLabel(I18n.t("newtable.field.expression")), 0, 4);
+        grid.add(fieldExpression, 1, 4);
+        grid.add(formLabel(I18n.t("newtable.field.autoIncrement")), 0, 5);
+        grid.add(fieldAutoIncrement, 1, 5);
 
         ColumnConstraints labels = new ColumnConstraints();
         labels.setMinWidth(64);
@@ -750,25 +923,59 @@ final class NewTableDialog {
 
     /** 选中行变了：把它的值回填进面板（守卫住回写，避免「回填 → 写回」绕圈）。 */
     private void showProperties(ColumnRow row) {
-        boolean textual = row != null && takesTextOptions(row);
-        syncingProperties = true;
         boolean has = row != null;
-        fieldDefault.setDisable(!has);
-        fieldCharset.setDisable(!has || !charsetSupported() || !textual);
-        fieldCollation.setDisable(!has || !textual);
+        boolean textual = has && takesTextOptions(row);
+        boolean virtual = has && row.virtual.get();
+        boolean prefixSupported = session.dialect().supportsIndexPrefixLength();
+        boolean binarySupported = session.dialect().supportsColumnBinary();
+        boolean generatedSupported = session.dialect().supportsGeneratedColumn();
+        syncingProperties = true;
+        fieldDefault.setDisable(!has || virtual);
+        fieldCharset.setDisable(!has || virtual || !charsetSupported() || !textual);
+        fieldCollation.setDisable(!has || virtual || !textual);
+        fieldKeyLength.setDisable(!has || virtual || !prefixSupported || !textual);
+        fieldBinary.setDisable(!has || virtual || !binarySupported || !textual);
+        fieldExpression.setDisable(!has || !virtual || !generatedSupported);
+        fieldAutoIncrement.setDisable(!has || virtual || !takesAutoIncrement(row));
         fieldCharset.setPromptText(!charsetSupported()
                 ? I18n.t("newtable.charset.unsupported", session.dialect().displayName())
                 : !textual ? I18n.t("newtable.charset.textOnly") : I18n.t("newtable.charset.prompt"));
         fieldCollation.setPromptText(textual ? I18n.t("newtable.collation.prompt")
                 : I18n.t("newtable.collation.textOnly"));
+        fieldKeyLength.setPromptText(!prefixSupported
+                ? I18n.t("newtable.keyLength.unsupported", session.dialect().displayName())
+                : !textual ? I18n.t("newtable.keyLength.textOnly")
+                : I18n.t("newtable.keyLength.prompt"));
+        fieldExpression.setPromptText(!generatedSupported
+                ? I18n.t("newtable.expression.unsupported", session.dialect().displayName())
+                : virtual ? I18n.t("newtable.expression.prompt")
+                : I18n.t("newtable.expression.virtualOnly"));
+        // ⚠️ CheckBox 没有 promptText：原因挂在工具提示上，鼠标停一下就能看到。
+        String binaryReason = !binarySupported
+                ? I18n.t("newtable.binary.unsupported", session.dialect().displayName())
+                : !textual ? I18n.t("newtable.binary.textOnly") : null;
+        fieldBinary.setTooltip(binaryReason == null ? null : new Tooltip(binaryReason));
+        String autoReason = has && !virtual && !takesAutoIncrement(row)
+                ? I18n.t("newtable.autoIncrement.numeric") : null;
+        fieldAutoIncrement.setTooltip(autoReason == null ? null : new Tooltip(autoReason));
         fieldDefault.setText(has ? row.defaultValue.get() : "");
         fieldCharset.getEditor().setText(has && row.charset.get() != null
                 ? row.charset.get() : "");
         fieldCollation.getEditor().setText(has && row.collation.get() != null
                 ? row.collation.get() : "");
+        fieldKeyLength.setText(has && row.keyLength.get() != null ? row.keyLength.get() : "");
+        fieldExpression.setText(has && row.generatedExpression.get() != null
+                ? row.generatedExpression.get() : "");
+        fieldBinary.setSelected(has && row.binary.get());
+        fieldAutoIncrement.setSelected(has && row.autoIncrement.get());
         syncingProperties = false;
         fieldPropertiesHint.setVisible(!has);
         fieldPropertiesHint.setManaged(!has);
+    }
+
+    /** ⭐ N29：只有整型能自增 —— 属性面板里那一格按行置灰。 */
+    boolean takesAutoIncrement(ColumnRow row) {
+        return row != null && io.agenticdb.jdbc.Dialect.INTEGER_TYPES.contains(row.baseTypeName());
     }
 
     /** 字符集 / 排序规则只对文本类型有意义（整数列写 COLLATE 会被库拒绝）。 */
@@ -940,17 +1147,23 @@ final class NewTableDialog {
         return column;
     }
 
-    private static TableColumn<ColumnRow, Boolean> booleanColumn(
-            String title, double width,
-            java.util.function.Function<ColumnRow, BooleanProperty> property) {
+    private TableColumn<ColumnRow, Boolean> booleanColumn(
+            String title, String id, double width,
+            java.util.function.Function<ColumnRow, BooleanProperty> property,
+            Predicate<ColumnRow> enabled) {
         TableColumn<ColumnRow, Boolean> column = new TableColumn<>(title);
+        column.setId("new-table-column-" + id);
         column.setPrefWidth(width);
         column.setCellValueFactory(cell -> property.apply(cell.getValue()));
         // ⭐ 规格 §13.3 / UI 硬规则「一切都要键盘可达」：
         //    CheckBoxTableCell 的复选框默认 focusTraversable=false 且只响应鼠标点 ——
-        //    「主键 / 可空 / 唯一」三列用键盘根本勾不上。这里自己做单元格工厂：
+        //    「不为空 / 虚拟」两列用键盘根本勾不上。这里自己做单元格工厂：
         //    空格切换、Enter 切换、Tab 移到下一列（与文本列同一套节奏）。
-        column.setCellFactory(view -> new BooleanCell(property));
+        column.setCellFactory(view -> {
+            BooleanCell cell = new BooleanCell(property);
+            cell.setEnabled(enabled);
+            return cell;
+        });
         column.setEditable(true);
         return column;
     }
@@ -966,6 +1179,8 @@ final class NewTableDialog {
 
         private final javafx.scene.control.CheckBox box = new javafx.scene.control.CheckBox();
         private final java.util.function.Function<ColumnRow, BooleanProperty> property;
+        /** 这一列的属性在当前行上是否可用（方言不支持生成列时置灰）。 */
+        private Predicate<ColumnRow> enabled = row -> true;
         /** 防止「把模型值同步进复选框」被当成用户点击，形成回环。 */
         private boolean syncing;
 
@@ -999,6 +1214,11 @@ final class NewTableDialog {
         /** 当前绑定的数据行；单元格未上屏（无 TableRow）时为 null。 */
         private ColumnRow currentRow() {
             return getTableRow() == null ? null : getTableRow().getItem();
+        }
+
+        /** 哪些行的这一格可勾（例如「虚拟」在 SQL Server 上永远是灰的）。 */
+        void setEnabled(Predicate<ColumnRow> predicate) {
+            this.enabled = predicate == null ? row -> true : predicate;
         }
 
         /**
@@ -1044,6 +1264,8 @@ final class NewTableDialog {
                 setGraphic(null);
                 return;
             }
+            ColumnRow row = currentRow();
+            setDisable(row != null && !enabled.test(row));
             syncing = true;
             box.setSelected(Boolean.TRUE.equals(item));
             syncing = false;
@@ -1068,7 +1290,7 @@ final class NewTableDialog {
         ColumnRow row = newRow();
         row.name.set("id");
         row.type.set("INTEGER");
-        row.primaryKey.set(true);
+        row.key.set(ColumnRow.KEY_PRIMARY);
         row.autoIncrement.set(true);
         rows.add(row);
     }
@@ -1130,7 +1352,7 @@ final class NewTableDialog {
             hideError();
             return plan;
         } catch (IllegalArgumentException e) {
-            showError(e.getMessage());
+            showError(problemText(e));
             // 报错落在哪一页就把用户带到哪一页 —— 在「字段」页看着一句
             // 「索引引用了表里没有的列」是找不到出路的。
             selectTabFor(e);
@@ -1175,8 +1397,16 @@ final class NewTableDialog {
             StructureSqlBuilder.createTable(session, rawName, columns, null, existingTables);
             return null;
         } catch (IllegalArgumentException e) {
-            return e.getMessage();
+            return problemText(e);
         }
+    }
+
+    /** 模型层的「键 + 参数」错误在这里翻成当前语言；其余错误原样显示。 */
+    static String problemText(IllegalArgumentException e) {
+        if (e instanceof ColumnProblem problem) {
+            return I18n.t(problem.key(), problem.args());
+        }
+        return e.getMessage();
     }
 
     private String commentText() {
@@ -1196,7 +1426,7 @@ final class NewTableDialog {
             previewEditor.setText("");
             // ⭐ 预览空着就必须说出原因：表名已经填了却还显示「填写表名后…」，
             //    会让用户以为预览坏了（实测踩到：演示库里本来就有 orders）。
-            previewEditor.setHint(previewProblemHint(e.getMessage()));
+            previewEditor.setHint(previewProblemHint(problemText(e)));
         }
     }
 
@@ -1262,6 +1492,31 @@ final class NewTableDialog {
     /** ⭐ R31：属性面板的「排序规则」格。 */
     ComboBox<String> fieldCollationBox() {
         return fieldCollation;
+    }
+
+    /** ⭐ N29：属性面板的「键长」格（MySQL 的前缀索引长度）。 */
+    TextField fieldKeyLengthField() {
+        return fieldKeyLength;
+    }
+
+    /** ⭐ N29：属性面板的「BINARY」勾选框。 */
+    CheckBox fieldBinaryBox() {
+        return fieldBinary;
+    }
+
+    /** ⭐ N29：属性面板的「表达式」格（勾了 Virtual 才可填）。 */
+    TextField fieldExpressionField() {
+        return fieldExpression;
+    }
+
+    /** ⭐ N29：属性面板的「自增」勾选框（从网格挪过来的）。 */
+    CheckBox fieldAutoIncrementBox() {
+        return fieldAutoIncrement;
+    }
+
+    /** ⭐ N29：字段工具条右端的 {@code Ask AI ▾}（门禁断言每一项都在且真有动作）。 */
+    MenuButton askAiMenu() {
+        return (MenuButton) dialog.getDialogPane().getContent().lookup("#new-table-ask-ai");
     }
 
     /** ⭐ R31：字段数标签（Navicat 底部的 Number of Fields）。 */
@@ -1387,6 +1642,8 @@ final class NewTableDialog {
             case "fields" -> {
                 String email = ensureColumn("email", "VARCHAR(255)");
                 ensureColumn("amount", "DECIMAL(10,2)");
+                // ⭐ N29：再摆一列生成列 —— 这一帧要同时看得到「键 / 自增」与「虚拟 + 表达式」。
+                String fullName = ensureColumn("full_name", "VARCHAR(160)");
                 rows.stream().filter(row -> email.equalsIgnoreCase(row.name.get())).findFirst()
                         .ifPresent(row -> {
                             row.defaultValue.set("''");
@@ -1401,6 +1658,12 @@ final class NewTableDialog {
                                 row.collation.set(collations.getFirst());
                             }
                             row.comment.set(I18n.t("newtable.pose.comment"));
+                        });
+                rows.stream().filter(row -> fullName.equalsIgnoreCase(row.name.get())).findFirst()
+                        .ifPresent(row -> {
+                            row.virtual.set(true);
+                            row.generatedExpression.set("lower(email)");
+                            row.comment.set(I18n.t("newtable.pose.virtualComment"));
                             columnsTable.getSelectionModel().select(row);
                             showProperties(row);
                         });
@@ -1472,6 +1735,10 @@ final class NewTableDialog {
      */
     static final class ColumnRow {
 
+        /** 「键」下拉的两个取值；空串 = 不是键。 */
+        static final String KEY_PRIMARY = "primary";
+        static final String KEY_UNIQUE = "unique";
+
         final StringProperty name = new SimpleStringProperty("");
         final StringProperty type = new SimpleStringProperty("TEXT");
         /** 长度（{@code VARCHAR(255)} 的 255）；空 = 不带长度。 */
@@ -1479,19 +1746,26 @@ final class NewTableDialog {
         /** 小数位（{@code DECIMAL(10,2)} 的 2）；空 = 不带小数位。 */
         final StringProperty decimals = new SimpleStringProperty("");
         final BooleanProperty notNull = new SimpleBooleanProperty(false);
-        final BooleanProperty primaryKey = new SimpleBooleanProperty(false);
-        final BooleanProperty unique = new SimpleBooleanProperty(false);
+        /** ⭐ N29：主键 / 唯一合成一个下拉（{@link #KEY_PRIMARY} / {@link #KEY_UNIQUE} / 空）。 */
+        final StringProperty key = new SimpleStringProperty("");
+        /** ⭐ N29：生成列（Navicat 的 Virtual）；表达式在 {@link #generatedExpression}。 */
+        final BooleanProperty virtual = new SimpleBooleanProperty(false);
         final BooleanProperty autoIncrement = new SimpleBooleanProperty(false);
+        /** ⭐ N29：索引前缀长度（MySQL 的 {@code email(20)}）。 */
+        final StringProperty keyLength = new SimpleStringProperty("");
+        /** ⭐ N29：MySQL 的 {@code BINARY} 列属性。 */
+        final BooleanProperty binary = new SimpleBooleanProperty(false);
         final StringProperty defaultValue = new SimpleStringProperty("");
         final StringProperty comment = new SimpleStringProperty("");
         final StringProperty charset = new SimpleStringProperty("");
         final StringProperty collation = new SimpleStringProperty("");
+        final StringProperty generatedExpression = new SimpleStringProperty("");
 
         ColumnRow(Runnable onChange) {
-            // ⭐ 主键列不能为 NULL —— 勾上主键就自动勾上「不为空」，
+            // ⭐ 主键列不能为 NULL —— 选上主键就自动勾上「不为空」，
             //    而不是让用户填完再被一句报错打回来。
-            primaryKey.addListener((observable, oldValue, newValue) -> {
-                if (newValue) {
+            key.addListener((observable, oldValue, newValue) -> {
+                if (KEY_PRIMARY.equals(newValue)) {
                     notNull.set(true);
                 } else {
                     // 自增列必须是主键 —— 取消主键时自增一并没有意义。
@@ -1499,10 +1773,22 @@ final class NewTableDialog {
                 }
                 onChange.run();
             });
-            // 自增列必须是键：勾自增等于同时勾主键（主键再带出「不为空」）。
+            // 自增列必须是键：勾自增等于同时选主键（主键再带出「不为空」）。
             autoIncrement.addListener((observable, oldValue, newValue) -> {
                 if (newValue) {
-                    primaryKey.set(true);
+                    key.set(KEY_PRIMARY);
+                }
+                onChange.run();
+            });
+            // ⭐ N29：生成列不能是键 / 自增 / 带默认值 —— 勾上的那一刻就把冲突项清掉，
+            //    比留着一个建表时必报的组合好。
+            virtual.addListener((observable, oldValue, newValue) -> {
+                if (newValue) {
+                    key.set("");
+                    autoIncrement.set(false);
+                    defaultValue.set("");
+                } else {
+                    generatedExpression.set("");
                 }
                 onChange.run();
             });
@@ -1511,11 +1797,23 @@ final class NewTableDialog {
             length.addListener(observable -> onChange.run());
             decimals.addListener(observable -> onChange.run());
             notNull.addListener(observable -> onChange.run());
-            unique.addListener(observable -> onChange.run());
+            keyLength.addListener(observable -> onChange.run());
+            binary.addListener(observable -> onChange.run());
             defaultValue.addListener(observable -> onChange.run());
             comment.addListener(observable -> onChange.run());
             charset.addListener(observable -> onChange.run());
             collation.addListener(observable -> onChange.run());
+            generatedExpression.addListener(observable -> onChange.run());
+        }
+
+        /** 这一列是不是主键（模型里存的是 {@link #key}，布尔值由它导出）。 */
+        boolean primaryKey() {
+            return KEY_PRIMARY.equals(key.get());
+        }
+
+        /** 这一列是不是唯一键。 */
+        boolean uniqueKey() {
+            return KEY_UNIQUE.equals(key.get());
         }
 
         /**
@@ -1584,9 +1882,22 @@ final class NewTableDialog {
                     throw new IllegalArgumentException(I18n.t("newtable.error.decimalsTooLarge", label()));
                 }
             }
+            String prefix = keyLength.get() == null ? "" : keyLength.get().trim();
+            if (!prefix.isEmpty() && !prefix.matches("\\d{1,4}")) {
+                throw new IllegalArgumentException(
+                        I18n.t("newtable.error.keyLengthDigits", label()));
+            }
+            String expression = generatedExpression.get() == null
+                    ? "" : generatedExpression.get().trim();
+            if (virtual.get() && expression.isEmpty()) {
+                // 勾了「虚拟」却没写表达式 —— 不许悄悄降级成普通列。
+                throw new IllegalArgumentException(
+                        I18n.t("newtable.error.virtualNoExpression", label()));
+            }
             return new ColumnSpec(name.get(), rawType(), !notNull.get(), defaultValue.get(),
-                    comment.get(), unique.get(), primaryKey.get(), autoIncrement.get(),
-                    charset.get(), collation.get());
+                    comment.get(), uniqueKey(), primaryKey(), autoIncrement.get(),
+                    charset.get(), collation.get(), prefix, binary.get(),
+                    virtual.get() ? expression : null);
         }
 
         private String label() {

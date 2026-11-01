@@ -1,5 +1,6 @@
 package io.agenticdb.introspect;
 
+import io.agenticdb.jdbc.ColumnProblem;
 import io.agenticdb.jdbc.ColumnTypes;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.Dialect;
@@ -252,6 +253,12 @@ public final class StructureSqlBuilder {
         if (problem != null) {
             throw new IllegalArgumentException(problem);
         }
+        // N29 的新列属性先判：历史实现里它们就在逐列循环的前段，
+        // 放到自增跨列校验之后会改变同一份输入的报错顺序（测试与用户都依赖先看到它）。
+        ColumnProblem advanced = advancedColumnProblem(session.dialect(), columns);
+        if (advanced != null) {
+            throw advanced;
+        }
         problem = columnOptionProblem(session.dialect(), columns);
         if (problem != null) {
             throw new IllegalArgumentException(problem);
@@ -261,17 +268,33 @@ public final class StructureSqlBuilder {
                 .filter(ColumnSpec::primaryKey)
                 .map(ColumnSpec::name)
                 .toList();
-        boolean singlePrimary = primaryKeys.size() == 1;
+        // ⭐ N29：有列带「键长」时，主键 / 唯一键不能再写成列内联形式 ——
+        //    前缀长度只能写在索引的 key_part 里（`PRIMARY KEY (email(20))`），
+        //    内联的 `email VARCHAR(100) PRIMARY KEY` 表达不了。
+        boolean prefixedKeys = columns.stream().anyMatch(column -> column.keyLength() != null);
+        boolean singlePrimary = primaryKeys.size() == 1 && !prefixedKeys;
 
         List<String> lines = new ArrayList<>();
         for (ColumnSpec column : columns) {
-            lines.add(session.dialect().createTableColumnDefinition(column,
+            ColumnSpec definition = column.keyLength() == null
+                    ? column : column.withoutInlineUnique();
+            lines.add(session.dialect().createTableColumnDefinition(definition,
                     singlePrimary && primaryKeys.getFirst().equalsIgnoreCase(column.name())));
         }
-        if (primaryKeys.size() > 1) {
+        if (prefixedKeys && !primaryKeys.isEmpty()) {
+            lines.add("PRIMARY KEY (" + keyParts(session, columns, primaryKeys) + ")");
+        } else if (primaryKeys.size() > 1) {
             lines.add("PRIMARY KEY (" + primaryKeys.stream()
                     .map(key -> quoteIdentifier(session, key))
                     .reduce((a, b) -> a + ", " + b).orElse("") + ")");
+        }
+        if (prefixedKeys) {
+            for (ColumnSpec column : columns) {
+                if (column.unique() && !column.primaryKey() && column.keyLength() != null) {
+                    lines.add("UNIQUE (" + quoteIdentifier(session, column.name())
+                            + "(" + column.keyLength() + "))");
+                }
+            }
         }
         appendForeignKeyLines(session, columns, foreignKeys, lines);
 
@@ -448,6 +471,24 @@ public final class StructureSqlBuilder {
                 .map(value -> quoteIdentifier(session, value)).toList());
     }
 
+    /** ⭐ N29：带前缀长度的主键 key_part 列表（{@code `a`, `b`(20)}）。 */
+    private static String keyParts(DbSession session, List<ColumnSpec> columns,
+                                   List<String> names) {
+        StringBuilder parts = new StringBuilder();
+        for (String name : names) {
+            ColumnSpec column = columns.stream()
+                    .filter(candidate -> candidate.name().equalsIgnoreCase(name))
+                    .findFirst().orElse(null);
+            String prefix = column == null || column.keyLength() == null
+                    ? "" : "(" + column.keyLength() + ")";
+            if (!parts.isEmpty()) {
+                parts.append(", ");
+            }
+            parts.append(quoteIdentifier(session, name)).append(prefix);
+        }
+        return parts.toString();
+    }
+
     /** 清空表：保留结构，删掉全部行。 */
     public static StructurePlan truncateTable(DbSession session, String name) {
         requireTableName(name);
@@ -591,6 +632,101 @@ public final class StructureSqlBuilder {
                     + "（现在表里有 " + primaryKeys + " 列主键）";
         }
         return dialect.autoIncrementProblem(auto);
+    }
+
+    /**
+     * ⭐ N29：索引前缀长度（{@code PRIMARY KEY (email(20))}）。
+     *
+     * <p>只有 MySQL 认这种东西；而且它只对字符串列有意义，还必须挂在一个键上 ——
+     * 三个条件任一不满足都在这里说清，而不是让库抛一句
+     * {@code Incorrect prefix key}。
+     */
+    /**
+     * ⭐ N29：新增列属性的校验。
+     *
+     * <p>返回 {@link ColumnProblem}（键 + 参数）而不是拼好的中文：模型层的可展示文案
+     * 由界面层用 {@code I18n.t} 渲染，`I18nAuditTest` 的模型层棘轮钉住这条边界。
+     */
+    private static ColumnProblem advancedColumnProblem(Dialect dialect, List<ColumnSpec> columns) {
+        for (ColumnSpec column : columns) {
+            if (column == null) {
+                continue;
+            }
+            ColumnProblem problem = keyLengthProblem(dialect, column);
+            if (problem == null) {
+                problem = binaryProblem(dialect, column);
+            }
+            if (problem == null) {
+                problem = generatedProblem(dialect, column);
+            }
+            if (problem != null) {
+                return problem;
+            }
+        }
+        return null;
+    }
+
+    private static ColumnProblem keyLengthProblem(Dialect dialect, ColumnSpec column) {
+        String length = column.keyLength();
+        if (length == null) {
+            return null;
+        }
+        if (!dialect.supportsIndexPrefixLength()) {
+            return new ColumnProblem("newtable.error.keyLengthUnsupported",
+                    dialect.displayName(), column.name());
+        }
+        if (!length.matches("\\d{1,4}")) {
+            return new ColumnProblem("newtable.error.keyLengthInvalid",
+                    column.name(), length);
+        }
+        if (!ColumnTypes.isTextual(column.baseType())) {
+            return new ColumnProblem("newtable.error.keyLengthTextOnly",
+                    column.name(), column.effectiveType());
+        }
+        if (!column.primaryKey() && !column.unique()) {
+            return new ColumnProblem("newtable.error.keyLengthNeedsKey", column.name());
+        }
+        return null;
+    }
+
+    /** ⭐ N29：{@code BINARY} 列属性只有 MySQL 有，且只对文本类型有效。 */
+    private static ColumnProblem binaryProblem(Dialect dialect, ColumnSpec column) {
+        if (!column.binary()) {
+            return null;
+        }
+        if (!dialect.supportsColumnBinary()) {
+            return new ColumnProblem("newtable.error.binaryUnsupported",
+                    dialect.displayName(), column.name());
+        }
+        return ColumnTypes.isTextual(column.baseType()) ? null
+                : new ColumnProblem("newtable.error.binaryTextOnly",
+                        column.name(), column.effectiveType());
+    }
+
+    /**
+     * ⭐ N29：生成列（{@code Virtual}）。
+     *
+     * <p>「支持不支持」问方言；「表达式不能空、不能同时是主键 / 自增 / 带默认值」
+     * 是通用规则 —— 这三条在任何库上都会以不同措辞报错，提前说清比让用户猜好。
+     */
+    private static ColumnProblem generatedProblem(Dialect dialect, ColumnSpec column) {
+        if (!column.generated()) {
+            return null;
+        }
+        ColumnProblem problem = dialect.generatedColumnProblem(column);
+        if (problem != null) {
+            return problem;
+        }
+        if (column.primaryKey() || column.unique()) {
+            return new ColumnProblem("newtable.error.generatedKey", column.name());
+        }
+        if (column.autoIncrement()) {
+            return new ColumnProblem("newtable.error.generatedAutoIncrement", column.name());
+        }
+        if (column.defaultValue() != null) {
+            return new ColumnProblem("newtable.error.generatedDefault", column.name());
+        }
+        return null;
     }
 
     /** 字符集/排序规则是标识符，直接拼进 DDL —— 只许字母数字下划线。 */

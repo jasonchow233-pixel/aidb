@@ -17,6 +17,10 @@ package io.agenticdb.model;
  * @param autoIncrement 是否自增（MySQL {@code AUTO_INCREMENT} / PG identity / SQLite rowid）
  * @param charset     列级字符集（仅 MySQL 有意义；{@code null} = 跟随表）
  * @param collation   列级排序规则（MySQL / PostgreSQL；{@code null} = 跟随表/库）
+ * @param keyLength   索引前缀长度（MySQL；{@code null} = 整列进索引）
+ * @param binary      是否加 MySQL 的 {@code BINARY} 列属性
+ * @param generatedExpression 生成列表达式（{@code null} = 普通列）；非空时写进
+ *                    {@code GENERATED ALWAYS AS (…)}
  */
 public record ColumnSpec(
         String name,
@@ -28,7 +32,10 @@ public record ColumnSpec(
         boolean primaryKey,
         boolean autoIncrement,
         String charset,
-        String collation) {
+        String collation,
+        String keyLength,
+        boolean binary,
+        String generatedExpression) {
 
     /**
      * 旧签名：不带自增与列级字符集。
@@ -42,6 +49,14 @@ public record ColumnSpec(
                 false, null, null);
     }
 
+    /** R31 的 10 参数签名：不带前缀长度 / BINARY / 生成列。 */
+    public ColumnSpec(String name, String rawType, boolean nullable, String defaultValue,
+                      String comment, boolean unique, boolean primaryKey,
+                      boolean autoIncrement, String charset, String collation) {
+        this(name, rawType, nullable, defaultValue, comment, unique, primaryKey,
+                autoIncrement, charset, collation, null, false, null);
+    }
+
     public ColumnSpec {
         name = name == null ? "" : name.trim();
         rawType = rawType == null ? "" : rawType.trim();
@@ -50,6 +65,24 @@ public record ColumnSpec(
         comment = comment == null || comment.isBlank() ? null : comment.trim();
         charset = charset == null || charset.isBlank() ? null : charset.trim();
         collation = collation == null || collation.isBlank() ? null : collation.trim();
+        keyLength = keyLength == null || keyLength.isBlank() ? null : keyLength.trim();
+        generatedExpression = generatedExpression == null || generatedExpression.isBlank()
+                ? null : generatedExpression.trim();
+    }
+
+    /** 是否是生成列（{@code Virtual}）。 */
+    public boolean generated() {
+        return generatedExpression != null;
+    }
+
+    /** 去掉内联 {@code UNIQUE}（前缀唯一键改为表级 {@code UNIQUE (col(n))}）。 */
+    public ColumnSpec withoutInlineUnique() {
+        if (!unique) {
+            return this;
+        }
+        return new ColumnSpec(name, rawType, nullable, defaultValue, comment, false,
+                primaryKey, autoIncrement, charset, collation, keyLength, binary,
+                generatedExpression);
     }
 
     public static ColumnSpec from(ColumnDef column) {
@@ -60,7 +93,8 @@ public record ColumnSpec(
 
     public ColumnSpec withName(String value) {
         return new ColumnSpec(value, rawType, nullable, defaultValue, comment, unique,
-                primaryKey, autoIncrement, charset, collation);
+                primaryKey, autoIncrement, charset, collation, keyLength, binary,
+                generatedExpression);
     }
 
     /** 声明类型；为空时按是否主键给默认类型。 */

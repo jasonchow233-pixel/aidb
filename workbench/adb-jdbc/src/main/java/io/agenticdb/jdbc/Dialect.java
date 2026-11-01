@@ -732,6 +732,61 @@ public interface Dialect {
     }
 
     /**
+     * ⭐ N29：MySQL 的 {@code BINARY} 列属性（{@code VARCHAR(10) BINARY}）。
+     *
+     * <p>别的方言没有这个属性 —— PostgreSQL 要用 {@code COLLATE "C"}、
+     * SQLite 用 {@code COLLATE BINARY}，语义相近但不是同一个写法，不能混用。
+     */
+    default boolean supportsColumnBinary() {
+        return false;
+    }
+
+    /**
+     * ⭐ N29：索引前缀长度（MySQL 的 {@code PRIMARY KEY (email(20))}）。
+     *
+     * <p>PostgreSQL / SQLite / Oracle / SQL Server 都不认前缀长度 ——
+     * UI 里那一格要置灰并说明原因，而不是让用户填完到执行才报错。
+     */
+    default boolean supportsIndexPrefixLength() {
+        return false;
+    }
+
+    /**
+     * ⭐ N29：生成列（Navicat 的 {@code Virtual}）。
+     *
+     * <p>写法各方言不同：
+     * <ul>
+     *   <li>MySQL / SQLite / Oracle：{@code GENERATED ALWAYS AS (expr) VIRTUAL}；</li>
+     *   <li>PostgreSQL：只支持 {@code STORED}（12+）；</li>
+     *   <li>SQL Server：计算列的写法是 {@code col AS (expr)}，没有类型位，
+     *       与这里的建表拼装方式不兼容 —— 如实不支持。</li>
+     * </ul>
+     */
+    default boolean supportsGeneratedColumn() {
+        return false;
+    }
+
+    /** 生成列子句（含前导空格）；不支持时返回 {@code null}。 */
+    default String generatedColumnSql(String expression) {
+        return null;
+    }
+
+    /**
+     * 生成列的方言细则；{@code null} = 可以用。
+     *
+     * <p>通用冲突（不能同时是主键 / 自增 / 带默认值）由
+     * {@code StructureSqlBuilder} 判，这里只回答「本方言能不能用」这类差异。
+     */
+    default ColumnProblem generatedColumnProblem(ColumnSpec column) {
+        if (!column.generated()) {
+            return null;
+        }
+        return supportsGeneratedColumn() ? null
+                : new ColumnProblem("newtable.error.generatedUnsupported",
+                        displayName(), column.name());
+    }
+
+    /**
      * ⭐ R31：表设计器「类型」下拉的候选（顺序即显示顺序）。
      *
      * <p>空列表 = 该方言没有可推荐的类型名，UI 退回自由文本输入 ——

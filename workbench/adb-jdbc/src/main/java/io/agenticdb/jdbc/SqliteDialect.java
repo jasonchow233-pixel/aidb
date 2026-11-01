@@ -285,6 +285,10 @@ public final class SqliteDialect implements Dialect {
         if (column.collation() != null) {
             definition += " COLLATE " + column.collation();
         }
+        // ⭐ N29：SQLite 的生成列（3.31+），默认 VIRTUAL。
+        if (column.generated()) {
+            definition += generatedColumnSql(column.generatedExpression());
+        }
         if (!column.nullable()) {
             definition += " NOT NULL";
         }
@@ -319,6 +323,16 @@ public final class SqliteDialect implements Dialect {
     @Override
     public boolean autoIncrementNeedsSinglePrimaryKey() {
         return true;
+    }
+
+    @Override
+    public boolean supportsGeneratedColumn() {
+        return true;
+    }
+
+    @Override
+    public String generatedColumnSql(String expression) {
+        return " GENERATED ALWAYS AS (" + expression + ") VIRTUAL";
     }
 
     @Override
