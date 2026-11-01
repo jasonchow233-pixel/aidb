@@ -13,6 +13,7 @@ import javafx.scene.control.TabPane;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
 import javafx.stage.Stage;
 import org.fxmisc.richtext.CodeArea;
 import org.junit.jupiter.api.AfterAll;
@@ -364,17 +365,7 @@ class AppShellTest {
                 table(robot).getItems().size() == 200);
         DataGridPage page = robot.lookup(".adb-grid-page").queryAs(DataGridPage.class);
 
-        javafx.scene.control.TableCell<?, ?> nameCell = robot.lookup(node ->
-                node instanceof javafx.scene.control.TableCell<?, ?> cell
-                        && "User 001".equals(cell.getText()))
-                .queryAs(javafx.scene.control.TableCell.class);
-        robot.doubleClickOn(nameCell);
-        WaitForAsyncUtils.waitForFxEvents();
-        // 编辑器是双击时临时挂上来的节点，机器慢一拍就查不到 —— 等它出现再取。
-        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
-                robot.lookup(".adb-grid__editor").tryQuery().isPresent());
-        javafx.scene.control.TextField editor = robot.lookup(".adb-grid__editor")
-                .queryAs(javafx.scene.control.TextField.class);
+        TextField editor = openCellEditor(robot, "User 001");
         robot.clickOn(editor);
         robot.write("Renamed User");
         robot.push(javafx.scene.input.KeyCode.ENTER);
@@ -633,6 +624,35 @@ class AppShellTest {
     }
 
     /**
+     * 双击数据网格里文本为 {@code text} 的单元格，等编辑框出现再返回。
+     *
+     * <p>⚠️ 为什么带重试：TestFX 的 {@code doubleClickOn} 是两次独立的单击。
+     * 整包门禁把机器压满时，两次脉冲的间隔会超过平台的连击判定窗口（500ms），
+     * JavaFX 只看到两次单击 —— 编辑框根本不会出现。这是**门禁侧**的时序问题，
+     * 不是网格的编辑链路坏了：同一份测试在 R39 的 HEAD 上同样偶发（见 R40 记录）。
+     * 所以这里重新取单元格再双击，最多三次；三次都没有编辑器就是真失败。
+     */
+    private static TextField openCellEditor(FxRobot robot, String text) {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            javafx.scene.control.TableCell<?, ?> cell = robot.lookup(node ->
+                    node instanceof javafx.scene.control.TableCell<?, ?> candidate
+                            && text.equals(candidate.getText()))
+                    .queryAs(javafx.scene.control.TableCell.class);
+            robot.doubleClickOn(cell);
+            WaitForAsyncUtils.waitForFxEvents();
+            try {
+                WaitForAsyncUtils.waitFor(3, TimeUnit.SECONDS, () ->
+                        robot.lookup(".adb-grid__editor").tryQuery().isPresent());
+                return robot.lookup(".adb-grid__editor").queryAs(TextField.class);
+            } catch (java.util.concurrent.TimeoutException ignored) {
+                // 连击没被识别：重取单元格再试。
+            }
+        }
+        throw new AssertionError("双击「" + text + "」三次仍没有出现编辑框 —— "
+                + "不是重试能盖住的慢，要查双击到编辑这条链路");
+    }
+
+    /**
      * 树上「名字正好是 name」的表 / 视图单元格。
      *
      * <p>{@code DemoNode} 是侧栏的私有记录，测试里取不到 {@code name()}，
@@ -725,16 +745,7 @@ class AppShellTest {
         assertThat(editCopy.isDisable()).isFalse();
         assertThat(menuItem(robot, "edit.undo").isDisable()).isTrue();
 
-        javafx.scene.control.TableCell<?, ?> nameCell = robot.lookup(node ->
-                node instanceof javafx.scene.control.TableCell<?, ?> cell
-                        && "User 001".equals(cell.getText()))
-                .queryAs(javafx.scene.control.TableCell.class);
-        robot.doubleClickOn(nameCell);
-        WaitForAsyncUtils.waitForFxEvents();
-        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
-                robot.lookup(".adb-grid__editor").tryQuery().isPresent());
-        javafx.scene.control.TextField editor = robot.lookup(".adb-grid__editor")
-                .queryAs(javafx.scene.control.TextField.class);
+        TextField editor = openCellEditor(robot, "User 001");
         robot.clickOn(editor);
         robot.write("Renamed User");
         robot.push(javafx.scene.input.KeyCode.ENTER);
