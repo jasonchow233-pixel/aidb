@@ -470,6 +470,71 @@ class ToolbarDiscoverabilityTest {
         assertThat(tableBox.getValue()).as("目标表预选成当前表").isEqualTo("users");
     }
 
+    /**
+     * ⭐ R43-c：工具条右端那排小键不许把下拉箭头挤成一颗「裸 ▾」。
+     *
+     * <p>1280px 实拍帧上，≡ 左边 14px 处孤零零立着一个 ▾ —— 它既没图标也没文字，
+     * 用户无从知道点下去是哪颗键的动作（§11 说的骗人控件形态）。根因是
+     * {@code data-view} 挂了 {@code adb-button--icon}：那颗键被钉死 30px，
+     * 而它是 MenuButton，内容要「内边距 16 + 图标 14.5 + 箭头 16」。
+     * 装不下时 ButtonSkin 把 16px 的 arrow-button 排到图标<b>左边</b>并压住它。
+     *
+     * <p>属性断言抓不到这个：钉宽 30 与「有图标有箭头」两条各自都成立。
+     * 所以这里量<b>几何</b> —— 箭头必须在图标右边，且图标与箭头都在按钮自己的框里。
+     * 读之前先跑一次布局，不靠 waitForFxEvents 碰运气。
+     */
+    @Test
+    void menuKeysNeverSqueezeTheirArrowOntopOfTheIcon(FxRobot robot) throws Exception {
+        resize(WIDE_WIDTH);
+        Region toolbar = toolbar(robot);
+        WaitForAsyncUtils.asyncFx(() -> {
+            javafx.scene.Parent root = toolbar.getScene() == null
+                    ? toolbar : toolbar.getScene().getRoot();
+            root.applyCss();
+            root.layout();
+        }).get();
+
+        List<MenuButton> menus = WaitForAsyncUtils.asyncFx(() -> {
+            List<Node> hits = new ArrayList<>();
+            collect(toolbar, node -> node instanceof MenuButton
+                    && node.isVisible() && node.isManaged(), hits);
+            return hits.stream().map(MenuButton.class::cast).toList();
+        }).get();
+        assertThat(menus.stream().map(Node::getId).toList())
+                .as("1280px 档右端至少要摆出视图菜单这颗图标下拉键（前置条件：这条在验它）")
+                .contains("data-view");
+
+        for (MenuButton menu : menus) {
+            assertThat(menu.getStyleClass())
+                    .as("%s 是下拉键，挂 adb-button--icon 会把箭头挤到图标左边", menu.getId())
+                    .doesNotContain("adb-button--icon");
+            Node arrow = WaitForAsyncUtils.asyncFx(() -> menu.lookup(".arrow-button")).get();
+            assertThat(arrow).as("%s 找不到下拉箭头节点").isNotNull();
+            Node icon = menu.getGraphic();
+            assertThat(icon).as("%s 必须带图标", menu.getId()).isNotNull();
+
+            javafx.geometry.Bounds box = menu.localToScene(menu.getBoundsInLocal());
+            javafx.geometry.Bounds arrowBox = arrow.localToScene(arrow.getBoundsInLocal());
+            javafx.geometry.Bounds iconBox = icon.localToScene(icon.getBoundsInLocal());
+            assertThat(menu.getWidth())
+                    .as("%s 被压扁了：实际 %.0fpx < 需要 %.0fpx", menu.getId(),
+                            menu.getWidth(), menu.prefWidth(-1))
+                    .isGreaterThanOrEqualTo(menu.prefWidth(-1) - 0.5);
+            assertThat(arrowBox.getMinX())
+                    .as("%s 的箭头跑到了图标左边（箭头 %.0f &lt; 图标右边缘 %.0f）—— "
+                            + "画面上就是一颗没有身份的裸 ▾",
+                            menu.getId(), arrowBox.getMinX(), iconBox.getMaxX())
+                    .isGreaterThanOrEqualTo(iconBox.getMaxX() - 0.5);
+            assertThat(iconBox.getMinX())
+                    .as("%s 的图标越出了按钮左边缘", menu.getId())
+                    .isGreaterThanOrEqualTo(box.getMinX() - 0.5);
+            assertThat(arrowBox.getMaxX())
+                    .as("%s 的箭头越出了按钮右边缘", menu.getId())
+                    .isLessThanOrEqualTo(box.getMaxX() + 0.5);
+        }
+        assertToolbarFits(robot, WIDE_WIDTH);
+    }
+
     // ─────────────────────────── 助手 ───────────────────────────
 
     /** 可见的具名键不许被压扁：实际宽度 ≥ 带文字的需求宽。 */

@@ -280,6 +280,45 @@ class NewTableDialogTest {
         assertThat(oneRow).isLessThanOrEqualTo(120.0);
     }
 
+    /**
+     * ⭐ R43-c：留白不许落在中间。
+     *
+     * <p>弹窗固定 680px 高（页签之间不许跳），只有四列时中间那条带子有 130px 没主。
+     * 原来那一段全塞给了网格（{@code VBox.setVgrow(table, ALWAYS)}）—— 可网格的高度是
+     * {@code fitTableHeight} 按行数算出来的，多出来的一截是<b>没有归属的白</b>，
+     * 看着像还有几行没填：正是 fitTableHeight 注释里要治的那个毛病，被这句 vgrow 放了回来。
+     *
+     * <p>现在「工具条 / 网格 / 属性面板」三段作为一个整体在页签内容区里居中，
+     * 留白回到上下两端，工具条仍然贴着自己的网格。
+     * 钉的是<b>结构</b>（谁不许长、谁居中、三段是一组），不是量高度 —— 弹窗没 show 出来
+     * 就没有场景，量到的全是 0，那条断言会静默通过。「居中这一句到底生效没有」由
+     * {@code p6-new-table-fields} 重拍帧目视确认（R43-b 的教训：改对齐必须回拍）。
+     */
+    @Test
+    void spareHeightGoesToTheEndsNotBetweenGridAndPanel() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+
+        javafx.scene.layout.Priority gridGrow = onFx(() -> javafx.scene.layout.VBox
+                .getVgrow(dialog.columnsTable()));
+        javafx.scene.layout.VBox page = onFx(() ->
+                (javafx.scene.layout.VBox) dialog.columnsTable().getParent());
+
+        assertThat(gridGrow)
+                .as("网格自己不许长 —— 长出来的那一段就是没有归属的白"
+                        + "（VBox 没显式设过 vgrow 时读到的是 null，那同样表示「不长」）")
+                .isNotEqualTo(javafx.scene.layout.Priority.ALWAYS);
+        assertThat(page).as("网格外面那一层就是字段页（页签的 content）").isNotNull();
+        assertThat(page.getAlignment())
+                .as("三段作为一个整体垂直居中：留白回到上下两端")
+                .isEqualTo(javafx.geometry.Pos.CENTER);
+        assertThat(onFx(() -> page.getChildren().size()))
+                .as("字段页就三格：工具条 / 网格 / 属性面板，中间不许再垫东西")
+                .isEqualTo(3);
+        assertThat(onFx(() -> page.getChildren().getFirst()))
+                .as("第一格是字段工具条，它和网格是一组（不许被拆开）")
+                .isInstanceOf(javafx.scene.layout.HBox.class);
+    }
+
     // ─────────────────────── S-4：网格键盘导航 ───────────────────────
 
     /**
