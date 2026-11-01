@@ -262,7 +262,7 @@
 
 .adb-appbar__search-kbd {
     -fx-text-fill: -adb-text-muted;
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
     -fx-padding: 0px 4px;
     -fx-background-color: -adb-bg-chrome;
     -fx-border-color: -adb-border;
@@ -521,7 +521,7 @@
     -fx-border-color: transparent;
     -fx-background-radius: 6px;
     -fx-padding: 4px 8px;
-    -fx-font-size: 14px;
+    -fx-font-size: 13px;
     -fx-min-height: 28;
     -fx-pref-height: 28;
 }
@@ -1350,7 +1350,7 @@
     -fx-pref-width: 32;
     -fx-pref-height: 32;
     -fx-background-radius: 6px;
-    -fx-font-size: 16px;
+    -fx-font-size: 13px;
 }
 
 .adb-rail__button:hover {
@@ -1360,7 +1360,7 @@
 
 .adb-rail__dialect {
     -fx-text-fill: -adb-text-secondary;
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
     -fx-font-weight: bold;
 }
 
@@ -1438,14 +1438,14 @@
 
 .adb-tab__dirty {
     -fx-text-fill: -adb-dirty;
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
 }
 
 .adb-tab__close {
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-tertiary;
     -fx-padding: 0px 4px;
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
 }
 
 .adb-tab__close:hover {
@@ -1454,7 +1454,7 @@
 }
 
 .adb-tabbar__add {
-    -fx-font-size: 14px;
+    -fx-font-size: 13px;
 }
 
 /* ── 对象标题栏（§6.1）───────────────────────────────────────────────
@@ -1477,7 +1477,7 @@
 }
 
 .adb-object-header__title {
-    -fx-font-size: 16px;
+    -fx-font-size: 13px;
 }
 
 .adb-object-header__type {
@@ -1616,7 +1616,7 @@
 
 .adb-page__title {
     -fx-text-fill: -adb-text-primary;
-    -fx-font-size: 16px;
+    -fx-font-size: 13px;
     -fx-font-weight: bold;
 }
 
@@ -1637,7 +1637,7 @@
 .adb-badge {
     -fx-padding: 2px 8px;
     -fx-background-radius: 999px;
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
 }
 
 .adb-badge--muted {
@@ -1668,14 +1668,15 @@
     -fx-padding: 32px;
 }
 
+/* 尺寸由 Icons.SIZE_EMPTY（32px）在 Java 侧给定 —— 图标是 SVGPath，
+   CSS 字号管不到它，留一个 32px 只会让阶梯多一档没人消费的令牌。 */
 .adb-empty__icon {
     -fx-text-fill: -adb-text-tertiary;
-    -fx-font-size: 32px;
 }
 
 .adb-empty__title {
     -fx-text-fill: -adb-text-primary;
-    -fx-font-size: 16px;
+    -fx-font-size: 13px;
     -fx-font-weight: bold;
 }
 
@@ -1894,7 +1895,7 @@
 
 .adb-grid__sort-badge {
     -fx-text-fill: -adb-accent;
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
     -fx-font-weight: bold;
     -fx-padding: 0px 2px;
 }
@@ -2066,7 +2067,7 @@
 }
 
 .adb-filter-builder__hint {
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
     -fx-text-fill: -adb-text-tertiary;
 }
 
@@ -2634,7 +2635,7 @@
     -fx-border-radius: 6px;
     -fx-background-radius: 6px;
     -fx-padding: 8px 12px;
-    -fx-font-size: 14px;
+    -fx-font-size: 13px;
 }
 
 .adb-palette__list {
@@ -2671,7 +2672,7 @@
 
 .adb-palette__accelerator {
     -fx-text-fill: -adb-text-tertiary;
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
 }
 
 /* ── 详情抽屉 ───────────────────────────────────────────────────────── */
@@ -2949,7 +2950,7 @@
 }
 
 .adb-dialog > .header-panel .label {
-    -fx-font-size: 14px;
+    -fx-font-size: 13px;
     -fx-font-weight: bold;
     -fx-text-fill: -adb-text-primary;
 }
@@ -3898,7 +3899,7 @@
 
 .adb-wizard__tiles-title {
     -fx-text-fill: -adb-text-primary;
-    -fx-font-size: 14px;
+    -fx-font-size: 13px;
     -fx-font-weight: bold;
 }
 

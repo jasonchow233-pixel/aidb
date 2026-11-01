@@ -10,7 +10,7 @@ import java.util.List;
  */
 public final class Tokens {
 
-    public static final int COUNT = 108;
+    public static final int COUNT = 104;
 
     /** bg-canvas (color) */
     public static final String BG_CANVAS_DARK = "#0B1220";
@@ -292,10 +292,6 @@ public final class Tokens {
     public static final int ROW_COMFORT_DARK = 26;
     public static final int ROW_COMFORT_LIGHT = 26;
 
-    /** fs-2xs (size) */
-    public static final int FS_2XS_DARK = 10;
-    public static final int FS_2XS_LIGHT = 10;
-
     /** fs-xs (size) */
     public static final int FS_XS_DARK = 11;
     public static final int FS_XS_LIGHT = 11;
@@ -307,18 +303,6 @@ public final class Tokens {
     /** fs-md (size) */
     public static final int FS_MD_DARK = 13;
     public static final int FS_MD_LIGHT = 13;
-
-    /** fs-lg (size) */
-    public static final int FS_LG_DARK = 14;
-    public static final int FS_LG_LIGHT = 14;
-
-    /** fs-xl (size) */
-    public static final int FS_XL_DARK = 16;
-    public static final int FS_XL_LIGHT = 16;
-
-    /** fs-3xl (size) */
-    public static final int FS_3XL_DARK = 32;
-    public static final int FS_3XL_LIGHT = 32;
 
     /** sp-1 (size) */
     public static final int SP_1_DARK = 2;
@@ -456,13 +440,13 @@ public final class Tokens {
             "syn-string", "syn-number", "syn-comment", "syn-function", "syn-type", "syn-ident",
             "syn-param", "syn-error", "h-appbar", "h-toolbar", "h-tabbar", "h-statusbar",
             "h-input", "h-button", "w-sidebar-min", "w-sidebar", "w-sidebar-max", "w-sidebar-collapsed",
-            "row-dense", "row-compact", "row-normal", "row-comfort", "fs-2xs", "fs-xs",
-            "fs-sm", "fs-md", "fs-lg", "fs-xl", "fs-3xl", "sp-1",
-            "sp-1h", "sp-2", "sp-3", "sp-4", "sp-5", "sp-6",
-            "sp-7", "r-sm", "r-md", "r-lg", "r-xl", "r-full",
-            "dur-toast", "dur-toast-action", "dur-toast-result", "kind-table", "kind-view", "kind-function",
-            "kind-trigger", "kind-procedure", "overlay", "shadow-1", "shadow-2", "kind-index",
-            "kind-event", "icon-edge", "icon-tone-a", "icon-tone-b", "icon-tone-c", "row-tree"
+            "row-dense", "row-compact", "row-normal", "row-comfort", "fs-xs", "fs-sm",
+            "fs-md", "sp-1", "sp-1h", "sp-2", "sp-3", "sp-4",
+            "sp-5", "sp-6", "sp-7", "r-sm", "r-md", "r-lg",
+            "r-xl", "r-full", "dur-toast", "dur-toast-action", "dur-toast-result", "kind-table",
+            "kind-view", "kind-function", "kind-trigger", "kind-procedure", "overlay", "shadow-1",
+            "shadow-2", "kind-index", "kind-event", "icon-edge", "icon-tone-a", "icon-tone-b",
+            "icon-tone-c", "row-tree"
     );
 
     private Tokens() { }

@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>间距 **47 种**硬编码内边距；</li>
  *   <li>圆角 **5 种**（3/5/6/8/10）写死在 26 处。</li>
  * </ul>
- * 现在分别是 7 / 9 / 5 种（字号被删过两档，见 {@link #FONT_SIZES}；
+ * 现在分别是 3 / 9 / 5 种（字号在 R41 · N30 收敛到 11/12/13，见 {@link #FONT_SIZES}；
  * 圆角在第二十一轮重新定阶梯，见 {@link #RADII}）。
  */
 class AppCssAuditTest {
@@ -41,16 +41,16 @@ class AppCssAuditTest {
     /**
      * 允许的字号（= tokens.json 的 fs-*）。
      *
-     * <p>⚠️ 40px（fs-4xl）已于第十九轮批次 C 移除：它唯一的用处是欢迎页 logo 的
-     * `-fx-font-size`，而 S-5 把 logo 换成了品牌 PNG —— 尺寸改由代码定，字号阶梯里
-     * 不再留一个没人用的档（`TokenParityTest.everyTokenIsActuallyUsed` 会红）。
+     * <p>⚠️ R41 · N30（2026-11-01）：由 7 档收敛为 <b>3 档</b> ——
+     * 删掉 10px（单字符角标贴着可读下限）、14/16px（与 12/13px 只差 1–2px，
+     * 层级越切越碎）和 32px（空状态图标的尺寸，由 {@code Icons.SIZE_EMPTY} 在
+     * Java 侧给定，字号阶梯里没有文字消费它）。
+     * 层次改由 <b>bold + 颜色</b> 拉开，而不是靠每级加 1px。
      *
-     * <p>⚠️ 20px（fs-2xl）同因于 S-7 移除：欢迎页那张卡片的标题是它唯一的消费者，
-     * 而那张卡片根本不可达（`AppShell` 无条件打开常驻的「对象」首页）—— 页面删了，
-     * 档位跟着删。<b>规矩是删令牌，不是给令牌硬造一个消费者</b>（§31.1 第 4 行同一件事）。
+     * <p>更早的两次删档（40px 的 fs-4xl 随 S-5、20px 的 fs-2xl 随 S-7）同理：
+     * <b>规矩是删令牌，不是给令牌硬造一个消费者</b>（§31.1 第 4 行同一件事）。
      */
-    private static final Set<String> FONT_SIZES = Set.of(
-            "10px", "11px", "12px", "13px", "14px", "16px", "32px");
+    private static final Set<String> FONT_SIZES = Set.of("11px", "12px", "13px");
 
     /**
      * CSS 里允许的间距（含 0 —— 归零不是「另一个尺度」）。
@@ -90,22 +90,22 @@ class AppCssAuditTest {
             }
         }
         assertThat(offenders)
-                .as("字号必须落在 7 档阶梯上（fs-2xs…fs-3xl，中间的 20px 档已随 S-7 删除）：\n  %s",
+                .as("字号必须落在 3 档阶梯上（fs-xs 11 / fs-sm 12 / fs-md 13）：\n  %s",
                         String.join("\n  ", offenders))
                 .isEmpty();
     }
 
     @Test
-    void noFontSizeBelowTenPixels() throws IOException {
+    void noFontSizeBelowElevenPixels() throws IOException {
         List<String> offenders = new ArrayList<>();
         for (String value : values(css(), "-fx-font-size:\\s*([0-9.]+)px")) {
             double size = Double.parseDouble(value);
-            if (size < 10) {
+            if (size < 11) {
                 offenders.add(value + "px");
             }
         }
         assertThat(offenders)
-                .as("9px 低于任何可读下限 —— 全部废除")
+                .as("11px 是可读下限 —— 9px / 10px 全部废除")
                 .isEmpty();
     }
 
