@@ -370,6 +370,9 @@ class AppShellTest {
                 .queryAs(javafx.scene.control.TableCell.class);
         robot.doubleClickOn(nameCell);
         WaitForAsyncUtils.waitForFxEvents();
+        // 编辑器是双击时临时挂上来的节点，机器慢一拍就查不到 —— 等它出现再取。
+        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                robot.lookup(".adb-grid__editor").tryQuery().isPresent());
         javafx.scene.control.TextField editor = robot.lookup(".adb-grid__editor")
                 .queryAs(javafx.scene.control.TextField.class);
         robot.clickOn(editor);
@@ -728,6 +731,8 @@ class AppShellTest {
                 .queryAs(javafx.scene.control.TableCell.class);
         robot.doubleClickOn(nameCell);
         WaitForAsyncUtils.waitForFxEvents();
+        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () ->
+                robot.lookup(".adb-grid__editor").tryQuery().isPresent());
         javafx.scene.control.TextField editor = robot.lookup(".adb-grid__editor")
                 .queryAs(javafx.scene.control.TextField.class);
         robot.clickOn(editor);

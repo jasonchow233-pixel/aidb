@@ -260,13 +260,10 @@ class DialogButtonOrderTest {
     }
 
     @Test
-    @DisplayName("收藏夹 / 已保存查询：关闭在左，主动作（打开）贴右下")
+    @DisplayName("收藏夹：关闭在左，主动作（打开）贴右下")
     void managerFootersPutDismissLeftAndPrimaryRight() {
         assertFooter("收藏夹", onFx(() -> new FavoritesPage(List.of("users"),
                 name -> { }, message -> { }).content()), "favorites-close", "favorites-open");
-        assertFooter("已保存查询", onFx(() -> new SavedQueriesPage(
-                new SavedQueries(new SettingsStore(), "dialog.order." + System.nanoTime()),
-                name -> { }, message -> { }).content()), "saved-close", "saved-open");
     }
 
     @Test
@@ -316,8 +313,8 @@ class DialogButtonOrderTest {
     }
 
     @Test
-    @DisplayName("自建底部按钮区的弹窗就这七处，多一处必须一起来这里挂号")
-    void theCustomFooterSetIsStillTheKnownSeven() {
+    @DisplayName("自建底部按钮区的弹窗就这六处，多一处必须一起来这里挂号")
+    void theCustomFooterSetIsStillTheKnownSix() {
         List<String> files = new ArrayList<>();
         for (Path path : productionSources()) {
             if (stripLineComments(read(path)).contains("getButtonTypes().clear()")) {
@@ -327,7 +324,7 @@ class DialogButtonOrderTest {
         assertThat(files)
                 .as("清空 JavaFX 按钮栏、自己排按钮的弹窗清单变了 —— 上面的视觉门禁要跟着加")
                 .containsExactlyInAnyOrder("ConnectionWizard.java", "ExportWizard.java",
-                        "ImportWizard.java", "FavoritesPage.java", "SavedQueriesPage.java",
+                        "ImportWizard.java", "FavoritesPage.java",
                         "TransferHub.java", "VariableDialog.java");
     }
 

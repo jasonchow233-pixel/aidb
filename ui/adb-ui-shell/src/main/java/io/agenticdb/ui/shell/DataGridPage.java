@@ -130,23 +130,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         default void dirty(int count) {
         }
 
-        default void readonly(boolean readonly) {
-        }
-
         /**
          * 当前选中的行数（4.5-11）。
          *
          * <p>状态栏的「选择」段以前永远是「未选择」——这个 setter 零调用。
          */
         default void selection(int count) {
-        }
-
-        /**
-         * 会话是否处于事务中（4.5-11）。
-         *
-         * <p>状态栏的「事务」段以前永远是「自动提交」。
-         */
-        default void transaction(boolean inTransaction) {
         }
 
         default void toast(String message) {
@@ -720,9 +709,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             objectHeader.setContext(connectionName + " · "
                     + (editable ? I18n.t("grid.context.editable") : I18n.t("grid.context.readOnly")));
         }
-        if (tableSchema != null) {
-            feedback.readonly(!editable);
-        }
     }
 
     /** 删除按钮只有在「有选中行 + 表可编辑 + 不在加载/保存中」时才可用。 */
@@ -766,8 +752,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         IconButtons.loading(saveButton, true);
         saving = true;
         grid.setDisable(true);
-        // 4.5-11：状态栏的「事务」段接真实数据 —— 保存跑在事务里（用户开的，或这条保存自己的）。
-        feedback.transaction(true);
         EditSqlBuilder.Plan inverse = undoPlan;
         Task<Integer> task = new Task<>() {
             @Override
@@ -781,7 +765,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             IconButtons.loading(saveButton, false);
             grid.setDisable(false);
             // ⚠️ 不能无条件报「自动提交」：用户开了事务时保存只是写进事务，事务还开着。
-            feedback.transaction(transactionOpen);
             // 事务中不留反向 SQL 撤销计划（撤销靠回滚，见 undoLastSave）。
             saveUndoPlan = transactionOpen ? null : inverse;
             editBuffer.clear();
@@ -804,7 +787,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             saving = false;
             IconButtons.loading(saveButton, false);
             grid.setDisable(false);
-            feedback.transaction(transactionOpen);
             updateEditControls();
             // ⭐ V-12：错误归类 —— 给「能照着做」的说明，而不是驱动的原始英文。
             String reason = io.agenticdb.safety.ErrorClassifier
@@ -870,7 +852,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         }, inTx -> {
             transactionOpen = Boolean.TRUE.equals(inTx);
             applyTransactionControls();
-            feedback.transaction(transactionOpen);
             feedback.status(transactionOpen
                     ? I18n.t("grid.tx.started")
                     : I18n.t("grid.tx.unsupported"));
@@ -886,7 +867,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             transactionOpen = Boolean.TRUE.equals(inTx);
             saveUndoPlan = null;
             applyTransactionControls();
-            feedback.transaction(transactionOpen);
             feedback.status(I18n.t("grid.tx.committedDetail"));
             feedback.toast(I18n.t("grid.tx.committed"));
         });
@@ -934,7 +914,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             editBuffer.clear();
             saveUndoPlan = null;
             applyTransactionControls();
-            feedback.transaction(transactionOpen);
             updateDirty();
             feedback.status(I18n.t("grid.tx.rolledBackDetail"));
             feedback.toast(I18n.t("grid.tx.rolledBack"));
@@ -1028,7 +1007,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             }
             transactionOpen = open;
             applyTransactionControls();
-            feedback.transaction(open);
         });
         dbExecutor.execute(task);
     }
@@ -2801,8 +2779,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         feedback.sql(lastSql);
         feedback.refreshedAt(lastRefreshedAt);
         feedback.dirty(editBuffer.dirtyCount());
-        // ⭐ G2：事务状态跟着回来 —— 并且向会话核对一次真实值（见 refreshTransactionState）。
-        feedback.transaction(transactionOpen);
+        // ⭐ G2：向会话核对一次真实事务状态（见 refreshTransactionState）。
         refreshTransactionState();
         updateEditControls();
         // U8：切回来只恢复事实段（范围/语句/耗时/待提交），不再播一句

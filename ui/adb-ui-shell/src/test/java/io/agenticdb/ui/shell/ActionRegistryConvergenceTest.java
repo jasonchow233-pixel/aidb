@@ -305,13 +305,6 @@ class ActionRegistryConvergenceTest {
                 .matches("(?s).*\\d.*");
     }
 
-    @Test
-    void statusBarTransactionDefaultsToAutoCommit(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        assertThat(onFx(() -> shell(robot).statusBar().transactionText()))
-                .isEqualTo(I18n.t("status.autoCommit"));
-    }
-
     // ─────────────────── A19 密度覆盖数据网格行高 ───────────────────
 
     @Test

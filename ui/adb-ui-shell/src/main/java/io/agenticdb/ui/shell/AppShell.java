@@ -127,6 +127,8 @@ public final class AppShell extends StackPane {
     private final CommandPalette palette;
     private final ConnectionStore connectionStore;
     private final SavedQueries savedQueries;
+    /** ⭐ N24：已保存查询的对象清单页（单实例 —— 同一个标签反复打开不重建）。 */
+    private SavedQueriesPage savedQueriesPage;
     private final CredentialStore credentials;
     private final ObservableList<ConnectionProfile> connections = FXCollections.observableArrayList();
     private final Map<String, List<SchemaObject>> objectsByConnection = new HashMap<>();
@@ -151,6 +153,7 @@ public final class AppShell extends StackPane {
     private ConnectionProfile activeProfile;
     private AppBar appBar;
     private final Map<String, String> initialQuerySql = new HashMap<>();
+    private final Map<String, String> initialQueryName = new HashMap<>();
     private final Map<String, File> initialQueryFile = new HashMap<>();
     private int queryCounter;
 
@@ -209,6 +212,8 @@ public final class AppShell extends StackPane {
         // ⭐ UX-6：连接节点下直接列「已保存查询」；点一条 = 新查询页 + 预填 SQL。
         this.sideBar.setSavedQuerySource(savedQueries::all);
         this.sideBar.setOnOpenSavedQuery(this::openSavedQuery);
+        // ⭐ N24：双击 / Enter「Queries」分组 = 打开对象清单页（不是弹窗）。
+        this.sideBar.setOnOpenSavedQueries(this::openSavedQueries);
         // ⭐ 多连接对象树：展开一个没读过的连接时，去连它、读它的对象。
         this.sideBar.setOnLoadObjects(this::loadObjectsFor);
         // ⭐ S-3：展开表节点时才读它的列（懒加载，见 loadColumnsFor）。
@@ -313,7 +318,6 @@ public final class AppShell extends StackPane {
             connectProfileBlocking(demo, false);
         }
         startup.mark("shell.demo");
-        statusBar.setReadonly(true);
         statusBar.setRange("—");
         if (activeProfile == null) {
             status(I18n.t("shell.demoUnusable", connectionName));
@@ -520,6 +524,8 @@ public final class AppShell extends StackPane {
         savedQueries.save("users-top-100",
                 "SELECT id, name, email FROM users ORDER BY id LIMIT 100;");
         savedQueries.saveSnippet("count-rows", "SELECT COUNT(*) FROM users;");
+        // 树是在种子之前建的 —— 不重建的话，帧里 Queries 组是空的。
+        sideBar.refreshSavedQueries();
     }
 
     /** 截图用：等结构页真的建出来再跳到 DDL 子页签（页签是异步开的）。 */
@@ -1113,7 +1119,6 @@ public final class AppShell extends StackPane {
         String dialectName = session == null ? "—" : session.dialect().displayName();
         statusBar.setDialect(dialectName);
         sideBar.setDialect(dialectName);
-        statusBar.setReadonly(true);
         statusBar.setRange("—");
         status(I18n.t("shell.connectedObjects", profile.name(), objects.size()));
         closeOrphanSessions();
@@ -1630,7 +1635,6 @@ public final class AppShell extends StackPane {
         session = null;
         statusBar.setConnection(null);
         statusBar.setDialect("—");
-        statusBar.setReadonly(true);
         statusBar.setRange("—");
         statusBar.setDuration(-1);
         // ⭐ UX-5-D：断开后没有会话了，「当前语句 / 最后刷新」这两段必须一起收掉，
@@ -1904,6 +1908,7 @@ public final class AppShell extends StackPane {
             Platform.runLater(() -> {
                 poseSeedSavedQueriesForShots();
                 openSavedQueries();
+                savedQueriesPage().selectFirst();
             });
         }
         if (flag("adb.filter", "ADB_FILTER")) {
@@ -2791,11 +2796,16 @@ public final class AppShell extends StackPane {
         // U8：切标签不是回执 —— 当前页由标签栏本身表达，「已激活：连接管理」
         //      只会让消息位常驻一句车轱辘话。
         status("");
+        // ⭐ N25：底栏按页型换段位 —— 查询页多「语句 / 耗时」，对象页只留「计数 + 连接」。
+        statusBar.setMode(switch (tab.kind()) {
+            case QUERY -> StatusBar.Mode.QUERY;
+            case GRID -> StatusBar.Mode.DATA;
+            default -> StatusBar.Mode.OBJECT;
+        });
         if (tab.kind() != TabKind.GRID && tab.kind() != TabKind.QUERY) {
             statusBar.setRange("—");
             statusBar.setDuration(-1);
             statusBar.setDirty(0);
-            statusBar.setReadonly(true);
             // ⭐ UX-5-D：这一类页面（表清单 / 对象首页 / 结构页）没有「当前语句」，
             //    也没有取数时刻 —— 整段收掉，不能拿上一页的语句冒充这一页在看什么。
             statusBar.setSql(null);
@@ -2923,18 +2933,29 @@ public final class AppShell extends StackPane {
             return null;
         }
         String initial = initialQuerySql.remove(tab.id());
+        String initialName = initialQueryName.remove(tab.id());
         File file = initialQueryFile.remove(tab.id());
         QueryPage page = new QueryPage(pageSession, profile.name(), initial,
                 executors.forConnection(tab.connectionId()), settings,
                 pageFeedback());
+        if (initialName != null) {
+            page.setQueryName(initialName);
+        }
+        page.setOnOpenSavedQueries(this::openSavedQueries);
+        page.setOnInsertSnippet(this::insertSnippet);
+        page.setOnNewQuery(this::openNewQuery);
         // 「存为命名查询」落到已保存查询库。
         page.setOnSaveNamed((name, sql) -> {
             savedQueries.save(name, sql);
             // ⭐ UX-6：侧栏跟着更新，不必重启才看到新保存的查询。
             sideBar.refreshSavedQueries();
+            // ⭐ N24：清单页开着时也要立刻出现新条目。
+            refreshSavedQueriesPage();
             // ⭐ Q6：片段库接线（存片段 / 取片段）。
-            page.setOnSaveSnippet((snippetName, snippetSql) ->
-                    savedQueries.saveSnippet(snippetName, snippetSql));
+            page.setOnSaveSnippet((snippetName, snippetSql) -> {
+                savedQueries.saveSnippet(snippetName, snippetSql);
+                refreshSavedQueriesPage();
+            });
             page.setSnippetSource(() -> savedQueries.snippets());
             status(I18n.t("shell.savedQuery", name));
         });
@@ -3033,18 +3054,8 @@ public final class AppShell extends StackPane {
             }
 
             @Override
-            public void readonly(boolean readonly) {
-                statusBar.setReadonly(readonly);
-            }
-
-            @Override
             public void selection(int count) {
                 statusBar.setSelection(count);
-            }
-
-            @Override
-            public void transaction(boolean inTransaction) {
-                statusBar.setTransaction(inTransaction);
             }
 
             @Override
@@ -3176,12 +3187,39 @@ public final class AppShell extends StackPane {
         dialog.showAndWait().ifPresent(page::insertSnippet);
     }
 
+    /** ⭐ N24：Queries 清单是对象页，不是弹窗 —— 关掉标签再开也不丢位置。 */
+    private static final String SAVED_QUERIES_TAB = "tool:saved-queries";
+
     private void openSavedQueries() {
-        SavedQueriesPage page = new SavedQueriesPage(savedQueries,
-                sql -> openQueryWith(sql), this::status);
-        page.show(stage);
-        // 对话框里可能改名 / 删除了条目 —— 侧栏的分组要跟着变。
-        sideBar.refreshSavedQueries();
+        SavedQueriesPage page = savedQueriesPage();
+        page.refresh();
+        if (tabBar.openTabs().stream().anyMatch(tab -> SAVED_QUERIES_TAB.equals(tab.id()))) {
+            tabBar.activate(SAVED_QUERIES_TAB);
+            return;
+        }
+        openTab(new TabItem(SAVED_QUERIES_TAB, I18n.t("action.saved-queries"),
+                TabKind.TOOL, "saved-queries", null, page));
+    }
+
+    private SavedQueriesPage savedQueriesPage() {
+        if (savedQueriesPage == null) {
+            savedQueriesPage = new SavedQueriesPage(savedQueries,
+                    entry -> openSavedQuery(new SideBar.SavedQueryRequest(
+                            activeProfileId(), entry.name(), entry.sql())),
+                    this::openNewQuery,
+                    () -> {
+                        sideBar.refreshSavedQueries();
+                        refreshSavedQueriesPage();
+                    },
+                    this::status);
+        }
+        return savedQueriesPage;
+    }
+
+    private void refreshSavedQueriesPage() {
+        if (savedQueriesPage != null) {
+            savedQueriesPage.refresh();
+        }
     }
 
     /**
@@ -3198,6 +3236,7 @@ public final class AppShell extends StackPane {
                 ? I18n.t("shell.unnamedQuery", queryCounter) : request.name();
         String id = "query:" + connection + ":" + System.nanoTime();
         initialQuerySql.put(id, request.sql());
+        initialQueryName.put(id, request.name());
         openTab(new TabItem(id, name, TabKind.QUERY, null, connection));
         status(I18n.t("shell.loadedSavedQuery", name));
     }

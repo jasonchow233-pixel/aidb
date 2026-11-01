@@ -137,6 +137,8 @@ public final class SideBar extends VBox {
     private Supplier<List<SavedQueries.Entry>> savedQuerySource = List::of;
     /** ⭐ UX-6：双击 / 回车一条已保存查询 → 外壳建查询页并预填 SQL。 */
     private Consumer<SavedQueryRequest> onOpenSavedQuery = request -> { };
+    /** ⭐ N24：双击 / 回车「Queries」分组 → 打开已保存查询的对象清单页。 */
+    private Runnable onOpenSavedQueries = () -> { };
 
     private final Set<String> starred = new LinkedHashSet<>();
     /** 收藏的持久化位置（以前只在内存里 —— 退出即丢）。 */
@@ -393,6 +395,11 @@ public final class SideBar extends VBox {
     /** ⭐ UX-6：打开一条已保存查询（外壳负责建查询页并预填 SQL）。 */
     public void setOnOpenSavedQuery(Consumer<SavedQueryRequest> handler) {
         this.onOpenSavedQuery = handler == null ? request -> { } : handler;
+    }
+
+    /** ⭐ N24：打开 Queries 对象清单页（外壳负责建标签）。 */
+    public void setOnOpenSavedQueries(Runnable handler) {
+        this.onOpenSavedQueries = handler == null ? () -> { } : handler;
     }
 
     /** 多连接切换：替换可选连接列表并保持当前选中项。 */
@@ -764,6 +771,9 @@ public final class SideBar extends VBox {
                 } else if (node.kind() == NodeKind.SAVED_QUERY) {
                     // ⭐ UX-6：双击已保存查询 = 新开查询页并载入它。
                     openSavedQuery(node.connectionId(), node.name());
+                } else if (node.kind() == NodeKind.SAVED_GROUP) {
+                    // ⭐ N24：Queries 分组 = 对象清单页（Navicat 同形）。
+                    onOpenSavedQueries.run();
                 } else if (node.kind() == NodeKind.CATALOG) {
                     // ⭐ U1：双击一个库 = 把当前连接切到它（MySQL 要重连）。
                     onSwitchCatalog.accept(new CatalogSwitch(node.connectionId(), node.name()));
@@ -789,6 +799,9 @@ public final class SideBar extends VBox {
                     event.consume();
                 } else if (node.kind() == NodeKind.SAVED_QUERY) {
                     openSavedQuery(node.connectionId(), node.name());
+                    event.consume();
+                } else if (node.kind() == NodeKind.SAVED_GROUP) {
+                    onOpenSavedQueries.run();
                     event.consume();
                 } else if (node.kind() == NodeKind.CATALOG) {
                     onSwitchCatalog.accept(new CatalogSwitch(node.connectionId(), node.name()));

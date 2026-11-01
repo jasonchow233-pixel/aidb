@@ -30,7 +30,8 @@ import java.util.function.LongSupplier;
  * <ul>
  *   <li>方言 + 连接名 → 一颗<b>连接灯</b>（状态点 + {@code SQLite · demo}），
  *       服务器版本与当前用户进它的 tooltip；</li>
- *   <li>事务状态 + 只读/可写 → 一段「自动提交 · 可写」；</li>
+ *   <li>⭐ N25：事务状态 + 只读/可写那段<b>整段删除</b> —— 它是会话设置，
+ *       不是当前页面的状态，Navicat 底栏也不常驻它；</li>
  *   <li>「刷新于 5 分钟前」→ 行范围段的 tooltip（数据新旧是<b>点开看</b>的信息，
  *       不是每 30 秒都值得占一格的东西）；</li>
  *   <li>⭐ G19b（2026-10-28 改判上一条）：Navicat 17 底栏右侧常驻 {@code Last Refresh: 37m}，
@@ -38,13 +39,25 @@ import java.util.function.LongSupplier;
  *   <li>未选择 / 没有耗时 / 没有待提交 → <b>整段不占位</b>，不显示占位符。</li>
  * </ul>
  *
- * <p>⚠️ 4.5-11：{@code setDialect} / {@code setSelection} / {@code setTransaction}
- * 接的是真实数据（方言、选中行数、会话事务状态），不是写死的「DEV / 未选择 / 自动提交」。
+ * <p>⚠️ 4.5-11：{@code setDialect} / {@code setSelection}
+ * 接的是真实数据（方言、选中行数），不是写死的「DEV / 未选择」。
  *
  * <p>⭐ UX-5-D：左段保留「<b>当前语句</b>」—— 截断只发生在渲染层，
  * tooltip 与点击复制走的都是原文（截半条 SQL 复制出去执行是正确性事故）。
  */
 public final class StatusBar extends HBox {
+
+    /**
+     * ⭐ N25：状态栏按页面类型换段位。
+     *
+     * <ul>
+     *   <li>{@link #QUERY}：连接 · 语句 · 回执 / 选择 · 耗时 / 行数 · 最后刷新（6 段）；</li>
+     *   <li>{@link #DATA}：左「当前语句」，右「Record · Last Refresh」；</li>
+     *   <li>{@link #OBJECT}：左「计数 / 选中」，右「连接 · 库」。</li>
+     * </ul>
+     * 「自动提交 · 只读」段不再常驻 —— 它是会话设置，不是当前页面的状态。
+     */
+    public enum Mode { QUERY, DATA, OBJECT }
 
     /**
      * ⭐ UX-5-D：语句段的最大宽度。
@@ -98,11 +111,12 @@ public final class StatusBar extends HBox {
     private final Label duration = segment("— ms", "adb-status__duration");
     /** 耗时段的分隔符 —— 必须与 {@link #duration} 同进退，否则会剩一个孤零零的「·」。 */
     private final Region durationSeparator = separator();
-    /** U8：事务状态 + 读写权限合成的一段「自动提交 · 可写」。 */
-    private final Label session = segment(
-            I18n.t("status.autoCommit") + " · " + I18n.t("status.readOnly"), "adb-status__session");
-    /**
-     * ⭐ G19b（2026-10-28 改判 U8）：最后刷新**常驻一格**。
+    /** ⭐ N25：当前页型；换页型会重排左 / 中 / 右三段。 */
+    private Mode mode = Mode.DATA;
+    private final HBox left = new HBox(6);
+    private final HBox center = new HBox(6);
+    private final HBox right = new HBox(6);
+    /** ⭐ G19b（2026-10-28 改判 U8）：最后刷新**常驻一格**。
      *
      * <p>Navicat 17 底栏右侧写着 {@code Last Refresh: 37m}；U8 当时把它收进行范围的
      * tooltip 省格子，但「这屏数据多旧」是扫一眼就要知道的信息，不该靠悬停。
@@ -110,8 +124,6 @@ public final class StatusBar extends HBox {
      */
     private final Label refreshed = segment("", "adb-status__refreshed");
     private final Region refreshedSeparator = separator();
-    private String transactionState = I18n.t("status.autoCommit");
-    private boolean readonly = true;
     private final Label dirty = segment("", "adb-status__dirty");
     /** ⭐ UX-5-D：左段的「当前语句」—— 显示压平后的一行，复制与 tooltip 用原文。 */
     private final Label sql = segment("", "adb-status__sql");
@@ -164,16 +176,10 @@ public final class StatusBar extends HBox {
         sql.setTooltip(sqlTooltip);
         sql.setOnMouseClicked(this::copySql);
 
-        HBox left = new HBox(6, source, rangeSeparator, range, sqlSeparator, sql,
-                messageSeparator, message, dirty);
         left.setAlignment(Pos.CENTER_LEFT);
         left.getStyleClass().add("adb-statusbar__left");
-
-        HBox center = new HBox(6, selection, durationSeparator, duration);
         center.setAlignment(Pos.CENTER);
         center.getStyleClass().add("adb-statusbar__center");
-
-        HBox right = new HBox(6, refreshed, refreshedSeparator, session);
         right.setAlignment(Pos.CENTER_RIGHT);
         right.getStyleClass().add("adb-statusbar__right");
 
@@ -184,6 +190,53 @@ public final class StatusBar extends HBox {
         HBox.setHgrow(rightSpacer, Priority.ALWAYS);
 
         getChildren().addAll(left, leftSpacer, center, rightSpacer, right);
+        applyMode();
+    }
+
+    /**
+     * ⭐ N25：按页型重排分段。
+     *
+     * <p>分段节点是同一个实例，只改挂载位置 —— 各段自己的隐藏 / 占位状态
+     * 仍由 {@link #setRange} / {@link #setSql} 等方法维持，换页型不会把旧值带回来。
+     */
+    private void applyMode() {
+        left.getChildren().clear();
+        center.getChildren().clear();
+        right.getChildren().clear();
+        switch (mode) {
+            case QUERY -> {
+                left.getChildren().addAll(source, sqlSeparator, sql,
+                        messageSeparator, message, dirty);
+                center.getChildren().addAll(selection, durationSeparator, duration);
+                right.getChildren().addAll(rangeSeparator, range,
+                        refreshedSeparator, refreshed);
+            }
+            case DATA -> {
+                left.getChildren().addAll(sql, messageSeparator, message, dirty);
+                center.getChildren().add(selection);
+                right.getChildren().addAll(rangeSeparator, range,
+                        refreshedSeparator, refreshed);
+            }
+            case OBJECT -> {
+                left.getChildren().addAll(selection, messageSeparator, message);
+                right.getChildren().add(source);
+            }
+        }
+    }
+
+    /** 供门禁断言：当前页型。 */
+    public Mode mode() {
+        return mode;
+    }
+
+    /** ⭐ N25：切换页型（查询 / 数据 / 对象）。 */
+    public void setMode(Mode next) {
+        Mode resolved = next == null ? Mode.DATA : next;
+        if (mode == resolved) {
+            return;
+        }
+        mode = resolved;
+        applyMode();
     }
 
     /**
@@ -343,16 +396,6 @@ public final class StatusBar extends HBox {
         }
     }
 
-    /**
-     * 会话的真实事务状态。
-     *
-     * <p>4.5-11：以前这个位置写死「自动提交」，{@code setTransaction} 零调用。
-     */
-    public void setTransaction(boolean inTransaction) {
-        transactionState = inTransaction ? I18n.t("status.inTransaction") : I18n.t("status.autoCommit");
-        paintSession();
-    }
-
     public void setDirty(int count) {
         // ⭐ 状态点用矢量实心圆（不是 Unicode 的 ●）。
         dirty.setGraphic(Icons.of(Icons.Icon.DOT, Icons.SIZE_DOT));
@@ -376,17 +419,6 @@ public final class StatusBar extends HBox {
         paintSource();
     }
 
-    public void setReadonly(boolean value) {
-        readonly = value;
-        paintSession();
-    }
-
-    /** U8：事务状态与读写权限合成一段，读起来是一句人话而不是两个词。 */
-    private void paintSession() {
-        session.setText(transactionState + " · " + (readonly
-                ? I18n.t("status.readOnly") : I18n.t("status.writable")));
-    }
-
     public String message() {
         return message.getText();
     }
@@ -404,16 +436,6 @@ public final class StatusBar extends HBox {
     /** 供门禁断言：当前显示的选中行数。 */
     public String selectionText() {
         return selection.isVisible() ? selection.getText() : I18n.t("status.noneSelected");
-    }
-
-    /** 供门禁断言：当前显示的事务状态。 */
-    public String transactionText() {
-        return transactionState;
-    }
-
-    /** 供门禁断言：当前显示的读写状态。 */
-    public String readonlyText() {
-        return readonly ? I18n.t("status.readOnly") : I18n.t("status.writable");
     }
 
     /** 供门禁断言：当前语句的<b>原文</b>（点击复制的内容，不是界面那行截断文本）。 */

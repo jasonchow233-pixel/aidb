@@ -341,10 +341,6 @@ class DataGridFindReplaceTest {
             @Override
             public void duration(long millis) {
             }
-
-            @Override
-            public void transaction(boolean inTransaction) {
-            }
         };
     }
 

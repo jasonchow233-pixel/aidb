@@ -57,6 +57,7 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
@@ -111,12 +112,16 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private final Label range = new Label("—");
     private final Label duration = new Label("— ms");
     private final MenuButton historyButton = new MenuButton(I18n.t("grid.toolbar.history"));
-    private final Button run = IconButtons.of(Icons.Icon.RUN, I18n.t("query.run"));
-    private final Button runAll = IconButtons.of(Icons.Icon.RUN_ALL, I18n.t("query.runAll"));
+    /** ⭐ N21：▶Run 是分裂按钮 —— 点主体直接跑当前语句，箭头展开 Run All / 带参数执行。 */
+    private final javafx.scene.control.SplitMenuButton run = new javafx.scene.control.SplitMenuButton();
     private final Button cancel = IconButtons.of(Icons.Icon.STOP, I18n.t("query.stop"));
     private final Button explain = IconButtons.of(Icons.Icon.EXPLAIN, I18n.t("query.explain"));
     private final Button format = new Button(I18n.t("query.beautify"));
     private final Button save = new Button(I18n.t("query.save"));
+    private final MenuButton askAi = new MenuButton(I18n.t("query.askAi"));
+    private MenuButton nameMenu;
+    private MenuButton connectionMenu;
+    private String queryName;
     private final HBox findBar = new HBox(6);
     private final TextField findField = new TextField();
     private final TextField replaceField = new TextField();
@@ -126,6 +131,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private IntConsumer dirtyListener = count -> { };
     /** 「存为命名查询」的回调（名字, SQL）。 */
     private java.util.function.BiConsumer<String, String> onSaveNamed = (name, sql) -> { };
+    /** ⭐ N21：打开已保存查询清单（名字菜单里的入口）。 */
+    private Runnable onOpenSavedQueries = () -> { };
+    /** ⭐ N21：插入代码片段（Code Snippet 按钮）。 */
+    private Runnable onInsertSnippet = () -> { };
+    /** ⭐ N21：在另一条连接上开新查询（连接菜单里的入口）。 */
+    private Runnable onNewQuery = () -> { };
     /** ⭐ Q6：存为代码片段（存的是**选中的文本**，插入时用）。 */
     private java.util.function.BiConsumer<String, String> onSaveSnippet = (name, sql) -> { };
     /** ⭐ Q6：片段库（插入用）。 */
@@ -144,6 +155,34 @@ public final class QueryPage extends VBox implements AutoCloseable {
     /** 接上「存为命名查询」的落点。 */
     public void setOnSaveNamed(java.util.function.BiConsumer<String, String> onSaveNamed) {
         this.onSaveNamed = onSaveNamed == null ? (name, sql) -> { } : onSaveNamed;
+    }
+
+    /** ⭐ N21：名字菜单 →「打开已保存查询」。 */
+    public void setOnOpenSavedQueries(Runnable action) {
+        this.onOpenSavedQueries = action == null ? () -> { } : action;
+    }
+
+    /** ⭐ N21：Code Snippet 按钮的落点（插入到光标处）。 */
+    public void setOnInsertSnippet(Runnable action) {
+        this.onInsertSnippet = action == null ? () -> { } : action;
+    }
+
+    /** ⭐ N21：连接菜单 →「New Query」。 */
+    public void setOnNewQuery(Runnable action) {
+        this.onNewQuery = action == null ? () -> { } : action;
+    }
+
+    /** ⭐ N21：名字菜单显示的查询名（新查询为 Untitled）。 */
+    public void setQueryName(String name) {
+        queryName = name == null || name.isBlank() ? null : name.trim();
+        if (nameMenu != null) {
+            nameMenu.setText(queryName == null ? I18n.t("query.name.untitled") : queryName);
+        }
+    }
+
+    /** 供门禁断言：名字菜单当前显示的名字。 */
+    String queryNameText() {
+        return queryName == null ? I18n.t("query.name.untitled") : queryName;
     }
 
     /** 接上「存为代码片段」的落点（Q6）。 */
@@ -222,6 +261,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             return;
         }
         onSaveNamed.accept(name.get().trim(), sql);
+        setQueryName(name.get().trim());
         feedback.status(I18n.t("query.namedSaved", name.get().trim()));
     }
 
@@ -253,36 +293,104 @@ public final class QueryPage extends VBox implements AutoCloseable {
     // ─────────────────────────── 构建 ───────────────────────────
 
     private void buildUi() {
-        Label title = new Label(I18n.t("query.title"));
-        title.getStyleClass().add("adb-page__title");
-
-        Label connection = new Label(connectionName);
-        connection.getStyleClass().add("adb-badge");
-        connection.getStyleClass().add("adb-badge--muted");
-
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
         historyButton.setId("query-history");
         historyButton.getStyleClass().add("adb-button");
         historyButton.getItems().add(new MenuItem(I18n.t("query.noHistory")));
 
-        HBox header = new HBox(8, title, connection, spacer, historyButton);
-        header.getStyleClass().add("adb-query__header");
-        header.setAlignment(Pos.CENTER_LEFT);
+        // ── 行 1：低频 / 编辑类动作（Navicat 17 查询工具带上排） ──
+        save.setId("query-save");
+        save.getStyleClass().add("adb-button");
+        save.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(I18n.t("query.tip.save"), "Mod+S")));
+        save.setOnAction(event -> save());
 
+        Button builder = new Button(I18n.t("query.builder"));
+        builder.setId("query-builder");
+        builder.getStyleClass().add("adb-button");
+        builder.setTooltip(new Tooltip(I18n.t("query.tip.builder")));
+        builder.setOnAction(event -> showCapabilityNotice(I18n.t("query.builder"), "grid.capability.queryBuilder"));
+
+        format.setId("query-format");
+        format.getStyleClass().add("adb-button");
+        format.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(I18n.t("query.tip.beautify"), "Alt+Shift+F")));
+        format.setOnAction(event -> formatSql());
+
+        Button snippet = new Button(I18n.t("query.snippet"));
+        snippet.setId("query-snippet");
+        snippet.getStyleClass().add("adb-button");
+        snippet.setTooltip(new Tooltip(I18n.t("query.tip.snippet")));
+        snippet.setOnAction(event -> onInsertSnippet.run());
+
+        askAi.setId("query-ask-ai");
+        askAi.getStyleClass().add("adb-button");
+        askAi.setTooltip(new Tooltip(I18n.t("query.tip.askAi")));
+        MenuItem generate = new MenuItem(I18n.t("query.askAi.generate"));
+        generate.setId("query-ask-ai-generate");
+        generate.setOnAction(event ->
+                showCapabilityNotice(I18n.t("query.askAi.generate"), "grid.capability.askAi"));
+        MenuItem explainWithAi = new MenuItem(I18n.t("query.askAi.explain"));
+        explainWithAi.setId("query-ask-ai-explain");
+        explainWithAi.setOnAction(event ->
+                showCapabilityNotice(I18n.t("query.askAi.explain"), "grid.capability.askAi"));
+        askAi.getItems().addAll(generate, explainWithAi);
+
+        risk.setId("query-risk");
+        risk.getStyleClass().addAll("adb-badge", "adb-query__risk");
+        risk.setTooltip(new Tooltip(I18n.t("query.tip.risk")));
+
+        Region row1Spacer = new Region();
+        HBox.setHgrow(row1Spacer, Priority.ALWAYS);
+
+        HBox row1 = new HBox(6, save, builder, format, snippet, askAi,
+                row1Spacer, risk, historyButton);
+        row1.getStyleClass().add("adb-query__toolbar-row");
+        row1.setAlignment(Pos.CENTER_LEFT);
+
+        // ── 行 2：查询名 / 连接 / 执行（Navicat 17 查询工具带下排） ──
+        nameMenu = new MenuButton(I18n.t("query.name.untitled"));
+        nameMenu.setId("query-name");
+        nameMenu.getStyleClass().add("adb-button");
+        nameMenu.setTooltip(new Tooltip(I18n.t("query.tip.name")));
+        MenuItem saveNamed = new MenuItem(I18n.t("query.saveNamed"));
+        saveNamed.setId("query-save-named");
+        saveNamed.setOnAction(event -> saveNamed());
+        MenuItem openSaved = new MenuItem(I18n.t("query.name.open"));
+        openSaved.setId("query-open-saved");
+        openSaved.setOnAction(event -> onOpenSavedQueries.run());
+        nameMenu.getItems().addAll(saveNamed, openSaved);
+
+        connectionMenu = new MenuButton(connectionName);
+        connectionMenu.setId("query-connection");
+        connectionMenu.getStyleClass().add("adb-button");
+        connectionMenu.setTooltip(new Tooltip(I18n.t("query.tip.connection")));
+        MenuItem newQuery = new MenuItem(I18n.t("action.new-query"));
+        newQuery.setId("query-new");
+        newQuery.setOnAction(event -> onNewQuery.run());
+        MenuItem bound = new MenuItem(I18n.t("query.connection.bound"));
+        bound.setDisable(true);
+        connectionMenu.getItems().addAll(newQuery, new SeparatorMenuItem(), bound);
+
+        run.setText(I18n.t("query.run"));
         run.setId("query-run");
+        run.setGraphic(Icons.of(Icons.Icon.RUN, Icons.SIZE_LABEL));
         run.getStyleClass().addAll("adb-button", "adb-button--primary");
         run.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(I18n.t("query.tip.run"), "Mod+Enter")));
         run.setOnAction(event -> runCurrent());
-
-        runAll.setId("query-run-all");
-        runAll.getStyleClass().add("adb-button");
-        runAll.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(I18n.t("query.tip.runAll"), "Shift+Mod+Enter")));
-        runAll.setOnAction(event -> runAll());
+        MenuItem runItem = new MenuItem(I18n.t("query.run"));
+        runItem.setId("query-run-current");
+        runItem.setGraphic(Icons.of(Icons.Icon.RUN, Icons.SIZE_LABEL));
+        runItem.setOnAction(event -> runCurrent());
+        MenuItem runAllItem = new MenuItem(I18n.t("query.runAll"));
+        runAllItem.setId("query-run-all");
+        runAllItem.setGraphic(Icons.of(Icons.Icon.RUN_ALL, Icons.SIZE_LABEL));
+        runAllItem.setOnAction(event -> runAll());
+        MenuItem paramsItem = new MenuItem(I18n.t("query.runWithParams"));
+        paramsItem.setId("query-variables");
+        paramsItem.setOnAction(event -> runWithVariables());
+        run.getItems().addAll(runItem, runAllItem, new SeparatorMenuItem(), paramsItem);
 
         cancel.setId("query-cancel");
         cancel.getStyleClass().add("adb-button");
+        cancel.setTooltip(new Tooltip(I18n.t("query.tip.stop")));
         cancel.setOnAction(event -> cancel());
 
         explain.setId("query-explain");
@@ -290,45 +398,28 @@ public final class QueryPage extends VBox implements AutoCloseable {
         explain.setTooltip(new Tooltip(I18n.t("query.tip.explain")));
         explain.setOnAction(event -> explainCurrent());
 
-        format.setId("query-format");
-        format.getStyleClass().add("adb-button");
-        format.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(I18n.t("query.tip.beautify"), "Alt+Shift+F")));
-        format.setOnAction(event -> formatSql());
+        Region row2Spacer = new Region();
+        HBox.setHgrow(row2Spacer, Priority.ALWAYS);
 
-        save.setId("query-save");
-        save.getStyleClass().add("adb-button");
-        save.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(I18n.t("query.tip.save"), "Mod+S")));
-        save.setOnAction(event -> save());
+        HBox row2 = new HBox(6, nameMenu, connectionMenu, run, cancel, explain, row2Spacer);
+        row2.getStyleClass().add("adb-query__toolbar-row");
+        row2.setAlignment(Pos.CENTER_LEFT);
 
-        Button saveNamed = new Button(I18n.t("query.saveNamed"));
-        saveNamed.setId("query-save-named");
-        saveNamed.getStyleClass().add("adb-button");
-        saveNamed.setTooltip(new Tooltip(I18n.t("query.tip.saveNamed")));
-        saveNamed.setOnAction(event -> saveNamed());
-
-        // ⭐ Q2：变量按钮 —— 语句里有 ? / :name 就亮起来
-        Button variables = new Button(I18n.t("query.params"));
-        variables.setId("query-variables");
-        variables.getStyleClass().add("adb-button");
-        variables.setTooltip(new Tooltip(I18n.t("query.tip.params")));
-        variables.setOnAction(event -> runWithVariables());
-
-        Button clear = new Button(I18n.t("query.clear"));
-        clear.getStyleClass().add("adb-button");
-        clear.setOnAction(event -> editor.setText(""));
-
-        risk.setId("query-risk");
-        risk.getStyleClass().addAll("adb-badge", "adb-query__risk");
-        risk.setTooltip(new Tooltip(I18n.t("query.tip.risk")));
-
-        Region toolbarSpacer = new Region();
-        HBox.setHgrow(toolbarSpacer, Priority.ALWAYS);
-
-        HBox toolbar = new HBox(6, run, runAll, cancel, explain, format, save, saveNamed,
-                variables, clear,
-                risk, toolbarSpacer);
+        VBox toolbar = new VBox(row1, row2);
+        toolbar.setId("query-toolbar");
         toolbar.getStyleClass().add("adb-query__toolbar");
-        toolbar.setAlignment(Pos.CENTER_LEFT);
+
+        // ⭐ N21：Clear 从工具带收敛到编辑器右键菜单 —— 它是一次性动作，
+        //    不值得和 Run/Save 抢常驻位置；右键菜单本来就是「编辑这段文本」的入口。
+        ContextMenu editorMenu = editor.area().getContextMenu();
+        if (editorMenu == null) {
+            editorMenu = new ContextMenu();
+            editor.area().setContextMenu(editorMenu);
+        }
+        MenuItem clear = new MenuItem(I18n.t("query.clear"));
+        clear.setId("query-clear");
+        clear.setOnAction(event -> editor.setText(""));
+        editorMenu.getItems().addAll(new SeparatorMenuItem(), clear);
 
         buildFindBar();
 
@@ -381,7 +472,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         statusBar.getStyleClass().add("adb-query__statusbar");
         statusBar.setAlignment(Pos.CENTER_LEFT);
 
-        getChildren().addAll(header, toolbar, findBar, split, statusBar);
+        getChildren().addAll(toolbar, findBar, split, statusBar);
     }
 
     private void buildFindBar() {
@@ -441,7 +532,6 @@ public final class QueryPage extends VBox implements AutoCloseable {
         feedback.range(range.getText());
         feedback.duration(-1);
         feedback.dirty(dirty ? 1 : 0);
-        feedback.readonly(false);
         updateButtons();
     }
 
@@ -622,15 +712,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
     private void updateButtons() {
         run.setDisable(running);
-        runAll.setDisable(running);
         explain.setDisable(running || !explainsPlans());
         explain.setTooltip(new Tooltip(explainsPlans()
                 ? I18n.t("query.tip.explain") : I18n.t("query.explain.unsupported")));
         format.setDisable(running);
         save.setDisable(running);
         cancel.setDisable(!running);
-        cancel.setVisible(running);
-        cancel.setManaged(running);
         stateListener.run();
     }
 
@@ -966,7 +1053,6 @@ public final class QueryPage extends VBox implements AutoCloseable {
             settle.play();
         }
         feedback.dirty(dirty ? 1 : 0);
-        feedback.readonly(false);
     }
 
     /**
@@ -1073,10 +1159,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
             PagedLoader loader = new PagedLoader(tab, index, table, rowOffset,
                     sql, params, result.columns());
             pagers.add(loader);
-            VBox box = new VBox(6, loader.node(), table, typeStrip(result.columns()));
+            VBox dataPane = new VBox(0, loader.node(), table);
             VBox.setVgrow(table, Priority.ALWAYS);
-            box.getStyleClass().add("adb-query__result-box");
-            tab.setContent(box);
+            tab.setContent(resultViews(dataPane, result.columns(), sql, null, null));
             loader.start();
             return tab;
         }
@@ -1093,31 +1178,100 @@ public final class QueryPage extends VBox implements AutoCloseable {
         export.getStyleClass().add("adb-button");
         export.setOnAction(event -> exportCsv(result));
 
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
-        HBox toolbar;
+        Label warning = null;
         if (result.isTruncated()) {
             // ⭐ 静默截断比不分页更糟：用户会以为看到的就是全部。
             meta.setText(meta.getText() + I18n.t("query.truncatedSuffix"));
             // U10：警示标记是**矢量图标**，不是文本「⚠」——
             // 文本符号不吃主题色、不吃字号，暗色下几乎看不见。
-            Label warning = new Label(I18n.t("query.truncated", io.agenticdb.model.QueryLimits.MAX_PAGE_SIZE));
+            warning = new Label(I18n.t("query.truncated", io.agenticdb.model.QueryLimits.MAX_PAGE_SIZE));
             warning.setGraphic(Icons.of(Icons.Icon.ALERT, Icons.SIZE_BADGE));
             warning.setId("query-result-truncated");
             warning.getStyleClass().add("adb-query__result-truncated");
-            toolbar = new HBox(6, meta, warning, spacer, copy, export);
-        } else {
-            toolbar = new HBox(6, meta, spacer, copy, export);
         }
-        toolbar.getStyleClass().add("adb-query__result-toolbar");
-        toolbar.setAlignment(Pos.CENTER_LEFT);
 
-        VBox box = new VBox(6, toolbar, table, typeStrip(result.columns()));
+        // ⭐ N23：Data / Info 第二段 32px —— Data 是网格，Info 是列类型与语句；
+        //    Copy / Export 跟着这一段走，不再单独占一条工具条（结果区从三段收成两段）。
+        VBox dataPane = new VBox(0, table);
         VBox.setVgrow(table, Priority.ALWAYS);
-        box.getStyleClass().add("adb-query__result-box");
-        tab.setContent(box);
+        tab.setContent(resultViews(dataPane, result.columns(), sql, meta, warning, copy, export));
         return tab;
+    }
+
+    /**
+     * ⭐ N23：结果区的「Data / Info」32px 切换带 + 内容栈。
+     *
+     * <p>Navicat 17 的结果区是「27px 页签 → 32px Data/Info → 网格」。
+     * 页签高度由 CSS 钉在 27px；这一条只负责第二段与两页内容。
+     * Info 页承接以前独占一条的类型 chips 与语句预览 —— 它们是「关于这份结果」
+     * 的信息，不该常驻在数据上方。
+     */
+    private VBox resultViews(javafx.scene.Node dataPane, List<ColumnDef> columns, String sql,
+                             Label meta, Label warning, Button... actions) {
+        javafx.scene.control.ToggleButton data = new javafx.scene.control.ToggleButton(
+                I18n.t("query.result.data"));
+        data.setId("result-view-data");
+        data.getStyleClass().add("adb-query__result-view");
+        javafx.scene.control.ToggleButton info = new javafx.scene.control.ToggleButton(
+                I18n.t("query.result.info"));
+        info.setId("result-view-info");
+        info.getStyleClass().add("adb-query__result-view");
+        javafx.scene.control.ToggleGroup group = new javafx.scene.control.ToggleGroup();
+        data.setToggleGroup(group);
+        info.setToggleGroup(group);
+        data.setSelected(true);
+
+        VBox infoPane = new VBox(8);
+        infoPane.setId("query-result-info-pane");
+        infoPane.getStyleClass().add("adb-query__result-info");
+        infoPane.getChildren().add(typeStrip(columns));
+        if (meta != null) {
+            infoPane.getChildren().add(meta);
+        }
+        Label statement = new Label(sql);
+        statement.setId("query-result-sql");
+        statement.setWrapText(true);
+        statement.getStyleClass().add("adb-query__info-sql");
+        infoPane.getChildren().add(statement);
+        infoPane.setVisible(false);
+        infoPane.setManaged(false);
+
+        StackPane views = new StackPane(dataPane, infoPane);
+        VBox.setVgrow(views, Priority.ALWAYS);
+
+        data.setOnAction(event -> {
+            if (group.getSelectedToggle() == null) {
+                data.setSelected(true);
+            }
+            showPane(infoPane, false);
+        });
+        info.setOnAction(event -> {
+            if (group.getSelectedToggle() == null) {
+                info.setSelected(true);
+            }
+            showPane(infoPane, true);
+        });
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        HBox band = new HBox(4, data, info);
+        if (warning != null) {
+            band.getChildren().add(warning);
+        }
+        band.getChildren().add(spacer);
+        band.getChildren().addAll(actions);
+        band.getStyleClass().add("adb-query__result-views");
+        band.setAlignment(Pos.CENTER_LEFT);
+
+        VBox box = new VBox(band, views);
+        box.getStyleClass().add("adb-query__result-box");
+        return box;
+    }
+
+    private static void showPane(javafx.scene.Node pane, boolean visible) {
+        pane.setVisible(visible);
+        pane.setManaged(visible);
     }
 
     /**
@@ -1975,8 +2129,26 @@ public final class QueryPage extends VBox implements AutoCloseable {
         historyButton.getItems().add(clear);
     }
 
-    private boolean confirmDanger(Danger danger) {
-        ButtonType execute = new ButtonType(I18n.t("query.confirmRunButton", DangerLabels.t(danger)),
+    /**
+     * ⭐ N21：未建成的能力给「如实说明页」，不留死按钮。
+     *
+     * <p>Query Builder / Ask AI 在 Navicat 17 的查询页上各占一席 —— 这一版没有实现，
+     * 点开必须说清楚「需要什么、什么都没改」，而不是静默无反应。
+     */
+    private void showCapabilityNotice(String title, String capabilityKey) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.getDialogPane().setId("capability-notice");
+        alert.setTitle(I18n.t("grid.capability.windowTitle"));
+        alert.setHeaderText(title + " — " + I18n.t("grid.capability.title"));
+        alert.setContentText(I18n.t("grid.capability.body", I18n.t(capabilityKey)));
+        if (getScene() != null) {
+            alert.initOwner(getScene().getWindow());
+        }
+        DialogStyles.apply(alert, getScene() == null ? null : getScene().getWindow());
+        alert.showAndWait();
+    }
+
+    private boolean confirmDanger(Danger danger) {        ButtonType execute = new ButtonType(I18n.t("query.confirmRunButton", DangerLabels.t(danger)),
                 ButtonBar.ButtonData.OK_DONE);
         ButtonType cancelType = new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);

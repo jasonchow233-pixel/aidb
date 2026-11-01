@@ -63,7 +63,6 @@ class DataGridTransactionTest {
     private ExecutorService executor;
     /** 状态栏与事务段的最后一次播报 —— 超时时的唯一线索。 */
     private final AtomicReference<String> lastStatus = new AtomicReference<>("<无>");
-    private final AtomicReference<Boolean> lastTransaction = new AtomicReference<>();
 
     @BeforeEach
     void openSession() throws Exception {
@@ -109,9 +108,6 @@ class DataGridTransactionTest {
             assertThat(button(page, "data-commit-tx").isVisible()).isTrue();
             assertThat(button(page, "data-rollback-tx").isVisible()).isTrue();
             assertThat(onFx(page::transactionOpen)).isTrue();
-            assertThat(lastTransaction.get())
-                    .as("状态栏那一段必须常显「事务中」—— 工具条上的键会随状态换")
-                    .isTrue();
         } finally {
             close(page);
         }
@@ -135,7 +131,6 @@ class DataGridTransactionTest {
             assertThat(button(page, "data-begin-tx").isManaged())
                     .as("事务结束后「开始事务」必须自己长回来")
                     .isTrue();
-            assertThat(lastTransaction.get()).isFalse();
         } finally {
             close(page);
         }
@@ -422,11 +417,6 @@ class DataGridTransactionTest {
             }
 
             @Override
-            public void transaction(boolean inTransaction) {
-                lastTransaction.set(inTransaction);
-            }
-
-            @Override
             public void range(String message) {
             }
 
@@ -454,7 +444,7 @@ class DataGridTransactionTest {
             Thread.sleep(20);
         }
         throw new AssertionError("等待超时（10 秒）：条件始终没成立 · 状态栏最后一次说「"
-                + lastStatus.get() + "」· 事务段最后一次说 " + lastTransaction.get());
+                + lastStatus.get() + "」");
     }
 
     private static void onFxRun(Runnable action) {

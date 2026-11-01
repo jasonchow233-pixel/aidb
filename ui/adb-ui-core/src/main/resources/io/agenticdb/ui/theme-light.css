@@ -13,6 +13,7 @@
     -adb-bg-selected: #CDE8FF;
     -adb-bg-selected-grid: #C4E0F7;
     -adb-bg-header-current: #AED4F2;
+    -adb-bg-header: #E7E7E7;
     -adb-bg-stripe: #F9F9F9;
     -adb-bg-disabled: rgba(148,163,184,.14);
     -adb-border: #D9D9D9;
@@ -47,13 +48,13 @@
     -adb-error: #DC2626;
     -adb-error-bg: rgba(220,38,38,.10);
     -adb-info: #0067B8;
-    -adb-syn-keyword: #7C3AED;
-    -adb-syn-string: #0F766E;
+    -adb-syn-keyword: #097BF7;
+    -adb-syn-string: #FF1744;
     -adb-syn-number: #B45309;
-    -adb-syn-comment: #64748B;
+    -adb-syn-comment: #929292;
     -adb-syn-function: #0067B8;
     -adb-syn-type: #0369A1;
-    -adb-syn-ident: #0F172A;
+    -adb-syn-ident: #424242;
     -adb-syn-param: #BE123C;
     -adb-syn-error: #DC2626;
     -adb-kind-table: #0F766E;

@@ -83,6 +83,8 @@ class StatusBarTest {
     void dialectAndConnectionMergeIntoOneLight() throws Exception {
         StatusBar bar = new StatusBar();
         onFx(() -> {
+            // 连接灯只在查询页 / 对象页挂载（N25 数据页不显示连接）。
+            bar.setMode(StatusBar.Mode.QUERY);
             bar.setDialect("SQLite");
             bar.setConnection("agenticdb-demo");
             bar.setServerInfo("3.45.1", "jason");
@@ -136,26 +138,70 @@ class StatusBarTest {
                 .isEqualTo(I18n.t("status.selectedRows", 3));
     }
 
-    /** ⭐ U8：事务与读写合成一段人话「自动提交 · 可写」，不再两个词个占一格。 */
+    /**
+     * ⭐ N25：底栏按页型换段位。
+     *
+     * <p>查询页要「连接 · 语句 · 回执 / 选择 · 耗时 / 行数 · 最后刷新」六段；
+     * 数据页只看「当前语句 + 行范围 + 最后刷新」；对象页只留「计数 + 连接 · 库」。
+     * 「自动提交 · 只读」是会话设置，不是当前页面的状态 —— 整段删除。
+     */
     @Test
-    void transactionAndReadonlyMergeIntoOneSentence() throws Exception {
+    void statusBarRegroupsSegmentsByPageType() throws Exception {
         StatusBar bar = new StatusBar();
-        onFx(() -> {
-            bar.setTransaction(false);
-            bar.setReadonly(false);
-        });
-        assertThat(visibleText(bar, "adb-status__session"))
-                .as("右段只有一句：事务状态 · 读写权限")
-                .isEqualTo(I18n.t("status.autoCommit") + " · " + I18n.t("status.writable"));
+        assertThat(bar.mode())
+                .as("默认页型是数据页")
+                .isEqualTo(StatusBar.Mode.DATA);
+        assertThat(bar.lookup(".adb-status__session"))
+                .as("N25：「自动提交 · 只读」段不再存在")
+                .isNull();
 
-        onFx(() -> {
-            bar.setTransaction(true);
-            bar.setReadonly(true);
-        });
-        assertThat(visibleText(bar, "adb-status__session"))
-                .isEqualTo(I18n.t("status.inTransaction") + " · " + I18n.t("status.readOnly"));
-        assertThat(bar.transactionText()).isEqualTo(I18n.t("status.inTransaction"));
-        assertThat(bar.readonlyText()).isEqualTo(I18n.t("status.readOnly"));
+        assertThat(bar.lookup(".adb-statusbar__left .adb-status__sql"))
+                .as("数据页左侧是当前语句")
+                .isNotNull();
+        assertThat(bar.lookup(".adb-statusbar__source"))
+                .as("数据页不挂连接灯（连接在对象页 / 查询页）")
+                .isNull();
+        assertThat(bar.lookup(".adb-statusbar__center .adb-status__selection"))
+                .as("数据页中间是选中行数")
+                .isNotNull();
+        assertThat(bar.lookup(".adb-statusbar__center .adb-status__duration"))
+                .as("数据页不显示语句耗时")
+                .isNull();
+        assertThat(bar.lookup(".adb-statusbar__right .adb-status__refreshed"))
+                .as("数据页右侧是最后刷新")
+                .isNotNull();
+
+        onFx(() -> bar.setMode(StatusBar.Mode.QUERY));
+        assertThat(bar.mode()).isEqualTo(StatusBar.Mode.QUERY);
+        assertThat(bar.lookup(".adb-statusbar__left .adb-status__source"))
+                .as("查询页左侧从连接灯起头")
+                .isNotNull();
+        assertThat(bar.lookup(".adb-statusbar__left .adb-status__sql"))
+                .as("查询页左侧还有刚执行的语句")
+                .isNotNull();
+        assertThat(bar.lookup(".adb-statusbar__center .adb-status__duration"))
+                .as("查询页中间显示语句耗时")
+                .isNotNull();
+        assertThat(bar.lookup(".adb-statusbar__center .adb-status__selection"))
+                .as("查询页选择段与耗时同处中段")
+                .isNotNull();
+        assertThat(bar.lookup(".adb-statusbar__right .adb-status__refreshed"))
+                .as("查询页右侧仍是行数 · 最后刷新")
+                .isNotNull();
+
+        onFx(() -> bar.setMode(StatusBar.Mode.OBJECT));
+        assertThat(bar.lookup(".adb-statusbar__left .adb-status__selection"))
+                .as("对象页左侧是计数 / 选中")
+                .isNotNull();
+        assertThat(bar.lookup(".adb-statusbar__left .adb-status__sql"))
+                .as("对象页没有「当前语句」")
+                .isNull();
+        assertThat(bar.lookup(".adb-statusbar__right .adb-status__source"))
+                .as("对象页右侧是连接 · 库")
+                .isNotNull();
+        assertThat(bar.lookup(".adb-statusbar__center .adb-status__selection"))
+                .as("换页型只搬家：同一个选择段不会同时留在中段")
+                .isNull();
     }
 
     @Test
@@ -173,6 +219,7 @@ class StatusBarTest {
     void rangeTextDoesNotRepeatTheDuration() throws Exception {
         StatusBar bar = new StatusBar();
         WaitForAsyncUtils.asyncFx(() -> {
+            bar.setMode(StatusBar.Mode.QUERY);
             bar.setRange("1-200 / 共 500");
             bar.setDuration(12);
         }).get();
@@ -203,23 +250,15 @@ class StatusBarTest {
     }
 
     @Test
-    void selectionAndTransactionAreDrivenByRealData() throws Exception {
+    void selectionIsDrivenByRealData() throws Exception {
         StatusBar bar = new StatusBar();
-        WaitForAsyncUtils.asyncFx(() -> {
-            bar.setSelection(0);
-            bar.setTransaction(false);
-        }).get();
+        WaitForAsyncUtils.asyncFx(() -> bar.setSelection(0)).get();
 
         assertThat(bar.selectionText()).isEqualTo(I18n.t("status.noneSelected"));
-        assertThat(bar.transactionText()).isEqualTo(I18n.t("status.autoCommit"));
 
-        WaitForAsyncUtils.asyncFx(() -> {
-            bar.setSelection(7);
-            bar.setTransaction(true);
-        }).get();
+        WaitForAsyncUtils.asyncFx(() -> bar.setSelection(7)).get();
 
         assertThat(bar.selectionText()).isEqualTo(I18n.t("status.selectedRows", 7));
-        assertThat(bar.transactionText()).isEqualTo(I18n.t("status.inTransaction"));
     }
 
     // ───────────────── 第十八轮：没有计时就不许出现「— ms」 ─────────────────
@@ -244,12 +283,12 @@ class StatusBarTest {
                 .isFalse();
         assertThat(managedSeparatorsIn(bar, "adb-statusbar__left"))
                 .as("消息位隐藏时不许剩孤零零的「·」")
-                .isEqualTo(1);
+                .isZero();
 
         WaitForAsyncUtils.asyncFx(() -> bar.setMessage("已复制名称 users")).get();
         assertThat(bar.isMessageVisible()).as("有回执就要占位").isTrue();
         assertThat(bar.message()).isEqualTo("已复制名称 users");
-        assertThat(managedSeparatorsIn(bar, "adb-statusbar__left")).isEqualTo(2);
+        assertThat(managedSeparatorsIn(bar, "adb-statusbar__left")).isEqualTo(1);
 
         // 空消息 = 收回（页面切换 / 加载成功都走这条路），且要能再次说出话。
         WaitForAsyncUtils.asyncFx(() -> bar.setMessage("")).get();
@@ -263,6 +302,8 @@ class StatusBarTest {
     @Test
     void durationSegmentHidesEntirelyWhenThereIsNoTiming() throws Exception {
         StatusBar bar = new StatusBar();
+        // 耗时段只在查询页出现（N25 数据页不显示语句耗时）。
+        onFx(() -> bar.setMode(StatusBar.Mode.QUERY));
 
         // 起步没有任何计时 → 用户什么都看不见，而不是看见一个悬空的「— ms」。
         assertThat(visibleDurationText(bar))
@@ -309,6 +350,8 @@ class StatusBarTest {
                 FROM users
                 WHERE  active = 1""";
         onFx(() -> {
+            // 查询页里语句段前面是连接灯，所以它有自己的分隔符（数据页语句起头，不需要）。
+            styledBar.setMode(StatusBar.Mode.QUERY);
             styledBar.setSql(raw);
             styledBar.applyCss();
         });
@@ -334,9 +377,8 @@ class StatusBarTest {
                 .as("tooltip 给完整原文，外加「点一下能干什么」")
                 .contains("WHERE  active = 1")
                 .contains(I18n.t("status.copyStatementHint"));
-        // U8 后左段共三根分隔符（范围后 / 语句前随 sql / 消息前随 message），
-        // 开场语句与消息都不占位 → 有语句时立着的是 2 根。
-        assertThat(managedSeparatorsIn(styledBar, "adb-statusbar__left")).isEqualTo(2);
+        // N25 数据页左段只有「语句 · 消息」两格：有语句、没消息 → 立着 1 根分隔符。
+        assertThat(managedSeparatorsIn(styledBar, "adb-statusbar__left")).isEqualTo(1);
 
         // 表清单 / 对象首页这类页面没有语句 → 整段连同分隔符收掉（与 setDuration 同一套纪律）。
         onFx(() -> styledBar.setSql("   "));
@@ -345,7 +387,7 @@ class StatusBarTest {
                 .isFalse();
         assertThat(managedSeparatorsIn(styledBar, "adb-statusbar__left"))
                 .as("段隐藏后不许剩一个孤零零的「·」")
-                .isEqualTo(1);
+                .isZero();
     }
 
     /**
