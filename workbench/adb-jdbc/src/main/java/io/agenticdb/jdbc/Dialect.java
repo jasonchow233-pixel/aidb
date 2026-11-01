@@ -713,6 +713,50 @@ public interface Dialect {
 
     String dropTableSql(String table);
 
+    // ─────────────────── ⭐ R42 N28-a 视图生命周期 ───────────────────
+    //
+    // 视图与表共用「引用标识符」这一套（quote），但**没有** TRUNCATE / RENAME /
+    // 列级属性这些概念，所以单开三条：建、删、重建写法。
+    // UI 一律走这里 —— 不允许在弹窗里拼 "CREATE VIEW " + 名字。
+
+    /**
+     * 建视图。查询体原样跟在 {@code AS} 后面 —— 它已经过
+     * {@code StructureSqlBuilder} 的形态校验（单条 SELECT/WITH）。
+     *
+     * <p>六种方言的 {@code CREATE VIEW} 写法在这里是一致的；
+     * 差异全在 {@link #viewReplace()}（怎么重建已存在的视图）。
+     * 本轮不做「视图列别名表」（{@code CREATE VIEW v (a, b) AS …}）：
+     * SQLite 不认那个位置，其余方言也让查询体里的 {@code AS} 自己命名 ——
+     * 少一格输入就少一处「填了不生效」。
+     */
+    default String createViewSql(String name, String selectBody) {
+        return "CREATE VIEW " + quote(name) + " AS\n" + selectBody;
+    }
+
+    /** 删视图。 */
+    default String dropViewSql(String name) {
+        return "DROP VIEW " + quote(name);
+    }
+
+    /**
+     * 重建已存在视图的写法。默认 {@link ViewReplace#DROP_THEN_CREATE} ——
+     * 唯一六种方言都认的那条，新方言不 override 也不会生成必报错的 SQL。
+     */
+    default ViewReplace viewReplace() {
+        return ViewReplace.DROP_THEN_CREATE;
+    }
+
+    /**
+     * 单句重建语句；{@code null} = 本方言没有单句形式，要走「先删再建」两句。
+     */
+    default String createOrReplaceViewSql(String name, String selectBody) {
+        return switch (viewReplace()) {
+            case OR_REPLACE -> "CREATE OR REPLACE VIEW " + quote(name) + " AS\n" + selectBody;
+            case OR_ALTER -> "CREATE OR ALTER VIEW " + quote(name) + " AS\n" + selectBody;
+            case DROP_THEN_CREATE -> null;
+        };
+    }
+
     /** 表注释：PostgreSQL / MySQL 支持，SQLite 不支持。 */
     default boolean supportsTableComment() {
         return false;

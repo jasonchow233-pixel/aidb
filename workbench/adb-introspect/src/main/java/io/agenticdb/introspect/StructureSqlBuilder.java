@@ -549,6 +549,139 @@ public final class StructureSqlBuilder {
                 Danger.DESTRUCTIVE, true, false);
     }
 
+    // ─────────────────── ⭐ R42 N28-a 视图生命周期 ───────────────────
+    //
+    // 与表级那四条同构，但**不返回 StructurePlan**：计划标题是给人看的句子，
+    // 写在模型层就会把 I18nAuditTest 的模型层棘轮（现在正好卡在 290，零余量）
+    // 再往上顶。所以这里只交 SQL 语句，标题由界面用「键 + 参数」渲染（D-9 的方向）。
+
+    /** 查询体允许的开头：一条 SELECT、一条 WITH…SELECT，或以括号起头的组合查询。 */
+    private static final Set<String> VIEW_BODY_HEADS = Set.of("SELECT", "WITH", "VALUES");
+
+    /**
+     * 视图名的校验。返回 {@code null} = 通过。
+     *
+     * <p>形状规则和表名共用一条（{@code VALID_COLUMN_NAME}）：视图名和表名在
+     * 六种方言里都在**同一个命名空间**，所以 {@code taken} 要同时传当前库的
+     * 表名与视图名 —— 只对照视图会让「和表撞名」到执行时才炸。
+     */
+    public static ColumnProblem viewNameProblem(String raw, List<String> taken) {
+        String name = raw == null ? "" : raw.trim();
+        if (name.isEmpty()) {
+            return new ColumnProblem("view.error.emptyName");
+        }
+        if (!VALID_COLUMN_NAME.matcher(name).matches()) {
+            return new ColumnProblem("view.error.nameShape");
+        }
+        for (String existing : taken == null ? List.<String>of() : taken) {
+            if (existing != null && existing.equalsIgnoreCase(name)) {
+                return new ColumnProblem("view.error.nameTaken", existing);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 查询体的校验；返回归一化后的正文（去掉尾分号与首尾空白）。
+     *
+     * <p>为什么要拦「两句」：视图定义里塞 {@code DROP TABLE} 这种事，
+     * 只要 UI 把正文原样拼进 {@code CREATE VIEW … AS <正文>}，
+     * 一句 DDL 就变成两句 —— 执行器按整批事务跑，用户以为只建了个视图。
+     * 与其信「驱动会拦住」，不如在这儿把形态钉死。
+     */
+    public static ColumnProblem viewSelectProblem(String raw) {
+        try {
+            normalizeSelectBody(raw);
+            return null;
+        } catch (ColumnProblem problem) {
+            return problem;
+        }
+    }
+
+    /**
+     * 归一化查询体；形态不对就抛 {@link ColumnProblem}（键 + 参数，由界面渲染）。
+     *
+     * <p>校验与拼装必须共用这一条：预览里看到的正文和真正执行的正文是同一份文本。
+     */
+    public static String normalizeSelectBody(String raw) {
+        String body = raw == null ? "" : raw.trim();
+        // MySQL 的 SHOW CREATE VIEW 会在正文尾巴上挂一个 /*!*/; 结束标记。
+        if (body.endsWith("/*!*/;")) {
+            body = body.substring(0, body.length() - "/*!*/;".length()).trim();
+        }
+        if (body.endsWith(";")) {
+            body = body.substring(0, body.length() - 1).trim();
+        }
+        if (body.isEmpty()) {
+            throw new ColumnProblem("view.error.emptySelect");
+        }
+        if (body.contains(";")) {
+            throw new ColumnProblem("view.error.multiStatement");
+        }
+        String head = leadingWord(body);
+        if ("CREATE".equals(head) || "ALTER".equals(head) || "DROP".equals(head)) {
+            // 用户把整条 DDL 粘进来了 —— 这里只收查询体。
+            throw new ColumnProblem("view.error.fullDdl");
+        }
+        if (!VIEW_BODY_HEADS.contains(head) && !body.startsWith("(")) {
+            throw new ColumnProblem("view.error.notSelect", head.isEmpty() ? body : head);
+        }
+        return body;
+    }
+
+    /** 正文的第一个词（大写，去掉左括号），用来判「这是不是一条查询」。 */
+    private static String leadingWord(String body) {
+        String trimmed = body.replaceFirst("^[(\\s]+", "");
+        int cursor = 0;
+        while (cursor < trimmed.length()
+                && (Character.isLetterOrDigit(trimmed.charAt(cursor)) || trimmed.charAt(cursor) == '_')) {
+            cursor++;
+        }
+        return trimmed.substring(0, cursor).toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * 建 / 重建视图的语句列表。
+     *
+     * <p>{@code existing} 为真时走方言的重建写法：MariaDB / PostgreSQL / Oracle 一句
+     * {@code CREATE OR REPLACE}，SQL Server {@code CREATE OR ALTER}，
+     * MySQL / SQLite 只能两句「先删再建」（见 {@link io.agenticdb.jdbc.ViewReplace}）。
+     * 预览与执行都必须调这一个方法 —— 用户在预览里看到几句，库里就跑几句。
+     */
+    public static List<String> viewStatements(DbSession session, String name, String rawBody,
+                                              boolean existing) {
+        requireViewName(name);
+        String body = normalizeSelectBody(rawBody);
+        String trimmed = name.trim();
+        if (!existing) {
+            return List.of(session.dialect().createViewSql(trimmed, body));
+        }
+        String single = session.dialect().createOrReplaceViewSql(trimmed, body);
+        return single == null
+                ? List.of(session.dialect().dropViewSql(trimmed),
+                        session.dialect().createViewSql(trimmed, body))
+                : List.of(single);
+    }
+
+    /** 删视图的语句列表。 */
+    public static List<String> dropViewStatements(DbSession session, String name) {
+        requireViewName(name);
+        return List.of(session.dialect().dropViewSql(name.trim()));
+    }
+
+    /**
+     * 视图名的形状校验（不查重名）。
+     *
+     * <p>重名留给调用方判：设计器里「这个名字已经有视图」不是错误，
+     * 而是「这次是重建」的开关；只有新建对话框才把它当错误挡住。
+     */
+    private static void requireViewName(String name) {
+        ColumnProblem problem = viewNameProblem(name, List.of());
+        if (problem != null) {
+            throw problem;
+        }
+    }
+
     /**
      * 表名的校验。返回 {@code null} 表示通过，否则返回给人看的原因。
      *

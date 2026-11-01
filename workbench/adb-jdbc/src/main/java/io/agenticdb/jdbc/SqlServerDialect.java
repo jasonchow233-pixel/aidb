@@ -590,6 +590,19 @@ public final class SqlServerDialect implements Dialect {
         return "DROP TABLE " + quote(table);
     }
 
+    /**
+     * ⭐ R42 N28-a：{@code CREATE OR ALTER VIEW} 是 SQL Server 2016 <b>SP1</b> 起
+     * 才有的写法（更早的版本只能先删再建）。
+     *
+     * <p>为什么不为老版本退回两句：退回会连带删掉权限与依赖，比报错更难解释；
+     * 未联真库前按主流受支持版本出 DDL，老服务器上执行会收到驱动原话
+     * —— 这一条记在 D-3/D-5 的真库待验清单里（没有 Docker，本机验不了）。
+     */
+    @Override
+    public ViewReplace viewReplace() {
+        return ViewReplace.OR_ALTER;
+    }
+
     @Override
     public String addForeignKeySql(String table, String name, List<String> columns,
                                     String referencedTable, List<String> referencedColumns,

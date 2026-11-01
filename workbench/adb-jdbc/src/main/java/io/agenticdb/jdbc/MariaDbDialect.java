@@ -108,4 +108,16 @@ public final class MariaDbDialect extends MySqlDialect {
         return List.of("utf8mb4_general_ci", "utf8mb4_unicode_ci", "utf8mb4_bin",
                 "latin1_swedish_ci");
     }
+
+    /**
+     * ⭐ R42 N28-a：MariaDB 有 {@code CREATE OR REPLACE VIEW}，MySQL 没有。
+     *
+     * <p>这是两边在视图这一层唯一真实的语法差异，所以只 override 这一条：
+     * 重建走单句，不必先删再建 —— 依赖本视图的其它对象不会被顺带拆掉，
+     * 也不会在两句之间出现「视图短暂不存在」的窗口。
+     */
+    @Override
+    public ViewReplace viewReplace() {
+        return ViewReplace.OR_REPLACE;
+    }
 }

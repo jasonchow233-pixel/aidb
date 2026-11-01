@@ -507,6 +507,19 @@ public final class PostgresDialect implements Dialect {
         return "DROP TABLE " + quote(table);
     }
 
+    /**
+     * ⭐ R42 N28-a：PostgreSQL 认 {@code CREATE OR REPLACE VIEW}。
+     *
+     * <p>一条硬约束要如实告诉用户：PG 的 {@code CREATE OR REPLACE VIEW}
+     * <b>不允许把列名改掉或删掉列</b>（只能在末尾加新列），改结构必须
+     * {@code DROP VIEW} + {@code CREATE VIEW}。这里不替用户偷偷改成先删再建 ——
+     * 预览的 SQL 就是执行的 SQL，报错了由 PG 的原话解释（诚实条款）。
+     */
+    @Override
+    public ViewReplace viewReplace() {
+        return ViewReplace.OR_REPLACE;
+    }
+
     @Override
     public boolean supportsTableComment() {
         return true;

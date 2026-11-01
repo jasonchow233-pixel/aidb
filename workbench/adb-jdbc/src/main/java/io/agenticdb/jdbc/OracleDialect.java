@@ -523,6 +523,19 @@ public final class OracleDialect implements Dialect {
     }
 
     /**
+     * ⭐ R42 N28-a：Oracle 认 {@code CREATE OR REPLACE VIEW}。
+     *
+     * <p>不加 {@code FORCE} —— {@code CREATE OR REPLACE FORCE VIEW} 会在引用的表
+     * 不存在时<b>照样建出一个 INVALID 视图</b>，用户要到查询时才看见它坏掉；
+     * 默认写法（NOFORCE）让「引用写错了」当场报错，更符合本项目
+     * 「宁可现在红，不要以后静默」。
+     */
+    @Override
+    public ViewReplace viewReplace() {
+        return ViewReplace.OR_REPLACE;
+    }
+
+    /**
      * 外键：只有 {@code ON DELETE}。
      *
      * <p>⚠️ {@code ON UPDATE} 在 Oracle 是语法错误，所以这里的 {@code onUpdate}
