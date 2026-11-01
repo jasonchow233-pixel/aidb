@@ -51,7 +51,7 @@ SQLite table comments, which show up **disabled** rather than pretending to work
     <td width="50%"><img src="docs/screenshots/p3-query.png" alt="SQL editor with syntax highlighting, result tabs and messages" width="100%"><br><b>Write SQL, not mouse strokes.</b> Highlighted editor with line numbers, run the current statement or all of them, cancel a running query, multi-statement result tabs, execution plan, error locator, query history, snippets.</td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/p4-structure.png" alt="Table structure page: columns, indexes, foreign keys, triggers, checks" width="100%"><br><b>Change structure safely.</b> Add / alter / rename / drop columns, indexes, foreign keys, triggers, CHECK constraints and table comments — applied in one transaction, and every open page refreshes with it.</td>
+    <td width="50%"><img src="docs/screenshots/p4-structure.png" alt="Table structure page: columns, indexes, foreign keys, triggers, checks" width="100%"><br><b>Change structure safely.</b> Add / alter / rename / drop columns, indexes, foreign keys, triggers, CHECK constraints and table comments — applied in one transaction, and every open page refreshes with it. Views get the same treatment: a designer dialog for create / redesign / drop.</td>
     <td width="50%"><img src="docs/screenshots/p6-new-table.png" alt="New table dialog with a live SQL preview" width="100%"><br><b>See the statement before it runs.</b> Every dialog that writes shows the exact SQL it is about to execute, so nothing is explained after the fact.</td>
   </tr>
   <tr>
@@ -167,7 +167,13 @@ every pull request is reviewed against. Design rules are in
 - Cold start measures **3.5–3.9 s** against a <2 s goal. The floor is JVM + toolkit init and the
   first CSS/layout pass, not application code.
 - "Follow system theme" only detects macOS today; Windows and Linux start in light mode.
-- Tables without a primary key, and views, are read-only. Undo-after-save covers the last save.
+- Tables without a primary key, and views, are read-only **in the data grid** — a view's
+  *definition* is editable: create, redesign and drop views from the object tree or the View
+  ribbon tile, with the same live SQL preview as the table designer. Undo-after-save covers the
+  last save.
+- **No job scheduler, no ER-diagram editor.** Those two Navicat surfaces are out of scope for this
+  version by explicit decision; their ribbon tiles open a plain notice that says so rather than a
+  dead button.
 - No auto-update, no code signing, no `jlink` runtime image (RichTextFX / ControlsFX ship as
   automatic modules).
 - SSH tunnelling is **not implemented** — the connection wizard says so on that page instead of
@@ -196,6 +202,7 @@ AIDB 是一个**原生桌面数据库客户端**：Java 25 + JavaFX 25，不内�
 已实现并有单测门禁（🧪），但**尚未在真库上验证过**，目录查询在方言源码里逐条标注了这一点。
 
 界面照 Navicat 的交互习惯做：对象树 → 双击表 → 数据页 → 行内编辑 → 预览 SQL → 单事务保存 → 保存后撤销，
+视图同样在这棵树上建 / 改 / 删（设计器弹窗，预览几句就跑几句）。
 全程键盘可达（⌘K 命令面板）。写操作 fail-closed 分级 + 两级确认；口令只进系统钥匙串 / 凭据管理器，明文不落盘。
 暗亮双主题、104 个设计令牌单一真相、四档密度、中英文界面。
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（41 张）。
+# 重拍 docs/screenshots/ 的验收截图（45 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 36 张 + 暗色 5 张）
+#   ./scripts/shots.sh              # 全部重拍（亮色 39 张 + 暗色 6 张）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
 #
 # 为什么需要这个脚本（历史上踩过的坑，全部在这里被绕开）：
@@ -100,6 +100,15 @@ SHOTS=(
   # ⭐ 页签的底色方向（栏用画布、选中页用 surface）只在暗色下看得出来 ——
   #   浅色主题里两者都是 #FFFFFF，光拍浅色等于没验这条规则。
   "p6-new-table-dark||5000|ADB_NEW_TABLE=1 ADB_NEW_TABLE_POSE=index ADB_THEME_FORCE=dark"
+  # ⭐ R42 N28-a：视图设计器三帧。
+  #   create   —— 名字 + 真查询 + 方言拼出来的 CREATE VIEW 预览（空弹窗证不了形态）；
+  #   invalid  —— 正文里塞两句，预览必须空着、错误必须显出来（校验拒绝这一态要有画面）；
+  #   design   —— 从演示库读回 v_active_users 的定义再开弹窗，
+  #               这一帧同时是「读得出形状才会开弹窗」的证据。
+  "p6-new-view||5000|ADB_NEW_VIEW=1 ADB_NEW_VIEW_POSE=create ADB_THEME_FORCE=light"
+  "p6-new-view-dark||5000|ADB_NEW_VIEW=1 ADB_NEW_VIEW_POSE=create ADB_THEME_FORCE=dark"
+  "p6-new-view-invalid||5000|ADB_NEW_VIEW=1 ADB_NEW_VIEW_POSE=invalid ADB_THEME_FORCE=light"
+  "p6-design-view||7000|ADB_DESIGN_VIEW=1 ADB_THEME_FORCE=light"
   # ⭐ §6.4：这一帧要拍到「已选列 + 序号 + 预览 SQL + 可用的移动钮」，
   #   光弹一个空弹窗等于没拍这个弹窗的核心交互（空态由 IndexDialogTest 守）。
   "p7-new-index||6000|ADB_INDEX=1 ADB_INDEX_POSE=1 ADB_THEME_FORCE=light"
