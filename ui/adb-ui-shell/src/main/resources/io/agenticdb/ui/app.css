@@ -3947,29 +3947,56 @@
 }
 
 /* 磁贴图标按库型着色。Navicat 17 的磁贴是彩色图标 + 黑字，选色跟着各家品牌走；
-   颜色全部取自现有令牌，不引入新色值（TokenParityTest 只认令牌）。 */
+   颜色全部取自令牌（R43-a 起品牌色单独立成 -adb-vendor-*，见 docs/UI-VISUAL-SPEC.md）。
+   ⭐ 两档都要管：.adb-icon 是单色兜底档（吃描边），.adb-icon-tone-c 是彩色档的
+   「最深填充面」—— 厂商图形的主体就是这一层，轮廓层留给 -adb-icon-edge 保可读性。
+   作用域类（adb-db--*）挂在外层容器上：JavaFX 靠后代规则把它传到分层子节点。 */
 .adb-db--mysql .adb-icon {
-    -fx-stroke: -adb-syn-keyword;
+    -fx-stroke: -adb-vendor-mysql;
 }
 
 .adb-db--postgresql .adb-icon {
-    -fx-stroke: -adb-kind-procedure;
+    -fx-stroke: -adb-vendor-postgresql;
 }
 
 .adb-db--sqlserver .adb-icon {
-    -fx-stroke: -adb-error;
+    -fx-stroke: -adb-vendor-sqlserver;
 }
 
 .adb-db--oracle .adb-icon {
-    -fx-stroke: -adb-kind-trigger;
+    -fx-stroke: -adb-vendor-oracle;
 }
 
 .adb-db--sqlite .adb-icon {
-    -fx-stroke: -adb-kind-index;
+    -fx-stroke: -adb-vendor-sqlite;
 }
 
 .adb-db--mariadb .adb-icon {
-    -fx-stroke: -adb-dirty;
+    -fx-stroke: -adb-vendor-mariadb;
+}
+
+.adb-db--mysql .adb-icon-tone-c {
+    -fx-fill: -adb-vendor-mysql;
+}
+
+.adb-db--postgresql .adb-icon-tone-c {
+    -fx-fill: -adb-vendor-postgresql;
+}
+
+.adb-db--sqlserver .adb-icon-tone-c {
+    -fx-fill: -adb-vendor-sqlserver;
+}
+
+.adb-db--oracle .adb-icon-tone-c {
+    -fx-fill: -adb-vendor-oracle;
+}
+
+.adb-db--sqlite .adb-icon-tone-c {
+    -fx-fill: -adb-vendor-sqlite;
+}
+
+.adb-db--mariadb .adb-icon-tone-c {
+    -fx-fill: -adb-vendor-mariadb;
 }
 
 .adb-db--document .adb-icon {

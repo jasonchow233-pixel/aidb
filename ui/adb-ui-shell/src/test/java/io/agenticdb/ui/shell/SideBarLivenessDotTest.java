@@ -139,14 +139,16 @@ class SideBarLivenessDotTest {
             Object value = cell.getTreeItem() == null ? null : cell.getTreeItem().getValue();
             // ⚠️ 只认 CONNECTION 格：ROOT（「我的连接」）也挂 adb-tree-cell--connection，
             //    但它没有 connectionId —— 匹配串不能命中它。
-            //    R37：DemoNode 去掉了尾部的 count，connectionId 成了 record 的最后一个
-            //    组件（toString 里紧跟 `]`），所以匹配边界是 `]` 而不是 `,`。
+            //    ⚠️ 边界是 `,` 或 `]` 而**不是**「connectionId 在末尾」：R37 去掉尾部的
+            //    count 时这里红过一次，R43-a 加 vendorClass 又红一次 —— 靠 record 的
+            //    字段顺序找节点，等于每加一个字段就要重写一次门禁。按值匹配，字段随它加。
             if (value == null) {
                 continue;
             }
             String text = String.valueOf(value);
             if (!text.contains("kind=CONNECTION")
-                    || !text.contains("connectionId=" + connectionId + "]")) {
+                    || !text.matches("(?s).*connectionId=" + java.util.regex.Pattern
+                            .quote(connectionId) + "[,\\]].*")) {
                 continue;
             }
             return cell.getGraphic() instanceof HBox box ? box : null;

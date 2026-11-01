@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.ui.Icons;
 
 import java.util.List;
 
@@ -12,6 +13,10 @@ import java.util.List;
  * 如实说明页，不是一张填了也不生效的表单。
  *
  * <p>{@code styleClass} 只用来选磁贴的图标色（{@code .adb-db--*}），与「是否支持」无关。
+ *
+ * <p>⭐ R43-a：厂商<b>图形</b>也登记在这一行上（{@link Entry#glyph()}）。放这里而不是
+ * 另开一个「方言 → 图标」的 switch，是为了守住 A1 的承诺
+ * （{@code DialectBranchAuditTest}）：加一种数据库就是在这里加一行，别处不用改。
  */
 final class ConnectionCatalog {
 
@@ -23,7 +28,7 @@ final class ConnectionCatalog {
     }
 
     record Entry(String id, String name, Group group, DialectKind kind, String styleClass,
-                 String hintKey) {
+                 String hintKey, Icons.Icon glyph) {
 
         boolean supported() {
             return kind != null;
@@ -35,15 +40,18 @@ final class ConnectionCatalog {
 
     /** 顺序与 Navicat 17 类型页一致。 */
     static final List<Entry> CONNECTIONS = List.of(
-            supported("MYSQL", "MySQL", DialectKind.MYSQL, "adb-db--mysql", "wizard.tile.mysql"),
+            supported("MYSQL", "MySQL", DialectKind.MYSQL, "adb-db--mysql", "wizard.tile.mysql",
+                    Icons.Icon.DB_MYSQL),
             supported("POSTGRESQL", "PostgreSQL", DialectKind.POSTGRESQL, "adb-db--postgresql",
-                    "wizard.tile.postgresql"),
+                    "wizard.tile.postgresql", Icons.Icon.DB_POSTGRESQL),
             supported("SQLSERVER", "SQL Server", DialectKind.SQLSERVER, "adb-db--sqlserver",
-                    "wizard.tile.sqlserver"),
-            supported("ORACLE", "Oracle", DialectKind.ORACLE, "adb-db--oracle", "wizard.tile.oracle"),
-            supported("SQLITE", "SQLite", DialectKind.SQLITE, "adb-db--sqlite", "wizard.tile.sqlite"),
+                    "wizard.tile.sqlserver", Icons.Icon.DB_SQLSERVER),
+            supported("ORACLE", "Oracle", DialectKind.ORACLE, "adb-db--oracle", "wizard.tile.oracle",
+                    Icons.Icon.DB_ORACLE),
+            supported("SQLITE", "SQLite", DialectKind.SQLITE, "adb-db--sqlite", "wizard.tile.sqlite",
+                    Icons.Icon.DB_SQLITE),
             supported("MARIADB", "MariaDB", DialectKind.MARIADB, "adb-db--mariadb",
-                    "wizard.tile.mariadb"),
+                    "wizard.tile.mariadb", Icons.Icon.DB_MARIADB),
             unsupported("MONGODB", "MongoDB", "adb-db--document", "wizard.tile.mongodb"),
             unsupported("REDIS", "Redis", "adb-db--redis", "wizard.tile.redis"),
             unsupported("SNOWFLAKE", "Snowflake", "adb-db--snowflake", "wizard.tile.snowflake"));
@@ -68,17 +76,36 @@ final class ConnectionCatalog {
         return java.util.stream.Stream.concat(CONNECTIONS.stream(), VENDORS.stream()).toList();
     }
 
+    /**
+     * 该方言登记的那一行；没有方言或登记不到时返回 {@code null}，调用方自己回落。
+     *
+     * <p>导航树的连接节点用它取厂商图形 —— 树只知道连接档案里的 {@code kind}，
+     * 图形与品牌色类都从同一行拿，保证「向导里的 MySQL」和「树里的 MySQL」是同一个图形。
+     */
+    static Entry forKind(DialectKind kind) {
+        if (kind == null) {
+            return null;
+        }
+        for (Entry entry : CONNECTIONS) {
+            if (kind.equals(entry.kind())) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
     private static Entry supported(String id, String name, DialectKind kind, String styleClass,
-                                   String hintKey) {
-        return new Entry(id, name, Group.CONNECTION, kind, styleClass, hintKey);
+                                   String hintKey, Icons.Icon glyph) {
+        return new Entry(id, name, Group.CONNECTION, kind, styleClass, hintKey, glyph);
     }
 
     private static Entry unsupported(String id, String name, String styleClass, String hintKey) {
-        return new Entry(id, name, Group.CONNECTION, null, styleClass, hintKey);
+        return new Entry(id, name, Group.CONNECTION, null, styleClass, hintKey,
+                Icons.Icon.DATABASE);
     }
 
     private static Entry vendor(String id, String name) {
         return new Entry("VENDOR_" + id, name, Group.VENDOR, null, "adb-db--cloud",
-                "wizard.tile.vendor");
+                "wizard.tile.vendor", Icons.Icon.DATABASE);
     }
 }

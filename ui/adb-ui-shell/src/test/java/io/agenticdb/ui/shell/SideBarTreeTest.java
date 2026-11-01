@@ -2,12 +2,20 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.ui.I18n;
+import io.agenticdb.ui.Tokens;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.session.ConnectionProfile;
 import javafx.application.Platform;
+import javafx.scene.Node;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
+import javafx.scene.control.Labeled;
+import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
 import javafx.scene.control.TextField;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.SVGPath;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.testfx.framework.junit5.ApplicationExtension;
@@ -15,6 +23,7 @@ import org.testfx.framework.junit5.Start;
 import org.testfx.util.WaitForAsyncUtils;
 import javafx.stage.Stage;
 
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -32,8 +41,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ExtendWith(ApplicationExtension.class)
 class SideBarTreeTest {
 
+    private Stage stage;
+
     @Start
     void start(Stage stage) {
+        this.stage = stage;
         stage.show();
     }
 
@@ -265,6 +277,56 @@ class SideBarTreeTest {
         assertThat(connection.getChildren())
                 .as("SQLite 没有 catalog —— 「表」分组直接挂在连接下")
                 .anyMatch(item -> String.valueOf(valueOf(item)).contains(I18n.t("sidebar.group.tables")));
+    }
+
+    /**
+     * ⭐ R43-a：连接节点顶的是**厂商图形**（与向导磁贴同一枚、同一个品牌色作用域类）。
+     *
+     * <p>这条断的是接线，不是图形画得好不好：树里过去人人都是同一颗插头，
+     * 「这家是 MySQL 那家是 Oracle」在左树完全读不出来 —— 而左树是用户看数据库
+     * 的第一眼。登记行、作用域类、上色规则三处任何一处漏了，症状都是
+     * 「界面照常能用，只是信息没了」，所以必须钉在断言里。
+     *
+     * <p>⚠️ 断的是<b>渲染出来的 cell 里的图标容器</b>，不是 {@code DemoNode} 的取值：
+     * 变异验证发现，只读节点 toString 时「单元格工厂忘了挂类」照样全绿 ——
+     * 数据在节点里，类却没上到界面上。取值对不对由上面那些用例管，这里只管画出来。
+     */
+    @Test
+    void connectionNodesWearTheirVendorGlyph() {
+        ActionRegistry actions = new ActionRegistry();
+        ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
+        ConnectionProfile oracle = new ConnectionProfile("srv-2", "老库",
+                DialectKind.ORACLE, "10.0.0.9", 1521, "orcl", "scott", false, 0, "", Map.of());
+
+        TreeView tree = themedTree(actions, List.of(mysql, oracle));
+
+        assertThat(iconClasses(tree, "生产库"))
+                .as("厂商作用域类没挂到图标容器上")
+                .contains("adb-db--mysql");
+        assertThat(iconClasses(tree, "老库"))
+                .as("每家必须是自己的类 —— 挂错一家比不挂更糟（颜色会说谎）")
+                .contains("adb-db--oracle");
+
+        assertThat(brandFill(tree, "生产库"))
+                .as("品牌色要真的落到填充层：类挂上 ≠ 后代规则匹配到节点")
+                .isEqualTo(Color.web(Tokens.VENDOR_MYSQL_LIGHT));
+        assertThat(brandFill(tree, "老库"))
+                .isEqualTo(Color.web(Tokens.VENDOR_ORACLE_LIGHT));
+    }
+
+    /** 认不出方言时不许挑一家画上去 —— 那是编造，回落到中性插头。 */
+    @Test
+    void aConnectionWithoutAProfileKeepsTheNeutralPlug() {
+        ActionRegistry actions = new ActionRegistry();
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "临时连接",
+                tab -> { }, message -> { }, "adhoc", List.of(), p -> { }));
+
+        String node = String.valueOf(valueOf(rootOf(treeOf(sideBar)).getChildren().get(0)));
+        assertThat(node)
+                .as("没有连接档案、也没有方言解析器 → CONNECT 插头，不带任何 adb-db--* 类")
+                .contains("CONNECT")
+                .doesNotContain("adb-db--");
     }
 
     /** ⭐ U1：选中一个库节点 → 去读**那个库**的对象（Serve 它的是虚拟连接）。 */
@@ -822,6 +884,100 @@ class SideBarTreeTest {
 
     private static TextField searchFieldOf(SideBar sideBar) {
         return onFx(() -> (TextField) sideBar.lookup(".adb-sidebar__search"));
+    }
+
+    /**
+     * 把侧栏装进一条挂了主题样式表的链路并排版一次。
+     *
+     * <p>样式表必须挂在<b>场景</b>上，主题类挂在<b>根节点</b>上：两者缺一，
+     * {@code -adb-*} 查找色就解析不出来，图标填充层算出来是黑的 ——
+     * 断言看着「有颜色」，其实什么都没测（S-7 的老坑）。
+     */
+    private TreeView themedTree(ActionRegistry actions, List<ConnectionProfile> profiles) {
+        SideBar sideBar = onFx(() -> {
+            SideBar created = new SideBar(actions, List.of(), "生产库",
+                    tab -> { }, message -> { }, "srv-1", profiles, p -> { });
+            Scene scene = new Scene(created, 320, 600);
+            scene.getStylesheets().add(styleUrl("/io/agenticdb/ui/theme-light.css"));
+            scene.getStylesheets().add(styleUrl("/io/agenticdb/ui/app.css"));
+            created.getStyleClass().add("theme-light");
+            stage.setScene(scene);
+            return created;
+        });
+        TreeView tree = treeOf(sideBar);
+        onFxRun(() -> {
+            tree.applyCss();
+            tree.layout();
+        });
+        return tree;
+    }
+
+    /** 已渲染 cell 里那枚图标容器的类名（虚拟树：没渲染就没有这条证据）。 */
+    private static List<String> iconClasses(TreeView tree, String nodeName) {
+        return onFx(() -> {
+            Node icon = vendorIcon(renderedCell(tree, nodeName), nodeName);
+            return List.copyOf(icon.getStyleClass());
+        });
+    }
+
+    /** 同上，但取<b>填充层</b>的计算色 —— 类名对了不等于规则匹配到了节点。 */
+    private static Color brandFill(TreeView tree, String nodeName) {
+        return onFx(() -> {
+            Node icon = vendorIcon(renderedCell(tree, nodeName), nodeName);
+            icon.applyCss();
+            List<Node> tones = new ArrayList<>();
+            collectByClass(icon, "adb-icon-tone-c", tones);
+            assertThat(tones)
+                    .as("%s 的彩色资产要有且只有一条 tone-c 层", nodeName)
+                    .hasSize(1);
+            return (Color) ((SVGPath) tones.get(0)).getFill();
+        });
+    }
+
+    private static Node vendorIcon(TreeCell cell, String nodeName) {
+        assertThat(cell).as("%s 必须已渲染成 cell（没渲染就没图标可查）", nodeName).isNotNull();
+        List<Node> found = new ArrayList<>();
+        collectByClass(cellGraphic(cell), "adb-tree__icon", found);
+        assertThat(found).as("%s 的图标节点", nodeName).hasSize(1);
+        return found.get(0);
+    }
+
+    private static Node cellGraphic(TreeCell cell) {
+        return cell instanceof Labeled labeled && labeled.getGraphic() instanceof Node graphic
+                ? graphic : cell;
+    }
+
+    private static TreeCell renderedCell(Node node, String nodeName) {
+        if (node instanceof TreeCell cell && cell.getItem() != null
+                && nameOf(cell.getItem()).equals(nodeName)) {
+            return cell;
+        }
+        if (node instanceof Parent parent) {
+            for (Node child : parent.getChildrenUnmodifiable()) {
+                TreeCell found = renderedCell(child, nodeName);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static void collectByClass(Node node, String styleClass, List<Node> out) {
+        if (node.getStyleClass().contains(styleClass)) {
+            out.add(node);
+        }
+        if (node instanceof Parent parent) {
+            for (Node child : parent.getChildrenUnmodifiable()) {
+                collectByClass(child, styleClass, out);
+            }
+        }
+    }
+
+    private static String styleUrl(String resource) {
+        URL url = SideBarTreeTest.class.getResource(resource);
+        assertThat(url).as("样式表 %s", resource).isNotNull();
+        return url.toExternalForm();
     }
 
     private static TreeItem findTable(TreeItem node, String name) {

@@ -28,6 +28,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
 import io.agenticdb.jdbc.Dialect;
+import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.SchemaService.ObjectKind;
 import io.agenticdb.introspect.SchemaService.SchemaObject;
@@ -992,11 +993,33 @@ public final class SideBar extends VBox {
         return root;
     }
 
+    /**
+     * 这个连接是哪家数据库。
+     *
+     * <p>两条来源按可信度排：已保存的连接档案（没连上也答得出）优先，
+     * 其次当前会话的方言解析器（临时连接、还没建档时走这条）。
+     */
+    private DialectKind dialectKindOf(String id) {
+        for (ConnectionProfile profile : connections) {
+            if (profile.id().equals(id)) {
+                return profile.kind();
+            }
+        }
+        Dialect dialect = dialectFor.apply(id);
+        return dialect == null ? null : dialect.kind();
+    }
+
     /** 一个连接节点：有 catalog 的连接先出库一层，否则分组直接挂连接下。 */
     private void connectionNode(TreeItem<DemoNode> root, String id, String name, String needle) {
         boolean active = isActiveConnection(id);
-        TreeItem<DemoNode> connectionNode = new TreeItem<>(
-                new DemoNode(name, NodeKind.CONNECTION, Icons.Icon.CONNECT, id));
+        // ⭐ R43-a：连接节点顶的是**厂商图形**（与向导磁贴同一枚、同一个品牌色作用域），
+        //    不再是人人相同的插头。认不出方言时回落到插头 —— 那是「不知道是哪家」，
+        //    不是「没有连接」，画成某家的图形就是编造。
+        ConnectionCatalog.Entry vendor = ConnectionCatalog.forKind(dialectKindOf(id));
+        TreeItem<DemoNode> connectionNode = new TreeItem<>(new DemoNode(
+                name, NodeKind.CONNECTION,
+                vendor == null ? Icons.Icon.CONNECT : vendor.glyph(),
+                "", id, vendor == null ? "" : vendor.styleClass()));
         connectionNode.setExpanded(active);
 
         List<CatalogEntry> catalogs = catalogsByConnection.getOrDefault(id, List.of());
@@ -1928,16 +1951,22 @@ public final class SideBar extends VBox {
      *
      * @param schema       所属 schema（表/视图节点用；其它节点为空串）
      * @param connectionId 所属连接（连接节点与其下的对象用；其它节点为空串）
+     * @param vendorClass  厂商品牌色的作用域类（只有连接节点用；其它节点为空串）
      */
     private record DemoNode(String name, NodeKind kind, Icons.Icon icon, String schema,
-                            String connectionId) {
+                             String connectionId, String vendorClass) {
 
         private DemoNode(String name, NodeKind kind, Icons.Icon icon) {
-            this(name, kind, icon, "", "");
+            this(name, kind, icon, "", "", "");
         }
 
         private DemoNode(String name, NodeKind kind, Icons.Icon icon, String connectionId) {
-            this(name, kind, icon, "", connectionId);
+            this(name, kind, icon, "", connectionId, "");
+        }
+
+        private DemoNode(String name, NodeKind kind, Icons.Icon icon, String schema,
+                         String connectionId) {
+            this(name, kind, icon, schema, connectionId, "");
         }
     }
 
@@ -1963,6 +1992,12 @@ public final class SideBar extends VBox {
             //    三层 tone 保持中性浅蓝（形状 + 颜色是一对线索，彩色档没资格删掉一条）。
             Node icon = Icons.colored(item.icon(), Icons.SIZE_LABEL);
             icon.getStyleClass().addAll("adb-tree__icon", iconStyleClass(item.kind()));
+            // ⭐ R43-a：连接节点再挂一层**厂商作用域类**，品牌色经
+            //    `.adb-db--mysql .adb-icon-tone-c` 传到填充层 —— 与向导磁贴同源同类，
+            //    同一个 MySQL 在两处不会是一个青一个蓝。
+            if (!item.vendorClass().isBlank()) {
+                icon.getStyleClass().add(item.vendorClass());
+            }
 
             Label name = new Label(item.name());
             name.getStyleClass().add("adb-tree__name");

@@ -369,7 +369,12 @@ public final class ConnectionWizard {
      * 多一行小字会把 5 列网格挤成 3 列。
      */
     private ToggleButton tile(ConnectionCatalog.Entry entry) {
-        Label icon = bigIcon(Icons.of(Icons.Icon.DATABASE, Icons.SIZE_TILE));
+        // R43-a：六个真驱动各一枚厂商图形（品牌色由本磁贴的 adb-db--* 类作用到填充层）；
+        // 没有驱动的磁贴仍旧是通用圆柱的单色档 —— 给它们画「厂商图形」等于宣称我们支持它。
+        Node glyph = entry.supported()
+                ? Icons.colored(entry.glyph(), Icons.SIZE_TILE)
+                : Icons.of(entry.glyph(), Icons.SIZE_TILE);
+        Label icon = bigIcon(glyph);
         icon.getStyleClass().add("adb-type-tile__icon");
 
         Label title = new Label(entry.name());
