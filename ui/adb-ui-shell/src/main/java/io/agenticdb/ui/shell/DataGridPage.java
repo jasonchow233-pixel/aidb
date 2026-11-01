@@ -1323,8 +1323,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 showCapabilityNotice(I18n.t("grid.toolbar.dataProfiling"), "grid.capability.profiling"));
 
         // 视图菜单（≡▾）：冻结、隐藏空值、表单视图等 AIDB 已有的显示开关。
+        // ⭐ R43-c：这颗挂 adb-button--icon-menu，不是 adb-button--icon ——
+        //   后者把宽度钉死 30px，而它是 MenuButton：内容要「内边距 8+8 + 图标 14.5
+        //   + 箭头 16」≈46px。30px 装不下时 ButtonSkin 把箭头挤到图标**左边**并压住它，
+        //   1280px 帧上工具条右端就是一颗孤零零的 ▾（图标被盖在旁边，看不出是谁的箭头）。
         viewButton.setId("data-view");
-        viewButton.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-button--icon");
+        viewButton.getStyleClass().addAll("adb-button", "adb-button--ghost", "adb-button--icon-menu");
+        viewButton.setMinWidth(Region.USE_PREF_SIZE);
         viewButton.setTooltip(new Tooltip(I18n.t("grid.tip.view")));
         viewButton.setAccessibleText(I18n.t("grid.tip.view"));
         viewButton.setDisable(true);

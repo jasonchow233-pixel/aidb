@@ -507,6 +507,25 @@
     -fx-pref-width: 30px;
 }
 
+/* ⭐ R43-c：只有图标、但**带下拉箭头**的键（数据页右端的视图菜单 ≡▾）。
+   内边距和 --icon 一样紧，但宽度绝不能钉 30px：MenuButton 的内容是
+   「左右内边距 16 + 图标 14.5 + 箭头 16」≈46px，钉到 30px 时 ButtonSkin
+   把 16px 的 arrow-button 排到图标左边、两者重叠 —— 画面上就是一颗
+   没有身份的裸 ▾（用户无从知道点下去是哪颗键的动作）。
+   宽度交给内容，Java 侧再 setMinWidth(USE_PREF_SIZE) 防止被挤回去。 */
+.adb-button--icon-menu {
+    -fx-padding: 4px 8px;
+}
+
+/* 图标与箭头之间已经有 arrow-button 自己的 8px 左内边距，label 那两层 8px
+   是文字键才需要的（见下面 .menu-button > .label 的说明：那是文字与箭头的间距）。
+   这里没有文字，留着只会把这颗小键撑宽 16px —— 工具条右端是按像素算的。
+   ⚠️ 多带一个 .adb-button 是为了压过那条同级的 `.menu-button > .label`（它在后面，
+   平级 specificity 会后发制人）。 */
+.adb-button.adb-button--icon-menu > .label {
+    -fx-padding: 0px;
+}
+
 .adb-button__spinner {
     -fx-progress-color: -adb-accent;
     -fx-pref-width: 14px;
