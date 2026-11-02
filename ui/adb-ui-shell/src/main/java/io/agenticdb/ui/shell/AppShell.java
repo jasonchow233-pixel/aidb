@@ -3306,8 +3306,8 @@ public final class AppShell extends StackPane {
 
     /** ⭐ G1：取某个查询页标签当前的 SQL（页没建起来/不是查询页时给空串）。 */
     private String currentQuerySql(TabItem tab) {
-        Node node = tabBar.contentOf(tab.id());
-        return node instanceof QueryPage page ? page.sql() : "";
+        QueryPage page = workspace.queryPage(tab.id());
+        return page == null ? "" : page.sql();
     }
 
     private StructurePage createStructurePage(TabItem tab) {

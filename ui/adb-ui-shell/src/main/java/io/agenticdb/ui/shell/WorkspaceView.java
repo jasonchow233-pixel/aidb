@@ -343,6 +343,16 @@ public final class WorkspaceView extends StackPane {
     }
 
     /**
+     * 某个标签托管的查询页；没建起来或不是查询页则 {@code null}。
+     *
+     * <p>D-36：当前 SQL 只活在 {@code queryPages} 里 —— {@code TabBar} 按 id 存的是标签条上的
+     * 胶囊（{@code HBox}），不是页面本体，拿它取 SQL 会永远得到空串。
+     */
+    public QueryPage queryPage(String id) {
+        return queryPages.get(id);
+    }
+
+    /**
      * ⭐ N33 / 连接切换：重新渲染常驻「对象」标签。
      *
      * <p>对象页按连接构建 —— 切库 / 重连后必须再走一次工厂，

@@ -703,6 +703,61 @@ class AppShellTest {
         WaitForAsyncUtils.waitForAsyncFx(5_000, query::markClean);
     }
 
+    /**
+     * ⭐ D-36：查询页换库要把当前 SQL 带进新页 —— 状态栏说了「SQL 已复制到新查询页」，
+     * 新页就必须真有那条 SQL。
+     *
+     * <p>外壳原先按标签 id 问 {@code TabBar} 要「页」，那里存的是标签条上的胶囊（{@code HBox}），
+     * 不是页面本体 —— 于是这条读取口<b>永远</b>交出空串：编辑器空白、状态栏却在报一句假话。
+     * R47-b 的真 MySQL 帧（docs/screenshots/p3-query-catalog-bound.png）把它拍了出来。
+     *
+     * <p>⚠️ 这里走「目标库＝母连接默认库」那条分支：演示库是 SQLite，造不出第二个真库。
+     * 缺陷在两条分支共用的读取口上，不是在分支判断上。
+     */
+    @Test
+    void switchingCatalogCarriesTheSqlIntoTheNewQueryTab(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
+
+        robot.clickOn("#ribbon-new-query");
+        WaitForAsyncUtils.waitForFxEvents();
+        QueryPage first = onFx(shell.workspace()::activeQuery);
+        assertThat(first).as("新建查询页要真的建起来").isNotNull();
+
+        String sql = "SELECT 42 AS answer;";
+        WaitForAsyncUtils.waitForAsyncFx(5_000, () -> first.setSql(sql));
+
+        TabItem tab = onFx(() -> shell.tabBar().active());
+        assertThat(tab).isNotNull();
+        String database = onFx(() -> shell.connectionsList().stream()
+                .filter(profile -> profile.id().equals(tab.connectionId()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("标签连着的那个连接不在了"))
+                .database());
+        // 有库列表，库下拉才会换成真条目；点它才走外壳的 switchQueryCatalog。
+        String other = database + "-other";
+        WaitForAsyncUtils.waitForAsyncFx(5_000,
+                () -> first.setCatalogs(List.of(database, other), database));
+        assertThat(onFx(first::catalogsForTest)).contains(database);
+
+        WaitForAsyncUtils.waitForAsyncFx(5_000, () -> first.selectCatalogForTest(database));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        QueryPage second = onFx(shell.workspace()::activeQuery);
+        // 收尾**先**把两页标成已保存，再断言：@BeforeEach 的 resetUi 会点掉每个页签的关闭钮，
+        // 而脏页签的关闭弹的是模态确认（showAndWait 卡在 FX 线程上）——
+        // 断言失败也不该把后面整类测试拖成超时。同类的 opensQueryPageRunsSqlAndShowsResultTab 同一手法。
+        if (second != null) {
+            WaitForAsyncUtils.waitForAsyncFx(5_000, second::markClean);
+        }
+        WaitForAsyncUtils.waitForAsyncFx(5_000, first::markClean);
+
+        assertThat(second).as("换库要另开一个查询页，不是复用原页").isNotSameAs(first);
+        assertThat(onFx(second::sql))
+                .as("D-36：状态栏说「SQL 已复制到新查询页」，新页就得真的有那条 SQL")
+                .isEqualTo(sql);
+    }
+
     @Test
     void commandPaletteOpensAndFilters(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
