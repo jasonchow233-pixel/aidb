@@ -485,10 +485,12 @@ public interface Dialect {
     List<String> dependentViews(Connection connection, String table) throws SQLException;
 
     /**
-     * 读视图定义。
+     * 读视图定义 —— {@link #readDdl} 读不到视图的方言靠这一条。
      *
-     * <p>PostgreSQL 用 {@code pg_get_viewdef}；其它库返回 {@code null}
-     * （它们的 {@code readDdl} 已经能读出视图）。
+     * <p>PostgreSQL 用 {@code pg_get_viewdef}；SQL Server 用
+     * {@code sys.sql_modules JOIN sys.views}（R52 · D-27 补上的，见
+     * {@link SqlServerDialect#readViewDdl}）。返回 {@code null} = 读不到；
+     * 两个都读不到时「设计视图」<b>不开窗</b>，不能拿空正文盖掉库里的真定义。
      */
     String readViewDdl(Connection connection, String table) throws SQLException;
 
