@@ -177,15 +177,23 @@ Launcher
   - 索引：SQLite `PRAGMA index_list` + `index_info`；其它库 `DatabaseMetaData.getIndexInfo`。
   - 外键：`DatabaseMetaData.getImportedKeys`，按 `FK_NAME` 合并多列外键。
   - 触发器：SQLite `sqlite_master` / PG `information_schema.triggers` / MySQL `information_schema.TRIGGERS`。
-  - DDL：SQLite `sqlite_master.sql` / MySQL `SHOW CREATE TABLE` / PG 由内省生成等价 DDL。
+  - DDL：读库还是内省生成由 `Dialect#readsDdlFromDatabase()` 自报 ——
+    MySQL / MariaDB `SHOW CREATE TABLE`、Oracle `DBMS_METADATA.GET_DDL`、SQLite `sqlite_master.sql` 走读库；
+    PG 与 SQL Server 由内省生成**等价 DDL**（界面标「等价」）。
+    视图定义先走同一条 `readDdl(view)`（MySQL `SHOW CREATE VIEW` / Oracle `GET_DDL(…, 'VIEW')` /
+    SQLite 的 `sqlite_master`），读不到再兜底 `readViewDdl`（PG `pg_get_viewdef` /
+    SQL Server `sys.sql_modules JOIN sys.views`）。
 - `StructureSqlBuilder` 生成 `StructurePlan`（有序 SQL + 是否需要高风险审批）。
 - 执行路径：单事务 → 任一步失败整体回滚 → 成功后触发 `onChanged`，
   由 `AppShell.schemaChanged` 刷新对象树与所有已打开的数据页 / 结构页。
 - 视图（`TableStructure.editable() == false`）整体只读。
 
-**已知缺口**：视图定义编辑、表选项（引擎 / 排序规则 / 自增步长 / 行格式）**只读展示、尚不可改**；
+**已知缺口**：表选项（引擎 / 排序规则 / 自增步长 / 行格式）**只读展示、尚不可改**；
 分区、表空间等运维属性不在首版范围。
 （索引 / 外键 / 触发器已可增删；建表 / 清空 / 重命名 / 删表已落地；
+视图的建 / 重建（写法由 `Dialect#viewReplace()` 自报）/ 删已落地，走
+`ViewDesignerDialog` → `StructureSqlBuilder.viewStatements` → `StructurePlan` 同一条
+「预览几句就跑几句」的路径，**但没有视图重命名**；
 CHECK 约束已内省并随重建搬运；PG 的 DEFAULT / COMMENT / 序列 / `getExportedKeys` 已读回。）
 
 ---

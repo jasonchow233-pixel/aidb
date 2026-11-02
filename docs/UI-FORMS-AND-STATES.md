@@ -274,6 +274,7 @@ dialog.getDialogPane().getStyleClass().add("adb-dialog");
 | 2026-10-21 | 第七轮 | 建立本文。抽 `EmptyState` 组件；修 E1/E2/E3/E4/E6；裁定 §4 待建能力形态 |
 | 2026-10-22 | 第八轮 | **T1–T4 表级生命周期落地**（见 §10）。新增 `NewTableDialog` / `TableDdl` / `StructurePlanRunner`；方言补 `renameTableSql` / `truncateTableSql` / `dropTableSql` / 表注释 |
 | 2026-11-01 | R42 | **V1–V3 视图生命周期落地**（见 §11）。新增 `ViewDesignerDialog`（弹窗，非标签页）；`Dialect` 加 `ViewReplace` 能力钩子（三种重建写法）；§4 补 V1–V3 三行裁定。四张新帧目视后改了 §11.6 那三处（预览格标题 / 死空白 / 弹窗内错误与提示行的配色） |
+| 2026-11-02 | R52 | **视图生命周期进真库矩阵（契约第 8 条）· §11.2 的方言表被实测改了一格**。MySQL 8.4 / MariaDB 11.8 / PG 16 / Oracle 23ai 都收单句 `CREATE OR REPLACE VIEW`，SQL Server 2022 走 `CREATE OR ALTER`，**只剩 SQLite 需要两句** → 重建视图弹窗在 MySQL 上不再显两句、不再多要一次危险确认（D-29）。同轮修 D-27：SQL Server 的 `readViewDdl` 原本是 `return null` 的空壳，「设计视图」在那个库上从来没开过窗。D-28（PG 改列名必失败）立案待裁定。§11.7 的「未在真库跑过」标注随事实翻转 |
 
 ---
 
@@ -373,21 +374,32 @@ Navicat 的「新建视图 / 设计视图」是一个**设计器窗口**，不�
 | 动作 | SQLite | MySQL | MariaDB | PostgreSQL | Oracle | SQL Server |
 |---|---|---|---|---|---|---|
 | 新建 | `CREATE VIEW "v" AS SELECT …` | 反引号 | 反引号 | 双引号 | 双引号 | `[v]` |
-| 重建 | **两句** 先删再建 | **两句** 先删再建 | 一句 `CREATE OR REPLACE` | 一句 `CREATE OR REPLACE` | 一句 `CREATE OR REPLACE` | 一句 `CREATE OR ALTER` |
+| 重建 | **两句** 先删再建 | 一句 `CREATE OR REPLACE` | 一句 `CREATE OR REPLACE` | 一句 `CREATE OR REPLACE` | 一句 `CREATE OR REPLACE` | 一句 `CREATE OR ALTER` |
 | 删除 | `DROP VIEW "v"` | 反引号 | 反引号 | 双引号 | 双引号 | `[v]` |
 
 写法由 `Dialect#viewReplace()` 返回 `ViewReplace` 枚举（`OR_REPLACE` / `OR_ALTER` / `DROP_THEN_CREATE`），
 默认值是 **`DROP_THEN_CREATE`** —— 它是六种方言里唯一都认的写法，新方言忘了 override 也只会生成能跑的 SQL，
 不会生成一句「看着对、执行必报错」的。
-**MySQL 8.0 没有 `CREATE OR REPLACE VIEW`**（那是 MariaDB 的分支特性），这条最容易写错。
+
+> ⚠️ **这一行的 MySQL 曾被写反（D-29，2026-11-02 收）**：文档原来写「MySQL 8.0 没有
+> `CREATE OR REPLACE VIEW`，那是 MariaDB 的分支特性」，六个库里只有 SQLite 真的没单句形式。
+> R52 把视图生命周期放进真库契约第 8 条，在 MySQL 8.4 容器上实测：单句照跑、
+> `SHOW CREATE VIEW` 回读的是新正文、`information_schema.columns` 跟着变。
+> 判反的代价写在界面层：两句之间视图**真的不存在**，且预览显出两句就要多弹一次危险确认
+> （`approvalRequired`）—— 用户在本来单句够用的服务器上被问「要不要先删再建」，
+> 这是把我们自己的知识错误转嫁成用户的操作风险。**结论：方言能力表里的每一条都要有真库执行证据，
+> 没有证据的那条不算已验证，只算还没测。**
 
 两句式带出一个真风险：**第一句 `DROP` 执行完，那个视图就已经没了**，
 此刻依赖它的对象 / 另一个会话会立刻失败。所以计划里 `statements.size() > 1` 就
 把 `approvalRequired` 置真 —— 预览显出两句，并额外弹一次确认。单句 `OR REPLACE` 不二次确认。
+现在只剩 SQLite 走这条路。
 
 > ⚠️ 单句不等于「一定成功」：PostgreSQL 的 `CREATE OR REPLACE VIEW` **不允许改变列名/列数**，
-> 改了会让服务端报错。我方不做「自动降级成先删再建」（那等于替用户决定要丢依赖），
+> 改了会让服务端报错（R52 在 PG 16 上实测到原文：`cannot change name of view column "id" to "adb_marker"`）。
+> 我方不做「自动降级成先删再建」（那等于替用户决定要丢依赖），
 > 而是让执行失败后经 `ErrorClassifier` 归类，把「发生了什么 + 建议怎么办」落到状态栏（V-12 同规）。
+> ⚠️ 待裁定 D-28：PG 上「改了列名」这条失败要不要在服务端报错前给一句**主动提示**。
 
 ### 11.3 只收查询体，不收 DDL
 
@@ -450,7 +462,14 @@ Navicat 的「新建视图 / 设计视图」是一个**设计器窗口**，不�
 ### 11.7 本轮没做的（别顺手以为做了）
 
 - **视图重命名**：没有。见 §11.4 第 2 条。
-- **视图依赖图**：没有；两句式重建时「谁依赖这个视图」只能靠数据库自己报错。
-- **视图真库联调**：没有。Docker 矩阵 2026-11-02 已经起满五引擎，但七条真库契约里**没有视图生命周期**
-  这一条 —— 以上 SQL 全部是**快照 + SQLite 契约**验证，文档与状态表都要写明
-  「未在真 MySQL / PostgreSQL / SQL Server 上跑过一次」。
+- **视图依赖图**：没有；「先删再建」时「谁依赖这个视图」只能靠数据库自己报错。
+- **视图真库联调**：**已经跑过**（R52 · 真库契约第 8 条，2026-11-02）。五引擎 × 8 契约 = 41 例，
+  建 → 重建 → 按**产品读路径**读回 → 删 全绿；重建写法由方言自报，所以这一条同时执行了
+  单句 `OR REPLACE`（MySQL 8.4 / MariaDB 11.8 / PG 16 / Oracle 23ai）、`CREATE OR ALTER`
+  （SQL Server 2022）与两句先删再建（SQLite 契约）。**抓出三条**：D-27（SQL Server 的
+  `readViewDdl` 是个 `return null` 空壳 —— 「设计视图」在那个库上从来开不了窗，
+  而 `ViewDefinition` 的注释一直声称走 `sys.sql_modules`）、D-28（PG 改列名必失败，见 §11.2）、
+  D-29（MySQL 有单句形式，判反了，见 §11.2）。
+  ⚠️ 相邻的两条**不是「没验证」，是产品里真没有**：视图重命名（§11.4）、
+  视图依赖图（`dependentViews` 只服务于「删表前先问哪些视图会跟着坏」这一句警告，
+  没有独立面板；SQL Server 上它返回空集，即那句警告在那个库上不会出现）。

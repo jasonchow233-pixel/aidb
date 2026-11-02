@@ -37,7 +37,10 @@ deliberately does not do those things ([why](#explicitly-not-on-the-roadmap)).
 ✅ for the last three means the dialect, DDL generation, paging and capability gates are covered by
 unit tests **and** executed against real servers in the Docker matrix (`scripts/dbmatrix.sh`, opt-in
 via environment variables). That matrix is what caught D-20/D-22/D-24/D-25 — four defects that only a
-real server reports. Still unverified against a real server: TLS certificate-chain options, which need
+real server reports — and, once the view lifecycle became contract #8, D-27/D-29 as well: reading a
+SQL Server view definition was a stub that always returned "nothing found", and MySQL was assumed to
+lack `CREATE OR REPLACE VIEW` (it does not), which made us drop-and-recreate a view that one statement
+could have replaced. Still unverified against a real server: TLS certificate-chain options, which need
 a PKI rather than a container. Those paths are marked in the dialect
 sources, and the UI hides what a database genuinely cannot express (SQL Server / Oracle explain plans,
 SQL Server column comments, Oracle `ON UPDATE`) instead of offering dead controls.
@@ -203,7 +206,10 @@ Report security issues privately: [SECURITY.md](SECURITY.md).
 AIDB 是一个**原生桌面数据库客户端**：Java 25 + JavaFX 25，不内嵌浏览器、不启动本地 HTTP 端口，
 所有数据直接走 JDBC。当前支持 SQLite / MySQL 5.7–8.x / PostgreSQL / MariaDB / SQL Server / Oracle ——
 后三种原先只有方言与单测门禁，R46 起进了本机 Docker 真库矩阵，目录查询与 DDL 契约逐条实跑，
-当场抓出四条只有真服务器才会报的缺陷（D-20 / D-22 / D-24 / D-25）。仍未在真库验证的只剩 TLS 证书链档位（要一套 PKI，不是起个容器就行）。
+当场抓出四条只有真服务器才会报的缺陷（D-20 / D-22 / D-24 / D-25）；R52 把视图生命周期补成契约第 8 条，
+又抓出两条 —— SQL Server 读视图定义是个永远返回「读不到」的空壳（「设计视图」因此在那个库上从来没开过窗），
+MySQL 被当成没有 `CREATE OR REPLACE VIEW`（其实有），于是把一句就能完成的改视图做成了「先删再建」两句。
+仍未在真库验证的只剩 TLS 证书链档位（要一套 PKI，不是起个容器就行）。
 
 界面照 Navicat 的交互习惯做：对象树 → 双击表 → 数据页 → 行内编辑 → 预览 SQL → 单事务保存 → 保存后撤销，
 视图同样在这棵树上建 / 改 / 删（设计器弹窗，预览几句就跑几句）。

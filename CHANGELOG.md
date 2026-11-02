@@ -14,12 +14,14 @@
 - **视图可以建、能改、能删了**（2026-11-01，R42 N28-a）：新增**视图设计器**弹窗 —— 视图名 +
   `SELECT` 查询体 + 实时 SQL 预览，和「新建表」共用同一条铁律：**预览里看到几句，库里就跑几句**。
   入口三条：功能区 `View` 格、库 / 连接 / 分组节点右键「新建视图」、视图节点右键「设计视图」「删除视图」。
-  重建写法按方言给，不由界面猜：MariaDB / PostgreSQL / Oracle 一句 `CREATE OR REPLACE VIEW`，
-  SQL Server `CREATE OR ALTER VIEW`，**MySQL 与 SQLite 没有单句形式** —— 只能先 `DROP VIEW` 再
-  `CREATE VIEW`，于是预览显出两句、并多要一次确认（第二句之前那个视图已经不在了，依赖它的对象会失败）。
-  查询体只收 `SELECT` / `WITH` / 以括号开头的组合查询：粘整条 DDL、往里塞第二句 SQL 都会当场拦下并写明原因，
+  重建写法按方言给，不由界面猜：MySQL / MariaDB / PostgreSQL / Oracle 一句 `CREATE OR REPLACE VIEW`，
+  SQL Server `CREATE OR ALTER VIEW`，**只有 SQLite 没有单句形式**（R42 当时把 MySQL 也算进「没有」的那一侧，
+  R52 在真库上翻案，见下方 Fixed）—— 两句「先删再建」时预览显出两句、并多要一次确认
+  （第二句之前那个视图已经不在了，依赖它的对象会失败）。
+  查询体只收 `SELECT` / `WITH` / 以括号开头的组合查询：粘整条 DDL、塞第二句 SQL 都当场拦下并写明原因，
   不会拼出半条能执行的东西。「设计视图」不改名字 —— 那一格置灰并说明替代路径（本版本没有视图重命名）。
-  ⚠️ 视图 DDL 现在由三方言 SQL 快照 + SQLite 契约钉住，**还没在真 MySQL / PostgreSQL 上联调**。
+  ~~⚠️ 视图 DDL 现在由三方言 SQL 快照 + SQLite 契约钉住，**还没在真 MySQL / PostgreSQL 上联调**。~~
+  （2026-11-02 已联调：真库契约第 8 条在五引擎上跑完建 → 改 → 读回 → 删，见 Fixed。）
   门禁：新增 `ViewLifecycleSqlTest`（11）、`ViewDefinitionTest`（8）、`ViewDesignerDialogTest`（16，含
   「预览文本 == 将要执行的语句」、形态扫描、三格标题、弹窗内错误/提示行配色），`TableDdlTest` +4、`SideBarTreeTest` +2。
 - **表设计器补齐 Navicat 17 的列属性**（2026-11-01，R41 N29）：
@@ -165,6 +167,21 @@
 
 ### Fixed
 
+- **MySQL / MariaDB 上「设计视图」不再问「要不要先删掉再建」**（2026-11-02，R52 · D-29）：
+  我们一直按「MySQL 没有 `CREATE OR REPLACE VIEW`，那是 MariaDB 的分支特性」写方言，
+  于是改视图被拼成 `DROP VIEW` + `CREATE VIEW` 两句。这条说法从没在真库上验过 ——
+  R52 把视图生命周期加进真库契约，MySQL 8.4 与 MariaDB 11.8 都收单句、
+  而且**真的替换了定义**（`SHOW CREATE VIEW` 回读新正文）。判反的代价不是「多打一句 SQL」：
+  两句之间视图**真的不存在**，依赖它的对象在那一刻会失败，弹窗还要为它多要一次危险确认。
+  现在 MySQL 走单句（预览一句、无灰字提示、不二次确认），六方言里**只有 SQLite** 仍需要两句先删再建。
+- **SQL Server 上的视图打不开设计器**（2026-11-02，R52 · D-27）：`SqlServerDialect.readViewDdl`
+  是个 `return null` 的空壳，而「设计视图」的规则是**读不到库里那份定义就不开窗**
+  （宁可拦住，也不能拿一个空正文盖掉真实定义）—— 后果是在 SQL Server 上这个命令永远只把
+  状态栏写成「读不到视图定义」，弹窗一次都没出现过。注释里还一直写着「走 `sys.sql_modules`」，
+  等于文档在替一个不存在的实现背书。
+  现在真的发一条目录查询：`sys.sql_modules JOIN sys.views`（联 `sys.views` 而不是裸
+  `OBJECT_ID(?)`，后者对函数与同义词也会给定义，而这条路只该认视图），
+  读回为空或全白仍按原规则不开窗。
 - **弹窗里的错误行终于红了**（2026-11-01，R42 帧目视）：`app.css` 的 `.adb-dialog .label`
   特异性 (0,2,0) 一直压着裸类 `.adb-error` / `.adb-muted` 的 (0,1,0) —— 任何弹窗里的校验错误行
   与提示行都渲染成正文黑，红字只活在单测里。补两条同特异性的后置规则，新建表弹窗一起受益。
