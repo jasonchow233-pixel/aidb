@@ -113,21 +113,35 @@ class I18nAuditTest {
      * 文字只在两个渲染口长出来：{@code StructurePlanRunner.title()} 与
      * {@code NewTableDialog.problemText()}。掉了 {@code StructureSqlBuilder}
      * 这一整层的 120 条（含它给计划标题拼的中文，D-9 最大的一块）。
-     * 剩下的 170 条按文件是有账的：查询侧（{@code FilterOperator} 14、
-     * {@code DataSqlBuilder}/{@code FilterCondition} 各 5…）、导入导出
-     * （{@code TableImporter} 23、{@code ExportFormat} 7…）、错误归类
-     * （{@code ErrorClassifier} 20）、会话与凭据（{@code JdbcSession} 14、
-     * 三个 {@code *CredentialStore} 12…）—— 记为 G3-b/c/d，同一轮棘轮内继续降。
      *
-     * <p>⚠️ <b>这个 170 是怎么量出来的</b>：把本常量临时改成 0、跑
+     * <p>⭐ 170 → <b>145</b>（R45 G3-b 批 1，2026-11-02）：<b>错误文案键化</b> ——
+     * 这批是剩余里<b>最容易上屏</b>的一块：任何一次失败都会走状态栏那句
+     * 「说明 + 原文 + 建议」，而 {@code ErrorClassifier} 把中文写死在模型层，
+     * 连连接符「：」「——」都是中文的（D-11）。现在 {@code Diagnosis} 交
+     * {@code (kind, summaryKey, adviceKey, detail)}，{@code ErrorLocator} 交建议键，
+     * 渲染口只有 {@code ErrorText}（状态栏）和 {@code ErrorDetails}（弹窗）两处；
+     * 顺带收掉了五个页面各抄一份的 {@code readable()}。
+     * ⚠️ {@code ErrorClassifier.java = 1} 那条<b>不是文案</b>，是「只读」这个<b>匹配探针</b>：
+     * 服务器用什么 locale 报错跟界面语言无关，删了就把一类真错误归不出来。
+     * 清零时这条要写成豁免并给理由，<b>不许悄悄放宽尺子</b>。
+     *
+     * <p>剩下的 145 条按文件有账（同一轮棘轮内继续降，四批）：查询侧
+     * （{@code FilterOperator} 14、{@code FilterCondition} 5、{@code DataSqlBuilder} 5、
+     * {@code SortSpec} 3、{@code DataQuery} 4…）、导入导出（{@code TableImporter} 23、
+     * {@code ExportFormat} 7、{@code TableExporter} 6…）、会话与凭据（{@code JdbcSession} 14、
+     * {@code WindowsCredentialStore} 7、{@code ConnectionStore}/{@code CredentialStore} 各 3…）、
+     * 方言与编辑（{@code OracleDialect}/{@code SqliteDialect}/{@code Danger} 各 4、
+     * {@code RowIdentity} 3、{@code SqlServerDialect} 3…）。
+     *
+     * <p>⚠️ <b>这个 145 是怎么量出来的</b>：把本常量临时改成 0、跑
      * {@code -Dtest=I18nAuditTest#modelLayerChineseIsRatchetedDown}，
      * 读失败信息里的「当前残留 %d 条（按文件）」<b>再改回来</b>。
      * 尺子就是这条门禁自己，不存在口径漂移。
      * （文档里推荐的 <code>node tools/cjk-count.mjs --model</code> 在这台机器上跑不了 ——
      * 没有 node。别再抄文档里的旧数字：G3-a 开工前文档记的「186 顶格」实测是 170，
-     * 差的正是这一批清掉的 {@code StructureSqlBuilder}。）
+     * 差的正是那一批清掉的 {@code StructureSqlBuilder}。）
      */
-    private static final int MODEL_CJK_CEILING = 170;
+    private static final int MODEL_CJK_CEILING = 145;
 
     /** 源码里对 {@link I18n#t(String, Object...)} 的键引用。 */
     private static final Pattern KEY_REFERENCE = Pattern.compile("I18n\\.t\\(\\s*\"([^\"]+)\"");
@@ -259,12 +273,24 @@ class I18nAuditTest {
      * 不能悄悄长出一片没人对账的键。
      */
     private static final Pattern MODEL_KEY_LITERAL = Pattern.compile(
-            "\"((?:plan|column|table|fk|index|trigger|structure|danger)\\.[A-Za-z][A-Za-z0-9]*"
+            "\"((?:plan|column|table|fk|index|trigger|structure|danger|error)\\.[A-Za-z][A-Za-z0-9]*"
                     + "(?:\\.[A-Za-z0-9]+)*)\"");
 
-    /** 模型层交出的「键 + 参数」的三个构造点。 */
-    private static final List<String> MODEL_KEY_CONSTRUCTORS = List.of(
-            "new ColumnProblem(", "new DesignStepException(", "new StructurePlan(");
+    /**
+     * 模型层交出的「键 + 参数」构造点：标记 + <b>键在第几个实参上</b>。
+     *
+     * <p>R45 G3-a 交的是「第 0 个实参是键、后面跟参数」；G3-b 的
+     * {@code ErrorClassifier.Diagnosis} 是「类别 + <b>两个键</b> + 驱动原文」，
+     * 所以这里必须能表达「键不在第 0 位、而且一行有两个键」。
+     */
+    private record ModelConstructor(String marker, int... keyPositions) {
+    }
+
+    private static final List<ModelConstructor> MODEL_KEY_CONSTRUCTORS = List.of(
+            new ModelConstructor("new ColumnProblem(", 0),
+            new ModelConstructor("new DesignStepException(", 0),
+            new ModelConstructor("new StructurePlan(", 0),
+            new ModelConstructor("new Diagnosis(", 1, 2));
 
     /**
      * ⭐ R45 G3-a：<b>模型层交出的键</b>必须在两份资源里都有，并且参数与占位符对得上。
@@ -357,20 +383,24 @@ class I18nAuditTest {
     }
 
     /**
-     * 解出模型层三个构造点的「键 + 参数个数」。写不出来的形状返回空 —— 宁可不判，
+     * 解出模型层构造点的「键 + 参数个数」。写不出来的形状返回空 —— 宁可不判，
      * 也不要把门禁做成误报机（误报的门禁最终会被人关掉）。
      */
     private static List<CallSite> modelKeyCallSites(String source) {
         List<CallSite> sites = new ArrayList<>();
-        for (String marker : MODEL_KEY_CONSTRUCTORS) {
+        for (ModelConstructor constructor : MODEL_KEY_CONSTRUCTORS) {
             int at = 0;
-            while ((at = source.indexOf(marker, at)) >= 0) {
-                int open = at + marker.length() - 1;
+            while ((at = source.indexOf(constructor.marker(), at)) >= 0) {
+                int open = at + constructor.marker().length() - 1;
                 List<String> raw = splitTopLevel(source, open);
-                if (!raw.isEmpty()) {
-                    String key = stringLiteral(raw.get(0));
-                    if (key != null) {
-                        sites.add(new CallSite(key, modelKeyArguments(marker, raw)));
+                for (int position : constructor.keyPositions()) {
+                    if (position >= raw.size()) {
+                        continue;
+                    }
+                    String key = stringLiteral(raw.get(position));
+                    if (key != null && !key.isEmpty()) {
+                        sites.add(new CallSite(key,
+                                modelKeyArguments(constructor.marker(), raw)));
                     }
                 }
                 at = open;
@@ -382,10 +412,14 @@ class I18nAuditTest {
     /**
      * {@code ColumnProblem} 是变长实参（第 2..n 个都是参数）；
      * {@code StructurePlan} 的参数装在第 2 个位置的 {@code List.of(...)} 里 ——
-     * 五参数便捷构造没有参数列表，六参数才有。
+     * 五参数便捷构造没有参数列表，六参数才有；
+     * {@code Diagnosis} 的两个键<b>都是死文案</b>（没有占位符），递任何参数都是错。
      */
     private static int modelKeyArguments(String marker, List<String> raw) {
         if (raw.size() < 2) {
+            return 0;
+        }
+        if (marker.equals("new Diagnosis(")) {
             return 0;
         }
         if (marker.equals("new StructurePlan(")) {

@@ -490,6 +490,6 @@ final class TableDdl {
     private static String readable(Throwable error) {
         // ⭐ V-12：统一走错误归类 —— 给出「发生了什么 + 建议怎么办」，
         //    而不是把驱动的英文原文直接甩给用户。
-        return io.agenticdb.safety.ErrorClassifier.classify(error).message();
+        return ErrorText.readable(error);
     }
 }

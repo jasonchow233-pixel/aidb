@@ -30,8 +30,8 @@ record ErrorDetails(String title, ErrorClassifier.Kind kind, String summary,
     /** 从异常生成详情；{@code sql} 可为空（例如导出这类与语句无关的失败）。 */
     static ErrorDetails of(String title, Throwable error, String sql) {
         ErrorClassifier.Diagnosis diagnosis = ErrorClassifier.classify(error);
-        return new ErrorDetails(title, diagnosis.kind(), diagnosis.summary(),
-                diagnosis.advice(), driverDetail(error, diagnosis.detail()),
+        return new ErrorDetails(title, diagnosis.kind(), ErrorText.summary(diagnosis),
+                ErrorText.advice(diagnosis), driverDetail(error, diagnosis.detail()),
                 exceptionTypeOf(error), sql);
     }
 
@@ -52,20 +52,33 @@ record ErrorDetails(String title, ErrorClassifier.Kind kind, String summary,
     /**
      * 标题行：**先给能在标题栏一眼看懂的那句**。
      *
-     * <p>分类名与说明重复时（例如「对象不存在」），把驱动原文顶上来 ——
-     * 只写「对象不存在」，用户还得去正文里找是哪张表。
+     * <p>⭐ R45 G3-b 改的是这条判重的<b>依据</b>。以前比的是文本
+     * （{@code summary.equals(kindLabel())}），而 {@code summary} 是模型层的中文（D-9）：
+     * 英文界面下徽标已经是英文，跟那句中文说明永远对不上，「把驱动原文顶上来」这条规则
+     * 在最需要它的语言里<b>一次都没生效过</b>；即使在中文界面，「连接已断开」也等于
+     * 「连接断开」但字面不同，同样顶不上去。
      *
-     * <p>⚠️ 这条判重比的是<b>文本</b>，而 {@link ErrorClassifier.Diagnosis#summary()}
-     * 是模型层的中文（D-9）：英文界面下 {@code kindLabel()} 已经是英文，对不上那句中文
-     * 说明，于是顶不上去。等 D-9 把 summary 抽成「键 + 参数」，这里才能改成按 kind 判定。
+     * <p>现在按<b>类别</b>判：这六类的一句说明只是把徽标名换个说法重说一遍
+     * （「对象不存在」／「权限不足」／「锁冲突」…），标题栏真正缺的是<b>哪张表、哪一句</b>，
+     * 于是把驱动原文顶上来；「超时」分查询超时与操作超时、「执行失败」是归不出来时的兜底，
+     * 这两类说明本身带信息，保留「徽标 · 说明」。
      */
     String headline() {
-        if (summary.isEmpty() || summary.equals(kindLabel())) {
+        if (badgeSaysItAll() || summary.isEmpty()) {
             String specific = headlineDetail();
             return specific.isEmpty() ? kindLabel()
                     : I18n.t("error.join.colon", kindLabel(), specific);
         }
-        return kindLabel() + " · " + summary;
+        return I18n.t("error.join.headline", kindLabel(), summary);
+    }
+
+    /** 这一类<b>是不是只有徽标那一句</b> —— 措辞归界面层判，不下沉进模型层。 */
+    private boolean badgeSaysItAll() {
+        return switch (kind) {
+            case CONNECTION_LOST, PERMISSION_DENIED, NOT_FOUND, LOCK_CONFLICT,
+                    CONSTRAINT_VIOLATION, SYNTAX -> true;
+            case TIMEOUT, OTHER -> false;
+        };
     }
 
     /** 正文：驱动原文 / 建议 / 异常类型 / SQL，缺哪段跳过哪段。 */
@@ -96,7 +109,7 @@ record ErrorDetails(String title, ErrorClassifier.Kind kind, String summary,
     }
 
     private boolean detailInHeadline() {
-        return (summary.isEmpty() || summary.equals(kindLabel())) && !detail.isEmpty();
+        return (badgeSaysItAll() || summary.isEmpty()) && !detail.isEmpty();
     }
 
     /** 标题栏只能放一行：包装异常的根因在链尾，取链尾那一句最能说明问题。 */

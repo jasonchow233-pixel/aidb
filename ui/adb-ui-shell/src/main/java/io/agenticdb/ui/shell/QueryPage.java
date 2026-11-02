@@ -2033,7 +2033,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             body.append(statement.text()).append("\n\n");
         }
         body.append(message);
-        String advice = ErrorLocator.explainConstraintViolation(message);
+        String advice = ErrorText.constraintAdvice(message);
         if (!advice.isBlank()) {
             body.append(I18n.t("query.errorAdvice", advice));
         }
@@ -2255,7 +2255,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private static String readable(Throwable error) {
         // ⭐ V-12：统一走错误归类 —— 给出「发生了什么 + 建议怎么办」，
         //    而不是把驱动的英文原文直接甩给用户。
-        return io.agenticdb.safety.ErrorClassifier.classify(error).message();
+        return ErrorText.readable(error);
     }
 
     private static final class ResultCell

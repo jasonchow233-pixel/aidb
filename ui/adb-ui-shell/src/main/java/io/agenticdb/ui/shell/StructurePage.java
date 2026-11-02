@@ -1234,7 +1234,9 @@ public final class StructurePage extends VBox implements AutoCloseable {
     private static String readable(Throwable error) {
         // ⭐ V-12：统一走错误归类 —— 给出「发生了什么 + 建议怎么办」，
         //    而不是把驱动的英文原文直接甩给用户。
-        return io.agenticdb.safety.ErrorClassifier.classify(error).message();
+        //    ⭐ R45 G3-b：口径收进 ErrorText —— 五个页面原本各抄一份同样的话，
+        //    「怎么拼这句」从此只有一个地方能改。
+        return ErrorText.readable(error);
     }
 
     private Future<?> submit(Task<?> task) {

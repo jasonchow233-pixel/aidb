@@ -788,9 +788,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             IconButtons.loading(saveButton, false);
             grid.setDisable(false);
             updateEditControls();
-            // ⭐ V-12：错误归类 —— 给「能照着做」的说明，而不是驱动的原始英文。
-            String reason = io.agenticdb.safety.ErrorClassifier
-                    .classify(task.getException()).message();
+            // ⭐ V-12 + R45 G3-b：错误归类走唯一渲染口 —— 说明/建议的措辞由界面层按语言出。
+            String reason = ErrorText.message(
+                    io.agenticdb.safety.ErrorClassifier.classify(task.getException()));
             feedback.status(I18n.t("grid.msg.saveFailed", reason));
             showErrorDetails(I18n.t("grid.msg.saveFailedTitle"), task.getException(), plan.preview());
         });
@@ -6479,7 +6479,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private static String readable(Throwable error) {
         // ⭐ V-12：统一走错误归类 —— 给出「发生了什么 + 建议怎么办」，
         //    而不是把驱动的英文原文直接甩给用户。
-        return io.agenticdb.safety.ErrorClassifier.classify(error).message();
+        return ErrorText.readable(error);
     }
 
     /**

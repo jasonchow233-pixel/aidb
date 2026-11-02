@@ -84,25 +84,29 @@ public final class ErrorLocator {
     }
 
     /**
-     * 把驱动错误翻译成人话 + 建议动作。
+     * 把驱动错误归成「该往哪改」的<b>建议键</b>。
      *
      * <p>⭐ 移植自 Rust 侧的 {@code translate_constraint()}。
      * 用户看到「FOREIGN KEY constraint failed」不知道该干什么，
      * 看到「该行的外键指向一个不存在的记录」才知道。
+     *
+     * <p>⭐ R45 G3-b：交回的是<b>资源键</b>（空串 = 认不出来），文案与语言由界面层定
+     * （渲染口同样是 {@code ErrorText}）。左边那串是大写后的<b>驱动原文探针</b>，
+     * 不是文案 —— 服务器用什么语言报错就跟界面语言无关。
      */
-    public static String explainConstraintViolation(String message) {
+    public static String constraintAdviceKey(String message) {
         if (message == null) {
             return "";
         }
         String m = message.toUpperCase(Locale.ROOT);
 
         Map<String, String> rules = new java.util.LinkedHashMap<>();
-        rules.put("FOREIGN KEY CONSTRAINT FAILED", "外键指向的记录不存在。请先插入被引用的行，或检查外键值是否写错");
-        rules.put("UNIQUE CONSTRAINT FAILED", "违反唯一约束。该值已存在，请换一个");
-        rules.put("NOT NULL CONSTRAINT FAILED", "该字段不允许为空");
-        rules.put("CHECK CONSTRAINT FAILED", "值不满足该列的 CHECK 约束");
-        rules.put("DATATYPE MISMATCH", "类型不匹配，请检查赋值的类型");
-        rules.put("READONLY", "该字段是只读的（自增或生成列），不能手工修改");
+        rules.put("FOREIGN KEY CONSTRAINT FAILED", "error.rule.foreignKey");
+        rules.put("UNIQUE CONSTRAINT FAILED", "error.rule.unique");
+        rules.put("NOT NULL CONSTRAINT FAILED", "error.rule.notNull");
+        rules.put("CHECK CONSTRAINT FAILED", "error.rule.check");
+        rules.put("DATATYPE MISMATCH", "error.rule.typeMismatch");
+        rules.put("READONLY", "error.rule.readOnly");
 
         for (Map.Entry<String, String> e : rules.entrySet()) {
             if (m.contains(e.getKey())) {
