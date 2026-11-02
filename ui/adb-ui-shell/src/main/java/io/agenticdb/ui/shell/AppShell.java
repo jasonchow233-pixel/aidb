@@ -1284,8 +1284,13 @@ public final class AppShell extends StackPane {
                     loadCatalogsFor(profile.id());
                 });
             } catch (Exception e) {
-                Platform.runLater(() ->
-                        status(I18n.t("shell.objectsLoadFailed", profile.name(), readable(e))));
+                String reason = readable(e);
+                Platform.runLater(() -> {
+                    status(I18n.t("shell.objectsLoadFailed", profile.name(), reason));
+                    // ⭐ R51 T2：失败要落回侧栏 —— 光靠状态栏那一行，树会一直
+                    //    画成「这个库什么都没有」，而「已尝试」标记已经把重试堵死了。
+                    sideBar.setObjectsReadFailed(profile.id());
+                });
             }
         });
     }
@@ -1344,15 +1349,23 @@ public final class AppShell extends StackPane {
             // ⚠️ 会话还没开（选中一个没连过的连接时，对象正在后台读）——
             //    这时候**不能**标记「读过了」，否则库一层永远不出来。
             //    loadObjectsFor 把会话开好后会再叫一次。
+            //    ⭐ R51 T2：但用户是**主动**来要库清单的（展开重试节点）时，
+            //    静默返回等于「点开没反应」—— 让侧栏把它当成一次没读到，
+            //    说明节点留在树上，下次还能试。
+            Platform.runLater(() -> sideBar.setCatalogsReadFailed(connectionId));
             return;
         }
         catalogsLoaded.add(connectionId);
         executors.forConnection(connectionId).execute(() -> {
             List<String> catalogs;
+            String readFailed = null;
             try {
                 catalogs = new ArrayList<>(schemaService.listCatalogs(target));
             } catch (Exception e) {
+                // ⭐ R51 T2：**读失败**和「这个方言真的没有库一层」（SQLite / Oracle）
+                //    是两回事，混在一起就会把 MySQL 画成 SQLite 的样子。
                 catalogs = new ArrayList<>();
+                readFailed = readable(e);
             }
             // ⭐ N32：父连接自己落在的那个库**必须**出现在树里 —— SQL Server 常以
             //    master 接入（系统库被过滤掉了），PG 也可能连到模板库；缺了它，
@@ -1370,8 +1383,13 @@ public final class AppShell extends StackPane {
                         : ConnectionProfile.catalogVariantId(parent.id(), catalog);
                 entries.add(new SideBar.CatalogEntry(catalog, serving));
             }
+            String failure = readFailed;
             Platform.runLater(() -> {
-                if (entries.isEmpty()) {
+                if (failure != null) {
+                    catalogsLoaded.remove(connectionId);
+                    sideBar.setCatalogsReadFailed(connectionId);
+                    status(I18n.t("shell.databasesLoadFailed", parent.name(), failure));
+                } else if (entries.isEmpty()) {
                     status(I18n.t("shell.noDatabases", parent.name()));
                 } else {
                     sideBar.setCatalogs(connectionId, entries);
@@ -3345,8 +3363,10 @@ public final class AppShell extends StackPane {
     }
 
     private void openFavorites() {
-        FavoritesPage page = new FavoritesPage(sideBar.starredNames(),
-                name -> sideBar.openStarred(name), this::status);
+        // ⭐ R51 T1：交出去的是整条收藏（连接 + 表名），不是裸表名 ——
+        //    同名表在两个库里点开必须是各自那一张。
+        FavoritesPage page = new FavoritesPage(sideBar.favorites(),
+                sideBar::openFavorite, this::status);
         page.show(stage);
     }
 
@@ -3603,7 +3623,10 @@ public final class AppShell extends StackPane {
                 });
             } catch (SQLException e) {
                 String message = I18n.t("shell.refreshObjectsFailed", readable(e));
-                Platform.runLater(() -> status(message));
+                Platform.runLater(() -> {
+                    status(message);
+                    sideBar.setObjectsReadFailed(profile.id());
+                });
             }
         });
     }

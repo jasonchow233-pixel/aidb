@@ -80,10 +80,6 @@ public final class SideBar extends VBox {
     private Function<String, Dialect> dialectFor = connectionId -> null;
     private List<SchemaObject> tables = List.of();
     private List<SchemaObject> views = List.of();
-    /** ⭐ S3：过程 / 函数 / 触发器。 */
-    private List<SchemaObject> procedures = List.of();
-    private List<SchemaObject> functions = List.of();
-    private List<SchemaObject> triggers = List.of();
     /**
      * ⭐ 每个连接各自的对象（多连接对象树）。
      *
@@ -111,8 +107,19 @@ public final class SideBar extends VBox {
     private final Set<String> attemptedCatalogs = new LinkedHashSet<>();
     /** 双击 / 右键「切换到此数据库」（AppShell 负责重连）。 */
     private Consumer<CatalogSwitch> onSwitchCatalog = request -> { };
-    /** 已经尝试过读取的对象（读失败也不反复试）。 */
+    /** 已经尝试过读取的对象（读失败时摘掉标记 → 展开重试，见 {@link #setObjectsReadFailed}）。 */
     private final Set<String> attempted = new LinkedHashSet<>();
+    /**
+     * ⭐ R51 T2：最近一次**读失败**的连接 / 库清单。
+     *
+     * <p>以前读失败只在状态栏闪一行，树照旧画成「这个库什么都没有」——
+     * 用户分不清「空库」和「没读到」，而且 {@link #attempted} 已经记了「试过」，
+     * 于是除非重启，那条懒加载链**永远不会再跑**。同一棵树里列读取是有重试的
+     * （{@link #setColumns} 的空清单分支），对象读取却没享受同样的待遇，
+     * 这两条路径的差别只在「有没有人记得它失败过」。
+     */
+    private final Set<String> failedObjects = new LinkedHashSet<>();
+    private final Set<String> failedCatalogs = new LinkedHashSet<>();
     /**
      * ⭐ S-3：展开表节点时才读它的列（懒加载）。
      *
@@ -123,8 +130,6 @@ public final class SideBar extends VBox {
     private final Map<String, List<String>> columnsByTable = new LinkedHashMap<>();
     /** ⭐ S-3：已发起过列读取的表（读失败时摘掉标记 → 再展开一次会重试）。 */
     private final Set<String> attemptedColumns = new LinkedHashSet<>();
-    /** 出现的 schema 个数；> 1 时对象树按 schema 分组。 */
-    private int schemaCount;
     /**
      * 「刷新对象」的回调。
      *
@@ -141,10 +146,26 @@ public final class SideBar extends VBox {
     /** ⭐ N24：双击 / 回车「Queries」分组 → 打开已保存查询的对象清单页。 */
     private Runnable onOpenSavedQueries = () -> { };
 
+    /**
+     * ⭐ R51 T1：收藏 = **连接 + 对象名** 的键集合（见 {@link #starKey}）。
+     *
+     * <p>以前存的是裸对象名：同一个 MySQL 服务上 {@code orders.users} 和
+     * {@code audit.users} 是两张表，收藏其中一张，另一张也跟着亮星、
+     * 也一起进「只看收藏」的过滤 —— 而且从收藏夹点开永远开到**当前连接**上。
+     */
     private final Set<String> starred = new LinkedHashSet<>();
+    /**
+     * 旧版存下来的**只写了名字**的收藏（限定了连接的键都带分隔符）。
+     *
+     * <p>不猜它属于哪个库：它按老语义在所有库里都算收藏，直到用户在某一张表上
+     * 收藏 / 取消一次 —— 那一次把它展开成精确的键（{@link #toggleStar}）。
+     */
+    private final Set<String> legacyStarred = new LinkedHashSet<>();
     /** 收藏的持久化位置（以前只在内存里 —— 退出即丢）。 */
     private final SettingsStore settings;
     private static final String STARRED_KEY = "sidebar.starred";
+    /** 落盘时每行 {@code 连接id<TAB>对象名}；没有 TAB 的行就是旧版裸名。 */
+    private static final char STAR_FIELD = '\t';
     private DemoNode selectedNode;
     private String dialectName = "—";
     private final VBox expanded = new VBox(8);
@@ -354,6 +375,7 @@ public final class SideBar extends VBox {
         catalogsByConnection.put(connectionId,
                 entries == null ? List.of() : List.copyOf(entries));
         attemptedCatalogs.add(connectionId);
+        failedCatalogs.remove(connectionId);
         refreshTree();
     }
 
@@ -477,6 +499,7 @@ public final class SideBar extends VBox {
         objectsByConnection.put(connectionId,
                 objects == null ? List.of() : List.copyOf(objects));
         attempted.add(connectionId);
+        failedObjects.remove(connectionId);
         // ⭐ S-3：对象重新内省过了 —— 该连接缓存的列清单一起作废。
         //    表可能刚被 ALTER 过（加列 / 删列），留着旧列比没有列更糟。
         dropColumnsOf(connectionId);
@@ -485,6 +508,34 @@ public final class SideBar extends VBox {
         } else {
             refreshTree();
         }
+    }
+
+    /**
+     * ⭐ R51 T2：某个连接的对象**读失败**了（外壳调用）。
+     *
+     * <p>三件事一起做：摘掉「已尝试」→ 懒加载这条路还能再跑；记下失败 →
+     * 树里出现一个说明性的占位节点；重建树 → 这件事不再只靠状态栏那一行会滚走的字。
+     */
+    public void setObjectsReadFailed(String connectionId) {
+        if (connectionId == null) {
+            return;
+        }
+        attempted.remove(connectionId);
+        failedObjects.add(connectionId);
+        refreshTree();
+    }
+
+    /**
+     * ⭐ R51 T2：库清单读失败 —— 同上，而且**不许**退化成
+     * 「这个方言没有库一层」的形态（那会让 MySQL 看起来像 SQLite）。
+     */
+    public void setCatalogsReadFailed(String connectionId) {
+        if (connectionId == null) {
+            return;
+        }
+        attemptedCatalogs.remove(connectionId);
+        failedCatalogs.add(connectionId);
+        refreshTree();
     }
 
     /** ⭐ S-3：作废某个连接下所有表的列缓存（对象重新内省后调用）。 */
@@ -588,22 +639,11 @@ public final class SideBar extends VBox {
         views = safe.stream()
                 .filter(object -> object.kind() == ObjectKind.VIEW)
                 .toList();
-        procedures = safe.stream()
-                .filter(object -> object.kind() == ObjectKind.PROCEDURE)
-                .toList();
-        functions = safe.stream()
-                .filter(object -> object.kind() == ObjectKind.FUNCTION)
-                .toList();
-        triggers = safe.stream()
-                .filter(object -> object.kind() == ObjectKind.TRIGGER)
-                .toList();
-        // ⭐ schema 分组：只有「存在多个 schema」时才加这一层，
-        //    否则常见的单 schema 连接会凭空多一次点击。
-        schemaCount = (int) safe.stream()
-                .map(SchemaObject::schema)
-                .filter(value -> value != null && !value.isBlank())
-                .distinct()
-                .count();
+        // ⭐ R51 T7：这里原本还算并缓存了 procedures / functions / triggers 和
+        //    schemaCount —— 四个字段只写不读。函数/过程在树上走
+        //    {@link #groupsOf} 的 profileRoutines（按连接算），触发器只在数据页的
+        //    只读切面里出现，schema 分组层在 R37 N12 之后就没了。
+        //    留着它们会让人以为「树里有触发器分组」，而树上永远点不到。
         if (refresh && !getChildren().isEmpty()) {
             refreshTree();
         }
@@ -882,7 +922,7 @@ public final class SideBar extends VBox {
             case FUNCTION -> InspectTarget.Topic.FUNCTION;
             case PROCEDURE -> InspectTarget.Topic.PROCEDURE;
             case EVENT -> InspectTarget.Topic.EVENT;
-            case ROOT, GROUP, COLUMN, CONNECTION_GROUP, SAVED_GROUP, SAVED_QUERY -> null;
+            case ROOT, GROUP, COLUMN, CONNECTION_GROUP, SAVED_GROUP, SAVED_QUERY, RETRY -> null;
         };
         if (topic == null) {
             return;
@@ -1052,10 +1092,26 @@ public final class SideBar extends VBox {
                 //    当成「空分组」摘掉：连接下看起来什么都没有，用户也就
                 //    永远点不到那个库去触发加载 —— 懒加载链就此断掉。
                 catalogNode.getChildren().addAll(nonEmptyGroups(catalog.connectionId(), needle));
+                // ⭐ R51 T2：这个库的对象读失败 → 挂一个「展开重试」的说明节点，
+                //    而不是留一个看起来像空库的折叠节点。
+                if (failedObjects.contains(catalog.connectionId())) {
+                    catalogNode.getChildren().add(retryNode("sidebar.objectsFailed",
+                            catalog.connectionId(),
+                            () -> loadObjectsIfNeeded(catalog.connectionId())));
+                }
                 connectionNode.getChildren().add(catalogNode);
             }
         } else {
             connectionNode.getChildren().addAll(nonEmptyGroups(id, needle));
+            if (failedObjects.contains(id)) {
+                connectionNode.getChildren().add(retryNode("sidebar.objectsFailed", id,
+                        () -> loadObjectsIfNeeded(id)));
+            }
+        }
+        if (failedCatalogs.contains(id)) {
+            // 放在最前面：库清单没读到是「这棵树少了一层」的原因，得先说清楚。
+            connectionNode.getChildren().add(0, retryNode("sidebar.databasesFailed", id,
+                    () -> loadCatalogsIfNeeded(id)));
         }
 
         // ⭐ UX-6：已保存查询直接挂在**连接**下（不是库下）——
@@ -1076,6 +1132,31 @@ public final class SideBar extends VBox {
      *
      * <p>搜索词同样过滤：搜表名时不该被一堆查询名占满。
      */
+    /**
+     * 「读失败了」的树内占位节点（⭐ R51 T2，展开即重试）。
+     *
+     * <p>挂一个占位子节点是**为了让箭头出现** —— JavaFX 只给有子项的节点画展开箭头，
+     * 而展开这个动作就是重试的触发点。做法与列读取失败完全一致
+     * （{@link #setColumns} 的空清单分支 + {@link #attemptedColumns}）。
+     *
+     * <p>为什么不用 GROUP：GROUP 是容器，搜索态会被 {@link #expandHitBranches}
+     * 自动摊开 —— 那等于「搜一次表名，把每个失败的连接都重连一遍」。
+     */
+    private TreeItem<DemoNode> retryNode(String labelKey, String servingConnectionId,
+                                         Runnable retry) {
+        TreeItem<DemoNode> node = new TreeItem<>(new DemoNode(
+                I18n.t(labelKey), NodeKind.RETRY, Icons.Icon.ALERT, "", servingConnectionId));
+        node.getChildren().add(new TreeItem<>(new DemoNode(
+                I18n.t("sidebar.retryLoading"), NodeKind.RETRY, Icons.Icon.REFRESH, "",
+                servingConnectionId)));
+        node.expandedProperty().addListener((obs, was, is) -> {
+            if (is) {
+                retry.run();
+            }
+        });
+        return node;
+    }
+
     private TreeItem<DemoNode> savedQueriesGroup(String servingConnectionId, String needle) {
         List<SavedQueries.Entry> visible = savedQueryEntries().stream()
                 .filter(entry -> matches(entry.name(), needle))
@@ -1154,9 +1235,10 @@ public final class SideBar extends VBox {
     private List<TreeItem<DemoNode>> groupsOf(String servingConnectionId, String needle) {
         List<SchemaObject> objects = objectsByConnection.getOrDefault(servingConnectionId, List.of());
         if (showOnlyFavorites) {
-            // ⭐ 底部 ★ 按钮：只看收藏的对象
+            // ⭐ 底部 ★ 按钮：只看收藏的对象（R51 T1：按**这个连接**的收藏筛，
+            //    否则 orders 里收藏过 users，audit 的 users 也会一起冒出来）
             objects = objects.stream()
-                    .filter(object -> starred.contains(object.name()))
+                    .filter(object -> isStarred(servingConnectionId, object.name()))
                     .toList();
         }
         List<SchemaObject> profileTables = objects.stream()
@@ -1392,13 +1474,48 @@ public final class SideBar extends VBox {
         String filter = search.getText();
         tree.setRoot(buildTreeModel(filter));
         if (filter != null && !filter.isBlank()) {
-            tree.getRoot().setExpanded(true);
-            tree.getRoot().getChildren().forEach(item -> item.setExpanded(true));
+            // ⭐ R51 T3：搜索时展开**装得下命中**的那几支，收起空的那几支。
+            expandHitBranches(tree.getRoot());
         }
         updateSearchEmpty(filter);
         // ⚠️ 重建模型后视口要回到顶部 —— 否则上一次留下的滚动偏移会让
         //    第一行（连接组）被切掉一半，看起来像「上面少了一行」。
         tree.scrollTo(0);
+    }
+
+    /**
+     * ⭐ R51 T3：搜索态下的展开规则 —— 「这一支里有东西，就把它摊开」。
+     *
+     * <p>旧做法只展开根和根的第一层子节点。多库树上线以后这就不成立了：
+     * 命中在**另一个库**里时，它头顶是「分组 → 连接 → 库」三层折叠节点，
+     * 用户搜到的是「树里好像有，但一行都看不见」，只能挨个库点开碰运气；
+     * 反过来，没命中的库仍然摊着一堆空折叠节点。
+     *
+     * <p>树模型在建的时候**已经按 needle 过滤过**（{@link #kindGroup} 只放命中，
+     * {@link #nonEmptyGroups} 摘掉空分组），所以「有没有子节点」就是
+     * 「这一支有没有命中」，不需要再比一遍名字。
+     *
+     * <p>只碰容器节点：表 / 视图节点**不展开** —— 它们一展开就走懒加载列的
+     * 回调（{@link #loadColumnsIfNeeded}），搜一次「user」把 40 张表的列全读一遍，
+     * 是把「找不到」换成了「卡住」。
+     */
+    private static void expandHitBranches(TreeItem<DemoNode> node) {
+        for (TreeItem<DemoNode> child : node.getChildren()) {
+            if (isContainer(child.getValue().kind())) {
+                child.setExpanded(!child.getChildren().isEmpty());
+                expandHitBranches(child);
+            }
+        }
+        node.setExpanded(!node.getChildren().isEmpty());
+    }
+
+    /** 容器节点：连接 / 分组 / 库 / 对象分组 —— 搜索态下按「有没有命中」决定展开。 */
+    private static boolean isContainer(NodeKind kind) {
+        return switch (kind) {
+            case ROOT, CONNECTION, CONNECTION_GROUP, CATALOG, GROUP, SAVED_GROUP -> true;
+            case TABLE, VIEW, PROCEDURE, FUNCTION, TRIGGER, EVENT, COLUMN, SAVED_QUERY,
+                    RETRY -> false;
+        };
     }
 
     /**
@@ -1436,11 +1553,10 @@ public final class SideBar extends VBox {
             // ⭐ S-3：列不是对象 —— 不进「有多少个对象」的计数，
             //    否则一张 50 列的表会让搜索空态判断失真。
             case COLUMN, ROOT, CONNECTION, CONNECTION_GROUP, GROUP, CATALOG, EVENT,
-                    SAVED_GROUP, SAVED_QUERY -> false;
+                    SAVED_GROUP, SAVED_QUERY, RETRY -> false;
         };
     }
 
-    /** 收藏的对象名（供「收藏夹」菜单用）。 */
     /**
      * ⭐ X6：清空收藏。
      *
@@ -1448,24 +1564,76 @@ public final class SideBar extends VBox {
      * 收藏多了以后没法一键清空。
      */
     public void clearStarred() {
-        if (starred.isEmpty()) {
+        if (starred.isEmpty() && legacyStarred.isEmpty()) {
             status.accept(I18n.t("sidebar.noFavorites"));
             return;
         }
-        int count = starred.size();
+        int count = starred.size() + legacyStarred.size();
         starred.clear();
+        legacyStarred.clear();
         settings.set(STARRED_KEY, "");
         refreshTree();
         status.accept(I18n.t("sidebar.favoritesCleared", count));
     }
 
-    public List<String> starredNames() {
-        return List.copyOf(starred);
+    /** 收藏的对象（供「收藏夹」菜单用），按标签排序。 */
+    public List<Favorite> favorites() {
+        List<Favorite> out = new ArrayList<>();
+        for (String key : starred) {
+            int field = key.indexOf('\u0000');
+            String connection = key.substring(0, field);
+            String table = key.substring(field + 1);
+            String scope = scopeOf(connection);
+            out.add(new Favorite(connection, table, scope.isEmpty()
+                    ? table
+                    : I18n.t("fav.entry.scoped", table, scope)));
+        }
+        for (String table : legacyStarred) {
+            // 旧版只存了名字 —— 不猜它属于哪个库，标签里也不编一个库名。
+            out.add(new Favorite("", table, table));
+        }
+        return List.copyOf(out);
     }
 
-    /** 打开一个收藏的对象（走正常的开表路径）。 */
-    public void openStarred(String name) {
-        openGrid(connectionId, name);
+    /** 打开一个收藏的对象（走正常的开表路径，开到**它自己的**连接上）。 */
+    public void openFavorite(Favorite favorite) {
+        if (favorite == null) {
+            return;
+        }
+        // 旧版裸名不知道该开去哪条连接 —— 保持老行为，开在当前连接上。
+        openGrid(favorite.connectionId().isBlank() ? connectionId : favorite.connectionId(),
+                favorite.table());
+    }
+
+    /**
+     * 这个收藏属于哪儿（给收藏夹的标签用）。
+     *
+     * <p>能认出**库**就报库（{@code users（audit）} 比 {@code users（生产库）}
+     * 更能说明这是哪张表）；认不出库（SQLite、Oracle 这些没有库一层的方言）
+     * 才退回连接名。两个都认不出来时返回空串 —— 标签里不编一个归属。
+     */
+    private String scopeOf(String connection) {
+        if (connection == null || connection.isEmpty()) {
+            return "";
+        }
+        for (List<CatalogEntry> catalogs : catalogsByConnection.values()) {
+            for (CatalogEntry catalog : catalogs) {
+                if (catalog.connectionId().equals(connection)) {
+                    return catalog.catalog();
+                }
+            }
+        }
+        // 库清单还没读回来（比如从收藏夹进的，没展开过那个连接）——
+        // 虚拟连接的 id 本身就带库名，可以直接解出来；父连接解不出就退回连接名。
+        if (ConnectionProfile.isCatalogVariantId(connection)) {
+            return ConnectionProfile.catalogOfCatalogVariant(connection);
+        }
+        for (ConnectionProfile profile : connections) {
+            if (profile.id().equals(connection)) {
+                return profile.name();
+            }
+        }
+        return "";
     }
 
     /** 读回上次收藏（以前退出就没了）。 */
@@ -1478,10 +1646,19 @@ public final class SideBar extends VBox {
             return;
         }
         try {
-            for (String name : raw.split("\n")) {
-                String trimmed = name.trim();
-                if (!trimmed.isEmpty()) {
-                    starred.add(trimmed);
+            for (String line : raw.split("\n")) {
+                if (line.isBlank()) {
+                    continue;
+                }
+                int field = line.indexOf(STAR_FIELD);
+                if (field < 0) {
+                    // ⭐ R51 T1：旧格式的一行 = 只有名字。留着它按老语义用，
+                    //    直到用户在这一张表上动一次收藏（见 toggleStar）。
+                    legacyStarred.add(line.trim());
+                } else {
+                    // 名字**不**trim：限定键的两段是原样存的，
+                    // 而首尾有空白的表名 trim 一次就打不开那张表了。
+                    starred.add(starKey(line.substring(0, field), line.substring(field + 1)));
                 }
             }
         } catch (RuntimeException ignored) {
@@ -1489,21 +1666,62 @@ public final class SideBar extends VBox {
         }
     }
 
-    /** 收藏落盘。 */
+    /** 收藏落盘（一行一条：{@code 连接id<TAB>对象名}；旧版裸名原样留一行）。 */
     private void saveStarred() {
         if (settings == null) {
             return;
         }
-        settings.set(STARRED_KEY, String.join("\n", starred));
+        List<String> lines = new ArrayList<>();
+        for (String key : starred) {
+            int field = key.indexOf('\u0000');
+            lines.add(key.substring(0, field) + STAR_FIELD + key.substring(field + 1));
+        }
+        // 没被动过的旧条目继续留着 —— 写盘顺手清掉它们等于把用户的收藏删了。
+        lines.addAll(legacyStarred);
+        settings.set(STARRED_KEY, String.join("\n", lines));
     }
 
-    private void toggleStar(String name) {
-        if (!starred.remove(name)) {
-            starred.add(name);
+    /** 连接 + 对象名 → 收藏键（NUL 分隔：表名里不会出现，落盘时换成 TAB）。 */
+    private static String starKey(String connectionId, String name) {
+        return (connectionId == null ? "" : connectionId) + '\u0000' + name;
+    }
+
+    /** 这一张表在**这个连接**里收藏了没有。 */
+    private boolean isStarred(String connectionId, String name) {
+        return starred.contains(starKey(connectionId, name)) || legacyStarred.contains(name);
+    }
+
+    private void toggleStar(String connectionId, String name) {
+        String key = starKey(connectionId, name);
+        if (starred.remove(key)) {
+            // 精确取消这一张，别的一个都不动。
+        } else if (legacyStarred.remove(name)) {
+            // ⭐ R51 T1：旧版一颗覆盖所有库的星，被用户动了一次就**展开成精确的**：
+            //    除当前这张外，其它**已经读到对象**的同名表各自保留一颗。
+            //    不展开的话，「在 audit 取消收藏」会把 orders 里那颗也带走。
+            //    ⚠️ 已知边界：还没展开过的库里那张同名表的星会丢 —— 裸名根本
+            //    认不出归属，猜一个库比丢一颗更糟（宁可让用户重新收藏一次）。
+            for (Map.Entry<String, List<SchemaObject>> loaded : objectsByConnection.entrySet()) {
+                if (loaded.getKey().equals(connectionId)) {
+                    continue;
+                }
+                boolean sameName = loaded.getValue().stream()
+                        .anyMatch(object -> object.name().equals(name)
+                                && (object.kind() == ObjectKind.TABLE
+                                || object.kind() == ObjectKind.VIEW));
+                if (sameName) {
+                    starred.add(starKey(loaded.getKey(), name));
+                }
+            }
+        } else {
+            starred.add(key);
         }
         saveStarred();
         refreshTree();
-        status.accept(starred.contains(name) ? I18n.t("sidebar.starred", name) : I18n.t("sidebar.unstarred", name));
+        boolean starredNow = starred.contains(key);
+        status.accept(starredNow
+                ? I18n.t("sidebar.starred", name)
+                : I18n.t("sidebar.unstarred", name));
     }
 
     /**
@@ -1513,8 +1731,8 @@ public final class SideBar extends VBox {
      * starred 于是恒为空 —— 拍出来是一张空表，证不了分组与「打开」这一列。
      */
     void poseStarForShots(String name) {
-        if (!starred.contains(name)) {
-            toggleStar(name);
+        if (!isStarred(connectionId, name)) {
+            toggleStar(connectionId, name);
         }
     }
 
@@ -1552,7 +1770,7 @@ public final class SideBar extends VBox {
                     actions.menuItem("object.new-query"),
                     new SeparatorMenuItem(),
                     actions.menuItem("object.favorite",
-                            starred.contains(node.name())
+                            isStarred(node.connectionId(), node.name())
                                     ? I18n.t("sidebar.favoriteRemove")
                                     : I18n.t("sidebar.favoriteAdd")),
                     actions.menuItem("object.copy-name"),
@@ -1569,7 +1787,7 @@ public final class SideBar extends VBox {
                     actions.menuItem("object.new-query"),
                     new SeparatorMenuItem(),
                     actions.menuItem("object.favorite",
-                            starred.contains(node.name())
+                            isStarred(node.connectionId(), node.name())
                                     ? I18n.t("sidebar.favoriteRemove")
                                     : I18n.t("sidebar.favoriteAdd")),
                     actions.menuItem("object.copy-name"),
@@ -1611,7 +1829,7 @@ public final class SideBar extends VBox {
                     actions.menuItem("object.new-query"),
                     new SeparatorMenuItem(),
                     actions.menuItem("object.favorite",
-                            starred.contains(node.name())
+                            isStarred(node.connectionId(), node.name())
                                     ? I18n.t("sidebar.favoriteRemove")
                                     : I18n.t("sidebar.favoriteAdd")),
                     actions.menuItem("object.copy-name"));
@@ -1662,7 +1880,7 @@ public final class SideBar extends VBox {
             case NEW_QUERY -> openQuery(owner, isObject ? node.name() : null);
             case FAVORITE -> {
                 if (isObject) {
-                    toggleStar(node.name());
+                    toggleStar(node.connectionId(), node.name());
                 } else {
                     status.accept(I18n.t("sidebar.onlyTableFavoritable"));
                 }
@@ -1958,7 +2176,15 @@ public final class SideBar extends VBox {
         /** ⭐ S-3：列（展开表 / 视图节点后出现的叶子）。 */
         COLUMN,
         /** ⭐ UX-6：已保存查询分组 / 条目（连接节点下）。 */
-        SAVED_GROUP, SAVED_QUERY
+        SAVED_GROUP, SAVED_QUERY,
+        /**
+         * ⭐ R51 T2：读取失败的占位节点（展开即重试）。
+         *
+         * <p>单独一个 kind，而不是借用 GROUP：GROUP 是容器，搜索态会被
+         * {@link #expandHitBranches} 自动摊开 —— 那等于「搜一次表名，
+         * 把所有失败的连接都重连一遍」。
+         */
+        RETRY
     }
 
     /**
@@ -2040,7 +2266,7 @@ public final class SideBar extends VBox {
             }
 
             if ((item.kind() == NodeKind.TABLE || item.kind() == NodeKind.VIEW)
-                    && starred.contains(item.name())) {
+                    && isStarred(item.connectionId(), item.name())) {
                 SVGPath star = Icons.of(Icons.Icon.STAR, Icons.SIZE_BADGE);
                 star.setAccessibleText(I18n.t("sidebar.favorites"));
                 star.getStyleClass().add("adb-tree__star");

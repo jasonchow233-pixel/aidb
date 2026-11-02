@@ -262,8 +262,9 @@ class DialogButtonOrderTest {
     @Test
     @DisplayName("收藏夹：关闭在左，主动作（打开）贴右下")
     void managerFootersPutDismissLeftAndPrimaryRight() {
-        assertFooter("收藏夹", onFx(() -> new FavoritesPage(List.of("users"),
-                name -> { }, message -> { }).content()), "favorites-close", "favorites-open");
+        assertFooter("收藏夹", onFx(() -> new FavoritesPage(
+                List.of(new Favorite("demo", "users", "users")),
+                favorite -> { }, message -> { }).content()), "favorites-close", "favorites-open");
     }
 
     @Test

@@ -23,21 +23,24 @@ import java.util.function.Consumer;
  *
  * <p>侧栏的「收藏」以前只在内存里，退出即丢；现在收藏**落盘**，
  * 菜单栏也有一个顶级的「收藏夹」入口（Navicat 就是这个结构）。
+ *
+ * <p>⭐ R51 T1：列表项从「一个名字」换成一条 {@link Favorite} ——
+ * 同名表在两个库里是两条收藏，只显示名字就分不出点开的会是哪一张。
  */
 final class FavoritesPage extends VBox {
 
     private final Dialog<Void> dialog = new Dialog<>();
     private final VBox content = new VBox(10);
-    private final ListView<String> list = new ListView<>();
+    private final ListView<Favorite> list = new ListView<>();
     private final Label summary = new Label();
 
-    private final List<String> names;
-    private final Consumer<String> onOpen;
+    private final List<Favorite> favorites;
+    private final Consumer<Favorite> onOpen;
     private final Consumer<String> status;
 
-    FavoritesPage(List<String> names, Consumer<String> onOpen, Consumer<String> status) {
-        this.names = names == null ? List.of() : List.copyOf(names);
-        this.onOpen = onOpen == null ? name -> { } : onOpen;
+    FavoritesPage(List<Favorite> favorites, Consumer<Favorite> onOpen, Consumer<String> status) {
+        this.favorites = favorites == null ? List.of() : List.copyOf(favorites);
+        this.onOpen = onOpen == null ? favorite -> { } : onOpen;
         this.status = status == null ? message -> { } : status;
 
         list.setId("favorites-list");
@@ -46,14 +49,14 @@ final class FavoritesPage extends VBox {
                 I18n.t("fav.empty.body")));
         list.setCellFactory(view -> new ListCell<>() {
             @Override
-            protected void updateItem(String item, boolean empty) {
+            protected void updateItem(Favorite item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty || item == null) {
                     setText(null);
                     return;
                 }
                 // ⭐ 收藏项用矢量实心星 + 文字。
-                setText(item);
+                setText(item.label());
                 SVGPath star = Icons.of(Icons.Icon.STAR_FILLED, Icons.SIZE_BADGE);
                 star.setAccessibleText(I18n.t("fav.accessible"));
                 setGraphic(star);
@@ -122,19 +125,19 @@ final class FavoritesPage extends VBox {
     }
 
     private void refresh() {
-        list.getItems().setAll(names);
-        summary.setText(names.isEmpty()
+        list.getItems().setAll(favorites);
+        summary.setText(favorites.isEmpty()
                 ? I18n.t("fav.emptyHint")
-                : I18n.t("fav.summary", names.size()));
+                : I18n.t("fav.summary", favorites.size()));
     }
 
     private void openSelected() {
-        String name = list.getSelectionModel().getSelectedItem();
-        if (name == null) {
+        Favorite picked = list.getSelectionModel().getSelectedItem();
+        if (picked == null) {
             status.accept(I18n.t("fav.pickFirst"));
             return;
         }
-        onOpen.accept(name);
+        onOpen.accept(picked);
         close();
     }
 }

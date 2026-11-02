@@ -596,6 +596,158 @@ class SideBarTreeTest {
                 .containsExactly("id");
     }
 
+    // ─────────────────── R51 T2：读失败要说出来，还要能重试 ───────────────────
+
+    /**
+     * ⭐ R51 T2：连接的对象**读失败**后，树里要留下一个能重试的说明节点。
+     *
+     * <p>旧行为只有状态栏那一行会滚走的字，而 {@code attempted} 标记已经把
+     * 「再去读一次」这条路堵死了 —— 树从此一直画成「这个连接什么都没有」。
+     * 「空」和「没读到」是两件事，混在一起就是假事实。
+     *
+     * <p>用例按**真实顺序**走（选中连接 → 外壳发起第一次读 → 读失败），
+     * 这样「已尝试」标记是真的被设上了 —— 否则断言重试只是在测一个没被堵死的路。
+     */
+    @Test
+    void aFailedObjectReadLeavesARetryableNodeUnderTheConnection() {
+        ActionRegistry actions = new ActionRegistry();
+        List<String> asked = new ArrayList<>();
+        ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "srv-1", List.of(mysql), p -> { }));
+        sideBar.setOnLoadObjects(asked::add);
+
+        TreeView tree = treeOf(sideBar);
+        TreeItem selected = findExact(rootOf(tree), "生产库");
+        onFxRun(() -> tree.getSelectionModel().select(selected));
+        assertThat(asked)
+                .as("选中连接 → 第一次读取已经发起（这一步会记下「已尝试」）")
+                .containsExactly("srv-1");
+
+        onFxRun(() -> sideBar.setObjectsReadFailed("srv-1"));
+
+        TreeItem connection = findExact(rootOf(tree), "生产库");
+        assertThat(childNames(connection))
+                .as("读失败的说明节点（不是一堆空分组）")
+                .containsExactly(I18n.t("sidebar.objectsFailed"));
+
+        TreeItem failed = findExact(connection, I18n.t("sidebar.objectsFailed"));
+        assertThat(failed.getChildren())
+                .as("占位子节点只为让展开箭头出现 —— 有箭头就有重试的入口")
+                .hasSize(1);
+
+        onFxRun(() -> failed.setExpanded(true));
+        assertThat(asked)
+                .as("展开说明节点 → 真的又去读一次（失败要把「已尝试」摘掉）")
+                .containsExactly("srv-1", "srv-1");
+
+        onFxRun(() -> sideBar.setObjects("srv-1", List.of(
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE))));
+
+        assertThat(childNames(findExact(rootOf(tree), "生产库")))
+                .as("读成功 → 说明节点不再赖在树上")
+                .doesNotContain(I18n.t("sidebar.objectsFailed"));
+        assertThat(findTable(rootOf(tree), "users"))
+                .as("读成功 → 对象照常出现")
+                .isNotNull();
+    }
+
+    /**
+     * ⭐ R51 T2：库清单**读失败** ≠ 这个方言没有库一层。
+     *
+     * <p>两者以前走同一条分支：MySQL 的 {@code listCatalogs} 抛异常时，树会退化成
+     * 「连接下面直接挂分组」的 SQLite 形态 —— 用户看到的是「这个服务器没有库」，
+     * 而真相是「我没读到」。这里同时守住形态、重试与成功后的还原。
+     */
+    @Test
+    void aFailedCatalogReadIsNotPaintedAsADialectWithoutDatabases() {
+        ActionRegistry actions = new ActionRegistry();
+        List<String> asked = new ArrayList<>();
+        ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "srv-1", List.of(mysql), p -> { }));
+        sideBar.setOnLoadCatalogs(asked::add);
+
+        TreeView tree = treeOf(sideBar);
+        TreeItem selected = findExact(rootOf(tree), "生产库");
+        onFxRun(() -> tree.getSelectionModel().select(selected));
+        assertThat(asked)
+                .as("选中连接 → 库清单的第一次读取已经发起")
+                .containsExactly("srv-1");
+
+        onFxRun(() -> sideBar.setCatalogsReadFailed("srv-1"));
+
+        TreeItem connection = findExact(rootOf(tree), "生产库");
+        assertThat(childNames(connection))
+                .as("说的是「库清单没读到」，不是把连接画成一个没有库的空壳")
+                .containsExactly(I18n.t("sidebar.databasesFailed"));
+
+        onFxRun(() -> findExact(connection, I18n.t("sidebar.databasesFailed"))
+                .setExpanded(true));
+        assertThat(asked)
+                .as("展开 → 重新去读库清单（没有静默返回的「点开没反应」）")
+                .containsExactly("srv-1", "srv-1");
+
+        onFxRun(() -> sideBar.setCatalogs("srv-1", List.of(
+                new SideBar.CatalogEntry("orders", "srv-1"),
+                new SideBar.CatalogEntry("audit", "srv-1@audit"))));
+
+        assertThat(childNames(findExact(rootOf(tree), "生产库")))
+                .as("读到之后库一层补回来，说明节点让位")
+                .containsExactlyInAnyOrder("orders", "audit");
+    }
+
+    /**
+     * ⭐ R51 T2：单个库的对象读失败，只影响那个库。
+     *
+     * <p>多库树上「一个库读失败」是最常见的形态（权限、库正在恢复）。重试必须打向
+     * **那个库自己的** Serve 连接（虚拟 id），否则点 audit 的重试会把 orders 再读一遍。
+     */
+    @Test
+    void oneCatalogsFailedObjectsDoesNotDisturbTheOthers() {
+        ActionRegistry actions = new ActionRegistry();
+        List<String> asked = new ArrayList<>();
+        ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "srv-1", List.of(mysql), p -> { }));
+        sideBar.setOnLoadObjects(asked::add);
+        onFxRun(() -> sideBar.setCatalogs("srv-1", List.of(
+                new SideBar.CatalogEntry("orders", "srv-1"),
+                new SideBar.CatalogEntry("audit", "srv-1@audit"))));
+        onFxRun(() -> sideBar.setObjects("srv-1", List.of(
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE))));
+
+        TreeView tree = treeOf(sideBar);
+        TreeItem selected = findNode(rootOf(tree), "audit");
+        onFxRun(() -> tree.getSelectionModel().select(selected));
+        assertThat(asked)
+                .as("点 audit 库 → 发起 audit 的第一次读取")
+                .containsExactly("srv-1@audit");
+
+        onFxRun(() -> sideBar.setObjectsReadFailed("srv-1@audit"));
+
+        TreeItem audit = findNode(rootOf(tree), "audit");
+        TreeItem orders = findNode(rootOf(tree), "orders");
+        assertThat(childNames(audit))
+                .as("只有 audit 少了一层")
+                .containsExactly(I18n.t("sidebar.objectsFailed"));
+        assertThat(childNames(orders))
+                .as("orders 的正常分组不受牵连")
+                .doesNotContain(I18n.t("sidebar.objectsFailed"))
+                .isNotEmpty();
+
+        onFxRun(() -> findExact(audit, I18n.t("sidebar.objectsFailed")).setExpanded(true));
+        assertThat(asked)
+                .as("重试打向 audit 自己的 Serve 连接，不是父连接")
+                .containsExactly("srv-1@audit", "srv-1@audit");
+    }
+
     /**
      * ⭐ UX-6：连接节点下直接列「已保存查询」；双击 / 回车 = 新查询页 + 预填 SQL。
      *
@@ -727,6 +879,254 @@ class SideBarTreeTest {
         assertThat(findExact(hitTable, "fn_daily"))
                 .as("反过来搜表名时函数也得被滤掉 —— 函数分组吃的是同一个搜索词")
                 .isNull();
+    }
+
+    /**
+     * ⭐ R51 T3：搜索命中的那个库要自己摊开，没命中的库不许占着一个折叠节点。
+     *
+     * <p>多库树上线后，旧的展开规则（只展开根 + 根的第一层）就不成立了：
+     * 命中在**另一个库**里时，它头顶挂着「分组 → 连接 → 库」三层折叠节点，
+     * 用户看到的搜索结果是「树确实动了，但一行都找不到」，只能挨个库点开碰运气；
+     * 而没命中的库照样摊着一堆折叠节点占位。
+     *
+     * <p>三个方向都要守：命中的库展开、没命中的库收起、**表节点不许自动展开**
+     * （展开会走懒加载读列，搜一次把每张命中的表都读一遍，等于把「找不到」换成「卡住」），
+     * 以及清空搜索后回到默认形态（当前库展开）。
+     */
+    @Test
+    void searchExpandsTheCatalogThatHoldsTheHit() {
+        ActionRegistry actions = new ActionRegistry();
+        ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
+        List<String> columnReads = new ArrayList<>();
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "srv-1", List.of(mysql), p -> { }));
+        sideBar.setOnLoadColumns((conn, table) -> columnReads.add(conn + "/" + table));
+        onFxRun(() -> sideBar.setCatalogs("srv-1", List.of(
+                new SideBar.CatalogEntry("orders", "srv-1"),
+                new SideBar.CatalogEntry("audit", "srv-1@audit"))));
+        onFxRun(() -> sideBar.setObjects("srv-1", List.of(
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE))));
+        onFxRun(() -> sideBar.setObjects("srv-1@audit", List.of(
+                new SchemaService.SchemaObject("events", SchemaService.ObjectKind.TABLE))));
+
+        TextField search = searchFieldOf(sideBar);
+        onFxRun(() -> search.setText("events"));
+        TreeView hitTree = treeOf(sideBar);
+        // ⚠️ rootOf/treeOf 内部自己走 FX 往返，不能塞进 onFx 的 lambda 里
+        //    （「在 FX 线程里等 FX 线程」→ 拿回 null，还会把 NPE 延迟到别的用例头上）。
+        TreeItem hitRoot = rootOf(hitTree);
+        Map<String, Boolean> whileSearching = onFx(() -> expansionOf(hitRoot,
+                "audit", "orders", "events", "生产库"));
+
+        assertThat(whileSearching.get("audit"))
+                .as("命中在 audit 库 —— 它必须自己摊开，不然用户得挨个库点开碰运气")
+                .isTrue();
+        assertThat(whileSearching.get("orders"))
+                .as("没有命中的库保持折叠（旧行为是：当前库永远摊开，占着一层空节点）")
+                .isFalse();
+        assertThat(whileSearching.get("生产库"))
+                .as("命中所在的那条连接也要摊开 —— 库在它下面")
+                .isTrue();
+        assertThat(whileSearching.get("events"))
+                .as("表节点不自动展开：展开就走懒加载读列")
+                .isFalse();
+        assertThat(columnReads)
+                .as("搜一次不该把每张命中的表的列都读一遍")
+                .isEmpty();
+
+        onFxRun(search::clear);
+        TreeItem clearedRoot = rootOf(treeOf(sideBar));
+        Map<String, Boolean> afterClear = onFx(() -> expansionOf(clearedRoot,
+                "audit", "orders", "events"));
+        assertThat(afterClear.get("orders"))
+                .as("清空搜索回到默认形态：当前库展开，其它折叠")
+                .isTrue();
+        assertThat(afterClear.get("audit"))
+                .as("搜索态遗留的展开不能留在树上")
+                .isFalse();
+    }
+
+    /**
+     * ⭐ R51 T3（补的一条）：**每一支**含命中的库都要摊开，不是只摊第一支。
+     *
+     * <p>场景就是多库树上线后的常态：{@code orders.users} 与 {@code audit.users}
+     * 同时存在（T1 的撞坑场景）。搜索过滤本身是两个都留下的 ——
+     * 但如果展开只走「找到的第一个分支」，第二个命中就藏在折叠节点后面，
+     * 用户会以为另一张表没匹配上。
+     */
+    @Test
+    void searchExpandsEveryCatalogThatHoldsTheHit() {
+        ActionRegistry actions = new ActionRegistry();
+        ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
+        SchemaService.SchemaObject users =
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE);
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "srv-1", List.of(mysql), p -> { }));
+        onFxRun(() -> sideBar.setCatalogs("srv-1", List.of(
+                new SideBar.CatalogEntry("orders", "srv-1"),
+                new SideBar.CatalogEntry("audit", "srv-1@audit"))));
+        onFxRun(() -> sideBar.setObjects("srv-1", List.of(users)));
+        onFxRun(() -> sideBar.setObjects("srv-1@audit", List.of(users)));
+
+        // ⚠️ searchFieldOf 内部自己走 FX 往返，不能在 onFxRun 的 lambda 里调（拿回 null）。
+        TextField search = searchFieldOf(sideBar);
+        onFxRun(() -> search.setText("users"));
+
+        TreeView tree = treeOf(sideBar);
+        TreeItem root = rootOf(tree);
+        Map<String, Boolean> expansion = onFx(() -> expansionOf(root,
+                "orders", "audit", "生产库"));
+        assertThat(expansion.get("orders"))
+                .as("orders 里有 users → 摊开")
+                .isTrue();
+        assertThat(expansion.get("audit"))
+                .as("audit 里也有 users → 一起摊开，不是只摊第一支")
+                .isTrue();
+        assertThat(expansion.get("生产库"))
+                .as("共同的父节点摊开")
+                .isTrue();
+    }
+
+    /** 一次 FX 往返里读多个节点的展开态（{@code TreeItem} 的属性不是线程安全的）。 */
+    private static Map<String, Boolean> expansionOf(TreeItem root, String... names) {
+        Map<String, Boolean> out = new java.util.LinkedHashMap<>();
+        for (String name : names) {
+            TreeItem found = findExact(root, name);
+            out.put(name, found != null && found.isExpanded());
+        }
+        return out;
+    }
+
+    /**
+     * ⭐ R51 T1：收藏属于**某个库里的某张表**，不属于一个名字。
+     *
+     * <p>撞出来的场景：同一个 MySQL 服务上 {@code orders.users} 与
+     * {@code audit.users} 都存在（多库树上线后这是常态）。旧实现按裸名记账，于是
+     * ① 在 audit 收藏 users，orders 里那张也跟着亮星、一起进「只看收藏」，
+     * ② 从收藏夹点开永远开到**当前连接**上 —— 打开的可能是另一张同名表。
+     *
+     * <p>守的是三个用户看得见的出口：收藏清单里的归属、★ 过滤的结果、
+     * 收藏夹「打开」落到的连接。
+     */
+    @Test
+    void favoritesBelongToADatabaseNotJustToAName() {
+        ActionRegistry actions = new ActionRegistry();
+        List<TabItem> opened = new ArrayList<>();
+        ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
+        SchemaService.SchemaObject users =
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE);
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                opened::add, message -> { }, "srv-1", List.of(mysql), p -> { }));
+        onFxRun(() -> sideBar.setCatalogs("srv-1", List.of(
+                new SideBar.CatalogEntry("orders", "srv-1"),
+                new SideBar.CatalogEntry("audit", "srv-1@audit"))));
+        onFxRun(() -> sideBar.setObjects("srv-1", List.of(users)));
+        onFxRun(() -> sideBar.setObjects("srv-1@audit", List.of(users)));
+
+        TreeView tree = treeOf(sideBar);
+        TreeItem target = findExact(findExact(rootOf(tree), "audit"), "users");
+        assertThat(target).as("两张同名表分别在两个库节点下").isNotNull();
+        onFxRun(() -> {
+            tree.getSelectionModel().select(target);
+            sideBar.actionForTest("object.favorite");
+        });
+
+        List<Favorite> favorites = onFx(sideBar::favorites);
+        assertThat(favorites)
+                .as("收藏只有一条 —— 另一张同名表不该跟着记账")
+                .hasSize(1);
+        assertThat(favorites.getFirst().connectionId())
+                .as("记住的是 audit 那条虚拟连接")
+                .isEqualTo("srv-1@audit");
+        assertThat(favorites.getFirst().label())
+                .as("标签要认出「哪个库的 users」，否则两条同名收藏在收藏夹里长一个样")
+                .contains("users")
+                .contains("audit");
+
+        // ★ 过滤是这条缺陷最看得见的出口：只有被收藏的那一张该留下。
+        javafx.scene.control.Button filter =
+                onFx(() -> (javafx.scene.control.Button) sideBar.lookup("#sidebar-favorites-filter"));
+        onFxRun(filter::fire);
+        TreeItem filtered = rootOf(tree);
+        assertThat(findExact(findExact(filtered, "audit"), "users"))
+                .as("被收藏的那张留在过滤结果里")
+                .isNotNull();
+        assertThat(findExact(findExact(filtered, "orders"), "users"))
+                .as("orders 里那张同名表没被收藏 —— 旧实现按裸名记，它会一起冒出来")
+                .isNull();
+
+        onFxRun(() -> sideBar.openFavorite(favorites.getFirst()));
+        assertThat(opened)
+                .as("从收藏夹点开：一次开一张，开到它自己的库上")
+                .hasSize(1);
+        assertThat(opened.getFirst().connectionId())
+                .isEqualTo("srv-1@audit");
+    }
+
+    /**
+     * ⭐ R51 T1（旧数据）：只存了名字的收藏不猜归属，被动过一次才展开成精确的。
+     *
+     * <p>升格前用户已经存下的裸名条目按老语义继续在所有库里算收藏；
+     * 但**不能**因为写盘顺手丢掉：在 audit 取消一次，orders 里那张同名表必须留星。
+     * 旧数据要么保住，要么明说，不许静默蒸发。
+     */
+    @Test
+    void aLegacyNameOnlyFavoriteExpandsInsteadOfVanishing() {
+        new SettingsStore().set("sidebar.starred", "users");
+        ActionRegistry actions = new ActionRegistry();
+        ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
+        SchemaService.SchemaObject users =
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE);
+
+        // ⭐ 必须带 SettingsStore：收藏的旧格式是从偏好里读回来的
+        //    （不带的那个构造重载是测试/截图用的空偏好，读了个空）。
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "srv-1", List.of(mysql), p -> { },
+                new SettingsStore()));
+        onFxRun(() -> sideBar.setCatalogs("srv-1", List.of(
+                new SideBar.CatalogEntry("orders", "srv-1"),
+                new SideBar.CatalogEntry("audit", "srv-1@audit"))));
+        onFxRun(() -> sideBar.setObjects("srv-1", List.of(users)));
+        onFxRun(() -> sideBar.setObjects("srv-1@audit", List.of(users)));
+
+        javafx.scene.control.Button filter =
+                onFx(() -> (javafx.scene.control.Button) sideBar.lookup("#sidebar-favorites-filter"));
+        onFxRun(filter::fire);
+        TreeView tree = treeOf(sideBar);
+        TreeItem starredRoot = rootOf(tree);
+        assertThat(findExact(findExact(starredRoot, "orders"), "users") != null
+                && findExact(findExact(starredRoot, "audit"), "users") != null)
+                .as("旧的那颗星在两个库里都还算收藏（没被猜走，也没被清掉）")
+                .isTrue();
+
+        TreeItem auditUsers = findExact(findExact(rootOf(tree), "audit"), "users");
+        onFxRun(() -> {
+            tree.getSelectionModel().select(auditUsers);
+            sideBar.actionForTest("object.favorite");
+        });
+
+        TreeItem afterUnstar = rootOf(tree);
+        assertThat(findExact(findExact(afterUnstar, "orders"), "users"))
+                .as("在 audit 取消一次，不该把 orders 里那颗一起带走")
+                .isNotNull();
+        assertThat(findExact(findExact(afterUnstar, "audit"), "users"))
+                .as("取消的就是点的那一张")
+                .isNull();
+
+        List<Favorite> favorites = onFx(sideBar::favorites);
+        assertThat(favorites).as("剩下的那颗收藏是精确的").hasSize(1);
+        assertThat(favorites.getFirst().connectionId()).isEqualTo("srv-1");
+        String persisted = new SettingsStore().get("sidebar.starred", "");
+        assertThat(persisted.split("\n"))
+                .as("落盘不再有无连接的裸名行 —— 旧格式只读一次就升格完")
+                .allMatch(line -> line.isBlank() || line.contains("\t"));
     }
 
     /**

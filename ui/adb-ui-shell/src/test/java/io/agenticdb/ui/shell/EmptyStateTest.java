@@ -72,7 +72,7 @@ class EmptyStateTest {
     void favoritesPageShowsAnEmptyStateWhenNothingIsStarred() throws Exception {
         AtomicReference<FavoritesPage> holder = new AtomicReference<>();
         WaitForAsyncUtils.asyncFx(() ->
-                holder.set(new FavoritesPage(List.of(), name -> { }, message -> { }))).get();
+                holder.set(new FavoritesPage(List.of(), favorite -> { }, message -> { }))).get();
         // 收藏夹的列表在**弹窗内容区**里（不是页面本身）——
         // 所以要把弹窗显示出来，再在 DialogPane 里查。
         FavoritesPage page = holder.get();
