@@ -1,5 +1,6 @@
 package io.agenticdb.introspect;
 
+import io.agenticdb.jdbc.ColumnProblem;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.model.ColumnSpec;
 import io.agenticdb.model.Danger;
@@ -114,29 +115,30 @@ class TableLifecycleSqlTest {
                 FakeDialectSession.of(DialectKind.SQLITE), "users", columns(), null,
                 List.of("Users")))
                 .as("重名要给出人话，不能把数据库那句 'table already exists' 直接甩给用户")
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("已经存在");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "table.error.exists")
+                .hasFieldOrPropertyWithValue("args", new Object[]{"Users"});
     }
 
     @Test
     void refusesAnEmptyOrIllegalTableName() {
         assertThatThrownBy(() -> StructureSqlBuilder.createTable(
                 FakeDialectSession.of(DialectKind.SQLITE), "  ", columns(), null, List.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("表名不能为空");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "table.error.nameEmpty");
 
         assertThatThrownBy(() -> StructureSqlBuilder.createTable(
                 FakeDialectSession.of(DialectKind.SQLITE), "9orders", columns(), null, List.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("表名只能");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "table.error.nameShape");
     }
 
     @Test
     void refusesATableWithoutColumns() {
         assertThatThrownBy(() -> StructureSqlBuilder.createTable(
                 FakeDialectSession.of(DialectKind.SQLITE), "orders", List.of(), null, List.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("至少要有一列");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.listEmpty");
     }
 
     @Test
@@ -144,8 +146,8 @@ class TableLifecycleSqlTest {
         assertThatThrownBy(() -> createTable(DialectKind.SQLITE, List.of(
                 new ColumnSpec("id", "INTEGER", false, null, null, false, true),
                 new ColumnSpec("ID", "TEXT", true, null, null, false, false))))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("重复");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.duplicateName");
     }
 
     @Test
@@ -153,8 +155,8 @@ class TableLifecycleSqlTest {
         assertThatThrownBy(() -> createTable(DialectKind.SQLITE, List.of(
                 new ColumnSpec("id", "INTEGER", true, null, null, false, true))))
                 .as("三种数据库里主键都不能为 NULL —— 提前说清楚好过数据库报 cannot be null")
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("不能允许 NULL");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.primaryKeyNullable");
     }
 
     // ─────────────────────────── T2 清空表 ───────────────────────────
@@ -199,13 +201,14 @@ class TableLifecycleSqlTest {
     void renameRefusesAnExistingTargetAndANoOp() {
         assertThatThrownBy(() -> StructureSqlBuilder.renameTable(
                 FakeDialectSession.of(DialectKind.SQLITE), "orders", "users", List.of("users")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("已经存在");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "table.error.exists")
+                .hasFieldOrPropertyWithValue("args", new Object[]{"users"});
 
         assertThatThrownBy(() -> StructureSqlBuilder.renameTable(
                 FakeDialectSession.of(DialectKind.SQLITE), "orders", "ORDERS", List.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("相同");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "table.error.sameName");
     }
 
     // ─────────────────────────── T4 删除表 ───────────────────────────
@@ -216,7 +219,9 @@ class TableLifecycleSqlTest {
                 FakeDialectSession.of(DialectKind.SQLITE),
                 List.of("orders", "logs", "ORDERS"));
 
-        assertThat(plan.title()).isEqualTo("删除 2 张表");
+        // 模型层只交「键 + 参数」，句子归界面（R45 G3-a）。
+        assertThat(plan.titleKey()).isEqualTo("plan.title.dropTables");
+        assertThat(plan.titleArgs()).containsExactly(2);
         assertThat(plan.statements()).containsExactly(
                 "DROP TABLE \"orders\"", "DROP TABLE \"logs\"");
         assertThat(plan.approvalRequired())
@@ -228,8 +233,8 @@ class TableLifecycleSqlTest {
     void batchDropRefusesAnEmptySelection() {
         assertThatThrownBy(() -> StructureSqlBuilder.dropTables(
                 FakeDialectSession.of(DialectKind.SQLITE), List.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("至少选择一张表");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "table.error.pickAtLeastOne");
     }
 
     @Test

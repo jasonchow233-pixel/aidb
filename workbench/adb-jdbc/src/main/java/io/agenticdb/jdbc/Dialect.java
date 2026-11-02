@@ -525,15 +525,16 @@ public interface Dialect {
      * 而「怎么报错」只有方言自己说得清。放在这里而不是 UI：结构页、建表弹窗、
      * 将来的导入建表都走同一条判定。
      */
-    default String autoIncrementProblem(ColumnSpec column) {
+    default ColumnProblem autoIncrementProblem(ColumnSpec column) {
         if (!column.autoIncrement()) {
             return null;
         }
         if (!INTEGER_TYPES.contains(column.baseType())) {
-            return "自增列必须是整型：" + column.name() + " 现在是 " + column.effectiveType();
+            return new ColumnProblem("column.error.autoNeedsInteger",
+                    column.name(), column.effectiveType());
         }
         if (column.defaultValue() != null) {
-            return "自增列不能同时设默认值：" + column.name();
+            return new ColumnProblem("column.error.autoHasDefault", column.name());
         }
         return null;
     }

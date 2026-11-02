@@ -1,6 +1,7 @@
 package io.agenticdb.introspect;
 
 import io.agenticdb.fixtures.DemoDatabase;
+import io.agenticdb.jdbc.ColumnProblem;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.JdbcSession;
@@ -155,16 +156,16 @@ class StructureServiceTest {
         assertThatThrownBy(() -> StructureSqlBuilder.addColumn(session, users,
                 new ColumnSpec("required", "TEXT", false,
                         null, null, false, false)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("默认值");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "structure.error.needDefaultForNotNull");
     }
 
     @Test
     void refusesDroppingPrimaryKeyColumn() {
         TableStructure users = assertDoesNotThrowStructure("users");
         assertThatThrownBy(() -> StructureSqlBuilder.dropColumn(session, users, "id"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("主键");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.primaryKeyFirst");
     }
 
     private TableStructure assertDoesNotThrowStructure(String name) {

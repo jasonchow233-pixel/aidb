@@ -346,16 +346,16 @@ public final class SqliteDialect implements Dialect {
     }
 
     @Override
-    public String autoIncrementProblem(ColumnSpec column) {
+    public ColumnProblem autoIncrementProblem(ColumnSpec column) {
         if (!column.autoIncrement()) {
             return null;
         }
         if (!"INTEGER".equals(column.baseType())) {
-            return "自增列必须是整型 —— SQLite 要求正好是 INTEGER（INT 不是 rowid 别名）："
-                    + column.name() + " 现在是 " + column.effectiveType();
+            return new ColumnProblem("column.error.autoNeedsIntegerSqlite",
+                    column.name(), column.effectiveType());
         }
         if (column.defaultValue() != null) {
-            return "自增列不能同时设默认值：" + column.name();
+            return new ColumnProblem("column.error.autoHasDefault", column.name());
         }
         return null;
     }

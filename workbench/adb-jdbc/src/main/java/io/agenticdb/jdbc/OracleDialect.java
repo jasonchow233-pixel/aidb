@@ -407,18 +407,18 @@ public final class OracleDialect implements Dialect {
     }
 
     @Override
-    public String autoIncrementProblem(ColumnSpec column) {
+    public ColumnProblem autoIncrementProblem(ColumnSpec column) {
         if (!column.autoIncrement()) {
             return null;
         }
         String base = column.baseType();
         if (!java.util.Set.of("NUMBER", "INTEGER", "INT", "SMALLINT", "DECIMAL", "NUMERIC",
                 "FLOAT", "BINARY_INTEGER", "PLS_INTEGER").contains(base)) {
-            return "自增列必须是数值型 —— Oracle 的 IDENTITY 只认 number / integer 这类："
-                    + column.name() + " 现在是 " + column.effectiveType();
+            return new ColumnProblem("column.error.autoNeedsNumericOracle",
+                    column.name(), column.effectiveType());
         }
         if (column.defaultValue() != null) {
-            return "自增列不能同时设默认值：" + column.name();
+            return new ColumnProblem("column.error.autoHasDefault", column.name());
         }
         return null;
     }

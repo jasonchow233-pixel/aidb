@@ -1,6 +1,7 @@
 package io.agenticdb.introspect;
 
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.jdbc.ColumnProblem;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.model.ColumnSpec;
 import org.junit.jupiter.api.Test;
@@ -82,8 +83,9 @@ class CreateTableWithObjectsTest {
                 List.of(new ForeignKeyDef("fk", List.of("nope"),
                         "departments", List.of("id"), null, null)),
                 List.of(), List.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("表里没有这一列");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.notInTable")
+                .hasFieldOrPropertyWithValue("args", new Object[]{"nope"});
     }
 
     @Test
@@ -92,8 +94,8 @@ class CreateTableWithObjectsTest {
                 List.of(new ForeignKeyDef("fk", List.of("dept_id", "email"),
                         "departments", List.of("id"), null, null)),
                 List.of(), List.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("列数");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "fk.error.columnCount");
     }
 
     // ─────────────────────────── 索引 / 触发器 ───────────────────────────
@@ -118,8 +120,8 @@ class CreateTableWithObjectsTest {
     void indexOnAMissingColumnIsRefused() {
         assertThatThrownBy(() -> plan(DialectKind.SQLITE, List.of(),
                 List.of(new IndexDef("idx_nope", false, List.of("nope"), "")), List.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("表里没有的列");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "index.error.columnNotFound");
     }
 
     @Test
@@ -129,16 +131,17 @@ class CreateTableWithObjectsTest {
                 new IndexDef("IDX_DUP", false, List.of("email"), ""));
 
         assertThatThrownBy(() -> plan(DialectKind.SQLITE, List.of(), indexes, List.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("索引");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "index.error.duplicate")
+                .hasFieldOrPropertyWithValue("args", new Object[]{"IDX_DUP"});
     }
 
     @Test
     void triggerWithoutABodyIsRefused() {
         assertThatThrownBy(() -> plan(DialectKind.SQLITE, List.of(), List.of(),
                 List.of(new TriggerDef("trg", "AFTER", "INSERT", "  "))))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("触发器体不能为空");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "trigger.error.bodyEmpty");
     }
 
     @Test
@@ -148,8 +151,8 @@ class CreateTableWithObjectsTest {
                 new TriggerDef("TRG", "AFTER", "UPDATE", "SELECT 2"));
 
         assertThatThrownBy(() -> plan(DialectKind.SQLITE, List.of(), List.of(), triggers))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("触发器");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "trigger.error.duplicate");
     }
 
     // ─────────────────────────── 计划口径 ───────────────────────────
@@ -175,7 +178,8 @@ class CreateTableWithObjectsTest {
         StructurePlan plan = plan(DialectKind.SQLITE, List.of(), List.of(),
                 List.of(new TriggerDef("trg", "AFTER", "INSERT", "SELECT 1")));
 
-        assertThat(plan.title()).isEqualTo("新建表 users");
+        assertThat(plan.titleKey()).isEqualTo("plan.title.createTable");
+        assertThat(plan.titleArgs()).containsExactly("users");
         assertThat(plan.approvalRequired())
                 .as("全是新增，同一个事务里一条计划 —— 不该再弹第二道确认")
                 .isFalse();

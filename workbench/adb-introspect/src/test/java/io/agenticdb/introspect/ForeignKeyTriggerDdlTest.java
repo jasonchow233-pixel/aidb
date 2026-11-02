@@ -1,6 +1,7 @@
 package io.agenticdb.introspect;
 
 import io.agenticdb.fixtures.DemoDatabase;
+import io.agenticdb.jdbc.ColumnProblem;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.DialectKind;
@@ -98,8 +99,8 @@ class ForeignKeyTriggerDdlTest {
                 FakeDialectSession.of(DialectKind.POSTGRESQL), table(),
                 new ForeignKeyDef("fk", List.of("user_id", "status"), "users",
                         List.of("id"), "CASCADE", "NO ACTION")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("必须一致");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "fk.error.columnCount");
     }
 
     // ─────────────────────── 触发器：SQL 逐字 ───────────────────────
@@ -133,8 +134,8 @@ class ForeignKeyTriggerDdlTest {
         assertThatThrownBy(() -> StructureSqlBuilder.createTrigger(
                 FakeDialectSession.of(DialectKind.SQLITE), table(),
                 "trg", "WHENEVER", "INSERT", "SELECT 1"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("BEFORE");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "trigger.error.timing");
     }
 
     // ─────────────────────── 真库往返 ───────────────────────

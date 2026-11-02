@@ -1,6 +1,7 @@
 package io.agenticdb.introspect;
 
 import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.jdbc.ColumnProblem;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnType;
 import org.junit.jupiter.api.Test;
@@ -98,8 +99,8 @@ class IndexDdlTest {
         assertThatThrownBy(() -> StructureSqlBuilder.createIndex(
                 FakeDialectSession.of(DialectKind.SQLITE), table(),
                 new IndexDef("  ", false, List.of("email"), "")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("索引名不能为空");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "index.error.nameEmpty");
     }
 
     @Test
@@ -107,8 +108,8 @@ class IndexDdlTest {
         assertThatThrownBy(() -> StructureSqlBuilder.createIndex(
                 FakeDialectSession.of(DialectKind.SQLITE), table(),
                 new IndexDef("idx_empty", false, List.of(), "")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("至少选择一列");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "index.error.needColumns");
     }
 
     @Test
@@ -116,8 +117,8 @@ class IndexDdlTest {
         assertThatThrownBy(() -> StructureSqlBuilder.createIndex(
                 FakeDialectSession.of(DialectKind.SQLITE), table(),
                 new IndexDef("idx_x", false, List.of("nope"), "")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("没有这一列");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.notInTable");
     }
 
     @Test
@@ -172,8 +173,8 @@ class IndexDdlTest {
                 FakeDialectSession.of(DialectKind.SQLITE), table, "sqlite_autoindex_users_1"))
                 .as("自动索引是约束的物理实现 —— 删了也会在下次结构变更时被重建，"
                         + "用户只会以为工具坏了")
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("约束");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "index.error.autoCreated");
     }
 
     @Test
@@ -184,16 +185,16 @@ class IndexDdlTest {
 
         assertThatThrownBy(() -> StructureSqlBuilder.dropIndex(
                 FakeDialectSession.of(DialectKind.MYSQL), table, "PRIMARY"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("约束");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "index.error.autoCreated");
     }
 
     @Test
     void refusesUnknownIndexName() {
         assertThatThrownBy(() -> StructureSqlBuilder.dropIndex(
                 FakeDialectSession.of(DialectKind.SQLITE), tableWithIndex(), "nope"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("索引不存在");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "index.error.notFound");
     }
 
     // ─────────────────────────── 辅助 ───────────────────────────

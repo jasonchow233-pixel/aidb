@@ -1,6 +1,7 @@
 package io.agenticdb.introspect;
 
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.jdbc.ColumnProblem;
 import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.jdbc.ExecutionResult;
@@ -67,8 +68,8 @@ class DialectSqlConformanceTest {
         ColumnSpec column = new ColumnSpec("email", "TEXT", false, null, null, false, false);
 
         assertThatThrownBy(() -> addColumn(DialectKind.SQLITE, column))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("默认值");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "structure.error.needDefaultForNotNull");
 
         // 其它方言允许 —— 已有行不会违反新约束。
         assertThat(addColumn(DialectKind.POSTGRESQL, column).statements()).hasSize(1);

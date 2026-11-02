@@ -7,7 +7,7 @@ package io.agenticdb.jdbc;
  * 钉住这条边界：新增的可展示错误必须给「键 + 参数」，文案归 {@code messages_*.properties}。
  * 界面层用 {@link #key()} / {@link #args()} 取词，模型层只负责判定。
  */
-public final class ColumnProblem extends IllegalArgumentException {
+public class ColumnProblem extends IllegalArgumentException {
 
     private final String key;
     private final Object[] args;

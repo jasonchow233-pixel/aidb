@@ -385,18 +385,18 @@ public final class PostgresDialect implements Dialect {
     }
 
     @Override
-    public String autoIncrementProblem(ColumnSpec column) {
+    public ColumnProblem autoIncrementProblem(ColumnSpec column) {
         if (!column.autoIncrement()) {
             return null;
         }
         String base = column.baseType();
         if (!java.util.Set.of("SMALLINT", "INT", "INTEGER", "BIGINT", "INT2", "INT4", "INT8")
                 .contains(base)) {
-            return "自增列必须是整型 —— PostgreSQL 只认 smallint / integer / bigint："
-                    + column.name() + " 现在是 " + column.effectiveType();
+            return new ColumnProblem("column.error.autoNeedsIntegerPostgres",
+                    column.name(), column.effectiveType());
         }
         if (column.defaultValue() != null) {
-            return "自增列不能同时设默认值：" + column.name();
+            return new ColumnProblem("column.error.autoHasDefault", column.name());
         }
         return null;
     }

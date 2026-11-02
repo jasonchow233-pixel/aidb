@@ -38,29 +38,30 @@ public final class StructureSqlBuilder {
         Dialect dialect = session.dialect();
         if (dialect.requiresDefaultForNotNullColumn() && !column.nullable()
                 && column.defaultValue() == null && !column.primaryKey()) {
-            throw new IllegalArgumentException(dialect.displayName()
-                    + " 新增 NOT NULL 列必须提供默认值");
+            throw new ColumnProblem("structure.error.needDefaultForNotNull",
+                    dialect.displayName());
         }
         List<String> statements = new ArrayList<>();
         statements.add(dialect.addColumnSql(table.name(), column));
         dialect.appendColumnComment(table.name(), column, statements);
-        return new StructurePlan("新增列 " + column.name(), statements,
+        return new StructurePlan("plan.title.addColumn", List.of(column.name()), statements,
                 Danger.DESTRUCTIVE, false, false);
     }
 
     public static StructurePlan renameColumn(DbSession session, TableStructure table,
                                              String oldName, String newName) {
         if (newName == null || newName.isBlank()) {
-            throw new IllegalArgumentException("列名不能为空");
+            throw new ColumnProblem("column.error.nameEmpty");
         }
         if (oldName == null || oldName.isBlank()) {
-            throw new IllegalArgumentException("请选择要重命名的列");
+            throw new ColumnProblem("column.error.pickToRename");
         }
         // ⭐ 把旧列的定义传下去 —— MySQL 5.7 只能用 CHANGE COLUMN（要带定义）。
         ColumnDef old = table.column(oldName);
         String sql = session.dialect().renameColumnSql(table.name(), oldName,
                 newName.trim(), old);
-        return new StructurePlan("重命名列 " + oldName + " → " + newName.trim(),
+        return new StructurePlan("plan.title.renameColumn",
+                List.of(oldName, newName.trim()),
                 List.of(sql), Danger.DESTRUCTIVE, false, false);
     }
 
@@ -69,7 +70,7 @@ public final class StructureSqlBuilder {
         validateColumn(next);
         ColumnDef old = table.column(oldName);
         if (old == null) {
-            throw new IllegalArgumentException("列不存在: " + oldName);
+            throw new ColumnProblem("column.error.notFound", oldName);
         }
 
         Dialect dialect = session.dialect();
@@ -92,21 +93,21 @@ public final class StructureSqlBuilder {
             //   只在原来有注释时下发，避免每次改列都多一条空操作。
             dialect.appendColumnCommentReset(table.name(), next.name(), statements);
         }
-        return new StructurePlan("修改列 " + oldName, statements, Danger.DESTRUCTIVE,
-                true, false);
+        return new StructurePlan("plan.title.alterColumn", List.of(oldName), statements,
+                Danger.DESTRUCTIVE, true, false);
     }
 
     public static StructurePlan dropColumn(DbSession session, TableStructure table,
                                            String columnName) {
         if (columnName == null || columnName.isBlank()) {
-            throw new IllegalArgumentException("请选择要删除的列");
+            throw new ColumnProblem("column.error.pickToDrop");
         }
         if (table.primaryKeys().stream().anyMatch(key -> key.equalsIgnoreCase(columnName))) {
-            throw new IllegalArgumentException("主键列不能直接删除；请先调整主键");
+            throw new ColumnProblem("column.error.primaryKeyFirst");
         }
         String sql = session.dialect().dropColumnSql(table.name(), columnName);
-        return new StructurePlan("删除列 " + columnName, List.of(sql), Danger.DESTRUCTIVE,
-                true, false);
+        return new StructurePlan("plan.title.dropColumn", List.of(columnName), List.of(sql),
+                Danger.DESTRUCTIVE, true, false);
     }
 
     /**
@@ -124,7 +125,7 @@ public final class StructureSqlBuilder {
             }
         }
         return rebuildWith(session, table, columns, table.primaryKeys(),
-                table.foreignKeys(), table.checks(), "重建表以修改列 " + oldName);
+                table.foreignKeys(), table.checks(), "plan.title.rebuildForColumn", oldName);
     }
 
     /**
@@ -138,7 +139,7 @@ public final class StructureSqlBuilder {
                                              List<ColumnDef> columns, List<String> primaryKeys,
                                              List<ForeignKeyDef> foreignKeys,
                                              List<CheckDef> checks,
-                                             String description) {
+                                             String titleKey, Object... titleArgs) {
         String temporary = "__adb_rebuild_" + table.name() + "_" + System.nanoTime();
         String quote = session.dialect().quote(table.name());
         String temporaryQuote = session.dialect().quote(temporary);
@@ -178,7 +179,7 @@ public final class StructureSqlBuilder {
                 statements.add(sql.strip().replaceAll(";\\s*$", ""));
             }
         }
-        return new StructurePlan(description, statements,
+        return new StructurePlan(titleKey, List.of(titleArgs), statements,
                 Danger.DESTRUCTIVE, true, true);
     }
 
@@ -244,14 +245,14 @@ public final class StructureSqlBuilder {
                                                 List<ForeignKeyDef> foreignKeys,
                                                 List<IndexDef> indexes,
                                                 List<TriggerDef> triggers) {
-        String problem = tableNameProblem(name, existingTables);
+        ColumnProblem problem = tableNameProblem(name, existingTables);
         if (problem != null) {
-            throw new IllegalArgumentException(problem);
+            throw problem;
         }
         String tableName = name.trim();
         problem = columnListProblem(columns);
         if (problem != null) {
-            throw new IllegalArgumentException(problem);
+            throw problem;
         }
         // N29 的新列属性先判：历史实现里它们就在逐列循环的前段，
         // 放到自增跨列校验之后会改变同一份输入的报错顺序（测试与用户都依赖先看到它）。
@@ -261,7 +262,7 @@ public final class StructureSqlBuilder {
         }
         problem = columnOptionProblem(session.dialect(), columns);
         if (problem != null) {
-            throw new IllegalArgumentException(problem);
+            throw problem;
         }
 
         List<String> primaryKeys = columns.stream()
@@ -321,8 +322,8 @@ public final class StructureSqlBuilder {
         }
         appendIndexStatements(session, tableName, columns, indexes, statements);
         appendTriggerStatements(session, tableName, triggers, statements);
-        return new StructurePlan("新建表 " + tableName, statements, Danger.DESTRUCTIVE,
-                false, false);
+        return new StructurePlan("plan.title.createTable", List.of(tableName), statements,
+                Danger.DESTRUCTIVE, false, false);
     }
 
     /** 出错的设计器页签（外键 / 索引 / 触发器）。 */
@@ -334,14 +335,17 @@ public final class StructureSqlBuilder {
      * <p>新建表弹窗的规则是「报错落在哪一页，就把用户带到哪一页」。按文案
      * {@code contains("索引")} 猜页签，文案一改（模型层消息迟早双语化）路由就静默
      * 失效 —— 所以把步骤做成类型。表名与列的问题落在「字段」页，用普通
-     * {@link IllegalArgumentException} 即可，不走这个类型。
+     * {@link ColumnProblem} 即可，不走这个类型。
+     *
+     * <p>R45 G3-a：文案换成「键 + 参数」，所以它直接继承 {@link ColumnProblem} ——
+     * 页签路由照旧按类型，界面渲染照旧走 {@code I18n.t(key, args)}。
      */
-    public static final class DesignStepException extends IllegalArgumentException {
+    public static final class DesignStepException extends ColumnProblem {
 
         private final DesignStep step;
 
-        public DesignStepException(DesignStep step, String message) {
-            super(message);
+        public DesignStepException(DesignStep step, String key, Object... args) {
+            super(key, args);
             this.step = step;
         }
 
@@ -359,16 +363,16 @@ public final class StructureSqlBuilder {
      */
     public static String foreignKeyClause(DbSession session, ForeignKeyDef foreignKey) {
         if (foreignKey == null) {
-            throw new DesignStepException(DesignStep.FOREIGN_KEY, "请指定外键");
+            throw new DesignStepException(DesignStep.FOREIGN_KEY, "fk.error.missing");
         }
         if (foreignKey.columns().isEmpty() || foreignKey.referencedColumns().isEmpty()) {
-            throw new DesignStepException(DesignStep.FOREIGN_KEY, "外键至少要有一列");
+            throw new DesignStepException(DesignStep.FOREIGN_KEY, "fk.error.needColumn");
         }
         if (foreignKey.referencedTable().isBlank()) {
-            throw new DesignStepException(DesignStep.FOREIGN_KEY, "请选择被引用的表");
+            throw new DesignStepException(DesignStep.FOREIGN_KEY, "fk.error.needRefTable");
         }
         if (foreignKey.columns().size() != foreignKey.referencedColumns().size()) {
-            throw new DesignStepException(DesignStep.FOREIGN_KEY, "外键的列数与被引用列的列数必须一致");
+            throw new DesignStepException(DesignStep.FOREIGN_KEY, "fk.error.columnCount");
         }
         String name = foreignKey.name().isBlank() ? ""
                 : "CONSTRAINT " + quoteIdentifier(session, foreignKey.name()) + " ";
@@ -390,12 +394,13 @@ public final class StructureSqlBuilder {
             for (String column : key.columns()) {
                 if (columns.stream().noneMatch(candidate ->
                         candidate.name().equalsIgnoreCase(column))) {
-                    throw new DesignStepException(DesignStep.FOREIGN_KEY, "表里没有这一列: " + column);
+                    throw new DesignStepException(DesignStep.FOREIGN_KEY,
+                            "column.error.notInTable", column);
                 }
             }
             if (!key.name().isBlank() && !names.add(key.name().toLowerCase(Locale.ROOT))) {
                 throw new DesignStepException(DesignStep.FOREIGN_KEY,
-                        "已经有一个叫「" + key.name() + "」的外键了");
+                        "fk.error.duplicate", key.name());
             }
             lines.add(foreignKeyClause(session, key));
         }
@@ -412,18 +417,19 @@ public final class StructureSqlBuilder {
         for (IndexDef index : indexes) {
             requireIndexName(index.name());
             if (index.columns().isEmpty()) {
-                throw new DesignStepException(DesignStep.INDEX, "索引「" + index.name() + "」请至少选择一列");
+                throw new DesignStepException(DesignStep.INDEX,
+                        "index.error.needColumns", index.name());
             }
             for (String column : index.columns()) {
                 if (columns.stream().noneMatch(candidate ->
                         candidate.name().equalsIgnoreCase(column))) {
-                    throw new DesignStepException(DesignStep.INDEX, "索引「" + index.name()
-                            + "」引用了表里没有的列: " + column);
+                    throw new DesignStepException(DesignStep.INDEX,
+                            "index.error.columnNotFound", index.name(), column);
                 }
             }
             if (!names.add(index.name().toLowerCase(Locale.ROOT))) {
                 throw new DesignStepException(DesignStep.INDEX,
-                        "已经有一个叫「" + index.name() + "」的索引了");
+                        "index.error.duplicate", index.name());
             }
             statements.add(createIndexSql(session, tableName, index));
         }
@@ -444,22 +450,22 @@ public final class StructureSqlBuilder {
         for (TriggerDef trigger : triggers) {
             String triggerName = trigger.name().trim();
             if (triggerName.isEmpty()) {
-                throw new DesignStepException(DesignStep.TRIGGER, "触发器名不能为空");
+                throw new DesignStepException(DesignStep.TRIGGER, "trigger.error.nameEmpty");
             }
             if (trigger.statement().isBlank()) {
-                throw new DesignStepException(DesignStep.TRIGGER, "触发器体不能为空");
+                throw new DesignStepException(DesignStep.TRIGGER, "trigger.error.bodyEmpty");
             }
             String when = trigger.timing().trim().toUpperCase(Locale.ROOT);
             String what = trigger.event().trim().toUpperCase(Locale.ROOT);
             if (!List.of("BEFORE", "AFTER").contains(when)) {
-                throw new DesignStepException(DesignStep.TRIGGER, "触发时机只能是 BEFORE 或 AFTER");
+                throw new DesignStepException(DesignStep.TRIGGER, "trigger.error.timing");
             }
             if (!List.of("INSERT", "UPDATE", "DELETE").contains(what)) {
-                throw new DesignStepException(DesignStep.TRIGGER, "触发事件只能是 INSERT / UPDATE / DELETE");
+                throw new DesignStepException(DesignStep.TRIGGER, "trigger.error.event");
             }
             if (!names.add(triggerName.toLowerCase(Locale.ROOT))) {
                 throw new DesignStepException(DesignStep.TRIGGER,
-                        "已经有一个叫「" + triggerName + "」的触发器了");
+                        "trigger.error.duplicate", triggerName);
             }
             session.dialect().appendCreateTriggerSql(tableName, triggerName, when, what,
                     trigger.statement().trim(), statements);
@@ -493,24 +499,24 @@ public final class StructureSqlBuilder {
     public static StructurePlan truncateTable(DbSession session, String name) {
         requireTableName(name);
         String sql = session.dialect().truncateTableSql(name.trim());
-        return new StructurePlan("清空表 " + name.trim(), List.of(sql), Danger.DESTRUCTIVE,
-                true, false);
+        return new StructurePlan("plan.title.truncate", List.of(name.trim()), List.of(sql),
+                Danger.DESTRUCTIVE, true, false);
     }
 
     /** 重命名表。 */
     public static StructurePlan renameTable(DbSession session, String oldName,
                                             String newName, List<String> existingTables) {
         requireTableName(oldName);
-        String problem = tableNameProblem(newName, existingTables);
+        ColumnProblem problem = tableNameProblem(newName, existingTables);
         if (problem != null) {
-            throw new IllegalArgumentException(problem);
+            throw problem;
         }
         String from = oldName.trim();
         String to = newName.trim();
         if (from.equalsIgnoreCase(to)) {
-            throw new IllegalArgumentException("新表名与旧表名相同");
+            throw new ColumnProblem("table.error.sameName");
         }
-        return new StructurePlan("重命名表 " + from + " → " + to,
+        return new StructurePlan("plan.title.renameTable", List.of(from, to),
                 List.of(session.dialect().renameTableSql(from, to)),
                 Danger.DESTRUCTIVE, true, false);
     }
@@ -518,7 +524,7 @@ public final class StructureSqlBuilder {
     /** 删除表。 */
     public static StructurePlan dropTable(DbSession session, String name) {
         requireTableName(name);
-        return new StructurePlan("删除表 " + name.trim(),
+        return new StructurePlan("plan.title.dropTable", List.of(name.trim()),
                 List.of(session.dialect().dropTableSql(name.trim())),
                 Danger.DESTRUCTIVE, true, false);
     }
@@ -532,7 +538,7 @@ public final class StructureSqlBuilder {
      */
     public static StructurePlan dropTables(DbSession session, List<String> names) {
         if (names == null || names.isEmpty()) {
-            throw new IllegalArgumentException("请至少选择一张表");
+            throw new ColumnProblem("table.error.pickAtLeastOne");
         }
         List<String> statements = new ArrayList<>();
         List<String> cleaned = new ArrayList<>();
@@ -545,7 +551,7 @@ public final class StructureSqlBuilder {
                 statements.add(session.dialect().dropTableSql(trimmed));
             }
         }
-        return new StructurePlan("删除 " + cleaned.size() + " 张表", statements,
+        return new StructurePlan("plan.title.dropTables", List.of(cleaned.size()), statements,
                 Danger.DESTRUCTIVE, true, false);
     }
 
@@ -683,22 +689,22 @@ public final class StructureSqlBuilder {
     }
 
     /**
-     * 表名的校验。返回 {@code null} 表示通过，否则返回给人看的原因。
+     * 表名的校验。返回 {@code null} 表示通过，否则返回「键 + 参数」。
      *
      * <p>包级可见 + 静态 + 不碰 UI，是为了让单测能直接断言规则。
      * 建表对话框和重命名对话框共用它，避免两处规则慢慢跑偏。
      */
-    static String tableNameProblem(String raw, List<String> existingTables) {
+    static ColumnProblem tableNameProblem(String raw, List<String> existingTables) {
         String name = raw == null ? "" : raw.trim();
         if (name.isEmpty()) {
-            return "表名不能为空";
+            return new ColumnProblem("table.error.nameEmpty");
         }
         if (!VALID_COLUMN_NAME.matcher(name).matches()) {
-            return "表名只能以字母或下划线开头，且只能包含字母、数字、下划线和 $";
+            return new ColumnProblem("table.error.nameShape");
         }
         for (String existing : existingTables == null ? List.<String>of() : existingTables) {
             if (existing != null && existing.equalsIgnoreCase(name)) {
-                return "表「" + existing + "」已经存在";
+                return new ColumnProblem("table.error.exists", existing);
             }
         }
         return null;
@@ -716,7 +722,7 @@ public final class StructureSqlBuilder {
      * <p>「能不能设」和「设了怎么报错」都交给方言 —— 结构页、建表弹窗、
      * 将来的导入建表走的是同一条判定。
      */
-    private static String columnOptionProblem(Dialect dialect, List<ColumnSpec> columns) {
+    private static ColumnProblem columnOptionProblem(Dialect dialect, List<ColumnSpec> columns) {
         ColumnSpec auto = null;
         int primaryKeys = 0;
         for (ColumnSpec column : columns) {
@@ -728,27 +734,30 @@ public final class StructureSqlBuilder {
             }
             if (column.autoIncrement()) {
                 if (auto != null) {
-                    return "只能有一列自增：已选「" + auto.name() + "」，又勾了「"
-                            + column.name() + "」";
+                    return new ColumnProblem("column.error.autoIncrementConflict",
+                            auto.name(), column.name());
                 }
                 auto = column;
             }
             if (column.charset() != null && !dialect.supportsColumnCharset()) {
-                return dialect.displayName() + " 没有列级字符集（编码是建库时定的）："
-                        + column.name();
+                return new ColumnProblem("column.error.charsetUnsupported",
+                        dialect.displayName(), column.name());
             }
             if (column.collation() != null && !dialect.supportsColumnCollation()) {
-                return dialect.displayName() + " 不支持列级排序规则：" + column.name();
+                return new ColumnProblem("column.error.collationUnsupported",
+                        dialect.displayName(), column.name());
             }
             if ((column.charset() != null || column.collation() != null)
                     && !ColumnTypes.isTextual(column.baseType())) {
                 // 整数列写 COLLATE 在 PostgreSQL 上直接报错，MySQL 收下也没意义。
-                return "字符集 / 排序规则只对文本类型有效：" + column.name() + " 是 "
-                        + column.effectiveType();
+                return new ColumnProblem("column.error.charsetTextOnly",
+                        column.name(), column.effectiveType());
             }
-            String problem = identifierProblem(column.charset(), "字符集", column.name());
+            ColumnProblem problem = identifierProblem(column.charset(),
+                    "column.error.charsetShape", column.name());
             if (problem == null) {
-                problem = identifierProblem(column.collation(), "排序规则", column.name());
+                problem = identifierProblem(column.collation(),
+                        "column.error.collationShape", column.name());
             }
             if (problem != null) {
                 return problem;
@@ -758,11 +767,11 @@ public final class StructureSqlBuilder {
             return null;
         }
         if (!auto.primaryKey()) {
-            return "自增列必须是主键：" + auto.name();
+            return new ColumnProblem("column.error.autoNeedsPrimaryKey", auto.name());
         }
         if (dialect.autoIncrementNeedsSinglePrimaryKey() && primaryKeys > 1) {
-            return dialect.displayName() + " 的自增列必须是唯一主键：" + auto.name()
-                    + "（现在表里有 " + primaryKeys + " 列主键）";
+            return new ColumnProblem("column.error.autoNeedsSingleKey",
+                    dialect.displayName(), auto.name(), primaryKeys);
         }
         return dialect.autoIncrementProblem(auto);
     }
@@ -863,34 +872,34 @@ public final class StructureSqlBuilder {
     }
 
     /** 字符集/排序规则是标识符，直接拼进 DDL —— 只许字母数字下划线。 */
-    private static String identifierProblem(String value, String label, String columnName) {
+    private static ColumnProblem identifierProblem(String value, String key, String columnName) {
         if (value == null || value.matches("[A-Za-z0-9_]+")) {
             return null;
         }
-        return label + "只能用字母、数字、下划线：" + columnName + " → " + value;
+        return new ColumnProblem(key, columnName, value);
     }
 
     /** 建表时整份列定义的校验。 */
-    static String columnListProblem(List<ColumnSpec> columns) {
+    static ColumnProblem columnListProblem(List<ColumnSpec> columns) {
         if (columns == null || columns.isEmpty()) {
-            return "至少要有一列";
+            return new ColumnProblem("column.error.listEmpty");
         }
         Set<String> seen = new HashSet<>();
         for (ColumnSpec column : columns) {
             if (column == null) {
                 continue;
             }
-            String problem = validateColumnMessage(column);
+            ColumnProblem problem = validateColumnProblem(column);
             if (problem != null) {
                 return problem;
             }
             if (!seen.add(column.name().toLowerCase(Locale.ROOT))) {
-                return "列名「" + column.name() + "」重复";
+                return new ColumnProblem("column.error.duplicateName", column.name());
             }
             // ⭐ 三种数据库里主键列都不允许 NULL —— 提前说清楚，
             //    好过让数据库抛一个「Column 'id' cannot be null」。
             if (column.primaryKey() && column.nullable()) {
-                return "主键列「" + column.name() + "」不能允许 NULL";
+                return new ColumnProblem("column.error.primaryKeyNullable", column.name());
             }
         }
         return null;
@@ -898,16 +907,16 @@ public final class StructureSqlBuilder {
 
     private static void requireTableName(String name) {
         if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("请先在对象树里选中一张表");
+            throw new ColumnProblem("table.error.noSelection");
         }
     }
 
-    private static String validateColumnMessage(ColumnSpec column) {
+    private static ColumnProblem validateColumnProblem(ColumnSpec column) {
         try {
             validateColumn(column);
             return null;
-        } catch (IllegalArgumentException e) {
-            return e.getMessage();
+        } catch (ColumnProblem e) {
+            return e;
         }
     }
 
@@ -1012,25 +1021,25 @@ public final class StructureSqlBuilder {
     public static StructurePlan addForeignKey(DbSession session, TableStructure table,
                                               ForeignKeyDef foreignKey) {
         if (table == null || foreignKey == null) {
-            throw new IllegalArgumentException("请指定表和外键");
+            throw new ColumnProblem("fk.error.pickOne");
         }
         if (foreignKey.columns().isEmpty() || foreignKey.referencedColumns().isEmpty()) {
-            throw new IllegalArgumentException("外键至少要有一列");
+            throw new ColumnProblem("fk.error.needColumn");
         }
         if (foreignKey.referencedTable().isBlank()) {
-            throw new IllegalArgumentException("请选择被引用的表");
+            throw new ColumnProblem("fk.error.needRefTable");
         }
         if (foreignKey.columns().size() != foreignKey.referencedColumns().size()) {
-            throw new IllegalArgumentException("外键的列数与被引用列的列数必须一致");
+            throw new ColumnProblem("fk.error.columnCount");
         }
         for (String column : foreignKey.columns()) {
             if (table.column(column) == null) {
-                throw new IllegalArgumentException("表里没有这一列: " + column);
+                throw new ColumnProblem("column.error.notInTable", column);
             }
         }
         for (ForeignKeyDef existing : table.foreignKeys()) {
             if (!existing.name().isBlank() && existing.name().equalsIgnoreCase(foreignKey.name())) {
-                throw new IllegalArgumentException("已经有一个叫「" + foreignKey.name() + "」的外键了");
+                throw new ColumnProblem("fk.error.duplicate", foreignKey.name());
             }
         }
         Dialect dialect = session.dialect();
@@ -1038,16 +1047,17 @@ public final class StructureSqlBuilder {
             List<ForeignKeyDef> keys = new ArrayList<>(table.foreignKeys());
             keys.add(foreignKey);
             return rebuildWith(session, table, table.columns(), table.primaryKeys(),
-                    keys, table.checks(), "重建表以新增外键 " + foreignKey.displayName());
+                    keys, table.checks(), "plan.title.rebuildForForeignKey",
+                    foreignKey.displayName());
         }
         String sql = dialect.addForeignKeySql(table.name(), foreignKey.name(),
                 foreignKey.columns(), foreignKey.referencedTable(),
                 foreignKey.referencedColumns(), foreignKey.onUpdate(), foreignKey.onDelete());
         if (sql == null) {
-            throw new IllegalArgumentException(dialect.displayName() + " 暂不支持新增外键");
+            throw new ColumnProblem("fk.error.addUnsupported", dialect.displayName());
         }
-        return new StructurePlan("新增外键 " + foreignKey.displayName(), List.of(sql),
-                Danger.DESTRUCTIVE, true, false);
+        return new StructurePlan("plan.title.addForeignKey", List.of(foreignKey.displayName()),
+                List.of(sql), Danger.DESTRUCTIVE, true, false);
     }
 
     /**
@@ -1059,7 +1069,7 @@ public final class StructureSqlBuilder {
     public static StructurePlan dropForeignKey(DbSession session, TableStructure table,
                                                ForeignKeyDef foreignKey) {
         if (table == null || foreignKey == null) {
-            throw new IllegalArgumentException("请指定要删除的外键");
+            throw new ColumnProblem("fk.error.pickToDrop");
         }
         Dialect dialect = session.dialect();
         if (dialect.rebuildsTableOnForeignKeyChange()) {
@@ -1076,14 +1086,15 @@ public final class StructureSqlBuilder {
                 }
             }
             return rebuildWith(session, table, table.columns(), table.primaryKeys(),
-                    keys, table.checks(), "重建表以删除外键 " + foreignKey.displayName());
+                    keys, table.checks(), "plan.title.rebuildDropForeignKey",
+                    foreignKey.displayName());
         }
         String sql = dialect.dropForeignKeySql(table.name(), foreignKey.name());
         if (sql == null) {
-            throw new IllegalArgumentException(dialect.displayName() + " 暂不支持删除外键");
+            throw new ColumnProblem("fk.error.dropUnsupported", dialect.displayName());
         }
-        return new StructurePlan("删除外键 " + foreignKey.displayName(), List.of(sql),
-                Danger.DESTRUCTIVE, true, false);
+        return new StructurePlan("plan.title.dropForeignKey", List.of(foreignKey.displayName()),
+                List.of(sql), Danger.DESTRUCTIVE, true, false);
     }
 
     /**
@@ -1097,26 +1108,26 @@ public final class StructureSqlBuilder {
                                                String name, String timing, String event,
                                                String body) {
         if (table == null) {
-            throw new IllegalArgumentException("请先选中一张表");
+            throw new ColumnProblem("table.error.pickFirst");
         }
         String triggerName = name == null ? "" : name.trim();
         if (triggerName.isEmpty()) {
-            throw new IllegalArgumentException("触发器名不能为空");
+            throw new ColumnProblem("trigger.error.nameEmpty");
         }
         if (body == null || body.isBlank()) {
-            throw new IllegalArgumentException("触发器体不能为空");
+            throw new ColumnProblem("trigger.error.bodyEmpty");
         }
         String when = timing == null ? "BEFORE" : timing.trim().toUpperCase(Locale.ROOT);
         String what = event == null ? "INSERT" : event.trim().toUpperCase(Locale.ROOT);
         if (!List.of("BEFORE", "AFTER").contains(when)) {
-            throw new IllegalArgumentException("触发时机只能是 BEFORE 或 AFTER");
+            throw new ColumnProblem("trigger.error.timing");
         }
         if (!List.of("INSERT", "UPDATE", "DELETE").contains(what)) {
-            throw new IllegalArgumentException("触发事件只能是 INSERT / UPDATE / DELETE");
+            throw new ColumnProblem("trigger.error.event");
         }
         for (TriggerDef existing : table.triggers()) {
             if (existing.name().equalsIgnoreCase(triggerName)) {
-                throw new IllegalArgumentException("已经有一个叫「" + triggerName + "」的触发器了");
+                throw new ColumnProblem("trigger.error.duplicate", triggerName);
             }
         }
         List<String> statements = new ArrayList<>();
@@ -1124,7 +1135,7 @@ public final class StructureSqlBuilder {
         // 迟早会走出不同规则（例如将来加 INSTEAD OF 时机，只改一处就成了静默漏洞）。
         appendTriggerStatements(session, table.name(),
                 List.of(new TriggerDef(triggerName, when, what, body.trim())), statements);
-        return new StructurePlan("新建触发器 " + triggerName, statements,
+        return new StructurePlan("plan.title.createTrigger", List.of(triggerName), statements,
                 Danger.DESTRUCTIVE, true, false);
     }
 
@@ -1132,11 +1143,11 @@ public final class StructureSqlBuilder {
     public static StructurePlan dropTrigger(DbSession session, TableStructure table,
                                              TriggerDef trigger) {
         if (table == null || trigger == null) {
-            throw new IllegalArgumentException("请指定要删除的触发器");
+            throw new ColumnProblem("trigger.error.pickToDrop");
         }
         String sql = session.dialect().dropTriggerSql(table.name(), trigger.name());
-        return new StructurePlan("删除触发器 " + trigger.name(), List.of(sql),
-                Danger.DESTRUCTIVE, true, false);
+        return new StructurePlan("plan.title.dropTrigger", List.of(trigger.name()),
+                List.of(sql), Danger.DESTRUCTIVE, true, false);
     }
 
     /**
@@ -1148,19 +1159,20 @@ public final class StructureSqlBuilder {
     public static StructurePlan setTableComment(DbSession session, TableStructure table,
                                                 String comment) {
         if (table == null) {
-            throw new IllegalArgumentException("请先选中一张表");
+            throw new ColumnProblem("table.error.pickFirst");
         }
         Dialect dialect = session.dialect();
         if (!dialect.supportsTableComment()) {
-            throw new IllegalArgumentException(dialect.displayName() + " 不支持表注释");
+            throw new ColumnProblem("table.error.noCommentSupport", dialect.displayName());
         }
         String text = comment == null ? "" : comment.trim();
         String sql = text.isEmpty()
                 ? dialect.clearTableCommentSql(table.name())
                 : dialect.tableCommentSql(table.name(), text);
         return new StructurePlan(text.isEmpty()
-                ? "清空表注释 " + table.name()
-                : "修改表注释 " + table.name(),
+                        ? "plan.title.clearTableComment"
+                        : "plan.title.setTableComment",
+                List.of(table.name()),
                 List.of(sql), Danger.DESTRUCTIVE, false, false);
     }
 
@@ -1173,24 +1185,24 @@ public final class StructureSqlBuilder {
     public static StructurePlan createIndex(DbSession session, TableStructure table,
                                             IndexDef index) {
         if (table == null || index == null) {
-            throw new IllegalArgumentException("请指定表和索引");
+            throw new ColumnProblem("index.error.pickTableAndIndex");
         }
         requireIndexName(index.name());
         List<String> columns = index.columns() == null ? List.of() : index.columns();
         if (columns.isEmpty()) {
-            throw new IllegalArgumentException("请至少选择一列");
+            throw new ColumnProblem("index.error.needColumns", index.name());
         }
         for (String column : columns) {
             if (table.column(column) == null) {
-                throw new IllegalArgumentException("表里没有这一列: " + column);
+                throw new ColumnProblem("column.error.notInTable", column);
             }
         }
         for (IndexDef existing : table.indexes()) {
             if (existing.name().equalsIgnoreCase(index.name())) {
-                throw new IllegalArgumentException("已经有一个叫「" + index.name() + "」的索引了");
+                throw new ColumnProblem("index.error.duplicate", index.name());
             }
         }
-        return new StructurePlan("新建索引 " + index.name(),
+        return new StructurePlan("plan.title.createIndex", List.of(index.name()),
                 List.of(createIndexSql(session, table.name(), index)),
                 Danger.DESTRUCTIVE, false, false);
     }
@@ -1205,29 +1217,27 @@ public final class StructureSqlBuilder {
     public static StructurePlan dropIndex(DbSession session, TableStructure table,
                                           String indexName) {
         if (table == null || indexName == null || indexName.isBlank()) {
-            throw new IllegalArgumentException("请选择要删除的索引");
+            throw new ColumnProblem("index.error.pickToDrop");
         }
         IndexDef index = table.indexes().stream()
                 .filter(candidate -> candidate.name().equalsIgnoreCase(indexName.trim()))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("索引不存在: " + indexName));
+                .orElseThrow(() -> new ColumnProblem("index.error.notFound", indexName));
         if (index.autoCreated() || index.name().equalsIgnoreCase(
                 session.dialect().primaryIndexName())) {
-            throw new IllegalArgumentException("「" + index.name()
-                    + "」是数据库为约束自动创建的索引 —— 要去掉它请改对应的约束，"
-                    + "直接删索引会在下一次结构变更时被重建");
+            throw new ColumnProblem("index.error.autoCreated", index.name());
         }
-        return new StructurePlan("删除索引 " + index.name(),
+        return new StructurePlan("plan.title.dropIndex", List.of(index.name()),
                 List.of(session.dialect().dropIndexSql(table.name(), index.name())),
                 Danger.DESTRUCTIVE, false, false);
     }
 
     private static void requireIndexName(String name) {
         if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("索引名不能为空");
+            throw new ColumnProblem("index.error.nameEmpty");
         }
         if (!VALID_COLUMN_NAME.matcher(name).matches()) {
-            throw new IllegalArgumentException("索引名只能包含字母、数字、下划线或 $，且不能以数字开头");
+            throw new ColumnProblem("index.error.nameShape");
         }
     }
 
@@ -1255,10 +1265,10 @@ public final class StructureSqlBuilder {
 
     private static void validateColumn(ColumnSpec column) {
         if (column.name() == null || column.name().isBlank()) {
-            throw new IllegalArgumentException("列名不能为空");
+            throw new ColumnProblem("column.error.nameEmpty");
         }
         if (!VALID_COLUMN_NAME.matcher(column.name()).matches()) {
-            throw new IllegalArgumentException("列名只能包含字母、数字、下划线或 $，且不能以数字开头");
+            throw new ColumnProblem("column.error.nameShape");
         }
     }
 

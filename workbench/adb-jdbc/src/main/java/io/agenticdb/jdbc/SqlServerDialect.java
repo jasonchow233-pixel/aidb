@@ -490,18 +490,18 @@ public final class SqlServerDialect implements Dialect {
     }
 
     @Override
-    public String autoIncrementProblem(ColumnSpec column) {
+    public ColumnProblem autoIncrementProblem(ColumnSpec column) {
         if (!column.autoIncrement()) {
             return null;
         }
         String base = column.baseType();
         if (!java.util.Set.of("INT", "BIGINT", "SMALLINT", "TINYINT", "DECIMAL", "NUMERIC")
                 .contains(base)) {
-            return "自增列必须是整型 —— SQL Server 的 IDENTITY 只认 int / bigint / smallint / "
-                    + "tinyint：" + column.name() + " 现在是 " + column.effectiveType();
+            return new ColumnProblem("column.error.autoNeedsIntegerSqlServer",
+                    column.name(), column.effectiveType());
         }
         if (column.defaultValue() != null) {
-            return "自增列不能同时设默认值：" + column.name();
+            return new ColumnProblem("column.error.autoHasDefault", column.name());
         }
         return null;
     }

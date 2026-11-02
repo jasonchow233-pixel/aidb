@@ -1,6 +1,7 @@
 package io.agenticdb.introspect;
 
 import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.jdbc.ColumnProblem;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnType;
 import org.junit.jupiter.api.Test;
@@ -62,8 +63,8 @@ class TableCommentDdlTest {
         assertThatThrownBy(() -> StructureSqlBuilder.setTableComment(
                 FakeDialectSession.of(DialectKind.SQLITE), table(), "订单表"))
                 .as("SQLite 没有表注释 —— 要**明确拒绝**，不能生成一条会报错的 SQL")
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("不支持表注释");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "table.error.noCommentSupport");
     }
 
     @Test

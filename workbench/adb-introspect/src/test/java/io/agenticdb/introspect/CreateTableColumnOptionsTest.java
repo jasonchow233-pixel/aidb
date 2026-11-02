@@ -1,6 +1,7 @@
 package io.agenticdb.introspect;
 
 import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.jdbc.ColumnProblem;
 import io.agenticdb.model.ColumnSpec;
 import org.junit.jupiter.api.Test;
 
@@ -47,8 +48,8 @@ class CreateTableColumnOptionsTest {
 
         assertThatThrownBy(() -> plan(DialectKind.POSTGRESQL, column))
                 .as("identity 列与默认值互斥，先拦在生成 SQL 之前")
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("默认值");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.autoHasDefault");
 
         String sql = plan(DialectKind.POSTGRESQL, new ColumnSpec("id", "INTEGER", false, null,
                 null, false, true, true, null, null)).statements().getFirst();
@@ -72,53 +73,64 @@ class CreateTableColumnOptionsTest {
         assertThatThrownBy(() -> plan(DialectKind.MYSQL,
                 new ColumnSpec("id", "INTEGER", false, null, null, false, true, true, null, null),
                 new ColumnSpec("seq", "INTEGER", false, null, null, false, false, true, null, null)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("只能有一列自增");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.autoIncrementConflict");
     }
 
     @Test
     void autoIncrementMustBeAPrimaryKey() {
         assertThatThrownBy(() -> plan(DialectKind.MYSQL,
                 new ColumnSpec("seq", "INTEGER", false, null, null, false, false, true, null, null)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("自增列必须是主键");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.autoNeedsPrimaryKey");
     }
 
     @Test
     void autoIncrementMustBeAnIntegerInEveryDialect() {
         for (DialectKind kind : DialectKind.values()) {
-            // Oracle 的说法是「数值型」：IDENTITY 收 NUMBER / INTEGER，NUMBER 本身不是整型。
-            String expected = kind == DialectKind.ORACLE ? "数值型" : "整型";
+            // 每种方言各说各话：Oracle 的 IDENTITY 收数值（不只整型），
+            // PostgreSQL / SQLite / SQL Server 各有自己的可认类型 —— 键不同才说得出那半句。
             assertThatThrownBy(() -> plan(kind,
                     new ColumnSpec("id", "TEXT", false, null, null, false, true, true, null, null)))
                     .as(kind + " 的自增列必须是整型")
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining(expected);
+                    .isInstanceOf(ColumnProblem.class)
+                    .hasFieldOrPropertyWithValue("key", autoIntegerKey(kind));
         }
+    }
+
+    /** 这条方言用什么键 —— 也是「它到底认哪些类型」那句话归属地方的唯一证据。 */
+    private static String autoIntegerKey(DialectKind kind) {
+        return switch (kind) {
+            case POSTGRESQL -> "column.error.autoNeedsIntegerPostgres";
+            case SQLITE -> "column.error.autoNeedsIntegerSqlite";
+            case SQLSERVER -> "column.error.autoNeedsIntegerSqlServer";
+            case ORACLE -> "column.error.autoNeedsNumericOracle";
+            case MYSQL, MARIADB -> "column.error.autoNeedsInteger";
+        };
     }
 
     @Test
     void sqliteRequiresExactlyIntegerNotInt() {
         assertThatThrownBy(() -> plan(DialectKind.SQLITE,
                 new ColumnSpec("id", "INT", false, null, null, false, true, true, null, null)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("INTEGER");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.autoNeedsIntegerSqlite");
     }
 
     @Test
     void postgresRejectsMySqlOnlyIntegerTypes() {
         assertThatThrownBy(() -> plan(DialectKind.POSTGRESQL,
                 new ColumnSpec("id", "TINYINT", false, null, null, false, true, true, null, null)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("smallint");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.autoNeedsIntegerPostgres");
     }
 
     @Test
     void autoIncrementCannotCarryADefaultValue() {
         assertThatThrownBy(() -> plan(DialectKind.MYSQL,
                 new ColumnSpec("id", "INTEGER", false, "0", null, false, true, true, null, null)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("默认值");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.autoHasDefault");
     }
 
     @Test
@@ -126,8 +138,8 @@ class CreateTableColumnOptionsTest {
         assertThatThrownBy(() -> plan(DialectKind.SQLITE,
                 new ColumnSpec("id", "INTEGER", false, null, null, false, true, true, null, null),
                 new ColumnSpec("tenant", "INTEGER", false, null, null, false, true, false, null, null)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("唯一主键");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.autoNeedsSingleKey");
     }
 
     @Test
@@ -152,11 +164,11 @@ class CreateTableColumnOptionsTest {
                 .contains("`name` TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin");
 
         assertThatThrownBy(() -> plan(DialectKind.POSTGRESQL, column))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("字符集");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.charsetUnsupported");
         assertThatThrownBy(() -> plan(DialectKind.SQLITE, column))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("字符集");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.charsetUnsupported");
     }
 
     @Test
@@ -182,13 +194,13 @@ class CreateTableColumnOptionsTest {
         assertThatThrownBy(() -> plan(DialectKind.MYSQL, new ColumnSpec("name", "TEXT", true,
                 null, null, false, false, false, "utf8mb4; DROP TABLE users", null)))
                 .as("字符集直接拼进 DDL —— 必须挡住语句注入")
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("字符集");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.charsetShape");
 
         assertThatThrownBy(() -> plan(DialectKind.MYSQL, new ColumnSpec("name", "TEXT", true,
                 null, null, false, false, false, null, "utf8mb4'--")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("排序规则");
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.collationShape");
     }
 
     private static StructurePlan plan(DialectKind kind, ColumnSpec... columns) {
