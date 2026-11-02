@@ -163,6 +163,41 @@ public record ExternalDatabase(
         return database.isBlank() ? null : database;
     }
 
+    /**
+     * 同一台服务器上的<b>第二把库</b>（{@code ADB_TEST_<前缀>_DB2}），第 9 条契约要用。
+     *
+     * <p>形状由 {@link #withDatabase(String)} 换掉库名得到：主机、端口、用户、口令、
+     * 超时参数<b>全部不变</b> —— 这正是产品里「切库」的那条路（
+     * {@code ConnectionProfile#catalogVariant} 也只做这一件事），
+     * 所以契约要验的是「只换库名，落点真的跟着换」，不是「换个地址连得上」。
+     *
+     * <p>返回 {@code null} 的两种情况含义不同，调用方要分开处理：
+     * Oracle 这类<b>根本没有库层</b>的方言没有 DB2 键（那是产品事实），
+     * 而「方言有库层但环境只配了一把库」是<b>配置缺</b>，跳过时要能说清缺什么。
+     */
+    public ExternalDatabase second() {
+        String prefix = switch (kind) {
+            case MYSQL -> "MYSQL";
+            case MARIADB -> "MARIADB";
+            case POSTGRESQL -> "PG";
+            case SQLSERVER -> "MSSQL";
+            case ORACLE, SQLITE -> null;
+        };
+        if (prefix == null) {
+            return null;
+        }
+        String other = System.getenv("ADB_TEST_" + prefix + "_DB2");
+        if (other == null || other.isBlank() || other.trim().equalsIgnoreCase(database)) {
+            return null;
+        }
+        return withDatabase(other.trim());
+    }
+
+    /** 换个库名、别的一律不动。 */
+    public ExternalDatabase withDatabase(String otherDatabase) {
+        return new ExternalDatabase(kind, host, port, otherDatabase, user, password);
+    }
+
     @Override
     public String toString() {
         return label().toLowerCase(Locale.ROOT);

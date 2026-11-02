@@ -40,6 +40,12 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * 现在矩阵是数据驱动的：<b>加一种库只加一个 supplier，加一条契约只加一行</b>，
  * 全部引擎自动全覆盖 —— R52 的视图生命周期契约（第 8 条）就是这么加进来的，
  * 一个 supplier 没动，五家一起跑。
+ *
+ * <h2>矩阵规模（每加一条契约都要回量这一行）</h2>
+ * <p>5 引擎 × 9 契约 = 45 例，加一条「环境读取不外泄口令」= <b>46 例</b>。
+ * 第 9 条（切库落点）另需第二把库 {@code ADB_TEST_*_DB2}（{@code scripts/dbmatrix.sh up} 建）：
+ * 有库层的四家缺它就是<b>跳过</b>（缺配置 ≠ 验过了），Oracle 没有库层，
+ * 走「不假装可切、但当前库标签读得到」那一支，照常计入通过。
  */
 class ExternalRealDatabaseTest {
 
@@ -54,7 +60,7 @@ class ExternalRealDatabaseTest {
             new Engine("SQLServer", ExternalDatabase::sqlServer),
             new Engine("Oracle", ExternalDatabase::oracle));
 
-    /** 八条契约的名字 + 实现。 */
+    /** 九条契约的名字 + 实现。 */
     private record Contract(String name, ContractBody body) {
     }
 
@@ -70,7 +76,8 @@ class ExternalRealDatabaseTest {
             new Contract("metadataQueriesRun", RealDatabaseContract::metadataQueriesRun),
             new Contract("schemaSwitchSemantics", RealDatabaseContract::schemaSwitchSemantics),
             new Contract("quotedIdentifiersWork", RealDatabaseContract::quotedIdentifiersWork),
-            new Contract("viewLifecycleRuns", RealDatabaseContract::viewLifecycleRuns));
+            new Contract("viewLifecycleRuns", RealDatabaseContract::viewLifecycleRuns),
+            new Contract("catalogSwitchLands", RealDatabaseContract::catalogSwitchLands));
 
     /** 矩阵的展开：库 × 契约。名字带进 {@code @DisplayName}，跳过时看得见是哪个库缺配置。 */
     static Stream<Arguments> matrix() {

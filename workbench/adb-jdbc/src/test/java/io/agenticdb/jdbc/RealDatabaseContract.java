@@ -5,6 +5,8 @@ import io.agenticdb.model.ColumnSpec;
 import io.agenticdb.model.ColumnType;
 import io.agenticdb.model.Danger;
 
+import org.junit.jupiter.api.Assumptions;
+
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -713,6 +715,114 @@ public final class RealDatabaseContract {
                 dropQuietly(session, dialect, table);
             }
         }
+    }
+
+    // ─────────────────────────── 契约 9：切库落点与隔离（R52） ───────────────────────────
+
+    /**
+     * ⭐ 「切到另一个库」必须真的<b>换掉落点</b>，而且<b>只</b>换落点。
+     *
+     * <p>查询页那颗库选择器（R44-G1）此前只由单测钉住：
+     * {@code CatalogVariantProfileTest} 验「虚拟连接 id = 父 id + @ + 库名、database 字段被换掉」，
+     * {@code CatalogTreeTest} 验「下拉里有哪些项」。两条都在<b>断字符串</b> ——
+     * 谁也没证明「把这条 SQL 交给绑到新库的会话之后，它真的落在新库里」。
+     * 这正是最容易出事故的一类缺口：连接串里少带一个参数、或者某家的驱动认属性不认路径，
+     * 表现是<b>界面显示已切到 shop2、语句却打在 shop 上</b>，
+     * 用户在一个他没在的库里改了数据。
+     *
+     * <p>所以这一条的断言形状是「<b>同一条 SQL 文本 + 同一个对象名，两个对端各自的内容</b>」：
+     * 第二把库（{@code ADB_TEST_<前缀>_DB2}，由 {@code scripts/dbmatrix.sh} 建）与第一把
+     * <b>同主机同端口同用户同口令</b>，只有库名不同 —— 和 {@code catalogVariant()} 给产品的那条路一致。
+     * 如果「切库」其实没切，{@code away} 上建同名表会直接撞「表已存在」而红；
+     * 如果切了但隔离没切干净，两边的行数会一样。
+     */
+    public static void catalogSwitchLands(ExternalDatabase target) throws Exception {
+        withRetry("切库落点", () -> catalogSwitchOnce(target));
+    }
+
+    private static void catalogSwitchOnce(ExternalDatabase target) throws Exception {
+        Dialect dialect = target.kind().dialect();
+        if (dialect.catalogsSql() == null) {
+            // 没有库层的家（Oracle / SQLite）：树里不出现 catalog 层，选择器只展示不可点 ——
+            // 这是「不假装有」那一侧的事实。但它仍要在真库上钉一件事：
+            // 「当前在哪个库」这个标签读得到真值，否则「不给切」会变成「连在哪儿都不知道」。
+            try (JdbcSession session = JdbcSession.open(target.spec())) {
+                assertThat(dialect.currentCatalog(session.connection()))
+                        .as("%s 没有库层，可状态栏那个当前库标签是照这条读的"
+                                + "（Oracle 走 SYS_CONTEXT('USERENV','DB_NAME')，实测回 FREEPDB1；"
+                                + "同一个会话里 SERVICE_NAME 是小写的 freepdb1，所以按忽略大小写比）",
+                                dialect.displayName())
+                        .isEqualToIgnoringCase(target.database());
+            }
+            return;
+        }
+
+        ExternalDatabase away = target.second();
+        Assumptions.assumeTrue(away != null,
+                () -> dialect.displayName() + " 有库层，但环境里只有一把库 —— 第二把由 "
+                        + "scripts/dbmatrix.sh up 建（键 ADB_TEST_*_DB2）。"
+                        + "缺它就只能断「连上了」，断不了「落在哪儿」，所以这一条跳过而不是假通过");
+
+        String table = "adb_contract_sw_" + System.nanoTime();
+        try (JdbcSession home = JdbcSession.open(target.spec());
+             JdbcSession other = JdbcSession.open(away.spec())) {
+            try {
+                // 1) 下拉里得有第二把库 —— 界面那一项就是 catalogsSql 的第 1 列喂的，
+                //    库里存在但查不出来，用户根本点不到，后面的落点无从谈起。
+                List<String> catalogs = firstColumn(home, dialect.catalogsSql());
+                assertThat(catalogs)
+                        .as("%s 的库清单要同时含两把测试库 —— 查询页那颗下拉读的就是这条查询",
+                                dialect.displayName())
+                        .anyMatch(name -> name.equalsIgnoreCase(target.database()))
+                        .anyMatch(name -> name.equalsIgnoreCase(away.database()));
+
+                // 2) 落点：两条会话各自的「当前库」要跟着连接串走。
+                //    ⚠️ 这一条不能省 —— SQL Server 的库名走 databaseName 属性、
+                //    PG / MySQL 走 URL 路径段，两边写错的 symptom 都是「连得上、落错库」。
+                assertThat(dialect.currentCatalog(home.connection()))
+                        .as("%s：原会话应落在 %s", dialect.displayName(), target.database())
+                        .isEqualToIgnoringCase(target.database());
+                assertThat(other.dialect().currentCatalog(other.connection()))
+                        .as("%s：切库后的会话应落在 %s —— 这一条就是「已切到数据库 X」那句状态的真值",
+                                dialect.displayName(), away.database())
+                        .isEqualToIgnoringCase(away.database());
+
+                // 3) 同名对象 + 同一条 SQL 文本，两边各自的内容。
+                //    建表语句两边<b>字面完全相同</b>：落点不同才可能都建成功；
+                //    没切过去的那一边会撞「表已存在」。
+                home.execute("CREATE TABLE " + dialect.quote(table) + " (id INTEGER PRIMARY KEY)");
+                other.execute("CREATE TABLE " + other.dialect().quote(table)
+                        + " (id INTEGER PRIMARY KEY)");
+                home.execute("INSERT INTO " + dialect.quote(table) + " (id) VALUES (1)");
+                other.execute("INSERT INTO " + other.dialect().quote(table) + " (id) VALUES (2)");
+                other.execute("INSERT INTO " + other.dialect().quote(table) + " (id) VALUES (3)");
+
+                assertThat(home.execute("SELECT id FROM " + dialect.quote(table)).rows())
+                        .as("%s：同一句 SELECT 在原库里只看得到原库的行（%s 里那张是另一张表）",
+                                dialect.displayName(), away.database())
+                        .hasSize(1);
+                assertThat(other.execute("SELECT id FROM " + other.dialect().quote(table)).rows())
+                        .as("%s：切过去的库里，那句一模一样的 SELECT 读到的是新库的行",
+                                dialect.displayName())
+                        .hasSize(2);
+            } finally {
+                // 两条会话各删自己那一张：同一条 dropTableSql、不同的落点。
+                dropQuietly(home, home.dialect(), table);
+                dropQuietly(other, other.dialect(), table);
+            }
+        }
+    }
+
+    /** 一条目录查询的第 1 列（{@code catalogsSql} 的约定就是「第 1 列 = 库名」）。 */
+    private static List<String> firstColumn(JdbcSession session, String sql) throws SQLException {
+        List<String> values = new ArrayList<>();
+        try (Statement statement = session.connection().createStatement();
+             ResultSet rs = statement.executeQuery(sql)) {
+            while (rs.next()) {
+                values.add(rs.getString(1));
+            }
+        }
+        return values;
     }
 
     // ─────────────────────────── 工具 ───────────────────────────
