@@ -45,6 +45,7 @@ record ErrorDetails(String title, ErrorClassifier.Kind kind, String summary,
             case LOCK_CONFLICT -> I18n.t("error.kind.lockConflict");
             case CONSTRAINT_VIOLATION -> I18n.t("error.kind.constraintViolation");
             case SYNTAX -> I18n.t("error.kind.syntax");
+            case TLS_VERIFICATION_FAILED -> I18n.t("error.kind.tlsVerification");
             case OTHER -> I18n.t("error.kind.other");
         };
     }
@@ -77,7 +78,9 @@ record ErrorDetails(String title, ErrorClassifier.Kind kind, String summary,
         return switch (kind) {
             case CONNECTION_LOST, PERMISSION_DENIED, NOT_FOUND, LOCK_CONFLICT,
                     CONSTRAINT_VIOLATION, SYNTAX -> true;
-            case TIMEOUT, OTHER -> false;
+            // 「TLS 校验失败」这句徽标不含信息量，信息在说明里（链认不出 vs 主机名对不上，
+            // 两个建议动作完全不同），所以它必须留在标题行。
+            case TIMEOUT, TLS_VERIFICATION_FAILED, OTHER -> false;
         };
     }
 

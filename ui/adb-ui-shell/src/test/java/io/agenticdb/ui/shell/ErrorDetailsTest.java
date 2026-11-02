@@ -163,4 +163,56 @@ class ErrorDetailsTest {
                 .isEqualTo(I18n.t("error.section.driver") + "磁盘已满\n\n"
                         + I18n.t("error.section.exception") + "java.io.IOException");
     }
+
+    /**
+     * ⭐ D-32：证书校验失败在弹窗上是一个<b>自己的徽标</b>，而且标题栏保留「链 / 主机名」那句说明。
+     *
+     * <p>别的徽标（对象不存在、权限不足…）那句说明只是把徽标重说一遍，所以标题栏
+     * 把驱动原文顶上来；证书这一类<b>说明本身带信息</b>（到底是链认不出还是名字对不上），
+     * 顶上来会把这句挤掉 —— 于是这里判的是「徽标 · 说明」这个形状。
+     */
+    @Test
+    void certificateFailuresGetTheirOwnBadgeAndKeepTheReason() {
+        ErrorDetails details = ErrorDetails.of("连接失败", new java.sql.SQLException(
+                "(conn=99) Could not connect to 127.0.0.1:33072 : (certificate_unknown) PKIX "
+                        + "path building failed", "08S01",
+                new javax.net.ssl.SSLHandshakeException(
+                        "(certificate_unknown) PKIX path building failed")), "（无）");
+
+        assertThat(details.kind()).isEqualTo(ErrorClassifier.Kind.TLS_VERIFICATION_FAILED);
+        assertThat(details.kindLabel()).isEqualTo(I18n.t("error.kind.tlsVerification"));
+        assertThat(details.headline())
+                .as("「链不受信」与「主机名对不上」是两条不同的下一步，必须在标题栏里看得见")
+                .isEqualTo(I18n.t("error.join.headline",
+                        I18n.t("error.kind.tlsVerification"),
+                        I18n.t("error.summary.tlsUntrusted")));
+        assertThat(details.body())
+                .contains(I18n.t("error.section.advice") + I18n.t("error.advice.tlsUntrusted"))
+                .doesNotContain(I18n.t("error.advice.connectionLost"))
+                .as("这条不是网络问题，不许把「检查网络」端给用户");
+        assertThat(details.copyText()).contains("PKIX path building failed");
+    }
+
+    /** 换语言不许换结论：徽标、说明、建议三句都从键长出来（D-9 那一族的收尾判法）。 */
+    @Test
+    void certificateAttributionRendersInBothLanguages() {
+        Throwable error = new java.sql.SQLException(
+                "Communications link failure", "08S01",
+                new java.security.cert.CertificateException(
+                        "Server identity verification failed. None of the certificate's DNS or IP "
+                                + "Subject Alternative Name entries matched the server hostname/IP "
+                                + "'127.0.0.1'."));
+
+        I18n.setLocale(java.util.Locale.ENGLISH);
+        ErrorDetails english = ErrorDetails.of("Connect failed", error, "");
+        assertThat(english.kindLabel()).isEqualTo("Certificate Check Failed");
+        assertThat(english.headline()).contains("hostname does not match");
+        assertThat(english.copyText() + english.headline() + english.body())
+                .as("英文界面里不许长出半句中文（连接符也一样）")
+                .doesNotMatch("(?s).*[\\u4e00-\\u9fa5].*");
+
+        I18n.setLocale(java.util.Locale.CHINESE);
+        assertThat(ErrorDetails.of("连接失败", error, "").kindLabel())
+                .isEqualTo("证书校验失败");
+    }
 }

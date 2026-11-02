@@ -488,6 +488,131 @@ class ConnectionWizardTest {
                 .doesNotContainKey("sslmode");
     }
 
+    /**
+     * ⭐ D-33 / D-31：TLS 页的<b>说明</b>与「不加密」这一档都要对得上驱动的真本事。
+     *
+     * <p>两件事各由一条实测撑着：
+     * <ul>
+     *   <li>MySQL 选了校验档，界面不能只说「本版不改根证书这一格」——用户要知道的是
+     *       <b>那该给什么</b>。Connector/J 8.2 的 {@code getPropertyInfo} 里既没有
+     *       {@code sslCA} 也没有 {@code sslCapath}，能给的只有 PKCS12 信任库三件套，
+     *       所以这句里必须出现 {@code trustCertificateKeyStoreUrl}（两种语言都有这个词）。</li>
+     *   <li>「不加密」这一档以前不写任何参数，而驱动默认是「能加密就加密」
+     *       （真库 TLS 对端实测：会话读回 {@code TLS_AES_256_GCM_SHA384}）。
+     *       门禁把「标签说什么」钉成「保存下来的是什么参数」，DialectTest 那条钉的是映射本身。</li>
+     * </ul>
+     */
+    @Test
+    void tlsPageSaysWhatEachDriverCanBeGivenAndOffReallyMeansOff(FxRobot robot) {
+        open(robot, null);
+        goToProperties(robot, DialectKind.MYSQL);
+        robot.clickOn("#wizard-name");
+        robot.write("MySQL TLS 说明");
+        robot.clickOn("#wizard-host");
+        robot.write("db.example.com");
+        robot.clickOn("#wizard-database");
+        robot.write("shop");
+        selectTab(robot, "wizard-tab-ssl");
+        selectSslMode(robot, Dialect.SslLevel.VERIFY_CA);
+
+        assertThat(robot.lookup("#wizard-ssl-root").queryTextInputControl().isDisabled())
+                .as("这一家收不了 PEM，输入框必须禁用而不是让人填了不生效")
+                .isTrue();
+        String mysqlHint = robot.lookup("#wizard-ssl-hint").queryAs(Label.class).getText();
+        assertThat(mysqlHint)
+                .as("说明要给能用的通道，不能只说「这一格不动」")
+                .contains("trustCertificateKeyStoreUrl");
+
+        // 「不加密」保存下来必须是一条显式关闭的参数（不是「什么都不写」）。
+        open(robot, null);
+        goToProperties(robot, DialectKind.MYSQL);
+        robot.clickOn("#wizard-name");
+        robot.write("MySQL 明文");
+        robot.clickOn("#wizard-host");
+        robot.write("db.example.com");
+        robot.clickOn("#wizard-database");
+        robot.write("shop");
+        selectSslMode(robot, Dialect.SslLevel.OFF);
+        click(robot, "wizard-save");
+        assertThat(wizard.dialogResult().orElseThrow().options())
+                .as("靠驱动默认值来实现「不加密」= 标签骗人（D-33）")
+                .containsEntry("sslMode", "DISABLED");
+
+        // MariaDB 反过来：PEM 直接可用，输入框不许禁，说明里也不许留「加密没跑过」那句旧话。
+        open(robot, null);
+        goToProperties(robot, DialectKind.MARIADB);
+        robot.clickOn("#wizard-name");
+        robot.write("Maria 根证书");
+        robot.clickOn("#wizard-host");
+        robot.write("db.example.com");
+        robot.clickOn("#wizard-database");
+        robot.write("shop");
+        selectTab(robot, "wizard-tab-ssl");
+        selectSslMode(robot, Dialect.SslLevel.VERIFY_CA);
+
+        assertThat(robot.lookup("#wizard-ssl-root").queryTextInputControl().isDisabled())
+                .as("MariaDB 收 serverSslCert，根证书框可用")
+                .isFalse();
+        String mariaHint = robot.lookup("#wizard-ssl-hint").queryAs(Label.class).getText();
+        assertThat(mariaHint)
+                .as("R47 已经在 Docker 的 TLS 对端上跑过加密连接，这句旧话必须翻掉")
+                .doesNotContain("没跑")
+                .doesNotContain("did not");
+        click(robot, "wizard-save");
+        assertThat(wizard.dialogResult().orElseThrow().options())
+                .as("MariaDB 的「校验 CA」落到自己的取值上，不是 MySQL 的 REQUIRED")
+                .containsEntry("sslMode", "VERIFY_CA")
+                .doesNotContainKey("sslrootcert");
+    }
+
+    /**
+     * 上面那条走的是渲染口，而界面默认语言是<b>英文</b>（{@code I18n.DEFAULT_LOCALE}）——
+     * 于是它只钉得住英文那份文案。中文那份要是漂回「本版不改根证书这一格」或者
+     * 重新长出「加密连接没跑过」，渲染口这条是看不见的，所以两种语言各钉一次。
+     *
+     * <p>⭐ 变异验证抓出这条门禁<b>原来的形状不够</b>：把中文 mysqlHint 末尾那句
+     * 「都在本机 Docker 的 TLS 对端上跑过」换成「未在真库验证」，一条都不红 ——
+     * 它只查信任库那两个 token 在不在，没查<b>结论</b>在不在；旧话术的黑名单里只写了
+     * 「没跑」，新说法从缝里过去了。所以改成两件事一起断：
+     * ① 两条 hint × 两份 bundle 都要<b>正面写出</b>跑过（中文钉「TLS 对端上跑过」，
+     * 英文钉 {@code local Docker TLS peer}）；② 旧话术（中文「未在真库验证 / 没跑」、
+     * 英文 {@code never run / not verified}）漂回任何一句都红。
+     */
+    @Test
+    void tlsHintsSayTheSameThingInBothLanguages() {
+        try {
+            I18n.setLocale(java.util.Locale.ENGLISH);
+            assertThat(I18n.t("wizard.ssl.mysqlHint"))
+                    .as("英文侧也得给出能用的那条通道")
+                    .contains("trustCertificateKeyStoreUrl")
+                    .contains("silently ignored")
+                    .contains("local Docker TLS peer")
+                    .doesNotContain("never run")
+                    .doesNotContain("not verified");
+            assertThat(I18n.t("wizard.ssl.mariadbHint"))
+                    .contains("serverSslCert")
+                    .contains("local Docker TLS peer")
+                    .doesNotContain("did not")
+                    .doesNotContain("never run");
+
+            I18n.setLocale(java.util.Locale.SIMPLIFIED_CHINESE);
+            assertThat(I18n.t("wizard.ssl.mysqlHint"))
+                    .as("中文侧同样要写着信任库的参数名（这一格对 MySQL 用不上，理由是驱动没有 CA 文件参数）")
+                    .contains("trustCertificateKeyStoreUrl")
+                    .contains("静默忽略")
+                    .contains("TLS 对端上跑过")
+                    .doesNotContain("未在真库验证")
+                    .doesNotContain("没跑");
+            assertThat(I18n.t("wizard.ssl.mariadbHint"))
+                    .contains("serverSslCert")
+                    .contains("TLS 对端上跑过")
+                    .doesNotContain("没跑")
+                    .doesNotContain("未在真库验证");
+        } finally {
+            I18n.setLocale(I18n.DEFAULT_LOCALE);
+        }
+    }
+
     @Test
     void advancedFieldsAndUnknownParametersReachTheProfile(FxRobot robot) {
         open(robot, null);
