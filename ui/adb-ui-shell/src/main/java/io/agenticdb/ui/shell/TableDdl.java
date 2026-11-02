@@ -7,8 +7,9 @@ import io.agenticdb.model.Danger;
 import io.agenticdb.ui.I18n;
 import javafx.application.Platform;
 import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
-import javafx.scene.control.TextInputDialog;
+import javafx.scene.control.Dialog;
 import javafx.stage.Window;
 
 import java.util.ArrayList;
@@ -160,15 +161,33 @@ final class TableDdl {
             status.accept(I18n.t("ddl.pickTable"));
             return;
         }
-        TextInputDialog dialog = new TextInputDialog(table);
+        // ⭐ D-15：这里原来是 {@code TextInputDialog} —— 它是 Dialog，但按钮是
+        // JavaFX 内置的「OK/Cancel」，样式套不干净（同一页上「新建表 / 新建索引」
+        // 两个弹窗的按钮是我们的 Label）。换成自建 Dialog 之后，输入框、按钮、
+        // 回车落点全都由这一处说了算。
+        Dialog<String> dialog = new Dialog<>();
         dialog.setTitle(I18n.t("ddl.rename.title"));
         dialog.setHeaderText(I18n.t("ddl.rename.header", table));
-        dialog.getEditor().setId("rename-table-input");
+        javafx.scene.control.TextField input = new javafx.scene.control.TextField(table);
+        input.setId("rename-table-input");
+        input.setMaxWidth(Double.MAX_VALUE);
+        ButtonType apply = new ButtonType(I18n.t("ddl.rename.apply"),
+                ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
+        dialog.getDialogPane().setContent(input);
+        dialog.getDialogPane().getButtonTypes().addAll(apply, cancel);
+        // 回车 = 点「重命名」，不是关掉窗口：TextInputDialog 本来就是这样的，
+        // 换成自建 Dialog 后这条路得自己接上。
+        input.setOnAction(event -> {
+            javafx.scene.Node button = dialog.getDialogPane().lookupButton(apply);
+            if (button instanceof javafx.scene.control.ButtonBase buttonBase) {
+                buttonBase.fire();
+            }
+        });
+        dialog.setResultConverter(type -> type == apply ? input.getText() : null);
         if (owner.get() != null) {
             dialog.initOwner(owner.get());
         }
-        // ⭐ 重命名框是 TextInputDialog（也是 Dialog）：不套主题就是 Modena 灰皮肤，
-        //    和同一页上「新建表 / 新建索引」两个弹窗明显不是一套东西（§七）。
         DialogStyles.apply(dialog, owner.get());
         Optional<String> answer = dialog.showAndWait();
         if (answer.isEmpty()) {

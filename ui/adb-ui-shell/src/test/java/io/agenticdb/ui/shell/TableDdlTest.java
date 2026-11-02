@@ -336,6 +336,37 @@ class TableDdlTest {
         assertThat(session.executed()).isEmpty();
     }
 
+    /**
+     * ⭐ D-15：重命名框必须是<b>我们自建的 Dialog</b>，不许退回 {@code TextInputDialog}。
+     *
+     * <p>{@code showAndWait()} 在单测里按不住（它会阻塞等真人点按钮），所以这条走
+     * <b>源码扫描</b> —— 和 {@code NewTableDialogTest.newTableIsADialogNotATab} 同一套判法。
+     * 三条各钉一个回退面：
+     * <ol>
+     *   <li>源码里出现 {@code TextInputDialog} = 换回了内置皮肤；</li>
+     *   <li>输入框没有 id = 验收帧/自动化再也指不到它；</li>
+     *   <li>确认按钮不走资源键 = 英文界面上会露出 JavaFX 的「OK」，
+     *       和同一页其它弹窗的按钮不是一套话。</li>
+     * </ol>
+     */
+    @Test
+    void theRenamePromptIsOurOwnDialogNotTheBuiltInOne() throws Exception {
+        java.nio.file.Path source = java.nio.file.Path.of(
+                "src/main/java/io/agenticdb/ui/shell/TableDdl.java");
+        String text = java.nio.file.Files.readString(source, java.nio.charset.StandardCharsets.UTF_8);
+
+        assertThat(text)
+                .as("换回 TextInputDialog 就等于把按钮文字交回 JavaFX（D-15 的病灶）")
+                // ⚠️ 判的是<b>构造点</b>而不是类名：注释里要写「这里原来是
+                // TextInputDialog」，按类名扫的门禁会把解释自己的那句话判红 ——
+                // 那种门禁只会逼人删掉说明。
+                .doesNotContain("new TextInputDialog");
+        assertThat(text).contains("Dialog<String> dialog = new Dialog<>();");
+        assertThat(text).as("输入框的 id 是帧与自动化唯一的抓手").contains("rename-table-input");
+        assertThat(text).contains("I18n.t(\"ddl.rename.apply\")");
+        assertThat(I18n.t("ddl.rename.apply")).doesNotContain("⚠");
+    }
+
     /** 顺带钉住：计划里的 SQL 是给人看的，不能是空字符串。 */
     @Test
     void planSqlIsNotEmpty() {

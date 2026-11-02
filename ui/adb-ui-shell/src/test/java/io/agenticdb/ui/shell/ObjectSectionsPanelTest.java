@@ -96,6 +96,49 @@ class ObjectSectionsPanelTest {
         }
     }
 
+    /**
+     * ⭐ R45 G3：索引「来源」列不许把驱动原码裸奔出来。
+     *
+     * <p>{@code origin} 是 SQLite {@code PRAGMA index_list} 的原值（pk / u / c），
+     * 别的方言没有这一列、留空。它是<b>数据</b>不是文案，所以翻成词发生在渲染处，
+     * 模型层继续存原码（{@link io.agenticdb.introspect.IndexDef#autoCreated()} 要按码判）。
+     *
+     * <p>认不出的码<b>原样显示</b>，不许猜一个标签 —— 这条也要按住：
+     * 将来的驱动交出第四个值时，界面上露出真值比露出一个错误的解释好。
+     */
+    @Test
+    void theOriginColumnTurnsDriverCodesIntoWords() {
+        try {
+            io.agenticdb.ui.I18n.setLocale(java.util.Locale.ENGLISH);
+            assertThat(ObjectSectionsPanel.originLabel("pk"))
+                    // ⚠️ 只和 I18n.t(...) 比是<b>会假绿的</b>：键不存在时两边都长成
+                    // 「⚠idx.origin.primaryKey」，照样相等。所以先钉「渲染出了人话」，
+                    // 再钉「等于这个键的译文」。（本轮实测踩过：资源包没重装，
+                    // en 侧四条断言全绿，只有下面那条中文断言报了红。）
+                    .doesNotContain("⚠")
+                    .isEqualTo(io.agenticdb.ui.I18n.t("idx.origin.primaryKey"));
+            assertThat(ObjectSectionsPanel.originLabel("u"))
+                    .isEqualTo(io.agenticdb.ui.I18n.t("idx.origin.unique"));
+            assertThat(ObjectSectionsPanel.originLabel("c"))
+                    .isEqualTo(io.agenticdb.ui.I18n.t("idx.origin.constraint"));
+            assertThat(ObjectSectionsPanel.originLabel("PK"))
+                    .as("大小写按驱动走，比较用忽略大小写")
+                    .isEqualTo(io.agenticdb.ui.I18n.t("idx.origin.primaryKey"));
+            assertThat(ObjectSectionsPanel.originLabel("")).isEmpty();
+            assertThat(ObjectSectionsPanel.originLabel(null)).isEmpty();
+            assertThat(ObjectSectionsPanel.originLabel("z"))
+                    .as("认不出的码原样显示，不猜标签")
+                    .isEqualTo("z");
+
+            io.agenticdb.ui.I18n.setLocale(java.util.Locale.CHINESE);
+            assertThat(ObjectSectionsPanel.originLabel("pk"))
+                    .as("中文界面必须是中文词 —— 键存在但值抄错边由这条抓住")
+                    .isEqualTo("主键自动");
+        } finally {
+            io.agenticdb.ui.I18n.setLocale(io.agenticdb.ui.I18n.DEFAULT_LOCALE);
+        }
+    }
+
     private ObjectSectionsPanel panel() {
         return new ObjectSectionsPanel(session, schemaService, "widgets", executor, () -> { });
     }

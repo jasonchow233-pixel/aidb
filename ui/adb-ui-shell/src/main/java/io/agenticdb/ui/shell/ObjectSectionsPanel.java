@@ -130,7 +130,7 @@ final class ObjectSectionsPanel extends VBox {
         indexesTable.getColumns().add(column(I18n.t("structure.col.columns"),
                 IndexDef::columnsLabel, 220));
         indexesTable.getColumns().add(column(I18n.t("sections.col.origin"),
-                IndexDef::origin, 100));
+                value -> originLabel(value.origin()), 100));
 
         foreignKeysTable.setId("object-foreign-keys-table");
         foreignKeysTable.getStyleClass().add("adb-structure__table");
@@ -198,6 +198,27 @@ final class ObjectSectionsPanel extends VBox {
 
     private static String nullSafe(String value) {
         return value == null ? "" : value;
+    }
+
+    /**
+     * 索引「来源」列：SQLite 交回的是<b>驱动原值</b>（{@code PRAGMA index_list} 的
+     * {@code origin}：pk / u / c），其它方言根本没有这一列，留空。
+     *
+     * <p>以前直接把码渲染进表格里 —— 英文界面上露出「pk」，中文界面上也露出「pk」，
+     * 用户不知道那是「主键自动建的索引」。这里在<b>渲染处</b>翻成词，
+     * 码本身留在模型层（它是数据，不是文案）。认不出的码<b>原样显示</b>：
+     * 猜一个标签比露出真值更容易误导。
+     */
+    static String originLabel(String code) {
+        if (code == null || code.isBlank()) {
+            return "";
+        }
+        return switch (code.toLowerCase(java.util.Locale.ROOT)) {
+            case "pk" -> I18n.t("idx.origin.primaryKey");
+            case "u" -> I18n.t("idx.origin.unique");
+            case "c" -> I18n.t("idx.origin.constraint");
+            default -> code;
+        };
     }
 
     // ─────────────────────────── 切面切换 ───────────────────────────
