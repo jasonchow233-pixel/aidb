@@ -216,21 +216,30 @@ public final class SqlServerDialect implements Dialect {
     }
 
     /**
-     * 触发器：{@code sys.triggers} + {@code sys.sql_modules}。
+     * 触发器：{@code sys.triggers} + {@code sys.sql_modules} + {@code sys.trigger_events}。
      *
      * <p>列序按接口约定：名称 / 时机 / 事件 / 语句。时机看
-     * {@code is_instead_of_trigger}，DML 事件看三个布尔列（不用
-     * {@code STRING_AGG}，它要 2017+，这里连 2012 也得能用）。
+     * {@code is_instead_of_trigger}；事件在 <b>{@code sys.trigger_events}</b> 里
+     * （一个触发器可以挂多个事件，所以聚成一列逗号串）。
      *
-     * <p>⚠️ 未跑过真库，见类注释。
+     * <p>⭐ D-24（真库 SQL Server 2022 抓到）：上一版读的是
+     * {@code t.is_insert_trigger / is_update_trigger / is_delete_trigger} ——
+     * <b>{@code sys.triggers} 里没有这三列</b>（实测该视图的列只有
+     * {@code name / object_id / parent_id / is_instead_of_trigger / …}），
+     * 整条查询报 {@code Invalid column name 'is_insert_trigger'}。
+     * 生产代码把这个异常吞成「这张表没有触发器」，所以 SQL Server 的触发器页
+     * <b>永远是空的</b> —— 不报错、不闪、什么都不显示。
+     *
+     * <p>聚合用 {@code FOR XML PATH} 而不是 {@code STRING_AGG}：后者要 2017+，
+     * 这里连 2012 也得能用（原注释的约束保留）。
      */
     @Override
     public String triggersSql(String table) {
         return "SELECT t.name, "
                 + "CASE WHEN t.is_instead_of_trigger = 1 THEN 'INSTEAD OF' ELSE 'AFTER' END, "
-                + "CASE WHEN t.is_insert_trigger = 1 THEN 'INSERT' "
-                + "WHEN t.is_update_trigger = 1 THEN 'UPDATE' "
-                + "WHEN t.is_delete_trigger = 1 THEN 'DELETE' ELSE '' END, "
+                + "STUFF((SELECT ',' + REPLACE(REPLACE(e.type_desc, 'AFTER_', ''), 'INSTEAD_', '') "
+                + "FROM sys.trigger_events e WHERE e.object_id = t.object_id "
+                + "ORDER BY e.type FOR XML PATH('')), 1, 1, ''), "
                 + "m.definition "
                 + "FROM sys.triggers t "
                 + "JOIN sys.sql_modules m ON m.object_id = t.object_id "
@@ -255,6 +264,14 @@ public final class SqlServerDialect implements Dialect {
      * <p>⚠️ SQL Server <b>没有</b>「行最后修改时间」，也没有表注释与「引擎」概念，
      * 这三列直接给 {@code NULL} —— 界面显示「—」，不拿创建时间冒充修改时间。
      *
+     * <p>⚠️ D-20：排序规则取<b>库级</b>值，不是表列。真库实测（SQL Server 2022）：
+     * {@code sys.tables} <b>根本没有</b> {@code collation_name} 这一列
+     * （只有 {@code sys.columns} 有 —— 排序规则是<b>列</b>属性，不是表属性），
+     * 上一版写 {@code t.collation_name} 让整条表清单元信息查询直接报
+     * {@code Invalid column name 'collation_name'}，于是 SQL Server 的结构页/表清单全空。
+     * 这里退一步显示库的默认排序规则（{@code DATABASEPROPERTYEX}），
+     * 并在注释里说清它<b>不是</b>每表一个值。
+     *
      * <p>⚠️ {@code rows} 是 T-SQL 保留字（{@code OFFSET … ROWS}），别名必须加方括号。
      */
     @Override
@@ -267,7 +284,8 @@ public final class SqlServerDialect implements Dialect {
                 + "WHERE p2.object_id = t.object_id) AS size_bytes, "
                 + "NULL AS engine, "
                 + "CONVERT(varchar(19), t.create_date, 120) AS created_at, "
-                + "NULL AS updated_at, t.collation_name AS collation_name, "
+                + "NULL AS updated_at, "
+                + "CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS varchar(128)) AS collation_name, "
                 + "NULL AS comment_text "
                 + "FROM sys.tables t WHERE t.is_ms_shipped = 0 ORDER BY t.name";
     }

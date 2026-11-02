@@ -700,6 +700,32 @@ public final class SchemaService {
     }
 
     /**
+     * ⭐ D-22：把表名绑到 SQL 里的<b>每一个</b>占位符。
+     *
+     * <p>为什么不是一个一个绑：Oracle 的目录视图按「建对象时有没有加引号」把名字存成
+     * 两种形态（加引号原样存、没加折成大写），方言要用一条查询同时覆盖两条路径，
+     * 就得写 {@code TABLE_NAME IN (?, UPPER(?))} —— 同一个名字出现两次。
+     * 按实际占位符个数绑，方言那边加减占位符不用回来改这里。
+     *
+     * <p>⚠️ 这些查询的<b>全部</b>占位符都是表名（{@code tableCommentQuery} /
+     * {@code checksSql} / {@code triggersSql} 三个方法各自只有一个表名入参）——
+     * 若将来有方言往里塞别的参数，这个方法要换成显式传参，不能猜。
+     */
+    private static void bindTableNames(java.sql.PreparedStatement statement, String name)
+            throws SQLException {
+        int count = 1;
+        try {
+            count = Math.max(1, statement.getParameterMetaData().getParameterCount());
+        } catch (SQLException | RuntimeException e) {
+            // 少数驱动没实现 getParameterMetaData —— 退成「只绑第一个」，
+            // 与改造前的行为一致，不会因为元数据本身把结构页打挂。
+        }
+        for (int i = 1; i <= count; i++) {
+            statement.setString(i, name);
+        }
+    }
+
+    /**
      * 表注释。
      *
      * <p>SQLite 没有表注释 → 返回空串（结构页显示「—」，不假装有）。
@@ -711,7 +737,7 @@ public final class SchemaService {
         }
         try (java.sql.PreparedStatement statement =
                      session.connection().prepareStatement(sql)) {
-            statement.setString(1, name);
+            bindTableNames(statement, name);
             try (ResultSet rs = statement.executeQuery()) {
                 if (rs.next()) {
                     String comment = rs.getString(1);
@@ -754,7 +780,7 @@ public final class SchemaService {
             //    永远读不到（还被 catch 吞成「没有约束」）。
             try (java.sql.PreparedStatement statement =
                          session.connection().prepareStatement(sql)) {
-                statement.setString(1, name);
+                bindTableNames(statement, name);
                 try (ResultSet rs = statement.executeQuery()) {
                     while (rs.next()) {
                         checks.add(new CheckDef(rs.getString(1),
@@ -1038,7 +1064,7 @@ public final class SchemaService {
         // ⭐ 触发器查询由方言给 —— 以前这里是 switch，加一种库要改这里。
         String sql = session.dialect().triggersSql(name);
         try (var statement = session.connection().prepareStatement(sql)) {
-            statement.setString(1, name);
+            bindTableNames(statement, name);
             try (ResultSet rs = statement.executeQuery()) {
                 while (rs.next()) {
                     String triggerName = rs.getString(1);

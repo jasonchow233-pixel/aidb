@@ -27,12 +27,13 @@ import java.util.Map;
  *       引用动作要靠触发器（见 {@link #supportsForeignKeyOnUpdate()}）。</li>
  * </ol>
  *
- * <h2>本轮的真库验证状态（诚实条款）</h2>
- * <p>开发环境没有 Oracle 实例（无 Docker）。单元测试锁住了引用符、URL、
- * 连接属性、分页与探测语句、各条 DDL 文本；{@code ALL_*} 目录查询与
- * {@code DBMS_METADATA} 没被执行过一次，有实例后交给 {@code RealDatabaseContract}
- * 补验（D-5）。执行计划（{@code EXPLAIN PLAN FOR} + 读 {@code PLAN_TABLE} 要两段语句）
- * 本轮不做，界面收起按钮并说明原因。
+ * <h2>真库验证状态</h2>
+ * <p>R46 起本地有 Oracle 23ai Free 容器，{@code ALL_*} 目录查询与 {@code DBMS_METADATA}
+ * 都跑过了 —— 并当场抓出一条只有真库才能发现的缺陷（<b>D-22</b>）：
+ * 目录查询原先一律用 {@code UPPER(?)} 匹配名字，而我们自己的表设计器建对象<b>总是加引号</b>，
+ * Oracle 对加引号的名字原样存，于是这些对象在触发器页 / 约束页 / 注释页里<b>全部隐形</b>。
+ * 现在的匹配规则见 {@link #nameMatches}。执行计划（{@code EXPLAIN PLAN FOR} +
+ * 读 {@code PLAN_TABLE} 要两段语句）本轮不做，界面收起按钮并说明原因。
  */
 public final class OracleDialect implements Dialect {
 
@@ -62,6 +63,31 @@ public final class OracleDialect implements Dialect {
     @Override
     public String uriScheme() {
         return "oracle";
+    }
+
+    /**
+     * ⭐ D-22：目录视图（{@code ALL_*} / {@code USER_*}）里的名字匹配 —— <b>精确或大写，两个都要</b>。
+     *
+     * <p>为什么不能只写 {@code UPPER(?)}：我们自己的表设计器建对象时<b>总是加引号</b>
+     * （见 {@link #quote}），而 Oracle 对加引号的名字<b>原样存进目录</b> —— 用户建
+     * {@code "orders"}，目录里就是小写的 {@code orders}。真库实测（Oracle 23ai Free）：
+     * 建 {@code "adb_case_probe"} 之后 {@code TABLE_NAME = 'adb_case_probe'} 命中 1 行，
+     * {@code TABLE_NAME = UPPER('adb_case_probe')} 命中 <b>0</b> 行 ——
+     * 也就是说<b>我们自己设计器建出来的表，在触发器页、约束页、注释页里全部隐形</b>。
+     *
+     * <p>反过来也不能只写精确匹配：没加引号建的常规对象，目录里折成了大写。
+     * 所以一条 {@code IN (精确, 大写)} 同时覆盖两条路径 —— 不做「先试一个、
+     * 查不到再猜另一个」，那种写法把「查错了名字」和「这表真的没有触发器」混成了同一个结果。
+     */
+    private static String nameMatches(String column) {
+        return column + " IN (?, UPPER(?))";
+    }
+
+    /** {@link #nameMatches} 的内联字面量版本 —— 调用方不绑参数的通道用（名字按 SQL 串转义）。 */
+    private static String nameMatchesLiteral(String column, String name) {
+        String exact = name == null ? "" : name.replace("'", "''");
+        return column + " IN ('" + exact + "', '"
+                + exact.toUpperCase(java.util.Locale.ROOT) + "')";
     }
 
     /**
@@ -209,7 +235,7 @@ public final class OracleDialect implements Dialect {
     @Override
     public String triggersSql(String table) {
         return "SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TRIGGER_BODY "
-                + "FROM ALL_TRIGGERS WHERE TABLE_NAME = UPPER(?) "
+                + "FROM ALL_TRIGGERS WHERE " + nameMatches("TABLE_NAME") + " "
                 + "AND TABLE_OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') "
                 + "ORDER BY TRIGGER_NAME";
     }
@@ -260,18 +286,31 @@ public final class OracleDialect implements Dialect {
      * Oracle 的 DDL 从 {@code DBMS_METADATA.GET_DDL} 取 —— 这是它唯一可靠的取法，
      * 也是官方推荐的取法。
      *
-     * <p>⚠️ 传进去的名字必须是<b>大写</b>（除非建对象时加了引号），
-     * 这里按内省层给的原始名直接绑定；读不到就返回 {@code null}，
-     * 由界面退化成「等价 DDL」。
+     * <p>⭐ D-22：传进去的名字必须是<b>目录里存的那个</b>，所以这里问两次：
+     * 先按原样（我们设计器加引号建的对象，目录里就是原样），问不到再按大写
+     * （没加引号建的常规对象，目录里折成了大写）。只传大写会把前者全问成
+     * 「对象不存在」，只传原样会把后者全问成「对象不存在」—— 两个都会静默退化成
+     * 「等价 DDL」，看不出区别。读不到就返回 {@code null}，由界面退化。
      */
     @Override
     public String readDdl(Connection connection, String table, boolean view) throws SQLException {
         String kind = view ? "VIEW" : "TABLE";
+        String asIs = getDdl(connection, kind, table);
+        if (asIs != null) {
+            return asIs;
+        }
+        String upper = table == null ? "" : table.toUpperCase(java.util.Locale.ROOT);
+        return upper.equals(table) ? null : getDdl(connection, kind, upper);
+    }
+
+    /** {@code DBMS_METADATA.GET_DDL} 的一次尝试；对象不存在 / 权限不够都返回 {@code null}。 */
+    private static String getDdl(Connection connection, String kind, String name)
+            throws SQLException {
         try (var statement = connection.prepareStatement(
                 "SELECT DBMS_METADATA.GET_DDL(?, ?, SYS_CONTEXT('USERENV','CURRENT_SCHEMA')) "
                         + "FROM DUAL")) {
             statement.setString(1, kind);
-            statement.setString(2, table.toUpperCase(java.util.Locale.ROOT));
+            statement.setString(2, name);
             try (var rs = statement.executeQuery()) {
                 if (rs.next()) {
                     String ddl = rs.getString(1);
@@ -584,25 +623,26 @@ public final class OracleDialect implements Dialect {
     public String tableCommentQuery(String table) {
         return "SELECT COMMENTS FROM ALL_TAB_COMMENTS "
                 + "WHERE OWNER = SYS_CONTEXT('USERENV','CURRENT_SCHEMA') "
-                + "AND TABLE_NAME = UPPER(?)";
+                + "AND " + nameMatches("TABLE_NAME");
     }
 
     @Override
     public String columnCommentsSql(String table) {
         // ⚠️ 这条通道的表名是**内联**的（调用方不绑参数），所以按 SQL 字符串转义。
-        String literal = table == null ? "" : table.replace("'", "''").toUpperCase(java.util.Locale.ROOT);
         return "SELECT COLUMN_NAME AS column_name, COMMENTS AS column_comment "
                 + "FROM ALL_COL_COMMENTS "
                 + "WHERE OWNER = SYS_CONTEXT('USERENV','CURRENT_SCHEMA') "
-                + "AND TABLE_NAME = '" + literal + "'";
+                + "AND " + nameMatchesLiteral("TABLE_NAME", table);
     }
 
     /** 自增列 = 12c 的 identity 列，在 {@code USER_TAB_IDENTITY_COLS} 里。 */
     @Override
     public String autoIncrementColumn(Connection connection, String table) throws SQLException {
         try (var statement = connection.prepareStatement(
-                "SELECT COLUMN_NAME FROM USER_TAB_IDENTITY_COLS WHERE TABLE_NAME = UPPER(?)")) {
+                "SELECT COLUMN_NAME FROM USER_TAB_IDENTITY_COLS WHERE "
+                        + nameMatches("TABLE_NAME"))) {
             statement.setString(1, table);
+            statement.setString(2, table);
             try (var rs = statement.executeQuery()) {
                 return rs.next() ? rs.getString(1) : null;
             }
@@ -618,7 +658,7 @@ public final class OracleDialect implements Dialect {
     @Override
     public String checksSql(String table) {
         return "SELECT c.CONSTRAINT_NAME, c.SEARCH_CONDITION FROM USER_CONSTRAINTS c "
-                + "WHERE c.CONSTRAINT_TYPE = 'C' AND c.TABLE_NAME = UPPER(?) "
+                + "WHERE c.CONSTRAINT_TYPE = 'C' AND " + nameMatches("c.TABLE_NAME") + " "
                 + "ORDER BY c.CONSTRAINT_NAME";
     }
 
