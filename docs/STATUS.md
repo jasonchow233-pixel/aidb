@@ -11,7 +11,7 @@
 |---|---|
 | 命令 | `./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`） |
 | 最近一次全量回量 | 2026-11-02 · macOS 15.7 x64 · JDK 25.0.4（IntelliJ JBR）· 本机 Docker 可用 |
-| 结果 | **1303 条 / 148 类 / 0 失败**（另有 34 条环境门控跳过）—— R45 G3-a + D-10/D-15 后回量（`./scripts/build.sh` 全绿；较上一版 **+4 条**：`I18nAuditTest`「模型层交出的键」门禁 1、`TableDdlTest` 双语渲染正证 1 + 重命名弹窗自建门禁 1、`ObjectSectionsPanelTest` 索引来源渲染成词门禁 1。⚠️ 本轮**连着两轮全量各炸一个用例**（`DataGridPagerFitTest`、`DataGridFormViewTest`，同一个异常形状：`Parent.lookup` 里「Index 15 out of bounds for length 0」，单跑必绿）—— 不是产品回归，是测试线程直接遍历正被 FX 线程重建的子树；两个类里剩下的取节点入口（含轮询条件）全部收回 FX 线程后第三次全量才绿。中途量过的 1295 / 1296 / 1299 / 1301 都是**过程中的状态**，一律以最后一次全量实测为准。真库首跑当场抓出两条产品缺陷（表注释钩子被未闭合块注释吃掉、PG 外键动作码映射错），已修 —— 见 §2「结构编辑」与 D-5 |
+| 结果 | **1319 条 / 150 类 / 0 失败**（另有 34 条环境门控跳过）—— R45 G3-b 批 1（错误文案族键化）后回量（`./scripts/build.sh` 全绿，15:31；较上一版 **+16 条 / +2 类**：新增 `ErrorLocatorTest`（约束Advice 键 4 条）与 `ErrorTextTest`（双语渲染口 7 条），`ErrorClassifierTest` 改写成按键断言 13 条，`ErrorDetailsTest` 重写为 7 条并补一条「升格到标题的做法与语言无关」的正证。逐模块：`adb-ui-shell` 711 · `adb-introspect` 189 · `adb-jdbc` 115 · `adb-safety` 76 · `adb-transfer` 50 · `adb-ui-core` 62 · `adb-session` 33 · `adb-sql` 31 · `adb-model` 30 · `adb-editing` 19 · `adb-fixtures` 3。<br>⚠️ 两条**非致命异常**留在了日志里，不是这轮改出来的，但记在这里免得下次当成新现象：① `AppShellTest` 里崩机处理器打出 `Key too long: ui.query.colwidth.…` —— 列宽偏好键直接拼连接名，长名字会被 Preferences 拒写（已立案 **D-18**）；② `ToolbarDiscoverabilityTest` 有一次 Monocle 渲染线程报 `Too small int buffer size 1180x800 [944000] > 880000`，重跑即绿，属离屏缓冲尺寸而非产品缺陷 |
 
 **口径警告（改数字前必读）**：4 个测试类用 `@Nested`，surefire 的 XML 会把外层类写成 `tests="0"`
 （真实用例在内层类条目里）。按 `tests=` 属性统计会少算一百多条 —— 所以计数一律走
