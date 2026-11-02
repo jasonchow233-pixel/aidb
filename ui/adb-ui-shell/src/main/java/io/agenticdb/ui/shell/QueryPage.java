@@ -1143,21 +1143,24 @@ public final class QueryPage extends VBox implements AutoCloseable {
     /**
      * ⭐ Q4：结果列宽的持久化。
      *
-     * <p>键带连接名，避免两个连接的结果表互相覆盖。
+     * <p>键带连接名，避免两个连接的结果表互相覆盖；带名字就必须过
+     * {@link SettingsStore#key} —— 连接名是自由文本（⭐ D-18）。
      */
-    private double savedColumnWidth(String key, double fallback) {
+    private double savedColumnWidth(String columnId, double fallback) {
         if (settings == null || connectionName == null) {
             return fallback;
         }
-        return settings.getInt("ui.query.colwidth." + connectionName + "." + key,
+        return settings.getInt(
+                SettingsStore.key("ui.query.colwidth", connectionName, columnId),
                 (int) fallback);
     }
 
-    private void saveColumnWidth(String key, double width) {
+    private void saveColumnWidth(String columnId, double width) {
         if (settings == null || connectionName == null || width <= 0) {
             return;
         }
-        settings.setInt("ui.query.colwidth." + connectionName + "." + key, (int) width);
+        settings.setInt(SettingsStore.key("ui.query.colwidth", connectionName, columnId),
+                (int) width);
     }
 
     private String explainSql(String sql) {

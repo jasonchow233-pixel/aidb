@@ -16,6 +16,58 @@ import java.util.prefs.Preferences;
  */
 public final class SettingsStore {
 
+    /**
+     * ⭐ D-18：偏好键的长度上限。
+     *
+     * <p>{@code java.util.prefs} 对**单个键**只放行 80 个字符，第 81 个直接抛
+     * {@code IllegalArgumentException: Key too long}（2026-11-02 用临时 userRoot
+     * 逐长度试过：长度 80 写进得去，81 抛）。这个数字不写在别处 —— 改了它，
+     * {@link #key} 的行为门禁会红。
+     */
+    private static final int MAX_KEY_LENGTH = 80;
+
+    /** 摘要部分的十六进制长度（48 bit，个人偏好里不会有碰撞）。 */
+    private static final int DIGEST_HEX_LENGTH = 12;
+
+    /**
+     * ⭐ D-18：拼一个**一定写得下**的偏好键。
+     *
+     * <p>列宽/列序这类偏好键里塞过连接名、表名、列名，而连接名是自由文本 ——
+     * SQLite 连接的显示名就是整条文件路径。原先这种键超限就抛，抛在拖拽/防抖
+     * 回调里，崩机处理器只在日志留一行：**长名字连接的列宽记忆静默失效**，
+     * 界面上和「没存过」长得一模一样。
+     *
+     * <p>超上限时保留可读前缀（人还要能在偏好文件里认出这是哪一类），
+     * 把可变部分换成稳定摘要。短键的形状**完全不变** —— 已经存好的偏好一个都不作废。
+     */
+    public static String key(String prefix, String... parts) {
+        StringBuilder joined = new StringBuilder(prefix);
+        for (String part : parts) {
+            joined.append('.').append(part == null ? "" : part);
+        }
+        if (joined.length() <= MAX_KEY_LENGTH) {
+            return joined.toString();
+        }
+        return prefix + ".h" + digest(joined.toString());
+    }
+
+    private static String digest(String value) {
+        byte[] hash;
+        try {
+            hash = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (java.security.NoSuchAlgorithmException absent) {
+            // JDK 规范要求 SHA-256 必须在 —— 真没有时不该静默换一种摘要：
+            // 换摘要等于把用户已经存下的列宽全变成另一批键。
+            throw new IllegalStateException(absent);
+        }
+        StringBuilder hex = new StringBuilder(DIGEST_HEX_LENGTH);
+        for (int i = 0; i < DIGEST_HEX_LENGTH / 2; i++) {
+            hex.append(String.format("%02x", hash[i]));
+        }
+        return hex.toString();
+    }
+
     /** 已清过的节点（按节点名）：一次性布尔会让第二个节点永远清不掉，行为门禁也测不了。 */
     private static final java.util.Set<String> CLEARED =
             java.util.concurrent.ConcurrentHashMap.newKeySet();

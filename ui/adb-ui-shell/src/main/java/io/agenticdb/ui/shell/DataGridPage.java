@@ -3185,7 +3185,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     private String layoutKey(String suffix) {
-        return "ui.grid." + connectionName + "." + tableName + "." + suffix;
+        // ⭐ D-18：连接名与表名都是自由文本，键必须走带长度上限的组装。
+        return SettingsStore.key("ui.grid", connectionName, tableName, suffix);
     }
 
     /**
