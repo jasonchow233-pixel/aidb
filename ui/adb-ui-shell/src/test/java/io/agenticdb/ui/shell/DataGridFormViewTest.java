@@ -222,7 +222,8 @@ class DataGridFormViewTest {
         assertThat(displayedCellText(0, "name"))
                 .as("显示口径里已经是新值，但库里还没动")
                 .isEqualTo("Alicia");
-        assertThat(((Button) page.lookup("#data-save")).isDisabled())
+        Button saveButton = node("#data-save");
+        assertThat(saveButton.isDisabled())
                 .as("有改动，「保存」必须亮起来")
                 .isFalse();
 
@@ -274,9 +275,10 @@ class DataGridFormViewTest {
                 .as("打回原值 —— 输入框不能停在一个永远不会被保存的字符串上")
                 .isEqualTo("10");
 
+        TextField again = field("amount");
         interact(() -> {
-            field("amount").setText("");
-            field("amount").fireEvent(new ActionEvent());
+            again.setText("");
+            again.fireEvent(new ActionEvent());
         });
         assertThat(page.dirtyCount()).isZero();
         assertThat(lastStatus.get())
@@ -305,10 +307,7 @@ class DataGridFormViewTest {
                 stageRef.set(stage);
             });
             DataGridPage view = pageRef.get();
-            WaitForAsyncUtils.waitFor(10, TimeUnit.SECONDS, () ->
-                    view.lookup("#data-table") != null
-                            && ((TableView<?>) view.lookup("#data-table"))
-                            .getItems().size() == 3);
+            WaitForAsyncUtils.waitFor(10, TimeUnit.SECONDS, () -> tableHasRows(view, 3));
 
             interact(() -> {
                 ((TableView<Map<String, Object>>) view.lookup("#data-table"))
@@ -316,8 +315,9 @@ class DataGridFormViewTest {
                 view.setFormView(true);
             });
 
-            assertThat(((ScrollPane) view.lookup("#data-form")).isVisible()).isTrue();
-            TextField name = (TextField) view.lookup("#data-form-name");
+            ScrollPane form = fxNode(view, "#data-form");
+            assertThat(form.isVisible()).isTrue();
+            TextField name = fxNode(view, "#data-form-name");
             assertThat(name).as("只读表也必须建出表单字段").isNotNull();
             assertThat(name.getText())
                     .as("只读不等于空白：值必须照常显示")
@@ -325,7 +325,8 @@ class DataGridFormViewTest {
             assertThat(name.isDisabled())
                     .as("视图没有主键 → 不可编辑 —— 字段必须禁用，而不是让人改完才发现保存不了")
                     .isTrue();
-            assertThat(((Button) view.lookup("#data-add")).isDisabled())
+            Button addKey = fxNode(view, "#data-add");
+            assertThat(addKey.isDisabled())
                     .as("同一口径：工具条的「新增」也是灰的")
                     .isTrue();
         } finally {
@@ -381,14 +382,11 @@ class DataGridFormViewTest {
                 stageRef.set(stage);
             });
             DataGridPage view = pageRef.get();
-            WaitForAsyncUtils.waitFor(10, TimeUnit.SECONDS, () ->
-                    view.lookup("#data-table") != null
-                            && ((TableView<?>) view.lookup("#data-table")).getItems().size() == 3);
+            WaitForAsyncUtils.waitFor(10, TimeUnit.SECONDS, () -> tableHasRows(view, 3));
             WaitForAsyncUtils.waitForFxEvents(4);
 
-            TableView<Map<String, Object>> table =
-                    (TableView<Map<String, Object>>) view.lookup("#data-table");
-            Region toolbar = (Region) view.lookup("#data-toolbar");
+            TableView<Map<String, Object>> table = fxNode(view, "#data-table");
+            Region toolbar = fxNode(view, "#data-toolbar");
             assertThat(toolbar).as("找不到 #data-toolbar").isNotNull();
             assertToolbarIsHonest(view, toolbar, width);
             assertThat(WaitForAsyncUtils.asyncFx(view::foldedToolbarKeysForTest).get())
@@ -468,7 +466,7 @@ class DataGridFormViewTest {
                     .as("#%s 越出工具条右边缘", key.getId())
                     .isLessThanOrEqualTo(toolbarRight + 0.5);
         }
-        Node overflow = view.lookup("#data-toolbar-overflow");
+        Node overflow = fxNode(view, "#data-toolbar-overflow");
         assertThat(overflow.isManaged())
                 .as("有键被折叠时 » 必须出现；没有折叠时必须让位")
                 .isEqualTo(!folded.isEmpty());
@@ -502,42 +500,71 @@ class DataGridFormViewTest {
         return scene;
     }
 
+    /**
+     * ⚠️ 读节点必须回 FX 线程 —— 与 {@link #click(String)} 上面那条注释同一个坑，
+     * 只是它当时只修了按钮那一条路。全量套件里 {@code fitPagerToAvailableWidth} /
+     * {@code updateToolbarOverflow} 这些 {@code Platform.runLater} 还在改子树，
+     * 测试线程直接 {@code lookup} 就是在并发遍历一个正在被清空的
+     * {@code getChildrenUnmodifiable()}，随机炸成
+     * 「Index 15 out of bounds for length 0」（{@code Parent.lookup} 不是线程安全的）。
+     * 单独跑永远绿，只有满负载才复现 —— 所以这条规则只能写在取节点的唯一入口上。
+     */
     @SuppressWarnings("unchecked")
-    private TableView<Map<String, Object>> table() {
-        return (TableView<Map<String, Object>>) page.lookup("#data-table");
+    private static <T extends javafx.scene.Node> T fxNode(javafx.scene.Parent root,
+                                                          String selector) throws Exception {
+        return (T) WaitForAsyncUtils.waitForAsyncFx(5_000, () -> root.lookup(selector));
+    }
+
+    private <T extends javafx.scene.Node> T node(String selector) throws Exception {
+        return fxNode(page, selector);
+    }
+
+    /** 行数据是否已经到达 —— 轮询条件比一次性 lookup 更容易撞上重建，所以同样走 FX。 */
+    private static boolean tableHasRows(DataGridPage view, int expected) throws Exception {
+        Integer size = WaitForAsyncUtils.waitForAsyncFx(5_000, () -> {
+            TableView<?> table = (TableView<?>) view.lookup("#data-table");
+            return table == null ? -1 : table.getItems().size();
+        });
+        return size == expected;
     }
 
     @SuppressWarnings("unchecked")
-    private TableView<Map<String, Object>> transposeTable() {
-        return (TableView<Map<String, Object>>) page.lookup("#data-transpose");
+    private TableView<Map<String, Object>> table() throws Exception {
+        return node("#data-table");
     }
 
-    private ScrollPane formPane() {
-        ScrollPane form = (ScrollPane) page.lookup("#data-form");
+    @SuppressWarnings("unchecked")
+    private TableView<Map<String, Object>> transposeTable() throws Exception {
+        return node("#data-transpose");
+    }
+
+    private ScrollPane formPane() throws Exception {
+        ScrollPane form = node("#data-form");
         assertThat(form).as("找不到 #data-form").isNotNull();
         return form;
     }
 
-    private Label formPosition() {
-        Label position = (Label) page.lookup("#data-form-position");
+    private Label formPosition() throws Exception {
+        Label position = node("#data-form-position");
         assertThat(position).as("找不到 #data-form-position").isNotNull();
         return position;
     }
 
-    private TextField field(String column) {
-        TextField field = (TextField) page.lookup("#data-form-" + column);
+    private TextField field(String column) throws Exception {
+        TextField field = node("#data-form-" + column);
         assertThat(field).as("找不到表单字段 #data-form-%s", column).isNotNull();
         return field;
     }
 
-    private CheckBox formCheck(String column) {
-        CheckBox box = (CheckBox) page.lookup("#data-form-" + column);
+    private CheckBox formCheck(String column) throws Exception {
+        CheckBox box = node("#data-form-" + column);
         assertThat(box).as("找不到表单复选框 #data-form-%s", column).isNotNull();
         return box;
     }
 
-    private void selectRow(int index) {
-        interact(() -> table().getSelectionModel().clearAndSelect(index));
+    private void selectRow(int index) throws Exception {
+        TableView<Map<String, Object>> target = table();
+        interact(() -> target.getSelectionModel().clearAndSelect(index));
     }
 
     private String displayedCellText(int row, String column) {

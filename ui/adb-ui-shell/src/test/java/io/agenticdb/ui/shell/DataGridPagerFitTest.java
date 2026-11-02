@@ -78,10 +78,7 @@ class DataGridPagerFitTest {
 
     @BeforeEach
     void awaitLoaded() throws Exception {
-        WaitForAsyncUtils.waitFor(10, TimeUnit.SECONDS, () ->
-                page.lookup("#data-table") != null
-                        && ((javafx.scene.control.TableView<?>) page.lookup("#data-table"))
-                        .getItems().size() == 3);
+        WaitForAsyncUtils.waitFor(10, TimeUnit.SECONDS, () -> tableHasRows(3));
         // 宽度监听器把拟合任务排在 runLater 里，排空再量。
         WaitForAsyncUtils.waitForFxEvents(30);
     }
@@ -107,13 +104,20 @@ class DataGridPagerFitTest {
                 .contains("data-row-actions", "data-first", "data-prev", "data-page",
                         "data-next", "data-last", "data-page-options",
                         "data-find-toggle", "data-view-grid", "data-view-form");
-        HBox pager = (HBox) page.lookup("#data-pager");
-        for (String gone : List.of("#data-range", "#data-jump", "#data-jump-row",
-                "#data-page-size", "#data-per-page", "#data-page-label", "#data-record-nav")) {
-            assertThat(pager.lookup(gone))
-                    .as("⭐ N20：%s 不该再出现在底栏（记录计数归状态栏，页大小归齿轮）", gone)
-                    .isNull();
-        }
+        List<String> reappeared = WaitForAsyncUtils.asyncFx(() -> {
+            HBox bar = (HBox) page.lookup("#data-pager");
+            List<String> found = new ArrayList<>();
+            for (String gone : List.of("#data-range", "#data-jump", "#data-jump-row",
+                    "#data-page-size", "#data-per-page", "#data-page-label", "#data-record-nav")) {
+                if (bar.lookup(gone) != null) {
+                    found.add(gone);
+                }
+            }
+            return found;
+        }).get();
+        assertThat(reappeared)
+                .as("⭐ N20：这些不该再出现在底栏（记录计数归状态栏，页大小归齿轮）：%s", reappeared)
+                .isEmpty();
     }
 
     @Test
@@ -150,7 +154,7 @@ class DataGridPagerFitTest {
 
     @Test
     void thePageBoxFitsAFourDigitPageNumber() throws Exception {
-        TextField box = (TextField) page.lookup("#data-page");
+        TextField box = node("#data-page");
         assertThat(box).isNotNull();
         assertThat(box.getText()).as("页码框显示当前页号").isEqualTo("1");
         double need = WaitForAsyncUtils.asyncFx(() -> {
@@ -167,23 +171,20 @@ class DataGridPagerFitTest {
     void thePageBoxJumpsOnEnter() throws Exception {
         page.setPageSizeForTest(2);
         WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> {
-            TextField box = (TextField) page.lookup("#data-page");
-            return box != null && "1".equals(box.getText())
-                    && ((javafx.scene.control.TableView<?>) page.lookup("#data-table"))
-                    .getItems().size() == 2;
+            TextField box = node("#data-page");
+            return box != null && "1".equals(box.getText()) && tableHasRows(2);
         });
         WaitForAsyncUtils.asyncFx(() -> {
             page.jumpToPage("2");
             return null;
         }).get();
         WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> {
-            TextField field = (TextField) page.lookup("#data-page");
-            @SuppressWarnings("unchecked")
-            javafx.scene.control.TableView<Map<String, Object>> table =
-                    (javafx.scene.control.TableView<Map<String, Object>>) page.lookup("#data-table");
+            TextField field = node("#data-page");
+            List<Object> rows = tableRows();
             return field != null && "2".equals(field.getText())
-                    && table.getItems().size() == 1
-                    && "3".equals(String.valueOf(table.getItems().get(0).get("id")));
+                    && rows.size() == 1
+                    && "3".equals(String.valueOf(
+                            ((Map<?, ?>) rows.getFirst()).get("id")));
         });
     }
 
@@ -204,9 +205,8 @@ class DataGridPagerFitTest {
     }
 
     @Test
-    void theMagnifierOpensAndClosesTheFindBar() {
-        javafx.scene.control.ButtonBase toggle =
-                (javafx.scene.control.ButtonBase) page.lookup("#data-find-toggle");
+    void theMagnifierOpensAndClosesTheFindBar() throws Exception {
+        javafx.scene.control.ButtonBase toggle = node("#data-find-toggle");
         WaitForAsyncUtils.asyncFx(toggle::fire);
         WaitForAsyncUtils.waitForFxEvents();
         assertThat(page.findBarVisible()).as("放大镜打开查找条").isTrue();
@@ -216,23 +216,23 @@ class DataGridPagerFitTest {
     }
 
     @Test
-    void theViewTogglesSwitchGridAndForm() {
-        ToggleButton form = (ToggleButton) page.lookup("#data-view-form");
-        ToggleButton grid = (ToggleButton) page.lookup("#data-view-grid");
+    void theViewTogglesSwitchGridAndForm() throws Exception {
+        ToggleButton form = node("#data-view-form");
+        ToggleButton grid = node("#data-view-grid");
         assertThat(grid.isSelected()).as("默认是表格视图").isTrue();
         WaitForAsyncUtils.asyncFx(form::fire);
         WaitForAsyncUtils.waitForFxEvents();
         assertThat(form.isSelected()).isTrue();
         assertThat(grid.isSelected()).isFalse();
-        assertThat(page.lookup("#data-form-section").isVisible())
+        assertThat(node("#data-form-section").isVisible())
                 .as("表单视图整块出现").isTrue();
-        assertThat(page.lookup("#data-record-nav").isVisible())
+        assertThat(node("#data-record-nav").isVisible())
                 .as("网格里点一行就是导航；表单视图才需要另一套方向键")
                 .isTrue();
         WaitForAsyncUtils.asyncFx(grid::fire);
         WaitForAsyncUtils.waitForFxEvents();
         assertThat(grid.isSelected()).isTrue();
-        assertThat(page.lookup("#data-form-section").isVisible()).isFalse();
+        assertThat(node("#data-form-section").isVisible()).isFalse();
     }
 
     /**
@@ -250,8 +250,7 @@ class DataGridPagerFitTest {
 
         ColumnDef name = new SchemaService().describe(session, "t").columns().stream()
                 .filter(column -> column.name().equals("name")).findFirst().orElseThrow();
-        Map<String, Object> row = ((javafx.scene.control.TableView<Map<String, Object>>)
-                page.lookup("#data-table")).getItems().get(0);
+        Map<String, Object> row = firstRow();
         WaitForAsyncUtils.asyncFx(() -> {
             page.showDetails(row, name);
             return null;
@@ -318,6 +317,37 @@ class DataGridPagerFitTest {
                             && shown("#data-page-options"),
                     ((HBox) page.lookup("#data-pager")).prefWidth(-1));
         }).get();
+    }
+
+    /**
+     * ⚠️ 读子树必须回 FX 线程。{@code DataGridPage} 的宽度监听器把
+     * {@code fitPagerToAvailableWidth} / {@code updateToolbarOverflow} 排在
+     * {@code Platform.runLater} 里；测试线程直接 {@code page.lookup(...)} 就是在并发遍历
+     * 一个正被清空的 {@code getChildrenUnmodifiable()}，满负载的全量套件里会随机炸成
+     * 「Index 15 out of bounds for length 0」（{@code Parent.lookup} 不是线程安全的）。
+     * 单跑永远绿 —— 所以规则只能落在取节点的唯一入口上。
+     */
+    @SuppressWarnings("unchecked")
+    private <T extends Node> T node(String selector) throws Exception {
+        return (T) WaitForAsyncUtils.waitForAsyncFx(5_000, () -> page.lookup(selector));
+    }
+
+    /** 行数只读一次快照，不把活的 {@code ObservableList} 带回测试线程。 */
+    private List<Object> tableRows() throws Exception {
+        return WaitForAsyncUtils.waitForAsyncFx(5_000, () -> {
+            javafx.scene.control.TableView<?> table =
+                    (javafx.scene.control.TableView<?>) page.lookup("#data-table");
+            return table == null ? List.of() : new ArrayList<Object>(table.getItems());
+        });
+    }
+
+    private boolean tableHasRows(int expected) throws Exception {
+        return tableRows().size() == expected;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> firstRow() throws Exception {
+        return (Map<String, Object>) tableRows().getFirst();
     }
 
     private boolean shown(String id) {
