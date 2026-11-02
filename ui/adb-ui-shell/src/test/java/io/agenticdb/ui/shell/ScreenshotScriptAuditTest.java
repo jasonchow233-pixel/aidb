@@ -224,6 +224,52 @@ class ScreenshotScriptAuditTest {
         return dangling;
     }
 
+    /**
+     * ⭐ R47-b：库选择器两帧的摆态值必须真的被外壳认得。
+     *
+     * <p>与「开关写了没人读」同型病：pose 名打错一个字母，那一帧照样拍出默认查询页、
+     * 返回码照样是 0 —— 而这两张是「库▾」唯一的<b>画面</b>证据（它交付时一张帧都没有，
+     * 恰恰因为过去只有行为门禁、没有画面门禁）。
+     */
+    @Test
+    void everyCatalogPoseUsedByTheScriptIsHandled() throws IOException {
+        Path root = repositoryRoot();
+        String script = Files.readString(root.resolve("scripts/shots.sh"), StandardCharsets.UTF_8);
+
+        assertThat(assertPosesHandled(script, "ADB_CATALOG_POSE",
+                root.resolve("ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/AppShell.java")))
+                .as("库▾ 帧的摆态名必须在 AppShell 的 pose 分派里有对应分支")
+                .isEmpty();
+    }
+
+    /**
+     * ⭐ R47-b：真库帧的两条红线 —— <b>不静默冒充</b>、<b>不带口令</b>。
+     *
+     * <p>① 环境没配时必须**跳过并说明**：否则 {@code ADB_CONNECTION=matrix-mysql} 找不到档案，
+     * 那一格会退回演示库（SQLite，没有库一层）拍出一张「看着像真库」的图 ——
+     * 那正是这颗控件欠帧的原因，不能用一张假帧把它填掉。
+     * ② 脚本里不许出现任何 {@code ADB_TEST_*_PASSWORD=<字面量>}：口令只从环境读，
+     * 读也只读 {@code ${VAR:-}}，一次都不写进脚本、帧名或提交。
+     */
+    @Test
+    void matrixFramesAreGatedAndCarryNoPasswords() throws IOException {
+        Path root = repositoryRoot();
+        String script = Files.readString(root.resolve("scripts/shots.sh"), StandardCharsets.UTF_8);
+
+        assertThat(script).as("矩阵行必须存在（库▾ 与 MySQL 单句式视图都靠它）")
+                .contains("ADB_MATRIX=mysql");
+        assertThat(script).as("没配矩阵环境时必须跳过真库帧，而不是退回演示库拍一张")
+                .contains("*ADB_MATRIX=*)")
+                .contains("${ADB_TEST_MYSQL_PASSWORD:-}");
+        assertThat(Pattern.compile("ADB_TEST_[A-Z]+_PASSWORD=[^\"]")
+                .matcher(script).find())
+                .as("脚本里出现了 ADB_TEST_*_PASSWORD=<字面量> —— 口令只能从环境读，不能落进脚本")
+                .isFalse();
+        // 档案隔离：截图不得改写用户真实的 connections.json（R47-b 之前一直在改写）。
+        assertThat(script).as("截图运行必须把连接档案指到临时文件")
+                .contains("export ADB_CONNECTIONS_FILE=");
+    }
+
     // ─────────────────────────── 工具 ───────────────────────────
 
     /** 一条截图帧：名称 / 点击目标 / 等待 / 该帧预置的环境变量。 */
