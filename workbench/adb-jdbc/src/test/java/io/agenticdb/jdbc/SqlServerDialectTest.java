@@ -126,4 +126,55 @@ class SqlServerDialectTest {
                 .isFalse();
         assertThat(dialect.supportsForeignKeyOnUpdate()).isTrue();
     }
+
+    /**
+     * ⭐ D-20 的门禁：表清单元信息查询不许引用 {@code sys.tables} 里不存在的列。
+     *
+     * <p>R46 在 SQL Server 2022 真容器上跑出来的：上一版写了 {@code t.collation_name}，
+     * 而 SQL Server 的排序规则是<b>列</b>属性（{@code sys.columns} 才有），
+     * 表级根本没有 —— 整条查询直接 {@code Invalid column name 'collation_name'}，
+     * 于是 SQL Server 的表清单/结构页全空。真库实测过两件事：
+     * {@code sys.all_columns WHERE object_id=OBJECT_ID('sys.tables') AND name LIKE '%coll%'}
+     * 返回 <b>0 行</b>；{@code DATABASEPROPERTYEX(DB_NAME(),'Collation')} 返回
+     * {@code SQL_Latin1_General_CP1_CI_AS}。
+     *
+     * <p>⚠️ 这条只是「文本层」的门禁（防止回归成大写开头的错列名）；
+     * 真正验「跑得通」的是 {@link RealDatabaseContract#metadataQueriesRun}。
+     */
+    @Test
+    void tableMetaAsksTheDatabaseForItsCollationBecauseTablesDoNotHaveOne() {
+        String sql = dialect.tableMetaSql();
+
+        assertThat(sql)
+                .as("sys.tables 没有 collation_name 列 —— 引用它整条查询就废了")
+                .doesNotContain("t.collation_name");
+        assertThat(sql)
+                .as("排序规则退一步取库级默认值（不是每表一个值，界面要按这个显示）")
+                .contains("DATABASEPROPERTYEX(DB_NAME(), 'Collation')");
+    }
+
+    /**
+     * ⭐ D-24 的门禁：触发器查询不许引用 {@code sys.triggers} 里不存在的列。
+     *
+     * <p>R46 在 SQL Server 2022 真容器上跑出来的：上一版读了
+     * {@code t.is_insert_trigger / is_update_trigger / is_delete_trigger}，
+     * 而这三列<b>不在</b> {@code sys.triggers} 上（实测该视图只有
+     * {@code is_instead_of_trigger} 一个布尔列；DML 事件在
+     * {@code sys.trigger_events.type_desc}）。整条查询报
+     * {@code Invalid column name 'is_insert_trigger'}，生产代码把异常吞成
+     * 「这张表没有触发器」—— SQL Server 的触发器页因此<b>永远是空的</b>。
+     */
+    @Test
+    void triggerEventsComeFromTriggerEventsBecauseSysTriggersHasNoDmlFlags() {
+        String sql = dialect.triggersSql("users");
+
+        assertThat(sql)
+                .as("sys.triggers 没有 is_insert_trigger / is_update_trigger / is_delete_trigger")
+                .doesNotContain("is_insert_trigger")
+                .doesNotContain("is_update_trigger")
+                .doesNotContain("is_delete_trigger");
+        assertThat(sql)
+                .as("DML 事件在 sys.trigger_events（一个触发器可以挂多个事件，聚成一行）")
+                .contains("sys.trigger_events");
+    }
 }

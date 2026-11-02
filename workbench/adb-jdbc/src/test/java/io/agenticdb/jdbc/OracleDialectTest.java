@@ -114,4 +114,72 @@ class OracleDialectTest {
         assertThat(dialect.supportsColumnComment()).isTrue();
         assertThat(dialect.minVersionNote()).contains("12c");
     }
+
+    /**
+     * ⭐ D-22 的门禁：目录查询必须<b>同时</b>认「原样」和「大写」两种存法。
+     *
+     * <p>这条是 R46 在 Oracle 23ai Free 真容器上跑出来的：设计器建表一律加引号，
+     * Oracle 就把名字原样存进目录；而这几条查询以前只写 {@code = UPPER(?)}，
+     * 实测 {@code TABLE_NAME='adb_case_probe'} 命中 1 行、{@code =UPPER(...)} 命中 0 行 ——
+     * 于是<b>我们自己建出来的表</b>在触发器页、约束页、注释页里全部隐形。
+     * 界面不会报错，只会显示「没有触发器 / 没有约束 / 没有注释」——
+     * 这正是「看起来是真的但什么都不做」的那类缺陷。
+     */
+    @Test
+    void dictionaryLookupsMatchBothTheStoredAndFoldedName() {
+        assertThat(dialect.triggersSql("orders"))
+                .as("触发器：原样 + 大写两个都要认")
+                .contains("TABLE_NAME IN (?, UPPER(?))");
+        assertThat(dialect.tableCommentQuery("orders"))
+                .as("表注释：原样 + 大写两个都要认")
+                .contains("TABLE_NAME IN (?, UPPER(?))");
+        assertThat(dialect.checksSql("orders"))
+                .as("CHECK 约束：原样 + 大写两个都要认")
+                .contains("c.TABLE_NAME IN (?, UPPER(?))");
+
+        // 只剩 UPPER 的写法一律算回归：它只会命中「没加引号建」的对象。
+        for (String sql : List.of(dialect.triggersSql("orders"),
+                dialect.tableCommentQuery("orders"), dialect.checksSql("orders"))) {
+            assertThat(sql)
+                    .as("目录查询不许再出现「只按大写匹配」：%s", sql)
+                    .doesNotContain("= UPPER(?)");
+        }
+    }
+
+    /**
+     * ⭐ D-22 的内联通道：{@code columnCommentsSql} 的表名不进参数，得自己拼两个字面量。
+     *
+     * <p>顺带钉住转义 —— 名字里的 {@code '} 要写两遍，否则拼出来的是一条坏 SQL
+     * （更糟的情况是可注入）。
+     */
+    @Test
+    void inlinedColumnCommentLookupCarriesBothFormsAndEscapesTheQuote() {
+        assertThat(dialect.columnCommentsSql("orders"))
+                .contains("TABLE_NAME IN ('orders', 'ORDERS')");
+
+        assertThat(dialect.columnCommentsSql("o'brien"))
+                .as("转义先做大写后做都行，但引号必须成对 —— 这条通道的名字是内联的")
+                .contains("TABLE_NAME IN ('o''brien', 'O''BRIEN')");
+    }
+
+    /**
+     * D-22：占位符数量变了（1 → 2），消费方必须按实际个数绑。
+     *
+     * <p>这里不做集成（要真连接），只把「两条 IN 各一个 {@code ?}」钉死，
+     * 并让 {@code SchemaServiceTest} 用假连接验绑参次数 —— 少绑一次在 Oracle 上
+     * 是 {@code ORA-01008 未所有变量都被绑定}，而那条异常在结构页被吞成「注释为空」，
+     * 现场表现与「这个表真的没注释」完全一样。
+     */
+    @Test
+    void nameMatchUsesTwoPlaceholdersSoTheCallerMustBindBoth() {
+        assertThat(dialect.tableCommentQuery("orders").split("\\?", -1).length - 1)
+                .as("表注释查询有 2 个占位符")
+                .isEqualTo(2);
+        assertThat(dialect.triggersSql("orders").split("\\?", -1).length - 1)
+                .as("触发器查询有 2 个占位符")
+                .isEqualTo(2);
+        assertThat(dialect.checksSql("orders").split("\\?", -1).length - 1)
+                .as("CHECK 查询有 2 个占位符")
+                .isEqualTo(2);
+    }
 }
