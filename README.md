@@ -43,11 +43,21 @@ lack `CREATE OR REPLACE VIEW` (it does not), which made us drop-and-recreate a v
 could have replaced. Contract #9 then asked a question no unit test had answered — the query page's
 database picker proves it rebinds the session, but nothing had ever run a statement against the second
 database to see where it landed. It now does, on two same-host databases per engine, using one table
-name and byte-identical SQL on both sides. Still unverified against a real server: TLS certificate-chain
-options, which need
-a PKI rather than a container. Those paths are marked in the dialect
-sources, and the UI hides what a database genuinely cannot express (SQL Server / Oracle explain plans,
-SQL Server column comments, Oracle `ON UPDATE`) instead of offering dead controls.
+name and byte-identical SQL on both sides. Encryption got its own tier the same way: `scripts/dbmatrix.sh tls-up`
+brings up MySQL, MariaDB and PostgreSQL behind a self-signed CA — and a second, unrelated CA — so
+3 × 6 contracts can ask whether "no encryption" really leaves the session in plaintext, whether
+"require" really encrypts it, whether handing over the issuing CA makes chain verification pass while
+a rogue CA is rejected, and whether a hostname that is not written in the certificate is refused.
+That caught D-33 (choosing "no encryption" wrote no parameter at all, and all three drivers encrypt
+when the connection string says nothing — the label was lying), D-32 (a certificate failure was
+reported as "connection lost", so the advice sent users off to check their network) and D-34 (a
+connection that never came up was reported as a query timeout). Where a driver genuinely cannot
+express something, the field is disabled and the hint says what to do instead of offering a control
+that silently does nothing: Connector/J 8.2 has no CA-file option — neither `sslCA` nor `sslCapath`,
+and unknown properties are ignored without a warning — so the Root Certificate box is greyed out for
+MySQL and the hint points at `trustCertificateKeyStoreUrl`. The UI also hides what a database
+genuinely cannot express (SQL Server / Oracle explain plans, SQL Server column comments,
+Oracle `ON UPDATE`) instead of offering dead controls.
 
 Dialect differences sit behind one `Dialect` abstraction, so introspection, DDL generation and
 type mapping behave the same on every server — including where they genuinely cannot, such as
@@ -216,7 +226,12 @@ MySQL 被当成没有 `CREATE OR REPLACE VIEW`（其实有），于是把一句�
 第 9 条「切库落点与隔离」问的是单测一直没答的问题：查询页那颗库选择器只验过「连接对象换了库名」，
 **没人把语句真交给绑到新库的会话看过它落在哪儿** —— 现在是每家两把同机库、同一个表名、字面相同的 SQL，两边各读各的行。
 ⚠️ MySQL 5.7 目前只有方言层的承诺：能证明它的版本矩阵是 opt-in，本机从没跑过（8.x 有执行证据）。
-仍未在真库验证的只剩 TLS 证书链档位（要一套 PKI，不是起个容器就行）。
+TLS 那一层单起了第二圈对端：`scripts/dbmatrix.sh tls-up` 用一把自签 CA + 一把冒名 CA 把
+MySQL / MariaDB / PostgreSQL 各跑一个加密服务，三家 × 6 条契约问的是「选了不加密是否真的明文」
+「require 是否真把会话加密起来」「给了签发方是否真通过、换一把没签过服务器的 CA 是否真被拒」
+「证书里没写的那个名字是否真被挡」。这一跑抓出三条：D-33（选「不加密」时一个参数都不写，
+而三家驱动的默认都是「能加密就加密」—— 那个标签一直在骗人）、D-32（证书失败被归成「连接已断开」，
+建议把人支去查网络）、D-34（连接根本没建起来被归成「查询超时」）。
 
 界面照 Navicat 的交互习惯做：对象树 → 双击表 → 数据页 → 行内编辑 → 预览 SQL → 单事务保存 → 保存后撤销，
 视图同样在这棵树上建 / 改 / 删（设计器弹窗，预览几句就跑几句）。

@@ -10,8 +10,10 @@
 | 项 | 值 |
 |---|---|
 | 命令 | `./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`） |
-| 最近一次全量回量 | 2026-11-02 · macOS 15.7.9 x86_64 · Temurin JDK 25.0.4.1+1 · 本机 Docker 起满五引擎 + 每家两把库（`scripts/dbmatrix.sh`）· **带 `set -a && . scripts/.dbmatrix.env`**（环境变量在，46 条真库用例是真跑的：矩阵这一类 `Tests run: 46, Failures: 0, Skipped: 0`） |
-| 结果 | **1412 条 / 155 类 / 0 失败**（另有 6 条跳过，全部是**设计如此**的门控，见下）—— R52-b 切库落点契约（第 9 条）收官后回量（`./scripts/build.sh` 全绿，2026-11-02 20:00，17:51 分钟；较 R52-a 基线 1407 / 155 = **+5 条 / +0 类**，逐笔对得上：`adb-jdbc` 169 → 174 = **+5**（契约第 9 条在五引擎上各 1 条），其余模块**一条没动** —— `adb-ui-shell` 728 · `adb-session` 33（`CatalogVariantProfileTest` 那条是**把 MariaDB 加进已有循环**，不新增用例，而它此前恰好是盲区：URL 换库的单元门只跑了 MySQL/PG/SQL Server 三家）。类数不变正是因为这一轮只加契约、不加新类。<br>逐模块：`adb-ui-shell` 728 · `adb-introspect` 206 · `adb-jdbc` 174 · `adb-safety` 76 · `adb-ui-core` 62 · `adb-transfer` 50 · `adb-session` 33 · `adb-sql` 31 · `adb-model` 30 · `adb-editing` 19 · `adb-fixtures` 3（合计 1412）。<br>⚠️ 跨轮对比时**别把「用例多了 5 条」读成「能力多了 5 项」** —— 五家服务器各问了一遍「语句到底落在哪儿」，产品代码一行没改。<br>⚠️ 一条**非致命异常**留在了日志里：`ToolbarDiscoverabilityTest` 有一次 Monocle 渲染线程报 `Too small int buffer size 1180x800 [944000] > 880000`，重跑即绿，属离屏缓冲尺寸而非产品缺陷 —— 本轮**照旧出现一次**，且同一个类 11 条 0 失败（异常在渲染线程上、不进用例结论）。`Key too long: ui.query.colwidth.…`（**D-18**）连续第二轮为 0 次。<br>✅ R52-a 首跑日志里那五条「`[真库契约] 清理临时视图失败：视图不存在`」（**D-30**）**连续第二轮归零** —— 契约末步删掉的视图，`finally` 不再补删第二次；本轮日志里该串出现 0 次。那条假警报的害处是把「状态已经是想要的」报成故障，下一次真泄漏会淹在噪音里 |
+| 最近一次全量回量 | 2026-11-02 · macOS 15.7.9 x86_64 · Temurin JDK 25.0.4.1+1 · 本机 Docker 起满五引擎 + 每家两把库（`scripts/dbmatrix.sh`）**+ 三家加密对端**（`dbmatrix.sh tls-up`）· **带 `set -a && . scripts/.dbmatrix.env`**（环境变量在，46 条主矩阵 + 18 条 TLS 矩阵都是真跑的：两类分别 `Tests run: 46, Failures: 0, Skipped: 0` 与 `Tests run: 18, Failures: 0, Skipped: 0`） |
+| 结果 | **1444 条 / 156 类 / 0 失败**（另有 6 条跳过，全部是**设计如此**的门控，见下）—— R47-a TLS 加密对端契约收官后回量（`./scripts/build.sh` 全绿，2026-11-02 21:50，11:42 分钟；较 R52-b 基线 1412 / 155 = **+32 条 / +1 类**，逐笔对得上：`adb-jdbc` 174 → 194 = **+20**（`ExternalTlsDatabaseTest` 18 + `DialectTest` 2）、`adb-safety` 76 → 84 = **+8**（`ErrorClassifierTest` 的三家证书原文链）、`adb-ui-shell` 728 → 732 = **+4**（`ConnectionWizardTest` 2、`ErrorDetailsTest` 2）；新增的那 1 个类就是 `ExternalTlsDatabaseTest`。<br>逐模块：`adb-ui-shell` 732 · `adb-introspect` 206 · `adb-jdbc` 194 · `adb-safety` 84 · `adb-ui-core` 62 · `adb-transfer` 50 · `adb-session` 33 · `adb-sql` 31 · `adb-model` 30 · `adb-editing` 19 · `adb-fixtures` 3（合计 1444）。<br>⚠️ **本轮翻掉两处假门禁，都不在数字里**：① `sessionCipher` 首版对 MySQL / MariaDB 取第 1 列，而 `SHOW SESSION STATUS` 回**两列** —— 第 1 列是变量名 `Ssl_cipher`（永远非空），②③⑤ 三条绿灯是假的，改按方言取列号后才真是绿灯；② 中文 `wizard.ssl.mysqlHint` 漂回「未在真库验证」**一条门禁都不红**（原来的双语条只查信任库 token 在不在、不查结论，黑名单只写了「没跑」），补成「正面写出跑过 + 三种旧话术都拦」之后三次文案变异各红 1 条。<br>⚠️ **D-35（测试侧）**：`ActionRegistryConvergenceTest.densityChangesTheGridRowHeight` 这次全量首跑红 —— 报的是「Expecting actual not to be null」，看着像网格坏了，实际是**数据页没开**（`onFx` 把 FX 线程上的 NPE 吞成 null，于是错误信息指错方向）。同一失败在 HEAD 的独立工作树里复现，与本轮代码无关，是 `AccessibilityAuditTest` / `AppShellTest` 早已记录的那条**连击窗口** race 第三次露头；给它补上同一条「重取单元格 + 等页签真开出」的重试后连续两轮全绿。这条改的是门禁的**失败形状**，用例数没变（仍 732）。<br>⚠️ 日志里的非致命异常本轮**全部归零**（是回量时 `grep -c` 数出来的，不是照上一版抄的）：前两轮各出现一次的 Monocle 离屏缓冲异常（`Too small int buffer size 1180x800 [944000] > 880000`，落在 `ToolbarDiscoverabilityTest` 的渲染线程上，重跑即绿、不进用例结论）**0 次**；`Key too long: ui.query.colwidth.…`（**D-18**）**0 次**（连续第三轮）；`[真库契约] 清理临时视图失败`（**D-30**）**0 次**（连续第三轮） |
+
+
 
 **口径警告（改数字前必读）**：4 个测试类用 `@Nested`，surefire 的 XML 会把外层类写成 `tests="0"`
 （真实用例在内层类条目里）。按 `tests=` 属性统计会少算一百多条 —— 所以计数一律走
@@ -30,8 +32,8 @@
 | 能力面 | 状态 | 边界（哪些是真的，哪些不是） |
 |---|---|---|
 | 外壳与布局 | ✅ | 七区（菜单 / 功能区 / 侧栏 / 页签 / 对象工具条 / 内容区 / 状态栏）；侧栏 250px、折叠 48px、可拖 200–360；macOS 用系统菜单栏；状态栏按页型换段（查询 / 数据 / 对象三套），不再摆「自动提交 · 只读」 |
-| 连接与凭据 | ✅ | 六种方言**全部在真服务器上验过**：SQLite（本机）+ MySQL 8.4 / PostgreSQL 16 / MariaDB 11.8 / SQL Server 2022 / Oracle 23ai Free（`scripts/dbmatrix.sh` 五容器 + 每家两把库，`ExternalRealDatabaseTest` 5 引擎 × **9** 契约 = 45 例 + 1 例口令不外泄门 = 46 条）。⭐ R46 那一跑抓出四条只有真服务器才会报的缺陷（D-20 编造的 `sys.tables.collation_name` · D-22 Oracle 目录只认大写导致加引号对象全隐形 · D-24 `sys.triggers` 没有事件列 · D-25 `SHOW CREATE EVENT` 的定义体在第 4 列，按位置猜读到 `"SYSTEM"`）；R52 加第 8 条「视图生命周期」又抓出两条（D-27 · D-29，见 §2「视图生命周期」）；第 9 条「切库落点与隔离」把查询页那颗库选择器从「只由单测钉住」补成**真库证据**（同一台服务器两把库、同一个表名、字面相同的 SQL，两边各读各的行 —— 见 §2「查询页」）。**仍未在真库验证**：TLS 证书链档位（要一套 PKI，矩阵容器只起非加密服务）。连接分组、收藏、复制、URI（含 Oracle EZConnect 与 SQL Server 分号参数串）；口令进系统凭据服务，**不落盘**；`connections.json` 落盘前剔除敏感键；HikariCP 池化（除 SQLite），SQLite 直连 |
-| 连接向导 | ✅ | 两页 900×700：类型页 **一行 6 张彩色磁贴**（R43-b：只摆真有驱动的六家，各顶自绘厂商图形 + 品牌色；块居中，不留下半屏空白）+ 一行「其它数据库走兼容协议 / URI」的提示，属性页 7 页签 + `AIDB ⟷ Database` 示意图 + 底部五键。⭐ 原来照 Navicat 摆 22 张（9 类型 + 13 厂商）配 22 个复选与搜索框，其中 16 张点进去是「本版不支持」—— 那不是它的形态（它摆这些家是因为真连得上去），我们摆出来只是让用户多点十六次空；复选栏、搜索框、滚动容器与「无驱动说明页」随死磁贴一起删，「其它怎么办」改成页面上明写的一行。SSL 页的档位与根证书参数**由方言自报**（PG `sslmode` / MySQL `sslMode` / MariaDB `sslMode`+`serverSslCert`，MariaDB 没有 prefer 档）；SQL Server（encrypt + trustServerCertificate 配对）与 Oracle（钱包 / sqlnet.ora）收起档位并写明去哪里填；SSH / HTTP 页如实标注「未实现」，不是空壳 |
+| 连接与凭据 | ✅ | 六种方言**全部在真服务器上验过**：SQLite（本机）+ MySQL 8.4 / PostgreSQL 16 / MariaDB 11.8 / SQL Server 2022 / Oracle 23ai Free（`scripts/dbmatrix.sh` 五容器 + 每家两把库，`ExternalRealDatabaseTest` 5 引擎 × **9** 契约 = 45 例 + 1 例口令不外泄门 = 46 条）。⭐ R46 那一跑抓出四条只有真服务器才会报的缺陷（D-20 编造的 `sys.tables.collation_name` · D-22 Oracle 目录只认大写导致加引号对象全隐形 · D-24 `sys.triggers` 没有事件列 · D-25 `SHOW CREATE EVENT` 的定义体在第 4 列，按位置猜读到 `"SYSTEM"`）；R52 加第 8 条「视图生命周期」又抓出两条（D-27 · D-29，见 §2「视图生命周期」）；第 9 条「切库落点与隔离」把查询页那颗库选择器从「只由单测钉住」补成**真库证据**（同一台服务器两把库、同一个表名、字面相同的 SQL，两边各读各的行 —— 见 §2「查询页」）。⭐ R47-a 又起一圈**加密对端**（`dbmatrix.sh tls-up`：自签 CA + 一把冒名 CA，MySQL 33071 / MariaDB 33072 / PostgreSQL 54331），3 引擎 × 6 契约 = **18 例**：不加密真是明文、require 真把会话加密（`Ssl_cipher` / `pg_stat_ssl` 各读各的）、给了签发方链校验真通过、换一把没签过服务器的 CA 真被拒、证书里写着的名字（`localhost`）连得上、证书里没写的（`127.0.0.1`）真被挡 —— 这一跑抓出 **D-33**（选「不加密」时一个参数都不写，而三家驱动的默认都是「能加密就加密」：那个标签一直在骗人）、**D-32**（证书失败被归成「连接已断开」，建议把人支去查网络）、**D-34**（连接根本没建起来被归成「查询超时」）。**仍未在真库验证**：SNI（没有按 SNI 选多域名的对端形状，不写「已验」）与 **MySQL 5.7**（版本矩阵是 opt-in）。连接分组、收藏、复制、URI（含 Oracle EZConnect 与 SQL Server 分号参数串）；口令进系统凭据服务，**不落盘**；`connections.json` 落盘前剔除敏感键；HikariCP 池化（除 SQLite），SQLite 直连 |
+| 连接向导 | ✅ | 两页 900×700：类型页 **一行 6 张彩色磁贴**（R43-b：只摆真有驱动的六家，各顶自绘厂商图形 + 品牌色；块居中，不留下半屏空白）+ 一行「其它数据库走兼容协议 / URI」的提示，属性页 7 页签 + `AIDB ⟷ Database` 示意图 + 底部五键。⭐ 原来照 Navicat 摆 22 张（9 类型 + 13 厂商）配 22 个复选与搜索框，其中 16 张点进去是「本版不支持」—— 那不是它的形态（它摆这些家是因为真连得上去），我们摆出来只是让用户多点十六次空；复选栏、搜索框、滚动容器与「无驱动说明页」随死磁贴一起删，「其它怎么办」改成页面上明写的一行。SSL 页的档位与根证书参数**由方言自报**（PG `sslmode` / MySQL `sslMode` / MariaDB `sslMode`+`serverSslCert`，MariaDB 没有 prefer 档）；⭐ R47-a 在加密对端上跑完之后翻两处：① 「不加密」**真的写** `DISABLED` / `DISABLE` / `disable`（原先不写参数，而三家默认都是「能加密就加密」—— 见 D-33）；② MySQL 的「根证书」格在 VERIFY_CA 以上**禁用**并把说明写成 `trustCertificateKeyStoreUrl`（Connector/J 8.2 既没有 `sslCA` 也没有 `sslCapath`，未知属性被静默忽略 —— 收一个填了不生效的路径比不给这个格子更糟）；SQL Server（encrypt + trustServerCertificate 配对）与 Oracle（钱包 / sqlnet.ora）收起档位并写明去哪里填；SSH / HTTP 页如实标注「未实现」，不是空壳 |
 | 对象树 | ✅ | 真实内省（表 / 视图 / 函数·过程；触发器按表归属在结构页，事件本版本不上树）；多连接同树；表节点懒加载展开列，失败可重试；**搜索框的作用域是整棵树**（表 / 视图 / 函数·过程 / 已保存查询），所以提示词只写中性的「Search」，不再点名「表、视图」把自己说窄（R44-G2-a）；搜索框右侧另有**清除一键**，空框时连位置都不占；**右键菜单按对象类型分家**（表节点：清空 / 重命名 / 删除表；视图节点：设计视图 / 删除视图 —— 不再在视图上摆只能失败的表级动作）；**连接节点顶自己那家的厂商图形 + 品牌色**（与向导磁贴读同一登记行，所以两处的 MySQL 同形同色；认不出方言时回落中性插头，不挑一家画上去） |
 | 数据网格 | ✅ | 服务端分页（100/200/500/1000）、行首 16px 状态槽、类型行、列宽/顺序/显隐持久化、冻结列、矩形选择、⌘F 本页搜索、转置只读视图；工具条 13 具名键 + 视图/溢出两小键（放不下折进 `»`；R43-c：视图那颗 `≡▾` 不再钉 30px 宽，箭头不再压住图标）；底栏五键 + 页码框 + 齿轮（页大小/跳至记录）+ 放大镜 + 视图切换；**内嵌 Filter & Sort 生成器**（平铺 AND、Builder/Text 双模式、显式 Apply、Sort By 芯片） |
 | Filter & Sort 面板 | ✅ | 网格内嵌（非弹窗），只改草稿不即输即查；`Criteria Edited` 标脏，`Apply Filter & Sort` 才生效。**边界**：底层 `DataQuery` 只有平铺 AND —— `and` 固定，`[Ω]`（OR 组）给如实说明页；Text 模式只读（自由 SQL 请去查询页）；`IN` 条件无法在行内表达，列头漏斗的按值筛选保留并原样带入 |
@@ -74,7 +76,9 @@
   `IN` 条件仍由列头漏斗的候选值多选提供，面板内原样保留、不可行内编辑；Text 模式是**只读**的生成表达式。
 - 危险分级**第三层（驱动侧复查）不存在**：`DbSession.execute(sql)` 没有 `danger` 参数，
   绕过 UI 直接调会话层不会被拦。前两层（fail-closed 分类 + UI 确认）已落地。
-- **SSH 隧道未实现**（连接向导里明说）；SSL/TLS 只做到「写驱动属性」，证书链校验与 SNI 待补。
+- **SSH 隧道未实现**（连接向导里明说）。SSL/TLS 这一面 R47-a 已经踩过实土：档位取值、会话是否真加密、
+  链校验是否真生效、主机名不匹配是否真被拒都在本机加密对端上跑过（18 条契约）；
+  ⚠️ **SNI 没有单独证据** —— 三家对端都不是「按 SNI 选多域名证书」的形状，所以这一条不写「已验」。
 - 函数 / 过程只读定义体（SQLite 没有 SQL 层函数），入口是左侧树的双击 / Enter；**视图已经能建 / 改 / 删**
   （R42 N28-a，见 §2「视图生命周期」），但**视图不能重命名**，也没有依赖图。
 - 事件（MySQL EVENT）不在树上，因此本版本看不到事件定义体；触发器按表归属，在结构页查看。
@@ -117,7 +121,12 @@
 - **版本矩阵默认不跑**：`DatabaseVersionMatrixTest` 要 `ADB_TEST_VERSION_MATRIX=1` 才开
   （同一家多版本，一次十几分钟）。所以「MySQL 5.7」这一档目前只有方言层的承诺，没有执行过的证据。
 - WinCred（Windows 凭据管理器）那 5 条只能在 Windows 上跑，macOS 上按平台跳过。
-- TLS 证书链档位没有真库证据 —— 需要一套 PKI，不是起个容器就有。
+- TLS 那一圈**有真库证据**（R47-a）：`scripts/dbmatrix.sh tls-up` 起三个加密对端（自签 CA + 一把冒名 CA，
+  私钥只落在 gitignore 的 `scripts/.dbmatrix-tls/`，口令仍只进 `scripts/.dbmatrix.env`），
+  `ExternalTlsDatabaseTest` 三家 × 6 条 = 18 例；没配 `ADB_TEST_*_TLS_*` 时按引擎逐条跳过。
+  ⚠️ 同一句话里两个坑本轮都踩过：① `SHOW SESSION STATUS LIKE 'Ssl_cipher'` 回**两列**，取第 1 列拿到的是
+  变量名 `Ssl_cipher`（非空 → 「加密了」的假绿灯）；② 负例异常里混着 `communications link failure`
+  与 `Could not connect`，证书分支必须排在连接分支**前面**才归得对（D-32）。
 
 ## 4. 明确不做
 

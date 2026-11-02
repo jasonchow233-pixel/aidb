@@ -47,6 +47,17 @@
 
 ### Changed
 
+- **TLS 页的说明改成驱动真能收的东西，并起了第二圈加密对端来验它**（2026-11-02，R47-a · D-31）：
+  `scripts/dbmatrix.sh tls-up` 另起 MySQL 33071 / MariaDB 33072 / PostgreSQL 54331 三个**加密服务**
+  （一把自签 CA、再加一把从没签过服务器证书的冒名 CA；私钥只落在 gitignore 的 `scripts/.dbmatrix-tls/`，
+  口令仍只进 `scripts/.dbmatrix.env`）。3 引擎 × 6 条契约 = 18 例：不加密真是明文、`require` 真加密、
+  给签发方链校验真通过、换冒名 CA 真被拒、`localhost`（证书里写着）连得上、`127.0.0.1`（没写）真被挡。
+  MySQL 那一档随之改口径：**Connector/J 8.2 没有 CA 文件参数**（既无 `sslCA` 也无 `sslCapath`，
+  未知属性被静默忽略），所以「根证书」那一格在 VERIFY_CA 以上**禁用**，说明改写成把 CA 导入 JVM 信任库 /
+  在附加参数里写 `trustCertificateKeyStoreUrl`（PKCS12）—— 考虑过干脆砍掉 MySQL 的 VERIFY_CA 档，
+  否掉了：公开 CA 签发的证书在 `PREFERRED/REQUIRED` 之外确实要这条链，而且砍档会让**已存过 VERIFY_CA 的连接
+  静默降级**。中英两份文案各钉了一条门禁，撤掉任何一句都会红。
+
 - **三处能力面正式裁定不做**（2026-11-01，R42 拍板 P1）：**Automation 作业调度、Model ER 全量编辑器、
   Data Generation 造数**。功能区磁贴与数据页工具条上的入口**都保留**，点进去是如实说明页
   （写明本版本没有这个能力面、没有改动任何数据），不是死按钮，也不是填了也没用的假表单。
@@ -166,6 +177,24 @@
   图标台账改为 55 枚（53 枚 Lucide + 2 枚自绘）。
 
 ### Fixed
+
+- **选了「不加密」，连接其实还是加密的**（2026-11-02，R47-a · D-33）：三家的 `OFF` 档位原来**一个参数都不写**，
+  而驱动的默认全是「能加密就加密」—— Connector/J 8.2 的 `sslMode` 默认 `PREFERRED`、pgjdbc 的 `sslmode`
+  默认 `prefer`、MariaDB 驱动默认 `DISABLE`（这一家碰巧对）。也就是说那面下拉框里最保守的一档，
+  在 MySQL 与 PostgreSQL 上**从来没按字面生效过**，而且不报错。现在 `OFF` 显式写
+  `DISABLED` / `disable` / `DISABLE`，并在加密对端上量回：`SHOW SESSION STATUS LIKE 'Ssl_cipher'`
+  与 `pg_stat_ssl` 的 `cipher` 都必须是空。
+- **证书没通过校验时，提示把你支去查网络**（2026-11-02，R47-a · D-32）：MySQL 的驱动把 JSSE 的证书异常
+  **包在 `Communications link failure` 里**，MariaDB 那句是 `Could not connect to …: (certificate_unknown)
+  PKIX path building failed` —— 两种写法都撞在「连接已断开」那支探针上，于是证书问题永远归不进证书类，
+  建议让你去检查网络。新增 `Kind.TLS_VERIFICATION_FAILED`（徽标「证书校验失败」），两条建议分开写：
+  链认不出 → 教怎么把 CA 交给驱动（PG/MariaDB 用「根证书」格，MySQL 走 `trustCertificateKeyStoreUrl`）；
+  名字对不上 → 用证书里写的名字连（例如 `localhost` 而不是 `127.0.0.1`）。证书探针必须排在连接探针**前面**，
+  这个先后由一条真库异常链的单测钉住（同一条消息里既有 `Could not connect` 又有 PKIX）。
+- **连接根本没建起来，却报成「查询超时」**（2026-11-02，R47-a · D-34）：超时探针原来排在连接探针前面，
+  而 MySQL 连不上时最外层就是 `Communications link failure`、cause 里常带 `connect timed out` ——
+  于是建议成了「缩小查询范围再试」，可用户面对的是一条没建起来的连接。超时分支下移到连接之后
+  （锁等待超时仍留在最前，那是 SQL 层的事，建议不同）。
 
 - **MySQL / MariaDB 上「设计视图」不再问「要不要先删掉再建」**（2026-11-02，R52 · D-29）：
   我们一直按「MySQL 没有 `CREATE OR REPLACE VIEW`，那是 MariaDB 的分支特性」写方言，
