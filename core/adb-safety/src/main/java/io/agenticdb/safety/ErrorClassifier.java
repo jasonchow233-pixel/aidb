@@ -16,7 +16,7 @@ import java.util.Locale;
  * </pre>
  * 用户真正想知道的是三件事：<b>发生了什么 / 是不是我的问题 / 下一步怎么办</b>。
  *
- * <p>这个类把驱动原文归成 8 类，每类给出<b>一句说明</b> + <b>一个建议动作</b>。
+ * <p>这个类把驱动原文归成 9 类，每类给出<b>一句说明</b> + <b>一个建议动作</b>。
  * 界面拿到的不是 SQLException，而是「能照着做」的信息。
  *
  * <h2>⭐ R45 G3-b：这里交的是<b>键</b>，不是文案</h2>
@@ -49,6 +49,16 @@ public final class ErrorClassifier {
         CONSTRAINT_VIOLATION,
         /** 语法错误。 */
         SYNTAX,
+        /**
+         * ⭐ D-32：连上了、TLS 握手也开始了，但<b>证书没通过校验</b>（链认不出 / 主机名对不上）。
+         *
+         * <p>这一类以前会被归进 {@link #CONNECTION_LOST}：MySQL 的驱动把 JSSE 的
+         * {@code CertPathValidatorException} 包进 {@code CommunicationsException}，
+         * 整条消息里就有「communications link failure」那句 —— 探针按包含匹配，先到先判。
+         * 归进「连接断了」的代价是<b>建议把人支开</b>：让人去查网络和服务器进程，
+         * 而真正要做的是把 CA 交给驱动、或者把主机名填成证书里写的那个。
+         */
+        TLS_VERIFICATION_FAILED,
         /** 其它。 */
         OTHER
     }
@@ -115,15 +125,42 @@ public final class ErrorClassifier {
             return new Diagnosis(Kind.CONSTRAINT_VIOLATION, "error.summary.constraint",
                     "error.advice.constraint", detail(error));
         }
-        if (contains(lower, "timed out", "timeout", "socket timeout")) {
-            return new Diagnosis(Kind.TIMEOUT, "error.summary.timeout",
-                    "error.advice.timeout", detail(error));
+        // ⭐ D-32：证书类失败必须在「连接断了」<b>之前</b>判。
+        //    下面那支的探针里有 "communications link failure" 和 "could not connect"，
+        //    而 MySQL 的驱动把 JSSE 的证书异常<b>就包在这两句里</b>、MariaDB 那句
+        //    「Could not connect to …: (certificate_unknown) PKIX path building failed」同理 ——
+        //    放后面等于这一类永远不会被归出来。这些串全是三家驱动在真 TLS 对端上
+        //    实测吐出来的原文（见 ExternalTlsDatabaseTest 那条契约），不是照文档猜的。
+        if (contains(lower, "path does not chain with any of the trust anchors",
+                "pkix path building failed", "unable to find valid certification path",
+                "certificate_unknown")) {
+            return new Diagnosis(Kind.TLS_VERIFICATION_FAILED, "error.summary.tlsUntrusted",
+                    "error.advice.tlsUntrusted", detail(error));
+        }
+        if (contains(lower, "server identity verification failed",
+                "hostname verification failed", "doesn't correspond to certificate",
+                "hostnameverifier")) {
+            // pgjdbc 这句会跟着 JVM 默认语言本地化（中文环境下是「主机名…无法通过
+            // HostnameVerifier …认证」），所以探针抓的是那个不会被翻译的类名。
+            return new Diagnosis(Kind.TLS_VERIFICATION_FAILED, "error.summary.tlsHostname",
+                    "error.advice.tlsHostname", detail(error));
         }
         if (contains(lower, "connection closed", "connection reset", "broken pipe",
                 "communications link failure", "connection refused", "could not connect",
                 "server has gone away", "connection is closed", "closed")) {
             return new Diagnosis(Kind.CONNECTION_LOST, "error.summary.connectionLost",
                     "error.advice.connectionLost", detail(error));
+        }
+        // ⭐ D-34：这一支原来在「连接断了」<b>前面</b>，现在挪到后面。
+        //    实测 MySQL 连不上时最外层就是 "Communications link failure"，而它的 cause
+        //    经常正好是 "connect timed out"（驱动原文链：CommunicationsException →
+        //    CJCommunicationsException → …→ SocketTimeoutException）—— 超时探针先到，
+        //    建议就成了「缩小查询范围再试」，可用户面对的是一条<b>根本没建起来</b>的连接，
+        //    跟 SQL 范围毫无关系。锁等待超时仍在最前面（那是 SQL 层的事，建议不同），
+        //    这里只把「连不上」与「跑太久」的先后摆正。
+        if (contains(lower, "timed out", "timeout", "socket timeout")) {
+            return new Diagnosis(Kind.TIMEOUT, "error.summary.timeout",
+                    "error.advice.timeout", detail(error));
         }
         return new Diagnosis(Kind.OTHER, "error.summary.failed", "", detail(error));
     }
