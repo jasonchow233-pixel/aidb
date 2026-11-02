@@ -579,6 +579,66 @@ class QueryPageTest {
                 false, !mac, false, mac);
     }
 
+    /**
+     * ⭐ D-17（R44 帧目视抓到，2026-11-02）：主操作那颗 Run 是 **SplitMenuButton**，
+     * 而 modena 给拆体键的内层 `.label` 与 `.arrow-button` **各自又画一层白底** ——
+     * 外壳的蓝底只剩一圈边，实拍是「蓝底两个白块 + 黑字 + 白图标压在白块上看不见」。
+     *
+     * <p>钉三件事：① 内层两格必须透底并用反色文字令牌；② 箭头跟着反白；
+     * ③ 规则必须排在基础主色规则**之后**（同特异度后写胜，挪到前面就等于没写）。
+     */
+    @Test
+    void primaryRunButtonPaintsItsSplitCellsTransparent() throws Exception {
+        String css = appCss();
+        int base = css.indexOf(".adb-button--primary {");
+        int split = css.indexOf(".adb-button--primary.split-menu-button > .label");
+        assertThat(base).as("主色基础规则要在").isPositive();
+        assertThat(split).as("拆体内层规则要在").isPositive();
+        assertThat(split)
+                .as("内层规则必须排在主色规则之后，否则被后写的基础规则盖掉")
+                .isGreaterThan(base);
+
+        String label = ruleBody(css, ".adb-button--primary.split-menu-button > .label");
+        assertThat(label)
+                .as("内层 .label 不许留 modena 的白底，文字要跟着反白")
+                .contains("-fx-background-color: transparent")
+                .contains("-adb-text-inverse");
+        assertThat(ruleBody(css, ".adb-button--primary.split-menu-button > .arrow-button .arrow"))
+                .as("箭头本体是 -fx-background-color 画的，不反白就是白块上一个白三角")
+                .contains("-adb-text-inverse");
+        assertThat(css)
+                .as("点开那一拍（:showing）modena 会再刷一次内层底色")
+                .contains(".adb-button--primary.split-menu-button:showing > .label");
+        assertThat(ruleBody(css, ".split-menu-button > .label"))
+                .as("R40 的「内层 label 竖直内边距归零」必须够到拆体键，"
+                        + "否则 18px 的 label 吃掉 4+4，「Run」下半截被裁")
+                .contains("-fx-padding: 0px 8px 0px 8px");
+    }
+
+    /** app.css 全文，注释剥掉（注释里也写着选择器名，不剥会假通过）。 */
+    private static String appCss() throws java.io.IOException {
+        try (java.io.InputStream stream =
+                     QueryPageTest.class.getResourceAsStream("/io/agenticdb/ui/app.css")) {
+            assertThat(stream).as("缺 app.css").isNotNull();
+            return new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                    .replaceAll("(?s)/\\*.*?\\*/", "");
+        }
+    }
+
+    /** 取某个选择器**自己的那条规则**的规则体（允许选择器成组写在同一个 {} 前）。 */
+    private static String ruleBody(String css, String selector) {
+        java.util.regex.Matcher matcher =
+                java.util.regex.Pattern.compile("([^{}]+)\\{([^}]*)\\}").matcher(css);
+        while (matcher.find()) {
+            for (String part : matcher.group(1).split(",")) {
+                if (part.trim().equals(selector)) {
+                    return matcher.group(2);
+                }
+            }
+        }
+        throw new AssertionError("app.css 里没有这条规则：" + selector);
+    }
+
     private static void interact(Runnable action) {
         WaitForAsyncUtils.waitForAsyncFx(5_000, action);
         WaitForAsyncUtils.waitForFxEvents();

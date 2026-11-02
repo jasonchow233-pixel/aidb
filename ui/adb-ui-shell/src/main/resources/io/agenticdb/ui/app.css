@@ -487,6 +487,31 @@
     -fx-text-fill: -adb-text-inverse;
 }
 
+/* ⭐ D-17（R44 帧目视抓到，2026-11-02）：查询页那颗 Run 是全应用点得最多的一键，
+   而它是 **SplitMenuButton** —— modena 给拆体键的内层 `.label` 与 `.arrow-button`
+   **各自又画了一层白底**（`-fx-body-color`），并把文字打回 `-fx-text-base-color`（黑）。
+   于是外壳的蓝底只露出四周一圈：画面上是「蓝底两个白块」，
+   白色播放图标压在白块上直接看不见，实拍里连「Run」都读成 "Rin"。
+   主色必须**穿透到内层两格**，箭头也要跟着反白。 */
+.adb-button--primary.split-menu-button > .label,
+.adb-button--primary.split-menu-button > .arrow-button {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-border-color: transparent;
+    -fx-text-fill: -adb-text-inverse;
+}
+
+.adb-button--primary.split-menu-button > .arrow-button .arrow {
+    -fx-background-color: -adb-text-inverse;
+    -fx-background-insets: 0;
+}
+
+/* 展开态（:showing）modena 会再刷一次内层底色，不压回去就是「一点开按钮白一块」。 */
+.adb-button--primary.split-menu-button:showing > .label,
+.adb-button--primary.split-menu-button:showing > .arrow-button {
+    -fx-background-color: transparent;
+}
+
 .adb-button--ghost {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
@@ -927,8 +952,12 @@
  *   竖直 4+4 一吃，内容区只剩 10px，而 12px 字号的行框是 15px：
  *   LabeledText 按内容区裁字，p3-query 实拍里「agenticdb-demodb」的 g 没有尾巴、
  *   「Untitled」底边被削平。竖直归零（横向保留 8px —— 那是已验收的左右缩进，
- *   也是箭头与文字之间的间距来源），行框 15px 就装得下了。 */
-.menu-button > .label {
+ *   也是箭头与文字之间的间距来源），行框 15px 就装得下了。
+ *   ⭐ D-17（R44 帧目视，2026-11-02）同一条在 **SplitMenuButton** 上复发：
+ *   它的 styleClass 是 `split-menu-button`，上面那条选择器**够不到它**，
+ *   于是查询页那颗 Run 把「Run」的下半截裁掉了 —— 拆体键必须一起列进来。 */
+.menu-button > .label,
+.split-menu-button > .label {
     -fx-padding: 0px 8px 0px 8px;
 }
 
