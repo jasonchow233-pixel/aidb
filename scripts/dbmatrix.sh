@@ -21,6 +21,11 @@ cd "$PROJECT_ROOT"
 
 ENV_FILE="$PROJECT_ROOT/scripts/.dbmatrix.env"
 DB_NAME=shop
+# ⭐ R52 第 9 条契约要的第二把库：「切库落点」不是「连上了新地址」，
+# 是「同一台服务器、同一个连接串形状，只有库名换了」—— 所以要两个同位的对端。
+# Oracle 没有这一层（一个服务名一个库，PDB 切换不是这个产品承诺的能力），
+# 它的 DB2 键**故意不存在**，契约那条走「没有库层」那一支。
+DB2_NAME=shop2
 ORACLE_PDB=FREEPDB1
 
 if command -v docker >/dev/null 2>&1; then
@@ -59,25 +64,31 @@ generate_env() {
 ADB_TEST_MYSQL_HOST=127.0.0.1
 ADB_TEST_MYSQL_PORT=33061
 ADB_TEST_MYSQL_DB=$DB_NAME
+ADB_TEST_MYSQL_DB2=$DB2_NAME
 ADB_TEST_MYSQL_USER=root
 ADB_TEST_MYSQL_PASSWORD=$(gen_word 20)
 ADB_TEST_MARIADB_HOST=127.0.0.1
 ADB_TEST_MARIADB_PORT=33062
 ADB_TEST_MARIADB_DB=$DB_NAME
+ADB_TEST_MARIADB_DB2=$DB2_NAME
 ADB_TEST_MARIADB_USER=root
 ADB_TEST_MARIADB_PASSWORD=$(gen_word 20)
 ADB_TEST_PG_HOST=127.0.0.1
 ADB_TEST_PG_PORT=54321
 ADB_TEST_PG_DB=$DB_NAME
+ADB_TEST_PG_DB2=$DB2_NAME
 ADB_TEST_PG_USER=adb
 ADB_TEST_PG_PASSWORD=$(gen_word 20)
 ADB_TEST_MSSQL_HOST=127.0.0.1
 ADB_TEST_MSSQL_PORT=14331
 ADB_TEST_MSSQL_DB=$DB_NAME
+ADB_TEST_MSSQL_DB2=$DB2_NAME
 ADB_TEST_MSSQL_USER=sa
 ADB_TEST_MSSQL_PASSWORD=Adb$(gen_word 12)7x
 ADB_TEST_ORACLE_HOST=127.0.0.1
 ADB_TEST_ORACLE_PORT=15211
+# ⚠️ 这里**没有** ADB_TEST_ORACLE_DB2：Oracle 没有「一台服务器多个可切库」这一层
+# （_DB 是服务名），第 9 条契约在它身上走「没有库层」那一支，不是走缺配置。
 ADB_TEST_ORACLE_DB=$ORACLE_PDB
 ADB_TEST_ORACLE_USER=adb
 ADB_TEST_ORACLE_PASSWORD=Adb$(gen_word 12)7x
@@ -150,6 +161,17 @@ wait_ready() {
 up() {
   [ -f "$ENV_FILE" ] || { log "生成口令 → $ENV_FILE"; generate_env; }
   load_env
+  # 旧版本生成的口令文件里没有 DB2 那四行：补上，不重新生成口令。
+  # （容器还在、口令却换了 = 连接全失败，那比缺键难查得多，见 load_env 上面的注释。）
+  local prefix key
+  for prefix in MYSQL MARIADB PG MSSQL; do
+    key="ADB_TEST_${prefix}_DB2"
+    if ! grep -q "^${key}=" "$ENV_FILE"; then
+      warn "口令文件缺 ${key} —— 补 ${key}=$DB2_NAME"
+      printf '%s=%s\n' "$key" "$DB2_NAME" >> "$ENV_FILE"
+      export "${key}=$DB2_NAME"
+    fi
+  done
   $DOCKER_BIN info >/dev/null 2>&1 || die "Docker 守护进程没在跑（先开 Docker Desktop）"
 
   local entry engine container image host_port cur_port state
@@ -212,6 +234,22 @@ up() {
     mssql_query "CREATE DATABASE $DB_NAME" >/dev/null
   fi
 
+  # ⭐ R52 第 9 条契约用的第二把库：「切库落点」要对的是**同一台服务器上两个同位的对端**，
+  # 只有一把库的话，契约就只能断「连上了」，断不了「落在哪儿」。
+  # 全部先问后建：第二次 up 必须是 no-op，不然日志里每次都是一串「库已存在」的报错，
+  # 那和 D-30 那条假警报是同一种毛病。
+  log "建第二把库 $DB2_NAME（$DB_NAME 之外；已存在 = no-op）"
+  engine_sql MYSQL "CREATE DATABASE IF NOT EXISTS \`$DB2_NAME\`" >/dev/null
+  engine_sql MARIADB "CREATE DATABASE IF NOT EXISTS \`$DB2_NAME\`" >/dev/null
+  # PG 的 CREATE DATABASE 没有 IF NOT EXISTS，也没有事务块可包，只能先问 pg_database。
+  # 这次整数列可以：psql -tA 不右对齐，量的是 psql 的输出而非 sqlcmd 的。
+  if [ "$(engine_sql PG "SELECT 1 FROM pg_database WHERE datname='$DB2_NAME'" 2>/dev/null | tr -d '[:space:]')" != "1" ]; then
+    engine_sql PG "CREATE DATABASE $DB2_NAME OWNER $ADB_TEST_PG_USER" >/dev/null
+  fi
+  if mssql_query "SELECT CASE WHEN DB_ID('$DB2_NAME') IS NULL THEN 'MISSING' ELSE 'EXISTS' END" 2>/dev/null | grep -q MISSING; then
+    mssql_query "CREATE DATABASE $DB2_NAME" >/dev/null
+  fi
+
   echo
   status
   log "口令在 $ENV_FILE（未入库）。跑矩阵：./scripts/dbmatrix.sh run"
@@ -237,7 +275,7 @@ print_env() {
 run_matrix() {
   load_env
   export JAVA_HOME="${JAVA_HOME:-/Users/jason/.jdks/jdk-25.0.4.1+1/Contents/Home}"
-  log "跑真库契约矩阵（5 引擎 × 7 契约）"
+  log "跑真库契约矩阵（5 引擎 × 9 契约 + 1 条口令门）"
   ./mvnw -B -pl workbench/adb-jdbc test -Dtest=ExternalRealDatabaseTest
 }
 
