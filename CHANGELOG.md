@@ -11,6 +11,23 @@
 
 ### Added
 
+- **验收帧第一次拍在真数据库服务器上**（2026-11-02，R47-b）：截图通道此前只能绑演示库（SQLite），
+  而 SQLite 没有「库」这一层 —— 于是「`库▾` 里有两把库」「MySQL 上改视图只有一句」这类
+  **只有真服务器才有形状**的画面一张都没有（47 帧全部拍在演示库上）。
+  新增 `ADB_MATRIX=<方言 id>`：外壳按矩阵环境变量（`ADB_TEST_{HOST,PORT,DB,USER,PASSWORD}`）在**进程内**
+  注册一把临时连接，口令只活在这个进程的字段里、**绝不进凭据存储**（macOS 那一个是钥匙串）；
+  `ADB_CONNECTIONS_FILE` 把连接档案指到临时文件 —— 此前「拍一次验收图」会顺手往用户真实的
+  `~/.agenticdb/connections.json` 里写一条。没配矩阵环境时那几格**跳过并说明原因**，
+  不让它退回演示库拍出一张「看着像真库」的假帧。
+  四张新帧（`docs/screenshots/` 47 → 51）：`p3-query-catalog`（真 MySQL 上 `库▾` 展开，列出
+  `shop` / `shop2`、勾在当前库）、`p3-query-catalog-bound`（点进第二把库之后的页面态）、
+  `p6-new-view-mysql`（方言驱动的 `CREATE VIEW` 预览，带反引号）、`p6-design-view-mysql`
+  （**D-29 的第一张画面证据**：MySQL 上重建视图就一句 `CREATE OR REPLACE VIEW`）。
+  门禁：`ScreenshotScriptAuditTest` +2 —— 摆态名必须在 `AppShell` 的 pose 分派里有分支
+  （打错一个字母照样拍出默认页、返回码还是 0），矩阵帧必须被门控且脚本里不许出现
+  `ADB_TEST_*_PASSWORD=<字面量>`。
+  配套：`scripts/dbmatrix.sh seed` 幂等给矩阵的 `shop` 铺 `users` / `orders` / `v_active_users`
+  —— 「设计视图」那帧的前提是库里真有一条定义，而**预览里写着的表必须真在库里**。
 - **视图可以建、能改、能删了**（2026-11-01，R42 N28-a）：新增**视图设计器**弹窗 —— 视图名 +
   `SELECT` 查询体 + 实时 SQL 预览，和「新建表」共用同一条铁律：**预览里看到几句，库里就跑几句**。
   入口三条：功能区 `View` 格、库 / 连接 / 分组节点右键「新建视图」、视图节点右键「设计视图」「删除视图」。
@@ -178,6 +195,15 @@
 
 ### Fixed
 
+- **查询页换库后新页是空的，状态栏却说「SQL 已复制到新查询页」**（2026-11-02，R47-b · D-36）：
+  外壳取「当前页的 SQL」走的是 `TabBar.contentOf(tabId)` —— 那里存的是标签条上的**胶囊**
+  （图标 + 标题 + 脏标记的 `HBox`），不是页面本体，于是 `instanceof QueryPage` 永远不成立、
+  交出的永远是空串。从 R44-G1 交付那天起就是这样：换库开出的新查询页**一条 SQL 都没有**，
+  而状态栏那句「SQL copied to a new query tab (not run)」是假的。
+  行为门禁看不见它 —— `QueryCatalogSelectorTest` 把 `onSelectCatalog` 桩掉了，从不走外壳的回读；
+  是这一轮把帧拍到真 MySQL 上才看见的（第一版 `p3-query-catalog-bound` 的编辑器全空）。
+  现在从 `WorkspaceView.queryPage(tabId)` 取真正托管那一页，并补一条走**真菜单条目 onAction 链**的
+  外壳级门禁（`AppShellTest.switchingCatalogCarriesTheSqlIntoTheNewQueryTab`）。
 - **选了「不加密」，连接其实还是加密的**（2026-11-02，R47-a · D-33）：三家的 `OFF` 档位原来**一个参数都不写**，
   而驱动的默认全是「能加密就加密」—— Connector/J 8.2 的 `sslMode` 默认 `PREFERRED`、pgjdbc 的 `sslmode`
   默认 `prefer`、MariaDB 驱动默认 `DISABLE`（这一家碰巧对）。也就是说那面下拉框里最保守的一档，
