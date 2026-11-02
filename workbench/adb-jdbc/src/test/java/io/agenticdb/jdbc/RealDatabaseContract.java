@@ -644,6 +644,8 @@ public final class RealDatabaseContract {
             Dialect dialect = session.dialect();
             String table = "adb_contract_v_" + System.nanoTime();
             String view = "adb_view_" + System.nanoTime();
+            // 契约末步自己删掉的视图，finally 就不该再删一次 —— 见 finally 处。
+            boolean viewDroppedByContract = false;
             try {
                 session.execute("CREATE TABLE " + dialect.quote(table) + " (id INTEGER PRIMARY KEY)");
                 session.execute("INSERT INTO " + dialect.quote(table) + " (id) VALUES (1)");
@@ -696,11 +698,18 @@ public final class RealDatabaseContract {
                         .containsIgnoringCase("adb_marker");
 
                 session.execute(dialect.dropViewSql(view));
+                viewDroppedByContract = true;
                 assertThatThrownBy(() -> session.execute("SELECT * FROM " + dialect.quote(view)))
                         .as("%s：删掉的视图不该还能查", dialect.displayName())
                         .isInstanceOf(SQLException.class);
             } finally {
-                dropViewQuietly(session, dialect, view);
+                // ⚠️ 只在契约没走到「删视图」那一步时才补删（中途断言红了、或建完视图就炸）。
+                // 走到过了还照删 = 每引擎固定打印一条「清理临时视图失败：视图不存在」，
+                // 那是把「状态已经是想要的」报成故障 —— R52 首跑五引擎全中这条，
+                // 看日志的人会以为清理有 bug，而真正该报警的泄漏反而被淹在噪音里。
+                if (!viewDroppedByContract) {
+                    dropViewQuietly(session, dialect, view);
+                }
                 dropQuietly(session, dialect, table);
             }
         }
@@ -922,7 +931,7 @@ public final class RealDatabaseContract {
         }
     }
 
-    /** 视图的清理：断言已经判过「删不掉」的情况时，finally 里再删一次会必抛，所以静默。 */
+    /** 尽力清理；清理失败不能让测试结论失真，但一定要看得见。 */
     private static void dropViewQuietly(JdbcSession session, Dialect dialect, String view) {
         try (Statement statement = session.connection().createStatement()) {
             statement.execute(dialect.dropViewSql(view));
