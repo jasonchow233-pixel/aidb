@@ -38,6 +38,12 @@ public final class ConnectionStore {
 
     public static ConnectionStore defaultStore() {
         String override = System.getProperty("adb.connections.file");
+        if (override == null || override.isBlank()) {
+            // ⭐ R47-b：截图 / 真库验收通道用的隔离口。此前拍一次图就会往用户真实的
+            // connections.json 里写一条（ensureDemo / touch 都落盘），
+            // 「验收」不该改别人的连接清单。
+            override = System.getenv().getOrDefault("ADB_CONNECTIONS_FILE", "");
+        }
         Path path = override != null && !override.isBlank()
                 ? Path.of(override)
                 : Path.of(System.getProperty("user.home"), ".agenticdb", "connections.json");
