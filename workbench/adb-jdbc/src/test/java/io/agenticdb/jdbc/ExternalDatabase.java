@@ -1,6 +1,7 @@
 package io.agenticdb.jdbc;
 
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * ⭐ 外部真库的连接参数。
@@ -15,7 +16,16 @@ import java.util.Locale;
  * PostgreSQL：
  *   ADB_TEST_PG_HOST=…  ADB_TEST_PG_PORT=5432  ADB_TEST_PG_DB=…
  *   ADB_TEST_PG_USER=…  ADB_TEST_PG_PASSWORD=…
+ *
+ * MariaDB / SQL Server / Oracle（R46 起，六个库全覆盖）：
+ *   ADB_TEST_MARIADB_{HOST,PORT,DB,USER,PASSWORD}
+ *   ADB_TEST_MSSQL_{HOST,PORT,DB,USER,PASSWORD}
+ *   ADB_TEST_ORACLE_{HOST,PORT,DB,USER,PASSWORD}   ← DB 是**服务名**（如 FREEPDB1）
  * </pre>
+ *
+ * <p>本地一键起五个库：{@code scripts/dbmatrix.sh up}，
+ * 然后 {@code eval "$(scripts/dbmatrix.sh env)"} 把上面这些变量导进当前 shell。
+ * 口令由脚本<b>现场生成</b>、只写进未跟踪的 {@code scripts/.dbmatrix.env} —— 仓库里不留任何密码。
  *
  * <p>没配对应变量时 {@link #mysql()} / {@link #postgres()} 返回 {@code null}，
  * 对应的真库测试**整个跳过** —— CI 与本地都不受影响。
@@ -45,6 +55,21 @@ public record ExternalDatabase(
     /** PostgreSQL 配了吗？ */
     public static ExternalDatabase postgres() {
         return read("PG", DialectKind.POSTGRESQL, 5432);
+    }
+
+    /** ⭐ R46：MariaDB 配了吗？（与 MySQL 同族，但**是另一个服务器**，必须单独验） */
+    public static ExternalDatabase mariadb() {
+        return read("MARIADB", DialectKind.MARIADB, 3306);
+    }
+
+    /** ⭐ R46：SQL Server 配了吗？ */
+    public static ExternalDatabase sqlServer() {
+        return read("MSSQL", DialectKind.SQLSERVER, 1433);
+    }
+
+    /** ⭐ R46：Oracle 配了吗？（{@code _DB} 这里是**服务名**，如 {@code FREEPDB1}） */
+    public static ExternalDatabase oracle() {
+        return read("ORACLE", DialectKind.ORACLE, 1521);
     }
 
     private static ExternalDatabase read(String prefix, DialectKind kind, int defaultPort) {
@@ -78,12 +103,29 @@ public record ExternalDatabase(
      * <p>⭐ 这里用**更短的超时**（5s / 8s）：外部真库是**第三方依赖**，
      * 服务器卡一下不该让测试干等 30 秒。
      * 应用本身的超时是 10s / 30s（见 {@code MySqlDialect}）。
+     *
+     * <p>⚠️ 参数名<b>不能一套通吃</b>：MySQL / MariaDB / PostgreSQL 认
+     * {@code connectTimeout} + {@code socketTimeout}；SQL Server 的驱动<b>会拒绝</b>
+     * 不认识的连接属性（直接抛 {@code The connection property … is not valid}），
+     * 而它的超时本来就写在 URL 里（见 {@code SqlServerDialect.jdbcUrl}）；
+     * Oracle 的超时只能走 {@code oracle.net.CONNECT_TIMEOUT} /
+     * {@code oracle.jdbc.ReadTimeout} 两个属性名。所以这里按库给不同的键。
      */
     public ConnectionSpec spec() {
-        java.util.Map<String, String> options = java.util.Map.of(
-                "connectTimeout", "5000",
-                "socketTimeout", "8000");
-        return ConnectionSpec.server(kind, host, port, database, user, password, options);
+        return ConnectionSpec.server(kind, host, port, database, user, password, timeoutOptions());
+    }
+
+    /** 各家驱动的「短超时」写法。 */
+    private Map<String, String> timeoutOptions() {
+        return switch (kind) {
+            case MYSQL, MARIADB, POSTGRESQL, SQLITE -> Map.of(
+                    "connectTimeout", "5000",
+                    "socketTimeout", "8000");
+            case SQLSERVER -> Map.of();
+            case ORACLE -> Map.of(
+                    "oracle.net.CONNECT_TIMEOUT", "5000",
+                    "oracle.jdbc.ReadTimeout", "8000");
+        };
     }
 
     /** 日志里用的名字（**不含口令**）。 */
@@ -99,6 +141,21 @@ public record ExternalDatabase(
     /** 供 JUnit 的 {@code @EnabledIf} 用：PostgreSQL 配了吗？ */
     public static boolean isPostgresConfigured() {
         return postgres() != null;
+    }
+
+    /** 供 JUnit 的 {@code @EnabledIf} 用：MariaDB 配了吗？ */
+    public static boolean isMariaDbConfigured() {
+        return mariadb() != null;
+    }
+
+    /** 供 JUnit 的 {@code @EnabledIf} 用：SQL Server 配了吗？ */
+    public static boolean isSqlServerConfigured() {
+        return sqlServer() != null;
+    }
+
+    /** 供 JUnit 的 {@code @EnabledIf} 用：Oracle 配了吗？ */
+    public static boolean isOracleConfigured() {
+        return oracle() != null;
     }
 
     /** 库名（MySQL 的 schema 就是数据库，可能为空 → 用 catalog 兜底）。 */

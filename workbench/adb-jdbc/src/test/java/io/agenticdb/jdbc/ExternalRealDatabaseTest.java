@@ -2,6 +2,13 @@ package io.agenticdb.jdbc;
 
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import java.util.List;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -14,16 +21,79 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * ADB_TEST_MYSQL_HOST=…  ADB_TEST_MYSQL_PORT=3306  ADB_TEST_MYSQL_DB=…
  * ADB_TEST_MYSQL_USER=…  ADB_TEST_MYSQL_PASSWORD=…
  *
- * ADB_TEST_PG_HOST=…  ADB_TEST_PG_PORT=5432  ADB_TEST_PG_DB=…
- * ADB_TEST_PG_USER=…  ADB_TEST_PG_PASSWORD=…
+ * ADB_TEST_PG_*、ADB_TEST_MARIADB_*、ADB_TEST_MSSQL_*、ADB_TEST_ORACLE_* 同理
+ * （Oracle 的 DB 是**服务名**，如 FREEPDB1）。
  * </pre>
  *
  * <p>没配的库，对应用例**记为跳过**（不是通过）—— 门禁统计里能看得见。
  *
  * <p>断言本体在 {@link RealDatabaseContract}，与 Testcontainers 那条路**共用**，
  * 保证「本地连真库」和「CI 起容器」验的是同一件事。
+ *
+ * <h2>为什么是「库 × 契约」一张矩阵（R46）</h2>
+ * <p>以前这里是一个引擎一组手写 {@code @Test}：加一种库要复制七条方法，
+ * 于是 MariaDB / SQL Server / Oracle 长期<b>一条都没跑过</b> ——
+ * 六个方言里只有两个被真库验过，剩下三个的元数据查询全靠「看起来对」。
+ * 事实是：真库首跑当场抓出两条只在那些库上才成立的缺陷（D-20 SQL Server 的
+ * {@code sys.tables} 没有 {@code collation_name}、D-22 Oracle 的
+ * {@code UPPER(?)} 看不见我们自己加引号建的对象）。
+ * 现在矩阵是数据驱动的：<b>加一种库只加一个 supplier</b>，七条契约自动全覆盖。
  */
 class ExternalRealDatabaseTest {
+
+    /** 参与矩阵的库：方言 + 读环境变量的入口。 */
+    private record Engine(String label, Supplier<ExternalDatabase> source) {
+    }
+
+    private static final List<Engine> ENGINES = List.of(
+            new Engine("MySQL", ExternalDatabase::mysql),
+            new Engine("PostgreSQL", ExternalDatabase::postgres),
+            new Engine("MariaDB", ExternalDatabase::mariadb),
+            new Engine("SQLServer", ExternalDatabase::sqlServer),
+            new Engine("Oracle", ExternalDatabase::oracle));
+
+    /** 七条契约的名字 + 实现。 */
+    private record Contract(String name, ContractBody body) {
+    }
+
+    private static final List<Contract> CONTRACTS = List.of(
+            new Contract("generatedColumnDdlRuns",
+                    RealDatabaseContract::generatedColumnDdlRuns),
+            new Contract("renameColumnPreservesDefinition",
+                    RealDatabaseContract::renameColumnPreservesDefinition),
+            new Contract("createdTablesAcceptUnicode",
+                    RealDatabaseContract::createdTablesAcceptUnicode),
+            new Contract("dangerGateRejectsUnderDeclaredDanger",
+                    RealDatabaseContract::dangerGateRejectsUnderDeclaredDanger),
+            new Contract("metadataQueriesRun", RealDatabaseContract::metadataQueriesRun),
+            new Contract("schemaSwitchSemantics", RealDatabaseContract::schemaSwitchSemantics),
+            new Contract("quotedIdentifiersWork", RealDatabaseContract::quotedIdentifiersWork));
+
+    /** 矩阵的展开：库 × 契约。名字带进 {@code @DisplayName}，跳过时看得见是哪个库缺配置。 */
+    static Stream<Arguments> matrix() {
+        Stream<Arguments> flat = Stream.empty();
+        for (Engine engine : ENGINES) {
+            for (Contract contract : CONTRACTS) {
+                flat = Stream.concat(flat, Stream.of(
+                        Arguments.of(engine.label(), contract.name(), engine.source(),
+                                contract.body())));
+            }
+        }
+        return flat;
+    }
+
+    @ParameterizedTest(name = "{0} · {1}")
+    @MethodSource("matrix")
+    void realDatabaseContract(String engineLabel, String contractName,
+                              Supplier<ExternalDatabase> source, ContractBody body)
+            throws Exception {
+        ExternalDatabase target = source.get();
+        assumeTrue(target != null, "未配置 " + engineLabel + " 的 ADB_TEST_* —— 跳过真库契约");
+        if ("generatedColumnDdlRuns".equals(contractName)) {
+            System.out.println("[真库契约] " + target.label());
+        }
+        contract(contractName + "（" + engineLabel + "）", target, body);
+    }
 
     /**
      * 跑一条真库契约。
@@ -66,125 +136,22 @@ class ExternalRealDatabaseTest {
         return false;
     }
 
-    // ─────────────────────────── MySQL ───────────────────────────
-
-    @Test
-    void mysqlGeneratedColumnDdlRuns() throws Exception {
-        ExternalDatabase target = ExternalDatabase.mysql();
-        assumeTrue(target != null, "未配置 ADB_TEST_MYSQL_* —— 跳过 MySQL 真库契约");
-        System.out.println("[真库契约] " + target.label());
-        contract("generatedColumnDdlRuns", target, t -> RealDatabaseContract.generatedColumnDdlRuns(t));
-    }
-
-    @Test
-    void mysqlRenameColumnPreservesDefinition() throws Exception {
-        ExternalDatabase target = ExternalDatabase.mysql();
-        assumeTrue(target != null, "未配置 ADB_TEST_MYSQL_* —— 跳过 MySQL 真库契约");
-        contract("renameColumnPreservesDefinition", target,
-                t -> RealDatabaseContract.renameColumnPreservesDefinition(t));
-    }
-
-    @Test
-    void mysqlCreatedTablesAcceptUnicode() throws Exception {
-        ExternalDatabase target = ExternalDatabase.mysql();
-        assumeTrue(target != null, "未配置 ADB_TEST_MYSQL_* —— 跳过 MySQL 真库契约");
-        contract("createdTablesAcceptUnicode", target,
-                t -> RealDatabaseContract.createdTablesAcceptUnicode(t));
-    }
-
-    @Test
-    void mysqlDangerGateRejectsUnderDeclaredDanger() throws Exception {
-        ExternalDatabase target = ExternalDatabase.mysql();
-        assumeTrue(target != null, "未配置 ADB_TEST_MYSQL_* —— 跳过 MySQL 真库契约");
-        contract("dangerGateRejectsUnderDeclaredDanger", target, t -> RealDatabaseContract.dangerGateRejectsUnderDeclaredDanger(t));
-    }
-
-    @Test
-    void mysqlMetadataQueriesRun() throws Exception {
-        ExternalDatabase target = ExternalDatabase.mysql();
-        assumeTrue(target != null, "未配置 ADB_TEST_MYSQL_* —— 跳过 MySQL 真库契约");
-        contract("metadataQueriesRun", target, t -> RealDatabaseContract.metadataQueriesRun(t));
-    }
-
-    @Test
-    void mysqlSchemaSwitchSemantics() throws Exception {
-        ExternalDatabase target = ExternalDatabase.mysql();
-        assumeTrue(target != null, "未配置 ADB_TEST_MYSQL_* —— 跳过 MySQL 真库契约");
-        contract("schemaSwitchSemantics", target, t -> RealDatabaseContract.schemaSwitchSemantics(t));
-    }
-
-    @Test
-    void mysqlQuotedIdentifiersWork() throws Exception {
-        ExternalDatabase target = ExternalDatabase.mysql();
-        assumeTrue(target != null, "未配置 ADB_TEST_MYSQL_* —— 跳过 MySQL 真库契约");
-        contract("quotedIdentifiersWork", target, t -> RealDatabaseContract.quotedIdentifiersWork(t));
-    }
-
-    // ─────────────────────────── PostgreSQL ───────────────────────────
-
-    @Test
-    void postgresGeneratedColumnDdlRuns() throws Exception {
-        ExternalDatabase target = ExternalDatabase.postgres();
-        assumeTrue(target != null, "未配置 ADB_TEST_PG_* —— 跳过 PostgreSQL 真库契约");
-        System.out.println("[真库契约] " + target.label());
-        contract("generatedColumnDdlRuns", target, t -> RealDatabaseContract.generatedColumnDdlRuns(t));
-    }
-
-    @Test
-    void postgresRenameColumnPreservesDefinition() throws Exception {
-        ExternalDatabase target = ExternalDatabase.postgres();
-        assumeTrue(target != null, "未配置 ADB_TEST_PG_* —— 跳过 PostgreSQL 真库契约");
-        contract("renameColumnPreservesDefinition", target,
-                t -> RealDatabaseContract.renameColumnPreservesDefinition(t));
-    }
-
-    @Test
-    void postgresCreatedTablesAcceptUnicode() throws Exception {
-        ExternalDatabase target = ExternalDatabase.postgres();
-        assumeTrue(target != null, "未配置 ADB_TEST_PG_* —— 跳过 PostgreSQL 真库契约");
-        contract("createdTablesAcceptUnicode", target,
-                t -> RealDatabaseContract.createdTablesAcceptUnicode(t));
-    }
-
-    @Test
-    void postgresDangerGateRejectsUnderDeclaredDanger() throws Exception {
-        ExternalDatabase target = ExternalDatabase.postgres();
-        assumeTrue(target != null, "未配置 ADB_TEST_PG_* —— 跳过 PostgreSQL 真库契约");
-        contract("dangerGateRejectsUnderDeclaredDanger", target, t -> RealDatabaseContract.dangerGateRejectsUnderDeclaredDanger(t));
-    }
-
-    @Test
-    void postgresMetadataQueriesRun() throws Exception {
-        ExternalDatabase target = ExternalDatabase.postgres();
-        assumeTrue(target != null, "未配置 ADB_TEST_PG_* —— 跳过 PostgreSQL 真库契约");
-        contract("metadataQueriesRun", target, t -> RealDatabaseContract.metadataQueriesRun(t));
-    }
-
-    @Test
-    void postgresSchemaSwitchSemantics() throws Exception {
-        ExternalDatabase target = ExternalDatabase.postgres();
-        assumeTrue(target != null, "未配置 ADB_TEST_PG_* —— 跳过 PostgreSQL 真库契约");
-        contract("schemaSwitchSemantics", target, t -> RealDatabaseContract.schemaSwitchSemantics(t));
-    }
-
-    @Test
-    void postgresQuotedIdentifiersWork() throws Exception {
-        ExternalDatabase target = ExternalDatabase.postgres();
-        assumeTrue(target != null, "未配置 ADB_TEST_PG_* —— 跳过 PostgreSQL 真库契约");
-        contract("quotedIdentifiersWork", target, t -> RealDatabaseContract.quotedIdentifiersWork(t));
-    }
-
     // ─────────────────────────── 环境变量读取本身 ───────────────────────────
 
     @Test
     void environmentReaderNeverLeaksThePassword() {
-        ExternalDatabase target = ExternalDatabase.mysql();
-        if (target == null) {
-            return;
+        for (Supplier<ExternalDatabase> source : List.<Supplier<ExternalDatabase>>of(
+                ExternalDatabase::mysql,
+                ExternalDatabase::postgres, ExternalDatabase::mariadb,
+                ExternalDatabase::sqlServer, ExternalDatabase::oracle)) {
+            ExternalDatabase target = source.get();
+            if (target == null) {
+                continue;
+            }
+            assertThat(target.label())
+                    .as("label 只能含主机 / 端口 / 库名 —— 绝不能含口令")
+                    .doesNotContain(target.password() == null ? " " : target.password())
+                    .doesNotContain("password");
         }
-        assertThat(target.label())
-                .as("label 只能含主机 / 端口 / 库名 —— 绝不能含口令")
-                .doesNotContain(target.password() == null ? " " : target.password())
-                .doesNotContain("password");
     }
 }
