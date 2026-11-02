@@ -309,9 +309,7 @@ class ActionRegistryConvergenceTest {
 
     @Test
     void densityChangesTheGridRowHeight(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        robot.doubleClickOn(treeCell(robot, "users"));
-        WaitForAsyncUtils.waitForFxEvents();
+        openTableTab(robot, "users", "tab-grid-demo-users");
 
         // ⭐ 四档全部显式设定：起点不能是「机器上次留下的偏好」——
         //    那样这条断言测的是跑它的人的历史，不是密度档位本身。
@@ -325,6 +323,32 @@ class ActionRegistryConvergenceTest {
         assertThat(compact).isLessThan(normal);
         assertThat(dense).isLessThan(compact);
         assertThat(comfort).isGreaterThan(normal);
+    }
+
+    /**
+     * 双击树里的表节点，并等它的数据页<b>真的开出来</b>（与 {@code AccessibilityAuditTest}
+     * 的同名助手同一条理由，R40 记录）：TestFX 的 {@code doubleClickOn} 是两次独立单击，
+     * 机器压满时两次脉冲的间隔越过连击判定窗口，JavaFX 只看到两次单击 → 页根本不开。
+     *
+     * <p>⚠️ 这条原来直接往下读 {@code workspace().activeGrid().rowHeight()}：页没开时
+     * NPE 落在 FX 线程上被 {@code onFx} 吞掉，回一个 {@code null}，于是报的是
+     * 「Expecting actual not to be null」—— 看着像网格坏了，其实是<b>页没开</b>。
+     * 三次仍开不出来就是真失败，不拿重试盖住链路故障。
+     */
+    private void openTableTab(FxRobot robot, String table, String tabId) {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            robot.doubleClickOn(treeCell(robot, table));
+            WaitForAsyncUtils.waitForFxEvents();
+            try {
+                WaitForAsyncUtils.waitFor(3, java.util.concurrent.TimeUnit.SECONDS, () ->
+                        robot.lookup("#" + tabId).tryQuery().isPresent());
+                return;
+            } catch (java.util.concurrent.TimeoutException ignored) {
+                // 连击没被识别：重取单元格再双击一次。
+            }
+        }
+        throw new AssertionError("双击树节点「" + table + "」三次仍没开出标签 #" + tabId
+                + " —— 不是重试能盖住的慢，要查「双击 → 开数据页」这条链路");
     }
 
     private static Double rowHeightAt(FxRobot robot, String density) {
