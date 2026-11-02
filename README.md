@@ -28,8 +28,8 @@ deliberately does not do those things ([why](#explicitly-not-on-the-roadmap)).
 | | |
 |---|---|
 | **SQLite** | ✅ supported — file-based, plus the bundled demo database |
-| **MySQL** | ✅ 5.7 and 8.x |
-| **PostgreSQL** | ✅ |
+| **MySQL** | ✅ 8.x — catalog SQL, DDL, views and catalog switching confirmed against a real server (8.4). 5.7 is covered at dialect level only: the version matrix that would prove it is opt-in and has never been run here |
+| **PostgreSQL** | ✅ — catalog SQL, DDL, views and catalog switching confirmed against a real server (16) |
 | **MariaDB** | ✅ 10.x / 11.x — catalog SQL and DDL confirmed against a real server |
 | **SQL Server** | ✅ 2019+ — `sys.*` catalog queries confirmed against a real server |
 | **Oracle** | ✅ 12c+ — `ALL_*` catalog queries and `DBMS_METADATA` confirmed against a real server |
@@ -40,7 +40,11 @@ via environment variables). That matrix is what caught D-20/D-22/D-24/D-25 — f
 real server reports — and, once the view lifecycle became contract #8, D-27/D-29 as well: reading a
 SQL Server view definition was a stub that always returned "nothing found", and MySQL was assumed to
 lack `CREATE OR REPLACE VIEW` (it does not), which made us drop-and-recreate a view that one statement
-could have replaced. Still unverified against a real server: TLS certificate-chain options, which need
+could have replaced. Contract #9 then asked a question no unit test had answered — the query page's
+database picker proves it rebinds the session, but nothing had ever run a statement against the second
+database to see where it landed. It now does, on two same-host databases per engine, using one table
+name and byte-identical SQL on both sides. Still unverified against a real server: TLS certificate-chain
+options, which need
 a PKI rather than a container. Those paths are marked in the dialect
 sources, and the UI hides what a database genuinely cannot express (SQL Server / Oracle explain plans,
 SQL Server column comments, Oracle `ON UPDATE`) instead of offering dead controls.
@@ -204,11 +208,14 @@ Report security issues privately: [SECURITY.md](SECURITY.md).
 ## 中文简述
 
 AIDB 是一个**原生桌面数据库客户端**：Java 25 + JavaFX 25，不内嵌浏览器、不启动本地 HTTP 端口，
-所有数据直接走 JDBC。当前支持 SQLite / MySQL 5.7–8.x / PostgreSQL / MariaDB / SQL Server / Oracle ——
+所有数据直接走 JDBC。当前支持 SQLite / MySQL / PostgreSQL / MariaDB / SQL Server / Oracle ——
 后三种原先只有方言与单测门禁，R46 起进了本机 Docker 真库矩阵，目录查询与 DDL 契约逐条实跑，
 当场抓出四条只有真服务器才会报的缺陷（D-20 / D-22 / D-24 / D-25）；R52 把视图生命周期补成契约第 8 条，
 又抓出两条 —— SQL Server 读视图定义是个永远返回「读不到」的空壳（「设计视图」因此在那个库上从来没开过窗），
-MySQL 被当成没有 `CREATE OR REPLACE VIEW`（其实有），于是把一句就能完成的改视图做成了「先删再建」两句。
+MySQL 被当成没有 `CREATE OR REPLACE VIEW`（其实有），于是把一句就能完成的改视图做成了「先删再建」两句；
+第 9 条「切库落点与隔离」问的是单测一直没答的问题：查询页那颗库选择器只验过「连接对象换了库名」，
+**没人把语句真交给绑到新库的会话看过它落在哪儿** —— 现在是每家两把同机库、同一个表名、字面相同的 SQL，两边各读各的行。
+⚠️ MySQL 5.7 目前只有方言层的承诺：能证明它的版本矩阵是 opt-in，本机从没跑过（8.x 有执行证据）。
 仍未在真库验证的只剩 TLS 证书链档位（要一套 PKI，不是起个容器就行）。
 
 界面照 Navicat 的交互习惯做：对象树 → 双击表 → 数据页 → 行内编辑 → 预览 SQL → 单事务保存 → 保存后撤销，
