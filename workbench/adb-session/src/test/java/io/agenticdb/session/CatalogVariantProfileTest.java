@@ -78,8 +78,15 @@ class CatalogVariantProfileTest {
 
     @Test
     void everyReconnectDialectSwitchesTheDatabaseInItsUrl() {
+        // ⭐ R52：把 MARIADB 补进这一圈。MariaDbDialect 有**自己的** jdbcUrl
+        // （不像视图那条钩子是继承 MySqlDialect），漏在外面就等于「换库」这件事
+        // 在 MariaDB 上只有 Docker 矩阵那一条证据 —— 矩阵在 CI 上会跳过，
+        // 于是「界面显示已切到 audit、语句还打在 main」这类回归在 CI 上抓不到。
+        // 这条与真库契约第 9 条（catalogSwitchLands）是同一个缺陷的两层证据：
+        // 这里钉连接串的形状，那边钉真的落点。
         for (DialectKind kind : java.util.List.of(
-                DialectKind.MYSQL, DialectKind.POSTGRESQL, DialectKind.SQLSERVER)) {
+                DialectKind.MYSQL, DialectKind.MARIADB,
+                DialectKind.POSTGRESQL, DialectKind.SQLSERVER)) {
             ConnectionProfile parent = new ConnectionProfile("id-" + kind.id(), "生产库", kind,
                     "db.internal", kind.dialect().defaultPort(), "main", "user",
                     false, 0, "", Map.of());
