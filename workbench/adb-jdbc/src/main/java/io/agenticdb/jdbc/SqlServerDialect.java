@@ -312,6 +312,36 @@ public final class SqlServerDialect implements Dialect {
         return null;
     }
 
+    /**
+     * ⭐ D-27：读回视图定义走 {@code sys.sql_modules}。
+     *
+     * <p>这一条以前<b>整段是空的</b>（直接 {@code return null}），后果不是「少一栏显示」：
+     * 视图设计器开窗前要先读回库里的定义，读不到就<b>不开窗</b>（不用空 body 盖掉真定义），
+     * 于是在 SQL Server 上「设计视图」这个入口<b>一次都打不开</b>。
+     * R52 的视图真库契约第一次把这段跑起来，当场就红了。
+     *
+     * <p>{@code SQL Server 没有} {@code SHOW CREATE TABLE}，但视图的原文确实存在库里
+     * （{@code sys.sql_modules.definition}），所以 {@link #readsDdlFromDatabase()} 仍然是
+     * {@code false}（表 DDL 还是由内省生成、界面标「等价 DDL」），只有视图这条路是真的读库。
+     * 联 {@code sys.views} 而不是用 {@code OBJECT_ID(?)}：后者对同义词/函数也会给定义，
+     * 而这条路只该认视图。
+     */
+    @Override
+    public String readViewDdl(Connection connection, String table) throws SQLException {
+        try (java.sql.PreparedStatement statement = connection.prepareStatement(
+                "SELECT m.definition FROM sys.sql_modules m "
+                        + "JOIN sys.views v ON v.object_id = m.object_id WHERE v.name = ?")) {
+            statement.setString(1, table);
+            try (java.sql.ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    String definition = rs.getString(1);
+                    return definition == null || definition.isBlank() ? null : definition.trim();
+                }
+            }
+        }
+        return null;
+    }
+
     /** {@code ALTER SCHEMA} 是「把对象搬到另一个 schema」，没有 PG 那种会话级切路径。 */
     @Override
     public String setSchemaSql(String schema) {
@@ -347,11 +377,6 @@ public final class SqlServerDialect implements Dialect {
     @Override
     public List<String> dependentViews(Connection connection, String table) throws SQLException {
         return List.of();
-    }
-
-    @Override
-    public String readViewDdl(Connection connection, String table) throws SQLException {
-        return null;
     }
 
     @Override
