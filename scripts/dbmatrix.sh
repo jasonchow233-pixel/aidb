@@ -1,0 +1,266 @@
+#!/usr/bin/env bash
+# 真库矩阵：五种引擎在本机 Docker 里起一遍，把「环境缺了就跳过」的门禁烧成必跑用例。
+#
+# 用法：
+#   ./scripts/dbmatrix.sh up      # 起容器（口令随机生成，写进未入库的 .dbmatrix.env）
+#   ./scripts/dbmatrix.sh status  # 各容器在不在、端口是多少
+#   ./scripts/dbmatrix.sh env     # 打印 export 行，配合 eval 用
+#   ./scripts/dbmatrix.sh run     # 跑 adb-jdbc 的真库契约矩阵
+#   ./scripts/dbmatrix.sh down [--purge-env]   # 删容器（卷一起删）
+#
+# ⚠️ 口令**只**生成、只落在 scripts/.dbmatrix.env（已在 .gitignore 里）。
+# 测试侧一律从环境变量读；把这个文件提交进仓库就是把口令提交进仓库。
+#
+# 端口故意避开默认口（3306/5432/1433/1521），
+# 免得本机原本就在跑的数据库和测试容器互相抢地址。
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+ENV_FILE="$PROJECT_ROOT/scripts/.dbmatrix.env"
+DB_NAME=shop
+ORACLE_PDB=FREEPDB1
+
+if command -v docker >/dev/null 2>&1; then
+  DOCKER_BIN=docker
+elif [ -x /Applications/Docker.app/Contents/Resources/bin/docker ]; then
+  DOCKER_BIN=/Applications/Docker.app/Contents/Resources/bin/docker
+else
+  printf '\033[31m✗ 找不到 docker：装 Docker Desktop，或把 docker 放到 PATH 上\033[0m\n' >&2
+  exit 1
+fi
+
+# 「引擎|容器名|镜像|宿主端口|容器端口」—— 加引擎只改这张表。
+# 前缀要和 ExternalDatabase.java 里读的 ADB_TEST_<前缀>_* 对得上。
+IMAGES=(
+  "MYSQL|adb-mysql|mysql:8.4|33061|3306"
+  "MARIADB|adb-mariadb|mariadb:11|33062|3306"
+  "PG|adb-pg|postgres:16-alpine|54321|5432"
+  "MSSQL|adb-mssql|mcr.microsoft.com/mssql/server:2022-latest|14331|1433"
+  "ORACLE|adb-oracle|gvenzl/oracle-free:23-slim-faststart|15211|1521"
+)
+
+log()  { printf '\033[36m▸ %s\033[0m\n' "$*"; }
+warn() { printf '\033[33m! %s\033[0m\n' "$*"; }
+die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+
+gen_word() { LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "${1:-16}"; }
+
+# SQL Server 的 SA 口令要同时有大写、小写、数字且够长，
+# 微软那个镜像会直接拒绝弱口令并让容器退出；Oracle 的口令要能拼进
+# 连接串和 SQL，所以两边都只用字母数字。
+generate_env() {
+  umask 077
+  cat >"$ENV_FILE" <<EOF
+# 由 scripts/dbmatrix.sh 生成，**不要提交**（.gitignore 已排除）。
+# 删掉它 = 下次 up 换一套新口令。
+ADB_TEST_MYSQL_HOST=127.0.0.1
+ADB_TEST_MYSQL_PORT=33061
+ADB_TEST_MYSQL_DB=$DB_NAME
+ADB_TEST_MYSQL_USER=root
+ADB_TEST_MYSQL_PASSWORD=$(gen_word 20)
+ADB_TEST_MARIADB_HOST=127.0.0.1
+ADB_TEST_MARIADB_PORT=33062
+ADB_TEST_MARIADB_DB=$DB_NAME
+ADB_TEST_MARIADB_USER=root
+ADB_TEST_MARIADB_PASSWORD=$(gen_word 20)
+ADB_TEST_PG_HOST=127.0.0.1
+ADB_TEST_PG_PORT=54321
+ADB_TEST_PG_DB=$DB_NAME
+ADB_TEST_PG_USER=adb
+ADB_TEST_PG_PASSWORD=$(gen_word 20)
+ADB_TEST_MSSQL_HOST=127.0.0.1
+ADB_TEST_MSSQL_PORT=14331
+ADB_TEST_MSSQL_DB=$DB_NAME
+ADB_TEST_MSSQL_USER=sa
+ADB_TEST_MSSQL_PASSWORD=Adb$(gen_word 12)7x
+ADB_TEST_ORACLE_HOST=127.0.0.1
+ADB_TEST_ORACLE_PORT=15211
+ADB_TEST_ORACLE_DB=$ORACLE_PDB
+ADB_TEST_ORACLE_USER=adb
+ADB_TEST_ORACLE_PASSWORD=Adb$(gen_word 12)7x
+EOF
+  chmod 600 "$ENV_FILE"
+}
+
+# 已有文件就沿用里面的口令：容器还在、口令却换了，
+# 表现是「连接全失败」，比缺容器更难查。
+load_env() {
+  [ -f "$ENV_FILE" ] || die "还没有 $ENV_FILE —— 先 ./scripts/dbmatrix.sh up"
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+}
+
+# 在每个容器**自己**的 exec 里执行一条查询，用容器内的口令，
+# 所以这里不读 .dbmatrix.env 的密码字段（除了 sqlcmd 需要）。
+engine_sql() {
+  local engine=$1 sql_text=$2
+  case "$engine" in
+    MYSQL)
+      $DOCKER_BIN exec -i adb-mysql sh -c \
+        'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -B' <<<"$sql_text" ;;
+    MARIADB)
+      $DOCKER_BIN exec -i adb-mariadb sh -c \
+        'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -N -B' <<<"$sql_text" ;;
+    PG)
+      $DOCKER_BIN exec -i adb-pg sh -c \
+        'exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA' <<<"$sql_text" ;;
+    MSSQL)
+      die "SQL Server 走 mssql_query：sqlcmd 的参数不能内联到这里的 sh -c 里" ;;
+    ORACLE)
+      $DOCKER_BIN exec -i adb-oracle bash -c \
+        'exec sqlplus -s system/"$ORACLE_PASSWORD"' <<<"$sql_text" ;;
+    *) die "未知引擎：$engine" ;;
+  esac
+}
+
+# 口令从**容器自己的环境变量**里取，不写进命令行：
+# 一是脚本里少一处明文拼接，二是 sqlcmd 少了 -P 会卡在交互式提示上，
+# 表现是「就绪检查一直超时」，真实原因（没给口令）完全看不出来。
+# -h -1 去掉表头，就绪判断才是干净的单值；-b 让失败返回非零。
+mssql_query() {
+  $DOCKER_BIN exec -i adb-mssql sh -c \
+    'exec /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -b -h -1 -Q "$1" -P "$MSSQL_SA_PASSWORD"' \
+    sh "$1"
+}
+
+wait_ready() {
+  local engine=$1 container=$2 port=$3 tries=${4:-90} i ok=0
+  for ((i = 1; i <= tries; i++)); do
+    case "$engine" in
+      MYSQL)   engine_sql MYSQL "SELECT 1" >/dev/null 2>&1 && ok=1 ;;
+      MARIADB) engine_sql MARIADB "SELECT 1" >/dev/null 2>&1 && ok=1 ;;
+      PG)      engine_sql PG "SELECT 1" >/dev/null 2>&1 && ok=1 ;;
+      MSSQL)   mssql_query "SELECT 1" >/dev/null 2>&1 && ok=1 ;;
+      ORACLE)  engine_sql ORACLE "SELECT 1 FROM DUAL;" 2>/dev/null | grep -q '1' && ok=1 ;;
+    esac
+    if [ "$ok" = 1 ]; then
+      log "$container 就绪（:$port）"
+      return 0
+    fi
+    sleep 2
+  done
+  die "$container 在 $((tries * 2)) 秒内没就绪 —— 看 $DOCKER_BIN logs $container"
+}
+
+up() {
+  [ -f "$ENV_FILE" ] || { log "生成口令 → $ENV_FILE"; generate_env; }
+  load_env
+  $DOCKER_BIN info >/dev/null 2>&1 || die "Docker 守护进程没在跑（先开 Docker Desktop）"
+
+  local entry engine container image host_port cur_port state
+  for entry in "${IMAGES[@]}"; do
+    IFS='|' read -r engine container image host_port cur_port <<<"$entry"
+    # 不用 docker inspect 判存在：对象不存在时它也会往 stdout 吐一个空行，
+    # 那个空行会混进「missing」里，把后面的字符串比较全弄错。
+    if $DOCKER_BIN ps -a --format '{{.Names}}' | grep -qx "$container"; then
+      state=$($DOCKER_BIN inspect -f '{{.State.Status}}' "$container")
+    else
+      state=missing
+    fi
+    if [ "$state" = running ]; then
+      warn "$container 已在运行 —— 跳过创建（要重建先 down）"
+      continue
+    fi
+    [ "$state" = missing ] || $DOCKER_BIN rm "$container" >/dev/null
+    log "起 $container（$image → :$host_port）"
+    case "$engine" in
+      MYSQL)
+        $DOCKER_BIN run -d --name "$container" -p "${host_port}:${cur_port}" \
+          -e MYSQL_ROOT_PASSWORD="$ADB_TEST_MYSQL_PASSWORD" \
+          -e MYSQL_DATABASE="$DB_NAME" \
+          -e MYSQL_USER=adb -e MYSQL_PASSWORD="$ADB_TEST_MYSQL_PASSWORD" \
+          "$image" >/dev/null ;;
+      MARIADB)
+        $DOCKER_BIN run -d --name "$container" -p "${host_port}:${cur_port}" \
+          -e MARIADB_ROOT_PASSWORD="$ADB_TEST_MARIADB_PASSWORD" \
+          -e MARIADB_DATABASE="$DB_NAME" \
+          -e MARIADB_USER=adb -e MARIADB_PASSWORD="$ADB_TEST_MARIADB_PASSWORD" \
+          "$image" >/dev/null ;;
+      PG)
+        $DOCKER_BIN run -d --name "$container" -p "${host_port}:${cur_port}" \
+          -e POSTGRES_DB="$DB_NAME" \
+          -e POSTGRES_USER=adb -e POSTGRES_PASSWORD="$ADB_TEST_PG_PASSWORD" \
+          "$image" >/dev/null ;;
+      MSSQL)
+        $DOCKER_BIN run -d --name "$container" -p "${host_port}:${cur_port}" \
+          -e ACCEPT_EULA=Y -e MSSQL_PID=developer \
+          -e MSSQL_SA_PASSWORD="$ADB_TEST_MSSQL_PASSWORD" \
+          "$image" >/dev/null ;;
+      ORACLE)
+        # NLS_LANG 必须是 AL32UTF8：契约里有中文表名和中文注释，
+        # 字符集不对的话中文进去变问号，报错却出现在断言那一侧。
+        $DOCKER_BIN run -d --name "$container" -p "${host_port}:${cur_port}" \
+          -e ORACLE_PASSWORD="$ADB_TEST_ORACLE_PASSWORD" \
+          -e APP_USER=adb -e APP_USER_PASSWORD="$ADB_TEST_ORACLE_PASSWORD" \
+          -e NLS_LANG=.AL32UTF8 \
+          "$image" >/dev/null ;;
+    esac
+    wait_ready "$engine" "$container" "$host_port"
+  done
+
+  # 这个镜像没有「自动建库」的开关，库要手动补。
+  # ⚠️ 判断别看整数列：sqlcmd 把 int 右对齐，前面挂一串空格，
+  # 用 `^1$` 去匹配永远不中，于是每次 up 都跑去 CREATE DATABASE 再撞重名报错。
+  # 改成字符串列（左对齐、值本身可分辨），第二次 up 就是纯 no-op。
+  if mssql_query "SELECT CASE WHEN DB_ID('$DB_NAME') IS NULL THEN 'MISSING' ELSE 'EXISTS' END" 2>/dev/null | grep -q MISSING; then
+    log "建 SQL Server 库 $DB_NAME"
+    mssql_query "CREATE DATABASE $DB_NAME" >/dev/null
+  fi
+
+  echo
+  status
+  log "口令在 $ENV_FILE（未入库）。跑矩阵：./scripts/dbmatrix.sh run"
+}
+
+status() {
+  local entry engine container image host_port cur_port state
+  printf '%-9s %-13s %-7s %s\n' ENGINE CONTAINER PORT STATE
+  for entry in "${IMAGES[@]}"; do
+    IFS='|' read -r engine container image host_port cur_port <<<"$entry"
+    # 同 up：inspect 的失败输出要用 tr 收干，不然状态列里混进空行。
+    state=$($DOCKER_BIN inspect -f '{{.State.Status}}' "$container" 2>/dev/null | tr -d '[:space:]')
+    [ -n "$state" ] || state=缺
+    printf '%-9s %-13s %-7s %s\n' "$engine" "$container" "$host_port" "$state"
+  done
+}
+
+print_env() {
+  load_env
+  grep '^ADB_TEST' "$ENV_FILE" | sed 's/^/export /'
+}
+
+run_matrix() {
+  load_env
+  export JAVA_HOME="${JAVA_HOME:-/Users/jason/.jdks/jdk-25.0.4.1+1/Contents/Home}"
+  log "跑真库契约矩阵（5 引擎 × 7 契约）"
+  ./mvnw -B -pl workbench/adb-jdbc test -Dtest=ExternalRealDatabaseTest
+}
+
+down() {
+  local entry engine container image host_port cur_port
+  for entry in "${IMAGES[@]}"; do
+    IFS='|' read -r engine container image host_port cur_port <<<"$entry"
+    if [ -n "$($DOCKER_BIN ps -aq -f name="^${container}$")" ]; then
+      log "删 $container"
+      $DOCKER_BIN rm -f -v "$container" >/dev/null
+    fi
+  done
+  if [ "${1:-}" = --purge-env ]; then
+    rm -f "$ENV_FILE"
+    log "口令文件也删了（下次 up 生成新的）"
+  fi
+}
+
+case "${1:-up}" in
+  up)     up ;;
+  down)   down "${2:-}" ;;
+  status) status ;;
+  env)    print_env ;;
+  run)    run_matrix ;;
+  *)      sed -n '2,14p' "$0" | sed 's/^#//; s/^ //' ;;
+esac
