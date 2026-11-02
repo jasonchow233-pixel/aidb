@@ -24,6 +24,13 @@ import java.util.List;
  * 而 MySQL 8.0 没有 —— 但本项目的写路径走「执行 → 反向重读」，<b>不生成</b>
  * RETURNING，所以这条差异落在界面之外，不进方言层。
  *
+ * <p>视图重建（R42 立、R52 收）：本类原来唯一的视图语法 override 是
+ * {@code viewReplace() = OR_REPLACE}，理由写的是「MySQL 没有单句形式」。
+ * R52 在 MySQL 8.4 容器上实测推翻了那个前提（D-29，见
+ * {@link MySqlDialect#viewReplace()}）：两家都收 {@code CREATE OR REPLACE VIEW}，
+ * 于是这条 override 删掉、直接继承父类 —— 少一处 override，
+ * 也少一处「同源两个方言各写一遍、然后悄悄长出两个版本」的机会。
+ *
  * <p>R46 起有 MariaDB 11.8 容器进真库矩阵（{@code ExternalRealDatabaseTest}），
  * 继承来的目录查询因此是被执行过的；实测到 {@code SHOW CREATE EVENT} 的列序与
  * MySQL 一致（{@code Event | sql_mode | time_zone | Create Event | …}），
@@ -112,17 +119,5 @@ public final class MariaDbDialect extends MySqlDialect {
         // 只给 MariaDB 全版本都有的族；uca14 是 10.10+ 才有，不混进通用候选。
         return List.of("utf8mb4_general_ci", "utf8mb4_unicode_ci", "utf8mb4_bin",
                 "latin1_swedish_ci");
-    }
-
-    /**
-     * ⭐ R42 N28-a：MariaDB 有 {@code CREATE OR REPLACE VIEW}，MySQL 没有。
-     *
-     * <p>这是两边在视图这一层唯一真实的语法差异，所以只 override 这一条：
-     * 重建走单句，不必先删再建 —— 依赖本视图的其它对象不会被顺带拆掉，
-     * 也不会在两句之间出现「视图短暂不存在」的窗口。
-     */
-    @Override
-    public ViewReplace viewReplace() {
-        return ViewReplace.OR_REPLACE;
     }
 }

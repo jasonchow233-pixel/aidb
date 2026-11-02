@@ -15,8 +15,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>与 {@link TableLifecycleSqlTest} 同一套思路：<b>不需要真数据库</b>，
  * 把六种方言生成的建 / 重建 / 删视图 SQL 逐字锁死。视图这一层最典型的
- * 坑就是「MariaDB 有 {@code CREATE OR REPLACE VIEW}，MySQL 没有」——
- * 同源两个方言差一条语法，写死在 UI 里早晚只在一边上对。
+ * 坑就是「同源的 MySQL / MariaDB 在重建写法上不一样」——
+ * ⚠️ R52 在真库上量过：<b>两边都有</b> {@code CREATE OR REPLACE VIEW}，
+ * 只有 SQLite 真的没有单句形式。此前这条门禁锁住的是<b>一个错误认知</b>
+ * （见 D-29），所以这一层的取值一律以容器实测为准，不靠文档传承。
  *
  * <p>⚠️ 校验失败断言的是<b>键名</b>而不是中文句子：模型层不产文案（D-9 的方向），
  * 渲染由界面做。界面侧的翻译对账在 {@code NewViewDialogTest}。
@@ -45,9 +47,11 @@ class ViewLifecycleSqlTest {
 
     @Test
     void theRedefineVocabularyMatchesWhatEachServerActuallyAccepts() {
-        // MySQL 8.0 没有 CREATE OR REPLACE VIEW（那是 MariaDB 的分支特性）。
+        // R52 容器实测（MySQL 8.4 / MariaDB 11.8）：两边都收 CREATE OR REPLACE VIEW。
+        // 之前这里锁的是 DROP_THEN_CREATE，理由是「MySQL 没有、那是 MariaDB 的分支特性」——
+        // 说法流传自旧文档，真库一试就翻（D-29）。
         assertThat(DialectKind.MYSQL.dialect().viewReplace())
-                .isEqualTo(ViewReplace.DROP_THEN_CREATE);
+                .isEqualTo(ViewReplace.OR_REPLACE);
         assertThat(DialectKind.MARIADB.dialect().viewReplace())
                 .isEqualTo(ViewReplace.OR_REPLACE);
         assertThat(DialectKind.POSTGRESQL.dialect().viewReplace())
@@ -62,6 +66,8 @@ class ViewLifecycleSqlTest {
 
     @Test
     void replacingAnExistingViewUsesOneStatementWhereTheDialectHasIt() {
+        assertThat(view(DialectKind.MYSQL, true)).containsExactly(
+                "CREATE OR REPLACE VIEW `active_users` AS\n" + BODY);
         assertThat(view(DialectKind.MARIADB, true)).containsExactly(
                 "CREATE OR REPLACE VIEW `active_users` AS\n" + BODY);
         assertThat(view(DialectKind.POSTGRESQL, true)).containsExactly(
@@ -73,11 +79,11 @@ class ViewLifecycleSqlTest {
     }
 
     @Test
-    void mysqlAndSqliteRedefineIsTwoStatementsBecauseNeitherHasOrReplace() {
+    void sqliteRedefineIsTwoStatementsBecauseItReallyHasNoOrReplace() {
         // ⭐ 预览里看到两句，库里就跑两句 —— 单句形式不存在时不能假装只有一句。
-        assertThat(view(DialectKind.MYSQL, true)).containsExactly(
-                "DROP VIEW `active_users`",
-                "CREATE VIEW `active_users` AS\n" + BODY);
+        // ⚠️ R52：这里只剩 SQLite。MySQL / MariaDB 曾被算进来，是因为一句没在真库上
+        //    验证过的旧说法（D-29）；两句之间视图<b>真的不存在</b>，界面上还要多问一道
+        //    危险确认，代价不是「多打一句 SQL」。
         assertThat(view(DialectKind.SQLITE, true)).containsExactly(
                 "DROP VIEW \"active_users\"",
                 "CREATE VIEW \"active_users\" AS\n" + BODY);

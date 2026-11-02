@@ -293,6 +293,25 @@ public class MySqlDialect implements Dialect {
         return null;
     }
 
+    /**
+     * ⭐ D-29：MySQL 有 {@code CREATE OR REPLACE VIEW} —— 这条以前判反了。
+     *
+     * <p>原先 MySQL 走默认的「先删再建」，注释写的是「MySQL 8.0 没有
+     * {@code CREATE OR REPLACE VIEW}，那是 MariaDB 的分支特性」。R52 把视图生命周期
+     * 放进真库契约，在 MySQL 8.4 容器上实测：单句照跑，而且**真的替换了定义**
+     * （{@code SHOW CREATE VIEW} 回 {@code select t.id AS id, t.id AS marker …}，
+     * {@code information_schema.columns} 跟着变成 id / marker）。MariaDB 11.8 同形。
+     *
+     * <p>判反的代价不是「多打一句 SQL」：两句之间视图**真的不存在**，
+     * 而且界面要为此多要一道危险确认（{@code StructurePlan#approvalRequired()}）。
+     * 用户在一个本来单句就够的服务器上被问「要不要先删掉再建」，
+     * 这是把我们的知识错误转嫁成用户的操作风险。
+     */
+    @Override
+    public ViewReplace viewReplace() {
+        return ViewReplace.OR_REPLACE;
+    }
+
     @Override
     public String tableMetaSql() {
         // ⭐ Navicat 表清单的 8 列。update_time / table_collation / table_comment

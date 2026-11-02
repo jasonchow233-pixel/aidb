@@ -649,9 +649,11 @@ public final class StructureSqlBuilder {
     /**
      * 建 / 重建视图的语句列表。
      *
-     * <p>{@code existing} 为真时走方言的重建写法：MariaDB / PostgreSQL / Oracle 一句
+     * <p>{@code existing} 为真时走方言的重建写法：MySQL / MariaDB / PostgreSQL / Oracle 一句
      * {@code CREATE OR REPLACE}，SQL Server {@code CREATE OR ALTER}，
-     * MySQL / SQLite 只能两句「先删再建」（见 {@link io.agenticdb.jdbc.ViewReplace}）。
+     * 只有 SQLite 只能两句「先删再建」（见 {@link io.agenticdb.jdbc.ViewReplace}）。
+     * ⚠️ 这组取值以 R52 五引擎容器实测为准；MySQL 曾被当成「没有 OR REPLACE」的
+     * 那一侧（D-29），代价是界面在本来单句就够的服务器上多要一道危险确认。
      * 预览与执行都必须调这一个方法 —— 用户在预览里看到几句，库里就跑几句。
      */
     public static List<String> viewStatements(DbSession session, String name, String rawBody,

@@ -26,8 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <ol>
  *   <li><b>预览即执行</b> —— 预览文本必须与 {@link StructurePlan#sql()} 逐字相同。
  *       两处各算一次会慢慢跑偏（R31 的教训），这条断言就是不让它跑偏。</li>
- *   <li><b>方言的重建写法要看得见</b> —— 同一个正文，在 MariaDB 上预览一句
- *       {@code CREATE OR REPLACE}，在 MySQL 上预览两句「先删再建」。
+ *   <li><b>方言的重建写法要看得见</b> —— 同一个正文，在 MySQL / MariaDB 上预览一句
+ *       {@code CREATE OR REPLACE}，只有 SQLite 预览两句「先删再建」。
  *       用户在弹窗里就该看见自己会执行几句，而不是执行完才发现视图被删过。</li>
  *   <li><b>校验不过不许关掉弹窗</b> —— 关掉重开等于把刚写的查询全丢。</li>
  * </ol>
@@ -101,9 +101,12 @@ class ViewDesignerDialogTest {
     }
 
     @Test
-    void redefiningOnMysqlDropsThenCreatesAndSaysSo() {
-        // MySQL 8.0 没有 CREATE OR REPLACE VIEW —— 只能两句，
-        // 而第二句之前视图已经不存在了：这必须写在弹窗里，不能只写在文档里。
+    void redefiningOnMysqlIsOneStatementAndNeedsNoSecondApproval() {
+        // ⭐ R52（D-29）：这条从「两句 + 要第二道确认」翻成「一句 + 不需要」。
+        // 翻案依据是容器实测：MySQL 8.4 与 MariaDB 11.8 都收 CREATE OR REPLACE VIEW，
+        // SHOW CREATE VIEW 回读的是新正文。判反的代价不是「多打一句 SQL」：
+        // 两句之间视图<b>真的不存在</b>，还要用户在本来单句就够的服务器上
+        // 答一次「要不要先删掉再建」—— 那是把我们的知识错误转嫁成用户的操作风险。
         ViewDesignerDialog dialog = onFx(() -> ViewDesignerDialog.redesign(
                 FakeDbSession.of(DialectKind.MYSQL), List.of("v_active_users"),
                 "v_active_users", BODY));
@@ -111,8 +114,28 @@ class ViewDesignerDialogTest {
         StructurePlan plan = onFx(dialog::buildPlan);
         assertThat(plan).isNotNull();
         assertThat(plan.statements()).containsExactly(
-                "DROP VIEW `v_active_users`",
-                "CREATE VIEW `v_active_users` AS\n" + BODY);
+                "CREATE OR REPLACE VIEW `v_active_users` AS\n" + BODY);
+        assertThat(plan.approvalRequired())
+                .as("一句 OR REPLACE 里没有 DROP，不该弹危险确认")
+                .isFalse();
+        assertThat(onFx(() -> dialog.hintLabel().isVisible()))
+                .as("没有「先删再建」要解释时，那行提示不能挂着")
+                .isFalse();
+    }
+
+    @Test
+    void redefiningOnSqliteDropsThenCreatesAndSaysSo() {
+        // SQLite 是唯一真的没有单句重建形式的方言（R52 在六个库上都量过）。
+        // 两句之间视图已经不存在了：这必须写在弹窗里，不能只写在文档里。
+        ViewDesignerDialog dialog = onFx(() -> ViewDesignerDialog.redesign(
+                FakeDbSession.of(DialectKind.SQLITE), List.of("v_active_users"),
+                "v_active_users", BODY));
+
+        StructurePlan plan = onFx(dialog::buildPlan);
+        assertThat(plan).isNotNull();
+        assertThat(plan.statements()).containsExactly(
+                "DROP VIEW \"v_active_users\"",
+                "CREATE VIEW \"v_active_users\" AS\n" + BODY);
         assertThat(plan.approvalRequired())
                 .as("两句「先删再建」必须有第二道确认")
                 .isTrue();
