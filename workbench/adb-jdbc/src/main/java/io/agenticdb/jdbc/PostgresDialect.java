@@ -563,12 +563,37 @@ public final class PostgresDialect implements Dialect {
         return "";
     }
 
-    /** 表注释在 {@code pg_class} 的 {@code obj_description} 里。
+    /** 表注释在 {@code pg_class} 的 {@code obj_description} 里。 */
     @Override
     public String tableCommentQuery(String table) {
         return "SELECT obj_description(c.oid) FROM pg_class c "
                 + "JOIN pg_namespace n ON n.oid = c.relnamespace "
                 + "WHERE c.relname = ? AND n.nspname = current_schema()";
+    }
+
+    /**
+     * ⭐ R46（真库实测 PG 16.15 / pgjdbc 42.7.14）：PG 驱动的外键动作码
+     * **不是通用映射那套**，而是与 Xerial SQLite 实测**同一组数字**：
+     * 0=CASCADE · 1=RESTRICT · 2=SET NULL · <b>3=NO ACTION</b> · 4=SET DEFAULT。
+     *
+     * <p>用通用映射的后果是**双向写错**：真 CASCADE 被读成 NO ACTION，
+     * 而默认（NO ACTION，码 3）被读成 SET NULL —— 改一次列，
+     * {@code ON DELETE} 就被静默改写成另一条动作，删父行时行为整个变了。
+     */
+    @Override
+    public String foreignKeyActionName(String rawCode) {
+        if (rawCode == null || rawCode.isBlank()) {
+            return "NO ACTION";
+        }
+        String code = rawCode.trim().toUpperCase(java.util.Locale.ROOT);
+        return switch (code) {
+            case "0" -> "CASCADE";
+            case "1" -> "RESTRICT";
+            case "2" -> "SET NULL";
+            case "3" -> "NO ACTION";
+            case "4" -> "SET DEFAULT";
+            default -> code;
+        };
     }
 
     /**

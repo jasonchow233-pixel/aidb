@@ -366,6 +366,27 @@ public final class RealDatabaseContract {
                             .as("索引查询要能跑")
                             .isNotNull();
                 }
+
+                // ⭐ R46：表注释必须**写进去再读回来**。这条是补的洞 ——
+                //    一行没闭合的块注释把 MySQL / PG 的 tableCommentQuery 整段吃掉，
+                //    接口默认（null）悄悄生效，结构页的表注释永远是空，
+                //    而「改一次列」会把注释静默抹掉。只跑不报错的查询门不住这种事。
+                if (dialect.supportsTableComment()) {
+                    String comment = "契约注释 " + Long.toHexString(System.nanoTime());
+                    session.execute(dialect.tableCommentSql(table, comment));
+                    try (PreparedStatement statement = session.connection()
+                            .prepareStatement(dialect.tableCommentQuery(table))) {
+                        statement.setString(1, table);
+                        try (ResultSet rs = statement.executeQuery()) {
+                            assertThat(rs.next())
+                                    .as("%s 的表注释查询要能取到刚注释的表", dialect.displayName())
+                                    .isTrue();
+                            assertThat(rs.getString(1))
+                                    .as("%s 写进去的表注释要原样读回来", dialect.displayName())
+                                    .isEqualTo(comment);
+                        }
+                    }
+                }
             } finally {
                 dropQuietly(session, dialect, table);
             }

@@ -610,7 +610,7 @@ public class MySqlDialect implements Dialect {
         return "";
     }
 
-    /** 表注释在 {@code information_schema.TABLES.TABLE_COMMENT} 里。
+    /** 表注释在 {@code information_schema.TABLES.TABLE_COMMENT} 里。 */
     @Override
     public String tableCommentQuery(String table) {
         return "SELECT TABLE_COMMENT FROM information_schema.TABLES "

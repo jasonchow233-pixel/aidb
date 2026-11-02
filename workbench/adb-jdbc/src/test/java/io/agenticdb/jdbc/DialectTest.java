@@ -298,6 +298,60 @@ class DialectTest {
         }
     }
 
+    // ─────────────────── 真库实测：动作码与注释钩子 ───────────────────
+
+    /**
+     * ⭐ R46 第一条真库发现（2026-11-02，PG 16.15 / pgjdbc 42.7.14 实测）：
+     * PG 驱动返回的外键动作码与通用映射**不是一套**（0=CASCADE、3=NO ACTION）。
+     *
+     * <p>沿用通用映射不是「显示得不好看」，而是**双向写错**：真 CASCADE 读成
+     * NO ACTION，默认（NO ACTION）读成 SET NULL —— 下一次改列把 {@code ON DELETE}
+     * 静默改写成另一条动作，删父行的行为整个变了。SQLite 是同一个坑（已修），
+     * 所以这条按方言分别钉死。
+     */
+    @Test
+    void postgresAndSqliteShareTheirOwnForeignKeyActionCodes() {
+        Dialect postgres = DialectKind.POSTGRESQL.dialect();
+        Dialect sqlite = DialectKind.SQLITE.dialect();
+        Dialect mysql = DialectKind.MYSQL.dialect();
+
+        assertThat(postgres.foreignKeyActionName("0")).isEqualTo("CASCADE");
+        assertThat(postgres.foreignKeyActionName("1")).isEqualTo("RESTRICT");
+        assertThat(postgres.foreignKeyActionName("2")).isEqualTo("SET NULL");
+        assertThat(postgres.foreignKeyActionName("3")).isEqualTo("NO ACTION");
+        assertThat(postgres.foreignKeyActionName("4")).isEqualTo("SET DEFAULT");
+
+        assertThat(sqlite.foreignKeyActionName("0")).as("SQLite 驱动与 PG 同码").isEqualTo("CASCADE");
+        assertThat(sqlite.foreignKeyActionName("3")).isEqualTo("NO ACTION");
+
+        assertThat(mysql.foreignKeyActionName("2"))
+                .as("MySQL 驱动走通用映射：2 才是 CASCADE")
+                .isEqualTo("CASCADE");
+        assertThat(mysql.foreignKeyActionName("0")).isEqualTo("NO ACTION");
+    }
+
+    /**
+     * ⭐ 声称支持表注释的方言，必须**真的**给得出读取查询。
+     *
+     * <p>这条钉的是一类编译器管不住的缺陷：一行 {@code /** ...} 忘了闭合，
+     * 整段 {@code @Override} 方法被当成注释吃掉，接口默认（返回 null）悄悄生效，
+     * 结构页的表注释就永远是空 —— 实测 MySQL 与 PG 两条方言都中过（2026-11-02）。
+     */
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(DialectKind.class)
+    void commentCapableDialectsReturnARealQuery(DialectKind kind) {
+        Dialect dialect = kind.dialect();
+        if (!dialect.supportsTableComment()) {
+            assertThat(dialect.tableCommentQuery("users"))
+                    .as("%s 不支持表注释 → 读取查询必须是 null，界面才显示「—」", kind)
+                    .isNull();
+            return;
+        }
+        String sql = dialect.tableCommentQuery("users");
+        assertThat(sql).as("%s 声称支持表注释，就必须给得出读取查询", kind).isNotNull();
+        assertThat(sql).as("表名必须是绑定参数，不许拼进 SQL").contains("?");
+    }
+
     // ─────────────────────────── DDL 读取 ───────────────────────────
 
     @Test
