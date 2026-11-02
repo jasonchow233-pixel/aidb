@@ -462,6 +462,48 @@ public final class RealDatabaseContract {
                         statement.executeQuery();
                     }
                 }
+
+                // ⭐ R46：把「每条目录 SELECT 都在真服务器上跑一遍」收全。
+                //    catalogs / serverInfo / eventsList 这三条以前一次没跑过 ——
+                //    编一个不存在的列名，编译得过、离线门禁绿，
+                //    只有真服务器会报（D-20 / D-24 就是这个形状）。
+                String catalogs = dialect.catalogsSql();
+                if (catalogs != null) {
+                    assertThat(session.execute(catalogs).rows())
+                            .as("%s 的 catalog 列表查询要能跑", dialect.displayName())
+                            .isNotNull();
+                }
+                String serverInfo = dialect.serverInfoSql();
+                if (serverInfo != null) {
+                    assertThat(session.execute(serverInfo).rows())
+                            .as("%s 的服务器信息查询要至少返回一行", dialect.displayName())
+                            .isNotEmpty();
+                }
+                String events = dialect.eventsListSql();
+                if (events != null) {
+                    assertThat(session.execute(events).rows())
+                            .as("%s 的事件列表查询要能跑", dialect.displayName())
+                            .isNotNull();
+                }
+
+                // ⭐ D-22 的另一半：readDdl 以前只按大写找对象，
+                //    而设计器建的是**小写加引号**的表 → 「查看建表语句」永远是空的。
+                //    这条不报错、只是没内容，所以必须由矩阵在这里钉住。
+                //    ⚠️ 门要跟着能力位走：PG / SQL Server 没有 SHOW CREATE TABLE，
+                //    它们声明 readsDdlFromDatabase()=false 并返回 null 是**正确**的
+                //    （界面据此显示「由内省生成的等价 DDL」），不该被当成缺陷。
+                if (dialect.readsDdlFromDatabase()) {
+                    assertThat(dialect.readDdl(session.connection(), table, false))
+                            .as("%s 声称能从库里读 DDL，就得读回刚建的那张表",
+                                    dialect.displayName())
+                            .isNotBlank();
+                } else {
+                    assertThat(dialect.readDdl(session.connection(), table, false))
+                            .as("%s 既然声称读不到，就必须真返回 null —— "
+                                    + "返回空串会让界面走进「读到了但内容为空」的分支，"
+                                    + "看起来像库出了问题", dialect.displayName())
+                            .isNull();
+                }
             } finally {
                 dropQuietly(session, dialect, table);
             }
