@@ -72,7 +72,8 @@ class NewTableDialogTest {
         assertThat(onFx(dialog::buildPlan)).isNull();
         assertThat(NewTableDialog.problem(session, "users",
                 java.util.List.of(row("id", true)), List.of("users")))
-                .contains("已经存在");
+                .contains(I18n.t("table.error.exists", "users"))
+                .doesNotContain("⚠");
     }
 
     @Test
@@ -108,7 +109,11 @@ class NewTableDialogTest {
 
         assertThat(plan).isNotNull();
         assertThat(plan.statements()).isNotEmpty();
-        assertThat(plan.title()).contains("orders");
+        // R45 G3：计划只带「键 + 参数」，文字在渲染口才长出来。
+        // 这里走一次口，顺带证明资源包里确实有这个键 —— 掉字会露出 ⚠。
+        assertThat(plan.titleKey()).isEqualTo("plan.title.createTable");
+        assertThat(plan.titleArgs()).containsExactly("orders");
+        assertThat(StructurePlanRunner.title(plan)).contains("orders").doesNotContain("⚠");
     }
 
     /**
@@ -476,7 +481,8 @@ class NewTableDialogTest {
                 ? label.getText() : null);
         assertThat(hint)
                 .as("预览空着必须说出原因 —— 表名已填却显示「填写表名后…」会让人以为预览坏了")
-                .contains("已经存在")
+                .contains(I18n.t("table.error.exists", "orders"))
+                .doesNotContain("⚠")
                 .doesNotContain(I18n.t("newtable.preview.emptyHint"));
     }
 
@@ -654,7 +660,9 @@ class NewTableDialogTest {
                 .isEqualTo("new-table-tab-indexes");
         String message = onFx(() -> ((javafx.scene.control.Label) dialog.dialog()
                 .getDialogPane().getContent().lookup("#new-table-error")).getText());
-        assertThat(message).contains("索引");
+        // R45 G3：这条原先钉「索引」两个字，钉的同样是 D-9（中文从模型层漏进英文界面）。
+        assertThat(message).contains(I18n.t("index.error.columnNotFound", "idx_bad", "nope"))
+                .doesNotContain("⚠");
     }
 
     /**

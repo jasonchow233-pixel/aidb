@@ -92,8 +92,8 @@ class I18nAuditTest {
      * 第六批的 D-7 就是这么漏的 —— {@code Danger.label()} 的中文写在
      * {@code core/adb-model}，英文构建把「只读」原样渲染到界面上，<b>三条门禁全绿</b>。
      * 第七批量到同一层还有 277 条，其中最大的一块是
-     * {@code StructureSqlBuilder} 给 {@code StructurePlan.title()} 拼的中文标题，
-     * 正被结构页拼进状态条与确认弹窗（记为 D-9，仍未修）。
+     * {@code StructureSqlBuilder} 给结构变更计划拼的中文标题，
+     * 正被结构页拼进状态条与确认弹窗（记为 D-9，<b>R45 G3-a 已修</b>）。
      *
      * <p>口径与 ui 侧完全一致：同一套 {@code stripComments} + 同一条正则，
      * 所以 {@code node tools/cjk-count.mjs --model} 能复现这个数字。
@@ -105,8 +105,29 @@ class I18nAuditTest {
      * 例如「标识符不能为空」「自增列必须是整型」）。它们和既有方言里的同款文案
      * 是同一笔债，不是新长出来的界面文案 —— 向导的 TLS 说明已经改成资源键
      * （{@code wizard.ssl.notice.*}），正文在资源包里由界面渲染。
+     *
+     * <p>⭐ 290 → <b>170</b>（R45 G3-a，2026-11-02）：<b>结构变更这一整块键化</b> ——
+     * {@code StructurePlan} 的 {@code title} 字段换成 {@code titleKey + titleArgs}，
+     * {@code StructureSqlBuilder} 与五个 {@code Dialect} 的校验异常换成
+     * {@link io.agenticdb.jdbc.ColumnProblem}（同样是「键 + 参数」），
+     * 文字只在两个渲染口长出来：{@code StructurePlanRunner.title()} 与
+     * {@code NewTableDialog.problemText()}。掉了 {@code StructureSqlBuilder}
+     * 这一整层的 120 条（含它给计划标题拼的中文，D-9 最大的一块）。
+     * 剩下的 170 条按文件是有账的：查询侧（{@code FilterOperator} 14、
+     * {@code DataSqlBuilder}/{@code FilterCondition} 各 5…）、导入导出
+     * （{@code TableImporter} 23、{@code ExportFormat} 7…）、错误归类
+     * （{@code ErrorClassifier} 20）、会话与凭据（{@code JdbcSession} 14、
+     * 三个 {@code *CredentialStore} 12…）—— 记为 G3-b/c/d，同一轮棘轮内继续降。
+     *
+     * <p>⚠️ <b>这个 170 是怎么量出来的</b>：把本常量临时改成 0、跑
+     * {@code -Dtest=I18nAuditTest#modelLayerChineseIsRatchetedDown}，
+     * 读失败信息里的「当前残留 %d 条（按文件）」<b>再改回来</b>。
+     * 尺子就是这条门禁自己，不存在口径漂移。
+     * （文档里推荐的 <code>node tools/cjk-count.mjs --model</code> 在这台机器上跑不了 ——
+     * 没有 node。别再抄文档里的旧数字：G3-a 开工前文档记的「186 顶格」实测是 170，
+     * 差的正是这一批清掉的 {@code StructureSqlBuilder}。）
      */
-    private static final int MODEL_CJK_CEILING = 290;
+    private static final int MODEL_CJK_CEILING = 170;
 
     /** 源码里对 {@link I18n#t(String, Object...)} 的键引用。 */
     private static final Pattern KEY_REFERENCE = Pattern.compile("I18n\\.t\\(\\s*\"([^\"]+)\"");
@@ -227,6 +248,174 @@ class I18nAuditTest {
         assertThat(problems)
                 .as("源码引用了但资源里没有的键 —— 界面上会长出 ⚠key")
                 .isEmpty();
+    }
+
+    /**
+     * 模型层里「长得像资源键」的字符串字面量。
+     *
+     * <p>白名单到<b>命名空间</b>：模型层合法地点号字符串很多
+     * （{@code information_schema.tables}、驱动类名 {@code oracle.jdbc.OracleDriver}），
+     * 只认落在这些前缀下的。副作用是好的 —— <b>新命名空间要先进这条门禁</b>，
+     * 不能悄悄长出一片没人对账的键。
+     */
+    private static final Pattern MODEL_KEY_LITERAL = Pattern.compile(
+            "\"((?:plan|column|table|fk|index|trigger|structure|danger)\\.[A-Za-z][A-Za-z0-9]*"
+                    + "(?:\\.[A-Za-z0-9]+)*)\"");
+
+    /** 模型层交出的「键 + 参数」的三个构造点。 */
+    private static final List<String> MODEL_KEY_CONSTRUCTORS = List.of(
+            "new ColumnProblem(", "new DesignStepException(", "new StructurePlan(");
+
+    /**
+     * ⭐ R45 G3-a：<b>模型层交出的键</b>必须在两份资源里都有，并且参数与占位符对得上。
+     *
+     * <h2>为什么 G3 之后必须补这一条</h2>
+     * {@link #everyKeyReferencedInSourceExists()} 只扫 {@code ui/**}\/src/main 里的
+     * {@code I18n.t("…")}。G3 把结构那一层的中文换成「键 + 参数」之后，
+     * <b>键名写进了 core/workbench</b>（{@code new ColumnProblem("table.error.exists", …)}、
+     * {@code new StructurePlan("plan.title.addColumn", …)}），ui 侧只剩两个通用渲染口
+     * （{@code StructurePlanRunner.title} / {@code NewTableDialog.problemText}）。
+     * 于是「键名打错一个字母」这件事<b>第一次没有任何门禁能看见</b>：编译期完全合法，
+     * 运行时界面上长出 {@code ⚠plan.title.addColum} —— 而且只在用户真做一次加列操作时露出来，
+     * 验收帧拍不到那一刻。这一条把视野补回来。
+     *
+     * <h2>两段判据</h2>
+     * <ol>
+     *   <li><b>存在性</b>按 {@link #MODEL_KEY_LITERAL} 扫，覆盖<b>透传</b>的键
+     *       （{@code identifierProblem(value, "index.error.nameEmpty", …)} 里那个键
+     *       最终才进 {@code new ColumnProblem(key, …)}，构造点扫不到它）。</li>
+     *   <li><b>占位符对账</b>按 {@link #MODEL_KEY_CONSTRUCTORS} 的调用点形状解：
+     *       {@code ColumnProblem} 的变长实参直接数，{@code StructurePlan} 的参数装在
+     *       {@code List.of(...)} 里要再切一层；键名是变量、参数是 {@code Object...} 的
+     *       写不出来就<b>跳过</b>（不误报），但那两类调用点自己已经由
+     *       {@code adb-introspect} 的断言钉住参数（{@code titleArgs} / {@code args()}）。</li>
+     * </ol>
+     *
+     * <p>少一个参数 → 界面上露出字面 {@code {1}}；多一个 → 静默少一段话。
+     * 两侧（en/zh）各判一次，占位符数不一致本身就是「只补了一边」。
+     */
+    @Test
+    void modelLayerKeysAreInTheBundlesAndAgreeWithTheirArguments() throws IOException {
+        Properties en = bundle(Locale.ENGLISH);
+        Properties zh = bundle(Locale.CHINESE);
+        Set<String> keys = new LinkedHashSet<>();
+        List<String> problems = new ArrayList<>();
+        int parameterized = 0;
+
+        for (Path file : modelSources()) {
+            String source = stripComments(read(file));
+            Matcher matcher = MODEL_KEY_LITERAL.matcher(source);
+            while (matcher.find()) {
+                keys.add(matcher.group(1));
+            }
+            for (CallSite site : modelKeyCallSites(source)) {
+                String enText = en.getProperty(site.key());
+                String zhText = zh.getProperty(site.key());
+                if (enText == null || zhText == null) {
+                    // 缺键由存在性那一段统一报，这里不重复报同一笔。
+                    continue;
+                }
+                int expectedEn = placeholders(enText);
+                int expectedZh = placeholders(zhText);
+                if (expectedEn > 0 || expectedZh > 0 || site.args() > 0) {
+                    parameterized++;
+                }
+                if (site.args() != expectedEn) {
+                    problems.add(relative(file) + " " + site.key()
+                            + " 递了 " + site.args() + " 个参数，en 侧有 " + expectedEn + " 个占位符");
+                }
+                if (site.args() != expectedZh) {
+                    problems.add(relative(file) + " " + site.key()
+                            + " 递了 " + site.args() + " 个参数，zh 侧有 " + expectedZh + " 个占位符");
+                }
+            }
+        }
+
+        assertThat(keys)
+                .as("模型层一个键字面量都没扫到 —— 命名空间白名单或构造名失效，这条门禁在空转")
+                .isNotEmpty();
+        List<String> missing = new ArrayList<>();
+        for (String key : new TreeSet<>(keys)) {
+            if (!en.containsKey(key)) {
+                missing.add(key + " 缺 en");
+            }
+            if (!zh.containsKey(key)) {
+                missing.add(key + " 缺 zh");
+            }
+        }
+        assertThat(missing)
+                .as("模型层交出但资源包里没有的键（界面上会长出 ⚠key）：\n  %s",
+                        String.join("\n  ", missing))
+                .isEmpty();
+        assertThat(parameterized)
+                .as("一个带参数的模型层调用点都没判到 —— 形状解析失效，这条门禁在空转")
+                .isGreaterThan(10);
+        assertThat(problems)
+                .as("模型层交出的参数个数与占位符个数对不上：\n  %s",
+                        String.join("\n  ", problems))
+                .isEmpty();
+    }
+
+    /**
+     * 解出模型层三个构造点的「键 + 参数个数」。写不出来的形状返回空 —— 宁可不判，
+     * 也不要把门禁做成误报机（误报的门禁最终会被人关掉）。
+     */
+    private static List<CallSite> modelKeyCallSites(String source) {
+        List<CallSite> sites = new ArrayList<>();
+        for (String marker : MODEL_KEY_CONSTRUCTORS) {
+            int at = 0;
+            while ((at = source.indexOf(marker, at)) >= 0) {
+                int open = at + marker.length() - 1;
+                List<String> raw = splitTopLevel(source, open);
+                if (!raw.isEmpty()) {
+                    String key = stringLiteral(raw.get(0));
+                    if (key != null) {
+                        sites.add(new CallSite(key, modelKeyArguments(marker, raw)));
+                    }
+                }
+                at = open;
+            }
+        }
+        return sites;
+    }
+
+    /**
+     * {@code ColumnProblem} 是变长实参（第 2..n 个都是参数）；
+     * {@code StructurePlan} 的参数装在第 2 个位置的 {@code List.of(...)} 里 ——
+     * 五参数便捷构造没有参数列表，六参数才有。
+     */
+    private static int modelKeyArguments(String marker, List<String> raw) {
+        if (raw.size() < 2) {
+            return 0;
+        }
+        if (marker.equals("new StructurePlan(")) {
+            if (raw.size() < 6) {
+                return 0;
+            }
+            String second = raw.get(1).trim();
+            if (!second.startsWith("List.of(")) {
+                return 0;
+            }
+            int nested = second.indexOf('(');
+            List<String> inner = splitTopLevel(second, nested);
+            if (inner.size() == 1 && inner.get(0).trim().isEmpty()) {
+                // List.of() —— 无参标题。
+                return 0;
+            }
+            return inner.size();
+        }
+        return raw.size() - 1;
+    }
+
+    /** 纯字符串字面量（中间没有引号、没有拼接）才返回内容，否则返回 {@code null}。 */
+    private static String stringLiteral(String expression) {
+        String text = expression.trim();
+        if (text.length() < 2 || text.charAt(0) != '"'
+                || text.charAt(text.length() - 1) != '"'
+                || text.substring(1, text.length() - 1).indexOf('"') >= 0) {
+            return null;
+        }
+        return text.substring(1, text.length() - 1);
     }
 
     /**

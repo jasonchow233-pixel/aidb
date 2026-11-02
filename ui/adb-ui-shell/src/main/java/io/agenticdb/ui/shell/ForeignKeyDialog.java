@@ -319,7 +319,7 @@ final class ForeignKeyDialog {
                     ? StructureSqlBuilder.foreignKeyClause(session, current())
                     : StructureSqlBuilder.addForeignKey(session, table, current()).sql());
         } catch (RuntimeException e) {
-            preview.setText(e.getMessage() == null ? "" : e.getMessage());
+            preview.setText(e.getMessage() == null ? "" : NewTableDialog.problemText(e));
         }
     }
 }

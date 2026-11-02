@@ -12,6 +12,7 @@ import org.testfx.util.WaitForAsyncUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -90,7 +91,12 @@ class TableDdlTest {
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(session.executed()).isEmpty();
-        assertThat(statuses).last().asString().contains("已经存在");
+        // ⭐ R45 G3：重名原因从「模型层写死的中文」变成「键 + 参数」，文字由渲染口按
+        // 当前语言给。原来这里钉死「已经存在」，钉住的其实是 D-9 那个 bug ——
+        // 英文界面上漏出中文，测试却跟着中文一起绿。现在换成键，两种语言都成立。
+        assertThat(statuses).last().asString()
+                .contains(I18n.t("table.error.exists", "users"))
+                .doesNotContain("⚠");
     }
 
     @Test
@@ -159,6 +165,56 @@ class TableDdlTest {
         assertThat(session.inTransaction())
                 .as("执行结束后不能还挂在事务里 —— 那会把后面的查询一起锁住")
                 .isFalse();
+    }
+
+    /**
+     * ⭐ R45 G3-a 正向日证：结构计划的标题在<b>两种语言里都渲染成人话</b>。
+     *
+     * <p>为什么「键存在」不够（上一条门禁已经证明键存在了）：D-9 的症状是
+     * <b>英文界面上露出中文</b>，而「键存在 + 参数对得上」推不出「值没抄错边」——
+     * 把 zh 的句子抄进 en，门禁全绿，界面照样漏中文。所以这里<b>两侧各钉一次</b>：
+     * en 侧必须是英文句子，zh 侧必须是中文句子，谁也不许冒充谁。
+     *
+     * <p>钉的是「清空表」和「重命名表」两个：一个单参数、一个双参数（箭头那条例子），
+     * 参数个数不同的形状各留一份证据。
+     */
+    @Test
+    void planTitlesRenderAsHumanTextInBothLanguages() {
+        List<StructurePlan> seen = new ArrayList<>();
+        TableDdl ddl = new TableDdl(id -> session, id -> Runnable::run, statuses::add,
+                id -> List.of(), id -> changes.incrementAndGet(), () -> null, List::of);
+        ddl.setConfirmation(plan -> {
+            seen.add(plan);
+            return false;
+        });
+
+        ddl.truncateTable("conn", "orders");
+        WaitForAsyncUtils.waitForFxEvents();
+        ddl.renameTable("conn", "orders", "orders2");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(seen).hasSize(2);
+        try {
+            I18n.setLocale(Locale.ENGLISH);
+            assertThat(StructurePlanRunner.title(seen.get(0)))
+                    .as("英文构建里标题必须是英文 —— D-9 就是把中文原样带进了英文界面")
+                    .isEqualTo("Empty table orders");
+            assertThat(StructurePlanRunner.title(seen.get(1)))
+                    .isEqualTo("Rename table orders to orders2");
+
+            I18n.setLocale(Locale.CHINESE);
+            assertThat(StructurePlanRunner.title(seen.get(0)))
+                    .isEqualTo("清空表 orders");
+            assertThat(StructurePlanRunner.title(seen.get(1)))
+                    .as("双参数那条：箭头两侧都得上值")
+                    .isEqualTo("重命名表 orders → orders2");
+
+            assertThat(StructurePlanRunner.title(seen.get(1)))
+                    .as("掉键会露出 ⚠key，掉占位符会露出字面 {0}")
+                    .doesNotContain("⚠").doesNotContain("{");
+        } finally {
+            I18n.setLocale(I18n.DEFAULT_LOCALE);
+        }
     }
 
     private TableDdl ddl(List<String> existingTables, boolean confirmed) {

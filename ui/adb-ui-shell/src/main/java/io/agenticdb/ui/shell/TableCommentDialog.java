@@ -134,7 +134,7 @@ final class TableCommentDialog {
             preview.setText(StructureSqlBuilder
                     .setTableComment(session, table, comment.getText()).sql());
         } catch (RuntimeException e) {
-            preview.setText(e.getMessage() == null ? "" : e.getMessage());
+            preview.setText(e.getMessage() == null ? "" : NewTableDialog.problemText(e));
         }
     }
 }

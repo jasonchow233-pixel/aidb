@@ -257,7 +257,7 @@ final class TableDdl {
         }
         StructurePlan plan = StructureSqlBuilder.dropTables(current, names);
         if (!confirmation.test(plan)) {
-            status.accept(I18n.t("ddl.cancelled", plan.title()));
+            status.accept(I18n.t("ddl.cancelled", StructurePlanRunner.title(plan)));
             return;
         }
         if (!running.compareAndSet(false, true)) {
@@ -385,7 +385,7 @@ final class TableDdl {
             List<String> statements = StructureSqlBuilder.dropViewStatements(current, name);
             // 与删表同一档：视图本身不存数据，但依赖它的对象会一起失效，
             // 所以 approvalRequired 为真 —— 必须先看清 SQL 再确认一次。
-            run(connectionId, new StructurePlan(I18n.t("view.plan.drop", name),
+            run(connectionId, new StructurePlan("view.plan.drop", List.of(name),
                     statements, Danger.DESTRUCTIVE, true, false));
         } catch (IllegalArgumentException e) {
             status.accept(NewTableDialog.problemText(e));
@@ -423,7 +423,8 @@ final class TableDdl {
             StructureSqlBuilder.renameTable(current, oldName, next, others);
             return null;
         } catch (IllegalArgumentException e) {
-            return e.getMessage();
+            // 模型层交回的是「键 + 参数」，原样 getMessage() 会把键名甩给用户。
+            return NewTableDialog.problemText(e);
         }
     }
 
@@ -438,26 +439,26 @@ final class TableDdl {
             return;
         }
         if (!confirmation.test(plan)) {
-            status.accept(I18n.t("ddl.cancelled", plan.title()));
+            status.accept(I18n.t("ddl.cancelled", StructurePlanRunner.title(plan)));
             return;
         }
         if (!running.compareAndSet(false, true)) {
             status.accept(I18n.t("ddl.busy"));
             return;
         }
-        status.accept(I18n.t("ddl.executing", plan.title()));
+        status.accept(I18n.t("ddl.executing", StructurePlanRunner.title(plan)));
         executorFor.apply(connectionId).execute(() -> {
             try {
                 StructurePlanRunner.execute(current, plan);
                 Platform.runLater(() -> {
                     running.set(false);
-                    status.accept(I18n.t("ddl.done", plan.title()));
+                    status.accept(I18n.t("ddl.done", StructurePlanRunner.title(plan)));
                     onChanged.accept(connectionId);
                 });
             } catch (Exception e) {
                 Platform.runLater(() -> {
                     running.set(false);
-                    status.accept(I18n.t("ddl.failed", plan.title(), readable(e)));
+                    status.accept(I18n.t("ddl.failed", StructurePlanRunner.title(plan), readable(e)));
                 });
             }
         });

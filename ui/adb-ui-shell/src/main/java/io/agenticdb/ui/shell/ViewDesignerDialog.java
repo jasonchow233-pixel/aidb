@@ -227,11 +227,11 @@ final class ViewDesignerDialog {
         }
         List<String> statements = StructureSqlBuilder.viewStatements(
                 session, trimmed, selectEditor.text(), redefine);
-        String title = I18n.t(redefine ? "view.plan.update" : "view.plan.create", trimmed);
         // ⭐ 「先删再建」是两句 —— 第二句之前那个视图已经没了，依赖它的对象会失败。
         //    这种计划必须第二道确认；单句 OR REPLACE 不用。
         boolean secondApproval = statements.size() > 1;
-        return new StructurePlan(title, statements, Danger.DESTRUCTIVE, secondApproval, false);
+        return new StructurePlan(redefine ? "view.plan.update" : "view.plan.create",
+                List.of(trimmed), statements, Danger.DESTRUCTIVE, secondApproval, false);
     }
 
     private void refreshPreview() {

@@ -186,7 +186,7 @@ final class TriggerDialog {
             preview.setText(StructureSqlBuilder.createTrigger(session, table,
                     name.getText(), timing.getValue(), event.getValue(), currentBody()).sql());
         } catch (RuntimeException e) {
-            preview.setText(e.getMessage() == null ? "" : e.getMessage());
+            preview.setText(e.getMessage() == null ? "" : NewTableDialog.problemText(e));
         }
     }
 }

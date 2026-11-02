@@ -1404,7 +1404,7 @@ final class NewTableDialog {
     }
 
     /** 模型层的「键 + 参数」错误在这里翻成当前语言；其余错误原样显示。 */
-    static String problemText(IllegalArgumentException e) {
+    static String problemText(RuntimeException e) {
         if (e instanceof ColumnProblem problem) {
             return I18n.t(problem.key(), problem.args());
         }

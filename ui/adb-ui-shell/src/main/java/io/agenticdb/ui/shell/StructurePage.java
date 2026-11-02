@@ -1017,8 +1017,8 @@ public final class StructurePage extends VBox implements AutoCloseable {
         task.setOnSucceeded(event -> {
             running = false;
             updateButtons();
-            feedback.toast(I18n.t("structure.status.done", plan.title()));
-            feedback.status(I18n.t("structure.status.done", plan.title()));
+            feedback.toast(I18n.t("structure.status.done", StructurePlanRunner.title(plan)));
+            feedback.status(I18n.t("structure.status.done", StructurePlanRunner.title(plan)));
             onChanged.run();
             reload();
         });

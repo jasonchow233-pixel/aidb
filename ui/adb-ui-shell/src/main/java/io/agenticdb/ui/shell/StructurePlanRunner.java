@@ -77,19 +77,30 @@ public final class StructurePlanRunner {
     }
 
     /**
+     * 计划标题的渲染口 —— 模型层只交「键 + 参数」，句子在这里成。
+     *
+     * <p>状态栏、确认框、toast 三个出口都走这里：各写一份的话，
+     * 总有一处会把中文漏进英文界面（R45 G3-a 的整件事就是这个口子）。
+     */
+    static String title(StructurePlan plan) {
+        return I18n.t(plan.titleKey(), plan.titleArgs().toArray());
+    }
+
+    /**
      * 展示 SQL 并等用户确认。
      *
      * @param stylesheets 主窗口的样式表；弹窗要跟着主题走
      * @return 用户确实点了「继续 / 确认执行」才为真
      */
     static boolean confirm(Window owner, List<String> stylesheets, StructurePlan plan) {
-        if (!showPlanAlert(owner, stylesheets, plan, plan.title(), I18n.t("grid.save.proceed"))) {
+        String title = title(plan);
+        if (!showPlanAlert(owner, stylesheets, plan, title, I18n.t("grid.save.proceed"))) {
             return false;
         }
         if (!plan.approvalRequired()) {
             return true;
         }
-        return showPlanAlert(owner, stylesheets, plan, I18n.t("plan.riskyTitle", plan.title()),
+        return showPlanAlert(owner, stylesheets, plan, I18n.t("plan.riskyTitle", title),
                 I18n.t("query.confirmRunTitle"));
     }
 
