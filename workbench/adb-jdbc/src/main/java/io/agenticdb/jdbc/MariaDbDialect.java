@@ -23,6 +23,11 @@ import java.util.List;
  * <p>⚠️ 版本差异没有假装抹平：MariaDB 10.5+ 支持 {@code INSERT ... RETURNING}
  * 而 MySQL 8.0 没有 —— 但本项目的写路径走「执行 → 反向重读」，<b>不生成</b>
  * RETURNING，所以这条差异落在界面之外，不进方言层。
+ *
+ * <p>R46 起有 MariaDB 11.8 容器进真库矩阵（{@code ExternalRealDatabaseTest}），
+ * 继承来的目录查询因此是被执行过的；实测到 {@code SHOW CREATE EVENT} 的列序与
+ * MySQL 一致（{@code Event | sql_mode | time_zone | Create Event | …}），
+ * 定义体在第 4 列 —— D-25 那一版按位置猜第 3 列，两边一起读到 {@code "SYSTEM"}。
  */
 public final class MariaDbDialect extends MySqlDialect {
 

@@ -230,7 +230,8 @@ public final class OracleDialect implements Dialect {
      * {@code TRIGGERING_EVENT}（如 {@code INSERT}）与 {@code TRIGGER_TYPE}
      * （如 {@code BEFORE ROW}），这里原样给出，由内省层拼展示。
      *
-     * <p>⚠️ 未跑过真库，见类注释。
+     * <p>R46 在 Oracle 23ai Free 容器上跑通：占位符按 {@link #nameMatches} 出两个，
+     * 调用方（{@code SchemaService#bindTableNames} 与真库契约）要都绑上，少绑一个 ORA-01008。
      */
     @Override
     public String triggersSql(String table) {
@@ -258,7 +259,7 @@ public final class OracleDialect implements Dialect {
      *       （{@code COLLATION} 是 12c2 起的列级属性）—— 三列给 NULL。</li>
      * </ul>
      *
-     * <p>⚠️ 未跑过真库，见类注释。
+     * <p>R46 在 Oracle 23ai Free 容器上跑通（真库契约执行这条查询并读全部列）。
      */
     @Override
     public String tableMetaSql() {

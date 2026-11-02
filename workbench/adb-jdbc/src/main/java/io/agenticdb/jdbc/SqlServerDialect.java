@@ -24,14 +24,25 @@ import java.util.Locale;
  *       索引必须 {@code DROP INDEX i ON t} 带表名。</li>
  * </ol>
  *
- * <h2>本轮的真库验证状态（诚实条款）</h2>
- * <p>开发环境没有 SQL Server 实例（无 Docker），所以：
+ * <h2>真库验证状态（诚实条款）</h2>
+ * <p>R46 起本地有 SQL Server 2022 容器，{@code sys.*} 目录查询全部进了
+ * {@code RealDatabaseContract} 的矩阵，并且当场抓出两条只有真服务器会报的缺陷：
+ * <ul>
+ *   <li><b>D-20</b>：{@code sys.tables} 没有 {@code collation_name}
+ *       （排序规则是列/库的属性），引用它让整条表清单元信息查询报
+ *       {@code Invalid column name}，于是结构页和表清单一起空掉；</li>
+ *   <li><b>D-24</b>：{@code sys.triggers} 没有 {@code is_insert/update/delete_trigger}，
+ *       事件在 {@code sys.trigger_events} 里 —— 触发器页同样静默为空。</li>
+ * </ul>
+ * 另外实测到：{@code VARCHAR} 走库默认单字节代码页，中文写进去不报错但折成问号，
+ * 所以新建列的默认类型是 {@code NVARCHAR}（见 {@link #defaultColumnType()}），
+ * 且字符串字面量不带 {@code N} 前缀时同样会走代码页。
+ *
+ * <p>验证分层：
  * <ul>
  *   <li><b>已在单元测试锁住</b>：引用符、URL 与超时参数、分页与探测语句、
- *       各条 DDL 的文本（{@code SqlServerDialectTest} + 方言一致性快照）；</li>
- *   <li><b>未跑过真库</b>：{@code sys.*} 目录查询（表清单、触发器）。这些查询用的是
- *       公开文档里的列名，但没被执行过一次 —— 有实例后要交给
- *       {@code RealDatabaseContract} 补验（D-5）；</li>
+ *       各条 DDL 的文本（{@code SqlServerDialectTest} + 方言一致性快照），
+ *       以及上面两条缺陷各自的文本门；</li>
  *   <li><b>明确不做</b>：{@code SHOWPLAN}/{@code DBMS_XPLAN} 那类执行计划
  *       （要两段会话级语句，见 {@link #supportsExplainPlan()}）、
  *       列注释（在扩展属性里，不是 {@code COMMENT}）、
