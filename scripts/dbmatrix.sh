@@ -6,13 +6,25 @@
 #   ./scripts/dbmatrix.sh status  # 各容器在不在、端口是多少
 #   ./scripts/dbmatrix.sh env     # 打印 export 行，配合 eval 用
 #   ./scripts/dbmatrix.sh run     # 跑 adb-jdbc 的真库契约矩阵
-#   ./scripts/dbmatrix.sh down [--purge-env]   # 删容器（卷一起删）
+#   ./scripts/dbmatrix.sh tls-up  # 另起三个「只走 TLS」的对端容器 + 自签一套 PKI
+#   ./scripts/dbmatrix.sh tls-status / tls-run / tls-down
+#   ./scripts/dbmatrix.sh down [--purge-env]   # 删容器（卷一起删；TLS 层另用 tls-down）
 #
 # ⚠️ 口令**只**生成、只落在 scripts/.dbmatrix.env（已在 .gitignore 里）。
 # 测试侧一律从环境变量读；把这个文件提交进仓库就是把口令提交进仓库。
 #
 # 端口故意避开默认口（3306/5432/1433/1521），
 # 免得本机原本就在跑的数据库和测试容器互相抢地址。
+#
+# ⭐ R47 还有一层 **TLS 对端**（`tls-up` / `tls-status` / `tls-down` / `tls-run`）：
+#   主矩阵那五个容器只起非加密服务，「证书链到底校不校验」这件事在那上面**问不出来**。
+#   TLS 层用**另起的容器 + 另开的端口**（33071 / 33072 / 54331），主矩阵一行不动 ——
+#   把已有容器改成加密的会让九条已绿的契约变成「在另一套环境下绿的」。
+#   证书由本脚本用 openssl **现场自签**（一套真 CA + 一套冒名 CA + 一张只认
+#   `localhost` 的服务器证书），全落在 scripts/.dbmatrix-tls/（已 gitignore，**里面有私钥**）。
+#   为什么每张证书只写 `DNS:localhost`：这样**同一台服务器**同时给得出
+#   「主机名对得上」（host=localhost）和「主机名对不上」（host=127.0.0.1）两种答案，
+#   不用为了负例再开一个容器、也不用改本机 /etc/hosts。
 
 set -euo pipefail
 
@@ -279,6 +291,259 @@ run_matrix() {
   ./mvnw -B -pl workbench/adb-jdbc test -Dtest=ExternalRealDatabaseTest
 }
 
+# ── R47：TLS 对端层 ─────────────────────────────────────────────────────────
+# 这一层存在的理由只有一条：主矩阵那五个容器**只起非加密服务**，
+# 所以「档位写进驱动参数之后，证书链到底有没有被校验」这个问题在它们身上问不出来 ——
+# 参数写了不等于参数生效，这正是 ROADMAP 里唯一没被真库覆盖的那一格。
+TLS_DIR="$PROJECT_ROOT/scripts/.dbmatrix-tls"
+TLS_SERVER_DIR="$TLS_DIR/server"
+# 服务器证书只认这一个主机名（SAN=DNS:localhost）；负例用 127.0.0.1 连同一台服务器。
+TLS_HOST_IN_CERT=localhost
+# 「标签|容器名|镜像|宿主端口|容器端口|复用哪个口令变量」
+TLS_ENGINES=(
+  "MYSQL_TLS|adb-mysql-tls|mysql:8.4|33071|3306|ADB_TEST_MYSQL_PASSWORD"
+  "MARIADB_TLS|adb-mariadb-tls|mariadb:11|33072|3306|ADB_TEST_MARIADB_PASSWORD"
+  "PG_TLS|adb-pg-tls|postgres:16-alpine|54331|5432|ADB_TEST_PG_PASSWORD"
+)
+
+# 自签一套三件：真 CA、冒名 CA、只认 localhost 的服务器证书。
+# 已存在就不重签 —— 重签会让客户端手里那份 ca.pem 和服务器呈现的链对不上，
+# 表现是「昨天还能连的 TLS 用例今天全红」，而红的原因在文件里不在代码里。
+gen_pki() {
+  if [ -f "$TLS_SERVER_DIR/server.pem" ] && [ -f "$TLS_DIR/ca.pem" ] \
+     && [ -f "$TLS_DIR/rogue-ca.pem" ]; then
+    log "PKI 已存在 → $TLS_DIR（要重签：删掉这个目录）"
+    return 0
+  fi
+  command -v openssl >/dev/null 2>&1 \
+    || die "缺 openssl：TLS 层要现场自签一套 CA（brew install openssl 或用 /opt/homebrew/bin）"
+  log "生成 PKI → $TLS_DIR（含私钥，已 gitignore）"
+  mkdir -p "$TLS_SERVER_DIR"
+  umask 077
+  openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
+    -keyout "$TLS_DIR/ca-key.pem" -out "$TLS_DIR/ca.pem" \
+    -subj "/CN=AIDB Test CA" 2>/dev/null
+  # 冒名 CA：只有公钥那份用得到（客户端拿它当唯一信任锚），所以它的私钥也在这目录里，
+  # 用途是「签一张客户端会误信的证书」，本层目前只用它的 PEM。
+  openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
+    -keyout "$TLS_DIR/rogue-ca-key.pem" -out "$TLS_DIR/rogue-ca.pem" \
+    -subj "/CN=AIDB Rogue CA" 2>/dev/null
+  openssl req -newkey rsa:2048 -nodes \
+    -keyout "$TLS_SERVER_DIR/server-key.pem" -out "$TLS_SERVER_DIR/server.csr" \
+    -subj "/CN=$TLS_HOST_IN_CERT" 2>/dev/null
+  # ⭐ 只有 CN、没有 SAN 的证书，JSSE 会直接判不匹配（现代 JDK 不再回落看 CN），
+  #    所以正向用例必挂 —— 这一行是「主机名校验」能不能验出正例的前提。
+  printf 'subjectAltName=DNS:%s\nextendedKeyUsage=serverAuth\n' "$TLS_HOST_IN_CERT" \
+    >"$TLS_SERVER_DIR/server-ext.cnf"
+  openssl x509 -req -days 825 -in "$TLS_SERVER_DIR/server.csr" \
+    -CA "$TLS_DIR/ca.pem" -CAkey "$TLS_DIR/ca-key.pem" -CAcreateserial \
+    -out "$TLS_SERVER_DIR/server.pem" -extfile "$TLS_SERVER_DIR/server-ext.cnf" 2>/dev/null
+  cp "$TLS_DIR/ca.pem" "$TLS_SERVER_DIR/ca.pem"
+  chmod 600 "$TLS_DIR"/*-key.pem "$TLS_SERVER_DIR"/server-key.pem
+  # 服务器证书里不该有私钥，签完的 csr 也没用，但留着无害；目录整体保持 700。
+  chmod 700 "$TLS_DIR" "$TLS_SERVER_DIR"
+}
+
+# TLS 容器把证书从只读挂载**复制**进容器本地再改属主：
+# 直接挂载的那份在 macOS 上归 root、模式按宿主来，mysqld/postgres 会因为
+# 「私钥可被别人读到」直接拒绝启动，而报错发生在容器日志里，测试侧只看到连不上。
+tls_run_container() {
+  local label=$1 container=$2 image=$3 host_port=$4 cur_port=$5 password=$6
+  case "$label" in
+    MYSQL_TLS)
+      $DOCKER_BIN run -d --name "$container" -p "${host_port}:${cur_port}" \
+        -v "${TLS_SERVER_DIR}:/tls-src:ro" \
+        -e MYSQL_ROOT_PASSWORD="$password" -e MYSQL_DATABASE="$DB_NAME" \
+        "$image" sh -c '
+          mkdir -p /var/lib/mysql-tls
+          cp /tls-src/ca.pem /tls-src/server.pem /tls-src/server-key.pem /var/lib/mysql-tls/
+          chown -R mysql:mysql /var/lib/mysql-tls
+          chmod 600 /var/lib/mysql-tls/server-key.pem
+          exec docker-entrypoint.sh mysqld \
+            --ssl-ca=/var/lib/mysql-tls/ca.pem \
+            --ssl-cert=/var/lib/mysql-tls/server.pem \
+            --ssl-key=/var/lib/mysql-tls/server-key.pem' ;;
+    MARIADB_TLS)
+      $DOCKER_BIN run -d --name "$container" -p "${host_port}:${cur_port}" \
+        -v "${TLS_SERVER_DIR}:/tls-src:ro" \
+        -e MARIADB_ROOT_PASSWORD="$password" -e MARIADB_DATABASE="$DB_NAME" \
+        "$image" sh -c '
+          mkdir -p /var/lib/mysql-tls
+          cp /tls-src/ca.pem /tls-src/server.pem /tls-src/server-key.pem /var/lib/mysql-tls/
+          chown -R mysql:mysql /var/lib/mysql-tls
+          chmod 600 /var/lib/mysql-tls/server-key.pem
+          exec docker-entrypoint.sh mariadbd \
+            --ssl-ca=/var/lib/mysql-tls/ca.pem \
+            --ssl-cert=/var/lib/mysql-tls/server.pem \
+            --ssl-key=/var/lib/mysql-tls/server-key.pem' ;;
+    PG_TLS)
+      # postgres:16-alpine 里的 OS 用户是 uid 70（不是名字），chown 用数字最稳。
+      $DOCKER_BIN run -d --name "$container" -p "${host_port}:${cur_port}" \
+        -v "${TLS_SERVER_DIR}:/tls-src:ro" \
+        -e POSTGRES_DB="$DB_NAME" -e POSTGRES_USER=adb -e POSTGRES_PASSWORD="$password" \
+        "$image" sh -c '
+          mkdir -p /var/lib/postgresql/tls
+          cp /tls-src/server.pem /var/lib/postgresql/tls/server.crt
+          cp /tls-src/server-key.pem /var/lib/postgresql/tls/server.key
+          cp /tls-src/ca.pem /var/lib/postgresql/tls/ca.pem
+          chown -R 70:70 /var/lib/postgresql/tls
+          chmod 700 /var/lib/postgresql/tls
+          chmod 600 /var/lib/postgresql/tls/server.key
+          exec docker-entrypoint.sh postgres \
+            -c ssl=on \
+            -c ssl_cert_file=/var/lib/postgresql/tls/server.crt \
+            -c ssl_key_file=/var/lib/postgresql/tls/server.key \
+            -c ssl_ca_file=/var/lib/postgresql/tls/ca.pem' ;;
+    *) die "未知 TLS 引擎：$label" ;;
+  esac
+}
+
+# 在 TLS 容器里跑一条查询（口令用容器自己的环境变量，和 engine_sql 同一个理由）。
+tls_sql() {
+  local engine=$1 sql_text=$2
+  case "$engine" in
+    MYSQL)
+      $DOCKER_BIN exec -i adb-mysql-tls sh -c \
+        'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -B' <<<"$sql_text" ;;
+    MARIADB)
+      $DOCKER_BIN exec -i adb-mariadb-tls sh -c \
+        'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -N -B' <<<"$sql_text" ;;
+    PG)
+      $DOCKER_BIN exec -i adb-pg-tls sh -c \
+        'exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA' <<<"$sql_text" ;;
+    *) die "TLS 层没有这家：$engine（SQL Server / Oracle 的 TLS 不在本层）" ;;
+  esac
+}
+
+tls_wait_ready() {
+  local engine=$1 container=$2 port=$3 tries=${4:-90} i ok=0
+  for ((i = 1; i <= tries; i++)); do
+    tls_sql "$engine" "SELECT 1" >/dev/null 2>&1 && ok=1
+    if [ "$ok" = 1 ]; then
+      log "$container 就绪（:$port，TLS）"
+      return 0
+    fi
+    sleep 2
+  done
+  die "$container 在 $((tries * 2)) 秒内没就绪 —— 看 $DOCKER_BIN logs $container"
+}
+
+# TLS 层的键缺了就补，和 DB2 那四行同一个手法：口令沿用同引擎那份随机值
+# （本机测试容器，多一份口令只是多一处会漏的地方），证书路径是本地文件名不是秘密。
+append_tls_env() {
+  local changed=0 key
+  for key in ADB_TEST_TLS_CA ADB_TEST_TLS_ROGUE_CA ADB_TEST_TLS_HOST_IN_CERT \
+             ADB_TEST_MYSQL_TLS_HOST ADB_TEST_MYSQL_TLS_PORT ADB_TEST_MYSQL_TLS_DB \
+             ADB_TEST_MYSQL_TLS_USER ADB_TEST_MYSQL_TLS_PASSWORD \
+             ADB_TEST_MARIADB_TLS_HOST ADB_TEST_MARIADB_TLS_PORT ADB_TEST_MARIADB_TLS_DB \
+             ADB_TEST_MARIADB_TLS_USER ADB_TEST_MARIADB_TLS_PASSWORD \
+             ADB_TEST_PG_TLS_HOST ADB_TEST_PG_TLS_PORT ADB_TEST_PG_TLS_DB \
+             ADB_TEST_PG_TLS_USER ADB_TEST_PG_TLS_PASSWORD; do
+    grep -q "^${key}=" "$ENV_FILE" && continue
+    case "$key" in
+      ADB_TEST_TLS_CA)            printf '%s=%s\n' "$key" "$TLS_DIR/ca.pem" >>"$ENV_FILE" ;;
+      ADB_TEST_TLS_ROGUE_CA)      printf '%s=%s\n' "$key" "$TLS_DIR/rogue-ca.pem" >>"$ENV_FILE" ;;
+      ADB_TEST_TLS_HOST_IN_CERT)  printf '%s=%s\n' "$key" "$TLS_HOST_IN_CERT" >>"$ENV_FILE" ;;
+      ADB_TEST_MYSQL_TLS_HOST|ADB_TEST_MARIADB_TLS_HOST|ADB_TEST_PG_TLS_HOST)
+        printf '%s=%s\n' "$key" "127.0.0.1" >>"$ENV_FILE" ;;
+      ADB_TEST_MYSQL_TLS_PORT)    printf '%s=%s\n' "$key" 33071 >>"$ENV_FILE" ;;
+      ADB_TEST_MARIADB_TLS_PORT)  printf '%s=%s\n' "$key" 33072 >>"$ENV_FILE" ;;
+      ADB_TEST_PG_TLS_PORT)       printf '%s=%s\n' "$key" 54331 >>"$ENV_FILE" ;;
+      ADB_TEST_MYSQL_TLS_DB|ADB_TEST_MARIADB_TLS_DB|ADB_TEST_PG_TLS_DB)
+        printf '%s=%s\n' "$key" "$DB_NAME" >>"$ENV_FILE" ;;
+      ADB_TEST_MYSQL_TLS_USER|ADB_TEST_MARIADB_TLS_USER)
+        printf '%s=%s\n' "$key" root >>"$ENV_FILE" ;;
+      ADB_TEST_PG_TLS_USER)       printf '%s=%s\n' "$key" adb >>"$ENV_FILE" ;;
+      ADB_TEST_MYSQL_TLS_PASSWORD)
+        printf '%s=%s\n' "$key" "$ADB_TEST_MYSQL_PASSWORD" >>"$ENV_FILE" ;;
+      ADB_TEST_MARIADB_TLS_PASSWORD)
+        printf '%s=%s\n' "$key" "$ADB_TEST_MARIADB_PASSWORD" >>"$ENV_FILE" ;;
+      ADB_TEST_PG_TLS_PASSWORD)
+        printf '%s=%s\n' "$key" "$ADB_TEST_PG_PASSWORD" >>"$ENV_FILE" ;;
+      *) die "没给 TLS 键的取值写法：$key" ;;
+    esac
+    changed=1
+  done
+  [ "$changed" = 1 ] && warn "口令文件补了 TLS 层缺的键（已有键保持原值，口令不重生成）"
+  load_env
+}
+
+tls_up() {
+  [ -f "$ENV_FILE" ] || die "先 ./scripts/dbmatrix.sh up（TLS 层复用同一份口令文件）"
+  load_env
+  $DOCKER_BIN info >/dev/null 2>&1 || die "Docker 守护进程没在跑（先开 Docker Desktop）"
+  gen_pki
+  append_tls_env
+
+  local entry label container image host_port cur_port password_var
+  for entry in "${TLS_ENGINES[@]}"; do
+    IFS='|' read -r label container image host_port cur_port password_var <<<"$entry"
+    local state
+    if $DOCKER_BIN ps -a --format '{{.Names}}' | grep -qx "$container"; then
+      state=$($DOCKER_BIN inspect -f '{{.State.Status}}' "$container")
+    else
+      state=missing
+    fi
+    if [ "$state" = running ]; then
+      warn "$container 已在运行 —— 跳过创建（要重建先 tls-down）"
+      continue
+    fi
+    [ "$state" = missing ] || $DOCKER_BIN rm "$container" >/dev/null
+    log "起 $container（$image → :$host_port，TLS）"
+    # shellcheck disable=SC1087 —— 这里要的是「变量名存在哪张表里」这层间接
+    tls_run_container "$label" "$container" "$image" "$host_port" "$cur_port" \
+      "${!password_var}"
+    case "$label" in
+      MYSQL_TLS)   tls_wait_ready MYSQL "$container" "$host_port" 120 ;;
+      MARIADB_TLS) tls_wait_ready MARIADB "$container" "$host_port" 120 ;;
+      PG_TLS)      tls_wait_ready PG "$container" "$host_port" 90 ;;
+    esac
+  done
+
+  # 证书到底配没配上，先在这里问一次**服务器侧的配置**。
+  # ⚠️ 这里不能问「当前会话加没加密」（`SHOW STATUS LIKE 'Ssl_cipher'` /
+  # `pg_stat_ssl.ssl`）：那条查询走的是容器内的 CLI 连接 —— mysql 客户端拿的是 socket、
+  # psql 同理，量出来永远是「没加密」，跟服务器配了什么无关。第一次写的时候就踩了这个坑。
+  local mysql_cert pg_ssl mariadb_cert
+  mysql_cert=$(tls_sql MYSQL "SHOW VARIABLES LIKE 'ssl_cert'" 2>/dev/null | tr -d '\n')
+  mariadb_cert=$(tls_sql MARIADB "SHOW VARIABLES LIKE 'ssl_cert'" 2>/dev/null | tr -d '\n')
+  pg_ssl=$(tls_sql PG "SHOW ssl" 2>/dev/null | tr -d '[:space:]')
+  log "服务器侧自检：MySQL ssl_cert=${mysql_cert:-（空）}"
+  log "服务器侧自检：MariaDB ssl_cert=${mariadb_cert:-（空）}"
+  log "服务器侧自检：PostgreSQL ssl=${pg_ssl:-（读不到）}"
+  tls_status
+  log "TLS 层的键在 $ENV_FILE（未入库）。跑契约：./scripts/dbmatrix.sh tls-run"
+}
+
+tls_status() {
+  local entry label container image host_port cur_port password_var state
+  printf '%-12s %-17s %-7s %s\n' ENGINE CONTAINER PORT STATE
+  for entry in "${TLS_ENGINES[@]}"; do
+    IFS='|' read -r label container image host_port cur_port password_var <<<"$entry"
+    state=$($DOCKER_BIN inspect -f '{{.State.Status}}' "$container" 2>/dev/null | tr -d '[:space:]')
+    [ -n "$state" ] || state=缺
+    printf '%-12s %-17s %-7s %s\n' "$label" "$container" "$host_port" "$state"
+  done
+}
+
+tls_run_matrix() {
+  load_env
+  export JAVA_HOME="${JAVA_HOME:-/Users/jason/.jdks/jdk-25.0.4.1+1/Contents/Home}"
+  log "跑 TLS 契约矩阵（3 家加密对端 × TLS 档位）"
+  ./mvnw -B -pl workbench/adb-jdbc test -Dtest=ExternalTlsDatabaseTest
+}
+
+tls_down() {
+  local entry label container image host_port cur_port password_var
+  for entry in "${TLS_ENGINES[@]}"; do
+    IFS='|' read -r label container image host_port cur_port password_var <<<"$entry"
+    if [ -n "$($DOCKER_BIN ps -aq -f name="^${container}$")" ]; then
+      log "删 $container"
+      $DOCKER_BIN rm -f -v "$container" >/dev/null
+    fi
+  done
+}
+
 down() {
   local entry engine container image host_port cur_port
   for entry in "${IMAGES[@]}"; do
@@ -288,17 +553,27 @@ down() {
       $DOCKER_BIN rm -f -v "$container" >/dev/null
     fi
   done
+  # TLS 层的容器一起删：留着它们，下次 up 主矩阵时「端口被占」会比「容器多一个」难查。
+  tls_down
   if [ "${1:-}" = --purge-env ]; then
     rm -f "$ENV_FILE"
     log "口令文件也删了（下次 up 生成新的）"
+    if [ -d "$TLS_DIR" ]; then
+      rm -rf "$TLS_DIR"
+      log "自签的 PKI 目录也删了（里面有私钥；下次 tls-up 重签一套）"
+    fi
   fi
 }
 
 case "${1:-up}" in
-  up)     up ;;
-  down)   down "${2:-}" ;;
-  status) status ;;
-  env)    print_env ;;
-  run)    run_matrix ;;
-  *)      sed -n '2,14p' "$0" | sed 's/^#//; s/^ //' ;;
+  up)         up ;;
+  down)       down "${2:-}" ;;
+  status)     status ;;
+  env)        print_env ;;
+  run)        run_matrix ;;
+  tls-up)     tls_up ;;
+  tls-down)   tls_down ;;
+  tls-status) tls_status ;;
+  tls-run)    tls_run_matrix ;;
+  *)          sed -n '2,26p' "$0" | sed 's/^#//; s/^ //' ;;
 esac
