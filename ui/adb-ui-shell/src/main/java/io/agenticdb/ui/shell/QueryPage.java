@@ -1481,6 +1481,79 @@ public final class QueryPage extends VBox implements AutoCloseable {
         awaitResultCell(200);
     }
 
+    /**
+     * ⭐ R47-b：把「库▾」摆开 —— 这颗控件交付至今没有一张验收帧。
+     *
+     * <p>等的是<b>库清单</b>而不是结果格：清单是后台读的（`loadQueryCatalogs`），
+     * 空清单 = SQLite 或读失败，那两种情况下这一格没有证据价值，
+     * 于是明确放弃，<b>不</b>拍一张「看着像库选择器、里面什么都没有」的图。
+     */
+    void poseCatalogMenuWhenReady() {
+        awaitCatalogs(100);
+    }
+
+    private void awaitCatalogs(int attemptsLeft) {
+        if (catalogs.isEmpty()) {
+            if (attemptsLeft <= 0) {
+                System.out.println("[screenshot] catalog pose gave up: no catalogs read"
+                        + " (needs a server with a database layer; SQLite has none)");
+                return;
+            }
+            schedule(100, () -> awaitCatalogs(attemptsLeft - 1));
+            return;
+        }
+        connectionMenu.show();
+        System.out.println("[screenshot] catalog menu posed, entries=" + catalogs.size());
+        keepCatalogMenuUp(20);
+    }
+
+    /** 与 {@link #keepMenuUp} 同型：菜单会自己收，续摆到快门为止。 */
+    private void keepCatalogMenuUp(int ticksLeft) {
+        if (ticksLeft <= 0) {
+            return;
+        }
+        schedule(1_500, () -> {
+            if (!connectionMenu.isShowing()) {
+                connectionMenu.show();
+            }
+            keepCatalogMenuUp(ticksLeft - 1);
+        });
+    }
+
+    /**
+     * ⭐ R47-b：摆出「切到另一把库之后」的页面态，与「下拉展开」那张成对。
+     *
+     * <p>判据是<b>至少两把库</b>：这一帧要证的是「下拉里有第二把库、点得过去、
+     * 状态栏跟着换」，只读到一把就摆等于把结论拍成运气。等不到就打印放弃，
+     * <b>不</b>交一张「看着像切过」的图。
+     */
+    void poseCatalogSwitchWhenReady() {
+        awaitSecondCatalog(100);
+    }
+
+    private void awaitSecondCatalog(int attemptsLeft) {
+        if (catalogs.size() < 2) {
+            if (attemptsLeft <= 0) {
+                System.out.println("[screenshot] catalog switch gave up: got "
+                        + catalogs.size() + " database(s), needs at least 2");
+                return;
+            }
+            schedule(100, () -> awaitSecondCatalog(attemptsLeft - 1));
+            return;
+        }
+        String away = catalogs.stream()
+                .filter(name -> currentCatalog == null || !name.equalsIgnoreCase(currentCatalog))
+                .findFirst().orElse(null);
+        if (away == null) {
+            System.out.println("[screenshot] catalog switch gave up:"
+                    + " no catalog differs from the current one");
+            return;
+        }
+        // 走真菜单条目的 onAction —— 与用户点那一条是同一条链，不是绕过控件直接调外壳。
+        selectCatalogForTest(away);
+        System.out.println("[screenshot] catalog switched to " + away);
+    }
+
     private void awaitResultCell(int attemptsLeft) {
         javafx.scene.Node cell = firstResultDataCell();
         if (cell == null) {

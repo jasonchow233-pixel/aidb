@@ -6,6 +6,7 @@ import io.agenticdb.introspect.SchemaService.SchemaObject;
 import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.jdbc.ViewDefinition;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.ConnectionStore;
@@ -159,6 +160,13 @@ public final class AppShell extends StackPane {
     private final Map<String, String> initialQueryName = new HashMap<>();
     private final Map<String, File> initialQueryFile = new HashMap<>();
     private int queryCounter;
+    /**
+     * ⭐ R47-b 真库验收帧的临时连接：id 与口令。两者<b>只活在进程里</b> ——
+     * 口令绝不进凭据存储（macOS 上是钥匙串），档案绝不进 {@code connections.json}。
+     * 空串 = 没开这条通道（正常启动 / 全部离线门禁）。
+     */
+    private String ephemeralProfileId = "";
+    private String ephemeralPassword = "";
 
     private Stage stage;
     private Region resizer;
@@ -439,6 +447,41 @@ public final class AppShell extends StackPane {
             return;
         }
         tableDdl().designView(activeProfileId(), "v_active_users");
+    }
+
+    /**
+     * ⭐ R47-b：会话就绪后在<b>当前连接</b>上开一张查询页，并把库下拉摆开。
+     *
+     * <p>为什么不靠截图脚本点击：菜单项的 id 是 {@code query-catalog-<库名>} 拼出来的，
+     * 而 {@code ScreenshotScriptAuditTest} 要求每个点击目标在主源码里是字面
+     * {@code setId("…")} —— 拼出来的 id 点不到，只能像 {@code ADB_MENU_POSE} 那样程序化摆位。
+     */
+    private void poseQueryCatalogWhenReady(String pose, int attempt) {
+        if (session == null) {
+            if (attempt >= POP_READY_MAX_POLLS) {
+                System.out.println("[screenshot] catalog pose gave up: session never opened"
+                        + " (ADB_MATRIX points at a server that is not reachable)");
+                return;
+            }
+            pollAgain(attempt, () -> poseQueryCatalogWhenReady(pose, attempt + 1));
+            return;
+        }
+        String catalog = catalogLabelFor(activeProfileId());
+        // SQL 只要各家都能跑；这一格证的是「库清单 + 当前落在哪个库」，不是某家的方言。
+        openQueryOn(activeProfileId(), catalog == null ? "" : catalog,
+                "SELECT 1 AS adb_probe;");
+        QueryPage page = workspace.activeQuery();
+        if (page != null) {
+            page.markClean();
+            System.out.println("[screenshot] catalog page sql=" + page.sql());
+            switch (pose) {
+                case "menu" -> page.poseCatalogMenuWhenReady();
+                case "bound" -> page.poseCatalogSwitchWhenReady();
+                default -> System.out.println("[screenshot] unknown ADB_CATALOG_POSE: "
+                        + pose + " (expected: menu / bound)");
+            }
+        }
+        Platform.runLater(workspace::runQuery);
     }
 
     /** 等到 session 就绪再读结构、弹「新建索引」。 */
@@ -1073,7 +1116,7 @@ public final class AppShell extends StackPane {
         connectionName = profile.name();
         session = null;
         try {
-            String password = credentials.password(profile.id()).orElse(null);
+            String password = passwordFor(profile.id());
             session = sessions.open(profile.id(), profile.spec(password));
             List<SchemaObject> objects = schemaService.listObjects(session);
             objectsByConnection.put(profile.id(), objects);
@@ -1090,6 +1133,89 @@ public final class AppShell extends StackPane {
             }
             sideBar.refreshConnectionLiveness();
         }
+    }
+
+    /**
+     * ⭐ R47-b：把 Docker 矩阵里的一个真服务器注册成<b>进程内</b>连接，只为验收帧。
+     *
+     * <p>为什么要有这条通道：此前 47 张帧全部拍在演示库（SQLite）上，而 SQLite 没有库一层 ——
+     * 「库▾ 里两把库」「MySQL 上改视图只有一句」这些<b>只有真服务器才有形状</b>的画面
+     * 一张都没证过。R52 补的是行为证据（真库契约），不是画面证据，两笔账都在文档里挂着。
+     *
+     * <p>两条红线，都是这轮定的：
+     * <ul>
+     *   <li>口令只从环境变量读、只活在进程里（{@link #passwordFor}），
+     *       <b>绝不</b>写进凭据存储 —— macOS 那一个是钥匙串，一次截图不该往里塞真容器口令；</li>
+     *   <li>档案不落 {@code connections.json}：截图脚本把 {@code ADB_CONNECTIONS_FILE}
+     *       指到临时目录，所以连「拍图顺带改写用户真实连接清单」这件事也不成立了。</li>
+     * </ul>
+     * 环境没配时打印一条看得见的说明，<b>不</b>静默退回演示库去拍一张假的真库帧。
+     */
+    private void registerMatrixProfileFromEnv() {
+        String engine = text("adb.matrix", "ADB_MATRIX").toLowerCase(Locale.ROOT);
+        if (engine.isEmpty()) {
+            return;
+        }
+        // ADB_MATRIX 的取值 = 方言自己的 id（mysql / mariadb / postgresql / sqlserver / oracle）。
+        // 这里不出现方言常量的分支 —— 外壳里 switch 方言等于「加一种库要改外壳」，
+        // 那是 A1 的承诺，DialectBranchAuditTest 就是守它的（本轮实拍踩过一次）。
+        DialectKind kind;
+        try {
+            kind = DialectKind.of(engine);
+        } catch (IllegalArgumentException e) {
+            System.out.println("[screenshot] unknown ADB_MATRIX: " + engine
+                    + " (expected: mysql / mariadb / postgresql / sqlserver / oracle)");
+            return;
+        }
+        // 矩阵的环境变量用简称，方言 id 用全名 —— 这一处只是名字对齐，不含方言行为。
+        String prefix = switch (engine) {
+            case "postgresql" -> "PG";
+            case "sqlserver" -> "MSSQL";
+            default -> engine.toUpperCase(Locale.ROOT);
+        };
+        String host = System.getenv("ADB_TEST_" + prefix + "_HOST");
+        String port = System.getenv("ADB_TEST_" + prefix + "_PORT");
+        String database = System.getenv("ADB_TEST_" + prefix + "_DB");
+        String username = System.getenv("ADB_TEST_" + prefix + "_USER");
+        String password = System.getenv("ADB_TEST_" + prefix + "_PASSWORD");
+        if (isBlank(host) || isBlank(port) || isBlank(database)
+                || isBlank(username) || isBlank(password)) {
+            System.out.println("[screenshot] ADB_MATRIX=" + engine + " but ADB_TEST_"
+                    + prefix + "_{HOST,PORT,DB,USER,PASSWORD} is not in the environment"
+                    + " -- this frame is NOT a real-server frame."
+                    + " Run scripts/dbmatrix.sh up, then eval \"$(scripts/dbmatrix.sh env)\"");
+            return;
+        }
+        ephemeralProfileId = "matrix-" + engine;
+        ephemeralPassword = password;
+        ConnectionProfile profile = new ConnectionProfile(ephemeralProfileId,
+                "matrix " + kind.displayName(), kind, host, Integer.parseInt(port.trim()),
+                database, username, false, 0, "", Map.of());
+        if (profileById(ephemeralProfileId) == null) {
+            connections.add(profile);
+            refreshProfiles();
+        }
+        System.out.println("[screenshot] matrix profile " + ephemeralProfileId + " -> "
+                + host + ":" + port + "/" + database + " (password stays in-process)");
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    /**
+     * 取某个连接的口令（catalog 虚拟连接按 U1 的口径回父连接）。
+     *
+     * <p>⭐ R47-b：矩阵通道走进程内那份，绝不碰凭据存储 —— 钥匙串里不留容器口令。
+     */
+    private String passwordFor(String connectionId) {
+        String credentialId = ConnectionProfile.isCatalogVariantId(connectionId)
+                ? ConnectionProfile.parentOfCatalogVariant(connectionId)
+                : connectionId;
+        if (!ephemeralProfileId.isEmpty() && credentialId.equals(ephemeralProfileId)) {
+            return ephemeralPassword;
+        }
+        return credentials.password(credentialId).orElse(null);
     }
 
     /**
@@ -1123,7 +1249,7 @@ public final class AppShell extends StackPane {
             DbSession opened = null;
             List<SchemaObject> objects = List.of();
             try {
-                String password = credentials.password(profile.id()).orElse(null);
+                String password = passwordFor(profile.id());
                 opened = sessions.open(profile.id(), profile.spec(password));
                 objects = schemaService.listObjects(opened);
             } catch (Exception e) {
@@ -1768,11 +1894,7 @@ public final class AppShell extends StackPane {
      * （虚拟连接不是档案，没有自己的凭据条目）。
      */
     private io.agenticdb.jdbc.ConnectionSpec specOf(ConnectionProfile profile) {
-        String credentialId = ConnectionProfile.isCatalogVariantId(profile.id())
-                ? ConnectionProfile.parentOfCatalogVariant(profile.id())
-                : profile.id();
-        String password = credentials.password(credentialId).orElse(null);
-        return profile.spec(password);
+        return profile.spec(passwordFor(profile.id()));
     }
 
     // ─────────────────────────── 生命周期 ───────────────────────────
@@ -1834,6 +1956,9 @@ public final class AppShell extends StackPane {
     public void afterShown(Stage stage) {
         this.stage = stage;
         workspace.requestFocus();
+        // ⭐ R47-b：验收帧要拍在**真服务器**上。演示库是 SQLite，它没有「库」这一层，
+        //    于是「库▾ 里有两把库」这种只有真服务器才有的形状在 47 帧里一张都没有。
+        registerMatrixProfileFromEnv();
         String requested = System.getProperty("adb.connection",
                 System.getenv().getOrDefault("ADB_CONNECTION", "")).trim();
         if (requested.isEmpty()) {
@@ -2047,6 +2172,12 @@ public final class AppShell extends StackPane {
                 }
             }
             Platform.runLater(workspace::runQuery);
+        }
+        // ⭐ R47-b：「库▾」那一帧。它只能拍在有库一层的服务器上 —— 演示库是 SQLite，
+        //    清单永远是空的，所以这颗控件从 R44 交付到今没有画面证据。
+        String catalogPose = text("adb.catalogPose", "ADB_CATALOG_POSE").toLowerCase(Locale.ROOT);
+        if (!catalogPose.isEmpty() && !catalogPose.equals("1")) {
+            poseQueryCatalogWhenReady(catalogPose, 0);
         }
         // ⭐ S7：恢复上次打开的对象。命令行显式指定时不让它覆盖。
         if (initial.isEmpty() && structure.isEmpty() && initialQuery.isEmpty()) {
