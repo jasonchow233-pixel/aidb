@@ -354,6 +354,11 @@ public final class TabBar extends HBox {
         return activeId == null ? null : items.get(activeId);
     }
 
+    /** ⭐ G1：按标签 id 取已建的页节点（查询页换库时要读回当前 SQL）。 */
+    public Node contentOf(String id) {
+        return id == null ? null : nodes.get(id);
+    }
+
     /** 供门禁检查标签栏右键菜单是否来自注册表（4.5-29）。 */
     ContextMenu contextMenuForTest() {
         return lastContextMenu;

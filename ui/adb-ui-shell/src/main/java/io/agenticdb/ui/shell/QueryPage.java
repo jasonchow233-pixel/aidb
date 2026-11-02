@@ -93,7 +93,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
     }
 
     private final DbSession session;
-    private final String connectionName;
+    /** ⭐ G1：行 2 菜单的显示名 —— 有库层时换成当前库，不再 final 锁死连接名。 */
+    private String connectionName;
     private final Executor dbExecutor;
     private final DataGridPage.Feedback feedback;
     private final QueryHistory history;
@@ -141,6 +142,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private java.util.function.BiConsumer<String, String> onSaveSnippet = (name, sql) -> { };
     /** ⭐ Q6：片段库（插入用）。 */
     private java.util.function.Supplier<List<SavedQueries.Entry>> snippetSource = List::of;
+    /** ⭐ G1：当前连接可切的库（catalog）；空 = 该方言没有库层，菜单保持只展示。 */
+    private List<String> catalogs = List.of();
+    /** ⭐ G1：本页当前绑定的库名（勾标准用；null = 无库层概念或未读到）。 */
+    private String currentCatalog;
+    /** ⭐ G1：选中库的落点（外壳换绑会话并带 SQL 开新查询页）。 */
+    private java.util.function.Consumer<String> onSelectCatalog = catalog -> { };
     /** 偏好存储（列宽持久化）。 */
     private final SettingsStore settings;
     private long requestSequence;
@@ -193,6 +200,56 @@ public final class QueryPage extends VBox implements AutoCloseable {
     /** 接上片段库来源（Q6）。 */
     public void setSnippetSource(java.util.function.Supplier<List<SavedQueries.Entry>> source) {
         this.snippetSource = source == null ? List::of : source;
+    }
+
+    /**
+     * ⭐ G1：接上库选择器（Navicat 查询工具带行 2 的库下拉）。
+     *
+     * <p>空列表 = 该方言没有库层（SQLite）—— 菜单保持只展示连接名 + 禁用项，
+     * 不摆一个点了没反应的假开关（诚实条款）。
+     */
+    public void setOnSelectCatalog(java.util.function.Consumer<String> handler) {
+        this.onSelectCatalog = handler == null ? catalog -> { } : handler;
+    }
+
+    /** ⭐ G1：灌入当前连接可切的库，并标记当前绑定的库（条目上打勾）；
+     *  非空时「绑定」禁用项换成真能点的库条目。 */
+    public void setCatalogs(List<String> catalogs, String currentCatalog) {
+        this.catalogs = catalogs == null ? List.of() : List.copyOf(catalogs);
+        this.currentCatalog = currentCatalog;
+        if (connectionMenu != null) {
+            rebuildConnectionMenu();
+        }
+    }
+
+    /** 供门禁断言：当前可切的库列表。 */
+    List<String> catalogsForTest() {
+        return catalogs;
+    }
+
+    /** ⭐ G1：行 2 那颗菜单的显示名 —— 有库层的连接显示**当前库**（Navicat 同款），无库层保持连接名。 */
+    public void setConnectionLabel(String label) {
+        if (label != null && !label.isBlank()) {
+            this.connectionName = label;
+            if (connectionMenu != null) {
+                connectionMenu.setText(label);
+            }
+        }
+    }
+
+    /** 供门禁断言：行 2 连接/库菜单的显示名。 */
+    String connectionLabelForTest() {
+        return connectionMenu == null ? connectionName : connectionMenu.getText();
+    }
+
+    /** 供门禁：按库名触发菜单条目（走同一条 onAction 链）。 */
+    void selectCatalogForTest(String catalog) {
+        for (MenuItem item : connectionMenu.getItems()) {
+            if (catalog.equals(item.getText())) {
+                item.fire();
+                return;
+            }
+        }
     }
 
     /**
@@ -357,12 +414,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         connectionMenu.setId("query-connection");
         connectionMenu.getStyleClass().add("adb-button");
         connectionMenu.setTooltip(new Tooltip(I18n.t("query.tip.connection")));
-        MenuItem newQuery = new MenuItem(I18n.t("action.new-query"));
-        newQuery.setId("query-new");
-        newQuery.setOnAction(event -> onNewQuery.run());
-        MenuItem bound = new MenuItem(I18n.t("query.connection.bound"));
-        bound.setDisable(true);
-        connectionMenu.getItems().addAll(newQuery, new SeparatorMenuItem(), bound);
+        rebuildConnectionMenu();
 
         run.setText(I18n.t("query.run"));
         run.setId("query-run");
@@ -468,6 +520,44 @@ public final class QueryPage extends VBox implements AutoCloseable {
         statusBar.setAlignment(Pos.CENTER_LEFT);
 
         getChildren().addAll(toolbar, findBar, split, statusBar);
+    }
+
+    /**
+     * ⭐ G1：连接菜单的两种形态。
+     *
+     * <p>没有库层（SQLite / 还没读到库列表）= 连接名 + 「新建查询」+ 禁用项，
+     * 与 R39 交付的形态一致；读到库列表后换成**真能点**的库条目 ——
+     * Navicat 的下拉能换库，我们的禁用项只是它缺席时的如实展示。
+     */
+    private void rebuildConnectionMenu() {
+        List<MenuItem> items = new java.util.ArrayList<>();
+        MenuItem newQuery = new MenuItem(I18n.t("action.new-query"));
+        newQuery.setId("query-new");
+        newQuery.setOnAction(event -> onNewQuery.run());
+        items.add(newQuery);
+        if (catalogs.isEmpty()) {
+            MenuItem bound = new MenuItem(I18n.t("query.connection.bound"));
+            bound.setId("query-connection-bound");
+            bound.setDisable(true);
+            items.add(new SeparatorMenuItem());
+            items.add(bound);
+        } else {
+            items.add(new SeparatorMenuItem());
+            items.add(new SeparatorMenuItem());
+            MenuItem header = new MenuItem(I18n.t("query.catalog.switchTo"));
+            header.setDisable(true);
+            items.add(header);
+            for (String catalog : catalogs) {
+                MenuItem entry = new MenuItem(catalog);
+                entry.setId("query-catalog-" + catalog);
+                if (catalog.equalsIgnoreCase(currentCatalog)) {
+                    entry.setGraphic(Icons.of(Icons.Icon.CHECK, Icons.SIZE_LABEL));
+                }
+                entry.setOnAction(event -> onSelectCatalog.accept(catalog));
+                items.add(entry);
+            }
+        }
+        connectionMenu.getItems().setAll(items);
     }
 
     private void buildFindBar() {

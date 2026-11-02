@@ -144,6 +144,8 @@ public final class AppShell extends StackPane {
     private final Map<String, ConnectionProfile> catalogVariants = new HashMap<>();
     /** 已经读过 catalog 清单的连接（懒加载，读失败不反复试）。 */
     private final Set<String> catalogsLoaded = new HashSet<>();
+    /** ⭐ G1：库连上之后要做的事（查询页选库 → 连好再开页，不能开着空页等会话）。 */
+    private Runnable pendingAfterCatalogConnect;
     private final BorderPane root = new BorderPane();
     private final ObjectDetailsPanel details = new ObjectDetailsPanel();
     private final Label toastLabel = new Label();
@@ -1477,6 +1479,12 @@ public final class AppShell extends StackPane {
                 refreshProfiles();
                 refreshObjectHome();
                 applyConnectedUi(variant, loaded);
+                // ⭐ G1：查询页库选择器等「连上之后」的动作，会话就绪这一拍才执行。
+                if (pendingAfterCatalogConnect != null) {
+                    Runnable followUp = pendingAfterCatalogConnect;
+                    pendingAfterCatalogConnect = null;
+                    followUp.run();
+                }
             });
         });
     }
@@ -3025,6 +3033,13 @@ public final class AppShell extends StackPane {
         page.setOnOpenSavedQueries(this::openSavedQueries);
         page.setOnInsertSnippet(this::insertSnippet);
         page.setOnNewQuery(this::openNewQuery);
+        // ⭐ G1：查询页真正跟库走 —— 读到库列表就把「只展示」的连接菜单换成可切的库下拉。
+        page.setOnSelectCatalog(catalog -> switchQueryCatalog(tab, catalog));
+        String pageCatalog = catalogLabelFor(tab.connectionId());
+        if (pageCatalog != null) {
+            page.setConnectionLabel(pageCatalog);
+        }
+        loadQueryCatalogs(pageSession, tab.connectionId(), pageCatalog, page);
         // 「存为命名查询」落到已保存查询库。
         page.setOnSaveNamed((name, sql) -> {
             savedQueries.save(name, sql);
@@ -3047,6 +3062,103 @@ public final class AppShell extends StackPane {
         page.setDirtyListener(tab::markDirty);
         page.setStateListener(this::updateQueryActions);
         return page;
+    }
+
+    /**
+     * ⭐ G1：这个连接标签当前服务的库名。
+     *
+     * <p>虚拟连接从 id 里取；父连接用它自己保存的 database；
+     * 两者都没有（SQLite 这类无库层方言）返回 null —— 菜单保持只展示连接名。
+     */
+    private String catalogLabelFor(String connectionId) {
+        if (connectionId == null) {
+            return null;
+        }
+        if (ConnectionProfile.isCatalogVariantId(connectionId)) {
+            return ConnectionProfile.catalogOfCatalogVariant(connectionId);
+        }
+        ConnectionProfile parent = profileById(connectionId);
+        return parent == null || parent.database().isBlank() ? null : parent.database();
+    }
+
+    /**
+     * ⭐ G1：后台读当前连接的库清单，灌进查询页的库菜单。
+     *
+     * <p>与侧栏的 {@link #loadCatalogsFor} 同一条方言通道（{@code listCatalogs}），
+     * 读不到或为空就保持 R39 的只展示形态 —— 不给用户摆一个只有禁用项的下拉。
+     */
+    private void loadQueryCatalogs(DbSession pageSession, String connectionId,
+                                   String currentCatalog, QueryPage page) {
+        if (pageSession == null || connectionId == null) {
+            return;
+        }
+        executors.forConnection(connectionId).execute(() -> {
+            List<String> catalogs;
+            try {
+                catalogs = new ArrayList<>(schemaService.listCatalogs(pageSession));
+            } catch (Exception e) {
+                return;
+            }
+            if (catalogs.isEmpty()) {
+                return;
+            }
+            List<String> names = List.copyOf(catalogs);
+            Platform.runLater(() -> page.setCatalogs(names, currentCatalog));
+        });
+    }
+
+    /**
+     * ⭐ G1：在查询页里选中另一个库。
+     *
+     * <p>换绑 = 走侧栏切库同一条虚拟连接通道，**带着当前 SQL 开一个新查询页**；
+     * 原页保持绑定原库（同一条 SQL 在两个库里跑是有写风险的，P-1 裁定不自动重跑）。
+     * 目标库的会话还没开时先连、连上再开页（{@link #pendingAfterCatalogConnect}）。
+     */
+    private void switchQueryCatalog(TabItem tab, String catalog) {
+        if (catalog == null || catalog.isBlank()) {
+            return;
+        }
+        String parentId = ConnectionProfile.isCatalogVariantId(tab.connectionId())
+                ? ConnectionProfile.parentOfCatalogVariant(tab.connectionId())
+                : tab.connectionId();
+        ConnectionProfile parent = profileById(parentId);
+        if (parent == null) {
+            status(I18n.t("shell.connectionNotFound", parentId));
+            return;
+        }
+        String sql = currentQuerySql(tab);
+        if (catalog.equalsIgnoreCase(parent.database())) {
+            openQueryOn(parent.id(), catalog, sql);
+            return;
+        }
+        String variantId = ConnectionProfile.catalogVariantId(parent.id(), catalog);
+        if (sessions.isOpen(variantId)) {
+            openQueryOn(variantId, catalog, sql);
+            return;
+        }
+        ConnectionProfile variant = variantProfile(variantId);
+        if (variant == null) {
+            status(I18n.t("shell.cannotOpenDatabase"));
+            return;
+        }
+        pendingAfterCatalogConnect = () -> openQueryOn(variantId, catalog, sql);
+        connectCatalog(variant);
+    }
+
+    /** ⭐ G1：在指定库的连接上带 SQL 开新查询页（P-1：不自动执行，状态栏说清落在哪个库）。 */
+    private void openQueryOn(String connectionId, String catalog, String sql) {
+        queryCounter++;
+        String id = "query:" + connectionId + ":" + System.nanoTime();
+        initialQuerySql.put(id, sql == null ? "" : sql);
+        openTab(new TabItem(id, I18n.t("shell.unnamedQuery", queryCounter),
+                TabKind.QUERY, null, connectionId));
+        status(I18n.t("shell.querySwitchedDatabase", catalog));
+    }
+
+    /** ⭐ G1：取某个查询页标签当前的 SQL（页没建起来/不是查询页时给空串）。 */
+    private String currentQuerySql(TabItem tab) {
+        Node node = tabBar.contentOf(tab.id());
+        return node instanceof QueryPage page ? page.sql() : "";
     }
 
     private StructurePage createStructurePage(TabItem tab) {
