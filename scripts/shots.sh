@@ -94,6 +94,12 @@ SHOTS=(
   "p3-query-menu||8000|ADB_QUERY=1 ADB_MENU_POSE=1 ADB_THEME_FORCE=light"
   "p4-structure||5000|ADB_STRUCTURE=users ADB_THEME_FORCE=light"
   "p4-ddl||7000|ADB_DDL=1 ADB_THEME_FORCE=light"
+  # ⭐ D-23：列对话框那一帧 —— 类型下拉的候选与默认值现在都来自方言，
+  #   不再是一份硬编码的 SQLite 清单（SQLite 的默认值因此从 TEXT 变成 VARCHAR，
+  #   这一帧拍的就是合上时看得见的那个默认值）。
+  #   ⚠️ 候选清单跟着库变这件事**帧拍不到**：JavaFX 的 ComboBox 弹层是独立窗口，
+  #   capture() 只吃主 Stage —— 所以那一半由 StructureColumnTypeTest + 真库矩阵守。
+  "p7-new-column|structure-add|6000|ADB_STRUCTURE=users ADB_THEME_FORCE=light"
   "p5-connections||4000|ADB_CONNECTIONS=1 ADB_THEME_FORCE=light"
   "p6-new-table||5000|ADB_NEW_TABLE=1 ADB_THEME_FORCE=light"
   # ⭐ R31：字段页的「深度」那一帧 —— 类型 / 长度 / 小数 + 自增 + 属性面板都有真值，
