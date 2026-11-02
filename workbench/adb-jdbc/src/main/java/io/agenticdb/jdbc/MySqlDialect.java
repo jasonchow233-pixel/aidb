@@ -218,15 +218,42 @@ public class MySqlDialect implements Dialect {
                 + "WHERE EVENT_SCHEMA = DATABASE() ORDER BY EVENT_NAME";
     }
 
-    /** ⭐ O1：事件定义体（{@code SHOW CREATE EVENT} 的第 3 列）。 */
+    /** ⭐ O1：事件定义体（{@code SHOW CREATE EVENT} 里那一列叫 {@code Create Event}）。 */
     @Override
     public String readEventDefinition(Connection connection, String name) throws SQLException {
         try (var statement = connection.createStatement();
              var rs = statement.executeQuery("SHOW CREATE EVENT " + quote(name))) {
             if (rs.next()) {
-                int columns = rs.getMetaData().getColumnCount();
-                String body = columns >= 3 ? rs.getString(3) : rs.getString(1);
-                return body == null ? "" : body;
+                return definitionBody(rs);
+            }
+        }
+        return "";
+    }
+
+    /**
+     * 从 {@code SHOW CREATE …} 的结果里取定义体，<b>按列名找、不按位置猜</b>。
+     *
+     * <p>⭐ 这里原来是 {@code columns >= 3 ? getString(3) : getString(1)}，
+     * 对 {@code SHOW CREATE PROCEDURE/FUNCTION} 恰好是对的
+     * （{@code Procedure | sql_mode | Create Procedure | …}），
+     * 但 {@code SHOW CREATE EVENT} 中间多插了一列 {@code time_zone}：
+     * {@code Event | sql_mode | time_zone | Create Event | …} —— 第 3 列是
+     * {@code time_zone}，值是字符串 {@code "SYSTEM"}。
+     * 于是 MySQL/MariaDB 的每个事件在界面上都显示成「SYSTEM」，
+     * 看着像读到了什么，其实一行业务 SQL 都没有。
+     *
+     * <p>找不到 {@code Create …} 这一列就返回空串（界面显示「—」），
+     * <b>不再</b>退回某个位置：猜错列比读不到更糟，因为前者会长期没人怀疑。
+     */
+    private static String definitionBody(java.sql.ResultSet rs) throws SQLException {
+        java.sql.ResultSetMetaData meta = rs.getMetaData();
+        for (int i = 1; i <= meta.getColumnCount(); i++) {
+            String label = meta.getColumnLabel(i);
+            if (label != null && label.regionMatches(true, 0, "Create", 0, "Create".length())) {
+                String body = rs.getString(i);
+                if (body != null && !body.isBlank()) {
+                    return body;
+                }
             }
         }
         return "";
@@ -592,7 +619,9 @@ public class MySqlDialect implements Dialect {
     /**
      * MySQL 的函数 / 过程定义体：{@code SHOW CREATE FUNCTION / PROCEDURE}。
      *
-     * <p>结果集里第 1 列是名字、第 2 列是 sql_mode、<b>第 3 列才是定义体</b>。
+     * <p>列的位置和 {@code SHOW CREATE EVENT} 不一样，所以这里也走
+     * {@link #definitionBody} 按列名（{@code Create Function / Create Procedure}）取，
+     * 两边共用一套规则。
      */
     @Override
     public String readRoutineDefinition(Connection connection, String name, boolean procedure)
@@ -602,9 +631,7 @@ public class MySqlDialect implements Dialect {
         try (var statement = connection.createStatement();
              var rs = statement.executeQuery(sql)) {
             if (rs.next()) {
-                int columns = rs.getMetaData().getColumnCount();
-                String body = columns >= 3 ? rs.getString(3) : rs.getString(1);
-                return body == null ? "" : body;
+                return definitionBody(rs);
             }
         }
         return "";
