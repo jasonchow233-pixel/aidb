@@ -690,6 +690,122 @@ class SideBarTreeTest {
     }
 
     /**
+     * ⭐ R44 G2-a（一）：搜索的**真实作用域**是整棵树，函数也一样吃搜索词。
+     *
+     * <p>这条不是为了测过滤（上面几条已经测了），而是给下一条当证据：
+     * 提示文字一旦点名「表、视图」，就比这里的实际行为窄 ——
+     * 用户以为搜不到函数，于是不会去搜，功能等于没有。
+     */
+    @Test
+    void searchingFiltersFunctionsJustLikeTables() {
+        ActionRegistry actions = new ActionRegistry();
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "演示库",
+                tab -> { }, message -> { }, "demo", List.of(profile("demo", "演示库")), p -> { }));
+        onFxRun(() -> sideBar.setObjects("demo", List.of(
+                new SchemaService.SchemaObject("orders", SchemaService.ObjectKind.TABLE),
+                new SchemaService.SchemaObject("fn_daily", SchemaService.ObjectKind.FUNCTION))));
+
+        // ⚠️ 搜索框要在 FX 线程**外**取：searchFieldOf 内部自己走一次 FX 往返，
+        //    塞进 onFxRun 的 lambda 里就是「在 FX 线程里等 FX 线程」→ 拿回 null。
+        TextField search = searchFieldOf(sideBar);
+
+        // 两个方向都要测：只测「搜函数名 → 函数在」是空转的 ——
+        // 变异验证抓到过：把函数分组的搜索词换成空串（等于函数**不**过滤），
+        // 那样这条仍然绿。必须再测「搜表名 → 函数得消失」。
+        onFxRun(() -> search.setText("fn_daily"));
+        TreeItem hitFunction = rootOf(treeOf(sideBar));
+        assertThat(findExact(hitFunction, "fn_daily"))
+                .as("函数名也吃搜索词")
+                .isNotNull();
+        assertThat(findExact(hitFunction, "orders"))
+                .as("不匹配的表被滤掉（证明搜索真的在生效，而不是没重建树）")
+                .isNull();
+
+        onFxRun(() -> search.setText("orders"));
+        TreeItem hitTable = rootOf(treeOf(sideBar));
+        assertThat(findExact(hitTable, "orders")).isNotNull();
+        assertThat(findExact(hitTable, "fn_daily"))
+                .as("反过来搜表名时函数也得被滤掉 —— 函数分组吃的是同一个搜索词")
+                .isNull();
+    }
+
+    /**
+     * ⭐ R44 G2-a（二）：提示文字不许承诺比行为窄的作用域。
+     *
+     * <p>门禁的是**一句产品声明**：框里写的「搜索表、视图」把函数与已保存查询
+     * 排除在外，而它们其实都搜（上一条已证）。Navicat 的框只写「Search」。
+     *
+     * <p>两种语言都要查：这条只在中文包上会红，英文包写 "Search" 本来就对 ——
+     * 所以按 locale 各读一遍，而不是只读当前那一份。
+     */
+    @Test
+    void theSearchPromptNamesNoObjectKind() {
+        ActionRegistry actions = new ActionRegistry();
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "演示库",
+                tab -> { }, message -> { }, "demo", List.of(profile("demo", "演示库")), p -> { }));
+
+        String english;
+        String chinese;
+        try {
+            I18n.setLocale(java.util.Locale.ENGLISH);
+            english = I18n.t("sidebar.searchPrompt");
+            I18n.setLocale(java.util.Locale.CHINESE);
+            chinese = I18n.t("sidebar.searchPrompt");
+        } finally {
+            I18n.setLocale(I18n.DEFAULT_LOCALE);
+        }
+
+        assertThat(searchFieldOf(sideBar).getPromptText())
+                .as("框里用的就是这个键，不是另一处硬编码")
+                .isEqualTo(english);
+
+        for (String prompt : List.of(english, chinese)) {
+            assertThat(prompt.toLowerCase(java.util.Locale.ROOT))
+                    .as("点名任何一种对象 = 比真实作用域窄（函数、已保存查询也搜）")
+                    .doesNotContain("table")
+                    .doesNotContain("view")
+                    .doesNotContain("function")
+                    .doesNotContain("表")
+                    .doesNotContain("视图")
+                    .doesNotContain("函数");
+        }
+    }
+
+    /**
+     * ⭐ R44 G2-a（三）：清除一键 —— 空框时不出现，有字时一按回到全量。
+     *
+     * <p>「不出现」这一半也要测：一颗按了没反应的 ✕ 就是噪声（诚实条款的反面）。
+     */
+    @Test
+    void theSearchClearButtonAppearsOnlyWithTextAndEmptiesTheFilter() {
+        ActionRegistry actions = new ActionRegistry();
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "演示库",
+                tab -> { }, message -> { }, "demo", List.of(profile("demo", "演示库")), p -> { }));
+        onFxRun(() -> sideBar.setObjects("demo", List.of(
+                new SchemaService.SchemaObject("orders", SchemaService.ObjectKind.TABLE),
+                new SchemaService.SchemaObject("audit_log", SchemaService.ObjectKind.TABLE))));
+
+        javafx.scene.control.Button clear =
+                onFx(() -> (javafx.scene.control.Button) sideBar.lookup("#sidebar-clear-search"));
+        assertThat(clear).as("清除键必须在场景里").isNotNull();
+        assertThat(clear.isVisible())
+                .as("空框时不摆一颗按了没反应的 ✕")
+                .isFalse();
+
+        TextField search = searchFieldOf(sideBar);
+        onFxRun(() -> search.setText("orders"));
+        assertThat(clear.isVisible()).as("有字了就出现").isTrue();
+        assertThat(findExact(rootOf(treeOf(sideBar)), "audit_log")).isNull();
+
+        onFxRun(clear::fire);
+        assertThat(search.getText()).isEmpty();
+        assertThat(clear.isVisible()).as("清空后自己也要退场").isFalse();
+        TreeItem root = rootOf(treeOf(sideBar));
+        assertThat(findExact(root, "audit_log")).isNotNull();
+        assertThat(findExact(root, "orders")).isNotNull();
+    }
+
+    /**
      * ⭐ R42 N28-a：视图节点给视图的动作，表节点给表的动作。
      *
      * <p>以前表与视图共用同一串右键菜单，于是视图上挂着「清空表 / 重命名表」——

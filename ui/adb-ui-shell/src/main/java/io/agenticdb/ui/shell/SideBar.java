@@ -717,7 +717,22 @@ public final class SideBar extends VBox {
         collapse.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(I18n.t("sidebar.collapse"), "Mod+Backslash")));
         collapse.setOnAction(event -> actions.run("sidebar.toggle"));
 
-        HBox bottomBar = new HBox(6, search, onlyFavorites, collapse);
+        // ⭐ R44 G2-a：清除一键（Navicat 的搜索框右侧也有这颗）。
+        //    没有它，改一个长搜索词要退格退到底 —— 而退格过程中每按一次都重建整棵树。
+        //    只在**有字**时出现：空框里摆一颗按了没反应的 ✕ 是噪声（也是诚实条款的反面）。
+        Button clearSearch = IconButtons.icon(Icons.Icon.CLOSE, I18n.t("sidebar.clearSearch"));
+        clearSearch.setId("sidebar-clear-search");
+        clearSearch.setAccessibleText(I18n.t("sidebar.clearSearch"));
+        clearSearch.getStyleClass().add("adb-icon-button");
+        clearSearch.setTooltip(new Tooltip(I18n.t("sidebar.clearSearch")));
+        clearSearch.setOnAction(event -> {
+            search.clear();
+            search.requestFocus();
+        });
+        clearSearch.managedProperty().bind(clearSearch.visibleProperty());
+        clearSearch.visibleProperty().bind(search.textProperty().isNotEmpty());
+
+        HBox bottomBar = new HBox(6, search, clearSearch, onlyFavorites, collapse);
         HBox.setHgrow(search, Priority.ALWAYS);
         bottomBar.setAlignment(Pos.CENTER_LEFT);
         bottomBar.getStyleClass().add("adb-sidebar__bottom");
