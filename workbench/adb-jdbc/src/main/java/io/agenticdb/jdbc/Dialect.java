@@ -842,6 +842,32 @@ public interface Dialect {
     }
 
     /**
+     * ⭐ D-23：新建列时类型格子的<b>默认值</b>。
+     *
+     * <p>规则放在方言层：「新建一列最常用、且不会把数据写坏」只有目标库说得清。
+     * 默认按变长文本优先（{@code VARCHAR} → {@code TEXT} → {@code CLOB}），
+     * 清单里一个都没有就退回第一项。
+     *
+     * <p>⚠️ 不是「随便挑一个有文本语义的类型」：
+     * <ul>
+     *   <li>{@code CHAR} 在 MySQL / SQL Server 上不写长度就是<b>长度 1</b>，
+     *       拿它当默认值等于每列都偷偷截断；</li>
+     *   <li>SQL Server 的 {@code VARCHAR} 用的是库默认排序规则的<b>单字节代码页</b>，
+     *       中文进去直接折成问号、而且不报错 —— 那边必须覆盖成 {@code NVARCHAR}
+     *       （见 {@code SqlServerDialect#defaultColumnType}）。</li>
+     * </ul>
+     */
+    default String defaultColumnType() {
+        List<String> names = columnTypes().stream().map(ColumnTypeOption::name).toList();
+        for (String preferred : List.of("VARCHAR2", "VARCHAR", "TEXT", "CLOB")) {
+            if (names.contains(preferred)) {
+                return preferred;
+            }
+        }
+        return names.isEmpty() ? "" : names.get(0);
+    }
+
+    /**
      * ⭐ R31：列级字符集的常用候选（下拉里的建议，控件本身可编辑）。
      *
      * <p>放在方言层而不是 UI 里判 {@code kind() == MYSQL}：A1 的承诺是「加一种数据库

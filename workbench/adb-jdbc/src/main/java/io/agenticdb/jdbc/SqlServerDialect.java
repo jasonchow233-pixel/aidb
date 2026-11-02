@@ -500,6 +500,19 @@ public final class SqlServerDialect implements Dialect {
         return ColumnTypes.SQLSERVER;
     }
 
+    /**
+     * ⭐ D-23：新建列默认给 {@code NVARCHAR}，不是接口默认值 {@code VARCHAR}。
+     *
+     * <p>{@code VARCHAR} 用的是库默认排序规则（常见 {@code SQL_Latin1_General_CP1_CI_AS}）
+     * 那一套<b>单字节代码页</b>：中文写进去不报错，但会静默折成 {@code ?}，
+     * 读回来就是脏数据。{@code NVARCHAR} 才是 UTF-16，且建表时不带 {@code N} 前缀的
+     * 字符串字面量同样会走代码页 —— 这两条都是 R46 在 SQL Server 2022 容器上实测的。
+     */
+    @Override
+    public String defaultColumnType() {
+        return "NVARCHAR";
+    }
+
     /** SQL Server 的排序规则跟列类型走（{@code COLLATE} 在类型后），字符集没有列级概念。 */
     @Override
     public List<String> columnCollationPresets() {

@@ -10,6 +10,7 @@ import io.agenticdb.introspect.TableOptions;
 import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.introspect.TriggerDef;
 import io.agenticdb.introspect.ForeignKeyDef;
+import io.agenticdb.jdbc.ColumnTypeOption;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.ColumnSpec;
@@ -800,8 +801,18 @@ public final class StructurePage extends VBox implements AutoCloseable {
         return selected == null ? Optional.empty() : Optional.of(selected);
     }
 
-    private void showColumnDialog(String title, ColumnSpec initial) {
-        if (structure == null || !structure.editable()) {
+    /**
+     * 「列」对话框里类型下拉的候选：就是 {@code session.dialect().columnTypes()} 的类型名，
+     * 顺序也按方言给的去。空清单（方言没话说）时下拉留空，格子仍可编辑。
+     *
+     * <p>单独抽出来是为了能在不起界面的情况下钉住「候选跟着库走」这条
+     * （{@code StructureColumnTypeTest}）—— 硬编码那份清单当初就是这么溜进来的。
+     */
+    static List<String> typeChoices(io.agenticdb.jdbc.Dialect dialect) {
+        return dialect.columnTypes().stream().map(ColumnTypeOption::name).toList();
+    }
+
+    private void showColumnDialog(String title, ColumnSpec initial) {        if (structure == null || !structure.editable()) {
             return;
         }
         Dialog<ColumnSpec> dialog = new Dialog<>();
@@ -817,10 +828,13 @@ public final class StructurePage extends VBox implements AutoCloseable {
         ComboBox<String> type = new ComboBox<>();
         type.setId("structure-dialog-type");
         type.setEditable(true);
-        type.getItems().setAll("TEXT", "VARCHAR(255)", "INTEGER", "REAL", "NUMERIC",
-                "BOOLEAN", "DATE", "TIME", "TIMESTAMP", "BLOB", "JSON", "UUID");
+        // ⭐ D-23：候选来自方言自己那份清单。以前这里硬编码十二个 SQLite 味的类型名
+        //    （TEXT / UUID / JSON…）发给六种库：Oracle 没有 TEXT、PG 的 UUID 是另一回事，
+        //    而真正用得上的 NUMBER / VARCHAR2 / NVARCHAR 一个都看不到 ——
+        //    格子可编辑所以不算堵死，但下拉等于在教用户写一条会失败的 DDL。
+        type.getItems().setAll(typeChoices(session.dialect()));
         type.setValue(initial == null || initial.rawType().isBlank()
-                ? "TEXT" : initial.rawType());
+                ? session.dialect().defaultColumnType() : initial.rawType());
 
         CheckBox nullable = new CheckBox(I18n.t("structure.dialog.nullable"));
         nullable.setId("structure-dialog-nullable");
