@@ -450,4 +450,60 @@ class DialectTest {
                 .isFalse();
         assertThat(DialectKind.SQLITE.dialect().supportsIndexColumnDirection()).isFalse();
     }
+
+    /**
+     * ⭐ D-33：「不加密」这一档必须落到<b>显式关闭</b>的驱动参数上。
+     *
+     * <p>真库 TLS 对端（{@code ExternalTlsDatabaseTest} 契约①）首跑就是这条红的：
+     * 三家原先都把 OFF 翻成「不写任何参数」，而 Connector/J 默认 {@code PREFERRED}、
+     * pgjdbc 默认 {@code prefer} —— 服务端支持 TLS 时<b>照样加密</b>，
+     * 于是连接向导里写着「不加密」的那一格实际含义是「按驱动默认」。
+     * 那条契约要 Docker 才能跑，这条不用 —— 参数名与取值写错，CI 就该红。
+     *
+     * <p>取值是三家驱动参数表里的原文（{@code getPropertyInfo} 实测）：
+     * {@code DISABLED} / {@code DISABLE} / {@code disable}，一个字母都不能改。
+     */
+    @Test
+    void offLevelDisablesEncryptionInsteadOfLeavingItToTheDriver() {
+        assertThat(DialectKind.MYSQL.dialect().sslOptions(Dialect.SslLevel.OFF))
+                .containsEntry("sslMode", "DISABLED");
+        assertThat(DialectKind.MARIADB.dialect().sslOptions(Dialect.SslLevel.OFF))
+                .containsEntry("sslMode", "DISABLE");
+        assertThat(DialectKind.POSTGRESQL.dialect().sslOptions(Dialect.SslLevel.OFF))
+                .containsEntry("sslmode", "disable");
+
+        // 反向读回也要落在同一档：否则「不加密」保存一次就变成「优先加密」。
+        for (DialectKind kind : List.of(DialectKind.MYSQL, DialectKind.MARIADB,
+                DialectKind.POSTGRESQL)) {
+            Dialect dialect = kind.dialect();
+            assertThat(dialect.sslLevel(dialect.sslOptions(Dialect.SslLevel.OFF)))
+                    .as("%s 的「不加密」存下去再读回来必须还是「不加密」", kind)
+                    .isEqualTo(Dialect.SslLevel.OFF);
+        }
+    }
+
+    /**
+     * 档位 → 参数的三套拼写（同一下拉框，三家三个键名）。
+     * 这三家之外没有可表达的档位，界面因此把控件收成说明页。
+     */
+    @Test
+    void sslLevelsMapToEachDriversOwnSpelling() {
+        assertThat(DialectKind.MYSQL.dialect().sslOptions(Dialect.SslLevel.REQUIRE))
+                .containsEntry("sslMode", "REQUIRED");
+        assertThat(DialectKind.MARIADB.dialect().sslOptions(Dialect.SslLevel.REQUIRE))
+                .as("MariaDB 的「必须加密」叫 TRUST，不是 PG 的 require 也不是 MySQL 的 REQUIRED")
+                .containsEntry("sslMode", "TRUST");
+        assertThat(DialectKind.MARIADB.dialect().sslLevels())
+                .as("mariadb-java-client 的 SslMode 枚举里没有 prefer 这一档")
+                .doesNotContain(Dialect.SslLevel.PREFER);
+        assertThat(DialectKind.POSTGRESQL.dialect().sslOptions(Dialect.SslLevel.VERIFY_IDENTITY))
+                .containsEntry("sslmode", "verify-full");
+
+        // CA 交给驱动的通道：PG 与 MariaDB 收 PEM，MySQL 什么都不收（收了也是静默忽略）。
+        assertThat(DialectKind.POSTGRESQL.dialect().sslRootCertOption()).isEqualTo("sslrootcert");
+        assertThat(DialectKind.MARIADB.dialect().sslRootCertOption()).isEqualTo("serverSslCert");
+        assertThat(DialectKind.MYSQL.dialect().sslRootCertOption())
+                .as("Connector/J 8.2 没有 sslCA / sslCapath：摆一个填了不生效的框比没有更糟")
+                .isNull();
+    }
 }

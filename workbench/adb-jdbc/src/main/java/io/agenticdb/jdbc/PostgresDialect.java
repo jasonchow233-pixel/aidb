@@ -89,15 +89,16 @@ public final class PostgresDialect implements Dialect {
     /** PostgreSQL 的加密开关就是一个 {@code sslmode} 档位串，五档全能表达。 */
     @Override
     public java.util.Map<String, String> sslOptions(SslLevel level) {
+        // ⭐ D-33：OFF 写 disable。pgjdbc 的默认是 prefer，
+        // 不写参数时「不加密」这档连上的其实是一条加密会话（真库 TLS 对端契约①实测到的就是这个）。
         String value = switch (level) {
-            case OFF -> null;
+            case OFF -> "disable";
             case PREFER -> "prefer";
             case REQUIRE -> "require";
             case VERIFY_CA -> "verify-ca";
             case VERIFY_IDENTITY -> "verify-full";
         };
-        return value == null ? java.util.Map.of()
-                : java.util.Map.of("sslmode", value);
+        return java.util.Map.of("sslmode", value);
     }
 
     @Override
@@ -107,6 +108,7 @@ public final class PostgresDialect implements Dialect {
             return SslLevel.OFF;
         }
         return switch (raw.trim().toLowerCase(java.util.Locale.ROOT).replace('-', '_')) {
+            case "disable" -> SslLevel.OFF;
             case "allow" -> SslLevel.PREFER;
             case "prefer" -> SslLevel.PREFER;
             case "require" -> SslLevel.REQUIRE;
@@ -116,6 +118,7 @@ public final class PostgresDialect implements Dialect {
         };
     }
 
+    /** pgjdbc 收 CA 的 PEM 路径（真库 TLS 对端上验过：给了就校验、换成冒名 CA 就拒绝）。 */
     @Override
     public String sslRootCertOption() {
         return "sslrootcert";

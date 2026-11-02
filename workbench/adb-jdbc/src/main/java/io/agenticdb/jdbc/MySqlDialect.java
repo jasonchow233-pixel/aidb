@@ -98,14 +98,17 @@ public class MySqlDialect implements Dialect {
      */
     @Override
     public java.util.Map<String, String> sslOptions(SslLevel level) {
+        // ⭐ D-33：OFF 从「不写参数」改成写 DISABLED。
+        // 真库 TLS 对端实测（ExternalTlsDatabaseTest 契约①）：不写参数时驱动默认 PREFERRED，
+        // 服务端支持 TLS 就<b>照样加密</b> —— 界面上那格「不加密」于是骗人。
         String value = switch (level) {
-            case OFF -> null;
+            case OFF -> "DISABLED";
             case PREFER -> "PREFERRED";
             case REQUIRE -> "REQUIRED";
             case VERIFY_CA -> "VERIFY_CA";
             case VERIFY_IDENTITY -> "VERIFY_IDENTITY";
         };
-        return value == null ? java.util.Map.of() : java.util.Map.of("sslMode", value);
+        return java.util.Map.of("sslMode", value);
     }
 
     @Override
@@ -115,6 +118,7 @@ public class MySqlDialect implements Dialect {
             return SslLevel.OFF;
         }
         return switch (raw.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "DISABLED" -> SslLevel.OFF;
             case "PREFERRED" -> SslLevel.PREFER;
             case "REQUIRED" -> SslLevel.REQUIRE;
             case "VERIFY_CA" -> SslLevel.VERIFY_CA;
@@ -124,8 +128,12 @@ public class MySqlDialect implements Dialect {
     }
 
     /**
-     * CA 文件的参数名本轮<b>没有验证</b>（驱动参数表里没直接给出），所以返回 null：
-     * 界面据此禁用输入框，而不是收下一个填了不生效的路径。
+     * Connector/J 8.2 <b>没有任何 CA 文件参数</b>（{@code getPropertyInfo} 实测：
+     * 没有 {@code sslCA}、也没有 {@code sslCapath}，链校验只走
+     * {@code trustCertificateKeyStoreUrl} 三件套），所以这里返回 {@code null}：
+     * 界面据此禁用「根证书」这一格，而不是收下一个填了不生效的路径 ——
+     * 驱动对<b>不认识的属性静默忽略</b>（实测：带着 {@code sslCA=/does/not/exist.pem}
+     * 连 {@code sslMode=REQUIRED} 照样成功），填了不生效比没有更糟。
      */
     @Override
     public String sslRootCertOption() {

@@ -144,9 +144,16 @@ public interface Dialect {
     /**
      * 档位 → 驱动参数。
      *
-     * <p>{@link SslLevel#OFF} 与「本方言不摆 TLS 页」时返回空 Map —— 意思是
-     * <b>不写任何加密参数</b>，而不是写一个 {@code sslmode=disable}：
-     * 各家驱动的默认值不同，留空才是「按服务端默认来」这句实话。
+     * <p>⭐ D-33 改的是 {@link SslLevel#OFF} 这一支。以前三家都把 OFF 翻成
+     * <b>不写任何加密参数</b>，理由是「各家驱动默认值不同，留空才是按服务端默认来」——
+     * 这话本身没错，错在它接的是一个<b>写着「不加密」的下拉框</b>：
+     * Connector/J 默认 PREFERRED、pgjdbc 默认 prefer，两个都是「服务端支持就加密」，
+     * 于是用户选了「不加密」拿到的却是加密会话（真库 TLS 对端契约①：
+     * {@code SHOW SESSION STATUS LIKE 'Ssl_cipher'} 读回 {@code TLS_AES_256_GCM_SHA384}）。
+     * 现在 OFF 写各家的显式关闭值（DISABLED / DISABLE / disable）。
+     *
+     * <p>方言<b>根本没有</b>某一档时仍返回空 Map —— 意思是「这一档我表达不了」，
+     * 界面据 {@link #sslLevels()} 本来就不会摆出来（MariaDB 的 {@code prefer} 就是这个情况）。
      */
     default Map<String, String> sslOptions(SslLevel level) {
         return Map.of();

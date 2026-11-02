@@ -66,7 +66,10 @@ public final class MariaDbDialect extends MySqlDialect {
     @Override
     public java.util.Map<String, String> sslOptions(SslLevel level) {
         String value = switch (level) {
-            case OFF -> null;
+            // ⭐ D-33：OFF 写 DISABLE 而不是留空。这一家的驱动默认本来就是 DISABLE
+            // （真库对端契约①里它是三家唯一「不写参数也确实是明文」的），
+            // 但参数名不能随驱动版本变 —— 写着比靠默认值稳。
+            case OFF -> "DISABLE";
             case PREFER -> null;
             case REQUIRE -> "TRUST";
             case VERIFY_CA -> "VERIFY_CA";
@@ -82,6 +85,7 @@ public final class MariaDbDialect extends MySqlDialect {
             return SslLevel.OFF;
         }
         return switch (raw.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "DISABLE" -> SslLevel.OFF;
             case "TRUST" -> SslLevel.REQUIRE;
             case "VERIFY_CA" -> SslLevel.VERIFY_CA;
             case "VERIFY_FULL" -> SslLevel.VERIFY_IDENTITY;
@@ -89,7 +93,11 @@ public final class MariaDbDialect extends MySqlDialect {
         };
     }
 
-    /** MariaDB 驱动认 {@code serverSslCert}（驱动参数表实测），不是 PG 的 {@code sslrootcert}。 */
+    /**
+     * MariaDB 驱动认 {@code serverSslCert}（驱动参数表实测），不是 PG 的 {@code sslrootcert}。
+     * 收的是 CA 的 PEM：真库 TLS 对端上给了签发方就校验通过、换成没签过服务器证书的
+     * 那把 CA 就报 {@code (certificate_unknown) PKIX path building failed}（契约③④）。
+     */
     @Override
     public String sslRootCertOption() {
         return "serverSslCert";
