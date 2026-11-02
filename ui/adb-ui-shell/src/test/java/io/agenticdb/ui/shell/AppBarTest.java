@@ -235,6 +235,47 @@ class AppBarTest {
                 .isTrue();
     }
 
+    /**
+     * ⭐ D-12（R44 小账）：搜索框的快捷键胶囊不许截成「Ct…」。
+     *
+     * <p>「宽度按中文量」家族第四次（自增列头 / 详情页脚 / 列筛选浮窗之后）。
+     * 220px 定宽里提示文字和胶囊抢空间 —— 钉住**收缩的分配**：胶囊 min=pref
+     * （快捷键是功能承诺，截了等于没承诺），提示文字才是可省略的那位。
+     */
+    @Test
+    void theSearchShortcutCapsuleIsNeverEllipsised(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        List<Object> geometry = WaitForAsyncUtils.asyncFx(() -> {
+            bar.applyCss();
+            bar.layout();
+            Label kbd = bar.lookupAll(".adb-appbar__search-kbd").stream()
+                    .filter(Label.class::isInstance).map(Label.class::cast)
+                    .findFirst().orElseThrow(() -> new AssertionError("顶栏没有快捷键胶囊"));
+            Label hint = bar.lookupAll(".adb-appbar__search-hint").stream()
+                    .filter(Label.class::isInstance).map(Label.class::cast)
+                    .findFirst().orElseThrow(() -> new AssertionError("顶栏没有搜索提示文字"));
+            kbd.applyCss();
+            kbd.requestLayout();
+            return List.<Object>of(
+                    kbd.getMinWidth() == javafx.scene.layout.Region.USE_PREF_SIZE,
+                    hint.getMinWidth() != javafx.scene.layout.Region.USE_PREF_SIZE,
+                    kbd.getWidth() + 0.5 >= kbd.prefWidth(-1),
+                    kbd.getText());
+        }).get();
+        assertThat((Boolean) geometry.get(0))
+                .as("胶囊必须先声明 min=pref，截字门禁才有几何意义（只测画面会被绕过）")
+                .isTrue();
+        assertThat((Boolean) geometry.get(1))
+                .as("220px 定宽里可收缩的那位必须是提示文字，不是快捷键胶囊")
+                .isTrue();
+        assertThat((Boolean) geometry.get(2))
+                .as("快捷键胶囊实得宽度必须装得下全文")
+                .isTrue();
+        assertThat((String) geometry.get(3))
+                .as("胶囊文字就是命令面板承诺的那个键")
+                .isIn("Ctrl+K", "⌘K");
+    }
+
     @Test
     void theConnectionPillShowsTheRealConnectionName(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();

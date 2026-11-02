@@ -247,6 +247,13 @@ public final class AppBar extends VBox {
 
         HBox content = new HBox(8, icon, searchHint, searchKbd);
         content.setAlignment(Pos.CENTER_LEFT);
+        // ⭐ D-12：220px 定宽里先截的一定是「装得下但没排上序」的那位 ——
+        // 提示文字可收缩（本来就有省略号语义），快捷键胶囊钉死首选宽，
+        // 不许再截成「Ct…」（快捷键是功能承诺，截了等于没承诺）。
+        HBox.setHgrow(searchHint, Priority.NEVER);
+        searchHint.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(searchKbd, Priority.NEVER);
+        searchKbd.setMinWidth(Region.USE_PREF_SIZE);
 
         Button search = new Button();
         search.setId("appbar-search");
