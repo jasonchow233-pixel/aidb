@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（46 张）。
+# 重拍 docs/screenshots/ 的验收截图（51 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 39 张 + 暗色 7 张）
+#   ./scripts/shots.sh              # 全部重拍（亮色 44 张 + 暗色 7 张；其中 4 张拍在 Docker 矩阵的真库上）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
 #
 # 为什么需要这个脚本（历史上踩过的坑，全部在这里被绕开）：
@@ -47,6 +47,10 @@ export ADB_PREFS_NODE="${ADB_PREFS_NODE:-io/agenticdb/screenshots}"
 export ADB_PREFS_RESET="${ADB_PREFS_RESET:-1}"
 # 不依赖「上次用的连接」；demo 由 ConnectionStore.ensureDemo 保证存在。
 export ADB_CONNECTION="${ADB_CONNECTION:-demo}"
+# ⭐ R47-b：连接档案也隔离。此前「拍一次验收图」= 往用户真实的
+# ~/.agenticdb/connections.json 里写一条（ensureDemo 与 touch 都落盘）——
+# 验收不该改别人的清单，真库矩阵的临时档案更不该落进去。
+export ADB_CONNECTIONS_FILE="${ADB_CONNECTIONS_FILE:-${TMPDIR:-/tmp}/adb-shots-connections.json}"
 
 # name|click-id|wait-ms|预置页面环境变量
 # 顺序即拍摄顺序：暗色必须最先。
@@ -92,6 +96,14 @@ SHOTS=(
   "p3-query||6000|ADB_QUERY=1 ADB_THEME_FORCE=light"
   # ⭐ U25：右键菜单帧 —— 结果网格上摆出真菜单（复制单元格 / 行 / 列名）。
   "p3-query-menu||8000|ADB_QUERY=1 ADB_MENU_POSE=1 ADB_THEME_FORCE=light"
+  # ⭐ R47-b：库▾ 的真库帧 —— 这颗控件（R44-G1）交付至今一张帧都没有，
+  #   因为演示库是 SQLite、没有库一层，下拉里永远没有第二把库可显示。
+  #   现在拍在 Docker 矩阵的真 MySQL 上：清单来自 SHOW DATABASES（shop / shop2），
+  #   勾在当前库，状态栏写「已切到 …」。环境没配时这一格跳过，不退回演示库假拍。
+  "p3-query-catalog||14000|ADB_MATRIX=mysql ADB_CONNECTION=matrix-mysql ADB_CATALOG_POSE=menu ADB_THEME_FORCE=light"
+  #   成对的另一张：点进第二把库**之后**的页面态（行 2 的名字、状态栏的「已切到 …」、
+  #   侧栏跟着换库）。菜单那张证「有两把库」，这张证「切得过去」。
+  "p3-query-catalog-bound||17000|ADB_MATRIX=mysql ADB_CONNECTION=matrix-mysql ADB_CATALOG_POSE=bound ADB_THEME_FORCE=light"
   "p4-structure||5000|ADB_STRUCTURE=users ADB_THEME_FORCE=light"
   "p4-ddl||7000|ADB_DDL=1 ADB_THEME_FORCE=light"
   # ⭐ D-23：列对话框那一帧 —— 类型下拉的候选与默认值现在都来自方言，
@@ -123,7 +135,15 @@ SHOTS=(
   "p6-new-view||5000|ADB_NEW_VIEW=1 ADB_NEW_VIEW_POSE=create ADB_THEME_FORCE=light"
   "p6-new-view-dark||5000|ADB_NEW_VIEW=1 ADB_NEW_VIEW_POSE=create ADB_THEME_FORCE=dark"
   "p6-new-view-invalid||5000|ADB_NEW_VIEW=1 ADB_NEW_VIEW_POSE=invalid ADB_THEME_FORCE=light"
+  # ⭐ R47-b：新建视图弹窗的 MySQL 形态 —— 预览里的反引号与 CREATE VIEW 直接来自方言，
+  #   演示库（SQLite）那张拍不出这一侧。此前只有方言单测门，没有画面。
+  "p6-new-view-mysql||7000|ADB_MATRIX=mysql ADB_CONNECTION=matrix-mysql ADB_NEW_VIEW=1 ADB_NEW_VIEW_POSE=create ADB_THEME_FORCE=light"
   "p6-design-view||7000|ADB_DESIGN_VIEW=1 ADB_THEME_FORCE=light"
+  # ⭐ R47-b：D-29 的画面证据。演示库（SQLite）上「重建视图」是两句（DROP + CREATE，
+  #   带灰字提示、多要一次确认），MySQL 8.4 实测收单句 CREATE OR REPLACE ——
+  #   这个差别此前只有单测门，因为截图通道一直绑不到真服务器。
+  #   前提是矩阵里有 v_active_users 可读回（dbmatrix.sh 的 seed_frames 就是为这一格种的）。
+  "p6-design-view-mysql||11000|ADB_MATRIX=mysql ADB_CONNECTION=matrix-mysql ADB_DESIGN_VIEW=1 ADB_THEME_FORCE=light"
   # ⭐ §6.4：这一帧要拍到「已选列 + 序号 + 预览 SQL + 可用的移动钮」，
   #   光弹一个空弹窗等于没拍这个弹窗的核心交互（空态由 IndexDialogTest 守）。
   "p7-new-index||6000|ADB_INDEX=1 ADB_INDEX_POSE=1 ADB_THEME_FORCE=light"
@@ -205,6 +225,18 @@ for shot in "${SHOTS[@]}"; do
       *) continue ;;
     esac
   fi
+
+  # ⭐ R47-b：真库帧的门控。ADB_MATRIX 那几格拍的是 Docker 矩阵里的真服务器，
+  #   环境没配时**跳过并说明**，不能让 AppShell 退回演示库去拍一张「看着像真库」的图 ——
+  #   那正是这颗控件欠帧的原因（演示库是 SQLite，没有库一层）。
+  case "$envvars" in
+    *ADB_MATRIX=*)
+      if [ -z "${ADB_TEST_MYSQL_PASSWORD:-}" ]; then
+        echo "  · 跳过 $name（真库帧）：环境里没有 ADB_TEST_*_PASSWORD" \
+             "—— 先跑 scripts/dbmatrix.sh up && eval \"\$(scripts/dbmatrix.sh env)\""
+        continue
+      fi ;;
+  esac
 
   step "拍摄 $name"
   rm -f "$SHOTS_DIR/$name.png"

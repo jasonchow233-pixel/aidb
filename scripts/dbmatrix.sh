@@ -6,6 +6,7 @@
 #   ./scripts/dbmatrix.sh status  # 各容器在不在、端口是多少
 #   ./scripts/dbmatrix.sh env     # 打印 export 行，配合 eval 用
 #   ./scripts/dbmatrix.sh run     # 跑 adb-jdbc 的真库契约矩阵
+#   ./scripts/dbmatrix.sh seed    # 只重铺验收帧的内容（users / orders / v_active_users，幂等）
 #   ./scripts/dbmatrix.sh tls-up  # 另起三个「只走 TLS」的对端容器 + 自签一套 PKI
 #   ./scripts/dbmatrix.sh tls-status / tls-run / tls-down
 #   ./scripts/dbmatrix.sh down [--purge-env]   # 删容器（卷一起删；TLS 层另用 tls-down）
@@ -262,9 +263,75 @@ up() {
     mssql_query "CREATE DATABASE $DB2_NAME" >/dev/null
   fi
 
+  seed_frames
+
   echo
   status
   log "口令在 $ENV_FILE（未入库）。跑矩阵：./scripts/dbmatrix.sh run"
+}
+
+# ⭐ R47-b：验收帧要的最小内容 —— users / orders 两张表 + 一个 v_active_users 视图。
+#
+#   为什么矩阵里要有「内容」：截图通道现在能把外壳绑到真服务器上（ADB_MATRIX），
+#   而「设计视图」这一格的前提是**读回一条真定义** —— 空库里没有视图，弹窗根本不开，
+#   于是 D-29 翻转后的形态（MySQL 上一句 CREATE OR REPLACE、无灰字提示）
+#   还是只能靠单测门证明。
+#   为什么要 orders：`p6-new-view-mysql` 那帧的预览是 `JOIN users` 的 v_paid_orders，
+#   只有 users 的话那张帧里的 SQL 在 shop 上**根本建不起来** —— 帧可以只拍预览，
+#   但预览里写着的表必须真在库里，否则「SQL to be executed」是一张跑不通的画。
+#   为什么只种三家：本轮只排了 MySQL 那一帧；给 SQL Server / Oracle 也种
+#   等于多维护两份要随方言变的种子，等它们的帧真排上来再加。
+#   全部幂等：第二次 up 必须是 no-op（D-30 那条假警报的教训 ——
+#   「每次跑都有一串已存在报错」会把下一次真故障淹掉）。
+seed_frames() {
+  log "种验收帧内容（$DB_NAME.users + orders + v_active_users；已存在 = no-op）"
+  local mysql_seed="
+USE \`$DB_NAME\`;
+CREATE TABLE IF NOT EXISTS users (
+  id BIGINT PRIMARY KEY,
+  name VARCHAR(200) NOT NULL,
+  email VARCHAR(200) NOT NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1
+);
+INSERT IGNORE INTO users (id, name, email, active) VALUES
+  (1, 'Ada', 'ada@example.com', 1),
+  (2, 'Lin', 'lin@example.com', 0);
+CREATE TABLE IF NOT EXISTS orders (
+  id BIGINT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  amount DECIMAL(12,2) NOT NULL,
+  status VARCHAR(32) NOT NULL
+);
+INSERT IGNORE INTO orders (id, user_id, amount, status) VALUES
+  (10, 1, 20.50, 'paid'),
+  (11, 1, 7.00, 'draft');
+CREATE OR REPLACE VIEW v_active_users AS
+  SELECT id, name, email FROM users WHERE active = 1;"
+  engine_sql MYSQL "$mysql_seed" >/dev/null
+  engine_sql MARIADB "$mysql_seed" >/dev/null
+  engine_sql PG "
+CREATE TABLE IF NOT EXISTS users (
+  id BIGINT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE
+);
+INSERT INTO users (id, name, email, active) VALUES
+  (1, 'Ada', 'ada@example.com', TRUE),
+  (2, 'Lin', 'lin@example.com', FALSE)
+  ON CONFLICT (id) DO NOTHING;
+CREATE TABLE IF NOT EXISTS orders (
+  id BIGINT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  amount NUMERIC(12,2) NOT NULL,
+  status TEXT NOT NULL
+);
+INSERT INTO orders (id, user_id, amount, status) VALUES
+  (10, 1, 20.50, 'paid'),
+  (11, 1, 7.00, 'draft')
+  ON CONFLICT (id) DO NOTHING;
+CREATE OR REPLACE VIEW v_active_users AS
+  SELECT id, name, email FROM users WHERE active;" >/dev/null
 }
 
 status() {
@@ -575,5 +642,6 @@ case "${1:-up}" in
   tls-down)   tls_down ;;
   tls-status) tls_status ;;
   tls-run)    tls_run_matrix ;;
-  *)          sed -n '2,26p' "$0" | sed 's/^#//; s/^ //' ;;
+  seed)       seed_frames ;;
+  *)          sed -n '2,27p' "$0" | sed 's/^#//; s/^ //' ;;
 esac
