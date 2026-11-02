@@ -618,6 +618,94 @@ public final class RealDatabaseContract {
         }
     }
 
+    // ─────────────────────────── 契约 8：视图生命周期（R52） ───────────────────────────
+
+    /**
+     * ⭐ 视图的「建 → 重建 → 读回定义 → 删」必须在真库上跑通，且<b>重建写法由方言自报</b>。
+     *
+     * <p>R46 把五引擎都起来了，但七条契约里偏偏没有视图这一条 ——
+     * 三种重建写法（{@code CREATE OR REPLACE} / {@code CREATE OR ALTER} / 两句先删再建）
+     * 此前只由 SQL 快照 + SQLite 契约钉住，<b>一次都没在真服务器上执行过</b>。
+     * 这条补的就是那段执行证据。
+     *
+     * <p>断言的形状照<b>产品路径</b>来，不照方言方法表：视图设计器开窗前会先读回定义
+     * （{@code SchemaService#ddl}：先 {@code readDdl}，读不到再 {@code readViewDdl}），
+     * 再交给 {@link ViewDefinition#selectBody} 取查询体。所以这里验的是
+     * 「重建之后，同一条读路径拿到的查询体里带着<b>新</b>别名」。
+     * 只验「DROP+CREATE 没报错」是不够的 —— 读回来是旧的、或读出来是空，界面一样是坏的，
+     * 而且坏得更难查：前者让用户在旧定义上接着改，后者直接不开窗。
+     */
+    public static void viewLifecycleRuns(ExternalDatabase target) throws Exception {
+        withRetry("视图生命周期", () -> viewLifecycleOnce(target));
+    }
+
+    private static void viewLifecycleOnce(ExternalDatabase target) throws Exception {
+        try (JdbcSession session = JdbcSession.open(target.spec())) {
+            Dialect dialect = session.dialect();
+            String table = "adb_contract_v_" + System.nanoTime();
+            String view = "adb_view_" + System.nanoTime();
+            try {
+                session.execute("CREATE TABLE " + dialect.quote(table) + " (id INTEGER PRIMARY KEY)");
+                session.execute("INSERT INTO " + dialect.quote(table) + " (id) VALUES (1)");
+
+                session.execute(dialect.createViewSql(view,
+                        "SELECT id FROM " + dialect.quote(table)));
+                assertThat(session.execute("SELECT * FROM " + dialect.quote(view)).rows())
+                        .as("%s 的视图建好就该查得出内容", dialect.displayName())
+                        .hasSize(1);
+
+                // 重建写法由方言自报：界面上预览几句，这里就跑几句。
+                //
+                // ⚠️ 新查询体是「在末尾**加**一列」，不是「把 id 改名」—— 这不是随手挑的：
+                // R52 首跑用改名（{@code SELECT id AS adb_marker}），PostgreSQL 直接拒绝
+                // （{@code cannot change name of view column "id" to "adb_marker"}）。
+                // 那是 PG 的既定约束：{@code CREATE OR REPLACE VIEW} 只许在末尾加列，
+                // 不许改已有列的名字/类型/删列（因为视图上的权限与依赖要保住）。
+                // 契约要验的是「六种方言都承诺的那条重建路径真的生效」，所以用可加列的形状；
+                // 「改名列」这一条挂在 **D-28** 待拍板（见 GAP-TODOLIST），拍板之前不假装它通。
+                String newBody = "SELECT id, id AS adb_marker FROM " + dialect.quote(table);
+                String single = dialect.createOrReplaceViewSql(view, newBody);
+                List<String> statements = single == null
+                        ? List.of(dialect.dropViewSql(view), dialect.createViewSql(view, newBody))
+                        : List.of(single);
+                assertThat(statements)
+                        .as("%s 的重建写法应该是「%s」", dialect.displayName(),
+                                single == null ? "两句先删再建" : "单句")
+                        .hasSize(single == null ? 2 : 1);
+                for (String sql : statements) {
+                    session.execute(sql);
+                }
+
+                ExecutionResult after = session.execute("SELECT * FROM " + dialect.quote(view));
+                assertThat(after.columnKeys())
+                        .as("%s：重建后列数要跟着新查询体走 —— 还是一列就说明重建根本没落地",
+                                dialect.displayName())
+                        .hasSize(2);
+                assertThat(after.columnKeys().get(1))
+                        .as("%s：重建后末尾那一列应该是新加的 adb_marker", dialect.displayName())
+                        .isEqualToIgnoringCase("adb_marker");
+
+                String fromDatabase = dialect.readDdl(session.connection(), view, true);
+                String definition = fromDatabase == null || fromDatabase.isBlank()
+                        ? dialect.readViewDdl(session.connection(), view)
+                        : fromDatabase;
+                assertThat(ViewDefinition.selectBody(definition))
+                        .as("%s：「设计视图」开窗要读得到查询体，而且读到的是<b>新</b>的那一版",
+                                dialect.displayName())
+                        .isNotNull()
+                        .containsIgnoringCase("adb_marker");
+
+                session.execute(dialect.dropViewSql(view));
+                assertThatThrownBy(() -> session.execute("SELECT * FROM " + dialect.quote(view)))
+                        .as("%s：删掉的视图不该还能查", dialect.displayName())
+                        .isInstanceOf(SQLException.class);
+            } finally {
+                dropViewQuietly(session, dialect, view);
+                dropQuietly(session, dialect, table);
+            }
+        }
+    }
+
     // ─────────────────────────── 工具 ───────────────────────────
 
     /**
@@ -831,6 +919,15 @@ public final class RealDatabaseContract {
             statement.execute(dialect.dropTableSql(table));
         } catch (Exception e) {
             System.err.println("[真库契约] 清理临时表失败（" + table + "）：" + e.getMessage());
+        }
+    }
+
+    /** 视图的清理：断言已经判过「删不掉」的情况时，finally 里再删一次会必抛，所以静默。 */
+    private static void dropViewQuietly(JdbcSession session, Dialect dialect, String view) {
+        try (Statement statement = session.connection().createStatement()) {
+            statement.execute(dialect.dropViewSql(view));
+        } catch (Exception e) {
+            System.err.println("[真库契约] 清理临时视图失败（" + view + "）：" + e.getMessage());
         }
     }
 }

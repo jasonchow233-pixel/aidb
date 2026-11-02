@@ -31,13 +31,15 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * 保证「本地连真库」和「CI 起容器」验的是同一件事。
  *
  * <h2>为什么是「库 × 契约」一张矩阵（R46）</h2>
- * <p>以前这里是一个引擎一组手写 {@code @Test}：加一种库要复制七条方法，
+ * <p>以前这里是一个引擎一组手写 {@code @Test}：加一种库要复制一整套方法，
  * 于是 MariaDB / SQL Server / Oracle 长期<b>一条都没跑过</b> ——
  * 六个方言里只有两个被真库验过，剩下三个的元数据查询全靠「看起来对」。
  * 事实是：真库首跑当场抓出两条只在那些库上才成立的缺陷（D-20 SQL Server 的
  * {@code sys.tables} 没有 {@code collation_name}、D-22 Oracle 的
  * {@code UPPER(?)} 看不见我们自己加引号建的对象）。
- * 现在矩阵是数据驱动的：<b>加一种库只加一个 supplier</b>，七条契约自动全覆盖。
+ * 现在矩阵是数据驱动的：<b>加一种库只加一个 supplier，加一条契约只加一行</b>，
+ * 全部引擎自动全覆盖 —— R52 的视图生命周期契约（第 8 条）就是这么加进来的，
+ * 一个 supplier 没动，五家一起跑。
  */
 class ExternalRealDatabaseTest {
 
@@ -52,7 +54,7 @@ class ExternalRealDatabaseTest {
             new Engine("SQLServer", ExternalDatabase::sqlServer),
             new Engine("Oracle", ExternalDatabase::oracle));
 
-    /** 七条契约的名字 + 实现。 */
+    /** 八条契约的名字 + 实现。 */
     private record Contract(String name, ContractBody body) {
     }
 
@@ -67,7 +69,8 @@ class ExternalRealDatabaseTest {
                     RealDatabaseContract::dangerGateRejectsUnderDeclaredDanger),
             new Contract("metadataQueriesRun", RealDatabaseContract::metadataQueriesRun),
             new Contract("schemaSwitchSemantics", RealDatabaseContract::schemaSwitchSemantics),
-            new Contract("quotedIdentifiersWork", RealDatabaseContract::quotedIdentifiersWork));
+            new Contract("quotedIdentifiersWork", RealDatabaseContract::quotedIdentifiersWork),
+            new Contract("viewLifecycleRuns", RealDatabaseContract::viewLifecycleRuns));
 
     /** 矩阵的展开：库 × 契约。名字带进 {@code @DisplayName}，跳过时看得见是哪个库缺配置。 */
     static Stream<Arguments> matrix() {
