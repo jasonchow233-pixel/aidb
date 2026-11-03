@@ -1172,6 +1172,7 @@ public final class ConnectionWizard {
             case "databases" -> propertiesPose("databases");
             case "ssl" -> propertiesPose("ssl");
             case "ssh" -> propertiesPose("ssh");
+            case "sshkey" -> propertiesPose("sshkey");
             case "http" -> propertiesPose("http");
             case "remarks" -> propertiesPose("remarks");
             default -> { }
@@ -1194,16 +1195,23 @@ public final class ConnectionWizard {
         sslRoot.setText("/etc/ssl/certs/company-ca.pem");
         remarks.setText("Read-only account; changes go through DBA approval.");
         // ⭐ G5a：SSH 页也摆实值 —— 这一帧要证的正是「隧道页不再是那张说明牌」。
-        if ("ssh".equals(tab)) {
+        if ("ssh".equals(tab) || "sshkey".equals(tab)) {
             sshEnabled.setSelected(true);
             sshHost.setText("bastion.example.com");
             sshPort.setText("22");
             sshUser.setText("tunnel");
-            sshPassword.setText("sample-bastion-password");
+            if ("sshkey".equals(tab)) {
+                // D-41 那一格（支持哪些格式）只在私钥分支在场，口令分支由 p5-connect-ssh 拍。
+                sshAuthGroup.selectToggle(sshByKey);
+                sshKeyPath.setText("/Users/me/.ssh/id_rsa");
+                sshKeyPassphrase.setText("sample-key-passphrase");
+            } else {
+                sshPassword.setText("sample-bastion-password");
+            }
         }
         step = 2;
         updateStep();
-        selectTab(tab);
+        selectTab("sshkey".equals(tab) ? "ssh" : tab);
     }
 
     private void selectTab(String pose) {

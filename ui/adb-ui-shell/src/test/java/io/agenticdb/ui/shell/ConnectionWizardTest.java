@@ -635,6 +635,49 @@ class ConnectionWizardTest {
     }
 
     /**
+     * D-41 的画面半边：帧的名字必须和帧的内容对上。首版 SSH 只有 {@code ssh} 一个摆态，
+     * 重拍 {@code p5-connect-ssh} 才发现它落在<b>口令</b>分支上，而「支持哪些私钥格式」
+     * 那句实话只长在私钥分支里 —— 那张帧证明不了它声称的事。这两条钉的是快门要拍的那一屏，
+     * 走的是 {@code poseForShots} 同一条路（帧给人看，门给机器看）。
+     */
+    @Test
+    void sshKeyPoseLandsOnTheBranchItsFrameClaims(FxRobot robot) {
+        open(robot, null);
+        goToProperties(robot, DialectKind.POSTGRESQL);
+        interact(() -> wizard.poseForShots("sshkey"));
+        interact(this::remount);
+
+        Tab ssh = robot.lookup("#wizard-tabs").queryAs(TabPane.class).getTabs().get(4);
+        assertThat(ssh.isSelected()).as("摆态得把页签切到 SSH").isTrue();
+        assertThat(ssh.getContent().lookup("#wizard-ssh-key-path")).isNotNull();
+        assertThat(ssh.getContent().lookup("#wizard-ssh-key-formats"))
+                .as("这一帧存在的理由就是那句格式说明")
+                .isNotNull();
+        assertThat(ssh.getContent().lookup("#wizard-ssh-password"))
+                .as("两张 SSH 帧不该拍同一屏")
+                .isNull();
+
+        SshConfig config = wizard.sshConfigFromForm();
+        assertThat(config.enabled()).as("勾没勾上，帧里看着勾上了不算").isTrue();
+        assertThat(config.privateKeyPath()).isEqualTo("/Users/me/.ssh/id_rsa");
+        assertThat(wizard.sshSecrets().keyPassphrase()).isEqualTo("sample-key-passphrase");
+    }
+
+    @Test
+    void sshPoseStaysOnThePasswordBranch(FxRobot robot) {
+        open(robot, null);
+        goToProperties(robot, DialectKind.POSTGRESQL);
+        interact(() -> wizard.poseForShots("ssh"));
+        interact(this::remount);
+
+        Tab ssh = robot.lookup("#wizard-tabs").queryAs(TabPane.class).getTabs().get(4);
+        assertThat(ssh.getContent().lookup("#wizard-ssh-password")).isNotNull();
+        assertThat(ssh.getContent().lookup("#wizard-ssh-key-path"))
+                .as("口令分支的帧里不该有私钥格 —— 那句格式说明也不该出现在这张帧上")
+                .isNull();
+    }
+
+    /**
      * D-41：私钥那一格能吃哪些格式，两边话术要同时说清 —— 引擎（MINA sshd，不带 eddsa 依赖）
      * 对 OpenSSH 的 ed25519 私钥是「文件读得出、交出 0 把密钥」，提示词里写 {@code id_ed25519}
      * 等于邀请用户撞一次失败。所以两处一起钉：提示词不许再出现 ed25519，

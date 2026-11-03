@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（58 张）。
+# 重拍 docs/screenshots/ 的验收截图（59 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 50 张 + 暗色 8 张；
+#   ./scripts/shots.sh              # 全部重拍（亮色 51 张 + 暗色 8 张；
 #                                   #   其中 8 张绑 ADB_MATRIX 落点门、拍在 Docker 矩阵的真库上，
 #                                   #   另 2 张只借 ADB_TEST_* 注册五份连接档案 —— 图形取自档案的
 #                                   #   kind、不取自会话，所以它们不过落点门，见 p0-tree-vendors 那条）
@@ -206,6 +206,10 @@ SHOTS=(
   "p5-connect-general||4000|ADB_CONNECT_WIZARD=general ADB_THEME_FORCE=light"
   "p5-connect-ssl||4000|ADB_CONNECT_WIZARD=ssl ADB_THEME_FORCE=light"
   "p5-connect-ssh||4000|ADB_CONNECT_WIZARD=ssh ADB_THEME_FORCE=light"
+  # ⭐ D-41：私钥认证分支单独一帧。上面那张 ssh 拍的是「口令」分支 —— 两张表单控件不同，
+  #   而「内置 SSH 库不支持 ed25519，请改用 RSA/ECDSA」这句实话只长在私钥分支里。
+  #   只拍口令分支等于给 D-41 的记录配了一张证明不了它的图。
+  "p5-connect-ssh-key||4000|ADB_CONNECT_WIZARD=sshkey ADB_THEME_FORCE=light"
   # ⭐ P2-2：错误详情弹窗 —— 分类徽标 + 驱动原文 + 建议 + 可复制的 SQL。
   #   8000ms（不是 5000）：连拍 18 次冷启动时这台机器实测会慢过 5s ——
   #   弹窗还没开就拍，得到一张与 p0-shell 同 md5 的假帧（U7 去重门禁抓到过，
