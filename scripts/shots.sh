@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（51 张）。
+# 重拍 docs/screenshots/ 的验收截图（58 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 44 张 + 暗色 7 张；其中 4 张拍在 Docker 矩阵的真库上）
+#   ./scripts/shots.sh              # 全部重拍（亮色 50 张 + 暗色 8 张；
+#                                   #   其中 8 张绑 ADB_MATRIX 落点门、拍在 Docker 矩阵的真库上，
+#                                   #   另 2 张只借 ADB_TEST_* 注册五份连接档案 —— 图形取自档案的
+#                                   #   kind、不取自会话，所以它们不过落点门，见 p0-tree-vendors 那条）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
 #
 # 为什么需要这个脚本（历史上踩过的坑，全部在这里被绕开）：
@@ -68,6 +71,10 @@ SHOTS=(
   #   所以它不走 ADB_MATRIX 那条落点门；环境完全没配时外壳直接弃帧（退出码 3），
   #   不会退回到「只有演示库一行」拍一张名字写着五家的图。
   "p0-tree-vendors||6000|ADB_TREE_VENDORS=1 ADB_THEME_FORCE=light"
+  # ⭐ R55-d：同一棵树再看暗色一档。品牌色两档是**不同**的字面值（亮档深、暗档亮），
+  #   R54 只拍了亮档等于五家的图形在暗底上一眼都没被看过 —— 而画不出来的症状
+  #   正是「图标糊成一片黑 / 白底方块压在深色侧栏上」。
+  "p0-tree-vendors-dark||6000|ADB_TREE_VENDORS=1 ADB_THEME_FORCE=dark"
   "p2-users||5000|ADB_OPEN=users ADB_THEME_FORCE=light"
   # ⭐ UX-6：数据页「概览」切面（行数 / 大小 / 引擎 / 索引数 / 最近操作）。
   #   切面标签 id 是动态拼的（object-tab-<id>），不能当静态点击目标；
