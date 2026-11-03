@@ -117,29 +117,11 @@ class SshTunnelMatrixTest {
             Assertions.assertThat(session.sshVia())
                     .isEqualTo("tunnel@127.0.0.1:" + bastion.getPort());
         } catch (java.sql.SQLException e) {
-            if (isCommunications(e)) {
+            if (ExternalUnreachable.isCommunications(e)) {
                 abort("外部数据库暂时不可达（" + engineLabel + " 经隧道）：" + e.getMessage()
                         + " —— 跳过，不计入门禁");
             }
             throw e;
         }
-    }
-
-    /** 是通信类失败吗（服务器抽风 ≠ 隧道有 bug，但也不能悄悄算通过）。 */
-    private static boolean isCommunications(java.sql.SQLException e) {
-        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-            if (cause instanceof io.agenticdb.safety.SshTunnelException) {
-                // 隧道自己的失败永远算缺陷，不降级成跳过。
-                return false;
-            }
-            String message = String.valueOf(cause.getMessage());
-            if (message.contains("Communications link failure")
-                    || message.contains("CommunicationsException")
-                    || message.contains("socketTimeout")
-                    || message.contains("Read timed out")) {
-                return true;
-            }
-        }
-        return false;
     }
 }

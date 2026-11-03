@@ -1,6 +1,7 @@
 package io.agenticdb.introspect;
 
 import io.agenticdb.jdbc.ExternalDatabase;
+import io.agenticdb.jdbc.ExternalUnreachable;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -87,7 +88,7 @@ class TransferRoundTripMatrixTest {
         try {
             body.run(target);
         } catch (java.sql.SQLException e) {
-            if (isCommunications(e)) {
+            if (ExternalUnreachable.isCommunications(e)) {
                 Assumptions.abort("外部数据库暂时不可达（" + what + "）：" + e.getMessage()
                         + " —— 跳过，不计入门禁");
             }
@@ -95,17 +96,4 @@ class TransferRoundTripMatrixTest {
         }
     }
 
-    /** 是通信类失败吗（而不是 SQL / 断言问题）？ */
-    private static boolean isCommunications(java.sql.SQLException e) {
-        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-            String message = String.valueOf(cause.getMessage());
-            if (message.contains("Communications link failure")
-                    || message.contains("CommunicationsException")
-                    || message.contains("socketTimeout")
-                    || message.contains("Read timed out")) {
-                return true;
-            }
-        }
-        return false;
-    }
 }

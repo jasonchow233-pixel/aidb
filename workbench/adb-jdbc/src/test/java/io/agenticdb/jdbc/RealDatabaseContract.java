@@ -55,7 +55,7 @@ public final class RealDatabaseContract {
                 body.run();
                 return;
             } catch (SQLException e) {
-                if (!isCommunications(e)) {
+                if (!ExternalUnreachable.isCommunications(e)) {
                     throw e;
                 }
                 last = e;
@@ -66,20 +66,6 @@ public final class RealDatabaseContract {
             }
         }
         throw last;
-    }
-
-    /** 是通信类失败吗（而不是 SQL / 断言问题）？ */
-    private static boolean isCommunications(SQLException e) {
-        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-            String message = String.valueOf(cause.getMessage());
-            if (message.contains("Communications link failure")
-                    || message.contains("CommunicationsException")
-                    || message.contains("socketTimeout")
-                    || message.contains("Read timed out")) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /** 会抛异常的动作。 */

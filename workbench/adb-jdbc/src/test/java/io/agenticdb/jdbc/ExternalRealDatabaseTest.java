@@ -118,7 +118,7 @@ class ExternalRealDatabaseTest {
         try {
             body.accept(target);
         } catch (java.sql.SQLException e) {
-            if (isCommunications(e)) {
+            if (ExternalUnreachable.isCommunications(e)) {
                 Assumptions.abort("外部数据库暂时不可达（" + what + "）：" + e.getMessage()
                         + " —— 跳过，不计入门禁");
             }
@@ -130,20 +130,6 @@ class ExternalRealDatabaseTest {
     @FunctionalInterface
     private interface ContractBody {
         void accept(ExternalDatabase target) throws Exception;
-    }
-
-    /** 是通信类失败吗（而不是 SQL / 断言问题）？ */
-    private static boolean isCommunications(java.sql.SQLException e) {
-        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-            String message = String.valueOf(cause.getMessage());
-            if (message.contains("Communications link failure")
-                    || message.contains("CommunicationsException")
-                    || message.contains("socketTimeout")
-                    || message.contains("Read timed out")) {
-                return true;
-            }
-        }
-        return false;
     }
 
     // ─────────────────────────── 环境变量读取本身 ───────────────────────────

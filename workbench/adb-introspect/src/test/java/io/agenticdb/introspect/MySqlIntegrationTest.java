@@ -2,6 +2,7 @@ package io.agenticdb.introspect;
 
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.ExternalDatabase;
+import io.agenticdb.jdbc.ExternalUnreachable;
 import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.jdbc.JdbcSession;
@@ -69,7 +70,7 @@ class MySqlIntegrationTest {
             try {
                 invocation.proceed();
             } catch (java.sql.SQLException e) {
-                if (isEnvironment(e)) {
+                if (ExternalUnreachable.isCommunications(e)) {
                     Assumptions.abort("外部数据库连接中断（服务端 / 网络问题）："
                             + e.getMessage() + " —— 跳过，不计入门禁");
                 }
@@ -525,7 +526,7 @@ class MySqlIntegrationTest {
             try {
                 return JdbcSession.open(target.spec());
             } catch (java.sql.SQLException e) {
-                if (!isCommunications(e)) {
+                if (!ExternalUnreachable.isCommunications(e)) {
                     throw e;
                 }
                 last = e;
@@ -541,19 +542,6 @@ class MySqlIntegrationTest {
         throw last;
     }
 
-    /** 是通信类失败吗？ */
-    private static boolean isCommunications(java.sql.SQLException e) {
-        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-            String message = String.valueOf(cause.getMessage());
-            if (message.contains("Communications link failure")
-                    || message.contains("CommunicationsException")
-                    || message.contains("socketTimeout")
-                    || message.contains("Read timed out")) {
-                return true;
-            }
-        }
-        return false;
-    }
 
     /** 尽力执行一条清理语句；失败只报告，不影响其余清理。 */
     private void drop(DbSession cleaner, String sql) {
@@ -584,7 +572,7 @@ class MySqlIntegrationTest {
         try (Statement statement = session.connection().createStatement()) {
             statement.execute(sql);
         } catch (java.sql.SQLException e) {
-            if (isEnvironment(e)) {
+            if (ExternalUnreachable.isCommunications(e)) {
                 org.junit.jupiter.api.Assumptions.abort(
                         "外部数据库连接中断（服务端 / 网络问题）：" + e.getMessage()
                                 + " —— 跳过，不计入门禁");
@@ -593,21 +581,6 @@ class MySqlIntegrationTest {
         }
     }
 
-    /** 是环境问题（连接被掐 / 通信失败）吗？而不是 SQL / 断言问题？ */
-    private static boolean isEnvironment(java.sql.SQLException e) {
-        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-            String message = String.valueOf(cause.getMessage());
-            if (message.contains("Communications link failure")
-                    || message.contains("CommunicationsException")
-                    || message.contains("socketTimeout")
-                    || message.contains("Read timed out")
-                    || message.contains("No operations allowed after connection closed")
-                    || message.contains("connection is closed")) {
-                return true;
-            }
-        }
-        return false;
-    }
 
     private long countRows(String name) throws Exception {
         try (Statement statement = session.connection().createStatement();
