@@ -28,6 +28,7 @@ import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import org.fxmisc.richtext.CodeArea;
 import javafx.scene.control.Button;
@@ -160,6 +161,36 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private boolean activated;
     private File currentFile;
     private int saveCounter;
+    /** ⭐ R57-g：鼠标正按在分隔条上 / 已经拖动了分隔条 —— 记忆只认这两个证据。 */
+    private boolean dividerPressed;
+    private boolean dividerDragging;
+
+    // ─────────────────────── R57-g：查询页分栏 ───────────────────────
+
+    /**
+     * 编辑器占分栏的默认比例。
+     *
+     * <p>取自参照帧逐像素量的数：{@code navicat17-query-editor} 里编辑器白带 377px、
+     * 分栏总高 814px = <b>46.3%</b>。原先写死的 0.42 是 P3 第一版顺手定的，没有出处。
+     */
+    private static final double SPLIT_DEFAULT = 0.463;
+
+    /** 编辑器最小高：实测行距 16px（{@code adb-sql-editor} 12px 字号），8 行 + 余量。 */
+    private static final double SPLIT_EDITOR_MIN = 140;
+
+    /**
+     * 结果带最小高：帧 {@code p3-query} 量到结果带里「结果页签 31 + Data/Info 30 +
+     * 分页条 41 + 列头 26」= 136px 固定开销，再加 3 行 × 23px（{@code RowHeights.grid}）。
+     * 低于这个高，网格一行都看不见，只剩三条页签条。
+     */
+    private static final double SPLIT_RESULTS_MIN = 205;
+
+    /** 偏好里存的是千分比整数（{@code java.util.prefs} 没有 double）。 */
+    private static final String SPLIT_RATIO_KEY = "ui.query.split";
+
+    /** 落盘比例的可用区间：越界的值只可能来自被手改坏的偏好文件，钳回来而不是照用。 */
+    private static final double SPLIT_RATIO_FLOOR = 0.15;
+    private static final double SPLIT_RATIO_CEILING = 0.85;
 
     /** 接上「存为命名查询」的落点。 */
     public void setOnSaveNamed(java.util.function.BiConsumer<String, String> onSaveNamed) {
@@ -515,9 +546,14 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
         SplitPane split = new SplitPane(editor, results);
         split.setOrientation(Orientation.VERTICAL);
-        split.setDividerPositions(0.42);
+        // ⭐ R57-g：两条最小高是给「拖到底」准备的 —— 没有它们，分隔条能一路把编辑器
+        //    拖成 0 高（或者把结果带拖成只剩页签条），而 SplitPane 上没有第二个入口能拖回来。
+        editor.setMinHeight(SPLIT_EDITOR_MIN);
+        results.setMinHeight(SPLIT_RESULTS_MIN);
+        split.setDividerPositions(restoreSplitRatio());
         split.getStyleClass().add("adb-query__split");
         VBox.setVgrow(split, Priority.ALWAYS);
+        rememberSplitDrag(split);
 
         status.setId("query-status");
         status.getStyleClass().add("adb-query__status-text");
@@ -1241,6 +1277,87 @@ public final class QueryPage extends VBox implements AutoCloseable {
         }
         settings.setInt(SettingsStore.key("ui.query.colwidth", connectionName, columnId),
                 (int) width);
+    }
+
+    // ─────────────────────── R57-g：分栏比例的记忆 ───────────────────────
+
+    /** 建页时读回的比例；没有记忆（或没有存储可用）就用参照帧量出来的默认值。 */
+    private double restoreSplitRatio() {
+        if (settings == null) {
+            return SPLIT_DEFAULT;
+        }
+        int perMille = settings.getInt(SPLIT_RATIO_KEY, -1);
+        if (perMille <= 0) {
+            return SPLIT_DEFAULT;
+        }
+        return Math.min(Math.max(perMille / 1000.0, SPLIT_RATIO_FLOOR), SPLIT_RATIO_CEILING);
+    }
+
+    /**
+     * 用户拖过分栏就把比例记下 —— 只认「在分隔条上按下、移动过、再松手」这一串证据。
+     *
+     * <p>不监听 {@code positionProperty} 的通用写法在这里会记错东西：分栏被窗口高度
+     * 夹住时（编辑器与结果带各自的最小高顶住了），布局自己就会改 position，
+     * 于是**第一次在小窗口里打开查询页，就把布局夹出来的比例当成用户的选择存下去**，
+     * 之后窗口放大也回不到默认。一次真实拖拽只在松手时落盘一次，也不用防抖。
+     *
+     * <p>移动那一步不挑事件目标：往下拖 120px，鼠标早就离开那条 6px 的带子了，
+     * 此时命中的是结果带 —— 只认「拖拽事件落在分隔条上」会一次都记不上（本轮实测踩过）。
+     *
+     * <p>用 event **filter**（捕获阶段）而不是 handler：分隔条的处理器是 SplitPaneSkin
+     * 自己装的，{@code setOnMouseReleased} 会把它整个顶掉，分隔条就再也拖不动了。
+     */
+    private void rememberSplitDrag(SplitPane split) {
+        split.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, event ->
+                dividerPressed = isOnSplitDivider(event.getTarget(), split));
+        split.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_DRAGGED, event -> {
+            if (dividerPressed) {
+                dividerDragging = true;
+            }
+        });
+        split.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_RELEASED, event -> {
+            if (dividerDragging) {
+                persistSplitRatio(split.getDividerPositions()[0]);
+            }
+            dividerPressed = false;
+            dividerDragging = false;
+        });
+    }
+
+    /**
+     * 事件是不是落在分隔条上。
+     *
+     * <p>要往上走一层：JavaFX 25 的分隔条是 {@code ContentDivider[split-pane-divider]}
+     * 里再套一个匿名 {@code [vertical-grabber]} 当把手，鼠标命中的是**里面那颗** ——
+     * 只比 {@code split-pane-divider} 这一个类名，按下事件一次都认不出来，
+     * 记忆静默失效（界面上拖得动、比例也变了，就是下次开还是默认）。
+     */
+    private static boolean isOnSplitDivider(Object target, SplitPane split) {
+        for (Node node = target instanceof Node n ? n : null;
+                node != null && node != split; node = node.getParent()) {
+            if (node.getStyleClass().contains("split-pane-divider")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void persistSplitRatio(double position) {
+        if (settings == null) {
+            return;
+        }
+        settings.setInt(SPLIT_RATIO_KEY, (int) Math.round(position * 1000));
+    }
+
+    /** 供门禁断言：当前分栏比例（也是「记忆有没有落盘」的读回口）。 */
+    double splitRatio() {
+        SplitPane split = (SplitPane) lookup(".adb-query__split");
+        return split == null ? -1 : split.getDividerPositions()[0];
+    }
+
+    /** 供门禁断言：偏好里存没存过这个比例（-1 = 从没拖过）。 */
+    int storedSplitPerMille() {
+        return settings == null ? -1 : settings.getInt(SPLIT_RATIO_KEY, -1);
     }
 
     private String explainSql(String sql) {
