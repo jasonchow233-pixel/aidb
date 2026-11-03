@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.JdbcSession;
+import io.agenticdb.model.Danger;
 import io.agenticdb.ui.I18n;
 import javafx.scene.Scene;
 import javafx.scene.control.MenuButton;
@@ -19,13 +20,16 @@ import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.framework.junit5.Start;
 import org.testfx.util.WaitForAsyncUtils;
 
+import java.io.ByteArrayOutputStream;
 import java.io.StringWriter;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(ApplicationExtension.class)
 class QueryPageTest {
@@ -427,6 +431,230 @@ class QueryPageTest {
         List<String> pageLines = currentPage.toString().lines().toList();
         assertThat(pageLines).hasSize(201); // 表头 + 当前页 200 行
         assertThat(pageLines.getLast()).doesNotContain("u250");
+    }
+
+    // ─────────────── R57-b：选中执行 ───────────────
+
+    /**
+     * ⭐ 有选区时 Run 只跑选区那一段（选区恰好是一条完整语句的形状）。
+     *
+     * <p>⚠️ 这条自己**钉不住**「按选区还是按光标」：选区的末端就是光标的落点，
+     * 撤掉选区分支后按光标取句会取到同一条，这里照样绿。真正钉住那一步的是下面
+     * {@link #selectionIsRunLiterallyInsteadOfExtendedToTheStatementBoundary()} ——
+     * 两条各管一半：这条管「跑对了内容」，那条管「跑的是你圈的字面」。
+     */
+    @Test
+    void runsOnlyTheSelectedStatement() {
+        interact(() -> {
+            page.setSql("SELECT 1 AS n;\nSELECT 2 AS n;");
+            page.editor().select(15, 29);
+            page.runCurrent();
+        });
+        waitForTabs(1);
+        TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        waitFor(() -> table.getItems().size() == 1);
+
+        assertThat(page.resultTabCount())
+                .as("选区只有一条语句，就只能出一个结果页签")
+                .isEqualTo(1);
+        assertThat(firstRowText(table))
+                .as("跑的是圈住的那条（n=2），不是页首那条")
+                .contains("2");
+    }
+
+    /**
+     * ⭐ 选区按<b>字面</b>执行，不悄悄扩到语句边界。
+     *
+     * <p>圈住第二条语句的尾巴（{@code 2 AS n;}）—— 这串送进服务器必然报语法错误。
+     * 界面如果"贴心地"把它补成整条语句，这一跑就绿了，而用户以为跑的是他圈的那几个字。
+     * 与 Navicat 同形的口径是**宁可把服务端的错误原样给用户，也不替他改文本** ——
+     * 悄悄补全的那条更难发现（结果对了没人会去看圈了哪儿）。
+     * 变异：把选区分支撤成「按光标取句」→ 这条红（光标落在 29 取到整条，跑出成功页签）。
+     */
+    @Test
+    void selectionIsRunLiterallyInsteadOfExtendedToTheStatementBoundary() {
+        interact(() -> {
+            page.setSql("SELECT 1 AS n;\nSELECT 2 AS n;");
+            page.editor().select(22, 29);
+            page.runCurrent();
+        });
+        waitForTabs(1);
+
+        TabPane results = (TabPane) page.lookup("#query-results");
+        assertThat(results.getTabs().getFirst().getText())
+                .as("圈的是半句 → 拿的是服务端的语法错误页签，不是被补成整句之后的成功")
+                .contains(I18n.t("query.statementFailed", 1));
+        assertThat(page.statusText()).contains(I18n.t("query.runFailedTitle"));
+    }
+
+    @Test
+    void selectionSpanningTwoStatementsRunsBothInOrder() {
+        interact(() -> {
+            page.setSql("SELECT 1 AS n;\nSELECT 2 AS n;");
+            page.editor().select(0, 29);
+            page.runCurrent();
+        });
+        waitForTabs(2);
+
+        assertThat(page.resultTabCount())
+                .as("圈住两段就是两段 —— 选中执行按字面切句，不往两边扩到语句边界")
+                .isEqualTo(2);
+    }
+
+    @Test
+    void blankOrCommentSelectionSaysSoInsteadOfRunningSomethingElse() {
+        interact(() -> {
+            page.setSql("SELECT 1 AS n;\n   \nSELECT 2 AS n;");
+            page.editor().select(15, 18);
+            page.runCurrent();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(page.statusText())
+                .as("圈住空白要报「选区里没有可执行的语句」，不能悄悄退回光标所在语句 —— "
+                        + "用户圈的是这一格，界面却跑了另一格")
+                .contains(I18n.t("query.nothingInSelection"));
+        assertThat(page.resultTabCount()).isZero();
+
+        interact(() -> {
+            page.setSql("-- 只是一句注释\nSELECT 1 AS n;");
+            page.editor().select(0, 9);
+            page.runCurrent();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(page.statusText())
+                .as("纯注释同样算「选区里没东西可跑」，而不是把下一条拽出来执行")
+                .contains(I18n.t("query.nothingInSelection"));
+        assertThat(page.resultTabCount()).isZero();
+    }
+
+    /**
+     * ⭐ 确认框问的危险，必须正是这一次要送进数据库的那段文本。
+     *
+     * <p>整个缓冲区里有 {@code DROP}，但用户只圈了 {@code SELECT} —— 这时弹「危险操作」
+     * 是问错了对象；反过来圈住 {@code DROP} 却不弹，才是真正的事故。
+     */
+    @Test
+    void dangerConfirmationAsksAboutTheSelectionNotTheWholeBuffer() {
+        List<Danger> asked = new CopyOnWriteArrayList<>();
+        interact(() -> {
+            page.setConfirmationHandler(danger -> {
+                asked.add(danger);
+                return true;
+            });
+            page.setSql("SELECT 1 AS n;\nDROP TABLE users;");
+            page.editor().select(0, 14);
+            page.runCurrent();
+        });
+        waitForTabs(1);
+
+        assertThat(asked)
+                .as("只选了 SELECT，就不该为页面上那条没选中的 DROP 要确认")
+                .isEmpty();
+
+        interact(() -> {
+            page.editor().select(15, 32);
+            page.runCurrent();
+        });
+        waitFor(() -> !asked.isEmpty());
+
+        assertThat(asked)
+                .as("圈住 DROP 时确认框要亮 —— 危险分级读的是同一份选区文本")
+                .hasSize(1);
+    }
+
+    // ─────────────── R57-d：范围 × 格式 ───────────────
+
+    @Test
+    void exportSelectedRangeCarriesExactlyTheSelectedRows() throws Exception {
+        seedRows(5);
+        interact(() -> {
+            page.setSql("SELECT * FROM users ORDER BY id;");
+            page.runAll();
+        });
+        waitForTabs(1);
+        TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        waitFor(() -> table.getItems().size() == 5);
+
+        interact(() -> {
+            table.getSelectionModel().clearSelection();
+            table.getSelectionModel().selectRange(1, 3);
+        });
+        assertThat(table.getSelectionModel().getSelectedItems())
+                .as("⭐ 结果网格以前是 SINGLE —— 「导出选中行」写着复数却最多只能导 1 行。"
+                        + "打开 MULTIPLE 才名副其实")
+                .hasSize(2);
+
+        StringWriter out = new StringWriter();
+        long rows = page.exportResultTo(0, QueryPage.Range.SELECTED,
+                io.agenticdb.transfer.ExportFormat.CSV, out);
+
+        assertThat(rows).as("选 2 行就导 2 行 —— 这一入口以前的谎是「选中 3 条拿到整表」")
+                .isEqualTo(2);
+        List<String> lines = out.toString().replace("\uFEFF", "").lines().toList();
+        assertThat(lines).hasSize(3); // 表头 + 选中的 2 行
+        assertThat(lines.get(1)).contains("u2");
+        assertThat(lines.get(2)).contains("u3");
+        assertThat(lines.toString()).as("没选中的 u5 不许混进来").doesNotContain("u5");
+    }
+
+    @Test
+    void pagedExportFollowsTheSelectedFormat() throws Exception {
+        seedRows(3);
+        interact(() -> {
+            page.setSql("SELECT id, name FROM users ORDER BY id;");
+            page.runAll();
+        });
+        waitForTabs(1);
+        TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        waitFor(() -> table.getItems().size() == 3);
+
+        StringWriter json = new StringWriter();
+        page.exportResultTo(0, QueryPage.Range.PAGE,
+                io.agenticdb.transfer.ExportFormat.JSON, json);
+        assertThat(json.toString())
+                .as("⭐ 换格式不是换个后缀：JSON 一档要交原始值，"
+                        + "旧的「本页」路径把每格 String.valueOf 过，会把 1 写成 \"1\"")
+                .doesNotContain("\uFEFF")
+                .contains("\"id\":1")
+                .contains("\"name\":\"u1\"");
+        assertThat(json.toString().lines()).hasSize(3);
+    }
+
+    @Test
+    void xlsxExportProducesAWorkbookAndReportsItsRowCount() throws Exception {
+        seedRows(3);
+        interact(() -> {
+            page.setSql("SELECT * FROM users ORDER BY id;");
+            page.runAll();
+        });
+        waitForTabs(1);
+        TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
+        waitFor(() -> table.getItems().size() == 3);
+
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        long rows = page.exportResultXlsxTo(0, QueryPage.Range.PAGE, bytes);
+
+        assertThat(rows).isEqualTo(3);
+        assertThat(bytes.toByteArray())
+                .as("xlsx 走的是 OutputStream 那一支：头两字节 PK 才算真写出一个工作簿")
+                .startsWith('P', 'K');
+    }
+
+    @Test
+    void sqlInsertFormatStaysRefusedForQueryResults() {
+        interact(() -> {
+            page.setSql("SELECT 1 AS n;");
+            page.runAll();
+        });
+        waitForTabs(1);
+
+        assertThatThrownBy(() -> page.exportResultTo(0, QueryPage.Range.ALL,
+                io.agenticdb.transfer.ExportFormat.SQL, new StringWriter()))
+                .as("查询结果没有目标表名，INSERT 写出来是个不能执行的文件 —— "
+                        + "界面上选不到这一档，递进来也照样拒")
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     private void seedRows(int count) {

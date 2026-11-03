@@ -17,8 +17,6 @@ import io.agenticdb.sql.SqlFormatter;
 import io.agenticdb.sql.SqlSplitter;
 import io.agenticdb.sql.SqlSplitter.SqlStatement;
 import io.agenticdb.transfer.ExportFormat;
-import io.agenticdb.transfer.ExportOptions;
-import io.agenticdb.transfer.TableExporter;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
@@ -37,6 +35,7 @@ import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
@@ -65,6 +64,7 @@ import javafx.util.Duration;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -659,14 +659,35 @@ public final class QueryPage extends VBox implements AutoCloseable {
         return results.getTabs().size();
     }
 
-    /** P6-2：把一个可分页结果的全部行导出到给定 writer（测试与批处理用）。 */
-    long exportAllResultsTo(int resultIndex, Writer out) throws Exception {
-        return pagers.get(resultIndex).exportAllTo(out);
+    /**
+     * ⭐ R57-d：导出的行范围。
+     *
+     * <p>{@code PAGE} 与 {@code SELECTED} 导的是屏幕上那些行（原样、带类型），
+     * {@code ALL} 重跑原始 SQL —— 两者的差别就是「本页 200 行 / 全部 250 行」那条门禁钉的东西。
+     */
+    enum Range {
+        PAGE, SELECTED, ALL
     }
 
-    /** P6-2：把当前页导出到给定 writer（测试用，绕过文件选择框）。 */
-    void exportCurrentPageTo(int resultIndex, Writer out) throws Exception {
-        pagers.get(resultIndex).exportCurrentTo(out);
+    /** P6-2：把一个可分页结果的全部行导出为 CSV（测试与批处理用）。 */
+    long exportAllResultsTo(int resultIndex, Writer out) throws Exception {
+        return pagers.get(resultIndex).export(Range.ALL, ExportFormat.CSV, out);
+    }
+
+    /** P6-2：把当前页导出为 CSV（测试用，绕过文件选择框）。 */
+    long exportCurrentPageTo(int resultIndex, Writer out) throws Exception {
+        return pagers.get(resultIndex).export(Range.PAGE, ExportFormat.CSV, out);
+    }
+
+    /** ⭐ R57-d：范围 × 格式同一入口（测试绕过文件对话框）。 */
+    long exportResultTo(int resultIndex, Range range, ExportFormat format, Writer out)
+            throws Exception {
+        return pagers.get(resultIndex).export(range, format, out);
+    }
+
+    /** ⭐ R57-d：xlsx 那一档的同一入口（二进制，目标流不是 Writer）。 */
+    long exportResultXlsxTo(int resultIndex, Range range, OutputStream out) throws Exception {
+        return pagers.get(resultIndex).exportXlsx(range, out);
     }
 
     public SqlEditor editor() {
@@ -824,12 +845,52 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
     // ─────────────────────────── 执行 ───────────────────────────
 
+    /**
+     * ⭐ R57-b：这一次 Run 到底跑哪些语句 —— 有选区只跑选区，没选区跑光标所在语句。
+     *
+     * <p>选区按字面切句执行（选中的是两段就产两个结果页签），<b>不</b>往两边扩到语句边界：
+     * 用户圈了哪一段，落进数据库的就是那一段 —— 与 Navicat 同形，也是「所见即所跑」。
+     * 反过来说，圈半句就会拿到服务端的语法错误，这不是缺陷：把半句悄悄补全成整句才更难发现。
+     *
+     * <p>危险分级、状态栏那句 SQL 回显、查询历史都读这个方法的结果，
+     * 所以「确认框问你的」与「真正执行的」是同一份文本，不会出现两套口径。
+     */
+    private List<SqlStatement> statementsToRun() {
+        String text = editor.text();
+        int from = editor.area().getSelection().getStart();
+        int to = editor.area().getSelection().getEnd();
+        if (from == to) {
+            return SqlSplitter.statementAt(text, editor.caret())
+                    .map(statement -> List.of(statement)).orElseGet(List::of);
+        }
+        int start = Math.max(0, Math.min(from, text.length()));
+        int end = Math.max(start, Math.min(to, text.length()));
+        String selected = text.substring(start, end);
+        if (selected.isBlank()) {
+            // 圈的是一段空白或纯注释：没有可执行的东西，也不假装跑了整条语句。
+            return List.of();
+        }
+        return SqlSplitter.split(selected);
+    }
+
+    /**
+     * 「这一次没东西可跑」该说什么 —— 圈住空白与整页空是两件事。
+     *
+     * <p>两个键各写成一次直接调用：{@code I18n.t(cond ? "a" : "b")} 那种写法
+     * {@code I18nAuditTest} 的引用正则扫不到键名，等于把这条引用从审计里摘出去。
+     */
+    private String nothingToRunMessage() {
+        return editor.area().getSelection().getStart() != editor.area().getSelection().getEnd()
+                ? I18n.t("query.nothingInSelection")
+                : I18n.t("query.noStatement");
+    }
+
     public void runCurrent() {
-        List<SqlStatement> statements = SqlSplitter.statementAt(editor.text(), editor.caret())
-                .map(statement -> List.of(statement)).orElseGet(List::of);
+        List<SqlStatement> statements = statementsToRun();
         if (statements.isEmpty()) {
-            status.setText(I18n.t("query.noStatement"));
-            feedback.status(I18n.t("query.noStatement"));
+            String message = nothingToRunMessage();
+            status.setText(message);
+            feedback.status(message);
             return;
         }
         execute(statements, false);
@@ -838,8 +899,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
     public void runAll() {
         List<SqlStatement> statements = SqlSplitter.split(editor.text());
         if (statements.isEmpty()) {
-            status.setText(I18n.t("query.noStatement"));
-            feedback.status(I18n.t("query.noStatement"));
+            String message = I18n.t("query.noStatement");
+            status.setText(message);
+            feedback.status(message);
             return;
         }
         execute(statements, false);
@@ -852,8 +914,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             feedback.status(I18n.t("query.explain.unsupported"));
             return;
         }
-        List<SqlStatement> statements = SqlSplitter.statementAt(editor.text(), editor.caret())
-                .map(statement -> List.of(statement)).orElseGet(List::of);
+        List<SqlStatement> statements = statementsToRun();
         if (statements.isEmpty()) {
             status.setText(I18n.t("query.noExplainStatement"));
             return;
@@ -965,13 +1026,13 @@ public final class QueryPage extends VBox implements AutoCloseable {
      *
      * <p>先问用户要参数的值，再**参数化绑定**执行 —— 值不进 SQL 文本。
      */
-    private void runWithVariables() {        if (running) {
+    private void runWithVariables() {
+        if (running) {
             return;
         }
-        List<SqlStatement> statements = SqlSplitter.statementAt(editor.text(), editor.caret())
-                .map(statement -> List.of(statement)).orElseGet(List::of);
+        List<SqlStatement> statements = statementsToRun();
         if (statements.isEmpty()) {
-            status.setText(I18n.t("query.noStatement"));
+            status.setText(nothingToRunMessage());
             return;
         }
         String sql = statements.getFirst().text();
@@ -1211,6 +1272,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
         resultTables.add(table);
         table.setFixedCellSize(rowHeight);
         table.setId("query-result-table");
+        // ⭐ R57-d：默认是 SINGLE —— 实测「导出选中行」最多只能导 1 行（selectRange 也只留一行），
+        // 菜单写着"选中行"（复数）却给不出复数。打开 MULTIPLE，这一档的名字才兑现。
+        table.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
         table.getStyleClass().addAll("adb-grid", "adb-query__result-table");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         // ⭐ E5：0 行结果以前只有一行字。空态要说清「这是正常结果」+ 下一步怎么办。
@@ -1281,9 +1345,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
         copy.getStyleClass().add("adb-button");
         copy.setOnAction(event -> copyResultTsv(result));
 
-        Button export = new Button(I18n.t("query.exportCsv"));
+        Button export = new Button(I18n.t("grid.toolbar.export"));
         export.getStyleClass().add("adb-button");
-        export.setOnAction(event -> exportCsv(result));
+        export.setOnAction(event -> exportResultRows(result));
 
         Label warning = null;
         if (result.isTruncated()) {
@@ -1832,14 +1896,14 @@ public final class QueryPage extends VBox implements AutoCloseable {
             export.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
             export.setTooltip(new Tooltip(I18n.t("query.exportScopeHint")));
             exportPage.setId("query-export-page");
-            exportPage.setOnAction(event -> chooseAndExport(this::exportCurrentTo,
-                    "query-result-page.csv"));
+            exportPage.setOnAction(event -> chooseAndExport("query-result-page.csv",
+                    exportTarget(Range.PAGE)));
             exportSelected.setId("query-export-selected");
-            exportSelected.setOnAction(event -> chooseAndExport(this::exportSelectedTo,
-                    "query-result-selected.csv"));
+            exportSelected.setOnAction(event -> chooseAndExport("query-result-selected.csv",
+                    exportTarget(Range.SELECTED)));
             exportAll.setId("query-export-all");
-            exportAll.setOnAction(event -> chooseAndExport(this::exportAllTo,
-                    "query-result-all.csv"));
+            exportAll.setOnAction(event -> chooseAndExport("query-result-all.csv",
+                    exportTarget(Range.ALL)));
             export.getItems().addAll(exportPage, exportSelected,
                     new SeparatorMenuItem(), exportAll);
             // 选中行导出只在真的有选区时可用 —— 否则导出的是一张空表。
@@ -1986,71 +2050,59 @@ public final class QueryPage extends VBox implements AutoCloseable {
             return new ExecutionResult(sql, page.columns(), page.rows(), 0, 0);
         }
 
-        // ─────────────────────── P6-2：按范围导出 ───────────────────────
+        // ─────────────────── P6-2 / R57-d：范围 × 格式导出 ───────────────────
 
-        @FunctionalInterface
-        private interface WriterAction {
-            void write(Writer out) throws Exception;
-        }
-
-        /** 选文件 → 后台写出；失败落状态行，不影响结果集。 */
-        private void chooseAndExport(WriterAction action, String initialName) {
-            FileChooser chooser = new FileChooser();
-            chooser.setTitle(I18n.t("query.exportCsvTitle"));
-            chooser.setInitialFileName(initialName);
-            chooser.getExtensionFilters().add(
-                    new FileChooser.ExtensionFilter("CSV", "*.csv"));
-            Window window = getScene() == null ? null : getScene().getWindow();
-            File file = chooser.showSaveDialog(window);
-            if (file == null) {
-                return;
-            }
-            Task<Void> task = new Task<>() {
+        /** 一个范围的落盘动作（格式与目标流由 QueryPage 的 {@code chooseAndExport} 决定）。 */
+        private ExportTarget exportTarget(Range range) {
+            return new ExportTarget() {
                 @Override
-                protected Void call() throws Exception {
-                    try (Writer out = Files.newBufferedWriter(file.toPath(),
-                            StandardCharsets.UTF_8)) {
-                        action.write(out);
-                    }
-                    return null;
+                public long write(ExportFormat format, Writer out) throws Exception {
+                    return export(range, format, out);
+                }
+
+                @Override
+                public long writeXlsx(OutputStream out) throws Exception {
+                    return exportXlsx(range, out);
                 }
             };
-            task.setOnSucceeded(event -> {
-                status.setText(I18n.t("query.exported", file.getName()));
-                feedback.status(I18n.t("query.exportedFeedback"));
-            });
-            task.setOnFailed(event -> {
-                String message = I18n.t("query.exportFailed", readable(task.getException()));
-                status.setText(message);
-                feedback.status(message);
-            });
-            submit(task);
-        }
-
-        /** 当前页（屏幕上这几行）。 */
-        void exportCurrentTo(Writer out) throws IOException {
-            writeCsv(out, List.copyOf(table.getItems()));
-        }
-
-        /** 当前选中的行（可能跨多页选不了，选多少导多少）。 */
-        void exportSelectedTo(Writer out) throws IOException {
-            writeCsv(out, List.copyOf(table.getSelectionModel().getSelectedItems()));
         }
 
         /**
-         * ⭐ 全部结果：重跑原始 SQL 流式写文件，不受 UI 单页上限限制。
+         * 文本档（CSV / TSV / JSON / XML / HTML）导出一个范围。
          *
-         * <p>这是「导出本页」与「导出全部结果」的本质区别 ——
-         * 250 行的结果翻到第 1 页时，本页只有 200 行，全部仍是 250 行。
+         * <p>「全部」重跑原始 SQL 流式写出 —— 250 行的结果翻到第 1 页时，本页 200 行、
+         * 全部仍是 250 行；「本页」「选中行」导网格里这些行。
+         * SQL（{@code INSERT}）那一档在 {@link ResultExport} 那里被拒：查询结果没有目标表名，
+         * 硬写会产出一个不能执行的文件，那比不给这一档更坏。
          */
-        long exportAllTo(Writer out) throws Exception {
-            out.write('\uFEFF');
-            return TableExporter.exportSql(session, sql, params,
-                    ExportOptions.of(ExportFormat.CSV), out);
+        long export(Range range, ExportFormat format, Writer out) throws Exception {
+            if (range == Range.ALL) {
+                return ResultExport.writeQuery(session, sql, params, format, out);
+            }
+            GridColumns grid = gridColumns();
+            return ResultExport.writeRows(grid.headers(),
+                    values(grid.keys(), rowsOf(range)), format, out);
         }
 
-        private void writeCsv(Writer out, List<java.util.Map<String, Object>> rows)
-                throws IOException {
+        /** xlsx 那一档（六格式里唯一的二进制，要走 {@link OutputStream}）。 */
+        long exportXlsx(Range range, OutputStream out) throws Exception {
+            if (range == Range.ALL) {
+                return ResultExport.writeQueryXlsx(session, sql, params, out);
+            }
+            GridColumns grid = gridColumns();
+            return ResultExport.writeRowsXlsx(grid.headers(),
+                    values(grid.keys(), rowsOf(range)), ExportFormat.XLSX, out);
+        }
+
+        /** 屏幕上这几行 / 选中的这几行。 */
+        private List<java.util.Map<String, Object>> rowsOf(Range range) {
+            return range == Range.SELECTED
+                    ? List.copyOf(table.getSelectionModel().getSelectedItems())
+                    : List.copyOf(table.getItems());
+        }
+
+        /** 网格列 →（表头文字 · 行 map 的键）：导出与屏幕上看到的那几列一致。 */
+        private GridColumns gridColumns() {
             List<String> headers = new ArrayList<>();
             List<String> keys = new ArrayList<>();
             for (TableColumn<java.util.Map<String, Object>, ?> column : table.getColumns()) {
@@ -2059,17 +2111,21 @@ public final class QueryPage extends VBox implements AutoCloseable {
                     keys.add(key);
                 }
             }
-            List<List<String>> texts = new ArrayList<>();
+            return new GridColumns(List.copyOf(headers), List.copyOf(keys));
+        }
+
+        /** 行 map 按列键取值 —— 交原始值，不再 {@code String.valueOf}（口径见 {@link ResultExport}）。 */
+        private static List<List<Object>> values(List<String> keys,
+                                                 List<java.util.Map<String, Object>> rows) {
+            List<List<Object>> out = new ArrayList<>(rows.size());
             for (java.util.Map<String, Object> row : rows) {
-                List<String> line = new ArrayList<>(keys.size());
-                for (String key : keys) {
-                    Object value = row.get(key);
-                    line.add(value == null ? "" : String.valueOf(value));
-                }
-                texts.add(line);
+                out.add(keys.stream().map(row::get).toList());
             }
-            out.write('\uFEFF');
-            out.write(CsvExporter.csv(headers, texts));
+            return out;
+        }
+
+        /** 网格列的表头与取值键（顺序一一对应）。 */
+        private record GridColumns(List<String> headers, List<String> keys) {
         }
     }
 
@@ -2200,33 +2256,88 @@ public final class QueryPage extends VBox implements AutoCloseable {
         feedback.status(I18n.t("query.copiedResultsTsv"));
     }
 
-    private void exportCsv(ExecutionResult result) {
+    /**
+     * ⭐ R57-d：不可分页结果（{@code QueryPaginator.isPaginable} 之外那一支）的导出。
+     *
+     * <p>这一支没有「本页 / 全部」之分 —— 行本来就在内存里，导的就是屏上这些行。
+     * 走 {@link ResultExport} 同一台机器，所以两种结果、六种格式是一套规则，不是两份。
+     */
+    private void exportResultRows(ExecutionResult result) {
+        List<String> headers = result.columns().stream().map(ColumnDef::name).toList();
+        List<String> keys = result.columnKeys();
+        List<List<Object>> rows = result.rows().stream()
+                .map(row -> keys.stream().map(row::get).toList())
+                .toList();
+        chooseAndExport("query-result.csv", new ExportTarget() {
+            @Override
+            public long write(ExportFormat format, Writer out) throws IOException {
+                return ResultExport.writeRows(headers, rows, format, out);
+            }
+
+            @Override
+            public long writeXlsx(OutputStream out) throws IOException {
+                return ResultExport.writeRowsXlsx(headers, rows, ExportFormat.XLSX, out);
+            }
+        });
+    }
+
+    // ─────────────────── R57-d：保存对话框选格式 → 后台写盘 ───────────────────
+
+    /** 一次导出的落盘动作：文本档给 {@link Writer}，xlsx 给 {@link OutputStream}。 */
+    private interface ExportTarget {
+        long write(ExportFormat format, Writer out) throws Exception;
+
+        long writeXlsx(OutputStream out) throws Exception;
+    }
+
+    /**
+     * 保存对话框的<b>扩展名档</b>就是格式选择器（CSV / TSV / JSON / XLSX / XML / HTML），
+     * 文件名后缀跟着同一档换 —— 不在界面上再搭一层下拉，让同一个决定有两个入口、
+     * 两处各记一个默认值。
+     *
+     * <p>写盘落在后台线程：旧的非分页导出是在 FX 线程上 {@code Files.writeString}，
+     * 结果集大时手感直接冻住；现在与分页导出同一条 {@link #submit} 通道。
+     */
+    private void chooseAndExport(String baseName, ExportTarget target) {
         FileChooser chooser = new FileChooser();
         chooser.setTitle(I18n.t("query.exportTitle"));
-        chooser.setInitialFileName("query-result.csv");
-        chooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("CSV", "*.csv"));
+        chooser.setInitialFileName(baseName);
+        List<FileChooser.ExtensionFilter> filters = ResultExport.filters();
+        chooser.getExtensionFilters().setAll(filters);
+        chooser.setSelectedExtensionFilter(filters.getFirst());
         Window window = getScene() == null ? null : getScene().getWindow();
-        File file = chooser.showSaveDialog(window);
-        if (file == null) {
+        File picked = chooser.showSaveDialog(window);
+        if (picked == null) {
             return;
         }
-        List<String> keys = result.columnKeys();
-        List<String> headers = result.columns().stream().map(ColumnDef::name).toList();
-        List<List<String>> rows = result.rows().stream()
-                .map(row -> keys.stream()
-                        .map(key -> row.get(key) == null ? "" : String.valueOf(row.get(key)))
-                        .toList())
-                .toList();
-        try {
-            Files.writeString(file.toPath(), "\uFEFF" + CsvExporter.csv(headers, rows),
-                    StandardCharsets.UTF_8);
-            status.setText(I18n.t("query.exported", file.getName()));
+        ExportFormat format = ResultExport.formatOf(chooser.getSelectedExtensionFilter());
+        java.nio.file.Path destination = ResultExport.withExtension(picked.toPath(), format);
+        Task<Long> task = new Task<>() {
+            @Override
+            protected Long call() throws Exception {
+                if (format.binary()) {
+                    try (OutputStream out = Files.newOutputStream(destination)) {
+                        return target.writeXlsx(out);
+                    }
+                }
+                try (Writer out = Files.newBufferedWriter(destination, StandardCharsets.UTF_8)) {
+                    return target.write(format, out);
+                }
+            }
+        };
+        String fileName = destination.getFileName().toString();
+        task.setOnSucceeded(event -> {
+            String message = I18n.t("query.exportedRows", fileName,
+                    String.valueOf(task.getValue()), format.label());
+            status.setText(message);
             feedback.status(I18n.t("query.exportedFeedback"));
-        } catch (IOException e) {
-            status.setText(I18n.t("query.exportFailed", readable(e)));
-            feedback.status(I18n.t("query.exportFailed", readable(e)));
-        }
+        });
+        task.setOnFailed(event -> {
+            String message = I18n.t("query.exportFailed", readable(task.getException()));
+            status.setText(message);
+            feedback.status(message);
+        });
+        submit(task);
     }
 
     // ─────────────────────────── 保存 / 关闭 ───────────────────────────
