@@ -4159,6 +4159,7 @@ public final class AppShell extends StackPane {
                 new String[]{"Alt+Shift+F", I18n.t("action.query.format")},
                 new String[]{"Mod+S", I18n.t("action.query.save")},
                 new String[]{"Mod+SLASH", I18n.t("action.query.comment")},
+                new String[]{"Mod+SPACE", I18n.t("action.query.complete")},
                 new String[]{"Mod+G", I18n.t("shortcut.findNext")},
                 new String[]{"F5", I18n.t("shortcut.refreshRun")},
                 new String[]{null, I18n.t("menu.view")},

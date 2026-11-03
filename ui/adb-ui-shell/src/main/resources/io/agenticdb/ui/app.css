@@ -2179,6 +2179,43 @@
     -fx-border-color: -adb-border-focus;
 }
 
+/* ⭐ R57-a：SQL 补全浮窗（⌘Space / 点号触发）。外壳与 .adb-filter-panel
+   同族 —— 同一个 -adb-bg-surface，字号走 12/11 两档，不自造新档。 */
+.adb-completion {
+    -fx-background-color: -adb-bg-surface;
+    -fx-padding: 4px;
+}
+
+.adb-completion__list {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.adb-completion__item {
+    -fx-font-size: 12px;
+    -fx-alignment: CENTER_LEFT;
+}
+
+.adb-completion__name {
+    -fx-text-fill: -adb-text-primary;
+}
+
+/* 关键字候选借编辑器语法配色的同一支色 —— 两处「这是关键字」是同一件事。 */
+.adb-completion__keyword {
+    -fx-text-fill: -adb-syn-keyword;
+}
+
+.adb-completion__detail {
+    -fx-font-size: 11px;
+    -fx-text-fill: -adb-text-secondary;
+}
+
+.adb-completion__loading {
+    -fx-font-size: 11px;
+    -fx-text-fill: -adb-text-secondary;
+    -fx-padding: 4px 8px 2px 8px;
+}
+
 .adb-filter-panel__list {
     -fx-background-color: -adb-bg-inset;
     -fx-border-color: transparent;

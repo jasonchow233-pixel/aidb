@@ -37,6 +37,16 @@ public final class SqlLexer {
             "RELEASE", "START");
 
     /**
+     * ⭐ R57-a：这份关键字表的可读出口（补全候选用它，不再抄第二遍）。
+     *
+     * <p>只读 —— 危险分级与高亮与补全吃的是同一份，加关键字时三处一起变，
+     * 不会出现「补全里教了个分类器不认识的词」。
+     */
+    public static Set<String> keywords() {
+        return KEYWORDS;
+    }
+
+    /**
      * 把 SQL 切成 token。空白也保留，这样 UI 可以直接按起止 offset 覆盖整段文本。
      */
     public static List<SqlToken> tokenize(String sql) {

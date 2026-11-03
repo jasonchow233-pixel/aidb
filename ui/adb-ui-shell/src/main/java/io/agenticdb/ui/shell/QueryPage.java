@@ -100,6 +100,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private final QueryHistory history;
 
     private final SqlEditor editor = new SqlEditor();
+    /** ⭐ R57-a：编辑器补全（弹层 + 模式缓存 + ⌘Space / 点号触发）。 */
+    private final QueryCompletions completions;
     private final TabPane results = new TabPane();
     /** ⭐ 结果网格也要跟密度 —— 否则「紧凑」在查询页看起来没生效。 */
     private final java.util.List<TableView<java.util.Map<String, Object>>> resultTables =
@@ -331,9 +333,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
         this.feedback = feedback;
         this.settings = settings;
         this.history = new QueryHistory(settings);
+        // ⭐ R57-a：补全控制器只认「编辑器 + 会话 + 执行器」，模型读取全部走后台。
+        this.completions = new QueryCompletions(editor.area(), session, dbExecutor);
 
         getStyleClass().addAll("adb-page", "adb-query-page");
         buildUi();
+        completions.install();
         editor.addTextListener(text -> {
             setDirty(true);
             updateRisk();
@@ -666,6 +671,11 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
     public SqlEditor editor() {
         return editor;
+    }
+
+    /** ⭐ R57-a：供门禁断言补全状态（显示 / 候选 / 触发）。 */
+    QueryCompletions completionsForTest() {
+        return completions;
     }
 
     public void setSql(String sql) {
@@ -1083,6 +1093,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
     }
 
     private void apply(RunResult result, boolean explainPlan) {
+        // ⭐ R57-a：跑成功过 DDL 就把补全的模式缓存作废（侧栏 S-3 同一口径）——
+        //    刚建的表要能立刻补出来，比省一次后台内省值钱。
+        completions.onStatementsExecuted(result.texts());
         for (int i = 0; i < result.results().size(); i++) {
             ExecutionResult execution = result.results().get(i);
             String sql = result.texts().get(i);
@@ -2252,6 +2265,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
     @Override
     public void close() {
+        completions.close();
         if (running) {
             cancelled = true;
             session.cancelCurrent();
