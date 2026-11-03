@@ -167,6 +167,14 @@ public final class AppShell extends StackPane {
      */
     private String ephemeralProfileId = "";
     private String ephemeralPassword = "";
+    /**
+     * ⭐ D-37：{@code ADB_MATRIX} 要求的引擎 id（没设时是空串）。
+     *
+     * <p>只要它非空就说明「这一帧声称拍在真服务器上」；此时档案却没注册上（取值写错 /
+     * 那家的环境变量缺失），继续跑会退回演示库拍出一张<b>名字写着真库、画面是 SQLite</b>
+     * 的假帧 —— 所以外壳要把它拦下来，见 {@link #afterShown}。
+     */
+    private String matrixEngineRequested = "";
 
     private Stage stage;
     private Region resizer;
@@ -1156,6 +1164,7 @@ public final class AppShell extends StackPane {
         if (engine.isEmpty()) {
             return;
         }
+        matrixEngineRequested = engine;
         // ADB_MATRIX 的取值 = 方言自己的 id（mysql / mariadb / postgresql / sqlserver / oracle）。
         // 这里不出现方言常量的分支 —— 外壳里 switch 方言等于「加一种库要改外壳」，
         // 那是 A1 的承诺，DialectBranchAuditTest 就是守它的（本轮实拍踩过一次）。
@@ -1201,6 +1210,38 @@ public final class AppShell extends StackPane {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * ⭐ D-39：真库帧在<b>按快门那一刻</b>的落点判定；成立返回 null，不成立返回一句原因。
+     *
+     * <p>为什么还要有这一道：{@code afterShown} 里那道门（D-37）验的是<b>声明</b> ——
+     * 「这一帧要连的是这台服务器」。而连接是异步的：Oracle 首次连接实测 8~12 秒，
+     * 7 秒的帧就在「Connecting to matrix Oracle…」上按了快门，画面是演示库的表清单、
+     * 文件名却写着 oracle。声明成立 ≠ 落点成立。
+     *
+     * <p>抽成静态、把三个输入当参数，是为了能在没有真服务器、没有环境变量的单测里钉它
+     * （{@code AppShellTest}）—— 这条判定拦的是「环境慢」，而单测环境恰恰<b>缺</b>这个慢，
+     * 所以不能靠「再跑一遍截图」来验：那正是它第一次漏掉的那条路。
+     *
+     * @param expectedProfile 矩阵档案 id（{@code matrix-<engine>}）
+     * @param active          快门时刻外壳停在哪个连接上
+     * @param sessionOpen     那个连接上是否已经开着会话
+     */
+    static String matrixFrameProblem(String expectedProfile, String active, boolean sessionOpen) {
+        // 库选择器那一格（p3-query-catalog-bound）落在父连接的**库变体**上，
+        // id 是 matrix-mysql@shop2 —— 那仍然是这台服务器，不能当落点错。
+        boolean onMatrix = active.equals(expectedProfile)
+                || active.startsWith(expectedProfile + "@");
+        if (!onMatrix) {
+            return "at capture time the shell is on \"" + active + "\", not " + expectedProfile
+                    + ". The connect to that server had not finished -- raise this frame's wait.";
+        }
+        if (!sessionOpen) {
+            return "at capture time " + active + " has no open session yet."
+                    + " The connect had not finished -- raise this frame's wait.";
+        }
+        return null;
     }
 
     /**
@@ -1966,6 +2007,28 @@ public final class AppShell extends StackPane {
             requested = settings.get("ui.lastConnection", "");
         }
         final String connection = requested;
+        // ⭐ D-37：这一帧**声称**拍在真服务器上，而那个前提没成立 —— 那就别拍。
+        //    继续跑会退回演示库（SQLite）把帧拍完、返回码还是 0，而帧名写着 mysql / postgresql；
+        //    一张「看着像真库」的假帧比没图更糟 —— 它会替这颗控件「还掉」其实没还的欠账。
+        //    两种没成立：档案压根没注册上（取值写错 / 那家的环境变量缺失），
+        //    以及注册上了却连的不是它（ADB_CONNECTION 打错一个字母 = 连的是演示库）。
+        if (!matrixEngineRequested.isEmpty() && !connection.equals(ephemeralProfileId)) {
+            ScreenshotSession.abortMatrixFrame("ADB_MATRIX=" + matrixEngineRequested
+                    + " but this run would not be on that server (profile="
+                    + (ephemeralProfileId.isEmpty() ? "none registered" : ephemeralProfileId)
+                    + ", ADB_CONNECTION=" + (connection.isEmpty() ? "<unset>" : connection) + ")."
+                    + " Expected ADB_CONNECTION=" + "matrix-" + matrixEngineRequested
+                    + ". Run scripts/dbmatrix.sh up, then eval \"$(scripts/dbmatrix.sh env)\"");
+            return;
+        }
+        // ⭐ D-39：声明成立之后，还要在**按快门那一刻**再问一次落点。
+        //   Oracle 首次连接实测 8~12 秒，7 秒的帧就在「Connecting to matrix Oracle…」上
+        //   按了快门 —— 拍出来是演示库的表清单、文件名却写着 oracle（就是这么拍出来的一张假帧）。
+        //   库选择器那一格允许落在父连接的**库变体**上（matrix-mysql@shop2），所以这里认前缀。
+        if (!matrixEngineRequested.isEmpty()) {
+            ScreenshotSession.setMatrixFrameGuard(
+                    () -> matrixFrameProblem(ephemeralProfileId, activeProfileId(), session != null));
+        }
         if (!connection.isEmpty()) {
             ConnectionProfile selected = connections.stream()
                     .filter(profile -> profile.id().equals(connection)

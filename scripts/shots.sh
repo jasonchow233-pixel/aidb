@@ -144,6 +144,27 @@ SHOTS=(
   #   这个差别此前只有单测门，因为截图通道一直绑不到真服务器。
   #   前提是矩阵里有 v_active_users 可读回（dbmatrix.sh 的 seed_frames 就是为这一格种的）。
   "p6-design-view-mysql||11000|ADB_MATRIX=mysql ADB_CONNECTION=matrix-mysql ADB_DESIGN_VIEW=1 ADB_THEME_FORCE=light"
+  # ⭐ R47-d：同两格在另外三家方言各拍一次。这一轮之前它们只有单测门 + 真库契约，
+  #   画面只有 MySQL 一家 —— 而「引号形状」恰恰是只有画面能验的东西。
+  #   前提是这三门都得先把种子铺到自己那家（dbmatrix.sh seed 现在是五家）。
+  #   ⚠️ 等待秒数一家比一家长（13 起）：连接是异步的，而 D-39 实拍踩过一次 ——
+  #   Oracle 首次连接实测 8~12 秒，7 秒的等待里快门落在「Connecting to matrix Oracle…」上，
+  #   拍出来是演示库的画面、文件名却写着 oracle。现在落点不对就直接 abort（退出码 3），
+  #   所以「等待给少了」的表现是这一格报红，而不是一张安静的假帧。
+  #   ⚠️ 新建那一格只留 SQL Server 一家：实拍回来 PG 与 Oracle 的预览和演示库那张
+  #   **逐字节相同**（三张都是 25490 字节）—— 这三家都用双引号包标识符，
+  #   形状差异为 0。帧去重门（同画面即假帧）会把它们报成重复，而它们不是假、是**冗余**：
+  #   同一张画面存三份，只会让下一次真重复混进噪音里。双引号这一侧由 p6-new-view 那张担，
+  #   PG / Oracle 的证据在下面的 design-view（读回的正文三家各不相同）。
+  "p6-new-view-sqlserver||13000|ADB_MATRIX=sqlserver ADB_CONNECTION=matrix-sqlserver ADB_NEW_VIEW=1 ADB_NEW_VIEW_POSE=create ADB_THEME_FORCE=light"
+  #   重建那一侧：五家里只有 SQLite 需要两句，另外四家都是一句 ——
+  #   「一句」这件事此前只在 MySQL 上有帧。三家的读回形状各不同，所以三张都留：
+  #   PG 是 pg_get_viewdef 的多行、SQL Server 是 sys.sql_modules 的原文一行、
+  #   Oracle 是 DBMS_METADATA 带 schema 前缀的一行；写法上 SQL Server 是
+  #   CREATE OR ALTER（不是 OR REPLACE），值得单独一张。
+  "p6-design-view-pg||14000|ADB_MATRIX=postgresql ADB_CONNECTION=matrix-postgresql ADB_DESIGN_VIEW=1 ADB_THEME_FORCE=light"
+  "p6-design-view-sqlserver||16000|ADB_MATRIX=sqlserver ADB_CONNECTION=matrix-sqlserver ADB_DESIGN_VIEW=1 ADB_THEME_FORCE=light"
+  "p6-design-view-oracle||19000|ADB_MATRIX=oracle ADB_CONNECTION=matrix-oracle ADB_DESIGN_VIEW=1 ADB_THEME_FORCE=light"
   # ⭐ §6.4：这一帧要拍到「已选列 + 序号 + 预览 SQL + 可用的移动钮」，
   #   光弹一个空弹窗等于没拍这个弹窗的核心交互（空态由 IndexDialogTest 守）。
   "p7-new-index||6000|ADB_INDEX=1 ADB_INDEX_POSE=1 ADB_THEME_FORCE=light"
@@ -214,6 +235,10 @@ run_with_timeout() {
 }
 
 captured=0
+# ⭐ D-37b：没产出的格数。以前「一帧都没拍出来」和「全拍完了」在退出码上长得一样
+#   （只 warn，最后照样 ok + 返回 0），而这一轮起 AppShell 会**主动放弃**前提没成立的
+#   真库帧 —— 那条正确路径必须让脚本自己报失败，不然「跳过」看起来像「成功」。
+missing=0
 for shot in "${SHOTS[@]}"; do
   IFS='|' read -r name click wait envvars <<<"$shot"
 
@@ -229,10 +254,27 @@ for shot in "${SHOTS[@]}"; do
   # ⭐ R47-b：真库帧的门控。ADB_MATRIX 那几格拍的是 Docker 矩阵里的真服务器，
   #   环境没配时**跳过并说明**，不能让 AppShell 退回演示库去拍一张「看着像真库」的图 ——
   #   那正是这颗控件欠帧的原因（演示库是 SQLite，没有库一层）。
+  #   ⭐ D-37 补两条：① 取值必须是方言 id（打错了不是「环境没配」，是脚本坏了，要当场失败）；
+  #   ② 查**那一家自己**的口令 —— 原来只查 ADB_TEST_MYSQL_PASSWORD，等于给
+  #     postgresql / oracle 那几格开了张永远成立的条件：MySQL 的口令在，就照样往下拍。
   case "$envvars" in
     *ADB_MATRIX=*)
-      if [ -z "${ADB_TEST_MYSQL_PASSWORD:-}" ]; then
-        echo "  · 跳过 $name（真库帧）：环境里没有 ADB_TEST_*_PASSWORD" \
+      matrix_engine="$(printf '%s\n' "$envvars" | tr ' ' '\n' | sed -n 's/^ADB_MATRIX=//p')"
+      case "$matrix_engine" in
+        mysql|mariadb|postgresql|sqlserver|oracle) ;;
+        *)
+          echo "  ✗ $name：ADB_MATRIX 取值「$matrix_engine」不是方言 id" \
+               "（可用：mysql / mariadb / postgresql / sqlserver / oracle）" >&2
+          exit 1 ;;
+      esac
+      case "$matrix_engine" in
+        postgresql) matrix_prefix=PG ;;
+        sqlserver) matrix_prefix=MSSQL ;;
+        *) matrix_prefix="$(printf '%s' "$matrix_engine" | tr '[:lower:]' '[:upper:]')" ;;
+      esac
+      eval "matrix_password=\${ADB_TEST_${matrix_prefix}_PASSWORD:-}"
+      if [ -z "$matrix_password" ]; then
+        echo "  · 跳过 $name（真库帧）：环境里没有 ADB_TEST_${matrix_prefix}_PASSWORD" \
              "—— 先跑 scripts/dbmatrix.sh up && eval \"\$(scripts/dbmatrix.sh env)\""
         continue
       fi ;;
@@ -288,10 +330,17 @@ png_dims() {
   else
     warn "$name.png 没生成，看日志：/tmp/adb-shot-$name.log"
     tail -n 15 "/tmp/adb-shot-$name.log" | sed 's/^/    /'
+    missing=$((missing + 1))
   fi
 done
 
 step "结果"
+# ⭐ D-37b：有格没产出就必须**失败**。真库帧的前提没成立时，AppShell 现在会放弃那一帧
+#   （宁可没图，不可有假图）；那条正确路径要是在退出码上和「全拍完了」一样，
+#   等于把「跳过」洗成「成功」—— 正是这条通道一开始要防的事。
+if [ "$missing" -gt 0 ]; then
+  fatal "$missing 张没生成（应产出 $((captured + missing)) 张，实际 $captured 张）—— 见上面的日志路径"
+fi
 ok "已产出 $captured 张 → $SHOTS_DIR"
 
 # ── U7：帧去重 ──────────────────────────────────────────────────────

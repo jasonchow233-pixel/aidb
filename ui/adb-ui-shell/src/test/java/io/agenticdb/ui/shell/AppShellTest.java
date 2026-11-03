@@ -758,6 +758,36 @@ class AppShellTest {
                 .isEqualTo(sql);
     }
 
+    /**
+     * ⭐ D-39：真库帧的快门必须等落点真的在那台服务器上。
+     *
+     * <p>这条缺陷是它自己想出来的：{@code p6-new-view-oracle} 拍到的是主窗口 +
+     * 演示库的表清单，状态栏写着「Connecting to matrix Oracle…」——
+     * D-37 那道门验的是「这一帧<b>声明</b>连的是 oracle」，声明成立，可连接是异步的，
+     * 7 秒的等待里 Oracle 还没连上。一张写着 oracle 却是 SQLite 的帧，
+     * 比缺这张帧贵得多。
+     *
+     * <p>⚠️ 判定抽成静态方法就是为了这里能钉住它：单测环境永远不缺「环境慢」这个条件，
+     * 所以不能靠真跑一遍截图来验 —— 那正是它漏过一次的那条路。
+     */
+    @Test
+    void matrixFrameRefusesToCaptureBeforeTheShellLandsOnThatServer() {
+        assertThat(AppShell.matrixFrameProblem("matrix-mysql", "matrix-mysql", true))
+                .as("连上了、会话也开着 = 可以拍").isNull();
+        assertThat(AppShell.matrixFrameProblem("matrix-mysql", "matrix-mysql@shop2", true))
+                .as("库变体还在这台服务器上（p3-query-catalog-bound 就落在这里）").isNull();
+
+        assertThat(AppShell.matrixFrameProblem("matrix-mysql", "matrix-mysql", false))
+                .as("连接还没建立完：档案对，但会话没开")
+                .isNotNull();
+        assertThat(AppShell.matrixFrameProblem("matrix-mysql", "demo", true))
+                .as("D-39 实拍到的那一格：要拍 oracle，快门时刻却停在演示库")
+                .isNotNull();
+        assertThat(AppShell.matrixFrameProblem("matrix-oracle", "matrix-postgresql", true))
+                .as("连成了矩阵里的<b>另一台</b>也是假帧 —— 只认自己那一台")
+                .isNotNull();
+    }
+
     @Test
     void commandPaletteOpensAndFilters(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();

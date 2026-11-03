@@ -7,9 +7,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -260,7 +263,11 @@ class ScreenshotScriptAuditTest {
                 .contains("ADB_MATRIX=mysql");
         assertThat(script).as("没配矩阵环境时必须跳过真库帧，而不是退回演示库拍一张")
                 .contains("*ADB_MATRIX=*)")
-                .contains("${ADB_TEST_MYSQL_PASSWORD:-}");
+                // ⭐ D-37：查的是**那一家自己**的口令，不是永远存在的 MySQL 那把 ——
+                //   原来写死 ADB_TEST_MYSQL_PASSWORD，等于给 postgresql / oracle 那几格
+                //   开了张永远成立的条件：只要 MySQL 起得来，缺环境也照样往下拍。
+                .contains("ADB_TEST_${matrix_prefix}_PASSWORD:-}")
+                .contains("eval \"matrix_password=\\${ADB_TEST_${matrix_prefix}_PASSWORD:-}\"");
         assertThat(Pattern.compile("ADB_TEST_[A-Z]+_PASSWORD=[^\"]")
                 .matcher(script).find())
                 .as("脚本里出现了 ADB_TEST_*_PASSWORD=<字面量> —— 口令只能从环境读，不能落进脚本")
@@ -268,6 +275,48 @@ class ScreenshotScriptAuditTest {
         // 档案隔离：截图不得改写用户真实的 connections.json（R47-b 之前一直在改写）。
         assertThat(script).as("截图运行必须把连接档案指到临时文件")
                 .contains("export ADB_CONNECTIONS_FILE=");
+    }
+
+    /**
+     * ⭐ R47-c · D-37：矩阵行的<b>身份</b>必须自洽 —— 取值是真方言 id，且连的就是那一台。
+     *
+     * <p>为什么单独钉一条：{@code ADB_MATRIX} 的取值写错（{@code postgres} 少了 ql）、
+     * 或 {@code ADB_CONNECTION} 与它配错（{@code matrix-mysq}），过去都会<b>静默退回演示库</b>
+     * 把帧拍完、返回码 0 —— 于是一张 SQLite 的画面顶着「postgresql 真库帧」的名字进仓库，
+     * 而它恰恰是这颗控件当初欠帧的原因（演示库没有库一层）。
+     * 现在外壳遇到这两种情况直接放弃这一帧（{@code ScreenshotSession.abortMatrixFrame}），
+     * 脚本也在起跑前按<b>那一家自己的</b>口令门控；这条门禁钉的是这两处不再靠人记得。
+     */
+    @Test
+    void matrixRowsUseRealDialectIdsAndConnectToThatEngine() throws IOException {
+        Set<String> dialectIds = Arrays.stream(io.agenticdb.jdbc.DialectKind.values())
+                .map(io.agenticdb.jdbc.DialectKind::id)
+                .collect(Collectors.toSet());
+
+        List<String> unknown = new ArrayList<>();
+        List<String> mismatched = new ArrayList<>();
+        for (Row row : shotRows()) {
+            String matrix = envValue(row.envVars(), "ADB_MATRIX");
+            if (matrix.isEmpty()) {
+                continue;
+            }
+            if (!dialectIds.contains(matrix)) {
+                unknown.add(row.name() + " → ADB_MATRIX=" + matrix);
+            }
+            String connection = envValue(row.envVars(), "ADB_CONNECTION");
+            if (!("matrix-" + matrix).equals(connection)) {
+                mismatched.add(row.name() + " → ADB_MATRIX=" + matrix
+                        + " 但 ADB_CONNECTION=" + connection);
+            }
+        }
+        assertThat(unknown).as("ADB_MATRIX 的取值必须是 DialectKind 的方言 id").isEmpty();
+        assertThat(mismatched).as("矩阵帧必须连回自己那一台（否则拍的是演示库）").isEmpty();
+    }
+
+    /** 从一行帧的预置环境变量里取 {@code KEY=value} 的值；没有这个键就是空串。 */
+    private static String envValue(String envVars, String key) {
+        Matcher matcher = Pattern.compile("(?<=^| )" + key + "=([^ ]*)").matcher(envVars);
+        return matcher.find() ? matcher.group(1) : "";
     }
 
     // ─────────────────────────── 工具 ───────────────────────────

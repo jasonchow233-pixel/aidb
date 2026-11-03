@@ -78,6 +78,35 @@ public final class ScreenshotSession {
     }
 
     /**
+     * ⭐ D-37：真库帧的「宁可没图，不可有假图」出口。
+     *
+     * <p>矩阵档案没注册上（{@code ADB_MATRIX} 的取值写错、或那家的环境变量缺失）时，
+     * 外壳会照常退回演示库（SQLite）把这一帧拍完 —— 帧名写着 mysql / postgresql，
+     * 画面却是演示库，而 {@code scripts/shots.sh} 只看「文件在不在」，返回码还是 0。
+     * 这种帧比没图更糟：它会替一颗控件「还掉」它其实没还的欠账。
+     * 所以这里直接放弃这一帧 —— 不写文件、退出码非零，让脚本报「这一格没拍出来」。
+     */
+    public static void abortMatrixFrame(String reason) {
+        System.err.println("[screenshot] FRAME ABORTED, nothing written: " + reason);
+        Platform.exit();
+        System.exit(3);
+    }
+
+    /**
+     * ⭐ D-39：真库帧的落点检查，由 {@code AppShell} 在注册矩阵档案时挂上来。
+     *
+     * <p>默认「没有问题」：非矩阵帧（演示库那 47 张）本来就以演示库为对象，
+     * 这一层不该管它们。返回一句原因就是不成立 —— 调用方只在这一帧**即将**落盘之前问一次，
+     * 所以「快门时刻页面不在那台服务器上」和「档案压根没注册上」（D-37）是两道分开的门：
+     * 前者拦的是连接还没建立完、或切库切到别的档案上去了。
+     */
+    private static java.util.function.Supplier<String> matrixFrameGuard = () -> null;
+
+    static void setMatrixFrameGuard(java.util.function.Supplier<String> guard) {
+        matrixFrameGuard = guard == null ? () -> null : guard;
+    }
+
+    /**
      * ⭐ 兜底「发现最大化就取消」到底有没有用，之前只是**没被触发过**、没被证明过。
      * 设 {@code ADB_SHOTS_MAXIMIZE=1} 就在按快门前自己最大化一次，逼这条路径走一遍：
      * 帧若仍是 1280×800，就证明的是恢复本身而不是运气。
@@ -128,6 +157,16 @@ public final class ScreenshotSession {
                 schedule(600, () -> capture(stage, dir, name, 2));
                 return;
             }
+        }
+        // ⭐ D-39：真库帧的**落点**也要在按快门前问一次。
+        //   D-37 只钉住「这一帧连的是那台服务器」这个**声明**，而声明成立不等于此刻的页面
+        //   在那台上：Oracle 首次连接要 8~12 秒，7 秒的帧就在「Connecting to matrix Oracle…」
+        //   上按了快门 —— 拍出来的是演示库（SQLite）的表清单，文件名却写着 oracle。
+        //   这种帧比缺帧更贵：它看起来正是那台服务器的证据。
+        String problem = matrixFrameGuard.get();
+        if (problem != null) {
+            abortMatrixFrame(problem);
+            return;
         }
         try {
             Scene scene = targetScene(stage);
