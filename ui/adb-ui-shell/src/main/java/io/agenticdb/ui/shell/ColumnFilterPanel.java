@@ -311,17 +311,33 @@ final class ColumnFilterPanel extends VBox {
         retry.setManaged(false);
     }
 
+    /**
+     * ⭐ R55：高基数那一格里「精确值」框的文字 → 要下发的条件；返回 {@code null} = <b>不算条件</b>。
+     *
+     * <p>抽成静态方法有两个理由：① 这个面板要一把活的 {@link DbSession} 才构造得出来，
+     * 于是「框里只输了空格」这种边界此前<b>一条门禁都没有</b>，而它恰好是唯一能绕开
+     * {@link EditValues#emptiedCell} 把空串递给数字列的入口；② 空白与空串在筛选框里
+     * 是同一件事（用户没填），不该因为 {@code String.isEmpty()} 没 trim 就走两条路。
+     * 值的翻译本身仍只在 {@link CellValueParser#parse} 一处。
+     */
+    static FilterCondition exactCondition(ColumnDef column, String raw) {
+        String text = raw == null ? "" : raw.trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        return FilterCondition.of(column.name(), FilterOperator.EQ, CellValueParser.parse(column, text));
+    }
+
     private void applySelection() {
         if (highCardinalityMode) {
-            String text = exact.getText();
-            if (text == null || text.isEmpty()) {
-                onClear.run();
-                popover.hide();
-                return;
-            }
             try {
-                Object parsed = CellValueParser.parse(column, text);
-                onApply.accept(FilterCondition.of(column.name(), FilterOperator.EQ, parsed));
+                FilterCondition condition = exactCondition(column, exact.getText());
+                if (condition == null) {
+                    onClear.run();
+                    popover.hide();
+                    return;
+                }
+                onApply.accept(condition);
                 popover.hide();
             } catch (IllegalArgumentException e) {
                 status.setText(e.getMessage());

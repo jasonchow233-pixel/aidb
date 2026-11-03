@@ -5845,12 +5845,11 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      *
      * <p>「这一格被清空了」交给 {@link EditValues#emptiedCell} —— 规则不在界面这边，
      * 真库契约走的是同一个方法，界面单方面改掉它时契约跟着红（R53）。
+     * ⭐ R55：这个判断本身收进了 {@link CellValueParser#parse}，这里不再自己写一遍
+     * 「空串先拦一道」—— 两条分支就是两处出处，筛选面板当初正是绕过了这一条才漏出空串。
      * 包级可见与 {@link #editorText(Object)} 同因：给门禁直接量这一层。
      */
     static Object parseCellValue(ColumnDef definition, String text) {
-        if (text.isEmpty()) {
-            return EditValues.emptiedCell(definition);
-        }
         return CellValueParser.parse(definition, text);
     }
 

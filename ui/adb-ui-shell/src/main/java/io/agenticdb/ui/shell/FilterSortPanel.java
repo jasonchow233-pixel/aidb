@@ -731,9 +731,13 @@ final class FilterSortPanel extends VBox {
         return schema.columns().isEmpty() ? "" : schema.columns().get(0).name();
     }
 
+    /**
+     * ⭐ R55：「这一档吃不吃空串」不再由这里手写第二张名单 —— 名单和
+     * {@link ColumnType#textual()} 就是同一件事的两份真相，漂了没人知道。
+     * 网格里「清空一格」绑什么、契约里绑什么、这里允不允许空，全部走 {@code textual()}。
+     */
     private static boolean requiresNonEmpty(ColumnType type) {
-        return type != ColumnType.TEXT && type != ColumnType.JSON
-                && type != ColumnType.UUID;
+        return !type.textual();
     }
 
     /**
