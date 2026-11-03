@@ -11,6 +11,19 @@
 
 ### Added
 
+- **视图形态帧补上另外三家方言，种子铺满五家**（2026-11-03，R47-d）：R47-b 打通真库通道之后，
+  画面证据仍然只有 MySQL 一家。这一轮把 `dbmatrix.sh seed` 扩到**五家**（MySQL / MariaDB / PostgreSQL /
+  SQL Server / Oracle 各一份随方言变的幂等种子：`INSERT IGNORE` / `ON CONFLICT DO NOTHING` /
+  `IF NOT EXISTS` + `MERGE`；SQL Server 的 `CREATE OR ALTER VIEW` 必须**独占一个批次**，
+  和前面的建表拼成一段会在解析期整批失败；Oracle 容器里 `sqlplus` 默认连的是 CDB$ROOT，
+  得先 `ALTER SESSION SET CONTAINER`），并新增四张帧（`docs/screenshots/` 51 → 55）：
+  `p6-new-view-sqlserver`（`CREATE VIEW [v_paid_orders]` —— 方括号只有 SQL Server 给得出）、
+  `p6-design-view-pg`（读回 `pg_get_viewdef` 的**多行**正文 + 单句 `CREATE OR REPLACE VIEW "v_active_users"`）、
+  `p6-design-view-sqlserver`（`CREATE OR ALTER VIEW [v_active_users]`，正文是当初写的原句一行）、
+  `p6-design-view-oracle`（`CREATE OR REPLACE VIEW "v_active_users"`，正文带 `adb.users` 的 schema 前缀）。
+  ⚠️ 同两格在 PG / Oracle 上的「新建视图」预览**没有**进仓库：实拍回来与演示库那张**逐字节相同**
+  （这三家都用双引号包标识符，形状差异为 0）。同一张画面存三份不是证据变多，是把下一次的真重复
+  埋进噪音里 —— 帧去重门（同画面即假帧）报出来的正是这一类，这次判它是冗余、不是假。
 - **验收帧第一次拍在真数据库服务器上**（2026-11-02，R47-b）：截图通道此前只能绑演示库（SQLite），
   而 SQLite 没有「库」这一层 —— 于是「`库▾` 里有两把库」「MySQL 上改视图只有一句」这类
   **只有真服务器才有形状**的画面一张都没有（47 帧全部拍在演示库上）。
@@ -195,6 +208,37 @@
 
 ### Fixed
 
+- **PG / SQL Server 上「设计视图」一次都打不开，整表重建还会把依赖视图删掉不重建**
+  （2026-11-03，R47-d · D-38）：这两家的 `readDdl(..., view=true)` 整方法 `return null`
+  （没有 `SHOW CREATE TABLE`，视图原文其实存在 `pg_get_viewdef` / `sys.sql_modules` 里），
+  而调用方有**两处只调 `readDdl`**：视图设计器开窗前的读回（读不到就不开窗 —— 这个行为是对的，
+  于是那个入口在这两家永远不开窗），以及整表重建的「先拆依赖视图、建完再挂回去」清单
+  （读到 null 就当没有依赖视图 —— `DROP TABLE` 把视图级联带走之后**没人重建它**）。
+  真库契约当时是**绿的**：它自己写了「readDdl 空了就再问一次 `readViewDdl`」，
+  于是契约走的路和界面走的路不是同一条 —— 兜底写在调用方头上的年代正是这条 bug 的来处。
+  修：兜底收进方言（`readDdl(view=true)` 自己交回库里存的原文），契约改成直接钉 `readDdl` 这一条，
+  `SchemaService` 里那份重复兜底删掉；补一条不依赖 Docker 的门禁 `DialectViewReadDdlTest`（4 条：
+  替身连接断言「真的发了那条目录查询」「读回来还解析得出查询体」「表那条路仍然交 null」）。
+  发现它的正是这两家的帧 —— `p6-design-view-pg` / `p6-design-view-sqlserver` 首拍拍到的是主窗口 +
+  状态栏「读不出这个视图的查询体」。
+  **变异**：两家方言退回 `return null` → 不依赖 Docker 的静态门禁红 **2**，真库契约在 PG 与 SQL Server
+  上**各红 1**（正是这两家，报的正是界面那句「设计视图开窗要读得到查询体」）—— 同一条缺陷现在由单元、
+  契约、画面三层各自守得住。
+- **真库帧会在「还没连上」的那一刻按快门，而且前提没成立也照样出图**
+  （2026-11-03，R47-c · D-37 / D-37b / D-39）：R47-b 那条通道有三道只写了一半的门 ——
+  ① `shots.sh` 对**所有**矩阵帧只查 `ADB_TEST_MYSQL_PASSWORD`，也不校验 `ADB_MATRIX` 的取值，
+  于是 `ADB_MATRIX=postgres`（拼错）跳过门、退回演示库拍完、返回码还是 0；
+  ② 帧没生成时脚本打印「✓ 已产出 0 张」然后 exit 0 —— abort 的正确行为看起来和成功一模一样；
+  ③ 连接是异步的：声明成立但快门时刻还没连上，拍回来的是演示库的画面、文件名却写着 oracle
+  （`p6-new-view-oracle` 实拍踩过一次，Oracle 首次连接实测 8~12 秒）。
+  现在：口令**按引擎**查（前缀由方言 id 映射，`postgresql→PG` / `sqlserver→MSSQL`）、
+  `ADB_MATRIX` 的取值必须是 `DialectKind` 的方言 id、`ADB_CONNECTION` 必须等于 `matrix-<那个 id>`；
+  外壳在快门那一刻再问一次落点（`AppShell.matrixFrameProblem`，认 `matrix-mysql@shop2` 这种库变体），
+  前提不成立就 `abortMatrixFrame` —— 不写文件、退出码 3；脚本缺帧就报红并非零退出。
+  门禁：`ScreenshotScriptAuditTest` +1（矩阵帧的 `ADB_MATRIX` / `ADB_CONNECTION` 成对钉死）、
+  `AppShellTest` +1（D-39 的落点判定 —— 抽成静态方法，才能在没有真服务器的单测里钉它）。
+  四层各自做过变异验证：拼错 id → 脚本 exit 1；连接串打错一个字母 → 应用 exit 3 且不落盘；
+  静态门禁里写 `ADB_CONNECTION=matrix-mysq` → 红 1；删掉「会话没开就不拍」那一段 → 新门禁红 1。
 - **查询页换库后新页是空的，状态栏却说「SQL 已复制到新查询页」**（2026-11-02，R47-b · D-36）：
   外壳取「当前页的 SQL」走的是 `TabBar.contentOf(tabId)` —— 那里存的是标签条上的**胶囊**
   （图标 + 标题 + 脏标记的 `HBox`），不是页面本体，于是 `instanceof QueryPage` 永远不成立、
