@@ -279,8 +279,9 @@ up() {
 #   为什么要 orders：`p6-new-view-mysql` 那帧的预览是 `JOIN users` 的 v_paid_orders，
 #   只有 users 的话那张帧里的 SQL 在 shop 上**根本建不起来** —— 帧可以只拍预览，
 #   但预览里写着的表必须真在库里，否则「SQL to be executed」是一张跑不通的画。
-#   为什么只种三家：本轮只排了 MySQL 那一帧；给 SQL Server / Oracle 也种
-#   等于多维护两份要随方言变的种子，等它们的帧真排上来再加。
+#   五家都种（R47-c）：视图形态帧要拍的就是「同一条 SQL 在五种方言里长成什么样」，
+#   只种 MySQL 等于只有 MySQL 那一帧能拍 —— 种子随方言变（BIT / BOOLEAN / NUMBER(1)、
+#   INSERT IGNORE / ON CONFLICT / MERGE），这正是这些帧要的东西。
 #   全部幂等：第二次 up 必须是 no-op（D-30 那条假警报的教训 ——
 #   「每次跑都有一串已存在报错」会把下一次真故障淹掉）。
 seed_frames() {
@@ -332,6 +333,53 @@ INSERT INTO orders (id, user_id, amount, status) VALUES
   ON CONFLICT (id) DO NOTHING;
 CREATE OR REPLACE VIEW v_active_users AS
   SELECT id, name, email FROM users WHERE active;" >/dev/null
+  # SQL Server：CREATE VIEW（含 CREATE OR ALTER）必须是批次里的**第一条**语句，
+  # 所以视图单独一段，用 GO 隔开 —— 和前面拼成一段会在解析期整批失败，
+  # 表现为「表也没建成、只吐一句 must be the first statement」。
+  mssql_query "USE $DB_NAME;
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'users')
+  CREATE TABLE dbo.users (id BIGINT PRIMARY KEY, name NVARCHAR(200) NOT NULL, email NVARCHAR(200) NOT NULL, active BIT NOT NULL DEFAULT 1);
+IF NOT EXISTS (SELECT 1 FROM dbo.users WHERE id = 1)
+  INSERT INTO dbo.users (id, name, email, active) VALUES (1, N'Ada', N'ada@example.com', 1);
+IF NOT EXISTS (SELECT 1 FROM dbo.users WHERE id = 2)
+  INSERT INTO dbo.users (id, name, email, active) VALUES (2, N'Lin', N'lin@example.com', 0);
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'orders')
+  CREATE TABLE dbo.orders (id BIGINT PRIMARY KEY, user_id BIGINT NOT NULL, amount DECIMAL(12,2) NOT NULL, status NVARCHAR(32) NOT NULL);
+IF NOT EXISTS (SELECT 1 FROM dbo.orders WHERE id = 10)
+  INSERT INTO dbo.orders (id, user_id, amount, status) VALUES (10, 1, 20.50, N'paid');
+IF NOT EXISTS (SELECT 1 FROM dbo.orders WHERE id = 11)
+  INSERT INTO dbo.orders (id, user_id, amount, status) VALUES (11, 1, 7.00, N'draft');
+GO
+CREATE OR ALTER VIEW dbo.v_active_users AS
+  SELECT id, name, email FROM dbo.users WHERE active = 1;" >/dev/null
+  # Oracle：容器里 sqlplus 连的是 CDB\$ROOT，ADB 用户建在 PDB 里（ORA-01917），
+  # 所以先 ALTER SESSION SET CONTAINER。没有 IF NOT EXISTS，幂等靠 PL/SQL 吞
+  # -955（名字已被占用）/ -1430（列已存在）；插入用 MERGE 当 upsert。
+  engine_sql ORACLE "
+ALTER SESSION SET CONTAINER = $ORACLE_PDB;
+DECLARE
+  PROCEDURE run(p IN VARCHAR2) IS
+  BEGIN
+    EXECUTE IMMEDIATE p;
+  EXCEPTION
+    WHEN OTHERS THEN IF SQLCODE NOT IN (-955, -1430) THEN RAISE; END IF;
+  END;
+BEGIN
+  run('CREATE TABLE $ADB_TEST_ORACLE_USER.users (id NUMBER PRIMARY KEY, name VARCHAR2(200) NOT NULL, email VARCHAR2(200) NOT NULL, active NUMBER(1) DEFAULT 1 NOT NULL)');
+  run('CREATE TABLE $ADB_TEST_ORACLE_USER.orders (id NUMBER PRIMARY KEY, user_id NUMBER NOT NULL, amount NUMBER(12,2) NOT NULL, status VARCHAR2(32) NOT NULL)');
+END;
+/
+MERGE INTO $ADB_TEST_ORACLE_USER.users t USING (SELECT 1 AS id, 'Ada' AS name, 'ada@example.com' AS email, 1 AS active FROM dual) s
+  ON (t.id = s.id) WHEN NOT MATCHED THEN INSERT (id, name, email, active) VALUES (s.id, s.name, s.email, s.active);
+MERGE INTO $ADB_TEST_ORACLE_USER.users t USING (SELECT 2 AS id, 'Lin' AS name, 'lin@example.com' AS email, 0 AS active FROM dual) s
+  ON (t.id = s.id) WHEN NOT MATCHED THEN INSERT (id, name, email, active) VALUES (s.id, s.name, s.email, s.active);
+MERGE INTO $ADB_TEST_ORACLE_USER.orders t USING (SELECT 10 AS id, 1 AS user_id, 20.50 AS amount, 'paid' AS status FROM dual) s
+  ON (t.id = s.id) WHEN NOT MATCHED THEN INSERT (id, user_id, amount, status) VALUES (s.id, s.user_id, s.amount, s.status);
+MERGE INTO $ADB_TEST_ORACLE_USER.orders t USING (SELECT 11 AS id, 1 AS user_id, 7.00 AS amount, 'draft' AS status FROM dual) s
+  ON (t.id = s.id) WHEN NOT MATCHED THEN INSERT (id, user_id, amount, status) VALUES (s.id, s.user_id, s.amount, s.status);
+CREATE OR REPLACE VIEW $ADB_TEST_ORACLE_USER.v_active_users AS
+  SELECT id, name, email FROM $ADB_TEST_ORACLE_USER.users WHERE active = 1;
+COMMIT;" >/dev/null
 }
 
 status() {
@@ -642,6 +690,6 @@ case "${1:-up}" in
   tls-down)   tls_down ;;
   tls-status) tls_status ;;
   tls-run)    tls_run_matrix ;;
-  seed)       seed_frames ;;
+  seed)       load_env; seed_frames ;;
   *)          sed -n '2,27p' "$0" | sed 's/^#//; s/^ //' ;;
 esac
