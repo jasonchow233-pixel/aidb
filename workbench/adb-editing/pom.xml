@@ -22,5 +22,8 @@
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><scope>test</scope></dependency>
     <dependency><groupId>io.agenticdb</groupId><artifactId>adb-fixtures</artifactId><scope>test</scope></dependency>
+    <!-- ⭐ R53：真库矩阵共用 adb-jdbc 的 test-jar（ExternalDatabase 读环境变量），
+         格子写回这条路（EditSqlBuilder.plan/inversePlan/execute）此前只在 SQLite 上验过。 -->
+    <dependency><groupId>io.agenticdb</groupId><artifactId>adb-jdbc</artifactId><type>test-jar</type><scope>test</scope></dependency>
   </dependencies>
 </project>
