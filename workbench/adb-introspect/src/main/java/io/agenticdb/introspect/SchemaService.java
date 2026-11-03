@@ -1091,15 +1091,12 @@ public final class SchemaService {
         // ⭐ DDL 来源完全由方言决定 —— 这一层现在没有一行方言专属的 SQL：
         //    SQLite 读 sqlite_master、MySQL 走 SHOW CREATE TABLE、
         //    PostgreSQL 只能由内省生成（UI 会标注「等价 DDL」）。
+        //    ⭐ D-38 之后视图这条路不用再自己兜一次 readViewDdl：
+        //    PG / SQL Server 的 readDdl(view=true) 就把库里存的原文交出来，
+        //    兜底写在各调用方头上的年代正是「设计视图打不开」的来处。
         String fromDatabase = session.dialect().readDdl(session.connection(), name, view);
         if (fromDatabase != null && !fromDatabase.isBlank()) {
             return fromDatabase;
-        }
-        if (view) {
-            String viewDdl = session.dialect().readViewDdl(session.connection(), name);
-            if (viewDdl != null && !viewDdl.isBlank()) {
-                return viewDdl;
-            }
         }
         return StructureSqlBuilder.createTableSql(session, name, columns, primaryKeys,
                 indexes, foreignKeys);

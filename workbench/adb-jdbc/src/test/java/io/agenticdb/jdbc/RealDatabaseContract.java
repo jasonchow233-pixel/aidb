@@ -689,11 +689,13 @@ public final class RealDatabaseContract {
                         .as("%s：重建后末尾那一列应该是新加的 adb_marker", dialect.displayName())
                         .isEqualToIgnoringCase("adb_marker");
 
+                // ⭐ D-38：这里**不再**写「readDdl 空了就退到 readViewDdl」。
+                //   那句兜底曾经是必需的（PG / SQL Server 的 readDdl 对视图返回 null），
+                //   也正是它把 bug 藏住了：界面有两处只调 readDdl，于是
+                //   「设计视图」在这两家打不开、整表重建把依赖视图删掉后不重建 ——
+                //   而契约因为自带兜底，五家全绿。兜底现在收进方言，契约钉的就是界面走的那条路。
                 String fromDatabase = dialect.readDdl(session.connection(), view, true);
-                String definition = fromDatabase == null || fromDatabase.isBlank()
-                        ? dialect.readViewDdl(session.connection(), view)
-                        : fromDatabase;
-                assertThat(ViewDefinition.selectBody(definition))
+                assertThat(ViewDefinition.selectBody(fromDatabase))
                         .as("%s：「设计视图」开窗要读得到查询体，而且读到的是<b>新</b>的那一版",
                                 dialect.displayName())
                         .isNotNull()

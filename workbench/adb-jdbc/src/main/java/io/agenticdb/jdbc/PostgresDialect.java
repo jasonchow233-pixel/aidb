@@ -239,9 +239,20 @@ public final class PostgresDialect implements Dialect {
         return false;
     }
 
+    /**
+     * ⭐ D-38：表没有 SHOW CREATE TABLE，但**视图**的原文在 {@code pg_get_viewdef} 里读得到，
+     * 所以 view=true 这条路必须自己把定义交出来，不能只留给 {@code readViewDdl}。
+     *
+     * <p>留 null 的代价不是「少显示一栏」：调用方里有两处只调 readDdl ——
+     * 视图设计器开窗前的读回（读不到就不开窗，PG 上「设计视图」永远打不开）
+     * 和整表重建时「先拆依赖视图、建完再挂回去」的清单（读到 null 就当没有，
+     * DROP TABLE 级联掉视图后再也没人重建它）。
+     * 三处都各写一遍「readDdl 空了再问 readViewDdl」正是这条 bug 的来源，
+     * 所以把兜底收进方言，让契约能直接钉 readDdl 这一条路。
+     */
     @Override
     public String readDdl(Connection connection, String table, boolean view) throws SQLException {
-        return null;
+        return view ? readViewDdl(connection, table) : null;
     }
 
     @Override

@@ -307,9 +307,15 @@ public final class SqlServerDialect implements Dialect {
         return false;
     }
 
+    /**
+     * ⭐ D-38：和 PG 同一条规矩 —— 表 DDL 由内省生成（{@link #readsDdlFromDatabase()} 仍是
+     * {@code false}），但 view=true 这条路要把 {@code sys.sql_modules} 里的原文自己交出来：
+     * 只调 {@code readDdl} 的两个调用方（设计视图开窗前的读回、整表重建时依赖视图的拆/挂清单）
+     * 在返回 null 时的表现是「入口打不开」和「视图被级联删掉后没人重建」。
+     */
     @Override
     public String readDdl(Connection connection, String table, boolean view) throws SQLException {
-        return null;
+        return view ? readViewDdl(connection, table) : null;
     }
 
     /**
