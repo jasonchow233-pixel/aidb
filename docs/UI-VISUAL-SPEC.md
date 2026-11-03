@@ -115,6 +115,8 @@
 | 空状态图标 | 32px（`Icons.SIZE_EMPTY`，不是字号） | `.adb-empty__icon` |
 | Tooltip | 11px | `.tooltip` |
 | 命令面板输入 | 13px | `.adb-palette__input` |
+| 补全候选项（R57-a） | 12px | `.adb-completion__item` |
+| 补全副标题与「正在读取…」行 | 11px | `.adb-completion__detail`、`.adb-completion__loading` |
 
 ### 2.4 字重
 
