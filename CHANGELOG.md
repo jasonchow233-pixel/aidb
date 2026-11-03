@@ -11,6 +11,40 @@
 
 ### Added
 
+- **连接可以先经跳板机再落到数据库：SSH 隧道做成引擎层**（2026-11-03，R55-c · G5a）：
+  这一项在路线图上挂了很久，之前连接向导里那句「本版没有内置 SSH 隧道引擎」配一段
+  `ssh -L` 的手工替代 —— 那是把界面功能推给用户的手工操作。选型 Apache MINA `sshd-core`
+  2.20.1（Apache-2.0；评估与「为什么不 shell 出系统的 `ssh`」记在 `docs/COMPONENT-SELECTION.md`）：
+  纯 Java，Windows 上那份 `ssh.exe` 不保证有，「连不上」不该取决于用户装了什么；同一个 jar
+  自带服务端，所以契约能在本机起一把真 sshd 量「字节确实过了隧道」。三条红线是结构性的：
+  **秘密按类型分家** —— `SshConfig`（无秘密，进档案 JSON）/ `SshSecrets`（口令与口令短语，
+  只进系统凭据库）/ `SshEndpoint`（驱动层，`toString` 打码），拼装口只有 `ConnectionProfile.spec`
+  一处，并有源码审计钉「界面里 `.spec(` 只许出现在 `specOf` 一处且必须同时递两份秘密」；
+  **失败分类不猜文本** —— 隧道起不来与主机密钥变更各有独立一档（驱动原文里三种失败都写着
+  `communications link failure`，D-32 同形不再复现）；**验收不写用户目录** —— `known_hosts`
+  落点可重定向，测试与帧都指向临时目录。`JdbcSession.open` 先起隧道、再把 host/port 换成
+  `127.0.0.1:临时端口`，连库失败即关掉隧道（不留一个还挂着 SSH 会话与本机端口的「失败连接」）。
+  界面侧：向导 SSH 页从「说明牌」换成真表单（跳板地址 / 端口 / 用户 / 口令 ⟷ 私钥二选一 /
+  主机密钥策略；开关没勾时字段灰掉但**保留已填的值**；SQLite 那一档不摆隧道字段并写明为什么：
+  本机文件没有「另一台机器」可跳）。**HTTP 页仍如实标注未实现。**
+  门禁：`SshTunnelTest` 8 条 + `ConnectionStoreTest` +5 + 向导 +7（并删掉那条钉「这一页没有字段」
+  的旧断言 —— 它钉的是已经被撤掉的谎）+ 真库契约**第 13 条** `SshTunnelMatrixTest`
+  （5 引擎 × 1 = 5 例，五台 Docker 各经进程内跳板机连一次，量的是驱动那一侧在隧道对面连不连得上）。
+  画面：`p5-connect-ssh.png`（口令分支）与 `p5-connect-ssh-key.png`（私钥分支）—— ⚠️ 这两张证的是
+  **向导表单**（填了真的进档案、格式限制真的写在字段旁），**不是**「一条经隧道连上的会话长什么样」；
+  后者的证据只有契约第 13 条，会话画面仍欠（要拍得连一台真跳板机）。
+
+- **真库契约第 12 条：整表导出 → 导回 → 逐行相等，五台 Docker 各跑一遍**（2026-11-03，R55-b）：
+  导出/导入的往返此前只有四条内存 SQLite 门禁 —— 它证明编解码与导入器的约定咬得上，证明不了
+  各家把 `rs.getObject` 交成什么 Java 类型、那个类型写进文件后再导回来吃不吃得下。更贵的是
+  失败形状：导入器对坏行的策略是**跳过并记进报告**，真出问题时症状不是异常而是**报告里少一行** ——
+  界面全绿、用户拿到的文件少数据。所以这条契约钉的不是「没抛异常」，是行数与逐格文本导回后
+  逐行相等（NULL 经 CSV 落成空串、Oracle 是它自己的 NULL，两边都是量出来的事实）。
+  ⚠️ 这条契约住在 `adb-introspect` 而不是 `adb-transfer`：reactor 里已有
+  `adb-introspect(test) → adb-transfer(main)`，反向再加一条依赖就成环 —— Maven 直接拒绝构建。
+  三条变异各自验证过（导出忽略列选择 / 字段不加密 / 导入静默丢一行，各自五家全红）；
+  第一次跑变异时因为没先 `install` 变异后的模块而**假绿**过一次，纪律补进台账。
+
 - **每家数据库顶自己那枚图形，十个表面一次铺齐**（2026-11-03，R54 · 用户点名「每个类型数据库
   都改为用他们自己特定的 icon，一眼看出是 mysql、pg 等」）：先量现状再动手，量出来的结论是
   **这一轮不需要画任何图标** —— 六枚自绘字形（`Icons.Icon.DB_*`）、彩色分层资产
@@ -138,6 +172,15 @@
   `.github/` Issue / PR 模板与 CI 工作流。
 
 ### Changed
+
+- **筛选器的「没填」接进 R53 那条唯一出处，界面不再有第二套空值规则**（2026-11-03，R55-a）：
+  R53 把「清空一格绑什么」收成 `EditValues.emptiedCell` 一处，但界面里还留着两条自己判断空值的
+  分支 —— `CellValueParser` 对空输入返回 `""`（数字档因此能把 `""` 递给 `DECIMAL`/`BIT`，
+  正是 R53 在真库里量出来的两种失败形状），`FilterSortPanel.requiresNonEmpty` 手写了一份
+  「哪几档吃空串」的名单，和 `ColumnType.textual()` 是同一件事的两份真相。现在
+  `requiresNonEmpty` 改为问方言（`!type.textual()`），「框里只敲了空格」与「没填」走同一条判定；
+  `ColumnFilterPanel.exactCondition` 抽成可测的静态方法（此前「只输空格」一条门禁都没有）。
+  门禁：`CellValueParserTest` +4，含一条源码审计钉「`emptiedCell` 的调用点只有一个」。
 
 - **TLS 页的说明改成驱动真能收的东西，并起了第二圈加密对端来验它**（2026-11-02，R47-a · D-31）：
   `scripts/dbmatrix.sh tls-up` 另起 MySQL 33071 / MariaDB 33072 / PostgreSQL 54331 三个**加密服务**
@@ -269,6 +312,29 @@
   图标台账改为 55 枚（53 枚 Lucide + 2 枚自绘）。
 
 ### Fixed
+
+- **私钥那一格不再邀请用户填引擎读不出的 ed25519**（2026-11-03，R55 · D-41）：SSH 页做成真字段的
+  同一轮，提示词写的是 `id_ed25519`，而 MINA sshd 解析 OpenSSH 格式的 ed25519 私钥需要
+  `net.i2p.crypto:eddsa` 这个本工程取不到的依赖。实测后果不是报错而是**沉默**：
+  `FileKeyPairProvider.loadKeys` 对 ed25519 私钥安静地返回 0 把，用户只拿到一句
+  `holds no usable key pair`，会去怀疑文件权限而不是密钥类型。修法不是偷偷换算法、也不是留个
+  看着能用其实必败的提示词，而是三处一起点名：① 提示词改成 `id_rsa`，字段旁新增说明
+  「支持 RSA / ECDSA（OpenSSH 或 PEM），不支持 ed25519」；② 引擎那句 `loaded == 0` 的报错
+  自己把支持格式说完；③ 两条门禁 —— `SshTunnelTest` 用系统 `ssh-keygen` 现场造一把真 ed25519
+  私钥钉住报错（没有 `ssh-keygen` 的机器算跳过，不算验过），`ConnectionWizardTest` 双语钉提示词
+  与格式说明。画面：私钥分支单独补一帧 `p5-connect-ssh-key.png`（拿「口令分支」那张帧当 D-41 的
+  证据，等于帧说着 A、结论写着 B），并补两条摆态门禁钉「帧名与帧内容对上」——
+  `sshkey` 必须有 key-path 与格式说明、不许有口令框，`ssh` 必须留在口令分支。
+
+- **TLS 契约①的隐藏前置条件摆到台面上**（2026-11-03，R55 · D-42）：「不加密 → 会话真是明文」
+  从 R47-a 起一直是绿的，但它绿着靠的是 MySQL 8.4 `caching_sha2_password` 的服务端验证缓存被
+  上一次 TLS 登录焐热过：容器一重启（连 Docker Desktop 自己重启都算）缓存空，明文首登要向服务器
+  取 RSA 公钥，而 Connector/J 默认 `allowPublicKeyRetrieval=false` →
+  `Public Key Retrieval is not allowed`，契约根本连不上、也就没量到它要量的东西。
+  本轮实测两次：`docker restart` 后必红，焐一次 18/18 绿。**改的是环境，不是断言** ——
+  `dbmatrix.sh` 的 `tls-up` / `tls-run` 现在从容器内做一次 TCP+TLS 登录焐热缓存，契约里补注释
+  说明这条真实失败模式（用户第一次连 MySQL 8 又选「不加密」，撞的就是这句）。
+  MariaDB（native password）与 PG（scram）没有这一层，不受影响。
 
 - **本轮自己引入、被实拍帧当场抓走的两个**（2026-11-03，R54）：记在这里是为了说清一件事 ——
   这两个都不是「用户曾经见过的缺陷」，而是「代码写完、测试全绿、画面上却是错的」，
