@@ -11,6 +11,39 @@
 
 ### Added
 
+- **格子改完落库这条路第一次打到真服务器上**（2026-11-03，R53）：真库矩阵此前九条契约量的全是
+  **读**（目录、DDL、视图、切库）；界面用得最多的那条 **写** —— 双击一格 → 改 → 保存 →
+  按主键打回去 —— 只在内存替身（SQLite）上跑过。生成的 SQL 形状钉得住，
+  「那条 SQL 落到真服务器上变成什么」从来没量过。补两条契约，摊成
+  **5 引擎 × 2 契约 = 10 例**（`EditWriteBackMatrixTest`，凭据仍只从 `ADB_TEST_*` 环境变量读、零入库）：
+  - `writeBackRoundTrip`（第 10 条）按 `DataGridPage.saveChanges` 的**同一个顺序**走
+    `plan → inversePlan → execute`（不另写平行路径 —— 那是 D-38 的形状）：两行新增落库后读回，
+    中文不变问号、`10.50` 不被折成 `10.5` 或 `11`、`true` 在 TINYINT(1)/BOOLEAN/BIT/NUMBER(1)
+    四种形状下都读得回成真、交 `null` 的那格仍是 NULL 而不是空串；同行两格改动翻成**一条** UPDATE
+    且 `WHERE` 只命中主键那一行（**没动的两列不能被这次保存改写**）；撤销打回原值；
+    删一行只少一行。
+  - `emptyCellShapeIsWhatTheServerSays`（第 11 条）钉「双击一格、把内容删干净、点保存」在五家落成的形状：
+    数字与布尔列**全部落成真 NULL**，文本列落成空串（Oracle 把 `''` 存成 NULL 是它自己的形状）。
+  ⚠️ **这一条第一次端出来的是五个假缺陷**，值得记：契约照「界面交空串」这个**猜测**往
+  `DECIMAL` / 布尔列里绑 `""`，结果 MySQL / MariaDB / PG / Oracle 四家服务端整批拒
+  （`Incorrect decimal value: ''`、`column "amount" is of type numeric but expression is of type
+  character varying`），SQL Server 的 `BIT` 更糟 —— `''` **静默折成 0**，不报错。
+  看着像四个缺陷加一个数据损坏，实际上**产品根本不交这个形状**：界面那个私有分支把非文本档折成
+  `null`，另有「设为 NULL / 设为空串」两个各带门禁的动作（D-33）。规则是猜的，量出来的东西界面上就不存在。
+  修法是把规则搬出界面做成唯一出处：`ColumnType.textual()`（哪一档吃得下空串）+
+  `EditValues.emptiedCell(ColumnDef)`（清空一格绑什么），`DataGridPage.parseCellValue` 改为调它，
+  契约调**同一个方法** —— 界面或模型单方面改掉，契约与单测一起红。落库结果从「`null`/0/`0.00`/报错
+  四档任挑」的假门禁换成硬钉。
+  门禁：新增 `EditValuesTest`（3，含「非文本档逐档点名」清单 —— 模型新增一档漏出清单就报红）、
+  `CellValueParserTest` +1（量的是界面**接线**，不是规则本身），`adb-editing` 通过 test-jar 复用
+  `ExternalDatabase`（环境变量名不再写第二遍）。
+  **五条变异验证**：① `emptiedCell` 永远交空串 → 7 红（契约五家 + `EditValuesTest` + `CellValueParserTest`）；
+  ② `textual()` 把 NUMBER 也算成文本档 → 6 红（档位清单钉 + 契约五家）；
+  ③ `parseCellValue` 退回「空格一律交空串」 → 2 红（新加的界面接线门 + D-33 那颗
+  「NULL 和空串在网格里是两件事」的老门）；④⑤ `EditSqlBuilder.plan` 的 SET 子句扩到全部列 →
+  `EditSqlBuilderTest` 4 红（含 D-10「UPDATE 只 SET 改动的格子」）；同一改动在真库矩阵上是
+  **10 例全红**（五家 × 两条契约）—— SET 里带上了主键，五家一律拒绝 `SET id = NULL`，
+  报的是服务端原话（PG 的 not-null violation、Oracle 的 ORA-01407）。
 - **视图形态帧补上另外三家方言，种子铺满五家**（2026-11-03，R47-d）：R47-b 打通真库通道之后，
   画面证据仍然只有 MySQL 一家。这一轮把 `dbmatrix.sh seed` 扩到**五家**（MySQL / MariaDB / PostgreSQL /
   SQL Server / Oracle 各一份随方言变的幂等种子：`INSERT IGNORE` / `ON CONFLICT DO NOTHING` /
