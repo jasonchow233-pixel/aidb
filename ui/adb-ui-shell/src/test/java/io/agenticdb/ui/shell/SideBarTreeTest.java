@@ -315,6 +315,42 @@ class SideBarTreeTest {
                 .isEqualTo(Color.web(Tokens.VENDOR_ORACLE_LIGHT));
     }
 
+    /**
+     * ⭐ R54：<b>库</b>节点也吃父连接的品牌色。
+     *
+     * <p>形状仍是圆柱（那一层说的是「这是个库」，不是「这是 MySQL」），颜色跟那一家走 ——
+     * 两条线索各说一件事。R43-a 只给连接节点上了色，于是多连接同屏时，MySQL 的 orders
+     * 和 PG 的 orders 是同一颗青圆柱：用户要在树里区分「哪个库属于哪家」，
+     * 只能把光标移上去读父节点。
+     */
+    @Test
+    void catalogNodesCarryTheirConnectionsBrandColor() {
+        ActionRegistry actions = new ActionRegistry();
+        ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
+
+        TreeView tree = themedTree(actions, List.of(mysql));
+        SideBar sideBar = onFx(() -> (SideBar) tree.getScene().getRoot());
+        onFxRun(() -> {
+            sideBar.setCatalogs("srv-1", List.of(
+                    new SideBar.CatalogEntry("orders", "srv-1"),
+                    new SideBar.CatalogEntry("audit", "srv-1@audit")));
+            tree.applyCss();
+            tree.layout();
+        });
+
+        assertThat(iconClasses(tree, "orders"))
+                .as("库节点的图标没吃到父连接的厂商类")
+                .contains("adb-db--mysql");
+        assertThat(brandFill(tree, "orders"))
+                .as("虚拟连接（srv-1@audit）的库也要认得出父连接 —— 它顶的还是同一家")
+                .isEqualTo(Color.web(Tokens.VENDOR_MYSQL_LIGHT));
+        // 形状那条线索不能被颜色那条覆盖掉：库节点顶的仍是圆柱。
+        assertThat(iconClasses(tree, "orders"))
+                .as("库节点换了形状 —— 「这是个库」那条线索没了")
+                .contains("adb-tree__icon--catalog");
+    }
+
     /** 认不出方言时不许挑一家画上去 —— 那是编造，回落到中性插头。 */
     @Test
     void aConnectionWithoutAProfileKeepsTheNeutralPlug() {
@@ -327,6 +363,42 @@ class SideBarTreeTest {
                 .as("没有连接档案、也没有方言解析器 → CONNECT 插头，不带任何 adb-db--* 类")
                 .contains("CONNECT")
                 .doesNotContain("adb-db--");
+    }
+
+    /**
+     * ⭐ R54：折叠侧栏时，那颗「当前连接」钮是界面里唯一常驻回答「我在哪家」的入口之一 ——
+     * 以前六家都是同一颗插头。这条同时钉住**退回**那一半：切到认不出方言的会话后还留着
+     * 上一家的图形，就是一条会说谎的信息。
+     */
+    @Test
+    void theCollapsedRailWearsTheCurrentConnectionsEngine() {
+        ActionRegistry actions = new ActionRegistry();
+        ConnectionProfile pg = new ConnectionProfile("pg-1", "分析库",
+                DialectKind.POSTGRESQL, "db.local", 5432, "analytics", "app", false, 0, "",
+                Map.of());
+
+        SideBar sideBar = onFx(() -> {
+            SideBar created = new SideBar(actions, List.of(), "分析库",
+                    tab -> { }, message -> { }, "pg-1", List.of(pg), p -> { });
+            created.setCollapsed(true);
+            return created;
+        });
+
+        javafx.scene.control.Button rail = onFx(
+                () -> (javafx.scene.control.Button) sideBar.lookup("#sidebar-rail-connection"));
+        assertThat(rail).as("折叠态的连接钮必须存在（没构造出来下面全是空断言）").isNotNull();
+        assertThat(rail.getGraphic()).as("只剩文字/插头 = 「哪家」这条信息没了").isNotNull();
+        assertThat(rail.getGraphic().getStyleClass())
+                .as("厂商作用域类没挂到折叠态的图形上")
+                .contains("adb-db--postgresql");
+
+        onFxRun(() -> sideBar.setConnections(List.of()));
+        onFxRun(() -> sideBar.setConnection("adhoc", "临时会话"));
+        Node after = onFx(() -> ((javafx.scene.control.Button) sideBar
+                .lookup("#sidebar-rail-connection")).getGraphic());
+        assertThat(after.getStyleClass())
+                .as("切到认不出方言的会话后必须退回通用插头 —— 停在 PG 的图形上会说谎")
+                .doesNotContain("adb-db--postgresql");
     }
 
     /** ⭐ U1：选中一个库节点 → 去读**那个库**的对象（Serve 它的是虚拟连接）。 */

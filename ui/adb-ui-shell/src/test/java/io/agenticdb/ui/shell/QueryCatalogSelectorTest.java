@@ -153,6 +153,21 @@ class QueryCatalogSelectorTest {
                 .isEqualTo("loanmarket");
     }
 
+    /**
+     * ⭐ R54：这颗按钮说的是「哪个库」，但「哪家库」以前只能读字。
+     * 顶上放那一家自己的图形 —— 与树、连接管理器、状态栏取的是同一行登记。
+     */
+    @Test
+    void theMenuButtonWearsTheEngineOfTheSessionItIsBoundTo() {
+        Node graphic = connectionMenu().getGraphic();
+        assertThat(graphic)
+                .as("库选择器顶上的还是通用图形 —— 用户得读连接名才知道连的是哪家")
+                .isNotNull();
+        assertThat(graphic.getStyleClass())
+                .as("厂商作用域类没挂上：品牌色那条后代规则空转，图形掉回中性蓝")
+                .contains("adb-db--sqlite");
+    }
+
     @Test
     void newQueryItemSurvivesBothForms() {
         MenuItem newQuery = itemWithText(I18n.t("action.new-query"));

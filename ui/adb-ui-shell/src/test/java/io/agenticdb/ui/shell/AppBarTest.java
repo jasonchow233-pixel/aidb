@@ -8,6 +8,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
@@ -283,6 +284,78 @@ class AppBarTest {
                 .isEqualTo("agenticdb-demo.db");
         assertThat(robot.lookup("#appbar-connection-kind").queryAs(Label.class).getText())
                 .isEqualTo("SQLite");
+    }
+
+    /**
+     * ⭐ R54：胶囊最左那一格画的是**当前连接那一家**的图形，不是一枚人人相同的中性点。
+     *
+     * <p>顶栏是全应用唯一常驻的「我在哪家库」，而它此前只有中性点 + 名字 + 类型文字。
+     * 文字在窄窗口会被 {@code fitChromeWidth} 收掉 —— 所以这条门同时钉住
+     * 「收掉文字之后图形必须还在」：没地方写字的那一刻，才是这句话最需要有人替它说的时候。
+     *
+     * <p>⚠️ 不能 {@code lookup(".adb-db--sqlite")}：作用域类挂在 Label 的 graphic 上，
+     * 而 graphic 不在 {@code getChildren()} 里，选择器遍历不到（状态栏那条门禁踩过）。
+     * 这里按结构读 —— 胶囊 HBox 的第 0 格就是厂商槽位。
+     */
+    @Test
+    void theConnectionPillWearsTheConnectionsVendorGlyph(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(pillVendorClasses(robot))
+                .as("胶囊图形必须带上当前连接（SQLite）的品牌作用域类")
+                .contains("adb-db--sqlite");
+
+        onFxRun(() -> bar.fitChromeWidth(420));
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(robot.lookup("#appbar-connection-kind").queryAs(Label.class).isManaged())
+                .as("前提：窄窗口确实把类型文字收掉了").isFalse();
+        assertThat(pillVendorClasses(robot))
+                .as("文字收掉后厂商图形不能跟着消失")
+                .contains("adb-db--sqlite");
+    }
+
+    /** ⭐ R54：下拉里每一行顶的都是**它自己那一家**的图形，不是清一色同一枚。 */
+    @Test
+    void everyConnectionInTheMenuWearsItsOwnVendorsGlyph(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        MenuButton menu = robot.lookup("#appbar-connection-menu").queryAs(MenuButton.class);
+        assertThat(menuGraphicClasses(menu, "agenticdb-demo.db"))
+                .as("演示库那一行是 SQLite").contains("adb-db--sqlite");
+        assertThat(menuGraphicClasses(menu, "prod-postgres"))
+                .as("另一行是 PostgreSQL —— 两行必须不同形不同色")
+                .contains("adb-db--postgresql")
+                .doesNotContain("adb-db--sqlite");
+    }
+
+    /**
+     * ⭐ R54：认不出方言时那一格整格收起 —— 不许留一枚「看着像某家」的假图形。
+     *
+     * <p>诚实条款的图形版：没有连接就没有引擎可说，画一枚圆柱会让人以为左边有库。
+     */
+    @Test
+    void thePillDropsTheGlyphWhenThereIsNoConnection(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        onFxRun(() -> bar.setConnections(List.of(), null));
+        WaitForAsyncUtils.waitForFxEvents();
+        MenuButton menu = robot.lookup("#appbar-connection-menu").queryAs(MenuButton.class);
+        Label slot = (Label) ((HBox) menu.getGraphic()).getChildren().get(0);
+        assertThat(slot.getGraphic()).as("没连接时厂商槽里没有图形").isNull();
+        assertThat(slot.isManaged())
+                .as("没有图形时整格收起，不留一段空白把名字往右推")
+                .isFalse();
+    }
+
+    private static List<String> pillVendorClasses(FxRobot robot) {
+        MenuButton menu = robot.lookup("#appbar-connection-menu").queryAs(MenuButton.class);
+        Label slot = (Label) ((HBox) menu.getGraphic()).getChildren().get(0);
+        javafx.scene.Node glyph = slot.getGraphic();
+        return glyph == null ? List.of() : glyph.getStyleClass();
+    }
+
+    private static List<String> menuGraphicClasses(MenuButton menu, String textPrefix) {
+        MenuItem item = menu.getItems().stream()
+                .filter(each -> each.getText() != null && each.getText().startsWith(textPrefix))
+                .findFirst().orElseThrow(() -> new AssertionError("下拉里找不到 " + textPrefix));
+        return item.getGraphic() == null ? List.of() : item.getGraphic().getStyleClass();
     }
 
     @Test

@@ -183,6 +183,90 @@ class VendorGlyphTest {
                 .isEqualTo(Color.web(Tokens.VENDOR_MYSQL_LIGHT));
     }
 
+    /**
+     * ⭐ R54：图形只有一个出口 —— {@link ConnectionCatalog#graphic}。
+     *
+     * <p>「取字形 → 上彩色 → 挂作用域类」这三步以前在导航树里内联做过一次，其余表面各自
+     * 退回通用图形。分叉过一次就是 D-38 的形状：同一个 MySQL 在两个地方长得不一样，
+     * 而没有任何一处会报错。这条钉住出口本身：类挂对了、色真的落下来了、
+     * 认不出方言时交回 {@code null}（画成某家就是编造）。
+     */
+    @Test
+    void theSharedGraphicCarriesTheScopeClassAndTheBrandColor() {
+        List<String> problems = new ArrayList<>();
+        for (Vendor vendor : VENDORS) {
+            Node graphic = ConnectionCatalog.graphic(vendor.kind(), Icons.SIZE_LABEL);
+            if (graphic == null) {
+                problems.add(vendor.kind() + " → graphic() 返回 null，登记表里有这一家");
+                continue;
+            }
+            String scope = "adb-db--" + vendor.kind().id();
+            if (!graphic.getStyleClass().contains(scope)) {
+                problems.add(vendor.kind() + " → 没挂 " + scope + "，品牌色那条后代规则空转");
+                continue;
+            }
+            Group layers = (Group) graphic;
+            Color painted = WaitForAsyncUtils.waitForAsyncFx(5_000, () -> {
+                StackPane host = new StackPane(layers);
+                host.getStyleClass().add("theme-light");
+                Scene scene = new Scene(host, 64, 64);
+                scene.getStylesheets().add(style("/io/agenticdb/ui/theme-light.css"));
+                scene.getStylesheets().add(style("/io/agenticdb/ui/app.css"));
+                // ⚠️ applyCss() 不向下层叠：先父后子，一层都不能漏。
+                host.applyCss();
+                layers.applyCss();
+                layers.getChildren().forEach(Node::applyCss);
+                return toneFill(layers);
+            });
+            if (!Color.web(vendor.light()).equals(painted)) {
+                problems.add(vendor.kind() + " → 填充层算出 " + painted + "，应为 "
+                        + Color.web(vendor.light()));
+            }
+        }
+        assertThat(problems).as("统一出口没把类和色一起带出来：\n  %s", String.join("\n  ", problems))
+                .isEmpty();
+
+        assertThat(ConnectionCatalog.graphic(null, Icons.SIZE_LABEL))
+                .as("认不出方言时必须交回 null，由调用方兜底 —— 不能猜一家")
+                .isNull();
+    }
+
+    /**
+     * ⭐ R54：厂商字形字面量<b>只准出现在登记表里</b>。
+     *
+     * <p>某处表面直接写 {@code Icons.Icon.DB_MYSQL}，就是绕过登记行自己画了一遍：将来加
+     * 一种方言，那处不会跟着变，而且没有任何一条编译期或运行期线索能发现它。门禁扫源码，
+     * 因为「谁在直接取字形」这种违规只在写法里，不在行为里。
+     */
+    @Test
+    void onlyTheRegistrationRowPicksVendorGlyphs() throws Exception {
+        List<String> offenders = new ArrayList<>();
+        // ⚠️ 扫整个 ui/（不只 adb-ui-shell）：图形资产在 adb-ui-core 里定义，将来加的表面
+        //    未必落在外壳模块 —— 只扫一个目录等于给这条门禁留了一个免检区。
+        Path uiRoot = repositoryRoot().resolve("ui");
+        try (var walk = Files.walk(uiRoot)) {
+            List<Path> sources = walk
+                    .filter(p -> p.toString().endsWith(".java"))
+                    .filter(p -> p.toString().contains("/src/main/java/"))
+                    .filter(p -> !p.getFileName().toString().equals("ConnectionCatalog.java"))
+                    .filter(p -> !p.getFileName().toString().equals("Icons.java"))
+                    .toList();
+            for (Path file : sources) {
+                String source = Files.readString(file);
+                var matcher = java.util.regex.Pattern
+                        .compile("Icons\\.Icon\\.DB_[A-Z]+").matcher(source);
+                if (matcher.find()) {
+                    offenders.add(repositoryRoot().relativize(file) + " → " + matcher.group());
+                }
+            }
+            assertThat(sources).as("扫描没找到任何主源码 —— 这条门禁是空的").isNotEmpty();
+        }
+        assertThat(offenders)
+                .as("厂商图形必须经 ConnectionCatalog.graphic()/forKind().glyph() 取；\n  %s",
+                        String.join("\n  ", offenders))
+                .isEmpty();
+    }
+
     // ─────────────────────────── 工具 ───────────────────────────
 
     private void openWizard(FxRobot robot) {

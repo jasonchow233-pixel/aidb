@@ -134,9 +134,81 @@ class ConnectionsPageTest {
         assertThat(pg.username()).isEqualTo("app");
     }
 
+    /**
+     * ⭐ R54：类型列以前<b>只有文字</b>（p5-connections 实拍确认：那列写着 "SQLITE"，一个图形都没有）。
+     *
+     * <p>这一列是用户挑连接时唯一在扫的一列，而六家里 MySQL / MariaDB 首字母相同、
+     * PostgreSQL / Oracle 都是七个字母以上 —— 只给文字等于让人读字。图形与文字是两条线索，
+     * 都要留着：图形负责「一眼」，文字负责「读得出全名」。
+     */
     @Test
-    void densityChangesTheTableRowHeight(FxRobot robot) {
+    void theTypeColumnCarriesTheVendorsOwnGlyphPerRow(FxRobot robot) {
         TableView<ConnectionProfile> table = robot.lookup("#connections-table")
+                .queryAs(TableView.class);
+        TableColumn<ConnectionProfile, String> kind = kindColumn(table);
+
+        javafx.scene.Node pg = graphicOf(table, kind, table.getItems().get(1));
+        javafx.scene.Node sqlite = graphicOf(table, kind, table.getItems().get(0));
+
+        assertThat(pg).as("PG 那一行必须有图形，不是只有文字").isNotNull();
+        assertThat(sqlite).as("SQLite 那一行同理").isNotNull();
+        assertThat(pg.getStyleClass()).contains("adb-db--postgresql");
+        assertThat(sqlite.getStyleClass()).contains("adb-db--sqlite");
+        assertThat(pg.getStyleClass()).doesNotContain("adb-db--sqlite");
+        // ⭐ 两行必须**不同形**：同形 = 分了个假厂区，界面照样能看，只有这条断言会红。
+        assertThat(shapes(pg)).isNotEqualTo(shapes(sqlite));
+    }
+
+    /** 取该列单元格里那个图形的<b>形状</b>（SVGPath 列表，按绘制层顺序）。 */
+    private static java.util.List<String> shapes(javafx.scene.Node graphic) {
+        if (graphic instanceof javafx.scene.Group group) {
+            return group.getChildren().stream()
+                    .map(node -> node instanceof javafx.scene.shape.SVGPath path
+                            ? path.getContent() : node.getClass().getSimpleName())
+                    .toList();
+        }
+        return java.util.List.of(((javafx.scene.shape.SVGPath) graphic).getContent());
+    }
+
+    private static TableColumn<ConnectionProfile, String> kindColumn(
+            TableView<ConnectionProfile> table) {
+        @SuppressWarnings("unchecked")
+        TableColumn<ConnectionProfile, String> kind = table.getColumns().stream()
+                .filter(column -> "connections-column-kind".equals(column.getId()))
+                .map(column -> (TableColumn<ConnectionProfile, String>) column)
+                .findFirst().orElseThrow();
+        return kind;
+    }
+
+    /**
+     * 取**皮肤渲染出来的**那一格里图形的形状。
+     *
+     * <p>⚠️ 不直接调 {@code cellFactory}：{@code TableCell.setTableRow} 是 private、
+     * {@code updateItem} 是跨包 protected，测试碰不到；更重要的是，只喂工厂不喂皮肤等于
+     * 又回到 R43-a 那个坑 —— 「数据/类在工厂交出来的东西里，皮肤没挂上」这条断言照样绿。
+     * 页面在 {@code @Start} 里已经 show 过，两行都在视口内，这里先证明格子真的渲染出来了。
+     */
+    private static javafx.scene.Node graphicOf(TableView<ConnectionProfile> table,
+            TableColumn<ConnectionProfile, String> column, ConnectionProfile profile) {
+        javafx.scene.Node[] holder = new javafx.scene.Node[1];
+        WaitForAsyncUtils.waitForAsyncFx(5_000, () -> {
+            for (javafx.scene.Node node : table.lookupAll(".table-cell")) {
+                if (!(node instanceof TableCell<?, ?> cell)
+                        || cell.getTableColumn() != column
+                        || !(cell.getTableRow() instanceof javafx.scene.control.TableRow<?> row)
+                        || row.getItem() != profile) {
+                    continue;
+                }
+                holder[0] = cell.getGraphic();
+                return;
+            }
+            org.assertj.core.api.Assertions.fail("%s 那一格没渲染出来 —— 断言是空的", profile.name());
+        });
+        return holder[0];
+    }
+
+    @Test
+    void densityChangesTheTableRowHeight(FxRobot robot) {        TableView<ConnectionProfile> table = robot.lookup("#connections-table")
                 .queryAs(TableView.class);
         int before = (int) table.getFixedCellSize();
         page.setDensity("compact");

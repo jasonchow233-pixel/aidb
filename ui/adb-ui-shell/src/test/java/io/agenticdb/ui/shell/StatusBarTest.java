@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.ui.AppVersion;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Tokens;
@@ -85,7 +86,7 @@ class StatusBarTest {
         onFx(() -> {
             // 连接灯只在查询页 / 对象页挂载（N25 数据页不显示连接）。
             bar.setMode(StatusBar.Mode.QUERY);
-            bar.setDialect("SQLite");
+            bar.setDialect("SQLite", DialectKind.SQLITE);
             bar.setConnection("agenticdb-demo");
             bar.setServerInfo("3.45.1", "jason");
         });
@@ -106,7 +107,7 @@ class StatusBarTest {
                 .as("连上后灯必须是「亮」态 —— 常绿和常灰一样，都是在骗人")
                 .contains("adb-status__source", "adb-status__source--live");
 
-        onFx(() -> bar.setDialect("—"));
+        onFx(() -> bar.setDialect("—", null));
         assertThat(bar.sourceText())
                 .as("断开后方言位是「—」，连接名跟着语境走，不留旧值")
                 .startsWith("—");
@@ -119,6 +120,44 @@ class StatusBarTest {
                 .as("断开后修饰类要收掉（源类不能一起掉，胶囊的底和边距挂在它上面）")
                 .doesNotContain("adb-status__source--live")
                 .contains("adb-status__source");
+    }
+
+    /**
+     * ⭐ R54：这一行是界面里唯一常驻回答「我在哪家库」的地方 —— 以前它<b>只有文字</b>，
+     * 扫一眼分不清是 MySQL 还是 PostgreSQL。图形位改成「那家的图形 + 灯」，
+     * 灯不能被图形吃掉（它说的是连着没有，是另一件事）。
+     */
+    @Test
+    void theSourceShowsTheVendorGlyphBesideTheLight() throws Exception {
+        StatusBar bar = new StatusBar();
+        onFx(() -> {
+            bar.setMode(StatusBar.Mode.QUERY);
+            bar.setDialect("PostgreSQL", DialectKind.POSTGRESQL);
+            bar.setConnection("analytics");
+        });
+
+        javafx.scene.Node mark = ((Label) bar.lookup(".adb-status__source")).getGraphic();
+        assertThat(mark).as("认得出方言时图形位是「图形 + 灯」两层，不是只剩灯")
+                .isInstanceOf(HBox.class);
+        assertThat(((HBox) mark).getChildren()).as("厂商图形在前、灯在后").hasSize(2);
+        assertThat(((HBox) mark).getChildren().get(0).getStyleClass())
+                .as("品牌色那条后代规则要作用在图形<b>自己</b>的容器上 —— 类漏挂就是空转（同 VendorGlyphTest）")
+                .contains("adb-db--postgresql");
+        // ⚠️ 不能用 bar.lookup(".adb-status__light")：Label 的 graphic 不在 children 里，
+        //    lookup 走不到那一层 —— 那样断的是「不存在的东西」，永远绿。
+        assertThat(((HBox) mark).getChildren().get(1).getStyleClass())
+                .as("连接灯不能被厂商图形替掉：灰/绿说的是「连着没」，图形说的是「哪家」")
+                .contains("adb-status__light");
+
+        // 临时会话 / 旧档案认不出方言时不许编造一家 —— 退回只剩灯。
+        onFx(() -> bar.setDialect("—", null));
+        javafx.scene.Node fallback = ((Label) bar.lookup(".adb-status__source")).getGraphic();
+        assertThat(fallback)
+                .as("不知道是哪家就不能顶某家的图形")
+                .isNotInstanceOf(HBox.class);
+        assertThat(fallback.getStyleClass())
+                .as("退回的是那颗灯本身，不是空位")
+                .contains("adb-status__light");
     }
 
     /** ⭐ U8：没有选中就整段不占位 ——「未选择」这三个字对谁都没有信息量。 */

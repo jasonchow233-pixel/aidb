@@ -284,6 +284,40 @@ class ConnectionWizardTest {
                 .containsExactly("AIDB", DialectKind.POSTGRESQL.displayName());
     }
 
+    /**
+     * ⭐ R54：示意图右边那颗一直是通用圆柱 —— 这一格整块在说「你要连哪家」，
+     * 图形却只说「这是个数据库」。换成那一家自己的图形（与磁贴、树、状态栏同一行登记），
+     * 并且**跟着选中的类型换**：停在上一家的图形比没有图形更糟，那是一条会说谎的信息。
+     */
+    @Test
+    void theDiagramWearsTheSelectedEngine(FxRobot robot) {
+        open(robot, null);
+        goToProperties(robot, DialectKind.POSTGRESQL);
+        assertThat(databaseIconClasses(robot)).contains("adb-db--postgresql");
+
+        click(robot, "wizard-back");
+        click(robot, "wizard-tile-SQLITE");
+        click(robot, "wizard-next");
+        java.util.List<String> after = databaseIconClasses(robot);
+        assertThat(after)
+                .as("换类型后图形必须跟着换")
+                .contains("adb-db--sqlite");
+        assertThat(after).doesNotContain("adb-db--postgresql");
+    }
+
+    /** 示意图右侧（Database 那一头）那颗图形的类名。 */
+    private java.util.List<String> databaseIconClasses(FxRobot robot) {
+        javafx.scene.Node diagram = robot.lookup("#wizard-general").query()
+                .lookup(".adb-wizard__diagram");
+        assertThat(diagram).as("常规页示意图").isNotNull();
+        javafx.scene.layout.VBox database = (javafx.scene.layout.VBox)
+                ((javafx.scene.layout.HBox) diagram).getChildren().getLast();
+        javafx.scene.Node icon = ((javafx.scene.control.Label) database.getChildren().get(0))
+                .getGraphic();
+        assertThat(icon).as("示意图右侧的图形 —— 只剩文字就没有「一眼」那条线索了").isNotNull();
+        return java.util.List.copyOf(icon.getStyleClass());
+    }
+
     /** N27：Navicat 17 的这对页面是 900×700 —— 720 宽装不下 5 列磁贴。 */
     @Test
     void wizardOpensAtTheNavicatSize(FxRobot robot) {
