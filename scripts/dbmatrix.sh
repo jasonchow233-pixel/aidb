@@ -615,6 +615,8 @@ tls_up() {
     esac
   done
 
+  mysql_tls_warm_cache
+
   # 证书到底配没配上，先在这里问一次**服务器侧的配置**。
   # ⚠️ 这里不能问「当前会话加没加密」（`SHOW STATUS LIKE 'Ssl_cipher'` /
   # `pg_stat_ssl.ssl`）：那条查询走的是容器内的 CLI 连接 —— mysql 客户端拿的是 socket、
@@ -641,9 +643,30 @@ tls_status() {
   done
 }
 
+# 把 MySQL TLS 对端的「按账号验证缓存」焐热一次：从容器内用 TCP+TLS 登一遍 root@%。
+#
+# 为什么要这一步：MySQL 8 默认认证插件是 caching_sha2_password，服务器侧有一份内存缓存，
+# 缓存空 + **明文**首登 = 驱动得向服务器索要 RSA 公钥，而 Connector/J 默认不给
+# （`allowPublicKeyRetrieval=false`）→ 报「Public Key Retrieval is not allowed」。
+# 容器一重启（连 Docker Desktop 自己重启）缓存就空，于是契约①
+# 「界面写『不加密』→ 会话真是明文」根本连不上，量不到它要量的东西。
+# 焐热用一次 TLS 登录：认证成功即写入缓存，之后明文走「快速通道」，不再要公钥。
+#
+# ⚠️ 焐的是测试环境，不是把缺陷盖住：真实用户第一次连 MySQL 8 又选了「不加密」，
+# 撞的就是这句话。那条账记在 GAP-TODOLIST 的 D-42，别在这里绕过去就当它不存在。
+# MariaDB 不需要（默认 mysql_native_password）、PG 也不需要（scram 没有这层缓存）。
+mysql_tls_warm_cache() {
+  $DOCKER_BIN exec adb-mysql-tls sh -c \
+    'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -h127.0.0.1 -P3306 --ssl-mode=REQUIRED -e "SELECT 1"' \
+    >/dev/null 2>&1 \
+    || die "焐 MySQL TLS 对端的验证缓存失败 —— 契约① 会报「Public Key Retrieval is not allowed」（见 D-42）"
+  log "MySQL TLS 对端的验证缓存已焐热（明文首登不再索要 RSA 公钥）"
+}
+
 tls_run_matrix() {
   load_env
   export JAVA_HOME="${JAVA_HOME:-/Users/jason/.jdks/jdk-25.0.4.1+1/Contents/Home}"
+  mysql_tls_warm_cache
   log "跑 TLS 契约矩阵（3 家加密对端 × TLS 档位）"
   ./mvnw -B -pl workbench/adb-jdbc test -Dtest=ExternalTlsDatabaseTest
 }

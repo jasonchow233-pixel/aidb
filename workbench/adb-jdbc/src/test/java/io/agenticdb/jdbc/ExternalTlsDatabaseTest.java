@@ -149,6 +149,11 @@ class ExternalTlsDatabaseTest {
 
     /** ① 界面写「不加密」，会话就必须是明文。 */
     private static void offMeansPlaintext(ExternalTlsDatabase target) throws Exception {
+        // MySQL 8 侧的前置条件：这台对端的账号验证缓存必须是热的，跑 scripts/dbmatrix.sh
+        // tls-up / tls-run 会焐。缓存冷着时这条根本连不上 —— caching_sha2 在明文首登要
+        // 向服务器取 RSA 公钥，而驱动默认不让取（"Public Key Retrieval is not allowed"）。
+        // 那是真实用户会撞的一堵墙，记在 D-42；本条测的是「不加密」的参数映射，
+        // 所以焐环境、不改断言：把参数换成 allowPublicKeyRetrieval 就等于替产品把这条路粉饰掉。
         try (JdbcSession session = JdbcSession.open(target.spec(Dialect.SslLevel.OFF, Map.of()))) {
             assertThat(sessionCipher(session, target.kind()))
                     .as("「不加密」必须真的不加密：驱动默认是「能加密就加密」，"
