@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.editing.EditBuffer;
 import io.agenticdb.editing.EditSqlBuilder;
+import io.agenticdb.editing.EditValues;
 import io.agenticdb.editing.RowIdentity;
 import io.agenticdb.introspect.DataQuery;
 import io.agenticdb.introspect.DataSqlBuilder;
@@ -2023,7 +2024,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
         MenuItem setEmpty = new MenuItem(I18n.t("grid.batch.setEmpty"));
         setEmpty.setId("data-batch-empty");
-        setEmpty.setDisable(!editable || focused == null || !textual(focused.type()) || pkColumn);
+        setEmpty.setDisable(!editable || focused == null || !focused.type().textual() || pkColumn);
         setEmpty.setOnAction(event -> setFocusedColumnValue(""));
 
         MenuItem delete = new MenuItem(I18n.t("grid.batch.delete"));
@@ -4574,7 +4575,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             feedback.status(I18n.t("grid.batch.notNull", definition.name()));
             return;
         }
-        if ("".equals(next) && !textual(definition.type())) {
+        if ("".equals(next) && !definition.type().textual()) {
             feedback.status(I18n.t("grid.batch.notText", definition.name()));
             return;
         }
@@ -4999,7 +5000,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 String columnName = column.getUserData() instanceof String name ? name : null;
                 ColumnDef definition = columnName == null ? null : columnDef(columnName);
                 if (definition == null || definition.primaryKey()
-                        || !textual(definition.type())) {
+                        || !definition.type().textual()) {
                     skipped++;
                     continue;
                 }
@@ -5063,7 +5064,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             feedback.status(I18n.t("grid.find.pkSkipped", columnName));
             return false;
         }
-        if (!textual(definition.type())) {
+        if (!definition.type().textual()) {
             feedback.status(I18n.t("grid.find.notTextSkipped", columnName));
             return false;
         }
@@ -5839,16 +5840,18 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         return String.valueOf(value);
     }
 
-    private static Object parseCellValue(ColumnDef definition, String text) {
-        if (text.isEmpty() && !textual(definition.type())) {
-            return null;
+    /**
+     * 把编辑器里的文本翻译成要绑进 SQL 的值。
+     *
+     * <p>「这一格被清空了」交给 {@link EditValues#emptiedCell} —— 规则不在界面这边，
+     * 真库契约走的是同一个方法，界面单方面改掉它时契约跟着红（R53）。
+     * 包级可见与 {@link #editorText(Object)} 同因：给门禁直接量这一层。
+     */
+    static Object parseCellValue(ColumnDef definition, String text) {
+        if (text.isEmpty()) {
+            return EditValues.emptiedCell(definition);
         }
         return CellValueParser.parse(definition, text);
-    }
-
-    private static boolean textual(ColumnType type) {
-        return type == ColumnType.TEXT || type == ColumnType.JSON
-                || type == ColumnType.UUID || type == ColumnType.OTHER;
     }
 
     private void applyValueFilter(ColumnDef definition, Object value, boolean exclude) {
@@ -5930,7 +5933,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private boolean canEditTextCell(ColumnDef definition) {
         return definition != null && tableSchema != null && tableSchema.editable()
                 && !loading && !saving && !definition.primaryKey()
-                && textual(definition.type());
+                && definition.type().textual();
     }
 
     /** 应用抽屉编辑器的文本：和单元格内联编辑写进同一个编辑缓冲。 */
@@ -6282,7 +6285,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             setNull.setOnAction(event -> setRowValue(row, definition, null));
 
             MenuItem setEmpty = new MenuItem(I18n.t("grid.cell.setEmpty"));
-            setEmpty.setDisable(!cellEditable || deleted || !textual(definition.type()));
+            setEmpty.setDisable(!cellEditable || deleted || !definition.type().textual());
             setEmpty.setOnAction(event -> setRowValue(row, definition, ""));
 
             MenuItem filter = new MenuItem(I18n.t("grid.cell.filterThis"));
