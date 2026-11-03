@@ -136,8 +136,12 @@ public final class SshTunnel implements AutoCloseable {
                         + keyFile + "): " + e.getMessage(), false, e);
             }
             if (loaded == 0) {
+                // MINA 不带 eddsa 依赖时，对 OpenSSH 的 ed25519 私钥是「读得出文件、交出 0 把密钥」，
+                // 一句「没有可用密钥」不说清格式，用户只会以为文件坏了。
                 throw new SshTunnelException("SSH private key holds no usable key pair: "
-                        + keyFile, false);
+                        + keyFile + " - supported key types are RSA and ECDSA (OpenSSH or PEM format);"
+                        + " ed25519 is not supported by the bundled SSH library, so generate an"
+                        + " RSA key for this bastion", false);
             }
         }
         if (endpoint.password() != null) {

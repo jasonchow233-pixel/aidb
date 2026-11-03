@@ -981,6 +981,14 @@ public final class ConnectionWizard {
             browse.setOnAction(event -> choosePrivateKey());
             sshAuthGrid.add(browse, 2, 0);
             sshAuthGrid.addRow(1, new Label(I18n.t("wizard.ssh.passphrase")), sshKeyPassphrase);
+            // 引擎只吃 RSA / ECDSA（MINA 没带 eddsa 依赖），提示词却很容易让人填 id_ed25519，
+            // 所以把「支持哪些格式」写在字段旁边，而不是等连接失败再猜。
+            Label keyFormats = new Label(I18n.t("wizard.ssh.key.formats"));
+            keyFormats.setId("wizard-ssh-key-formats");
+            keyFormats.getStyleClass().add("adb-muted");
+            keyFormats.setWrapText(true);
+            keyFormats.setMaxWidth(550);
+            sshAuthGrid.add(keyFormats, 0, 2, 3, 1);
         } else {
             sshAuthGrid.addRow(0, new Label(I18n.t("wizard.ssh.password")), sshPassword);
         }

@@ -614,6 +614,9 @@ class ConnectionWizardTest {
         assertThat(ssh.getContent().lookup("#wizard-ssh-key-path")).isNotNull();
         assertThat(ssh.getContent().lookup("#wizard-ssh-key-passphrase")).isNotNull();
         assertThat(ssh.getContent().lookup("#wizard-ssh-key-browse")).isNotNull();
+        assertThat(ssh.getContent().lookup("#wizard-ssh-key-formats"))
+                .as("私钥格式的限制要跟着字段一起在场，不能等连接失败才让人猜")
+                .isNotNull();
         assertThat(ssh.getContent().lookup("#wizard-ssh-password"))
                 .as("私钥认证时口令框不在场，界面上就不存在「填了却没生效」的第二个秘密")
                 .isNull();
@@ -629,6 +632,37 @@ class ConnectionWizardTest {
                 .as("切到私钥认证后，先前敲进口令框的内容不该跟出去")
                 .isNull();
         assertThat(secrets.keyPassphrase()).isEqualTo("key-pass");
+    }
+
+    /**
+     * D-41：私钥那一格能吃哪些格式，两边话术要同时说清 —— 引擎（MINA sshd，不带 eddsa 依赖）
+     * 对 OpenSSH 的 ed25519 私钥是「文件读得出、交出 0 把密钥」，提示词里写 {@code id_ed25519}
+     * 等于邀请用户撞一次失败。所以两处一起钉：提示词不许再出现 ed25519，
+     * 格式说明必须正面写出「支持 RSA / ECDSA」并把「不支持 ed25519」说出口。
+     */
+    @Test
+    void sshKeyFieldNamesTheFormatsItActuallyLoads() {
+        try {
+            I18n.setLocale(java.util.Locale.ENGLISH);
+            assertThat(I18n.t("wizard.ssh.key.prompt"))
+                    .as("提示词不能指向一把引擎读不出的密钥")
+                    .doesNotContainIgnoringCase("ed25519");
+            assertThat(I18n.t("wizard.ssh.key.formats"))
+                    .contains("RSA")
+                    .contains("ECDSA")
+                    .contains("ed25519")
+                    .contains("not supported");
+
+            I18n.setLocale(java.util.Locale.SIMPLIFIED_CHINESE);
+            assertThat(I18n.t("wizard.ssh.key.prompt")).doesNotContainIgnoringCase("ed25519");
+            assertThat(I18n.t("wizard.ssh.key.formats"))
+                    .contains("RSA")
+                    .contains("ECDSA")
+                    .contains("ed25519")
+                    .contains("不支持");
+        } finally {
+            I18n.setLocale(I18n.DEFAULT_LOCALE);
+        }
     }
 
     /**

@@ -27,6 +27,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * ⭐ G5a：SSH 隧道的<b>进程内</b>门禁。
@@ -260,6 +261,33 @@ class SshTunnelTest {
                 assertThat(in.readLine()).isEqualTo("echo:ping");
             }
         }
+    }
+
+    /**
+     * 提示词写「id_ed25519」也救不了这一把：MINA 没有 eddsa 那个依赖时，
+     * {@code loadKeys} 对 OpenSSH 的 ed25519 私钥是<b>安静地返回 0 把</b>。
+     * 所以这句报错必须自己把「支持哪些格式」说完，否则用户只看到「没有可用密钥」，
+     * 会去怀疑文件权限而不是密钥类型。
+     */
+    @Test
+    void ed25519KeyNamesTheFormatsTheEngineActuallyLoads() throws Exception {
+        Path keygen = Path.of("/usr/bin/ssh-keygen");
+        assumeTrue(Files.isExecutable(keygen),
+                "这台机器没有 /usr/bin/ssh-keygen —— 造不出真 ed25519 私钥，跳过，不算验过");
+        Path keyFile = tempDir.resolve("id_ed25519");
+        Process process = new ProcessBuilder(keygen.toString(), "-t", "ed25519", "-N", "",
+                "-q", "-f", keyFile.toString()).redirectErrorStream(true).start();
+        assumeTrue(process.waitFor() == 0, "ssh-keygen 没造出密钥 —— 跳过，不算验过");
+
+        bastion = startBastion("bastion_ed.key");
+        assertThatThrownBy(() -> SshTunnel.open(new SshEndpoint("127.0.0.1", bastion.getPort(),
+                USER, "", keyFile.toString(), null, true), "127.0.0.1", 1))
+                .isInstanceOf(SshTunnelException.class)
+                .satisfies(error -> assertThat(String.valueOf(error.getMessage()))
+                        .as("报错要点名能用的格式，而不是只说「读不出密钥」")
+                        .contains("ed25519")
+                        .contains("RSA")
+                        .contains("ECDSA"));
     }
 
     @Test

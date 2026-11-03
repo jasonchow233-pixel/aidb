@@ -33,7 +33,10 @@ JavaFX 内置 `TableView` 底层是 `VirtualFlow`，只创建可见行的 Node�
 Windows 上不保证有 `ssh`，而「连不上」不该由外部可执行文件的存在与否决定；子进程的生命周期
 （什么时候该被杀掉）也不归我们。附带的好处是可测：`sshd-core` 里客户端与服务端同包，
 契约能在本机进程内起一把真 sshd，于是「字节确实穿过了一条隧道」不需要第二台机器也能量得出来
-（`SshTunnelTest` 8 条 + 契约第 13 条 `SshTunnelMatrixTest`，五家 Docker 各经跳板机连一次）。
+（`SshTunnelTest` 9 条 + 契约第 13 条 `SshTunnelMatrixTest`，五家 Docker 各经跳板机连一次）。
+
+**已知边界：私钥只吃 RSA / ECDSA，不吃 ed25519。** MINA 解析 OpenSSH 格式的 ed25519 私钥要依赖 `net.i2p.crypto:eddsa`，而这个坐标在本工程的仓库里取不到（`dependency:get` 直接找不到构件），所以没加。实测行为是 `loadKeys` **安静地返回 0 把**（不抛异常）——「读得出文件、给不出密钥」。
+处理方式不是在背后偷偷换算法，而是两处点名 + 一条门禁：向导里 `wizard.ssh.key.formats` 写明支持的格式、提示词不再指向 `id_ed25519`；`SshTunnel` 那句报错写明「ed25519 不支持，请为这台跳板机另生成 RSA 密钥」；`SshTunnelTest#ed25519KeyNamesTheFormatsTheEngineActuallyLoads` 用系统 `ssh-keygen` 现场造一把真 ed25519 私钥钉住这句话（没有 `ssh-keygen` 的机器算跳过，不算验过）。
 
 ### 1.3 数据库与测试
 
