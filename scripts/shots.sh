@@ -316,6 +316,12 @@ png_dims() {
   # （不能写成 `env A=1 run_with_timeout ...` —— env 只认可执行文件，
   #   认不出 shell 函数。）
   (
+    # ⭐ 连**连接档案清单**一起重置，不只是环境变量。踩到的形状：ADB_CONNECTIONS_FILE
+    #   是一个固定的临时路径，上一轮真库帧在里面留下的四行 matrix 档案会漏进之后每一张图 ——
+    #   本轮重拍 p3-query 时左树多出 matrix Oracle / SQL Server / PostgreSQL / MySQL 四行，
+    #   而同一套帧里的 p0-shell 没有。**同一套帧出现两种树，帧就不能再当验收证据。**
+    #   （档案本身不带口令：真库口令只从 ADB_TEST_* 读、只活在进程里。）
+    rm -f "$ADB_CONNECTIONS_FILE"
     export $envvars
     export ADB_SHOTS="$SHOTS_DIR"
     export ADB_SHOTS_NAME="$name"
