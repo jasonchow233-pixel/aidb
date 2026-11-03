@@ -26,7 +26,8 @@ public record ConnectionProfile(
         boolean favorite,
         long lastUsedAt,
         String group,
-        Map<String, String> options) {
+        Map<String, String> options,
+        SshConfig ssh) {
 
     public ConnectionProfile {
         id = id == null || id.isBlank() ? UUID.randomUUID().toString() : id.trim();
@@ -38,6 +39,24 @@ public record ConnectionProfile(
         // ⭐ P5-1：空串 = 未分组。分组是展示层元数据，不参与连接参数。
         group = group == null ? "" : group.trim();
         options = options == null ? Map.of() : Map.copyOf(options);
+        // ⭐ G5a：null = 不走隧道。这样旧档案（JSON 里没有 ssh 字段，Jackson 给 null）
+        //    和新档案（明确 NONE）是同一件事，不用迁移。
+        ssh = ssh == null ? SshConfig.NONE : ssh;
+    }
+
+    /**
+     * ⭐ G5a：没有 SSH 跳板机时的老写法。
+     *
+     * <p>留着它而不是改所有调用点：加了组件就逼所有构造点跟着改，
+     * 那种改动会淹没「这一份到底走不走隧道」这个真正要看的差异。
+     * ⚠ 类内那些 {@code withXxx} 复制方法<b>不用</b>它 —— 复制必须带上 ssh，
+     * 否则「切库把跳板机切没了」这类账会在运行时才冒出来。
+     */
+    public ConnectionProfile(String id, String name, DialectKind kind, String host, int port,
+                             String database, String username, boolean favorite, long lastUsedAt,
+                             String group, Map<String, String> options) {
+        this(id, name, kind, host, port, database, username, favorite, lastUsedAt, group,
+                options, SshConfig.NONE);
     }
 
     public static ConnectionProfile newProfile(String name, DialectKind kind, String host,
@@ -72,7 +91,7 @@ public record ConnectionProfile(
     public ConnectionProfile catalogVariant(String catalog) {
         return new ConnectionProfile(catalogVariantId(id, catalog),
                 name + " · " + catalog, kind, host, port, catalog, username,
-                favorite, lastUsedAt, group, options);
+                favorite, lastUsedAt, group, options, ssh);
     }
 
     public static String catalogVariantId(String parentId, String catalog) {
@@ -101,29 +120,55 @@ public record ConnectionProfile(
 
     public ConnectionProfile withFavorite(boolean value) {
         return new ConnectionProfile(id, name, kind, host, port, database, username, value,
-                lastUsedAt, group, options);
+                lastUsedAt, group, options, ssh);
     }
 
     public ConnectionProfile withLastUsed(long value) {
         return new ConnectionProfile(id, name, kind, host, port, database, username, favorite,
-                value, group, options);
+                value, group, options, ssh);
     }
 
     public ConnectionProfile withName(String value) {
         return new ConnectionProfile(id, value, kind, host, port, database, username, favorite,
-                lastUsedAt, group, options);
+                lastUsedAt, group, options, ssh);
     }
 
     /** ⭐ P5-1：移到某个分组；空串 = 移出分组。连接 id / 会话都不变。 */
     public ConnectionProfile withGroup(String value) {
         return new ConnectionProfile(id, name, kind, host, port, database, username, favorite,
-                lastUsedAt, value, options);
+                lastUsedAt, value, options, ssh);
     }
 
     public ConnectionSpec spec(String password) {
+        return spec(password, SshSecrets.NONE);
+    }
+
+    /**
+     * ⭐ G5a：SSH 的秘密从这个参数拼回来，<b>不</b>从档案字段读。
+     *
+     * <p>{@link #spec(String)} 那条老路给的是 {@link SshSecrets#NONE}：档案里配了跳板机
+     * 却走那条路时，隧道会直接报「缺少凭据（私钥或口令至少一样）」而不是悄悄绕过隧道 ——
+     * 「配了隧道结果直连」是会比报错更难查的事。
+     */
+    public ConnectionSpec spec(String password, SshSecrets sshSecrets) {
         return new ConnectionSpec(kind, host, port, database, username,
                 password == null || password.isBlank() ? null : password,
-                sanitizedOptions(options));
+                sanitizedOptions(options), ssh.endpoint(sshSecrets));
+    }
+
+    /** 这条档案要不要走 SSH 隧道（界面提示与契约都用它问，别看 ssh 字段本身）。 */
+    public boolean usesSshTunnel() {
+        return ssh.enabled();
+    }
+
+    /** ⭐ G5a：换/清跳板机配置。秘密不在这里，见 {@link SshConfig}。 */
+    public ConnectionProfile withSsh(SshConfig value) {
+        return new ConnectionProfile(id, name, kind, host, port, database, username, favorite,
+                lastUsedAt, group, options, value == null ? SshConfig.NONE : value);
+    }
+
+    public SshConfig ssh() {
+        return ssh;
     }
 
     /**
@@ -197,13 +242,13 @@ public record ConnectionProfile(
 
     public ConnectionProfile withPasswordlessOptions(Map<String, String> value) {
         return new ConnectionProfile(id, name, kind, host, port, database, username, favorite,
-                lastUsedAt, group, value == null ? Map.of() : value);
+                lastUsedAt, group, value == null ? Map.of() : value, ssh);
     }
 
     /** 用于重复连接：新 id、新名称、不带使用记录；留在同一分组。 */
     public ConnectionProfile duplicate() {
         return new ConnectionProfile(UUID.randomUUID().toString(), name + " 副本", kind, host,
-                port, database, username, false, 0, group, options);
+                port, database, username, false, 0, group, options, ssh);
     }
 
     @Override

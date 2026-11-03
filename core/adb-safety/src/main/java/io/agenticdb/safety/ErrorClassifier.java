@@ -59,6 +59,23 @@ public final class ErrorClassifier {
          * 而真正要做的是把 CA 交给驱动、或者把主机名填成证书里写的那个。
          */
         TLS_VERIFICATION_FAILED,
+        /**
+         * ⭐ G5a：SSH <b>隧道自己</b>没起来（跳板机连不上 / 认证失败 / 端口没开出）。
+         *
+         * <p>不能归进 {@link #CONNECTION_LOST}：那句话的建议是「检查网络与数据库进程」，
+         * 而真正要查的是跳板机地址、SSH 用户名与密钥。分层错了，人就查错一层
+         * ——D-32（证书失败被归成网络断）、D-34（连不上被归成超时）都是同一笔账。
+         */
+        SSH_TUNNEL_FAILED,
+        /**
+         * ⭐ G5a：隧道卡在<b>主机密钥</b>上 —— 跳板机的密钥没见过（且未开首次记录）
+         * 或<b>和记过的不一致</b>。
+         *
+         * <p>单独一类是因为要说的话不一样：后者得先确认「是运维换了密钥」还是「有人在中间」，
+         * 而不是改个端口再试一次。合并进 {@link #SSH_TUNNEL_FAILED} 就等于把安全信号
+         * 降格成配置错误。
+         */
+        SSH_HOST_KEY_UNTRUSTED,
         /** 其它。 */
         OTHER
     }
@@ -93,6 +110,16 @@ public final class ErrorClassifier {
     public static Diagnosis classify(Throwable error) {
         if (error == null) {
             return new Diagnosis(Kind.OTHER, "error.summary.unknown", "", "");
+        }
+        // ⭐ G5a：按<b>类型</b>判，且排在所有文本探针<b>之前</b>。
+        //    隧道的报错文案是中文、随界面语言变，塞进 contains 探针等于再埋一颗
+        //    「换语言就失效」的雷（R47-a 那条「文案类门禁必须双语各钉一次」同源）。
+        if (error instanceof SshTunnelException ssh) {
+            return ssh.untrustedHostKey()
+                    ? new Diagnosis(Kind.SSH_HOST_KEY_UNTRUSTED, "error.summary.sshHostKey",
+                            "error.advice.sshHostKey", detail(error))
+                    : new Diagnosis(Kind.SSH_TUNNEL_FAILED, "error.summary.sshTunnel",
+                            "error.advice.sshTunnel", detail(error));
         }
         if (error instanceof SQLTimeoutException) {
             return new Diagnosis(Kind.TIMEOUT, "error.summary.queryTimeout",

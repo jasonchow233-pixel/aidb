@@ -332,4 +332,81 @@ class ErrorClassifierTest {
         }
         return (SQLException) cause;
     }
+
+    /**
+     * ⭐ G5a：隧道自己的失败按<b>类型</b>归，不按文案猜。
+     *
+     * <p>这条断言的形状和 D-32 相反：那一支是因为「驱动把证书包在连接失败里」才必须
+     * 探文案；{@code SshTunnelException} 是我们自己抛的，类型就在手上，再探文案等于
+     * 把一句英文原文当契约 —— 改一个标点都会让分类漂移，而那没人会想起来测。
+     */
+    @Test
+    void sshTunnelFailureIsItsOwnKindNotConnectionLost() {
+        ErrorClassifier.Diagnosis diagnosis = ErrorClassifier.classify(
+                new SshTunnelException("SSH authentication failed: tunnel@bastion:22", false));
+
+        assertThat(diagnosis.kind()).isEqualTo(ErrorClassifier.Kind.SSH_TUNNEL_FAILED);
+        assertThat(diagnosis.summaryKey()).isEqualTo("error.summary.sshTunnel");
+        assertThat(diagnosis.adviceKey()).isEqualTo("error.advice.sshTunnel");
+    }
+
+    /** 主机密钥没记过 / 变了：另一类，建议动作完全不同。 */
+    @Test
+    void untrustedHostKeyIsItsOwnKind() {
+        ErrorClassifier.Diagnosis diagnosis = ErrorClassifier.classify(new SshTunnelException(
+                "SSH tunnel failed (tunnel@bastion:22): the bastion host key does not match "
+                        + "the one recorded in known_hosts", true));
+
+        assertThat(diagnosis.kind()).isEqualTo(ErrorClassifier.Kind.SSH_HOST_KEY_UNTRUSTED);
+        assertThat(diagnosis.summaryKey()).isEqualTo("error.summary.sshHostKey");
+        assertThat(diagnosis.adviceKey())
+                .as("建议里不许写「重新信任」，要写「先确认密钥真的换过」")
+                .isEqualTo("error.advice.sshHostKey");
+    }
+
+    /**
+     * 类型判定必须<b>早于</b>所有文案探针：MINA 与驱动会把隧道失败裹成
+     * {@code Communications link failure} —— 先探文案就永远归成「连接断了」，
+     * 建议把人支去查网络，而真正要查的是跳板机口令。
+     */
+    @Test
+    void sshTypeWinsOverTheCommunicationsTextProbe() {
+        SQLException wrapped = chain("Communications link failure", "驱动包装一层");
+        SshTunnelException outer = new SshTunnelException(
+                "SSH tunnel failed (tunnel@bastion:22)", false, wrapped);
+
+        assertThat(ErrorClassifier.classify(outer).kind())
+                .as("外层是隧道异常：即使里面写着 communications link failure")
+                .isEqualTo(ErrorClassifier.Kind.SSH_TUNNEL_FAILED);
+    }
+
+    /** 每一条类别都要有「一句说明」和（除兜底外）一个建议键 —— 漏一条就是界面掉字。 */
+    @Test
+    void everyKindCarriesARenderableKeyPair() {
+        for (ErrorClassifier.Kind kind : ErrorClassifier.Kind.values()) {
+            ErrorClassifier.Diagnosis diagnosis = ErrorClassifier.classify(
+                    sampleOf(kind));
+            assertThat(diagnosis.kind()).as("样本要真归到 " + kind).isEqualTo(kind);
+            assertThat(diagnosis.summaryKey()).as(kind + " 缺一句说明的键").isNotBlank();
+        }
+    }
+
+    /** 每类挑一条<b>实测过</b>的原文当样本（新加的类必须有真异常，不接受编的句子）。 */
+    private static Throwable sampleOf(ErrorClassifier.Kind kind) {
+        return switch (kind) {
+            case CONNECTION_LOST -> chain("Communications link failure");
+            case PERMISSION_DENIED -> chain("Access denied for user 'app'@'10.0.0.7'");
+            case NOT_FOUND -> chain("Table 'shop.orders' doesn't exist");
+            case TIMEOUT -> new java.sql.SQLTimeoutException("查询超时", "HY000", 30);
+            case LOCK_CONFLICT -> chain("Lock wait timeout exceeded; try restarting transaction");
+            case CONSTRAINT_VIOLATION -> chain("Duplicate entry '7' for key 'PRIMARY'");
+            case SYNTAX -> chain("You have an error in your SQL syntax near 'SELEC'");
+            case TLS_VERIFICATION_FAILED -> chain(
+                    "Path does not chain with any of the trust anchors");
+            case SSH_TUNNEL_FAILED -> new SshTunnelException("SSH authentication failed", false);
+            case SSH_HOST_KEY_UNTRUSTED -> new SshTunnelException(
+                    "the bastion host key does not match", true);
+            case OTHER -> chain("某个没见过的怪错误");
+        };
+    }
 }

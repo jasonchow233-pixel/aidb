@@ -81,9 +81,39 @@ public final class ConnectionStore {
             return;
         }
         credentials.delete(profile.id());
+        // ⭐ G5a：删连接要把 SSH 那两条秘密一起删。
+        //    漏了它们不会报错，只会在钥匙串里留一堆「没有主人的口令」——
+        //    而下一条恰好复用同一个 id 的连接（用户重名导入）会直接捡到旧秘密。
+        credentials.delete(SshConfig.sshPasswordKey(profile.id()));
+        credentials.delete(SshConfig.sshKeyPassphraseKey(profile.id()));
         List<ConnectionProfile> profiles = new ArrayList<>(load());
         profiles.removeIf(existing -> existing.id().equals(profile.id()));
         write(sort(profiles));
+    }
+
+    /**
+     * ⭐ G5a：存 SSH 跳板机的秘密（登录口令 / 私钥口令短语）。
+     *
+     * <p>两个值按 {@link SshConfig} 的两个独立条目存放；传空 = 删除该条目，
+     * 和 {@link CredentialStore#save} 对数据库口令的口径一致。
+     */
+    public void saveSshSecrets(String profileId, SshSecrets secrets) {
+        if (profileId == null || profileId.isBlank()) {
+            return;
+        }
+        SshSecrets value = secrets == null ? SshSecrets.NONE : secrets;
+        credentials.save(SshConfig.sshPasswordKey(profileId), value.password());
+        credentials.save(SshConfig.sshKeyPassphraseKey(profileId), value.keyPassphrase());
+    }
+
+    /** 读回 SSH 秘密；凭据库不可用（内存实现重启即失）时回 {@link SshSecrets#NONE}。 */
+    public SshSecrets sshSecrets(String profileId) {
+        if (profileId == null || profileId.isBlank()) {
+            return SshSecrets.NONE;
+        }
+        return new SshSecrets(
+                credentials.password(SshConfig.sshPasswordKey(profileId)).orElse(null),
+                credentials.password(SshConfig.sshKeyPassphraseKey(profileId)).orElse(null));
     }
 
     public void touch(ConnectionProfile profile) {

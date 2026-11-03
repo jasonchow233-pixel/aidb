@@ -31,6 +31,8 @@ public final class JdbcSession implements DbSession {
     private final Connection connection;
     private final String label;
     private final Dialect dialect;
+    /** ⭐ G5a：这条连接背后的 SSH 隧道；没有隧道时是 null。会话关掉时它必须一起关。 */
+    private final SshTunnel tunnel;
     /** 查询页的「取消」从 JavaFX 线程调用，所以必须是 volatile。 */
     private volatile Statement activeStatement;
     /** ⭐ A10：单条语句执行超时（秒）；0 = 不限制。 */
@@ -38,10 +40,21 @@ public final class JdbcSession implements DbSession {
 
     private JdbcSession(Connection connection, String label, Dialect dialect,
                         int queryTimeoutSeconds) {
+        this(connection, label, dialect, queryTimeoutSeconds, null);
+    }
+
+    private JdbcSession(Connection connection, String label, Dialect dialect,
+                        int queryTimeoutSeconds, SshTunnel tunnel) {
         this.connection = connection;
         this.label = label;
         this.dialect = dialect;
         this.queryTimeoutSeconds = QueryLimits.clampQueryTimeout(queryTimeoutSeconds);
+        this.tunnel = tunnel;
+    }
+
+    /** ⭐ G5a：这条连接是否经 SSH 跳板机；经的话给一句不含秘密的身份串。 */
+    public String sshVia() {
+        return tunnel == null ? null : tunnel.via();
     }
 
     /** 语句超时（秒）；0 = 不限制。 */
@@ -75,28 +88,48 @@ public final class JdbcSession implements DbSession {
             throw new SQLException("缺少 " + spec.kind().displayName() + " JDBC 驱动", e);
         }
 
-        Properties props = new Properties();
-        // ⭐ D-3：方言级超时先落地，options 还能覆盖它（真库联调要能改）。
-        spec.kind().dialect().connectionProperties().forEach(props::setProperty);
-        // ⭐ R4：先应用 options，再设 user / password。
-        //    以前顺序相反 —— options 里的 password 会**覆盖**钥匙串里的口令，
-        //    落盘的明文 options 反而赢了安全存储的口令。
-        spec.options().forEach(props::setProperty);
-        if (spec.username() != null) {
-            props.setProperty("user", spec.username());
-        }
-        if (spec.password() != null) {
-            props.setProperty("password", spec.password());
-        }
+        // ⭐ G5a：先起隧道，再连库。连库失败时必须把隧道关掉 ——
+        // 一个还挂着 SSH 会话与本机端口的「失败连接」，用户重启应用前都不会知道。
+        SshTunnel tunnel = null;
+        ConnectionSpec effective = spec;
+        try {
+            if (spec.usesSshTunnel()) {
+                tunnel = SshTunnel.open(spec.ssh(), spec.host(), spec.port());
+                effective = spec.overTunnel(tunnel.localHost(), tunnel.localPort());
+            }
+            Properties props = new Properties();
+            // ⭐ D-3：方言级超时先落地，options 还能覆盖它（真库联调要能改）。
+            effective.kind().dialect().connectionProperties().forEach(props::setProperty);
+            // ⭐ R4：先应用 options，再设 user / password。
+            //    以前顺序相反 —— options 里的 password 会**覆盖**钥匙串里的口令，
+            //    落盘的明文 options 反而赢了安全存储的口令。
+            effective.options().forEach(props::setProperty);
+            if (effective.username() != null) {
+                props.setProperty("user", effective.username());
+            }
+            if (effective.password() != null) {
+                props.setProperty("password", effective.password());
+            }
 
-        Connection connection = DriverManager.getConnection(spec.jdbcUrl(), props);
-        connection.setAutoCommit(true);
-        // ⭐ A10：语句超时。默认 30 秒；可用 options 里的 queryTimeout 覆盖（秒）。
-        int timeout = QueryLimits.clampQueryTimeout(
-                integerOption(spec.options(), "queryTimeout",
-                        QueryLimits.DEFAULT_QUERY_TIMEOUT_SECONDS));
-        return new JdbcSession(connection, spec.kind().displayName() + " · " + spec.database(),
-                spec.kind().dialect(), timeout);
+            Connection connection = DriverManager.getConnection(effective.jdbcUrl(), props);
+            connection.setAutoCommit(true);
+            // ⭐ A10：语句超时。默认 30 秒；可用 options 里的 queryTimeout 覆盖（秒）。
+            int timeout = QueryLimits.clampQueryTimeout(
+                    integerOption(effective.options(), "queryTimeout",
+                            QueryLimits.DEFAULT_QUERY_TIMEOUT_SECONDS));
+            String label = spec.kind().displayName() + " · " + spec.database()
+                    + (tunnel == null ? "" : " via " + tunnel.via());
+            return new JdbcSession(connection, label, spec.kind().dialect(), timeout, tunnel);
+        } catch (SQLException | RuntimeException e) {
+            if (tunnel != null) {
+                try {
+                    tunnel.close();
+                } catch (RuntimeException ignored) {
+                    // 不盖住真正的失败原因。
+                }
+            }
+            throw e;
+        }
     }
 
     public static JdbcSession wrap(Connection connection, String label) {
@@ -375,7 +408,14 @@ public final class JdbcSession implements DbSession {
 
     @Override
     public void close() throws SQLException {
-        connection.close();
+        try {
+            connection.close();
+        } finally {
+            // ⭐ G5a：隧道比连接活得久一点点就会留下一个还开着的本机端口 + 一条 SSH 会话。
+            if (tunnel != null) {
+                tunnel.close();
+            }
+        }
     }
 
     /** 结果集允许重名列（JOIN 很常见），但 Map 的 key 不能重复。 */

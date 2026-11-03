@@ -80,6 +80,13 @@
     <mssql.version>12.8.1.jre11</mssql.version>
     <ojdbc11.version>23.5.0.24.07</ojdbc11.version>
     <hikari.version>6.3.1</hikari.version>
+    <!-- G5a：SSH 隧道。Apache MINA SSHD 同时带客户端与服务端（服务端只用在测试里，
+         这样「隧道真的转发过一条 TCP」能在没有第二台机器的情况下量到）。
+         许可证 Apache-2.0，评估见 docs/COMPONENT-SELECTION.md。 -->
+    <sshd.version>2.20.1</sshd.version>
+    <!-- MINA SSHD 记日志走 SLF4J；本项目自己不用它，装一个 JUL 转发，
+         免得控制台出现「no providers will be used」而把隧道故障吞成沉默。 -->
+    <slf4j.version>2.0.17</slf4j.version>
     <jna.version>5.13.0</jna.version>
     <poi.version>5.4.1</poi.version>
 
@@ -283,6 +290,24 @@
         <groupId>org.testcontainers</groupId>
         <artifactId>junit-jupiter</artifactId>
         <version>${testcontainers.version}</version>
+      </dependency>
+      <!-- ── G5a：SSH 隧道（Apache MINA SSHD，Apache-2.0）──────────────
+           sshd-core 里客户端与服务端同包：契约用它在本机起一把真 sshd，
+           于是「隧道转发」这件事不需要第二台机器也能量。 -->
+      <dependency>
+        <groupId>org.apache.sshd</groupId>
+        <artifactId>sshd-core</artifactId>
+        <version>${sshd.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-jdk14</artifactId>
+        <version>${slf4j.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

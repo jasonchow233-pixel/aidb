@@ -26,6 +26,14 @@
          两个都在 .m2 里离线可用；许可证结论见 COMPONENT-SELECTION.md。 -->
     <dependency><groupId>com.microsoft.sqlserver</groupId><artifactId>mssql-jdbc</artifactId></dependency>
     <dependency><groupId>com.oracle.database.jdbc</groupId><artifactId>ojdbc11</artifactId></dependency>
+    <!-- ⭐ G5a：SSH 跳板隧道。纯 Java（不依赖系统的 ssh 可执行文件 ——
+         Windows 上那份不保证有，而「连不上」不该取决于用户装了什么）。
+         许可证 Apache-2.0，见 docs/COMPONENT-SELECTION.md。 -->
+    <dependency><groupId>org.apache.sshd</groupId><artifactId>sshd-core</artifactId></dependency>
+    <!-- MINA SSHD 记日志走 SLF4J，本项目自己不用它。装 JUL 转发而不是 nop：
+         隧道出问题时，控制台该看得见，而不是静默。 -->
+    <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId></dependency>
+    <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-jdk14</artifactId></dependency>
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><scope>test</scope></dependency>
     <!-- 真库联调：有 Docker 时跑，没有就跳过（见 PostgresMySqlIntegrationTest） -->
