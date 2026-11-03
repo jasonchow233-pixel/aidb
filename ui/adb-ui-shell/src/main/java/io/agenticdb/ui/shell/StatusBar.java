@@ -1,11 +1,13 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.geometry.Pos;
 import javafx.scene.Cursor;
+import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.OverrunStyle;
 import javafx.scene.control.Tooltip;
@@ -76,6 +78,12 @@ public final class StatusBar extends HBox {
     /** 方言与连接名的当前值 —— 合成显示，各自仍可被门禁读回。 */
     private String dialectName = "—";
     private String connectionName = I18n.t("status.notConnected");
+    /**
+     * ⭐ R54：当前方言的<b>哪一家</b>（不是显示名）。状态栏那句「MySQL · shop」是界面里
+     * 唯一常驻回答「我在哪家库」的地方，以前它<b>只有文字</b> —— 灯是绿的还是灰的看得出，
+     * 是哪家库要读字。图形走 {@link ConnectionCatalog#graphic}，与树、磁贴同一枚。
+     */
+    private DialectKind dialectKind;
     /**
      * ⭐ i18n 前置修正：连接与否以前靠 {@code !"未连接".equals(connectionName)} 判断 ——
      * **拿显示文案当状态哨兵**。默认语言换成英文之后，这个比较会永远为真，
@@ -161,8 +169,7 @@ public final class StatusBar extends HBox {
         selection.setVisible(false);
         selection.setManaged(false);
         // U8：连接灯的状态点是**图标**，不是文本符号（与行号列、布尔列同一口径）。
-        source.setGraphic(Icons.of(Icons.Icon.DOT, Icons.SIZE_DOT));
-        source.getGraphic().getStyleClass().add("adb-status__light");
+        // ⭐ R54：图形位改由 paintSource() 每次合成（厂商图形 + 灯），这里不再预设。
         // G19b：最后刷新常驻右侧，但开场没取过数 → 连同分隔符一起不占位。
         hide(refreshed, refreshedSeparator);
         // Label 用 setTooltip 而不是 Tooltip.install：属性式 tooltip 才能被门禁直接读回。
@@ -240,13 +247,17 @@ public final class StatusBar extends HBox {
     }
 
     /**
-     * 当前连接的方言（SQLite / PostgreSQL / MySQL）。
+     * 当前连接的方言（SQLite / PostgreSQL / MySQL），以及它是<b>哪一家</b>。
      *
      * <p>4.5-11：以前这个位置显示写死的「DEV」，而且 {@code setEnv} 零调用 ——
      * 连测试环境都分不出来。现在显示的是真正有用的信息：当前连的是什么库。
+     *
+     * <p>⭐ R54：{@code kind} 为 null（会话还没建起来、方言认不出）时图形位<b>只剩那颗灯</b> ——
+     * 不知道是哪家就画成某一家，是在编造。
      */
-    public void setDialect(String value) {
+    public void setDialect(String value, DialectKind kind) {
         dialectName = value == null || value.isBlank() ? "—" : value;
+        dialectKind = kind;
         paintSource();
     }
 
@@ -256,9 +267,10 @@ public final class StatusBar extends HBox {
         paintSource();
     }
 
-    /** 方言与连接名合成一颗灯；tooltip 补服务器版本与当前用户（U8）。 */
+    /** 方言与连接名合成一颗灯（R54 起再加一枚厂商图形）；tooltip 补服务器版本与当前用户（U8）。 */
     private void paintSource() {
         source.setText(dialectName + " · " + connectionName);
+        source.setGraphic(sourceMark());
         // 灯要真的表达「连上没有」：常亮的灰点只是装饰，连上时它必须是绿的。
         // 用修饰类而不是换掉 adb-status__source —— 胶囊的底、内边距都挂在源类上。
         if (isConnected()) {
@@ -271,6 +283,24 @@ public final class StatusBar extends HBox {
         sourceTooltip.setText(serverInfo.isEmpty()
                 ? I18n.t("status.currentConnection", connectionName)
                 : I18n.t("status.currentConnection", connectionName) + "\n" + serverInfo);
+    }
+
+    /**
+     * 源段的图形位 = [那家数据库的图形] + 连接灯；方言认不出时<b>只剩灯</b>。
+     *
+     * <p>灯不能被图形替掉：它说的是「连着没」（灰/绿），图形说的是「哪家」，
+     * 两件不同的事各占一层 —— 少一件就是少一条线索。
+     */
+    private Node sourceMark() {
+        Node dot = Icons.of(Icons.Icon.DOT, Icons.SIZE_DOT);
+        dot.getStyleClass().add("adb-status__light");
+        Node glyph = ConnectionCatalog.graphic(dialectKind, Icons.SIZE_BADGE);
+        if (glyph == null) {
+            return dot;
+        }
+        HBox mark = new HBox(5, glyph, dot);
+        mark.setAlignment(Pos.CENTER);
+        return mark;
     }
 
     /** U8：连接与否的判据 —— 读 {@link #connected}，不再比较显示文案（见该字段注释）。 */

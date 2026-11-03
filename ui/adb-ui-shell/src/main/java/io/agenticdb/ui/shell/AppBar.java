@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
@@ -45,6 +46,12 @@ public final class AppBar extends VBox {
     private final Label connectionName = new Label();
     private final Label connectionKind = new Label();
     private final SVGPath connectionDot = Icons.of(Icons.Icon.DOT, Icons.SIZE_DOT);
+    /**
+     * ⭐ R54：胶囊最左那一格 = 当前连接的**厂商图形**。
+     * 名字与类型文字在窄窗口会被收掉（{@link #fitChromeWidth}），图形不会 ——
+     * 「一眼看出我在哪家」这句话在没地方写字的时候才最需要有人替它说。
+     */
+    private final Label connectionVendor = new Label();
     private final Label searchHint = new Label();
     private final Label searchKbd = new Label();
     private final HBox utility;
@@ -165,7 +172,10 @@ public final class AppBar extends VBox {
 
         connectionDot.getStyleClass().add("adb-appbar__connection-dot");
 
-        HBox text = new HBox(6, connectionDot, connectionName, connectionKind);
+        connectionVendor.setId("appbar-connection-vendor");
+        connectionVendor.setMouseTransparent(true);
+
+        HBox text = new HBox(6, connectionVendor, connectionDot, connectionName, connectionKind);
         text.setAlignment(Pos.CENTER_LEFT);
 
         connectionMenu.setId("appbar-connection-menu");
@@ -192,11 +202,13 @@ public final class AppBar extends VBox {
         if (active != null) {
             connectionName.setText(active.name());
             connectionKind.setText(active.kindDisplay());
+            paintVendorGlyph(active.kind());
             connectionMenu.setTooltip(new Tooltip(I18n.t("appbar.currentConnectionTooltip",
                     active.name(), active.kindDisplay())));
         } else {
             connectionName.setText(I18n.t("appbar.notConnected"));
             connectionKind.setText("");
+            paintVendorGlyph(null);
             connectionMenu.setTooltip(new Tooltip(I18n.t("appbar.noConnectionsYet")));
         }
 
@@ -209,6 +221,7 @@ public final class AppBar extends VBox {
             for (ConnectionProfile profile : safe) {
                 MenuItem item = new MenuItem(profile.name() + "  ·  " + profile.kindDisplay());
                 item.setId("appbar-connection-" + profile.id());
+                item.setGraphic(ConnectionCatalog.graphic(profile.kind(), Icons.SIZE_LABEL));
                 item.setDisable(profile.id().equals(activeConnectionId));
                 item.setOnAction(event -> onSelectConnection.accept(profile));
                 connectionMenu.getItems().add(item);
@@ -223,9 +236,19 @@ public final class AppBar extends VBox {
         connectionMenu.getItems().add(actions.menuItem("connection.disconnect"));
     }
 
+    /**
+     * ⭐ R54：胶囊那一格画的是**当前连接的厂商图形**；认不出方言就整格收起，
+     * 不留一枚「看着像某家」的假图形（同 {@link ConnectionCatalog#graphic} 的口径）。
+     */
+    private void paintVendorGlyph(DialectKind kind) {
+        Node glyph = ConnectionCatalog.graphic(kind, Icons.SIZE_BADGE);
+        connectionVendor.setGraphic(glyph);
+        connectionVendor.setVisible(glyph != null);
+        connectionVendor.setManaged(glyph != null);
+    }
+
     /** 连接状态点：在线 / 断开 / 出错。 */
-    public void setConnectionState(boolean online, boolean failed) {
-        String cls = failed ? "adb-appbar__connection-dot--error"
+    public void setConnectionState(boolean online, boolean failed) {        String cls = failed ? "adb-appbar__connection-dot--error"
                 : online ? "adb-appbar__connection-dot--online"
                 : "adb-appbar__connection-dot--offline";
         connectionDot.getStyleClass().removeAll("adb-appbar__connection-dot--online",

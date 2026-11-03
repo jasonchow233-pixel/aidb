@@ -210,10 +210,34 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
             }
         });
 
+        // ⭐ R54：加了图形就要重新量这一列 —— 纯文字时它是 90，加上图形 + 5px 间距后
+        //   实拍里「POSTGRESQL」被折成「POSTGRE…」（中途试过 112，仍然差一截），
+        //   最终按最长的那个名字（PostgreSQL）留到 140。
         TableColumn<ConnectionProfile, String> kind = column(I18n.t("detail.type"),
-                "kind", 90);
+                "kind", 140);
         kind.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
                 data.getValue().kindLabel()));
+        // ⭐ R54：这一列以前<b>只有文字</b>（p5-connections 实拍确认：写着 "SQLITE"，一个图形都没有）。
+        //    多连接同屏时用户扫这列要回答的是「哪一行是哪家库」，而六种家名长短不一、
+        //    首字母还都撞车（MySQL / MariaDB、PostgreSQL / Oracle 的 P/O）。图形与文字是两条线索，
+        //    留一条等于让另一条替它读字。图形取自登记表（与树、磁贴同一枚、同一个品牌色）。
+        kind.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                    return;
+                }
+                setText(item);
+                Object row = getTableRow() == null ? null : getTableRow().getItem();
+                setGraphic(row instanceof ConnectionProfile profile
+                        ? ConnectionCatalog.graphic(profile.kind(), Icons.SIZE_LABEL)
+                        : null);
+                setGraphicTextGap(5);
+            }
+        });
 
         // ⭐ P5-1：分组是展示层元数据，单独一列 —— 不塞进名称列（名字要能直接改名）。
         TableColumn<ConnectionProfile, String> groupColumn = column(I18n.t("conn.col.group"),

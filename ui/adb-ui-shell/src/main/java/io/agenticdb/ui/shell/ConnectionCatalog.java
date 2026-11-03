@@ -66,4 +66,37 @@ final class ConnectionCatalog {
                                String hintKey, Icons.Icon glyph) {
         return new Entry(id, name, kind, styleClass, hintKey, glyph);
     }
+
+    /**
+     * ⭐ R54：该方言的**厂商图形**（分层上色 + 品牌色作用域类已经挂好），拿不到就交回
+     * {@code null} 由调用方用自己的兜底图形。
+     *
+     * <p>为什么要收成这一个方法：「取字形 → 上彩色 → 挂 {@code .adb-db--*}」这三步
+     * 此前只在导航树里内联做过一次，其余说得出方言的表面（连接管理器、状态栏、页签、
+     * 库选择器）各自退回通用图形 + 文字。表面之间分叉过一次就是 D-38 那个形状 ——
+     * 同一个 MySQL 在两个地方长得不一样，而没有任何一处会报错。
+     *
+     * <p>返回 {@code null} 而不是「随便给一枚」是刻意的：认不出方言就是「不知道是哪家」，
+     * 画成某家的图形就是编造。
+     */
+    static javafx.scene.Node graphic(DialectKind kind, double size) {
+        Entry entry = forKind(kind);
+        if (entry == null) {
+            return null;
+        }
+        javafx.scene.Node icon = Icons.colored(entry.glyph(), size);
+        icon.getStyleClass().add(entry.styleClass());
+        return icon;
+    }
+
+    /**
+     * 该方言的品牌色作用域类；认不出方言时是<b>空串</b>（不是 null，调用方直接判空即可）。
+     *
+     * <p>给「形状要留着自己的、颜色要跟那一家走」的表面用 —— 导航树的库节点顶的是圆柱
+     * （形状说的是「这是个库」），但 MySQL 的库和 PostgreSQL 的库不该长同一个颜色。
+     */
+    static String styleClass(DialectKind kind) {
+        Entry entry = forKind(kind);
+        return entry == null ? "" : entry.styleClass();
+    }
 }

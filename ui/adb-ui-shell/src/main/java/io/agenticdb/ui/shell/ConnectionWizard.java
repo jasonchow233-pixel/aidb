@@ -745,8 +745,8 @@ public final class ConnectionWizard {
     /**
      * `AIDB ⟷ Database` 示意图（N27-b）。
      *
-     * <p>不画厂商 logo：右侧只写当前选中的库型名，换类型时它跟着换 —— 一张
-     * 「谁连谁」的示意图，不是品牌橱窗。
+     * <p>不画厂商 logo：右侧那枚是**我们自己的同风格标识**（与向导磁贴、导航树同一行登记），
+     * 旁边写当前选中的库型名，换类型时两者一起换 —— 一张「谁连谁」的示意图，不是品牌橱窗。
      */
     private Node connectionDiagram() {
         Label appIcon = bigIcon(Icons.of(Icons.Icon.BRAND, Icons.SIZE_TILE));
@@ -762,7 +762,10 @@ public final class ConnectionWizard {
         line.setMinHeight(1);
         line.setMaxHeight(1);
 
-        Label dbIcon = bigIcon(Icons.colored(Icons.Icon.DATABASE, Icons.SIZE_TILE));
+        // ⭐ R54：这一格整块就是「你要连哪家」，图形不能还是那颗通用圆柱。
+        Node vendor = ConnectionCatalog.graphic(type.dialect().kind(), Icons.SIZE_TILE);
+        Label dbIcon = bigIcon(vendor != null ? vendor
+                : Icons.colored(Icons.Icon.DATABASE, Icons.SIZE_TILE));
         Label dbName = new Label(type.displayName());
         dbName.getStyleClass().add("adb-wizard__diagram-name");
         VBox database = new VBox(6, dbIcon, dbName);

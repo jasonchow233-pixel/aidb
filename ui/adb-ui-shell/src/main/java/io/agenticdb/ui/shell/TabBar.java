@@ -4,6 +4,7 @@ import javafx.beans.binding.Bindings;
 import javafx.geometry.Pos;
 import javafx.scene.AccessibleRole;
 import javafx.scene.Node;
+import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.scene.control.Button;
@@ -54,6 +55,13 @@ public final class TabBar extends HBox {
     private Function<String, String> connectionLabel = id -> id;
     /** ⭐ N7-b：连接 id → 库名（空串 = 没有库名）。 */
     private Function<String, String> connectionCatalog = id -> "";
+    /**
+     * ⭐ R54：连接 id → <b>哪一家数据库</b>（认不出返回 {@code null}）。
+     *
+     * <p>页签自己只认识 id，方言在档案里 —— 和连接名、库名同一个理由，由外壳注入。
+     * 没有注入时「对象」页签保持那枚通用圆柱：宁可看不出是哪家，也不猜一家。
+     */
+    private Function<String, DialectKind> connectionKind = id -> null;
 
     public TabBar(ActionRegistry actions) {
         this.actions = actions;
@@ -120,6 +128,52 @@ public final class TabBar extends HBox {
     public void setConnectionCatalogs(Function<String, String> connectionCatalog) {
         this.connectionCatalog = connectionCatalog == null ? id -> "" : connectionCatalog;
         refreshTitles();
+    }
+
+    /**
+     * ⭐ R54：注入「连接 id → 哪一家数据库」，并给已开着的「对象」页签补上厂商图形。
+     *
+     * <p>刷新是必须的：外壳可能在页签开出来之后才接上这条缝（重建场景、恢复工作区），
+     * 只写字段不重画 = 那一格永远停在通用圆柱上，而这种「接上了但没红」的分叉最难发现。
+     */
+    public void setConnectionKinds(
+            Function<String, DialectKind> connectionKind) {
+        this.connectionKind = connectionKind == null ? id -> null : connectionKind;
+        refreshVendorGlyphs();
+    }
+
+    /** 已开的「对象」页签重取图形（其余页签的形状说的是「哪种页」，不参与）。 */
+    public void refreshVendorGlyphs() {
+        for (TabItem tab : items.values()) {
+            if (tab.kind() != TabKind.OBJECT) {
+                continue;
+            }
+            if (nodes.get(tab.id()) instanceof HBox node && !node.getChildren().isEmpty()) {
+                Node fresh = vendorGraphic(tab);
+                // ⚠️ 类要在这里补：buildTab 那侧是「取图形 → 加 adb-tab__icon」两步，
+                //    重画只换节点的话页签图标会丢掉尺寸与配色那条类（第一次重画就看不出来，
+                //    因为「有图形」这件事仍然成立）。
+                fresh.getStyleClass().add("adb-tab__icon");
+                node.getChildren().set(0, fresh);
+            }
+        }
+    }
+
+    /**
+     * 「对象」页签的图形：认得出方言就用那一家自己的，认不出<b>退回通用圆柱</b>。
+     *
+     * <p>回退不是偷懒：全局页签（连接管理器、设置）本来就不属于任何一家库，
+     * 给它画某家的图形是在编造归属。
+     *
+     * <p>⚠️ 常驻的「对象」页签建出来时<b>没有</b> connectionId（启动顺序：标签先有、
+     * 连接后到），所以这里把 {@code null} 一并交给注入的函数 —— 由外壳决定它代表
+     * 「当前那条连接」还是「不属于任何连接」。与 {@code AppShell.sessionOrCurrent}
+     * 同一个兜底口径，不在页签这侧再造一套真相。
+     */
+    private Node vendorGraphic(TabItem tab) {
+        DialectKind kind = connectionKind.apply(tab.connectionId());
+        Node vendor = ConnectionCatalog.graphic(kind, Icons.SIZE_LABEL);
+        return vendor == null ? Icons.colored(tab.kind().icon(), Icons.SIZE_LABEL) : vendor;
     }
 
     /**
@@ -391,7 +445,13 @@ public final class TabBar extends HBox {
         // ⭐ 矢量图标（16×16）；标签栏是用户一直在看的地方，不能靠 Unicode 符号的字形运气。
         //    R35 N4-b：页签图标走彩色档 —— {@code colored()} 自己会在没有彩色资产时
         //    退回单色，所以调用方不需要判断（判断一次就多一条会写错的分叉）。
-        Node icon = Icons.colored(tab.kind().icon(), Icons.SIZE_LABEL);
+        //    ⭐ R54：「对象」页签顶的以前是**通用圆柱** —— 它唯一的职责就是说「这是某条连接的对象页」，
+        //    画成所有人都认识的圆柱等于什么都没说。现在换成**那一家自己的图形**（与树、磁贴同一枚）。
+        //    其余页签（表格 / 查询 / 函数…）的形状说的是「这是哪种页」，那是它们各自的线索，不动
+        //    —— 类型色那一条由 {@code IconKindHueTest} 钉着，染成厂商色就是跟自己的门禁打架。
+        Node icon = tab.kind() == TabKind.OBJECT
+                ? vendorGraphic(tab)
+                : Icons.colored(tab.kind().icon(), Icons.SIZE_LABEL);
         icon.getStyleClass().add("adb-tab__icon");
 
         Label title = new Label(tab.title());

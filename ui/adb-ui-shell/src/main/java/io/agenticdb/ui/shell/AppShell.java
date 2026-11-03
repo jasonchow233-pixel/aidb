@@ -931,6 +931,15 @@ public final class AppShell extends StackPane {
             }
             return profile.database();
         });
+        // ⭐ R54：「对象」页签顶的是**那一家自己的图形**，不再是人人相同的圆柱。
+        //    方言只活在档案里，页签自己不知道 —— 与连接名、库名同一个理由，由外壳注入；
+        //    catalog 虚拟连接的 kind 就是它父连接那一家（profileById 认那张合成档案），不用额外解一层。
+        //    ⚠️ 常驻「对象」页签没有 connectionId（建得比连接早），交过来的是 null ——
+        //    那一条就是「当前这条连接的对象页」，所以回落到活动档案。
+        tabBar.setConnectionKinds(id -> {
+            ConnectionProfile profile = profileById(id == null ? activeProfileId() : id);
+            return profile == null ? null : profile.kind();
+        });
     }
 
     private ConnectionProfile profileById(String id) {
@@ -1177,11 +1186,7 @@ public final class AppShell extends StackPane {
             return;
         }
         // 矩阵的环境变量用简称，方言 id 用全名 —— 这一处只是名字对齐，不含方言行为。
-        String prefix = switch (engine) {
-            case "postgresql" -> "PG";
-            case "sqlserver" -> "MSSQL";
-            default -> engine.toUpperCase(Locale.ROOT);
-        };
+        String prefix = matrixEnvPrefix(engine);
         String host = System.getenv("ADB_TEST_" + prefix + "_HOST");
         String port = System.getenv("ADB_TEST_" + prefix + "_PORT");
         String database = System.getenv("ADB_TEST_" + prefix + "_DB");
@@ -1210,6 +1215,66 @@ public final class AppShell extends StackPane {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /** 矩阵环境变量用的简称与方言 id 之间的那点名字差异（不含方言行为）。 */
+    private static String matrixEnvPrefix(String engineId) {
+        return switch (engineId) {
+            case "postgresql" -> "PG";
+            case "sqlserver" -> "MSSQL";
+            default -> engineId.toUpperCase(Locale.ROOT);
+        };
+    }
+
+    /**
+     * ⭐ R54：一棵树里同时摆出**五家**连接，给「每家各一枚图形」这张验收帧用。
+     *
+     * <p>与 {@link #registerMatrixProfileFromEnv()} 的分工要说清：那一格证的是
+     * 「连得上那台服务器」，所以它带落点门（D-37/D-39）；这一格证的是
+     * 「左树里五家的图形一眼分得开」，而**图形取自档案的 {@code kind}，不取自会话** ——
+     * 容器没起时五行各带一颗灰点，图形仍然是真的，帧说的也就是图形。
+     *
+     * <p>环境里缺哪家就少一行的注册（不凭空造一条连主机都没有的连接）。
+     */
+    private void registerVendorTreeProfilesFromEnv() {
+        if (!flag("adb.treeVendors", "ADB_TREE_VENDORS")) {
+            return;
+        }
+        List<String> registered = new ArrayList<>();
+        List<String> missing = new ArrayList<>();
+        for (DialectKind kind : DialectKind.values()) {
+            if (kind.dialect().usesFilePath()) {
+                // 没有服务器这一层的（SQLite）本来就在演示库里，不重复注册。
+                continue;
+            }
+            String prefix = matrixEnvPrefix(kind.id());
+            String host = System.getenv("ADB_TEST_" + prefix + "_HOST");
+            String port = System.getenv("ADB_TEST_" + prefix + "_PORT");
+            String database = System.getenv("ADB_TEST_" + prefix + "_DB");
+            String username = System.getenv("ADB_TEST_" + prefix + "_USER");
+            if (isBlank(host) || isBlank(port) || isBlank(database) || isBlank(username)) {
+                missing.add(kind.id());
+                continue;
+            }
+            String id = "matrix-" + kind.id();
+            if (profileById(id) == null) {
+                connections.add(new ConnectionProfile(id, "matrix " + kind.displayName(), kind,
+                        host, Integer.parseInt(port.trim()), database, username,
+                        false, 0, "", Map.of()));
+                registered.add(id);
+            }
+        }
+        if (!registered.isEmpty()) {
+            refreshProfiles();
+        }
+        System.out.println("[screenshot] ADB_TREE_VENDORS registered=" + registered
+                + " missing=" + missing + " (glyphs come from the profile's kind, not the session)");
+        if (registered.isEmpty()) {
+            ScreenshotSession.abortMatrixFrame("ADB_TREE_VENDORS=1 but no server connection could"
+                    + " be registered: ADB_TEST_{MYSQL,PG,MARIADB,MSSQL,ORACLE}_{HOST,PORT,DB,USER}"
+                    + " are all absent. Run scripts/dbmatrix.sh up, then"
+                    + " eval \"$(scripts/dbmatrix.sh env)\"");
+        }
     }
 
     /**
@@ -1354,8 +1419,13 @@ public final class AppShell extends StackPane {
                 executors.forConnection(activeProfileId()));
         // 4.5-11：状态栏与折叠侧栏的左端徽标显示真实方言，不再是写死的「DEV」。
         String dialectName = session == null ? "—" : session.dialect().displayName();
-        statusBar.setDialect(dialectName);
+        // ⭐ R54：状态栏那颗灯旁边再加一枚**那家自己的图形** —— 这一行是界面里唯一常驻
+        //    回答「我在哪家库」的地方，以前它只有文字，扫一眼读不出是 MySQL 还是 PG。
+        statusBar.setDialect(dialectName, session == null ? null : session.dialect().kind());
         sideBar.setDialect(dialectName);
+        // ⭐ R54：常驻「对象」页签跟着**活动连接**换图形 —— 它没有 connectionId，
+        //    切连接后不重画就会停在上一家（PG 的对象页顶着 MySQL 的图形）。
+        tabBar.refreshVendorGlyphs();
         statusBar.setRange("—");
         status(I18n.t("shell.connectedObjects", profile.name(), objects.size()));
         closeOrphanSessions();
@@ -1895,7 +1965,10 @@ public final class AppShell extends StackPane {
         sessions.close(id);
         session = null;
         statusBar.setConnection(null);
-        statusBar.setDialect("—");
+        statusBar.setDialect("—", null);
+        // ⭐ R54：断开后没有「哪家」可说了，页签与折叠侧栏都得退回通用图形（停在上一家=会说谎）。
+        tabBar.refreshVendorGlyphs();
+        sideBar.setDialect("—");
         statusBar.setRange("—");
         statusBar.setDuration(-1);
         // ⭐ UX-5-D：断开后没有会话了，「当前语句 / 最后刷新」这两段必须一起收掉，
@@ -2000,6 +2073,8 @@ public final class AppShell extends StackPane {
         // ⭐ R47-b：验收帧要拍在**真服务器**上。演示库是 SQLite，它没有「库」这一层，
         //    于是「库▾ 里有两把库」这种只有真服务器才有的形状在 47 帧里一张都没有。
         registerMatrixProfileFromEnv();
+        // ⭐ R54：验收「左树里五家各一枚图形」——同一条 ADB_TEST_* 通道，另一格画面。
+        registerVendorTreeProfilesFromEnv();
         String requested = System.getProperty("adb.connection",
                 System.getenv().getOrDefault("ADB_CONNECTION", "")).trim();
         if (requested.isEmpty()) {

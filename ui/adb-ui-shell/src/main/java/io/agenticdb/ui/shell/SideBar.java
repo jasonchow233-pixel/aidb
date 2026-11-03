@@ -168,6 +168,8 @@ public final class SideBar extends VBox {
     private static final char STAR_FIELD = '\t';
     private DemoNode selectedNode;
     private String dialectName = "—";
+    /** ⭐ R54：折叠态那颗「当前连接」按钮 —— 换连接 / 换方言时要重画它的厂商图形。 */
+    private Button railConnection;
     private final VBox expanded = new VBox(8);
     private final VBox rail = new VBox(6);
     private final TextField search = new TextField();
@@ -442,6 +444,8 @@ public final class SideBar extends VBox {
     public void setConnections(List<ConnectionProfile> connections) {
         this.connections = connections == null ? List.of() : List.copyOf(connections);
         refreshTree();
+        // ⭐ R54：档案清单可能**晚于**构造到达（外壳后注入）—— 那时折叠态那颗钮还顶着兜底插头。
+        paintRailConnectionGlyph();
     }
 
     /**
@@ -480,6 +484,8 @@ public final class SideBar extends VBox {
         this.connectionName = name;
         refreshTree();
         loadObjectsIfNeeded(id);
+        // ⭐ R54：换连接 = 可能换了一家，折叠态那颗钮的图形得跟着重画。
+        paintRailConnectionGlyph();
     }
 
     /** 用新的内省结果替换对象树；对象在数据库里被增删后调用。 */
@@ -950,6 +956,10 @@ public final class SideBar extends VBox {
         expand.setId("sidebar-expand");
         Button connection = railButton(Icons.Icon.CONNECT, connectionName,
                 () -> status.accept(I18n.t("sidebar.connectionPrefix", connectionName)));
+        connection.setId("sidebar-rail-connection");
+        this.railConnection = connection;
+        // ⭐ R54：折叠侧栏时这是「我在哪个连接上」唯一的常驻入口，以前六家都顶同一颗插头。
+        paintRailConnectionGlyph();
         Button favorites = railButton(Icons.Icon.STAR, I18n.t("sidebar.favorites"), () -> {
             setCollapsed(false);
             refreshTree();
@@ -986,6 +996,37 @@ public final class SideBar extends VBox {
             last.setText(dialectName);
             last.setAccessibleText(I18n.t("sidebar.dialectAccessible", dialectName));
         }
+        // ⭐ R54：方言变了 → 折叠态那颗连接钮也得跟着换图形（切到临时会话时它得退回插头）。
+        paintRailConnectionGlyph();
+    }
+
+    /**
+     * 折叠侧栏的连接钮顶上放**当前连接那一家**的图形；认不出方言就退回通用插头。
+     *
+     * <p>图形从 {@link ConnectionCatalog#graphic} 取 —— 与树、连接管理器、状态栏同一行登记，
+     * 所以同一个 MySQL 不会在两个地方长得不一样。
+     */
+    private void paintRailConnectionGlyph() {
+        if (railConnection == null) {
+            return;
+        }
+        Node vendor = ConnectionCatalog.graphic(railDialectKind(), Icons.SIZE_TOOLBAR);
+        // ⚠️ 认不出方言时要**退回**插头，不是「保持原样」：从 MySQL 切到临时会话后还顶着
+        //    MySQL 的图形，就是一条会说谎的常驻信息。
+        railConnection.setGraphic(vendor != null ? vendor
+                : Icons.colored(Icons.Icon.CONNECT, Icons.SIZE_TOOLBAR));
+    }
+
+    /**
+     * 折叠态那颗钮代表「当前在哪个连接上」—— 当前活跃的可能是一条 catalog 虚拟连接
+     * （{@code 父id@库名}），它没有档案，所以回父连接取方言。
+     */
+    private DialectKind railDialectKind() {
+        DialectKind kind = dialectKindOf(connectionId);
+        if (kind == null && ConnectionProfile.isCatalogVariantId(connectionId)) {
+            kind = dialectKindOf(ConnectionProfile.parentOfCatalogVariant(connectionId));
+        }
+        return kind;
     }
 
     /** 折叠态的竖排按钮：只有图标。 */
@@ -1082,9 +1123,12 @@ public final class SideBar extends VBox {
             // ⭐ U1：MySQL 这类「切库要重连」的方言 —— 每个库一个节点，
             //    表 / 视图分组挂在**库**下面（库才是对象的归属）。
             for (CatalogEntry catalog : catalogs) {
+                // ⭐ R54：库节点形状仍是圆柱（它说的是「这是个库」），但**品牌色跟着父连接走** ——
+                //    多连接同屏时 MySQL 的库和 PG 的库不该是同一个青。
                 TreeItem<DemoNode> catalogNode = new TreeItem<>(new DemoNode(
                         catalog.catalog(), NodeKind.CATALOG, Icons.Icon.DATABASE,
-                        "", catalog.connectionId()));
+                        "", catalog.connectionId(),
+                        vendor == null ? "" : vendor.styleClass()));
                 // 当前正在用的库默认展开，一眼能看到自己在哪个库里。
                 catalogNode.setExpanded(catalog.connectionId().equals(connectionId));
                 // ⚠️ 库节点**永远保留** —— 它的对象可能还没读（懒加载）。

@@ -414,6 +414,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
         connectionMenu.setId("query-connection");
         connectionMenu.getStyleClass().add("adb-button");
         connectionMenu.setTooltip(new Tooltip(I18n.t("query.tip.connection")));
+        // ⭐ R54：这颗按钮（库▾）今天说的是「哪个库」，但「哪家库」只有读字才知道。
+        //    顶上放那一家自己的图形 —— 与树、磁贴、状态栏同一枚、同一个品牌色。
+        if (session != null) {
+            connectionMenu.setGraphic(ConnectionCatalog.graphic(
+                    session.dialect().kind(), Icons.SIZE_LABEL));
+        }
         rebuildConnectionMenu();
 
         run.setText(I18n.t("query.run"));

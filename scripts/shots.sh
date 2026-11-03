@@ -63,6 +63,11 @@ SHOTS=(
   "p2-users-dark||5000|ADB_OPEN=users ADB_THEME_FORCE=dark"
   "p7-new-index-dark||6000|ADB_INDEX=1 ADB_INDEX_POSE=1 ADB_THEME_FORCE=dark"
   "p0-shell||2500|ADB_THEME_FORCE=light"
+  # ⭐ R54：左树里五家真服务器连接与演示库并排，每家顶**自己那枚**图形。
+  #   这一帧证的是图形、不是连接状态：图形取自连接档案的 kind（离线也照样画得出），
+  #   所以它不走 ADB_MATRIX 那条落点门；环境完全没配时外壳直接弃帧（退出码 3），
+  #   不会退回到「只有演示库一行」拍一张名字写着五家的图。
+  "p0-tree-vendors||6000|ADB_TREE_VENDORS=1 ADB_THEME_FORCE=light"
   "p2-users||5000|ADB_OPEN=users ADB_THEME_FORCE=light"
   # ⭐ UX-6：数据页「概览」切面（行数 / 大小 / 引擎 / 索引数 / 最近操作）。
   #   切面标签 id 是动态拼的（object-tab-<id>），不能当静态点击目标；
@@ -113,6 +118,10 @@ SHOTS=(
   #   capture() 只吃主 Stage —— 所以那一半由 StructureColumnTypeTest + 真库矩阵守。
   "p7-new-column|structure-add|6000|ADB_STRUCTURE=users ADB_THEME_FORCE=light"
   "p5-connections||4000|ADB_CONNECTIONS=1 ADB_THEME_FORCE=light"
+  # ⭐ R54：同一份清单在连接管理器里的样子 —— 「类型」列此前只有文字，
+  #   而 MySQL / MariaDB 首字母相同、PostgreSQL / Oracle 都是七个字母以上，
+  #   只给文字等于让人逐字读。这一帧拍到六行六个不同图形（含演示库 SQLite）。
+  "p5-connections-vendors||6000|ADB_TREE_VENDORS=1 ADB_CONNECTIONS=1 ADB_THEME_FORCE=light"
   "p6-new-table||5000|ADB_NEW_TABLE=1 ADB_THEME_FORCE=light"
   # ⭐ R31：字段页的「深度」那一帧 —— 类型 / 长度 / 小数 + 自增 + 属性面板都有真值，
   #   只拍一张空网格等于什么都没验（G15~G18 的验收面）。暗色同型再看一次属性面板底色。
