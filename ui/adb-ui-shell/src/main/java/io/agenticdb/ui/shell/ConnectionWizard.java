@@ -3,8 +3,11 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.jdbc.SshEndpoint;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.CredentialStore;
+import io.agenticdb.session.SshConfig;
+import io.agenticdb.session.SshSecrets;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.geometry.HPos;
@@ -19,6 +22,7 @@ import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
+import javafx.scene.control.RadioButton;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
@@ -71,8 +75,9 @@ import java.util.function.Consumer;
  * <p>⛔ 按钮仍在<b>内容区</b>：{@code DialogPane.createButton} 会给按钮栏里每个按钮挂
  * {@code setResultAndClose}，点「下一步」会把整个向导关掉（4.5-12 的回归点）。
  *
- * <p>⛔ SSH / HTTP 两页<b>只说明不伪装</b>：本版没有隧道引擎，摆一组填不进驱动的输入框
+ * <p>⛔ HTTP 页<b>只说明不伪装</b>：本版没有 REST 引擎，摆一组填不进驱动的输入框
  * 等于骗人。页签在（形态对齐 Navicat），内容写清楚为什么没有、替代做法是什么。
+ * （SSH 页以前也在这一条里 —— G5a 之后它有真字段了，见 {@code sshControls()}。）
  */
 public final class ConnectionWizard {
 
@@ -179,6 +184,30 @@ public final class ConnectionWizard {
     private final StackPane sslHost = new StackPane();
     private final TextField sslRoot = new TextField();
     private final Label sslHint = new Label();
+    /**
+     * ⭐ G5a：SSH 隧道页的控件。
+     *
+     * <p>这一页以前是一张「本版没有隧道引擎」的说明，因为那时确实没有 ——
+     * 现在 {@code SshTunnel} 落地了，说明换成字段；两个秘密（跳板机口令、私钥口令短语）
+     * 仍是 {@link PasswordField}，且<b>不进档案</b>：它们由调用方落进凭据库
+     * （见 {@code ConnectionStore#saveSshSecrets}）。
+     */
+    private final CheckBox sshEnabled = new CheckBox(I18n.t("wizard.ssh.enable"));
+    private final TextField sshHost = new TextField();
+    private final TextField sshPort = new TextField();
+    private final TextField sshUser = new TextField();
+    private final ToggleGroup sshAuthGroup = new ToggleGroup();
+    private final RadioButton sshByPassword = new RadioButton(I18n.t("wizard.ssh.auth.password"));
+    private final RadioButton sshByKey = new RadioButton(I18n.t("wizard.ssh.auth.key"));
+    private final PasswordField sshPassword = new PasswordField();
+    private final TextField sshKeyPath = new TextField();
+    private final PasswordField sshKeyPassphrase = new PasswordField();
+    private final CheckBox sshTrustOnFirstUse = new CheckBox(I18n.t("wizard.ssh.tofu"));
+    private final Label sshHint = new Label();
+    /** 认证方式那两行（口令 / 私钥）单独一张小网格，换方式时整块重建。 */
+    private GridPane sshAuthGrid;
+    /** SSH 页的容器：字段与「这一家用不上隧道」的说明随选中的数据库换（同 TLS 页的做法）。 */
+    private final StackPane sshPaneHost = new StackPane();
     private final TextArea remarks = new TextArea();
     private TabPane tabs;
 
@@ -268,6 +297,33 @@ public final class ConnectionWizard {
         sslHint.setId("wizard-ssl-hint");
         sslHint.getStyleClass().add("adb-muted");
         sslHint.setWrapText(true);
+
+        // ⭐ G5a：SSH 隧道页。默认不勾选 —— 档案里 {@code SshConfig.enabled()} 以
+        // 「地址 + 用户都填了」为准，界面上则由这颗复选说了算，两边都得干净地退回直连。
+        sshEnabled.setId("wizard-ssh-enable");
+        sshEnabled.selectedProperty().addListener((observable, old, on) -> updateSshEnabled());
+        sshHost.setId("wizard-ssh-host");
+        sshHost.setPromptText(I18n.t("wizard.ssh.host.prompt"));
+        sshPort.setId("wizard-ssh-port");
+        sshPort.setPromptText(String.valueOf(SshConfig.NONE.port()));
+        sshPort.setPrefColumnCount(6);
+        sshUser.setId("wizard-ssh-user");
+        sshPassword.setId("wizard-ssh-password");
+        sshKeyPath.setId("wizard-ssh-key-path");
+        sshKeyPath.setPromptText(I18n.t("wizard.ssh.key.prompt"));
+        sshKeyPassphrase.setId("wizard-ssh-key-passphrase");
+        sshTrustOnFirstUse.setId("wizard-ssh-tofu");
+        sshTrustOnFirstUse.setSelected(true);
+        sshByPassword.setId("wizard-ssh-auth-password");
+        sshByKey.setId("wizard-ssh-auth-key");
+        sshByPassword.setToggleGroup(sshAuthGroup);
+        sshByKey.setToggleGroup(sshAuthGroup);
+        sshByPassword.setSelected(true);
+        sshAuthGroup.selectedToggleProperty().addListener(
+                (observable, old, selected) -> renderSshAuth());
+        sshHint.setId("wizard-ssh-hint");
+        sshHint.getStyleClass().add("adb-muted");
+        sshHint.setWrapText(true);
 
         remarks.setId("wizard-remarks");
         remarks.setPromptText(I18n.t("wizard.remarks.prompt"));
@@ -650,9 +706,7 @@ public final class ConnectionWizard {
                 tab("wizard-tab-advanced", I18n.t("wizard.tab.advanced"), advancedPane()),
                 tab("wizard-tab-databases", I18n.t("wizard.tab.databases"), databasesPane()),
                 tab("wizard-tab-ssl", I18n.t("wizard.tab.ssl"), sslPane()),
-                tab("wizard-tab-ssh", I18n.t("wizard.tab.ssh"), notice(
-                        I18n.t("wizard.ssh.notice"),
-                        I18n.t("wizard.ssh.workaround"))),
+                tab("wizard-tab-ssh", I18n.t("wizard.tab.ssh"), sshPane()),
                 tab("wizard-tab-http", I18n.t("wizard.tab.http"), notice(
                         I18n.t("wizard.http.notice"),
                         I18n.t("wizard.http.workaround"))),
@@ -863,6 +917,137 @@ public final class ConnectionWizard {
         }
     }
 
+    // ─────────────────── SSH 隧道页（G5a） ───────────────────
+
+    private Node sshPane() {
+        refreshSshPane();
+        return sshPaneHost;
+    }
+
+    /**
+     * SSH 页的内容随选中的数据库换：本地文件库（SQLite）没有「另一台机器」可跳，
+     * 给它字段等于摆一排填了不生效的输入框 —— 和 TLS 页同一口径。
+     *
+     * <p>刷新点在 {@link #sshPane()}：类型是第 1 步选的，页签内容在那之后才构建，
+     * 构建时按<b>当时</b>这一家取内容，所以退回第 1 步换库不需要额外刷新。
+     */
+    private void refreshSshPane() {
+        if (sshPaneHost == null) {
+            return;
+        }
+        sshPaneHost.getChildren().clear();
+        sshPaneHost.getChildren().add(type.dialect().usesFilePath()
+                ? notice(I18n.t("wizard.ssh.sqlite"), I18n.t("wizard.ssh.sqliteNext"))
+                : sshControls());
+    }
+
+    private Node sshControls() {
+        GridPane grid = grid();
+        grid.setId("wizard-ssh-grid");
+        grid.addRow(0, new Label(I18n.t("wizard.ssh.section")), sshEnabled);
+        grid.addRow(1, new Label(I18n.t("wizard.ssh.host")), sshHost);
+        grid.addRow(2, new Label(I18n.t("wizard.ssh.port")), sshPort);
+        grid.addRow(3, new Label(I18n.t("wizard.ssh.user")), sshUser);
+        grid.addRow(4, new Label(I18n.t("wizard.ssh.auth")),
+                new HBox(12, sshByPassword, sshByKey));
+        // 认证方式决定下面露出哪几行：口令认证摆私钥框，用户会以为私钥也参与了认证。
+        sshAuthGrid = new GridPane();
+        sshAuthGrid.setHgap(10);
+        sshAuthGrid.setVgap(8);
+        grid.add(sshAuthGrid, 0, 5, 2, 1);
+        grid.addRow(6, new Label(I18n.t("wizard.ssh.trust")), sshTrustOnFirstUse);
+        sshHint.setMaxWidth(550);
+        grid.add(sshHint, 0, 7, 2, 1);
+        renderSshAuth();
+        updateSshEnabled();
+
+        VBox box = new VBox(10, grid);
+        HBox centered = new HBox(box);
+        centered.setAlignment(Pos.CENTER);
+        return centered;
+    }
+
+    /** 认证方式下面的那几行：口令 → 一个密码框；私钥 → 路径 + 口令短语。 */
+    private void renderSshAuth() {
+        if (sshAuthGrid == null) {
+            return;
+        }
+        sshAuthGrid.getChildren().clear();
+        if (sshAuthGroup.getSelectedToggle() == sshByKey) {
+            sshAuthGrid.addRow(0, new Label(I18n.t("wizard.ssh.key")), sshKeyPath);
+            Button browse = new Button(I18n.t("wizard.ssh.browse"));
+            browse.setId("wizard-ssh-key-browse");
+            browse.getStyleClass().addAll("adb-button", "adb-button--ghost");
+            browse.setOnAction(event -> choosePrivateKey());
+            sshAuthGrid.add(browse, 2, 0);
+            sshAuthGrid.addRow(1, new Label(I18n.t("wizard.ssh.passphrase")), sshKeyPassphrase);
+        } else {
+            sshAuthGrid.addRow(0, new Label(I18n.t("wizard.ssh.password")), sshPassword);
+        }
+        updateSshEnabled();
+    }
+
+    /**
+     * 没勾选「使用 SSH 隧道」时把整组字段灰掉，但<b>不</b>清空值。
+     *
+     * <p>不清空是因为：用户常先填隧道、再发现 TLS 页还没配，切回来时把地址敲掉了；
+     * 灰掉但留值，配合 {@link #sshConfigFromForm()} 里「复选没勾 = 不启用」的判定，
+     * 两边语义都对得上。
+     */
+    private void updateSshEnabled() {
+        if (sshHost == null) {
+            return;
+        }
+        boolean on = sshEnabled.isSelected();
+        for (Node node : List.<Node>of(sshHost, sshPort, sshUser, sshByPassword, sshByKey,
+                sshTrustOnFirstUse)) {
+            node.setDisable(!on);
+        }
+        if (sshAuthGrid != null) {
+            sshAuthGrid.setDisable(!on);
+        }
+        sshHint.setText(on ? I18n.t("wizard.ssh.hint") : I18n.t("wizard.ssh.hintOff"));
+    }
+
+    private void choosePrivateKey() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle(I18n.t("wizard.ssh.key.choose"));
+        java.io.File picked = chooser.showOpenDialog(dialog.getOwner());
+        if (picked != null) {
+            sshKeyPath.setText(picked.getAbsolutePath());
+        }
+    }
+
+    /** 表单 → 档案里那份<b>无秘密</b>的 SSH 配置。 */
+    SshConfig sshConfigFromForm() {
+        if (!sshEnabled.isSelected()) {
+            return SshConfig.NONE;
+        }
+        boolean byKey = sshAuthGroup.getSelectedToggle() == sshByKey;
+        return new SshConfig(sshHost.getText(), parsePort(sshPort.getText(),
+                SshEndpoint.DEFAULT_PORT), sshUser.getText(),
+                byKey ? sshKeyPath.getText() : "", sshTrustOnFirstUse.isSelected());
+    }
+
+    /**
+     * 表单里的两个秘密。{@code #sshSavePassword} 不复用「保存密码」复选：
+     * 跳板机口令不填就<b>连不上</b>，而库口令不填还能手输，两者「不保存」的代价不对等，
+     * 所以这里由调用方（{@code AppShell}）无条件落进凭据库，界面在说明里写明。
+     */
+    SshSecrets sshSecretsFromForm() {
+        if (!sshEnabled.isSelected()) {
+            return SshSecrets.NONE;
+        }
+        boolean byKey = sshAuthGroup.getSelectedToggle() == sshByKey;
+        return new SshSecrets(byKey ? "" : sshPassword.getText(),
+                byKey ? sshKeyPassphrase.getText() : "");
+    }
+
+    /** 交给调用方落进凭据库的秘密；未启用隧道时是空的（条目会被删掉）。 */
+    public SshSecrets sshSecrets() {
+        return sshSecretsFromForm();
+    }
+
     private Node remarksPane() {
         VBox box = new VBox(10, labeled(I18n.t("wizard.remarks.label"), remarks),
                 hint(I18n.t("wizard.remarks.hint")));
@@ -1000,6 +1185,14 @@ public final class ConnectionWizard {
         sslMode.getSelectionModel().select(Dialect.SslLevel.VERIFY_CA);
         sslRoot.setText("/etc/ssl/certs/company-ca.pem");
         remarks.setText("Read-only account; changes go through DBA approval.");
+        // ⭐ G5a：SSH 页也摆实值 —— 这一帧要证的正是「隧道页不再是那张说明牌」。
+        if ("ssh".equals(tab)) {
+            sshEnabled.setSelected(true);
+            sshHost.setText("bastion.example.com");
+            sshPort.setText("22");
+            sshUser.setText("tunnel");
+            sshPassword.setText("sample-bastion-password");
+        }
         step = 2;
         updateStep();
         selectTab(tab);
@@ -1122,7 +1315,10 @@ public final class ConnectionWizard {
             return;
         }
         testResult.setText(I18n.t("wizard.test.running"));
-        String error = tester.test(profile.spec(password.getText()));
+        // 测试连接用的是<b>表单里</b>的秘密：这时候档案还没落库、凭据库也还没写，
+        // 从凭据库读会拿到上一次的值（改口令后点测试却拿旧口令试，是最难查的假失败）。
+        String error = tester.test(
+                profile.spec(password.getText(), sshSecretsFromForm()));
         testResult.setText(error == null ? I18n.t("wizard.test.ok")
                 : I18n.t("wizard.test.failed", error));
     }
@@ -1133,21 +1329,25 @@ public final class ConnectionWizard {
         String connectionName = name.getText() == null || name.getText().isBlank()
                 ? kind.displayName() : name.getText().trim();
         Map<String, String> options = collectOptions();
+        ConnectionProfile profile;
         if (kind.dialect().usesFilePath()) {
-            return new ConnectionProfile(id, connectionName, kind, "", 0,
+            profile = new ConnectionProfile(id, connectionName, kind, "", 0,
                     file.getText() == null ? "" : file.getText().trim(), "",
                     initial != null && initial.favorite(),
                     initial == null ? 0 : initial.lastUsedAt(),
                     initial == null ? "" : initial.group(), options);
+        } else {
+            profile = new ConnectionProfile(id, connectionName, kind,
+                    host.getText() == null ? "" : host.getText().trim(),
+                    parsePort(port.getText(), ConnectionProfile.defaultPort(kind)),
+                    database.getText() == null ? "" : database.getText().trim(),
+                    username.getText() == null ? "" : username.getText().trim(),
+                    initial != null && initial.favorite(),
+                    initial == null ? 0 : initial.lastUsedAt(),
+                    initial == null ? "" : initial.group(), options);
         }
-        return new ConnectionProfile(id, connectionName, kind,
-                host.getText() == null ? "" : host.getText().trim(),
-                parsePort(port.getText(), ConnectionProfile.defaultPort(kind)),
-                database.getText() == null ? "" : database.getText().trim(),
-                username.getText() == null ? "" : username.getText().trim(),
-                initial != null && initial.favorite(),
-                initial == null ? 0 : initial.lastUsedAt(),
-                initial == null ? "" : initial.group(), options);
+        // ⭐ G5a：隧道配置跟着档案走，秘密不跟（SshConfig 里根本没有那两个字段）。
+        return profile.withSsh(sshConfigFromForm());
     }
 
     /**
@@ -1224,7 +1424,43 @@ public final class ConnectionWizard {
         saved.ifPresent(password::setText);
         savePassword.setSelected(saved.isPresent());
 
+        loadInitialSsh(initial.ssh());
         applyOptions(initial.options());
+    }
+
+    /**
+     * ⭐ G5a：把档案里的隧道配置回填进表单。
+     *
+     * <p>秘密单独从凭据库读（{@link SshConfig} 里根本没有那两个字段），读不到就留空框 ——
+     * 与库口令同一条口径：界面<b>从不</b>假装知道存了什么。
+     */
+    private void loadInitialSsh(SshConfig ssh) {
+        sshEnabled.setSelected(ssh.enabled());
+        sshHost.setText(ssh.host());
+        sshPort.setText(ssh.host().isBlank() ? "" : String.valueOf(ssh.port()));
+        sshUser.setText(ssh.username());
+        boolean byKey = !ssh.privateKeyPath().isBlank();
+        if (byKey) {
+            sshByKey.setSelected(true);
+        } else {
+            sshByPassword.setSelected(true);
+        }
+        sshKeyPath.setText(ssh.privateKeyPath());
+        sshTrustOnFirstUse.setSelected(ssh.trustOnFirstUse());
+        SshSecrets saved = storedSshSecrets(initial.id());
+        if (saved.password() != null) {
+            sshPassword.setText(saved.password());
+        }
+        if (saved.keyPassphrase() != null) {
+            sshKeyPassphrase.setText(saved.keyPassphrase());
+        }
+    }
+
+    /** 凭据库里那两条 SSH 秘密；没有则 {@link SshSecrets#NONE}。 */
+    private SshSecrets storedSshSecrets(String profileId) {
+        return new SshSecrets(
+                credentials.password(SshConfig.sshPasswordKey(profileId)).orElse(null),
+                credentials.password(SshConfig.sshKeyPassphraseKey(profileId)).orElse(null));
     }
 
     /**

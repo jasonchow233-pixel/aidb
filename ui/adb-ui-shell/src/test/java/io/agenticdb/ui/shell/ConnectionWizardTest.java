@@ -5,8 +5,11 @@ import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.CredentialStore;
+import io.agenticdb.session.SshConfig;
+import io.agenticdb.session.SshSecrets;
 import io.agenticdb.ui.I18n;
 import javafx.scene.Scene;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
@@ -469,23 +472,230 @@ class ConnectionWizardTest {
                         I18n.t("wizard.tab.remarks"));
     }
 
+    /**
+     * ⭐ G5a：SSH 页从「一张说明牌」变成了真字段。
+     *
+     * <p>这条替代 R33 时那条「SSH 页必须明说自己没有隧道引擎」—— 引擎已经有了，
+     * 那句谎要撤掉。反过来，摆着字段却<b>点了确定什么隧道都不建</b>同样是骗人控件，
+     * 所以这里除了字段齐不齐，还量「值进得了档案」「秘密进不了档案」。
+     */
     @Test
-    void sshAndHttpPagesSayWhatIsMissingInsteadOfFakeFields(FxRobot robot) {
+    void sshTabHasRealFieldsNowAndHttpStillSaysWhatIsMissing(FxRobot robot) {
         open(robot, null);
         goToProperties(robot, DialectKind.POSTGRESQL);
+        selectTab(robot, "wizard-tab-ssh");
 
         TabPane tabs = robot.lookup("#wizard-tabs").queryAs(TabPane.class);
         Tab ssh = tabs.getTabs().get(4);
         Tab http = tabs.getTabs().get(5);
 
-        assertThat(ssh.getContent().lookup("#wizard-notice")).isNotNull();
-        assertThat(allText(ssh.getContent()))
-                .as("SSH 页必须说清楚没有隧道引擎，并给替代做法")
-                .contains(I18n.t("wizard.ssh.notice"))
-                .contains(I18n.t("wizard.ssh.workaround"));
+        assertThat(ssh.getContent().lookup("#wizard-notice"))
+                .as("「这一版没有隧道引擎」的说明牌要撤掉")
+                .isNull();
+        assertThat(ssh.getContent().lookup("#wizard-ssh-grid")).isNotNull();
+        for (String id : List.of("wizard-ssh-enable", "wizard-ssh-host", "wizard-ssh-port",
+                "wizard-ssh-user", "wizard-ssh-auth-password", "wizard-ssh-auth-key",
+                "wizard-ssh-password", "wizard-ssh-tofu")) {
+            assertThat(ssh.getContent().lookup("#" + id))
+                    .as("隧道填了要生效，所以这一件得有：" + id)
+                    .isNotNull();
+        }
+        assertThat(ssh.getContent().lookup("#wizard-ssh-key-path"))
+                .as("口令认证时不摆私钥框（摆了也不参与认证）")
+                .isNull();
+
         assertThat(allText(http.getContent()))
-                .as("HTTP 页同理，不能假装有字段")
+                .as("HTTP 页还没实现，继续如实说明，不假装有字段")
                 .contains(I18n.t("wizard.http.notice"));
+    }
+
+    /** 本地文件库没有「另一台机器」可跳：那一页只给说明，不摆填了不生效的输入框。 */
+    @Test
+    void localFileEngineGetsTheTunnelNoticeInsteadOfFields(FxRobot robot) {
+        open(robot, null);
+        goToProperties(robot, DialectKind.SQLITE);
+        selectTab(robot, "wizard-tab-ssh");
+
+        TabPane tabs = robot.lookup("#wizard-tabs").queryAs(TabPane.class);
+        Tab ssh = tabs.getTabs().get(4);
+
+        assertThat(ssh.getContent().lookup("#wizard-ssh-grid")).isNull();
+        assertThat(allText(ssh.getContent()))
+                .as("SQLite 要说清「本地文件不需要隧道」")
+                .contains(I18n.t("wizard.ssh.sqlite"));
+    }
+
+    /**
+     * 没勾选「使用 SSH 隧道」时整组灰掉，但<b>不清空已填的值</b>。
+     *
+     * <p>留值是因为：用户常先填隧道、再切去 TLS 页，回来发现地址被清空要重敲。
+     * 「灰着但没清」和「没勾选就不启用」这两条语义靠
+     * {@link ConnectionWizard#sshConfigFromForm()} 里那一处判定收口。
+     */
+    @Test
+    void tunnelFieldsStayGreyUntilCheckedAndKeepTheirValues(FxRobot robot) {
+        open(robot, null);
+        goToProperties(robot, DialectKind.POSTGRESQL);
+        selectTab(robot, "wizard-tab-ssh");
+
+        javafx.scene.control.TextInputControl hostField =
+                robot.lookup("#wizard-ssh-host").queryTextInputControl();
+        assertThat(robot.lookup("#wizard-ssh-enable").queryAs(CheckBox.class).isSelected())
+                .as("默认不走隧道 —— 档案里 SshConfig.enabled() 以地址+用户齐了为准").isFalse();
+        assertThat(hostField.isDisabled()).as("没勾选就灰掉整组").isTrue();
+
+        click(robot, "wizard-ssh-enable");
+        assertThat(hostField.isDisabled()).isFalse();
+        robot.clickOn("#wizard-ssh-host");
+        robot.write("bastion.example.com");
+
+        click(robot, "wizard-ssh-enable");
+
+        assertThat(hostField.isDisabled()).isTrue();
+        assertThat(hostField.getText()).as("灰掉但不清值").isEqualTo("bastion.example.com");
+        assertThat(wizard.sshConfigFromForm()).isEqualTo(SshConfig.NONE);
+        assertThat(wizard.sshSecrets()).isEqualTo(SshSecrets.NONE);
+    }
+
+    /**
+     * ⭐ 确定之后：跳板机地址进档案，两个秘密只从 {@link ConnectionWizard#sshSecrets()} 出去。
+     *
+     * <p>{@link SshConfig} 这个类型<b>没有</b>口令字段，所以「秘密进不了
+     * {@code connections.json}」是结构性的；这条量的是另一半 —— 界面值到底有没有真的
+     * 落进档案（灰掉不清值那条设计的最终验收），以及档案的可打印形态里不许有秘密。
+     */
+    @Test
+    void savedProfileCarriesTheTunnelButNotItsSecret(FxRobot robot) {
+        open(robot, null);
+        goToProperties(robot, DialectKind.POSTGRESQL);
+        robot.clickOn("#wizard-name");
+        robot.write("Via Bastion");
+        robot.clickOn("#wizard-host");
+        robot.write("db.internal");
+        robot.clickOn("#wizard-database");
+        robot.write("shop");
+        selectTab(robot, "wizard-tab-ssh");
+        click(robot, "wizard-ssh-enable");
+        robot.clickOn("#wizard-ssh-host");
+        robot.write("bastion.example.com");
+        robot.clickOn("#wizard-ssh-port");
+        robot.write("2222");
+        robot.clickOn("#wizard-ssh-user");
+        robot.write("tunnel");
+        robot.clickOn("#wizard-ssh-password");
+        robot.write("bastion-pw");
+
+        click(robot, "wizard-save");
+
+        ConnectionProfile saved = wizard.dialogResult().orElseThrow();
+        assertThat(saved.usesSshTunnel()).isTrue();
+        assertThat(saved.ssh())
+                .isEqualTo(new SshConfig("bastion.example.com", 2222, "tunnel", "", true));
+        assertThat(saved.ssh().toString()).doesNotContain("bastion-pw");
+        assertThat(saved.toString()).doesNotContain("bastion-pw");
+        assertThat(wizard.sshSecrets().password()).isEqualTo("bastion-pw");
+        // 秘密走的是那条单独的口，档案自己那份 spec() 拿不到它 —— 见 ConnectionProfile#spec(String)。
+        assertThat(saved.spec("db-pw").ssh().password()).isNull();
+        assertThat(saved.spec("db-pw", wizard.sshSecrets()).ssh().password())
+                .isEqualTo("bastion-pw");
+    }
+
+    /** 私钥认证：换成路径 + 口令短语两个框，口令框退出场景图，也就不会被当成秘密提交。 */
+    @Test
+    void keyAuthSwapsThePasswordFieldForPathAndPassphrase(FxRobot robot) {
+        open(robot, null);
+        goToProperties(robot, DialectKind.POSTGRESQL);
+        selectTab(robot, "wizard-tab-ssh");
+        click(robot, "wizard-ssh-enable");
+
+        TabPane tabs = robot.lookup("#wizard-tabs").queryAs(TabPane.class);
+        Tab ssh = tabs.getTabs().get(4);
+        click(robot, "wizard-ssh-auth-key");
+        assertThat(ssh.getContent().lookup("#wizard-ssh-key-path")).isNotNull();
+        assertThat(ssh.getContent().lookup("#wizard-ssh-key-passphrase")).isNotNull();
+        assertThat(ssh.getContent().lookup("#wizard-ssh-key-browse")).isNotNull();
+        assertThat(ssh.getContent().lookup("#wizard-ssh-password"))
+                .as("私钥认证时口令框不在场，界面上就不存在「填了却没生效」的第二个秘密")
+                .isNull();
+
+        robot.clickOn("#wizard-ssh-key-path");
+        robot.write("/Users/me/.ssh/id_bastion");
+        robot.clickOn("#wizard-ssh-key-passphrase");
+        robot.write("key-pass");
+
+        assertThat(wizard.sshConfigFromForm().privateKeyPath()).isEqualTo("/Users/me/.ssh/id_bastion");
+        SshSecrets secrets = wizard.sshSecrets();
+        assertThat(secrets.password())
+                .as("切到私钥认证后，先前敲进口令框的内容不该跟出去")
+                .isNull();
+        assertThat(secrets.keyPassphrase()).isEqualTo("key-pass");
+    }
+
+    /**
+     * 「测试连接」用的是<b>表单里</b>的秘密，而且真的带上隧道。
+     *
+     * <p>两条都是难查的假象：从凭据库读会拿到上一次的值（改了口令点测试却用旧口令试，
+     * 报「认证失败」让人去怀疑服务器）；没拼 {@code ssh} 的话测试连的是直连 ——
+     * 本机根本到不了那台库时，症状反而变成「超时」，跟隧道没关系。
+     */
+    @Test
+    void testConnectionUsesTheFormTunnelAndItsSecret(FxRobot robot) throws Exception {
+        open(robot, null);
+        goToProperties(robot, DialectKind.POSTGRESQL);
+        robot.clickOn("#wizard-name");
+        robot.write("Via Bastion");
+        robot.clickOn("#wizard-host");
+        robot.write("db.internal");
+        robot.clickOn("#wizard-database");
+        robot.write("shop");
+        selectTab(robot, "wizard-tab-ssh");
+        click(robot, "wizard-ssh-enable");
+        robot.clickOn("#wizard-ssh-host");
+        robot.write("bastion.example.com");
+        robot.clickOn("#wizard-ssh-user");
+        robot.write("tunnel");
+        robot.clickOn("#wizard-ssh-password");
+        robot.write("bastion-pw");
+
+        click(robot, "wizard-test");
+        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> tested.get() != null);
+
+        ConnectionSpec spec = tested.get();
+        assertThat(spec.usesSshTunnel()).as("测试连接也要经隧道，不能偷偷直连").isTrue();
+        assertThat(spec.ssh().describe()).isEqualTo("tunnel@bastion.example.com:22");
+        assertThat(spec.ssh().password()).isEqualTo("bastion-pw");
+        assertThat(spec.host()).as("驱动看到的是逻辑地址，隧道端口只在连接内部")
+                .isEqualTo("db.internal");
+        assertThat(spec.toString()).doesNotContain("bastion-pw");
+    }
+
+    /**
+     * 编辑既有连接：跳板机地址回填，秘密<b>不</b>回填成「看着像原来的」。
+     *
+     * <p>凭据库读得到就填进框（与库口令同一条口径），读不到就留空框。
+     * 这里用的内存凭据库是空的，所以量的是「读不到时不许猜一个」。
+     */
+    @Test
+    void editingExistingProfileRefillsTunnelAddressButLeavesSecretBlankWhenUnstored(FxRobot robot) {
+        ConnectionProfile existing = ConnectionProfile.newProfile("My PG",
+                DialectKind.POSTGRESQL, "db.internal", 5432, "shop", "app")
+                .withSsh(new SshConfig("bastion.example.com", 2222, "tunnel", "", false));
+        open(robot, existing);
+        goToProperties(robot, DialectKind.POSTGRESQL);
+        selectTab(robot, "wizard-tab-ssh");
+
+        assertThat(robot.lookup("#wizard-ssh-enable").queryAs(CheckBox.class).isSelected())
+                .as("档案里配了跳板机，复选就要勾上").isTrue();
+        assertThat(robot.lookup("#wizard-ssh-host").queryTextInputControl().getText())
+                .isEqualTo("bastion.example.com");
+        assertThat(robot.lookup("#wizard-ssh-port").queryTextInputControl().getText())
+                .isEqualTo("2222");
+        assertThat(robot.lookup("#wizard-ssh-tofu").queryAs(CheckBox.class).isSelected())
+                .as("trustOnFirstUse=false 要如实回填，不能固定显示成开")
+                .isFalse();
+        assertThat(robot.lookup("#wizard-ssh-password").queryTextInputControl().getText())
+                .as("凭据库没有秘密时留空框，界面从不假装知道存了什么")
+                .isEmpty();
     }
 
     @Test

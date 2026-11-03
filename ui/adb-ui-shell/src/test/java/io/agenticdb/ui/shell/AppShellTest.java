@@ -1253,6 +1253,50 @@ class AppShellTest {
         return null;
     }
 
+    /**
+     * ⭐ G5a：跳板机秘密在界面里<b>只有一个拼装口</b>，也<b>只有一个写入口</b>。
+     *
+     * <p>{@code ConnectionProfile.spec(String)} 那条一参老路交的是
+     * {@code SshSecrets.NONE}：档案配了跳板机却从这条路建连接，症状是「SSH 隧道缺少凭据」，
+     * 而用户明明填过口令 —— 这种「界面说的和递出去的不是一份东西」只能靠结构钉住。
+     * 写入口同理：{@code saveSshSecrets} 多一处，就多一处「漏写 → 下次连不上」或
+     * 「多写 → 覆盖了别人的条目」的分支。
+     *
+     * <p>为什么扫源码而不是只靠行为测试：行为测试只能覆盖<b>想到的</b>那条通道；
+     * 新增一条建连接的通道（比如以后的「导入连接」）没人会想到去补测试，
+     * 而它一旦绕过 {@code specOf}，五家真库契约也照样看不见（契约不走界面这条路）。
+     */
+    @Test
+    void sshSecretsHaveExactlyOneAssemblyAndOneWritePointInTheShell() throws Exception {
+        Path root = Path.of(System.getProperty("user.dir")).toAbsolutePath();
+        while (root != null && !Files.isDirectory(root.resolve("ui/adb-ui-shell"))) {
+            root = root.getParent();
+        }
+        assertThat(root).as("找不到仓库根，源码门无法执行").isNotNull();
+        Path appShell = root.resolve(
+                "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/AppShell.java");
+        String source = Files.readString(appShell, java.nio.charset.StandardCharsets.UTF_8);
+
+        List<String> specAssemblyLines = source.lines()
+                .filter(line -> line.contains(".spec("))
+                .toList();
+        assertThat(specAssemblyLines)
+                .as("界面里建 ConnectionSpec 的地方必须只有 specOf 一处")
+                .singleElement()
+                .satisfies(line -> assertThat(line)
+                        .as("那一处必须同时递库口令和 SSH 秘密")
+                        .contains("sshSecretsFor("));
+        assertThat(source.lines().filter(l -> l.contains("saveSshSecrets(")).count())
+                .as("秘密的写入口只能有一个")
+                .isEqualTo(1);
+        assertThat(source.lines()
+                .filter(l -> l.contains("new io.agenticdb.jdbc.ConnectionSpec(")
+                        || l.contains("new ConnectionSpec("))
+                .count())
+                .as("不许绕过档案自己拼 spec —— 那样跳板机配置会从连接上掉下去")
+                .isZero();
+    }
+
     private static void onFxRun(Runnable action) {
         javafx.application.Platform.runLater(action);
         WaitForAsyncUtils.waitForFxEvents();

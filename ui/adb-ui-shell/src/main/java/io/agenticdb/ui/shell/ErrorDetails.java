@@ -46,6 +46,10 @@ record ErrorDetails(String title, ErrorClassifier.Kind kind, String summary,
             case CONSTRAINT_VIOLATION -> I18n.t("error.kind.constraintViolation");
             case SYNTAX -> I18n.t("error.kind.syntax");
             case TLS_VERIFICATION_FAILED -> I18n.t("error.kind.tlsVerification");
+            // ⭐ G5a：隧道类的两件事处置动作完全不同（查跳板机 / 查主机密钥），
+            //    所以它们要各自有徽标，不能都退化成一个「连接断开」。
+            case SSH_TUNNEL_FAILED -> I18n.t("error.kind.sshTunnel");
+            case SSH_HOST_KEY_UNTRUSTED -> I18n.t("error.kind.sshHostKey");
             case OTHER -> I18n.t("error.kind.other");
         };
     }
@@ -80,7 +84,9 @@ record ErrorDetails(String title, ErrorClassifier.Kind kind, String summary,
                     CONSTRAINT_VIOLATION, SYNTAX -> true;
             // 「TLS 校验失败」这句徽标不含信息量，信息在说明里（链认不出 vs 主机名对不上，
             // 两个建议动作完全不同），所以它必须留在标题行。
-            case TIMEOUT, TLS_VERIFICATION_FAILED, OTHER -> false;
+            // SSH 两类同理：说明里带的才是「认证失败」还是「密钥变了」。
+            case TIMEOUT, TLS_VERIFICATION_FAILED, SSH_TUNNEL_FAILED,
+                    SSH_HOST_KEY_UNTRUSTED, OTHER -> false;
         };
     }
 

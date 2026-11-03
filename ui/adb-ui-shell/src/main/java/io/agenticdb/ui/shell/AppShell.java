@@ -1133,8 +1133,7 @@ public final class AppShell extends StackPane {
         connectionName = profile.name();
         session = null;
         try {
-            String password = passwordFor(profile.id());
-            session = sessions.open(profile.id(), profile.spec(password));
+            session = sessions.open(profile.id(), specOf(profile));
             List<SchemaObject> objects = schemaService.listObjects(session);
             objectsByConnection.put(profile.id(), objects);
             sideBar.setObjects(profile.id(), objects);
@@ -1355,8 +1354,7 @@ public final class AppShell extends StackPane {
             DbSession opened = null;
             List<SchemaObject> objects = List.of();
             try {
-                String password = passwordFor(profile.id());
-                opened = sessions.open(profile.id(), profile.spec(password));
+                opened = sessions.open(profile.id(), specOf(profile));
                 objects = schemaService.listObjects(opened);
             } catch (Exception e) {
                 String reason = readable(e);
@@ -1793,6 +1791,11 @@ public final class AppShell extends StackPane {
             if (password != null && !password.isBlank()) {
                 credentials.save(profile.id(), password);
             }
+            // ⭐ G5a：跳板机的两条秘密单独落凭据库。
+            //    这里不判「非空才写」：清空 = 删除条目，和上面库口令的「不填就不保存」
+            //    不同口径 —— 隧道口令缺了是连不上，留着旧条目反而会让用户以为
+            //    「我改了私钥，怎么还在用旧口令」。
+            connectionStore.saveSshSecrets(profile.id(), wizard.sshSecrets());
             refreshProfiles();
             connectProfile(profile, true);
             openConnections();
@@ -2002,13 +2005,33 @@ public final class AppShell extends StackPane {
     }
 
     /**
-     * 取连接的 spec（口令从凭据存储取）。
+     * 取连接的 spec —— <b>建连接用的秘密只有这一个拼装口</b>。
      *
      * <p>⭐ U1：catalog 虚拟连接的口令在<b>父连接</b>的凭据条目里
      * （虚拟连接不是档案，没有自己的凭据条目）。
+     *
+     * <p>⭐ G5a：SSH 跳板机的秘密在这里拼回，别处不碰凭据库。
+     * 之所以必须收成一个口：档案里的 {@code SshConfig} 是<b>无秘密</b>的类型，
+     * 「秘密什么时候进来」只剩这一条路径可查；如果每个连接点各拼一次，
+     * 迟早有人在某个分支上漏拼 —— 而漏拼的表现是「隧道起不来、报的是缺凭据」，
+     * 用户看不出是自己没存还是界面没读。
      */
     private io.agenticdb.jdbc.ConnectionSpec specOf(ConnectionProfile profile) {
-        return profile.spec(passwordFor(profile.id()));
+        return profile.spec(passwordFor(profile.id()), sshSecretsFor(profile.id()));
+    }
+
+    /**
+     * SSH 跳板机的秘密（登录口令 / 私钥口令短语）。
+     *
+     * <p>矩阵通道（{@link #ephemeralProfileId}）走不到这里也有秘密：那条通道的档案不带
+     * {@code SshConfig}，凭据库里也没有它的条目，回 {@link SshSecrets#NONE} 即可 ——
+     * 验收帧连的是本机 Docker 端口，没有跳板机。
+     */
+    private io.agenticdb.session.SshSecrets sshSecretsFor(String connectionId) {
+        String credentialId = ConnectionProfile.isCatalogVariantId(connectionId)
+                ? ConnectionProfile.parentOfCatalogVariant(connectionId)
+                : connectionId;
+        return connectionStore.sshSecrets(credentialId);
     }
 
     // ─────────────────────────── 生命周期 ───────────────────────────

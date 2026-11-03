@@ -192,8 +192,10 @@ SHOTS=(
   #   只拍亮档等于六家在暗色档一眼都没被看过 —— 而画不出来的症状是「图标糊成一片黑」。
   "p5-connect-type-dark||4000|ADB_CONNECT_WIZARD=type ADB_THEME_FORCE=dark"
   # ⭐ R33-G8/G20：7 页属性 —— 常规 / SSL / SSH 各一帧。
-  #   SSH 页是「明说没有隧道引擎 + 给 ssh -L 替代做法」那一屏，
-  #   不摆一帧就等于这条诚实边界没人看过。
+  #   SSH 页在 G5a 之前是「明说这一版没有隧道引擎 + 给 ssh -L 替代做法」那一屏；
+  #   引擎落地后那句谎撤了，这一帧现在要证的是「勾上以后地址/端口/用户/认证方式
+  #   真的能填、填了真的进档案」——摆一张灰掉的空表单等于没拍这一页。
+  #   （值的去向由 ConnectionWizardTest 那批字段门禁量，帧给人看，门给机器看。）
   "p5-connect-general||4000|ADB_CONNECT_WIZARD=general ADB_THEME_FORCE=light"
   "p5-connect-ssl||4000|ADB_CONNECT_WIZARD=ssl ADB_THEME_FORCE=light"
   "p5-connect-ssh||4000|ADB_CONNECT_WIZARD=ssh ADB_THEME_FORCE=light"
