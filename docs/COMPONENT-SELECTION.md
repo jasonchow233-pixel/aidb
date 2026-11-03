@@ -26,6 +26,14 @@ JavaFX 内置 `TableView` 底层是 `VirtualFlow`，只创建可见行的 Node�
 | `com.zaxxer:HikariCP` | 6.3.1 | Apache-2.0 | P5 连接池 |
 | `net.java.dev.jna:jna` | 5.13.0 | LGPL-2.1 / Apache-2.0 双许可 | P5-2 Windows 凭据管理器（WinCred / advapi32） |
 | `org.apache.poi:poi-ooxml` | 5.4.1 | Apache-2.0 | P6-3 xlsx 导入导出（SXSSF 流式写 / SAX 事件模型读） |
+| `org.apache.sshd:sshd-core` | 2.20.1 | Apache-2.0 | G5a SSH 跳板隧道（`SshTunnel`）：只用客户端；服务端同包，只出现在测试里 |
+| `org.slf4j:slf4j-api` / `slf4j-jdk14` | 2.0.17 | MIT | sshd 的日志出口。装 JUL 转发而不是 `slf4j-nop`：隧道出问题时控制台该看得见，不能静默 |
+
+**G5a 为什么是 sshd 而不是「去调系统的 `ssh -L`」**：纯 Java 才不取决于用户装了什么 ——
+Windows 上不保证有 `ssh`，而「连不上」不该由外部可执行文件的存在与否决定；子进程的生命周期
+（什么时候该被杀掉）也不归我们。附带的好处是可测：`sshd-core` 里客户端与服务端同包，
+契约能在本机进程内起一把真 sshd，于是「字节确实穿过了一条隧道」不需要第二台机器也能量得出来
+（`SshTunnelTest` 8 条 + 契约第 13 条 `SshTunnelMatrixTest`，五家 Docker 各经跳板机连一次）。
 
 ### 1.3 数据库与测试
 
@@ -116,6 +124,7 @@ TestFX 两年未大版本更新，但仍是 JavaFX 无头 UI 门禁最成熟的�
 
 - JavaFX：GPLv2 + Classpath Exception，可随桌面应用分发。
 - ControlsFX / RichTextFX / TestFX / AssertJ：BSD/Apache 系，商用友好。
+- Apache MINA SSHD（`sshd-core`）与 SLF4J：Apache-2.0 / MIT，商用友好，无额外义务。
 - Monocle：GPL-2.0，仅 `test` scope，不进安装包。
 - MySQL Connector/J：GPLv2 + FOSS Exception；闭源分发前需复核。
 - Lucide 路径数据：ISC，许可原文随两份图标资源目录各自分发（见 §1.6）。
