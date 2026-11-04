@@ -3,7 +3,10 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.RowHeights;
 import io.agenticdb.ui.Icons;
+import io.agenticdb.editing.EditBuffer;
+import io.agenticdb.editing.EditSqlBuilder;
 import io.agenticdb.editing.ResultEditPolicy;
+import io.agenticdb.editing.RowIdentity;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.ExecutionResult;
 import io.agenticdb.introspect.QueryPaginator;
@@ -75,6 +78,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executor;
@@ -86,8 +90,11 @@ import java.util.function.Predicate;
 /**
  * 查询页：SQL 编辑器 + 多语句结果 + 取消 + 错误定位 + 执行计划 + 历史。
  *
- * <p>编辑内容不被数据页的编辑缓冲管理；查询页只负责「执行」与「展示」。
- * 所有 JDBC 调用都提交到共享单线程执行器，取消通过 {@link DbSession#cancelCurrent()}。
+ * <p>⭐ R58-c 起结果网格能按主键写回：判定在 {@code ResultEditPolicy}（模型层），
+ * 缓冲与生成的 SQL 与数据页共用同一套（{@code EditBuffer} / {@code EditSqlBuilder}），
+ * 这里只负责「哪一格能点」与「保存前给用户看一眼 SQL」，界面自己不写 UPDATE。
+ *
+ * <p>所有 JDBC 调用都提交到共享单线程执行器，取消通过 {@link DbSession#cancelCurrent()}。
  */
 public final class QueryPage extends VBox implements AutoCloseable {
 
@@ -165,6 +172,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private final List<ResultEditState> editStates = new ArrayList<>();
     /** ⭐ R58-b：后台判定回来时页面可能已经关了 —— 关掉之后不再动已经离场的节点。 */
     private boolean disposed;
+    /** ⭐ R58-c：结果区正在写库的那一次（期间禁用保存/放弃，页面关闭时取走任务）。 */
+    private boolean savingResultEdits;
+    private Future<?> saveInFlight;
     private boolean running;
     private boolean cancelled;
     private boolean dirty;
@@ -210,6 +220,18 @@ public final class QueryPage extends VBox implements AutoCloseable {
      * 于是摆不成的那一帧照样写文件，帧名写着 completions 画面却没有弹层。
      */
     private static final int POSE_READY_TICKS = 80;
+
+    /**
+     * 结果格里可能出现的全部状态类：先整体摘掉再按这一格的实际状态重贴，
+     * 否则单元格被复用（滚动、refresh）时会留着上一格的样式。
+     *
+     * <p>⚠️ 声明在外层而不是 {@link ResultCell} 里 —— 内部类的静态成员只允许常量变量。
+     */
+    private static final List<String> RESULT_CELL_STYLES = List.of(
+            "adb-grid__cell--null", "adb-grid__cell--empty", "adb-grid__cell--number",
+            "adb-grid__cell--boolean", "adb-grid__cell--binary", "adb-grid__cell--json",
+            "adb-grid__cell--enum", "adb-grid__cell--date", "adb-grid__cell--long-text",
+            "adb-grid__cell--dirty", "adb-grid__cell--editing");
 
     /** 接上「存为命名查询」的落点。 */
     public void setOnSaveNamed(java.util.function.BiConsumer<String, String> onSaveNamed) {
@@ -1057,6 +1079,11 @@ public final class QueryPage extends VBox implements AutoCloseable {
     }
 
     public void cancel() {
+        // ⭐ R58-c：⌘. 也要停得下一条正在写的保存。它和查询共用这条连接，
+        // 但有自己的在途标志 —— 查询没在跑、光靠在下面的 guard 会直接放过它。
+        if (savingResultEdits && saveInFlight != null) {
+            saveInFlight.cancel(true);
+        }
         if (!running) {
             return;
         }
@@ -1128,7 +1155,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
         cancelled = false;
         running = true;
         updateButtons();
+        // ⭐ R58-c：三条按「第几个结果」取用的列表必须跟着页签一起清 —— 留着上一轮的条目，
+        // 索引就指到已经不显示的页面上（导出取的是 pagers.get(i)，回写取的是 editStates.get(i)）。
         results.getTabs().clear();
+        resultTables.clear();
+        pagers.clear();
+        editStates.clear();
         status.setText((explainPlan ? I18n.t("query.explaining") : I18n.t("query.running")));
         feedback.status(status.getText());
         feedback.duration(-1);
@@ -1440,6 +1472,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
         table.getColumns().add(number);
 
         List<String> keys = result.columnKeys();
+        // ⭐ R58-b：这一屏能不能按主键改回去，判定要跟着结果一起给 ——
+        // 网格以前一直是「闷着只读」，用户只能靠试；判不出来的一种就说一句原因。
+        // ⭐ R58-c：判成可改的一支真的能点了，所以这个状态对象要先于列建好，
+        // 每格的工厂拿的是它本身（判定是后台回来的，建列时还没有结论）。
+        ResultEditState edit = new ResultEditState(table);
+        editStates.add(edit);
         for (int i = 0; i < result.columns().size(); i++) {
             ColumnDef definition = result.columns().get(i);
             String key = keys.get(i);
@@ -1451,18 +1489,18 @@ public final class QueryPage extends VBox implements AutoCloseable {
             column.setPrefWidth(140);
             column.setCellValueFactory(data ->
                     new ReadOnlyObjectWrapper<>(data.getValue().get(key)));
-            column.setCellFactory(cell -> new ResultCell(definition));
+            column.setCellFactory(cell -> new ResultCell(definition, edit, key));
             // ⭐ Q4：列宽持久化（以前每次都固定 140px，改完就没了）。
             column.setPrefWidth(savedColumnWidth(key, 140));
             column.widthProperty().addListener((obs, old, width) ->
                     saveColumnWidth(key, width.doubleValue()));
             table.getColumns().add(column);
         }
-
-        // ⭐ R58-b：这一屏能不能按主键改回去，判定要跟着结果一起给 ——
-        // 网格以前一直是「闷着只读」，用户只能靠试；判不出来的一种就说一句原因。
-        ResultEditState edit = new ResultEditState();
-        editStates.add(edit);
+        edit.changes = resultChangesLabel();
+        edit.discard = resultEditButton("query.edit.discard", "query-result-discard",
+                event -> discardResultEdits(edit));
+        edit.save = resultEditButton("query.edit.save", "query-result-save",
+                event -> saveResultEdits(edit));
         judgeEditability(edit, sql, result.columns(), keys);
 
         Tab tab = new Tab(I18n.t("query.resultTab", index));
@@ -1473,9 +1511,16 @@ public final class QueryPage extends VBox implements AutoCloseable {
             PagedLoader loader = new PagedLoader(tab, index, table, rowOffset,
                     sql, params, result.columns());
             pagers.add(loader);
+            // ⭐ R58-c：保存成功后重取当前页 —— 屏幕上留下的必须是库里现在的值，
+            // 不是界面缓冲里那份。
+            // ⚠️ 走不到这一支的那一条（FOR UPDATE / INTO 这类不分页的 SELECT）没有重取钩子：
+            //    保存之后格子会跳回查询时读到的旧值，状态那句「已保存」仍然是真的，
+            //    重跑一次查询就对上。SQLite 摆不出这种语句，所以先不写第二套重取。
+            edit.reload = loader::load;
             VBox dataPane = new VBox(0, loader.node(), table);
             VBox.setVgrow(table, Priority.ALWAYS);
-            tab.setContent(resultViews(dataPane, result.columns(), sql, null, null, edit.note));
+            tab.setContent(resultViews(dataPane, result.columns(), sql, null, null, edit.note,
+                    edit.changes, edit.discard, edit.save));
             loader.start();
             return tab;
         }
@@ -1509,7 +1554,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         VBox dataPane = new VBox(0, table);
         VBox.setVgrow(table, Priority.ALWAYS);
         tab.setContent(resultViews(dataPane, result.columns(), sql, meta, warning, edit.note,
-                copy, export));
+                edit.changes, edit.discard, edit.save, copy, export));
         return tab;
     }
 
@@ -1521,27 +1566,31 @@ public final class QueryPage extends VBox implements AutoCloseable {
      *
      * <p>⚠️ 判定<b>不改写 SQL、也不替用户把主键补进投影</b>：界面上显示的是哪条语句，
      * 底下跑的就是哪条。读不到表 / 报错都归成「读不到这张表那一句」，堆栈只进日志。
+     *
+     * <p>表结构跟着结论一起带回来：写 UPDATE 要用的是<b>整张表</b>的列序与主键名，
+     * 光有投影里那几格不够（{@link EditSqlBuilder#plan} 按 {@code schema.columns()} 排 SET）。
      */
     private void judgeEditability(ResultEditState edit, String sql,
                                   List<ColumnDef> columns, List<String> keys) {
         SqlQueryShape.Shape shape = SqlQueryShape.parse(sql);
         if (shape instanceof SqlQueryShape.Refused refused) {
-            applyEditDecision(edit, new ResultEditPolicy.Blocked(
-                    refused.reason().messageKey(), refused.detail()));
+            applyEditDecision(edit, new EditJudgement(new ResultEditPolicy.Blocked(
+                    refused.reason().messageKey(), refused.detail()), null));
             return;
         }
         String target = ((SqlQueryShape.Readable) shape).select().table();
         List<String> labels = columns.stream().map(ColumnDef::name).toList();
-        Task<ResultEditPolicy.Decision> task = new Task<>() {
+        Task<EditJudgement> task = new Task<>() {
             @Override
-            protected ResultEditPolicy.Decision call() {
+            protected EditJudgement call() {
                 try {
                     TableSchema schema = schemaService.describe(session, target);
-                    return ResultEditPolicy.judge(shape, schema, labels, keys);
+                    return new EditJudgement(
+                            ResultEditPolicy.judge(shape, schema, labels, keys), schema);
                 } catch (Exception error) {
                     System.err.println("[query] cannot describe " + target + ": " + error);
-                    return new ResultEditPolicy.Blocked(
-                            ResultEditPolicy.Block.TABLE_UNREADABLE.messageKey(), target);
+                    return new EditJudgement(new ResultEditPolicy.Blocked(
+                            ResultEditPolicy.Block.TABLE_UNREADABLE.messageKey(), target), null);
                 }
             }
         };
@@ -1549,38 +1598,243 @@ public final class QueryPage extends VBox implements AutoCloseable {
         submit(task);
     }
 
+    /** 判定结论 + 它依据的表结构（只有判成可改时才带得上结构）。 */
+    private record EditJudgement(ResultEditPolicy.Decision decision, TableSchema schema) {
+    }
+
     /**
-     * 判定落地：不能改的一支说一句为什么；能改的一支本批只把结论存进网格，
-     * 「点一格就能改 + 保存」是 R58-c 的活 —— 在那之前界面上不宣布可以点。
+     * 判定落地：不能改的一支只说一句为什么；能改的一支把这一屏真的打开成可编辑。
+     *
+     * <p>⭐ R58-c：缓冲用数据页那个 {@link EditBuffer}，SQL 用 {@link EditSqlBuilder}，
+     * 界面这边只决定「哪一格能进编辑」—— 回写规则不许在这儿再写一遍。
      */
-    private void applyEditDecision(ResultEditState edit, ResultEditPolicy.Decision decision) {
+    private void applyEditDecision(ResultEditState edit, EditJudgement judgement) {
         if (disposed) {
             return;
         }
-        edit.decision = decision;
+        edit.decision = judgement.decision();
         Label note = edit.note;
-        if (decision instanceof ResultEditPolicy.Blocked blocked) {
+        if (judgement.decision() instanceof ResultEditPolicy.Blocked blocked) {
+            edit.schema = null;
+            edit.buffer = null;
             note.setText(I18n.t(blocked.messageKey()));
             note.getStyleClass().add("adb-query__edit-state--blocked");
             note.setVisible(true);
             note.setManaged(true);
+            updateResultEdits(edit);
             return;
         }
-        note.setText("");
-        note.setVisible(false);
-        note.setManaged(false);
+        ResultEditPolicy.Editable editable = (ResultEditPolicy.Editable) judgement.decision();
+        edit.schema = judgement.schema();
+        edit.buffer = new EditBuffer(editable.table());
+        // 只有对上表列的格子能编辑，主键格除外 —— 改主键等于把定位这一行的条件也挪走。
+        for (TableColumn<java.util.Map<String, Object>, ?> column : edit.table.getColumns()) {
+            Object key = column.getUserData();
+            ResultEditPolicy.Cell cell = key == null ? null : editable.cell(String.valueOf(key));
+            column.setEditable(cell != null && !cell.primaryKey());
+        }
+        edit.table.setEditable(true);
+        // R58-b 那批「判成可改也不许宣布」的前提是点了没反应；现在能反应了，就说该怎么用。
+        note.setText(I18n.t("query.edit.ready"));
+        note.getStyleClass().remove("adb-query__edit-state--blocked");
+        note.setVisible(true);
+        note.setManaged(true);
+        updateResultEdits(edit);
+    }
+
+    /** 「N 处改动」的计数（贴着保存键，改动一眼数得清）。 */
+    private Label resultChangesLabel() {
+        Label changes = new Label();
+        changes.setId("query-result-changes");
+        changes.getStyleClass().add("adb-query__result-meta");
+        changes.setMinWidth(Region.USE_PREF_SIZE);
+        changes.setVisible(false);
+        changes.setManaged(false);
+        return changes;
+    }
+
+    /** 回写动作键（保存 / 放弃）：初始不占位，判定落地后才进出。 */
+    private Button resultEditButton(String key, String id,
+                                    javafx.event.EventHandler<javafx.event.ActionEvent> action) {
+        Button button = new Button(I18n.t(key));
+        button.setId(id);
+        button.getStyleClass().add("adb-button");
+        button.setMinWidth(Region.USE_PREF_SIZE);
+        button.setVisible(false);
+        button.setManaged(false);
+        button.setOnAction(action);
+        return button;
+    }
+
+    /** 有改动才让保存/放弃进出（与数据页删除键同一条规矩：点不动的键不留位）。 */
+    private void updateResultEdits(ResultEditState edit) {
+        if (edit.save == null) {
+            return;
+        }
+        boolean ready = edit.buffer != null
+                && edit.decision instanceof ResultEditPolicy.Editable
+                && edit.buffer.isDirty();
+        int count = edit.buffer == null ? 0 : edit.buffer.dirtyCount();
+        edit.changes.setText(I18n.t("query.edit.changes", count));
+        for (Node node : new Node[]{edit.changes, edit.discard, edit.save}) {
+            node.setVisible(ready);
+            node.setManaged(ready);
+        }
+        edit.save.setDisable(savingResultEdits);
+        edit.discard.setDisable(savingResultEdits);
+    }
+
+    /** 放弃这一屏的改动：只清界面缓冲，库里本来就没动过。 */
+    private void discardResultEdits(ResultEditState edit) {
+        if (edit.buffer == null || !edit.buffer.isDirty()) {
+            return;
+        }
+        edit.buffer.clear();
+        updateResultEdits(edit);
+        edit.table.refresh();
     }
 
     /**
-     * ⭐ R58-b：一个结果页的回写状态 —— 判定结论与 Info 带上那一行话成对出现。
-     *
-     * <p>R58-c 的编辑缓冲与「保存改动」也挂在这个对象上，不再往 QueryPage 的字段上摊。
+     * ⭐ R58-c：把这一屏的改动写回表里 —— SQL 由 {@link EditSqlBuilder#plan} 生成，
+     * 经 {@link SavePreviewDialog} 让用户先看一眼再执行。
      */
-    private static final class ResultEditState {
-        final Label note;
-        ResultEditPolicy.Decision decision;
+    private void saveResultEdits(ResultEditState edit) {
+        if (edit.buffer == null || edit.schema == null || !edit.buffer.isDirty()
+                || savingResultEdits) {
+            return;
+        }
+        EditSqlBuilder.Plan plan;
+        try {
+            plan = EditSqlBuilder.plan(session, edit.schema, edit.buffer);
+        } catch (RuntimeException error) {
+            reportSaveFailure(error, null);
+            return;
+        }
+        if (plan.isEmpty()) {
+            return;
+        }
+        boolean inTransaction;
+        try {
+            inTransaction = session.inTransaction();
+        } catch (java.sql.SQLException error) {
+            reportSaveFailure(error, null);
+            return;
+        }
+        if (!SavePreviewDialog.confirm(ownerWindow(), plan, Danger.MUTATING, inTransaction)) {
+            return;
+        }
+        runResultSave(edit, plan, inTransaction);
+    }
 
-        ResultEditState() {
+    /**
+     * 供门禁：跳过预览弹窗，直接提交第 {@code index} 个结果页缓冲里的改动。
+     *
+     * <p>与数据页 {@code submitSave} 同一个理由 —— 真正写库那一步必须能不弹窗地被跑到，
+     * 否则「保存之后库里真的变了」这条只能靠人肉点。它走的是同一条 {@link #runResultSave}。
+     */
+    void submitResultSave(int index) {
+        ResultEditState edit = index < editStates.size() ? editStates.get(index) : null;
+        if (edit == null || edit.buffer == null || edit.schema == null
+                || !edit.buffer.isDirty()) {
+            return;
+        }
+        boolean inTransaction;
+        try {
+            inTransaction = session.inTransaction();
+        } catch (java.sql.SQLException error) {
+            reportSaveFailure(error, null);
+            return;
+        }
+        runResultSave(edit, EditSqlBuilder.plan(session, edit.schema, edit.buffer), inTransaction);
+    }
+
+    /**
+     * ⭐ R58-c：真正写库的那一段（{@link EditSqlBuilder#execute}：一个事务，任一条失败整体回滚）。
+     *
+     * <p>成功后<b>清缓冲并重取当前页</b> —— 屏幕上留下的必须是库里现在的值，不是缓冲里那份。
+     */
+    private void runResultSave(ResultEditState edit, EditSqlBuilder.Plan plan,
+                               boolean inTransaction) {
+        savingResultEdits = true;
+        updateResultEdits(edit);
+        Task<Integer> task = new Task<>() {
+            @Override
+            protected Integer call() throws Exception {
+                return EditSqlBuilder.execute(session, plan);
+            }
+        };
+        task.setOnSucceeded(event -> {
+            savingResultEdits = false;
+            if (disposed) {
+                return;
+            }
+            int matched = task.getValue();
+            edit.buffer.clear();
+            updateResultEdits(edit);
+            // ⚠️ 命中行数不等于改动数时不许报「保存成功」：主键在别处被改过就是这种情况。
+            // ⚠️ 事务里也不能报「已落库」—— 那句得说「写进事务、尚未提交」。
+            String message;
+            if (matched != plan.size()) {
+                message = I18n.t("query.edit.rowMissed", matched, plan.size(),
+                        edit.schema.name());
+            } else if (inTransaction) {
+                message = I18n.t("grid.msg.savedInTx", plan.size(), matched);
+            } else {
+                message = I18n.t("query.edit.saved", plan.size(), edit.schema.name());
+            }
+            status.setText(message);
+            feedback.status(message);
+            if (edit.reload != null) {
+                edit.reload.run();
+            } else {
+                edit.table.refresh();
+            }
+        });
+        task.setOnFailed(event -> {
+            savingResultEdits = false;
+            updateResultEdits(edit);
+            reportSaveFailure(task.getException(), plan.preview());
+        });
+        task.setOnCancelled(event -> {
+            // 中断的 Task 走 onCancelled（JavaFX 把 InterruptedException 归到 CANCELLED）：
+            // 用户按 ⌘. 不该看到「保存失败」，而且整批已经被回滚，缓冲原样留着。
+            savingResultEdits = false;
+            updateResultEdits(edit);
+            status.setText(I18n.t("query.cancelled"));
+            feedback.status(I18n.t("query.cancelledFeedback"));
+        });
+        saveInFlight = submit(task);
+    }
+
+    /** 保存这条路的失败只出一句状态，不弹模态 —— 长文本进日志，界面给人能读的那句。 */
+    private void reportSaveFailure(Throwable error, String sql) {
+        String reason = readable(error);
+        status.setText(I18n.t("query.edit.saveFailed", reason));
+        feedback.status(I18n.t("query.edit.saveFailed", reason));
+        if (sql != null) {
+            System.err.println("[query] save failed, SQL was:\n" + sql + "\n" + error);
+        }
+    }
+
+    /**
+     * ⭐ R58-b/c：一个结果页的回写状态 —— 判定、缓冲、动作键与刷新钩子成对出现。
+     *
+     * <p>判定是后台回来的，所以这些字段在建树之后才逐个补齐；{@code decision == null}
+     * 表示还没回来（此时网格保持只读）。
+     */
+    private final class ResultEditState {
+        final Label note;
+        final TableView<java.util.Map<String, Object>> table;
+        ResultEditPolicy.Decision decision;
+        TableSchema schema;
+        EditBuffer buffer;
+        Runnable reload;
+        Label changes;
+        Button save;
+        Button discard;
+
+        ResultEditState(TableView<java.util.Map<String, Object>> table) {
+            this.table = table;
             note = new Label();
             note.setId("query-result-edit-state");
             note.getStyleClass().add("adb-query__edit-state");
@@ -1588,6 +1842,39 @@ public final class QueryPage extends VBox implements AutoCloseable {
             // 判定还没回来之前不占位（同步执行器下判定可能先于建树完成，所以初始态在这里钉）。
             note.setVisible(false);
             note.setManaged(false);
+        }
+
+        /** 判成可改才给结论，其余一律 {@code null}（调用方据此保持只读，不猜）。 */
+        ResultEditPolicy.Editable editable() {
+            return decision instanceof ResultEditPolicy.Editable editable ? editable : null;
+        }
+
+        /** 行 Map 的键 → 表里的目标格；不可改或键对不上给 {@code null}。 */
+        ResultEditPolicy.Cell cell(String resultKey) {
+            ResultEditPolicy.Editable editable = editable();
+            return editable == null ? null : editable.cell(resultKey);
+        }
+
+        /**
+         * 这一行的身份：只装主键，键名用<b>表里的</b>名字。
+         *
+         * <p>⚠️ 不能用 {@code RowIdentity.from(schema.primaryKeys(), row)}：行的 Map 按
+         * 结果列键编址（重名还带后缀），而 {@link EditSqlBuilder#plan} 是按
+         * {@code schema.primaryKeys()} 的原文去取值 —— 两边不同名，取出来是 null。
+         */
+        RowIdentity identity(java.util.Map<String, Object> row) {
+            ResultEditPolicy.Editable editable = editable();
+            if (row == null || editable == null) {
+                return null;
+            }
+            LinkedHashMap<String, Object> values = new LinkedHashMap<>();
+            for (ResultEditPolicy.Cell cell : editable.keyCells()) {
+                if (!row.containsKey(cell.resultKey())) {
+                    return null;
+                }
+                values.put(cell.column(), row.get(cell.resultKey()));
+            }
+            return values.isEmpty() ? null : new RowIdentity(values);
         }
     }
 
@@ -1601,6 +1888,34 @@ public final class QueryPage extends VBox implements AutoCloseable {
         return index < editStates.size() ? editStates.get(index).note.getText() : null;
     }
 
+    /** 供门禁：第 index 个结果页当前的待保存改动数。 */
+    int resultDirtyCountForTest(int index) {
+        if (index >= editStates.size()) {
+            return -1;
+        }
+        EditBuffer buffer = editStates.get(index).buffer;
+        return buffer == null ? 0 : buffer.dirtyCount();
+    }
+
+    /** 供门禁：第 index 个结果页的网格有没有被打开成可编辑。 */
+    boolean resultTableEditableForTest(int index) {
+        return index < editStates.size() && editStates.get(index).table.isEditable();
+    }
+
+    /** 供门禁：某结果页某一列能不能进编辑（键是行 Map 的列键）。 */
+    boolean resultColumnEditableForTest(int index, String resultKey) {
+        if (index >= editStates.size()) {
+            return false;
+        }
+        for (TableColumn<java.util.Map<String, Object>, ?> column
+                : editStates.get(index).table.getColumns()) {
+            if (resultKey.equals(column.getUserData())) {
+                return column.isEditable();
+            }
+        }
+        return false;
+    }
+
     /**
      * ⭐ N23：结果区的「Data / Info」32px 切换带 + 内容栈。
      *
@@ -1608,9 +1923,13 @@ public final class QueryPage extends VBox implements AutoCloseable {
      * 页签高度由 CSS 钉在 27px；这一条只负责第二段与两页内容。
      * Info 页承接以前独占一条的类型 chips 与语句预览 —— 它们是「关于这份结果」
      * 的信息，不该常驻在数据上方。
+     *
+     * <p>⭐ R58-c：这一条带上的「待改几格 + 丢弃 + 保存」和 Copy / Export 同一段，
+     * 所以形参从 {@code Button...} 放宽成 {@code Node...} —— 计数那条是 Label。
+     * 判定为不可改时它们本来就不 managed，不会把 32px 那条撑开。
      */
     private VBox resultViews(javafx.scene.Node dataPane, List<ColumnDef> columns, String sql,
-                             Label meta, Label warning, Label editState, Button... actions) {
+                             Label meta, Label warning, Label editState, javafx.scene.Node... actions) {
         javafx.scene.control.ToggleButton data = new javafx.scene.control.ToggleButton(
                 I18n.t("query.result.data"));
         data.setId("result-view-data");
@@ -2718,6 +3037,11 @@ public final class QueryPage extends VBox implements AutoCloseable {
             inFlight.cancel(true);
             inFlight = null;
         }
+        // ⭐ R58-c：结果区那条保存也是后台任务 —— 页签关了不能让它继续往库里写半批。
+        if (saveInFlight != null) {
+            saveInFlight.cancel(true);
+            saveInFlight = null;
+        }
     }
 
     // ─────────────────────────── 历史 ───────────────────────────
@@ -2798,30 +3122,59 @@ public final class QueryPage extends VBox implements AutoCloseable {
         return ErrorText.readable(error);
     }
 
-    private static final class ResultCell
+    /**
+     * ⭐ R58-c：判定说这一屏可改之后，非主键的格子能双击进编辑 —— 但
+     * <b>值只进缓冲，SQL 由模型层生成</b>：这里只认「这一格对表里的哪一列」，
+     * 缓冲是 {@link EditBuffer}，写回语句交给 {@link EditSqlBuilder#plan}，
+     * 连「这一行的主键值怎么取」都用 {@link ResultEditState#identity} 那一份。
+     *
+     * <p>为什么不是静态内部类：一次改动落地要刷新<b>这一屏自己</b>的计数与保存键，
+     * 而状态条挂在页上 —— 它们都在 {@link ResultEditState} 和外层类里。
+     */
+    private final class ResultCell
             extends TableCell<java.util.Map<String, Object>, Object> {
 
-        private static final List<String> STYLES = List.of(
-                "adb-grid__cell--null", "adb-grid__cell--empty", "adb-grid__cell--number",
-                "adb-grid__cell--boolean", "adb-grid__cell--binary", "adb-grid__cell--json",
-                "adb-grid__cell--enum", "adb-grid__cell--date", "adb-grid__cell--long-text");
-
         private final ColumnDef definition;
+        private final ResultEditState edit;
+        private final String key;
 
-        private ResultCell(ColumnDef definition) {
+        private TextField editor;
+
+        private ResultCell(ColumnDef definition, ResultEditState edit, String key) {
             this.definition = definition;
+            this.edit = edit;
+            this.key = key;
+        }
+
+        /** 这一格在判定结论里的目标；判定还没回来或键对不上给 {@code null}。 */
+        private ResultEditPolicy.Cell target() {
+            return edit.cell(key);
         }
 
         @Override
         protected void updateItem(Object item, boolean empty) {
             super.updateItem(item, empty);
-            getStyleClass().removeAll(STYLES);
+            getStyleClass().removeAll(RESULT_CELL_STYLES);
             setTooltip(null);
             if (empty) {
                 setText(null);
+                setGraphic(null);
                 return;
             }
-            CellRenderer.Rendered rendered = CellRenderer.render(definition, item);
+            java.util.Map<String, Object> row =
+                    getTableRow() == null ? null : getTableRow().getItem();
+            Object value = item;
+            ResultEditPolicy.Cell cell = target();
+            RowIdentity identity = edit.identity(row);
+            // 缓冲里有这一格的改动 → 屏幕上显示的是那一份，并钉上「待保存」样式。
+            // 库里现在的值要等保存后重取才回来，这里不许拿缓冲冒充落库结果。
+            boolean pending = cell != null && identity != null && edit.buffer != null
+                    && edit.buffer.hasCell(identity, cell.column());
+            if (pending) {
+                value = edit.buffer.valueOr(identity, cell.column(), item);
+                getStyleClass().add("adb-grid__cell--dirty");
+            }
+            CellRenderer.Rendered rendered = CellRenderer.render(definition, value);
             // ⭐ U9：与数据网格同一套布尔语法 —— 只读态是图标，不是文本 ✓/✗。
             if (rendered.icon() != null) {
                 setText(null);
@@ -2838,6 +3191,95 @@ public final class QueryPage extends VBox implements AutoCloseable {
             }
             setAlignment(definition.type() == io.agenticdb.model.ColumnType.NUMBER
                     ? Pos.CENTER_RIGHT : Pos.CENTER_LEFT);
+        }
+
+        @Override
+        public void startEdit() {
+            // ⭐ 三道闸，缺一不可：网格与列都说能编辑（列的可编辑位由判定落地时才置上）、
+            // 这一格对得上表里的列、且不是主键 —— 改主键等于把定位这一行的条件挪走。
+            ResultEditPolicy.Cell cell = target();
+            if (cell == null || !isEditable() || !getTableColumn().isEditable()
+                    || isEmpty() || getTableRow() == null || getTableRow().getItem() == null
+                    || cell.primaryKey() || edit.buffer == null) {
+                return;
+            }
+            java.util.Map<String, Object> row = getTableRow().getItem();
+            RowIdentity identity = edit.identity(row);
+            // 编辑框里给的是「这一格现在屏幕上显示的值」——缓冲改过就用改过的，
+            // 不然用户看到的和点进去的会是两个数。
+            Object current = identity == null ? row.get(key)
+                    : edit.buffer.valueOr(identity, cell.column(), row.get(key));
+            super.startEdit();
+            editor = new TextField(DataGridPage.editorText(current));
+            editor.getStyleClass().add("adb-grid__editor");
+            editor.setOnAction(event -> commitEditor());
+            editor.setOnKeyPressed(event -> {
+                if (event.getCode() == KeyCode.ESCAPE) {
+                    cancelEdit();
+                    event.consume();
+                }
+            });
+            editor.focusedProperty().addListener((observable, wasFocused, focused) -> {
+                if (wasFocused && !focused && isEditing()) {
+                    commitEditor();
+                }
+            });
+            setText(null);
+            setGraphic(editor);
+            getStyleClass().add("adb-grid__cell--editing");
+            Platform.runLater(() -> {
+                // 编辑可能在这次 runLater 之前就撤掉了（双击后立刻 Esc / 焦点被抢）。
+                if (editor != null) {
+                    editor.selectAll();
+                    editor.requestFocus();
+                }
+            });
+        }
+
+        @Override
+        public void cancelEdit() {
+            super.cancelEdit();
+            editor = null;
+            setGraphic(null);
+            updateItem(getItem(), isEmpty());
+        }
+
+        private void commitEditor() {
+            if (!isEditing() || editor == null || getTableRow() == null
+                    || getTableRow().getItem() == null) {
+                return;
+            }
+            ResultEditPolicy.Cell cell = target();
+            java.util.Map<String, Object> row = getTableRow().getItem();
+            RowIdentity identity = edit.identity(row);
+            if (cell == null || identity == null || edit.buffer == null) {
+                cancelEdit();
+                return;
+            }
+            try {
+                // 解析与非空判定用的是**表侧**的列定义（{@code Cell.definition()}）：
+                // 结果集那份是驱动给的，别名、表达式与类型宽度都可能和表里的不一样，
+                // 而写回时吃这个值的正是表里那一列。
+                Object next = DataGridPage.parseCellValue(cell.definition(), editor.getText());
+                if (next == null && !cell.definition().nullable()) {
+                    throw new IllegalArgumentException(I18n.t("grid.batch.notNull", definition.name()));
+                }
+                cancelEdit();
+                // 原值取行 Map 里的那一份：缓冲按「改了才算」计数，改回原值等于没改。
+                if (edit.buffer.setCell(identity, cell.column(), row.get(key), next)) {
+                    feedback.status(I18n.t("grid.msg.cellModified", definition.name(),
+                            CellValueParser.display(next)));
+                }
+                updateResultEdits(edit);
+                edit.table.refresh();
+            } catch (IllegalArgumentException error) {
+                // 解析不过就把值留在编辑框里并标红 —— 静默丢掉用户刚打的字比报错更糟。
+                if (!editor.getStyleClass().contains("adb-grid__editor--error")) {
+                    editor.getStyleClass().add("adb-grid__editor--error");
+                }
+                editor.setTooltip(new Tooltip(error.getMessage()));
+                feedback.status(I18n.t("grid.msg.invalidValue", error.getMessage()));
+            }
         }
     }
 

@@ -6,9 +6,12 @@ import io.agenticdb.jdbc.JdbcSession;
 import io.agenticdb.model.Danger;
 import io.agenticdb.ui.I18n;
 import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.TabPane;
+import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
@@ -24,6 +27,7 @@ import org.testfx.util.WaitForAsyncUtils;
 import java.io.ByteArrayOutputStream;
 import java.io.StringWriter;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -47,6 +51,10 @@ class QueryPageTest {
         session.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)");
         // ⭐ R58-b：判定要区分「表没主键」和「主键没在结果里」，夹具里备一张无主键的表。
         session.execute("CREATE TABLE logs (level TEXT, msg TEXT)");
+        // ⭐ R58-c：数值列上「输入的东西根本不是数」这条只有 NUMBER 才拦得住，
+        //    TEXT 列吃下任何字符串 —— 夹具备一张带数值非主键列的表。
+        session.execute("CREATE TABLE metrics (id INTEGER PRIMARY KEY, amount INTEGER NOT NULL)");
+        session.execute("INSERT INTO metrics VALUES (1, 10), (2, 20)");
         session.execute("INSERT INTO users VALUES (1, 'Ada'), (2, 'Bob')");
         executor = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, "test-query");
@@ -917,13 +925,8 @@ class QueryPageTest {
     // ─────────────────  R58-b · 结果回写的判定  ─────────────────
 
     @Test
-    void singleTableSelectIsJudgedEditableButSaysNothing() {
-        interact(() -> {
-            page.setSql("SELECT * FROM users");
-            page.runAll();
-        });
-        waitForTabs(1);
-        waitFor(() -> page.editDecisionForTest(0) != null);
+    void editableResultOpensTheValueCellsAndSaysHowToUseThem() {
+        runSelect("SELECT * FROM users");
 
         assertThat(page.editDecisionForTest(0)).isInstanceOf(ResultEditPolicy.Editable.class);
         ResultEditPolicy.Editable editable = (ResultEditPolicy.Editable) page.editDecisionForTest(0);
@@ -931,8 +934,276 @@ class QueryPageTest {
                 .extracting(ResultEditPolicy.Cell::column)
                 .as("写回目标取自**内省**的列名，标签取自驱动返回的列名 —— 两边都得对上")
                 .containsExactly("id", "name");
-        // ⭐ 本批还没接编辑：判成「可改」也不许在界面上宣布（点了没反应比不宣布更糟）。
-        assertThat(page.editNoteForTest(0)).as("可改的一支不出一行话").isEmpty();
+        // ⭐ R58-c：判成可改就宣布怎么用（R58-b 那句「先不宣布」的前提是点了没反应）。
+        assertShownIsTheLocalized("query.edit.ready", page.editNoteForTest(0));
+        // 值列能点开，主键列不能 —— 改主键等于把「定位这一行」的条件也挪走。
+        assertThat(page.resultColumnEditableForTest(0, "name")).isTrue();
+        assertThat(page.resultColumnEditableForTest(0, "id"))
+                .as("主键列不许进编辑")
+                .isFalse();
+    }
+
+    // ─────────────────  R58-c · 结果网格的回写  ─────────────────
+
+    @Test
+    void aRefusedResultKeepsEveryCellReadOnly() {
+        runSelect("SELECT u.id, u.name FROM users u JOIN users v ON u.id = v.id");
+
+        assertThat(page.resultTableEditableForTest(0)).isFalse();
+        // 真去点一次：编辑框不出现，才是「只读」而不是「只读但能进编辑态」。
+        assertThat(openEditor(0, "name")).as("联查结果不该能点开格子编辑").isEmpty();
+        assertThat(page.resultDirtyCountForTest(0)).isZero();
+        assertThat(saveButton().isVisible()).isFalse();
+    }
+
+    @Test
+    void primaryKeyCellRefusesToOpenAnEditor() {
+        runSelect("SELECT * FROM users");
+
+        assertThat(openEditor(0, "id"))
+                .as("主键格点了不该出编辑框")
+                .isEmpty();
+        assertThat(page.resultDirtyCountForTest(0)).isZero();
+    }
+
+    @Test
+    void typingIntoACellMarksItDirtyWithoutTouchingTheDatabase() throws Exception {
+        runSelect("SELECT * FROM users");
+
+        editCellText(0, "name", "Zoe");
+
+        assertThat(page.resultDirtyCountForTest(0)).isEqualTo(1);
+        assertThat(saveButton().isVisible()).as("有改动才让保存键进出").isTrue();
+        assertShownIsTheLocalized("query.edit.changes", ((Label) page.lookup("#query-result-changes")).getText(), 1);
+        assertThat(dbValue("SELECT name FROM users WHERE id = 1", "name"))
+                .as("改动只进缓冲：没点保存之前库里一个字都不该变")
+                .isEqualTo("Ada");
+    }
+
+    @Test
+    void savingWritesTheCellBackAndBringsTheStoredValueIntoTheGrid() throws Exception {
+        runSelect("SELECT * FROM users");
+        editCellText(0, "name", "Zoe");
+
+        interact(() -> page.submitResultSave(0));
+
+        // 保存后网格是**重取的**（缓冲已清），所以格子里出现 Zoe 只可能是因为库里真的是 Zoe。
+        waitFor(() -> "Zoe".equals(gridValue(0, "name")));
+        assertThat(dbValue("SELECT name FROM users WHERE id = 1", "name")).isEqualTo("Zoe");
+        assertThat(page.resultDirtyCountForTest(0)).isZero();
+        assertThat(saveButton().isVisible()).isFalse();
+        assertShownIsTheLocalized("query.edit.saved", page.statusText(), 1, "users");
+    }
+
+    @Test
+    void discardingDropsThePendingChanges() throws Exception {
+        runSelect("SELECT * FROM users");
+        editCellText(0, "name", "Zoe");
+
+        interact(() -> discardButton().fire());
+
+        assertThat(page.resultDirtyCountForTest(0)).isZero();
+        assertThat(gridValue(0, "name"))
+                .as("放弃之后网格回到库里那份值")
+                .isEqualTo("Ada");
+        assertThat(dbValue("SELECT name FROM users WHERE id = 1", "name")).isEqualTo("Ada");
+    }
+
+    @Test
+    void anUnparsableValueStaysInTheEditorInsteadOfBeingSilentlyDropped() {
+        runSelect("SELECT * FROM metrics");
+
+        Optional<TextField> editor = openEditor(0, "amount");
+        assertThat(editor).as("数值非主键列该能点开").isPresent();
+        interact(() -> {
+            editor.get().setText("abc");
+            editor.get().fireEvent(new javafx.event.ActionEvent(editor.get(), null));
+        });
+
+        assertThat(page.resultDirtyCountForTest(0))
+                .as("输入不是数，不许当成 0 写进缓冲")
+                .isZero();
+        assertThat(editor.get().getStyleClass()).contains("adb-grid__editor--error");
+    }
+
+    @Test
+    void twoCellsOfOneRowBecomeOneUpdate() throws Exception {
+        runSelect("SELECT id, name FROM users");
+
+        editCellText(0, "name", "Zoe");
+        editCellText(1, "name", "Bea");
+
+        assertThat(page.resultDirtyCountForTest(0)).isEqualTo(2);
+        assertShownIsTheLocalized("query.edit.changes", ((Label) page.lookup("#query-result-changes")).getText(), 2);
+
+        interact(() -> page.submitResultSave(0));
+
+        waitFor(() -> "Zoe".equals(gridValue(0, "name")));
+        assertThat(dbValue("SELECT name FROM users WHERE id = 1", "name")).isEqualTo("Zoe");
+        assertThat(dbValue("SELECT name FROM users WHERE id = 2", "name"))
+                .as("两格分属两行 → 两条 UPDATE，各打各的主键")
+                .isEqualTo("Bea");
+    }
+
+    /**
+     * ⭐ 空输入在 NOT NULL 列上必须被拦下，而且拦下的那句要说得出是哪一列。
+     *
+     * <p>为什么单开一条：上面那条「abc」走的是解析失败，这一条走的是
+     * 「解析成了 null 但列不许空」—— 两个分支在同一段 catch 里出来，界面长得一样。
+     * 去掉 {@code ResultCell.commitEditor} 里那句非空检查，这条会红而上面那条不会。
+     */
+    @Test
+    void aBlankValueOnANotNullColumnIsRefusedByName() {
+        runSelect("SELECT * FROM metrics");
+
+        Optional<TextField> editor = openEditor(0, "amount");
+        assertThat(editor).isPresent();
+        interact(() -> {
+            editor.get().setText("");
+            editor.get().fireEvent(new javafx.event.ActionEvent(editor.get(), null));
+        });
+
+        assertThat(page.resultDirtyCountForTest(0))
+                .as("NOT NULL 列被清空，不该进缓冲")
+                .isZero();
+        assertShownIsTheLocalized("grid.batch.notNull",
+                editor.get().getTooltip() == null ? null : editor.get().getTooltip().getText(),
+                "amount");
+    }
+
+    /**
+     * ⭐ 别名把「结果列键」和「表里的列名」拆成两个名字，而写回用的是后者。
+     *
+     * <p>这条是变异证出来的：把 {@code ResultEditState.identity} 的 Map 改成按结果列键
+     * 编址（{@code pk / who}），前面那几条保存门禁**照样全绿** —— 因为夹具里
+     * {@code SELECT *} 的标签恰好等于列名。改完之后 {@link io.agenticdb.editing.EditSqlBuilder}
+     * 按 {@code schema.primaryKeys()} 的原文取值取出 null，
+     * {@code WHERE id = ?} 一行都命中不了。所以这条必须带别名跑。
+     */
+    @Test
+    void anAliasedProjectionWritesBackThroughTheRealColumnName() throws Exception {
+        runSelect("SELECT id AS pk, name AS who FROM users");
+
+        assertThat(page.editDecisionForTest(0))
+                .as("带别名的单表投影照样可回写 —— 判定认的是表里的列名")
+                .isInstanceOf(ResultEditPolicy.Editable.class);
+        assertThat(((ResultEditPolicy.Editable) page.editDecisionForTest(0)).cells())
+                .extracting(ResultEditPolicy.Cell::column)
+                .containsExactly("id", "name");
+
+        editCellText(0, "who", "Zoe");
+
+        interact(() -> page.submitResultSave(0));
+
+        waitFor(() -> "Zoe".equals(gridValue(0, "who")));
+        assertThat(dbValue("SELECT name FROM users WHERE id = 1", "name"))
+                .as("结果列键是 who，表里的列是 name —— 落库的得是后者")
+                .isEqualTo("Zoe");
+    }
+
+    /**
+     * ⭐ 主键在别处被改过 → 这条 UPDATE 一行都没命中，界面不许报「已保存」。
+     *
+     * <p>缓冲里存的是查询那一刻读到的主键，而写回按它定位 —— 中间有人挪走了那一行，
+     * 「执行成功」和「改动落地」是两件事。这一条量的是这两件事分开的哪一种。
+     */
+    @Test
+    void aSaveThatMatchesNoRowSaysSoInsteadOfReportingSuccess() throws Exception {
+        runSelect("SELECT * FROM users");
+        editCellText(0, "name", "Zoe");
+
+        // 别的会话把这一行的主键挪走：缓冲里那个 id=1 从此定位不到任何行。
+        session.execute("UPDATE users SET id = 99 WHERE id = 1");
+
+        interact(() -> page.submitResultSave(0));
+
+        waitFor(() -> page.resultDirtyCountForTest(0) == 0);
+        assertShownIsTheLocalized("query.edit.rowMissed", page.statusText(), 0, 1, "users");
+        assertThat(dbValue("SELECT name FROM users WHERE id = 99", "name"))
+                .as("没命中的那条不许顺手改动别的内容")
+                .isEqualTo("Ada");
+    }
+
+    /** 跑一条查询并等判定回来（判定分两层：形状当场、内省在后台）。 */
+    private void runSelect(String sql) {
+        interact(() -> {
+            page.setSql(sql);
+            page.runAll();
+        });
+        waitForTabs(1);
+        waitFor(() -> page.editDecisionForTest(0) != null);
+    }
+
+    /** 走真实那条链：选中一格 → {@code TableView.edit} → 编辑框出现（点不开就给空）。 */
+    private Optional<TextField> openEditor(int row, String resultKey) {
+        TableView<java.util.Map<String, Object>> table = resultTable();
+        TableColumn<java.util.Map<String, Object>, ?> column = table.getColumns().stream()
+                .filter(c -> resultKey.equals(c.getUserData())).findFirst().orElseThrow();
+        interact(() -> {
+            table.getSelectionModel().clearAndSelect(row, column);
+            table.edit(row, column);
+        });
+        // 编辑框是单元格的 graphic，带 adb-grid__editor 类（与外壳级测试同一个认法）。
+        javafx.scene.Node editor = table.lookup(".adb-grid__editor");
+        return editor instanceof TextField field ? Optional.of(field) : Optional.empty();
+    }
+
+    /** 点开一格、改文本、提交（与「双击 → 输入 → 回车」同一条）。 */
+    private void editCellText(int row, String resultKey, String text) {
+        TextField editor = openEditor(row, resultKey)
+                .orElseThrow(() -> new AssertionError("「" + resultKey + "」第 " + (row + 1)
+                        + " 行没打开编辑框；状态：" + page.statusText()));
+        interact(() -> {
+            editor.setText(text);
+            editor.fireEvent(new javafx.event.ActionEvent(editor, null));
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private TableView<java.util.Map<String, Object>> resultTable() {
+        return (TableView<java.util.Map<String, Object>>) page.lookup("#query-result-table");
+    }
+
+    private Object gridValue(int row, String resultKey) {
+        TableView<java.util.Map<String, Object>> table = resultTable();
+        return row < table.getItems().size() ? table.getItems().get(row).get(resultKey) : null;
+    }
+
+    private Button saveButton() {
+        return (Button) page.lookup("#query-result-save");
+    }
+
+    private Button discardButton() {
+        return (Button) page.lookup("#query-result-discard");
+    }
+
+    /** 直接从库里读一个值 —— 证明落库的是库，不是界面缓冲。 */
+    private Object dbValue(String sql, String column) throws Exception {
+        var result = session.execute(sql, List.of(), Danger.READ_ONLY);
+        return result.rows().isEmpty() ? null : result.rows().getFirst().get(column);
+    }
+
+    /**
+     * 断言「屏幕上这句就是资源里那句」。
+     *
+     * <p>为什么不能直接 {@code isEqualTo(I18n.t(key, args))}：键缺失时 {@code t()} 返回
+     * {@code ⚠键名}，两侧同时变成同一个字符串，断言就在「谁都没写过这句文案」的世界里绿着。
+     */
+    private void assertShownIsTheLocalized(String key, String shown, Object... args) {
+        String expected = I18n.t(key, args);
+        assertThat(expected).as("资源里没有这个键：" + key).doesNotStartWith("\u26a0");
+        assertThat(shown).isEqualTo(expected);
+    }
+
+    /**
+     * 判定那行话必须真是资源里的那句。
+     *
+     * <p>为什么不只写 {@code isEqualTo(I18n.t(key))}：键缺失时 {@code t()} 返回
+     * {@code ⚠键名}，两侧同时变成同一个字符串，断言就永远成立 —— 这条门禁
+     * 会在「谁都没写过这句文案」的世界里绿着。
+     */
+    private void assertEditNoteSays(String key) {
+        assertShownIsTheLocalized(key, page.editNoteForTest(0));
     }
 
     @Test
@@ -982,19 +1253,6 @@ class QueryPageTest {
 
         // 表本身没有主键：一次改动可能命中不止一行。
         assertEditNoteSays("query.edit.blocked.noPrimaryKey");
-    }
-
-    /**
-     * 判定那行话必须真是资源里的那句。
-     *
-     * <p>为什么不只写 {@code isEqualTo(I18n.t(key))}：键缺失时 {@code t()} 返回
-     * {@code ⚠键名}，两侧同时变成同一个字符串，断言就永远成立 —— 这条门禁
-     * 会在「谁都没写过这句文案」的世界里绿着。
-     */
-    private void assertEditNoteSays(String key) {
-        String shown = io.agenticdb.ui.I18n.t(key);
-        assertThat(shown).as("资源里没有这个键：" + key).doesNotStartWith("\u26a0");
-        assertThat(page.editNoteForTest(0)).isEqualTo(shown);
     }
 
     private static void interact(Runnable action) {
