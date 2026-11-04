@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（61 张）。
+# 重拍 docs/screenshots/ 的验收截图（64 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 53 张 + 暗色 8 张；
-#                                   #   其中 10 张绑 ADB_MATRIX 落点门、拍在 Docker 矩阵的真库上，
+#   ./scripts/shots.sh              # 全部重拍（亮色 56 张 + 暗色 8 张；
+#                                   #   其中 13 张绑 ADB_MATRIX 落点门、拍在 Docker 矩阵的真库上，
 #                                   #   另 2 张只借 ADB_TEST_* 注册五份连接档案 —— 图形取自档案的
 #                                   #   kind、不取自会话，所以它们不过落点门，见 p0-tree-vendors 那条）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
@@ -127,6 +127,16 @@ SHOTS=(
   #   状态栏回显 / 结果页签标题 / 危险分级全部读同一个 statementsToRun() 出口 ——
   #   这一帧证的是「跑的就是圈住的那段」，不是摆出来的高亮。
   "p3-query-selection||17000|ADB_MATRIX=mysql ADB_CONNECTION=matrix-mysql ADB_SELECTION_POSE=second ADB_THEME_FORCE=light"
+  # ⭐ R58-d 画面债（三格）：结果区回写。R58-b1/b2/c 交付时一张帧都没有 —— 这条路的证据此前
+  #   全在门禁里（判定卡点、缓冲、预览弹窗、落库），没人看过画面。三格各自钉住一个态：
+  #   blocked = 判定在 Info 带如实说「为什么这一屏不能改」（JOIN 是形状层就拒的那一类）；
+  #   dirty   = 双击一格改完提交，屏幕上留着「待保存」高亮 + 「1 处改动」+ 保存/放弃两颗键；
+  #   preview = 按保存后弹出的那条将要执行的 SQL（模态弹窗自己一帧，默认键是「取消」，不落写）。
+  #   SQL 写死在 AppShell（脚本的 env 列按空格切词，塞不进一句带空格的 SQL），
+  #   表用 dbmatrix.sh seed_frames 种的 users / orders；摆不成对应态就弃帧，不拍假图。
+  "p3-query-edit-blocked||17000|ADB_MATRIX=mysql ADB_CONNECTION=matrix-mysql ADB_RESULT_EDIT_POSE=blocked ADB_THEME_FORCE=light"
+  "p3-query-edit-dirty||17000|ADB_MATRIX=mysql ADB_CONNECTION=matrix-mysql ADB_RESULT_EDIT_POSE=dirty ADB_THEME_FORCE=light"
+  "p3-query-edit-preview||20000|ADB_MATRIX=mysql ADB_CONNECTION=matrix-mysql ADB_RESULT_EDIT_POSE=preview ADB_THEME_FORCE=light"
   "p4-structure||5000|ADB_STRUCTURE=users ADB_THEME_FORCE=light"
   "p4-ddl||7000|ADB_DDL=1 ADB_THEME_FORCE=light"
   # ⭐ D-23：列对话框那一帧 —— 类型下拉的候选与默认值现在都来自方言，

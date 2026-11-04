@@ -333,6 +333,11 @@ class ScreenshotScriptAuditTest {
         assertThat(assertPosesHandled(script, "ADB_SELECTION_POSE", shell))
                 .as("选区执行帧的摆态名必须在 AppShell 的 pose 分派里有对应分支")
                 .isEmpty();
+        // ⭐ R58-d：结果区回写三态（blocked / dirty / preview）同型病 —— pose 打错一个字母，
+        //   那一帧照样拍出默认查询页、返回码照样是 0，而这三张是 R58 唯一的画面证据。
+        assertThat(assertPosesHandled(script, "ADB_RESULT_EDIT_POSE", shell))
+                .as("结果区回写帧的摆态名必须在 AppShell 的 pose 分派里有对应分支")
+                .isEmpty();
     }
 
     /**

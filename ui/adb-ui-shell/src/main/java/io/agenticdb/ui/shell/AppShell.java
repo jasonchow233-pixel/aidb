@@ -541,6 +541,59 @@ public final class AppShell extends StackPane {
     }
 
     /**
+     * ⭐ R58-d 画面债：结果区回写那三态的帧（判成只读 / 改了一格待保存 / 保存前预览）。
+     *
+     * <p>SQL 写死在代码里，不写进脚本：{@code shots.sh} 的 env 列按空格切词，
+     * 一句带空格的 SQL 塞不进去（库▾ 与补全那几帧同理）。表名用的是
+     * {@code dbmatrix.sh seed_frames} 种下的 {@code users} / {@code orders}，
+     * 所以「帧里那句 SQL 在库上跑不通」这件事不会发生。
+     *
+     * <p>三个摆态都跑在矩阵真库上 —— 演示库那格不是「不能拍」，是拍了也证不了回写：
+     * 那一屏写回落到 SQLite，帧名却写着 mysql。
+     */
+    private void poseResultEditWhenReady(String pose, int attempt) {
+        if (session == null) {
+            if (attempt >= POP_READY_MAX_POLLS) {
+                ScreenshotSession.abortMatrixFrame("result edit pose gave up: session never opened"
+                        + " (ADB_MATRIX points at a server that is not reachable)");
+                return;
+            }
+            pollAgain(attempt, () -> poseResultEditWhenReady(pose, attempt + 1));
+            return;
+        }
+        String catalog = catalogLabelFor(activeProfileId());
+        String sql = switch (pose) {
+            // 判成只读那一帧：JOIN 是形状层就拒的那一类，Info 带说的是「连着几张表」这句人话。
+            // 连接条件用 `orders.user_id`（种子数据里 orders.id 是 10/11、users.id 是 1/2，
+            // 写成 `users.id = orders.id` 会返回 0 行 —— 那一帧拍出来的是空结果，
+            // 而「JOIN 判只读」这句话在有行的那一屏才看得见）。
+            case "blocked" -> "SELECT users.name, orders.status FROM users"
+                    + " JOIN orders ON users.id = orders.user_id";
+            // 后两格同一条 SQL：区别只在摆到哪一态（改完一格 / 再按保存）。
+            // 两条 case 各写一遍是 ScreenshotScriptAuditTest 那条 pose 门禁要求的 ——
+            // 它按 `case "<pose>"` 逐个字面量对账，合并写法会让 preview 那格查无此人。
+            case "dirty" -> "SELECT id, name FROM users ORDER BY id";
+            case "preview" -> "SELECT id, name FROM users ORDER BY id";
+            default -> "";
+        };
+        if (sql.isEmpty()) {
+            System.out.println("[screenshot] unknown ADB_RESULT_EDIT_POSE: " + pose
+                    + " (expected: blocked / dirty / preview)");
+            return;
+        }
+        openQueryOn(activeProfileId(), catalog == null ? "" : catalog, sql + ";");
+        QueryPage page = workspace.activeQuery();
+        if (page == null) {
+            ScreenshotSession.abortMatrixFrame("result edit pose gave up: the query page never"
+                    + " got built, so there is no result grid to pose on");
+            return;
+        }
+        page.markClean();
+        page.poseResultEditWhenReady(pose);
+        Platform.runLater(workspace::runQuery);
+    }
+
+    /**
      * ⭐ R57 画面债：补全弹层那一帧。
      *
      * <p>SQL 以 {@code SELECT * FROM } 结尾（结尾就是补全位置），跑在矩阵真库上：
@@ -2471,6 +2524,13 @@ public final class AppShell extends StackPane {
                 .toLowerCase(Locale.ROOT);
         if (!selectionPose.isEmpty() && !selectionPose.equals("1")) {
             poseQuerySelectionWhenReady(selectionPose, 0);
+        }
+        // ⭐ R58-d 画面债：结果区回写的三态（只读结论 / 待保存 / 保存前预览）—— R58 整批
+        //    交付时一帧都没有，只有门禁。
+        String resultEditPose = text("adb.resultEditPose", "ADB_RESULT_EDIT_POSE")
+                .toLowerCase(Locale.ROOT);
+        if (!resultEditPose.isEmpty() && !resultEditPose.equals("1")) {
+            poseResultEditWhenReady(resultEditPose, 0);
         }
         // ⭐ S7：恢复上次打开的对象。命令行显式指定时不让它覆盖。
         if (initial.isEmpty() && structure.isEmpty() && initialQuery.isEmpty()) {

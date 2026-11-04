@@ -221,6 +221,14 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private static final int POSE_READY_TICKS = 80;
 
     /**
+     * 摆「待保存」那一帧写进格子里的值：只进缓冲，不进库。
+     *
+     * <p>刻意用一个是 seed 里不存在、又一眼看得出「是改出来的」的名字 —— 帧里要能分辨
+     * 「这一格是待保存的改动」和「库里本来就这么写的」。</p>
+     */
+    private static final String POSE_EDITED_TEXT = "Carol";
+
+    /**
      * 结果格里可能出现的全部状态类：先整体摘掉再按这一格的实际状态重贴，
      * 否则单元格被复用（滚动、refresh）时会留着上一格的样式。
      *
@@ -2211,6 +2219,164 @@ public final class QueryPage extends VBox implements AutoCloseable {
         editor().area().requestFollowCaret();
         System.out.println("[screenshot] selection posed, chars=" + statement.length()
                 + " at=" + start);
+    }
+
+    /**
+     * ⭐ R58-d 画面债：把结果区回写的某一态摆到快门前（R58 整批交付时一帧都没有）。
+     *
+     * <p>摆态全部走用户那条路：{@code table.edit(row, column)} 就是双击那一格（落到
+     * {@code ResultCell.startEdit}），改文本后 fire 的是编辑框自己的 ActionEvent（就是回车），
+     * 预览那一帧点的是保存那颗键。没有一帧靠「画上去的高亮」—— 那样帧证的是 pose 代码，不是功能。
+     *
+     * <p>⚠️ 前提不成立就**弃帧**（D-37 / D-39 那一族）：判定还没落地、判成只读却要摆「待保存」、
+     * 那一格开不出编辑框 —— 任何一种都拍出一张帧名写着回写、画面是普通结果页的假图，
+     * 而它比缺帧更贵：它会替这笔欠账「还掉」它其实没还的那一半。
+     */
+    void poseResultEditWhenReady(String pose) {
+        awaitResultEditPose(pose, POSE_READY_TICKS);
+    }
+
+    private void awaitResultEditPose(String pose, int attemptsLeft) {
+        ResultEditState edit = editStates.isEmpty() ? null : editStates.getFirst();
+        ResultEditPolicy.Decision decision = edit == null ? null : edit.decision;
+        if (decision == null) {
+            if (attemptsLeft <= 0) {
+                ScreenshotSession.abortMatrixFrame("result edit pose gave up: the editability"
+                        + " judgement never landed (no result tab, or the background introspect"
+                        + " never returned) - the frame would show a plain result grid"
+                        + " and claim it is a write-back state");
+                return;
+            }
+            schedule(150, () -> awaitResultEditPose(pose, attemptsLeft - 1));
+            return;
+        }
+        switch (pose) {
+            case "blocked" -> poseBlockedBand(edit, decision);
+            case "dirty" -> poseDirtyCell(edit, decision, false);
+            case "preview" -> poseDirtyCell(edit, decision, true);
+            default -> System.out.println("[screenshot] unknown result edit pose: " + pose
+                    + " (expected: blocked / dirty / preview)");
+        }
+    }
+
+    /** 「判成只读」那一帧等的就是 Info 带那句为什么 —— 结论已经落地，文案由判定自己写。 */
+    private void poseBlockedBand(ResultEditState edit, ResultEditPolicy.Decision decision) {
+        if (!(decision instanceof ResultEditPolicy.Blocked blocked)) {
+            ScreenshotSession.abortMatrixFrame("result edit pose gave up: the frame is named"
+                    + " 'blocked' but this screen judged EDITABLE, so the Info band would say"
+                    + " the opposite of what the file name claims");
+            return;
+        }
+        if (!(lookup("#result-view-info") instanceof javafx.scene.control.ToggleButton info)) {
+            // 那句「为什么不能改」住在 Info 切面里，Data 切面看不见它 —— 切不过去就等于
+            // 拍一张「帧名写着报因、画面里一个字都没有」的假图。
+            ScreenshotSession.abortMatrixFrame("result edit pose gave up: the Info view toggle"
+                    + " is not on this page, so the refusal sentence would stay off-screen");
+            return;
+        }
+        // 切过去走的是用户那颗键本身（fire 它的 onAction），不是自己把 pane 摆显。
+        info.fire();
+        System.out.println("[screenshot] blocked sentence posed on the Info view, reason="
+                + blocked.messageKey() + " detail=" + blocked.detail());
+    }
+
+    /**
+     * 「改了一格、还没保存」，可带保存前预览。
+     *
+     * <p>改的值 {@value #POSE_EDITED_TEXT} 只进缓冲：预览弹窗的默认键是「取消」，
+     * 快门不会点它 —— 这一帧不落任何写。
+     */
+    private void poseDirtyCell(ResultEditState edit, ResultEditPolicy.Decision decision,
+                               boolean openPreview) {
+        ResultEditPolicy.Editable editable =
+                decision instanceof ResultEditPolicy.Editable e ? e : null;
+        if (editable == null || edit.buffer == null || edit.table.getItems().isEmpty()) {
+            ScreenshotSession.abortMatrixFrame("result edit pose gave up: this screen judged"
+                    + " " + (decision instanceof ResultEditPolicy.Blocked blocked
+                    ? "BLOCKED (" + blocked.messageKey() + ")" : "not editable yet")
+                    + ", so there is no dirty cell to frame - a read-only grid named 'dirty'"
+                    + " is exactly the fake shot this channel exists to refuse");
+            return;
+        }
+        TableColumn<java.util.Map<String, Object>, ?> column = edit.table.getColumns().stream()
+                .filter(each -> {
+                    Object key = each.getUserData();
+                    ResultEditPolicy.Cell cell = key == null
+                            ? null : editable.cell(String.valueOf(key));
+                    // 主键格不开编辑框（改它等于把定位这一行的条件挪走），所以跳过它。
+                    return cell != null && !cell.primaryKey();
+                })
+                .findFirst().orElse(null);
+        if (column == null) {
+            ScreenshotSession.abortMatrixFrame("result edit pose gave up: no column in this"
+                    + " projection is writable (only the primary key is present)");
+            return;
+        }
+        edit.table.edit(0, column);
+        javafx.scene.Node node = edit.table.lookup(".adb-grid__editor");
+        if (!(node instanceof TextField editor)) {
+            ScreenshotSession.abortMatrixFrame("result edit pose gave up: double-click on that"
+                    + " cell never opened an editor, so the shot would show a grid with no"
+                    + " pending change");
+            return;
+        }
+        editor.setText(POSE_EDITED_TEXT);
+        editor.fireEvent(new javafx.event.ActionEvent(editor, null));
+        System.out.println("[screenshot] result cell edited, column=" + column.getUserData()
+                + " dirty=" + edit.buffer.dirtyCount());
+        if (openPreview) {
+            if (edit.save == null || !edit.save.isVisible()) {
+                ScreenshotSession.abortMatrixFrame("result edit pose gave up: the save button"
+                        + " is not on screen even though a change is buffered");
+                return;
+            }
+            // 保存那颗键自己会开预览弹窗（模态、独立 Stage）—— 快门拍的就是那个弹窗。
+            // ⭐ 但这一发必须**跳出动画脉冲**再点：预览弹窗走 {@code showAndWait}，而
+            //   JavaFX 禁止在动画/布局处理中调它。实测在 {@code PauseTransition} 的
+            //   onFinished 里直接 fire —— 抛 {@code IllegalStateException: showAndWait is
+            //   not allowed during animation or layout processing}，弹窗压根没出现，快门
+            //   拍到一张「帧名写着 preview、画面里只有脏格子」的假图。真用户点键落在输入
+            //   事件里，本来就不在脉冲里，所以 runLater 才是同一条路。
+            Platform.runLater(edit.save::fire);
+            awaitPreviewDialog(40);
+        }
+    }
+
+    /**
+     * 弹窗到底在不在屏幕上：模态预览弹窗是**独立 Stage**，主窗口那棵场景树里查不到它，
+     * 所以只能遍历窗口清单，认带 {@code .dialog-pane} 的那一颗。
+     */
+    private boolean previewDialogIsUp() {
+        javafx.stage.Window owner = ownerWindow();
+        for (javafx.stage.Window window : javafx.stage.Window.getWindows()) {
+            if (window instanceof javafx.stage.Stage candidate && candidate != owner
+                    && candidate.isShowing() && candidate.getScene() != null
+                    && candidate.getScene().getRoot().lookup(".dialog-pane") != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 点完保存之后、快门之前，验一次预览弹窗真的上屏了。
+     *
+     * <p>验不了就弃帧：这一帧要证的是「写库之前用户先看得到那几条 SQL」，
+     * 弹窗没开就等于什么也没证 —— 拍一张脏格子冒充 preview 比没图更贵。
+     */
+    private void awaitPreviewDialog(int ticksLeft) {
+        if (previewDialogIsUp()) {
+            System.out.println("[screenshot] save preview dialog is on screen, the shutter"
+                    + " captures that window");
+            return;
+        }
+        if (ticksLeft <= 0) {
+            ScreenshotSession.abortMatrixFrame("result edit pose gave up: the save button was"
+                    + " fired but no preview dialog is on screen, so the frame would show a"
+                    + " dirty grid and claim it is the pre-save preview");
+            return;
+        }
+        schedule(150, () -> awaitPreviewDialog(ticksLeft - 1));
     }
 
     private void awaitCatalogs(int attemptsLeft) {
