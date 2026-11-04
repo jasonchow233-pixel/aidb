@@ -19,8 +19,9 @@
   强调色 `#0067B8`（Navicat 实测 `#0078D7`，为 WCAG AA 压暗）。
 - **圆角/间距**：**5 档 + pill**：`r-sm` 2 / `r-md` 3 / `r-lg` 4 / `r-xl` 6 / `r-full` 999，外层 ≥ 内层；
   7 档 4px 间距阶梯；页面外边距 16px，工具栏 8px。
-- **图标**：**矢量图标**（`io.agenticdb.ui.Icons`，**63** 个 = 54 个 Lucide 源 + 9 个自绘）。
+- **图标**：**矢量图标**（`io.agenticdb.ui.Icons`，**68** 个 = 59 个 Lucide 源 + 9 个自绘）。
   9 个自绘 = 品牌标 `BRAND` + 圆点 `DOT` + `AI` + **六家厂商数据库图形** `DB_*`（R43-a，见图标约定节）。
+  （68 这一档含 R62-a H6-g 新接的五枚「集合」字形 `GROUP_*` —— 从已锁定的 lucide-static v1.61.0 vendor 原件，不是自画。）
   统一 16×16 视框、1.5px 描边；6 档尺寸 **8 / 12 / 14 / 16 / 20 / 26**（dot / badge / label / toolbar / primary / ribbon）。
   颜色由 CSS 的 `.adb-icon` 接管 → 切主题自动跟着变。
   ⛔ **按钮里不许再出现 Unicode 符号**（`IconSystemAuditTest` 守着）。
@@ -99,6 +100,8 @@ Windows 上常见字体可能替换或缺失。这条已经**不再是方向而�
 | 分层顺序 | 自下而上画，**轮廓层（EDGE）收尾**；轮廓与单色同一套 1.5px 粗细口径 | `ColoredIconTest.everyColoredIconKeepsOneEdgeLayerOnTop` |
 | 类型色 | ⭐ 「形状 + 颜色」是**一对**线索，彩色档不许删掉其中一条：轮廓层经 `.adb-tree__icon--table .adb-icon-edge` 吃 `-adb-kind-*`，三层 tone 保持中性浅蓝（类型色只走轮廓这一条道） | `IconKindHueTest`（读**计算色**，不读 CSS 文本） |
 | 厂商图形 | ⭐ R43-a：**一家一枚、各自不同形**（MySQL 海豚鳍 / PostgreSQL 獠牙 U / SQL Server 六边形宝石 / Oracle 椭圆环 / SQLite 羽叶 / MariaDB 圆球跃身），登记在 `ConnectionCatalog` 的行上 —— 向导磁贴与左侧树从**同一行**取图形与作用域类，所以两处的 MySQL 不会是两种颜色。图形是**同风格自绘标识**，不是商标图标（见素材红线）；品牌色走 `-adb-vendor-*` 令牌（两档各一个值），只落 `tone-c` 那一层，轮廓层仍吃 `-adb-icon-edge` 保可读 | `VendorGlyphTest`（不同形 / CSS 规则 / **两档计算色** / 磁贴作用域）· `SideBarTreeTest.connectionNodesWearTheirVendorGlyph`（断渲染出的 cell，不断节点取值）· `ContrastTest.vendorBrandColorsStandOutAgainstTheBackground`（≥3:1） |
+| 集合（分组）字形 | ⭐ R62-a H6-g：**分组行的字形不许和它孩子那枚是同一个**。「Tables」这一行画一个表、下面每行也画一个表 = 父子同形，「这行是集合还是对象」只能靠缩进读。五枚 `GROUP_*`（表集合 / 视图集合 / 函数集合 / 已保存查询 / 连接分组）说的都是「一摞 / 一个容器」，类型由同一行的文字和孩子节点交代；叶子那几枚一个像素没动。⚠️ **集合字形保持单色**：分组节点拿不到对象类型（`iconStyleClass` 按 kind 分色，GROUP 只有一档灰），给它上色等于宣布「集合自成一类对象」，而集合不是对象 —— 所以它们**不进**下面那两张彩色词汇表清单 | `SideBarCollectionGlyphTest`（两个通道：真画出来的路径几何 + 模型上的图标名；另钉「没有彩色资产」）· `IconSystemAuditTest.everyIconIsActuallyUsed` |
+| 「本版本未提供」的入口 | ⭐ R62-a H5-i（Q8 拍第②案）：落说明页的功能入口**留在原位、不降位、不变灰**，只加一枚 8px **空心环**（`adb-pending__mark`）。三条规矩：① 环是**不参与布局**的 overlay（`managed=false` + `mouseTransparent`，位置由监听器 `resizeRelocate` 跟着宿主算）—— 包一层容器实测会把同行磁贴撑宽 ±6~7px；② **不用 `-fx-opacity` 压暗**（`FocusRingAuditTest` 守着「不许用透明度藏内容」），也不给 `Region` 写 `-fx-stroke`（Region 不吃 stroke，会静默空转）；③ 实话必须在**点之前**就说：`accessibleText` 与 `Tooltip` 共用 `ribbon.pending` 一个资源键。环只给功能区磁贴，横排按钮那一档只补文案（同一条撑宽理由） | `AppBarTest`（环贴在右上角 + 格子没被挪动）· `TableListPageTest.thePendingAiEntrySaysSoBeforeTheClick` · `RibbonCapabilityAuditTest.thePendingBadgesMatchTheHonestLandingPoints`（挂标集合 ⇔ 落说明页集合） |
 | 容器不能挂色 | 分层返回的是 `Group`，它在 JavaFX 里没有任何可声明的绘制属性 —— 把 `-fx-stroke` 打在容器上等于空转。类名挂在容器上，**颜色规则必须写后代选择器**落到子层 | 同上 |
 | ⛔ 素材红线 | 竞品（Navicat 等）的位图/图标属**他人版权素材**，一律不许进 `icons/`；像素复刻 ≠ 素材入库 | `ColoredIconTest` 头部注释 + 人工审计 |
 
