@@ -382,13 +382,15 @@ public final class AppShell extends StackPane {
             demoDb.get();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("等待演示库时被中断", e);
+            // ASCII：App.start 不接这条异常，它只会经 CrashLog 落进 ~/.agenticdb/logs/crash-*.log，
+            // 没有按语言的渲染口 —— 而这里的中文会算进 i18n 棘轮，所以保持英文。
+            throw new IllegalStateException("interrupted while waiting for the demo database", e);
         } catch (java.util.concurrent.ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof RuntimeException runtime) {
                 throw runtime;
             }
-            throw new IllegalStateException("无法创建演示库: " + cause.getMessage(), cause);
+            throw new IllegalStateException("cannot open the demo database: " + cause.getMessage(), cause);
         }
     }
 

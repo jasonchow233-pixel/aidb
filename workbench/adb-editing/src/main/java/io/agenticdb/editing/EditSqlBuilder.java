@@ -292,8 +292,10 @@ public final class EditSqlBuilder {
                 // ⭐ R61-c：语句之间看一眼中断标志。一次保存是一批语句，
                 //   用户按 ⌘. 要的是「一条都没写」，而不是「跑到第 3 条才发现被取消了」。
                 //   抛出后由下面的 catch 回滚这一批（自动提交模式下 ownTransaction 为真）。
+                //   文案是 ASCII：JavaFX 把 InterruptedException 归到 onCancelled，界面只复位状态、
+                //   不出错误框，这句原文只会出现在堆栈/日志里 —— 而这里的中文会算进 i18n 棘轮。
                 if (Thread.currentThread().isInterrupted()) {
-                    throw new InterruptedException("保存已取消，未继续写入");
+                    throw new InterruptedException("save cancelled before the next statement");
                 }
                 // ⭐ 第三层门禁：保存路径的每条语句也声明自己的危险等级。
                 //    数据页生成的都是 UPDATE / DELETE / INSERT，级别是「写数据」，
