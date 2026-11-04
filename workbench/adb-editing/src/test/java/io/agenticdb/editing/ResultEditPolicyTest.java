@@ -179,4 +179,36 @@ class ResultEditPolicyTest {
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () ->
                 decide("SELECT * FROM users", users(), USERS_LABELS, List.of("id")));
     }
+
+    // ─────────────────────────── 行身份（第 14 条契约的前置） ───────────────────────────
+
+    @Test
+    void identityIsKeyedByTheTableColumnAndReadThroughTheAlias() {
+        // 主键被改名投影：结果行的键是 row_id，表里的列还是 id。
+        ResultEditPolicy.Editable editable = (ResultEditPolicy.Editable) decide(
+                "SELECT id AS row_id, name AS label FROM users", users(),
+                List.of("row_id", "label"), List.of("row_id", "label"));
+
+        RowIdentity identity = ResultEditPolicy.identity(editable,
+                java.util.Map.<String, Object>of("row_id", 7, "label", "张三"));
+
+        // 键必须是<b>表里的</b>名字：EditSqlBuilder 按 schema.primaryKeys() 的原文取 WHERE 值。
+        assertThat(identity.values()).containsOnlyKeys("id");
+        assertThat(identity.values()).containsEntry("id", 7);
+        assertThat(identity.display()).isEqualTo("id=7");
+    }
+
+    @Test
+    void identityIsAbsentWhenTheRowHasNoValueForAKeyCell() {
+        ResultEditPolicy.Editable editable = (ResultEditPolicy.Editable) decide(
+                "SELECT id, name FROM users", users(),
+                List.of("id", "name"), List.of("id", "name"));
+
+        // 行 Map 少一个主键 = 这一屏和判定落地时那份结果集已经不是同一份，给 null 而不是猜。
+        assertThat(ResultEditPolicy.identity(editable, java.util.Map.<String, Object>of("name", "x")))
+                .isNull();
+        assertThat(ResultEditPolicy.identity(editable, null)).isNull();
+        assertThat(ResultEditPolicy.identity(null, java.util.Map.<String, Object>of("id", 1)))
+                .isNull();
+    }
 }

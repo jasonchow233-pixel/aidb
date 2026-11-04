@@ -4,10 +4,13 @@ import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.SchemaService.TableSchema;
 import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.jdbc.ExecutionResult;
 import io.agenticdb.jdbc.ExternalDatabase;
 import io.agenticdb.jdbc.JdbcSession;
 import io.agenticdb.model.ColumnType;
 import io.agenticdb.model.ColumnDef;
+import io.agenticdb.model.Danger;
+import io.agenticdb.sql.SqlQueryShape;
 
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
@@ -313,6 +316,171 @@ final class RealEditWriteBackContract {
         EditBuffer buffer = new EditBuffer(table);
         buffer.setCell(identity, name, rowValues.get(name), next);
         return buffer;
+    }
+
+    // ─────────── 契约 14：从用户敲的那条 SQL 文本，判到可编辑，再改回表里 ───────────
+
+    /**
+     * ⭐ R58-d · 真库契约第 14 条：<b>结果区那条回写路（R58-c）在五家真库上走一遍</b>。
+     *
+     * <p>前 13 条量的是<b>数据页</b>那条路：那张页天生知道自己在哪张表上，主键名直接来自内省。
+     * 结果区不一样 —— 它的输入只有<b>用户敲的那句 SQL 文本</b>和<b>驱动报回来的列标签</b>，
+     * 于是多了三道数据页没有的关口：
+     * <ol>
+     *   <li>{@link SqlQueryShape} 认不认得出这是单表 {@code SELECT}；</li>
+     *   <li>{@link ResultEditPolicy#judge} 能不能把<b>别名标签</b>映射回表里的列，
+     *       并确认主键在结果里；</li>
+     *   <li>{@link ResultEditPolicy#identity} 造出来的行身份，键名必须是<b>表里的</b>那一套
+     *       —— 否则 {@link EditSqlBuilder} 按 {@code schema.primaryKeys()} 取 WHERE 值会取到
+     *       {@code null}，SQL 照样发出去、返回 0 行命中，界面却报「已保存」。</li>
+     * </ol>
+     *
+     * <p>⚠️ 第 3 关是<b>本契约存在的理由</b>：SQLite 那 45 条门禁全绿也抓不到它，因为那批夹具
+     * 写的是 {@code SELECT *}，结果列键恰好等于表列名，两种写法在内存库里行为一模一样。
+     * 只有把别名放进来（这里主键和文本列<b>都</b>起别名），错键才会显形 —— 而且它必须打在真库上，
+     * 「0 行命中」这件事只有服务器能回答。
+     *
+     * <p>🔒 全程只走产品的口：判定用 {@link SqlQueryShape#parse} + {@link SchemaService#describe}
+     * + {@link ResultEditPolicy#judge}（跟 {@code QueryPage.judgeEditability} 同一个顺序、同一批方法），
+     * 取结果用 {@code session.execute(sql, Danger.READ_ONLY)}（界面执行按钮那个带三级门禁的重载），
+     * 写回用 {@link EditSqlBuilder}（数据页同一个）。<b>没有一条平行路径</b>（D-38）。
+     */
+    static void resultGridWriteBackJudgedFromTheSqlText(ExternalDatabase target) throws Exception {
+        try (JdbcSession session = JdbcSession.open(target.spec())) {
+            Dialect dialect = session.dialect();
+            String table = "adb_contract_rg_" + System.nanoTime();
+            try {
+                createEditableTable(session, dialect, target.kind(), table);
+                TableSchema schema = new SchemaService().describe(session, table);
+                expectCatalogNames(schema, dialect);
+
+                EditBuffer seed = new EditBuffer(table);
+                seed.addDraft(row(schema, 1L, "张三", 10.50d, true, "首单"));
+                seed.addDraft(row(schema, 2L, "Al Smith", 20.25d, false, null));
+                assertThat(EditSqlBuilder.execute(session, EditSqlBuilder.plan(session, schema, seed)))
+                        .as("%s：两行种子要落库（结果区没行可查，后面全是空转）", dialect.displayName())
+                        .isEqualTo(2);
+
+                // ① 用户敲的那条 SQL：<b>主键与文本列都带别名</b>。引号形状按方言给
+                //    （MySQL 系不认双引号标识符，ANSI_QUOTES 又不是默认 —— 写死 "id" 会选成字符串字面量）。
+                String sql = "SELECT " + dialect.quote("id") + " AS " + dialect.quote("row_id")
+                        + ", " + dialect.quote("name") + " AS " + dialect.quote("who")
+                        + " FROM " + dialect.quote(table);
+                ExecutionResult result = session.execute(sql, Danger.READ_ONLY);
+                assertThat(result.rowCount())
+                        .as("%s：这条 SELECT 要读回两行", dialect.displayName())
+                        .isEqualTo(2);
+                assertThat(result.columnKeys())
+                        .as("%s：行 Map 的键就是驱动报回来的<b>别名</b>（键名一旦变，判定与身份全错）",
+                                dialect.displayName())
+                        .containsExactly("row_id", "who");
+
+                // ② 判定：形状层（纯文本）→ 内省 → judge。labels 与 keys 都取自上面那个真结果集。
+                ResultEditPolicy.Decision decision = ResultEditPolicy.judge(
+                        SqlQueryShape.parse(sql), schema,
+                        result.columns().stream().map(ColumnDef::name).toList(),
+                        result.columnKeys());
+                assertThat(decision)
+                        .as("%s：别名投影要判成可编辑（判成只读 = 结果区这条路在五家全废）。卡点=%s",
+                                dialect.displayName(), reason(decision))
+                        .isInstanceOf(ResultEditPolicy.Editable.class);
+                ResultEditPolicy.Editable editable = (ResultEditPolicy.Editable) decision;
+                assertThat(editable.table())
+                        .as("%s：写回的表名要来自内省，且就是查询那张表", dialect.displayName())
+                        .isEqualTo(table);
+                // ⭐ 别名标签 ↔ 表列名：这一对错了，SET 子句会写到另一列上。
+                assertThat(editable.cells())
+                        .as("%s：结果列键是别名，表侧目标列必须是 id / name", dialect.displayName())
+                        .extracting(ResultEditPolicy.Cell::resultKey, ResultEditPolicy.Cell::column)
+                        .containsExactly(
+                                org.assertj.core.groups.Tuple.tuple("row_id", "id"),
+                                org.assertj.core.groups.Tuple.tuple("who", "name"));
+
+                // ③ 行身份：这是本契约要量的那一关 —— 值从别名底下取，<b>键名用表里的</b>。
+                Map<String, Object> first = result.rows().stream()
+                        .filter(r -> "张三".equals(asText(r.get("who"))))
+                        .findFirst()
+                        .orElseThrow(() -> new AssertionError("结果里没有那一行（读回来的值："
+                                + result.rows() + "）—— 中文名在结果集里丢了，先查字符集"));
+                RowIdentity identity = ResultEditPolicy.identity(editable, first);
+                assertThat(identity)
+                        .as("%s：主键在结果里，行身份必须造得出来（造不出来 = 这一屏判成可编辑却一格都改不了）",
+                                dialect.displayName())
+                        .isNotNull();
+                assertThat(identity.values())
+                        .as("%s：行身份的键名用<b>表里的</b> id，不是别名 row_id —— 用别名时 "
+                                + "EditSqlBuilder 按主键原文取值会取到 null，UPDATE 一条也不命中",
+                                dialect.displayName())
+                        .containsOnlyKeys("id");
+
+                EditBuffer edits = new EditBuffer(table);
+                ResultEditPolicy.Cell nameCell = editable.cell("who");
+                assertThat(edits.setCell(identity, nameCell.column(), first.get("who"), "李四"))
+                        .as("%s：改一格要进得了缓冲（进不去，后面 plan 出来是空计划）",
+                                dialect.displayName())
+                        .isTrue();
+                EditSqlBuilder.Plan plan = EditSqlBuilder.plan(session, schema, edits);
+                assertThat(plan.statements())
+                        .as("%s：一屏改一格 = 一条 UPDATE", dialect.displayName())
+                        .hasSize(1);
+                assertThat(EditSqlBuilder.execute(session, plan))
+                        .as("%s：这条 UPDATE 要<b>命中那一行</b>（回 0 = 写出去了但没落，界面那句「已保存」就是假话）",
+                                dialect.displayName())
+                        .isEqualTo(1);
+
+                long id = ((Number) identity.values().get("id")).longValue();
+                Map<String, Object> back = readRow(session, dialect, table, id);
+                assertThat(asText(back.get("name")))
+                        .as("%s：改过的那一格要落到库上", dialect.displayName())
+                        .isEqualTo("李四");
+                // 没动的列不能被这次 UPDATE 带走。
+                assertThat(asDecimal(back.get("amount")))
+                        .as("%s：UPDATE 只带 name 一列，金额不能被顺手改写", dialect.displayName())
+                        .isEqualByComparingTo("10.50");
+                assertThat(asBool(back.get("active")))
+                        .as("%s：没动的布尔列保持原值", dialect.displayName())
+                        .isTrue();
+                assertThat(asText(readRow(session, dialect, table, 2L).get("name")))
+                        .as("%s：WHERE 只命中主键那一行，另一行不能跟着变", dialect.displayName())
+                        .isEqualTo("Al Smith");
+
+                // ④ 撤销这次保存（界面的第二个按钮，走的是同一个 inversePlan）。
+                EditSqlBuilder.Plan inverse = EditSqlBuilder.inversePlan(session, schema, edits);
+                assertThat(inverse.complete())
+                        .as("%s：改格子的撤销计划必须完整", dialect.displayName())
+                        .isTrue();
+                assertThat(EditSqlBuilder.execute(session, inverse))
+                        .as("%s：撤销同样要按行身份命中那一行", dialect.displayName())
+                        .isEqualTo(1);
+                assertThat(asText(readRow(session, dialect, table, id).get("name")))
+                        .as("%s：撤销之后要回到改之前的值", dialect.displayName())
+                        .isEqualTo("张三");
+
+                // ⑤ 反向：主键没投影出来 → 必须判成只读，且说的是那一句（不许偷偷改写用户的 SQL 去补主键）。
+                String keyless = "SELECT " + dialect.quote("name") + " AS " + dialect.quote("who")
+                        + " FROM " + dialect.quote(table);
+                ExecutionResult keylessResult = session.execute(keyless, Danger.READ_ONLY);
+                ResultEditPolicy.Decision blocked = ResultEditPolicy.judge(
+                        SqlQueryShape.parse(keyless), schema,
+                        keylessResult.columns().stream().map(ColumnDef::name).toList(),
+                        keylessResult.columnKeys());
+                assertThat(blocked)
+                        .as("%s：主键不在结果里要判成只读", dialect.displayName())
+                        .isInstanceOf(ResultEditPolicy.Blocked.class);
+                assertThat(((ResultEditPolicy.Blocked) blocked).messageKey())
+                        .as("%s：这一类原因要说得出是哪一类（界面据此在 Info 带显示人话）",
+                                dialect.displayName())
+                        .isEqualTo(ResultEditPolicy.Block.PRIMARY_KEY_NOT_SELECTED.messageKey());
+            } finally {
+                dropQuietly(session, dialect, table);
+            }
+        }
+    }
+
+    /** 判成只读时把卡点键捞出来，只用在断言失败消息里（过了不产生噪音）。 */
+    private static String reason(ResultEditPolicy.Decision decision) {
+        return decision instanceof ResultEditPolicy.Blocked blocked
+                ? blocked.messageKey() + " / " + blocked.detail() : "（判成可编辑）";
     }
 
     // ─────────────────────────────── 夹具与读数 ───────────────────────────────

@@ -194,6 +194,32 @@ public final class ResultEditPolicy {
     }
 
     /**
+     * 结果集里这一行的身份：只装主键，键名用<b>表里的</b>名字，值从<b>结果列键</b>下取。
+     *
+     * <p>⭐ 这一步不能省，也不能用 {@link RowIdentity#from}：后者的入参是
+     * {@code schema.primaryKeys()} 的原文，而结果行的 Map 按驱动返回的列键编址 ——
+     * 一旦投影写了 {@code "id" AS "row_id"}（或重名带了 {@code _2} 后缀），
+     * 两个名字不同名，按原文取会拿到 {@code null}，于是 {@code UPDATE … WHERE id = NULL}
+     * 一条也不命中，界面却报「已保存」。
+     *
+     * <p>取不到就给 {@code null}，不做任何补救 —— 行 Map 里少了一个主键，
+     * 说明这一屏和判定落地时的那个结果集已经不是同一份了。
+     */
+    public static RowIdentity identity(Editable editable, Map<String, Object> row) {
+        if (row == null || editable == null) {
+            return null;
+        }
+        LinkedHashMap<String, Object> values = new LinkedHashMap<>();
+        for (Cell cell : editable.keyCells()) {
+            if (!row.containsKey(cell.resultKey())) {
+                return null;
+            }
+            values.put(cell.column(), row.get(cell.resultKey()));
+        }
+        return values.isEmpty() ? null : new RowIdentity(values);
+    }
+
+    /**
      * 具名投影里，结果标签 {@code label} 对应表里的哪一列。
      *
      * <p>按**名字**找而不是按位置：位置对齐看着更严，可星号与别名一混就会错配，

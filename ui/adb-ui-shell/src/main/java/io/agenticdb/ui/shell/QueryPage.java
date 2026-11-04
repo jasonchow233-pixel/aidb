@@ -78,7 +78,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executor;
@@ -1858,23 +1857,11 @@ public final class QueryPage extends VBox implements AutoCloseable {
         /**
          * 这一行的身份：只装主键，键名用<b>表里的</b>名字。
          *
-         * <p>⚠️ 不能用 {@code RowIdentity.from(schema.primaryKeys(), row)}：行的 Map 按
-         * 结果列键编址（重名还带后缀），而 {@link EditSqlBuilder#plan} 是按
-         * {@code schema.primaryKeys()} 的原文去取值 —— 两边不同名，取出来是 null。
+         * <p>规则本身在 {@link ResultEditPolicy#identity} —— 界面和真库契约第 14 条
+         * 调同一个方法（同 D-38：一个规则不许有两个出处）。
          */
         RowIdentity identity(java.util.Map<String, Object> row) {
-            ResultEditPolicy.Editable editable = editable();
-            if (row == null || editable == null) {
-                return null;
-            }
-            LinkedHashMap<String, Object> values = new LinkedHashMap<>();
-            for (ResultEditPolicy.Cell cell : editable.keyCells()) {
-                if (!row.containsKey(cell.resultKey())) {
-                    return null;
-                }
-                values.put(cell.column(), row.get(cell.resultKey()));
-            }
-            return values.isEmpty() ? null : new RowIdentity(values);
+            return ResultEditPolicy.identity(editable(), row);
         }
     }
 

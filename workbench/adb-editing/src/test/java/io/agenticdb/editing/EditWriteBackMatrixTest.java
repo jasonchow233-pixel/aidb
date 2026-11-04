@@ -29,7 +29,12 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * 仓库里零口令；没配的库记为<b>跳过</b>而不是通过。
  *
  * <h2>矩阵规模（每加一条契约都要回量这一行）</h2>
- * <p>5 引擎 × 2 契约 = <b>10 例</b>。
+ * <p>5 引擎 × 3 契约 = <b>15 例</b>。
+ *
+ * <p>⭐ 第 3 条（{@code resultGridWriteBackJudgedFromTheSqlText}，R58-d）量的是<b>结果区</b>那条路：
+ * 输入只有用户敲的那句 SQL 文本 + 驱动报回来的列标签，所以它比数据页多三道关 ——
+ * 形状识别、别名映射、行身份的键名。这三关在 SQLite 门禁上量不出来：那批夹具写的是
+ * {@code SELECT *}，结果列键恰好等于表列名，两种写法在内存库里行为一模一样。
  */
 class EditWriteBackMatrixTest {
 
@@ -51,7 +56,9 @@ class EditWriteBackMatrixTest {
             new Contract("writeBackRoundTrip",
                     RealEditWriteBackContract::writeBackRoundTrip),
             new Contract("emptyCellShapeIsWhatTheServerSays",
-                    RealEditWriteBackContract::emptyCellShapeIsWhatTheServerSays));
+                    RealEditWriteBackContract::emptyCellShapeIsWhatTheServerSays),
+            new Contract("resultGridWriteBackJudgedFromTheSqlText",
+                    RealEditWriteBackContract::resultGridWriteBackJudgedFromTheSqlText));
 
     static Stream<Arguments> matrix() {
         Stream<Arguments> flat = Stream.empty();
