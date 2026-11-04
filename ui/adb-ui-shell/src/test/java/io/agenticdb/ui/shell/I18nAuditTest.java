@@ -271,9 +271,14 @@ class I18nAuditTest {
      * （{@code information_schema.tables}、驱动类名 {@code oracle.jdbc.OracleDriver}），
      * 只认落在这些前缀下的。副作用是好的 —— <b>新命名空间要先进这条门禁</b>，
      * 不能悄悄长出一片没人对账的键。
+     *
+     * <p>⭐ R58 加的 {@code query}：结果回写的卡点键由 {@code SqlQueryShape.Block} 与
+     * {@code ResultEditPolicy.Block} 交出，键名写的是<b>字面量</b>而不是
+     * {@code "前缀." + name()} —— 拼出来的键这条门禁扫不到，打错一个字母只有用户
+     * 真跑到那一步才露出来。
      */
     private static final Pattern MODEL_KEY_LITERAL = Pattern.compile(
-            "\"((?:plan|column|table|fk|index|trigger|structure|danger|error)\\.[A-Za-z][A-Za-z0-9]*"
+            "\"((?:plan|column|table|fk|index|trigger|structure|danger|error|query)\\.[A-Za-z][A-Za-z0-9]*"
                     + "(?:\\.[A-Za-z0-9]+)*)\"");
 
     /**

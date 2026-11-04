@@ -20,40 +20,52 @@ import java.util.Set;
  */
 public final class SqlQueryShape {
 
-    /** 认不出来时卡在哪一步。每条都要能在界面上说成一句人话。 */
+    /**
+     * 认不出来时卡在哪一步。每条都要能在界面上说成一句人话。
+     *
+     * <p>⭐ 键写成**字面量**而不是 {@code "query.edit.blocked." + name()}：
+     * {@code I18nAuditTest.modelLayerKeysAreInTheBundlesAndAgreeWithTheirArguments}
+     * 靠扫字面量对账，拼出来的键打错一个字母只有用户真跑到那一步才露出来。
+     */
     public enum Block {
         /** 一句都没有。 */
-        EMPTY,
+        EMPTY("query.edit.blocked.empty"),
         /** 不止一条语句 —— 结果集是哪条产出的都说不清。 */
-        NOT_ONE_STATEMENT,
+        NOT_ONE_STATEMENT("query.edit.blocked.notOneStatement"),
         /** 首词不是 SELECT（INSERT / UPDATE / CALL / PRAGMA…）。 */
-        NOT_A_SELECT,
+        NOT_A_SELECT("query.edit.blocked.notASelect"),
         /** {@code WITH …} 公用表表达式：结果行不一定直接来自一张实表。 */
-        COMMON_TABLE_EXPRESSION,
+        COMMON_TABLE_EXPRESSION("query.edit.blocked.withClause"),
         /** 没有 FROM（{@code SELECT 1} 这类），没有可改的表。 */
-        NO_SOURCE_TABLE,
+        NO_SOURCE_TABLE("query.edit.blocked.noSourceTable"),
         /** FROM 里有 JOIN 或逗号多表：一行数据可能来自多张表。 */
-        JOINED,
+        JOINED("query.edit.blocked.joined"),
         /** FROM 里是括号（派生表 / 表值函数）：看不见实表。 */
-        DERIVED_TABLE,
+        DERIVED_TABLE("query.edit.blocked.derivedTable"),
         /** 表名限定超过两段（{@code 库.属主.表}）：各家语义不同，不猜。 */
-        OVER_QUALIFIED_NAME,
+        OVER_QUALIFIED_NAME("query.edit.blocked.overQualifiedName"),
         /** {@code UNION / INTERSECT / EXCEPT}：行来自多条查询。 */
-        SET_OPERATION,
+        SET_OPERATION("query.edit.blocked.setOperation"),
         /** {@code SELECT DISTINCT}：看到的行是被压过的，回写可能改到不止一行。 */
-        DISTINCT,
+        DISTINCT("query.edit.blocked.distinct"),
         /** {@code GROUP BY} / {@code HAVING}：这一行是聚合组的产物，不是表里的一行。 */
-        AGGREGATED,
+        AGGREGATED("query.edit.blocked.aggregated"),
         /** 投影里有函数 / 算式 / 字面量：那一列没有能写回去的目标列。 */
-        EXPRESSION_COLUMN,
+        EXPRESSION_COLUMN("query.edit.blocked.expressionColumn"),
         /** {@code SELECT … INTO 新表} / {@code FOR UPDATE} 这类带副作用的子句。 */
-        SIDE_CLAUSE,
+        SIDE_CLAUSE("query.edit.blocked.sideClause"),
         /** 读不懂的写法 —— 保守起见一律不认。 */
-        UNRECOGNIZED;
+        UNRECOGNIZED("query.edit.blocked.unrecognized");
 
-        /** 界面文案用的资源键后缀（每种卡点各一句，不用一句「不能编辑」糊过去）。 */
+        private final String messageKey;
+
+        Block(String messageKey) {
+            this.messageKey = messageKey;
+        }
+
+        /** 界面文案用的资源键（每种卡点各一句，不用一句「不能编辑」糊过去）。 */
         public String messageKey() {
-            return "query.edit.blocked." + name().toLowerCase(Locale.ROOT);
+            return messageKey;
         }
     }
 
@@ -95,8 +107,10 @@ public final class SqlQueryShape {
     /**
      * 没认出来。
      *
-     * @param reason 卡在哪一步。
-     * @param detail 从原文带出的一小段，**只用于日志与门禁报错，不进 SQL**。
+     * @param reason 卡在哪一步；界面文案由 {@link Block#messageKey()} 去资源里取。
+     * @param detail 给日志与门禁用的证据（一段原文，或一个计数），**不进 SQL**。
+     *               ⚠️ 这里放的是**技术事实**，不是给人读的句子 —— 模型层写中文，
+     *               {@code I18nAuditTest} 的模型棘轮会当场红（这一版就被它抓到过）。
      */
     public record Refused(Block reason, String detail) implements Shape {
     }
@@ -153,7 +167,7 @@ public final class SqlQueryShape {
             return new Refused(Block.EMPTY, "");
         }
         if (statements.size() > 1) {
-            return new Refused(Block.NOT_ONE_STATEMENT, statements.size() + " 条语句");
+            return new Refused(Block.NOT_ONE_STATEMENT, String.valueOf(statements.size()));
         }
         List<SqlToken> raw = significant(SqlLexer.tokenize(statements.get(0).text()));
         if (raw.isEmpty()) {
@@ -220,7 +234,7 @@ public final class SqlQueryShape {
             return new Refused(Block.NO_SOURCE_TABLE, "");
         }
         if (fromCount > 1) {
-            return new Refused(Block.JOINED, "多个 FROM");
+            return new Refused(Block.JOINED, String.valueOf(fromCount));
         }
 
         List<At> fromSpan = new ArrayList<>();

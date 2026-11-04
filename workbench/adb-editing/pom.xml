@@ -16,6 +16,7 @@
 
   <dependencies>
     <dependency><groupId>io.agenticdb</groupId><artifactId>adb-model</artifactId></dependency>
+    <dependency><groupId>io.agenticdb</groupId><artifactId>adb-sql</artifactId></dependency>
     <dependency><groupId>io.agenticdb</groupId><artifactId>adb-jdbc</artifactId></dependency>
     <dependency><groupId>io.agenticdb</groupId><artifactId>adb-introspect</artifactId></dependency>
 
