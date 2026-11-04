@@ -195,11 +195,12 @@ public final class TabBar extends HBox {
                 continue;
             }
             boolean duplicated = counted.getOrDefault(tab.title(), 1) > 1;
-            title.setText(duplicated ? qualified(tab) : tab.title());
+            String shown = duplicated ? qualified(tab) : boundTitle(tab);
+            title.setText(shown);
             // ⭐ P7：读屏名称跟着可见标题走（重名时也带上连接名）。
             Node tabNode = nodes.get(tab.id());
             if (tabNode != null) {
-                tabNode.setAccessibleText(duplicated ? qualified(tab) : tab.title());
+                tabNode.setAccessibleText(shown);
             }
             // tooltip **永远**给全名：不重名不代表不用告诉用户这张表在哪个库。
             // ⚠️ 标签是 HBox（不是 Control），没有 setTooltip —— 用静态的
@@ -209,6 +210,35 @@ public final class TabBar extends HBox {
                 tooltip.setText(qualified(tab));
             }
         }
+    }
+
+    /**
+     * ⭐ D-51：查询页签的可见标题写出<b>它服务的那个库</b>。
+     *
+     * <p>切库是「换绑到目标库的连接上另开一页，原页留在原库」，于是同屏并排两张
+     * {@code Untitled Query} —— 绑定只在<b>激活那一页</b>的下拉里看得到，
+     * 没激活的那张等于把「这条 SQL 会落在哪个库」藏起来了。页签是唯一的常驻线索，
+     * 所以这一格信息要进标题，不能只进 tooltip（tooltip 得鼠标停上去才看得见）。
+     *
+     * <p>取的是库名还是连接名，跟 tooltip 全名同一条注入通道（库名为空 = 这个方言
+     * 没有库层，SQLite 这类单文件就退成连接名，不空摆一个分隔符）。
+     * 重名时不叠这一段：那条走的是 {@link #qualified} 全名形态，库名已经在里面了，
+     * 再拼一段是同一件事说两遍。
+     */
+    private String boundTitle(TabItem tab) {
+        if (tab.kind() != TabKind.QUERY) {
+            return tab.title();
+        }
+        String connectionId = tab.connectionId();
+        if (connectionId == null || connectionId.isBlank()) {
+            return tab.title();
+        }
+        String catalog = connectionCatalog.apply(connectionId);
+        if (catalog != null && !catalog.isBlank()) {
+            return tab.title() + " · " + catalog;
+        }
+        String label = connectionLabel.apply(connectionId);
+        return tab.title() + " · " + (label == null || label.isBlank() ? connectionId : label);
     }
 
     /**
@@ -423,6 +453,18 @@ public final class TabBar extends HBox {
     String tooltipTextForTest(String tabId) {
         Tooltip tooltip = tooltips.get(tabId);
         return tooltip == null ? null : tooltip.getText();
+    }
+
+    /**
+     * 供门禁读取的<b>可见</b>标题。
+     *
+     * <p>读的是改写之后落在 {@code Label} 上的那一串，不是 {@code TabItem.title()} 里
+     * 建页签时的原始名字 —— D-51 之后两者本来就不同（标题带库，TabItem 不带：
+     * 页面工厂靠 target 取数据，名字是给人看的）。
+     */
+    String visibleTitleForTest(String tabId) {
+        Label title = titles.get(tabId);
+        return title == null ? null : title.getText();
     }
 
     /** 方向键在标签之间移动：焦点按视觉顺序走，并同步激活（Tab 控件的惯例）。 */

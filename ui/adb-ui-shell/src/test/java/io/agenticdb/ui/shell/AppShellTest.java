@@ -756,6 +756,21 @@ class AppShellTest {
         assertThat(onFx(second::sql))
                 .as("D-36：状态栏说「SQL 已复制到新查询页」，新页就得真的有那条 SQL")
                 .isEqualTo(sql);
+
+        // ⭐ D-51：新页签的标题要当场说出它绑在哪 —— 这条走的是外壳**真实的接线**
+        //    （页签标题 ← TabBar 的库名/连接名通道 ← 外壳注入的档案）。
+        //    ⚠️ 演示库是 SQLite、没有库层，所以这一格钉的是「退成连接名」那一支；
+        //    「带新库」那一支由 TabBarTest 用注入的库名钉（单测环境造不出真 MySQL）。
+        TabItem secondTab = onFx(() -> shell.tabBar().active());
+        assertThat(secondTab).isNotSameAs(tab);
+        String connectionName = onFx(() -> shell.connectionsList().stream()
+                .filter(profile -> profile.id().equals(secondTab.connectionId()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("新页签连的那条连接不在了"))
+                .name());
+        assertThat(onFx(() -> shell.tabBar().visibleTitleForTest(secondTab.id())))
+                .as("标题 = 名字 · 它绑定的库（无库层的引擎退成连接名）")
+                .isEqualTo(secondTab.title() + " · " + connectionName);
     }
 
     /**

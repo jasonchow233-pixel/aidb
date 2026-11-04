@@ -95,6 +95,73 @@ class TabBarTest {
     }
 
     /**
+     * ⭐ D-51：查询页签的标题要写出<b>它绑在哪个库</b>。
+     *
+     * <p>两张 {@code Untitled Query} 并排站着，绑定只藏在激活那一页的下拉和底部状态栏里 ——
+     * 用户在 A 页写的 SQL 到底落在哪个库，点一下才知道。页签是唯一的常驻线索，
+     * 所以库名要进标题，不是进 tooltip（tooltip 要鼠标停上去才看得到）。
+     */
+    @Test
+    void aQueryTabTitleCarriesTheDatabaseItServes() {
+        openQuery("query:pg:1", "Untitled Query 1", "pg");
+
+        assertThat(titles())
+                .as("标题 = 名字 + · + 它服务的那个库")
+                .containsExactly("Untitled Query 1 · prod_db");
+        assertThat(tooltips())
+                .as("tooltip 照旧给连接 + 库的全名")
+                .containsExactly("Untitled Query 1 @prod_db (生产库)");
+        assertThat(accessibleTexts())
+                .as("读屏名称跟可见标题走 —— 标题带了库，读屏少了这一格就是睁眼说瞎话")
+                .containsExactly("Untitled Query 1 · prod_db");
+    }
+
+    /**
+     * ⭐ D-51：没有库层的引擎（SQLite 这类单文件）退成<b>连接名</b>，不空着摆一个分隔符。
+     */
+    @Test
+    void aQueryTabOnAnEngineWithoutDatabaseFallsBackToTheConnectionName() {
+        run(() -> tabBar.setConnectionCatalogs(id -> ""));
+        openQuery("query:demo:1", "Untitled Query 1", "demo");
+
+        assertThat(titles())
+                .as("没有库名就写连接名 —— 「这个页在哪台/哪个文件上跑」这个问题总得有个答案")
+                .containsExactly("Untitled Query 1 · 演示库");
+    }
+
+    /**
+     * ⭐ D-51 的门禁本体：切库开出来的<b>新页签</b>，标题当场带着<b>新库</b>。
+     *
+     * <p>外壳的切库语义是「换绑到目标库的连接上另开一页，原页留在原库」（P-1 裁定），
+     * 所以这一格测的是两张页签各自说清自己那份 —— 而不是「最后打开的那张」。
+     */
+    @Test
+    void theTabOpenedAfterSwitchingDatabasesNamesTheNewDatabase() {
+        openQuery("query:demo:1", "Untitled Query 1", "demo");
+        openQuery("query:pg:2", "Untitled Query 2", "pg");
+
+        assertThat(titles())
+                .as("旧页签留在旧库、新页签带新库：两条标题各自成立")
+                .containsExactly("Untitled Query 1 · demo_db", "Untitled Query 2 · prod_db");
+    }
+
+    /**
+     * ⭐ D-51：重名时全名那条形态<b>已经</b>带库了，不能再叠一段 {@code · 库名}。
+     *
+     * <p>把两段拼在一起不是「更清楚」，是把同一件事说两遍，还把标签栏这个横向稀缺资源撑宽。
+     */
+    @Test
+    void duplicatedQueryTitlesUseTheQualifiedNameWithoutDoublingTheDatabase() {
+        openQuery("query:demo:1", "Untitled Query 1", "demo");
+        openQuery("query:pg:2", "Untitled Query 1", "pg");
+
+        assertThat(titles())
+                .as("重名的两张都补全名，且库名只出现一次")
+                .containsExactly("Untitled Query 1 @demo_db (演示库)",
+                        "Untitled Query 1 @prod_db (生产库)");
+    }
+
+    /**
      * ⭐ R54：「对象」页签顶的是<b>那一家自己的图形</b>。
      *
      * <p>这一格页签唯一的职责就是说「这是某条连接的对象页」，而它以前顶着人人相同的圆柱 ——
@@ -185,6 +252,11 @@ class TabBarTest {
         run(() -> tabBar.open(new TabItem(id, title, TabKind.GRID, title, connectionId)));
     }
 
+    /** ⭐ D-51：查询页签的 id 形如 {@code query:<连接>:<时间>}，标题是「未命名查询 N」。 */
+    private void openQuery(String id, String title, String connectionId) {
+        run(() -> tabBar.open(new TabItem(id, title, TabKind.QUERY, null, connectionId)));
+    }
+
     private void close(String id) {
         run(() -> tabBar.close(id));
     }
@@ -225,6 +297,15 @@ class TabBarTest {
             }
         });
         return result;
+    }
+
+    /** ⭐ D-51：标签的读屏名称（P7 那条：要和可见标题同一个字符串）。 */
+    private List<String> accessibleTexts() {
+        List<String> texts = new ArrayList<>();
+        for (Node tab : tabNodes()) {
+            texts.add(tab.getAccessibleText());
+        }
+        return texts;
     }
 
     private static void run(Runnable action) {
