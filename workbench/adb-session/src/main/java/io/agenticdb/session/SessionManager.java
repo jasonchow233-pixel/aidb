@@ -5,20 +5,53 @@ import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.JdbcSession;
 
 import java.sql.SQLException;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 会话注册表：一个连接 id 对应一个 {@link DbSession}。
  *
  * <p>P1 只有 demo 一个连接，但按 id 管理，P5 多连接时不需要改调用方。
  * 关闭是幂等的；重复打开同一 id 会先关旧会话，避免文件句柄泄漏。
+ *
+ * <p>⭐ R61-b：**锁的粒度 = 连接 id**，不再是一把全局锁。
+ * 原因不是理论洁癖：{@code open()} 里做的是**真连接**，而真连接能量到多慢？
+ * 本机 D-39 实拍量过 —— Oracle 首次连接 8~12 秒。原先整个注册表是一把
+ * {@code synchronized}，于是那 10 秒里：
+ * <ul>
+ *   <li>另一把库的 {@code open} 排在后面 —— 「多连接并行」名不副实；</li>
+ *   <li><b>FX 线程</b>的 {@code find}/{@code isOpen}/{@code require} 也排在后面 ——
+ *       侧栏的存活点（{@code isConnectionAlive}）与方言解析（{@code sessionOrCurrent}）
+ *       都从这条路上走，症状是「正在连 Oracle，整个界面点不动」。</li>
+ * </ul>
+ * 现在：读操作无锁（{@link ConcurrentHashMap}），只有**同一个 id** 的打开/重开/关闭互斥。
  */
 public final class SessionManager implements AutoCloseable {
 
-    private final Map<String, DbSession> sessions = new LinkedHashMap<>();
+    private final Map<String, DbSession> sessions = new ConcurrentHashMap<>();
+
+    /**
+     * 每个 id 一把锁：同一把库不许两个人同时打开（会重复建会话、还会把先建的那个丢掉），
+     * 不同把库之间不互相排队。
+     */
+    private final Map<String, Object> locks = new ConcurrentHashMap<>();
+
+    /**
+     * ⭐ R61-b：只给测试用（同包）—— 在真正打开之前回调一次，跑在**调用方线程**上。
+     *
+     * <p>为什么要开这个口子：「一条连接打开得很慢」在单测里没法靠真网络造出来
+     * （连一个黑洞地址要等多久取决于 NAT / 防火墙 / 内核超时，那种门禁第二天就红）。
+     * 同包的注入点是唯一能把「慢」变成常量的办法 ——
+     * 与 {@code StartupTrace(Instant)} 同一类做法：把不可控的时间交给测试。
+     */
+    private volatile java.util.function.Consumer<String> openProbe = id -> { };
+
+    /** 注入「慢连接」（见 {@code openProbe} 的注释）；传 null 表示恢复默认。 */
+    void setOpenProbeForTest(java.util.function.Consumer<String> probe) {
+        this.openProbe = probe == null ? id -> { } : probe;
+    }
 
     /**
      * 打开（或**复用**）一个会话。
@@ -30,16 +63,14 @@ public final class SessionManager implements AutoCloseable {
      *
      * <p>现在：已开着就直接复用；确实要重开（用户点「重新连接」）用 {@link #reopen}。
      */
-    public synchronized DbSession open(String id, ConnectionSpec spec) throws SQLException {
+    public DbSession open(String id, ConnectionSpec spec) throws SQLException {
         DbSession existing = sessions.get(id);
         if (existing != null && !existing.isClosed()) {
             return existing;
         }
-        // ⭐ 是否池化由方言决定（SQLite 单文件直连，PG/MySQL 走池）。
-        DbSession session = spec.kind().dialect().pooled()
-                ? ConnectionPool.open(spec) : JdbcSession.open(spec);
-        sessions.put(id, session);
-        return session;
+        synchronized (lockFor(id)) {
+            return openLocked(id, spec);
+        }
     }
 
     /**
@@ -47,16 +78,18 @@ public final class SessionManager implements AutoCloseable {
      *
      * <p>与 {@link #open} 的区别就在这里：open 复用已开的会话，reopen 一定换新的。
      */
-    public synchronized DbSession reopen(String id, ConnectionSpec spec) throws SQLException {
-        closeQuietly(id);
-        return open(id, spec);
+    public DbSession reopen(String id, ConnectionSpec spec) throws SQLException {
+        synchronized (lockFor(id)) {
+            closeQuietly(id);
+            return openLocked(id, spec);
+        }
     }
 
-    public synchronized Optional<DbSession> find(String id) {
+    public Optional<DbSession> find(String id) {
         return Optional.ofNullable(sessions.get(id));
     }
 
-    public synchronized DbSession require(String id) {
+    public DbSession require(String id) {
         DbSession session = sessions.get(id);
         if (session == null) {
             throw new IllegalArgumentException("没有已打开的连接: " + id);
@@ -64,27 +97,49 @@ public final class SessionManager implements AutoCloseable {
         return session;
     }
 
-    public synchronized boolean isOpen(String id) {
+    public boolean isOpen(String id) {
         return sessions.containsKey(id);
     }
 
     /** 当前打开的会话 id。用于清理「没有标签页引用」的孤儿会话。 */
-    public synchronized List<String> openIds() {
+    public List<String> openIds() {
         return List.copyOf(sessions.keySet());
     }
 
-    public synchronized void close(String id) {
-        closeQuietly(id);
+    public void close(String id) {
+        synchronized (lockFor(id)) {
+            closeQuietly(id);
+        }
     }
 
     @Override
-    public synchronized void close() {
-        for (String id : Map.copyOf(sessions).keySet()) {
-            closeQuietly(id);
+    public void close() {
+        // ⚠️ 逐把按自己的锁收口：拿一把全局锁去关所有会话，等于又把所有连接串起来了。
+        for (String id : List.copyOf(sessions.keySet())) {
+            close(id);
         }
         sessions.clear();
     }
 
+    /** 调用方必须已持有该 id 的锁。 */
+    private DbSession openLocked(String id, ConnectionSpec spec) throws SQLException {
+        DbSession existing = sessions.get(id);
+        if (existing != null && !existing.isClosed()) {
+            return existing;
+        }
+        openProbe.accept(id);
+        // ⭐ 是否池化由方言决定（SQLite 单文件直连，PG/MySQL 走池）。
+        DbSession session = spec.kind().dialect().pooled()
+                ? ConnectionPool.open(spec) : JdbcSession.open(spec);
+        sessions.put(id, session);
+        return session;
+    }
+
+    private Object lockFor(String id) {
+        return locks.computeIfAbsent(id, key -> new Object());
+    }
+
+    /** 调用方必须已持有该 id 的锁。 */
     private void closeQuietly(String id) {
         DbSession session = sessions.remove(id);
         if (session == null) {
