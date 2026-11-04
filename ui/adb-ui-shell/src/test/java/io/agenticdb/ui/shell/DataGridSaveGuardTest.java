@@ -116,8 +116,8 @@ class DataGridSaveGuardTest {
 
     @Test
     void executeButtonIsNeverDefault() {
-        ButtonType execute = DataGridPage.executeButtonType();
-        ButtonType cancel = DataGridPage.cancelButtonType();
+        ButtonType execute = SavePreviewDialog.executeButtonType();
+        ButtonType cancel = SavePreviewDialog.cancelButtonType();
 
         assertThat(execute.getButtonData())
                 .as("OK_DONE 会让「执行」成为默认按钮 → 回车即执行破坏性 SQL")

@@ -1063,13 +1063,9 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /**
      * 保存前确认：展示将要执行的 SQL，并按风险等级决定确认强度。
      *
-     * <p>⭐ <b>默认按钮必须是「取消」</b>。以前这里用的是
-     * {@code ButtonType(I18n.t("grid.save.execute"), ButtonData.OK_DONE)} —— {@code OK_DONE}
-     * 语义上就是「默认且确认」，于是<b>回车 = 直接执行破坏性 SQL</b>。
-     * 现在「执行」用 {@code OTHER}，并在弹窗显示后把默认按钮钉在「取消」上
-     * （{@link DestructiveConfirm#pinCancelAsDefault}）。
-     *
-     * <p>高风险（改结构 / 管理操作）额外走一级 {@link DestructiveConfirm}。
+     * <p>弹窗本体在 {@link SavePreviewDialog}（⭐ R58-c 抽过去的 —— 查询结果区回写要走
+     * 同一个预览，两页各搭一遍时「默认按钮是取消」这条就变成两份，改一份另一份不红）。
+     * 这里只留本页特有的那一段：高风险等级额外走一级 {@link DestructiveConfirm}。
      */
     private boolean confirmSqlPreview(EditSqlBuilder.Plan plan, Danger danger) {
         if (danger.requiresApproval()) {
@@ -1086,77 +1082,19 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 return false;
             }
         }
-        Dialog<ButtonType> dialog = buildSavePreviewDialog(plan, danger);
-        // ⚠️ 必须用弹窗上**同一个** ButtonType 实例来比对：
-        //    ButtonType 没有覆写 equals，新建的实例比不上。
-        ButtonType execute = dialog.getDialogPane().getButtonTypes().stream()
-                .filter(type -> I18n.t("grid.save.execute").equals(type.getText()))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("execute button missing from the save preview dialog"));
-        return dialog.showAndWait().filter(execute::equals).isPresent();
-    }
-
-    /** 保存预览弹窗的「执行」按钮类型。抽出来是为了测试能断言它不是默认按钮。 */
-    static ButtonType executeButtonType() {
-        // ⭐ OTHER：不是默认按钮，回车不会落在「执行」上。
-        return new ButtonType(I18n.t("grid.save.execute"), ButtonBar.ButtonData.OTHER);
-    }
-
-    /** 保存预览弹窗的「取消」按钮类型。 */
-    static ButtonType cancelButtonType() {
-        return new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
+        return SavePreviewDialog.confirm(getScene() == null ? null : getScene().getWindow(),
+                plan, danger, transactionOpen);
     }
 
     /**
-     * 构造保存预览弹窗（不显示）。
+     * 本页的保存预览弹窗（不显示）。
      *
-     * <p>抽成独立方法是为了让门禁能直接断言「默认按钮不是执行」，
-     * 而不用真的把模态弹窗弹出来。
+     * <p>弹窗结构在 {@link SavePreviewDialog}；这里只补本页才有的两件事 ——
+     * 归属窗口与「是否在事务里」。留给门禁断言事务中表头那句措辞。
      */
     Dialog<ButtonType> buildSavePreviewDialog(EditSqlBuilder.Plan plan, Danger danger) {
-        Dialog<ButtonType> dialog = new Dialog<>();
-        dialog.setTitle(I18n.t("grid.save.title"));
-        dialog.setHeaderText(transactionOpen
-                        ? I18n.t("grid.save.headTx", plan.size(), DangerLabels.t(danger))
-                        : I18n.t("grid.save.headPlain", plan.size(), DangerLabels.t(danger)));
-        ButtonType execute = executeButtonType();
-        ButtonType cancel = cancelButtonType();
-        dialog.getDialogPane().getButtonTypes().addAll(execute, cancel);
-        dialog.setResultConverter(type -> type);
-
-        TextArea sql = new TextArea(plan.preview());
-        sql.setEditable(false);
-        sql.setWrapText(false);
-        sql.getStyleClass().add("adb-sql-preview");
-        sql.setPrefColumnCount(72);
-        sql.setPrefRowCount(Math.min(18, Math.max(4, plan.size() + 2)));
-
-        Label badge = new Label(DangerLabels.t(danger));
-        badge.getStyleClass().add("adb-query__risk");
-        badge.getStyleClass().add(riskStyleClass(danger));
-
-        VBox content = new VBox(8, badge, sql);
-        content.setPadding(new Insets(0, 0, 0, 0));
-        VBox.setVgrow(sql, Priority.ALWAYS);
-        dialog.getDialogPane().setContent(content);
-        if (getScene() != null) {
-            dialog.initOwner(getScene().getWindow());
-        }
-        // ⭐ 主题类必须抄到 DialogPane 上 —— 否则弹窗里所有 -adb-* 查找落空。
-        DialogStyles.apply(dialog, getScene() == null ? null : getScene().getWindow());
-        // ⭐ 默认按钮钉在「取消」上。必须在 skin 创建之后（shown 之后）才生效。
-        dialog.setOnShown(event -> DestructiveConfirm.pinCancelAsDefault(
-                dialog.getDialogPane(), cancel, execute));
-        return dialog;
-    }
-
-    /** 风险等级对应的样式类。 */
-    private static String riskStyleClass(Danger danger) {
-        return switch (danger) {
-            case READ_ONLY -> "adb-risk--read";
-            case MUTATING -> "adb-risk--write";
-            case DESTRUCTIVE, ADMIN -> "adb-risk--structure";
-        };
+        return SavePreviewDialog.build(getScene() == null ? null : getScene().getWindow(),
+                plan, danger, transactionOpen);
     }
 
     /**
