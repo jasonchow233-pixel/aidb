@@ -90,6 +90,53 @@ class SideBarLivenessDotTest {
                 .isEqualTo(Color.web(Tokens.TEXT_MUTED_LIGHT));
     }
 
+    /**
+     * ⭐ H5-l（R62-a）：状态点是**图标的角标**，不是名字前面多出的一列。
+     *
+     * <p>钉三件事（都是几何，不是颜色）：
+     * ① 内容盒只有两个孩子（图形 + 名字）—— 点以前是第三个孩子，夹在中间，
+     *    于是连接名比同深度的别的行多缩一档，扫视时读成「不同层级」；
+     * ② 图形槽的宽度就是图标本身（{@code SIZE_LABEL}）—— 挂上点不许把槽撑宽；
+     * ③ 点的圆心落在图标的**右下四分之一**（量的 {@code getBoundsInParent} 的
+     *    minX/minY，相对图形槽）—— 居中挂点等于压在图形身上，读成「图形缺了一块」。
+     */
+    @Test
+    void theBadgeSitsOnTheGlyphInsteadOfInFrontOfTheName() {
+        List<Object> measured = onFx(() -> {
+            HBox box = connectionCellGraphic(sideBar, "demo");
+            if (box == null) {
+                return List.of();
+            }
+            SVGPath dot = dotIn(box);
+            Node lead = box.getChildren().isEmpty() ? null : box.getChildren().get(0);
+            if (dot == null || lead == null) {
+                return List.of();
+            }
+            return List.of(box.getChildren().size(), lead.prefWidth(-1),
+                    dot.getBoundsInParent().getMinX(), dot.getBoundsInParent().getMinY(),
+                    lead.getBoundsInLocal().getWidth(), lead.getBoundsInLocal().getHeight());
+        });
+        assertThat(measured)
+                .as("连接格必须渲染出「图形 + 状态点」（拿不到就是这条门禁空转）")
+                .isNotEmpty();
+        assertThat(((Number) measured.get(0)).intValue())
+                .as("内容盒只能有图形和名字两个孩子 —— 点不再占中间那一列")
+                .isEqualTo(2);
+        assertThat(((Number) measured.get(1)).doubleValue())
+                .as("图形槽宽必须还是图标本身的 %s px，挂上点不许撑宽", io.agenticdb.ui.Icons.SIZE_LABEL)
+                .isEqualTo(io.agenticdb.ui.Icons.SIZE_LABEL);
+        double leadW = ((Number) measured.get(4)).doubleValue();
+        double leadH = ((Number) measured.get(5)).doubleValue();
+        double dotX = ((Number) measured.get(2)).doubleValue();
+        double dotY = ((Number) measured.get(3)).doubleValue();
+        assertThat(dotX)
+                .as("点的盒子必须落在图标右半边（x 实测 %s / 槽宽 %s）", dotX, leadW)
+                .isGreaterThan(leadW / 2);
+        assertThat(dotY)
+                .as("点必须落在图标下半部分（y 实测 %s / 槽高 %s）", dotY, leadH)
+                .isGreaterThan(leadH / 2);
+    }
+
     /** 没有判据 = 没有状态 = 不画点。 */
     @Test
     void aSidebarWithoutALivenessJudgeDrawsNoDot() {
@@ -156,10 +203,17 @@ class SideBarLivenessDotTest {
         return null;
     }
 
-    /** 内容盒里的状态点；没有返回 {@code null}。 */
+    /**
+     * 内容盒里的状态点；没有返回 {@code null}。
+     *
+     * <p>⭐ R62-a H5-l：点从「图标与名字之间」挪到**图标右下角**之后，它不再是这个
+     * HBox 的直接子节点 —— 所以这里改成整棵子树里找。⚠️ 只改直接子节点那一层是不够的：
+     * 挪了位置还只看 {@code box.getChildren()}，两条状态点门禁会一起变成「读不到点」，
+     * 而它们恰好都「通过」（一条要 null、一条要非 null 的那条直接红，另一条却假绿）。
+     */
     private static SVGPath dotIn(HBox box) {
-        for (Node child : box.getChildren()) {
-            if (child instanceof SVGPath path && path.getStyleClass().contains("adb-tree__dot")) {
+        for (Node node : box.lookupAll(".adb-tree__dot")) {
+            if (node instanceof SVGPath path) {
                 return path;
             }
         }

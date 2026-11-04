@@ -25,6 +25,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.shape.SVGPath;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 import io.agenticdb.jdbc.Dialect;
@@ -2288,20 +2289,31 @@ public final class SideBar extends VBox {
             Label name = new Label(item.name());
             name.getStyleClass().add("adb-tree__name");
 
-            HBox box = new HBox(6, icon, name);
-            box.setAlignment(Pos.CENTER_LEFT);
-
-            // ⭐ UX-5：连接存活点（与应用栏那颗点同一套令牌：success / text-muted）。
-            //    放在图标与名字**之间**，不是名字后面 —— 长名字会把尾部的点挤出格子，
-            //    「在线/离线」恰恰是最不该看不见的那条信息。
+            // ⭐ UX-5 / R62-a H5-l：连接存活点（与应用栏那颗点同一套令牌：success / text-muted）。
+            //    位置改到**图标的右下角**，不再是「图标与名字之间」——
+            //    夹在中间时它是一枚谁都不属于的独立点，还让连接名比同深度的别的行
+            //    多缩 8+6=14px（点的 8px 盒子 + HBox 那 6px 间距），扫视时读成不同层级。
+            //    挂到图标上，状态就贴在它所描述的那个图形上；StackPane 的 pref
+            //    取最大子节点 = 图标本身，所以**缩进一格都没动**（H5-k 刚为这条付过学费）。
+            //    ⚠️ 点只能挪不能删：它是树上唯一的在线/离线通道（见 GAP-TODOLIST 约束②）。
+            Node lead = icon;
             if (item.kind() == NodeKind.CONNECTION && connectionAlive != null) {
                 boolean alive = connectionAlive.test(item.connectionId());
                 SVGPath dot = Icons.of(Icons.Icon.DOT, Icons.SIZE_DOT);
                 dot.getStyleClass().addAll("adb-tree__dot", alive
                         ? "adb-tree__dot--online" : "adb-tree__dot--offline");
                 dot.setAccessibleText(alive ? I18n.t("sidebar.connected") : I18n.t("sidebar.disconnected"));
-                box.getChildren().add(1, dot);
+                StackPane badge = new StackPane(icon, dot);
+                StackPane.setAlignment(dot, Pos.BOTTOM_RIGHT);
+                // 往右下角压 2px：DOT 的实心圆只占 8px 盒子中间那 2.4px，
+                // 不加这条负外边距，圆心就落在盒子正中 —— 贴在图形身上而不是它的角上，
+                // 读成「图形缺了一块」，而不是「这个图形挂了一个状态」。
+                StackPane.setMargin(dot, new Insets(0, -2, -2, 0));
+                lead = badge;
             }
+
+            HBox box = new HBox(6, lead, name);
+            box.setAlignment(Pos.CENTER_LEFT);
 
             // ⭐ U1：当前正在用的库加粗标出（Navicat 也是这样标当前数据库的）。
             if (item.kind() == NodeKind.CATALOG
