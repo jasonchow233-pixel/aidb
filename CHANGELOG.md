@@ -450,6 +450,48 @@
 
 ### Changed
 
+- **顶栏右端那两件 —— 连接胶囊▾ 与「搜索对象或命令」框 —— 删掉了**（2026-11-04，R63-1/2 · 用户点名「顶部的数据库选择下拉框、搜索框去掉；左侧搜索框沉底」）：
+  删的理由不是「窄」，是这两件各自答不上「它凭什么在这儿」。**搜索框是一颗假的输入框**：
+  它是个 `Button`，点下去开命令面板，placeholder 那句 `Search objects or commands` 永远不会被
+  真的打字替换 —— 承诺了一个界面自己没有的控件。而 Navicat 17 的实拍里，磁贴带右端只有主题与
+  「更多」两颗，既没有连接下拉也没有搜索框。连接胶囊则是**第二份**已经说过两次的话：
+  「我在哪家库 · 连上没有」状态栏那颗灯（图形 + 活线点 + `dialect · 连接名`）一直在说，
+  左树和「连接」页签一直在管切换。**能力一格没丢**：搜索归 ⌘K 与编辑菜单里那条同名的
+  「命令面板 ⌘K」，切换连接归左树与连接管理器，重连 / 断开归数据库菜单。
+  ⚠️ 顺手补上一处**只有删它的人才看得见**的谎：原先三条连接失败路径都调
+  `appBar.setConnectionState(error)` 把胶囊那颗点涂红，胶囊一走这三处就没人重置状态了 ——
+  现在它们显式收状态栏（`setConnection(null)` + `setDialect("—", null)`）并刷新树的存活，
+  否则那盏灯会挂着上一条「已连接」的样子，比没有灯更误导人。
+  ① **左侧搜索框本来就沉底**（`SideBar` 的 `adb-sidebar__bottom` 那一行：搜索 / 清空 / 只看收藏 /
+  折叠，树 `Vgrow=ALWAYS` 在上）—— 量过现状，这一条不需要改代码，不需要画新东西。
+  ② **顶栏**删 `connectionPill` / `globalSearch` 与整条紧凑宽度通道
+  （`COMPACT_CHROME_WIDTH`、`fitChromeWidth`、`setConnections`、`setConnectionState`、
+  `paintVendorGlyph`），`AppBar` 构造签名从四参收成一颗 `ActionRegistry`；配套删
+  `.adb-appbar__connection*` / `.adb-appbar__search*` / `__separator` / `__utility--compact`
+  全部 CSS（**删规则与删 Java 必须同批** —— `StyleClassCoverageTest` 按「CSS 有规则 ↔ 主源码有引用」
+  双向查），并从 `FocusRingAuditTest.FOCUSABLE` 与 i18n 两个 bundle 里各收掉那 8 条
+  `appbar.*` 键。厂商图形的表面数从**十个**降到**八个**（§4.6 与 ROADMAP 同批改口径）。
+  ③ ⭐ **这一删把一条空闸抓出来了**（比删本身更值）：`AppBarTest` 里那条「溢出条必须是细轨 + 无箭头」
+  靠 `stage.setWidth(900)` 挤窗口造溢出，实测**这个调用在这套 harness 里从来没生效过** ——
+  Monocle headless 下窗口宽不落进场景，场景一直是建场那会儿的 1280（`QueryPageTest` 与
+  `StructurePageTest` 都记过这条脾气，只有这条门禁没听说）。它能绿纯粹因为那会儿右端工具件
+  要吃掉 ~450px，**1280 本身就放不下整排**。删到右端只剩 ~64px 后 1280 装得下了，
+  门禁于是红在「拿不到可见的横向滚动条」—— 这是它**该有的红**：前提没了，闸就空了。
+  修法不是换一个更小的窗口数字，是**别再假装改窗口**：改成把 `ScrollPane` 的宽度上限压到
+  比实测磁贴排 pref 宽还窄 120px（那正是窄窗口对这一排做的事），压多少由量出来的 pref 推，
+  以后标签增减溢出仍然是真的；读完在 `finally` 里还原成 `USE_COMPUTED_SIZE` 并重排，
+  因为宽度上限是**共享场景上的持久状态**，漏给下一条像素门禁就是 R57-g 那笔账。
+  另加一条「厚度必须 1~8px」把下界也钉上 —— 只判 ≤8px 时，量到一条没布局的 0 宽空条同样算绿。
+  门禁：`AppBarTest` 11 条（新增 `theConnectionPillAndSearchBoxAreGoneFromTheRibbonEnd` 反向钉
+  「这两件不许悄悄长回来」，同 `theBrandBlockIsGone…` 一个口径；删掉 9 条测这两个控件的门禁与
+  3 个 helper）· `AppShellTest.commandPaletteOpensAndFilters` 的入口从那颗假搜索框改走
+  **真存在的那条**菜单动作。⚠️ 两笔未清的账：**H5-c「顶栏胶囊截字」随控件一起销**
+  （`agenticdb-de…` / `matrix M…` 那两帧复现的问题，控件没了就无从截），但
+  **64 张帧全部拍在有胶囊的旧代码上**，含 `p0-shell` / `p5-connections*` / `p2-details` /
+  `p3-query-*` 那批直接同框的。**受影响的是全部 64 张，不是一批** —— 顶栏是全应用共用的，
+  每一张帧里都带着那颗已经不存在的胶囊，所以单帧重拍救不了口径，只能整批重拍（归 D-62 / R66），
+  **重拍前不许拿这些帧做像素判断**。
+
 - **侧栏与功能区按 Navicat 17 的帧重读一遍，改了四处形状**（2026-11-04，R62-a · H5-h/j/k/l）：
   ① **溢出条收成细轨**（H5-h）：1280 宽下 Ribbon 放不下时弹出来的是 Modena 默认样式 ——
   整宽一条 + 两端 `⟨ ⟩` 箭头，看起来像坏了而不像「还能滚」。只改 CSS：去箭头、轨道变细。

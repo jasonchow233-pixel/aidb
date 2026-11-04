@@ -107,7 +107,7 @@
 | 排序角标 | 11px bold | `.adb-grid__sort-badge` |
 | 状态栏 | 11px | `.adb-statusbar .label` |
 | 徽标 / chip | 11px | `.adb-badge`、`.adb-chip`、`.adb-filter-chip` |
-| 快捷键键帽 | 11px | `.adb-appbar__search-kbd`、`.adb-palette__accelerator` |
+| 快捷键键帽 | 11px | `.adb-palette__accelerator`（⭐ R63-2：顶栏那颗搜索框连同它的 `.adb-appbar__search-kbd` 一起删了 —— 键帽这一档只剩命令面板在用）|
 | 弹窗标题 | 13px bold | `.adb-dialog > .header-panel .label` |
 | 弹窗按钮 | 12px | `.adb-dialog .button` |
 | 空状态标题 | 13px bold | `.adb-empty__title` |
@@ -156,7 +156,7 @@ R62-a H5-j 之前这里还写着「树分组名、连接名」也粗 —— 那�
 | 语法高亮 | 9 | `syn-keyword/string/number/comment/function/type/ident/param/error` | SQL 编辑器 |
 | 对象类型 | 7 | `kind-table` `kind-view` `kind-function` `kind-trigger` `kind-procedure` `kind-index` `kind-event` | **对象树 / 结构页的类型色**（§3.4） |
 | 图标分层 | 4 | `icon-edge` `icon-tone-a` `icon-tone-b` `icon-tone-c` | 彩色图标的**角色色**（§4.5）：轮廓 + 三层填充 |
-| 厂商品牌 | 6 | `vendor-mysql` `vendor-postgresql` `vendor-sqlserver` `vendor-oracle` `vendor-sqlite` `vendor-mariadb` | ⭐ R43-a：六家**真有驱动**的数据库在十个表面（磁贴 / 树 / 页签 / 列表 / 状态栏 / 顶栏胶囊…）里的品牌色，只落图标的 `tone-c` 层（§4.6）。两档各一个值（亮档压深、暗档提亮），必须在两档下对页面底 ≥3:1（`ContrastTest.vendorBrandColorsStandOutAgainstTheBackground`） |
+| 厂商品牌 | 6 | `vendor-mysql` `vendor-postgresql` `vendor-sqlserver` `vendor-oracle` `vendor-sqlite` `vendor-mariadb` | ⭐ R43-a：六家**真有驱动**的数据库在九个表面（磁贴 / 树 / 页签 / 列表 / 状态栏…，⭐ R63-2 收掉了顶栏胶囊与它的下拉那一处）里的品牌色，只落图标的 `tone-c` 层（§4.6）。两档各一个值（亮档压深、暗档提亮），必须在两档下对页面底 ≥3:1（`ContrastTest.vendorBrandColorsStandOutAgainstTheBackground`） |
 | 尺寸 | 31 | `h-*`(6) `w-*`(4) `row-*`(5) `fs-*`(3) `sp-*`(8) `r-*`(5) | 高度 / 宽度 / 行高 / 字号 / 间距 / 圆角 |
 | 时长 | 3 | `dur-toast` `dur-toast-action` `dur-toast-result` | toast 动画 |
 | 遮罩 / 投影 | 3 | `overlay` `shadow-1` `shadow-2` | 弹窗遮罩与两级浮层投影 |
@@ -356,20 +356,20 @@ R62-a H5-j 之前这里还写着「树分组名、连接名」也粗 —— 那�
 | SQLite | 羽叶：一条从右上扫到左下的弧 + 背边，中间一条叶脉 | `#0F83AE` / `#67D4EF` |
 | MariaDB | 圆球里挖出一条跃身海豚的剪影（球 + 一条反剪的弧） | `#003545` / `#8FC9E0` |
 
-**十个表面、同一枚图形**（⭐ R54 从两处铺满）：连接向导的类型磁贴 **44px**（`SIZE_TILE`）与它
+**九个表面、同一枚图形**（⭐ R54 从两处铺满成十个，⭐ R63-2 又收掉顶栏那两处 —— 顶栏不再报告「连的是哪家」，那句话整句归状态栏）：连接向导的类型磁贴 **44px**（`SIZE_TILE`）与它
 右边那张预览图（同尺寸）、左侧树的连接节点 **14px**（`SIZE_LABEL`）、树里的**库**节点（形状仍是
 圆柱 —— 它说的是「这是个库」，只有**颜色**跟父连接走）、折叠轨道的连接钮 **16px**（`SIZE_TOOLBAR`）、
 `OBJECT` 页签 **14px**、连接管理器 Type 列 **14px**、状态栏「来源」**12px**（`SIZE_BADGE`，
-与活线点并排 —— 「连着没连着」和「连的是哪家」是两件事，不挤同一个线索）、查询页的库▾ **14px**、
-顶栏连接胶囊 **12px** 与它下拉里的每一行 **14px**。14px 是这六枚的真正考验 —— 帧覆盖：磁贴看
+与活线点并排 —— 「连着没连着」和「连的是哪家」是两件事，不挤同一个线索）、查询页的库▾ **14px**。
+14px 是这六枚的真正考验 —— 帧覆盖：磁贴看
 `p5-connect-type` / `p5-connect-type-dark` / `p5-connect-general`，多引擎同框的树看
-`p0-tree-vendors`，列表 + 胶囊 + 页签 + 状态栏同框看 `p5-connections-vendors` / `p5-connections`，
+`p0-tree-vendors`，列表 + 页签 + 状态栏同框看 `p5-connections-vendors` / `p5-connections`（⚠️ 这三张帧连同 `p0-shell` 都还拍在**有胶囊的旧代码**上，重拍归 D-62 / R66 —— 帧重拍前不许拿它们做像素判断），
 暗色档看 `p0-shell` / `p5-dark`。
 
 **五条规矩**：
 
 1. **登记在 `ConnectionCatalog` 的行上**，不是新开一个 `DialectKind` switch 文件 ——
-   图形、品牌色作用域类、显示名同一行给全，十个表面**读同一行**、且只经
+   图形、品牌色作用域类、显示名同一行给全，这**九个表面**（R54 当时是十个）**读同一行**、且只经
    `ConnectionCatalog.graphic(kind, size)` 这**一个出口**（取字形 → 上彩色分层 → 挂
    `.adb-db--<id>` 三步不许在任何表面重抄一遍）。分叉的代价是「同一个 MySQL 在两处两种画法」，
    正是 N4-c 已经踩过一次的坑。`DialectBranchAuditTest` 允许登记，禁止散落；
@@ -382,10 +382,10 @@ R62-a H5-j 之前这里还写着「树分组名、连接名」也粗 —— 那�
 3. **品牌色只上 `tone-c`（最深填充面）一层**，轮廓层继续吃 `-adb-icon-edge`。
    理由是 §4.5 第 7 条的同一条：类型线索有两条（形状 + 颜色），而轮廓是「看不看得见」的那条 ——
    把它染成深品牌色，暗色档就糊。两档的品牌色各自过 ≥3:1 对页面底（`ContrastTest`）。
-4. **认不出方言时不许挑一家画上去**：回落各自原本的中性图形（`CONNECT` 插头 / 圆柱 / `DOT`），
-   顶栏胶囊那一格更彻底 —— **没有图形就整格收起**（`setManaged(false)`），不留一段空白把名字往右推。
-   侧栏那条 `aConnectionWithoutAProfileKeepsTheNeutralPlug` 与顶栏那条
-   `thePillDropsTheGlyphWhenThereIsNoConnection` 守的是同一句话。
+4. **认不出方言时不许挑一家画上去**：回落各自原本的中性图形（`CONNECT` 插头 / 圆柱 / `DOT`）。
+   守这句话的是侧栏那条 `aConnectionWithoutAProfileKeepsTheNeutralPlug`。⭐ R63-2 之前顶栏胶囊
+   还有一条更彻底的口径（没图形就整格 `setManaged(false)` 收起，配套门禁
+   `thePillDropsTheGlyphWhenThereIsNoConnection`）—— 胶囊本身没了，那条代码与那条门禁一起退场。
 5. **给一列加图形，就得重新量那一列**（R54 实拍踩的）：连接管理器 Type 列的 90px 是按纯文字量的，
    图形 + 5px 间距凭空吃掉一截（中途试到 112px 仍折），`POSTGRESQL` 在帧里长成 `POSTGRE…` → 最终 140px。单元测试看的是模型里的字符串，
    它不会告诉你屏幕上少了三个字母。
@@ -438,7 +438,7 @@ R62-a H5-j 之前这里还写着「树分组名、连接名」也粗 —— 那�
 | **命令带（Ribbon）** | **91px**，12 格磁贴；顶区合计 **140px**（菜单 24 + 91 + 页签行 25） | `h-appbar`（`Tokens.H_APPBAR_LIGHT/DARK`）/ `.adb-ribbon` |
 | Ribbon 命令按钮 | **62×58**，图标 `Icons.SIZE_RIBBON`（26，**彩色档**：命令色只打在轮廓层，见 §4.5）+ 11px 标签；12 格按 Navicat 分组（Connection / New Query / Table / View / …） | `.adb-ribbon__button` / `.adb-ribbon__label` / `.adb-ribbon__icon--*` |
 | 页签行 | **25px**，白底 + 1px 下边界；只放文档页签（全局工具件在 Ribbon 行） | `h-tabbar` / `.adb-tabbar` |
-| 页签行紧凑形态 | 行宽 **<780px** 触发：收掉连接副标题与搜索提示词，搜索框缩为 30px 放大镜 | `.adb-appbar__utility--compact` |
+| 顶区紧凑形态 | ⭐ **R63-2 起不再存在**：原先「行宽 <780px → 收掉连接副标题与搜索提示词、搜索框缩成 30px 放大镜」那一整条降级通道，随连接胶囊与那颗假搜索框一起删掉（`COMPACT_CHROME_WIDTH` / `fitChromeWidth` / `.adb-appbar__utility--compact` 全退场）。窄窗口现在只做一件事：**磁贴排横向滚动**，右端两颗工具件永远在滚动区之外 | `.adb-ribbon__scroll` |
 | 对象标题栏 | **40px** | `.adb-object-header` |
 | 对象切面条 | 随对象标题栏（40 内） | `.adb-object-tabs` |
 | 工具栏（数据页） | **30px** | `h-toolbar` |
