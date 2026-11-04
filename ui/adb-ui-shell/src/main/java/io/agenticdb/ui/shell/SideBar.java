@@ -1080,7 +1080,9 @@ public final class SideBar extends VBox {
                 .sorted(Map.Entry.comparingByKey(String.CASE_INSENSITIVE_ORDER))
                 .forEach(entry -> {
                     TreeItem<DemoNode> groupNode = new TreeItem<>(new DemoNode(
-                            entry.getKey(), NodeKind.CONNECTION_GROUP, Icons.Icon.FOLDER));
+                            // ⭐ H6-g：连接分组用「叠着的两只文件夹」，不是单只 folder-open ——
+                            //    后者同时是功能区「其他」那一格，一个图形说两件事。
+                            entry.getKey(), NodeKind.CONNECTION_GROUP, Icons.Icon.GROUP_CONNECTIONS));
                     groupNode.setExpanded(true);
                     for (ConnectionProfile profile : entry.getValue()) {
                         connectionNode(groupNode, profile.id(), profile.name(), needle);
@@ -1210,7 +1212,10 @@ public final class SideBar extends VBox {
             return null;
         }
         TreeItem<DemoNode> group = new TreeItem<>(new DemoNode(
-                I18n.t("sidebar.group.queries"), NodeKind.SAVED_GROUP, Icons.Icon.SAVE, "",
+                // ⭐ H6-g：这一行是「一摞已保存的查询」，不是「保存」这个动作 ——
+                //    以前挂的是软盘（与功能区 Backup 同一枚），子节点才是查询图标。
+                I18n.t("sidebar.group.queries"), NodeKind.SAVED_GROUP,
+                Icons.Icon.GROUP_QUERIES, "",
                 servingConnectionId));
         group.setExpanded(true);
         for (SavedQueries.Entry entry : visible) {
@@ -1436,15 +1441,22 @@ public final class SideBar extends VBox {
      *
      * <p>⭐ 图标是 UI 的事 —— 领域层（{@code ObjectKind}）不该知道图标长什么样，
      * 所以映射放在这里。
+     *
+     * <p>⭐ R62-a H6-g：**分组字形与叶子字形必须是两枚**。以前这三臂直接返回
+     * {@code TABLE / VIEW_OBJECT / FUNCTION} —— 「Tables」这一行画的就是一个表，
+     * 它下面每一行也画一个表，父子同形，层级只能靠缩进读。
+     * 现在三臂各走一枚「集合」字形（{@code GROUP_*}），叶子那三枚一个像素都没动。
+     *
+     * <p>⚠️ 触发器 / 事件在树上没有分组（R37 N12 把它们收进表与函数，不再各占一个
+     * 永远为空的组），所以这两臂今天走不到；真建组时它们落到 {@code FOLDER}（通用容器），
+     * <b>不许</b>退回叶子那枚 —— 那等于把 H6-g 这条账重新欠一遍。
      */
     private static Icons.Icon groupIcon(NodeKind kind) {
         return switch (kind) {
-            case TABLE -> Icons.Icon.TABLE;
-            case VIEW -> Icons.Icon.VIEW_OBJECT;
-            case PROCEDURE, FUNCTION -> Icons.Icon.FUNCTION;
-            case TRIGGER -> Icons.Icon.TRIGGER;
-            case EVENT -> Icons.Icon.HISTORY;
-            default -> Icons.Icon.TABLE;
+            case TABLE -> Icons.Icon.GROUP_TABLES;
+            case VIEW -> Icons.Icon.GROUP_VIEWS;
+            case PROCEDURE, FUNCTION -> Icons.Icon.GROUP_FUNCTIONS;
+            default -> Icons.Icon.FOLDER;
         };
     }
 

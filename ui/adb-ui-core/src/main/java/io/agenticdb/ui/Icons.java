@@ -240,6 +240,24 @@ public final class Icons {
         /** 网格视图（lucide: layout-grid）。 */
         GRID(null, "layout-grid"),
 
+        // ── 集合（导航树里的分组节点，R62-a H6-g）──────────────────────────
+        //   规矩只有一条：**分组字形不许和它孩子的字形是同一枚**。以前「Tables」这行
+        //   画的就是表图标，「Views」画的就是视图图标 —— 于是一棵树里父与子长得一样，
+        //   层级只能靠缩进读，扫视时「这一行是集合还是对象」要停一下才知道。
+        //   这五枚的形状说的都是「一摞 / 一个容器」，类型由同一行的文字和孩子节点交代。
+        //   ⚠️ 保持**单色**：分组节点拿不到对象类型（{@code iconStyleClass} 按 kind 分色，
+        //   GROUP 只有一档灰），给它上色等于宣告「集合也有一类」，而集合不是对象。
+        /** 表的集合（lucide: file-stack，三张错开的表页）。 */
+        GROUP_TABLES(null, "file-stack"),
+        /** 视图的集合（lucide: gallery-thumbnails，一排预览）。 */
+        GROUP_VIEWS(null, "gallery-thumbnails"),
+        /** 函数 / 过程的集合（lucide: function-square，方框里的 fx）。 */
+        GROUP_FUNCTIONS(null, "function-square"),
+        /** 已保存查询的集合（lucide: notebook-tabs，带页签的本子）。 */
+        GROUP_QUERIES(null, "notebook-tabs"),
+        /** 连接的分组（lucide: folders，两只叠着的文件夹 —— 单只 folder-open 是「一个」）。 */
+        GROUP_CONNECTIONS(null, "folders"),
+
         // ── 工具 ──
         /** 主题切换（lucide: sun-moon）。 */
         THEME(null, "sun-moon"),
