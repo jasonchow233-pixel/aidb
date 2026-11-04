@@ -184,8 +184,12 @@ every pull request is reviewed against. Design rules are in
 
 ## Known limits, stated plainly
 
-- Cold start measures **3.5–3.9 s** against a <2 s goal. The floor is JVM + toolkit init and the
-  first CSS/layout pass, not application code.
+- Cold start measures **5.0–5.6 s** (worst of three, `./scripts/startup-bench.sh`, process start → first paint)
+  against a <2 s goal. The floor is JVM + toolkit init and the first CSS/layout pass (1.6 s), not application
+  code; R61 moved the first SQLite driver load (762 ms) off the pre-paint path, which bought ~344 ms on average.
+  ⚠️ The **3.5–3.9 s** this file used to quote was measured on a different machine (Windows 10, JDK 27, 2026-10-26)
+  and its doc line doesn't record which of `StartupTrace`'s two numbers it read — so the two are not comparable,
+  and 5.0–5.6 s is now the only figure we cite.
 - "Follow system theme" only detects macOS today; Windows and Linux start in light mode.
 - Tables without a primary key, and views, are read-only **in the data grid** — a view's
   *definition* is editable: create, redesign and drop views from the object tree or the View
@@ -239,7 +243,9 @@ MySQL / MariaDB / PostgreSQL 各跑一个加密服务，三家 × 6 条契约问
 暗亮双主题、104 个设计令牌单一真相、四档密度、中英文界面。
 
 **目前没有可下载的安装包**（缺 Apple 公证与 Windows 代码签名证书），只能源码运行：`./scripts/dev.sh`。
-冷启动实测 3.5–3.9 秒，未达 <2 秒目标 —— 这些写在 [docs/STATUS.md](docs/STATUS.md) 里，不藏在截图后面。
+冷启动实测 **5.0–5.6 秒**（本机 macOS 15.7.9 + JDK 25，三次取最坏，口径「进程启动 → 首屏」），未达 <2 秒目标 ——
+旧文档那句「3.5–3.9 秒」量于另一台机器（Windows 10 + JDK 27）且没记读的是哪个数，不可比，已作废。
+这些都写在 [docs/STATUS.md](docs/STATUS.md) 里，不藏在截图后面。
 
 完整文档：[对外路线](docs/ROADMAP.md) · [架构](docs/ARCHITECTURE.md) · [UI 规格](docs/UI-VISUAL-SPEC.md) ·
 [组件选型与许可](docs/COMPONENT-SELECTION.md) · [贡献指南](CONTRIBUTING.md)。
