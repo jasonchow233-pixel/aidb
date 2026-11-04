@@ -36,6 +36,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>另外守着一条硬边界：<b>本目录不许出现第三方或竞品的图标资产</b>。
  * 这里的每一张都是按 Lucide 的几何口径自绘的 ISC 衍生作品，
  * 竞品（Navicat 等）的位图属于他人版权素材，进产品就是法律风险。
+ * （R63-3 之后厂商<b>商标</b>确实进了 jar，但走的是 {@code icons/brand/} 那条通道 ——
+ * 那条通道不标角色、写死官方色，署名口径也不同，见 {@code BrandIconTest}。）
  */
 class ColoredIconTest {
 
@@ -251,6 +253,24 @@ class ColoredIconTest {
             String text = read(license);
             if (!text.contains("ISC License") || !text.contains("Lucide")) {
                 problems.add(license + " → 许可原文缺版权声明头（ISC License / Lucide）");
+            }
+        }
+        // ⭐ R63-3：第三个借用目录 = 厂商商标。它借的不是 ISC 素材而是**商标**，
+        //    署名文件自然也不同名（TRADEMARK-NOTICE.txt：出处、各家条款、我们改了什么）。
+        //    内容逐条由 {@code BrandIconTest} 守，这里只守「打进 jar 的那份在不在」——
+        //    这条门禁的意义是「借用目录不许有免检区」，漏一个目录就等于破功。
+        Path brandDir = COLOR_DIR.getParent().resolve("brand");
+        long brandMarks = 0;
+        try (Stream<Path> files = Files.list(brandDir)) {
+            brandMarks = files.filter(path -> path.toString().endsWith(".svg")).count();
+        } catch (IOException e) {
+            problems.add(brandDir + " → 目录读不出来：" + e);
+        }
+        if (brandMarks > 0) {
+            Path notice = brandDir.resolve("TRADEMARK-NOTICE.txt");
+            if (!Files.isRegularFile(notice)) {
+                problems.add(brandDir + " → 有 " + brandMarks
+                        + " 枚厂商商标，却没有 TRADEMARK-NOTICE.txt（改色与拍平的口径必须跟着 jar 走）");
             }
         }
         assertThat(problems)

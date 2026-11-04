@@ -3,7 +3,6 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.session.CredentialStore;
 import io.agenticdb.ui.Icons;
-import io.agenticdb.ui.Tokens;
 import javafx.scene.Group;
 import javafx.scene.Node;
 import javafx.scene.Parent;
@@ -20,52 +19,70 @@ import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.framework.junit5.Start;
 import org.testfx.util.WaitForAsyncUtils;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * ⭐ R43-a 门禁：<b>每家数据库各一枚厂商图形</b>，而且图形与品牌色真的成对落地。
+ * ⭐ R63-3 门禁：<b>每家数据库各一枚官方商标标志</b>，官方色拍进路径、走完整条 CSS 仍然不变。
  *
- * <h2>为什么这条要单独钉</h2>
- * 「图标按厂区分」的症状全都<b>不在编译期</b>：
+ * <h2>这一版守的东西换了</h2>
+ * R43-a 守的是「自绘同风格图形 + 品牌色经 CSS 上色」；R63-3 把图形换成官方标志原图，
+ * 颜色改成<b>字面官方色</b>（{@code icons/brand/}，见 {@code Icons#BRAND_DIR} 的许可与代价）。
+ * 于是这条链的失败模式也跟着换：
  * <ol>
- *   <li>两家用了同一枚图形 → 分厂图标等于没画，界面照样能看；</li>
- *   <li>作用域类没挂到容器上 → 品牌色那条后代规则<b>空转</b>，图形掉回中性蓝
- *       （{@code IconKindHueTest} 抓到过同一类坑，所以这里读的是<b>计算色</b>，不是 CSS 文本）；</li>
- *   <li>只验了一档主题 → 暗色下品牌色压在黑底上等于隐形；</li>
- *   <li>登记行漏了一项 → 那家库顶着一颗通用圆柱，用户以为不支持
- *       （所以按 {@link DialectKind#values()} 穷举，不照抄手写清单）。</li>
+ *   <li>两家共用一枚标志 → 分厂图标等于没画，界面照样能看（形状两两不同形才作数）；</li>
+ *   <li>登记行漏一家 → 那家库顶着一颗通用圆柱，用户以为不支持
+ *       （按 {@link DialectKind#values()} 穷举，不照抄手写清单）；</li>
+ *   <li>官方色漏了 → 标志还在，但认不出是哪家（每家的<b>签名色</b>必须真的在分层里）；</li>
+ *   <li>⚠️ 商标被我们的 CSS 染色 → 法律上各家条款禁止改色，视觉上也不是那家了。
+ *       以前这条的反面才是风险（作用域类漏挂 → 品牌色空转），现在反过来：
+ *       作用域类<b>不许</b>作用到商标的分层上。所以读的还是<b>计算色</b>，不是 CSS 文本。</li>
  * </ol>
  *
- * <p>另一条边界：图形是<b>同风格自绘标识</b>，不是任何厂商的商标图形 ——
- * 可辨识度靠「形状互不相同 + 各自品牌色」两条腿，不靠复刻 logo
- * （竞品位图进产品就是他人版权素材，见 {@code ColoredIconTest} 的硬边界）。
+ * <p>明码写下的代价（拍板原话「全部表面换，我拍平素材」）：商标<b>不吃主题</b> ——
+ * 暗色档下 MySQL 的深青、SQL Server 的深蓝会压在深底上，可读性靠「图形周围不留深色描边」
+ * 而不是靠换色。这条不是漏了，是被 {@link #theOfficialColorsSurviveCssInBothThemes} 钉成契约：
+ * 两档算出<b>同一组</b>官方色，谁将来给商标补一条主题规则，这里就红。
+ *
+ * <p>另一条边界仍然成立：商标的色与形状都只能从 {@link ConnectionCatalog#graphic} 出来 ——
+ * 某个表面直接取资产，就是绕过登记行自己画了一遍（见 {@link #onlyTheSharedOutletAsksForBrandMarks}）。
  */
 @ExtendWith(ApplicationExtension.class)
 class VendorGlyphTest {
 
-    /** 六家真驱动（按方言枚举穷举出来，漏一家这里就少一行）。 */
-    private record Vendor(DialectKind kind, String light, String dark) {
+    /**
+     * 六家真驱动 + 各自标志里<b>必须出现</b>的签名色。
+     *
+     * <p>签名色取自各家自己公布的色值（MariaDB/PostgreSQL/SQLite/MySQL 用官方品牌蓝，
+     * SQL Server 用 Fluent 蓝）；Oracle 一枚是 {@code #e55844} —— 那是从 Oracle 自己发布的
+     * 站点图标上逐像素量出来的红，取证口径写在 {@code icons/brand/TRADEMARK-NOTICE.txt}。
+     */
+    private record Vendor(DialectKind kind, String signature) {
     }
 
     private static final List<Vendor> VENDORS = List.of(
-            new Vendor(DialectKind.SQLITE, Tokens.VENDOR_SQLITE_LIGHT, Tokens.VENDOR_SQLITE_DARK),
-            new Vendor(DialectKind.POSTGRESQL, Tokens.VENDOR_POSTGRESQL_LIGHT,
-                    Tokens.VENDOR_POSTGRESQL_DARK),
-            new Vendor(DialectKind.MYSQL, Tokens.VENDOR_MYSQL_LIGHT, Tokens.VENDOR_MYSQL_DARK),
-            new Vendor(DialectKind.MARIADB, Tokens.VENDOR_MARIADB_LIGHT,
-                    Tokens.VENDOR_MARIADB_DARK),
-            new Vendor(DialectKind.SQLSERVER, Tokens.VENDOR_SQLSERVER_LIGHT,
-                    Tokens.VENDOR_SQLSERVER_DARK),
-            new Vendor(DialectKind.ORACLE, Tokens.VENDOR_ORACLE_LIGHT, Tokens.VENDOR_ORACLE_DARK));
+            new Vendor(DialectKind.SQLITE, "#0f80cc"),
+            new Vendor(DialectKind.POSTGRESQL, "#336791"),
+            new Vendor(DialectKind.MYSQL, "#00546b"),
+            new Vendor(DialectKind.MARIADB, "#1f305f"),
+            new Vendor(DialectKind.SQLSERVER, "#0078d4"),
+            new Vendor(DialectKind.ORACLE, "#e55844"));
 
     static {
         // 方言加了项却忘了在这里登记 → 上面那六行会少一家，这条先炸在装配期。
-        assertThat(VENDORS).as("每个方言都要有品牌色断言")
+        assertThat(VENDORS).as("每个方言都要有商标断言")
                 .extracting(Vendor::kind)
                 .containsExactlyInAnyOrderElementsOf(
                         java.util.Arrays.asList(DialectKind.values()));
@@ -78,8 +95,8 @@ class VendorGlyphTest {
         this.stage = stage;
         StackPane root = new StackPane();
         // ⚠️ 主题类挂在场景根上，不是挂在样式表里：没有 .theme-light，-adb-* 全套
-        //    looked-up color 都解析不出来，图标会算成**黑色**（0x000000）而不是「没上色」。
-        //    这正是这条门禁要防的失败模式，所以测试自己先把舞台搭对。
+        //    looked-up color 都解析不出来。商标本来就不该吃这些色，但「不吃」必须是
+        //    走完 CSS 之后的结论，而不是「样式表没加载所以没变化」的假绿。
         root.getStyleClass().add("theme-light");
         Scene scene = new Scene(root, 720, 640);
         scene.getStylesheets().add(style("/io/agenticdb/ui/theme-light.css"));
@@ -88,111 +105,71 @@ class VendorGlyphTest {
         stage.show();
     }
 
-    /** 六家各登记一枚图形，且<b>两两不同形</b>（同形 = 分厂图标白画）。 */
+    /** 六家各登记一枚官方标志，且<b>两两不同形</b>（同形 = 分厂图标白画）。 */
     @Test
-    void everyDialectHasItsOwnGlyphAndNoTwoShareOne() {
+    void everyDialectHasItsOwnOfficialMark() {
         List<String> shapes = new ArrayList<>();
         for (Vendor vendor : VENDORS) {
             ConnectionCatalog.Entry entry = ConnectionCatalog.forKind(vendor.kind());
             assertThat(entry).as("%s 必须在登记表里有自己的一行", vendor.kind()).isNotNull();
-            Icons.Icon glyph = entry.glyph();
-            assertThat(glyph).as("%s 顶的还是通用圆柱 —— 图形没登记", vendor.kind())
-                    .isNotEqualTo(Icons.Icon.DATABASE);
-            assertThat(Icons.hasColoredVariant(glyph))
-                    .as("%s 的图形 %s 缺彩色资产，磁贴会掉回单色", vendor.kind(), glyph)
+            assertThat(Icons.hasBrandAsset(entry.brandKey()))
+                    .as("%s 顶的还是通用圆柱 —— icons/brand/%s.svg 没落地",
+                            vendor.kind(), entry.brandKey())
                     .isTrue();
-            assertThat(shapes).as("%s 与前面某一家用了同一枚形状", vendor.kind())
-                    .doesNotContain(glyph.path());
-            shapes.add(glyph.path());
+            // 签名色漏了 = 标志被拍平成了别的颜色，认不出是哪家。
+            List<Layer> painted = renderedLayers(vendor, false);
+            assertThat(painted).as("%s 的标志没有任何可绘制分层", vendor.kind()).isNotEmpty();
+            assertThat(painted.stream().map(Layer::hex).toList())
+                    .as("%s 的标志里没有官方签名色 %s", vendor.kind(), vendor.signature())
+                    .contains(vendor.signature);
+            String shape = String.join("|", painted.stream().map(Layer::path).toList());
+            assertThat(shape).as("%s 的标志是空路径", vendor.kind()).isNotEqualTo("");
+            assertThat(shapes).as("%s 与前面某一家用了同一枚标志形状", vendor.kind())
+                    .doesNotContain(shape);
+            shapes.add(shape);
         }
-    }
-
-    /** 每家的作用域类都要在 app.css 里把品牌色钉到<b>填充层</b>上。 */
-    @Test
-    void eachVendorScopeClassCarriesItsOwnBrandToken() throws Exception {
-        String css = Files.readString(repositoryRoot().resolve("ui").resolve("adb-ui-shell")
-                .resolve("src").resolve("main").resolve("resources").resolve("io")
-                .resolve("agenticdb").resolve("ui").resolve("app.css"));
-        for (Vendor vendor : VENDORS) {
-            String scope = ConnectionCatalog.forKind(vendor.kind()).styleClass();
-            assertThat(scope).as("%s 的作用域类", vendor.kind())
-                    .isEqualTo("adb-db--" + vendor.kind().id());
-            assertThat(css)
-                    .as("%s 没把品牌色作用到填充层 —— 图形会统一掉回中性蓝", scope)
-                    .containsPattern(scope + "\\s+\\.adb-icon-tone-c\\s*\\{[^}]*-fx-fill: "
-                            + "-adb-vendor-" + vendor.kind().id() + ";");
-        }
-    }
-
-    /** 读<b>计算色</b>：挂上作用域类后，填充层在两档主题下都算得出品牌色。 */
-    @Test
-    void theBrandColorLandsOnTheFillLayerInBothThemes() {
-        List<String> problems = new ArrayList<>();
-        for (Vendor vendor : VENDORS) {
-            for (boolean dark : List.of(false, true)) {
-                String expected = dark ? vendor.dark() : vendor.light();
-                Color painted = brandFill(vendor.kind(), dark);
-                if (!Color.web(expected).equals(painted)) {
-                    problems.add(vendor.kind() + "（" + (dark ? "暗" : "亮") + "色档）→ 填充层算出 "
-                            + painted + "，应为 " + Color.web(expected));
-                }
-            }
-        }
-        assertThat(problems)
-                .as("品牌色没有真的落到填充层：\n  %s", String.join("\n  ", problems))
-                .isEmpty();
-    }
-
-    /** 没挂作用域类时必须是中性蓝 —— 否则厂商色漏到了通用图标上，等于到处乱染色。 */
-    @Test
-    void aGlyphOutsideItsVendorScopeStaysNeutral() {
-        Color neutral = WaitForAsyncUtils.waitForAsyncFx(5_000, () -> {
-            Group colored = (Group) Icons.colored(Icons.Icon.DB_MYSQL, Icons.SIZE_LABEL);
-            StackPane host = new StackPane(colored);
-            host.getStyleClass().add("theme-light");
-            Scene scene = new Scene(host, 64, 64);
-            scene.getStylesheets().add(style("/io/agenticdb/ui/theme-light.css"));
-            scene.getStylesheets().add(style("/io/agenticdb/ui/app.css"));
-            host.applyCss();
-            colored.applyCss();
-            colored.getChildren().forEach(Node::applyCss);
-            return toneFill(colored);
-        });
-        assertThat(neutral)
-                .as("MySQL 图形落到没有厂商类的宿主里，应当还是中性 icon-tone-c")
-                .isEqualTo(Color.web(Tokens.ICON_TONE_C_LIGHT));
-    }
-
-    /** 向导第 1 步那颗 MySQL 磁贴：类挂在<b>磁贴自己</b>身上，色落在图形上。 */
-    @Test
-    void theWizardTileCarriesTheVendorScopeItself(FxRobot robot) {
-        openWizard(robot);
-        ToggleButton tile = robot.lookup("#wizard-tile-MYSQL").query();
-        assertThat(tile.getStyleClass())
-                .as("磁贴没挂上厂商作用域类 —— 品牌色那条后代规则就是空转")
-                .contains("adb-db--mysql");
-
-        Color painted = WaitForAsyncUtils.waitForAsyncFx(5_000, () -> {
-            Group glyph = (Group) graphicOf(tile);
-            glyph.applyCss();
-            glyph.getChildren().forEach(Node::applyCss);
-            return toneFill(glyph);
-        });
-        assertThat(painted)
-                .as("磁贴里的图形没吃到 MySQL 品牌色")
-                .isEqualTo(Color.web(Tokens.VENDOR_MYSQL_LIGHT));
     }
 
     /**
-     * ⭐ R54：图形只有一个出口 —— {@link ConnectionCatalog#graphic}。
+     * 官方色<b>走完 CSS 还是官方色</b>，两档主题算出同一组 —— 商标不跟着主题走。
      *
-     * <p>「取字形 → 上彩色 → 挂作用域类」这三步以前在导航树里内联做过一次，其余表面各自
-     * 退回通用图形。分叉过一次就是 D-38 的形状：同一个 MySQL 在两个地方长得不一样，
-     * 而没有任何一处会报错。这条钉住出口本身：类挂对了、色真的落下来了、
-     * 认不出方言时交回 {@code null}（画成某家就是编造）。
+     * <p>这是 R63-3 换素材后新增的那条风险：作用域类照旧挂在容器上（库节点那种「形状是
+     * 自己的、颜色跟厂走」的表面还要它），但它一旦作用到商标分层，就是把别人的 logo 染色。
+     * 读计算色、而且在<b>挂上作用域类</b>的宿主里读，才能证明这条真被 CSS 过了一遍。
      */
     @Test
-    void theSharedGraphicCarriesTheScopeClassAndTheBrandColor() {
+    void theOfficialColorsSurviveCssInBothThemes() {
+        List<String> problems = new ArrayList<>();
+        for (Vendor vendor : VENDORS) {
+            Set<String> literal = literalFillsOf(vendor);
+            assertThat(literal).as("%s 的资产里没有字面色", vendor.kind()).isNotEmpty();
+            for (boolean dark : List.of(false, true)) {
+                List<String> painted = renderedLayers(vendor, dark).stream()
+                        .map(Layer::hex).toList();
+                if (!new LinkedHashSet<>(painted).equals(literal)) {
+                    problems.add(vendor.kind() + "（" + (dark ? "暗" : "亮") + "色档）→ 分层算出 "
+                            + painted + "，资产里写的是 " + literal
+                            + "（商标不许被我们的 CSS 染色）");
+                }
+            }
+            if (!renderedLayers(vendor, false).stream().map(Layer::hex).toList()
+                    .equals(renderedLayers(vendor, true).stream().map(Layer::hex).toList())) {
+                problems.add(vendor.kind() + " → 两档主题算出的色不同 —— 商标跟着主题走了");
+            }
+        }
+        assertThat(problems)
+                .as("官方色没能在 CSS 之后活下来：\n  %s", String.join("\n  ", problems))
+                .isEmpty();
+    }
+
+    /**
+     * 统一出口照旧成立：类挂着（库节点/磁贴还要它取品牌色）、认不出方言时交回 {@code null}。
+     *
+     * <p>R54 立这条的原因是 D-38：同一个 MySQL 在两个表面长得不一样，而没有任何一处会报错。
+     * 换了素材来源，这条的理由一个字都没变。
+     */
+    @Test
+    void theSharedGraphicCarriesTheScopeClassAndStaysHonest() {
         List<String> problems = new ArrayList<>();
         for (Vendor vendor : VENDORS) {
             Node graphic = ConnectionCatalog.graphic(vendor.kind(), Icons.SIZE_LABEL);
@@ -202,46 +179,81 @@ class VendorGlyphTest {
             }
             String scope = "adb-db--" + vendor.kind().id();
             if (!graphic.getStyleClass().contains(scope)) {
-                problems.add(vendor.kind() + " → 没挂 " + scope + "，品牌色那条后代规则空转");
-                continue;
-            }
-            Group layers = (Group) graphic;
-            Color painted = WaitForAsyncUtils.waitForAsyncFx(5_000, () -> {
-                StackPane host = new StackPane(layers);
-                host.getStyleClass().add("theme-light");
-                Scene scene = new Scene(host, 64, 64);
-                scene.getStylesheets().add(style("/io/agenticdb/ui/theme-light.css"));
-                scene.getStylesheets().add(style("/io/agenticdb/ui/app.css"));
-                // ⚠️ applyCss() 不向下层叠：先父后子，一层都不能漏。
-                host.applyCss();
-                layers.applyCss();
-                layers.getChildren().forEach(Node::applyCss);
-                return toneFill(layers);
-            });
-            if (!Color.web(vendor.light()).equals(painted)) {
-                problems.add(vendor.kind() + " → 填充层算出 " + painted + "，应为 "
-                        + Color.web(vendor.light()));
+                problems.add(vendor.kind() + " → 没挂 " + scope + "，还吃品牌色的表面会掉回中性蓝");
             }
         }
-        assertThat(problems).as("统一出口没把类和色一起带出来：\n  %s", String.join("\n  ", problems))
+        assertThat(problems).as("统一出口没把类带出来：\n  %s", String.join("\n  ", problems))
                 .isEmpty();
 
         assertThat(ConnectionCatalog.graphic(null, Icons.SIZE_LABEL))
-                .as("认不出方言时必须交回 null，由调用方兜底 —— 不能猜一家")
+                .as("认不出方言时必须交回 null，由调用方兜底 —— 画成某家就是编造")
                 .isNull();
     }
 
     /**
-     * ⭐ R54：厂商字形字面量<b>只准出现在登记表里</b>。
+     * 官方色不许改，那就改<b>它坐的表面</b>：底板。
      *
-     * <p>某处表面直接写 {@code Icons.Icon.DB_MYSQL}，就是绕过登记行自己画了一遍：将来加
-     * 一种方言，那处不会跟着变，而且没有任何一条编译期或运行期线索能发现它。门禁扫源码，
-     * 因为「谁在直接取字形」这种违规只在写法里，不在行为里。
+     * <p>暗色档侧栏底是 {@code #172033}，MySQL 的 {@code #00546B} 压上去只有 1.9:1、
+     * MariaDB 的海豚 1.2:1 —— 非文本图形要 3:1，也就是说这两家在暗色档等于看不见，
+     * 「换成能识别的图标」直接落空。商标条款禁止改色，于是给一层浅色底板，
+     * 标志本身一个像素没动。这条守两件事：底板真的算得出浅色，槽位尺寸锁死
+     * （树行的缩进全靠图标那一格的宽度，见 H5-k 付过的学费）。
      */
     @Test
-    void onlyTheRegistrationRowPicksVendorGlyphs() throws Exception {
+    void thePlateKeepsTheMarkReadableInDarkTheme() {
+        List<String> problems = new ArrayList<>();
+        for (Vendor vendor : VENDORS) {
+            Plate plate = renderedPlate(vendor);
+            if (plate.fill() == null) {
+                problems.add(vendor.kind() + " → 底板没有背景色，标志直接画在深底上");
+                continue;
+            }
+            double brightness = plate.fill().getRed() + plate.fill().getGreen()
+                    + plate.fill().getBlue();
+            if (brightness < 1.5) {
+                problems.add(vendor.kind() + " → 底板算出 " + hex(plate.fill())
+                        + "，不够浅，压不住官方深色");
+            }
+            if (plate.width() != Icons.SIZE_LABEL || plate.height() != Icons.SIZE_LABEL) {
+                problems.add(vendor.kind() + " → 底板是 " + plate.width() + "×" + plate.height()
+                        + "，不是 " + Icons.SIZE_LABEL + "×" + Icons.SIZE_LABEL + "（会顶动缩进）");
+            }
+        }
+        assertThat(problems)
+                .as("商标的浅色底板没落地：\n  %s", String.join("\n  ", problems))
+                .isEmpty();
+    }
+
+    /** 向导第 1 步那颗 MySQL 磁贴：类挂在磁贴自己身上，图形是官方标志。 */
+    @Test
+    void theWizardTileCarriesTheVendorScopeItself(FxRobot robot) {
+        openWizard(robot);
+        ToggleButton tile = robot.lookup("#wizard-tile-MYSQL").query();
+        assertThat(tile.getStyleClass())
+                .as("磁贴没挂上厂商作用域类 —— 还吃品牌色的表面就没了作用域")
+                .contains("adb-db--mysql");
+
+        Group mark = WaitForAsyncUtils.waitForAsyncFx(5_000,
+                () -> graphicOf(tile));
+        List<String> painted = mark.getChildren().stream()
+                .map(SVGPath.class::cast).map(SVGPath::getFill)
+                .map(c -> hex((Color) c)).toList();
+        assertThat(painted)
+                .as("磁贴里的图形不是 MySQL 官方标志（缺签名色 #00546b）：%s", painted)
+                .contains("#00546b");
+    }
+
+    /**
+     * ⭐ R54 / R63-3：厂商<b>标志资产</b>只准经 {@link ConnectionCatalog#graphic} 取。
+     *
+     * <p>某处表面直接写 {@code Icons.brand("mysql", ...)}，就是绕过登记行自己画了一遍：
+     * 将来加一种方言，那处不会跟着变，而且没有任何一处会报错。门禁扫源码，
+     * 因为「谁在直接取资产」这种违规只在写法里，不在行为里。
+     */
+    @Test
+    void onlyTheSharedOutletAsksForBrandMarks() throws Exception {
         List<String> offenders = new ArrayList<>();
-        // ⚠️ 扫整个 ui/（不只 adb-ui-shell）：图形资产在 adb-ui-core 里定义，将来加的表面
+        // ⚠️ 扫整个 ui/（不只 adb-ui-shell）：资产在 adb-ui-core 里定义，将来加的表面
         //    未必落在外壳模块 —— 只扫一个目录等于给这条门禁留了一个免检区。
         Path uiRoot = repositoryRoot().resolve("ui");
         try (var walk = Files.walk(uiRoot)) {
@@ -252,9 +264,10 @@ class VendorGlyphTest {
                     .filter(p -> !p.getFileName().toString().equals("Icons.java"))
                     .toList();
             for (Path file : sources) {
-                String source = Files.readString(file);
-                var matcher = java.util.regex.Pattern
-                        .compile("Icons\\.Icon\\.DB_[A-Z]+").matcher(source);
+                String source = Files.readString(file, StandardCharsets.UTF_8);
+                // 只认**调用点**：资产路径字面量在 Icons/LucideConverter 的注释里出现是
+                // 说明文字，不是绕过出口 —— 把它们算成违规只会逼下一个人去改注释。
+                var matcher = Pattern.compile("Icons\\.(brand|hasBrandAsset)\\(").matcher(source);
                 if (matcher.find()) {
                     offenders.add(repositoryRoot().relativize(file) + " → " + matcher.group());
                 }
@@ -262,9 +275,59 @@ class VendorGlyphTest {
             assertThat(sources).as("扫描没找到任何主源码 —— 这条门禁是空的").isNotEmpty();
         }
         assertThat(offenders)
-                .as("厂商图形必须经 ConnectionCatalog.graphic()/forKind().glyph() 取；\n  %s",
+                .as("厂商标志必须经 ConnectionCatalog.graphic() 取：\n  %s",
                         String.join("\n  ", offenders))
                 .isEmpty();
+    }
+
+    /**
+     * 「形状是自己的、颜色跟厂走」那批表面（树里的库/数据库节点）没被这次换素材弄断：
+     * 作用域类仍在 app.css 里把品牌色钉到通用图形的填充层上。
+     */
+    @Test
+    void eachVendorScopeClassStillCarriesItsOwnBrandToken() throws Exception {
+        String css = Files.readString(repositoryRoot().resolve("ui").resolve("adb-ui-shell")
+                .resolve("src").resolve("main").resolve("resources").resolve("io")
+                .resolve("agenticdb").resolve("ui").resolve("app.css"), StandardCharsets.UTF_8);
+        for (Vendor vendor : VENDORS) {
+            String scope = ConnectionCatalog.forKind(vendor.kind()).styleClass();
+            assertThat(scope).as("%s 的作用域类", vendor.kind())
+                    .isEqualTo("adb-db--" + vendor.kind().id());
+            assertThat(css)
+                    .as("%s 没把品牌色作用到填充层 —— 通用图形的库节点会统一掉回中性蓝", scope)
+                    .containsPattern(scope + "\\s+\\.adb-icon-tone-c\\s*\\{[^}]*-fx-fill: "
+                            + "-adb-vendor-" + vendor.kind().id() + ";");
+        }
+    }
+
+    /**
+     * 商标目录里<b>不多不少</b>就是登记过的那六枚。
+     *
+     * <p>少一枚 = 那家顶通用圆柱（上面几条已经守）；多一枚更糟：一张没人引用的厂商商标
+     * 照样打进 jar，白担一份商标风险，而且没有任何界面会发现它躺在那里。
+     */
+    @Test
+    void brandDirectoryHoldsExactlyTheRegisteredMarks() throws Exception {
+        Path dir = repositoryRoot().resolve("ui").resolve("adb-ui-core")
+                .resolve("src").resolve("main").resolve("resources").resolve("io")
+                .resolve("agenticdb").resolve("ui").resolve("icons").resolve("brand");
+        Set<String> onDisk;
+        try (var walk = Files.list(dir)) {
+            onDisk = walk.filter(p -> p.toString().endsWith(".svg"))
+                    .map(p -> {
+                        String n = p.getFileName().toString();
+                        return n.substring(0, n.lastIndexOf('.'));
+                    })
+                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        }
+        Set<String> registered = new LinkedHashSet<>();
+        for (ConnectionCatalog.Entry entry : ConnectionCatalog.CONNECTIONS) {
+            registered.add(entry.brandKey());
+        }
+        assertThat(onDisk).as("商标目录 %s 是空的 —— 资源没打进模块", dir).isNotEmpty();
+        assertThat(onDisk)
+                .as("商标目录与登记表不同步（多出来 / 少了）")
+                .containsExactlyInAnyOrderElementsOf(registered);
     }
 
     // ─────────────────────────── 工具 ───────────────────────────
@@ -279,34 +342,108 @@ class VendorGlyphTest {
         robot.interact(() -> { });
     }
 
-    /** 某家图形放进自己的作用域类里走完 CSS，取填充层的计算色。 */
-    private Color brandFill(DialectKind kind, boolean dark) {
-        ConnectionCatalog.Entry entry = ConnectionCatalog.forKind(kind);
+    /** 该方言在统一出口里的那枚标志（浅色底板 + 作用域类）。 */
+    private static StackPane plate(Vendor vendor) {
+        Node node = ConnectionCatalog.graphic(vendor.kind(), Icons.SIZE_LABEL);
+        assertThat(node).as("%s 的标志", vendor.kind()).isNotNull();
+        return (StackPane) node;
+    }
+
+    /** 剥掉底板取回商标自己的分层。 */
+    private static List<SVGPath> layersOf(StackPane plate) {
+        assertThat(plate.getChildren()).as("底板里就该只有一枚标志").hasSize(1);
+        Group mark = (Group) plate.getChildren().get(0);
+        return mark.getChildren().stream().map(SVGPath.class::cast).toList();
+    }
+
+    /** 一枚标志里的一层：计算填充色 + 路径。 */
+    private record Layer(String hex, String path) {
+    }
+
+    /**
+     * 把一枚标志放进「树上的一行」走完两档 CSS，取回每层的<b>计算填充色</b>与路径。
+     *
+     * <p>宿主照 {@code SideBar} 的连接行挂类：{@code adb-tree__icon} + 该家的作用域类。
+     * 少了这一层，「CSS 没改动官方色」这个结论只是没测过而已。
+     */
+    private static List<Layer> renderedLayers(Vendor vendor, boolean dark) {
         return WaitForAsyncUtils.waitForAsyncFx(5_000, () -> {
-            Group colored = (Group) Icons.colored(entry.glyph(), Icons.SIZE_LABEL);
-            colored.getStyleClass().add(entry.styleClass());
-            StackPane host = new StackPane(colored);
+            StackPane plate = plate(vendor);
+            StackPane row = new StackPane(plate);
+            row.getStyleClass().addAll("adb-tree__icon",
+                    ConnectionCatalog.forKind(vendor.kind()).styleClass());
+            StackPane host = new StackPane(row);
             host.getStyleClass().add(dark ? "theme-dark" : "theme-light");
             Scene scene = new Scene(host, 64, 64);
             scene.getStylesheets().add(style(dark
                     ? "/io/agenticdb/ui/theme-dark.css" : "/io/agenticdb/ui/theme-light.css"));
             scene.getStylesheets().add(style("/io/agenticdb/ui/app.css"));
+            List<SVGPath> layers = layersOf(plate);
             // ⚠️ applyCss() 不向下层叠：先父后子，一层都不能漏。
             host.applyCss();
-            colored.applyCss();
-            colored.getChildren().forEach(Node::applyCss);
-            return toneFill(colored);
+            row.applyCss();
+            plate.applyCss();
+            layers.forEach(Node::applyCss);
+            return layers.stream()
+                    .map(p -> new Layer(hex((Color) p.getFill()), p.getContent()))
+                    .toList();
         });
     }
 
-    /** 彩色实例里 {@code adb-icon-tone-c}（最深填充面 = 厂商图形的主体）的计算填充色。 */
-    private static Color toneFill(Group colored) {
-        for (Node child : colored.getChildren()) {
-            if (child instanceof SVGPath path && path.getStyleClass().contains("adb-icon-tone-c")) {
-                return (Color) path.getFill();
-            }
+    /** 底板走完暗色档 CSS 之后的计算背景色与槽位尺寸。 */
+    private record Plate(Color fill, double width, double height) {
+    }
+
+    private static Plate renderedPlate(Vendor vendor) {
+        return WaitForAsyncUtils.waitForAsyncFx(5_000, () -> {
+            StackPane plate = plate(vendor);
+            StackPane row = new StackPane(plate);
+            row.getStyleClass().add("adb-tree__icon");
+            StackPane host = new StackPane(row);
+            host.getStyleClass().add("theme-dark");
+            Scene scene = new Scene(host, 64, 64);
+            scene.getStylesheets().add(style("/io/agenticdb/ui/theme-dark.css"));
+            scene.getStylesheets().add(style("/io/agenticdb/ui/app.css"));
+            host.applyCss();
+            row.applyCss();
+            plate.applyCss();
+            return new Plate(plateColor(plate), plate.minWidth(0), plate.minHeight(0));
+        });
+    }
+
+    /** 底板算出来的第一层背景填充色；没上色就是 {@code null}。 */
+    private static Color plateColor(StackPane plate) {
+        var background = plate.getBackground();
+        if (background == null || background.getFills().isEmpty()) {
+            return null;
         }
-        throw new IllegalStateException("no tone-c layer: " + colored);
+        return background.getFills().get(0).getFill() instanceof Color color ? color : null;
+    }
+
+    /** 资产里逐层写死的字面色（小写 {@code #rrggbb}）—— 商标通道的颜色真相。 */
+    private static Set<String> literalFillsOf(Vendor vendor) {
+        String svg = read(brandAsset(vendor));
+        Set<String> fills = new LinkedHashSet<>();
+        Matcher matcher = Pattern.compile("fill=\"(#\\w+)\"").matcher(svg);
+        while (matcher.find()) {
+            fills.add(matcher.group(1).toLowerCase(Locale.ROOT));
+        }
+        return fills;
+    }
+
+    private static Path brandAsset(Vendor vendor) {
+        return repositoryRoot().resolve("ui").resolve("adb-ui-core")
+                .resolve("src").resolve("main").resolve("resources").resolve("io")
+                .resolve("agenticdb").resolve("ui").resolve("icons").resolve("brand")
+                .resolve(ConnectionCatalog.forKind(vendor.kind()).brandKey() + ".svg");
+    }
+
+    /** 计算色 → 资产口径的 {@code #rrggbb} 小写字面量（商标不含 alpha，够用）。 */
+    private static String hex(Color color) {
+        return String.format(Locale.ROOT, "#%02x%02x%02x",
+                Math.round(color.getRed() * 255.0),
+                Math.round(color.getGreen() * 255.0),
+                Math.round(color.getBlue() * 255.0));
     }
 
     /** 一路剥进容器取第一个 {@code Group}（磁贴 = ToggleButton → VBox → Label → Group）。 */
@@ -322,12 +459,11 @@ class VendorGlyphTest {
                 }
             }
         }
-        throw new IllegalStateException("磁贴里找不到彩色图形分层：" + parent);
+        throw new IllegalStateException("磁贴里找不到标志分层：" + parent);
     }
 
     private static List<Node> childrenOf(Parent parent) {
-        if (parent instanceof javafx.scene.layout.Region region
-                && region instanceof javafx.scene.control.Labeled labeled) {
+        if (parent instanceof javafx.scene.control.Labeled labeled) {
             // Label 的 graphic 不在 children 里，在 skin/label 的子节点上 —— 直接取属性。
             Node graphic = labeled.getGraphic();
             if (graphic != null) {
@@ -341,6 +477,14 @@ class VendorGlyphTest {
         var url = VendorGlyphTest.class.getResource(resource);
         assertThat(url).as("样式表 %s", resource).isNotNull();
         return url.toExternalForm();
+    }
+
+    private static String read(Path path) {
+        try {
+            return Files.readString(path, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static Path repositoryRoot() {

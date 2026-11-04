@@ -159,13 +159,18 @@ class ConnectionsPageTest {
         assertThat(shapes(pg)).isNotEqualTo(shapes(sqlite));
     }
 
-    /** 取该列单元格里那个图形的<b>形状</b>（SVGPath 列表，按绘制层顺序）。 */
+    /** 取该列单元格里那枚商标的<b>形状</b>（SVGPath 列表，按绘制层顺序）。 */
     private static java.util.List<String> shapes(javafx.scene.Node graphic) {
         if (graphic instanceof javafx.scene.Group group) {
             return group.getChildren().stream()
                     .map(node -> node instanceof javafx.scene.shape.SVGPath path
                             ? path.getContent() : node.getClass().getSimpleName())
                     .toList();
+        }
+        // R63-3：统一出口现在交回的是「浅色底板 + 商标分层」，先剥掉底板再取形状。
+        if (graphic instanceof javafx.scene.layout.Pane pane
+                && pane.getChildren().size() == 1) {
+            return shapes(pane.getChildren().get(0));
         }
         return java.util.List.of(((javafx.scene.shape.SVGPath) graphic).getContent());
     }

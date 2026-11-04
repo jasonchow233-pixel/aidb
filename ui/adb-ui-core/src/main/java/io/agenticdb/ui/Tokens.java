@@ -10,7 +10,7 @@ import java.util.List;
  */
 public final class Tokens {
 
-    public static final int COUNT = 110;
+    public static final int COUNT = 111;
 
     /** bg-canvas (color) */
     public static final String BG_CANVAS_DARK = "#0B1220";
@@ -448,6 +448,10 @@ public final class Tokens {
     public static final String VENDOR_MARIADB_DARK = "#8FC9E0";
     public static final String VENDOR_MARIADB_LIGHT = "#003545";
 
+    /** brand-plate (color) */
+    public static final String BRAND_PLATE_DARK = "#FFFFFF";
+    public static final String BRAND_PLATE_LIGHT = "#FFFFFF";
+
     /** row-tree (size) */
     public static final int ROW_TREE_DARK = 20;
     public static final int ROW_TREE_LIGHT = 20;
@@ -471,7 +475,7 @@ public final class Tokens {
             "kind-view", "kind-function", "kind-trigger", "kind-procedure", "overlay", "shadow-1",
             "shadow-2", "kind-index", "kind-event", "icon-edge", "icon-tone-a", "icon-tone-b",
             "icon-tone-c", "vendor-mysql", "vendor-postgresql", "vendor-sqlserver", "vendor-oracle", "vendor-sqlite",
-            "vendor-mariadb", "row-tree"
+            "vendor-mariadb", "brand-plate", "row-tree"
     );
 
     private Tokens() { }

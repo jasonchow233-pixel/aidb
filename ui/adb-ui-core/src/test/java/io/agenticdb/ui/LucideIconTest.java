@@ -120,18 +120,20 @@ class LucideIconTest {
     @Test
     void selfDrawnIconsAreTheDocumentedExceptions() {
         // BRAND（品牌 mark）、DOT（实心状态点）与 AI（星芒，Lucide 没有 sparkles）
-        // 没有 Lucide 等价物；DB_* 六枚是 R43-a 的**厂商图形**，Lucide 是通用动作图标集、
-        // 天生没有厂商标识 —— 于是自绘（形状必须互不相同，见 VendorGlyphTest）。
+        // 没有 Lucide 等价物；于是自绘。
         // 其余全部来自源文件。
+        //
+        // ⭐ R63-3：六家数据库的图形不再在这个枚举里 —— 官方商标走**另一条通道**
+        // （{@code icons/brand/} + {@code Icons.brand(key)}），键是方言 id，不是枚举常量。
+        // 留在这里只会让「厂商图形」有两个真相（枚举 + 登记表），而这条清单是白名单，
+        // 多一项就等于承认枚举里可以放借来的图。
         List<String> selfDrawn = new ArrayList<>();
         for (Icons.Icon icon : Icons.Icon.values()) {
             if (iconResourceName(icon) == null) {
                 selfDrawn.add(icon.name());
             }
         }
-        assertThat(selfDrawn).containsExactlyInAnyOrder("BRAND", "DOT", "AI",
-                "DB_MYSQL", "DB_POSTGRESQL", "DB_SQLSERVER", "DB_ORACLE", "DB_SQLITE",
-                "DB_MARIADB");
+        assertThat(selfDrawn).containsExactlyInAnyOrder("BRAND", "DOT", "AI");
     }
 
     // ─────────────────────────── 转换器逐条验证 ───────────────────────────

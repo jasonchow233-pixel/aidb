@@ -280,7 +280,7 @@ class SideBarTreeTest {
     }
 
     /**
-     * ⭐ R43-a：连接节点顶的是**厂商图形**（与向导磁贴同一枚、同一个品牌色作用域类）。
+     * ⭐ R43-a / R63-3：连接节点顶的是**厂商官方标志**（与向导磁贴同一枚、同一个作用域类）。
      *
      * <p>这条断的是接线，不是图形画得好不好：树里过去人人都是同一颗插头，
      * 「这家是 MySQL 那家是 Oracle」在左树完全读不出来 —— 而左树是用户看数据库
@@ -290,9 +290,13 @@ class SideBarTreeTest {
      * <p>⚠️ 断的是<b>渲染出来的 cell 里的图标容器</b>，不是 {@code DemoNode} 的取值：
      * 变异验证发现，只读节点 toString 时「单元格工厂忘了挂类」照样全绿 ——
      * 数据在节点里，类却没上到界面上。取值对不对由上面那些用例管，这里只管画出来。
+     *
+     * <p>R63-3 换了素材，断言跟着换：以前查的是「品牌色经 CSS 落到 tone-c 层」，
+     * 现在查的是「商标带着<b>字面官方色</b>画出来了，而且<b>没有</b> tone-c 层」——
+     * 后者是硬边界，商标一旦挂上角色类就会被 app.css 重新染色（各家条款禁止改色）。
      */
     @Test
-    void connectionNodesWearTheirVendorGlyph() {
+    void connectionNodesWearTheirVendorMark() {
         ActionRegistry actions = new ActionRegistry();
         ConnectionProfile mysql = new ConnectionProfile("srv-1", "生产库",
                 DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "", Map.of());
@@ -308,11 +312,15 @@ class SideBarTreeTest {
                 .as("每家必须是自己的类 —— 挂错一家比不挂更糟（颜色会说谎）")
                 .contains("adb-db--oracle");
 
-        assertThat(brandFill(tree, "生产库"))
-                .as("品牌色要真的落到填充层：类挂上 ≠ 后代规则匹配到节点")
-                .isEqualTo(Color.web(Tokens.VENDOR_MYSQL_LIGHT));
-        assertThat(brandFill(tree, "老库"))
-                .isEqualTo(Color.web(Tokens.VENDOR_ORACLE_LIGHT));
+        assertThat(brandFills(tree, "生产库"))
+                .as("连接节点没画成 MySQL 官方标志（缺字面官方色 #00546B）")
+                .contains(Color.web("#00546b"));
+        assertThat(brandFills(tree, "老库"))
+                .as("连接节点没画成 Oracle 官方标志（缺量色后的红 #E55844）")
+                .contains(Color.web("#e55844"));
+        assertThat(brandRoleClasses(tree, "生产库"))
+                .as("商标不许走 -adb-icon-* 上色通道：挂了角色类就是被我们染色")
+                .isEmpty();
     }
 
     /**
@@ -1520,6 +1528,44 @@ class SideBarTreeTest {
                     .hasSize(1);
             return (Color) ((SVGPath) tones.get(0)).getFill();
         });
+    }
+
+    /** 连接节点那枚<b>商标</b>的分层计算填充色（官方色是字面量，不经 CSS）。 */
+    private static List<Color> brandFills(TreeView tree, String nodeName) {
+        return onFx(() -> {
+            Node icon = vendorIcon(renderedCell(tree, nodeName), nodeName);
+            icon.applyCss();
+            List<Node> paths = new ArrayList<>();
+            collectSvgPaths(icon, paths);
+            assertThat(paths).as("%s 的商标要有分层").isNotEmpty();
+            return paths.stream().map(p -> (Color) ((SVGPath) p).getFill()).toList();
+        });
+    }
+
+    /** 商标分层上挂着的 {@code adb-icon-*} 角色类 —— 有就是走了上色通道，必须为空。 */
+    private static List<String> brandRoleClasses(TreeView tree, String nodeName) {
+        return onFx(() -> {
+            Node icon = vendorIcon(renderedCell(tree, nodeName), nodeName);
+            List<Node> paths = new ArrayList<>();
+            collectSvgPaths(icon, paths);
+            List<String> roles = new ArrayList<>();
+            for (Node path : paths) {
+                path.getStyleClass().stream()
+                        .filter(c -> c.startsWith("adb-icon"))
+                        .forEach(roles::add);
+            }
+            return roles;
+        });
+    }
+
+    private static void collectSvgPaths(Node node, List<Node> out) {
+        if (node instanceof SVGPath path) {
+            out.add(path);
+            return;
+        }
+        if (node instanceof javafx.scene.Parent parent) {
+            parent.getChildrenUnmodifiable().forEach(child -> collectSvgPaths(child, out));
+        }
     }
 
     private static Node vendorIcon(TreeCell cell, String nodeName) {

@@ -4021,11 +4021,14 @@
     -fx-padding: 0px 16px 0px 16px;
 }
 
-/* 磁贴图标按库型着色。Navicat 17 的磁贴是彩色图标 + 黑字，选色跟着各家品牌走；
-   颜色全部取自令牌（R43-a 起品牌色单独立成 -adb-vendor-*，见 docs/UI-VISUAL-SPEC.md）。
-   ⭐ 两档都要管：.adb-icon 是单色兜底档（吃描边），.adb-icon-tone-c 是彩色档的
-   「最深填充面」—— 厂商图形的主体就是这一层，轮廓层留给 -adb-icon-edge 保可读性。
-   作用域类（adb-db--*）挂在外层容器上：JavaFX 靠后代规则把它传到分层子节点。 */
+/* 厂商作用域类（adb-db--*）按库型着色。
+   ⭐ R63-3 之后这批规则**不再作用于连接标志**：六家的商标走 `icons/brand/`，
+   颜色是拍进路径里的官方色，分层不挂 `.adb-icon*` 角色类（挂了就是我们把别人的
+   logo 重新染一遍色 —— MariaDB/微软的条款明确禁止）。这里继续服务的是
+   「形状是自己的、颜色跟厂走」那批表面：导航树的库/数据库节点顶通用圆柱，
+   MySQL 的库和 PostgreSQL 的库靠这条区分。
+   两档都要管：.adb-icon 是单色兜底档（吃描边），.adb-icon-tone-c 是彩色档的
+   「最深填充面」。作用域类挂在外层容器上：JavaFX 靠后代规则把它传到分层子节点。 */
 .adb-db--mysql .adb-icon {
     -fx-stroke: -adb-vendor-mysql;
 }
@@ -4072,6 +4075,18 @@
 
 .adb-db--mariadb .adb-icon-tone-c {
     -fx-fill: -adb-vendor-mariadb;
+}
+
+/* ⭐ R63-3：官方商标的浅色底板。
+   商标不许改色（见 icons/brand/TRADEMARK-NOTICE.txt），可暗色档里 MySQL 的深青 #00546B
+   压在侧栏底色 #172033 上只有 1.9:1、MariaDB 的海豚 1.2:1 —— 认不出厂商标志等于这次换素材
+   白做。改不了标志就改它坐的表面：给一层浅色底板，两档同色（-adb-brand-plate），
+   于是标志永远画在它自己官方件里的那种白底上。
+   尺寸锁在 size×size：树行的缩进全靠图标盒子宽度，底板不许比槽位宽。 */
+.adb-brand-plate {
+    -fx-background-color: -adb-brand-plate;
+    -fx-background-radius: 3px;
+    -fx-alignment: center;
 }
 
 /* 导入向导的执行日志：等宽、小一号 —— 它是「一行一条事实」的流水，不是正文。 */

@@ -1,0 +1,101 @@
+厂商商标资产 —— 署名、出处与改动说明
+TRADEMARK NOTICE / PROVENANCE FOR icons/brand/
+================================================================
+
+本目录里的六枚 SVG 是**第三方商标**，不是本项目的原创图形，也不属于 ISC / Lucide
+那类可自由再分发的素材（那两个目录的署名见 ../color/ISC-LICENSE.txt 与
+../lucide/ISC-LICENSE.txt）。它们由 R63-3（2026-11-04）按「全部表面换，我拍平素材」
+的拍板引入：六家数据库在向导磁贴、导航树连接节点、连接管理器、页签、状态栏、
+库选择器上顶的都是各家官方标志，识别方式从「同风格自绘图形 + CSS 品牌色」
+改成「官方标志 + 字面官方色」。
+
+
+一、逐枚出处
+----------------------------------------------------------------
+每枚都标了核实强度。✅ = 与源件字节级一致（md5 比对过）；⚠️ = 形状与色值可用，
+但**没有**与厂商品牌页的原始矢量件逐字节比对过，来源是第三方图标集合的复刻件。
+
+mysql.svg
+  ⚠️ MySQL 海豚标（icon-only，无 wordmark）。暂存件 logos_mysql-icon.svg，
+     viewBox 256×252，单色 #00546B。
+     与 Wikimedia Commons 的 Mysql.svg（commons/5/51，含 wordmark，6601 字节）
+     比对为**不同文件**，本枚不是它。
+     商标归 Oracle Corporation（MySQL 是 Oracle 的注册商标）。
+
+postgresql.svg
+  ⚠️ PostgreSQL 象标（Slonkey）。暂存件 logo_postgresql.svg，viewBox 256×264，
+     四层 #336791 / #000000 / #FFFFFF ×2。
+     Wikimedia Commons 上的 Postgresql_elephant.svg（commons/2/29，
+     viewBox 432.071×445.383）是**同源不同件**，抓取过（pg.svg）但未采用。
+     商标归 PostgreSQL Database Management System（Mark McCall 授权）。
+
+sqlserver.svg
+  ✅ 字节级等于 Wikimedia Commons 的 Microsoft_SQL_Server_2025_icon.svg
+     （commons/4/41，4491 字节，md5 3a1dedac940ba08c6da291d31cf4594c）。
+     原件用 clipPath + mask + 6 个渐变；拍平后取渐变主色
+     #2052CB / #0078D4 / #DECBFF / #D1D1FF。
+     商标归 Microsoft Corporation。选这一枚（2025 现行蓝色图标）而不是旧的
+     红灰件（thesvg-color_microsoft-sql-server.svg 也抓过，未采用）。
+
+oracle.svg
+  ⚠️ Oracle「红 O」环。形状取自暂存件 thesvg-color_oracle-icon.svg
+     （viewBox 64×64，原色 #EE0004）。
+     **颜色被改为 #E55844**：依据是 Oracle 自己发布的站点图标（favicon，48×48）
+     逐像素量出的红，理由是「以 Oracle 实际在用的那枚红为准」。这是本目录
+     唯一一处颜色改动，属于可争议项。
+     Oracle 品牌页的矢量件（oracle_official.svg）是文字标，没有单独可用的 O 环，
+     所以本枚未与官方矢量件比对。商标归 Oracle Corporation。
+
+sqlite.svg
+  ✅ 字节级等于 Wikimedia Commons 的 Sqlite-square-icon.svg
+     （commons/9/97，6224 字节，md5 6a7290c66b4cc4b87166bf1cf08ffc04）。
+     三层 #0F80CC / #0F80CC / #003B57。
+     SQLite 的公共领域声明针对**代码**；标志本身仍是注册图形，别把它当免费素材。
+
+mariadb.svg
+  ✅ 源件字节级等于 Wikimedia Commons 的 MariaDB_colour_logo.svg
+     （commons/c/ca，5668 字节，md5 0f8e0538d137f5cfb642cd1994805c8e）。
+     原件是 416.4×118.1 的「图形 + 字标」横版；本枚**裁掉字标只留图形**
+     （crop -2,-2,182,122），并把原件的 transform="translate(-23.91 -23.95)"
+     与 switch / foreignObject 拍平。色 #1F305F ×6 + #C0765A。
+     商标归 MariaDB Corporation Ab。
+
+
+二、我们对每一枚做了什么（全部是「拍平」，不重绘、不改形状）
+----------------------------------------------------------------
+1. 把 transform / translate / scale 烘焙进路径坐标；
+2. 渐变（linearGradient / radialGradient）取其主色，写成字面 #rrggbb；
+3. 去掉 clipPath / mask / switch / foreignObject / 位图 / 文字，只留 <path>；
+4. 视框统一成 viewBox="0 0 1000 1000"，居中留 3% 边距；非方形的标志（MariaDB
+   1.50:1、Oracle 1.60:1）按长边 letterbox，所以它们在方形槽位里上下会留白；
+5. 弧线 A 按 W3C SVG 1.1 F.6.5 / F.6.6 展开成三次贝塞尔，命令全部转绝对
+   （JavaFX 的 SVGPath 只认 M L H V C S Q Z）；
+6. 除 oracle 一枚（见上）外，官方色值一个没动。
+
+拍平脚本（flatten.py）是一次性工具，没有入库；上面第 1～5 条就是它的口径，
+门禁 BrandIconTest 逐条守着这些性质。
+
+
+三、明码写下的风险（拍板时已知并接受）
+----------------------------------------------------------------
+1. MariaDB、Microsoft 的商标指引不允许改色，也不允许做衍生件。我们没改色，
+   但做了「裁掉字标 / 拍平渐变 / 换视框」的衍生处理 —— 严格口径下这仍是修改。
+2. Oracle 一枚改了色（#EE0004 → #E55844），依据是它自家站点图标；可争议。
+3. MySQL / PostgreSQL / Oracle 三枚的出处未逐字节核实（第三方复刻件）。
+   ⚠️ 对外发布（公开下载、演示、销售）之前，这三枚应当换成各家品牌页的原始
+   矢量件，并重跑 BrandIconTest + VendorGlyphTest。目前状态只适用于内部构建。
+4. 这些资产会打进 jar。本文件与资源同目录，就是为了出事时能拿出当时的口径。
+
+
+四、界面侧的配套约束（代码里已经钉住，不是口头承诺）
+----------------------------------------------------------------
+· 商标不吃主题、不吃 CSS 角色类：颜色只存在于资产里，走完两档 CSS 之后算出的
+  还是同一组官方色 —— VendorGlyphTest.theOfficialColorsSurviveCssInBothThemes。
+  代价：暗色档下商标不会变亮，可读性靠下面那条。
+· 暗色档侧栏底 #172033 压不住 MySQL 的 #00546B（1.9:1）和 MariaDB 的 #1F305F
+  （1.2:1），于是给一层浅色底板 -adb-brand-plate（app.css 的 .adb-brand-plate）：
+  改的是「它坐的表面」，标志本身一个像素没动。
+· 唯一出口是 ConnectionCatalog.graphic(kind, size)；任何表面直接取资产就是绕过
+  登记表 —— VendorGlyphTest.onlyTheSharedOutletAsksForBrandMarks。
+· 目录里的资产必须与登记表一一对应，多一枚没人引用的商标也算风险敞口 ——
+  VendorGlyphTest.brandDirectoryHoldsExactlyTheRegisteredMarks。

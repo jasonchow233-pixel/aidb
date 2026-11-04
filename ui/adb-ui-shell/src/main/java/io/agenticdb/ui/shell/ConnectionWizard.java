@@ -399,8 +399,10 @@ public final class ConnectionWizard {
      * 多一行小字会顶破 108px 的磁贴高度（R43-b 之后是一行六张，也没有第二行可挤）。
      */
     private ToggleButton tile(ConnectionCatalog.Entry entry) {
-        // R43-a：六家各一枚厂商图形（品牌色由本磁贴的 adb-db--* 类作用到填充层）。
-        Node glyph = Icons.colored(entry.glyph(), Icons.SIZE_TILE);
+        // ⭐ R63-3：磁贴顶的是那一家自己的**官方标志**，走统一出口 graphic()（与树、
+        //    状态栏、页签同一枚）。adb-db--* 类照旧挂在磁贴上 —— 库节点那种「形状是自己的、
+        //    颜色跟厂走」的吃法还靠它，磁贴自己不再从 CSS 取色。
+        Node glyph = ConnectionCatalog.graphic(entry.kind(), Icons.SIZE_TILE);
         Label icon = bigIcon(glyph);
         icon.getStyleClass().add("adb-type-tile__icon");
 

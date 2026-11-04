@@ -1111,13 +1111,12 @@ public final class SideBar extends VBox {
     /** 一个连接节点：有 catalog 的连接先出库一层，否则分组直接挂连接下。 */
     private void connectionNode(TreeItem<DemoNode> root, String id, String name, String needle) {
         boolean active = isActiveConnection(id);
-        // ⭐ R43-a：连接节点顶的是**厂商图形**（与向导磁贴同一枚、同一个品牌色作用域），
-        //    不再是人人相同的插头。认不出方言时回落到插头 —— 那是「不知道是哪家」，
-        //    不是「没有连接」，画成某家的图形就是编造。
+        // ⭐ R43-a / R63-3：连接节点顶的是**厂商官方标志**，由单元格走统一出口
+        //    {@link ConnectionCatalog#graphic} 取（与向导磁贴同一枚）。这里登记的
+        //    {@code Icons.Icon.CONNECT} 只是「认不出方言时」的兜底形状。
         ConnectionCatalog.Entry vendor = ConnectionCatalog.forKind(dialectKindOf(id));
         TreeItem<DemoNode> connectionNode = new TreeItem<>(new DemoNode(
-                name, NodeKind.CONNECTION,
-                vendor == null ? Icons.Icon.CONNECT : vendor.glyph(),
+                name, NodeKind.CONNECTION, Icons.Icon.CONNECT,
                 "", id, vendor == null ? "" : vendor.styleClass()));
         connectionNode.setExpanded(active);
 
@@ -2289,13 +2288,25 @@ public final class SideBar extends VBox {
             //    单色时描边自己吃 -adb-kind-*；彩色时容器上的类经
             //    `.adb-tree__icon--table .adb-icon-edge` 把轮廓层染成类型色，
             //    三层 tone 保持中性浅蓝（形状 + 颜色是一对线索，彩色档没资格删掉一条）。
-            Node icon = Icons.colored(item.icon(), Icons.SIZE_LABEL);
-            icon.getStyleClass().addAll("adb-tree__icon", iconStyleClass(item.kind()));
-            // ⭐ R43-a：连接节点再挂一层**厂商作用域类**，品牌色经
-            //    `.adb-db--mysql .adb-icon-tone-c` 传到填充层 —— 与向导磁贴同源同类，
-            //    同一个 MySQL 在两处不会是一个青一个蓝。
-            if (!item.vendorClass().isBlank()) {
-                icon.getStyleClass().add(item.vendorClass());
+            //    ⭐ R63-3：连接节点走**统一出口** {@link ConnectionCatalog#graphic} ——
+            //    顶的是那一家自己的官方标志，与磁贴、状态栏、页签、库选择器同一枚。
+            //    认不出方言时 graphic() 交回 null，这里才落回插头（插头说的是
+            //    「这是一条连接，但不知道是哪家」，画成某家的标志就是编造）。
+            Node icon = item.kind() == NodeKind.CONNECTION
+                    ? ConnectionCatalog.graphic(dialectKindOf(item.connectionId()),
+                            Icons.SIZE_LABEL)
+                    : null;
+            if (icon == null) {
+                icon = Icons.colored(item.icon(), Icons.SIZE_LABEL);
+                icon.getStyleClass().addAll("adb-tree__icon", iconStyleClass(item.kind()));
+                // ⭐ R43-a：库节点挂**厂商作用域类**，品牌色经
+                //    `.adb-db--mysql .adb-icon-tone-c` 传到填充层 —— 形状是自己的（圆柱），
+                //    颜色跟着那一家走，MySQL 的库和 PG 的库不会撞成同一个青。
+                if (!item.vendorClass().isBlank()) {
+                    icon.getStyleClass().add(item.vendorClass());
+                }
+            } else {
+                icon.getStyleClass().add("adb-tree__icon");
             }
 
             Label name = new Label(item.name());

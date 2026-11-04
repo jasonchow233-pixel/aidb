@@ -49,6 +49,9 @@ import javafx.scene.shape.StrokeLineJoin;
  *       （{@code data-paint="tone-a"}，见 {@link IconPaint}），颜色一律来自 CSS 的
  *       {@code -adb-*} 令牌 —— 于是暗色档自动跟随，<b>不需要画第二套</b>；
  *       同名彩色资产还不存在时自动回退单色，所以资产可以一批批铺；</li>
+ *   <li>厂商商标走 {@link #brand(String, double)} + {@code icons/brand/*.svg}（R63-3）：
+ *       这一条通道<b>反过来</b> —— 资产里写死官方十六进制色，不吃角色、不吃主题，
+ *       因为商标的色就是识别本身；代价与许可见 {@link #BRAND_DIR}；</li>
  *   <li>例外：{@link #BRAND}（品牌 mark，Lucide 没有等价物）、{@link #DOT}
  *       （实心状态点，Lucide 只有描边的 circle-dot）为自绘路径。</li>
  * </ul>
@@ -98,9 +101,26 @@ public final class Icons {
      *
      * <p>这里放的是<b>自有资产</b>（同风格的多彩图形，逐元素标 {@code data-paint} 角色），
      * 不是 Lucide —— Lucide 是线性图标集，天生单色。
-     * <b>不许</b>把竞品或任何第三方位图/图标资产放进来（他人版权素材）。
+     * <b>不许</b>把竞品或任何第三方位图/图标资产放进来（他人版权素材）：
+     * 借用素材只有 {@code lucide/}（ISC）与 {@link #BRAND_DIR}（厂商商标）两个目录，
+     * 各自带许可文件，由 {@code ColoredIconTest}／{@code BrandIconTest} 钉住。
      */
     static final String COLOR_DIR = "/io/agenticdb/ui/icons/color/";
+
+    /**
+     * ⭐ 厂商商标目录（R63-3）：六家数据库<b>官方标志</b>的拍平矢量。
+     *
+     * <p>与 {@link #COLOR_DIR} 的分工是硬性的：彩色目录里的东西吃 CSS 角色，
+     * 颜色跟着主题走；商标目录里的东西吃<b>字面官方色</b>，颜色跟着商标法走。
+     * 混在一起的结果是「MySQL 的商标被刷成中性蓝」或「主题切换时商标跟着变灰」，
+     * 两种都等于没有识别度。
+     *
+     * <p>这里的每个文件都是第三方商标，随目录分发 {@code TRADEMARK-NOTICE.txt}
+     * （来源、许可、我们做了什么改动）。资产格式受 {@code BrandIconTest} 约束：
+     * 只有 {@code <path>}、只有字面 {@code #rrggbb} 填充、方形零原点 viewBox、
+     * 无 transform／渐变／遮罩 —— 因为 {@link LucideConverter} 那条通道只认这些。
+     */
+    static final String BRAND_DIR = "/io/agenticdb/ui/icons/brand/";
 
     /** 转换结果缓存：每个图标只在首次使用时解析一次 SVG。 */
     private static final ConcurrentHashMap<String, String> PATH_CACHE = new ConcurrentHashMap<>();
@@ -111,6 +131,13 @@ public final class Icons {
 
     /** 确认过「没有彩色资产」的名字 —— 避免每次落库都重新查一遍 classpath。 */
     private static final Set<String> ABSENT_COLOR_ASSETS = ConcurrentHashMap.newKeySet();
+
+    /** 品牌分层缓存（键 = 资产名）。 */
+    private static final ConcurrentHashMap<String, List<LucideConverter.BrandLayer>>
+            BRAND_CACHE = new ConcurrentHashMap<>();
+
+    /** 确认过「没有品牌资产」的名字。 */
+    private static final Set<String> ABSENT_BRAND_ASSETS = ConcurrentHashMap.newKeySet();
 
     private Icons() {
     }
@@ -295,35 +322,6 @@ public final class Icons {
          */
         INDEX(null, "list-ordered"),
         /**
-         * MySQL 字形（自绘，实心）：一枚跃出的**鳍** + 右上角一滴水。
-         *
-         * <p>R43-a：连接向导磁贴与导航树连接节点从此按厂区分形。这里画的是
-         * <b>同风格的自有图形，不是任何厂商的商标图形</b>（{@code COLOR_DIR} 的硬边界）——
-         *  recognizable 靠「形状互不相同 + 各自品牌色」两件事，不靠复刻 logo。
-         */
-        DB_MYSQL("M 8 2 C 4.7 2 2 4.7 2 8 C 2 11.3 4.7 14 8 14 C 5.4 11.6 5.4 4.4 8 2 Z"
-                + " M 11.5 2.6 C 12.4 2.6 13.1 3.3 13.1 4.2 C 13.1 5.1 12.4 5.8 11.5 5.8"
-                + " C 10.6 5.8 9.9 5.1 9.9 4.2 C 9.9 3.3 10.6 2.6 11.5 2.6 Z", null, true),
-        /** PostgreSQL 字形（自绘，实心）：一对**獠牙**朝上的 U。 */
-        DB_POSTGRESQL("M 3 2.5 L 6 2.5 L 6 9.5 C 6 10.9 6.9 11.5 8 11.5 C 9.1 11.5 10 10.9 10 9.5"
-                + " L 10 2.5 L 13 2.5 L 13 9.8 C 13 12.6 10.9 14 8 14 C 5.1 14 3 12.6 3 9.8 Z",
-                null, true),
-        /** SQL Server 字形（自绘，实心）：六边形**宝石**，内芯比外壳浅一档。 */
-        DB_SQLSERVER("M 8 2 L 13.2 5 L 13.2 11 L 8 14 L 2.8 11 L 2.8 5 Z"
-                + " M 8 5.4 L 10.7 6.9 L 10.7 9.9 L 8 11.4 L 5.3 9.9 L 5.3 6.9 Z", null, true),
-        /** Oracle 字形（自绘，实心）：横放的**椭圆环**（Oracle 的公开标志就是一个环）。 */
-        DB_ORACLE("M 14.5 8 C 14.5 10.2 11.5 12 8 12 C 4.5 12 1.5 10.2 1.5 8 C 1.5 5.8 4.5 4 8 4"
-                + " C 11.5 4 14.5 5.8 14.5 8 Z M 12 8 C 12 8.9 10.2 9.6 8 9.6 C 5.8 9.6 4 8.9 4 8"
-                + " C 4 7.1 5.8 6.4 8 6.4 C 10.2 6.4 12 7.1 12 8 Z", null, true),
-        /** SQLite 字形（自绘，实心）：一片**羽叶**，叶脉走轮廓层。 */
-        DB_SQLITE("M 13.5 2.5 C 6.5 2.5 2.8 6.2 2.5 11.5 C 2.4 13.2 3.3 14 4.6 13.6"
-                + " C 9.6 12.2 13.2 8 13.5 2.5 Z", null, true),
-        /** MariaDB 字形（自绘，实心）：圆球 + 一道跃出的身形。 */
-        DB_MARIADB("M 8 2 C 11.3 2 14 4.7 14 8 C 14 11.3 11.3 14 8 14 C 4.7 14 2 11.3 2 8"
-                + " C 2 4.7 4.7 2 8 2 Z M 4.6 10.4 C 5.6 7.4 8.2 5.9 11.2 6.6 C 12.4 6.9 12.8 8"
-                + " 11.9 8.8 C 10.4 10 7.8 10.4 6.2 11.8 C 5.4 12.5 4.3 11.9 4.6 10.4 Z",
-                null, true),
-        /**
          * 品牌标识（数据圆柱 + 右上角 AI 星芒，自绘）。
          *
          * <p>应用栏品牌方块 2026-10-28 已随顶区精简删除；这个字形现在出现在
@@ -503,6 +501,70 @@ public final class Icons {
     /** 已缓存的彩色分层 —— 给门禁断言「每层角色都在允许集合内、至少一层是 EDGE」。 */
     static List<LucideConverter.Layer> cachedLayers(Icon icon) {
         return LAYER_CACHE.get(colorAssetKey(icon));
+    }
+
+    // ─────────────────────────── 品牌通道（厂商商标） ───────────────────────────
+
+    /** 这个键有没有对应的品牌商标资产（{@code icons/brand/<key>.svg} 在不在）。 */
+    public static boolean hasBrandAsset(String key) {
+        return brandLayersFor(key) != null;
+    }
+
+    /**
+     * ⭐ R63-3：造一枚<b>厂商商标</b>图形 —— 字面官方色，不吃主题、不吃 CSS 角色。
+     *
+     * <p>拿不到资产时返回 {@code null}，<b>不猜</b>：把认不出的方言画成某家的标志就是编造，
+     * 调用方自己回落通用图形（与 {@code ConnectionCatalog.graphic} 同一口径）。
+     *
+     * <p>返回的是 {@code Group}（多层字面填充的 {@code SVGPath}），按 {@code Node} 用即可，
+     * 不要往下转型。与 {@link #colored(Icon, double)} 一样，{@code Group} 不是
+     * {@code Control}，挂不了 Tooltip。
+     *
+     * @param key  资产名（小写方言 id，如 {@code mysql}）
+     * @param size 目标边长（像素）
+     */
+    public static Node brand(String key, double size) {
+        List<LucideConverter.BrandLayer> layers = brandLayersFor(key);
+        if (layers == null) {
+            return null;
+        }
+        double scale = size / VIEW_BOX;
+        Group group = new Group();
+        for (LucideConverter.BrandLayer layer : layers) {
+            SVGPath path = new SVGPath();
+            path.setContent(layer.path());
+            path.setFill(Color.web(layer.fill()));
+            path.setFillRule(layer.evenOdd() ? javafx.scene.shape.FillRule.EVEN_ODD
+                    : javafx.scene.shape.FillRule.NON_ZERO);
+            group.getChildren().add(path);
+        }
+        group.setScaleX(scale);
+        group.setScaleY(scale);
+        return group;
+    }
+
+    /** 品牌分层解析（带缓存与「确认缺失」缓存）。 */
+    private static List<LucideConverter.BrandLayer> brandLayersFor(String key) {
+        if (key == null || ABSENT_BRAND_ASSETS.contains(key)) {
+            return null;
+        }
+        List<LucideConverter.BrandLayer> cached = BRAND_CACHE.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        String svg = readResourceOrNull(BRAND_DIR + key + ".svg");
+        if (svg == null) {
+            ABSENT_BRAND_ASSETS.add(key);
+            return null;
+        }
+        List<LucideConverter.BrandLayer> layers = LucideConverter.toBrandLayers(svg, VIEW_BOX);
+        BRAND_CACHE.put(key, layers);
+        return layers;
+    }
+
+    /** 已缓存的品牌分层 —— 给门禁断言「每层都是字面官方色、坐标没越界」。 */
+    static List<LucideConverter.BrandLayer> cachedBrandLayers(String key) {
+        return BRAND_CACHE.get(key);
     }
 
     /** 标准尺寸的图标。 */

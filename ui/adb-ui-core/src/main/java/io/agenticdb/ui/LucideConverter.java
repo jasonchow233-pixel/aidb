@@ -26,6 +26,9 @@ final class LucideConverter {
     private LucideConverter() {
     }
 
+    /** 品牌资产允许的填充色写法：六位（或三位缩写不算）小写/大写十六进制。 */
+    private static final Pattern BRAND_FILL = Pattern.compile("#[0-9a-fA-F]{6}");
+
     /** SVG 文本 → 目标视框的绝对路径 d 字符串（所有元素压成一条 —— 单色图标够用）。 */
     static String toPath(String svg, double targetViewBox) {
         double scale = scaleOf(svg, targetViewBox);
@@ -65,6 +68,52 @@ final class LucideConverter {
 
     /** 一条分层路径：JavaFX 兼容的绝对路径 + 上色角色。 */
     record Layer(String path, IconPaint paint) {
+    }
+
+    /**
+     * 品牌通道：SVG 文本 → 分层路径，每层带<b>字面填充色</b>。
+     *
+     * <p>与 {@link #toLayers} 的分工：彩色通道交回<b>角色</b>，颜色由 CSS 令牌决定，
+     * 所以同一枚图形在暗色档会自动换色；品牌通道交回<b>官方十六进制色</b>，
+     * 因为商标的色本身就是识别的一部分（MySQL 的青、Oracle 的红），
+     * 把它映射成五个角色等于把六家压成同一套蓝。代价是商标图形不吃主题 ——
+     * 这也是它单独走一个目录、单独一条门禁的原因（见 {@code icons/brand/TRADEMARK-NOTICE.txt}）。
+     *
+     * <p>资产必须是<b>已经拍平</b>的：只有 {@code <path>}、只有 {@code fill="#rrggbb"}、
+     * 方形且原点为零的 viewBox、没有 {@code transform}／渐变／遮罩。这里对违规直接抛，
+     * 不静默降级 —— 静默降级就是「图上少了一只眼睛但没人报错」那种 bug。
+     */
+    static List<BrandLayer> toBrandLayers(String svg, double targetViewBox) {
+        double scale = scaleOf(svg, targetViewBox);
+        List<BrandLayer> layers = new ArrayList<>();
+        Matcher element = Pattern.compile("<path\\b([^>]*?)/?>", Pattern.CASE_INSENSITIVE)
+                .matcher(svg);
+        while (element.find()) {
+            String attrs = element.group(1);
+            if (attribute(attrs, "transform") != null) {
+                throw new IllegalStateException("brand asset carries a transform: bake the "
+                        + "transform into the path coordinates (JavaFX SVGPath has no transform)");
+            }
+            String fill = attribute(attrs, "fill");
+            if (fill == null || !BRAND_FILL.matcher(fill).matches()) {
+                throw new IllegalStateException("brand layer needs a literal #rrggbb fill, got "
+                        + fill + " (flatten gradients, masks and inherited colors)");
+            }
+            String d = attribute(attrs, "d");
+            if (d == null) {
+                throw new IllegalStateException("brand layer has no d");
+            }
+            layers.add(new BrandLayer(normalize(d, scale), fill.toLowerCase(Locale.ROOT),
+                    "evenodd".equalsIgnoreCase(attribute(attrs, "fill-rule"))));
+        }
+        if (layers.isEmpty()) {
+            throw new IllegalStateException("no brand layers");
+        }
+        return List.copyOf(layers);
+    }
+
+    /** 一条品牌分层：JavaFX 兼容的绝对路径 + 字面填充色 + 填充规则。 */
+    record BrandLayer(String path, String fill, boolean evenOdd) {
     }
 
     /** 源 SVG 里的一个可转换元素。 */
