@@ -97,6 +97,17 @@ public class App extends Application {
             startup.writeSummary();
         }
 
+        // ⭐ R61-a：冷启动基准的出口。`scripts/startup-bench.sh` 要的是「量完就走」——
+        //    它读 stdout 这一行，不去翻用户日志（那里是共享状态，多实例会互相看花）。
+        //    只认显式开关：平时启动完全不进这条，零影响。
+        String exitAfterFirstScreen = System.getProperty("adb.startup.exit",
+                System.getenv().getOrDefault("ADB_STARTUP_EXIT", "")).trim();
+        if (!exitAfterFirstScreen.isEmpty() && !exitAfterFirstScreen.equals("0")) {
+            // ASCII：主源码里的字符串字面量，写中文直接顶穿 I18nAuditTest 的棘轮。
+            System.out.println("[startup] " + startup.summary());
+            javafx.application.Platform.exit();
+        }
+
         // 验收截图模式：设置了 ADB_SHOTS 时截一张图后自动退出，平时零开销。
         ScreenshotSession.maybeRun(stage);
     }

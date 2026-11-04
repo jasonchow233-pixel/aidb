@@ -1130,13 +1130,45 @@ class AppShellTest {
 
         assertThat(trace.marks())
                 .extracting(io.agenticdb.ui.StartupTrace.Mark::name)
-                .as("启动链路：构造 → chrome → 演示库 → afterShown")
-                .containsSubsequence("shell.construct", "shell.chrome", "shell.demo",
-                        "shell.after-shown");
+                .as("启动链路：构造 → 演示库开工 → chrome → 演示库收口 → 连演示库 → afterShown")
+                .containsSubsequence("shell.construct", "shell.demo-db-started", "shell.chrome",
+                        "shell.demo-db-ready", "shell.demo", "shell.after-shown");
         assertThat(trace.firstScreenMillis())
                 .as("首屏耗时（进程启动 → 首屏）必须有值")
                 .isPositive();
         assertThat(trace.summary()).contains("shell.demo=").contains("first-screen=");
+    }
+
+    /**
+     * ⭐ R61-a：演示库的第一次打开**不许在 FX 线程上**。
+     *
+     * <p>为什么单独钉这一条：冷启动实测 5.0~5.9s，其中 {@code shell.demo-db} 那一段占 1.3s，
+     * 而那 1.3s **不是在建库** —— 本机演示库文件是 10-23 的（114KB、users 表在），
+     * {@code ensure} 走的是「已存在就只验一次」那条路，也就是**开一条 SQLite 连接**。
+     * 单独量过：同一个进程里第一次 {@code DriverManager.getConnection} 762ms、第二和第三次各 1ms。
+     * 所以那笔钱是 sqlite-jdbc 原生库的解压 + 加载，跟库里有多少行无关，而它原先排在窗口出现之前，
+     * 于是整段算进用户等首屏的时间。
+     *
+     * <p>这条门禁钉的是「这件事跑在别的线程上」，**不是**「启动变快了」：墙钟归
+     * {@code scripts/startup-bench.sh} 量 —— surefire 的 fork 里「进程年龄」等于测试运行器
+     * 已经跑了多久，那个口径下任何墙钟断言都是假的（{@code StartupTrace} 的构造器注释记着这件事，
+     * {@code StartupTraceTest} 也因此撤过一条「首屏 &lt; 2s」）。
+     */
+    @Test
+    void demoDatabaseIsNeverOpenedOnTheFxThread(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
+        String fxThread = onFx(() -> Thread.currentThread().getName());
+        String demoThread = shell.demoDatabaseThreadForTest();
+
+        assertThat(demoThread)
+                .as("为 null = 那次 ensure 压根没跑过 —— 启动链断了，不是变快了")
+                .isNotNull();
+        assertThat(demoThread)
+                .as("演示库的第一次打开跑在「%s」上，而 FX 线程是「%s」："
+                        + "0.7s 的原生库加载压在首屏前面就是冷启动退化",
+                        demoThread, fxThread)
+                .isNotEqualTo(fxThread);
     }
 
     @Test

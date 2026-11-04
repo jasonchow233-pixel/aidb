@@ -105,6 +105,15 @@ public final class AppShell extends StackPane {
         return thread;
     });
 
+    /**
+     * ⭐ R61-a：演示库那次 {@code ensure} 实际跑在哪条线程上（构造时写一次，之后只读）。
+     *
+     * <p>留着它不是为了好看：冷启动那 1.3s 的根因是「第一次打开 SQLite 要解压并加载原生库」，
+     * 而这件事**只要还排在 FX 线程上、窗口出现之前**，就一分不少地算进用户等首屏的时间。
+     * 没有这个观测点，「挪到后台」就只能靠审源码文本自证。
+     */
+    private volatile String demoDatabaseThread;
+
     private final StatusBar statusBar = new StatusBar();
     private final TabBar tabBar = new TabBar(actions);
     private final SideBar sideBar;
@@ -204,8 +213,19 @@ public final class AppShell extends StackPane {
         this.themeManager = themeManager;
 
         Path demoPath = DemoDatabase.defaultPath();
-        DemoDatabase.ensure(demoPath);
-        startup.mark("shell.demo-db");
+        // ⭐ R61-a：这一句实测占 1.3s，而**它不是在建库** —— 演示库文件早就在
+        //   （本机那份是 10-23 建的，114KB），`ensure` 走的是「已存在就只验一次」那条路：
+        //   开一条 SQLite 连接。单独量过：同进程里第一次 `getConnection` 762ms、
+        //   第二第三次各 1ms —— 那 0.7s 是 sqlite-jdbc 原生库的解压 + 加载，
+        //   跟演示库有多大、有多少行都没关系。
+        //   它原先同步压在 FX 线程上、又排在窗口出现之前，于是整段算进冷启动。
+        //   现在丢给 db 线程，与下面 ~480ms 的 UI 构造重叠，到真要连演示库时才 join。
+        //   ⚠️ 行为不变：构造器返回时演示库照样已经连上（测试与验收帧都依赖这一点）。
+        java.util.concurrent.Future<Path> demoDb = dbExecutor.submit(() -> {
+            demoDatabaseThread = Thread.currentThread().getName();
+            return DemoDatabase.ensure(demoPath);
+        });
+        startup.mark("shell.demo-db-started");
         this.connectionStore = ConnectionStore.defaultStore();
         this.savedQueries = new SavedQueries(settings);
         this.credentials = connectionStore.credentials();
@@ -329,11 +349,17 @@ public final class AppShell extends StackPane {
         // pageType 那一档才是 "Objects"（Navicat 的对象页头也是复数）。
         tabBar.openPermanent(new TabItem("object-home",
                 I18n.t("window.pageType.object"), TabKind.OBJECT));
+        // ⭐ R61-a：与上面那段 UI 构造重叠到这里才收口 —— 连演示库之前必须保证库已经就绪。
+        //   异常照原样抛出（构造器里 `ensure` 失败本来就该让启动失败，不静默退回空库）。
+        awaitDemoDatabase(demoDb);
+        startup.mark("shell.demo-db-ready");
         ConnectionProfile demo = profileById("demo");
         if (demo != null) {
-            // ⭐ A15：启动时的演示库连接**同步**做 —— 它是本地 SQLite（毫秒级），
+            // ⭐ A15：启动时的演示库连接**同步**做 —— 它是本地 SQLite（库就绪后实测毫秒级），
             //    而且窗口还没出现：此时阻塞没有任何观感问题。
             //    用户自己连远程库时才走后台（那边可能很慢）。
+            //    ⚠️ 「毫秒级」这句只在 R61-a 之后才成立：库的**第一次打开**（原生库加载 762ms）
+            //    已经挪到上面那条线程上了，这里剩下的是真正的 connect。
             connectProfileBlocking(demo, false);
         }
         startup.mark("shell.demo");
@@ -343,6 +369,26 @@ public final class AppShell extends StackPane {
         } else {
             status(I18n.t("shell.connectedObjects", connectionName,
                     objectsByConnection.getOrDefault(activeProfile.id(), List.of()).size()));
+        }
+    }
+
+    /**
+     * 等演示库就绪（R61-a：这条是那条后台 {@code ensure} 的唯一收口点）。
+     *
+     * <p>失败照旧抛出 —— 演示库建不出来就是启动失败，不许静默换成一棵空树。
+     */
+    private void awaitDemoDatabase(java.util.concurrent.Future<Path> demoDb) {
+        try {
+            demoDb.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("等待演示库时被中断", e);
+        } catch (java.util.concurrent.ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw new IllegalStateException("无法创建演示库: " + cause.getMessage(), cause);
         }
     }
 
@@ -1145,11 +1191,13 @@ public final class AppShell extends StackPane {
      *
      * <p>在后台线程读 —— 它只是一行信息，不该让「连上库」这件事变慢。
      */
-    private void loadServerInfo(DbSession target) {
+    private void loadServerInfo(String connectionId, DbSession target) {
         // ⭐ A16：走**该连接自己的执行器** ——
         //    服务器信息查询和数据页的加载如果跑在两个线程上、共用同一个连接，
         //    SQLite 这类「一个连接一个线程」的库会互相卡住（实测：数据页一直转圈）。
-        executors.forConnection(activeProfileId()).execute(() -> {
+        // ⭐ R61-b：连接 id 由调用方交进来，不在这里读 activeProfileId() ——
+        //    「谁激活了就查谁」这件事以前是靠调用顺序默认成立的，读代码的人看不出来。
+        executorFor(connectionId).execute(() -> {
             String[] info = schemaService.serverInfo(target);
             javafx.application.Platform.runLater(() ->
                     statusBar.setServerInfo(info[0], info[1]));
@@ -1482,7 +1530,7 @@ public final class AppShell extends StackPane {
             appBar.setConnectionState(true, false);
         }
         // ⭐ U6：服务器信息（版本 · 当前用户）—— 在后台读，不阻塞连接流程。
-        loadServerInfo(session);
+        loadServerInfo(profile.id(), session);
         // 侧栏「诊断」接真实功能：表结构 + 行数的健康概览。会话变了要跟着换。
         workspace.setDiagnostics(session, schemaService,
                 executors.forConnection(activeProfileId()));
@@ -2433,6 +2481,11 @@ public final class AppShell extends StackPane {
     /** ⭐ P7：给门禁 / 关于弹窗读的启动打点。 */
     io.agenticdb.ui.StartupTrace startupTrace() {
         return startup;
+    }
+
+    /** ⭐ R61-a：给门禁读——演示库那次 ensure 跑在哪条线程上（FX 线程即冷启动退化）。 */
+    String demoDatabaseThreadForTest() {
+        return demoDatabaseThread;
     }
 
     /** 窗口关闭时调用：先停掉在途查询，再关连接。 */
@@ -3986,7 +4039,14 @@ public final class AppShell extends StackPane {
             return;
         }
         status(I18n.t("shell.refreshingObjects"));
-        executors.forConnection(activeProfileId()).execute(() -> {
+        // ⭐ R61-b：这里原先排的是 **activeProfileId()** 的执行器，而查的是 target 那把库。
+        //   两条错都在这一个调用里：① 刷新非当前连接要排在当前连接的队列后面
+        //   （A16「慢连接不阻塞别人」白做了一半）；② 更糟的是它用**别人的线程**碰
+        //   这把库的会话 —— 而这条库自己的数据页/结构页也在它自己的执行器上跑，
+        //   于是同一个 JDBC 连接被两条线程交叉使用。上面 loadServerInfo 那条注释写的
+        //   「SQLite 这类一个连接一个线程的库会互相卡住（实测：数据页一直转圈）」
+        //   说的就是这个症状，只是当时没扫到这一处。
+        executorFor(profile.id()).execute(() -> {
             try {
                 List<SchemaObject> objects = schemaService.listObjects(target);
                 Platform.runLater(() -> {
