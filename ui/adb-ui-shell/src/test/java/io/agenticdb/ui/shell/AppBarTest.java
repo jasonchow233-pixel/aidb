@@ -3,12 +3,14 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.ui.I18n;
+import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.ScrollBar;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
@@ -234,6 +236,68 @@ class AppBarTest {
         assertThat(geometry.get(0))
                 .as("磁贴排放不下时必须横向滚动（ScrollPane AS_NEEDED），而不是截标签")
                 .isTrue();
+    }
+
+    /**
+     * ⭐ H5-h（R62-a）：Ribbon 溢出时那条横向滚动条必须是**细轨 + 无箭头**。
+     *
+     * <p>上一条门禁只问了「放得下吗 / 能不能滚」，本条问的是它**长什么样**：12 格按英文标签
+     * 排开必然溢出，于是那条滚动条就是功能区的一部分。Modena 默认给 16px 整宽灰槽 +
+     * 两端 {@code ⟨ ⟩} 箭头 —— 实拍里读起来像界面多出一条不属于它的工具。
+     *
+     * <p>⚠️ 钉**几何**不钉颜色，因为修法在这里很容易被做假：{@code ScrollBarSkin.getBreadth()}
+     * 对横向条取的是**两端箭头按钮的 prefHeight 最大值**再加上下 inset，所以「把箭头调透明」
+     * 会让画面看起来干净、槽却还是 16px —— 那条修法在这条门禁上直接红。
+     * 阈值 8px = 本轮 CSS 定的 6px 轨 + 2px 余量；箭头宽度阈值 1px 区分「真收掉了」与
+     * 「还在占位」（占位就会把轨道两端各吃掉 ~11px，滚动行程跟着变短）。
+     */
+    @Test
+    void theRibbonOverflowBarIsThinAndArrowless(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        List<Double> measured = WaitForAsyncUtils.<List<Double>>asyncFx(() -> {
+            Scene scene = bar.getScene();
+            // Scene.setWidth 是 private —— 挤宽度只能挤窗口。
+            javafx.stage.Stage stage = (javafx.stage.Stage) scene.getWindow();
+            double originalWidth = stage.getWidth();
+            try {
+                // 挤到必然放不下（磁贴排 ~1050px + 右端工具件）。喂宽度和读数在**同一条 FX 任务**里，
+                // 读完立刻还原 —— primary stage 是同类共用的，尺寸漏给下一条像素门禁就是 R57-g 那笔账。
+                stage.setWidth(900);
+                scene.getRoot().applyCss();
+                scene.getRoot().layout();
+                javafx.scene.Node strip = bar.lookup("#adb-ribbon");
+                javafx.scene.Parent ancestor = strip == null ? null : strip.getParent();
+                while (ancestor != null && !(ancestor instanceof ScrollPane)) {
+                    ancestor = ancestor.getParent();
+                }
+                if (!(ancestor instanceof ScrollPane pane)) {
+                    return List.<Double>of();
+                }
+                for (javafx.scene.Node node : pane.lookupAll(".scroll-bar")) {
+                    if (node instanceof ScrollBar sb
+                            && sb.getOrientation() == Orientation.HORIZONTAL && sb.isVisible()) {
+                        double arrows = java.util.stream.Stream
+                                .concat(sb.lookupAll(".increment-button").stream(),
+                                        sb.lookupAll(".decrement-button").stream())
+                                .mapToDouble(n -> ((javafx.scene.layout.Region) n).getWidth())
+                                .max().orElse(-1);
+                        return List.of(sb.getHeight(), arrows);
+                    }
+                }
+                return List.<Double>of();
+            } finally {
+                stage.setWidth(originalWidth);
+            }
+        }).get();
+        assertThat(measured)
+                .as("900 宽下磁贴排必须真的溢出（拿不到可见的横向滚动条，这条门禁就是空的）")
+                .isNotEmpty();
+        assertThat(measured.get(0))
+                .as("溢出条厚度必须 ≤8px（Modena 默认 16px）—— 实测 %s px", measured.get(0))
+                .isLessThanOrEqualTo(8.0);
+        assertThat(measured.get(1))
+                .as("两端箭头必须真的收成 0 宽，不是「看不见但还占位」—— 实测 %s px", measured.get(1))
+                .isLessThanOrEqualTo(1.0);
     }
 
     /**

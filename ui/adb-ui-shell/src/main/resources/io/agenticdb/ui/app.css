@@ -127,6 +127,71 @@
     -fx-hgap: 0px;
 }
 
+/* ⭐ R62-a H5-h：Ribbon 那条横向溢出条收成**细轨 + 无箭头**。
+ *
+ * <p>为什么只改 CSS、不动 `HbarPolicy`：`AppBarTest.ribbonLabelsAreNeverEllipsised`
+ * 钉住「放不下必须横向滚动（AS_NEEDED），不许截标签」—— 改成 NEVER 会让那条门禁红，
+ * 而且**红得对**（磁贴标签截不得，英文比中文宽）。出路只有把 Modena 那条默认样式改掉。
+ *
+ * <p>默认长什么样（实拍 p0-shell / 1280 宽）：16px 高的整宽灰槽，两端各一枚 `⟨ ⟩` 箭头，
+ * 压在 91px 的功能区里读起来像「界面多出了一条不属于它的工具」。
+ *
+ * <p>⚠️ **厚度不是由 `.scroll-bar` 的高度决定的**：`ScrollBarSkin.getBreadth()` 对横向条取的是
+ * **两端箭头按钮的 prefHeight 最大值**再加上下 inset —— 只把箭头 `opacity: 0` 是**假修复**
+ * （看着没了，槽还是 16px，因为按钮还占着高度）。所以四件事一起做：按钮内边距归零 +
+ * 按钮 min/pref/max 宽高钉成 0 + 箭头 `-fx-shape: null` + 给 `.scroll-bar` 显式写高度。
+ * 门禁钉的是**几何**（按钮实得宽度 ≤1px、整条 ≤8px），不是颜色。 */
+.adb-ribbon__scroll > .scroll-bar:horizontal {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0px;
+    -fx-padding: 0px 4px 0px 4px;
+    -fx-min-height: 6px;
+    -fx-pref-height: 6px;
+    -fx-max-height: 6px;
+}
+
+.adb-ribbon__scroll > .scroll-bar:horizontal > .track,
+.adb-ribbon__scroll > .scroll-bar:horizontal > .track-background {
+    -fx-background-color: transparent;
+    -fx-padding: 0px;
+}
+
+/* 滑块用 text-tertiary（两档主题各读各的），hover 时提到不透明 ——
+   与全局语言一致：滚动条是可交互件，但不该比内容更抢眼。 */
+.adb-ribbon__scroll > .scroll-bar:horizontal > .thumb {
+    /* 静止态比悬停淡一档 —— 用 **derive 提亮颜色**而不是 -fx-opacity：
+       FocusRingAuditTest 禁的是「用 opacity 压暗内容」（会把文字图标一起稀释），
+       这里本来就不该开口子，一个更淡的色同样能表达「平时不用管它」。 */
+    -fx-background-color: derive(-adb-text-tertiary, 25%);
+    -fx-background-insets: 1px 0px 1px 0px;
+    -fx-background-radius: 3px;
+}
+
+.adb-ribbon__scroll > .scroll-bar:horizontal > .thumb:hover,
+.adb-ribbon__scroll > .scroll-bar:horizontal > .thumb:pressed {
+    -fx-background-color: -adb-text-tertiary;
+}
+
+.adb-ribbon__scroll > .scroll-bar:horizontal > .decrement-button,
+.adb-ribbon__scroll > .scroll-bar:horizontal > .increment-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0px;
+    -fx-min-width: 0px;
+    -fx-pref-width: 0px;
+    -fx-max-width: 0px;
+    -fx-min-height: 0px;
+    -fx-pref-height: 0px;
+    -fx-max-height: 0px;
+}
+
+.adb-ribbon__scroll > .scroll-bar:horizontal > .decrement-button > .decrement-arrow,
+.adb-ribbon__scroll > .scroll-bar:horizontal > .increment-button > .increment-arrow {
+    -fx-background-color: transparent;
+    -fx-padding: 0px;
+    -fx-shape: null;
+    -fx-effect: null;
+}
+
 /* 页签行（R36 后只放页签）：白底，工具件已挪进 Ribbon 右端。
    下边界由 .adb-tabbar 自己画。 */
 .adb-chrome-row {
@@ -1245,10 +1310,14 @@
     -fx-background-color: transparent;
     -fx-text-fill: -adb-text-primary;
     -fx-padding: 2px 4px;
-    /* ⭐ 行高升到 28 后，选中态保留满行高亮（Navicat 语言：层级感优先于胶囊），
-         只把两端内缩 4px —— 既有呼吸感又不切断层级。 */
-    -fx-background-radius: 6px;
-    -fx-background-insets: 0px 4px;
+    /* ⭐ R62-a H5-j：选中带改成**满宽 + 直角**。
+       原来（R43 定的）是「圆角 6px + 两端内缩 4px」那颗药丸 —— 按 Navicat 17 的帧重读，
+       它的选中是**一整条贴着栏宽的平色带**：药丸把相邻两级的层级线切断，
+       缩进因此看不出来（树最靠的正是层级）。留圆角等于留一条「每行都是独立胶囊」的假层级。
+       ⚠️ 只动**形状**，不动左槽 2px 的**宽度** —— `selectingANodeDoesNotShiftItsText`
+       钉的是「选中瞬间边框宽度不变」（UX-4：改宽度文字会左右跳一次），选中只换颜色。 */
+    -fx-background-radius: 0px;
+    -fx-background-insets: 0px;
     -fx-border-color: transparent;
     -fx-border-width: 0 0 0 2;
 }
@@ -1257,10 +1326,16 @@
     -fx-background-color: -adb-bg-hover;
 }
 
-/* ⭐ UX-5：侧栏选中与网格选中同一套语言 —— bg-selected 填充 + 左侧 2px accent 强调条。 */
+/* ⭐ UX-5：侧栏选中与网格选中同一套语言 —— bg-selected 填充 + 左侧 2px accent 强调条。
+ * ⭐ R62-a H5-j 抓到：这条从来没画出来过。四值顺序是 **上 右 下 左**，
+ *    原来写成 `-adb-accent transparent transparent transparent` = 强调色在**上边**，
+ *    而宽度那条给的是左边 2px（`0 0 0 2`）—— 唯一有宽度的边是透明色，其余三边宽度为 0，
+ *    于是强调条整体不存在（选中格 x=0 的实测像素是 bg-selected，不是 accent）。
+ *    网格选中行（`.adb-grid .table-row-cell:selected`）写的是 `transparent transparent -adb-border-subtle -adb-accent`，
+ *    左边确实是 accent —— 「同一套语言」当时只对了一半。 */
 .adb-object-tree .tree-cell:selected {
     -fx-background-color: -adb-bg-selected;
-    -fx-border-color: -adb-accent transparent transparent transparent;
+    -fx-border-color: transparent transparent transparent -adb-accent;
 }
 
 /* 选中时名字不要跟着变蓝 —— Navicat 是「浅蓝底 + 黑字」，
@@ -1269,8 +1344,25 @@
     -fx-text-fill: -adb-text-primary;
 }
 
+/* ⭐ R62-a H5-k：展开箭头从 Modena 的**实心小三角**换成**细 chevron**。
+ *
+ * 为什么值得动：三角是「一块实心」，在一行 20px（实测行高）里它的视觉重量和
+ * 旁边的类型图标差不多 —— 而它只是说「这里还能点开」。Navicat 那颗是细线 `›`，
+ * 层级靠**缩进 + 图标**表达，不靠箭头抢注意力。
+ *
+ * ⚠️ 三条不能踩的线（都在 SidebarSelectionTest 里钉着，实测值不是推算）：
+ * ① 颜色仍是 text-tertiary（比正文淡一档），本轮**只改形不改色**；
+ * ② 展开态的 rotate 90 由 Modena 的 `.tree-cell:expanded` 给（作者样式表没写
+ *    -fx-rotate，所以那条 UA 规则照常生效），换形不影响它转向；
+ * ③ **箭头槽宽必须还是 6px**。这一条第一版就踩了：padding 写成 `4px 2px`，
+ *    槽从 Modena 的 6.0 缩到 4.0，整棵树的缩进跟着左移 2px —— 而 H5-j 刚把
+ *    「层级只靠缩进 + 颜色表达」当成设计前提，缩进自己先动了。
+ *    Region 的 pref 只由 padding 决定（shape 不贡献宽高），所以横向 padding
+ *    之和 = 槽宽：左 2 + 右 4 = 6 ✓，形状本身 5.5×8 从内容原点画出去。 */
 .adb-object-tree .tree-cell .tree-disclosure-node .arrow {
     -fx-background-color: -adb-text-tertiary;
+    -fx-padding: 4px 4px 4px 2px;
+    -fx-shape: "M 0 -4 L 1.5 -4 L 5.5 0 L 1.5 4 L 0 4 L 4 0 Z";
 }
 
 /* ── 对象类型着色 ──────────────────────────────────────────────────────
@@ -1369,14 +1461,17 @@
     -fx-font-size: 12px;
 }
 
+/* ⭐ R62-a H5-j：**粗体只留给「当前在用的库」这一层**。
+   原来分组名和连接名都恒粗 —— 侧栏里几乎每一行结构性节点都是粗的，
+   于是粗体不再表达任何东西，而它本来是这里唯一说「你现在在哪个库」的线索
+   （`.adb-tree__name--current`）。层级改由**缩进 + 颜色**承担：
+   分组仍用 text-secondary（比正文淡），连接仍用 text-primary，都不再加粗。 */
 .adb-tree-cell--group .adb-tree__name {
     -fx-text-fill: -adb-text-secondary;
-    -fx-font-weight: bold;
 }
 
 .adb-tree-cell--connection .adb-tree__name {
     -fx-text-fill: -adb-text-primary;
-    -fx-font-weight: bold;
 }
 
 .adb-tree__star {

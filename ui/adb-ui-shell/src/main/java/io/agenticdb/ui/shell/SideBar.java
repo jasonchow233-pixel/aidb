@@ -2236,7 +2236,8 @@ public final class SideBar extends VBox {
      *
      * @param schema       所属 schema（表/视图节点用；其它节点为空串）
      * @param connectionId 所属连接（连接节点与其下的对象用；其它节点为空串）
-     * @param vendorClass  厂商品牌色的作用域类（只有连接节点用；其它节点为空串）
+     * @param vendorClass  厂商品牌色的作用域类（连接节点与<b>库</b>节点用同一枚 —— R54：
+     *                     库的形状是圆柱，但颜色跟着它父连接那一家走；其它节点为空串）
      */
     private record DemoNode(String name, NodeKind kind, Icons.Icon icon, String schema,
                              String connectionId, String vendorClass) {
