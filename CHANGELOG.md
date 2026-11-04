@@ -11,6 +11,41 @@
 
 ### Added
 
+- **冷启动：那 1.3 秒不是在建库，是 SQLite 在解原生库 —— 挪出 FX 关键路径，并第一次立起一条真进程的启动基准通道**（2026-11-04，R61-a · H3-a）：
+  先量再改。`shell.demo-db` 这一格原先在构造器里同步跑，实测占 **1336ms**，planning 里写的是「demo 库懒建太慢」。
+  但它**不在建库**：演示库文件早就在 `~/.agenticdb/agenticdb-demo.db`（114688 字节，10 月 23 日的），`ensure()` 只做校验。
+  真正的开销在新 JVM 里第一次 `DriverManager.getConnection("jdbc:sqlite:…")` —— 实测 **762ms**（原生库解包/加载），
+  同一个进程里第二、三次各 **1ms**。所以这一格能省的不是「别建库」，而是「别让它挡住首屏前的其它活」。
+  改：`DemoDatabase.ensure()` 提交到 db 线程、与外壳构造**重叠**，连接前才 `awaitDemoDatabase()` 汇合（打点
+  `shell.demo-db-started` / `shell.demo-db-ready` 各留一处，等待时间从此看得见）。
+  ⭐ 同轮加了一条门禁 `demoDatabaseIsNeverOpenedOnTheFxThread`：比对 ensure 所在线程名与 FX 线程名。
+  修复前它是红的，红得直白 ——「跑在「JavaFX Application Thread」上，而 FX 线程是「JavaFX Application Thread」」。
+  **收益只值 overlap 那一段**（同机同负载 A/B，各 3 次）：同步 **5276 / 5242 / 5381** → 重叠 **5081 / 5008 / 4778**，
+  平均 **−344ms**，两组分布不重叠（最快的重叠一次比最慢的同步一次还快）。
+  **阶段目标 <3s 没达到**，本轮不收口：收官复量（含 R61-b/c 的同一份代码）三次 **5589 / 5142 / 4970**，
+  最坏 **5589ms**、平均 **5233ms**。分段（取中间那次 5142）：`stage.show()` 首趟 CSS/布局 **1621ms**、
+  重叠后仍在等库 **656ms**、demo 连接本身 **258ms**、JVM/Toolkit 前置 **≈1.1s**。
+  ⚠️ 再往下压只剩一条路：把 **demo 连接整段挪到首屏之后**。那会破掉「`AppShell` 构造器返回时演示库已连上」这条现有保证。
+  这条保证的依赖面本轮**数过**，不许再拿「到处都依赖」当理由：直接 `new AppShell(...)` 的测试类只有 **2 个、共 49 条**
+  （`AppShellTest` 34 / `I18nAuditTest` 15），其中打开演示库页签的那批才真踩在上面；产品侧只有 `App.java:54` 一处构造，
+  61 张验收帧全部经由这条路径。这仍不是实现细节，是口径变更，**记为 Q7 待拍板**（账在
+  docs/internal/GAP-TODOLIST.md 的 R61 一节），本轮不替 owner 决定。
+  **新通道 `scripts/startup-bench.sh`**：冷启动**不能**写成一条单测 —— surefire 的 fork 是一颗已经跑了几分钟的测试运行器进程，
+  而 `firstScreenMillis` 量的是「进程启动 → 首屏」，那个口径下「首屏<2s」单跑必绿、全量必红（`StartupTraceTest` 因此早就撤掉了那条断言）。
+  脚本每次起一颗真 JVM（`ADB_STARTUP_EXIT=1` 让 `App` 在首屏打点后打印一行摘要并退出），**判定取最坏一次**而不是平均 ——
+  冷启动是用户第一次点开应用那一下，平均会把「有一次特别慢」抹平。
+  两个数各管各的、不许互抄：**3000ms 是本轮的阶段目标**（只打印差距），**6000ms 是回归地板**（实测最坏一次 + 余量，改它必须重量）。
+  不往用户的 `~/.agenticdb/logs/startup.log` 里堆基准行（`ADB_STARTUP_LOG=false`），那份日志属于真实启动。
+  ⭐ **R61 批次收官已带环境重跑全量**（2026-11-04 10:46，`./scripts/build.sh` 全绿、`exit=0`、`Total time 16:36`）：
+  **1606 条 / 168 类 / 0 失败 / 6 跳过**，较 R57 基线 1590 / 167 = **+16 条 / +1 类**。这一跑同时把上一版欠的两笔账平了：
+  R57 画面债的 +11 与 R61 的 +5 当时都只量到模块级、全量没重跑（那一版写着「按算术应读 1601，那是算术不是实测」）——
+  现在 1590 + 11 + 5 = **1606** 是**逐模块量出来**的（`adb-ui-shell` 826→839 · `adb-editing` 32→33 · `adb-session` 38→40，其余逐家一字不变；
+  +1 类 = `ScreenshotOverlayTest`）。第二口径同日**不带**环境重跑（10:29，同样全绿）= **1509 执行 / 103 跳过**，
+  两口径执行差**仍是 97**，与 R56 / R57 同一个数 —— 这两批新增的 16 条**一条都不吃矩阵环境**。
+  两次 build **单飞**：不带环境那颗跑完（10:29:25）才起带环境那颗，没有并发 clean 出来的假编译错。
+  ⚠️ **D-49（Oracle 契约「单跑绿、全量红」）本轮没有复现，但不记成修好了**：这一跑五套矩阵逐类读回全绿（46 / 18 / 10 / 5 / 5），
+  两份日志 `ORA-` 计数各 0；至于它为什么只在全量里红，原因仍未量，账在 docs/STATUS.md §1 与 Known issues。
+
 - **R57 画面债还掉两帧：补全弹层 + 选中执行回显，各拍到自己在真库上的画面**（2026-11-04，R57 画面债 · 用户点名的「重点分析 SQL 查询编辑」那两格的证据）：
   `docs/screenshots/p3-query-completions.png` —— 真 MySQL 的 `shop` 库，编辑器里 `SELECT * FROM ` 光标停在句尾，
   候选 `orders` / `users` / `v_active_users` 贴在光标下面、第一行高亮、类型图形各异，左树与 `库▾` 同框（证的是「候选跟着库上下文走」，不是「有一列字」）。
@@ -455,6 +490,55 @@
 
 ### Fixed
 
+- **一条慢连接把整个应用顶住：会话注册表的一把全局锁 + 内省跑在别的连接的线程上**（2026-11-04，R61-b · H3-b，用户可见）：
+  planning 里这一格写的是「内省执行器按连接拆分（`DbExecutors` 模式照抄到内省路径）」。量下来**真正的串行点不在执行器**：
+  `SessionManager` 每个方法都是 `synchronized` 的，整个注册表**共用一颗 monitor**。
+  而 Oracle 首连实测要 **8–12s**（D-39），于是那 8–12s 里：① 其它连接的 `open()` 全部排队；
+  ② 更糟的是 `find/require/isOpen/openIds` 这些**纯读**也要抢同一颗锁 ——
+  FX 线程上任何一次「这条连接开着吗」的检查都会把整顶 UI 冻住。
+  改：`ConcurrentHashMap` + **每连接 id 一颗锁**。`open()` 先做无锁快路径（已开着就直接复用，这是绝大多数点击），
+  确实要连才进 `synchronized(lockFor(id))`；读路径完全不上锁；同一 id 的并发连接仍在自己那颗锁里串行 ——
+  两条线程同时开同一 id 只建**一个**会话（门禁实测 `opens == 1` 且拿到同一实例），不是把锁拆散了事。
+  ⭐ 顺出一处**真的线程亲和错误**：`AppShell.reloadObjects(connectionId)` 把任务交给
+  `executors.forConnection(activeProfileId())` —— 传的是**当前**连接的线程，动的是**另一条**连接的会话。
+  两个症状同时存在：刷新 B 库的对象树要排在 A 库的慢查询后面，而且 B 的 `DbSession` 在 A 的线程上被碰。
+  改为 `executorFor(profile.id())`；`loadServerInfo` 同样按连接取线程（签名改成收 connectionId）。
+  **门禁净增 2 条**（`SessionManagerTest` 5 → 7）：慢连接不阻塞其它连接与读操作 · 同 id 并发只建一个会话。
+  修复前那条是红在数字上的：「慢连接在途时，注册表的读操作不该排队（**实测等了 2010ms**）」—— 探针故意睡 2s，
+  老代码的读锁把这条断言顶穿；新代码下同一断言读到的是一次真正的亚毫秒查询。
+
+- **数据页按 ⌘. 之后，那条保存还是写进了库**（2026-11-04，R61-c · H3-c，用户可见 · 数据完整性）：
+  4.5-13 那轮给数据页接了 `Statement.cancel`，但只接了**加载**：`cancel()` 取走 `inFlight`，
+  而保存的 `Task` 提交后没留任何票据。后果分两种 ——
+  正在写的保存只能等它写完；排在慢加载**后面**的那条保存根本取不掉，用户按了 ⌘.，
+  执行器一空闲就把那批 UPDATE 照原样跑了。修复前的门禁红得很难看：`expected "User 002" but was "Written"`。
+  改三处：① 保存提交后把票据存进 `saveInFlight`，`cancel()` **和 `close()`** 都取走它
+  （关页签原先也只摘加载那条 —— 页签没了、写入照落库，同一个洞）；
+  ② `EditSqlBuilder.execute` 每条语句前查一次中断，让**正在写的批量**停在语句边界 ——
+  两种语义各管各的，本轮对着代码读过一遍，别再一律写成「已写的落库了」：
+  **自动提交**（默认，`ownTransaction` 为真）时整批本来就在**一个事务**里，抛 `InterruptedException` 后走既有的 `catch → rollback()`，
+  **库里一行不变** —— 这正是那条新门禁敢断言 `nameOf(2) == "User 002"` 的原因；
+  **用户自己开了事务**时我们不接管回滚，只停住剩余语句，已经跑进去的那几条留在**他的**事务里由他 commit / 回滚，界面不替他决定；
+  撤销通道本身没有变（反向 SQL 仅最近一次、仅自动提交），也不新增「一键还原」；
+  ③ 补 `setOnCancelled`：JavaFX 的 `Task` 把 `InterruptedException` 归到 CANCELLED，走 `onCancelled` 而不是 `onFailed`，
+  所以用户主动取消**不该**看到「保存失败」的错误框。
+  ⭐ 两条 JavaFX 语义本轮量清楚了（都会让修一半看起来像没修）：
+  排队中被 `cancel(true)` 摘掉的任务**从没被执行**，`onSucceeded/onFailed/onCancelled` **一次都不会跑** ——
+  所以转圈图标的复位必须写在 `cancel()` 里，不能只挂在回调上；
+  而中断走 `onCancelled` 那条，只有「已经在跑被打断」才会触发。
+  为了这条通道可测，把「提交这条保存」从确认弹窗那段抽成 `submitSave(plan, inverse)` ——
+  这不是给测试开的后门，弹窗与落库之间本来就是一条真实存在的缝；抽出来是为了让最关键的那一步能被门禁跑到，
+  同 `buildSavePreviewDialog` 的先例（测试跑的是产品里那条路径，只是绕过了人眼确认那一步）。
+  **门禁净增 2 条**（`EditSqlBuilderTest` 8 → 9 · `DataGridSaveGuardTest` 6 → 7）：
+  中断的线程一整批都不写 · 排队中的保存被取消后库里一行不变，且页面不留在忙碌态。
+  回归：`ui/adb-ui-shell` 五个受影响的类 73 条全绿（`DataGridPageTest` 22 / `DataGridSaveGuardTest` 7 /
+  `DataGridTransactionTest` 9 / `AppShellTest` 34 / `QueryPageCancelTest` 1），`adb-session` 7 · `adb-editing` 9。
+  ⚠️ **这三处新写的中文异常文案把 i18n 棘轮顶穿了**（全量回量第一次跑红在两条门禁上：模型层 146>145 —— `EditSqlBuilder` 那 1 条；ui 层 10>8 —— `AppShell` 那 2 条）。
+  改之前先对着代码确认「这三句用户到底看不看得到」：`InterruptedException` 被 JavaFX 归到 `onCancelled`，而 `DataGridPage` 的 `onCancelled`（:821）只复位状态、
+  不出错误框（错误框在 `onFailed` :805，那才是走 `ErrorText.message` 的通道）；`AppShell` 那两句从构造器抛出，`App.start` 没有 try/catch（:54），只经 `CrashLog` 落进崩溃日志。
+  **两条都没有按语言的渲染口**，所以退回 ASCII 把尺收回到 145/8，而不是把上限调大 —— 调大等于承认这笔债可以长期存在。
+  账见 docs/STATUS.md §编辑与选择与本轮那条 fix(i18n) 提交。
+
 - **SQL 补全弹层开在屏幕左上角，不在光标下面**（2026-11-04，R57 画面债 · **D-47**，用户可见）：
   从 R57-a 交付起，`⌘空格` 弹出来的那张候选列表**位置就是错的** —— 它落在靠近屏幕左上角的地方，而不是编辑器光标下面。
   根因是一处坐标系口径：`Popover` 继承 ControlsFX `PopOver`，而 `PopOver` 继承 `javafx.scene.control.PopupControl`；
@@ -644,7 +728,16 @@
 
 ### Known issues（已记录，待裁定）
 
-- 冷启动实测 3.5–3.9 s，未达 <2 s 目标（当前地板约 2.35 s）。
+- 冷启动本机实测 **5.0–5.6 s**（2026-11-04 · macOS 15.7.9 x86_64 + JDK 25 · `scripts/startup-bench.sh` 三次取最坏），
+  未达 <2 s 规格目标、也未达本轮 <3 s 阶段目标。旧口径那句「3.5–3.9 s / 地板约 2.35 s」量于另一台机器
+  （Windows 10 + JDK 27）且没记读的是 `StartupTrace` 两个数里的哪一个，不可比，已作废。
+  本轮把首次 SQLite 驱动加载（762ms）挪出首屏之前，平均省 344ms；再往下要动「构造器返回时演示库已连上」= **待拍板 Q7**。
+- **Oracle 的「读不到定义」有两种原因，界面上长得一样**（R61 收官回量抓到 = **D-49，未修**）：
+  `OracleDialect.getDdl` 对任何 `SQLException` 都返回 null —— 「对象不存在 / 权限不够」退化成等价 DDL 是对界面负责，
+  但**网络层异常**也被吞成同一个 null。后果有两层：① 用户在 Oracle 上打不开结构页/设计视图时，看到的可能是「没有定义」
+  而不是「连不上」；② 真库契约因此把对端抽风报成产品缺陷（同一份代码：单跑 46 条全绿、全量红 1–2 条）。
+  方向定在「让调用方分得开这两种 null」，与 D-43 收判定那条是同一家族。**R61 收官那一跑没有复现（46 / 0 / 0），但这不算修好** ——
+  为什么只在全量里红，原因仍未量。分段明细与观测账在 docs/STATUS.md §3「测试环境」。
 - jlink 打包 ⛔（自动模块限制）、自动更新 🚫（无发布渠道）、签名/公证 ⛔（缺证书）。
 - ~~两条长期红已归因并修好~~（2026-10-30）：`StartupTraceTest` 断言的是测试运行器的进程年龄，
   `DialogButtonOrderTest` 把宿主平台的按钮预设当成 Windows 预设 —— 见上面两段改判与修复。
