@@ -459,6 +459,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private long lastElapsedMs = -1;
     private long requestSequence;
     private Future<?> inFlight;
+    /**
+     * ⭐ R61-c：保存那条任务的票据。原先它只是 {@code dbExecutor.execute(task)} 就没人管了，
+     * 于是 {@link #cancel()} 拿不到它 —— 队列里那条（排在慢加载后面的）取消不掉，
+     * 用户按了 ⌘. 之后**写库照样发生**。加载路径一直有票据（{@code inFlight}），保存没有。
+     */
+    private Future<?> saveInFlight;
     private boolean loading;
     private boolean saving;
     private boolean undoingSave;
@@ -748,12 +754,23 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             undoPlan = new EditSqlBuilder.Plan(List.of(), false);
         }
 
+        submitSave(plan, undoPlan);
+    }
+
+    /**
+     * ⭐ R61-c：把「提交这条保存」单独抽出来 —— 上面那段要经过确认弹窗，
+     * 而取消通道（{@link #cancel()} 取走 {@code saveInFlight}）必须在**不弹窗**的情况下
+     * 也能被门禁跑到。同 {@code buildSavePreviewDialog} 一个道理：抽出来不是为了复用，
+     * 是为了让最关键的那一步可测。
+     *
+     * <p>必须在 FX 线程调用（它动按钮与网格）。
+     */
+    void submitSave(EditSqlBuilder.Plan plan, EditSqlBuilder.Plan inverse) {
         saveButton.setDisable(true);
         // ⭐ V-4：保存期间图标换成转圈，且**按钮宽度不变**（否则整排工具栏会往左抽）。
         IconButtons.loading(saveButton, true);
         saving = true;
         grid.setDisable(true);
-        EditSqlBuilder.Plan inverse = undoPlan;
         Task<Integer> task = new Task<>() {
             @Override
             protected Integer call() throws Exception {
@@ -761,6 +778,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             }
         };
         task.setOnSucceeded(event -> {
+            saveInFlight = null;
             int affected = task.getValue();
             saving = false;
             IconButtons.loading(saveButton, false);
@@ -785,6 +803,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             load(true);
         });
         task.setOnFailed(event -> {
+            saveInFlight = null;
             saving = false;
             IconButtons.loading(saveButton, false);
             grid.setDisable(false);
@@ -795,7 +814,21 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             feedback.status(I18n.t("grid.msg.saveFailed", reason));
             showErrorDetails(I18n.t("grid.msg.saveFailedTitle"), task.getException(), plan.preview());
         });
-        dbExecutor.execute(task);
+        // ⭐ R61-c：保存也要有票据（见 saveInFlight 的注释）—— 排队中的保存能被取消，
+        //   正在写的保存能被中断。
+        //   被中断的 Task 走 onCancelled 而不是 onFailed（JavaFX Task 把 InterruptedException
+        //   归到 CANCELLED），所以用户主动按 ⌘. 不会看到「保存失败」的错误框。
+        task.setOnCancelled(event -> {
+            saveInFlight = null;
+            if (saving) {
+                // 只有不是从 cancel() 进来的（那里已经复位过）才补一次复位。
+                saving = false;
+                IconButtons.loading(saveButton, false);
+                grid.setDisable(false);
+                updateEditControls();
+            }
+        });
+        saveInFlight = start(task);
     }
 
     /**
@@ -6500,9 +6533,19 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             inFlight.cancel(true);
             inFlight = null;
         }
+        // ⭐ R61-c：保存也在这一条通道里。排在慢加载**后面**的那条保存，
+        //   以前既取不掉也停不了 —— 用户按了 ⌘.，写库还是会发生。
+        if (saveInFlight != null) {
+            saveInFlight.cancel(true);
+            saveInFlight = null;
+        }
         session.cancelCurrent();
         loading = false;
         saving = false;
+        // ⭐ R61-c：取消保存时图标必须复位 —— 转圈是 submitSave 换上去的，
+        //   而 onSucceeded/onFailed/onCancelled 里那三次复位在「排队中被摘掉」时**一次都不会跑**
+        //   （任务从没被执行，JavaFX 把它当成永远没开始）。
+        IconButtons.loading(saveButton, false);
         grid.setDisable(false);
         hideState();
         updateEditControls();
@@ -6520,6 +6563,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         if (inFlight != null) {
             inFlight.cancel(true);
             inFlight = null;
+        }
+        // ⭐ R61-c：关页签同样要摘掉在途的保存 —— 与上面 inFlight 对称。
+        //   否则页签已经没了，那条 UPDATE 还是会落库（用户以为关掉就中止了）。
+        if (saveInFlight != null) {
+            saveInFlight.cancel(true);
+            saveInFlight = null;
         }
         // ⭐ 关页签必须**摘掉还在防抖里的列宽落盘**：400ms 的 PauseTransition 由 FX 时钟驱动，
         //   页签已经没了它还会照点一次 persistLayout() —— 往已拆卸的场景里读列、

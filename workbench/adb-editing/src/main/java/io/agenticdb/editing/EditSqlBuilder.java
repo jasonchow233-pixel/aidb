@@ -289,6 +289,12 @@ public final class EditSqlBuilder {
         try {
             int affected = 0;
             for (Statement statement : plan.statements()) {
+                // ⭐ R61-c：语句之间看一眼中断标志。一次保存是一批语句，
+                //   用户按 ⌘. 要的是「一条都没写」，而不是「跑到第 3 条才发现被取消了」。
+                //   抛出后由下面的 catch 回滚这一批（自动提交模式下 ownTransaction 为真）。
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new InterruptedException("保存已取消，未继续写入");
+                }
                 // ⭐ 第三层门禁：保存路径的每条语句也声明自己的危险等级。
                 //    数据页生成的都是 UPDATE / DELETE / INSERT，级别是「写数据」，
                 //    驱动层复查后一致才放行。

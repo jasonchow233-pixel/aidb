@@ -308,7 +308,67 @@ class DataGridSaveGuardTest {
         }
     }
 
+    // ─────────────────── R61-c 排队中的保存必须能被取消 ───────────────────
+
+    /**
+     * ⭐ 这条门禁测的是「按 ⌘. 之后写库照样发生」那个洞。
+     *
+     * <p>构造方式：先用一条阻塞任务占住这条连接的**单线程**执行器（等价于「前面还有一条慢加载
+     * 在跑」），再把保存提交上去 —— 于是保存躺在队列里，SQL 还一行没写。此时取消、放行执行器，
+     * 数据库必须**原封不动**。修复前这里会读到 "Written"：票据没人拿，任务被照原样执行。
+     */
+    @Test
+    void aQueuedSaveIsCancelledBeforeItWrites() throws Exception {
+        java.util.concurrent.CountDownLatch blockerStarted =
+                new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch releaseBlocker =
+                new java.util.concurrent.CountDownLatch(1);
+        executor.submit(() -> {
+            blockerStarted.countDown();
+            try {
+                releaseBlocker.await(15, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertThat(blockerStarted.await(5, TimeUnit.SECONDS))
+                .as("阻塞任务要先占住执行器，否则保存不是「排队中」的状态")
+                .isTrue();
+
+        DataGridPage page = onFx(() -> new DataGridPage(
+                session, new SchemaService(), "users", "test", noOpFeedback(),
+                name -> { }, executor));
+
+        EditSqlBuilder.Plan plan = new EditSqlBuilder.Plan(List.of(
+                new EditSqlBuilder.Statement(
+                        "UPDATE \"users\" SET \"name\" = ? WHERE \"id\" = ?",
+                        List.of("Written", 2))));
+        onFxRun(() -> page.submitSave(plan, new EditSqlBuilder.Plan(List.of())));
+        assertThat(onFx(() -> page.isBusy())).as("保存已提交，页面应处于忙碌").isTrue();
+
+        onFxRun(page::cancel);
+        releaseBlocker.countDown();
+
+        // 放行后执行器会把队列里剩下的任务跑完；用一条哨兵任务确认已经排空。
+        java.util.concurrent.Future<?> drained = executor.submit(() -> { });
+        drained.get(15, TimeUnit.SECONDS);
+
+        assertThat(nameOf(2))
+                .as("排队中的保存被取消后，一行都不该写进库")
+                .isEqualTo("User 002");
+        assertThat(onFx(() -> page.isBusy()))
+                .as("取消后不得留在忙碌态（转圈不能一直转）")
+                .isFalse();
+        page.close();
+    }
+
     // ───────────────────────────── 工具 ─────────────────────────────
+
+    private String nameOf(int id) throws Exception {
+        return String.valueOf(session.query(
+                "SELECT name FROM users WHERE id = " + id, 1)
+                .rows().getFirst().get("name"));
+    }
 
     private static List<Map<String, Object>> tableItems(DataGridPage page) {
         return onFx(() -> {
