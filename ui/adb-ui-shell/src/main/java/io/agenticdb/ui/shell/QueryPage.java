@@ -1520,9 +1520,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
             pagers.add(loader);
             // ⭐ R58-c：保存成功后重取当前页 —— 屏幕上留下的必须是库里现在的值，
             // 不是界面缓冲里那份。
-            // ⚠️ 走不到这一支的那一条（FOR UPDATE / INTO 这类不分页的 SELECT）没有重取钩子：
-            //    保存之后格子会跳回查询时读到的旧值，状态那句「已保存」仍然是真的，
-            //    重跑一次查询就对上。SQLite 摆不出这种语句，所以先不写第二套重取。
+            // ⚠️ 走不到这一支的语句没有重取钩子，症状是「保存之后格子跳回查询时读到的旧值，
+            //    而状态那句『已保存』仍然是真的」。今天**走不到**：判定层比分页层严 ——
+            //    WITH / INTO / FOR UPDATE / 多条语句在 SqlQueryShape 就先判不可改，
+            //    而 QueryPaginator.isPaginable 拒的恰好是这几样（两边各自读过同一份语句文本）。
+            //    所以这是**潜在**边界、不是现役缺陷；哪天放宽判定（放行 CTE 之类），
+            //    这一支必须同时补上重取，不许留第二套重取规则。
             edit.reload = loader::load;
             VBox dataPane = new VBox(0, loader.node(), table);
             VBox.setVgrow(table, Priority.ALWAYS);
