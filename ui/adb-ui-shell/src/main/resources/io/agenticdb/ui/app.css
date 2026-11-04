@@ -3678,6 +3678,19 @@
     -fx-padding: 8px;
 }
 
+/* R58-b：结果回写的判定行。「为什么这一屏不能改」是**解释**，不是警告 ——
+   所以不抢红/橙：次要文字色 + 与语句预览同一块内衬底，读起来属于「关于这份结果」。 */
+.adb-query__edit-state {
+    -fx-text-fill: -adb-text-secondary;
+    -fx-font-size: 11px;
+}
+
+.adb-query__edit-state--blocked {
+    -fx-background-color: -adb-bg-inset;
+    -fx-background-radius: 6px;
+    -fx-padding: 6px 8px;
+}
+
 .adb-query__result-meta,
 .adb-query__status-meta {
     -fx-text-fill: -adb-text-secondary;

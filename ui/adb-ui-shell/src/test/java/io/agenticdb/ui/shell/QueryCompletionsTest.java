@@ -45,7 +45,7 @@ class QueryCompletionsTest {
             thread.setDaemon(true);
             return thread;
         });
-        page = new QueryPage(session, "test", "", executor, null, new DataGridPage.Feedback() {
+        page = new QueryPage(session, "test", "", executor, new io.agenticdb.introspect.SchemaService(), null, new DataGridPage.Feedback() {
             @Override
             public void status(String message) {
             }

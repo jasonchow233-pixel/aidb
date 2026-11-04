@@ -3,9 +3,12 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.RowHeights;
 import io.agenticdb.ui.Icons;
+import io.agenticdb.editing.ResultEditPolicy;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.ExecutionResult;
 import io.agenticdb.introspect.QueryPaginator;
+import io.agenticdb.introspect.SchemaService;
+import io.agenticdb.introspect.SchemaService.TableSchema;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.Danger;
 import io.agenticdb.model.PageSize;
@@ -14,6 +17,7 @@ import io.agenticdb.model.RowPage;
 import io.agenticdb.safety.DangerClassifier;
 import io.agenticdb.safety.ErrorLocator;
 import io.agenticdb.sql.SqlFormatter;
+import io.agenticdb.sql.SqlQueryShape;
 import io.agenticdb.sql.SqlSplitter;
 import io.agenticdb.sql.SqlSplitter.SqlStatement;
 import io.agenticdb.transfer.ExportFormat;
@@ -97,6 +101,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
     /** ⭐ G1：行 2 菜单的显示名 —— 有库层时换成当前库，不再 final 锁死连接名。 */
     private String connectionName;
     private final Executor dbExecutor;
+    /** ⭐ R58-b：结果回写的判定要读真表的列与主键 —— 与数据页共用同一个内省服务。 */
+    private final SchemaService schemaService;
     private final DataGridPage.Feedback feedback;
     private final QueryHistory history;
 
@@ -155,6 +161,10 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private final SettingsStore settings;
     private long requestSequence;
     private Future<?> inFlight;
+    /** ⭐ R58-b：每个结果页的回写判定（顺序与结果页签一致）。 */
+    private final List<ResultEditState> editStates = new ArrayList<>();
+    /** ⭐ R58-b：后台判定回来时页面可能已经关了 —— 关掉之后不再动已经离场的节点。 */
+    private boolean disposed;
     private boolean running;
     private boolean cancelled;
     private boolean dirty;
@@ -365,11 +375,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
     }
 
     public QueryPage(DbSession session, String connectionName, String initialSql,
-                     Executor dbExecutor, SettingsStore settings,
+                     Executor dbExecutor, SchemaService schemaService, SettingsStore settings,
                      DataGridPage.Feedback feedback) {
         this.session = session;
         this.connectionName = connectionName;
         this.dbExecutor = dbExecutor;
+        this.schemaService = schemaService;
         this.feedback = feedback;
         this.settings = settings;
         this.history = new QueryHistory(settings);
@@ -1448,6 +1459,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
             table.getColumns().add(column);
         }
 
+        // ⭐ R58-b：这一屏能不能按主键改回去，判定要跟着结果一起给 ——
+        // 网格以前一直是「闷着只读」，用户只能靠试；判不出来的一种就说一句原因。
+        ResultEditState edit = new ResultEditState();
+        editStates.add(edit);
+        judgeEditability(edit, sql, result.columns(), keys);
+
         Tab tab = new Tab(I18n.t("query.resultTab", index));
         tab.setClosable(false);
 
@@ -1458,7 +1475,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             pagers.add(loader);
             VBox dataPane = new VBox(0, loader.node(), table);
             VBox.setVgrow(table, Priority.ALWAYS);
-            tab.setContent(resultViews(dataPane, result.columns(), sql, null, null));
+            tab.setContent(resultViews(dataPane, result.columns(), sql, null, null, edit.note));
             loader.start();
             return tab;
         }
@@ -1491,8 +1508,97 @@ public final class QueryPage extends VBox implements AutoCloseable {
         //    Copy / Export 跟着这一段走，不再单独占一条工具条（结果区从三段收成两段）。
         VBox dataPane = new VBox(0, table);
         VBox.setVgrow(table, Priority.ALWAYS);
-        tab.setContent(resultViews(dataPane, result.columns(), sql, meta, warning, copy, export));
+        tab.setContent(resultViews(dataPane, result.columns(), sql, meta, warning, edit.note,
+                copy, export));
         return tab;
+    }
+
+    /**
+     * ⭐ R58-b：判定这一屏结果能不能按主键改回去，结论落成 Info 带的一行话。
+     *
+     * <p>分两段走：形状层（{@link SqlQueryShape}，纯函数、不碰数据库）当场就能拒的立刻出句子；
+     * 认成单表 SELECT 的才去后台读表结构 —— 内省是 JDBC 调用，不能在 FX 线程上跑。
+     *
+     * <p>⚠️ 判定<b>不改写 SQL、也不替用户把主键补进投影</b>：界面上显示的是哪条语句，
+     * 底下跑的就是哪条。读不到表 / 报错都归成「读不到这张表那一句」，堆栈只进日志。
+     */
+    private void judgeEditability(ResultEditState edit, String sql,
+                                  List<ColumnDef> columns, List<String> keys) {
+        SqlQueryShape.Shape shape = SqlQueryShape.parse(sql);
+        if (shape instanceof SqlQueryShape.Refused refused) {
+            applyEditDecision(edit, new ResultEditPolicy.Blocked(
+                    refused.reason().messageKey(), refused.detail()));
+            return;
+        }
+        String target = ((SqlQueryShape.Readable) shape).select().table();
+        List<String> labels = columns.stream().map(ColumnDef::name).toList();
+        Task<ResultEditPolicy.Decision> task = new Task<>() {
+            @Override
+            protected ResultEditPolicy.Decision call() {
+                try {
+                    TableSchema schema = schemaService.describe(session, target);
+                    return ResultEditPolicy.judge(shape, schema, labels, keys);
+                } catch (Exception error) {
+                    System.err.println("[query] cannot describe " + target + ": " + error);
+                    return new ResultEditPolicy.Blocked(
+                            ResultEditPolicy.Block.TABLE_UNREADABLE.messageKey(), target);
+                }
+            }
+        };
+        task.setOnSucceeded(event -> applyEditDecision(edit, task.getValue()));
+        submit(task);
+    }
+
+    /**
+     * 判定落地：不能改的一支说一句为什么；能改的一支本批只把结论存进网格，
+     * 「点一格就能改 + 保存」是 R58-c 的活 —— 在那之前界面上不宣布可以点。
+     */
+    private void applyEditDecision(ResultEditState edit, ResultEditPolicy.Decision decision) {
+        if (disposed) {
+            return;
+        }
+        edit.decision = decision;
+        Label note = edit.note;
+        if (decision instanceof ResultEditPolicy.Blocked blocked) {
+            note.setText(I18n.t(blocked.messageKey()));
+            note.getStyleClass().add("adb-query__edit-state--blocked");
+            note.setVisible(true);
+            note.setManaged(true);
+            return;
+        }
+        note.setText("");
+        note.setVisible(false);
+        note.setManaged(false);
+    }
+
+    /**
+     * ⭐ R58-b：一个结果页的回写状态 —— 判定结论与 Info 带上那一行话成对出现。
+     *
+     * <p>R58-c 的编辑缓冲与「保存改动」也挂在这个对象上，不再往 QueryPage 的字段上摊。
+     */
+    private static final class ResultEditState {
+        final Label note;
+        ResultEditPolicy.Decision decision;
+
+        ResultEditState() {
+            note = new Label();
+            note.setId("query-result-edit-state");
+            note.getStyleClass().add("adb-query__edit-state");
+            note.setWrapText(true);
+            // 判定还没回来之前不占位（同步执行器下判定可能先于建树完成，所以初始态在这里钉）。
+            note.setVisible(false);
+            note.setManaged(false);
+        }
+    }
+
+    /** 供门禁：第 index 个结果页的回写判定；{@code null} = 后台内省还没回来。 */
+    ResultEditPolicy.Decision editDecisionForTest(int index) {
+        return index < editStates.size() ? editStates.get(index).decision : null;
+    }
+
+    /** 供门禁：第 index 个结果页 Info 带上那行判定文案。 */
+    String editNoteForTest(int index) {
+        return index < editStates.size() ? editStates.get(index).note.getText() : null;
     }
 
     /**
@@ -1504,7 +1610,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
      * 的信息，不该常驻在数据上方。
      */
     private VBox resultViews(javafx.scene.Node dataPane, List<ColumnDef> columns, String sql,
-                             Label meta, Label warning, Button... actions) {
+                             Label meta, Label warning, Label editState, Button... actions) {
         javafx.scene.control.ToggleButton data = new javafx.scene.control.ToggleButton(
                 I18n.t("query.result.data"));
         data.setId("result-view-data");
@@ -1524,6 +1630,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
         infoPane.getChildren().add(typeStrip(columns));
         if (meta != null) {
             infoPane.getChildren().add(meta);
+        }
+        if (editState != null) {
+            infoPane.getChildren().add(editState);
         }
         Label statement = new Label(sql);
         statement.setId("query-result-sql");
@@ -2599,6 +2708,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
     @Override
     public void close() {
+        disposed = true;
         completions.close();
         if (running) {
             cancelled = true;

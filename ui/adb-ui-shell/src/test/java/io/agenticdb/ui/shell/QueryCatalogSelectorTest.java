@@ -48,7 +48,7 @@ class QueryCatalogSelectorTest {
             thread.setDaemon(true);
             return thread;
         });
-        page = new QueryPage(session, "demo-conn", "", executor, null,
+        page = new QueryPage(session, "demo-conn", "", executor, new io.agenticdb.introspect.SchemaService(), null,
                 new DataGridPage.Feedback() {
                     @Override
                     public void status(String message) {

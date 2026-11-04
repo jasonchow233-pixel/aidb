@@ -139,7 +139,8 @@ class DensityCoverageTest {
             List<Integer> expected = new ArrayList<>();
             robot.interact((Callable<Void>) () -> {
                 QueryPage page = new QueryPage(fixture.session, "demo", null,
-                        fixture.executor, new SettingsStore(), feedback());
+                        fixture.executor, new io.agenticdb.introspect.SchemaService(),
+                        new SettingsStore(), feedback());
                 for (String density : DENSITIES) {
                     page.setDensity(density);
                     heights.add(page.resultRowHeight());

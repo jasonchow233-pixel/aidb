@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.editing.ResultEditPolicy;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.JdbcSession;
 import io.agenticdb.model.Danger;
@@ -44,13 +45,15 @@ class QueryPageTest {
         primaryStage = stage;
         session = JdbcSession.open(ConnectionSpec.sqliteMemory());
         session.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)");
+        // ⭐ R58-b：判定要区分「表没主键」和「主键没在结果里」，夹具里备一张无主键的表。
+        session.execute("CREATE TABLE logs (level TEXT, msg TEXT)");
         session.execute("INSERT INTO users VALUES (1, 'Ada'), (2, 'Bob')");
         executor = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, "test-query");
             thread.setDaemon(true);
             return thread;
         });
-        page = new QueryPage(session, "test", "", executor, null,
+        page = new QueryPage(session, "test", "", executor, new io.agenticdb.introspect.SchemaService(), null,
                 new DataGridPage.Feedback() {
                     @Override
                     public void status(String message) {
@@ -909,6 +912,89 @@ class QueryPageTest {
             }
         }
         throw new AssertionError("app.css 里没有这条规则：" + selector);
+    }
+
+    // ─────────────────  R58-b · 结果回写的判定  ─────────────────
+
+    @Test
+    void singleTableSelectIsJudgedEditableButSaysNothing() {
+        interact(() -> {
+            page.setSql("SELECT * FROM users");
+            page.runAll();
+        });
+        waitForTabs(1);
+        waitFor(() -> page.editDecisionForTest(0) != null);
+
+        assertThat(page.editDecisionForTest(0)).isInstanceOf(ResultEditPolicy.Editable.class);
+        ResultEditPolicy.Editable editable = (ResultEditPolicy.Editable) page.editDecisionForTest(0);
+        assertThat(editable.cells())
+                .extracting(ResultEditPolicy.Cell::column)
+                .as("写回目标取自**内省**的列名，标签取自驱动返回的列名 —— 两边都得对上")
+                .containsExactly("id", "name");
+        // ⭐ 本批还没接编辑：判成「可改」也不许在界面上宣布（点了没反应比不宣布更糟）。
+        assertThat(page.editNoteForTest(0)).as("可改的一支不出一行话").isEmpty();
+    }
+
+    @Test
+    void joinExplainsWhyTheResultCannotBeWrittenBack() {
+        interact(() -> {
+            page.setSql("SELECT u.id, u.name FROM users u JOIN users v ON u.id = v.id");
+            page.runAll();
+        });
+        waitForTabs(1);
+
+        // 形状层是纯函数，这一条不等后台 —— 结论在建树那一刻就已经落好。
+        assertEditNoteSays("query.edit.blocked.joined");
+    }
+
+    @Test
+    void aggregateResultNamesTheColumnThatHasNoTarget() {
+        interact(() -> {
+            page.setSql("SELECT COUNT(*) FROM users");
+            page.runAll();
+        });
+        waitForTabs(1);
+
+        assertEditNoteSays("query.edit.blocked.expressionColumn");
+    }
+
+    @Test
+    void missingPrimaryKeyColumnSaysSoInsteadOfStayingQuiet() {
+        interact(() -> {
+            page.setSql("SELECT name FROM users");
+            page.runAll();
+        });
+        waitForTabs(1);
+        waitFor(() -> page.editDecisionForTest(0) != null);
+
+        // 主键没被投影出来 —— 保持只读并说清原因，不替用户改写 SQL。
+        assertEditNoteSays("query.edit.blocked.primaryKeyNotSelected");
+    }
+
+    @Test
+    void keylessTableSaysSo() {
+        interact(() -> {
+            page.setSql("SELECT * FROM logs");
+            page.runAll();
+        });
+        waitForTabs(1);
+        waitFor(() -> page.editDecisionForTest(0) != null);
+
+        // 表本身没有主键：一次改动可能命中不止一行。
+        assertEditNoteSays("query.edit.blocked.noPrimaryKey");
+    }
+
+    /**
+     * 判定那行话必须真是资源里的那句。
+     *
+     * <p>为什么不只写 {@code isEqualTo(I18n.t(key))}：键缺失时 {@code t()} 返回
+     * {@code ⚠键名}，两侧同时变成同一个字符串，断言就永远成立 —— 这条门禁
+     * 会在「谁都没写过这句文案」的世界里绿着。
+     */
+    private void assertEditNoteSays(String key) {
+        String shown = io.agenticdb.ui.I18n.t(key);
+        assertThat(shown).as("资源里没有这个键：" + key).doesNotStartWith("\u26a0");
+        assertThat(page.editNoteForTest(0)).isEqualTo(shown);
     }
 
     private static void interact(Runnable action) {

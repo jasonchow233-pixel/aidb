@@ -93,7 +93,7 @@ class QuerySplitMemoryTest {
     }
 
     private QueryPage newPage(SettingsStore store) {
-        return new QueryPage(session, "test", "", executor, store,
+        return new QueryPage(session, "test", "", executor, new io.agenticdb.introspect.SchemaService(), store,
                 new DataGridPage.Feedback() {
                     @Override
                     public void status(String message) {

@@ -3472,7 +3472,7 @@ public final class AppShell extends StackPane {
         String initialName = initialQueryName.remove(tab.id());
         File file = initialQueryFile.remove(tab.id());
         QueryPage page = new QueryPage(pageSession, profile.name(), initial,
-                executors.forConnection(tab.connectionId()), settings,
+                executors.forConnection(tab.connectionId()), schemaService, settings,
                 pageFeedback());
         if (initialName != null) {
             page.setQueryName(initialName);

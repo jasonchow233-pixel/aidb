@@ -36,7 +36,7 @@ class QueryPageCancelTest {
 
     @Start
     void start(Stage stage) {
-        page = new QueryPage(session, "blocking", "", executor, null,
+        page = new QueryPage(session, "blocking", "", executor, new io.agenticdb.introspect.SchemaService(), null,
                 new DataGridPage.Feedback() {
                     @Override
                     public void status(String message) {
