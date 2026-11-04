@@ -465,6 +465,28 @@
     -fx-stroke: -adb-text-secondary;
 }
 
+/* ── 「本版本未提供」角标（R62-a H5-i · 拍板 Q8 第②案）─────────────────
+ *    一枚**空心细环**钉在图形右上角：功能区落说明页的那六格（对象清单页的
+ *    「用 AI 新建表」只补提示语，横排按钮挂环会把整排挪位，见 PendingMark#saySo）。
+ *    这里只管**颜色与粗细**；环的 8px 几何在 Java 侧钉 —— 没挂样式表的测试场景
+ *    也要量得到真实位置，否则门禁读到的是一个 0×0 的假角标。
+ *
+ *    ⚠️ 三条不能踩的线：
+ *    ① 不用 -fx-opacity 压暗（FocusRingAuditTest 只盯 CSS，Java 侧同样不许动）——
+ *       「未提供」靠环 + 提示语表达，把整格调暗会把图标和文字一起稀释；
+ *    ② 不用 -fx-stroke：这是 Region，不是 Shape，能画的只有 border；
+ *    ③ 颜色只有 text-tertiary 一档（比正文淡、但环在 chrome 底上仍过 3:1）——
+ *       角标是「现在没有」的标记，不该比命令本身更抢眼。
+ *    门禁：AppBarTest.pendingTilesCarryTheCornerBadgeAndOthersDoNot（场景图，量计算色与位置）
+ *          + RibbonCapabilityAuditTest（角标 ⇔ 落说明页，两件事必须一起变）。 */
+.adb-pending__mark {
+    -fx-background-color: transparent;
+    -fx-border-color: -adb-text-tertiary;
+    -fx-border-width: 1px;
+    -fx-border-radius: 999px;
+    -fx-background-radius: 999px;
+}
+
 .adb-ribbon__separator {
     -fx-background-color: -adb-border;
     -fx-min-width: 1;

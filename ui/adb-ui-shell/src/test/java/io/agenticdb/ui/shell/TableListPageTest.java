@@ -324,6 +324,45 @@ class TableListPageTest {
     }
 
     /**
+     * ⭐ R62-a H5-i（拍板 Q8 第②案）：七键里唯一「本版本未提供」的那颗，实话要说在点之前。
+     *
+     * <p>「用 AI 新建表」按诚实条款落说明页（{@code theAiEntryHandsOffToTheHost} 只证了
+     * 「点下去有反应」）。这一档补的是<b>提示语</b>：Tooltip 与 accessibleText 里都得带
+     * 「未提供」那句话，而且用的必须是功能区<b>同一个资源键</b> —— 两处各写一遍字面量，
+     * 改天就是一处说了、一处没说。
+     *
+     * <p>⚠️ 这里<b>不</b>钉角标：横排按钮的图形槽包一层容器会把这颗按钮撑宽，同排另外
+     * 六颗跟着左右挪（理由与量出来的数写在 {@link PendingMark#saySo}）。
+     * 环只给功能区磁贴，那一半由 {@code AppBarTest} 连颜色一起钉。
+     */
+    @Test
+    void thePendingAiEntrySaysSoBeforeTheClick(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        Button ai = button("#table-list-new-ai");
+        String pending = I18n.t("ribbon.pending");
+        assertThat(pending).as("资源键不能是空的 —— 空串时 contains 恒真，这条门禁就空转了")
+                .isNotBlank();
+        assertThat(ai.getAccessibleText())
+                .as("读屏必须在按下之前就听到这句实话")
+                .contains(pending);
+        assertThat(ai.getTooltip().getText())
+                .as("鼠标悬停必须在按下之前就看到这句实话")
+                .contains(pending);
+        assertThat(ai.lookup(".adb-pending__mark"))
+                .as("横排按钮这一档不挂角标（包一层会撑宽这颗按钮，整排跟着挪）")
+                .isNull();
+
+        // 反向：同排另外六颗有真落点，一句「未提供」都不许说。
+        for (String id : List.of("#table-list-open", "#table-list-design", "#table-list-new",
+                "#table-list-drop", "#table-list-import", "#table-list-export")) {
+            Button other = button(id);
+            String words = other.getAccessibleText() + "␀"
+                    + (other.getTooltip() == null ? "" : other.getTooltip().getText());
+            assertThat(words).as("%s 有真页面，不许挂着「未提供」的话", id).doesNotContain(pending);
+        }
+    }
+
+    /**
      * 窄窗口下动作名不许被压成「打开…」：挤不下时该缩的是搜索框。
      *
      * <p>2026-10-25 截图对比发现：1280 宽窗口里清单工具条把五个文字按钮压到省略号，

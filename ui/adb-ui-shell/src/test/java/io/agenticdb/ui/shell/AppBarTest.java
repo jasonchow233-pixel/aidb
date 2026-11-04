@@ -301,6 +301,157 @@ class AppBarTest {
     }
 
     /**
+     * ⭐ H5-i（R62-a · 拍板 Q8 第②案）：落「本版本未提供」说明页的那几格挂统一角标。
+     *
+     * <p>两个方向都要钉：<b>该挂的一格不落</b>（实话要在点之前说），
+     * <b>不该挂的一格不多</b> —— 角标一旦会传染，它表达的就不再是「这格没有」，
+     * 而是「功能区一半是摆设」，整条带子的可信度跟着掉。
+     *
+     * <p>判据不是我自己拍的：哪几格该挂由 {@code AppShell} 的处理器决定
+     * （走 {@code openRibbonTool(SideBar.TOOL_…)} 的就是落说明页的那几格）。
+     * 那一半由 {@code RibbonCapabilityAuditTest} 钉，这里钉**场景图里真的画出来了**。
+     *
+     * <p>⚠️ 颜色读**计算后的 border**，不读样式类名（S-7 的教训：类挂上了、CSS 写错成
+     * 别的色，用户看到的仍是错的那一档，门禁却全绿）。位置读环与那一格在<b>同一条
+     * 磁贴排里</b>的相对边角 —— 角标必须贴着那格的<b>右上角</b>，飘到中间就成了另一枚
+     * 谁都不属于的点（H5-l 刚为这句话在侧栏付过学费）。
+     *
+     * <p>环是排的孩子、不是按钮的孩子（{@code managed=false}，不参与排版），所以
+     * {@code button.lookup(...)} 找不到它 —— 这里按**几何**认领：谁的右上角被一枚环贴着，
+     * 那一格就算挂了标。认领规则写错的话会一格都认不出，下面的 size 断言会先红。
+     */
+    @Test
+    void pendingTilesCarryTheCornerBadgeAndOthersDoNot(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        List<String> shouldBadge = List.of("ribbon-ribbon-function", "ribbon-ribbon-user",
+                "ribbon-ribbon-backup", "ribbon-ribbon-automation", "ribbon-ribbon-model",
+                "ribbon-ribbon-bi");
+        // 每格一行：id、有没有环、环的计算描边色与粗细、环宽、环是不是托管的、吃不吃点击。
+        List<List<Object>> rows = WaitForAsyncUtils.<List<List<Object>>>asyncFx(() -> {
+            bar.getScene().getRoot().applyCss();
+            bar.getScene().getRoot().layout();
+            List<javafx.scene.layout.Region> marks = bar.lookupAll(".adb-pending__mark").stream()
+                    .filter(javafx.scene.layout.Region.class::isInstance)
+                    .map(javafx.scene.layout.Region.class::cast).toList();
+            List<List<Object>> out = new ArrayList<>();
+            for (Button button : ribbonTiles()) {
+                javafx.scene.layout.Region mine = null;
+                for (javafx.scene.layout.Region mark : marks) {
+                    if (mark.getParent() != button.getParent()) {
+                        continue;
+                    }
+                    double insetRight = button.getBoundsInParent().getMaxX()
+                            - mark.getBoundsInParent().getMaxX();
+                    double insetTop = mark.getBoundsInParent().getMinY()
+                            - button.getBoundsInParent().getMinY();
+                    if (insetRight >= 0 && insetRight <= 6 && insetTop >= 0 && insetTop <= 6) {
+                        mine = mark;
+                    }
+                }
+                if (mine == null) {
+                    out.add(List.of(button.getId(), false));
+                    continue;
+                }
+                java.util.List<javafx.scene.layout.BorderStroke> strokes =
+                        mine.getBorder().getStrokes();
+                Object ring = "无边框";
+                Object thickness = -1.0;
+                for (javafx.scene.layout.BorderStroke stroke : strokes) {
+                    if (stroke != null && stroke.getTopStroke() != null) {
+                        ring = stroke.getTopStroke();
+                        thickness = stroke.getWidths().getTop();
+                        break;
+                    }
+                }
+                out.add(List.of(button.getId(), true, ring, thickness,
+                        mine.getBoundsInLocal().getWidth(), mine.isManaged(),
+                        mine.isMouseTransparent()));
+            }
+            return out;
+        }).get();
+        assertThat(rows).as("12 格磁贴都要被读到（少一格这条门禁就是空的）").hasSize(12);
+        List<String> badged = rows.stream().filter(r -> (Boolean) r.get(1))
+                .map(r -> (String) r.get(0)).toList();
+        assertThat(badged)
+                .as("角标 = 「本版本未提供」，只许挂在落说明页的那几格上")
+                .containsExactlyInAnyOrderElementsOf(shouldBadge);
+        for (List<Object> row : rows) {
+            if (!(Boolean) row.get(1)) {
+                continue;
+            }
+            assertThat(row.get(2))
+                    .as("%s：角标描边必须是 text-tertiary 那一档（比正文淡，但在 chrome 底上过 3:1）",
+                            row.get(0))
+                    .isEqualTo(javafx.scene.paint.Color.web(io.agenticdb.ui.Tokens
+                            .TEXT_TERTIARY_LIGHT));
+            assertThat(row.get(3))
+                    .as("%s：环只有 1px 粗才是「淡角标」，粗了就和图标抢视线", row.get(0))
+                    .isEqualTo(1.0);
+            assertThat((Double) row.get(4))
+                    .as("%s：环与状态点同一档尺寸（8px）—— 大小不一的角标读成装饰", row.get(0))
+                    .isEqualTo((double) io.agenticdb.ui.Icons.SIZE_DOT);
+            assertThat(row.get(5))
+                    .as("%s：环不许参与排版（managed=true 就会把这格垫下去）", row.get(0))
+                    .isEqualTo(false);
+            assertThat(row.get(6))
+                    .as("%s：环压在按钮角上，必须让点击透到那一格", row.get(0))
+                    .isEqualTo(true);
+        }
+    }
+
+    /**
+     * ⭐ H5-i 的另一半：<b>挂角标不许动这一排的几何</b>。
+     *
+     * <p>角标是往图形外面加一个节点，加错地方就会出现「六格的标签比另外六格低一截」
+     * —— 同一排磁贴读成两排，而这只有肉眼和这条门禁看得见。钉两个量：
+     * 十二个标签在同一基线上、十二格等高。
+     *
+     * <p>⚠️ 容差 1.5px 是<b>对照量出来</b>的，不是拍的：这一排本来就有 1px 抖动 —— 挂标
+     * 与不挂标都读到 view / function / others 三格的标签 Y=45、其余 46。做过控制实验：
+     * 把 {@code PENDING_TILES} 清空（一格标都不挂）重跑，偏的仍是这三格、仍是同样的 1px，
+     * 所以<b>角标造成的位移是 0px</b>，那 1px 是图标资产本身的高度差（记在 H6-g 的账上）。
+     * 对照之下，把环裹进图形槽的两种写法实测造成 +6 / −7px 的落差 —— 1.5px 正好卡在
+     * 「既有抖动」与「真回归」之间。
+     */
+    @Test
+    void thePendingBadgeDoesNotMoveTheTileGrid(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        List<List<Object>> measured = WaitForAsyncUtils.<List<List<Object>>>asyncFx(() -> {
+            bar.getScene().getRoot().applyCss();
+            bar.getScene().getRoot().layout();
+            List<List<Object>> out = new ArrayList<>();
+            for (Button button : ribbonTiles()) {
+                javafx.scene.Node label = button.lookup(".adb-ribbon__label");
+                out.add(List.of(button.getId(),
+                        label == null ? -1.0 : label.localToScene(0, 0).getY(),
+                        button.getHeight()));
+            }
+            return out;
+        }).get();
+        assertThat(measured).hasSize(12);
+        List<Object> first = measured.get(0);
+        assertThat((Double) first.get(1)).as("第一格没读到标签 —— 这条门禁空转").isNotEqualTo(-1.0);
+        List<String> offBaseline = new ArrayList<>();
+        for (List<Object> row : measured) {
+            if (Math.abs((Double) row.get(1) - (Double) first.get(1)) > 1.5
+                    || Math.abs((Double) row.get(2) - (Double) first.get(2)) > 1.5) {
+                offBaseline.add(row.get(0) + "：标签 Y=" + row.get(1) + "、格高 " + row.get(2));
+            }
+        }
+        assertThat(offBaseline)
+                .as("十二格磁贴的标签基线与格高必须一致（第一格基准：Y=%s、高=%s）——"
+                        + "角标只许贴在图形角上，不参与排版", first.get(1), first.get(2))
+                .isEmpty();
+    }
+
+    /** 12 格磁贴，按 Ribbon 里从左到右的遍历顺序（只能在 FX 线程上调）。 */
+    private List<Button> ribbonTiles() {
+        return bar.lookupAll(".adb-ribbon__button").stream()
+                .filter(Button.class::isInstance).map(Button.class::cast)
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+    }
+
+    /**
      * ⭐ D-12（R44 小账）：搜索框的快捷键胶囊不许截成「Ct…」。
      *
      * <p>「宽度按中文量」家族第四次（自增列头 / 详情页脚 / 列筛选浮窗之后）。

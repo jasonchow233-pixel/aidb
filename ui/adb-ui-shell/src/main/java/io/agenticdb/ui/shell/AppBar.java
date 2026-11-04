@@ -31,9 +31,11 @@ import java.util.function.Consumer;
  * 全局工具件（连接胶囊 / 搜索 / 主题 / ⋯）从页签行挪进 **Ribbon 右端** ——
  * 页签行只放页签（N7）。顶区 = 菜单 24 + Ribbon 91 + 页签行 25 = 140px。
  *
- * <p>12 格里的 View / User / Backup / Automation / Model / BI 背后是还没建的能力面
- * （N28，R42）—— 按诚实条款它们落到**如实说明页**（工具页签 + 一句「本版本未提供」），
+ * <p>12 格里有六格（Function · User · Backup · Automation · Model · BI）背后是还没建的
+ * 能力面（N28，R42）—— 按诚实条款它们落到**如实说明页**（工具页签 + 一句「本版本未提供」），
  * 不留死按钮；门禁 {@code RibbonCapabilityAuditTest} 逐格钉「必须落到真实目标」。
+ * ⭐ R62-a H5-i（Q8 ②）：这六格同时留在原位不动，只在右上角挂一枚统一角标，
+ * 把「这版没有」提前说给用户，而不是等点下去才读到 —— 名单见 {@link #PENDING_TILES}。
  *
  * <p>所有按钮的行为仍来自 {@link ActionRegistry}，没有装饰性假按钮。
  */
@@ -41,6 +43,20 @@ public final class AppBar extends VBox {
 
     /** Ribbon 行低于这个宽度时工具条切紧凑形态（搜索降级成图标）。 */
     private static final double COMPACT_CHROME_WIDTH = 780;
+
+    /**
+     * ⭐ R62-a H5-i（拍板 Q8 第②案）：落「如实说明页」的那几格，挂统一角标。
+     *
+     * <p>判据只有一条，而且不是我自己定的：<b>这格的动作处理器调的是
+     * {@code openRibbonTool(SideBar.TOOL_…)}</b> —— 也就是它开出的页签
+     * 由 {@code WorkspaceView} 给一句「本版本未提供」。今天命中六格
+     * （Function·User·Backup·Automation·Model·BI），将来哪格建好了能力面，
+     * 它的处理器就不再走那条通道，门禁会逼我把角标同一批摘掉
+     * （见 {@code RibbonCapabilityAuditTest#thePendingBadgesMatchTheHonestLandingPoints}）。
+     */
+    private static final java.util.Set<String> PENDING_TILES = java.util.Set.of(
+            "ribbon.function", "ribbon.user", "ribbon.backup",
+            "ribbon.automation", "ribbon.model", "ribbon.bi");
 
     private final MenuButton connectionMenu = new MenuButton();
     private final Label connectionName = new Label();
@@ -57,6 +73,11 @@ public final class AppBar extends VBox {
     private final HBox utility;
     /** 磁贴排（Ribbon 里可横向滚动的那一段，窄窗口时靠滚动而不是截标签）。 */
     private final HBox tiles;
+    /**
+     * ⭐ H5-i（Q8 ②）：落「如实说明页」的那几格，构造期间攒起来，建完磁贴排统一挂角标。
+     * 环是<b>排</b>的孩子、{@code managed=false} —— 不进任何一格宽高，位置靠绑定跟着按钮走。
+     */
+    private final java.util.List<Button> pendingTiles = new java.util.ArrayList<>();
     /** 动作注册表 —— 菜单项与大图标都走同一条命令通道。 */
     private final ActionRegistry actions;
 
@@ -111,6 +132,9 @@ public final class AppBar extends VBox {
         tiles.setId("adb-ribbon");
         tiles.getStyleClass().add("adb-ribbon");
         tiles.setAlignment(Pos.CENTER_LEFT);
+        // ⭐ H5-i：角标挂在排上、不挂按钮里 —— 排在布局时会把每颗按钮的 layoutX/Y
+        //    与宽高算好，环绑在那上面贴右上角，自己 managed=false 不吃排版（详见 PendingMark）。
+        PendingMark.attach(tiles, pendingTiles);
 
         // ⭐ 12 格按英文标签排开就超过 1050px，再加右端工具件必然超过 1280 宽窗口。
         //    Navicat 磁贴定宽 70 吃的是中文；我们的英文标签截不得（标签不许省略号门禁）。
@@ -325,6 +349,8 @@ public final class AppBar extends VBox {
      * Navicat 式磁贴：26px 彩色图标在上、11px 标签在下（实测磁贴 ≈70×90）。
      *
      * <p>按钮的启用态绑定到动作本身 —— 不可用时是灰的，不是「点了没反应」。
+     * ⚠️ 但「能力面这版没建」<b>不走</b>这条通道（Q8 第②案）：置灰说的是「条件不满足」，
+     * 那种格子留在原位挂一枚 {@link PendingMark} 角标 + 提示语里说清，见 {@link #PENDING_TILES}。
      * {@code toneClass} 传**完整类名字面量**（不用拼接）：样式类覆盖门禁按字面量扫描，
      * 拼接出来的前缀会被当成「Java 用了、CSS 没定义」。
      *
@@ -333,6 +359,7 @@ public final class AppBar extends VBox {
      */
     private Button ribbonButton(String actionId, Icons.Icon icon, String label, String toneClass) {
         Action action = actions.require(actionId);
+        boolean pending = PENDING_TILES.contains(actionId);
         // R35 N4-a：功能区是「一眼认命令」的地方，Navicat 实测整条带子是全 UI 最彩的，
         // 所以走彩色档。没有彩色资产时 colored() 自己回落单色，不必在这里判断。
         // ⚠️ toneClass 只能当**宿主类**：彩色返回的是 Group（无可绘属性），
@@ -344,6 +371,9 @@ public final class AppBar extends VBox {
         }
         Label text = new Label(label);
         text.getStyleClass().add("adb-ribbon__label");
+        // ⚠️ 图形槽保持原样：角标一旦裹进这里，整排的标签基线就会挪 —— 实测包一层
+        //    钉成图标尺寸的容器会把这六格垫下去 6px，压成 0 高又抬上去 7px，
+        //    没有哪种尺寸是中性的。所以角标挂在外面的磁贴排上（见 #tiles 之后）。
         VBox content = new VBox(3, glyph, text);
         content.setAlignment(Pos.CENTER);
 
@@ -351,10 +381,15 @@ public final class AppBar extends VBox {
         button.setId("ribbon-" + actionId.replaceAll("[^a-zA-Z0-9_-]", "-"));
         button.getStyleClass().add("adb-ribbon__button");
         button.setGraphic(content);
-        button.setAccessibleText(label);
-        button.setTooltip(new Tooltip(label));
+        // ⭐ H5-i：没建的能力不许只藏在落点里 —— 提示语与读屏文案提前说同一句实话。
+        String hint = pending ? PendingMark.hint(label) : label;
+        button.setAccessibleText(hint);
+        button.setTooltip(new Tooltip(hint));
         button.disableProperty().bind(action.enabledProperty().not());
         button.setOnAction(event -> action.run());
+        if (pending) {
+            pendingTiles.add(button);
+        }
         return button;
     }
 

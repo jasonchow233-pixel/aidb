@@ -240,6 +240,10 @@ final class TableListPage extends VBox {
         Button design = labeledGhost(actions.design(), Icons.Icon.STRUCTURE, "table-list-design");
         Button create = labeledGhost(actions.create(), Icons.Icon.ADD, "table-list-new");
         Button createAi = labeledGhost(actions.createAi(), Icons.Icon.AI, "table-list-new-ai");
+        // ⭐ R62-a H5-i（Q8②）：这一格落的是「本版本未提供」的说明页（N15 诚实条款），
+        //    实话要说在点之前 —— 横排按钮这一档只补提示语，不挂角标，理由见
+        //    {@link PendingMark#saySo}（包一层会把这颗按钮撑宽，整排跟着挪）。
+        PendingMark.saySo(createAi);
         Button drop = labeledGhost(actions.drop(), Icons.Icon.DELETE, "table-list-drop");
         Button importWizard = labeledGhost(actions.importWizard(), Icons.Icon.IMPORT,
                 "table-list-import");

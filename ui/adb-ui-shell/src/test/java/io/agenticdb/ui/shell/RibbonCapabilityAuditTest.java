@@ -135,7 +135,76 @@ class RibbonCapabilityAuditTest {
                 .isTrue();
     }
 
+    /**
+     * ⭐ R62-a H5-i（拍板 Q8 第②案）：「未提供」角标 ⇔ 「落的是如实说明页」，两件事必须一起变。
+     *
+     * <p>角标说的是一句可核对的陈述：「这格现在没有真页面」。所以判据不在界面上，
+     * 而在装配里 —— <b>处理器走 {@code openRibbonTool(SideBar.TOOL_…)} 的那些格子</b>
+     * （{@code WorkspaceView} 按它给「本版本未提供」的说明页）。两边各写一遍、
+     * 谁也不会提醒谁：能力面建好了却忘了摘角标 = 界面在说假话；
+     * 角标加了却没走那条通道 = 一格的实话被另一格的假话顶掉。
+     *
+     * <p>⚠️ 读处理器时不能按「注册点往后 400 字符」截：那一段会溢进**下一条**注册
+     * （{@code ribbon.others} 紧跟着 {@code ribbon.user}，第一版就是这么误判的）——
+     * 截到下一个 {@code actions.register(} 为止。
+     */
+    @Test
+    void thePendingBadgesMatchTheHonestLandingPoints() throws IOException {
+        String appBar = read(shellSource("AppBar.java"));
+        Matcher declared = Pattern.compile("PENDING_TILES\\s*=\\s*[^;]+;", Pattern.DOTALL)
+                .matcher(appBar);
+        assertThat(declared.find())
+                .as("AppBar 里找不到 PENDING_TILES —— 名单被删了，那角标这条门禁就在空转")
+                .isTrue();
+        List<String> badged = quoted(declared.group());
+
+        String assembly = assemblySources();
+        List<String> honestOnly = new ArrayList<>();
+        Matcher tiles = TILE.matcher(appBar);
+        while (tiles.find()) {
+            String handler = registrationOf(assembly, tiles.group(1));
+            if (handler != null && handler.contains("openRibbonTool(SideBar.TOOL_")) {
+                honestOnly.add(tiles.group(1));
+            }
+        }
+        assertThat(honestOnly)
+                .as("判据本身不能是空的 —— 空名单时下面那条 containsExactly 就成了两句空话")
+                .isNotEmpty();
+        assertThat(badged)
+                .as("角标必须挂在「落如实说明页」的那几格上，一格不多、一格不落")
+                .containsExactlyInAnyOrderElementsOf(honestOnly);
+
+        // 「用 AI 新建表」不在功能区，在对象清单页的七键里 —— 同一句实话（同一个资源键），
+        // 但那一档只有文字、没有环：横排按钮包一层会撑宽，整排跟着挪（PendingMark#saySo）。
+        assertThat(read(shellSource("TableListPage.java")))
+                .as("对象清单页的 AI 新建表按钮（落 new-table-ai 说明页）必须提前说同一句实话")
+                .contains("PendingMark.saySo(createAi");
+        assertThat(hasMessage("ribbon.pending"))
+                .as("角标的提示语必须两个语言包都有 —— 只写一份就是另一种语言里没说")
+                .isTrue();
+    }
+
     // ─────────────────────────── 工具 ───────────────────────────
+
+    /** 某条动作的处理器文本：从它的注册点截到**下一条**注册之前。 */
+    private static String registrationOf(String assembly, String actionId) {
+        int at = assembly.indexOf("actions.register(\"" + actionId + "\"");
+        if (at < 0) {
+            return null;
+        }
+        int next = assembly.indexOf("actions.register(\"", at + 1);
+        return next < 0 ? assembly.substring(at) : assembly.substring(at, next);
+    }
+
+    /** 一段源码文本里出现的全部双引号字符串（按出现顺序）。 */
+    private static List<String> quoted(String text) {
+        List<String> out = new ArrayList<>();
+        Matcher matcher = Pattern.compile("\"([^\"]+)\"").matcher(text);
+        while (matcher.find()) {
+            out.add(matcher.group(1));
+        }
+        return out;
+    }
 
     private static Path shellSource(String file) {
         Path path = Path.of("src", "main", "java", "io", "agenticdb", "ui", "shell", file);
