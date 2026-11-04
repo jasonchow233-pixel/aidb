@@ -492,6 +492,77 @@ public final class AppShell extends StackPane {
         Platform.runLater(workspace::runQuery);
     }
 
+    /**
+     * ⭐ R57 画面债：补全弹层那一帧。
+     *
+     * <p>SQL 以 {@code SELECT * FROM } 结尾（结尾就是补全位置），跑在矩阵真库上：
+     * 演示库没有这一格的证据价值（候选只有关键字那一列，证不了「跟着库上下文走」）。
+     */
+    private void poseQueryCompletionsWhenReady(String pose, int attempt) {
+        if (session == null) {
+            if (attempt >= POP_READY_MAX_POLLS) {
+                ScreenshotSession.abortMatrixFrame("completion pose gave up: session never opened"
+                        + " (ADB_MATRIX points at a server that is not reachable)");
+                return;
+            }
+            pollAgain(attempt, () -> poseQueryCompletionsWhenReady(pose, attempt + 1));
+            return;
+        }
+        String catalog = catalogLabelFor(activeProfileId());
+        openQueryOn(activeProfileId(), catalog == null ? "" : catalog, "SELECT * FROM ");
+        QueryPage page = workspace.activeQuery();
+        if (page != null) {
+            page.markClean();
+            System.out.println("[screenshot] completion page sql=" + page.sql());
+            switch (pose) {
+                case "popup" -> page.poseCompletionsWhenReady();
+                default -> System.out.println("[screenshot] unknown ADB_COMPLETION_POSE: "
+                        + pose + " (expected: popup)");
+            }
+        } else {
+            // 页没建起来就没得摆。安静地走到快门 = 交付一张帧名说谎的图。
+            ScreenshotSession.abortMatrixFrame("completion pose gave up: the query page"
+                    + " never got built, so there is no editor to pose completions in");
+        }
+    }
+
+    /**
+     * ⭐ R57 画面债：选区执行回显那一帧 —— 两段语句、圈住第二段跑。
+     *
+     * <p>两条都真跑得通，因为这一帧要证的是「跑的就是圈住的那段」：
+     * 状态栏回显与结果页签必须来自真实执行，不能靠一段假 SQL 摆出来。
+     */
+    private void poseQuerySelectionWhenReady(String pose, int attempt) {
+        if (session == null) {
+            if (attempt >= POP_READY_MAX_POLLS) {
+                // 连接没开成 → 这一帧的「跑的就是圈住的那段」整句都没发生，
+                // 拍出来是一张「选区圈着没跑过的 SQL」的图。宁可没图。
+                ScreenshotSession.abortMatrixFrame("selection pose gave up: session never opened"
+                        + " (ADB_MATRIX points at a server that is not reachable)");
+                return;
+            }
+            pollAgain(attempt, () -> poseQuerySelectionWhenReady(pose, attempt + 1));
+            return;
+        }
+        String catalog = catalogLabelFor(activeProfileId());
+        String first = "SELECT id, name FROM users ORDER BY id;";
+        String second = "SELECT id, amount, status FROM orders ORDER BY id;";
+        openQueryOn(activeProfileId(), catalog == null ? "" : catalog, first + "\n" + second);
+        QueryPage page = workspace.activeQuery();
+        if (page != null) {
+            page.markClean();
+            switch (pose) {
+                case "second" -> page.poseSelectionForShots(second);
+                default -> System.out.println("[screenshot] unknown ADB_SELECTION_POSE: "
+                        + pose + " (expected: second)");
+            }
+        } else {
+            ScreenshotSession.abortMatrixFrame("selection pose gave up: the query page never"
+                    + " got built, so there is no selection to run");
+        }
+        Platform.runLater(workspace::runQuery);
+    }
+
     /** 等到 session 就绪再读结构、弹「新建索引」。 */
     private void popIndexDialogWhenReady(int attempt) {
         if (session == null) {
@@ -2339,6 +2410,17 @@ public final class AppShell extends StackPane {
         String catalogPose = text("adb.catalogPose", "ADB_CATALOG_POSE").toLowerCase(Locale.ROOT);
         if (!catalogPose.isEmpty() && !catalogPose.equals("1")) {
             poseQueryCatalogWhenReady(catalogPose, 0);
+        }
+        // ⭐ R57 画面债：补全弹层 / 选区执行回显两帧（两格交付时只有门禁、没有画面证据）。
+        String completionPose = text("adb.completionPose", "ADB_COMPLETION_POSE")
+                .toLowerCase(Locale.ROOT);
+        if (!completionPose.isEmpty() && !completionPose.equals("1")) {
+            poseQueryCompletionsWhenReady(completionPose, 0);
+        }
+        String selectionPose = text("adb.selectionPose", "ADB_SELECTION_POSE")
+                .toLowerCase(Locale.ROOT);
+        if (!selectionPose.isEmpty() && !selectionPose.equals("1")) {
+            poseQuerySelectionWhenReady(selectionPose, 0);
         }
         // ⭐ S7：恢复上次打开的对象。命令行显式指定时不让它覆盖。
         if (initial.isEmpty() && structure.isEmpty() && initialQuery.isEmpty()) {

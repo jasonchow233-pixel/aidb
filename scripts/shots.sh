@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 重拍 docs/screenshots/ 的验收截图（59 张）。
+# 重拍 docs/screenshots/ 的验收截图（61 张）。
 #
 # 用法：
-#   ./scripts/shots.sh              # 全部重拍（亮色 51 张 + 暗色 8 张；
-#                                   #   其中 8 张绑 ADB_MATRIX 落点门、拍在 Docker 矩阵的真库上，
+#   ./scripts/shots.sh              # 全部重拍（亮色 53 张 + 暗色 8 张；
+#                                   #   其中 10 张绑 ADB_MATRIX 落点门、拍在 Docker 矩阵的真库上，
 #                                   #   另 2 张只借 ADB_TEST_* 注册五份连接档案 —— 图形取自档案的
 #                                   #   kind、不取自会话，所以它们不过落点门，见 p0-tree-vendors 那条）
 #   ./scripts/shots.sh p2-users     # 只拍指定的一张
@@ -116,6 +116,17 @@ SHOTS=(
   #   成对的另一张：点进第二把库**之后**的页面态（行 2 的名字、状态栏的「已切到 …」、
   #   侧栏跟着换库）。菜单那张证「有两把库」，这张证「切得过去」。
   "p3-query-catalog-bound||17000|ADB_MATRIX=mysql ADB_CONNECTION=matrix-mysql ADB_CATALOG_POSE=bound ADB_THEME_FORCE=light"
+  # ⭐ R57 画面债（第一格）：SQL 补全弹层。R57-a 交付时只有行为门禁 —— 弹层是 ControlsFX 的
+  #   PopupWindow，主场景快照拍不到它，所以这一格当时欠着。现在 ScreenshotSession 会把浮层
+  #   单独快照再按场景坐标合成上去（不改成「只拍那一列候选的小图」：那证不了「贴在光标下面」）。
+  #   SQL 以 "SELECT * FROM " 结尾，候选 = 真库的对象清单；演示库没有证据价值，读不到就弃帧。
+  #   ⚠️ wait 必须**大于**摆态的弃帧预算（QueryPage 里 80 跳 × 150ms ≈ 12s）：
+  #   快门先落就把「还在等候选」的那一帧当成品写出去了 —— 尺寸对、字节对、画面里没有弹层。
+  "p3-query-completions||20000|ADB_MATRIX=mysql ADB_CONNECTION=matrix-mysql ADB_COMPLETION_POSE=popup ADB_THEME_FORCE=light"
+  # ⭐ R57 画面债（第二格）：圈住第二段跑。两条语句都真跑得通，编辑器里是真选区，
+  #   状态栏回显 / 结果页签标题 / 危险分级全部读同一个 statementsToRun() 出口 ——
+  #   这一帧证的是「跑的就是圈住的那段」，不是摆出来的高亮。
+  "p3-query-selection||17000|ADB_MATRIX=mysql ADB_CONNECTION=matrix-mysql ADB_SELECTION_POSE=second ADB_THEME_FORCE=light"
   "p4-structure||5000|ADB_STRUCTURE=users ADB_THEME_FORCE=light"
   "p4-ddl||7000|ADB_DDL=1 ADB_THEME_FORCE=light"
   # ⭐ D-23：列对话框那一帧 —— 类型下拉的候选与默认值现在都来自方言，

@@ -501,6 +501,50 @@ class QueryPageTest {
                 .isEqualTo(2);
     }
 
+    /**
+     * ⭐ R57 画面债：那一帧的选区必须是<b>真选区</b>，跑出的是<b>真那一段</b>。
+     *
+     * <p>帧证的是「跑的就是圈住的那段」这条共享出口；如果 pose 把区间算错（圈成整页、
+     * 或圈到第一条），帧会照常拍出一张「看着像选中执行」的图、返回码照样是 0。
+     * 变异：把 pose 的 `indexOf` 换成 0 → 这条红（选区变成整页，两条都跑了，出两个页签）。
+     */
+    @Test
+    void theShotPoseSelectsExactlyTheStatementItClaims() {
+        String second = "SELECT 2 AS n;";
+        interact(() -> {
+            page.setSql("SELECT 1 AS n;\n" + second);
+            page.poseSelectionForShots(second);
+        });
+
+        assertThat(page.editor().area().getSelectedText())
+                .as("pose 摆的必须是那一段的字面选区，不是高亮装饰")
+                .isEqualTo(second);
+
+        interact(page::runCurrent);
+        waitForTabs(1);
+        assertThat(page.resultTabCount())
+                .as("只跑圈住的那一段 —— 多一个页签就说明这张帧在撒谎")
+                .isEqualTo(1);
+    }
+
+    // pose 找不到那句时走的是 abortMatrixFrame。它在**拍摄会话**里按设计 System.exit(3)
+    // （宁可没图不可有假图 + 退出码非零），在非拍摄会话里只报不杀 ——
+    // 否则一条测试里的弃帧会端掉整批测试的 JVM。两条都由 ScreenshotScriptAuditTest
+    // #shotPosesGiveUpByAbortingNotByShooting 钉住源码；下面钉的是它的可见后果。
+    @Test
+    void aSelectionPoseThatCannotFindItsStatementPosesNothing() {
+        interact(() -> {
+            page.setSql("SELECT 1 AS n;\nSELECT 2 AS n;");
+            page.editor().area().clear();
+            page.poseSelectionForShots("SELECT 9 AS nowhere;");
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(page.editor().area().getSelectedText())
+                .as("那句不在编辑器里 → 一个字符都不许圈：圈了就是给「选中执行」摆一张假选区")
+                .isEmpty();
+    }
+
     @Test
     void blankOrCommentSelectionSaysSoInsteadOfRunningSomethingElse() {
         interact(() -> {

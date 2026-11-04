@@ -123,6 +123,75 @@ class ScreenshotScriptAuditTest {
     }
 
     /**
+     * ⭐ R57 画面债：摆态**拍不成**时必须走弃帧出口，而不是打一行日志然后照常拍。
+     *
+     * <p>与 D-37 / D-39 同一族病：候选没读回来、或选区没找到那句时，只要快门还在，
+     * 脚本就会产出一张尺寸正常、字节数正常、「看着像那一格」的图，返回码 0 ——
+     * 而这一格恰恰因为它没有画面证据才欠了这么多轮。所以这里的放弃必须是
+     * {@code ScreenshotSession.abortMatrixFrame}（不写文件 + 退出码 3）。
+     */
+    @Test
+    void shotPosesGiveUpByAbortingNotByShooting() throws IOException {
+        Path root = repositoryRoot();
+        String page = Files.readString(root.resolve(
+                "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/QueryPage.java"),
+                StandardCharsets.UTF_8);
+        String shell = Files.readString(root.resolve(
+                "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/AppShell.java"),
+                StandardCharsets.UTF_8);
+
+        assertThat(methodBody(page, "private void awaitCompletionPose"))
+                .as("补全帧读不到候选时必须弃帧，不能拍一张没有弹层的查询页")
+                .contains("ScreenshotSession.abortMatrixFrame");
+        assertThat(methodBody(page, "void poseSelectionForShots"))
+                .as("选区帧找不到那句时必须弃帧，不能拍一张圈着别的东西的选区")
+                .contains("ScreenshotSession.abortMatrixFrame");
+        assertThat(methodBody(shell, "private void poseQueryCompletionsWhenReady"))
+                .as("补全帧的连接没开成 / 页没建起来，两条都要弃帧")
+                .contains("ScreenshotSession.abortMatrixFrame");
+        assertThat(methodBody(shell, "private void poseQuerySelectionWhenReady"))
+                .as("选区帧的连接没开成 / 页没建起来，两条都要弃帧")
+                .contains("ScreenshotSession.abortMatrixFrame");
+
+        // ⭐ 编辑器「还没挂上窗口」不等于「摆不成」：页刚建好那一刻编辑器常常还不在场景图上，
+        //   实测就写过一版「直接 return」，于是一张没有弹层的查询页安静地顶替了证据帧。
+        String await = methodBody(page, "private void awaitCompletionPose");
+        int firstRetry = await.indexOf("schedule(");
+        int firstEvaluate = await.indexOf("completions.evaluateForTest");
+        assertThat(firstRetry)
+                .as("没挂上窗口的那一跳要接着等，不能原样退出")
+                .isGreaterThan(0);
+        assertThat(firstRetry)
+                .as("「继续等」必须排在第一次求值之前 —— 没挂载就摸弹层会抛异常")
+                .isLessThan(firstEvaluate);
+    }
+
+    /** 取一个方法的正文（按大括号配对数到方法结束）；找不到方法名就是空串。 */
+    private static String methodBody(String source, String signature) {
+        int start = source.indexOf(signature);
+        if (start < 0) {
+            return "";
+        }
+        int open = source.indexOf('{', start);
+        if (open < 0) {
+            return "";
+        }
+        int depth = 0;
+        for (int i = open; i < source.length(); i++) {
+            char c = source.charAt(i);
+            if (c == '{') {
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0) {
+                    return source.substring(start, i + 1);
+                }
+            }
+        }
+        return source.substring(start);
+    }
+
+    /**
      * ⭐ UX-5-F：脚本里用到的每一个 {@code ADB_*} 开关，主源码必须真的读它。
      *
      * <p>和第一列门禁同一类病：{@code ADB_CELL} 处理器一旦被删，这一帧会照常拍出一张
@@ -242,6 +311,27 @@ class ScreenshotScriptAuditTest {
         assertThat(assertPosesHandled(script, "ADB_CATALOG_POSE",
                 root.resolve("ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/AppShell.java")))
                 .as("库▾ 帧的摆态名必须在 AppShell 的 pose 分派里有对应分支")
+                .isEmpty();
+    }
+
+    /**
+     * ⭐ R57 画面债：补全弹层 / 选区执行两帧的摆态名必须真的被外壳认得。
+     *
+     * <p>与「库▾」那条同型病：pose 打错一个字母，那一帧照样拍出默认查询页、返回码照样是 0 ——
+     * 而这两张是 R57-a / R57-b 唯一的<b>画面</b>证据（交付时一帧都没有，正是「只有门禁、
+     * 没人看过画面」这笔欠账本身）。
+     */
+    @Test
+    void everyQueryPoseUsedByTheScriptIsHandled() throws IOException {
+        Path root = repositoryRoot();
+        String script = Files.readString(root.resolve("scripts/shots.sh"), StandardCharsets.UTF_8);
+        Path shell = root.resolve("ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/AppShell.java");
+
+        assertThat(assertPosesHandled(script, "ADB_COMPLETION_POSE", shell))
+                .as("补全弹层帧的摆态名必须在 AppShell 的 pose 分派里有对应分支")
+                .isEmpty();
+        assertThat(assertPosesHandled(script, "ADB_SELECTION_POSE", shell))
+                .as("选区执行帧的摆态名必须在 AppShell 的 pose 分派里有对应分支")
                 .isEmpty();
     }
 

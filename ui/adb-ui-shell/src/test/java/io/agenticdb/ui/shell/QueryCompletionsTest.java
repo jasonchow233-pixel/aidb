@@ -204,6 +204,80 @@ class QueryCompletionsTest {
         assertThat(completions.candidateNamesForTest()).isEmpty();
     }
 
+    /**
+     * ⭐ R57 画面债：那一帧的两条前提 —— 清单是真的、弹层登记了。
+     *
+     * <p>弹层在 PopupWindow 里，主场景快照拍不到它。少了登记这一步，脚本照样产出一张
+     * 1280×800、「看着像补全那格」的查询页，返回码 0 —— 而这一格唯一的画面证据就是它。
+     * 变异：删掉 {@code posePopupForShots()} 里那行登记 → 这条红（showing 仍然真，
+     * 因为 evaluate(true) 自己会弹 —— 只有 overlay 这一侧露馅）。
+     */
+    @Test
+    void theShotPoseOpensThePopupAndRegistersTheOverlay() throws Exception {
+        // 只喂文本、**不动光标**：摆态走的必须是用户那条路。
+        // 实测（变异 M6）：`setText` 之后光标本来就在句尾，所以 pose 里不需要再 moveTo ——
+        // 当初补的那一行是**多余的**，量出来红不了任何门禁，已删；这条等的是「候选里真的出现了表」，
+        // 光标一旦不在句尾（setText 行为改了）它自己会红。
+        interact(() -> page.setSql("SELECT * FROM "));
+        interact(() -> page.poseCompletionsWhenReady());
+        waitUntil("摆态弹出的是表清单（不是停在句首的关键字列）", () -> completions.isShowingForTest()
+                && completions.candidateNamesForTest().contains("users"));
+
+        ScreenshotSession.Overlay overlay = interactReturning(ScreenshotSession::overlayForShots);
+        assertThat(overlay)
+                .as("摆态必须把浮层登记给截图会话")
+                .isNotNull();
+        assertThat(overlay.node()).isNotNull();
+        assertThat(overlay.node().getScene())
+                .as("浮层那颗节点要在它自己的弹层场景里（快照要从那里取）")
+                .isNotNull();
+        assertThat(Double.isFinite(overlay.x()) && Double.isFinite(overlay.y()))
+                .as("坐标要是快门时刻在主场景里算出来的有限值，不是猜的默认值")
+                .isTrue();
+
+        // ⭐ 有限值不等于**对**：补画面债的第一版实拍把浮层合成到了 (146,-19) ——
+        //   尺寸、字节、去重全过，画面里弹层压在窗口左上角、编辑器一行字都看不见。
+        //   根因不在合成，在弹层本身：{@code PopupControl.show(owner, x, y)} 要的是**屏幕**坐标，
+        //   当时传的是编辑器局部坐标，于是弹层开在屏幕左上角（光标在屏幕 (328,102)，窗开在 (132,-2)）。
+        //   行为门禁只读候选内容、量不到坐标，所以这个错位从 R57-a 交付起一直没被发现。
+        //   钉法：拿**光标**当基准，坐标全部现场算，不写死像素。
+        javafx.geometry.Point2D caretInScene = interactReturning(() -> {
+            javafx.geometry.Bounds caret = page.editor().area().getCaretBoundsOnScreen(
+                    page.editor().area().getCaretSelectionBind().getUnderlyingCaret()).orElseThrow();
+            javafx.geometry.Point2D anchorLocal = page.editor().area()
+                    .screenToLocal(caret.getMinX(), caret.getMaxY() + 2);
+            return page.editor().area().localToScene(anchorLocal.getX(), anchorLocal.getY());
+        });
+        assertThat(overlay.x())
+                .as("弹层要贴在光标下面：光标在主场景 x=" + caretInScene.getX()
+                        + "，浮层左上角 x=" + overlay.x())
+                .isBetween(caretInScene.getX() - 30, caretInScene.getX() + 45);
+        assertThat(overlay.y())
+                .as("弹层要贴在光标下面：光标在主场景 y=" + caretInScene.getY()
+                        + "，浮层左上角 y=" + overlay.y())
+                .isBetween(caretInScene.getY() - 30, caretInScene.getY() + 45);
+    }
+
+    /** 认不出的前缀 → 候选为空：这时摆态必须拒绝，否则帧拍的是一列空弹层。 */
+    @Test
+    void theShotPoseRefusesToFrameAnEmptyColumn() {
+        interact(() -> {
+            page.setSql("SELECT * FROM ");
+            page.editor().moveTo(14);
+            completions.evaluateForTest(true);
+        });
+        waitUntil("热身：清单读回来", () -> completions.isPoseableForShots());
+
+        interact(() -> {
+            page.setSql("SELECT * FROM nope.");
+            page.editor().moveTo(19);
+            completions.evaluateForTest(false);
+        });
+        assertThat(completions.isPoseableForShots())
+                .as("宁可没图不可有假图 —— 没有真候选就不许摆这一帧")
+                .isFalse();
+    }
+
     // ─────────────────────────── 助手 ───────────────────────────
 
     private static KeyEvent key(KeyCode code) {
@@ -221,6 +295,11 @@ class QueryCompletionsTest {
     private static void interact(Runnable action) {
         WaitForAsyncUtils.waitForAsyncFx(5_000, action);
         WaitForAsyncUtils.waitForFxEvents();
+    }
+
+    /** 在 FX 线程上取一个值（读浮层坐标必须落在弹层真正显示的那个线程上）。 */
+    private static <T> T interactReturning(Callable<T> action) throws Exception {
+        return WaitForAsyncUtils.asyncFx(action).get(5, TimeUnit.SECONDS);
     }
 
     private void waitUntil(String what, Callable<Boolean> condition) {

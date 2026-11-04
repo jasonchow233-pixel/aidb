@@ -192,6 +192,15 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private static final double SPLIT_RATIO_FLOOR = 0.15;
     private static final double SPLIT_RATIO_CEILING = 0.85;
 
+    /**
+     * 摆给截图那一格的预算：每跳 150ms，共 {@value #POSE_READY_TICKS} 跳 ≈ 12s。
+     *
+     * <p>必须<b>短于</b>快门等待（{@code shots.sh} 那一行的 wait 列），否则「放弃」这条
+     * 出口永远不会在落盘前生效 —— 实测就撞上过：14s 的快门、30s 的预算，
+     * 于是摆不成的那一帧照样写文件，帧名写着 completions 画面却没有弹层。
+     */
+    private static final int POSE_READY_TICKS = 80;
+
     /** 接上「存为命名查询」的落点。 */
     public void setOnSaveNamed(java.util.function.BiConsumer<String, String> onSaveNamed) {
         this.onSaveNamed = onSaveNamed == null ? (name, sql) -> { } : onSaveNamed;
@@ -1690,6 +1699,103 @@ public final class QueryPage extends VBox implements AutoCloseable {
      */
     void poseCatalogMenuWhenReady() {
         awaitCatalogs(100);
+    }
+
+    /**
+     * ⭐ R57 画面债：把补全弹层摆到快门前 —— 这一格交付时只有行为门禁，一张帧都没有。
+     *
+     * <p>等的是<b>候选真的算出来了</b>：对象清单走后台读（{@code SchemaService}），
+     * 读回来之前那一列只有关键字。用「只有关键字」的弹层当「候选跟着库上下文走」的证据
+     * 是假图，所以读不到就明确放弃，不写文件。
+     *
+     * <p>求值入口用的是手动触发那一条（与 ⌘Space 同一个 {@code evaluate(true)}），
+     * 不另造一套摆态逻辑 —— 摆态走的必须是用户走的那条路，否则帧证的是 pose 代码、不是功能。
+     */
+    void poseCompletionsWhenReady() {
+        awaitCompletionPose(POSE_READY_TICKS);
+    }
+
+    private void awaitCompletionPose(int attemptsLeft) {
+        if (!isAttachedToWindow()) {
+            // 页刚建好时编辑器还不在场景图上（标签内容要下一个布局脉冲才挂上去），
+            // 这一跳不算失败也不算放弃 —— 继续等，等到挂上为止。
+            // ⚠️ 这里曾经写成「没挂上就直接 return」，实测那条路径一声不响地把
+            //    一张没有弹层的查询页交了出去，正是要防的假图。
+            if (attemptsLeft <= 0) {
+                ScreenshotSession.abortMatrixFrame("completion pose gave up: the editor never"
+                        + " attached to a showing window, so there is nothing to pose on");
+                return;
+            }
+            schedule(150, () -> awaitCompletionPose(attemptsLeft - 1));
+            return;
+        }
+        completions.evaluateForTest(true);
+        if (!completions.isPoseableForShots()) {
+            if (attemptsLeft <= 0) {
+                // ⚠️ 不是「打一行日志然后照常拍」：那样会产出一张 1280×800 的、
+                // 没有弹层的查询页，文件名却写着 completions —— 正是 D-37/D-39 那族假图。
+                ScreenshotSession.abortMatrixFrame("completion pose gave up: no table candidates"
+                        + " (needs a server with objects; demo SQLite has none of this shape)");
+                return;
+            }
+            schedule(150, () -> awaitCompletionPose(attemptsLeft - 1));
+            return;
+        }
+        completions.posePopupForShots();
+        System.out.println("[screenshot] completion popup posed, candidates="
+                + completions.candidateNamesForTest().size());
+        keepCompletionPose(20);
+    }
+
+    /** 弹层会自己收（失焦即收，与菜单帧同一族），所以每 1500ms 续摆一次到快门为止。 */
+    private void keepCompletionPose(int ticksLeft) {
+        if (ticksLeft <= 0 || !isAttachedToWindow()) {
+            return;
+        }
+        schedule(1_500, () -> {
+            // 再查一次：这一跳之间页可能已经关了（关页 / 换测试类都会）。
+            if (!isAttachedToWindow()) {
+                return;
+            }
+            if (!completions.isShowingForTest()) {
+                completions.posePopupForShots();
+            }
+            keepCompletionPose(ticksLeft - 1);
+        });
+    }
+
+    /**
+     * 编辑器还挂在一扇显示中的窗口上吗。
+     *
+     * <p>摆态的计时器活得比快门久：页一关（或测试类一换），
+     * {@code PopupWindow.show} 就抛 {@code The owner node needs to be associated with a window} ——
+     * 异常落在 FX 动画线程上，会端给**下一条**测试。实测踩过。
+     * 注意「节点还有 scene」不等于「那扇窗还在」，所以问的是 window。
+     */
+    private boolean isAttachedToWindow() {
+        return completions.isHostWindowUp();
+    }
+
+    /**
+     * ⭐ R57 画面债：把「圈住哪段跑哪段」摆到快门前。
+     *
+     * <p>选区是**真选区**（不是画上去的高亮），跑的是真执行路径
+     * {@code statementsToRun()}，所以状态栏的 SQL 回显、结果页签标题、危险分级
+     * 三者都会跟着变成「只跑了这一段」—— 这一帧证的正是那条共享出口。
+     */
+    void poseSelectionForShots(String statement) {
+        String text = sql();
+        int start = text.indexOf(statement);
+        if (start < 0) {
+            // 同上：找不到就不拍，不拍一张「选区圈着别的东西」的帧冒充选中执行的证据。
+            ScreenshotSession.abortMatrixFrame("selection pose gave up: the statement is not in"
+                    + " the editor, so the frame would show a selection that was never run");
+            return;
+        }
+        editor().area().selectRange(start, start + statement.length());
+        editor().area().requestFollowCaret();
+        System.out.println("[screenshot] selection posed, chars=" + statement.length()
+                + " at=" + start);
     }
 
     private void awaitCatalogs(int attemptsLeft) {

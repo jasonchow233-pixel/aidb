@@ -87,6 +87,14 @@ public final class ScreenshotSession {
      * 所以这里直接放弃这一帧 —— 不写文件、退出码非零，让脚本报「这一格没拍出来」。
      */
     public static void abortMatrixFrame(String reason) {
+        if (prop("adb.shots", "ADB_SHOTS").isEmpty()) {
+            // 不是拍摄会话也会走到这条（摆态的弃帧分支在测试里同样会命中）。
+            // 那里没有帧可弃，而 {@code System.exit} 会端掉整批测试的 JVM ——
+            // 退出码 3 的语义只属于「这一格没拍出来」，不许混用。
+            // 话也不能说成「FRAME ABORTED, nothing written」：没在拍，就没有帧被弃。
+            System.err.println("[screenshot] pose gave up, no shot session: " + reason);
+            return;
+        }
         System.err.println("[screenshot] FRAME ABORTED, nothing written: " + reason);
         Platform.exit();
         System.exit(3);
@@ -104,6 +112,44 @@ public final class ScreenshotSession {
 
     static void setMatrixFrameGuard(java.util.function.Supplier<String> guard) {
         matrixFrameGuard = guard == null ? () -> null : guard;
+    }
+
+    /**
+     * ⭐ R57 画面债：主场景**外面**那一层（补全弹层）。
+     *
+     * <p>{@link #targetScene} 在「弹窗是独立 Stage」时改拍弹窗，那是为对话框设计的：
+     * 弹窗整屏、内容就是证据本身。补全弹层不是 —— 要证的恰恰是
+     * 「候选贴在光标下面、编辑器还看得见」。ControlsFX 的 PopOver 是 PopupWindow，
+     * {@code scene.snapshot} 拍主场景时它根本不在图里，于是这一格只剩两种坏出口：
+     * 拍一张只有一列候选的小图，或者拍一张没有弹层的查询页并称之为证据。
+     *
+     * <p>所以加第三条：拍完主场景，把浮层那颗节点单独快照成带透明通道的图，
+     * 按它在主场景里的坐标合成上去。给的是 {@code Supplier} 不是常量 ——
+     * 弹层位置跟着光标走，坐标必须在快门那一刻现算。
+     */
+    private static java.util.function.Supplier<Overlay> overlayProvider = () -> null;
+
+    /** 一层浮动证据：节点 + 它在主场景里的左上角。 */
+    record Overlay(Node node, double x, double y) {
+    }
+
+    /**
+     * 摆出浮层证据，并把「这一帧的目标是主场景」这件事告诉截图会话。
+     *
+     * <p>调用方是弹层自己（{@code QueryCompletions}）：它一边弹，一边把
+     * 「快门时刻现算坐标」的取数口交出来。
+     */
+    static void setOverlayProvider(java.util.function.Supplier<Overlay> provider) {
+        overlayProvider = provider == null ? () -> null : provider;
+    }
+
+    /**
+     * 门禁读的一面：此刻登记的浮层（没有就是 null）。
+     *
+     * <p>必须在 FX 线程上问 —— 它要摸弹层那颗节点的 scene/window。
+     */
+    static Overlay overlayForShots() {
+        return overlayProvider.get();
     }
 
     /**
@@ -169,7 +215,11 @@ public final class ScreenshotSession {
             return;
         }
         try {
-            Scene scene = targetScene(stage);
+            Overlay overlay = overlayProvider.get();
+            // ⭐ 有浮层要合成时**不能**走 targetScene：那颗 PopOver 是 PopupWindow，
+            //   而 targetScene 见到「主 Stage 之外还在显示的窗口」就改拍它 ——
+            //   那是给对话框定的规矩，用在浮层上会拍出一张只有一列候选的小图。
+            Scene scene = overlay == null ? targetScene(stage) : stage.getScene();
             // 样式表切换后强制走一遍 CSS + 布局，避免快照落在重排中途。
             scene.getRoot().applyCss();
             scene.getRoot().layout();
@@ -181,7 +231,20 @@ public final class ScreenshotSession {
             WritableImage image = scene.snapshot(null);
             Files.createDirectories(dir);
             Path target = dir.resolve(name.toLowerCase(Locale.ROOT) + ".png");
-            writePng(image, target);
+            BufferedImage canvas = toBufferedImage(image);
+            if (overlay != null && overlay.node() != null && overlay.node().getScene() != null) {
+                javafx.scene.SnapshotParameters parameters = new javafx.scene.SnapshotParameters();
+                parameters.setFill(javafx.scene.paint.Color.TRANSPARENT);
+                WritableImage floated = overlay.node().snapshot(parameters, null);
+                int x = (int) Math.round(overlay.x());
+                int y = (int) Math.round(overlay.y());
+                blend(canvas, toBufferedImage(floated), x, y);
+                System.out.println("[screenshot] overlay composed at " + x + "," + y
+                        + " size=" + (int) overlay.node().getBoundsInLocal().getWidth()
+                        + "x" + (int) overlay.node().getBoundsInLocal().getHeight()
+                        + " (main scene kept, popup window not the target)");
+            }
+            ImageIo.write(canvas, target);
             System.out.println("[screenshot] " + target.toAbsolutePath());
         } catch (Exception e) {
             System.err.println("[screenshot] failed: " + e);
@@ -249,8 +312,8 @@ public final class ScreenshotSession {
         return stage.getScene();
     }
 
-    /** 手写像素循环把 WritableImage 编码为 PNG，避免引入 javafx.swing 模块。 */
-    private static void writePng(WritableImage image, Path target) throws IOException {
+    /** 手写像素循环把快照读成 ARGB 画布，避免引入 javafx.swing 模块。 */
+    private static BufferedImage toBufferedImage(WritableImage image) {
         int width = (int) image.getWidth();
         int height = (int) image.getHeight();
         BufferedImage buffered = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
@@ -262,7 +325,57 @@ public final class ScreenshotSession {
             }
             buffered.setRGB(0, y, width, 1, row, 0, width);
         }
-        ImageIo.write(buffered, target);
+        return buffered;
+    }
+
+    /**
+     * src-over 叠一层带透明通道的图；落在画布外的部分裁掉，全透明的像素原样保留。
+     *
+     * <p>必须自己算 alpha，不能图省事交给 {@code Graphics2D.drawImage}：
+     * 那条路径会把浮层自带的半透明阴影当成不透明方块画，边缘一圈发灰 ——
+     * 而这张图是拿去当验收证据的，阴影糊边会被读成「弹层没有阴影」。
+     *
+     * <p>非预乘通道下的 src-over（把 0–255 的 alpha 记作 a，下同）：
+     * {@code out = (src*as + dst*ad*(255-as)/255) / (as + ad*(255-as)/255)}；
+     * {@code ad=255} 时 {@code as=128} 应得 {@code (128*src + 127*dst)/255}（半透明白压纯黑 ≈128）。
+     */
+    static void blend(BufferedImage canvas, BufferedImage overlay, int left, int top) {
+        // 浮层贴在编辑器右下角时光标一动就会超出画布：先算可见子矩形，
+        // 否则负坐标会直接 IndexOutOfBounds，或把「超出」的那几行读成画布另一头。
+        int overlayX = Math.max(0, -left);
+        int overlayY = Math.max(0, -top);
+        int width = Math.min(overlay.getWidth() - overlayX, canvas.getWidth() - Math.max(left, 0));
+        int height = Math.min(overlay.getHeight() - overlayY, canvas.getHeight() - Math.max(top, 0));
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int source = overlay.getRGB(overlayX + x, overlayY + y);
+                int sourceAlpha = source >>> 24;
+                if (sourceAlpha == 0) {
+                    continue;
+                }
+                int canvasX = left + overlayX + x;
+                int canvasY = top + overlayY + y;
+                int target = canvas.getRGB(canvasX, canvasY);
+                int targetAlpha = target >>> 24;
+                int resultAlpha = sourceAlpha + targetAlpha * (255 - sourceAlpha) / 255;
+                int red = blendChannel(source >> 16 & 0xFF, sourceAlpha, target >> 16 & 0xFF,
+                        targetAlpha, resultAlpha);
+                int green = blendChannel(source >> 8 & 0xFF, sourceAlpha, target >> 8 & 0xFF,
+                        targetAlpha, resultAlpha);
+                int blue = blendChannel(source & 0xFF, sourceAlpha, target & 0xFF,
+                        targetAlpha, resultAlpha);
+                canvas.setRGB(canvasX, canvasY,
+                        resultAlpha << 24 | red << 16 | green << 8 | blue);
+            }
+        }
+    }
+
+    /** 单通道 src-over；结果钳回 0–255（整数除法会因舍入差出界）。 */
+    private static int blendChannel(int source, int sourceAlpha, int under, int underAlpha,
+                                   int resultAlpha) {
+        int value = (source * sourceAlpha + under * underAlpha * (255 - sourceAlpha) / 255)
+                / resultAlpha;
+        return Math.max(0, Math.min(255, value));
     }
 
     /** 模拟左键单击：按钮直接 fire，其余节点投递合成 MouseEvent。支持逗号分隔的多次点击。 */

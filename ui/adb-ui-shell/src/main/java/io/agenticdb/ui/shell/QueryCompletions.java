@@ -218,15 +218,26 @@ final class QueryCompletions implements SqlCompletions.Source, AutoCloseable {
     }
 
     /**
-     * 光标处：0.11.7 的公开口是「主光标的屏幕包围盒」，翻回编辑器局部坐标；
-     * 拿不到（还没布局 / 光标在视口外）就贴左上角，不猜第二套坐标。
+     * 光标处：0.11.7 的 {@code PopupControl.show(ownerNode, x, y)} 要的是**屏幕**坐标
+     * （ControlsFX 自己的 {@code show(target, offset)} 也是先 {@code localToScreen}
+     * 再传进去 —— 反编译 11.2.6 的 {@code PopOver} 看过）。
+     *
+     * <p>此前这里翻成了编辑器局部坐标再传出去，于是弹层落在屏幕左上角而不是光标下面：
+     * 实测光标在屏幕 (328, 102)，弹层的窗却开在 (132, -2)。行为门禁只看候选内容，
+     * 量不到坐标，所以这个错位从 R57-a 交付起一直没被发现 —— 是补画面债时拍出来的。
+     *
+     * <p>拿不到光标包围盒（还没布局 / 光标在视口外）就贴编辑器左上角，不猜第二套坐标。
      */
     private double[] caretAnchor() {
         java.util.Optional<javafx.geometry.Bounds> onScreen = area.getCaretBoundsOnScreen(
                 area.getCaretSelectionBind().getUnderlyingCaret());
         if (onScreen.isPresent()) {
-            javafx.geometry.Bounds local = area.screenToLocal(onScreen.get());
-            return new double[]{local.getMinX(), local.getMaxY() + 2};
+            javafx.geometry.Bounds caret = onScreen.get();
+            return new double[]{caret.getMinX(), caret.getMaxY() + 2};
+        }
+        javafx.geometry.Point2D corner = area.localToScreen(8, 24);
+        if (corner != null) {
+            return new double[]{corner.getX(), corner.getY()};
         }
         return new double[]{8, 24};
     }
@@ -398,6 +409,57 @@ final class QueryCompletions implements SqlCompletions.Source, AutoCloseable {
     }
 
     // ─────────────────────────── 门禁接缝 ───────────────────────────
+
+    /**
+     * 摆给快门：候选算出来了才算「这一格有东西可拍」。
+     *
+     * <p>对象清单是后台读的，读回来之前 {@code proposal} 里只有关键字 ——
+     * 拿那张图当「补全跟着库上下文走」的证据是假的，所以宁可不拍。
+     */
+    boolean isPoseableForShots() {
+        return objectsReady && proposal != null && !proposal.candidates().isEmpty();
+    }
+
+    /** 强制弹一次，并把浮层登记给截图会话（弹层在 PopupWindow 里，主场景快照拍不到）。 */
+    void posePopupForShots() {
+        if (!isHostWindowUp()) {
+            // 宿主窗口已经不显示（关页 / 换测试类都会）：PopupWindow.show 会直接抛
+            // 「owner node needs to be associated with a window」，而它落在 FX 动画线程上，
+            // 会端给下一条测试 —— 摆态的计时器必须自己收口。
+            hide();
+            return;
+        }
+        evaluate(true);
+        ScreenshotSession.setOverlayProvider(this::overlayInMainScene);
+    }
+
+    /** 编辑器还挂在一扇**显示中**的窗口上吗（节点有 scene 不等于那扇窗还在）。 */
+    boolean isHostWindowUp() {
+        javafx.scene.Scene scene = area.getScene();
+        return scene != null && scene.getWindow() != null && scene.getWindow().isShowing();
+    }
+
+    /** 快门时刻现算：弹层那颗节点 + 它在主场景里的左上角。 */
+    private ScreenshotSession.Overlay overlayInMainScene() {
+        if (!showing || area.getScene() == null || area.getScene().getRoot() == null) {
+            return null;
+        }
+        javafx.scene.control.Skin<?> skin = popover.getSkin();
+        javafx.scene.Node chrome = skin == null ? null : skin.getNode();
+        if (chrome == null || chrome.getScene() == null) {
+            return null;
+        }
+        // layoutBounds 而不是 boundsInLocal：弹层外面那一圈箭头/阴影是绘制期的变换，
+        // 直接拿局部 (0,0) 换算会连阴影一起算进去 —— 合成出来的框会整体偏。
+        // localToScreen 传 null 就表示「这颗节点还没挂到窗口上」，此时放弃合成，不猜第二套坐标。
+        javafx.geometry.Bounds onScreen = chrome.localToScreen(chrome.getLayoutBounds());
+        if (onScreen == null) {
+            return null;
+        }
+        javafx.geometry.Point2D corner = area.getScene().getRoot()
+                .screenToLocal(onScreen.getMinX(), onScreen.getMinY());
+        return new ScreenshotSession.Overlay(chrome, corner.getX(), corner.getY());
+    }
 
     boolean isShowingForTest() {
         return showing;
