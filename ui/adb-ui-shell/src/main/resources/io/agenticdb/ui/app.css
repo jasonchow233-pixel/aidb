@@ -3416,6 +3416,13 @@
     -fx-font-size: 12px;
 }
 
+/* ⭐ D-50：这条是**正文垫底色**，不是「所有文字的颜色」。
+   RichTextFX 把每个 token 画成一个带 `text` 类的 Text 节点，语法类挂在同一个节点上 ——
+   所以本条 (0,2,0) 会把下面那些 `.sql-*` (0,1,0) 整体压平：样式表里字字都在，
+   计算值一个不生效，帧上关键字就是「加粗的黑字」。下面每条 span 规则都写成
+   `.adb-sql-editor .text.<类>` (0,3,0) —— 同一个节点上「带语法类」必须赢过「只是文字」。
+   ⚠️ 别把这条改成更高特异性，也别把下面那些改回单类名：
+   `SqlSyntaxColorTest` 读的是渲染出来的**计算填充色**，两种写法都会当场红。 */
 .adb-sql-editor .text {
     -fx-fill: -adb-syn-ident;
 }
@@ -3431,40 +3438,34 @@
     -fx-padding: 0px 8px;
 }
 
-/* ⭐ Q1：配对括号的高亮 */
-.adb-bracket-match {
-    -fx-fill: -adb-accent;
-    -fx-font-weight: bold;
-}
-
 .adb-sql-editor .caret {
     -fx-stroke: -adb-accent;
 }
 
-.sql-keyword {
+.adb-sql-editor .text.sql-keyword {
     -fx-fill: -adb-syn-keyword;
     -fx-font-weight: bold;
 }
 
-.sql-string {
+.adb-sql-editor .text.sql-string {
     -fx-fill: -adb-syn-string;
 }
 
-.sql-number {
+.adb-sql-editor .text.sql-number {
     -fx-fill: -adb-syn-number;
 }
 
-.sql-comment {
+.adb-sql-editor .text.sql-comment {
     -fx-fill: -adb-syn-comment;
     -fx-font-style: italic;
 }
 
-.sql-param {
+.adb-sql-editor .text.sql-param {
     -fx-fill: -adb-syn-param;
     -fx-font-weight: bold;
 }
 
-.sql-identifier {
+.adb-sql-editor .text.sql-identifier {
     -fx-fill: -adb-syn-ident;
 }
 
@@ -3474,16 +3475,25 @@
     -fx-underline: true;
 }
 
-.sql-operator {
+.adb-sql-editor .text.sql-operator {
     -fx-fill: -adb-syn-type;
 }
 
-.sql-function {
+.adb-sql-editor .text.sql-function {
     -fx-fill: -adb-syn-function;
 }
 
-.sql-error {
+.adb-sql-editor .text.sql-error {
     -fx-fill: -adb-syn-error;
+    -fx-font-weight: bold;
+}
+
+/* ⭐ Q1：配对括号的高亮。括号本身是 PUNCTUATION，会同时带 `.sql-operator` 与
+   `.adb-bracket-match` 两个类 —— 同特异性下**后写的赢**，所以这条必须留在上面那批
+   token 规则之后（顺序是承重的，`SqlSyntaxColorTest.theBracketMatchHighlightSurvivesTheSameCascade`
+   钉的就是这件事：把它挪到前面就红）。 */
+.adb-sql-editor .text.adb-bracket-match {
+    -fx-fill: -adb-accent;
     -fx-font-weight: bold;
 }
 
