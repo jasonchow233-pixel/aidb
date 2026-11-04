@@ -104,6 +104,18 @@ public record ExternalDatabase(
      * 服务器卡一下不该让测试干等 30 秒。
      * 应用本身的超时是 10s / 30s（见 {@code MySqlDialect}）。
      *
+     * <p>⚠️ 但<b>读超时不能短过产品自己用的那个</b>——契约要测的是产品的配置，
+     * 不是比产品更严的一份。Oracle 那一格 2026-11-04 量出了反例（D-49 的成因，
+     * 三轮全量红在这里却查不到原因）：{@code DBMS_METADATA.GET_DDL} 在全量负载下
+     * 实测要 **>8s**（同一个类单跑 22.00s、全量跑 43.26s，失败那一条用例本身 13.41s），
+     * 于是驱动抛 {@code ORA-18730 Socket read timed out} —— 而
+     * {@code OracleDialect.getDdl} 把 {@code SQLException} 吞成「读不到」返回
+     * {@code null}，契约侧收到的就不是「超时」而是「Oracle 说能读 DDL 却没读回来」。
+     * 单跑绿、全量红就是这么来的。现在 Oracle 的读超时直接取产品常量，两边不许各写一份。
+     * ⚠️ 连接超时**保持 5s 短值**：连不上的主机在 connect 阶段就该快速失败，
+     * 这一档的「快速失败」是本节存在的理由，动它等于把挂死风险请回来。
+     * 其余四家的读超时没在三轮全量里红过，**没量就不改**。
+     *
      * <p>⚠️ 参数名<b>不能一套通吃</b>：MySQL / MariaDB / PostgreSQL 认
      * {@code connectTimeout} + {@code socketTimeout}；SQL Server 的驱动<b>会拒绝</b>
      * 不认识的连接属性（直接抛 {@code The connection property … is not valid}），
@@ -112,11 +124,16 @@ public record ExternalDatabase(
      * {@code oracle.jdbc.ReadTimeout} 两个属性名。所以这里按库给不同的键。
      */
     public ConnectionSpec spec() {
-        return ConnectionSpec.server(kind, host, port, database, user, password, timeoutOptions());
+        return ConnectionSpec.server(kind, host, port, database, user, password, timeoutOptions(kind));
     }
 
-    /** 各家驱动的「短超时」写法。 */
-    private Map<String, String> timeoutOptions() {
+    /**
+     * 各家驱动的「短超时」写法。
+     *
+     * <p>包内可见是为了让 {@code DialectTimeoutTest} 能问「契约这一档比产品更短吗」——
+     * 私有方法的话那条门禁只能去 grep 源码字符串，读不到值。
+     */
+    static Map<String, String> timeoutOptions(DialectKind kind) {
         return switch (kind) {
             case MYSQL, MARIADB, POSTGRESQL, SQLITE -> Map.of(
                     "connectTimeout", "5000",
@@ -124,7 +141,7 @@ public record ExternalDatabase(
             case SQLSERVER -> Map.of();
             case ORACLE -> Map.of(
                     "oracle.net.CONNECT_TIMEOUT", "5000",
-                    "oracle.jdbc.ReadTimeout", "8000");
+                    "oracle.jdbc.ReadTimeout", String.valueOf(OracleDialect.READ_TIMEOUT_MS));
         };
     }
 
