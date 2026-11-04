@@ -139,7 +139,7 @@ R62-a H5-j 之前这里还写着「树分组名、连接名」也粗 —— 那�
 
 ## 3. 颜色与语义
 
-### 3.1 令牌分层（`tokens.json` 共 **110** 个：**76 颜色 / 31 尺寸 / 3 时长**）
+### 3.1 令牌分层（`tokens.json` 共 **111** 个：**77 颜色 / 31 尺寸 / 3 时长**）
 
 > 下表的数量与名字是从 `tokens.json` 现量出来的（不是回忆）；
 > `TokenParityTest` 钉住 `meta.count`，任何一处对不上就红。
@@ -156,7 +156,7 @@ R62-a H5-j 之前这里还写着「树分组名、连接名」也粗 —— 那�
 | 语法高亮 | 9 | `syn-keyword/string/number/comment/function/type/ident/param/error` | SQL 编辑器 |
 | 对象类型 | 7 | `kind-table` `kind-view` `kind-function` `kind-trigger` `kind-procedure` `kind-index` `kind-event` | **对象树 / 结构页的类型色**（§3.4） |
 | 图标分层 | 4 | `icon-edge` `icon-tone-a` `icon-tone-b` `icon-tone-c` | 彩色图标的**角色色**（§4.5）：轮廓 + 三层填充 |
-| 厂商品牌 | 6 | `vendor-mysql` `vendor-postgresql` `vendor-sqlserver` `vendor-oracle` `vendor-sqlite` `vendor-mariadb` | ⭐ R43-a：六家**真有驱动**的数据库在九个表面（磁贴 / 树 / 页签 / 列表 / 状态栏…，⭐ R63-2 收掉了顶栏胶囊与它的下拉那一处）里的品牌色，只落图标的 `tone-c` 层（§4.6）。两档各一个值（亮档压深、暗档提亮），必须在两档下对页面底 ≥3:1（`ContrastTest.vendorBrandColorsStandOutAgainstTheBackground`） |
+| 厂商品牌 | 7 | `vendor-mysql` `vendor-postgresql` `vendor-sqlserver` `vendor-oracle` `vendor-sqlite` `vendor-mariadb` `brand-plate` | ⭐ R43-a 立的前六枚：六家**真有驱动**的数据库在**仍走自绘形状**的表面上（树里的库节点圆柱、左右树行着色，⭐ R63-2 收掉了顶栏胶囊与它的下拉那一处）的品牌色，只落图标的 `tone-c` 层（§4.6）。两档各一个值（亮档压深、暗档提亮），必须在两档下对页面底 ≥3:1（`ContrastTest.vendorBrandColorsStandOutAgainstTheBackground`）。⭐ **R63-3 起这六枚不再决定商标长什么样**：那九处「一眼看出是哪家」的表面改吃 `icons/brand/` 里的官方彩色商标，色是资产里的字面值、不进令牌（§4.6 的两条通道）。第 7 枚 `brand-plate`（两档都 `#FFFFFF`）是那枚商标坐的**浅色底板** —— 官方深底色对深色侧栏只有 1.2–2.4:1，压不住，而商标不许改色，所以补的是承载面 |
 | 尺寸 | 31 | `h-*`(6) `w-*`(4) `row-*`(5) `fs-*`(3) `sp-*`(8) `r-*`(5) | 高度 / 宽度 / 行高 / 字号 / 间距 / 圆角 |
 | 时长 | 3 | `dur-toast` `dur-toast-action` `dur-toast-result` | toast 动画 |
 | 遮罩 / 投影 | 3 | `overlay` `shadow-1` `shadow-2` | 弹窗遮罩与两级浮层投影 |
@@ -252,7 +252,12 @@ R62-a H5-j 之前这里还写着「树分组名、连接名」也粗 —— 那�
   （品牌方块里的 `text-inverse` 就是第一个）**必须写两类选择器**提高特异性，单类会被后写的通用规则顶掉 ——
   见 §4.3 第 6 条。
 
-### 4.2 图标清单（**63** 个，`io.agenticdb.ui.Icons.Icon`）
+### 4.2 图标清单（**62** 个，`io.agenticdb.ui.Icons.Icon`）
+
+> ⚠️ 这个数字在 R63-3 之前一直写着 **63**，是错的：本轮删掉六枚 `DB_*` 之前实际枚举有 **68** 枚
+> （说明下面这张分类表本身也有漏项，抬头行数不得当清单读）。62 = 68 − 6，
+> 且本轮之后**厂商商标不在这个枚举里**（它们走 `Icons.brand(key,size)` 那条独立通道，
+> §4.6）。没有门禁钉这个总数，所以它靠人维护 —— 加一枚图标请顺手改这里。
 
 | 分类 | 图标 | 语义 |
 |---|---|---|
@@ -260,10 +265,11 @@ R62-a H5-j 之前这里还写着「树分组名、连接名」也粗 —— 那�
 | 导航 | `PREVIOUS` `NEXT` `FIRST` `LAST` `CHEVRON_LEFT` `CHEVRON_RIGHT` `MOVE_UP` `MOVE_DOWN` `FOLDER` | 上/下/首页/末页/左/右 / 行上下移（主键与列排序编辑器）/ 连接分组 |
 | 传输 | `EXPORT` `IMPORT` `TRANSFER` | 导出 / 导入 / 双向 |
 | 执行 | `RUN` `RUN_ALL` `STOP` `EXPLAIN` | 执行 / 执行全部 / 停止 / 执行计划 |
-| 对象 | `DATABASE` `TABLE` `STRUCTURE` `COLUMNS` `VIEW` `VIEW_OBJECT` `FUNCTION` `TRIGGER` `INDEX` `OPEN` | 连接 / 表 / 结构 / 列 / 视图 / 视图对象 / 函数 / 触发器 / **索引** / 打开选中对象 |
-| 其它 | `CONNECT` `QUERY` `LIST` `GRID` `THEME` `PALETTE` `HISTORY` `DIAGNOSTICS` `LOCK` `ALERT` | 连接 / 查询 / 清单 / 网格 / 主题 / 命令面板 / 历史 / 诊断 / 加密连接 / 警告提示 |
+| 对象 | `DATABASE` `TABLE` `STRUCTURE` `COLUMNS` `VIEW` `VIEW_OBJECT` `FUNCTION` `TRIGGER` `INDEX` `USER` `OPEN` | 连接 / 表 / 结构 / 列 / 视图 / 视图对象 / 函数 / 触发器 / **索引** / 用户·权限 / 打开选中对象 |
+| 分组 | `GROUP_TABLES` `GROUP_VIEWS` `GROUP_FUNCTIONS` `GROUP_QUERIES` `GROUP_CONNECTIONS` | 侧栏里**集合**节点（表组 / 视图组 / 例程组 / 查询组 / 连接分组）。⭐ 这五枚**刻意保持单色**：分组拿不到对象类型（`iconStyleClass` 按 kind 分色，GROUP 只有一档灰），给它上色等于宣告「集合也有一类」，而集合不是对象 |
+| 其它 | `CONNECT` `QUERY` `LIST` `GRID` `THEME` `PALETTE` `HISTORY` `DIAGNOSTICS` `LOCK` `ALERT` `AI` | 连接 / 查询 / 清单 / 网格 / 主题 / 命令面板 / 历史 / 诊断 / 加密连接 / 警告提示 / **AI**（自绘四角星芒，「New Table with AI」那格 —— 库里那套 Lucide 资产没有 sparkles） |
 | 品牌 | `BRAND` | ⭐ **AIDB mark**（数据圆柱 + 右上 AI 四角星芒）—— 只用在**「关于」弹窗的图形**；2026-10-28 顶区精简后，品牌在界面里的落点是窗口标题 + 窗口图标 + 关于框（顶栏不再有品牌块） |
-| 厂商图形 | `DB_MYSQL` `DB_POSTGRESQL` `DB_SQLSERVER` `DB_ORACLE` `DB_SQLITE` `DB_MARIADB` | ⭐ R43-a：**同风格自绘**的六家数据库标识（§4.6）—— 登记在 `ConnectionCatalog` 的行列上，界面上那十个说得出「是哪家」的表面全经 `ConnectionCatalog.graphic(kind, size)` 从同一行取（§4.6），任意两处的 MySQL 因此必然同形同色。没有 `DB_MONGODB` 这类：没驱动的厂商不给图形，给了就是承诺一个连不上的连接 |
+| ~~厂商图形~~ | ~~`DB_MYSQL` `DB_POSTGRESQL` `DB_SQLSERVER` `DB_ORACLE` `DB_SQLITE` `DB_MARIADB`~~ | ⭐ **R63-3：这六枚枚举常量连同 `icons/color/db_*.svg` 已删除**。厂商识别改走**商标通道** —— `icons/brand/<key>.svg` 里的官方拍平标志 + `Icons.brand(key, size)`，不进这个枚举、不吃角色分层与令牌（§4.6）。接线口径没变：仍登记在 `ConnectionCatalog` 的行上，那九处说得出「是哪家」的表面全经 `ConnectionCatalog.graphic(kind, size)` 从同一行取，任意两处的 MySQL 因此必然同形同色。没有 `DB_MONGODB` 这类：没驱动的厂商不给图形，给了就是承诺一个连不上的连接 |
 
 ### 4.3 硬规则
 
@@ -295,7 +301,7 @@ R62-a H5-j 之前这里还写着「树分组名、连接名」也粗 —— 那�
 | **I-1** | ~~缺 **20px 图标档**（功能栏用 16px 顶着大字标）~~ | — | ✅ **已修**（UX-1）：新增 `Icons.SIZE_PRIMARY = 20`，对象主工具条使用 |
 | **I-2** | ~~标签栏 11px、rail 16px、功能栏 16px 三档不统一~~ | 同一语义在不同处大小不一致 | ✅ **已修**（UX-1）：命名档位 14/16/20 三个常量，调用点写数字被门禁拦下 |
 | **I-3** | ~~无应用图标~~ | 窗口标题栏无品牌标识 | ✅ **已修**：`App` 把多尺寸品牌图标注册进 `stage.getIcons()`（门禁：`BrandMarkAuditTest`） |
-| **I-4** | 彩色档覆盖**导航词表 + 功能区 + 页面级 16px 内联工具条**（18 枚资产，无资产的图标自动回退单色）+ **六家数据库图形** | ~~同一图标在树上和工具条上两种画法~~ —— 已消；~~连接磁贴仍是单色，等第三方 logo 的裁定~~ —— 已消 | ✅ 工具条部分（R35 N4-c，门禁 `ToolbarIconChannelTest` 双向钉 + `DataGridPageTest` 从真实页面验两区画法）；✅ 厂商部分（R43-a **自绘同风格**六枚，不取原版位图也不碰商标，§4.6；门禁 `VendorGlyphTest`） |
+| **I-4** | 彩色档覆盖**导航词表 + 功能区 + 页面级 16px 内联工具条**（18 枚资产，无资产的图标自动回退单色）；**六家数据库**⭐ R63-3 起不在彩色档里 —— 它们走商标通道 | ~~同一图标在树上和工具条上两种画法~~ —— 已消；~~连接磁贴仍是单色，等第三方 logo 的裁定~~ ⭐ **裁定已下（2026-11-04，R63-3）**：用户点「全部表面换，我拍平素材」，第三方 logo 直接进包 | ✅ 工具条部分（R35 N4-c，门禁 `ToolbarIconChannelTest` 双向钉 + `DataGridPageTest` 从真实页面验两区画法）；✅ 厂商部分（⭐ R63-3 换代：六枚**官方彩色商标**在 `icons/brand/`，字面官方色、不吃主题与 CSS，深色档靠 `-adb-brand-plate` 底板保可读；门禁 `VendorGlyphTest` 8 条 + `BrandIconTest` 7 条；来源与法律账在 `icons/brand/TRADEMARK-NOTICE.txt`，⚠️ 发布前需换成各家品牌页的原始矢量件，§4.6 规矩 7） |
 
 ### 4.5 彩色档（R35）
 
@@ -342,59 +348,98 @@ R62-a H5-j 之前这里还写着「树分组名、连接名」也粗 —— 那�
 
 ---
 
-### 4.6 厂商数据库图形（R43-a）
+### 4.6 厂商数据库图形（R43-a · ⭐ R63-3 换代到官方商标）
 
-§4.5 那八条**全部适用**（角色分层、颜色只从令牌来、暗色不出第二套资产、轮廓层收尾），
-这里只补厂商这一族特有的口径。
+§4.5 那八条**只适用在自绘形状那一侧**（角色分层、颜色只从令牌来、暗色不出第二套资产、轮廓层收尾）。
+R63-3 之后界面上其实有**两条互不相干的图标通道**，先把这条线划清楚，否则下一轮会拿着 §4.5 去改商标：
 
-| 家 | 图形取的是该家公开标识里**最能一眼认出的几何特征**（自绘，不是商标图标） | 品牌色 light / dark |
+| 通道 | 资产 | 转换 | 颜色从哪来 | 用在哪些表面 |
+|---|---|---|---|---|
+| **角色通道**（自绘） | `icons/color/*.svg` | `LucideConverter.toLayers` → `IconPaint` 分层 | CSS 令牌：`-adb-icon-edge` / `-adb-icon-tone-a/b/c`，随主题换色 | 全部通用对象图形（表 / 视图 / 列 / 插头 / **树里的库节点圆柱**…），以及 `.adb-db--*` 作用域下库节点的 `tone-c` 品牌着色 |
+| **商标通道**（R63-3 新增） | `icons/brand/<key>.svg` | `LucideConverter.toBrandLayers` → 逐层**字面** `#rrggbb` | **资产里写死的官方色**，不吃主题、不吃 CSS、不进令牌 | 经 `ConnectionCatalog.graphic(kind, size)` 铺到的**每一个**厂商表面（下面那九处），也就是「一眼看出是哪家」这件事 |
+
+商标层**不带任何 `adb-icon-*` 类**：CSS 的 `-fx-fill` 会盖掉程序化 `setFill`，一旦挂上角色类，
+「官方色不许改」这条就被自己的样式表破了。守这句话的是 `VendorGlyphTest.theOfficialColorsSurviveCssInBothThemes`
+—— 亮暗两档各渲染一次，断**计算填充色 == 资产里的字面 hex**，且 light == dark。
+
+| 家 | 图形取的是该家**公开标识本身**（⭐ R63-3：不再自绘 —— 来源、md5 校验强度与未校验项逐文件写在 `ui/adb-ui-core/src/main/resources/io/agenticdb/ui/icons/brand/TRADEMARK-NOTICE.txt`） | 官方字面色（亮暗同一值） |
 |---|---|---|
-| MySQL | 一弯朝左下鼓的背鳍 + 右上**独立**的水滴（两笔不相连，14px 下才分得开） | `#00758F` / `#4FC8DE` |
-| PostgreSQL | 两条立柱收进 U 形底（獠牙 / 象鼻的抽象化） | `#336791` / `#7FB3D9` |
-| SQL Server | 六边形环：外圈 + 同心内圈，内圈按 EVEN_ODD 挖空（宝石切面） | `#8A5A00` / `#E3B23C` |
-| Oracle | 横椭圆环：外椭圆 + 同芯内椭圆挖空 | `#C71000` / `#FF7168` |
-| SQLite | 羽叶：一条从右上扫到左下的弧 + 背边，中间一条叶脉 | `#0F83AE` / `#67D4EF` |
-| MariaDB | 圆球里挖出一条跃身海豚的剪影（球 + 一条反剪的弧） | `#003545` / `#8FC9E0` |
+| MySQL | 海豚 + 水滴的官方组合标（`logos_mysql-icon.svg` 形状，256×252 方化） | `#00546B` |
+| PostgreSQL | 象鼻 / 獠牙那枚官方方形标（`logo_postgresql.svg`，256×264 方化） | `#336791` |
+| SQL Server | 2025 那枚官方宝石切面环（✅ 与 Wikimedia 原件逐字节相同） | `#0078D4` |
+| Oracle | 官方横椭圆环（⚠️ 红色是从 Oracle 自家 favicon 量的，**不是**原件色） | `#E55844` |
+| SQLite | 官方羽叶方形标（✅ 与 Wikimedia 原件逐字节相同） | `#0F80CC` |
+| MariaDB | 官方彩色海豚标（`MariaDB_colour_logo.svg`，裁到符号；✅ 与 Wikimedia 原件逐字节相同） | `#1F305F` |
+
+**底板：改的是它坐的表面，不是标志本身。** 官方深底色直接落在深色侧栏上读不清 —— 实测 MySQL `#00546B`
+对 `-adb-bg-sidebar` `#172033` 约 **1.9:1**、MariaDB `#1F305F` 约 **1.2:1**、PostgreSQL `#336791` 约 **2.4:1**
+（非文本 UI 组件的下限是 3:1，`ContrastTest` 用的就是这条）。商标色是法律边界、动不得，所以对比度补在**承载面**上：
+`ConnectionCatalog.graphic` 把商标套进一颗 `StackPane`，挂 `.adb-brand-plate`（新令牌 `-adb-brand-plate` =
+第 **111** 个，两档都 `#FFFFFF`，圆角 3px），并把底板尺寸**钉死在图标槽位上**（`min == pref == max == size`）——
+不钉的话底板跟着内容撑宽，左树的缩进会自己动。门禁 `VendorGlyphTest.thePlateKeepsTheMarkReadableInDarkTheme`
+暗档渲染后断两件事：底板**有**背景色且算出来的亮度足够压住官方深色（RGB 之和 ≥1.5，即平均亮度 ≥0.5），
+以及底板**正好是 `SIZE_LABEL × SIZE_LABEL`** —— 尺寸那半条才是「顶动缩进」的守门人。
 
 **九个表面、同一枚图形**（⭐ R54 从两处铺满成十个，⭐ R63-2 又收掉顶栏那两处 —— 顶栏不再报告「连的是哪家」，那句话整句归状态栏）：连接向导的类型磁贴 **44px**（`SIZE_TILE`）与它
-右边那张预览图（同尺寸）、左侧树的连接节点 **14px**（`SIZE_LABEL`）、树里的**库**节点（形状仍是
-圆柱 —— 它说的是「这是个库」，只有**颜色**跟父连接走）、折叠轨道的连接钮 **16px**（`SIZE_TOOLBAR`）、
+右边那张预览图（同尺寸）、左侧树的连接节点 **14px**（`SIZE_LABEL`）、树里的**库**节点（⭐ 唯一例外：它说的是「这是个库」，形状仍是**自绘圆柱**、走角色通道，只有**颜色**经 `.adb-db--*` 跟父连接走）、折叠轨道的连接钮 **16px**（`SIZE_TOOLBAR`）、
 `OBJECT` 页签 **14px**、连接管理器 Type 列 **14px**、状态栏「来源」**12px**（`SIZE_BADGE`，
 与活线点并排 —— 「连着没连着」和「连的是哪家」是两件事，不挤同一个线索）、查询页的库▾ **14px**。
-14px 是这六枚的真正考验 —— 帧覆盖：磁贴看
+12px 与 14px 是这六枚的真正考验 —— 官方标里最细的那几笔（Oracle 环、SQL Server 内圈）在这个尺寸下会并成一条，
+这是换代的**已知代价**，用户裁定「全部表面换，我拍平素材」时接受过。帧覆盖：磁贴看
 `p5-connect-type` / `p5-connect-type-dark` / `p5-connect-general`，多引擎同框的树看
-`p0-tree-vendors`，列表 + 页签 + 状态栏同框看 `p5-connections-vendors` / `p5-connections`（⚠️ 这三张帧连同 `p0-shell` 都还拍在**有胶囊的旧代码**上，重拍归 D-62 / R66 —— 帧重拍前不许拿它们做像素判断），
+`p0-tree-vendors`，列表 + 页签 + 状态栏同框看 `p5-connections-vendors` / `p5-connections`（⚠️ 这三张帧连同 `p0-shell` 都还拍在**有胶囊的旧代码 + 自绘图形**上，重拍归 D-62 / R66 —— 帧重拍前不许拿它们做像素判断），
 暗色档看 `p0-shell` / `p5-dark`。
 
-**五条规矩**：
+**七条规矩**（1–5 由 R43-a / R54 立，6–7 由 R63-3 加）：
 
 1. **登记在 `ConnectionCatalog` 的行上**，不是新开一个 `DialectKind` switch 文件 ——
    图形、品牌色作用域类、显示名同一行给全，这**九个表面**（R54 当时是十个）**读同一行**、且只经
-   `ConnectionCatalog.graphic(kind, size)` 这**一个出口**（取字形 → 上彩色分层 → 挂
-   `.adb-db--<id>` 三步不许在任何表面重抄一遍）。分叉的代价是「同一个 MySQL 在两处两种画法」，
+   `ConnectionCatalog.graphic(kind, size)` 这**一个出口**（取字形 → 上分层 → 挂
+   `.adb-db--<id>` → 套底板，四步不许在任何表面重抄一遍；商标资产名由 `Entry#brandKey()` 从 `id` 推导，
+   不再登记第二遍 —— 多一列就是给「两处不同步」留位置）。分叉的代价是「同一个 MySQL 在两处两种画法」，
    正是 N4-c 已经踩过一次的坑。`DialectBranchAuditTest` 允许登记，禁止散落；
-   R54 另加 `VendorGlyphTest.onlyTheRegistrationRowPicksVendorGlyphs`：整个 `ui/` 的 main 源码里
-   除登记行本身出现 `Icons.Icon.DB_*` 常量分支就红。
+   R54 那条审计在 R63-3 换了写法：`Icons.Icon.DB_*` 六枚常量连同 `icons/color/db_*.svg` 一起删了，
+   绕过出口现在**结构上编译不过**；仍然留着的是
+   `VendorGlyphTest.onlyTheSharedOutletAsksForBrandMarks` —— 扫整个 `ui/` 的 main 源码，
+   `Icons.brand(` 与 `Icons.hasBrandAsset(` 的调用点除登记行本身出现就红（javadoc 里的资产路径字符串不算绕过）。
 2. **只有真有驱动的六家有图形，也只有这六家出现在界面上**。`DialectKind.values()` 与图形集合一一对应
-   （`VendorGlyphTest` 的静态块钉住）。R43-b 之前类型页还摆着 MongoDB / Redis / Snowflake 与 13 个厂商
+   （`VendorGlyphTest` 的静态块钉住；`brandDirectoryHoldsExactlyTheRegisteredMarks` 再把 `icons/brand/`
+   目录与登记行钉成**双向双射** —— 多一个文件也是红）。R43-b 之前类型页还摆着 MongoDB / Redis / Snowflake 与 13 个厂商
    的中性圆柱磁贴 —— 给连不上的连接配一张卡，等于界面在承诺后端没有的能力，收成六张后那十六张连同
    「无驱动说明页」一起删了。
-3. **品牌色只上 `tone-c`（最深填充面）一层**，轮廓层继续吃 `-adb-icon-edge`。
+3. **自绘那一侧**：品牌色只上 `tone-c`（最深填充面）一层，轮廓层继续吃 `-adb-icon-edge`。
    理由是 §4.5 第 7 条的同一条：类型线索有两条（形状 + 颜色），而轮廓是「看不看得见」的那条 ——
    把它染成深品牌色，暗色档就糊。两档的品牌色各自过 ≥3:1 对页面底（`ContrastTest`）。
+   ⭐ R63-3 起这一条**管不到商标通道**：商标的色是资产里的字面值，`-adb-vendor-*` 只决定库节点那枚圆柱
+   和左右树行的着色，不再决定「MySQL 长什么样」。`eachVendorScopeClassStillCarriesItsOwnBrandToken`
+   钉的是这六条 CSS 映射**仍然在**（它们服务于自绘那一侧，不是残留）。
 4. **认不出方言时不许挑一家画上去**：回落各自原本的中性图形（`CONNECT` 插头 / 圆柱 / `DOT`）。
+   `graphic(null,…)` 直接交回 `null` 由调用方兜底 —— 画成某一家就是编造。
    守这句话的是侧栏那条 `aConnectionWithoutAProfileKeepsTheNeutralPlug`。⭐ R63-2 之前顶栏胶囊
    还有一条更彻底的口径（没图形就整格 `setManaged(false)` 收起，配套门禁
    `thePillDropsTheGlyphWhenThereIsNoConnection`）—— 胶囊本身没了，那条代码与那条门禁一起退场。
 5. **给一列加图形，就得重新量那一列**（R54 实拍踩的）：连接管理器 Type 列的 90px 是按纯文字量的，
    图形 + 5px 间距凭空吃掉一截（中途试到 112px 仍折），`POSTGRESQL` 在帧里长成 `POSTGRE…` → 最终 140px。单元测试看的是模型里的字符串，
-   它不会告诉你屏幕上少了三个字母。
+   它不会告诉你屏幕上少了三个字母。⭐ R63-3 换图形时这一条**没有再红**，因为底板被钉成 `size × size`，
+   与原来的裸图标占位相同 —— 这是「尺寸锁定」那个决定的回报，不是巧合。
+6. **商标资产的形状约束**（`BrandIconTest` 七条门禁逐条钉）：viewBox 必须是**原点为零的正方形**；
+   不许有 `transform`（拍平时提前烘进路径）；填充必须是**字面 `#rrggbb`**，不许 `class` / `style` /
+   `data-paint` / `fill-opacity` / `stroke`；不许出现 `g` / `defs` / `mask` / `clipPath` / `image` /
+   渐变 / `filter` / `circle` / `rect` 等元素（JavaFX `SVGPath` 只吃绝对 `M L H V C S Q Z`，转换器也只认
+   `<path d>`）；所有坐标落在 16 单位盒内；任意两家的形状必须两两不同。
+7. **对外发布前这一格没清账**：拍平 = 改商标，MariaDB 与 Microsoft 的条款明确禁止改色与衍生作品
+   （PostgreSQL / SQLite 宽松）。`TRADEMARK-NOTICE.txt` 逐文件记了来源、md5 与未校验项，⚠️ 那一节的最后一条要求
+   把六枚素材换成各家品牌页的**原始矢量件**再发布。在这之前这一格的状态是「自用可用、发布未清账」，
+   不许在对外文案里写成「已获授权的商标展示」。
 
 > ⚠️ **变异验证记一条改判**：`SideBarTreeTest` 这一条最初断的是 `DemoNode` 的 `toString()`
 > ——「登记行给了图形」，看起来在测接线，实际把 `SideBar` 里挂作用域类那两行删掉**照样全绿**。
 > 症状是「左树六家全一种颜色」，而这恰好是这条门禁该抓的东西。
-> 现在断的是**渲染出来的 cell 里的图标容器类名 + `tone-c` 层的计算色**：
+> 后来断的是**渲染出来的 cell 里的图标容器类名 + `tone-c` 层的计算色**：
 > 取值对不对归取值那些用例管，这里只管**画出来**。
+> ⭐ R63-3 又改判一次（`connectionNodesWearTheirVendorMark`）：断**渲染出来的商标填充色**
+> 真出现 `#00546b` / `#e55844`，并额外断商标层**不带**任何角色类 ——
+> 「挂了类但类没生效」在自绘时代是红的，在商标时代根本不叫问题，因为商标压根不该挂类。
 
 ---
 
@@ -1056,6 +1101,7 @@ dialog.initOwner(window);             // 没有 owner 会跑到屏幕中心、�
 
 | 日期 | 轮次 | 内容 |
 |---|---|---|
+| 2026-11-04 | 第六十三轮 · R63-3（换代：六家数据库改用**官方彩色商标**） | **§4.6 从「五条规矩」长成七条，并新增一张两通道的表** —— 这一轮是换代不是接线：`Icons.Icon.DB_*` 六枚枚举常量 + `icons/color/db_*.svg` 六枚自绘资产一起删掉，界面上那九处「一眼看出是哪家」改吃 `icons/brand/<key>.svg` 里**拍平的官方商标原件**（viewBox 方化、`transform` 烘进路径、渐变压平、逐层字面 `#rrggbb`）。为此 §4.6 必须先划清**两条通道**：角色通道（自绘 → `toLayers` → `IconPaint` 分层 → CSS `-adb-icon-*`，随主题换色）与商标通道（`toBrandLayers` → 字面官方色，**不吃主题、不吃 CSS、不进令牌**）。商标层刻意**不挂任何 `adb-icon-*` 类**：CSS 的 `-fx-fill` 会盖掉程序化 `setFill`，挂上角色类等于用自己的样式表破掉「官方色不许改」。新转换器 `LucideConverter.toBrandLayers` 的契约（原点零正方形 viewBox / 禁 `transform` / 禁非字面填充 / 只认 `<path d>` / 坐标入 16 盒）由 `BrandIconTest` 七条离屏门禁钉住，形状两两不同也钉。**深色档的代价量出来了**：官方深底色对 `-adb-bg-sidebar` 只有 MySQL 1.9:1 / MariaDB 1.2:1 / PostgreSQL 2.4:1（非文本下限 3:1），而商标色是法律边界动不得 —— 于是补的是**承载面**：新令牌 `brand-plate`（两档都 `#FFFFFF`，第 **111** 个，颜色数 76→77），`ConnectionCatalog.graphic` 把商标套进 `.adb-brand-plate` 的 `StackPane`，尺寸 `min==pref==max==size` 钉死（不钉的话底板撑宽会顶动左树缩进，也正是这条让 R54 规矩 5「加图形就重量那一列」本轮没有再红）。出口那条审计换了写法：旧的门禁扫 `Icons.Icon.DB_*` 常量，现在那六枚常量根本不存在、绕过等于编译不过，改扫 `Icons.brand(` / `Icons.hasBrandAsset(` 的调用点（javadoc 里的资产路径字符串不算绕过）；`brandDirectoryHoldsExactlyTheRegisteredMarks` 再把 `icons/brand/` 目录与登记行钉成双向双射，多一个文件也是红。`SideBarTreeTest.connectionNodesWearTheirVendorMark` 是**被这次换代改判的**（原来那条叫 `…WearTheirVendorGlyph`）：它断「挂了作用域类 + `tone-c` 计算色」，而商标压根不该挂角色类 —— 改断渲染后的**商标填充色**真出现 `#00546b` / `#e55844`，并额外断商标层**不带**角色类（后者是新增的反向断言：谁把角色类挂回去，这条就红）。顺带清了两处陈旧账：§4.2 抬头那个 **63** 一直是错的（删六枚之前实际 68 枚，本轮 **62**），分类表也漏了 `USER` + 五枚 `GROUP_*` + `AI`，一起补上并写明「没有门禁钉总数、靠人维护」。⚠️ **法律账开在 §4.6 规矩 7**：拍平 = 改商标（MariaDB / Microsoft 条款禁止改色与衍生作品），`icons/brand/TRADEMARK-NOTICE.txt` 逐文件记来源与 md5 校验强度（✅ 逐字节相同：SQL Server / SQLite / MariaDB；⚠️ 未逐字节核：MySQL / PostgreSQL；⚠️ Oracle 那枚的红色是从自家 favicon 量的、不是原件色），**对外发布前必须换成各家品牌页的原始矢量件** —— 在那之前这一格记「自用可用、发布未清账」，不许写成「已获授权的商标展示」。⚠️ 换代代价：官方标里最细的几笔（Oracle 环、SQL Server 内圈）在 12–14px 会并成一条，用户裁定时接受过。**帧债没还，反而加了一笔**：`p0-tree-vendors` / `p5-connections-vendors` / `p5-connect-type*` 现在同时落后于 R63-2 的顶区改动和本轮的图形换代，全部重拍归 D-62 / R66 —— 帧重拍前这些帧不许做像素判断。 |
 | 2026-11-04 | 第五十八轮 · R58（H1-c，Q1 拍「做，接进结果区」） | **查询结果网格不再永远只读，视觉面只借现成的排、不加新的一排**：可改的那一屏双击进 §7.3 的**行内编辑盒**（白底 + 2px `border-focus` 贴格框），改完的格子用同一条**脏单元格**规则（左侧 2px 黄条 + `warning-bg`）—— 槽位常留那条不变量因此同样罩住结果网格（脏条只上色、不改宽度）。新增的只有视图条右端那三颗「N 处改动 · Discard · Save Changes」，**有改动才进出**（点不动的键不留位，与数据页删除键同一条规矩）；§8.6 的「保存修改（SQL 预览）」弹窗从数据页一处变成**两页共用一个构造口**（`SavePreviewDialog`），默认键仍是取消。Info 切面多承担一句「为什么这一屏不能改」（21 条卡点各一句）。画面三帧 `p3-query-edit-blocked` / `-dirty` / `-preview` 落进 §6.3。<br>⚠️ **本表自 R54 之后没再逐轮记**（R55–R57、R61–R62-a 的账都在 CHANGELOG 与 §6/§7/§8/§10 对应小节里），这一行补的是 R58 的视觉面差量，不是「表又恢复逐轮了」。 |
 | 2026-11-03 | 第五十四轮 · R54（用户点名「每个类型数据库都改为用他们自己特定的 icon，一眼看出是 mysql、pg 等」） | **先量现状，量出来的结论是这一轮不需要画任何图标**：六枚自绘字形、彩色分层资产、亮暗两档品牌色、`.adb-db--<id>` 作用域类和「六家两两不同形」的门禁在 R43-a 就全建好了，缺的是**它们只铺在两个表面上**（向导磁贴 44px、左树连接节点 14px）。其余每一个说得出「是哪家」的地方全是通用圆柱 / 插头 + 一行字：顶栏那颗常驻胶囊和它的下拉、树里的**库**节点、页签、连接管理器 Type 列、状态栏、查询页库▾、折叠轨道连接钮、向导右边那张预览图。**所以本轮改的是接线不是美术**，而且刻意不挨个表面各画一遍 —— 那正是 D-38 的形状（同一条规则十份实现）。修法：「取字形 → 上彩色分层 → 挂品牌作用域类」收成**一个出口** `ConnectionCatalog.graphic(kind, size)`，十个表面全调它；§4.6 的规矩从四条改五条，新加的静态审计 `VendorGlyphTest.onlyTheRegistrationRowPicksVendorGlyphs` 扫整个 `ui/` 的 main 源码，除登记行本身出现 `Icons.Icon.DB_*` 常量分支就红 —— 将来加第七家只在登记行加一行。**三处口径没松动**：认不出方言一律回中性图形，顶栏那一格更彻底（没图形就整格 `setManaged(false)` 收起，不留空白把名字往右推）；继续不打包任何厂商商标图形，可辨识度靠「形状互不相同 + 各自品牌色」两条腿；状态栏**保留**活线点、图形另起一槽（「连着没连着」和「连的是哪家」是两件事）。**两处刻意没铺，写下来免得下一轮当漏项重排**：数据页概览的 `overview-engine` 行与表清单 `Engine` 列读的是 `TableMeta.engineText()` = **存储引擎**（InnoDB / Heap-Organized），不是厂商，挂厂商图形是答非所问；折叠侧栏底部那枚方言文字管的是「什么方言」这句话，图形位归上面那颗连接钮。**两张新帧**：`p0-tree-vendors`（**55 张既有帧里没有一张拍到左树**，这是第一张多引擎同框的树）与 `p5-connections-vendors`（六家同框 + 胶囊 + 页签 + 状态栏同框），另重拍 `p5-connections` / `p5-connect-general`；帧通道走新的 `ADB_TREE_VENDORS=1`，只从 `ADB_TEST_<方言>_{HOST,PORT,DB,USER}` 造**档案**（口令零入库、不进凭据存储），环境变量不在时直接 `FRAME ABORTED` → 退出码 3、不写一个字节。⚠️ 这一路**故意不声明有活会话**（图形来自档案 kind 不来自 session），所以它不需要 D-37/D-39 的落库门，反过来也**不能**被读成「五家同时连上了」。**⚠️ 两条只有画面能抓的缺陷**：① 第一版 `TabBar.vendorGraphic` 在 `connectionId == null` 处短路，而常驻的「Objects」页签恰恰没有连接 id —— 十个表面里最常驻的那一个反而没铺上，修成把 null 交给注入函数、由外壳回落到活动连接（顺带抓到换页签节点时 `adb-tab__icon` 随旧节点一起丢了）；② Type 列的 90px 是按纯文字量的，图形 + 5px 间距吃掉一截（中途试到 112px 仍折），`POSTGRESQL` 在帧里长成 `POSTGRE…` → 最终 140px，这条升成 §4.6 规矩 5：**给一列加图形就得重新量那一列**。变异：共享方法的作用域类 → 6 红；五处表面接线逐个摘掉 → 恰好 5 红；库节点品牌类 + 轨道钮涂装 → 恰好 2 红；一处直接写常量选图形 → 1 红；页签 null 短路 + 丢类 → 恰好 2 红；顶栏三处（胶囊 / 下拉每行 / 无连接收起）→ 恰好 3 红。⚠️ **本轮两张新帧都是亮色档**：暗色档的多引擎同框没拍（暗档品牌色由 `ContrastTest` 钉 ≥3:1，但 `p5-dark` 的左树只有 SQLite 一家）—— 记为画面余项，不当已验。 |
 | 2026-11-03 | 第四十七轮 · R47-d（时间线在 R47-c 之后；G5 画面半边的第二批，五引擎种子 + 另外三家方言的视图形态帧） | **上一轮只排了 MySQL 那一侧的视图画面，这一轮把 SQL Server / PG / Oracle 三家补上 —— 而「引号形状」这件事只有画面能验：MySQL 反引号、SQL Server 方括号、PG / Oracle / SQLite 双引号。这三家的帧一落地就连抓两个缺陷：一个是产品的（那两家的「设计视图」从来没开出过窗），一个是通道的（快门落在还没连上的那一刻）**。**种子从三家扩到五家**（`dbmatrix.sh seed_frames`）：SQL Server / Oracle 各一份随方言变的幂等种子，两处非显然的坑都是实拍踩出来的 —— ① SQL Server 的 `CREATE VIEW`（含 `CREATE OR ALTER`）**必须是批次里第一条语句**，跟前面的建表拼一段会在**解析期**整批失败，症状是「表也没建成、只吐一句 must be the first statement」，所以视图单独用 `GO` 隔一段；② 容器里 `sqlplus system/…` 默认落在 **CDB$ROOT**，而 `adb` 用户在 PDB 里，不先 `ALTER SESSION SET CONTAINER = FREEPDB1` 就是 ORA-01917。Oracle 没有 `IF NOT EXISTS`：建对象靠 PL/SQL 吞 `-955 / -1430`，插入用 `MERGE` 当 upsert。`seed` 子命令补了 `load_env`（之前单跑 `seed` 拿到的 Oracle 用户名是空串，因为要从口令文件读）。**幂等**：连跑两次 `dbmatrix.sh seed`，两次输出逐字相同、退出码 0、没有一条「已存在」报错 —— D-30 那条教训的延续，噪音会淹掉下一次真故障。**四张新帧（51 → 55）**：`p6-new-view-sqlserver`（`CREATE VIEW [v_paid_orders]` 方括号 + 那句 `CREATE OR ALTER VIEW`，这个写法第一次进画面）、`p6-design-view-pg`（`pg_get_viewdef` 回来的**多行缩进正文** + 单句 `CREATE OR REPLACE VIEW "v_active_users"`，与 MySQL 那一行长句正相反）、`p6-design-view-sqlserver`（正文是当初写的原句一行 —— 那边存的是原文不是规范化结果）、`p6-design-view-oracle`（正文带 `adb.users` **schema 前缀**，来自 `DBMS_METADATA.GET_DDL`）。「重建只有一句」至此在四家真服务器上各有画面，只剩 SQLite 是两句那一格由演示库那帧担。**⚠️ D-38（产品缺陷，由这两家的帧顺出来）**：首拍 `p6-design-view-pg` / `p6-design-view-sqlserver` 拍到的都是 1280×792 主窗口 + 状态栏 `Can't read the stored query of view "v_active_users"` —— 这两家的 `readDdl(..., view=true)` 整方法 `return null`，视图原文只在 `readViewDdl` 那条路上。界面文案「读不到就不开窗」是对的，但它把一个空壳说成了能力：**这两家的设计器实际上一次都没开过**。⚠️ 比不开窗更糟的一处：整表重建里「先拆依赖视图、建完再挂回去」那份清单（`StructureSqlBuilder.viewDdl`）也只调 `readDdl` → 读到 null 就当没有依赖视图 → `DROP TABLE` 把视图级联带走之后**没人重建它**。**为什么 46 条真库契约全绿也没抓到**：`RealDatabaseContract` 自己写了「readDdl 空了就再问一次 readViewDdl」—— 契约走的路和界面走的路不是同一条。这是「兜底写在调用方头上」的代价，所以修法是把兜底**收进方言**（`PostgresDialect.readDdl` / `SqlServerDialect.readDdl` 在 `view=true` 时自己交回库里存的原文，各写一段 javadoc 说明这两个 UI 调用点和契约当初为什么看不见它），契约改成直接钉 `readDdl` 这一条（界面与契约同一条路），`SchemaService` 里那份重复兜底删掉。**新门禁** `DialectViewReadDdlTest`（4 条，替身 `Connection` 记录发出的 SQL、不依赖 Docker）：PG 必须真问 `pg_get_viewdef`、SQL Server 必须真问 `sys.sql_modules JOIN sys.views`、读回来还解析得出查询体、`readDdl(…, false)`（表）仍交 null（防下次把 view 的兜底顺手扩到 table）、视图不存在时是 null 不是空串。**变异**：两家方言退回 `return null` → 静态门禁红 **2** + **真库契约在 PG 与 SQL Server 上各红 1**（正是这两家，报的正是界面那句「设计视图开窗要读得到查询体」）—— 这一条现在有三层：单元、契约、画面。**⚠️ D-39（通道缺陷，记在 R47-c 的账下，这里补画面侧）**：`p6-new-view-oracle` 首拍是主窗口 + 「Connecting to matrix Oracle…」+ 演示库的对象页 —— D-37 验的是**声明**（`ADB_MATRIX` / `ADB_CONNECTION` 对不对），而连接是异步的，声明成立不等于**落点**成立。Oracle 首次连接实测 8~12 秒，7 秒的等待里快门先按了下去。修在两层：等待按实测逐家抬高（11 / 13 / 14~19 秒），落点由 `AppShell.matrixFrameProblem(expected, active, sessionOpen)` 在 `capture()` 落盘前判一次、不成立就 abort 且不写文件；判定抽成**静态 + 参数化**是因为单测环境永远不缺「环境慢」这个条件，不能靠再跑一遍截图来验它 —— 那正是它漏过一次的那条路。**两帧拍了又删**：PG / Oracle 的「新建视图」格与演示库那张**逐字节相同**（都是 25490 —— 三家都用双引号包标识符，画面差异为 0）。去重门报「其中一张是假帧」，这次判它是**冗余**不是假：同一张画面存三份只会让下一次的真重复埋进噪音里。双引号那一侧的证据由 `p6-new-view` 担，PG / Oracle 的证据在 design-view 那两张（读回的正文三家各不相同）。**可复现**：四张按最终代码各重拍一次，逐字节与首拍一致（25493 / 23499 / 20830 / 20866）。**全量回量 1453 / 157 / 0 失败 / 6 跳过**（2026-11-03 08:07，11:20 分钟，带矩阵环境；较 R47-b 基线 1447 / 156 = **+6 条 / +1 类**，逐笔对得上：`adb-jdbc` 194 → 198 = +4（新 `DialectViewReadDdlTest`）、`adb-ui-shell` 735 → 737 = +2（`AppShellTest` +1 = D-39 落点门禁、`ScreenshotScriptAuditTest` +1 = 矩阵行的方言 id 必须真对应那一家引擎），其余逐家一字不变；46 条主矩阵 + 18 条 TLS 矩阵仍 `Failures: 0, Skipped: 0`）。**画面账至此还挂的**：切库**落点**帧仍只有 MySQL 一家（Oracle 没有库层，第 9 条契约在它身上走「没有库层」那一支，不算缺帧）、SSH 半边（G5a）的全部画面。 |

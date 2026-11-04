@@ -53,6 +53,26 @@ Lucide icon path data (icons/lucide/, icons/color/)
     assets (src/main/resources/io/agenticdb/ui/icons/*/ISC-LICENSE.txt) as
     the ISC license requires.
 
+Database vendor marks (icons/brand/) — ⚠ TRADEMARKS, NOT LICENSED FOR REDISTRIBUTION AS-IS
+    mysql.svg, postgresql.svg, sqlserver.svg, oracle.svg, sqlite.svg,
+    mariadb.svg are flattened reproductions of the official product logos of
+    MySQL / Oracle / Microsoft / MariaDB / PostgreSQL / SQLite. Each file's
+    provenance and verification strength is recorded in
+    src/main/resources/io/agenticdb/ui/icons/brand/TRADEMARK-NOTICE.txt.
+    "Flattened" means transformed: square viewBox, baked transforms, gradients
+    reduced to literal fills. Those are derivative works of registered
+    trademarks, and several of the relevant brand guidelines (notably MariaDB
+    and Microsoft) prohibit recolouring or derivative versions. PostgreSQL and
+    SQLite publish guidance that is comparatively permissive.
+    The marks are shown in this application only to identify which vendor a
+    connection talks to. They are not an endorsement, and this project claims
+    no affiliation with or sponsorship by any of those vendors. All marks are
+    the property of their respective owners.
+    ⚠ Before any public release, these six assets must be replaced with the
+    original vector files from each vendor's own brand portal (or removed),
+    and the resulting licence position reviewed. Until then this application is
+    fit for local/personal use, not for distribution containing these marks.
+
 TestFX / AssertJ / JUnit Jupiter / Monocle
     BSD-2-Clause / Apache-2.0 / EPL-2.0 / GPL-2.0 respectively. Test-scope only;
     not part of the distributed application. (Testcontainers is planned for the

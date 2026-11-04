@@ -19,11 +19,15 @@
   强调色 `#0067B8`（Navicat 实测 `#0078D7`，为 WCAG AA 压暗）。
 - **圆角/间距**：**5 档 + pill**：`r-sm` 2 / `r-md` 3 / `r-lg` 4 / `r-xl` 6 / `r-full` 999，外层 ≥ 内层；
   7 档 4px 间距阶梯；页面外边距 16px，工具栏 8px。
-- **图标**：**矢量图标**（`io.agenticdb.ui.Icons`，**68** 个 = 59 个 Lucide 源 + 9 个自绘）。
-  9 个自绘 = 品牌标 `BRAND` + 圆点 `DOT` + `AI` + **六家厂商数据库图形** `DB_*`（R43-a，见图标约定节）。
-  （68 这一档含 R62-a H6-g 新接的五枚「集合」字形 `GROUP_*` —— 从已锁定的 lucide-static v1.61.0 vendor 原件，不是自画。）
-  统一 16×16 视框、1.5px 描边；6 档尺寸 **8 / 12 / 14 / 16 / 20 / 26**（dot / badge / label / toolbar / primary / ribbon）。
-  颜色由 CSS 的 `.adb-icon` 接管 → 切主题自动跟着变。
+- **图标**：**矢量图标**（`io.agenticdb.ui.Icons`，**62** 个 = 59 个 Lucide 源 + 3 个自绘）。
+  3 个自绘 = 品牌标 `BRAND` + 圆点 `DOT` + `AI`。⭐ **R63-3 换代**：原来算在自绘里的**六家厂商数据库图形**
+  `DB_*`（连同 `icons/color/db_*.svg`）已删除，厂商识别改走**商标通道** —— `icons/brand/<key>.svg` 里拍平的
+  **官方彩色商标** + `Icons.brand(key, size)`，字面官方色、不吃主题与 CSS（见图标约定节与 `UI-VISUAL-SPEC` §4.6）。
+  （62 这个数是 R63-3 重量过的：删六枚之前枚举实际有 **68** 枚，而 `UI-VISUAL-SPEC` §4.2 的抬头当时写着 63 ——
+  两份文档各抄各的，本轮起以逐条数过的 62 为准。68 里含 R62-a H6-g 新接的五枚「集合」字形 `GROUP_*`，
+  它们从已锁定的 lucide-static v1.61.0 vendor 原件，不是自画。）
+  统一 16×16 视框、1.5px 描边；8 档尺寸 **8 / 12 / 14 / 16 / 20 / 26 / 32 / 44**（dot / badge / label / toolbar / primary / ribbon / empty / tile）。
+  颜色由 CSS 的 `.adb-icon` 接管 → 切主题自动跟着变；**商标那一通道例外**，它自带官方色。
   ⛔ **按钮里不许再出现 Unicode 符号**（`IconSystemAuditTest` 守着）。
 
 > 📌 **本节已按 2026-10-26 裁定重写**（R30-A/B：保持和 Navicat 一样）。
@@ -63,8 +67,10 @@ java tools/GenTokens.java
 
 - 生成器把 **color 类型**令牌导出成 CSS 变量；其余 **34 个**（31 个尺寸 + 3 个时长）
   导出成 `Tokens.java` 常量，供 Java 布局代码引用。
-- 当前 **110 个令牌**（76 颜色 / 31 尺寸 / 3 时长）**全部有使用点**；
+- 当前 **111 个令牌**（77 颜色 / 31 尺寸 / 3 时长）**全部有使用点**；
   `TokenParityTest` 断言「JSON 键 = Tokens.ALL_KEYS」且没有未使用令牌。
+  ⭐ R63-3 加的第 111 枚是 `brand-plate`（厂商商标坐的浅色底板，两档都 `#FFFFFF`）——
+  它**不在**商标自己头上：官方色写死在 `icons/brand/*.svg` 里、不进令牌，令牌管的是承载面（`UI-VISUAL-SPEC` §4.6）。
   （40px 字号档 `fs-4xl` 于 2026-10-23 移除 —— 它唯一的消费者是欢迎页 logo 的
   `font-size`；20px 档 `fs-2xl` 于 2026-10-24 随 S-7 移除 —— 它唯一的消费者是那张
   **不可达**欢迎页卡片的标题。两次都是**删令牌**，不给令牌硬造消费者。
@@ -99,11 +105,12 @@ Windows 上常见字体可能替换或缺失。这条已经**不再是方向而�
 | 暗色档 | **不需要第二套资产**：角色吃令牌，令牌跟主题 → 同一张 svg 在两套主题里各自换色 | `IconKindHueTest.theKindHueFollowsTheThemeWithoutASecondAssetSet` |
 | 分层顺序 | 自下而上画，**轮廓层（EDGE）收尾**；轮廓与单色同一套 1.5px 粗细口径 | `ColoredIconTest.everyColoredIconKeepsOneEdgeLayerOnTop` |
 | 类型色 | ⭐ 「形状 + 颜色」是**一对**线索，彩色档不许删掉其中一条：轮廓层经 `.adb-tree__icon--table .adb-icon-edge` 吃 `-adb-kind-*`，三层 tone 保持中性浅蓝（类型色只走轮廓这一条道） | `IconKindHueTest`（读**计算色**，不读 CSS 文本） |
-| 厂商图形 | ⭐ R43-a：**一家一枚、各自不同形**（MySQL 海豚鳍 / PostgreSQL 獠牙 U / SQL Server 六边形宝石 / Oracle 椭圆环 / SQLite 羽叶 / MariaDB 圆球跃身），登记在 `ConnectionCatalog` 的行上 —— 向导磁贴与左侧树从**同一行**取图形与作用域类，所以两处的 MySQL 不会是两种颜色。图形是**同风格自绘标识**，不是商标图标（见素材红线）；品牌色走 `-adb-vendor-*` 令牌（两档各一个值），只落 `tone-c` 那一层，轮廓层仍吃 `-adb-icon-edge` 保可读 | `VendorGlyphTest`（不同形 / CSS 规则 / **两档计算色** / 磁贴作用域）· `SideBarTreeTest.connectionNodesWearTheirVendorGlyph`（断渲染出的 cell，不断节点取值）· `ContrastTest.vendorBrandColorsStandOutAgainstTheBackground`（≥3:1） |
+| 厂商图形 | ⭐ **R63-3 换代：一家一枚官方彩色商标**（MySQL 海豚+水滴 / PostgreSQL 象鼻方标 / SQL Server 2025 宝石环 / Oracle 横椭圆环 / SQLite 羽叶方标 / MariaDB 彩色海豚），资产在 `icons/brand/<key>.svg`，登记仍在 `ConnectionCatalog` 的行上（商标资产名由 `id` 推导，不登记第二遍）—— 向导磁贴与左侧树从**同一行**、经**同一个出口** `ConnectionCatalog.graphic(kind,size)` 取，所以两处的 MySQL 必然同形同色。**官方色写死在资产里**：不吃主题、不吃 CSS、不进令牌，所以商标层刻意**不挂** `adb-icon-*` 角色类（挂上就会被 `-fx-fill` 覆盖，等于自己的样式表破掉「官方色不许改」）。深色档读不清时**改的是承载面**：商标坐一块 `-adb-brand-plate` 白色圆角底板（第 111 个令牌），底板尺寸钉死在图标槽位上、不顶动树缩进。品牌色令牌 `-adb-vendor-*` 退给仍走自绘形状的表面（库节点圆柱等）。⚠️ **拍平 = 改商标**，法律账见下「商标红线」 | `VendorGlyphTest` 8 条（不同形 / **两档计算色 == 资产字面 hex** / 底板亮度与尺寸 / 磁贴作用域 / 只有一个出口 / 目录↔登记双向双射）· `BrandIconTest` 7 条（方 viewBox / 禁 transform / 只认字面 `<path d>` / 16 盒内 / 两两不同形 / 有 TRADEMARK-NOTICE）· `SideBarTreeTest.connectionNodesWearTheirVendorMark`（断渲染出的**商标填充色**真出现，且商标层**不带**角色类）· `ContrastTest.vendorBrandColorsStandOutAgainstTheBackground`（自绘那一侧 ≥3:1） |
 | 集合（分组）字形 | ⭐ R62-a H6-g：**分组行的字形不许和它孩子那枚是同一个**。「Tables」这一行画一个表、下面每行也画一个表 = 父子同形，「这行是集合还是对象」只能靠缩进读。五枚 `GROUP_*`（表集合 / 视图集合 / 函数集合 / 已保存查询 / 连接分组）说的都是「一摞 / 一个容器」，类型由同一行的文字和孩子节点交代；叶子那几枚一个像素没动。⚠️ **集合字形保持单色**：分组节点拿不到对象类型（`iconStyleClass` 按 kind 分色，GROUP 只有一档灰），给它上色等于宣布「集合自成一类对象」，而集合不是对象 —— 所以它们**不进**下面那两张彩色词汇表清单 | `SideBarCollectionGlyphTest`（两个通道：真画出来的路径几何 + 模型上的图标名；另钉「没有彩色资产」）· `IconSystemAuditTest.everyIconIsActuallyUsed` |
 | 「本版本未提供」的入口 | ⭐ R62-a H5-i（Q8 拍第②案）：落说明页的功能入口**留在原位、不降位、不变灰**，只加一枚 8px **空心环**（`adb-pending__mark`）。三条规矩：① 环是**不参与布局**的 overlay（`managed=false` + `mouseTransparent`，位置由监听器 `resizeRelocate` 跟着宿主算）—— 包一层容器实测会把同行磁贴撑宽 ±6~7px；② **不用 `-fx-opacity` 压暗**（`FocusRingAuditTest` 守着「不许用透明度藏内容」），也不给 `Region` 写 `-fx-stroke`（Region 不吃 stroke，会静默空转）；③ 实话必须在**点之前**就说：`accessibleText` 与 `Tooltip` 共用 `ribbon.pending` 一个资源键。环只给功能区磁贴，横排按钮那一档只补文案（同一条撑宽理由） | `AppBarTest`（环贴在右上角 + 格子没被挪动）· `TableListPageTest.thePendingAiEntrySaysSoBeforeTheClick` · `RibbonCapabilityAuditTest.thePendingBadgesMatchTheHonestLandingPoints`（挂标集合 ⇔ 落说明页集合） |
 | 容器不能挂色 | 分层返回的是 `Group`，它在 JavaFX 里没有任何可声明的绘制属性 —— 把 `-fx-stroke` 打在容器上等于空转。类名挂在容器上，**颜色规则必须写后代选择器**落到子层 | 同上 |
-| ⛔ 素材红线 | 竞品（Navicat 等）的位图/图标属**他人版权素材**，一律不许进 `icons/`；像素复刻 ≠ 素材入库 | `ColoredIconTest` 头部注释 + 人工审计 |
+| ⛔ 素材红线 | 竞品（Navicat 等）的位图/图标属**他人版权素材**，一律不许进 `icons/`；像素复刻 ≠ 素材入库。⭐ R63-3 之后 `icons/` 里有**借用目录**三处：lucide 原件、彩色自绘档、厂商商标档 —— 前两处是开源素材，第三处见下「商标红线」，那条红的是**商标**不是竞品素材，两条不互相豁免 | `ColoredIconTest` 头部注释 + `everyBorrowedAssetDirectoryShipsItsLicense`（三个借用目录各自必须有 LICENSE / TRADEMARK-NOTICE）+ 人工审计 |
+| ⚠️ 商标红线（R63-3 新立，**未清账**） | 六枚厂商图形是**各家注册商标**，且为了装进 JavaFX `SVGPath` 能吃的形状做了**拍平**（方 viewBox、`transform` 烘进路径、渐变压平、多路径合并不等）—— 拍平就是衍生作品：MariaDB 与 Microsoft 的条款明确禁止改色与衍生作品（PostgreSQL / SQLite 宽松）。三条界面口径因此是**硬约束**而不是审美选择：① 官方色不许被主题、CSS 或令牌改；② 要提对比度只能改承载面（底板），不能碰标志；③ 认不出方言不许挑一家画上去。**⚠️ 对外发布前必须把六枚素材换成各家品牌页的原始矢量件**（`icons/brand/TRADEMARK-NOTICE.txt` 逐文件记了来源、md5 校验强度与未核项；本仓库当前状态 = 自用可用、发布未清账，不许在对外文案写成「已获授权的商标展示」） | `BrandIconTest`（资产形状与 NOTICE 的门禁）· `VendorGlyphTest.theOfficialColorsSurviveCssInBothThemes`（颜色不被 CSS 改）· 人工审计（发布前换件没有） |
 
 **可访问性**：所有图标按钮必须调用 `setAccessibleText("刷新")` 这类文本，
 读屏软件才能读出语义而不是读出符号。工厂方法（`SideBar.railButton` /
