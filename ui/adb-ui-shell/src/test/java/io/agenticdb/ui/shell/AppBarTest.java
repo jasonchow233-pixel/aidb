@@ -1,15 +1,11 @@
 package io.agenticdb.ui.shell;
 
-import io.agenticdb.jdbc.DialectKind;
-import io.agenticdb.session.ConnectionProfile;
-import io.agenticdb.ui.I18n;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
-import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollBar;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
@@ -24,7 +20,6 @@ import org.testfx.util.WaitForAsyncUtils;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,14 +28,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>应用栏是**全应用唯一的全局入口层** —— 门禁要钉住四件事：
  * <ol>
- *   <li>当前连接、全局搜索、主题、更多**都在场景图里**
- *       （本项目反复踩过「控件建了、事件绑了，却从未加入 header」的坑）；</li>
- *   <li>当前连接胶囊显示的是**真名**，下拉里是**真实连接列表**，切换回调真的传出去；</li>
+ *   <li>主题、更多**都在场景图里**（本项目反复踩过「控件建了、事件绑了，却从未加入 header」的坑）；</li>
  *   <li>纯图标按钮都有 Tooltip 与 accessible text（读屏能读出语义）；</li>
  *   <li>⭐ 2026-10-30 R36 顶区重做之后：<b>品牌行不再存在</b>、命令带是
  *       <b>12 格 Navicat 磁贴</b>（每格都必须有注册动作与真实落点，见
- *       {@code RibbonCapabilityAuditTest}）、工具件住在 Ribbon 右端、
- *       窄窗口下工具条切紧凑形态（磁贴排横向滚动，标签永不截字）。</li>
+ *       {@code RibbonCapabilityAuditTest}）、工具件住在 Ribbon 右端；</li>
+ *   <li>⭐ R63-2：顶栏<b>没有</b>连接胶囊、<b>没有</b>搜索框 ——
+ *       Navicat 17 实拍的磁贴带右端只有主题与「更多」两颗，连接身份归状态栏那颗灯
+ *       （{@code StatusBarTest}），命令面板归 ⌘K 与菜单栏（{@code MenuBarFactoryTest}）。
+ *       这两条防的是它们悄悄长回来，同 {@code theBrandBlockIsGone…} 一个口径。</li>
  * </ol>
  */
 @ExtendWith(ApplicationExtension.class)
@@ -49,8 +45,6 @@ class AppBarTest {
     private AppBar bar;
     /** R36 后工具件住在 Ribbon 右端，测试场景里这行只是占位（真实装配归 AppShellTest 钉）。 */
     private HBox chromeRow;
-    /** 记录被选中的连接。 */
-    private final List<ConnectionProfile> selected = new ArrayList<>();
 
     @Start
     void start(Stage stage) {
@@ -83,11 +77,9 @@ class AppBarTest {
         actions.register("ribbon.model", "模型", "工具", null, () -> { });
         actions.register("ribbon.bi", "BI", "工具", null, () -> { });
 
-        List<ConnectionProfile> profiles = List.of(
-                profile("demo", "agenticdb-demo.db", DialectKind.SQLITE),
-                profile("pg", "prod-postgres", DialectKind.POSTGRESQL));
-
-        bar = new AppBar(actions, profiles, "demo", selected::add);
+        // R63-2：应用栏不再收连接列表 —— 顶栏没有连接胶囊了，
+        // 「我在哪家库 · 连上没有」由状态栏那颗灯说（它有自己的门禁）。
+        bar = new AppBar(actions);
 
         // 与 AppShell 的真实装配一致：R36 之后顶区只有 Ribbon 一行
         //（工具件在 Ribbon 右端，页签行归 AppShellTest 钉）。
@@ -110,16 +102,11 @@ class AppBarTest {
         stage.show();
     }
 
-    private static ConnectionProfile profile(String id, String name, DialectKind kind) {
-        return new ConnectionProfile(id, name, kind, "", 0, "", "", false, 0, "", Map.of());
-    }
-
     @Test
     void everyGlobalEntryIsActuallyInTheScene(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
         // ⭐ 「建好了但没挂上去」是本项目反复踩过的坑。
-        for (String id : List.of("#appbar-connection-menu", "#appbar-search",
-                "#appbar-theme", "#appbar-more")) {
+        for (String id : List.of("#appbar-theme", "#appbar-more")) {
             assertThat(robot.lookup(id).tryQuery()).as(id + " 必须真的在场景图里").isPresent();
         }
         // §2.1：「设置」不再是顶栏独立齿轮 —— 低频入口搬进 ⋯，右侧只留「主题 + 更多」。
@@ -144,6 +131,32 @@ class AppBarTest {
                     .as(id + " 必须已随顶区精简删除（品牌由窗口标题 / 任务栏图标承担）")
                     .isEmpty();
         }
+    }
+
+    /**
+     * ⭐ R63-2（2026-11-04）：顶栏的连接胶囊与搜索框整块删掉，防它们悄悄长回来。
+     *
+     * <p>删的不是「放不下」而是「本就不该有」：Navicat 17 实拍的磁贴带右端只有
+     * ⓘ / ☆ / 头像，没有连接下拉也没有搜索框；而我们这两件一件是状态栏那句话的
+     * 第二遍（灯 + 厂商图形 + 方言 · 连接名），一件是**假**输入框 ——
+     * 点它弹的是命令面板，正文永远空白。删掉后入口一个都没少：
+     * 切换连接 = 左侧对象树与「连接」页签，命令面板 = ⌘K 与菜单栏，
+     * 连接是否活着 = 状态栏那颗灯（连不上时由外壳显式收掉）。
+     */
+    @Test
+    void theConnectionPillAndSearchBoxAreGoneFromTheRibbonEnd(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        for (String id : List.of("#appbar-connection-menu", "#appbar-connection-name",
+                "#appbar-connection-kind", "#appbar-connection-vendor", "#appbar-search")) {
+            assertThat(robot.lookup(id).tryQuery())
+                    .as(id + " 必须已随 R63-2 从顶栏删除（连接归状态栏，搜索归 ⌘K）")
+                    .isEmpty();
+        }
+        // 右端真的只剩两颗：主题 + ⋯ —— 不是「藏起来了」，是children 里就没有。
+        HBox utility = robot.lookup("#appbar-utility").queryAs(HBox.class);
+        assertThat(utility.getChildren())
+                .as("工具件只剩主题与更多 —— 右端不再为胶囊和搜索框留宽")
+                .hasSize(2);
     }
 
     /**
@@ -241,38 +254,47 @@ class AppBarTest {
     /**
      * ⭐ H5-h（R62-a）：Ribbon 溢出时那条横向滚动条必须是**细轨 + 无箭头**。
      *
-     * <p>上一条门禁只问了「放得下吗 / 能不能滚」，本条问的是它**长什么样**：12 格按英文标签
-     * 排开必然溢出，于是那条滚动条就是功能区的一部分。Modena 默认给 16px 整宽灰槽 +
-     * 两端 {@code ⟨ ⟩} 箭头 —— 实拍里读起来像界面多出一条不属于它的工具。
+     * <p>上一条门禁只问了「放得下吗 / 能不能滚」，本条问的是它**长什么样**：12 格磁贴按
+     * 英文标签排开要 ~880px，窗口一窄就必然溢出（产品侧 {@code AppShell} 把根的最小宽度
+     * 放到 0，窄窗口真能到那条线以下），于是这条滚动条就是功能区的一部分。Modena 默认给
+     * 16px 整宽灰槽 + 两端 {@code ⟨ ⟩} 箭头 —— 实拍里读起来像界面多出一条不属于它的工具。
      *
      * <p>⚠️ 钉**几何**不钉颜色，因为修法在这里很容易被做假：{@code ScrollBarSkin.getBreadth()}
      * 对横向条取的是**两端箭头按钮的 prefHeight 最大值**再加上下 inset，所以「把箭头调透明」
      * 会让画面看起来干净、槽却还是 16px —— 那条修法在这条门禁上直接红。
      * 阈值 8px = 本轮 CSS 定的 6px 轨 + 2px 余量；箭头宽度阈值 1px 区分「真收掉了」与
      * 「还在占位」（占位就会把轨道两端各吃掉 ~11px，滚动行程跟着变短）。
+     *
+     * <p>⭐ R63-2 重做「溢出怎么造」。原来这条靠 {@code stage.setWidth(900)} 挤窗口，
+     * 实测**从来没生效过**：Monocle headless 下窗口宽不落进场景，场景一直是建场那会儿的
+     * 1280（{@code QueryPageTest} 与 {@code StructurePageTest} 早就记下这条 harness 脾气）。
+     * 它能绿，纯粹因为那会儿右端工具件（连接胶囊 + 220px 搜索框）要吃掉 ~450px，
+     * 1280 本身就放不下整排。R63-2 删掉那两件后右端只剩 ~64px，1280 装得下了，
+     * 于是这条变成<b>空闸</b> —— 报的是「拿不到可见的横向滚动条」，而不是假装厚度合格。
+     * 现在改成直接压 {@code ScrollPane} 的宽度：那正是窄窗口对这一排做的事，
+     * 且压多少由<b>实测的磁贴排 pref 宽</b>推出来，以后标签增减，溢出仍然是真的。
      */
     @Test
     void theRibbonOverflowBarIsThinAndArrowless(FxRobot robot) throws Exception {
         WaitForAsyncUtils.waitForFxEvents();
         List<Double> measured = WaitForAsyncUtils.<List<Double>>asyncFx(() -> {
             Scene scene = bar.getScene();
-            // Scene.setWidth 是 private —— 挤宽度只能挤窗口。
-            javafx.stage.Stage stage = (javafx.stage.Stage) scene.getWindow();
-            double originalWidth = stage.getWidth();
+            scene.getRoot().applyCss();
+            scene.getRoot().layout();
+            javafx.scene.Node strip = bar.lookup("#adb-ribbon");
+            javafx.scene.Parent ancestor = strip == null ? null : strip.getParent();
+            while (ancestor != null && !(ancestor instanceof ScrollPane)) {
+                ancestor = ancestor.getParent();
+            }
+            if (!(ancestor instanceof ScrollPane pane)) {
+                return List.<Double>of();
+            }
+            // 压到比磁贴排想要的宽度还窄 120px —— 溢出是推导出来的，不是碰窗口尺寸碰出来的。
+            double squeeze = ((javafx.scene.layout.Region) strip).prefWidth(-1) - 120;
+            pane.setMaxWidth(squeeze);
             try {
-                // 挤到必然放不下（磁贴排 ~1050px + 右端工具件）。喂宽度和读数在**同一条 FX 任务**里，
-                // 读完立刻还原 —— primary stage 是同类共用的，尺寸漏给下一条像素门禁就是 R57-g 那笔账。
-                stage.setWidth(900);
                 scene.getRoot().applyCss();
                 scene.getRoot().layout();
-                javafx.scene.Node strip = bar.lookup("#adb-ribbon");
-                javafx.scene.Parent ancestor = strip == null ? null : strip.getParent();
-                while (ancestor != null && !(ancestor instanceof ScrollPane)) {
-                    ancestor = ancestor.getParent();
-                }
-                if (!(ancestor instanceof ScrollPane pane)) {
-                    return List.<Double>of();
-                }
                 for (javafx.scene.Node node : pane.lookupAll(".scroll-bar")) {
                     if (node instanceof ScrollBar sb
                             && sb.getOrientation() == Orientation.HORIZONTAL && sb.isVisible()) {
@@ -286,15 +308,20 @@ class AppBarTest {
                 }
                 return List.<Double>of();
             } finally {
-                stage.setWidth(originalWidth);
+                // 宽度上限是共享场景上的持久状态 —— 还原成 CSS 计算值，
+                // 否则下一条像素门禁量到的是被这条压窄过的顶栏（同类共用 primary stage 那笔账）。
+                pane.setMaxWidth(javafx.scene.layout.Region.USE_COMPUTED_SIZE);
+                scene.getRoot().applyCss();
+                scene.getRoot().layout();
             }
         }).get();
         assertThat(measured)
-                .as("900 宽下磁贴排必须真的溢出（拿不到可见的横向滚动条，这条门禁就是空的）")
+                .as("磁贴排被压窄后必须真的溢出（拿不到可见的横向滚动条，这条门禁就是空的）")
                 .isNotEmpty();
         assertThat(measured.get(0))
-                .as("溢出条厚度必须 ≤8px（Modena 默认 16px）—— 实测 %s px", measured.get(0))
-                .isLessThanOrEqualTo(8.0);
+                .as("溢出条厚度必须 1~8px（Modena 默认 16px；不足 1px 说明量到没布局的空条）"
+                        + " —— 实测 %s px", measured.get(0))
+                .isBetween(1.0, 8.0);
         assertThat(measured.get(1))
                 .as("两端箭头必须真的收成 0 宽，不是「看不见但还占位」—— 实测 %s px", measured.get(1))
                 .isLessThanOrEqualTo(1.0);
@@ -451,168 +478,11 @@ class AppBarTest {
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
     }
 
-    /**
-     * ⭐ D-12（R44 小账）：搜索框的快捷键胶囊不许截成「Ct…」。
-     *
-     * <p>「宽度按中文量」家族第四次（自增列头 / 详情页脚 / 列筛选浮窗之后）。
-     * 220px 定宽里提示文字和胶囊抢空间 —— 钉住**收缩的分配**：胶囊 min=pref
-     * （快捷键是功能承诺，截了等于没承诺），提示文字才是可省略的那位。
-     */
-    @Test
-    void theSearchShortcutCapsuleIsNeverEllipsised(FxRobot robot) throws Exception {
-        WaitForAsyncUtils.waitForFxEvents();
-        List<Object> geometry = WaitForAsyncUtils.asyncFx(() -> {
-            bar.applyCss();
-            bar.layout();
-            Label kbd = bar.lookupAll(".adb-appbar__search-kbd").stream()
-                    .filter(Label.class::isInstance).map(Label.class::cast)
-                    .findFirst().orElseThrow(() -> new AssertionError("顶栏没有快捷键胶囊"));
-            Label hint = bar.lookupAll(".adb-appbar__search-hint").stream()
-                    .filter(Label.class::isInstance).map(Label.class::cast)
-                    .findFirst().orElseThrow(() -> new AssertionError("顶栏没有搜索提示文字"));
-            kbd.applyCss();
-            kbd.requestLayout();
-            return List.<Object>of(
-                    kbd.getMinWidth() == javafx.scene.layout.Region.USE_PREF_SIZE,
-                    hint.getMinWidth() != javafx.scene.layout.Region.USE_PREF_SIZE,
-                    kbd.getWidth() + 0.5 >= kbd.prefWidth(-1),
-                    kbd.getText());
-        }).get();
-        assertThat((Boolean) geometry.get(0))
-                .as("胶囊必须先声明 min=pref，截字门禁才有几何意义（只测画面会被绕过）")
-                .isTrue();
-        assertThat((Boolean) geometry.get(1))
-                .as("220px 定宽里可收缩的那位必须是提示文字，不是快捷键胶囊")
-                .isTrue();
-        assertThat((Boolean) geometry.get(2))
-                .as("快捷键胶囊实得宽度必须装得下全文")
-                .isTrue();
-        assertThat((String) geometry.get(3))
-                .as("胶囊文字就是命令面板承诺的那个键")
-                .isIn("Ctrl+K", "⌘K");
-    }
-
-    @Test
-    void theConnectionPillShowsTheRealConnectionName(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        assertThat(robot.lookup("#appbar-connection-name").queryAs(Label.class).getText())
-                .isEqualTo("agenticdb-demo.db");
-        assertThat(robot.lookup("#appbar-connection-kind").queryAs(Label.class).getText())
-                .isEqualTo("SQLite");
-    }
-
-    /**
-     * ⭐ R54：胶囊最左那一格画的是**当前连接那一家**的图形，不是一枚人人相同的中性点。
-     *
-     * <p>顶栏是全应用唯一常驻的「我在哪家库」，而它此前只有中性点 + 名字 + 类型文字。
-     * 文字在窄窗口会被 {@code fitChromeWidth} 收掉 —— 所以这条门同时钉住
-     * 「收掉文字之后图形必须还在」：没地方写字的那一刻，才是这句话最需要有人替它说的时候。
-     *
-     * <p>⚠️ 不能 {@code lookup(".adb-db--sqlite")}：作用域类挂在 Label 的 graphic 上，
-     * 而 graphic 不在 {@code getChildren()} 里，选择器遍历不到（状态栏那条门禁踩过）。
-     * 这里按结构读 —— 胶囊 HBox 的第 0 格就是厂商槽位。
-     */
-    @Test
-    void theConnectionPillWearsTheConnectionsVendorGlyph(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        assertThat(pillVendorClasses(robot))
-                .as("胶囊图形必须带上当前连接（SQLite）的品牌作用域类")
-                .contains("adb-db--sqlite");
-
-        onFxRun(() -> bar.fitChromeWidth(420));
-        WaitForAsyncUtils.waitForFxEvents();
-        assertThat(robot.lookup("#appbar-connection-kind").queryAs(Label.class).isManaged())
-                .as("前提：窄窗口确实把类型文字收掉了").isFalse();
-        assertThat(pillVendorClasses(robot))
-                .as("文字收掉后厂商图形不能跟着消失")
-                .contains("adb-db--sqlite");
-    }
-
-    /** ⭐ R54：下拉里每一行顶的都是**它自己那一家**的图形，不是清一色同一枚。 */
-    @Test
-    void everyConnectionInTheMenuWearsItsOwnVendorsGlyph(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        MenuButton menu = robot.lookup("#appbar-connection-menu").queryAs(MenuButton.class);
-        assertThat(menuGraphicClasses(menu, "agenticdb-demo.db"))
-                .as("演示库那一行是 SQLite").contains("adb-db--sqlite");
-        assertThat(menuGraphicClasses(menu, "prod-postgres"))
-                .as("另一行是 PostgreSQL —— 两行必须不同形不同色")
-                .contains("adb-db--postgresql")
-                .doesNotContain("adb-db--sqlite");
-    }
-
-    /**
-     * ⭐ R54：认不出方言时那一格整格收起 —— 不许留一枚「看着像某家」的假图形。
-     *
-     * <p>诚实条款的图形版：没有连接就没有引擎可说，画一枚圆柱会让人以为左边有库。
-     */
-    @Test
-    void thePillDropsTheGlyphWhenThereIsNoConnection(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        onFxRun(() -> bar.setConnections(List.of(), null));
-        WaitForAsyncUtils.waitForFxEvents();
-        MenuButton menu = robot.lookup("#appbar-connection-menu").queryAs(MenuButton.class);
-        Label slot = (Label) ((HBox) menu.getGraphic()).getChildren().get(0);
-        assertThat(slot.getGraphic()).as("没连接时厂商槽里没有图形").isNull();
-        assertThat(slot.isManaged())
-                .as("没有图形时整格收起，不留一段空白把名字往右推")
-                .isFalse();
-    }
-
-    private static List<String> pillVendorClasses(FxRobot robot) {
-        MenuButton menu = robot.lookup("#appbar-connection-menu").queryAs(MenuButton.class);
-        Label slot = (Label) ((HBox) menu.getGraphic()).getChildren().get(0);
-        javafx.scene.Node glyph = slot.getGraphic();
-        return glyph == null ? List.of() : glyph.getStyleClass();
-    }
-
-    private static List<String> menuGraphicClasses(MenuButton menu, String textPrefix) {
-        MenuItem item = menu.getItems().stream()
-                .filter(each -> each.getText() != null && each.getText().startsWith(textPrefix))
-                .findFirst().orElseThrow(() -> new AssertionError("下拉里找不到 " + textPrefix));
-        return item.getGraphic() == null ? List.of() : item.getGraphic().getStyleClass();
-    }
-
-    @Test
-    void theConnectionMenuListsEveryConnection(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        MenuButton menu = robot.lookup("#appbar-connection-menu").queryAs(MenuButton.class);
-        List<String> labels = menu.getItems().stream()
-                .map(javafx.scene.control.MenuItem::getText).toList();
-        assertThat(labels)
-                .as("下拉里必须有全部连接 + 管理 / 重连 / 断开")
-                .contains("agenticdb-demo.db  ·  SQLite", "prod-postgres  ·  PostgreSQL",
-                        I18n.t("appbar.manageConnections"), "重新连接", "断开连接");
-    }
-
-    @Test
-    void switchingAConnectionFiresTheCallback(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        MenuButton menu = robot.lookup("#appbar-connection-menu").queryAs(MenuButton.class);
-        menu.getItems().stream()
-                .filter(item -> item.getText().startsWith("prod-postgres"))
-                .findFirst()
-                .ifPresent(item -> item.fire());
-        assertThat(selected).as("切换连接必须真的回调出去").hasSize(1);
-        assertThat(selected.getFirst().name()).isEqualTo("prod-postgres");
-    }
-
-    @Test
-    void theConnectionDotReflectsTheConnectionState(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        for (boolean[] state : new boolean[][]{{true, false}, {false, true}, {false, false}}) {
-            bar.setConnectionState(state[0], state[1]);
-            assertThat(robot.lookup("#appbar-connection-name").tryQuery())
-                    .as("状态点只是视觉反馈 —— 不允许因此丢失节点或抛异常")
-                    .isPresent();
-        }
-    }
-
     @Test
     void iconOnlyButtonsDeclareTooltipAndAccessibleText(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
         // ⭐ 纯图标按钮少一个 Tooltip 或 accessible text 就不合格。
-        for (String id : List.of("#appbar-theme", "#appbar-search")) {
+        for (String id : List.of("#appbar-theme")) {
             Button button = robot.lookup(id).queryAs(Button.class);
             assertThat(button.getTooltip()).as(id + " 的 Tooltip").isNotNull();
             assertThat(button.getAccessibleText()).as(id + " 的 accessibleText").isNotBlank();
@@ -644,68 +514,6 @@ class AppBarTest {
                 .isEqualTo(91);
         assertThat(bar.getMaxHeight()).isEqualTo(bar.getPrefHeight());
         assertThat(bar.getMinHeight()).isEqualTo(bar.getPrefHeight());
-    }
-
-    /**
-     * ⭐ 窄窗形态：磁贴排自己会滚动，这里收的是**工具件的外观** ——
-     * Ribbon 行低于 780px 时搜索降级成图标、连接胶囊只留名字，
-     * 把右端让给磁贴排。命令面板本身仍可 ⌘K 直达，收起的是外观不是入口。
-     */
-    @Test
-    void theUtilityCollapsesWhenTheRibbonRowIsNarrow(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        onFxRun(() -> bar.fitChromeWidth(1280));
-        assertThat(bar.isChromeCompact()).as("宽窗下不收起").isFalse();
-        assertThat(robot.lookup("#appbar-search").queryAs(Button.class).isManaged()).isTrue();
-        assertThat(robot.lookup("#appbar-connection-kind").queryAs(Label.class).isManaged())
-                .as("宽窗下连接类型可见").isTrue();
-
-        onFxRun(() -> bar.fitChromeWidth(420));
-        assertThat(bar.isChromeCompact()).as("窄窗下切紧凑").isTrue();
-        assertThat(robot.lookup("#appbar-connection-kind").queryAs(Label.class).isManaged())
-                .as("紧凑形态下连接胶囊只留名字")
-                .isFalse();
-        assertThat(robot.lookup(".adb-appbar__search-hint").queryAs(Label.class).isManaged())
-                .as("紧凑形态下搜索框里的提示文字必须收起（只留放大镜）")
-                .isFalse();
-        assertThat(robot.lookup("#appbar-search").queryAs(Button.class).isManaged())
-                .as("搜索按钮本身还在 —— 收的是外观不是入口")
-                .isTrue();
-
-        onFxRun(() -> bar.fitChromeWidth(1280));
-        assertThat(bar.isChromeCompact()).as("拉宽后要能恢复").isFalse();
-    }
-
-    /**
-     * ⭐ UX-5：被通用 {@code .adb-icon--filled} 顶成灰是同一个 S-7 坑换位置 ——
-     * 断言读计算值，不看 CSS 里写了什么。
-     */
-    @Test
-    void theConnectionDotTurnsGreenWhenOnline(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        onFxRun(() -> bar.setConnectionState(true, false));
-
-        assertThat(fillOf(robot, ".adb-appbar__connection-dot"))
-                .as("已连接 = success 绿；被通用 .adb-icon--filled 顶成灰，等于状态永远显示「没连上」")
-                .isEqualTo(javafx.scene.paint.Color.web(io.agenticdb.ui.Tokens.SUCCESS_LIGHT));
-
-        onFxRun(() -> bar.setConnectionState(false, false));
-        assertThat(fillOf(robot, ".adb-appbar__connection-dot"))
-                .as("断开必须是灰（text-muted），不能和在线同色")
-                .isEqualTo(javafx.scene.paint.Color.web(io.agenticdb.ui.Tokens.TEXT_MUTED_LIGHT));
-
-        onFxRun(() -> bar.setConnectionState(false, true));
-        assertThat(fillOf(robot, ".adb-appbar__connection-dot"))
-                .as("连接失败是第三种状态 —— 红（error），不能退回灰")
-                .isEqualTo(javafx.scene.paint.Color.web(io.agenticdb.ui.Tokens.ERROR_LIGHT));
-    }
-
-    /** 取某个样式类节点在层叠**之后**的计算填充色。 */
-    private static javafx.scene.paint.Color fillOf(FxRobot robot, String styleClass) {
-        javafx.scene.shape.SVGPath node = robot.lookup(styleClass)
-                .queryAs(javafx.scene.shape.SVGPath.class);
-        onFxRun(node::applyCss);
-        return (javafx.scene.paint.Color) node.getFill();
     }
 
     private static void onFxRun(Runnable action) {

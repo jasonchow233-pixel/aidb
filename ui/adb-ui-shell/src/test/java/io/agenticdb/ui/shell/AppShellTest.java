@@ -789,10 +789,13 @@ class AppShellTest {
     }
 
     @Test
-    void commandPaletteOpensAndFilters(FxRobot robot) {
+    void commandPaletteOpensAndFilters(FxRobot robot) throws Exception {
         WaitForAsyncUtils.waitForFxEvents();
 
-        robot.clickOn(".adb-appbar__search");
+        // R63-2：顶栏那颗假搜索框删了 —— 入口改从**真实存在的那条**走：
+        // 编辑菜单里的「命令面板 ⌘K」（键盘直达的同一条动作）。
+        MenuItem paletteItem = menuItem(robot, "command-palette");
+        WaitForAsyncUtils.asyncFx(paletteItem::fire).get();
         WaitForAsyncUtils.waitForFxEvents();
         assertThat(robot.lookup(".adb-palette-overlay").queryAs(javafx.scene.layout.StackPane.class).isVisible()).isTrue();
 

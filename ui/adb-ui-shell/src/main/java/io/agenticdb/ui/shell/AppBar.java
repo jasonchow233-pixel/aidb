@@ -1,7 +1,5 @@
 package io.agenticdb.ui.shell;
 
-import io.agenticdb.jdbc.DialectKind;
-import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.geometry.Pos;
@@ -9,7 +7,6 @@ import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
-import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tooltip;
@@ -19,17 +16,20 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.SVGPath;
 
-import java.util.List;
-import java.util.function.Consumer;
-
 /**
  * 顶部 91px Ribbon（2026-10-30 R36：按 Navicat 17 实拍逐像素对回来）。
  *
  * <p>⭐ 2026-10-30 R36 顶区重做（撤销 R32-D 的精简，用户裁定「完全照 Navicat」）：
  * Ribbon 64px 单行 6 格 → **91px、12 格磁贴**（Connection · New Query · Table · View ·
  * Function · User · Others ｜ Query · Backup · Automation · Model · BI，真源 §1.2 顺序）。
- * 全局工具件（连接胶囊 / 搜索 / 主题 / ⋯）从页签行挪进 **Ribbon 右端** ——
- * 页签行只放页签（N7）。顶区 = 菜单 24 + Ribbon 91 + 页签行 25 = 140px。
+ * 顶区 = 菜单 24 + Ribbon 91 + 页签行 25 = 140px。
+ *
+ * <p>⭐ 2026-11-04 R63-2：右端工具件只剩**主题 + ⋯**。原先这里的「当前连接胶囊 ▾」和
+ * 「搜索对象或命令」框都删了 —— Navicat 17 实拍的磁贴带右端只有 ⓘ / ☆ / 头像，
+ * 既没有连接下拉也没有搜索框；而且胶囊那句「我在哪家库」状态栏本来就在说
+ * （灯 + 厂商图形 + 方言 · 连接名），搜索框则是一颗**假的**输入框：
+ * 点它弹出的是命令面板，正文永远空白、placeholder 永远不被替换。
+ * 切换连接的入口是左侧对象树与「连接」页签，⌘K 仍在（键盘与菜单栏）。
  *
  * <p>12 格里有六格（Function · User · Backup · Automation · Model · BI）背后是还没建的
  * 能力面（N28，R42）—— 按诚实条款它们落到**如实说明页**（工具页签 + 一句「本版本未提供」），
@@ -40,9 +40,6 @@ import java.util.function.Consumer;
  * <p>所有按钮的行为仍来自 {@link ActionRegistry}，没有装饰性假按钮。
  */
 public final class AppBar extends VBox {
-
-    /** Ribbon 行低于这个宽度时工具条切紧凑形态（搜索降级成图标）。 */
-    private static final double COMPACT_CHROME_WIDTH = 780;
 
     /**
      * ⭐ R62-a H5-i（拍板 Q8 第②案）：落「如实说明页」的那几格，挂统一角标。
@@ -58,18 +55,6 @@ public final class AppBar extends VBox {
             "ribbon.function", "ribbon.user", "ribbon.backup",
             "ribbon.automation", "ribbon.model", "ribbon.bi");
 
-    private final MenuButton connectionMenu = new MenuButton();
-    private final Label connectionName = new Label();
-    private final Label connectionKind = new Label();
-    private final SVGPath connectionDot = Icons.of(Icons.Icon.DOT, Icons.SIZE_DOT);
-    /**
-     * ⭐ R54：胶囊最左那一格 = 当前连接的**厂商图形**。
-     * 名字与类型文字在窄窗口会被收掉（{@link #fitChromeWidth}），图形不会 ——
-     * 「一眼看出我在哪家」这句话在没地方写字的时候才最需要有人替它说。
-     */
-    private final Label connectionVendor = new Label();
-    private final Label searchHint = new Label();
-    private final Label searchKbd = new Label();
     private final HBox utility;
     /** 磁贴排（Ribbon 里可横向滚动的那一段，窄窗口时靠滚动而不是截标签）。 */
     private final HBox tiles;
@@ -81,24 +66,17 @@ public final class AppBar extends VBox {
     /** 动作注册表 —— 菜单项与大图标都走同一条命令通道。 */
     private final ActionRegistry actions;
 
-    private Consumer<ConnectionProfile> onSelectConnection = profile -> { };
-    private boolean chromeCompact;
-
-    public AppBar(ActionRegistry actions, List<ConnectionProfile> profiles,
-                  String activeConnectionId,
-                  Consumer<ConnectionProfile> onSelectConnection) {
+    public AppBar(ActionRegistry actions) {
         this.actions = actions;
         getStyleClass().add("adb-appbar");
         int height = io.agenticdb.ui.Tokens.H_APPBAR_LIGHT;
         setPrefHeight(height);
         setMinHeight(height);
         setMaxHeight(height);
-        this.onSelectConnection = onSelectConnection == null ? profile -> { } : onSelectConnection;
 
-        // ⚠️ 工具条必须先建好：connectionPill() 内部会用空列表初始化一次，
-        //    晚建会把传进来的真实连接覆盖成「未连接」。
-        utility = new HBox(8, connectionPill(actions), separator(), globalSearch(actions),
-                themeButton(actions), overflow(actions));
+        // R63-2：Navicat 的磁贴带右端只有主题与「更多」两颗 ——
+        // 连接身份归状态栏那颗灯，搜索归 ⌘K，这里不再各摆一份重复的。
+        utility = new HBox(8, themeButton(actions), overflow(actions));
         utility.setId("appbar-utility");
         utility.getStyleClass().add("adb-appbar__utility");
         utility.setAlignment(Pos.CENTER_LEFT);
@@ -139,7 +117,7 @@ public final class AppBar extends VBox {
         // ⭐ 12 格按英文标签排开就超过 1050px，再加右端工具件必然超过 1280 宽窗口。
         //    Navicat 磁贴定宽 70 吃的是中文；我们的英文标签截不得（标签不许省略号门禁）。
         //    所以磁贴排包进横向 ScrollPane：宽窗不出条，窄窗滚动而不是裁字；
-        //    右端工具件（连接 / 搜索 / 主题 / ⋯）在滚动区之外，任何宽度下都可达。
+        //    右端工具件（主题 / ⋯）在滚动区之外，任何宽度下都可达。
         ScrollPane tileScroll = new ScrollPane(tiles);
         tileScroll.getStyleClass().add("adb-ribbon__scroll");
         tileScroll.setFitToHeight(true);
@@ -151,167 +129,9 @@ public final class AppBar extends VBox {
         ribbon.getStyleClass().add("adb-appbar__row");
         ribbon.setAlignment(Pos.CENTER_LEFT);
         getChildren().add(ribbon);
-
-        setConnections(profiles, activeConnectionId);
-    }
-
-    /**
-     * 按 Ribbon 行的可用宽度调整工具条形态。
-     *
-     * <p>⭐ R36 之后磁贴排本身可滚动，这里收的仍是**工具条外观**：
-     * 窄窗口下搜索降级成图标按钮、连接胶囊只留名字，把右端留给磁贴排。
-     * 命令面板本身仍可 ⌘K 直达，所以收起的是**外观**不是入口。
-     */
-    public void fitChromeWidth(double rowWidth) {
-        boolean compact = rowWidth > 0 && rowWidth < COMPACT_CHROME_WIDTH;
-        if (compact == chromeCompact) {
-            return;
-        }
-        chromeCompact = compact;
-        utility.getStyleClass().remove("adb-appbar__utility--compact");
-        if (compact) {
-            utility.getStyleClass().add("adb-appbar__utility--compact");
-        }
-        searchHint.setVisible(!compact);
-        searchHint.setManaged(!compact);
-        searchKbd.setVisible(!compact);
-        searchKbd.setManaged(!compact);
-        connectionKind.setVisible(!compact);
-        connectionKind.setManaged(!compact);
-    }
-
-    /** 当前是否处于紧凑形态（门禁读它，不看样式类字符串）。 */
-    public boolean isChromeCompact() {
-        return chromeCompact;
-    }
-
-    // ─────────────────────── 中：当前连接（应用级状态）───────────────────────
-
-    private Region connectionPill(ActionRegistry actions) {
-        connectionName.setId("appbar-connection-name");
-        connectionName.getStyleClass().add("adb-appbar__connection-name");
-
-        connectionKind.setId("appbar-connection-kind");
-        connectionKind.getStyleClass().add("adb-appbar__connection-kind");
-
-        connectionDot.getStyleClass().add("adb-appbar__connection-dot");
-
-        connectionVendor.setId("appbar-connection-vendor");
-        connectionVendor.setMouseTransparent(true);
-
-        HBox text = new HBox(6, connectionVendor, connectionDot, connectionName, connectionKind);
-        text.setAlignment(Pos.CENTER_LEFT);
-
-        connectionMenu.setId("appbar-connection-menu");
-        connectionMenu.getStyleClass().addAll("adb-appbar__connection", "adb-button");
-        connectionMenu.setGraphic(text);
-        connectionMenu.setAccessibleText(I18n.t("appbar.connectionAria"));
-        connectionMenu.setTooltip(new Tooltip(I18n.t("appbar.switchConnection")));
-        setConnections(List.of(), null);
-        return connectionMenu;
-    }
-
-    /**
-     * 刷新连接胶囊的内容与下拉项。
-     *
-     * <p>下拉里是**真实**的连接列表 + 「管理连接…」，切换后由外壳执行
-     * （{@code selectConnection}）—— 不是装饰。
-     */
-    public void setConnections(List<ConnectionProfile> profiles, String activeConnectionId) {
-        List<ConnectionProfile> safe = profiles == null ? List.of() : profiles;
-        ConnectionProfile active = safe.stream()
-                .filter(profile -> profile.id().equals(activeConnectionId))
-                .findFirst().orElse(null);
-
-        if (active != null) {
-            connectionName.setText(active.name());
-            connectionKind.setText(active.kindDisplay());
-            paintVendorGlyph(active.kind());
-            connectionMenu.setTooltip(new Tooltip(I18n.t("appbar.currentConnectionTooltip",
-                    active.name(), active.kindDisplay())));
-        } else {
-            connectionName.setText(I18n.t("appbar.notConnected"));
-            connectionKind.setText("");
-            paintVendorGlyph(null);
-            connectionMenu.setTooltip(new Tooltip(I18n.t("appbar.noConnectionsYet")));
-        }
-
-        connectionMenu.getItems().clear();
-        if (safe.isEmpty()) {
-            MenuItem empty = new MenuItem(I18n.t("appbar.noConnections"));
-            empty.setDisable(true);
-            connectionMenu.getItems().add(empty);
-        } else {
-            for (ConnectionProfile profile : safe) {
-                MenuItem item = new MenuItem(profile.name() + "  ·  " + profile.kindDisplay());
-                item.setId("appbar-connection-" + profile.id());
-                item.setGraphic(ConnectionCatalog.graphic(profile.kind(), Icons.SIZE_LABEL));
-                item.setDisable(profile.id().equals(activeConnectionId));
-                item.setOnAction(event -> onSelectConnection.accept(profile));
-                connectionMenu.getItems().add(item);
-            }
-        }
-        connectionMenu.getItems().add(new SeparatorMenuItem());
-        MenuItem manage = new MenuItem(I18n.t("appbar.manageConnections"));
-        manage.setId("appbar-connection-manage");
-        manage.setOnAction(event -> actions.run("connections.manage"));
-        connectionMenu.getItems().add(manage);
-        connectionMenu.getItems().add(actions.menuItem("connection.reconnect"));
-        connectionMenu.getItems().add(actions.menuItem("connection.disconnect"));
-    }
-
-    /**
-     * ⭐ R54：胶囊那一格画的是**当前连接的厂商图形**；认不出方言就整格收起，
-     * 不留一枚「看着像某家」的假图形（同 {@link ConnectionCatalog#graphic} 的口径）。
-     */
-    private void paintVendorGlyph(DialectKind kind) {
-        Node glyph = ConnectionCatalog.graphic(kind, Icons.SIZE_BADGE);
-        connectionVendor.setGraphic(glyph);
-        connectionVendor.setVisible(glyph != null);
-        connectionVendor.setManaged(glyph != null);
-    }
-
-    /** 连接状态点：在线 / 断开 / 出错。 */
-    public void setConnectionState(boolean online, boolean failed) {        String cls = failed ? "adb-appbar__connection-dot--error"
-                : online ? "adb-appbar__connection-dot--online"
-                : "adb-appbar__connection-dot--offline";
-        connectionDot.getStyleClass().removeAll("adb-appbar__connection-dot--online",
-                "adb-appbar__connection-dot--offline", "adb-appbar__connection-dot--error");
-        connectionDot.getStyleClass().add(cls);
     }
 
     // ─────────────────────────── 右：全局入口 ───────────────────────────
-
-    private Region globalSearch(ActionRegistry actions) {
-        SVGPath icon = Icons.of(Icons.Icon.SEARCH);
-        icon.getStyleClass().add("adb-appbar__search-icon");
-
-        searchHint.setText(I18n.t("appbar.searchPlaceholder"));
-        searchHint.getStyleClass().add("adb-appbar__search-hint");
-
-        searchKbd.setText(io.agenticdb.ui.Shortcuts.of("Mod+K"));
-        searchKbd.getStyleClass().add("adb-appbar__search-kbd");
-
-        HBox content = new HBox(8, icon, searchHint, searchKbd);
-        content.setAlignment(Pos.CENTER_LEFT);
-        // ⭐ D-12：220px 定宽里先截的一定是「装得下但没排上序」的那位 ——
-        // 提示文字可收缩（本来就有省略号语义），快捷键胶囊钉死首选宽，
-        // 不许再截成「Ct…」（快捷键是功能承诺，截了等于没承诺）。
-        HBox.setHgrow(searchHint, Priority.NEVER);
-        searchHint.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(searchKbd, Priority.NEVER);
-        searchKbd.setMinWidth(Region.USE_PREF_SIZE);
-
-        Button search = new Button();
-        search.setId("appbar-search");
-        search.getStyleClass().addAll("adb-appbar__search");
-        search.setGraphic(content);
-        search.setAccessibleText(I18n.t("appbar.searchPlaceholder"));
-        search.setTooltip(new Tooltip(io.agenticdb.ui.Shortcuts.labelled(
-                I18n.t("appbar.searchPlaceholder"), "Mod+K")));
-        search.setOnAction(event -> actions.run("command-palette"));
-        return search;
-    }
 
     private Button themeButton(ActionRegistry actions) {
         String label = I18n.t("appbar.toggleTheme");
@@ -391,12 +211,6 @@ public final class AppBar extends VBox {
             pendingTiles.add(button);
         }
         return button;
-    }
-
-    private Region separator() {
-        Region region = new Region();
-        region.getStyleClass().add("adb-appbar__separator");
-        return region;
     }
 
     private Region ribbonSeparator() {

@@ -33,9 +33,7 @@ class FocusRingAuditTest {
     private static final List<String> FOCUSABLE = List.of(
             ".adb-button",
             ".adb-icon-button",
-            ".adb-appbar__search",
             ".adb-appbar__action",
-            ".adb-appbar__connection",
             ".adb-rail__button",
             ".adb-tab",
             ".adb-object-tab",

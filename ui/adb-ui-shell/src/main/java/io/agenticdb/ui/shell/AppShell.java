@@ -1068,17 +1068,6 @@ public final class AppShell extends StackPane {
         //    （connectionFor）不能找不到它，否则切回父连接后，
         //    挂在虚拟连接上的标签会全都解析到「当前连接」上。
         profilesById.putAll(catalogVariants);
-        if (appBar != null) {
-            // ⭐ U1：当前活跃的可能是 catalog 虚拟连接 —— 它也要进胶囊下拉，
-            //    否则顶栏会显示「未连接」（下拉里按 id 找不到它）。
-            List<ConnectionProfile> shown = connections;
-            if (activeProfile != null && ConnectionProfile.isCatalogVariantId(activeProfile.id())) {
-                shown = new ArrayList<>(connections);
-                shown.add(activeProfile);
-            }
-            appBar.setConnections(shown,
-                    activeProfile == null ? "demo" : activeProfile.id());
-        }
         sideBar.setConnections(connections);
         // ⭐ UX-5：标签重名要补连接名 —— 档案名字只有外壳知道。
         //    放在这里（而不是构造时一次注入）：连接**改名**后标题里的后缀也得跟着变。
@@ -1318,9 +1307,10 @@ public final class AppShell extends StackPane {
         } catch (Exception e) {
             session = null;
             status(I18n.t("shell.connectFailed", readable(e)));
-            if (appBar != null) {
-                appBar.setConnectionState(false, true);
-            }
+            // R63-2：顶栏那颗连接灯随胶囊一起删了 —— 连不上时必须把状态栏的灯
+            // 与方言一起收掉，否则它还挂着上一条「已连接」的样子，比没有灯更误导人。
+            statusBar.setConnection(null);
+            statusBar.setDialect("—", null);
             sideBar.refreshConnectionLiveness();
         }
     }
@@ -1535,9 +1525,8 @@ public final class AppShell extends StackPane {
                 Platform.runLater(() -> {
                     session = null;
                     status(I18n.t("shell.connectFailed", reason));
-                    if (appBar != null) {
-                        appBar.setConnectionState(false, true);
-                    }
+                    statusBar.setConnection(null);
+                    statusBar.setDialect("—", null);
                     sideBar.refreshConnectionLiveness();
                 });
                 return;
@@ -1581,9 +1570,6 @@ public final class AppShell extends StackPane {
             }
         }
         statusBar.setConnection(connectionTitle(profile));
-        if (appBar != null) {
-            appBar.setConnectionState(true, false);
-        }
         // ⭐ U6：服务器信息（版本 · 当前用户）—— 在后台读，不阻塞连接流程。
         loadServerInfo(profile.id(), session);
         // 侧栏「诊断」接真实功能：表结构 + 行数的健康概览。会话变了要跟着换。
@@ -1889,9 +1875,8 @@ public final class AppShell extends StackPane {
                 Platform.runLater(() -> {
                     session = null;
                     status(I18n.t("shell.connectFailed", reason));
-                    if (appBar != null) {
-                        appBar.setConnectionState(false, true);
-                    }
+                    statusBar.setConnection(null);
+                    statusBar.setDialect("—", null);
                     sideBar.refreshConnectionLiveness();
                 });
                 return;
@@ -2094,9 +2079,6 @@ public final class AppShell extends StackPane {
                 //    StatusBar 改成记布尔之后，传字符串就是"有一个名字叫未连接的连接"——
                 //    连接灯会在没连上时亮绿。断开的正确表达是 null。
                 statusBar.setConnection(null);
-                if (appBar != null) {
-                    appBar.setConnectionState(false, false);
-                }
             }
         }
         refreshProfiles();
@@ -2152,9 +2134,6 @@ public final class AppShell extends StackPane {
         //    留着上一条的连接信息会让人以为还在看那批数据。
         statusBar.setSql(null);
         statusBar.setRefreshedAt(-1);
-        if (appBar != null) {
-            appBar.setConnectionState(false, false);
-        }
         // ⭐ UX-5：断开要让侧栏那颗绿点一起变灰 —— 这条路径不重建连接清单，
         //    不重画的话「已断开」的连接会一直顶着绿点（比没有点更误导人）。
         sideBar.refreshConnectionLiveness();
@@ -2906,11 +2885,10 @@ public final class AppShell extends StackPane {
         MenuBarFactory menuFactory = new MenuBarFactory(actions);
         MenuBar menuBar = menuFactory.build();
         tableContextMenu = menuFactory.tableMenu();
-        appBar = new AppBar(actions, connections,
-                activeProfile == null ? "demo" : activeProfile.id(), this::selectConnection);
+        appBar = new AppBar(actions);
 
         // ⭐ 顶区 = 菜单栏 + 91px Ribbon + 页签行 25 = 140px（R36，Navicat 实测）。
-        //    全局工具条（连接/搜索/主题/更多）在 Ribbon 右端（AppBar 内部），
+        //    全局工具件（主题 / ⋯）在 Ribbon 右端（AppBar 内部），
         //    页签行只放页签（N7）。菜单栏在 macOS 上走系统菜单栏，在
         //    Windows / Linux 上由 JavaFX 贴在窗口顶部 —— 两种形态都只占一行。
         VBox top = new VBox(menuBar, appBar);
@@ -2925,10 +2903,6 @@ public final class AppShell extends StackPane {
         chromeRow.getStyleClass().add("adb-chrome-row");
         chromeRow.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(tabBar, Priority.ALWAYS);
-        // 侧栏 + 详情面板同时打开时主区可能只剩四百多像素：
-        // Ribbon 右端工具条切紧凑形态（搜索降级成图标），而不是让磁贴排被挤没。
-        appBar.widthProperty().addListener((observable, oldWidth, newWidth) ->
-                appBar.fitChromeWidth(newWidth == null ? 0 : newWidth.doubleValue()));
 
         VBox main = new VBox(chromeRow, workspace);
         main.getStyleClass().add("adb-main");

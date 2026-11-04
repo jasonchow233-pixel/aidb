@@ -207,75 +207,10 @@
     -fx-padding: 0px 8px 0px 0px;
 }
 
-/* 窄窗形态：搜索框降级成图标入口（命令面板本身仍可 ⌘K 直达），
-   连接胶囊只留名字。切换逻辑在 AppBar.fitChromeWidth()。 */
-.adb-appbar__utility--compact .adb-appbar__search {
-    -fx-pref-width: 30;
-    -fx-max-width: 30;
-    -fx-min-width: 30;
-    -fx-padding: 2px 4px;
-    -fx-alignment: center;
-}
-
-.adb-appbar__separator {
-    -fx-background-color: -adb-border;
-    -fx-min-width: 1;
-    -fx-pref-width: 1;
-    -fx-max-width: 1;
-    -fx-min-height: 16;
-    -fx-pref-height: 16;
-    -fx-max-height: 16;
-}
-
-/* 当前连接：应用级状态。无边框填充式 —— 外壳色上的一块凹陷色块，
-   圆角与按钮同档；悬停只加深底色，不再描边。 */
-.adb-appbar__connection {
-    -fx-background-color: -adb-bg-surface;
-    -fx-text-fill: -adb-text-primary;
-    -fx-border-color: -adb-border;
-    -fx-border-radius: 2px;
-    -fx-background-radius: 2px;
-    -fx-padding: 2px 8px;
-    -fx-font-size: 12px;
-    -fx-min-height: 22;
-    -fx-pref-height: 22;
-}
-
-.adb-appbar__connection:hover {
-    -fx-background-color: -adb-bg-hover;
-}
-
-.adb-appbar__connection-name {
-    -fx-text-fill: -adb-text-primary;
-    -fx-font-size: 12px;
-    -fx-font-weight: bold;
-}
-
-.adb-appbar__connection-kind {
-    -fx-text-fill: -adb-text-tertiary;
-    -fx-font-size: 11px;
-}
-
-/* ⭐ UX-5：状态点必须写成**两类后代选择器**（特异性 0,2,0）。
- * 单类时它排在 `.adb-icon--filled`（同 0,1,0，且在后）**前面** → JavaFX
- * 「同特异性后写胜」，通用图标的 text-secondary 把三种状态色全顶掉：
- * 实测「已连接」时计算出来是 #64748B —— 这颗点从来没绿过（同一个坑见
- * §S-7 的品牌 mark）。门禁读的是计算值，改回单类立刻红。 */
-.adb-appbar__connection .adb-appbar__connection-dot {
-    -fx-fill: -adb-text-muted;
-}
-
-.adb-appbar__connection .adb-appbar__connection-dot--online {
-    -fx-fill: -adb-success;
-}
-
-.adb-appbar__connection .adb-appbar__connection-dot--offline {
-    -fx-fill: -adb-text-muted;
-}
-
-.adb-appbar__connection .adb-appbar__connection-dot--error {
-    -fx-fill: -adb-error;
-}
+/* R63-2：这里原来住着「窄窗形态」（搜索框降级成图标、连接胶囊只留名字）
+   和连接胶囊、分隔竖线三组规则 —— 顶栏只剩主题与 ⋯ 两颗，窄窗没什么可收，
+   磁贴排的横向滚动已经承担了那件事。删规则必须和删 Java 同批：
+   样式类覆盖门禁按「CSS 有规则 ↔ 主源码有引用」双向查。 */
 
 .adb-appbar__action {
     -fx-background-color: transparent;
@@ -296,42 +231,6 @@
 
 .adb-appbar__more .arrow-button {
     -fx-background-color: transparent;
-}
-
-/* 全局搜索：无边框填充块 —— 外壳色上的凹陷输入区，焦点只换描边色。 */
-.adb-appbar__search {
-    -fx-background-color: -adb-bg-surface;
-    -fx-text-fill: -adb-text-tertiary;
-    -fx-border-color: -adb-border;
-    -fx-border-radius: 2px;
-    -fx-background-radius: 2px;
-    -fx-padding: 2px 8px;
-    -fx-pref-width: 220;
-    -fx-max-width: 220;
-    -fx-min-height: 22;
-    -fx-pref-height: 22;
-}
-
-.adb-appbar__search:hover {
-    -fx-background-color: -adb-bg-hover;
-}
-
-.adb-appbar__search-icon {
-    -fx-stroke: -adb-text-tertiary;
-}
-
-.adb-appbar__search-hint {
-    -fx-text-fill: -adb-text-tertiary;
-    -fx-font-size: 12px;
-}
-
-.adb-appbar__search-kbd {
-    -fx-text-fill: -adb-text-muted;
-    -fx-font-size: 11px;
-    -fx-padding: 0px 4px;
-    -fx-background-color: -adb-bg-chrome;
-    -fx-border-color: -adb-border;
-    -fx-border-radius: 2px;
 }
 
 /* ── Ribbon 命令带（91px、12 格磁贴，R36 实测对回 Navicat）────────────── */
@@ -710,9 +609,7 @@
 .adb-button:focused,
 .adb-icon-button:focused,
 .adb-dialog .button:focused,
-.adb-appbar__search:focused,
 .adb-appbar__action:focused,
-.adb-appbar__connection:focused,
 .adb-rail__button:focused,
 .adb-tab:focused,
 .adb-object-tab:focused,
