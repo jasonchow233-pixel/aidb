@@ -4002,6 +4002,10 @@
 }
 
 .adb-connections__search {
+    /* ⭐ H5-a：这句提示语（英文 145px + 内边距）以前被裁成「Search name, host, databa」，
+       而 TextField 的提示语裁剪不补省略号 —— 用户读到的是半句话。宽度按实测取整句 + 余量，
+       门禁 FieldPromptFitTest 读的是节点计算值，不是这一行。 */
+    -fx-pref-width: 200px;
     -fx-background-color: -adb-bg-inset;
     -fx-text-fill: -adb-text-primary;
     -fx-prompt-text-fill: -adb-text-tertiary;
