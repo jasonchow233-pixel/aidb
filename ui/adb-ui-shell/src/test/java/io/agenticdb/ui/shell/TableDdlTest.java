@@ -384,4 +384,148 @@ class TableDdlTest {
         assertThat(seen).hasSize(1);
         assertThat(seen.getFirst().sql()).isNotEmpty();
     }
+
+    /**
+     * ⭐⭐ D-69：改名的校验必须发生在**弹窗关闭之前**，错误就地显示。
+     *
+     * <p>旧流程是「showAndWait 收名字 → 校验 → 弹窗已关、错误另开一扇 ERROR 弹窗」：
+     * 用户刚输完名字，窗口没了，错误在另一扇弹窗里，改名字要把整扇窗重开、
+     * 名字重打 —— 与「结构页 4.5-12」「新建表」立的规矩相反（校验失败留在原地改一个字就能继续）。
+     *
+     * <p>这条走 {@link TableDdl#showRenameDialog}（**不 show**）并按住弹窗里那颗真的
+     * 「重命名」按钮：{@code Button.fire()} 会派发 ACTION —— 先过 EventFilter，
+     * 被 consume 就落不到 DialogPane 的「setResult + 关窗」监听上。
+     * 所以断言的是按序本身（filter 摘掉 → value 被置上 = 窗会关；converter 摘掉同理），
+     * 不是注释、不是形状。无头下不 show 模态窗（Monocle 会 NPE，见 D-15 注释）。
+     */
+    @Test
+    void pressingRenameOnABadNameNeitherProducesAResultNorShowsTheErrorElsewhere()
+            throws Exception {
+        TableDdl ddl = new TableDdl(id -> session, id -> Runnable::run, statuses::add,
+                id -> List.of("users"), id -> changes.incrementAndGet(), () -> null, List::of);
+
+        javafx.scene.control.Dialog<String> dialog = WaitForAsyncUtils.asyncFx(() ->
+                ddl.showRenameDialog("conn", session, "orders")).get();
+        // 观察层：在那颗钮上记一次 ACTION。EventFilter 先于所有 handler 派发 ——
+        // filter 摘掉后坏名按下也会放行到这里（DialogPane 自己的「setResult+关窗」
+        // 监听同属 handler 层，会一起跑），这条计数才看得见 filter 在不在干活。
+        int[] presses = {0};
+        javafx.scene.Node button = dialog.getDialogPane().lookupButton(applyButtonType(dialog));
+        WaitForAsyncUtils.asyncFx(() -> {
+            ((javafx.scene.control.Button) button).addEventHandler(
+                    javafx.event.ActionEvent.ACTION,
+                    event -> presses[0]++);
+            return null;
+        }).get();
+
+        // 撞名按下「重命名」：不产出结果、DialogPane 的关窗监听也不许跑、错误就地显形。
+        setFieldText(dialog, "users");
+        pressApply(dialog);
+        assertThat(dialog.getResult())
+                .as("撞名按下「重命名」不许产出结果 —— 产出了弹窗就会关闭（D-69 的病灶）")
+                .isNull();
+        assertThat(presses[0])
+                .as("撞名按下必须被 EventFilter 咽回去：落到 handler = DialogPane 会走关窗路径")
+                .isZero();
+        // 错误行先按（此刻 visible=true）才指得到 —— JavaFX 的 lookup 会跳过不可见节点。
+        javafx.scene.control.Label error = errorRow(dialog);
+        assertThat(error.getText())
+                .as("错误必须显示在弹窗内部，而不是另一扇 ERROR 弹窗里")
+                .contains(I18n.t("table.error.exists", "users"));
+        assertThat(error.isVisible()).as("错误行按下后必须显形").isTrue();
+
+        // 改一个合法名再按：同一扇窗内直接通过 —— 按下放行、产出新名字、错误行收起。
+        setFieldText(dialog, "orders2");
+        pressApply(dialog);
+        assertThat(presses[0]).as("合法名不许被拦").isEqualTo(1);
+        assertThat(dialog.getResult()).isEqualTo("orders2");
+        assertThat(error.getText()).as("通过校验后错误行要收起").isEmpty();
+    }
+
+    /** 在 FX 线程上按住弹窗里的「重命名」钮（fire 派发 ACTION，走真实的 filter→listener 链）。 */
+    private static void pressApply(javafx.scene.control.Dialog<String> dialog) throws Exception {
+        javafx.scene.Node button = dialog.getDialogPane()
+                .lookupButton(applyButtonType(dialog));
+        assertThat(button instanceof javafx.scene.control.Button)
+                .as("lookupButton 拿到的必须就是那颗 Button")
+                .isTrue();
+        WaitForAsyncUtils.asyncFx(() -> {
+            ((javafx.scene.control.Button) button).fire();
+            return null;
+        }).get();
+    }
+
+    /** 从建好的改名弹窗里取出「重命名」那颗钮的 ButtonType（按 ButtonData 找，不猜字段）。 */
+    private static javafx.scene.control.ButtonType applyButtonType(
+            javafx.scene.control.Dialog<String> dialog) {
+        return dialog.getDialogPane().getButtonTypes().stream()
+                .filter(type -> type.getButtonData() == javafx.scene.control.ButtonBar
+                        .ButtonData.OK_DONE)
+                .findFirst().orElseThrow();
+    }
+
+    private static void setFieldText(javafx.scene.control.Dialog<String> dialog, String text)
+            throws Exception {
+        WaitForAsyncUtils.asyncFx(() -> {
+            javafx.scene.Node input = lookupRenameInput(dialog);
+            ((javafx.scene.control.TextField) input).setText(text);
+            return null;
+        }).get();
+    }
+
+    private static javafx.scene.Node lookupRenameInput(
+            javafx.scene.control.Dialog<String> dialog) {
+        javafx.scene.Node input = dialog.getDialogPane().lookup("#rename-table-input");
+        assertThat(input).as("改名输入框的 id 抓手（D-15）必须还指得到").isNotNull();
+        return input;
+    }
+
+    private static javafx.scene.control.Label errorRow(
+            javafx.scene.control.Dialog<String> dialog) throws Exception {
+        javafx.scene.Node row = WaitForAsyncUtils.asyncFx(() ->
+                dialog.getDialogPane().lookup("#rename-table-error")).get();
+        assertThat(row)
+                .as("弹窗内的错误行（id 抓手）—— 没有它错误只能去另一扇窗里说")
+                .isInstanceOf(javafx.scene.control.Label.class);
+        return (javafx.scene.control.Label) row;
+    }
+
+    /**
+     * ⭐ D-69 的接线面：弹窗内部拦校验，**关窗之后不再另开 ERROR 弹窗**。
+     *
+     * <p>行为门禁钉的是 converter；「按下不关窗」的 EventFilter 与就地错误行是接线，
+     * 模态框在无头环境按不住（见 D-15 注释），只能像那条一样扫源码。
+     * 旧病灶（关窗后的 {@code new Alert}/{@code ddl.rename.rejected}）必须消失 ——
+     * 留着它等于两条错误通道并存，用户看到哪种全看运气。
+     */
+    @Test
+    void theRenameDialogInterceptsBeforeClosingIt() throws Exception {
+        java.nio.file.Path source = java.nio.file.Path.of(
+                "src/main/java/io/agenticdb/ui/shell/TableDdl.java");
+        String text = stripRenameComments(
+                java.nio.file.Files.readString(source, java.nio.charset.StandardCharsets.UTF_8));
+
+        assertThat(text)
+                .as("OK 按下必须先过校验拦一次（EventFilter consume = 弹窗留在原地）")
+                .contains("addEventFilter(javafx.event.ActionEvent.ACTION");
+        assertThat(text)
+                .as("错误要就地显示在弹窗里：内容区必须有错误行")
+                .contains("adb-error");
+        assertThat(text)
+                .as("关窗后的 ERROR 弹窗必须拆掉 —— 错误出现在另一扇窗里 = D-69 没修")
+                .doesNotContain("new Alert(");
+        assertThat(text)
+                .as("回车也要过同一道拦（fire 按钮会走 EventFilter，不许另接一条直发路径）")
+                .doesNotContain("renameTable(connectionId, table, next.trim())");
+    }
+
+    /** 只剥注释，不动结构（D-15 立的判据：扫的是构造点，不是解释自己的话）。 */
+    private static String stripRenameComments(String source) {
+        StringBuilder kept = new StringBuilder();
+        for (String line : source.split("\n", -1)) {
+            int comment = line.indexOf("//");
+            kept.append(comment < 0 ? line : line.substring(0, comment)).append('\n');
+        }
+        return kept.toString();
+    }
 }

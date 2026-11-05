@@ -6,7 +6,6 @@ import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.model.Danger;
 import io.agenticdb.ui.I18n;
 import javafx.application.Platform;
-import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
@@ -161,6 +160,29 @@ final class TableDdl {
             status.accept(I18n.t("ddl.pickTable"));
             return;
         }
+        Dialog<String> dialog = showRenameDialog(connectionId, current, table);
+        Optional<String> answer = dialog.showAndWait();
+        if (answer.isEmpty()) {
+            status.accept(I18n.t("ddl.cancelled.rename"));
+            return;
+        }
+        // ⭐ D-69：能走到这里名字就已经过校验（converter 不通过返回 null = 弹窗没关），
+        // 关窗后再校验、再另开一扇 ERROR 弹窗的旧通道已拆。
+        renameTable(connectionId, table, answer.get().trim());
+    }
+
+    /**
+     * ⭐ D-69：造出改名弹窗 —— 校验拦在关窗**之前**，错误就地显示。
+     *
+     * <p>旧流程（showAndWait 收名字 → 校验 → 失败另开一扇 ERROR 弹窗）把「改一个字符
+     * 就能继续」变成了「整扇窗重开、名字重打」，与新建表设计器立的规矩相反。
+     * 现在点「重命名」/回车都先过 {@code tableNameProblem}：不通过就 consume 掉这次按下，
+     * 原因写进弹窗内的错误行。
+     *
+     * <p>拆成方法且不 show，是给行为门禁一个可按键序调用的接缝
+     * （Monocle 无头按不住模态框，converter 是普通函数，能直接调）。
+     */
+    Dialog<String> showRenameDialog(String connectionId, DbSession current, String table) {
         // ⭐ D-15：这里原来是 {@code TextInputDialog} —— 它是 Dialog，但按钮是
         // JavaFX 内置的「OK/Cancel」，样式套不干净（同一页上「新建表 / 新建索引」
         // 两个弹窗的按钮是我们的 Label）。换成自建 Dialog 之后，输入框、按钮、
@@ -171,43 +193,47 @@ final class TableDdl {
         javafx.scene.control.TextField input = new javafx.scene.control.TextField(table);
         input.setId("rename-table-input");
         input.setMaxWidth(Double.MAX_VALUE);
+        // ⭐ D-69：错误行住在弹窗内容区（与新建表的 .adb-error 同款）。
+        javafx.scene.control.Label error = new javafx.scene.control.Label();
+        error.setId("rename-table-error");
+        error.getStyleClass().add("adb-error");
+        error.setVisible(false);
+        error.setManaged(false);
+        javafx.scene.layout.VBox body = new javafx.scene.layout.VBox(8, input, error);
         ButtonType apply = new ButtonType(I18n.t("ddl.rename.apply"),
                 ButtonBar.ButtonData.OK_DONE);
         ButtonType cancel = new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
-        dialog.getDialogPane().setContent(input);
+        dialog.getDialogPane().setContent(body);
         dialog.getDialogPane().getButtonTypes().addAll(apply, cancel);
+        // ⭐ D-69：按下先过校验，不过就把这次按下咽回去（弹窗留在原地、错误就地显示）。
+        // 这是**唯一**的拦截点（与新建表的 okButton filter→buildPlan 同一范式）：
+        // converter 再抄一遍校验只会互相兜底，变异时谁摘一半都不红。
+        javafx.scene.Node applyButton = dialog.getDialogPane().lookupButton(apply);
+        applyButton.addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+            String next = input.getText() == null ? "" : input.getText().trim();
+            String problem = tableNameProblem(connectionId, next, current, table);
+            error.setText(problem == null ? "" : problem);
+            error.setVisible(problem != null);
+            error.setManaged(problem != null);
+            if (problem != null) {
+                event.consume();
+            }
+        });
+        dialog.setResultConverter(type -> type == apply
+                ? (input.getText() == null ? "" : input.getText().trim()) : null);
         // 回车 = 点「重命名」，不是关掉窗口：TextInputDialog 本来就是这样的，
-        // 换成自建 Dialog 后这条路得自己接上。
+        // 换成自建 Dialog 后这条路得自己接上。fire() 会走上面那颗钮的 EventFilter，
+        // 与鼠标点击同一条校验，不另接直发路径。
         input.setOnAction(event -> {
-            javafx.scene.Node button = dialog.getDialogPane().lookupButton(apply);
-            if (button instanceof javafx.scene.control.ButtonBase buttonBase) {
+            if (applyButton instanceof javafx.scene.control.ButtonBase buttonBase) {
                 buttonBase.fire();
             }
         });
-        dialog.setResultConverter(type -> type == apply ? input.getText() : null);
         if (owner.get() != null) {
             dialog.initOwner(owner.get());
         }
         DialogStyles.apply(dialog, owner.get());
-        Optional<String> answer = dialog.showAndWait();
-        if (answer.isEmpty()) {
-            status.accept(I18n.t("ddl.cancelled.rename"));
-            return;
-        }
-        String next = answer.get() == null ? "" : answer.get().trim();
-        String problem = tableNameProblem(connectionId, next, current, table);
-        if (problem != null) {
-            status.accept(problem);
-            Alert alert = new Alert(Alert.AlertType.ERROR, problem, ButtonType.OK);
-            alert.setHeaderText(I18n.t("ddl.rename.rejected"));
-            if (owner.get() != null) {
-                alert.initOwner(owner.get());
-            }
-            DialogStyles.apply(alert, owner.get());
-            alert.showAndWait();
-            return;
-        }
-        renameTable(connectionId, table, next);
+        return dialog;
     }
 
     /**
