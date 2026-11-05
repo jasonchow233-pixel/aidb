@@ -196,6 +196,63 @@ class SqlCompletionsTest {
         assertThat(proposal.candidates().getFirst().insertText()).isEqualTo("id");
     }
 
+    /**
+     * ⭐ D-68：裸写会被引擎折叠出**另一个对象**的名字，补全必须改成引号形式。
+     *
+     * <p>「纯 ASCII 就裸插」只在不折叠的库成立。Oracle 连到设计器建的小写库时，
+     * 候选列表里是原样存的 {@code users}，裸插出去折成 {@code USERS} —— 一执行就是
+     * ORA-00942「表或视图不存在」，而且报错出现在**编辑器之外**（用户按运行那一刻），
+     * 看着像库坏了。规则归方言层（{@code bareResolvesTo}），这里只消费。
+     */
+    @Test
+    void strictSource_insertsFoldedNamesQuoted() {
+        SqlCompletions.Source oracleStyle = new SqlCompletions.Source() {
+            @Override
+            public List<SqlCompletions.Entry> objects() {
+                return List.of(new SqlCompletions.Entry("users", SqlCompletions.Kind.TABLE),
+                        new SqlCompletions.Entry("USERS", SqlCompletions.Kind.TABLE));
+            }
+
+            @Override
+            public boolean objectsReady() {
+                return true;
+            }
+
+            @Override
+            public List<String> columnsOf(String table) {
+                return List.of();
+            }
+
+            @Override
+            public boolean columnsLoaded(String table) {
+                return true;
+            }
+
+            @Override
+            public Set<String> keywords() {
+                return KEYWORDS;
+            }
+
+            @Override
+            public String quote(String identifier) {
+                return "\"" + identifier + "\"";
+            }
+
+            @Override
+            public boolean bareResolvesTo(String name) {
+                // 模拟 Oracle：裸名折大写，只有已经是大写形式的目录名能落回自己
+                return name.equals(name.toUpperCase(Locale.ROOT));
+            }
+        };
+        SqlCompletions.Proposal proposal =
+                SqlCompletions.suggest("SELECT * FROM us", 15, oracleStyle);
+        List<String> inserts = proposal.candidates().stream()
+                .map(SqlCompletions.Candidate::insertText).toList();
+        assertThat(inserts)
+                .as("小写精确名必须带引号插，大写名保持裸写")
+                .containsExactly("\"users\"", "USERS");
+    }
+
     @Test
     void updateContext_offersTables() {
         assertThat(names(suggest("UPDATE "))).contains("users", "products");

@@ -70,6 +70,11 @@ public enum DialectKind {
         return dialect.quote(identifier);
     }
 
+    /** 这个名字裸写进 SQL 是否还落回同一个对象（D-68：Oracle 折大写 / PG 折小写）。 */
+    public boolean bareResolvesTo(String name) {
+        return dialect.bareResolvesTo(name);
+    }
+
     /**
      * 方言是否支持列注释（MySQL {@code COMMENT} / PostgreSQL {@code COMMENT ON}）。
      * SQLite 没有列注释概念 —— UI 必须据此收起注释列与输入框，

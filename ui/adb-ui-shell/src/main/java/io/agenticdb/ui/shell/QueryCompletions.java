@@ -409,6 +409,11 @@ final class QueryCompletions implements SqlCompletions.Source, AutoCloseable {
         return session.dialect().quote(identifier);
     }
 
+    @Override
+    public boolean bareResolvesTo(String name) {
+        return session.dialect().bareResolvesTo(name);
+    }
+
     // ─────────────────────────── 门禁接缝 ───────────────────────────
 
     /**

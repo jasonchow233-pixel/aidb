@@ -99,6 +99,17 @@ final class SqlCompletions {
 
         /** 方言引号（只在对的标识符形状不安全时用）。 */
         String quote(String identifier);
+
+        /**
+         * 这个名字裸写（不加引号）进 SQL，引擎解析后还落回同一个对象吗。
+         *
+         * <p>⚠️ 默认 true 只在不折叠大小写的库成立：Oracle 把裸名折成大写、
+         * PG 折成小写，目录里原样存的名字裸插出去就是「表或视图不存在」（D-68，
+         * 规则在方言层 {@code Dialect#bareResolvesTo}，界面不写分支）。
+         */
+        default boolean bareResolvesTo(String name) {
+            return true;
+        }
     }
 
     /**
@@ -411,9 +422,17 @@ final class SqlCompletions {
         return partial.isEmpty() || name.regionMatches(true, 0, partial, 0, partial.length());
     }
 
-    /** 只有「不是纯 ASCII 标识符形状」的名字才加引号 —— `users` 保持裸写，`my table` 包起来。 */
+    /**
+     * 形状不安全（{@code my table}）**或裸写会被引擎折叠出别的对象**（Oracle 的 {@code users}）
+     * 时加引号 —— 其余保持裸写。
+     *
+     * <p>⭐ D-68：旧口径只判形状。Oracle 目录里原样存的小写名（设计器加引号建的，见 D-22）
+     * 形状纯 ASCII、被裸插进编辑器，一执行折成 USERS 就是 ORA-00942 ——
+     * 报错发生在编辑器之外，用户看到的是「库自己坏了」。
+     */
     private static String insertText(String name, Source source) {
-        return isPlainIdentifier(name) ? name : source.quote(name);
+        return isPlainIdentifier(name) && source.bareResolvesTo(name)
+                ? name : source.quote(name);
     }
 
     private static boolean isPlainIdentifier(String name) {

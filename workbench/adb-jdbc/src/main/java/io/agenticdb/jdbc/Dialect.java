@@ -43,6 +43,17 @@ public interface Dialect {
     /** 标识符引用。SQLite / PostgreSQL 用双引号，MySQL 用反引号。 */
     String quote(String identifier);
 
+    /**
+     * 目录里读回来的这个名字<b>裸写</b>（不加引号）进 SQL，引擎解析后是否还落回同一个对象。
+     *
+     * <p>默认 true：SQLite / MySQL / SQL Server 的标识符大小写不敏感，纯 ASCII 形状就能裸写。
+     * 有折叠规则的库必须覆写（Oracle 裸名折大写、PG 折小写）。补全通道据此决定
+     * 「裸插还是加引号插」（D-68）。
+     */
+    default boolean bareResolvesTo(String name) {
+        return true;
+    }
+
     String jdbcUrl(String host, int port, String database);
 
     /**

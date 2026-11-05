@@ -35,6 +35,15 @@ public final class PostgresDialect implements Dialect {
     }
 
     /**
+     * ⭐ D-68（与 Oracle 反向）：PG 把<b>未引号</b>标识符折成<b>小写</b>。
+     * 目录里原样存着 {@code "Orders"} 的对象，裸写 Orders 解析成 orders —— 落不到同一个对象。
+     */
+    @Override
+    public boolean bareResolvesTo(String name) {
+        return name != null && name.equals(name.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    /**
      * 连接 / 读超时（毫秒）。
      *
      * <p>⭐ 同 MySQL：<b>没有超时，卡住的握手会把界面冻死</b>。

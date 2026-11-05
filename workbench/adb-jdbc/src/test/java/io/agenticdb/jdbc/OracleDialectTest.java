@@ -34,6 +34,36 @@ class OracleDialectTest {
     void identifiersUseDoubleQuotesLikePostgres() {
         assertThat(dialect.quote("users")).isEqualTo("\"users\"");
         assertThat(dialect.quote("a\"b")).isEqualTo("\"a\"\"b\"");
+        assertThat(dialect.quote("users"))
+                .as("D-68：quote() 保持目录里的精确名 —— 不许在里面转大写。"
+                        + "设计器建的对象总是加引号（见 D-22），Oracle 原样存进目录，"
+                        + "引号里折成大写会找不到 \"orders\"；未引号名才折叠大写")
+                .isEqualTo("\"users\"")
+                .doesNotContain("USERS");
+    }
+
+    /**
+     * ⭐ D-68：裸写的标识符会被 Oracle 折成<b>大写</b> —— 设计器建的小写表裸写出去就是 ORA-00942。
+     *
+     * <p>与 D-22 同一套真库事实的两端：目录里存的是精确名（{@code orders}），
+     * 所以查询匹配要「原样 + 大写」两个都认；而<b>写进 SQL 的裸名</b>只认折后形式（{@code ORDERS}）。
+     * 补全通道以前按「纯 ASCII 就裸写」把目录里的 {@code users} 直接插进编辑器，
+     * 用户一执行就是一个「表或视图不存在」。
+     */
+    @Test
+    void bareNamesFoldToUpperCaseSoOnlyUpperCaseNamesResolve() {
+        assertThat(dialect.bareResolvesTo("users"))
+                .as("设计器建的「users」裸写会折成 USERS，命中不到原样存的小写对象（D-22 真库实测）")
+                .isFalse();
+        assertThat(dialect.bareResolvesTo("USERS"))
+                .as("常规未引号建的表在目录里就是大写，裸写 USERS 折回自身，能命中")
+                .isTrue();
+        assertThat(dialect.bareResolvesTo("Orders"))
+                .as("混合大小写裸写照样折大写，命中的是 ORDERS 不是 Orders")
+                .isFalse();
+        assertThat(dialect.quote("users"))
+                .as("引号形式是恒成立的回退：精确名原样进引号")
+                .isEqualTo("\"users\"");
     }
 
     @Test

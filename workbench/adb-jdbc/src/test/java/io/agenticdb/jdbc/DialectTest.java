@@ -78,6 +78,32 @@ class DialectTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    /**
+     * ⭐ D-68：目录里读回来的名字<b>裸写</b>进 SQL 能不能落回同一个对象，是每库一条折叠规则。
+     *
+     * <p>补全通道（SqlCompletions）以前只判「是不是纯 ASCII 形状」就裸插 ——
+     * Oracle 把裸名折成大写，设计器加引号建的 {@code users} 原样存在目录里，
+     * 插出去一执行就是 ORA-00942；PG 反向，折成小写，裸插 {@code Orders} 落不到 {@code "Orders"}。
+     * MySQL / SQL Server / SQLite 大小写不敏感，这条对它们恒真 —— 规则必须在方言层，
+     * 界面不写分支（A1 / DialectBranchAuditTest 同一口径）。
+     */
+    @Test
+    void bareNamesResolvePerEachEnginesOwnFoldRule() {
+        assertThat(DialectKind.ORACLE.dialect().bareResolvesTo("users"))
+                .as("Oracle 裸名折大写：小写目录名不许裸写")
+                .isFalse();
+        assertThat(DialectKind.ORACLE.dialect().bareResolvesTo("USERS")).isTrue();
+        assertThat(DialectKind.POSTGRESQL.dialect().bareResolvesTo("Orders"))
+                .as("PG 裸名折小写：混合大小写的目录名不许裸写")
+                .isFalse();
+        assertThat(DialectKind.POSTGRESQL.dialect().bareResolvesTo("orders")).isTrue();
+        assertThat(DialectKind.SQLITE.dialect().bareResolvesTo("Orders"))
+                .as("SQLite / MySQL / SQL Server 大小写不敏感：一律能落回")
+                .isTrue();
+        assertThat(DialectKind.MYSQL.dialect().bareResolvesTo("Orders")).isTrue();
+        assertThat(DialectKind.SQLSERVER.dialect().bareResolvesTo("Orders")).isTrue();
+    }
+
     // ─────────────────────────── 连接 ───────────────────────────
 
     @Test

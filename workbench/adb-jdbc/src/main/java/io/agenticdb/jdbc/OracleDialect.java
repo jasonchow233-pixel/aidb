@@ -60,6 +60,19 @@ public final class OracleDialect implements Dialect {
         return "\"" + identifier.replace("\"", "\"\"") + "\"";
     }
 
+    /**
+     * ⭐ D-68：Oracle 把<b>未引号</b>标识符折成大写（{@code identifiersToUpper=true}），
+     * 引号形式才原样解析 —— 所以只有已经是全大写形状的名字裸写能落回自己。
+     *
+     * <p>与 {@link #nameMatches}（D-22）是同一套目录语义的两端：读目录按「原样 + 大写」两个都认，
+     * 写 SQL 时裸名只认折后形式。设计器建的对象总是加引号、原样存小写，
+     * 把那种名字裸写进编辑器 = 一执行就 ORA-00942。
+     */
+    @Override
+    public boolean bareResolvesTo(String name) {
+        return name != null && name.equals(name.toUpperCase(java.util.Locale.ROOT));
+    }
+
     @Override
     public String uriScheme() {
         return "oracle";
