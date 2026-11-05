@@ -1730,6 +1730,21 @@
     -fx-padding: 32px;
 }
 
+/* ⭐ D-53 帧检出的第二条：浅色主题里 -adb-bg-surface 与 -adb-bg-canvas 同为 #FFFFFF
+   （theme-light.css:4,7），所以上面那层「面板」盖在白的结果带上等于没画 ——
+   实拍整条带的颜色直方图只剩一个 #FFFFFF。贴在带上的那两张卡片走 inset 令牌；
+   其余空态（表格/列表的 placeholder）底色不动，别在这一格顺手换全 UI 的视觉。
+   ⚠️ 必须排在 .adb-empty 之后：同为单类选择器，靠先后定胜负。 */
+.adb-empty--inset {
+    -fx-background-color: -adb-bg-inset;
+    /* ⚠️ 这条线不是装饰：卡片铺满整条带之后，带与编辑器同为 -adb-bg-inset，
+       而 SplitPane 那根 1px 分隔条是 -adb-border-subtle(#F0F0F0) 压在 #F1F5F9 上 —— 实测看不见。
+       上边沿补一条真边框，编辑器/结果带的边界才回来；有了结果页签卡片收起，
+       那时带是白的，边界本来就看得见。 */
+    -fx-border-color: -adb-border transparent transparent transparent;
+    -fx-border-width: 1px 0px 0px 0px;
+}
+
 /* 尺寸由 Icons.SIZE_EMPTY（32px）在 Java 侧给定 —— 图标是 SVGPath，
    CSS 字号管不到它，留一个 32px 只会让阶梯多一档没人消费的令牌。 */
 .adb-empty__icon {

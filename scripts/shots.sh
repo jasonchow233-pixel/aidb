@@ -106,6 +106,9 @@ SHOTS=(
   "p6-tables||5000|ADB_TABLES=1 ADB_THEME_FORCE=light"
   "p6-tables-grid||5000|ADB_TABLES=1 ADB_TABLE_VIEW=grid ADB_THEME_FORCE=light"
   "p3-query||6000|ADB_QUERY=1 ADB_THEME_FORCE=light"
+  # ⭐ D-53：结果带「从没执行过」那一态 —— 同一句示例 SQL、同一个页签，只是没按 Run
+  #   （跑了这一态就不存在了）。这一帧证的是那句解释真的画上屏幕，不是只在门禁里。
+  "p3-query-idle||6000|ADB_QUERY=1 ADB_QUERY_IDLE=1 ADB_THEME_FORCE=light"
   # ⭐ U25：右键菜单帧 —— 结果网格上摆出真菜单（复制单元格 / 行 / 列名）。
   "p3-query-menu||8000|ADB_QUERY=1 ADB_MENU_POSE=1 ADB_THEME_FORCE=light"
   # ⭐ R47-b：库▾ 的真库帧 —— 这颗控件（R44-G1）交付至今一张帧都没有，

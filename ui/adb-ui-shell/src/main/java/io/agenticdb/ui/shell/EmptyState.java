@@ -42,6 +42,10 @@ final class EmptyState extends VBox {
         title.getStyleClass().add("adb-empty__title");
 
         VBox box = new VBox(10, icon, title);
+        // ⭐ D-53 帧检出的错位：外层 VBox 会把这一列**拉满**可用宽度，
+        //    而 VBox 默认是 TOP_LEFT —— 于是图标与两行文字全贴在左边缘，
+        //    实拍里就是一列字卡在 1012px 宽的带的边上（左 32px、右 700px 空白）。
+        box.setAlignment(Pos.CENTER);
         if (description != null && !description.isBlank()) {
             Label desc = new Label(description);
             desc.getStyleClass().add("adb-muted");

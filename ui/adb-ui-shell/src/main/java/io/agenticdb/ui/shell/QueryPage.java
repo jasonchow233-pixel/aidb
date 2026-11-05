@@ -116,6 +116,31 @@ public final class QueryPage extends VBox implements AutoCloseable {
     /** ⭐ R57-a：编辑器补全（弹层 + 模式缓存 + ⌘Space / 点号触发）。 */
     private final QueryCompletions completions;
     private final TabPane results = new TabPane();
+    /**
+     * ⭐ D-53：结果带**整块空着**的那两态（从没执行 / 已取消）各有一句解释。
+     *
+     * <p>TabPane 没有 placeholder 这个口子，所以只能在外面套一层 {@link StackPane}：
+     * 页签条空着的时候盖上去，一旦有了页签就收起来（{@link #updateResultsEmptyState()}）。
+     *
+     * <p>「跑完了、零行」不在这里 —— 那一态早有实现（E5 的网格占位，
+     * {@code query.emptyTitle}），这一格把它盖成「这个页签没跑过」就是骗人。
+     *
+     * <p>字形各让开一步（帧检出的第四条）：原先「没执行」用 {@code QUERY} —— 那是功能区
+     * Query 磁贴与侧栏 New Query 的字形，一帧里同一符号说三件事；「已取消」用 {@code STOP} ——
+     * 和<b>同一屏</b>工具条那颗 Stop 一模一样。现在说的是「结果会出现在这里」和「这一轮作废」，
+     * 用 {@code GRID} 与 {@code CLEAR}。
+     */
+    private final StackPane resultsArea = new StackPane();
+    private final EmptyState resultsNeverRun = EmptyState.of(Icons.Icon.GRID,
+            I18n.t("query.empty.none.title"), I18n.t("query.empty.none.body"));
+    private final EmptyState resultsCancelledRun = EmptyState.of(Icons.Icon.CLEAR,
+            I18n.t("query.empty.cancelled.title"), I18n.t("query.empty.cancelled.body"));
+    /** 结果带此刻为什么是空的 —— 在途（RUNNING）时空着是对的，两句都不许出声。 */
+    private ResultsBand resultsBand = ResultsBand.NEVER_RUN;
+
+    private enum ResultsBand {
+        NEVER_RUN, RUNNING, CANCELLED
+    }
     /** ⭐ 结果网格也要跟密度 —— 否则「紧凑」在查询页看起来没生效。 */
     private final java.util.List<TableView<java.util.Map<String, Object>>> resultTables =
             new java.util.ArrayList<>();
@@ -593,7 +618,24 @@ public final class QueryPage extends VBox implements AutoCloseable {
         results.setTabMinHeight(28);
         results.setTabMaxHeight(32);
 
-        SplitPane split = new SplitPane(editor, results);
+        // ⭐ D-53：空态盖在结果带上面，收起时连位置都不占。
+        //    adb-empty--inset：浅色主题里 -adb-bg-surface 与 -adb-bg-canvas 同为 #FFFFFF，
+        //    .adb-empty 那层「面板」盖在白 canvas 上等于隐形（帧检出的第二条）——
+        //    只有这两块贴在带上的卡片换 inset 令牌，其余 23 处空态的底色不动。
+        resultsNeverRun.setId("query-results-empty-never-run");
+        resultsNeverRun.getStyleClass().add("adb-empty--inset");
+        resultsCancelledRun.setId("query-results-empty-cancelled");
+        resultsCancelledRun.getStyleClass().add("adb-empty--inset");
+        resultsNeverRun.managedProperty().bind(resultsNeverRun.visibleProperty());
+        resultsCancelledRun.managedProperty().bind(resultsCancelledRun.visibleProperty());
+        resultsArea.getChildren().addAll(results, resultsNeverRun, resultsCancelledRun);
+        // 页签列表一动就重算（clear / add 都从这里过）。
+        javafx.collections.ListChangeListener<Tab> tabsChanged =
+                change -> updateResultsEmptyState();
+        results.getTabs().addListener(tabsChanged);
+        updateResultsEmptyState();
+
+        SplitPane split = new SplitPane(editor, resultsArea);
         split.setOrientation(Orientation.VERTICAL);
         // ⭐ R57-g：两条最小高是给「拖到底」准备的 —— 没有它们，分隔条能一路把编辑器
         //    拖成 0 高（或者把结果带拖成只剩页签条），而 SplitPane 上没有第二个入口能拖回来。
@@ -742,6 +784,30 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
     public int resultTabCount() {
         return results.getTabs().size();
+    }
+
+    /**
+     * ⭐ D-53：结果带空着的时候，让当前那一句出声——或者一句都不出。
+     *
+     * <p>「空」有两处真相要看：页签列表空不空，以及**为什么**空。
+     * 在途的那一次不算「从没执行过」（页签是它自己清的），也不算「已取消」
+     * （还没取消成）—— 所以 RUNNING 一态两句都收着，界面继续靠状态栏说话。
+     */
+    private void updateResultsEmptyState() {
+        boolean hasResults = !results.getTabs().isEmpty();
+        resultsNeverRun.setVisible(!hasResults && resultsBand == ResultsBand.NEVER_RUN);
+        resultsCancelledRun.setVisible(!hasResults && resultsBand == ResultsBand.CANCELLED);
+    }
+
+    /**
+     * ⭐ D-53 的门禁后门：把结果带说成某一句，然后按生产同一套规则重算可见性。
+     *
+     * <p>生产路径拿不出「带着页签却被说成已取消」这一种（清页签与改措辞总在同一个
+     * {@code execute()} 里成对发生），所以「有内容就不许出声」那半句只能从这儿验。
+     */
+    void forceResultsBandForTest(boolean cancelled) {
+        resultsBand = cancelled ? ResultsBand.CANCELLED : ResultsBand.NEVER_RUN;
+        updateResultsEmptyState();
     }
 
     /**
@@ -1097,6 +1163,11 @@ public final class QueryPage extends VBox implements AutoCloseable {
         cancelled = true;
         running = false;
         requestSequence++;
+        // ⭐ D-53：这一句落在 cancel() 里，不落在任务的 onCancelled 回调里 ——
+        //    回调那三处都被 requestSequence++ 这道闸拦下了（这就是取消后状态栏
+        //    停在「Cancel requested」的原因），在这儿改才真的有人看得到。
+        resultsBand = ResultsBand.CANCELLED;
+        updateResultsEmptyState();
         session.cancelCurrent();
         if (inFlight != null) {
             inFlight.cancel(true);
@@ -1162,12 +1233,16 @@ public final class QueryPage extends VBox implements AutoCloseable {
         cancelled = false;
         running = true;
         updateButtons();
+        // ⭐ D-53：先把「这一轮在途」写在结果带脸上，再清页签 —— 反过来的话，
+        //    清空的这一次变化会先让上一轮的措辞闪一下。
+        resultsBand = ResultsBand.RUNNING;
         // ⭐ R58-c：三条按「第几个结果」取用的列表必须跟着页签一起清 —— 留着上一轮的条目，
         // 索引就指到已经不显示的页面上（导出取的是 pagers.get(i)，回写取的是 editStates.get(i)）。
         results.getTabs().clear();
         resultTables.clear();
         pagers.clear();
         editStates.clear();
+        updateResultsEmptyState();
         status.setText((explainPlan ? I18n.t("query.explaining") : I18n.t("query.running")));
         feedback.status(status.getText());
         feedback.duration(-1);

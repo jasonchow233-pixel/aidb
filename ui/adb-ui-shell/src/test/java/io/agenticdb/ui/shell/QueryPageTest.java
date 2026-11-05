@@ -1255,6 +1255,224 @@ class QueryPageTest {
         assertEditNoteSays("query.edit.blocked.noPrimaryKey");
     }
 
+    // ─────────────────── D-53 结果带整块空着时要说为什么 ───────────────────
+
+    @Test
+    void aFreshQueryTabSaysWhatTheEmptyResultsBandIsWaitingFor() {
+        EmptyState idle = emptyBand("query-results-empty-never-run");
+
+        assertThat(idle.isVisible())
+                .as("新的一页从没跑过 —— 以前结果带是一片死空白，没话说")
+                .isTrue();
+        assertThat(emptyTitle(idle)).isEqualTo(I18n.t("query.empty.none.title"));
+        assertThat(emptyBody(idle)).isEqualTo(I18n.t("query.empty.none.body"));
+        assertThat(emptyBand("query-results-empty-cancelled").isVisible())
+                .as("从没跑过的一页不能谎报「已取消」")
+                .isFalse();
+    }
+
+    @Test
+    void theResultsBandEmptyStateLeavesAsSoonAsResultsLand() {
+        interact(() -> {
+            page.setSql("SELECT 1 AS n;");
+            page.runAll();
+        });
+        waitForTabs(1);
+
+        assertThat(emptyBand("query-results-empty-never-run").isVisible())
+                .as("有了结果页签，空态必须让位")
+                .isFalse();
+    }
+
+    @Test
+    void aZeroRowResultKeepsTheGridPlaceholderNotTheBandEmptyState() {
+        interact(() -> {
+            page.setSql("SELECT id FROM users WHERE id < 0;");
+            page.runAll();
+        });
+        waitForTabs(1);
+
+        assertThat(emptyBand("query-results-empty-never-run").isVisible())
+                .as("⭐ 「跑完了、零行」那一态早有实现（E5 的网格占位）—— "
+                        + "这一格不能把它盖成「从没执行过」")
+                .isFalse();
+        EmptyState placeholder = (EmptyState)
+                ((TableView<?>) page.lookup("#query-result-table")).getPlaceholder();
+        assertThat(emptyTitle(placeholder))
+                .as("零行说的是「查询成功但没行」，与「这个页签没跑过」是两句话")
+                .isEqualTo(I18n.t("query.emptyTitle"));
+    }
+
+    @Test
+    void anEmptyStateNeverSitsOnTopOfLandedResults() {
+        interact(() -> {
+            page.setSql("SELECT 1 AS n;");
+            page.runAll();
+        });
+        waitForTabs(1);
+
+        // 生产路径拿不出这一种（清页签与改措辞在同一次 execute 里成对发生），
+        // 所以从后门验：结果带上有内容时，空态说什么都不许盖在上面。
+        interact(() -> page.forceResultsBandForTest(true));
+        assertThat(emptyBand("query-results-empty-cancelled").isVisible())
+                .as("结果带上有页签了，「已取消」那句必须闭嘴")
+                .isFalse();
+        interact(() -> page.forceResultsBandForTest(false));
+        assertThat(emptyBand("query-results-empty-never-run").isVisible())
+                .as("同一格「从没执行过」那句也一样")
+                .isFalse();
+    }
+
+    // ── 帧检出的三处错位（p3-query-idle 实拍「看着乱」，逐条钉成门禁）──
+
+    /**
+     * ⭐ 帧实测：结果带 1012px 宽，那句「这个页签还没执行过查询」贴在带的<b>左边缘</b>
+     * （左留白 = padding，右留白 700px 以上）—— 一列文字卡在洞的边上，
+     * 读起来像面板坏了，不像「在等一句 SQL」。
+     * 钉结果不钉手段：左右留白相等，居中靠哪一层做到都行。
+     */
+    @Test
+    void theBandEmptyStateSitsInTheMiddleOfTheBandNotAgainstItsLeftEdge() throws Exception {
+        double[] gap = WaitForAsyncUtils.<double[]>asyncFx(() -> {
+            useLightThemeCss();
+            EmptyState idle = emptyBand("query-results-empty-never-run");
+            javafx.scene.layout.Pane area = (javafx.scene.layout.Pane) idle.getParent();
+            Label title = (Label) idle.lookup(".adb-empty__title");
+            javafx.geometry.Bounds band = area.localToScene(area.getBoundsInLocal());
+            javafx.geometry.Bounds text = title.localToScene(title.getBoundsInLocal());
+            assertThat(band.getWidth())
+                    .as("结果带根本没布局（宽 0 就是这条门禁在空转）")
+                    .isGreaterThan(0);
+            return new double[] {text.getMinX() - band.getMinX(), band.getMaxX() - text.getMaxX()};
+        }).get();
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(gap[0])
+                .as("空态那句的左右留白：实测左 %.0fpx / 右 %.0fpx —— 贴边就是「面板坏了」",
+                        gap[0], gap[1])
+                .isCloseTo(gap[1], org.assertj.core.data.Offset.offset(4.0));
+    }
+
+    /**
+     * ⭐ 帧实测：浅色主题里 {@code -adb-bg-surface} 与 {@code -adb-bg-canvas} <b>同为 #FFFFFF</b>
+     * （theme-light.css:4,7），{@code .adb-empty} 那层「面板」在实拍里等于零 ——
+     * 整条带的颜色直方图只剩一个 #FFFFFF 加文字抗锯齿。空态不许和它坐的带同色。
+     */
+    @Test
+    void theBandEmptyStateIsNotPaintedInTheSameColorAsTheBandUnderIt() throws Exception {
+        java.util.List<javafx.scene.paint.Paint> fills =
+                WaitForAsyncUtils.<java.util.List<javafx.scene.paint.Paint>>asyncFx(() -> {
+                    useLightThemeCss();
+                    EmptyState idle = emptyBand("query-results-empty-never-run");
+                    return java.util.List.of(backgroundColor(idle),
+                            backgroundColor(page.lookup("#query-results")));
+                }).get();
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(fills.get(0))
+                .as("空态没画任何背景 —— 样式表没挂上时这里是透明，断言会假绿")
+                .isNotEqualTo(javafx.scene.paint.Color.TRANSPARENT);
+        assertThat(fills.get(0))
+                .as("空态与它盖住的带同色（实测两个都是 #FFFFFF）：那层面板在浅色下是隐形的")
+                .isNotEqualTo(fills.get(1));
+    }
+
+    /**
+     * ⭐ 帧实测：「执行已取消」那句用的是方块 ■ —— 和同一屏工具条上那颗 Stop
+     * 是<b>同一枚字形</b>，一个符号在两处说两件不同的事。
+     * 「从没执行过」那句同理：它用的是功能区 Query 磁贴那对尖括号。
+     */
+    @Test
+    void theBandEmptyStateDoesNotReuseAGlyphTheToolbarAlreadySpeaks() throws Exception {
+        java.util.List<String> glyphs = WaitForAsyncUtils.<java.util.List<String>>asyncFx(() -> {
+            String run = glyphOf(page.lookup("#query-run"));
+            String stop = glyphOf(page.lookup("#query-cancel"));
+            return java.util.List.of(glyphOf(emptyBand("query-results-empty-never-run")),
+                    glyphOf(emptyBand("query-results-empty-cancelled")), run, stop);
+        }).get();
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(glyphs.get(0))
+                .as("「从没执行过」的字形撞上了工具条 Run / Stop —— 同一屏一个符号说两件事")
+                .isNotIn(glyphs.get(2), glyphs.get(3));
+        assertThat(glyphs.get(1))
+                .as("「执行已取消」的字形同理：帧里它就是工具条那颗 ■")
+                .isNotIn(glyphs.get(2), glyphs.get(3));
+        assertThat(glyphs.get(0))
+                .as("两句空态自己也不许共用一枚字形")
+                .isNotEqualTo(glyphs.get(1));
+    }
+
+    /**
+     * ⭐ 上一条修出来的副作用要自己钉住：卡片铺满整条带以后，带和编辑器<b>同为</b>
+     * {@code -adb-bg-inset}，而 SplitPane 那根 1px 分隔条是 {@code -adb-border-subtle}
+     * （#F0F0F0）压在 #F1F5F9 上 —— 实测看不见，两半会糊成一块。
+     * 钉的是「铺满之后仍有一条真边界」，不是「必须有边框」。
+     */
+    @Test
+    void theBandEmptyStateKeepsARealTopEdgeWhenItFillsTheBand() throws Exception {
+        java.util.List<Object> edge = WaitForAsyncUtils.<java.util.List<Object>>asyncFx(() -> {
+            useLightThemeCss();
+            EmptyState idle = emptyBand("query-results-empty-never-run");
+            var border = idle.getBorder();
+            javafx.scene.paint.Paint top = border == null || border.getStrokes().isEmpty()
+                    ? null : border.getStrokes().get(0).getTopStroke();
+            return java.util.List.of(
+                    top == null ? javafx.scene.paint.Color.TRANSPARENT : top,
+                    backgroundColor(idle));
+        }).get();
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(edge.get(0))
+                .as("空态铺满结果带以后，上边沿就是它与编辑器唯一的边界 —— 这条线没画，两半糊成一块")
+                .isNotEqualTo(javafx.scene.paint.Color.TRANSPARENT);
+        assertThat(edge.get(0))
+                .as("边界线与卡片同色等于没画（实测带与编辑器都是 #F1F5F9）")
+                .isNotEqualTo(edge.get(1));
+    }
+
+    private EmptyState emptyBand(String id) {
+        return (EmptyState) page.lookup("#" + id);
+    }
+
+    /** 本类的 @Start 建的是裸场景：要比几何或计算色，先把浅色样式表挂上（同分页条那条门禁）。 */
+    private void useLightThemeCss() {
+        javafx.scene.Scene scene = page.getScene();
+        if (scene.getStylesheets().size() < 2) {
+            scene.getStylesheets().add(getClass()
+                    .getResource("/io/agenticdb/ui/theme-light.css").toExternalForm());
+            scene.getStylesheets().add(getClass()
+                    .getResource("/io/agenticdb/ui/app.css").toExternalForm());
+            scene.getRoot().getStyleClass().add("theme-light");
+        }
+        page.applyCss();
+        page.layout();
+    }
+
+    /** 计算后的背景色 —— 读节点，不读 CSS 文本（样式门禁的老规矩）。 */
+    private static javafx.scene.paint.Paint backgroundColor(javafx.scene.Node node) {
+        javafx.scene.layout.Region region = (javafx.scene.layout.Region) node;
+        return region.getBackground() == null || region.getBackground().getFills().isEmpty()
+                ? javafx.scene.paint.Color.TRANSPARENT
+                : region.getBackground().getFills().get(0).getFill();
+    }
+
+    /** 节点上第一枚 SVGPath 的字形内容（彩色图标会包一层 Group，不能直接 cast graphic）。 */
+    private static String glyphOf(javafx.scene.Node node) {
+        for (javafx.scene.Node shape : node.lookupAll("SVGPath")) {
+            return ((javafx.scene.shape.SVGPath) shape).getContent();
+        }
+        throw new AssertionError("这个节点上没有 SVGPath 字形，门禁会在空转：" + node.getId());
+    }
+
+    private static String emptyTitle(EmptyState state) {
+        return ((Label) state.lookup(".adb-empty__title")).getText();
+    }
+
+    private static String emptyBody(EmptyState state) {
+        return ((Label) state.lookup(".adb-muted")).getText();
+    }
+
     private static void interact(Runnable action) {
         WaitForAsyncUtils.waitForAsyncFx(5_000, action);
         WaitForAsyncUtils.waitForFxEvents();

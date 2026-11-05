@@ -2470,8 +2470,19 @@ public final class AppShell extends StackPane {
         }
         String initialQuery = System.getProperty("adb.query",
                 System.getenv().getOrDefault("ADB_QUERY", "")).trim();        if (!initialQuery.isEmpty()) {
+            // ⭐ D-53 帧检出的第三条：这句姿态 SQL 原先是一整行，编辑器那一半拍出来
+            //    只有 70px 有字、下面 245px 纯灰，和结果带那个 305px 的洞叠成「一帧两个空白」。
+            //    换成同一句 SQL 的多行写法（结果集一字未改），编辑器才像在被人用。
             String sql = initialQuery.equals("1") || initialQuery.equalsIgnoreCase("true")
-                    ? "SELECT id, name, email, active FROM users ORDER BY id LIMIT 100;"
+                    ? """
+                    SELECT id,
+                           name,
+                           email,
+                           active
+                    FROM users
+                    ORDER BY id
+                    LIMIT 100;
+                    """
                     : initialQuery;
             String id = "query:" + activeProfileId() + ":" + System.nanoTime();
             initialQuerySql.put(id, sql);
@@ -2485,7 +2496,11 @@ public final class AppShell extends StackPane {
                     page.poseContextMenuWhenReady();
                 }
             }
-            Platform.runLater(workspace::runQuery);
+            // ⭐ D-53：这句「别跑」的分支只为一张帧存在 —— 结果带「从没执行过」那一态，
+            //    跑了它就不存在了，所以画面证据必须是「同一句 SQL、同一个页签、没按 Run」。
+            if (!flag("adb.queryIdle", "ADB_QUERY_IDLE")) {
+                Platform.runLater(workspace::runQuery);
+            }
         }
         // ⭐ R47-b：「库▾」那一帧。它只能拍在有库一层的服务器上 —— 演示库是 SQLite，
         //    清单永远是空的，所以这颗控件从 R44 交付到今没有画面证据。
