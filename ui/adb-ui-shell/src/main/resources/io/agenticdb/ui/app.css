@@ -2280,7 +2280,9 @@
 }
 
 .adb-grid__cell--null {
-    -fx-text-fill: -adb-text-disabled;
+    /* ⭐ D-57：NULL 是要读的真实内容，不许穿禁用灰（#B3B3B3 对白底 2.1:1）——
+       挪进三级文字档；斜体保留，它仍是「内容为 NULL 四个字的文本」的区分。 */
+    -fx-text-fill: -adb-text-tertiary;
     -fx-font-style: italic;
 }
 
@@ -2316,7 +2318,9 @@
 }
 
 .adb-icon.adb-check--off {
-    -fx-stroke: -adb-text-disabled;
+    /* ⭐ D-57 §1.3（p4-structure 实拍）：✗ 与 ✓ 同为可读取值，
+       禁用灰 2.1:1 读成「没有这个东西」—— 挪进三级文字档。 */
+    -fx-stroke: -adb-text-tertiary;
 }
 
 .adb-grid__cell--binary {
@@ -3474,7 +3478,9 @@
 
 .adb-sql-editor .lineno {
     -fx-background-color: -adb-bg-surface;
-    -fx-text-fill: -adb-text-disabled;
+    /* ⭐ D-57：行号是真实内容（对齐/定位靠它），底色是面板档 —— 三级文字对新登记的
+       「三级文字 / 面板」PAIRS 逐主题验过 AA。 */
+    -fx-text-fill: -adb-text-tertiary;
     -fx-font-size: 11px;
     -fx-padding: 0px 8px;
 }

@@ -62,6 +62,9 @@ class ContrastTest {
         PAIRS.put("三级文字 / 页面底", new String[]{"text-tertiary", "bg-canvas", "bg-canvas"});
         PAIRS.put("三级文字 / 浮层", new String[]{"text-tertiary", "bg-elevated", "bg-canvas"});
         PAIRS.put("三级文字 / 凹陷区", new String[]{"text-tertiary", "bg-inset", "bg-canvas"});
+        // ⭐ D-57：NULL 格 / 行号 / 布尔 ✗ 三址从 2.1:1 的禁用灰挪进三级文字档后，
+        // 行号列的底是面板档（bg-surface）—— 这一对以前台账里没有，门禁永远不问。
+        PAIRS.put("三级文字 / 面板", new String[]{"text-tertiary", "bg-surface", "bg-canvas"});
         // ⭐ 2026-10-30 R36 用户裁定：accent 取 Navicat 原值 #0078D7 —— 白字在它上面
         //    实测 4.498:1，差 0.002 够不到 AA。这是**主动放弃**，不是漏网：
         //    第四项给这一对单独 4.4 的下限，其余配对仍按 4.5 卡。

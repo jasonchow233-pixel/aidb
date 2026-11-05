@@ -129,7 +129,35 @@ class CellDisplayTest {
         }
         assertThat(ruleBody(app, ".adb-grid__cell--null"))
                 .as("NULL 是灰 + 斜体，和正文一个字号")
-                .contains("-adb-text-disabled")
+                .contains("-adb-text-tertiary")
+                .contains("-fx-font-style: italic");
+    }
+
+    /**
+     * ⭐⭐ D-57：三处**真实内容**不许再穿「禁用态灰」。
+     *
+     * <p>{@code -adb-text-disabled}（light #B3B3B3，对白底实测 ≈2.1:1）本来是给
+     * 禁用控件的 —— 禁用件按 WCAG 免检。但 NULL 格、编辑器行号、布尔 false 的 ✗
+     * 画的是用户要读的数据，12px 文字按项目自己的 AA 规矩要 4.5:1。
+     * 旧账（第六版 D-57）只记了前两处，第七版 §1.3 实拍补了 ✗（p4-structure 帧上
+     * 勉强可读、远弱于 ✓ 的绿）—— 三址同修到 {@code -adb-text-tertiary}
+     * （light #707070 / dark #8494AA，ContrastTest 逐主题验数值）。
+     *
+     * <p>这条钉的是**接线**（哪档内容吃哪个令牌）；数值达不达 AA 由
+     * {@code ContrastTest} 从 tokens.json 算，不在这拿 CSS 文本当证据。
+     */
+    @Test
+    void realContentGradesNeverUseTheDisabledGray() throws IOException {
+        String app = css();
+        for (String selector : List.of(".adb-grid__cell--null", ".adb-icon.adb-check--off",
+                ".adb-sql-editor .lineno")) {
+            assertThat(ruleBody(app, selector))
+                    .as("%s 画的是用户要读的真实内容，必须吃三级文字档", selector)
+                    .contains("-adb-text-tertiary")
+                    .doesNotContain("-adb-text-disabled");
+        }
+        assertThat(ruleBody(app, ".adb-grid__cell--null"))
+                .as("斜体是 NULL 与「内容就是 NULL 四个字」的区分，换档不许把它换丢")
                 .contains("-fx-font-style: italic");
     }
 
