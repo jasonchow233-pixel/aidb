@@ -152,6 +152,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private final Label risk = new Label(I18n.t("status.readOnly"));
     private final Label range = new Label("—");
     private final Label duration = new Label("— ms");
+    /** ⭐ D-54：光标在第几行第几列 + 框了多少个字 —— 编辑器知道，屏幕上原本一个字都没说。 */
+    private final Label caretReadout = new Label();
     private final MenuButton historyButton = new MenuButton(I18n.t("grid.toolbar.history"));
     /** ⭐ N21：▶Run 是分裂按钮 —— 点主体直接跑当前语句，箭头展开 Run All / 带参数执行。 */
     private final javafx.scene.control.SplitMenuButton run = new javafx.scene.control.SplitMenuButton();
@@ -448,12 +450,19 @@ public final class QueryPage extends VBox implements AutoCloseable {
             setDirty(true);
             updateRisk();
             updateButtons();
+            updateCaretReadout();
         });
+        // ⭐ D-54：读数跟着光标走，不是跟着执行走 —— 挪一下光标屏幕就该说新位置。
+        //    只挂 selectionProperty 一条：实测把 caretPositionProperty 那条单独摘掉，六条门禁全绿 ——
+        //    RichTextFX 的光标本来就是选区的一端，挪光标一定动选区，挂两条等于同一件事说两遍。
+        editor.area().selectionProperty().addListener(
+                (observable, oldSelection, newSelection) -> updateCaretReadout());
         if (initialSql != null && !initialSql.isBlank()) {
             editor.setText(initialSql);
         }
         updateRisk();
         updateButtons();
+        updateCaretReadout();
         refreshHistory();
     }
 
@@ -648,12 +657,17 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
         status.setId("query-status");
         status.getStyleClass().add("adb-query__status-text");
+        // ⭐ D-54：Navicat 底部那条带实测次序是 SQL 回显 | Read Only | Record 1 of 20473 |
+        //    Ln 11, Col 5 | Elapsed Time —— 行列夹在「行数」与「耗时」中间，这一条带照它排。
+        //    （pill 那颗 Read Only 在工具带右上角，搬家不在这格。）
+        caretReadout.setId("query-caret");
+        caretReadout.getStyleClass().add("adb-query__status-meta");
         range.getStyleClass().add("adb-query__status-meta");
         duration.getStyleClass().add("adb-query__status-meta");
 
         Region statusSpacer = new Region();
         HBox.setHgrow(statusSpacer, Priority.ALWAYS);
-        HBox statusBar = new HBox(12, status, statusSpacer, range, duration);
+        HBox statusBar = new HBox(12, status, statusSpacer, range, caretReadout, duration);
         statusBar.getStyleClass().add("adb-query__statusbar");
         statusBar.setAlignment(Pos.CENTER_LEFT);
 
@@ -981,6 +995,32 @@ public final class QueryPage extends VBox implements AutoCloseable {
             case DESTRUCTIVE -> "adb-risk--structure";
             case ADMIN -> "adb-risk--admin";
         });
+    }
+
+    /**
+     * ⭐ D-54：底部带上的行列读数。
+     *
+     * <p>行与列<b>不</b>问 RichTextFX 的段落索引，直接数光标之前的换行 ——
+     * 编辑器 {@code setWrapText(false)}，软换行不存在，原始偏移与屏幕行列是一回事。
+     * 选区长度为 0 时那一段整段消失：「已选 0 字」不是信息。
+     */
+    private void updateCaretReadout() {
+        String text = editor.text();
+        int caret = Math.max(0, Math.min(editor.caret(), text.length()));
+        int line = 1;
+        int lineStart = 0;
+        for (int i = 0; i < caret; i++) {
+            if (text.charAt(i) == '\n') {
+                line++;
+                lineStart = i + 1;
+            }
+        }
+        String readout = I18n.t("query.caret.lnCol", line, caret - lineStart + 1);
+        int selected = editor.area().getSelection().getLength();
+        if (selected > 0) {
+            readout = readout + " " + I18n.t("query.caret.selected", selected);
+        }
+        caretReadout.setText(readout);
     }
 
     private void updateButtons() {

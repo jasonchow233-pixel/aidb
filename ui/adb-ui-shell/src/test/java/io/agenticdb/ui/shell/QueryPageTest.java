@@ -1431,6 +1431,138 @@ class QueryPageTest {
                 .isNotEqualTo(edge.get(1));
     }
 
+    // ── D-54：编辑器行列读数（Navicat 底部带是 `Read Only | Record 1 of 20473 | Ln 11, Col 5 | Elapsed`）──
+
+    /**
+     * ⭐ 帧实测（p3-query 底部带）：那一条只说 SQL 回显 / 耗时 / 行数 / Last Refresh，
+     * 光标在第几行第几列、框了多少个字，屏幕上一个字都没说 —— 而编辑器自己知道。
+     * 钉的是「算得对」，含行首（列 1）与非行首两种，边界各钉一次。
+     */
+    @Test
+    void theEditorSaysWhichLineAndColumnTheCaretIsOn() {
+        interact(() -> {
+            page.setSql("SELECT 1;\nSELECT 2;");
+            page.editor().moveTo(0);
+        });
+        assertThat(caretReadout()).isEqualTo(I18n.t("query.caret.lnCol", 1, 1));
+
+        // 「SELECT 1;」9 个字符 + 换行 1 个 → 偏移 10 是第二行的行首
+        interact(() -> page.editor().moveTo(10));
+        assertThat(caretReadout()).isEqualTo(I18n.t("query.caret.lnCol", 2, 1));
+
+        interact(() -> page.editor().moveTo(12));
+        assertThat(caretReadout()).isEqualTo(I18n.t("query.caret.lnCol", 2, 3));
+    }
+
+    /** 空编辑器是最容易算歪的一格：偏移 0 必须是「第 1 行第 1 列」，不能是 0，也不能报错。 */
+    @Test
+    void aBlankEditorStillSaysWhereTheCaretIs() {
+        interact(() -> {
+            page.setSql("");
+            page.editor().moveTo(0);
+        });
+        assertThat(caretReadout()).isEqualTo(I18n.t("query.caret.lnCol", 1, 1));
+    }
+
+    /**
+     * ⭐ 这一格要的是<b>实时</b>：只挪光标、不执行任何东西，读数就得跟着动。
+     * 挂在「执行完顺手刷一次」那种实现上，这条必须红 —— 光标挪了没执行，屏幕就该说新位置。
+     */
+    @Test
+    void theCaretReadoutFollowsTheCaretWithoutRunningAnything() {
+        interact(() -> {
+            page.setSql("SELECT 1;\nSELECT 2;");
+            page.editor().moveTo(0);
+        });
+        String before = caretReadout();
+
+        interact(() -> page.editor().moveTo(9));
+        assertThat(caretReadout())
+                .as("光标从偏移 0 挪到 9，读数一个字没动 —— 说明它不是跟着光标算的")
+                .isNotEqualTo(before);
+        assertThat(caretReadout()).isEqualTo(I18n.t("query.caret.lnCol", 1, 10));
+    }
+
+    /** 选中时补一段字符数（Q6「存为片段」和「只跑选中」都靠这个选区，屏幕上原本看不见它有多大）。 */
+    @Test
+    void theCaretReadoutCountsTheSelectedCharacters() {
+        interact(() -> {
+            page.setSql("SELECT id FROM users;");
+            page.editor().select(0, 6);
+        });
+        assertThat(caretReadout())
+                .as("选中 6 个字符，读数里得有这个数")
+                .isEqualTo(I18n.t("query.caret.lnCol", 1, 7) + " " + I18n.t("query.caret.selected", 6));
+    }
+
+    /** 没选东西时那一段必须整段消失，而不是显示「0 selected」—— 零不是信息。 */
+    @Test
+    void anEmptySelectionDoesNotClaimZeroCharacters() {
+        interact(() -> {
+            page.setSql("SELECT id FROM users;");
+            page.editor().select(3, 3);
+        });
+        assertThat(caretReadout())
+                .as("空选区不许报「选了 0 个字」")
+                .isEqualTo(I18n.t("query.caret.lnCol", 1, 4));
+    }
+
+    /**
+     * ⭐ 落点：与底部那几条<b>同一条带</b>，且夹在「行数」与「耗时」中间 ——
+     * Navicat 底部带实测次序是 SQL 回显 | Read Only | Record 1 of 20473 | Ln 11, Col 5 | Elapsed Time。
+     * 台账里那句「与 Read Only pill 同带」量过是错的 —— 我们的 pill 在工具带右上角（帧 p3-query 实测），
+     * Navicat 的 Read Only 才在底部带；这格照 Navicat 的落点，pill 搬家不在这格。
+     */
+    @Test
+    void theCaretReadoutSitsInTheBandWithTheOtherStatusNumbers() {
+        int[] place = new int[4];
+        interact(() -> {
+            javafx.scene.Node caret = page.lookup("#query-caret");
+            javafx.scene.Node status = page.lookup("#query-status");
+            if (caret == null || caret.getParent() == null) {
+                java.util.Arrays.fill(place, -1);
+                return;
+            }
+            javafx.scene.layout.Pane band = (javafx.scene.layout.Pane) caret.getParent();
+            java.util.List<javafx.scene.Node> kids = band.getChildren();
+            place[0] = kids.contains(status) ? 1 : 0;
+            place[1] = kids.indexOf(caret);
+            // 带里除状态文字与读数之外只剩两条数字（行数、耗时），按带内的先后取回它们的下标。
+            int[] numbers = kids.stream()
+                    .filter(node -> node != caret && node != status && node instanceof Label)
+                    .mapToInt(kids::indexOf)
+                    .sorted()
+                    .toArray();
+            place[2] = numbers.length == 2 ? numbers[0] : -1;
+            place[3] = numbers.length == 2 ? numbers[1] : -1;
+        });
+
+        assertThat(place[0]).as("#query-caret 不存在，或没和状态文字待在同一条带里").isEqualTo(1);
+        assertThat(place[2])
+                .as("底部带里两条数字（行数 / 耗时）没找到，门禁在空转")
+                .isNotEqualTo(-1);
+        assertThat(place[1])
+                .as("Navicat 的次序是 行数 → Ln/Col → 耗时：读数得夹在两条数字中间，实测落在 %d",
+                        place[1])
+                .isGreaterThan(place[2]);
+        assertThat(place[1])
+                .as("同上：读数不许占在耗时之后 —— 实测落在 %d", place[1])
+                .isLessThan(place[3]);
+    }
+
+    /** 读 #query-caret 的当前文本；节点不在就直接失败，别让断言空转。 */
+    private String caretReadout() {
+        String[] box = new String[1];
+        interact(() -> {
+            Label label = (Label) page.lookup("#query-caret");
+            box[0] = label == null ? null : label.getText();
+        });
+        assertThat(box[0])
+                .as("#query-caret 不存在或没文本 —— 编辑器右下角的行列读数没接线")
+                .isNotNull();
+        return box[0];
+    }
+
     private EmptyState emptyBand(String id) {
         return (EmptyState) page.lookup("#" + id);
     }
