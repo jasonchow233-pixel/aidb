@@ -55,6 +55,31 @@ class SchemaServiceTest {
     }
 
     /**
+     * ⭐ D-65 翻案钉桩（潜在边界，同 D-64 一族）：表清单在 SQLite 上走的是
+     * {@code listObjects} 兜底 + `kind != TABLE` 过滤（{@code SchemaService.listTableMeta}
+     * 的退化分支）—— 这条过滤是「清单里只有表、视图与触发器不许混进来」唯一的防线。
+     * 旧帧上量过的「users 两行」终版新帧复现不出（4 行；getTables 实探 5 行含视图、
+     * 无重复；sqlite_master 4 表 1 视图 1 触发器），所以本代**翻案不立案**，
+     * 只钉这条边界：同表建一个同名触发器（SQLite 触发器与表各自命名空间，实测可共存）
+     * 之后，清单仍必须恰好是那四张表、不许出现重复名。
+     * 变异：摘掉兜底分支的 kind 过滤 → 视图与触发器都混进来，**同名触发器那条正是
+     * 「users 被摆两遍」的旧帧症状本体** → 本测试两条断言同时红。
+     */
+    @Test
+    void tableMetaListsEachTableOnceEvenWithSameNamedTrigger() throws Exception {
+        try (var statement = session.connection().createStatement()) {
+            statement.executeUpdate(
+                    "CREATE TRIGGER users AFTER INSERT ON notes BEGIN SELECT 1; END");
+        }
+
+        List<TableMeta> metas = schema.listTableMeta(session);
+
+        assertThat(metas).extracting(TableMeta::name).doesNotHaveDuplicates();
+        assertThat(metas).extracting(TableMeta::name)
+                .containsExactly("notes", "orders", "products", "users");
+    }
+
+    /**
      * SQLite 没有 schema 概念 —— schema 列表为空，切换器不该出现。
      * 有 schema 的库（PostgreSQL / MySQL）才会有多个。
      */
