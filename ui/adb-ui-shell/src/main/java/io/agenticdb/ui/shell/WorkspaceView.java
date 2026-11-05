@@ -542,33 +542,27 @@ public final class WorkspaceView extends StackPane {
     }
 
     private VBox settingsSkeleton() {
-        Label theme = new Label(I18n.t("workspace.settings.appearance"));
-        theme.getStyleClass().add("adb-section-title");
-
-        Label mode = new Label(I18n.t("workspace.settings.modeHint",
+        Label theme = sectionTitle(I18n.t("workspace.settings.appearance"));
+        Label mode = hint(I18n.t("workspace.settings.modeHint",
                 io.agenticdb.ui.Shortcuts.of("Mod+K")));
-        mode.getStyleClass().add("adb-muted");
 
         Button toggle = IconButtons.of(Icons.Icon.THEME, I18n.t("action.theme.toggle"));
         toggle.getStyleClass().addAll("adb-button");
         toggle.setOnAction(event -> actions.run("theme.toggle"));
 
         // ⭐ 密度也是**真实设置**（行高令牌），放在设置页比只留在菜单里好找。
-        Label density = new Label(I18n.t("workspace.settings.density"));
-        density.getStyleClass().add("adb-section-title");
+        Label density = sectionTitle(I18n.t("workspace.settings.density"));
+        Label densityHint = hint(I18n.t("workspace.settings.densityHint"));
 
-        Label densityHint = new Label(I18n.t("workspace.settings.densityHint"));
-        densityHint.getStyleClass().add("adb-muted");
-
-        HBox densityRow = new HBox(6);
+        HBox densityRow = new HBox();
         densityRow.getStyleClass().add("adb-toolbar__group");
-        densityRow.getChildren().addAll(
-                densityButton("density-compact", I18n.t("action.density-compact")),
-                densityButton("density-normal", I18n.t("action.density-normal")),
-                densityButton("density-comfort", I18n.t("action.density-comfort")));
+        // ⭐ D-60：档位清单**来自动作通道**，不在这里另抄一份 ——
+        //    以前视图菜单四档、这页写死三颗，最密的 dense 在设置页根本点不到。
+        for (Action action : densityActions()) {
+            densityRow.getChildren().add(densityButton(action));
+        }
 
-        Label shortcuts = new Label(I18n.t("shortcut.title"));
-        shortcuts.getStyleClass().add("adb-section-title");
+        Label shortcuts = sectionTitle(I18n.t("shortcut.title"));
 
         Button palette = IconButtons.of(Icons.Icon.PALETTE, I18n.t("workspace.settings.openPalette"));
         palette.getStyleClass().addAll("adb-button");
@@ -578,28 +572,84 @@ public final class WorkspaceView extends StackPane {
         sheet.getStyleClass().addAll("adb-button");
         sheet.setOnAction(event -> actions.run("shortcuts"));
 
-        VBox card = new VBox(10, theme, mode, toggle);
-        card.getStyleClass().add("adb-card");
-        card.setMaxWidth(520);
-
-        VBox densityCard = new VBox(10, density, densityHint, densityRow);
-        densityCard.getStyleClass().add("adb-card");
-        densityCard.setMaxWidth(520);
-
-        VBox shortcutCard = new VBox(10, shortcuts, palette, sheet);
-        shortcutCard.getStyleClass().add("adb-card");
-        shortcutCard.setMaxWidth(520);
-
-        VBox all = new VBox(16, card, densityCard, shortcutCard);
-        all.setAlignment(Pos.TOP_CENTER);
-        return all;
+        // ⭐ D-60：两栏版式 —— 标题在左列、说明与控件在右列，卡片铺满内容宽度。
+        //    以前三张 520px 的卡片**居中**摆在右半屏（左半屏 200px 是死区），
+        //    说明句被卡片定宽裁成「…or the theme icon in the a…」。
+        return new VBox(12,
+                settingsCard(theme, mode, toggle),
+                settingsCard(density, densityHint, densityRow),
+                settingsCard(shortcuts, palette, sheet));
     }
 
-    /** 密度按钮：点击后由动作本身切换（ActionRegistry 是唯一真相）。 */
-    private Button densityButton(String actionId, String label) {
-        Button button = new Button(label);
+    /**
+     * 一段设置：左列标题，右列依次是说明句与控件。
+     *
+     * <p>⭐ 卡片宽度**不设上限**（Region 的算得最大值本来就是无界，铺满内容列是默认行为）——
+     * 旧版这里写死 {@code setMaxWidth(520)} 再把整列 {@code TOP_CENTER}，
+     * 于是帧上量到「内容从 x≈525 起、左半屏 200px 空、说明句被定宽裁成半句」。
+     */
+    private VBox settingsCard(Label title, javafx.scene.Node... right) {
+        title.getStyleClass().add("adb-settings__label");
+        VBox column = new VBox(6, right);
+        HBox row = new HBox(title, column);
+        row.getStyleClass().add("adb-settings__row");
+        HBox.setHgrow(column, Priority.ALWAYS);
+
+        VBox card = new VBox(row);
+        card.getStyleClass().add("adb-card");
+        return card;
+    }
+
+    private Label sectionTitle(String text) {
+        Label label = new Label(text);
+        label.getStyleClass().add("adb-section-title");
+        return label;
+    }
+
+    /** 说明句：必须换行 —— 定宽裁掉的半句话等于设置页自己在撒谎说这页只有这么宽。 */
+    private Label hint(String text) {
+        Label label = new Label(text);
+        label.getStyleClass().add("adb-muted");
+        label.setWrapText(true);
+        return label;
+    }
+
+    /** 注册表里的密度档位，按注册顺序（从密到松）。 */
+    private java.util.List<Action> densityActions() {
+        return actions.all().stream()
+                .filter(action -> action.id().startsWith("density-"))
+                .toList();
+    }
+
+    /**
+     * 密度按钮：点击交给动作本身（ActionRegistry 是唯一真相），
+     * 当前档由动作的 {@code selected} 上色。
+     *
+     * <p>⭐ D-81：以前四颗同色同权重，帧上根本看不出选的是哪档 ——
+     * 勾选态在菜单里有、在这页没接。样式类跟着 {@code selectedProperty()} 走，
+     * 页面自己不再存一份「当前档」。
+     *
+     * <p>⚠️ 文案取 {@code action.label()}，不在这里拼 {@code "action." + id}：
+     * 拼出来的键对 {@code I18nAuditTest} 的正则是「{@code action.}（空后缀）」，
+     * 资源里永远没有这个键 —— 门禁当场红（本轮真实踩过一次），
+     * 而且就算不红，也是「同一个 label 两处各写一份」，正是 D-60 要收的那种通道漂移。
+     */
+    private Button densityButton(Action action) {
+        String actionId = action.id();
+        Button button = new Button(action.label());
         button.setId("settings-density-" + actionId.substring("density-".length()));
         button.getStyleClass().addAll("adb-button");
+
+        javafx.beans.InvalidationListener marked = obs -> {
+            if (action.isSelected() && !button.getStyleClass().contains("adb-button--on")) {
+                button.getStyleClass().add("adb-button--on");
+            } else if (!action.isSelected()) {
+                button.getStyleClass().remove("adb-button--on");
+            }
+        };
+        action.selectedProperty().addListener(marked);
+        marked.invalidated(action.selectedProperty());
+
         button.setOnAction(event -> actions.run(actionId));
         return button;
     }

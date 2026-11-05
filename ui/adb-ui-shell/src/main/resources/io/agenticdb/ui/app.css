@@ -509,6 +509,23 @@
     -fx-text-fill: -adb-text-primary;
 }
 
+/* ⭐ R66 / D-81：档位磁贴（设置页的密度四档）—— 当前档必须看得出来。
+   帧证 p9-settings：四颗同色同权重，选的是哪档根本读不出来；动作通道里其实
+   有 selected（视图菜单的勾选就读它），只是这页没接。
+   ⚠️ 特异度：基础类 .adb-button(0,1,0) 与 .adb-button:hover(0,2,0) 都在前面，
+   所以这里写成 `.adb-button.adb-button--on`(0,2,0) 并**排在它们之后**（同分后写胜）。
+   D-50 那一族第三次踩的坑是「顺序对、特异度输」—— 这次两头都要占住。 */
+.adb-button.adb-button--on {
+    -fx-background-color: -adb-bg-selected;
+    -fx-text-fill: -adb-text-primary;
+    -fx-border-color: -adb-accent;
+    -fx-border-width: 1px;
+}
+
+.adb-button.adb-button--on:hover {
+    -fx-background-color: derive(-adb-bg-selected, -4%);
+}
+
 /* ⭐ 只有图标的按钮：横向内边距收到 8px。
    普通按钮的 12px 内边距是为了容纳文字；纯图标按钮照抄的话，
    一排工具栏会凭空多出几十像素 —— 窄窗口下最先被挤爆的就是它。 */
@@ -1720,6 +1737,21 @@
     -fx-text-fill: -adb-text-secondary;
     -fx-font-size: 11px;
     -fx-font-weight: bold;
+}
+
+/* ── 设置页（R66 / D-60）──────────────────────────────────────────────
+   两栏：标题占左列定宽，说明句与控件占右列。以前标题 / 说明 / 控件竖着堆成
+   一列，三张 520px 卡片再整体居中 —— 结果是左半屏 200px 死区、
+   右半屏一句被裁断的说明加一排按钮。 */
+.adb-settings__row {
+    -fx-spacing: 16px;
+    -fx-alignment: top-left;
+}
+
+.adb-settings__label {
+    -fx-min-width: 168px;
+    -fx-pref-width: 168px;
+    -fx-max-width: 168px;
 }
 
 .adb-empty {

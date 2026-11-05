@@ -32,8 +32,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ExtendWith(ApplicationExtension.class)
 class MenuBarFactoryTest {
 
-    /** MenuBarFactory 引用的全部动作 id —— 漏注册一个就会在 build() 时抛异常。 */
-    private static final List<String> MENU_ACTION_IDS = List.of(
+    /**
+     * MenuBarFactory 引用的全部动作 id —— 漏注册一个就会在 build() 时抛异常。
+     *
+     * <p>⭐ 包内可见：SettingsPageTest 拿同一份清单里的 {@code density-*} 当**唯一真相**，
+     * 于是「菜单加了第五档、设置页没加」这种两条通道各写一份的漂移（D-60）会当场红。
+     */
+    static final List<String> MENU_ACTION_IDS = List.of(
             "new-connection", "connections.manage", "new-query", "open-sql",
             "tab.close", "window.close", "app.quit",
             "edit.undo", "edit.redo", "edit.copy", "focus-search", "query.comment",
