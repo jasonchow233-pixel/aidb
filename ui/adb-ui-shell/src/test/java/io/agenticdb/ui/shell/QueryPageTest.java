@@ -89,6 +89,34 @@ class QueryPageTest {
         session.close();
     }
 
+    /**
+     * ⭐⭐ D-61：查询工具条上的 Query Builder 与 Ask AI 落的是如实说明页
+     * （{@code showCapabilityNotice}），与 Save / Beautify SQL 这些真功能同形同色 ——
+     * 判据就是落点函数。这两颗必须提前说实话：右上角挂 PendingMark 环，
+     * tooltip 与 accessibleText 带「本版本未提供」。
+     */
+    @Test
+    void queryToolbarPlaceholdersSpeakBeforeTheClick() throws Exception {
+        for (String id : List.of("query-builder", "query-ask-ai")) {
+            javafx.scene.Node node = WaitForAsyncUtils.asyncFx(() -> page.lookup("#" + id)).get();
+            assertThat(node).as("#%s 必须存在", id).isNotNull();
+            javafx.scene.control.ButtonBase button = (javafx.scene.control.ButtonBase) node;
+            assertThat(WaitForAsyncUtils.asyncFx(() ->
+                    button.getTooltip() == null ? "" : button.getTooltip().getText()).get())
+                    .as("D-61：#%s 的 tooltip 要点之前就交代「本版本未提供」", id)
+                    .contains(I18n.t("ribbon.pending"));
+            assertThat(WaitForAsyncUtils.asyncFx(button::getAccessibleText).get())
+                    .as("D-61：#%s 读屏侧同一句", id)
+                    .contains(I18n.t("ribbon.pending"));
+            javafx.scene.layout.Pane host = (javafx.scene.layout.Pane)
+                    WaitForAsyncUtils.asyncFx(() -> button.getParent()).get();
+            assertThat(WaitForAsyncUtils.asyncFx(() -> host.getChildren().stream()
+                    .anyMatch(child -> child.getStyleClass().contains("adb-pending__mark"))).get())
+                    .as("D-61：#%s 那一排必须挂了角标环", id)
+                    .isTrue();
+        }
+    }
+
     @Test
     void runsOnlyCaretStatementAndRendersRows() {
         interact(() -> {

@@ -158,6 +158,34 @@ class FilterPanelAuditTest {
 
     // ───────────────── fixtures ─────────────────
 
+    /**
+     * ⭐ D-61：面板里「添加分组」（Ω）是九处假按钮之一 —— 落点是
+     * {@code showCapabilityNotice}，与「添加条件」同形。它必须提前说实话：
+     * 环挂在所在那一排、tooltip 与 accessibleText 带「本版本未提供」。
+     */
+    @Test
+    void addGroupPlaceholderSpeaksBeforeTheClick() throws Exception {
+        click("#data-filter");
+        assertThat(hostVisible()).as("面板先开起来").isTrue();
+        javafx.scene.Node node = WaitForAsyncUtils.asyncFx(() ->
+                page.lookup("#data-filter-add-group")).get();
+        assertThat(node).as("添加分组键").isNotNull();
+        javafx.scene.control.ButtonBase addGroup = (javafx.scene.control.ButtonBase) node;
+        assertThat(WaitForAsyncUtils.asyncFx(() ->
+                addGroup.getTooltip() == null ? "" : addGroup.getTooltip().getText()).get())
+                .as("D-61：Ω 的 tooltip 要点之前就交代「本版本未提供」")
+                .contains(I18n.t("ribbon.pending"));
+        assertThat(WaitForAsyncUtils.asyncFx(addGroup::getAccessibleText).get())
+                .as("D-61：Ω 读屏侧同一句")
+                .contains(I18n.t("ribbon.pending"));
+        javafx.scene.layout.Pane host = (javafx.scene.layout.Pane)
+                WaitForAsyncUtils.asyncFx(addGroup::getParent).get();
+        assertThat(WaitForAsyncUtils.asyncFx(() -> host.getChildren().stream()
+                .anyMatch(child -> child.getStyleClass().contains("adb-pending__mark"))).get())
+                .as("D-61：Ω 所在那一排必须挂了角标环")
+                .isTrue();
+    }
+
     private void click(String selector) throws Exception {
         WaitForAsyncUtils.asyncFx(() -> {
             ((ButtonBase) page.lookup(selector)).fire();

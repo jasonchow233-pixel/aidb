@@ -1410,6 +1410,13 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         toolGroupInsight.getChildren().addAll(fillWithAiButton, profilingButton);
         toolGroupTransfer.getChildren().addAll(importButton, exportButton,
                 generationButton, maskingButton, biWorkspaceButton);
+        // ⭐ D-61：这五颗落 showCapabilityNotice（判据 = 落点函数），入口提前说实话 ——
+        //    环挂各自所在组（managed=false 不吃排版），tooltip/accessibleText 带同一句。
+        PendingMark.mark(toolGroupInsight, fillWithAiButton);
+        PendingMark.mark(toolGroupInsight, profilingButton);
+        PendingMark.mark(toolGroupTransfer, generationButton);
+        PendingMark.mark(toolGroupTransfer, maskingButton);
+        PendingMark.mark(toolGroupTransfer, biWorkspaceButton);
 
         // ⭐ N18：右端两颗小键 —— 视图菜单（≡▾）+ 溢出（»）。
         //    放不下的具名键从右往左折进 » 的菜单里，不再把整排文字收掉。
@@ -3868,6 +3875,14 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     }
 
     private static String typeLabel(ColumnDef definition) {
+        // ⭐ D-56：rawType 存在就报引擎自己的类型名（INTEGER / VARCHAR(255) / tinyint）——
+        // 抽象 ColumnType 把 int/bigint/decimal 全折成一颗 number，用户没法从列头
+        // 判断这一列塞不塞得下他的数。与 ColumnDef#displayType 同一优先级：原始名赢，
+        // 兜底才走抽象枚举（带长度/精度装饰，同旧行为）。
+        String raw = definition.rawType();
+        if (raw != null && !raw.isBlank()) {
+            return raw.trim();
+        }
         String base = definition.type().name().toLowerCase(java.util.Locale.ROOT);
         if (definition.type() == ColumnType.NUMBER && definition.numericPrecision() != null) {
             return definition.numericPrecision()

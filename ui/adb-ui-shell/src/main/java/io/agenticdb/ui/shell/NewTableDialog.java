@@ -302,8 +302,11 @@ final class NewTableDialog {
         HBox.setHgrow(spacer, Priority.ALWAYS);
         // ⭐ N29：Navicat 的字段工具条右端是 Ask AI ▾。本版本没有 AI 后端 ——
         //    每一项打开如实说明页（不留死按钮），并且指路：⌘K 或手动编辑。
-        HBox fieldToolbar = new HBox(8, rowButtons, spacer, fieldCount, buildAskAiButton());
+        Button askAi = buildAskAiButton();
+        HBox fieldToolbar = new HBox(8, rowButtons, spacer, fieldCount, askAi);
         fieldToolbar.setAlignment(Pos.CENTER_LEFT);
+        // ⭐ D-61：第九处假按钮（落点 = 手搓说明页，判据同 showCapabilityNotice）。
+        PendingMark.mark(fieldToolbar, askAi);
 
         // ⭐ R31：Navicat 形态 —— 工具条 / 网格 / 属性面板三段。
         //    属性面板（默认值 / 字符集 / 排序规则）放在网格下方，选中哪行改哪行；

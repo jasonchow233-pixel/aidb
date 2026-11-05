@@ -515,6 +515,10 @@ public final class QueryPage extends VBox implements AutoCloseable {
                 row1Spacer, risk, historyButton);
         row1.getStyleClass().add("adb-query__toolbar-row");
         row1.setAlignment(Pos.CENTER_LEFT);
+        // ⭐ D-61：这两颗的落点是如实说明页（判据 = showCapabilityNotice），
+        //    入口必须提前说实话：环挂 row1、tooltip 与 accessibleText 带「本版本未提供」。
+        PendingMark.mark(row1, builder);
+        PendingMark.mark(row1, askAi);
 
         // ── 行 2：查询名 / 连接 / 执行（Navicat 17 查询工具带下排） ──
         nameMenu = new MenuButton(I18n.t("query.name.untitled"));

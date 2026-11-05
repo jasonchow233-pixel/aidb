@@ -251,6 +251,65 @@ class GridInteractionTest {
                 .isEmpty();
     }
 
+    /**
+     * ⭐⭐ D-56：列头第二行的类型必须是**引擎自己的类型名**，不是我们的抽象枚举。
+     *
+     * <p>Navicat 帧（navicat17-data-grid）读 {@code int(11)} / {@code varchar(255)} ——
+     * 一眼分清 int 与 bigint、varchar 与 text。我们的 `p2-users` 帧读
+     * {@code number / text(65535)}：抽象 {@code ColumnType} 把六种整型折成一颗
+     * number，用户没法从界面上判断能不能塞下他的数。
+     * {@link io.agenticdb.model.ColumnDef#displayType()} 早就存在（rawType 优先），
+     * 结构页/详情面板都接了，唯独网格列头还在走 {@code type().name().toLowerCase()}。
+     */
+    @Test
+    void theHeaderTypeLineShowsTheRealDeclaredType() {
+        assertThat(headerType("id"))
+                .as("D-56：数值列第二行是声明类型 INTEGER（# 前缀按 N19 保留）")
+                .isEqualTo("# INTEGER");
+        assertThat(headerType("email"))
+                .as("D-56：文本列第二行是声明类型 TEXT —— 不是抽象 text 加 65535 长度")
+                .isEqualTo("TEXT");
+        assertThat(page.lookupAll(".adb-grid__column-type").stream()
+                .filter(node -> node instanceof javafx.scene.control.Label)
+                .map(node -> ((javafx.scene.control.Label) node).getText())
+                .filter(text -> text != null
+                        && (text.contains("number") || text.startsWith("text(")))
+                .toList())
+                .as("抽象枚举词汇不许再出现在任何列头第二行")
+                .isEmpty();
+    }
+
+    /**
+     * ⭐⭐ D-61：网格工具条的五颗**假按钮**（点了只落如实说明页）必须在点之前就说实话 ——
+     * 右上角挂 PendingMark 环，tooltip 与 accessibleText 带同一句「本版本未提供」。
+     *
+     * <p>Q8 拍板的是「入口也要诚实」，但环此前只画在功能区六格；页内这九处
+     * （判据 = 落点是 {@code showCapabilityNotice}）一枚都没有，假按钮与真功能
+     * 同形同色。环的几何断言走**宿主排里有 mark 孩子**这一构造事实，
+     * 不量像素（像素归帧，这里归接线）。
+     */
+    @Test
+    void capabilityPlaceholdersAdvertiseThemselvesBeforeTheClick() {
+        for (String id : java.util.List.of("data-fill-ai", "data-profiling", "data-generation",
+                "data-masking", "data-bi-workspace")) {
+            javafx.scene.Node node = page.lookup("#" + id);
+            assertThat(node).as("落点按钮 #%s", id).isNotNull();
+            javafx.scene.control.ButtonBase button = (javafx.scene.control.ButtonBase) node;
+            assertThat(button.getTooltip())
+                    .as("#%s 的 tooltip 必须提前说「本版本未提供」", id)
+                    .isNotNull();
+            assertThat(button.getTooltip().getText())
+                    .contains(I18n.t("ribbon.pending"));
+            assertThat(button.getAccessibleText())
+                    .as("#%s 读屏侧要说同一句", id)
+                    .contains(I18n.t("ribbon.pending"));
+            assertThat(((javafx.scene.layout.Pane) button.getParent()).getChildren().stream()
+                    .anyMatch(child -> child.getStyleClass().contains("adb-pending__mark")))
+                    .as("#%s 所在那一排必须挂了角标环（managed=false，不吃排版）", id)
+                    .isTrue();
+        }
+    }
+
     private String headerName(String column) {
         javafx.scene.control.Label name = (javafx.scene.control.Label)
                 page.lookup("#data-header-" + column);

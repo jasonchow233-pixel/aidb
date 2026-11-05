@@ -1048,6 +1048,28 @@ class NewTableDialogTest {
         assertThat(onFx(alert::getContentText)).contains(I18n.t("grid.capability.askAi"));
     }
 
+    /**
+     * ⭐ D-61：这第九颗假按钮（落点 = 手搓的如实说明页，判据同 {@code showCapabilityNotice}）
+     * 也要**点之前**说实话 —— 环挂在字段工具条那一排、tooltip 与 accessibleText
+     * 都带「本版本未提供」，与功能区六格、工具条五颗、Ω 同一套语法。
+     */
+    @Test
+    void askAiButtonCarriesThePendingMarkToo() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        javafx.scene.control.Button button = onFx(dialog::askAiButton);
+        assertThat(onFx(() -> button.getTooltip().getText()))
+                .as("D-61：Ask AI 的 tooltip 要点之前就交代「本版本未提供」")
+                .contains(I18n.t("ribbon.pending"));
+        assertThat(onFx(button::getAccessibleText))
+                .as("D-61：Ask AI 读屏侧同一句")
+                .contains(I18n.t("ribbon.pending"));
+        javafx.scene.layout.Pane host = (javafx.scene.layout.Pane) onFx(button::getParent);
+        assertThat(onFx(() -> host.getChildren().stream()
+                .anyMatch(child -> child.getStyleClass().contains(PendingMark.MARK_CLASS))))
+                .as("D-61：字段工具条那一排必须给 Ask AI 挂了角标环")
+                .isTrue();
+    }
+
     /** 类型格是「点开才选」的可编辑下拉，候选来自本方言。 */
     @Test
     void theTypeCellIsAnEditableDropdownFedFromTheDialect() {

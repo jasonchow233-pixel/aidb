@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.ui.I18n;
+import java.util.List;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBase;
 import javafx.scene.layout.Pane;
@@ -90,7 +91,7 @@ final class PendingMark {
 
     /** 提示语：原文案 + 「本版本未提供」，Tooltip 与 accessibleText 同一句。 */
     static String hint(String label) {
-        return label + " · " + I18n.t("ribbon.pending");
+        return (label == null ? "" : label + " · ") + I18n.t("ribbon.pending");
     }
 
     /**
@@ -103,5 +104,18 @@ final class PendingMark {
     static void saySo(ButtonBase button) {
         button.setAccessibleText(hint(button.getAccessibleText()));
         button.getTooltip().setText(hint(button.getTooltip().getText()));
+    }
+
+    /**
+     * ⭐ D-61：页内假按钮的完整一档 —— **环 + 实话**一起上。
+     *
+     * <p>功能区六格有环（attach），此前页内九处只有落点说明页：Q8 拍板的是
+     * 「入口也要诚实」，环不吃排版（挂在宿主排、{@code managed=false}），
+     * 工具条那一排挂环不会把按钮撑宽 —— 类注释第②条防的是 graphic 槽包容器，
+     * 不是宿主排上的孩子。
+     */
+    static void mark(Pane host, Button target) {
+        attach(host, List.of(target));
+        saySo(target);
     }
 }

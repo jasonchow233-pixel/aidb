@@ -135,6 +135,9 @@ final class FilterSortPanel extends VBox {
         addGroup.setOnAction(event -> this.onAddGroup.run());
         HBox rowActions = new HBox(6, addCondition, addGroup);
         rowActions.getStyleClass().add("adb-filter-builder__row-actions");
+        // ⭐ D-61：Ω 的落点是 showCapabilityNotice（判据 = 落点函数）—— 与「添加条件」
+        //    同形的假按钮必须点之前就说实话：环挂 rowActions，提示带「本版本未提供」。
+        PendingMark.mark(rowActions, addGroup);
         builderBox.getChildren().addAll(rowsBox, rowActions);
 
         Label sortLabel = new Label(I18n.t("filter.panel.sortBy"));
