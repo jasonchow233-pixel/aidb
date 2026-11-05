@@ -93,6 +93,27 @@ final class ImportWizard {
 
     private volatile boolean running;
 
+    /**
+     * ⭐ D-73：文件选择通道（与 {@code ExportWizard} 同式）。默认走系统打开面板，
+     * 门禁换替身 —— 原生面板在 Monocle 下按不住，真弹窗永远等不到返回值。
+     */
+    private java.util.function.Function<javafx.stage.Window, java.io.File> fileChooser = window -> {
+        ImportFormat format = formatBox.getValue();
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(I18n.t("import.file.chooserTitle"));
+        chooser.getExtensionFilters().addAll(
+                new javafx.stage.FileChooser.ExtensionFilter(format.label(),
+                        "*." + format.name().toLowerCase(java.util.Locale.ROOT)),
+                new javafx.stage.FileChooser.ExtensionFilter(
+                        I18n.t("wizard.file.filter.all"), "*.*"));
+        return chooser.showOpenDialog(window);
+    };
+
+    /** 测试替身：见 {@link #fileChooser}。 */
+    void setFileChooserForTest(java.util.function.Function<javafx.stage.Window, java.io.File> chooser) {
+        this.fileChooser = chooser;
+    }
+
     ImportWizard(DbSession session, String tableName, List<ColumnDef> columns,
                  List<String> availableTables, Path initialFile, Executor dbExecutor,
                  Consumer<String> status) {
@@ -126,6 +147,20 @@ final class ImportWizard {
         fileField.setId("import-file");
         fileField.setText(initialFile == null ? "" : initialFile.toString());
         fileField.setPromptText(I18n.t("import.file.prompt"));
+
+        // ⭐ D-73：与导出侧同批补的浏览按钮。回填走 textProperty 的监听（D-67 那条真实联动），
+        //    所以这里**不**手动调 refreshPreview —— 门禁钉的就是「选完文件预览自己出来」。
+        Button fileBrowse = new Button(I18n.t("wizard.browse"));
+        fileBrowse.setId("import-file-browse");
+        fileBrowse.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        fileBrowse.setOnAction(event -> {
+            java.io.File picked = fileChooser.apply(ownerWindow());
+            if (picked != null) {
+                fileField.setText(picked.getAbsolutePath());
+            }
+        });
+        HBox fileRow = new HBox(8, fileField, fileBrowse);
+        HBox.setHgrow(fileField, Priority.ALWAYS);
 
         formatBox.setId("import-format");
         formatBox.getItems().setAll(ImportFormat.values());
@@ -248,7 +283,7 @@ final class ImportWizard {
         actions.setAlignment(Pos.CENTER_RIGHT);
 
         content.getChildren().addAll(
-                field(I18n.t("menu.file"), fileField),
+                field(I18n.t("menu.file"), fileRow),
                 field(I18n.t("menu.format"), formatBox),
                 formatHint,
                 field(I18n.t("import.field.encoding"), charsetBox),

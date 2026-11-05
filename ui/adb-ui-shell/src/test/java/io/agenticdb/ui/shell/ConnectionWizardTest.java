@@ -11,6 +11,7 @@ import io.agenticdb.ui.I18n;
 import javafx.scene.Scene;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.Tab;
@@ -963,6 +964,47 @@ class ConnectionWizardTest {
                 .containsEntry("characterEncoding", "UTF-8")
                 .containsEntry("serverTimezone", "Asia/Shanghai")
                 .containsEntry("remarks", "生产库，只读账号");
+    }
+
+    // ─────────────────── D-73：浏览按钮（这颗键此前**零门禁**） ───────────────────
+
+    /**
+     * ⭐ D-73 顺带还的账：`#wizard-browse` 是全仓唯一能选文件的路径按钮，
+     * 但从来没有一条门禁点过它 —— 上面那条 sqlite 用例是**手打路径**过去的。
+     * 补传输向导的浏览时先把它钉住，否则「正确先例」本身没人守，抄的人抄的是个没验证过的形状。
+     */
+    @Test
+    void theSqliteBrowseButtonFillsTheFileFieldFromTheChooser(FxRobot robot) throws Exception {
+        open(robot, null);
+        goToProperties(robot, DialectKind.SQLITE);
+
+        AtomicReference<Integer> chooserCalls = new AtomicReference<>(0);
+        interact(() -> wizard.setFileChooserForTest(window -> {
+            chooserCalls.set(chooserCalls.get() + 1);
+            return sqliteFile.toFile();
+        }));
+
+        // 查这颗键走 **wizard.stepContent() 的子树**，不走 robot.lookup：
+        // robot 的目标窗口是 listWindows()[0]，同一 JVM 里前一个测试类留下的窗口会把下标挪走
+        // （本轮 M1 变异只改了 ExportWizard，这条却跟着红 —— 就是那个漏）。
+        // 用 fire() 而不是 clickOn()：布局脉冲没走时它的宽还是 0，clickOn 会红在「查不到可点的节点」
+        // 而不是「行为没做」；fire() 走的仍是真按钮的 handler，可见性单独用 isVisible() 钉。
+        AtomicReference<Button> browse = new AtomicReference<>();
+        interact(() -> browse.set((Button) wizard.stepContent().lookup("#wizard-browse")));
+        assertThat(browse.get()).as("#wizard-browse 必须挂在 SQLite 那格右侧").isNotNull();
+        assertThat(browse.get().isVisible())
+                .as("浏览按钮必须真的可见（不是被布局挤成 0 宽）").isTrue();
+        interact(() -> browse.get().fire());
+
+        assertThat(chooserCalls.get())
+                .as("按下浏览要**真的**打开选择器（点了不弹 = 假按钮）")
+                .isEqualTo(1);
+        AtomicReference<String> filled = new AtomicReference<>();
+        interact(() -> filled.set(
+                ((TextField) wizard.stepContent().lookup("#wizard-file")).getText()));
+        assertThat(filled.get())
+                .as("选中的文件要回填进路径格")
+                .isEqualTo(sqliteFile.toAbsolutePath().toString());
     }
 
     // ─────────────────── 既有回归（4.5-12 / 回填 / 口令） ───────────────────

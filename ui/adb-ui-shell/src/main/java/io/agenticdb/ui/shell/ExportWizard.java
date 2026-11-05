@@ -146,6 +146,29 @@ final class ExportWizard {
     /** 打开时记住拥有者窗口 —— 大表确认那颗 Alert 要用它取主题。 */
     private javafx.stage.Window owner;
 
+    /**
+     * ⭐ D-73：文件选择通道。默认是系统保存面板；门禁换成替身
+     * （{@link #setFileChooserForTest}）—— Monocle 按不住原生面板，
+     * 真弹窗在这台机器上永远等不到返回值，于是「按钮点了没反应」在测试里无法与
+     * 「按钮根本没接选择器」区分。
+     */
+    private java.util.function.Function<javafx.stage.Window, java.io.File> fileChooser = window -> {
+        ExportFormat format = formatBox.getValue();
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(I18n.t("export.target.chooserTitle"));
+        chooser.setInitialFileName(withExtension("export", format));
+        chooser.getExtensionFilters().addAll(
+                new javafx.stage.FileChooser.ExtensionFilter(format.label(), "*" + format.extension()),
+                new javafx.stage.FileChooser.ExtensionFilter(
+                        I18n.t("wizard.file.filter.all"), "*.*"));
+        return chooser.showSaveDialog(window);
+    };
+
+    /** 测试替身：见 {@link #fileChooser}。 */
+    void setFileChooserForTest(java.util.function.Function<javafx.stage.Window, java.io.File> chooser) {
+        this.fileChooser = chooser;
+    }
+
     ExportWizard(DbSession session, String tableName, List<String> columns, Scope defaultScope,
                  Path defaultTarget, Executor dbExecutor, Consumer<String> status) {
         this(session, tableName, columns, defaultScope, defaultTarget, dbExecutor, status,
@@ -251,6 +274,21 @@ final class ExportWizard {
         targetField.setText(defaultTarget == null ? "" : defaultTarget.toString());
         targetField.setPromptText(I18n.t("export.target.prompt"));
 
+        // ⭐ D-73：路径格右侧补浏览按钮 —— 抄的是 `ConnectionWizard#wizard-browse`，
+        //    以前整个向导族只有连接向导能选文件，这两个向导的路径只能一个字符一个字符敲。
+        Button targetBrowse = new Button(I18n.t("wizard.browse"));
+        targetBrowse.setId("export-target-browse");
+        targetBrowse.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        targetBrowse.setOnAction(event -> {
+            java.io.File picked = fileChooser.apply(owner);
+            if (picked != null) {
+                // 选完仍要过 withExtension：用户在面板里把后缀打掉了，格式与文件就不能对不上。
+                targetField.setText(withExtension(picked.getAbsolutePath(), formatBox.getValue()));
+            }
+        });
+        HBox targetRow = new HBox(8, targetField, targetBrowse);
+        HBox.setHgrow(targetField, Priority.ALWAYS);
+
         log.setId("export-log");
         log.setEditable(false);
         log.setPrefRowCount(5);
@@ -288,7 +326,7 @@ final class ExportWizard {
                 field(I18n.t("export.field.scope"), scopeBox),
                 field(I18n.t("menu.format"), formatBox),
                 formatHint,
-                field(I18n.t("export.field.target"), targetField),
+                field(I18n.t("export.field.target"), targetRow),
                 new Label(I18n.t("newtable.tab.fields")),
                 columnScroll,
                 fieldActions,

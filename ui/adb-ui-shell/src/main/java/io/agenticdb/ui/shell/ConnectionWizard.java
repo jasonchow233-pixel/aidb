@@ -169,6 +169,24 @@ public final class ConnectionWizard {
 
     private final TextField name = new TextField();
     private final TextField file = new TextField();
+
+    /**
+     * ⭐ D-73：SQLite 那格的文件选择通道。默认是系统保存面板，门禁换替身
+     * （原生面板在 Monocle 下按不住）。
+     */
+    private java.util.function.Function<javafx.stage.Window, java.io.File> fileChooser = window -> {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle(I18n.t("wizard.file.chooserTitle"));
+        chooser.getExtensionFilters().addAll(
+                new FileChooser.ExtensionFilter(I18n.t("wizard.file.filter.sqlite"), "*.db", "*.sqlite"),
+                new FileChooser.ExtensionFilter(I18n.t("wizard.file.filter.all"), "*.*"));
+        return chooser.showSaveDialog(window);
+    };
+
+    /** 测试替身：见 {@link #fileChooser}。 */
+    void setFileChooserForTest(java.util.function.Function<javafx.stage.Window, java.io.File> chooser) {
+        this.fileChooser = chooser;
+    }
     private final TextField host = new TextField();
     private final TextField port = new TextField();
     private final TextField database = new TextField();
@@ -768,12 +786,9 @@ public final class ConnectionWizard {
             browse.setId("wizard-browse");
             browse.getStyleClass().addAll("adb-button", "adb-button--ghost");
             browse.setOnAction(event -> {
-                FileChooser chooser = new FileChooser();
-                chooser.setTitle(I18n.t("wizard.file.chooserTitle"));
-                chooser.getExtensionFilters().addAll(
-                        new FileChooser.ExtensionFilter(I18n.t("wizard.file.filter.sqlite"), "*.db", "*.sqlite"),
-                        new FileChooser.ExtensionFilter(I18n.t("wizard.file.filter.all"), "*.*"));
-                java.io.File selected = chooser.showSaveDialog(dialog.getOwner());
+                // ⭐ D-73：选择通道抽成字段（向导族里这颗键是唯一的先例，却从没被门禁点过 ——
+                //    传输那两个向导补浏览时抄的就是它，先把它钉住，别让后人抄一个没验证过的形状）。
+                java.io.File selected = fileChooser.apply(dialog.getOwner());
                 if (selected != null) {
                     file.setText(selected.getAbsolutePath());
                 }

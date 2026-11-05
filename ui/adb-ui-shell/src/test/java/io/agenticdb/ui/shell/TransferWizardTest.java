@@ -1020,6 +1020,133 @@ class TransferWizardTest {
         }
     }
 
+    /**
+     * ⭐ D-73（2026-11-05）：两个向导的路径格不许只有手打。
+     *
+     * <p>帧证 `p8-export` / `p8-import`：Target File / File 两行行尾**没有浏览按钮**，
+     * 路径只能一个字符一个字符敲 —— 而同仓 `ConnectionWizard` 早就有 `#wizard-browse`
+     * 的正确先例（HBox + ghost 按钮 + FileChooser 回填）。向导族里只有连接向导能选文件，
+     * 这就是「同一件事两套做法」的形状，不是缺功能。
+     */
+    @Test
+    void bothWizardsOfferAFileChooserForTheirPathField() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("d73a.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            ExportWizard export = onFx(() -> new ExportWizard(session, "users",
+                    List.of("id", "name"), ExportWizard.Scope.WHOLE_TABLE,
+                    temp.resolve("d73a.csv"), executor, message -> { }));
+            ImportWizard importWizard = onFx(() -> new ImportWizard(session, "users",
+                    userColumns(), List.of("users"), null, executor, message -> { }));
+
+            // 按钮必须**和路径格在同一行**（不是页面上随便一处），否则等于没在补这条。
+            // 不写死层数：改成「从路径格往上走，能不能在某一层碰到那颗按钮」——
+            // 钉死 parent.parent 的话，实现换个包法门禁就红在版式上而不是行为上。
+            for (Object[] pair : List.of(
+                    new Object[] {export.content(), "#export-target", "#export-target-browse"},
+                    new Object[] {importWizard.content(), "#import-file", "#import-file-browse"})) {
+                VBox content = (VBox) pair[0];
+                javafx.scene.Node field = onFx(() -> content.lookup((String) pair[1]));
+                javafx.scene.Node button = onFx(() -> content.lookup((String) pair[2]));
+                assertThat(button)
+                        .as(pair[2] + " 必须存在（帧上实拍路径行行尾是空的）")
+                        .isInstanceOf(javafx.scene.control.Button.class);
+                assertThat(sharesARowWith(field, button))
+                        .as(pair[2] + " 必须排在 " + pair[1] + " 同一行右侧")
+                        .isTrue();
+            }
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    /** 从 field 往上走最多三层，看这一支里是否也装着 button。 */
+    private static boolean sharesARowWith(javafx.scene.Node field, javafx.scene.Node button) {
+        javafx.scene.Node cursor = field.getParent();
+        for (int depth = 0; cursor != null && depth < 3; depth++, cursor = cursor.getParent()) {
+            if (cursor instanceof javafx.scene.layout.Pane pane
+                    && pane.getChildren().contains(button)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * D-73：按下浏览 → 选中的文件真的回填进路径格。
+     *
+     * <p>选择器走**注入替身**（`setFileChooserForTest`）：Monocle 按不住原生面板，
+     * 真弹窗在这台机器上永远等不到结果 —— 但替身必须被调用到，
+     * 否则「按钮存在但点了什么也不做」照样能绿（所以断言里数了调用次数）。
+     */
+    @Test
+    void browseButtonsFillThePathFromTheChosenFile() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("d73b.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            Path chosen = temp.resolve("chosen.csv");
+            Files.writeString(chosen, "id,name\n911,Picked Row\n", StandardCharsets.UTF_8);
+
+            ExportWizard export = onFx(() -> new ExportWizard(session, "users",
+                    List.of("id", "name"), ExportWizard.Scope.WHOLE_TABLE, null,
+                    executor, message -> { }));
+            ImportWizard importWizard = onFx(() -> new ImportWizard(session, "users",
+                    userColumns(), List.of("users"), null, executor, message -> { }));
+
+            AtomicReference<Integer> exportCalls = new AtomicReference<>(0);
+            AtomicReference<Integer> importCalls = new AtomicReference<>(0);
+            onFxRun(() -> {
+                export.setFileChooserForTest(window -> {
+                    exportCalls.set(exportCalls.get() + 1);
+                    return chosen.toFile();
+                });
+                importWizard.setFileChooserForTest(window -> {
+                    importCalls.set(importCalls.get() + 1);
+                    return chosen.toFile();
+                });
+            });
+
+            onFxRun(() -> ((javafx.scene.control.Button)
+                    export.content().lookup("#export-target-browse")).fire());
+            TextField exportField = onFx(() -> (TextField) export.content().lookup("#export-target"));
+            assertThat(exportCalls.get()).as("浏览必须真的走选择器，不是硬塞一个路径").isEqualTo(1);
+            assertThat(exportField.getText())
+                    .as("选中的文件要回填进导出目标格（含当前格式的扩展名）")
+                    .startsWith(chosen.toAbsolutePath().toString());
+
+            // ⭐ 浏览这条路也要过后缀闸：选一个**已知导出后缀**与当前格式不符的文件，
+            //    回填的要折成当前格式的 .csv（`withExtension` 的既有规则：只动已知后缀，
+            //    用户自定义名如 `report.dat` 原样保留）。少了这句，
+            //    「浏览直接 setText(picked.getAbsolutePath())」也能全绿 ——
+            //    界面标着 CSV、落盘文件叫 .json，导出完用户自己找不到东西。
+            Path knownWrong = temp.resolve("picked-report.json");
+            onFxRun(() -> export.setFileChooserForTest(window -> knownWrong.toFile()));
+            onFxRun(() -> ((javafx.scene.control.Button)
+                    export.content().lookup("#export-target-browse")).fire());
+            assertThat(exportField.getText())
+                    .as("选中已知后缀与格式不符的文件时，要按当前格式改写后缀（默认 CSV）")
+                    .isEqualTo(temp.resolve("picked-report.csv").toAbsolutePath().toString());
+
+            onFxRun(() -> ((javafx.scene.control.Button)
+                    importWizard.content().lookup("#import-file-browse")).fire());
+            TextField importField = onFx(() -> (TextField) importWizard.content().lookup("#import-file"));
+            assertThat(importCalls.get()).isEqualTo(1);
+            assertThat(importField.getText()).isEqualTo(chosen.toAbsolutePath().toString());
+
+            // ⭐ 回填必须走 D-67 那条真实联动（监听器），不是测试自己手动刷预览。
+            TextArea preview = onFx(() -> (TextArea) importWizard.content().lookup("#import-preview"));
+            assertThat(preview.getText())
+                    .as("浏览选完文件，预览就该自己出来（点了按钮还要手敲才算数 = 假按钮）")
+                    .contains("911 | Picked Row");
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
     @Test
     void importModeComboSpeaksTheUsersLanguage() throws Exception {
         DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
