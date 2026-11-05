@@ -250,6 +250,17 @@ final class ImportWizard {
         dialog.setHeaderText(I18n.t("import.steps"));
         dialog.getDialogPane().getButtonTypes().clear();
         dialog.getDialogPane().setContent(content);
+
+        // ⭐ D-67：预览接上真实触发链。以前 refreshPreview 的唯一调用点在 poseForShots，
+        // 生产路径（用户手输文件路径、换编码/格式/表头行）永远刷不出预览。
+        // 监听在构造尾部注册，前面的初始 select 不会误触发。
+        fileField.textProperty().addListener((observable, old, text) -> refreshPreview());
+        formatBox.valueProperty().addListener((observable, old, format) -> refreshPreview());
+        charsetBox.valueProperty().addListener((observable, old, charset) -> refreshPreview());
+        headerRowSpinner.valueProperty().addListener((observable, old, row) -> refreshPreview());
+        if (initialFile != null) {
+            refreshPreview();
+        }
     }
 
     void show(javafx.stage.Window owner) {

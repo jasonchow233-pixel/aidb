@@ -260,6 +260,133 @@ class TransferWizardTest {
         }
     }
 
+    // ───────────────────── R64-b D-67：预览必须有真实可达的触发链 ─────────────────────
+
+    /**
+     * ⭐ D-67：生产路径（{@code TransferHub.importSingle} → 用户手输文件路径）以前
+     * 永远不会刷预览 —— {@code refreshPreview()} 全仓唯一调用点在 {@code poseForShots}，
+     * 「预览 + 字段映射」真实使用时永远空白。上面那批旧测试全都**手动调**
+     * {@code refreshPreview()}，恰好把这条断链守漏了；这四条钉的是
+     * **只操作界面控件、一次都不手动刷** 的口径。
+     * 变异：逐个摘掉 文件/编码/格式/表头行 四个监听 → 各自只红自己这条。
+     */
+    @Test
+    void importWizardPreviewsWhenTheUserTypesAFilePath() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("d67-file.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            Path file = temp.resolve("typed.csv");
+            Files.writeString(file, "id,name\n910,Typed Row\n", StandardCharsets.UTF_8);
+
+            ImportWizard wizard = onFx(() -> new ImportWizard(session, "users", userColumns(),
+                    List.of("users"), null, executor, message -> { },
+                    new TransferProfiles(), report -> { }));
+            onFxRun(() -> ((TextField) wizard.content().lookup("#import-file"))
+                    .setText(file.toString()));
+
+            TextArea preview = onFx(() ->
+                    (TextArea) wizard.content().lookup("#import-preview"));
+            assertThat(preview.getText()).as("D-67：敲完路径预览就该有内容")
+                    .contains("910 | Typed Row");
+            Label summary = onFx(() -> (Label) wizard.content().lookup("#import-summary"));
+            assertThat(summary.getText()).contains(I18n.t("import.summary.mapped", 2));
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    @Test
+    void importPreviewRedecodesWhenTheCharsetChanges() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("d67-charset.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            Path file = temp.resolve("gbk-typed.csv");
+            Files.write(file, "id,name\n911,张三\n".getBytes(
+                    java.nio.charset.Charset.forName("GBK")));
+
+            ImportWizard wizard = onFx(() -> new ImportWizard(session, "people", userColumns(),
+                    List.of("people"), null, executor, message -> { },
+                    new TransferProfiles(), report -> { }));
+            onFxRun(() -> {
+                ((TextField) wizard.content().lookup("#import-file")).setText(file.toString());
+                ((ComboBox<java.nio.charset.Charset>) wizard.content().lookup("#import-charset"))
+                        .getSelectionModel().select(java.nio.charset.Charset.forName("GBK"));
+            });
+
+            TextArea preview = onFx(() ->
+                    (TextArea) wizard.content().lookup("#import-preview"));
+            assertThat(preview.getText()).as("D-67：换编码必须按新编码重刷，不能停在乱码首刷")
+                    .contains("张三");
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    @Test
+    void importPreviewResplitsWhenTheFormatChanges() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("d67-format.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            Path file = temp.resolve("typed.tsv");
+            Files.writeString(file, "id\tname\n912\tZhao\n", StandardCharsets.UTF_8);
+
+            ImportWizard wizard = onFx(() -> new ImportWizard(session, "users", userColumns(),
+                    List.of("users"), null, executor, message -> { },
+                    new TransferProfiles(), report -> { }));
+            onFxRun(() -> {
+                ((TextField) wizard.content().lookup("#import-file")).setText(file.toString());
+                ((ComboBox<ImportFormat>) wizard.content().lookup("#import-format"))
+                        .getSelectionModel().select(ImportFormat.TSV);
+            });
+
+            TextArea preview = onFx(() ->
+                    (TextArea) wizard.content().lookup("#import-preview"));
+            assertThat(preview.getText()).as("D-67：CSV→TSV 必须按制表符重新切分")
+                    .contains("912 | Zhao");
+            Label summary = onFx(() -> (Label) wizard.content().lookup("#import-summary"));
+            assertThat(summary.getText()).contains(I18n.t("import.summary.mapped", 2));
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    @Test
+    void importPreviewRemapsWhenTheHeaderRowChanges() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("d67-header.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            Path file = temp.resolve("titled.csv");
+            Files.writeString(file, "导出时间 2026-11-05\nid,name\n913,Li\n",
+                    StandardCharsets.UTF_8);
+
+            ImportWizard wizard = onFx(() -> new ImportWizard(session, "people", userColumns(),
+                    List.of("people"), null, executor, message -> { },
+                    new TransferProfiles(), report -> { }));
+            onFxRun(() -> {
+                ((TextField) wizard.content().lookup("#import-file")).setText(file.toString());
+                ((javafx.scene.control.Spinner<Integer>)
+                        wizard.content().lookup("#import-header-row"))
+                        .getValueFactory().setValue(2);
+            });
+
+            TextArea preview = onFx(() ->
+                    (TextArea) wizard.content().lookup("#import-preview"));
+            assertThat(preview.getText()).contains("913 | Li")
+                    .as("D-67：表头行 1→2 后表头行本身要退出预览数据区")
+                    .doesNotContain("id | name");
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
     @Test
     void transferHubOffersRealImportAndExport() throws Exception {
         DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
