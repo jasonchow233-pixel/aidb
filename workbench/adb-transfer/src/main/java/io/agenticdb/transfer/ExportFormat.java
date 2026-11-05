@@ -8,21 +8,21 @@ package io.agenticdb.transfer;
  */
 public enum ExportFormat {
 
-    CSV("CSV", "逗号分隔，RFC 4180", ','),
-    TSV("TSV", "制表符分隔", '\t'),
-    JSON("JSON", "数组，每行一个对象（JSON Lines）", '\0'),
-    SQL("SQL", "INSERT 语句，可直接重放", '\0'),
-    XLSX("XLSX", "Excel 工作簿（流式写出）", '\0'),
-    XML("XML", "每行一个 <row>，列名写在 <c name> 上", '\0'),
-    HTML("HTML", "带表头的 <table>，可直接用浏览器打开", '\0');
+    CSV("CSV", "export.format.csv.hint", ','),
+    TSV("TSV", "export.format.tsv.hint", '\t'),
+    JSON("JSON", "export.format.json.hint", '\0'),
+    SQL("SQL", "export.format.sql.hint", '\0'),
+    XLSX("XLSX", "export.format.xlsx.hint", '\0'),
+    XML("XML", "export.format.xml.hint", '\0'),
+    HTML("HTML", "export.format.html.hint", '\0');
 
     private final String label;
-    private final String hint;
+    private final String hintKey;
     private final char delimiter;
 
-    ExportFormat(String label, String hint, char delimiter) {
+    ExportFormat(String label, String hintKey, char delimiter) {
         this.label = label;
-        this.hint = hint;
+        this.hintKey = hintKey;
         this.delimiter = delimiter;
     }
 
@@ -30,8 +30,9 @@ public enum ExportFormat {
         return label;
     }
 
-    public String hint() {
-        return hint;
+    /** ⭐ D-59：说明文案只存键，由界面用当前语言渲染（D-83 让它真的上屏）。 */
+    public String hintKey() {
+        return hintKey;
     }
 
     /** 分隔符。JSON / SQL / XLSX / XML / HTML 没有分隔符，返回 {@code '\0'}。 */

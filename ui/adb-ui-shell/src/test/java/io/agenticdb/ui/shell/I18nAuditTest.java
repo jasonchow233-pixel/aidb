@@ -133,6 +133,13 @@ class I18nAuditTest {
      * 方言与编辑（{@code OracleDialect}/{@code SqliteDialect}/{@code Danger} 各 4、
      * {@code RowIdentity} 3、{@code SqlServerDialect} 3…）。
      *
+     * <p>⭐ 145 → <b>133</b>（R65 D-59，2026-11-05）：<b>传输三枚举键化</b> ——
+     * {@code ImportMode}/{@code ImportFormat}/{@code ExportFormat} 的 label/hint 中文字面量
+     * （2+3+7=12 条）换成 {@code labelKey()}/{@code hintKey()} 存键，语言在界面落地：
+     * {@code ImportWizard} 给模式下拉挂 StringConverter，两向导把格式 hint 真上屏（D-83）。
+     * 上面「剩下的 145 条按文件有账」里 {@code ExportFormat 7} 一笔清零，
+     * {@code ImportMode}/{@code ImportFormat} 本就不在其中（label 直接进下拉，没被点名）。
+     *
      * <p>⚠️ <b>这个 145 是怎么量出来的</b>：把本常量临时改成 0、跑
      * {@code -Dtest=I18nAuditTest#modelLayerChineseIsRatchetedDown}，
      * 读失败信息里的「当前残留 %d 条（按文件）」<b>再改回来</b>。
@@ -141,7 +148,7 @@ class I18nAuditTest {
      * 没有 node。别再抄文档里的旧数字：G3-a 开工前文档记的「186 顶格」实测是 170，
      * 差的正是那一批清掉的 {@code StructureSqlBuilder}。）
      */
-    private static final int MODEL_CJK_CEILING = 145;
+    private static final int MODEL_CJK_CEILING = 133;
 
     /** 源码里对 {@link I18n#t(String, Object...)} 的键引用。 */
     private static final Pattern KEY_REFERENCE = Pattern.compile("I18n\\.t\\(\\s*\"([^\"]+)\"");
@@ -276,10 +283,19 @@ class I18nAuditTest {
      * {@code ResultEditPolicy.Block} 交出，键名写的是<b>字面量</b>而不是
      * {@code "前缀." + name()} —— 拼出来的键这条门禁扫不到，打错一个字母只有用户
      * 真跑到那一步才露出来。
+     *
+     * <p>⭐ R65 D-59 加的 {@code import} / {@code export}：传输三枚举（{@code ImportMode}、
+     * {@code ImportFormat}、{@code ExportFormat}）把中文换成「每枚举一个键」之后，
+     * 键名只出现在 workbench 的枚举常量里，ui 侧只剩 {@code I18n.t(format.hintKey())}
+     * 这一个通用渲染口。{@code KEY_REFERENCE} 那条扫的是 ui/**\/src/main 里的
+     * {@code I18n.t("字面量")}，这里传的是<b>方法返回值</b>，扫不到；于是「枚举里把
+     * {@code export.format.xml.hint} 打成 {@code export.format.xtml.hint}」在改完那一刻
+     * <b>没有任何门禁能看见</b>——编译期合法，运行时界面上露出 {@code ⚠export.format.xtml.hint}，
+     * 而且只在用户真去选一次 XML 时露出来。补进命名空间白名单后由存在性那一段拦下。
      */
     private static final Pattern MODEL_KEY_LITERAL = Pattern.compile(
-            "\"((?:plan|column|table|fk|index|trigger|structure|danger|error|query)\\.[A-Za-z][A-Za-z0-9]*"
-                    + "(?:\\.[A-Za-z0-9]+)*)\"");
+            "\"((?:plan|column|table|fk|index|trigger|structure|danger|error|query|import|export)"
+                    + "\\.[A-Za-z][A-Za-z0-9]*(?:\\.[A-Za-z0-9]+)*)\"");
 
     /**
      * 模型层交出的「键 + 参数」构造点：标记 + <b>键在第几个实参上</b>。

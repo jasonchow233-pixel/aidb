@@ -128,6 +128,8 @@ final class ExportWizard {
     private final ComboBox<Charset> charsetBox = new ComboBox<>();
     private final CheckBox headerBox = new CheckBox(I18n.t("export.header.check"));
     private final CheckBox quoteBox = new CheckBox(I18n.t("export.quote.check"));
+    private final Label optionNote = new Label();
+    private final Label formatHint = new Label();
     private final VBox columnBox = new VBox(3);
     private final List<CheckBox> columnChecks = new ArrayList<>();
     private final TextField targetField = new TextField();
@@ -201,6 +203,14 @@ final class ExportWizard {
         headerBox.setId("export-header");
         quoteBox.setSelected(false);
         quoteBox.setId("export-quote");
+
+        // ⭐ D-58：禁用不静默 —— 行内说清「为什么这一格灰了」，格式说明行同理（D-83）。
+        formatHint.setId("export-format-hint");
+        formatHint.getStyleClass().add("adb-muted");
+        formatHint.setWrapText(true);
+        optionNote.setId("export-option-note");
+        optionNote.getStyleClass().add("adb-muted");
+        optionNote.setWrapText(true);
 
         for (String column : this.columns) {
             CheckBox box = new CheckBox(column);
@@ -277,12 +287,14 @@ final class ExportWizard {
         content.getChildren().addAll(
                 field(I18n.t("export.field.scope"), scopeBox),
                 field(I18n.t("menu.format"), formatBox),
+                formatHint,
                 field(I18n.t("export.field.target"), targetField),
                 new Label(I18n.t("newtable.tab.fields")),
                 columnScroll,
                 fieldActions,
                 field(I18n.t("import.field.encoding"), charsetBox),
                 optionRow,
+                optionNote,
                 summary,
                 log,
                 actions);
@@ -340,7 +352,8 @@ final class ExportWizard {
             scopeBox.getSelectionModel().select(Scope.WHOLE_TABLE);
         }
         targetField.setText(withExtension(targetField.getText(), formatBox.getValue()));
-        log.setText(I18n.t("export.pose.log"));
+        // ⭐ D-83：以前这里往日志框手搓一句假日志（export.pose.log）——帧上是编的。
+        // 撤掉；格式说明改由上面 formatBox 选择走真实联动（hint 行 + 可用性）。
     }
 
     /** 供门禁直接驱动。 */
@@ -369,6 +382,22 @@ final class ExportWizard {
         // xlsx 的表头是写死的，SQL 的列名在 INSERT 语句里。以前这格在 XML 下
         // 照样勾着，等于一个勾了不生效的谎（p8-export 实拍抓到）。
         headerBox.setDisable(!(format == ExportFormat.CSV || format == ExportFormat.TSV));
+
+        // ⭐ D-83：hint 以前只躺在枚举里（零消费者），现在真的上屏。
+        formatHint.setText(I18n.t(format.hintKey()));
+
+        // D-58：灰掉的格子要自己说为什么灰 —— tooltip 在禁用控件上不可靠
+        //（JavaFX 不给 disabled 节点送鼠标事件），所以走行内说明。
+        List<String> reasons = new ArrayList<>();
+        if (format.binary()) {
+            reasons.add(I18n.t("transfer.option.note.binary"));
+        }
+        if (headerBox.isDisabled() || quoteBox.isDisabled()) {
+            reasons.add(I18n.t("export.option.note.textonly"));
+        }
+        optionNote.setText(String.join(" · ", reasons));
+        optionNote.setVisible(!reasons.isEmpty());
+        optionNote.setManaged(!reasons.isEmpty());
     }
 
     private void selectAllColumns(boolean selected) {

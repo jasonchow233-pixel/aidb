@@ -5,17 +5,17 @@ package io.agenticdb.transfer;
  */
 public enum ImportFormat {
 
-    CSV("CSV", "逗号分隔，RFC 4180", ','),
-    TSV("TSV", "制表符分隔", '\t'),
-    XLSX("XLSX", "Excel 工作簿（SAX 流式读取）", '\0');
+    CSV("CSV", "import.format.csv.hint", ','),
+    TSV("TSV", "import.format.tsv.hint", '\t'),
+    XLSX("XLSX", "import.format.xlsx.hint", '\0');
 
     private final String label;
-    private final String hint;
+    private final String hintKey;
     private final char delimiter;
 
-    ImportFormat(String label, String hint, char delimiter) {
+    ImportFormat(String label, String hintKey, char delimiter) {
         this.label = label;
-        this.hint = hint;
+        this.hintKey = hintKey;
         this.delimiter = delimiter;
     }
 
@@ -23,8 +23,9 @@ public enum ImportFormat {
         return label;
     }
 
-    public String hint() {
-        return hint;
+    /** ⭐ D-59：说明文案只存键，由界面用当前语言渲染。 */
+    public String hintKey() {
+        return hintKey;
     }
 
     public char delimiter() {

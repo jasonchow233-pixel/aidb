@@ -837,7 +837,7 @@ class TransferWizardTest {
             assertThat(logArea.getText())
                     .contains(I18n.t("import.log.start", "people",
                             ImportFormat.CSV.label(), "UTF-8", "1",
-                            io.agenticdb.transfer.ImportMode.APPEND.label()))
+                            I18n.t(io.agenticdb.transfer.ImportMode.APPEND.labelKey())))
                     .contains(I18n.t("import.done", 1))
                     .as("坏行明细要进日志，用户能把它导出给同事看").contains("第 2 行");
         } finally {
@@ -887,6 +887,231 @@ class TransferWizardTest {
             } else {
                 System.setProperty("adb.prefs.node", previous);
             }
+        }
+    }
+
+    @Test
+    void wizardHeadingsStopPretendingThereAreSteps() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("d58a.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            ExportWizard export = onFx(() -> new ExportWizard(session, "users",
+                    List.of("id", "name"), ExportWizard.Scope.WHOLE_TABLE,
+                    temp.resolve("d58a.csv"), executor, message -> { }));
+            ImportWizard importWizard = onFx(() -> new ImportWizard(session, "users",
+                    userColumns(), List.of("users"), null, executor, message -> { }));
+
+            String exportHeader = onFx(() -> ((javafx.scene.control.DialogPane)
+                    export.content().getParent()).getHeaderText());
+            String importHeader = onFx(() -> ((javafx.scene.control.DialogPane)
+                    importWizard.content().getParent()).getHeaderText());
+
+            // ⭐ D-58：两个向导都是**一页到底**，标题却写着「A → B → C」的步骤条 ——
+            // 用户找不到「下一步」，这行字就是谎言。箭头不许再出现在标题里。
+            assertThat(exportHeader).as("导出向导标题").doesNotContain("→");
+            assertThat(importHeader).as("导入向导标题").doesNotContain("→");
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    @Test
+    void disabledWizardOptionsSayWhyTheyAreDisabled() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("d58b.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            ExportWizard wizard = onFx(() -> new ExportWizard(session, "users",
+                    List.of("id", "name"), ExportWizard.Scope.WHOLE_TABLE,
+                    temp.resolve("d58b.csv"), executor, message -> { }));
+
+            // 只动 #export-format 这一颗真实下拉，不手动调 fitOptionAvailability。
+            onFxRun(() -> {
+                @SuppressWarnings("unchecked")
+                ComboBox<ExportFormat> format =
+                        (ComboBox<ExportFormat>) wizard.content().lookup("#export-format");
+                format.setValue(ExportFormat.XML);
+            });
+
+            onFx(() -> {
+                @SuppressWarnings("unchecked")
+                ComboBox<ExportFormat> format =
+                        (ComboBox<ExportFormat>) wizard.content().lookup("#export-format");
+                javafx.scene.control.CheckBox header =
+                        (javafx.scene.control.CheckBox) wizard.content().lookup("#export-header");
+                javafx.scene.control.CheckBox quote =
+                        (javafx.scene.control.CheckBox) wizard.content().lookup("#export-quote");
+                assertThat(format.getValue()).isEqualTo(ExportFormat.XML);
+                assertThat(header.isDisabled()).as("XML 下「写表头行」应禁用").isTrue();
+                assertThat(quote.isDisabled()).as("XML 下「全加引号」应禁用").isTrue();
+                return null;
+            });
+
+            // 禁用不是静默的：行内要有一行说明为什么（与 NewTableDialog 的 prompt 族同式）。
+            // ⭐ 这里用 lookup 是安全的：断言的前提就是「XML 下这行说明必须可见」，
+            //   而 lookup 会跳过不可见节点 —— 一条都不许溜号。
+            javafx.scene.control.Label note = onFx(() ->
+                    (javafx.scene.control.Label) wizard.content().lookup("#export-option-note"));
+            assertThat(note).as("禁用项必须带行内说明").isNotNull();
+            assertThat(note.isVisible()).as("禁用说明要可见").isTrue();
+            assertThat(note.isManaged()).isTrue();
+            assertThat(note.getText()).contains(I18n.t("export.option.note.textonly"));
+
+            onFxRun(() -> {
+                @SuppressWarnings("unchecked")
+                ComboBox<ExportFormat> format =
+                        (ComboBox<ExportFormat>) wizard.content().lookup("#export-format");
+                format.setValue(ExportFormat.CSV);
+            });
+            javafx.scene.Node back = onFx(() -> wizard.content().lookup("#export-option-note"));
+            assertThat(back == null || !back.isVisible())
+                    .as("回到 CSV：没有禁用项了，说明要收起来").isTrue();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    @Test
+    void formatHintsReachTheScreenInBothWizards() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("d59a.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            ExportWizard export = onFx(() -> new ExportWizard(session, "users",
+                    List.of("id", "name"), ExportWizard.Scope.WHOLE_TABLE,
+                    temp.resolve("d59a.csv"), executor, message -> { }));
+            ImportWizard importWizard = onFx(() -> new ImportWizard(session, "users",
+                    userColumns(), List.of("users"), null, executor, message -> { }));
+
+            // ⭐ D-59/D-83：ExportFormat/ImportFormat 的 hint 以前只躺在枚举里（零消费者）。
+            // 换格式要**真的**把那句话打到屏上，而且走的是消息键，不是枚举里的中文字面量。
+            onFxRun(() -> {
+                @SuppressWarnings("unchecked")
+                ComboBox<ExportFormat> format =
+                        (ComboBox<ExportFormat>) export.content().lookup("#export-format");
+                format.setValue(ExportFormat.XML);
+            });
+            Label exportHint = onFx(() ->
+                    (Label) export.content().lookup("#export-format-hint"));
+            assertThat(exportHint).as("导出向导要有格式说明行").isNotNull();
+            assertThat(exportHint.getText())
+                    .isEqualTo(I18n.t("export.format.xml.hint"))
+                    .as("提示必须真的解析成文案，不是键名漏网")
+                    .isNotEqualTo("export.format.xml.hint");
+
+            onFxRun(() -> {
+                @SuppressWarnings("unchecked")
+                ComboBox<ImportFormat> format =
+                        (ComboBox<ImportFormat>) importWizard.content().lookup("#import-format");
+                format.setValue(ImportFormat.XLSX);
+            });
+            Label importHint = onFx(() ->
+                    (Label) importWizard.content().lookup("#import-format-hint"));
+            assertThat(importHint).as("导入向导也要有格式说明行").isNotNull();
+            assertThat(importHint.getText())
+                    .isEqualTo(I18n.t("import.format.xlsx.hint"))
+                    .isNotEqualTo("import.format.xlsx.hint");
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    @Test
+    void importModeComboSpeaksTheUsersLanguage() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("d59b.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            ImportWizard wizard = onFx(() -> new ImportWizard(session, "users",
+                    userColumns(), List.of("users"), null, executor, message -> { }));
+
+            // ⭐ D-59：ImportMode 的中文名以前硬编码在模型层，英文界面直接露汉字。
+            // 枚举只许存键，渲染由界面解析 —— 下拉显示的必须是当前语言的文案。
+            @SuppressWarnings("unchecked")
+            ComboBox<io.agenticdb.transfer.ImportMode> mode = onFx(() ->
+                    (ComboBox<io.agenticdb.transfer.ImportMode>)
+                            wizard.content().lookup("#import-mode"));
+            assertThat(mode.getConverter().toString(io.agenticdb.transfer.ImportMode.REPLACE))
+                    .isEqualTo(I18n.t("import.mode.replace"))
+                    .isNotEqualTo("import.mode.replace");
+            assertThat(mode.getConverter().toString(io.agenticdb.transfer.ImportMode.APPEND))
+                    .isEqualTo(I18n.t("import.mode.append"));
+
+            // 禁用要给原因：XLSX 把编码框灰掉时，行内必须说一句为什么（D-58 导入侧）。
+            onFxRun(() -> {
+                @SuppressWarnings("unchecked")
+                ComboBox<ImportFormat> format =
+                        (ComboBox<ImportFormat>) wizard.content().lookup("#import-format");
+                format.setValue(ImportFormat.XLSX);
+            });
+            javafx.scene.control.ComboBox<?> charset = onFx(() ->
+                    (javafx.scene.control.ComboBox<?>) wizard.content().lookup("#import-charset"));
+            assertThat(charset.isDisabled()).as("XLSX 下编码应禁用").isTrue();
+            Label note = onFx(() -> (Label) wizard.content().lookup("#import-option-note"));
+            assertThat(note).as("禁用编码要带行内说明").isNotNull();
+            assertThat(note.getText()).contains(I18n.t("transfer.option.note.binary"));
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    @Test
+    void exportWizardPoseDoesNotFabricateLog() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("d83.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            ExportWizard wizard = onFx(() -> new ExportWizard(session, "users",
+                    List.of("id", "name"), ExportWizard.Scope.WHOLE_TABLE,
+                    temp.resolve("d83.xml"), executor, message -> { }));
+
+            // ⭐ D-83：pose 通道以前往日志框塞一句**手搓的**假日志（export.pose.log）。
+            // 帧上看着有说明，其实是编的 —— 撤掉它，说明改由真实的格式提示行承担。
+            onFxRun(() -> wizard.poseForShots("xml"));
+            TextArea log = onFx(() -> (TextArea) wizard.content().lookup("#export-log"));
+            assertThat(log.getText()).as("pose 不许再手搓日志").isEmpty();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    /**
+     * ⭐ D-84：D-83 那只手搓假日志在导出侧，导入侧还藏着同一族的另一只 ——
+     * {@code poseForShots} 往执行日志里塞 {@code import.log.pose}，参数是<b>写死的 1 和 5</b>。
+     *
+     * <p>演示 CSV 只有 3 行数据，于是同一张帧里 Preview 显示 3 行、
+     * Execution Log 声称「5 preview rows read」—— 两张口互相打脸，
+     * 而这条帧是导入向导唯一的画面证据。撤掉它：pose 没有真跑过导入，
+     * 执行日志本来就该是空的，真实行数由下面那句 summary 承担。
+     */
+    @Test
+    void importWizardPoseDoesNotFabricateLog() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("d84.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            Path csv = temp.resolve("d84.csv");
+            java.nio.file.Files.writeString(csv, "id,name\n1,ann\n2,bob\n3,cid\n");
+            ImportWizard wizard = onFx(() -> new ImportWizard(session, "users",
+                    userColumns(), List.of("users"), csv, executor, message -> { }));
+
+            onFxRun(() -> wizard.poseForShots(csv));
+            TextArea log = onFx(() -> (TextArea) wizard.content().lookup("#import-log"));
+            assertThat(log.getText()).as("pose 不许手搓执行日志").isEmpty();
+
+            // 但真实预览数字必须在场 —— 撤假日志不能顺手把真信息也撤没。
+            javafx.scene.control.Label summary = onFx(() ->
+                    (javafx.scene.control.Label) wizard.content().lookup("#import-summary"));
+            assertThat(summary.getText()).contains("3");
+        } finally {
+            executor.shutdownNow();
+            session.close();
         }
     }
 

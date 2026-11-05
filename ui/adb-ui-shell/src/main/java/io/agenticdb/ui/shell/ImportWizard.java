@@ -85,6 +85,8 @@ final class ImportWizard {
     private final TextArea preview = new TextArea();
     private final TextArea logArea = new TextArea();
     private final Label summary = new Label();
+    private final Label formatHint = new Label();
+    private final Label optionNote = new Label();
     private final ProgressIndicator spinner = new ProgressIndicator();
     private final Button importButton = new Button(I18n.t("import.start"));
     private final Button closeButton = new Button(I18n.t("tab.close"));
@@ -129,7 +131,15 @@ final class ImportWizard {
         formatBox.getItems().setAll(ImportFormat.values());
         formatBox.getSelectionModel().select(ImportFormat.CSV);
         formatBox.valueProperty().addListener((observable, old, format) ->
-                charsetBox.setDisable(format != null && format.binary()));
+                applyFormatEffects(format));
+
+        // ⭐ D-59/D-83：格式说明行 + 禁用原因行（与 ExportWizard 同式）。
+        formatHint.setId("import-format-hint");
+        formatHint.getStyleClass().add("adb-muted");
+        formatHint.setWrapText(true);
+        optionNote.setId("import-option-note");
+        optionNote.getStyleClass().add("adb-muted");
+        optionNote.setWrapText(true);
 
         charsetBox.setId("import-charset");
         charsetBox.getItems().setAll(CHARSETS);
@@ -146,6 +156,23 @@ final class ImportWizard {
         modeBox.getItems().setAll(ImportMode.values());
         modeBox.getSelectionModel().select(ImportMode.APPEND);
         modeBox.setMaxWidth(Double.MAX_VALUE);
+        // ⭐ D-59：枚举只存消息键，语言在这里落地。
+        modeBox.setConverter(new javafx.util.StringConverter<ImportMode>() {
+            @Override
+            public String toString(ImportMode mode) {
+                return mode == null ? "" : I18n.t(mode.labelKey());
+            }
+
+            @Override
+            public ImportMode fromString(String text) {
+                for (ImportMode mode : ImportMode.values()) {
+                    if (I18n.t(mode.labelKey()).equals(text)) {
+                        return mode;
+                    }
+                }
+                return null;
+            }
+        });
 
         profileBox.setId("import-profile");
         profileBox.setMaxWidth(Double.MAX_VALUE);
@@ -223,7 +250,9 @@ final class ImportWizard {
         content.getChildren().addAll(
                 field(I18n.t("menu.file"), fileField),
                 field(I18n.t("menu.format"), formatBox),
+                formatHint,
                 field(I18n.t("import.field.encoding"), charsetBox),
+                optionNote,
                 field(I18n.t("import.field.headerRow"), headerRowSpinner),
                 field(I18n.t("import.field.mode"), modeBox),
                 field(I18n.t("import.field.profile"), profileRow),
@@ -258,6 +287,7 @@ final class ImportWizard {
         formatBox.valueProperty().addListener((observable, old, format) -> refreshPreview());
         charsetBox.valueProperty().addListener((observable, old, charset) -> refreshPreview());
         headerRowSpinner.valueProperty().addListener((observable, old, row) -> refreshPreview());
+        applyFormatEffects(formatBox.getValue());
         if (initialFile != null) {
             refreshPreview();
         }
@@ -282,17 +312,33 @@ final class ImportWizard {
      *
      * <p>空窗证明不了编码/表头行/模式这三条新能力真的生效 —— 预览里的中文得是
      * 按所选编码解出来的，字段映射得真有匹配结果。
+     *
+     * <p>⭐ D-84：这里以前最后一行手搓一句执行日志（{@code import.log.pose}，
+     * 参数写死 1 和 5）。演示文件只有 3 行数据，于是同一张帧里 Preview 三行、
+     * Execution Log 声称「5 preview rows read」—— 自己跟自己打脸。
+     * pose 没有真跑过导入，执行日志就该是空的；真实行数由 summary 那句承担。
      */
     void poseForShots(Path file) {
         fileField.setText(file == null ? "" : file.toString());
         charsetBox.getSelectionModel().select(java.nio.charset.Charset.forName("GBK"));
         headerRowSpinner.getValueFactory().setValue(1);
         refreshPreview();
-        log(I18n.t("import.log.pose", charsetBox.getValue().name(), 1, 5));
     }
 
     VBox content() {
         return content;
+    }
+
+    /** D-58/D-59/D-83：格式变化一次算完 —— 编码是否禁用、说明行、禁用原因。 */
+    private void applyFormatEffects(ImportFormat format) {
+        boolean binary = format != null && format.binary();
+        charsetBox.setDisable(binary);
+        formatHint.setText(format == null ? "" : I18n.t(format.hintKey()));
+        formatHint.setVisible(format != null);
+        formatHint.setManaged(format != null);
+        optionNote.setText(I18n.t("transfer.option.note.binary"));
+        optionNote.setVisible(binary);
+        optionNote.setManaged(binary);
     }
 
     private HBox field(String label, javafx.scene.Node control) {
@@ -469,7 +515,7 @@ final class ImportWizard {
                 options.charset().name(),
                 options.headerRow() == 0 ? I18n.t("import.log.headerNone")
                         : String.valueOf(options.headerRow()),
-                options.mode().label()));
+                I18n.t(options.mode().labelKey())));
 
         dbExecutor.execute(() -> {
             String message;
