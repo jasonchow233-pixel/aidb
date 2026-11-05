@@ -39,8 +39,62 @@ class QueryPaginatorTest {
     }
 
     @Test
-    void trailingSemicolonIsStrippedBeforePaging() {
-        // ⭐ SqlSplitter 默认保留语句末尾的分号，分页判定与改写都必须容忍它。
+    void structureWordsInsideLiteralsAndCommentsDoNotBlockPaging() {
+        // ⭐ D-64：这一层判的是<b>形状</b>。字面量与注释里的 into / for update / ;
+        // 是用户的数据，不是 SQL 结构 —— 以前直接 contains 原文，
+        // 这些句子全被判成不可分页，而可改那一层判它们可改，重取钩子就挂不上了。
+        assertThat(QueryPaginator.isPaginable(
+                "SELECT * FROM messages WHERE body LIKE '% into %'")).isTrue();
+        assertThat(QueryPaginator.isPaginable(
+                "SELECT * FROM tickets WHERE note = 'log in for update first'")).isTrue();
+        assertThat(QueryPaginator.isPaginable(
+                "SELECT * FROM t WHERE note = 'a;b'")).isTrue();
+        assertThat(QueryPaginator.isPaginable(
+                "SELECT * FROM t WHERE note = 'it''s a; test'")).isTrue();
+        assertThat(QueryPaginator.isPaginable(
+                "SELECT \"for update\" FROM users")).isTrue();
+        assertThat(QueryPaginator.isPaginable(
+                "-- 先说明一下\nSELECT id FROM users")).isTrue();
+        assertThat(QueryPaginator.isPaginable(
+                "/* 头部注释 */ SELECT id FROM users")).isTrue();
+        assertThat(QueryPaginator.isPaginable(
+                "SELECT id FROM users -- 尾部行注释")).isTrue();
+        assertThat(QueryPaginator.isPaginable(
+                "SELECT id FROM users; -- 尾部行注释")).isTrue();
+    }
+
+    @Test
+    void realStructureStillBlocksPaging() {
+        // 抹平不许把真结构一起放过：写在 SQL 里的 INTO / 分号必须照样拦住。
+        assertThat(QueryPaginator.isPaginable("SELECT * FROM a; SELECT * FROM b")).isFalse();
+        assertThat(QueryPaginator.isPaginable("SELECT * FROM a -- ;\n; SELECT 1")).isFalse();
+        assertThat(QueryPaginator.isPaginable("SELECT * FROM a INTO b")).isFalse();
+        assertThat(QueryPaginator.isPaginable("SELECT * FROM a /* x */ FOR UPDATE")).isFalse();
+    }
+
+    @Test
+    void trailingLineCommentKeepsTheWrapperParsable() {
+        // ⭐ D-64 的另一半：判定放行之后，包装还得跑得起来。
+        // 原句尾部是行注释时，`) AS _p` 直接接上去会被那行注释吃掉 —— 必须补一个换行。
+        var page = QueryPaginator.pageSql(DialectKind.SQLITE.dialect(),
+                "SELECT id FROM users -- 说明", List.of(), 50, 0);
+        assertThat(page.sql()).isEqualTo(
+                "SELECT * FROM (SELECT id FROM users -- 说明\n) AS _p LIMIT ? OFFSET ?");
+        var count = QueryPaginator.countSql(DialectKind.SQLITE.dialect(),
+                "SELECT id FROM users -- 说明", List.of());
+        assertThat(count.sql()).isEqualTo(
+                "SELECT COUNT(*) AS adb_count FROM (SELECT id FROM users -- 说明\n) AS _p");
+
+        // 分号坐在注释前面：剥的是<b>形状里</b>那个分号，注释跟着一起掉 ——
+        // 包进外层的东西里不许留分号，否则整条分页句直接语法错。
+        var cut = QueryPaginator.pageSql(DialectKind.SQLITE.dialect(),
+                "SELECT id FROM users; -- 说明", List.of(), 50, 0);
+        assertThat(cut.sql()).isEqualTo(
+                "SELECT * FROM (SELECT id FROM users) AS _p LIMIT ? OFFSET ?");
+    }
+
+    @Test
+    void trailingSemicolonIsStrippedBeforePaging() {        // ⭐ SqlSplitter 默认保留语句末尾的分号，分页判定与改写都必须容忍它。
         assertThat(QueryPaginator.isPaginable("SELECT * FROM users;")).isTrue();
         assertThat(QueryPaginator.isPaginable("  select 1 as n ; ")).isTrue();
 

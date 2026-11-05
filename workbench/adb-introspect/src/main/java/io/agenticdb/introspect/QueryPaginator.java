@@ -4,6 +4,7 @@ import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.model.QueryLimits;
 
 import java.util.List;
+import java.util.Locale;
 
 /**
  * ⭐ Q5：把一条任意 SELECT 改写成「可分页」的取数 SQL。
@@ -33,18 +34,24 @@ public final class QueryPaginator {
      * <p>判定很保守：单条、以 {@code select}/{@code with} 开头、不含
      * {@code for update}/{@code into}、不含分号。套派生表对这类语句恒成立，
      * 所以一旦判定为真，{@link #pageSql} / {@link #countSql} 不会失败。
+     *
+     * <p>⭐ D-64：这四条读的是<b>形状</b>，不是原文。字面量与注释里的
+     * {@code into} / {@code for update} / {@code ;} 是用户的数据，不是 SQL 结构。
+     * 以前用 {@code String.contains} 直接读原文，于是
+     * {@code WHERE body LIKE '% into %'} 判成不可分页 —— 而可改性那一层
+     * （{@code SqlQueryShape}，走词法）判它可改。两层一撞，症状落在
+     * {@code QueryPage.java:1636} 那一支：重取钩子只挂在可分页的路上，
+     * 于是「状态那句『已保存』是真的、格子里的值是旧的」，而且不报错。
      */
     public static boolean isPaginable(String sql) {
         if (sql == null) {
             return false;
         }
-        // ⭐ 语句文本常带末尾分隔符（SqlSplitter 默认保留），这里只剥离单个末尾分号。
-        // 中间含分号（多条语句）仍判为不可分页，沿用整段取回逻辑。
-        String text = stripTrailingSemicolon(sql);
-        if (text.isEmpty() || text.contains(";")) {
+        String shape = skeleton(sql).masked().strip();
+        if (shape.isEmpty() || shape.contains(";")) {
             return false;
         }
-        String lower = text.toLowerCase();
+        String lower = shape.toLowerCase(Locale.ROOT);
         if (!lower.startsWith("select") && !lower.startsWith("with")) {
             return false;
         }
@@ -53,7 +60,7 @@ public final class QueryPaginator {
 
     /** 总行数查询：由方言决定怎么包装（{@code COUNT(*)} 套同一层）。 */
     public static Dialect.PagedSql countSql(Dialect dialect, String sql, List<Object> params) {
-        return dialect.countedSelect(stripTrailingSemicolon(sql), params);
+        return dialect.countedSelect(wrapSource(skeleton(sql)), params);
     }
 
     /**
@@ -64,18 +71,109 @@ public final class QueryPaginator {
      */
     public static Dialect.PagedSql pageSql(Dialect dialect, String sql, List<Object> params,
                                            int limit, long offset) {
-        String source = stripTrailingSemicolon(sql);
+        String source = wrapSource(skeleton(sql));
         int safeLimit = QueryLimits.clampPageSize(limit);
         long safeOffset = Math.max(0, offset);
         return dialect.pagedSelect(source, params, safeLimit, safeOffset);
     }
 
-    /** 剥离单个末尾分号（含前后空白），中间的分号不动。 */
-    private static String stripTrailingSemicolon(String sql) {
-        String text = sql == null ? "" : sql.trim();
-        if (text.endsWith(";")) {
-            return text.substring(0, text.length() - 1).trim();
+    /**
+     * 一条语句的两份读法：{@code masked} 是抹平字面量与注释后的<b>形状</b>（判定用），
+     * {@code source} 是<b>还能直接包进外层 SELECT</b> 的原文（改写用）。
+     */
+    private record Skeleton(String masked, String source, boolean endsInLineComment) {
+    }
+
+    /**
+     * 扫一遍语句文本：字符串字面量、引号标识符、注释的内容全部抹成空格。
+     *
+     * <p>抹平是<b>等长</b>的（一个字符对一个空格），所以 {@code masked} 的下标能直接
+     * 回指原文 —— 尾部那个分号坐在哪儿，得按形状找：它常常躲在注释前面
+     * （{@code SELECT … ; -- 说明}），原文 {@code endsWith(";")} 看不见它。
+     *
+     * <p>⭐ D-64：判定放行之后，包装这一步必须还能跑得起来。尾部是行注释时补一个换行，
+     * 否则 {@code SELECT * FROM (SELECT … -- 说明) AS _p} 里那个右括号会被注释吃掉 ——
+     * 放行是<b>判定</b>的事，包得住是<b>改写</b>的事，两件事不能只改一半。
+     */
+    private static Skeleton skeleton(String sql) {
+        String text = sql.trim();
+        char[] masked = text.toCharArray();
+        boolean endsInLineComment = false;
+        int i = 0;
+        while (i < text.length()) {
+            char c = text.charAt(i);
+            char next = i + 1 < text.length() ? text.charAt(i + 1) : '\0';
+            if (c == '-' && next == '-') {
+                int end = text.indexOf('\n', i);
+                int stop = end < 0 ? text.length() : end;
+                blank(masked, i, stop);
+                endsInLineComment = end < 0;
+                i = stop;
+                continue;
+            }
+            if (c == '/' && next == '*') {
+                int end = text.indexOf("*/", i + 2);
+                int stop = end < 0 ? text.length() : end + 2;
+                blank(masked, i, stop);
+                endsInLineComment = false;
+                i = stop;
+                continue;
+            }
+            if (c == '\'' || c == '"') {
+                int stop = skipQuoted(text, i, c);
+                blank(masked, i, stop);
+                endsInLineComment = false;
+                i = stop;
+                continue;
+            }
+            endsInLineComment = false;
+            i++;
         }
-        return text;
+        String shape = new String(masked);
+        String source = text;
+        int last = shape.length();
+        while (last > 0 && shape.charAt(last - 1) == ' ') {
+            last--;
+        }
+        // ⭐ SqlSplitter 默认保留语句末尾的分号，判定与改写都必须容忍它。
+        // 剥的是<b>形状里最后一个有效字符</b>那个分号 —— 它常常坐在注释前面
+        // （{@code SELECT … ; -- 说明}），原文 {@code endsWith(";")} 看不见它。
+        // 中间的分号（多条语句）不动，沿用整段取回逻辑。
+        if (last > 0 && shape.charAt(last - 1) == ';') {
+            shape = shape.substring(0, last - 1);
+            source = text.substring(0, last - 1).stripTrailing();
+            endsInLineComment = false;
+        }
+        return new Skeleton(shape, source, endsInLineComment);
+    }
+
+    /** 包进外层 SELECT 之前补齐的那一步：尾部行注释要留一个换行给它收尾。 */
+    private static String wrapSource(Skeleton skeleton) {
+        return skeleton.endsInLineComment() ? skeleton.source() + "\n" : skeleton.source();
+    }
+
+    /** 把 {@code [from, to)} 抹成空格；换行留着，行注释的边界才不会糊成一坨。 */
+    private static void blank(char[] masked, int from, int to) {
+        for (int i = from; i < to; i++) {
+            if (masked[i] != '\n') {
+                masked[i] = ' ';
+            }
+        }
+    }
+
+    /** 引号串的结束下标（含收尾那个引号之后）：连续两个引号是转义，不是结束。 */
+    private static int skipQuoted(String text, int start, char quote) {
+        int i = start + 1;
+        while (i < text.length()) {
+            if (text.charAt(i) == quote) {
+                if (i + 1 < text.length() && text.charAt(i + 1) == quote) {
+                    i += 2;
+                    continue;
+                }
+                return i + 1;
+            }
+            i++;
+        }
+        return text.length();
     }
 }

@@ -1639,12 +1639,15 @@ public final class QueryPage extends VBox implements AutoCloseable {
             pagers.add(loader);
             // ⭐ R58-c：保存成功后重取当前页 —— 屏幕上留下的必须是库里现在的值，
             // 不是界面缓冲里那份。
-            // ⚠️ 走不到这一支的语句没有重取钩子，症状是「保存之后格子跳回查询时读到的旧值，
-            //    而状态那句『已保存』仍然是真的」。今天**走不到**：判定层比分页层严 ——
-            //    WITH / INTO / FOR UPDATE / 多条语句在 SqlQueryShape 就先判不可改，
-            //    而 QueryPaginator.isPaginable 拒的恰好是这几样（两边各自读过同一份语句文本）。
-            //    所以这是**潜在**边界、不是现役缺陷；哪天放宽判定（放行 CTE 之类），
-            //    这一支必须同时补上重取，不许留第二套重取规则。
+            // ⚠️ 重取钩子只挂在这一支，所以「可改」必须蕴含「可分页」：两者的差集就是
+            //    「状态那句『已保存』是真的、格子里的值是旧的」，而且不报错。
+            //    ⭐ D-64 实测：这条包含关系以前**真的漏了**，不是潜在边界 ——
+            //    SqlQueryShape 走词法、isPaginable 走 String.contains，于是
+            //    「WHERE body LIKE '% into %'」、「note = 'a;b'」、开头带注释这几类
+            //    普通 SELECT 判成可改却不分页（7 条，逐条列在 RefetchBoundaryTest 的失败里）。
+            //    修的是分页层：判定读「抹平字面量与注释之后的形状」，不再读原文。
+            //    哪天放宽 shape（放行 CTE 之类），这一支必须同时补上重取，
+            //    不许留第二套重取规则 —— 包含关系由 RefetchBoundaryTest 钉着，不靠这段注释。
             edit.reload = loader::load;
             VBox dataPane = new VBox(0, loader.node(), table);
             VBox.setVgrow(table, Priority.ALWAYS);
