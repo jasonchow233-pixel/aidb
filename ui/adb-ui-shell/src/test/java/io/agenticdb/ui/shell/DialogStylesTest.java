@@ -171,6 +171,73 @@ class DialogStylesTest {
         assertThat(dialog.getDialogPane().getStyleClass()).contains("adb-dialog");
     }
 
+    // ───────────────────── R64-b D-66：无主弹窗不许退回灰皮肤 ─────────────────────
+
+    /**
+     * ⭐ D-66：pose 通道（`DataGridPage:5510-5522`）传 owner=null，
+     * {@code stylesheetsOf}/{@code themeOf} 双双落空 → 弹窗一张应用样式表都没挂上、
+     * 主题类也没抄 → p8 两帧里的按钮层级/主题色全是回退态，**帧不代表真实使用**。
+     * 旧测试 aNullOwnerDoesNotBreakTheDialog 只查「不炸」，没查「有没有皮肤」。
+     * 这两条补上：无主弹窗也要有样式表 + 主题类（兜底读 adb.theme.force/ADB_THEME_FORCE，默认 light）。
+     */
+    @Test
+    void anOwnerlessDialogStillGetsTheAppTheme(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        Dialog<Void> dialog = styled(null);
+        assertThat(dialog.getDialogPane().getStylesheets())
+                .as("owner=null 不许不挂应用样式表（pose 帧灰皮肤的本因）")
+                .anyMatch(sheet -> sheet.endsWith("app.css"));
+        assertThat(dialog.getDialogPane().getStyleClass())
+                .as("主题类要么抄自 owner，要么走兜底（force 值 / light）")
+                .anyMatch(cls -> cls.equals("theme-light") || cls.equals("theme-dark"));
+    }
+
+    /**
+     * 计算值口径（D-50 同族）：读**上屏后**的底色，不读 CSS 文本。
+     * 主按钮在弹窗语境里必须是实心强调色 —— light #0078D7 / dark #4C9EEA。
+     */
+    @Test
+    void aPrimaryButtonPaintsItsAccentInsideAnOwnerlessDialog(FxRobot robot) throws Exception {
+        WaitForAsyncUtils.waitForFxEvents();
+        String[] read = WaitForAsyncUtils.asyncFx((Callable<String[]>) () -> {
+            Dialog<Void> d = new Dialog<>();
+            javafx.scene.control.Button button = new javafx.scene.control.Button("Start Export");
+            button.getStyleClass().addAll("adb-button", "adb-button--primary");
+            d.getDialogPane().setContent(new javafx.scene.layout.VBox(button));
+            DialogStyles.apply(d, null);
+            d.getDialogPane().applyCss();
+            d.getDialogPane().layout();
+            var bg = button.getBackground();
+            String sheet = String.valueOf(!d.getDialogPane().getStylesheets().isEmpty());
+            String fill = bg == null || bg.getFills().isEmpty()
+                    ? "null" : bg.getFills().get(0).getFill().toString();
+            return new String[]{sheet, fill};
+        }).get();
+        assertThat(read[0]).as("弹窗样式表必须挂上").isEqualTo("true");
+        assertThat(read[1])
+                .as("无主弹窗里的 primary 按钮底色必须是强调色（light #0078D7 / dark #4C9EEA），"
+                        + "不许退回 bg-inset 或 Modena 灰 —— 实测值见左侧")
+                .isIn("0x0078d7ff", "0x4c9eeaff");
+    }
+
+    /** 兜底主题必须吃和 App 验收通道同一个开关（系统属性优先于环境变量，链路口径一致）。 */
+    @Test
+    void theOwnerlessThemeFallbackFollowsTheForceSwitch() {
+        String previous = System.getProperty("adb.theme.force");
+        try {
+            System.setProperty("adb.theme.force", "dark");
+            assertThat(DialogStyles.fallbackTheme()).isEqualTo("theme-dark");
+            System.setProperty("adb.theme.force", "light");
+            assertThat(DialogStyles.fallbackTheme()).isEqualTo("theme-light");
+        } finally {
+            if (previous == null) {
+                System.clearProperty("adb.theme.force");
+            } else {
+                System.setProperty("adb.theme.force", previous);
+            }
+        }
+    }
+
     @Test
     void theDialogButtonStyleExistsInTheBusinessCss() {
         // 弹窗里的按钮必须走 .adb-dialog .button 规则（圆角、描边、主按钮实心）。

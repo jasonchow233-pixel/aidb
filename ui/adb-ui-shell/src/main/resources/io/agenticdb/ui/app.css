@@ -3218,6 +3218,32 @@
     -fx-background-color: -adb-accent-hover;
 }
 
+/* ⭐ D-66（2026-11-05）：弹窗语境的通用钮是后代选择器 (0,2,0/:hover 起 (0,3,0))，
+   把裸类 .adb-button--primary (0,1,0) 整族压平 —— 向导里的「开始导出/导入」
+   在真实路径也是和 Close 同底色的灰钮（D-50 同族坑：顺序对、特异性输）。
+   四态在这里重新钉一遍，特异性 ≥ 通用族。 */
+.adb-dialog .adb-button--primary {
+    -fx-background-color: -adb-accent;
+    -fx-text-fill: -adb-text-inverse;
+    -fx-border-color: transparent;
+}
+
+.adb-dialog .adb-button--primary:hover {
+    -fx-background-color: -adb-accent-hover;
+}
+
+.adb-dialog .adb-button--primary:pressed {
+    -fx-background-color: derive(-adb-accent, -14%);
+    -fx-text-fill: -adb-text-inverse;
+}
+
+.adb-dialog .adb-button--primary:disabled {
+    -fx-background-color: -adb-bg-disabled;
+    -fx-text-fill: -adb-text-disabled;
+    -fx-border-color: transparent;
+    -fx-opacity: 1;
+}
+
 /* 弹窗里的表格也用清单那套无边框外观，否则是一块浮在白底上的灰格子 */
 .adb-dialog .table-view {
     -fx-background-color: -adb-bg-canvas;

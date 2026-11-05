@@ -62,19 +62,50 @@ final class DialogStyles {
         dialog.setResizable(true);
         DialogPane pane = dialog.getDialogPane();
         pane.getStyleClass().add("adb-dialog");
-        for (String sheet : stylesheetsOf(owner)) {
+        List<String> sheets = stylesheetsOf(owner);
+        if (sheets.isEmpty()) {
+            // ⭐ D-66：无主弹窗（pose 通道 / 主窗口未挂场景时）也必须挂上应用样式表。
+            sheets = appStylesheets();
+        }
+        for (String sheet : sheets) {
             if (!pane.getStylesheets().contains(sheet)) {
                 pane.getStylesheets().add(sheet);
             }
         }
         String theme = themeOf(owner);
-        if (theme != null) {
-            pane.getStyleClass().removeAll(THEME_LIGHT, THEME_DARK);
-            pane.getStyleClass().add(theme);
+        if (theme == null) {
+            theme = fallbackTheme();
         }
+        pane.getStyleClass().removeAll(THEME_LIGHT, THEME_DARK);
+        pane.getStyleClass().add(theme);
         clampToScreen(pane, owner);
         orderButtonsNavicatStyle(pane);
         localizeStandardButtons(dialog);
+    }
+
+    /** ⭐ D-66：owner 拿不到样式表时直接从资源兜底（与 ThemeManager 挂的是同一套）。 */
+    private static List<String> appStylesheets() {
+        return List.of(stylesheet("/io/agenticdb/ui/theme-dark.css"),
+                stylesheet("/io/agenticdb/ui/theme-light.css"),
+                stylesheet("/io/agenticdb/ui/app.css"));
+    }
+
+    private static String stylesheet(String path) {
+        java.net.URL url = DialogStyles.class.getResource(path);
+        if (url == null) {
+            throw new IllegalStateException("missing stylesheet resource: " + path);
+        }
+        return url.toExternalForm();
+    }
+
+    /**
+     * ⭐ D-66：无主弹窗的主题兜底 —— 读 {@code adb.theme.force} / {@code ADB_THEME_FORCE}
+     * （与 App 的验收截图通道同一开关），dark 按暗色，其余一律亮色（评审基准）。
+     */
+    static String fallbackTheme() {
+        String force = System.getProperty("adb.theme.force",
+                System.getenv().getOrDefault("ADB_THEME_FORCE", "")).trim();
+        return ThemeMode.of(force) == ThemeMode.DARK ? THEME_DARK : THEME_LIGHT;
     }
 
     /**
