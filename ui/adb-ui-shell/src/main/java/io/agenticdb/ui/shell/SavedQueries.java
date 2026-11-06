@@ -80,7 +80,7 @@ final class SavedQueries {
         this.key = key == null ? KEY : key;
     }
 
-    /** 全部已保存的查询（按保存时间倒序）。 */
+    /** 全部条目 —— 查询<b>和</b>片段混在一起，给类型列能区分的清单页用；按保存时间倒序。 */
     List<Entry> all() {
         List<Entry> items = load();
         List<Entry> sorted = new ArrayList<>(items);
@@ -112,6 +112,16 @@ final class SavedQueries {
     /** 全部片段（Q6）。 */
     List<Entry> snippets() {
         return load().stream().filter(Entry::snippet).toList();
+    }
+
+    /**
+     * 全部完整查询（不含片段）—— ⭐ D-82 与 {@link #snippets()} 是<b>成对的出口</b>。
+     *
+     * <p>计数不能拿 {@link #all()} 的条数当「查询数」：左树 Queries 分组只列查询，
+     * 页脚以前数的是 all()，于是「3 saved queries」对着树上 2 条。
+     */
+    List<Entry> queries() {
+        return load().stream().filter(entry -> !entry.snippet()).toList();
     }
 
     void delete(String name) {

@@ -219,8 +219,25 @@ final class SavedQueriesPage extends VBox {
                     .findFirst()
                     .ifPresent(entry -> table.getSelectionModel().select(entry));
         }
-        summary.setText(I18n.tPlural("saved.summary", rows.size(), rows.size()));
+        summary.setText(countSummary());
         updateActions();
+    }
+
+    /**
+     * ⭐ D-82：页脚<b>按种类</b>计数，和左树 Queries 分组同一口径（官方帧状态栏写的就是「4 Queries」）。
+     *
+     * <p>清单本身仍是查询 + 片段混排（类型列区分，N24 的裁定），所以这里数的是
+     * {@link SavedQueries#queries()} 与 {@link SavedQueries#snippets()} 两个出口，
+     * 不是 {@code rows.size()}；没有片段时不拖「· 0 snippets」这条空尾巴。
+     */
+    private String countSummary() {
+        int queries = saved.queries().size();
+        int snippets = saved.snippets().size();
+        String summary = I18n.tPlural("saved.summary", queries, queries);
+        if (snippets == 0) {
+            return summary;
+        }
+        return summary + " · " + I18n.tPlural("saved.snippetSummary", snippets, snippets);
     }
 
     /** 截图 / 验收摆态：选中第一行，让「设计 / 删除查询」处于可用态。 */

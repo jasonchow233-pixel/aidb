@@ -5,6 +5,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
+import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
@@ -22,8 +23,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * N24：已保存查询是<b>对象清单页</b>（四列 + 设计 / 新建 / 删除查询），不是弹窗。
  *
- * <p>门禁钉三件事：列与数据来自真实存储、双击 / 设计打开的就是选中那条、
- * 删除确认的默认键必须是「取消」。
+ * <p>门禁钉四件事：列与数据来自真实存储、双击 / 设计打开的就是选中那条、
+ * 删除确认的默认键必须是「取消」、页脚按种类计数（与左树 Queries 分组同一口径）。
  */
 @ExtendWith(ApplicationExtension.class)
 class SavedQueriesPageTest {
@@ -120,9 +121,50 @@ class SavedQueriesPageTest {
                 .hasSize(4);
     }
 
+    /**
+     * ⭐ D-82：页脚按<b>种类</b>计数，和左树 Queries 分组同一口径。
+     *
+     * <p>这一条钉的是帧对账查出的错：左树只列完整查询，页脚数的是
+     * {@code saved.all()}（查询 + 片段混在一起），于是「3 saved queries」对着树上 2 条 ——
+     * 用户以为树漏了一条。Navicat 官方帧（{@code navicat17-saved-queries-2026-10-28.png}）
+     * 状态栏写的就是「4 Queries」，按种类数。
+     *
+     * <p>期望写的是<b>英文字面量</b>，不是 {@code I18n.t("saved.summary")} ——
+     * 拿同一把键去断言同一行文字，两边一起改坏也不会红（见 {@code TerminologyGuardTest} 的反循环说明）。
+     */
+    @Test
+    void countsQueriesAndSnippetsSeparately() throws Exception {
+        SavedQueriesPage page = openPage();
+
+        assertThat(summaryText(page))
+                .as("2 条查询 + 1 个片段：页脚说 2 条查询，片段单列在后面")
+                .isEqualTo("2 saved queries · 1 snippet");
+    }
+
+    /** 没有片段时不能拖一条空尾巴（也是「按种类」的另一半：0 不等于 1）。 */
+    @Test
+    void omitsTheSnippetCountWhenThereAreNoSnippets() throws Exception {
+        SavedQueries queriesOnly = new SavedQueries(
+                new SettingsStore(), "saved.page." + System.nanoTime());
+        queriesOnly.save("solo", "SELECT 1");
+        SavedQueriesPage page = openPage(queriesOnly);
+
+        assertThat(summaryText(page))
+                .as("只有一个片段库为空时，摘要就是单句 + 单数形")
+                .isEqualTo("1 saved query");
+    }
+
     private SavedQueriesPage openPage() throws Exception {
+        return openPage(saved);
+    }
+
+    private String summaryText(SavedQueriesPage page) throws Exception {
+        return onFx(() -> ((javafx.scene.control.Label) page.lookup("#saved-summary")).getText());
+    }
+
+    private SavedQueriesPage openPage(SavedQueries store) throws Exception {
         return onFx(() -> {
-            SavedQueriesPage page = new SavedQueriesPage(saved, designed::set,
+            SavedQueriesPage page = new SavedQueriesPage(store, designed::set,
                     created::incrementAndGet, () -> { }, message -> { });
             Scene scene = new Scene(page, 1000, 500);
             stage.setScene(scene);

@@ -106,9 +106,17 @@ class SavedQueriesTest {
                         assertThat(entry.snippet()).isTrue();
                         assertThat(entry.kind().label()).isEqualTo(I18n.t("saved.kind.snippet"));
                     });
-            assertThat(saved.all().stream().filter(e -> !e.snippet()).count())
-                    .as("查询条目不是片段")
-                    .isEqualTo(1);
+            assertThat(saved.queries())
+                    .as("⭐ D-82：queries() 是与 snippets() 成对的出口 —— 只有完整查询进得来")
+                    .hasSize(1)
+                    .first()
+                    .satisfies(entry -> {
+                        assertThat(entry.name()).isEqualTo("月度报表");
+                        assertThat(entry.snippet()).isFalse();
+                    });
+            assertThat(saved.queries().size() + saved.snippets().size())
+                    .as("两个出口加起来正好等于清单总数：既不重复也不漏，计数才对得上")
+                    .isEqualTo(saved.all().size());
         }
     }
 
