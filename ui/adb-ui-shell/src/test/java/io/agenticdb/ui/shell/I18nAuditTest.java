@@ -150,8 +150,16 @@ class I18nAuditTest {
      */
     private static final int MODEL_CJK_CEILING = 133;
 
-    /** 源码里对 {@link I18n#t(String, Object...)} 的键引用。 */
-    private static final Pattern KEY_REFERENCE = Pattern.compile("I18n\\.t\\(\\s*\"([^\"]+)\"");
+    /**
+     * 源码里对 {@link I18n#t(String, Object...)} / {@link I18n#tPlural} 的键引用。
+     *
+     * <p>⚠️ 两个方法都要认。第一版只写 {@code I18n\.t\(}，而 {@code I18n.t(} 并<b>不是</b>
+     * {@code I18n.tPlural(} 的子串（{@code t} 后面跟的是 {@code P} 不是括号），
+     * 于是 tPlural 引用的键会整批落在「键存在性」门禁的视野之外 —— 门禁说它穷举了引用，
+     * 其实漏了一整个方法。
+     */
+    private static final Pattern KEY_REFERENCE =
+            Pattern.compile("I18n\\.(t|tPlural)\\(\\s*\"([^\"]+)\"");
 
     /**
      * 动作构造：{@code actions.register("id", …)} 与 {@code new Action("id", …)}。
@@ -248,7 +256,14 @@ class I18nAuditTest {
         for (Path file : uiSources()) {
             Matcher matcher = KEY_REFERENCE.matcher(read(file));
             while (matcher.find()) {
-                referenced.add(matcher.group(1));
+                String key = matcher.group(2);
+                // tPlural 取的是 <主干>.one / <主干>.other —— 主干本身不是键，展开成两形才对账。
+                if ("tPlural".equals(matcher.group(1))) {
+                    referenced.add(key + ".one");
+                    referenced.add(key + ".other");
+                } else {
+                    referenced.add(key);
+                }
             }
         }
         assertThat(referenced)
@@ -420,8 +435,9 @@ class I18nAuditTest {
                     }
                     String key = stringLiteral(raw.get(position));
                     if (key != null && !key.isEmpty()) {
+                        // 模型层构造点没有复数形：它们最终都走 I18n.t(单键)。
                         sites.add(new CallSite(key,
-                                modelKeyArguments(constructor.marker(), raw)));
+                                modelKeyArguments(constructor.marker(), raw), false));
                     }
                 }
                 at = open;
@@ -489,6 +505,11 @@ class I18nAuditTest {
      *
      * <p>顺带要求占位符从 {@code {0}} 起<b>连续</b>：{@code {0}} 和 {@code {2}} 缺 {@code {1}}
      * 会让第二个实参无处安放。
+     *
+     * <p>⭐ D-78 追加：{@code I18n.tPlural("k", n, a, b)} 的调用点<b>两形各判一次</b>
+     * （{@code k.one} 与 {@code k.other}），且实参个数<b>不</b>把选形那个 {@code n} 算进去 ——
+     * 它不进占位符。少这一步，「只给复数形补了 {@code {1}}」这种文案要到「恰好一条」那一刻
+     * 才露出字面量，而那一刻通常没人看着。
      */
     @Test
     void callSitesPassAsManyArgumentsAsTheBundlesHavePlaceholders() throws IOException {
@@ -499,24 +520,26 @@ class I18nAuditTest {
         for (Path file : uiSources()) {
             String source = stripComments(read(file));
             for (CallSite site : callSites(source)) {
-                String enText = en.getProperty(site.key());
-                String zhText = zh.getProperty(site.key());
-                // 键不存在由上一条门禁负责报，这里不重复报。
-                if (enText == null || zhText == null) {
-                    continue;
-                }
-                int expectedEn = placeholders(enText);
-                int expectedZh = placeholders(zhText);
-                if (expectedEn > 0 || expectedZh > 0 || site.args() > 0) {
-                    parameterized++;
-                }
-                if (site.args() != expectedEn) {
-                    problems.add(relative(file) + " " + site.key()
-                            + " 递了 " + site.args() + " 个实参，en 侧有 " + expectedEn + " 个占位符");
-                }
-                if (site.args() != expectedZh) {
-                    problems.add(relative(file) + " " + site.key()
-                            + " 递了 " + site.args() + " 个实参，zh 侧有 " + expectedZh + " 个占位符");
+                for (String key : keysSearchedBy(site)) {
+                    String enText = en.getProperty(key);
+                    String zhText = zh.getProperty(key);
+                    // 键不存在由上一条门禁负责报，这里不重复报。
+                    if (enText == null || zhText == null) {
+                        continue;
+                    }
+                    int expectedEn = placeholders(enText);
+                    int expectedZh = placeholders(zhText);
+                    if (expectedEn > 0 || expectedZh > 0 || site.args() > 0) {
+                        parameterized++;
+                    }
+                    if (site.args() != expectedEn) {
+                        problems.add(relative(file) + " " + key
+                                + " 递了 " + site.args() + " 个实参，en 侧有 " + expectedEn + " 个占位符");
+                    }
+                    if (site.args() != expectedZh) {
+                        problems.add(relative(file) + " " + key
+                                + " 递了 " + site.args() + " 个实参，zh 侧有 " + expectedZh + " 个占位符");
+                    }
                 }
             }
         }
@@ -529,8 +552,11 @@ class I18nAuditTest {
                 .isEmpty();
     }
 
-    /** 一个 {@code I18n.t("key", a, b)} 调用点：键名与<b>顶层实参个数</b>（不含键本身）。 */
-    private record CallSite(String key, int args) {
+    /**
+     * 一个调用点：键名、<b>顶层实参个数</b>（不含键本身，也不含 tPlural 的选形数），
+     * 以及它是不是 {@code tPlural}（键要展开成两形）。
+     */
+    private record CallSite(String key, int args, boolean plural) {
     }
 
     /**
@@ -556,27 +582,46 @@ class I18nAuditTest {
     }
 
     /**
-     * 括号/引号/花括号配平地扫一遍，取出每个 {@code I18n.t(} 的顶层参数。
+     * 括号/引号/花括号配平地扫一遍，取出每个 {@code I18n.t(}／{@code I18n.tPlural(} 的顶层参数。
      * 第一个参数不是纯字符串字面量的（拼出来的键）直接跳过 —— 那种由动作穷举那条门禁管。
+     *
+     * <p>{@code tPlural} 的<b>第二个</b>实参是「拿哪个数去选形」，它不进占位符，
+     * 所以顶层参数要扣两下（键 + 选形数）才是真正递给文案的值。
      */
     private static List<CallSite> callSites(String source) {
         List<CallSite> sites = new ArrayList<>();
-        String marker = "I18n.t(";
-        int at = 0;
-        while ((at = source.indexOf(marker, at)) >= 0) {
-            int open = at + marker.length() - 1;
-            List<String> args = splitTopLevel(source, open);
-            if (!args.isEmpty()) {
-                String first = args.get(0).trim();
-                if (first.length() >= 2 && first.charAt(0) == '"'
-                        && first.charAt(first.length() - 1) == '"'
-                        && first.substring(1, first.length() - 1).indexOf('"') < 0) {
-                    sites.add(new CallSite(first.substring(1, first.length() - 1), args.size() - 1));
+        for (String marker : List.of("I18n.t(", "I18n.tPlural(")) {
+            boolean plural = marker.equals("I18n.tPlural(");
+            int at = 0;
+            while ((at = source.indexOf(marker, at)) >= 0) {
+                int open = at + marker.length() - 1;
+                List<String> args = splitTopLevel(source, open);
+                if (!args.isEmpty()) {
+                    String first = args.get(0).trim();
+                    if (first.length() >= 2 && first.charAt(0) == '"'
+                            && first.charAt(first.length() - 1) == '"'
+                            && first.substring(1, first.length() - 1).indexOf('"') < 0) {
+                        int passed = args.size() - 1 - (plural ? 1 : 0);
+                        if (passed >= 0) {
+                            sites.add(new CallSite(
+                                    first.substring(1, first.length() - 1), passed, plural));
+                        }
+                    }
                 }
+                at = open;
             }
-            at = open;
         }
         return sites;
+    }
+
+    /**
+     * 一个调用点<b>真正查的键</b>：{@code tPlural} 有两个形，两形都要对账 ——
+     * 只给 {@code .other} 补了 {@code {1}} 而 {@code .one} 漏了，「一条」那一屏就会露出字面量。
+     */
+    private static List<String> keysSearchedBy(CallSite site) {
+        return site.plural()
+                ? List.of(site.key() + ".one", site.key() + ".other")
+                : List.of(site.key());
     }
 
     /** 从 {@code open} 指向的左括号开始，按<b>顶层逗号</b>切参数（嵌套括号、字符串内的逗号不算）。 */
@@ -996,6 +1041,39 @@ class I18nAuditTest {
 
         I18n.clearMissingKeys();
         assertThat(I18n.missingKeys()).as("清空后不留残余").isEmpty();
+    }
+
+    /**
+     * ⭐ D-78：{@code tPlural} 的<b>取形</b>行为 —— 静态门禁的另一半。
+     *
+     * <p>{@code TerminologyGuardTest} 只证明「两形都在资源里、调用点走的是 tPlural」，
+     * 证明不了<b>「正好一条」那一刻取到的是单数形</b>。那一幕要在运行时判：
+     * 帧证里 {@code p9-favorites} 拍到的是 {@code 1 favorites}，而它只在收藏恰好一条时出现。
+     */
+    @Test
+    void pluralFormsFollowTheCountTheyAreGiven() {
+        I18n.setLocale(Locale.ENGLISH);
+
+        assertThat(I18n.tPlural("fav.summary", 1, 1))
+                .as("一条收藏页脚那句")
+                .isEqualTo("1 favorite");
+        assertThat(I18n.tPlural("fav.summary", 3, 3)).isEqualTo("3 favorites");
+        assertThat(I18n.tPlural("fav.summary", 0, 0))
+                .as("英文只有 1 是单数，0 走复数形")
+                .isEqualTo("0 favorites");
+
+        // 选形数与显示值分开递：名词跟的是「共几张」，不是「显示几张」。
+        assertThat(I18n.tPlural("tableList.showingOf", 5, 1, 5))
+                .as("把选形绑死在 {0} 上会写出 \"Showing 1 of 5 table\"")
+                .isEqualTo("Showing 1 of 5 tables");
+        assertThat(I18n.tPlural("tableList.showingOf", 1, 1, 1))
+                .isEqualTo("Showing 1 of 1 table");
+
+        // 缺形不静默：和缺键同一套可见行为。
+        I18n.clearMissingKeys();
+        assertThat(I18n.tPlural("no.such.key", 2, 2)).isEqualTo("⚠no.such.key.other");
+        assertThat(I18n.missingKeys()).contains("no.such.key.other");
+        I18n.clearMissingKeys();
     }
 
     // ─────────────────────────── 工具 ───────────────────────────

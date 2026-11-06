@@ -332,7 +332,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
 
     public void refresh() {
         applyFilter();
-        status.setText(I18n.t("conn.status", profiles.size(), visible.size()));
+        status.setText(I18n.tPlural("conn.status", profiles.size(), profiles.size(), visible.size()));
         updateButtons();
     }
 
@@ -412,7 +412,7 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
 
     private void refreshAfterEdit() {
         applyFilter();
-        status.setText(I18n.t("conn.status", profiles.size(), visible.size()));
+        status.setText(I18n.tPlural("conn.status", profiles.size(), profiles.size(), visible.size()));
     }
 
     private void renameSelected() {

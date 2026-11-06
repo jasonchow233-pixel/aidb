@@ -219,7 +219,7 @@ final class SavedQueriesPage extends VBox {
                     .findFirst()
                     .ifPresent(entry -> table.getSelectionModel().select(entry));
         }
-        summary.setText(I18n.t("saved.summary", rows.size()));
+        summary.setText(I18n.tPlural("saved.summary", rows.size(), rows.size()));
         updateActions();
     }
 

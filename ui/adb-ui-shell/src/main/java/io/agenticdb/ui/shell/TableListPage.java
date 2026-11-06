@@ -1119,7 +1119,9 @@ final class TableListPage extends VBox {
         }
         if (search.getText() != null && !search.getText().isBlank()
                 && filtered.size() != rows.size()) {
-            summary.setText(I18n.t("tableList.showingOf", filtered.size(), rows.size()));
+            // 名词跟的是「共几张表」那一个数，不是「显示几张」—— 1 of 5 仍是 tables。
+            summary.setText(I18n.tPlural("tableList.showingOf",
+                    rows.size(), filtered.size(), rows.size()));
         } else {
             // ⭐ N15：Navicat 的对象工具条没有「N 张表」这一项 —— 常态留空，
             //    只有搜索过滤时回一句「显示 X / Y」，否则七颗键会被挤出窗口。

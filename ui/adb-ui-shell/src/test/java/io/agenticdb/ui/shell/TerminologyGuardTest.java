@@ -184,6 +184,149 @@ class TerminologyGuardTest {
         }
     }
 
+    /**
+     * ⭐ D-78：计数汇总句必须有「一条」与「多条」两种写法。
+     *
+     * <p>立案事实（2026-11-06 实测）：en 侧把名词一律写死成复数 —— 帧证最狠的是
+     * {@code p9-favorites} 那颗收藏，页脚写着 <b>「1 favorites」</b>；同一族的还有
+     * {@code conn.status}（{@code {0} connections · {1} shown}）、{@code saved.summary}、
+     * {@code tableList.showingOf}（{@code Showing {0} of {1} tables} → 1 of 1 也说 tables）。
+     *
+     * <p>⚠️ 为什么用两个键而不是 choice 语法：{@code I18n} 类注释第 2 条明确**不用
+     * MessageFormat**（单引号会把 {@code Don't} 吃掉，中文侧还没撇号，两边会不对称地坏），
+     * {@code I18nAuditTest#placeholdersAreSubstitutedLiterallyNotByMessageFormat} 就是把这条钉着的门禁。
+     * 所以 {@code {0,choice,1#…|1<…}} 这条路是堵的，只能 {@code .one} / {@code .other} 两键，
+     * 由 {@code I18n.tPlural} 按数取其一。
+     *
+     * <p>⚠️ 两形的**占位符集合必须一致**（{@code .one} 仍写 {@code {0}}，不把数字烤进文案）：
+     * 一是实参个数由调用点决定，两形不同构就会有一半露出字面 {@code {1}}；
+     * 二是 {@code I18nAuditTest} 那条「实参个数 ⊆ 占位符个数」的门禁继续按同一个数对账
+     * （tPlural 的调用点现在<b>两形各判一次</b>，选形那个数不进占位符、也不算实参）。
+     *
+     * <p>⚠️ 选形数与显示值是<b>分开递</b>的，不是「第一个实参就是那个数」：
+     * {@code tableList.showingOf} 那句 {@code Showing {0} of {1} tables} 里，
+     * 名词跟的是<b>第二个</b>数（总数）—— 「显示 1 / 共 5 张表」仍是 tables。
+     * 把选形绑死在 {@code {0}} 上会写出「Showing 1 of 5 table」。
+     *
+     * <p>⚠️ 本条只管**立案的四句**。全量实测另有 33 句同族（{@code N rows}、{@code N objects}、
+     * {@code Dropped N tables}…），其中 {@code query.rowsAndDuration} 那一支归 D-75/Q13 未拍，
+     * {@code Showing {0} of {1}} 这种「一个名词两个数」的还要先定句式 —— 已另立 D-89 带清单。
+     */
+    @Test
+    void countSummariesHaveBothPluralForms() throws IOException {
+        List<String> summaries = List.of(
+                "conn.status", "fav.summary", "saved.summary", "tableList.showingOf");
+        List<String> bareLeft = new ArrayList<>();
+        List<String> sameShape = new ArrayList<>();
+        java.util.Properties en = null;
+        java.util.Properties zh = null;
+        for (Path bundle : bundles()) {
+            java.util.Properties props = new java.util.Properties();
+            try (var in = Files.newInputStream(bundle)) {
+                props.load(new java.io.InputStreamReader(in, StandardCharsets.UTF_8));
+            }
+            if (bundle.getFileName().toString().equals("messages_en.properties")) {
+                en = props;
+            } else if (bundle.getFileName().toString().equals("messages_zh.properties")) {
+                zh = props;
+            }
+            for (String key : summaries) {
+                String one = props.getProperty(key + ".one");
+                String other = props.getProperty(key + ".other");
+                assertThat(one)
+                        .as("%s.one 在 %s 里不存在 —— 缺一条就等于界面还在说「1 favorites」",
+                                key, bundle.getFileName())
+                        .isNotNull();
+                assertThat(other)
+                        .as("%s.other 在 %s 里不存在", key, bundle.getFileName())
+                        .isNotNull();
+                if (props.getProperty(key) != null) {
+                    bareLeft.add(bundle.getFileName() + " → " + key);
+                }
+                // 两形必须同构：占位符集合一样，实参个数才对得上同一个数。
+                if (!placeholderIndexes(one).equals(placeholderIndexes(other))) {
+                    sameShape.add(bundle.getFileName() + " → " + key
+                            + "：.one " + placeholderIndexes(one) + " / .other "
+                            + placeholderIndexes(other));
+                }
+            }
+        }
+        assertThat(bareLeft)
+                .as("裸键还留着就是第二出口（改句式或换语言时只改到一半）：\n  %s",
+                        String.join("\n  ", bareLeft))
+                .isEmpty();
+        assertThat(sameShape)
+                .as(".one 与 .other 的占位符集合不一致：\n  %s", String.join("\n  ", sameShape))
+                .isEmpty();
+
+        // en 侧才谈单复数：一条那形必须<b>真的是另一句话</b>，且不许照抄复数名词。
+        assertThat(en)
+                .as("没扫到 en 侧 bundle —— 单复数这半条门禁会空转")
+                .isNotNull();
+        assertThat(zh)
+                .as("没扫到 zh 侧 bundle —— 「中文两形同文」那半条门禁会空转")
+                .isNotNull();
+        List<String> sameSaid = new ArrayList<>();
+        List<String> zhSplit = new ArrayList<>();
+        List<String> stillPlural = new ArrayList<>();
+        for (String key : summaries) {
+            String one = en.getProperty(key + ".one");
+            String other = en.getProperty(key + ".other");
+            if (one.equals(other)) {
+                sameSaid.add(key + "：en 两形写成同一句「" + one + "」—— 换出口也救不了「1 favorites」");
+            }
+            if (!zh.getProperty(key + ".one").equals(zh.getProperty(key + ".other"))) {
+                zhSplit.add(key + "：zh 两形不同 —— 中文没有单复数，同一个数不该有两种说法");
+            }
+            Matcher noun = COUNT_THEN_PLURAL.matcher(other);
+            while (noun.find()) {
+                String asWritten = "{" + noun.group(1) + "} " + noun.group(2);
+                if (one.contains(asWritten)) {
+                    stillPlural.add(key + "：.one 仍是「" + one + "」，该写成单数（" + asWritten + "）");
+                }
+            }
+        }
+        assertThat(sameSaid)
+                .as("en 侧「一条」与「多条」是同一句话：\n  %s", String.join("\n  ", sameSaid))
+                .isEmpty();
+        assertThat(zhSplit)
+                .as("zh 侧凭空造出第二种说法：\n  %s", String.join("\n  ", zhSplit))
+                .isEmpty();
+        assertThat(stillPlural)
+                .as("en 侧「一条」那形仍读成复数：\n  %s", String.join("\n  ", stillPlural))
+                .isEmpty();
+
+        // 出口只许一个：调用点必须走 tPlural，不能再有 I18n.t("conn.status"…) 这种裸取。
+        List<String> wrongExit = new ArrayList<>();
+        for (Path source : shellSources()) {
+            String text = Files.readString(source, StandardCharsets.UTF_8);
+            for (String key : summaries) {
+                if (Pattern.compile("I18n\\.t\\s*\\(\\s*\"" + java.util.regex.Pattern.quote(key) + "\"")
+                        .matcher(text).find()) {
+                    wrongExit.add(source.getFileName() + " → I18n.t(\"" + key + "\", …)");
+                }
+            }
+        }
+        assertThat(wrongExit)
+                .as("这些调用点还在按裸键取文案（数词永远走 .other 那条复数）：\n  %s",
+                        String.join("\n  ", wrongExit))
+                .isEmpty();
+    }
+
+    /** 值里出现的占位符下标集合（{@code {0}}/{@code {1}} → {0,1}）。 */
+    private static Set<Integer> placeholderIndexes(String value) {
+        Set<Integer> indexes = new LinkedHashSet<>();
+        Matcher matcher = Pattern.compile("\\{(\\d+)}").matcher(value);
+        while (matcher.find()) {
+            indexes.add(Integer.parseInt(matcher.group(1)));
+        }
+        return indexes;
+    }
+
+    /** 「占位符 + 复数名词」的形状。 */
+    private static final Pattern COUNT_THEN_PLURAL =
+            Pattern.compile("\\{(\\d)}\\s+([A-Za-z]+s)\\b");
+
     /** 两套主 bundle（en / zh）—— 文案口径必须两边都成立。 */
     private static List<Path> bundles() throws IOException {
         Path root = repositoryRoot();

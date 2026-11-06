@@ -45,7 +45,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *       要写成 {@code "Don''t delete"} 才对 —— 而这条规则对写文案的人完全不可见，
  *       且中文侧根本没有撇号，两套资源会不对称地坏。
  *       这里改用字面量 {@code {0}}/{@code {1}} 直替换（{@link #format}），
- *       行为可预测、两侧一致。需要真正的复数/日期/数字格式化时再单独引入，
+ *       行为可预测、两侧一致。复数也不走 {@code {0,choice}} —— 那同样是 MessageFormat 的一部分，
+ *       改由 {@link #tPlural} 按 {@code key.one} / {@code key.other} 两个键取形；
+ *       日期/数字格式化仍未引入，需要时单独做，
  *       不要顺手把 {@code t()} 换成 MessageFormat。</li>
  *   <li><b>不走 {@code ResourceBundle} 的 locale 级联。</b>
  *       {@code getBundle(base, Locale.ENGLISH)} 在找不到 {@code messages_en} 时会
@@ -189,6 +191,30 @@ public final class I18n {
     /** 取文案并填 {@code {0}}/{@code {1}}… 占位符。 */
     public static String t(String key, Object... args) {
         return format(t(key), args);
+    }
+
+    /**
+     * 取「按数取形」的文案：{@code count == 1} 用 {@code key.one}，其余用 {@code key.other}。
+     *
+     * <p>为什么不是 {@code {0,choice,1#…|1<…}}：类注释第 2 条定死了不做 MessageFormat，
+     * choice 语法正是 MessageFormat 的一部分。复数只能靠<b>两个键</b>，
+     * 于是这里就是那唯一的出口 —— 调用点不许再自己拼 {@code key + (n == 1 ? ".one" : ".other")}。
+     *
+     * <p>⚠️ {@code count} <b>只决定取哪一形</b>，不进占位符；{@code args} 照旧填
+     * {@code {0}}/{@code {1}}…。之所以不把 {@code count} 自动当作 {@code {0}}：
+     * {@code Showing {0} of {1} tables} 那句里，名词跟的是<b>第二个</b>数（总数），
+     * 强行绑死第一个数会写出「Showing 1 of 5 table」。
+     *
+     * <p>⚠️ 两形的<b>占位符集合必须一致</b>（{@code .one} 仍写 {@code {0}}，
+     * 不把数字烤进文案），否则实参个数对账会落在一半文案上。
+     * 由 {@code TerminologyGuardTest#countSummariesHaveBothPluralForms} 钉着。
+     *
+     * @param key   资源键<b>主干</b>，例如 {@code fav.summary}（实际取 {@code fav.summary.one} / {@code .other}）
+     * @param count 用来选形的数；1 走 {@code .one}，其余（含 0）走 {@code .other}
+     * @param args  填进占位符的显示值
+     */
+    public static String tPlural(String key, long count, Object... args) {
+        return t(count == 1 ? key + ".one" : key + ".other", args);
     }
 
     /**

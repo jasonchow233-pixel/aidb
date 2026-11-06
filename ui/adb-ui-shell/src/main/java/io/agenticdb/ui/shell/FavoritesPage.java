@@ -128,7 +128,7 @@ final class FavoritesPage extends VBox {
         list.getItems().setAll(favorites);
         summary.setText(favorites.isEmpty()
                 ? I18n.t("fav.emptyHint")
-                : I18n.t("fav.summary", favorites.size()));
+                : I18n.tPlural("fav.summary", favorites.size(), favorites.size()));
     }
 
     private void openSelected() {
