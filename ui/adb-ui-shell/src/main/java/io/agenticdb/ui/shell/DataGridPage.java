@@ -1139,7 +1139,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         objectTabs.addTab(ObjectSectionsPanel.SECTION_INDEXES, I18n.t("grid.tab.indexes"));
         objectTabs.addTab(ObjectSectionsPanel.SECTION_FOREIGN_KEYS, I18n.t("grid.tab.foreignKeys"));
         objectTabs.addTab(ObjectSectionsPanel.SECTION_TRIGGERS, I18n.t("grid.tab.triggers"));
-        objectTabs.addTab(ObjectSectionsPanel.SECTION_SQL, "SQL");
+        objectTabs.addTab(ObjectSectionsPanel.SECTION_SQL, I18n.t("grid.tab.sql"));
         objectTabs.setOnSelect(this::sectionSelected);
         objectTabs.setSelected("data");
         // ⭐ 切面条并进标题栏同一行 —— 单独占一行会把「第一条数据」

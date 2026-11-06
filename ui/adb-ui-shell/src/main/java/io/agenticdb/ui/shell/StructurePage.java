@@ -277,7 +277,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
                 tab(I18n.t("structure.tab.foreignKeys"), buildForeignKeysTab()),
                 tab(I18n.t("structure.tab.checks"), buildChecksTab()),
                 tab(I18n.t("structure.tab.triggers"), buildTriggersTab()),
-                tab("DDL", ddlBox));
+                tab(I18n.t("structure.tab.ddl"), ddlBox));
 
         VBox body = new VBox(8, toolbar, tabs);
         body.getStyleClass().add("adb-page__body");

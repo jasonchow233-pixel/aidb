@@ -7,7 +7,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -35,6 +39,20 @@ class TerminologyGuardTest {
             new String[]{"新建表", "新建数据表"});
 
     private static final Pattern STRING_LITERAL = Pattern.compile("\"(.*?)\"", Pattern.DOTALL);
+
+    /** 页签 helper 的**声明**：返回 Tab（或 void）且方法名叫 {@code tab}/{@code addTab}。 */
+    private static final Pattern TAB_HELPER_DECL =
+            Pattern.compile("\\bTab(?:<[^>]*>)?\\s+(addTab|tab)\\s*\\(([^)]*)\\)"
+                    + "|\\bvoid\\s+(addTab|tab)\\s*\\(([^)]*)\\)");
+
+    /** 形参名里表明「这一个就是上屏文案」的词。 */
+    private static final Pattern TAB_LABEL_PARAM =
+            Pattern.compile("\\bString\\s+(title|label|text|caption)\\b");
+
+    /** 页签构造点：自己的 helper，和 JavaFX 的 {@code new Tab(}。 */
+    private static final List<Pattern> TAB_CALLS = List.of(
+            Pattern.compile("\\b(addTab|tab)\\s*\\("),
+            Pattern.compile("\\bnew\\s+(Tab)\\s*\\("));
 
     @Test
     void oneActionHasExactlyOneName() throws IOException {
@@ -77,6 +95,377 @@ class TerminologyGuardTest {
                 offenders.add(source.getFileName() + "：「" + text + "」应为「" + pair[0] + "」");
             }
         }
+    }
+
+    /**
+     * ⭐ D-77：省略号只有**一个**写法 —— `…`，不许再出现「三个句点」。
+     *
+     * <p>立案事实（2026-11-06 实测）：同一个 {@code messages_en.properties} 里
+     * 「三个点」29 条、`…` 37 条并存（菜单项走前者、状态句走后者），
+     * {@code messages_zh.properties} 则**全是** `…`（0 条三个点）——
+     * 换语言时同一颗按钮的读法会跟着变，这是「一个口径一个出口」的反例。
+     *
+     * <p>⚠️ 判定写成「紧贴词字符的三个点」而不是 {@code contains("...")}：
+     * {@code SELECT ... INTO} / {@code CREATE TABLE ...} 里的三个点是**省略语法**、
+     * 两边带空格，不是省略号 —— 一刀切会把 SQL 例句改成读不通的 {@code SELECT … INTO}。
+     */
+    @Test
+    void oneEllipsisStyle() throws IOException {
+        Pattern asciiEllipsis = Pattern.compile("\\S\\.\\.\\.");
+        List<String> offenders = new ArrayList<>();
+        int nativeEllipsis = 0;
+        for (Path source : uiTextSources()) {
+            String text = Files.readString(source, StandardCharsets.UTF_8);
+            Matcher literal = STRING_LITERAL.matcher(text);
+            while (literal.find()) {
+                nativeEllipsis += countEllipsis(literal.group(1));
+                hit(source, literal.group(1), asciiEllipsis, offenders);
+            }
+            if (source.toString().endsWith(".properties")) {
+                for (String line : text.split("\\R")) {
+                    int equals = line.indexOf('=');
+                    if (equals < 0 || line.startsWith("#")) {
+                        continue;
+                    }
+                    String value = line.substring(equals + 1);
+                    nativeEllipsis += countEllipsis(value);
+                    hit(source, value, asciiEllipsis, offenders);
+                }
+            }
+        }
+        // 反空转：扫描器要是压根没看见过 `…`，那「没有 offender」只是它没在扫。
+        assertThat(nativeEllipsis)
+                .as("必须真的扫到用 `…` 的文案，否则这条门禁是空转")
+                .isGreaterThan(20);
+        assertThat(offenders)
+                .as("省略号两套写法并存（中英资源读法因此不一致）：\n  %s",
+                        String.join("\n  ", offenders))
+                .isEmpty();
+    }
+
+    private static int countEllipsis(String text) {
+        return text.replaceAll("[^\\u2026]", "").length();
+    }
+
+    /**
+     * ⭐ D-80（第一批）：同一个概念的标签在**同一个界面里**只能有一种说法。
+     *
+     * <p>立案事实（2026-11-06 实测，两套 bundle 都漂）：设计器那张字段表里，
+     * 列头是 {@code structure.col.nullable}（en `Nullable` / zh 「可空」），
+     * 而它自己弹出的增改字段对话框里同一颗复选框是 {@code structure.dialog.nullable}
+     * （en `Allow NULL` / zh 「允许 NULL」）—— 上下两屏两种说法，用户要先猜一次
+     * 「Allow NULL 和 Nullable 是不是同一件事」。
+     *
+     * <p>⚠️ 这条只钉「同概念同叫法」，不钉正反极性：
+     * 新建表对话框那列仍然叫「不为空 / Not Null」（{@code newtable.col.notNull}），
+     * 它是**反着**绑定的（勾上 = NOT NULL，见 {@code NewTableDialog.java:680/1902}），
+     * 跟这里的正向「可空」并存。把前者翻成正向要同时改绑定、列 id、SQL 生成与 67 条
+     * {@code NewTableDialogTest}，属于行为改动，不属于本批文案改动 —— 已另立 D-88。
+     */
+    @Test
+    void sameConceptUsesOneLabelPerBundle() throws IOException {
+        List<String[]> pairs = List.<String[]>of(
+                new String[]{"structure.col.nullable", "structure.dialog.nullable"});
+        for (Path bundle : bundles()) {
+            java.util.Properties props = new java.util.Properties();
+            try (var in = Files.newInputStream(bundle)) {
+                props.load(new java.io.InputStreamReader(in, StandardCharsets.UTF_8));
+            }
+            for (String[] pair : pairs) {
+                String left = props.getProperty(pair[0]);
+                String right = props.getProperty(pair[1]);
+                assertThat(left).as("键 %s 在该 bundle 里不存在", pair[0]).isNotNull();
+                assertThat(right).as("键 %s 在该 bundle 里不存在", pair[1]).isNotNull();
+                assertThat(right)
+                        .as("%s 的标签与 %s 是同一个概念，不该有两种叫法（bundle=%s）",
+                                pair[1], pair[0], bundle.getFileName())
+                        .isEqualTo(left);
+            }
+        }
+    }
+
+    /** 两套主 bundle（en / zh）—— 文案口径必须两边都成立。 */
+    private static List<Path> bundles() throws IOException {
+        Path root = repositoryRoot();
+        List<Path> found = new ArrayList<>();
+        try (Stream<Path> paths = Files.walk(root)) {
+            paths.filter(p -> p.getFileName().toString().matches("messages_[a-z]{2}\\.properties"))
+                    .filter(p -> p.toString().replace('\\', '/').contains("src/main/resources"))
+                    .forEach(found::add);
+        }
+        assertThat(found)
+                .as("一个 bundle 都没扫到 = 这条门禁空转")
+                .hasSizeGreaterThanOrEqualTo(2);
+        return found;
+    }
+
+    /**
+     * ⭐ D-76：页签标签也只能从 bundle 里取，不许在源码里硬贴一个词。
+     *
+     * <p>立案事实（2026-11-06 实测）：{@code StructurePage} 那七个页签里六个走
+     * {@code I18n.t("structure.tab.*")}，最后一个硬写 {@code tab("DDL", …)}；
+     * {@code DataGridPage} 的对象切面同理，{@code addTab(SECTION_SQL, "SQL")}。
+     * 一整排标签里有一颗不走同一出口 —— 换语言时它不会跟着换，
+     * 而门禁全绿（其余六颗都好）。
+     *
+     * <p>⚠️ 这条钉的是**出口**，不是名字：数据页那颗「SQL」摆的是
+     * 「库返回的 DDL + 按当前方言生成的一条 SELECT」（{@code ObjectSectionsPanel.buildSqlText}），
+     * 结构页那颗「DDL」只摆 DDL 本身，且明确只读（{@code StructurePage} 里
+     * {@code ddlEditor.area().setEditable(false)}，注释写着「DDL 是内省/生成出来的，不允许在这里改」）。
+     * 两者内容不同，把它们改成同一个词才是新的错 —— 原条目里
+     * 「SQL/DDL 命名分叉要统一成一个」这半句<b>翻案</b>（2026-11-06 回代码核过）。
+     *
+     * <p>顺手扫出来的第二族（同一缺陷、原条目没写）：{@code CellDetailsDrawer} 的
+     * {@code new Tab("JSON")}／{@code new Tab("Hex")} 也是字面量标签 —— 一整排五个页签里
+     * Text/Image/Metadata 走 bundle，这两颗不走。四颗一起接进 bundle：
+     * {@code grid.tab.sql}、{@code structure.tab.ddl}、{@code details.tab.json}、
+     * {@code details.tab.hex}（中文侧 Hex 翻成「十六进制」，正是这条门禁要保住的那点差异）。
+     */
+    @Test
+    void everyTabLabelComesFromABundle() throws IOException {
+        List<Path> sources = shellSources();
+        int declarationsRead = 0;
+        // 「标签在第几个参数」这件事**从声明里读**，不在测试里再造第二份签名知识：
+        //   ObjectTabBar.addTab(id, label)     → 1
+        //   StructurePage.tab(title, content)  → 0
+        //   ConnectionWizard.tab(id, title, …) → 1（第一位是测试 id，不是文案）
+        //   NewTableDialog.tab(title, id, …)   → 0
+        // 三个同名私有 helper 的签名互不相同，按名字硬编一条规则必然看错位置 ——
+        // 上一版就是按「第一位是不是引号」判，把连接向导的 7 个 id 全报成缺陷。
+        Map<String, java.util.Set<Integer>> declaredGlobally = new LinkedHashMap<>();
+        Map<Path, Map<String, Integer>> declaredInFile = new LinkedHashMap<>();
+        for (Path source : sources) {
+            String text = Files.readString(source, StandardCharsets.UTF_8);
+            Map<String, Integer> labels = new LinkedHashMap<>();
+            Matcher declaration = TAB_HELPER_DECL.matcher(text);
+            while (declaration.find()) {
+                boolean tabReturning = declaration.group(1) != null;
+                int position = labelPosition(tabReturning
+                        ? declaration.group(2) : declaration.group(4));
+                if (position >= 0) {
+                    declarationsRead++;
+                    labels.put(tabReturning ? declaration.group(1) : declaration.group(3),
+                            position);
+                    declaredGlobally
+                            .computeIfAbsent(tabReturning
+                                    ? declaration.group(1) : declaration.group(3),
+                                    k -> new LinkedHashSet<>())
+                            .add(position);
+                }
+            }
+            declaredInFile.put(source, labels);
+        }
+
+        Set<Integer> positionsRead = new LinkedHashSet<>();
+        declaredInFile.values().forEach(labels -> positionsRead.addAll(labels.values()));
+        assertThat(declarationsRead)
+                .as("一条 helper 声明都没读出来 = 签名解析失效，下面全部断言都失去前提")
+                .isGreaterThanOrEqualTo(4);
+        assertThat(positionsRead)
+                .as("读出来的标签位置里没有 0 也没有 1 —— 说明「标签在第几位」根本没按文件区分开，"
+                        + "上一版把连接向导的 id 当文案报的那种错就是这么来的")
+                .contains(0, 1);
+
+        List<String> offenders = new ArrayList<>();
+        int checked = 0;
+        for (Path source : sources) {
+            String text = Files.readString(source, StandardCharsets.UTF_8);
+            for (String[] call : tabCalls(text)) {
+                checked++;
+                String arguments = call[1];
+                int position;
+                if ("new Tab".equals(call[0])) {
+                    position = 0; // JavaFX 自己的构造器：第一个参数就是 text
+                } else {
+                    Integer local = declaredInFile.get(source).get(call[0]);
+                    java.util.Set<Integer> global = declaredGlobally.getOrDefault(
+                            call[0], Set.of());
+                    position = local != null ? local
+                            : global.size() == 1 ? global.iterator().next() : -1;
+                    if (position < 0) {
+                        offenders.add(source.getFileName() + "：" + call[0]
+                                + "(…) 的标签位置读不出来（声明里没找到 title/label 形参）："
+                                + arguments.replace("\n", " ").strip());
+                        continue;
+                    }
+                }
+                List<String> parts = splitTopLevel(arguments);
+                if (parts.size() > position && parts.get(position).strip().startsWith("\"")) {
+                    offenders.add(source.getFileName() + "：" + call[0] + "("
+                            + parts.get(position).strip() + ") —— 字面量当标签，换语言不跟着换");
+                }
+            }
+        }
+        assertThat(checked)
+                .as("一个页签构造点都没扫到 = 这条门禁空转")
+                .isGreaterThan(15);
+        assertThat(offenders)
+                .as("页签标签没走 bundle（换语言时这一颗不跟着换）：\n  %s",
+                        String.join("\n  ", offenders))
+                .isEmpty();
+    }
+
+    /** 形参表里 {@code title}/{@code label}/{@code text}/{@code caption} 排第几；没有则 -1。 */
+    private static int labelPosition(String parameterList) {
+        List<String> parts = splitTopLevel(parameterList);
+        for (int i = 0; i < parts.size(); i++) {
+            if (TAB_LABEL_PARAM.matcher(parts.get(i)).find()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * 这一页里所有页签构造点：{@code addTab(…)}、{@code tab(…)}、{@code new Tab(…)}。
+     * 每项是 {@code {方法名, 括号内的原文}}；括号没闭合的形状（跨行截断、注释里的半句）跳过。
+     */
+    private static List<String[]> tabCalls(String text) {
+        List<String[]> calls = new ArrayList<>();
+        for (Pattern pattern : TAB_CALLS) {
+            Matcher matcher = pattern.matcher(text);
+            while (matcher.find()) {
+                int open = text.indexOf('(', matcher.end() - 1);
+                String arguments = topLevelParenContent(text, open);
+                if (arguments == null) {
+                    continue;
+                }
+                String name = "Tab".equals(matcher.group(1)) ? "new Tab" : matcher.group(1);
+                calls.add(new String[]{name, arguments});
+            }
+        }
+        return calls;
+    }
+
+    /** 从 {@code open}（左括号下标）走到配对右括号，返回括号内的原文；没闭合返回 null。 */
+    private static String topLevelParenContent(String text, int open) {
+        int depth = 0;
+        boolean inString = false;
+        for (int i = open; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (inString) {
+                if (c == '\\') {
+                    i++;
+                } else if (c == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+            if (c == '"') {
+                inString = true;
+            } else if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                depth--;
+                if (depth == 0) {
+                    return text.substring(open + 1, i);
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 按**顶层**逗号切一段实参/形参：嵌套括号与字符串字面量里的逗号不算分隔。 */
+    private static List<String> splitTopLevel(String segment) {
+        List<String> parts = new ArrayList<>();
+        int depth = 0;
+        boolean inString = false;
+        int start = 0;
+        for (int i = 0; i < segment.length(); i++) {
+            char c = segment.charAt(i);
+            if (inString) {
+                if (c == '\\') {
+                    i++;
+                } else if (c == '"') {
+                    inString = false;
+                }
+            } else if (c == '"') {
+                inString = true;
+            } else if (c == '(' || c == '<') {
+                depth++;
+            } else if (c == ')' || c == '>') {
+                depth--;
+            } else if (c == ',' && depth == 0) {
+                parts.add(segment.substring(start, i));
+                start = i + 1;
+            }
+        }
+        parts.add(segment.substring(start));
+        return parts;
+    }
+
+    private static List<Path> shellSources() throws IOException {
+        List<Path> sources = new ArrayList<>();
+        try (Stream<Path> paths = Files.walk(repositoryRoot())) {
+            paths.filter(Files::isRegularFile)
+                    .filter(p -> p.toString().replace('\\', '/').contains("ui/adb-ui-shell/src/main/java"))
+                    .filter(p -> p.toString().endsWith(".java"))
+                    .forEach(sources::add);
+        }
+        return sources;
+    }
+
+    private static void hit(Path source, String text, Pattern pattern, List<String> offenders) {
+        if (pattern.matcher(text).find()) {
+            offenders.add(source.getFileName() + "：「" + text + "」");
+        }
+    }
+
+    /**
+     * ⭐ D-79：`Select All` / `Select None` / `Deselect All` 这一族按钮一个大小写。
+     *
+     * <p>立案事实（2026-11-06 实测）：同一族里三种写法并存 ——
+     * {@code action.table-list.select-all=Select All}、{@code export.columns.none=Select None}、
+     * {@code filter.selectNone=Deselect all}。最后一条是**句首大写**，前两条是**词词大写**，
+     * 排在一排按钮上时看着像来自两个不同的产品。
+     *
+     * <p>⚠️ 只管**两个词的按钮名**：{@code Select all rows on this page}
+     * （无障碍标签、快捷键说明）是句子，句子就该用句首大写 —— 把它一起改成
+     * {@code Select All Rows On This Page} 才是新的错。
+     */
+    @Test
+    void selectButtonsUseOneCasing() throws IOException {
+        Pattern family = Pattern.compile("(?i)^(deselect|select)\\s+(all|none)$");
+        List<String> offenders = new ArrayList<>();
+        int conforming = 0;
+        for (Path source : uiTextSources()) {
+            String text = Files.readString(source, StandardCharsets.UTF_8);
+            List<String> values = new ArrayList<>();
+            Matcher literal = STRING_LITERAL.matcher(text);
+            while (literal.find()) {
+                values.add(literal.group(1));
+            }
+            if (source.toString().endsWith(".properties")) {
+                for (String line : text.split("\\R")) {
+                    int equals = line.indexOf('=');
+                    if (equals >= 0 && !line.startsWith("#")) {
+                        values.add(line.substring(equals + 1));
+                    }
+                }
+            }
+            for (String value : values) {
+                if (!family.matcher(value).matches()) {
+                    continue;
+                }
+                String canonical = switch (value.toLowerCase(java.util.Locale.ROOT)) {
+                    case "select all" -> "Select All";
+                    case "select none" -> "Select None";
+                    case "deselect all" -> "Deselect All";
+                    default -> null;
+                };
+                if (canonical == null || value.equals(canonical)) {
+                    conforming++;
+                    continue;
+                }
+                offenders.add(source.getFileName() + "：「" + value + "」应为「" + canonical + "」");
+            }
+        }
+        assertThat(conforming)
+                .as("必须真的扫到这族按钮名（否则「没有 offender」是没扫到）")
+                .isGreaterThanOrEqualTo(2);
+        assertThat(offenders)
+                .as("同一族按钮两套大小写：\n  %s", String.join("\n  ", offenders))
+                .isEmpty();
     }
 
     /** ui 两个模块的主源码 + 主资源（含 .properties）。 */

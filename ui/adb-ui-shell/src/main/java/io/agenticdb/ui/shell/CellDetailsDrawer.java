@@ -48,8 +48,8 @@ final class CellDetailsDrawer extends VBox {
     private final StackPane imageBox = new StackPane();
     private final GridPane metadata = new GridPane();
     private final Tab textTab = new Tab(I18n.t("details.tab.text"));
-    private final Tab jsonTab = new Tab("JSON");
-    private final Tab hexTab = new Tab("Hex");
+    private final Tab jsonTab = new Tab(I18n.t("details.tab.json"));
+    private final Tab hexTab = new Tab(I18n.t("details.tab.hex"));
     private final Tab imageTab = new Tab(I18n.t("details.tab.image"));
     private final Tab metaTab = new Tab(I18n.t("details.tab.metadata"));
 
