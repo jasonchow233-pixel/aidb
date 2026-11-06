@@ -12,6 +12,12 @@ import java.util.Locale;
  * <p>口径：源码里只写**语义**（{@code "Mod+K"}），渲染交给这里。
  * {@code Mod} 是平台主修饰键 —— macOS 上是 ⌘，其余平台是 Ctrl。
  *
+ * <p>⭐ H5-g：{@code Shortcut} 与 {@code Mod} 同义，因为注册表侧必须写
+ * {@code Shortcut} —— {@code KeyCombination.keyCombination("Mod+N")} 会抛
+ * {@code Cannot parse key binding}，而 {@code F1} 表现在读的是
+ * {@code action.accelerator().toString()}（JavaFX 的规范写法就是 {@code Shortcut}）。
+ * 两个词在这里合流，界面上才只有一种读法。
+ *
  * <pre>
  *   Shortcuts.of("Mod+K")         → Windows "Ctrl+K"      macOS "⌘K"
  *   Shortcuts.of("Shift+Mod+N")   → Windows "Ctrl+Shift+N" macOS "⇧⌘N"
@@ -56,7 +62,7 @@ public final class Shortcuts {
                 continue;
             }
             switch (token.toUpperCase(Locale.ROOT)) {
-                case "MOD" -> {
+                case "MOD", "SHORTCUT" -> {
                     if (MAC) {
                         cmd = true;
                     } else {

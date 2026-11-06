@@ -53,6 +53,21 @@ class ShortcutsTest {
     }
 
     @Test
+    @DisplayName("注册表写法 Shortcut 与语义写法 Mod 同一读法（F1 表读的就是前者）")
+    void shortcutIsTheSamePrimaryAsMod() {
+        // 注册表侧只能写 Shortcut（JavaFX 不认 Mod），而 F1 表的按键列现在直接读
+        // action.accelerator().toString()。改动前 "Shortcut+N" 会掉进 default 分支，
+        // 修饰键被后面的按键覆盖，界面上拿到裸键 "N" —— 不报错。
+        assertThat(Shortcuts.of("Shortcut+N")).isEqualTo(Shortcuts.of("Mod+N"));
+        assertThat(Shortcuts.of("Shift+Shortcut+N")).isEqualTo(Shortcuts.of("Shift+Mod+N"));
+        assertThat(Shortcuts.of("Shortcut+Alt+D")).isEqualTo(Shortcuts.of("Mod+Alt+D"));
+        assertThat(Shortcuts.of("Shortcut+Period")).isEqualTo(Shortcuts.of("Mod+PERIOD"));
+        assertThat(Shortcuts.of("Shortcut+Backslash")).isEqualTo(Shortcuts.of("Mod+BACKSLASH"));
+        // 裸键不受影响：F1 / F5 本来就没有修饰键。
+        assertThat(Shortcuts.of("F1")).isEqualTo("F1");
+    }
+
+    @Test
     @DisplayName("括注形态：文案 +（按键），空 spec 退化为原文案")
     void labelledAppendsParenthesis() {
         assertThat(Shortcuts.labelled("搜索", "Mod+F"))

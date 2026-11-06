@@ -4312,54 +4312,114 @@ public final class AppShell extends StackPane {
     }
 
     /**
-     * 快捷键总表（F1）。
+     * F1 表的一行。
+     *
+     * <p>三种行：分节标题、注册表行（{@code actionId} 非空，按键列直接读动作现在的
+     * 加速器）、代码级行（{@code keySpec} 非空，这一档按键不在注册表里 —— 网格与编辑器
+     * 在自己的节点上吃按键，见 {@link #shortcutEntries()} 的口径说明）。
+     *
+     * <p>字段叫 {@code keySpec} 不叫 {@code spec}：源码门
+     * {@code AppShellTest.sshSecretsHaveExactlyOneAssemblyAndOneWritePointInTheShell}
+     * 按「点号 + spec 左括号」这个写法数「界面里建 ConnectionSpec 的地方」，
+     * 同名（连注释里写出那个写法）会把那条门撞成两处命中。
+     */
+    static record ShortcutEntry(String actionId, String keySpec, String label) {
+        static ShortcutEntry action(String actionId, String label) {
+            return new ShortcutEntry(actionId, null, label);
+        }
+
+        static ShortcutEntry literal(String keySpec, String label) {
+            return new ShortcutEntry(null, keySpec, label);
+        }
+
+        static ShortcutEntry section(String title) {
+            return new ShortcutEntry(null, null, title);
+        }
+
+        boolean isSection() {
+            return actionId == null && keySpec == null;
+        }
+    }
+
+    /**
+     * 快捷键总表（F1）的内容。
      *
      * <p>U1：这张表原来是一段手写 macOS 符号的纯文本（{@code ⌘N / ⇧⌘N}），
      * 而实拍与主要用户都在 Windows —— 键盘上没有 ⌘ 这个键，且比例字体下
      * 空格对齐会散架。现在两列栅格、按键走 {@link io.agenticdb.ui.Shortcuts}，
      * 与菜单、tooltip、状态栏文案同一份真相。
+     *
+     * <p>⭐ H5-g：菜单里有加速器的那一批，按键列由 {@link ActionRegistry} 现取，
+     * 这张表不再抄第二份字符串 —— 注册表改了键，表跟着改；抄着的那份只会留在原地。
+     * 剩下的行是<b>代码级</b>按键（{@code Mod+Z / Mod+C / Mod+ENTER / Mod+SPACE …}）：
+     * 它们由 DataGridPage 与 QueryPage 在自己节点上判 {@code isShortcutDown()}，
+     * 不进注册表是有意为之（两边都注册会双触发，撤销会走两次，见
+     * {@code registerActions} 里编辑三件套的注释），所以这几行只能留在字面量里，
+     * 由 {@code ShortcutSheetTest} 钉住「一条按键不能有两种读法」。
      */
+    List<ShortcutEntry> shortcutEntries() {
+        return List.of(
+                ShortcutEntry.section(I18n.t("shortcut.section.session")),
+                ShortcutEntry.action("new-connection", I18n.t("action.new-connection")),
+                ShortcutEntry.action("open-sql", I18n.t("action.open-sql")),
+                ShortcutEntry.action("new-query", I18n.t("action.new-query")),
+                ShortcutEntry.action("tab.close", I18n.t("action.tab.close")),
+                ShortcutEntry.action("window.close", I18n.t("action.window.close")),
+                ShortcutEntry.action("window.minimize", I18n.t("action.window.minimize")),
+                ShortcutEntry.action("app.quit", I18n.t("action.app.quit")),
+                ShortcutEntry.section(I18n.t("shortcut.section.editing")),
+                ShortcutEntry.action("command-palette", I18n.t("action.command-palette")),
+                ShortcutEntry.action("focus-search", I18n.t("shortcut.search")),
+                ShortcutEntry.literal("Mod+Z", I18n.t("shortcut.undo")),
+                ShortcutEntry.literal("Shift+Mod+Z", I18n.t("action.edit.redo")),
+                ShortcutEntry.literal("Mod+C", I18n.t("shortcut.copyCell")),
+                ShortcutEntry.literal("Alt+Mod+C", I18n.t("shortcut.copyTsv")),
+                ShortcutEntry.literal("Shift+Mod+C", I18n.t("shortcut.copyInsert")),
+                ShortcutEntry.literal("Mod+A", I18n.t("shortcut.selectAll")),
+                ShortcutEntry.literal("Mod+UP", I18n.t("shortcut.firstRow")),
+                ShortcutEntry.literal("Mod+DOWN", I18n.t("shortcut.lastRow")),
+                ShortcutEntry.literal("ESCAPE", I18n.t("shortcut.escape")),
+                ShortcutEntry.section(I18n.t("menu.query")),
+                ShortcutEntry.literal("Mod+ENTER", I18n.t("action.query.run")),
+                ShortcutEntry.literal("Shift+Mod+ENTER", I18n.t("action.query.run-all")),
+                ShortcutEntry.action("query.run", I18n.t("shortcut.runMenu")),
+                ShortcutEntry.action("query.run-all", I18n.t("shortcut.runAllMenu")),
+                ShortcutEntry.action("query.cancel", I18n.t("action.query.cancel")),
+                ShortcutEntry.action("query.explain", I18n.t("action.query.explain")),
+                ShortcutEntry.action("query.format", I18n.t("action.query.format")),
+                ShortcutEntry.action("query.save", I18n.t("action.query.save")),
+                ShortcutEntry.action("query.comment", I18n.t("action.query.comment")),
+                ShortcutEntry.literal("Mod+SPACE", I18n.t("action.query.complete")),
+                ShortcutEntry.literal("Mod+G", I18n.t("shortcut.findNext")),
+                ShortcutEntry.action("refresh", I18n.t("shortcut.refreshRun")),
+                ShortcutEntry.section(I18n.t("menu.view")),
+                ShortcutEntry.action("sidebar.toggle", I18n.t("action.sidebar.toggle")),
+                ShortcutEntry.action("details.toggle", I18n.t("action.details.toggle")),
+                ShortcutEntry.action("settings", I18n.t("action.settings")),
+                ShortcutEntry.action("shortcuts", I18n.t("shortcut.thisTable")));
+    }
+
+    /**
+     * 一行的按键读法：注册表行动态取动作现在的加速器，代码级行取自己那份规格。
+     *
+     * <p>加速器从注册表取回的是 JavaFX 的规范写法（{@code "Shift+Shortcut+N"}），
+     * 所以渲染前会过一遍 {@link io.agenticdb.ui.Shortcuts} —— 它认 {@code Shortcut}
+     * 这个平台主键名，才能把两种写法读成同一句 {@code ⇧⌘N / Ctrl+Shift+N}。
+     */
+    String keyText(ShortcutEntry entry) {
+        if (entry.actionId() != null) {
+            KeyCombination accelerator = actions.require(entry.actionId()).accelerator();
+            if (accelerator == null) {
+                throw new IllegalStateException(
+                        "shortcut row names an action without accelerator: " + entry.actionId());
+            }
+            return io.agenticdb.ui.Shortcuts.of(accelerator.toString());
+        }
+        return io.agenticdb.ui.Shortcuts.of(entry.keySpec());
+    }
+
     private void showShortcuts() {
-        // {语义按键, 动作}；按键为 null 的行是分节标题。
-        List<String[]> rows = List.of(
-                new String[]{null, I18n.t("shortcut.section.session")},
-                new String[]{"Mod+N", I18n.t("action.new-connection")},
-                new String[]{"Mod+O", I18n.t("action.open-sql")},
-                new String[]{"Shift+Mod+N", I18n.t("action.new-query")},
-                new String[]{"Mod+W", I18n.t("action.tab.close")},
-                new String[]{"Shift+Mod+W", I18n.t("action.window.close")},
-                new String[]{"Mod+M", I18n.t("action.window.minimize")},
-                new String[]{"Mod+Q", I18n.t("action.app.quit")},
-                new String[]{null, I18n.t("shortcut.section.editing")},
-                new String[]{"Mod+K", I18n.t("action.command-palette")},
-                new String[]{"Mod+F", I18n.t("shortcut.search")},
-                new String[]{"Mod+Z", I18n.t("shortcut.undo")},
-                new String[]{"Shift+Mod+Z", I18n.t("action.edit.redo")},
-                new String[]{"Mod+C", I18n.t("shortcut.copyCell")},
-                new String[]{"Alt+Mod+C", I18n.t("shortcut.copyTsv")},
-                new String[]{"Shift+Mod+C", I18n.t("shortcut.copyInsert")},
-                new String[]{"Mod+A", I18n.t("shortcut.selectAll")},
-                new String[]{"Mod+UP", I18n.t("shortcut.firstRow")},
-                new String[]{"Mod+DOWN", I18n.t("shortcut.lastRow")},
-                new String[]{"ESCAPE", I18n.t("shortcut.escape")},
-                new String[]{null, I18n.t("menu.query")},
-                new String[]{"Mod+ENTER", I18n.t("action.query.run")},
-                new String[]{"Shift+Mod+ENTER", I18n.t("action.query.run-all")},
-                new String[]{"Mod+R", I18n.t("shortcut.runMenu")},
-                new String[]{"Shift+Mod+R", I18n.t("shortcut.runAllMenu")},
-                new String[]{"Mod+PERIOD", I18n.t("action.query.cancel")},
-                new String[]{"Mod+E", I18n.t("action.query.explain")},
-                new String[]{"Alt+Shift+F", I18n.t("action.query.format")},
-                new String[]{"Mod+S", I18n.t("action.query.save")},
-                new String[]{"Mod+SLASH", I18n.t("action.query.comment")},
-                new String[]{"Mod+SPACE", I18n.t("action.query.complete")},
-                new String[]{"Mod+G", I18n.t("shortcut.findNext")},
-                new String[]{"F5", I18n.t("shortcut.refreshRun")},
-                new String[]{null, I18n.t("menu.view")},
-                new String[]{"Mod+BACKSLASH", I18n.t("action.sidebar.toggle")},
-                new String[]{"Mod+Alt+D", I18n.t("action.details.toggle")},
-                new String[]{"Mod+COMMA", I18n.t("action.settings")},
-                new String[]{"F1", I18n.t("shortcut.thisTable")});
+        List<ShortcutEntry> rows = shortcutEntries();
 
         GridPane grid = new GridPane();
         grid.getStyleClass().add("adb-shortcuts");
@@ -4371,17 +4431,17 @@ public final class AppShell extends StackPane {
         grid.getColumnConstraints().addAll(keyColumn, actionColumn);
 
         int row = 0;
-        for (String[] entry : rows) {
-            if (entry[0] == null) {
-                Label group = new Label(entry[1]);
+        for (ShortcutEntry entry : rows) {
+            if (entry.isSection()) {
+                Label group = new Label(entry.label());
                 group.getStyleClass().add("adb-shortcut__group");
                 GridPane.setColumnSpan(group, 2);
                 grid.add(group, 0, row++);
                 continue;
             }
-            Label key = new Label(io.agenticdb.ui.Shortcuts.of(entry[0]));
+            Label key = new Label(keyText(entry));
             key.getStyleClass().add("adb-shortcut__key");
-            Label action = new Label(entry[1]);
+            Label action = new Label(entry.label());
             action.getStyleClass().add("adb-shortcut__action");
             grid.add(key, 0, row);
             grid.add(action, 1, row++);
