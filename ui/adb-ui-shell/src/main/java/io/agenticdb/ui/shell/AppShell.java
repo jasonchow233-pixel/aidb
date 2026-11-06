@@ -32,6 +32,7 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuBar;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.ColumnConstraints;
@@ -4418,9 +4419,8 @@ public final class AppShell extends StackPane {
         return io.agenticdb.ui.Shortcuts.of(entry.keySpec());
     }
 
-    private void showShortcuts() {
-        List<ShortcutEntry> rows = shortcutEntries();
-
+    /** F1 表（2026-11-06 起同时是 D-87 门禁的取样口：测试要拿到没 show 过的面板量高）。 */
+    Dialog<Void> shortcutsDialog() {
         GridPane grid = new GridPane();
         grid.getStyleClass().add("adb-shortcuts");
         ColumnConstraints keyColumn = new ColumnConstraints();
@@ -4431,7 +4431,7 @@ public final class AppShell extends StackPane {
         grid.getColumnConstraints().addAll(keyColumn, actionColumn);
 
         int row = 0;
-        for (ShortcutEntry entry : rows) {
+        for (ShortcutEntry entry : shortcutEntries()) {
             if (entry.isSection()) {
                 Label group = new Label(entry.label());
                 group.getStyleClass().add("adb-shortcut__group");
@@ -4447,14 +4447,63 @@ public final class AppShell extends StackPane {
             grid.add(action, 1, row++);
         }
 
+        // ⭐ D-87：这张表 32 行、量出来 1045 高，而本机可视区只有 800 ——
+        //    DialogPane 的最小高由内容顶住，DialogStyles.clampToScreen 钉的
+        //    maxHeight（屏幕可视高 − 96）抢不过它，实测 7 行落在屏幕外、
+        //    Close 按钮底边在 y=1032，用户既滚不动也关不掉。包一层 ScrollPane
+        //    并把高度上限交给屏幕，才够得着。
+        //    ⚠️ 宽度不是问题（同一批测量：压到 720 / 520 / 420 都没有一个标签截字，
+        //    两列栅格自然宽 376），所以这里不动宽度、也不设 prefWidth。
+        ScrollPane scroll = new ScrollPane(grid);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+
         Dialog<Void> dialog = new Dialog<>();
         dialog.setTitle(I18n.t("shortcut.title"));
         dialog.setHeaderText(I18n.t("shortcut.heading",
                 io.agenticdb.ui.Shortcuts.mac() ? "macOS" : "Windows / Linux"));
-        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().setContent(scroll);
         dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
         DialogStyles.apply(dialog, stage);
-        dialog.showAndWait();
+        capSheetHeight(scroll, grid, dialog.getDialogPane());
+        return dialog;
+    }
+
+    /**
+     * 把 F1 表的可见高上限压进屏幕（D-87）。
+     *
+     * <p>屏幕口径与 {@link #screenBounds} / {@code DialogStyles.clampToScreen} 同一个：
+     * 可视高减 96。窗口装饰（表头 + 按钮条 + 内边距）不写魔数，从面板自己的量里扣：
+     * {@code pane.prefHeight − grid.prefHeight}。装得下就一律不动（不凭空加滚动条）。
+     */
+    private void capSheetHeight(ScrollPane scroll, GridPane grid,
+            javafx.scene.control.DialogPane pane) {
+        javafx.geometry.Rectangle2D bounds = screenBounds(stage);
+        if (bounds == null || bounds.getHeight() <= 0) {
+            // 无头环境（CI / Monocle）拿不到屏幕：不动，交给窗口自己的默认
+            return;
+        }
+        pane.applyCss();
+        double rows = grid.prefHeight(-1);
+        double chrome = Math.max(0, pane.prefHeight(pane.prefWidth(-1)) - rows);
+        double cap = Math.max(200, bounds.getHeight() - 96 - chrome);
+        if (rows <= cap) {
+            return;
+        }
+        scroll.setMaxHeight(cap);
+        scroll.setPrefHeight(cap);
+    }
+
+    /**
+     * 快捷键总表（F1）。
+     *
+     * <p>U1：这张表原来是一段手写 macOS 符号的纯文本（{@code ⌘N / ⇧⌘N}），
+     * 而实拍与主要用户都在 Windows —— 键盘上没有 ⌘ 这个键，且比例字体下
+     * 空格对齐会散架。现在两列栅格、按键走 {@link io.agenticdb.ui.Shortcuts}，
+     * 与菜单、tooltip、状态栏文案同一份真相。
+     */
+    private void showShortcuts() {
+        shortcutsDialog().showAndWait();
     }
 
     private static String readable(Throwable error) {

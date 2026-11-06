@@ -1,6 +1,12 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.ui.Shortcuts;
+import javafx.scene.Node;
+import javafx.scene.Scene;
+import javafx.scene.control.Dialog;
+import javafx.scene.control.DialogPane;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.layout.GridPane;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -8,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.framework.junit5.Start;
+import org.testfx.util.WaitForAsyncUtils;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -18,6 +25,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -249,5 +257,83 @@ class ShortcutSheetTest {
         assertThat(new ArrayList<>(seen))
                 .as("分节清单与表里的节标题一一对应（少一节 = 有行动了家）")
                 .containsExactlyInAnyOrderElementsOf(titles);
+    }
+
+    /**
+     * ⭐ D-87：F1 表打开后，每一行与 Close 按钮都得够得着。
+     *
+     * <p>立案事实（2026-11-06 实测，本机可视区 1280×800）：这张表整块
+     * {@code prefHeight = 1045}，而 {@code DialogPane} 的最小高由内容顶住
+     * （{@code minHeight} 同样是 1045）—— 所以 {@code DialogStyles.clampToScreen}
+     * 给它钉的 {@code maxHeight = 屏幕高 − 96} **根本生效不了**（resize 时最小高赢），
+     * 实测 7 行动作落在屏幕可视高之外，Close 按钮底边在 y=1032。
+     *
+     * <p>⚠️ 宽度那一半**翻案**：同一批测量里，把面板压到 720 / 520 / 420 都
+     * 没有一个标签截字（两列栅格的自然宽 376 比这些下限还窄，Header 也开着 wrapText）。
+     * 「弹窗没设宽所以会裁字」是推断，不是症状 —— 所以这条门禁钉的是**高度与可滚动**，
+     * 不是宽度。
+     *
+     * <p>⚠️ 口径（新量出来的）：{@code new Dialog<>()} 的构造里有
+     * {@code HeavyweightDialog → new Stage()}，只能在 **FX 线程**上跑，
+     * 测试方法本体在 main 线程 —— 直接调会抛 {@code Not on FX application thread}。
+     * 走 {@link WaitForAsyncUtils#asyncFx}。
+     */
+    @Test
+    void sheetStaysReachableOnScreen() throws Exception {
+        javafx.stage.Screen screen = javafx.stage.Screen.getPrimary();
+        javafx.geometry.Rectangle2D bounds = screen == null ? null : screen.getVisualBounds();
+        org.junit.jupiter.api.Assumptions.assumeTrue(bounds != null,
+                "无头环境拿不到屏幕信息，跳过");
+        double screenH = bounds.getHeight();
+        // 与 DialogStyles.clampToScreen 同一个口径，不在测试里另立一套
+        double windowCap = screenH - 96;
+
+        SheetGeometry geo = WaitForAsyncUtils.<SheetGeometry>asyncFx(() -> {
+            Dialog<Void> dialog = shell.shortcutsDialog();
+            DialogPane pane = dialog.getDialogPane();
+            if (pane.getScene() == null) {
+                // 没挂场景的节点不装 skin、CSS 也不解析 —— 量出来是空数字（实测 prefWidth=120）。
+                new Scene(pane, 480, 360);
+            }
+            pane.applyCss();
+            pane.layout();
+            double prefW = pane.prefWidth(-1);
+            Node content = pane.getContent();
+            double rowsH;
+            if (content instanceof ScrollPane scroll && scroll.getContent() instanceof GridPane grid) {
+                rowsH = grid.prefHeight(-1);
+            } else if (content instanceof GridPane grid) {
+                rowsH = grid.prefHeight(-1);
+            } else {
+                rowsH = -1;
+            }
+            return new SheetGeometry(prefW, pane.prefHeight(prefW), pane.minHeight(prefW),
+                    rowsH, content instanceof ScrollPane,
+                    content instanceof ScrollPane scroll && scroll.isFitToWidth());
+        }).get(30, TimeUnit.SECONDS);
+
+        assertThat(geo.rowsHeight())
+                .as("反空转：这张表的内容**本身**就比屏幕上限高 —— "
+                        + "这条门禁靠的是能滚，不是行数凑巧少")
+                .isGreaterThan(windowCap);
+        assertThat(geo.scrollable())
+                .as("F1 表的内容没有包在 ScrollPane 里：比屏幕高时用户既滚不动、也点不到 Close")
+                .isTrue();
+        assertThat(geo.fitToWidth())
+                .as("滚动容器没开 fitToWidth：两列栅格会跟着横向滚，按键列与动作列会错开")
+                .isTrue();
+        assertThat(geo.minHeight())
+                .as("弹窗面板缩不进屏幕（实测 minHeight=%.1f，可用高=%.1f）—— "
+                        + "clampToScreen 钉了 maxHeight 也没用，最小高由内容顶住",
+                        geo.minHeight(), windowCap)
+                .isLessThanOrEqualTo(windowCap);
+        assertThat(geo.prefHeight())
+                .as("打开时的默认高度就在屏幕可视区内（超出部分交给滚动条）")
+                .isLessThanOrEqualTo(windowCap);
+    }
+
+    /** F1 弹窗在 FX 线程上量出来的一组几何数字（不能在 main 线程构造 Dialog）。 */
+    private record SheetGeometry(double prefWidth, double prefHeight, double minHeight,
+                                 double rowsHeight, boolean scrollable, boolean fitToWidth) {
     }
 }
