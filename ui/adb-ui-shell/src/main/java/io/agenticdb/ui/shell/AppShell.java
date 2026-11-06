@@ -3296,7 +3296,7 @@ public final class AppShell extends StackPane {
                     .findFirst()
                     .orElse(null);
         } catch (Exception notProvided) {
-            // 方言不提供这 8 列元数据时返回 null，由 notes 说明，不编值。
+            // 方言不提供这些元数据时返回 null，由 notes 说明，不编值。
             return null;
         }
     }

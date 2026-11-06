@@ -5,17 +5,24 @@ import io.agenticdb.model.ByteSizes;
 /**
  * 表的元信息 —— Navicat「表清单」那一行的内容。
  *
- * <p>Navicat 的表清单是 8 列：**名称 / 行 / 数据长度 / 引擎 / 创建日期 /
- * 修改日期 / 排序规则 / 注释**。本记录按这 8 列建模；方言拿不到的字段保持
- * {@code null}，由 UI 显示「—」——**绝不编造一个看起来像真的值**。
+ * <p>Navicat 的表清单是<b>六列</b>：名称 / 行 / 数据长度 / 引擎 / 修改日期 / 注释
+ * （两张官方帧 {@code navicat-table-list-2026-10-24.png}、
+ * {@code navicat17-object-list-2026-10-27.png} 都是这六列，<b>没有创建日期、
+ * 没有排序规则</b>）。本记录多带 {@link #createdAt} 与 {@link #collation} 两个字段，
+ * 不是因为清单上有这两列，而是<b>对象详情面板</b>要摆这两项事实
+ * （{@code AppShell} 用 {@code column.collation} / {@code detail.createdAt} 当标签）；
+ * 它们没有 {@code *Text()} 显示 helper —— 那条路以前只有测试在走，界面从不经过，
+ * 属于「取到了但没人显示」的死通道，D-70 清理时删掉。
+ *
+ * <p>方言拿不到的字段保持 {@code null}，由 UI 显示「—」——**绝不编造一个看起来像真的值**。
  *
  * @param name        表名
  * @param rows        行数；{@code null} 表示没统计出来
  * @param sizeBytes   数据长度（字节）；{@code null} 表示这个库不提供
  * @param engine      引擎（InnoDB / SQLite / tablespace…）；{@code null} 表示不提供
- * @param createdAt   创建时间文本；{@code null} 表示不提供
- * @param updatedAt   最后修改时间文本；{@code null} 表示不提供
- * @param collation   排序规则；{@code null} 表示不提供
+ * @param createdAt   创建时间文本；{@code null} 表示不提供（只上对象详情，不是清单列）
+ * @param updatedAt   最后修改时间文本；{@code null} 表示不提供（清单六列之一）
+ * @param collation   排序规则；{@code null} 表示不提供（只上对象详情，不是清单列）
  * @param comment     表注释；{@code null} 表示不提供
  */
 public record TableMeta(
@@ -31,8 +38,9 @@ public record TableMeta(
     /**
      * 兼容旧调用点的 5 参数构造器。
      *
-     * <p>旧版本只知道前 5 列。保留这个构造器，避免为了补 3 列去改一堆
-     * 只关心行数 / 大小的测试与调用点。
+     * <p>旧版本只填到第 5 个参数（{@code createdAt}），后面三项留空。保留这个构造器，
+     * 避免为了补字段去改一堆只关心行数 / 大小的调用点 —— 走这条路的调用点
+     * 本来也不显示创建时间。
      */
     public TableMeta(String name, Long rows, Long sizeBytes, String engine, String createdAt) {
         this(name, rows, sizeBytes, engine, createdAt, null, null, null);
@@ -57,16 +65,8 @@ public record TableMeta(
         return textOrDash(engine);
     }
 
-    public String createdText() {
-        return textOrDash(createdAt);
-    }
-
     public String updatedText() {
         return textOrDash(updatedAt);
-    }
-
-    public String collationText() {
-        return textOrDash(collation);
     }
 
     public String commentText() {

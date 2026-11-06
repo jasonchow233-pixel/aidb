@@ -266,14 +266,14 @@ public final class SqlServerDialect implements Dialect {
     }
 
     /**
-     * 表清单的元信息（Navicat 那 8 列）。
+     * 表清单的元信息（那 8 个字段；Navicat 的清单只摆其中六列）。
      *
      * <p>{@code rows} 用 {@code sys.partitions} 的 {@code index_id IN (0,1)}
      * （0=堆、1=聚集索引，二者是同一份数据，取并集会翻倍）；
      * 大小用 {@code total_pages * 8KB}。
      *
      * <p>⚠️ SQL Server <b>没有</b>「行最后修改时间」，也没有表注释与「引擎」概念，
-     * 这三列直接给 {@code NULL} —— 界面显示「—」，不拿创建时间冒充修改时间。
+     * 这三项直接给 {@code NULL} —— 界面显示「—」，不拿创建时间冒充修改时间。
      *
      * <p>⚠️ D-20：排序规则取<b>库级</b>值，不是表列。真库实测（SQL Server 2022）：
      * {@code sys.tables} <b>根本没有</b> {@code collation_name} 这一列

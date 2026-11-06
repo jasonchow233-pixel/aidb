@@ -313,6 +313,110 @@ class TerminologyGuardTest {
                 .isEmpty();
     }
 
+    /**
+     * ⭐ D-70：表清单的列头**就是 Navicat 那六列**，且六列的字面写法要钉在帧上读到的原文。
+     *
+     * <p>立案时写的是「对象清单缺 Created 列」，依据是 {@code TableMeta} 的 javadoc
+     * 那句「Navicat 的表清单是 8 列」。2026-11-06 直接读两张独立官方帧
+     * （{@code docs/screenshots/navicat/navicat-table-list-2026-10-24.png}、
+     * {@code navicat17-object-list-2026-10-27.png}）——<b>两张都只有六列</b>：
+     * Name / Rows / Data Length / Engine / Modified Date / Comment，
+     * <b>没有 Created，也没有 Collation</b>。那句 javadoc 是错的，条目据此翻案：
+     * 要清的不是「补一列」，而是那句假事实留下的三件残骸 ——
+     * 死键 {@code column.created}（en 侧注释还写着「N14 会撤掉」）、
+     * 从没接上的 {@code object.column.created} / {@code object.column.updated}，
+     * 以及 {@code TableMeta} 里两个只有测试在调的显示 helper。
+     *
+     * <p>⚠️ 这条断言<b>不许写成 {@code isEqualTo(I18n.t("column.rows"))}</b>：
+     * 那种写法拿 bundle 自己当期望值，改错文案时两边一起错，门禁照绿
+     * （同一形状见 {@code ObjectSectionsPanelTest} 里的提醒）。这里把六列原文
+     * <b>按帧字面</b>写死在测试里，en 侧对帧，zh 侧钉我们自己的对译口径
+     * （官方无中文帧，zh 文案漂移只能靠这条拦住）。
+     *
+     * <p>变异（2026-11-06 各自红自己）：M1 en {@code column.updated}→"Updated" 红在帧对账；
+     * M2 zh {@code column.rows}→「行数」红在同一条款的 zh 侧；
+     * M3 把 {@code column.created} 加回 en bundle、M5 把 {@code object.column.updated}
+     * 加回 zh bundle —— 都红在死键复活那条款；
+     * M4 在 {@code TableListPage} 的六列后加第七列（用 {@code column.collation}，
+     * 这个键本来就在，所以只有源码那半条能抓住）红在列头键集合；
+     * M6 让 {@code TableMeta.updatedText()} 改读 {@code createdAt}（拿创建时间冒充修改时间）
+     * 红在 {@code TableMetaTest#carriesEveryFieldTheUiAsksFor}。
+     */
+    @Test
+    void tableListHeadersMatchTheNavicatFrames() throws IOException {
+        // 顺序 = 帧上从左到右的列序，也是 TableListPage 的列序。
+        List<String> headerKeys = List.of("column.name", "column.rows", "column.dataLength",
+                "column.engine", "column.updated", "column.comment");
+        List<String> enHeaders = List.of("Name", "Rows", "Data Length", "Engine",
+                "Modified Date", "Comment");
+        List<String> zhHeaders = List.of("名称", "行", "数据长度", "引擎", "修改日期", "注释");
+        // 帧上没有、代码也从没接过的列头键 —— 复活它们等于把界面拉回一个 Navicat 没有的布局。
+        List<String> deadHeaderKeys = List.of("column.created",
+                "object.column.created", "object.column.updated");
+
+        List<String> drift = new ArrayList<>();
+        List<String> resurrected = new ArrayList<>();
+        Map<String, java.util.Properties> byBundle = new LinkedHashMap<>();
+        for (Path bundle : bundles()) {
+            java.util.Properties props = new java.util.Properties();
+            try (var in = Files.newInputStream(bundle)) {
+                props.load(new java.io.InputStreamReader(in, StandardCharsets.UTF_8));
+            }
+            String name = bundle.getFileName().toString();
+            byBundle.put(name, props);
+            List<String> expected = switch (name) {
+                case "messages_en.properties" -> enHeaders;
+                case "messages_zh.properties" -> zhHeaders;
+                default -> null;
+            };
+            if (expected == null) {
+                continue;
+            }
+            for (int i = 0; i < headerKeys.size(); i++) {
+                String key = headerKeys.get(i);
+                String asSaid = props.getProperty(key);
+                if (asSaid == null) {
+                    drift.add(name + " → " + key + " 整个不存在（帧上明明有这一列）");
+                } else if (!asSaid.equals(expected.get(i))) {
+                    drift.add(name + " → " + key + "＝「" + asSaid + "」，帧上写的是「"
+                            + expected.get(i) + "」");
+                }
+            }
+            for (String key : deadHeaderKeys) {
+                if (props.getProperty(key) != null) {
+                    resurrected.add(name + " → " + key + "＝「" + props.getProperty(key) + "」");
+                }
+            }
+        }
+        assertThat(byBundle.keySet())
+                .as("没扫到 en/zh 两套主 bundle —— 列头对帧这半条门禁会空转")
+                .contains("messages_en.properties", "messages_zh.properties");
+        assertThat(drift)
+                .as("列头文案与官方帧不一致：\n  %s", String.join("\n  ", drift))
+                .isEmpty();
+        assertThat(resurrected)
+                .as("Navicat 没有 Created/Collation 列，这几个键是那句假 javadoc 的残骸：\n  %s",
+                        String.join("\n  ", resurrected))
+                .isEmpty();
+
+        // 源码那半条：表清单这一页只许引这六个列头键（多引一个 = 第七列回来了）。
+        String tableListSource = Files.readString(
+                repositoryRoot().resolve("ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell"
+                        + "/TableListPage.java"), StandardCharsets.UTF_8);
+        Set<String> referenced = new LinkedHashSet<>();
+        Matcher header = Pattern.compile("I18n\\.t\\s*\\(\\s*\"(column\\.[A-Za-z]+)\"")
+                .matcher(tableListSource);
+        while (header.find()) {
+            referenced.add(header.group(1));
+        }
+        assertThat(referenced)
+                .as("六列的键一个都没扫到 = 正则或路径失效，「恰好六列」那半条会空转")
+                .containsAll(headerKeys);
+        assertThat(referenced)
+                .as("表清单引了六列之外的列头键（多一个 = Navicat 没有的第七列回来了）")
+                .containsExactlyInAnyOrderElementsOf(headerKeys);
+    }
+
     /** 值里出现的占位符下标集合（{@code {0}}/{@code {1}} → {0,1}）。 */
     private static Set<Integer> placeholderIndexes(String value) {
         Set<Integer> indexes = new LinkedHashSet<>();

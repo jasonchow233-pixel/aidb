@@ -322,7 +322,8 @@ public class MySqlDialect implements Dialect {
 
     @Override
     public String tableMetaSql() {
-        // ⭐ Navicat 表清单的 8 列。update_time / table_collation / table_comment
+        // ⭐ 表清单元数据的 8 个字段（Navicat 的清单只摆其中六列，
+        //    created_at / collation 走对象详情）。update_time / table_collation / table_comment
         //    在 information_schema.tables 里都有，不用逐表再查一次。
         // ⚠️ `rows` 是 MySQL 8.0 的保留字（窗口帧 ROWS BETWEEN …），
         //    不转义直接当别名会语法错误。反引号只在 MySQL 合法，本方法属 MySqlDialect。

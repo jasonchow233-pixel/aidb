@@ -260,7 +260,7 @@ public final class OracleDialect implements Dialect {
     }
 
     /**
-     * 表清单的 8 列。
+     * 表清单元数据的 8 个字段（Navicat 的清单只摆其中六列）。
      *
      * <p>三处 Oracle 特有的取舍：
      * <ul>
