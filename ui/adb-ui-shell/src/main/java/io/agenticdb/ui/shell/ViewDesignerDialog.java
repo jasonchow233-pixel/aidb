@@ -44,7 +44,7 @@ import java.util.Optional;
  */
 final class ViewDesignerDialog {
 
-    /** 设计器宽度：SQL 是横着读的东西，用 720 档（900 是给字段网格的）。 */
+    /** 设计器宽度：720 档（900 是给字段网格的）。长定义靠折行读，不靠横向滚动 —— 见 {@link #buildUi}。 */
     private static final double DIALOG_WIDTH = DialogSizes.WIDE;
 
     private final Dialog<StructurePlan> dialog = new Dialog<>();
@@ -114,6 +114,13 @@ final class ViewDesignerDialog {
         }
 
         selectEditor.area().setId("new-view-select");
+        // ⭐ D-95：两格都折行。这个共用件**没有横向滚动条**（`SqlEditor` 直接把
+        //    RichTextFX 的 CodeArea 放进 StackPane，而 0.11.7 的 Region 自己不带滚动条），
+        //    一行超过弹窗宽度就只能靠「把光标移到行尾」把内容横移出来 —— 帧面上
+        //    什么线索都没有，读的人看到的是 ``from `us`` 后面凭空没了。
+        //    只开在这儿、不开进共用件：那件牵连查询页 / 结构页 DDL / 两处预览，
+        //    那边缺的是「一条看得见的横条」（D-97），不是折行。
+        selectEditor.area().setWrapText(true);
         selectEditor.setHint(I18n.t("newview.select.hint"));
         selectEditor.setText(initialBody == null ? "" : initialBody);
         selectEditor.addTextListener((ignored) -> refreshPreview());
@@ -122,6 +129,9 @@ final class ViewDesignerDialog {
 
         previewEditor.area().setEditable(false);
         previewEditor.area().setId("new-view-preview");
+        // 只读那一格更需要折：它连「点一下把光标挪过去」这条隐路都很少人想到，
+        // 而它显示的正是**将要执行的整句**（D-95 的实拍截断就在这格）。
+        previewEditor.area().setWrapText(true);
         // 只读预览不能留那句「⌘↵ 执行当前语句」（§11.2 同判）—— 它执行不了。
         // 空态那句说的是「为什么现在是空的」，不是「这里叫什么」—— 名字在上面的标题里。
         previewEditor.setHint(I18n.t("newview.preview"));

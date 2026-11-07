@@ -5,6 +5,7 @@ import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.ui.I18n;
 import javafx.application.Platform;
 import javafx.scene.Node;
+import javafx.scene.Scene;
 import javafx.scene.control.ButtonType;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ViewDesignerDialogTest {
 
     private static final String BODY = "SELECT id, name FROM users WHERE status = 'active'";
+
+    /**
+     * D-95 的那条长定义：MySQL 实拍帧里的视图正文就是一整行（约 300 字符），
+     * 在 720 宽的弹窗里远超一行能放下的量。
+     */
+    private static final String LONG_BODY = "SELECT `users`.`id` AS `id`, `users`.`name` AS `name`,"
+            + " `users`.`email` AS `email`, `users`.`status` AS `status`,"
+            + " `users`.`created_at` AS `created_at`, `users`.`updated_at` AS `updated_at`"
+            + " FROM `users` WHERE `users`.`status` = 'active'"
+            + " AND `users`.`created_at` > '2026-01-01' ORDER BY `users`.`id`";
 
     @Start
     void start(Stage stage) {
@@ -335,7 +346,92 @@ class ViewDesignerDialogTest {
                 .doesNotContain("openTab");
     }
 
+    // ─────────────────── D-95：长定义折行（帧轮读出的能力缺口） ───────────────────
+
+    /**
+     * ⭐ D-95：输入格 —— 一行超长定义必须<b>折进框内</b>，不能被右边框截掉。
+     *
+     * <p>立案证据是实拍帧 {@code p6-design-view-mysql}：预览格第二行读到
+     * ``from `us`` 就断在框边（x≈712），底边<b>没有滚动条轨道</b>。探针在同一共用件上
+     * 实测（690 宽、200 字符单行）：不折行时 {@code getParagraphLinesCount} 恒为 1，
+     * 而横移只在「把光标移到行尾」之后才发生（{@code estimatedScrollX} 0 → 786）——
+     * 也就是说内容并没有丢，但<b>界面上没有任何线索</b>说右边还有东西，读的人只能看到半句。
+     *
+     * <p>钉的是几何结果，不是 {@code isWrapText()}：折行只是手段，
+     * 「一行放不下时它占多个视觉行」才是要的东西。
+     */
+    @Test
+    void aLongSelectBodyFoldsIntoTheInputBoxInsteadOfRunningOffTheEdge() {
+        ViewDesignerDialog dialog = onFx(() -> {
+            ViewDesignerDialog created = ViewDesignerDialog.create(
+                    FakeDbSession.of(DialectKind.MYSQL), List.of());
+            created.nameField().setText("v_active_users");
+            created.selectEditor().setText(LONG_BODY);
+            return created;
+        });
+
+        Fold fold = onFx(() -> laidOut(dialog.selectEditor()));
+
+        assertThat(fold.boxWidth())
+                .as("量的是弹窗那一档宽度里的排版，不是无限宽的容器")
+                .isLessThanOrEqualTo(DialogSizes.WIDE);
+        assertThat(fold.visualLines())
+                .as("设计器没有横向滚动条（SqlEditor 把 CodeArea 直接放进 StackPane）："
+                        + "一行放不下就必须折起来，否则 from 后面的表名截在右边框外")
+                .isGreaterThan(1);
+    }
+
+    /**
+     * ⭐ D-95：只读预览格 —— 同一句「将要执行的 SQL」更要折。
+     *
+     * <p>这一格 {@code setEditable(false)}，用户本来就不会去里面移光标，
+     * 「靠光标跟随把右边横移出来」这条隐路对它基本不存在，所以截断在这格最致命。
+     */
+    @Test
+    void aLongGeneratedDefinitionFoldsIntoTheReadOnlyPreviewBox() {
+        ViewDesignerDialog dialog = onFx(() -> {
+            ViewDesignerDialog created = ViewDesignerDialog.create(
+                    FakeDbSession.of(DialectKind.MYSQL), List.of());
+            created.nameField().setText("v_active_users");
+            created.selectEditor().setText(LONG_BODY);
+            return created;
+        });
+
+        assertThat(onFx(() -> dialog.previewEditor().text()))
+                .as("预览格没内容就说明正文被判成了非法形状，这条测的就不是折行")
+                .isNotEmpty();
+        Fold fold = onFx(() -> laidOut(dialog.previewEditor()));
+
+        assertThat(fold.boxWidth()).isLessThanOrEqualTo(DialogSizes.WIDE);
+        assertThat(fold.visualLines())
+                .as("要执行的那句必须整句看得见 —— 只读格里被截掉等于让用户闭着眼睛执行")
+                .isGreaterThan(1);
+    }
+
     // ─────────────────────────── 工具 ───────────────────────────
+
+    /** 编辑器在真实排版下的几何：框宽与「最长那个逻辑行占几个视觉行」。 */
+    private record Fold(double boxWidth, int visualLines) {
+    }
+
+    /**
+     * 把设计器的编辑器按弹窗那一档宽度挂进场景、走完 CSS 与排版再量。
+     *
+     * <p>不这么做量到的是「没排版过的 Region」：{@code getParagraphLinesCount}
+     * 在排版前恒为 1，折没折行都看不出区别。
+     */
+    private static Fold laidOut(SqlEditor editor) {
+        javafx.scene.layout.StackPane box = new javafx.scene.layout.StackPane(editor);
+        Scene scene = new Scene(box, DialogSizes.WIDE, 420);
+        java.net.URL app = ViewDesignerDialogTest.class.getResource("/io/agenticdb/ui/app.css");
+        assertThat(app).as("量折行要带真实字号的样式表").isNotNull();
+        scene.getStylesheets().add(app.toExternalForm());
+        box.applyCss();
+        box.layout();
+        org.fxmisc.richtext.CodeArea area = editor.area();
+        int last = area.getParagraphs().size() - 1;
+        return new Fold(area.getWidth(), area.getParagraphLinesCount(last));
+    }
 
     private static String okButtonText(ViewDesignerDialog dialog) {
         return dialog.dialog().getDialogPane().getButtonTypes().stream()
