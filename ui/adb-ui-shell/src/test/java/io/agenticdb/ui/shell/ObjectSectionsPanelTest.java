@@ -143,6 +143,42 @@ class ObjectSectionsPanelTest {
         return new ObjectSectionsPanel(session, schemaService, "widgets", executor, () -> { });
     }
 
+    /**
+     * ⭐ D-99 的另一半：切面这侧的 Origin 列也不许再写死一个数。
+     *
+     * <p>立案时量到的是「设计器截字、切面完整」，但两边的<b>病因是同一个</b>：切面写死
+     * prefWidth 100、设计器压根没定宽，于是同一枚词在两个界面得到两个结果。只改设计器
+     * 等于把「各写各的」留下另一半 —— 切面那个 100 今天够用（它排在 flex 末列，拿到的是
+     * 剩余宽而不是 100），可它<b>不跟着词长变</b>：下一次把 {@code idx.origin.unique} 改成
+     * 更长的词，这一列会在某个面板宽度下安静截字，而这条门禁正好红。
+     *
+     * <p>⚠️ 这一条<b>单独看是自证的</b>：它拿 {@link ObjectSectionsPanel#originColumnMin()}
+     * 当尺子，主代码要是把同一个函数原样填回去，这里恒成立。它按住的是<b>「用没用这个来源」</b>，
+     * 而<b>「这个来源本身够不够宽」</b>由 {@code StructurePageTest
+     * .originColumnCarriesAReadableFloorForTheLongestOriginWord} 用真实 CSS 内边距 +
+     * 真实字体量出来钉住（那条读的是设计器网格的排版结果，不吃这个函数）。两条合起来才闭环。
+     */
+    @Test
+    void theOriginColumnInSectionPanelUsesTheSameSharedFloor(FxRobot robot) throws Exception {
+        ObjectSectionsPanel panel = panel();
+        robot.interact(() -> panel.show(ObjectSectionsPanel.SECTION_INDEXES));
+        WaitForAsyncUtils.waitFor(10, java.util.concurrent.TimeUnit.SECONDS,
+                () -> panel.structure() != null || panel.lastError() != null);
+        assertThat(panel.lastError()).as("读取失败原因").isNull();
+
+        TableView<?> table = (TableView<?>) panel.lookup("#object-indexes-table");
+        javafx.scene.control.TableColumn<?, ?> origin =
+                table.getColumns().get(table.getColumns().size() - 1);
+        // 自证：确认拿到的确实是 Origin 那一列，而不是末列位置上换了别的东西。
+        assertThat(origin.getText())
+                .as("末列必须是 Origin —— 否则下面那句断言量的是别的列")
+                .isEqualTo(io.agenticdb.ui.I18n.t("sections.col.origin"));
+
+        assertThat(origin.getMinWidth())
+                .as("切面 Origin 列的下限必须来自 originColumnMin()：两处各写一个数正是 D-99 的成因")
+                .isGreaterThanOrEqualTo(ObjectSectionsPanel.originColumnMin());
+    }
+
     @Test
     void theColumnsSectionShowsTheRealColumns(FxRobot robot) throws Exception {
         ObjectSectionsPanel panel = panel();

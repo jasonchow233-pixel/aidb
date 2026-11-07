@@ -700,7 +700,10 @@ class StructurePageTest {
         String source = Files.readString(repositoryRoot().resolve(
                 "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/ObjectSectionsPanel.java"));
         int from = source.indexOf("static String originLabel");
-        int to = source.indexOf("originColumnMin");
+        // ⚠️ 锚点必须是**声明本身**、且从 from 往后找：本轮把 originColumnMin() 也填进了切面
+        //   的建表代码（:126），于是裸 "originColumnMin" 命中的是**那一句**、排在翻词出口之前，
+        //   这一段就切成负长度（满负载实测红过一次，自证条款抓住了）。
+        int to = source.indexOf("static double originColumnMin()", from);
         assertThat(from).as("自证：找得到翻词那个出口").isGreaterThan(-1);
         assertThat(to).as("自证：找得到宽度出口（这一条扫的是它和翻词之间的那段）").isGreaterThan(from);
         java.util.Set<String> cases = new java.util.TreeSet<>();

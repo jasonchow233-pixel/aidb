@@ -129,8 +129,13 @@ final class ObjectSectionsPanel extends VBox {
                         : I18n.t("details.meta.no"), 60));
         indexesTable.getColumns().add(column(I18n.t("structure.col.columns"),
                 IndexDef::columnsLabel, 220));
-        indexesTable.getColumns().add(column(I18n.t("sections.col.origin"),
-                value -> originLabel(value.origin()), 100));
+        TableColumn<IndexDef, String> originColumn = column(I18n.t("sections.col.origin"),
+                value -> originLabel(value.origin()), 100);
+        // ⭐ D-99：100 是这条列宽**原来唯一的数**，而它不跟着词长变 —— 词排在 flex 末列，
+        //   平时拿到的是剩余宽所以看不出问题，一旦面板变窄就安静截字。下限从翻词出口取，
+        //   与设计器（StructurePage#setIndexes）共用同一个来源，两处不再各写各的。
+        originColumn.setMinWidth(originColumnMin());
+        indexesTable.getColumns().add(originColumn);
 
         foreignKeysTable.setId("object-foreign-keys-table");
         foreignKeysTable.getStyleClass().add("adb-structure__table");
