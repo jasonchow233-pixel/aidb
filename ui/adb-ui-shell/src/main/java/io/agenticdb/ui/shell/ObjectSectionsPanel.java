@@ -129,13 +129,12 @@ final class ObjectSectionsPanel extends VBox {
                         : I18n.t("details.meta.no"), 60));
         indexesTable.getColumns().add(column(I18n.t("structure.col.columns"),
                 IndexDef::columnsLabel, 220));
-        TableColumn<IndexDef, String> originColumn = column(I18n.t("sections.col.origin"),
-                value -> originLabel(value.origin()), 100);
-        // ⭐ D-99：100 是这条列宽**原来唯一的数**，而它不跟着词长变 —— 词排在 flex 末列，
-        //   平时拿到的是剩余宽所以看不出问题，一旦面板变窄就安静截字。下限从翻词出口取，
-        //   与设计器（StructurePage#setIndexes）共用同一个来源，两处不再各写各的。
-        originColumn.setMinWidth(originColumnMin());
-        indexesTable.getColumns().add(originColumn);
+        // ⭐ D-99 试过给这一列也接上 originColumnMin()，**量下来不成立，已撤**（见 originColumnMin 的格子）：
+        //   切面这张表的宽度分配不是「末列拿剩余」，四列实测各拿约 1/4（帧面 245/245/245/245），
+        //   所以它落不到设计器那个 85px 上；接上下限换来的不是「防截字」，而是把另外三列各挤掉 24px
+        //   （帧 p2-section-indexes 实测 9351 像素位移，去掉这一行后与 HEAD **逐字节相同**）。
+        indexesTable.getColumns().add(column(I18n.t("sections.col.origin"),
+                value -> originLabel(value.origin()), 100));
 
         foreignKeysTable.setId("object-foreign-keys-table");
         foreignKeysTable.getStyleClass().add("adb-structure__table");
@@ -236,6 +235,9 @@ final class ObjectSectionsPanel extends VBox {
      * prefWidth 100，设计器那侧压根没定过宽，于是同一句「Unique constraint」一边完整、
      * 一边截成「Unique con…」（帧面 {@code p4-structure-indexes} 实测那一格只有 85px）。
      * 词有多宽是这个出口的属性，不是某个界面的属性 —— 下一次改文案（或加一枚码）才不会只改到一处。
+     *
+     * <p>⚠️ 目前的<b>消费者只有设计器</b>（{@code StructurePage#setIndexes}）。切面这一侧试过接同一个数，
+     * 量下来不成立、已撤：见上面建表处那段注释，以及 {@code p2-section-indexes} 的逐字节对照。
      *
      * <p>数值走 {@code ColumnWidths} 的估算，不是像素级排版：实测见该类里 12px 常规体那一档字宽。
      */
