@@ -292,6 +292,8 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /** 区分大小写：默认关 —— 与 Navicat 及主流编辑器一致（要精确匹配再勾上）。 */
     private final CheckBox findCaseBox = new CheckBox(I18n.t("grid.find.caseSensitive"));
     private final Button findNextButton = new Button(I18n.t("grid.find.next"));
+    /** ⭐ D-72：Navicat 的数据编辑器是 ↑↓ 两颗，只有 ↓ 就走不回去。 */
+    private final Button findPrevButton = new Button(I18n.t("grid.find.previous"));
     private final Button replaceOneButton = new Button(I18n.t("grid.find.replace"));
     private final Button replaceAllButton = new Button(I18n.t("grid.find.replaceAll"));
     private final CheckMenuItem hideNullItem = new CheckMenuItem(I18n.t("grid.view.hideNull"));
@@ -559,8 +561,14 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 return;
             }
             // ⭐ G3：F3 = 查找下一处（查找条开着时；焦点在哪个输入框里都生效）。
+            //    ⭐ D-72：Shift+F3 = 上一处 —— 主流编辑器同一对口，只补按钮不补键盘
+            //    等于键盘用户仍然只能绕整页一圈。
             if (event.getCode() == KeyCode.F3 && findBar.isVisible()) {
-                findNext();
+                if (event.isShiftDown()) {
+                    findPrevious();
+                } else {
+                    findNext();
+                }
                 event.consume();
                 return;
             }
@@ -4662,7 +4670,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     // ─────────────────────── G3：网格查找 / 替换 ───────────────────────
 
     /**
-     * 建查找条：查找 / 下一个 / 替换为 / 替换 / 全部替换 / 区分大小写 / 关闭。
+     * 建查找条：查找 / 上一个 / 下一个 / 替换为 / 替换 / 全部替换 / 区分大小写 / 关闭。
      *
      * <p>形态照抄查询页的查找条（同一套令牌），语义不同：查询页查的是编辑器里的
      * 字符流，这里查的是<b>网格单元格</b> —— 范围是当前页的<b>可见</b>数据列：
@@ -4687,6 +4695,10 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         replaceField.setPrefWidth(180);
         replaceField.setMinWidth(110);
         replaceField.getStyleClass().add("adb-grid__find-field");
+
+        findPrevButton.setId("data-find-prev");
+        findPrevButton.getStyleClass().add("adb-button");
+        findPrevButton.setOnAction(event -> findPrevious());
 
         findNextButton.setId("data-find-next");
         findNextButton.getStyleClass().add("adb-button");
@@ -4720,7 +4732,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         searchField.setTooltip(new Tooltip(I18n.t("grid.search.tooltip")));
         searchField.textProperty().addListener((observable, previous, value) -> rebuildItems());
 
-        findBar.getChildren().addAll(findField, findNextButton, replaceField,
+        findBar.getChildren().addAll(findField, findPrevButton, findNextButton, replaceField,
                 replaceOneButton, replaceAllButton, findCaseBox,
                 new Separator(javafx.geometry.Orientation.VERTICAL), searchField, close);
     }
@@ -4854,6 +4866,27 @@ public final class DataGridPage extends VBox implements AutoCloseable {
 
     /** 查找下一处：从当前焦点格<b>之后</b>找，到底回绕；状态栏报「第 x / y 个」。 */
     private void findNext() {
+        stepMatches(true);
+    }
+
+    /**
+     * ⭐ D-72：查找<b>上一</b>处 —— 与 {@code findNext} 严格镜像：向前找最近的一处，
+     * 到头发完回绕到<b>最后</b>一处（不是第一处）。
+     *
+     * <p>两者共用 {@link #stepMatches}：needle 的拒绝、命中数为 0 的播报、行主序、
+     * 状态栏那句「第 x / y 个」全部只有一份 —— 方向是唯一变量。
+     */
+    private void findPrevious() {
+        stepMatches(false);
+    }
+
+    /**
+     * 逐格查找的<b>唯一</b>推进出口（D-72）：{@code forward} 决定往哪头走，其余规则两边共用。
+     *
+     * <p>游标语义：焦点格<b>本身已看过</b>，所以严格比较（不含等号）。没有焦点格时
+     * 从该方向的<b>端点</b>开始 —— 正向是第一个，反向是最后一个。
+     */
+    private void stepMatches(boolean forward) {
         if (transpose) {
             feedback.status(I18n.t("grid.find.transposeOff"));
             return;
@@ -4869,20 +4902,36 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             return;
         }
         int[] cursor = focusedCellPosition();
-        int from = 0;
+        int from = forward ? 0 : matches.size() - 1;
         if (cursor != null) {
-            // 从焦点格之后开始（焦点格本身已看过）；没有更靠后的就回绕。
-            from = matches.size();
-            for (int i = 0; i < matches.size(); i++) {
-                int[] hit = matches.get(i);
-                if (hit[0] > cursor[0]
-                        || (hit[0] == cursor[0] && hit[1] > cursor[1])) {
-                    from = i;
-                    break;
+            if (forward) {
+                // 从焦点格之后开始（焦点格本身已看过）；没有更靠后的就回绕。
+                from = matches.size();
+                for (int i = 0; i < matches.size(); i++) {
+                    int[] hit = matches.get(i);
+                    if (hit[0] > cursor[0]
+                            || (hit[0] == cursor[0] && hit[1] > cursor[1])) {
+                        from = i;
+                        break;
+                    }
                 }
-            }
-            if (from >= matches.size()) {
-                from = 0;
+                if (from >= matches.size()) {
+                    from = 0;
+                }
+            } else {
+                // 镜像：倒着扫第一个「严格在焦点格之前」的命中；没有就回绕到最后一条。
+                from = -1;
+                for (int i = matches.size() - 1; i >= 0; i--) {
+                    int[] hit = matches.get(i);
+                    if (hit[0] < cursor[0]
+                            || (hit[0] == cursor[0] && hit[1] < cursor[1])) {
+                        from = i;
+                        break;
+                    }
+                }
+                if (from < 0) {
+                    from = matches.size() - 1;
+                }
             }
         }
         int[] hit = matches.get(from);

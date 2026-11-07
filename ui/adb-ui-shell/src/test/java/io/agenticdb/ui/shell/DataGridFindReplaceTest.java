@@ -164,6 +164,118 @@ class DataGridFindReplaceTest {
                 .isEqualTo(I18n.t("grid.find.countOnPage", "ALPHA", 0));
     }
 
+    // ─────────────────────── ⭐ D-72：Previous ───────────────────────
+
+    /**
+     * ⭐ D-72（一）：查找条必须两个方向都能走 —— Navicat 的数据编辑器是 ↑↓ 两颗，
+     * 我们原先只有 ↓（「下一个」）。点过头一次就退不回去，只能绕整页一圈，
+     * 而绕圈期间状态栏一直在报「第 x / y 个」，用户以为自己在往回走。
+     *
+     * <p>回绕方向与「下一个」严格对称：从<b>第一个</b>命中按「上一个」必须落到<b>最后一个</b>，
+     * 并报「第 3 / 3 个」——报 1/3 就等于把回绕说成「回到开头」。
+     */
+    @Test
+    void findPreviousWalksMatchesBackwardsAndWrapsWithACount() {
+        findField().setText("find me");
+        interact(this::fireFindNext);
+        assertThat(focusedCell())
+                .as("先落在第一个命中上（row-major 的 0,2）")
+                .isEqualTo(new int[] {0, 2});
+
+        interact(this::fireFindPrevious);
+        assertThat(lastStatus.get())
+                .as("第一个再往前 = 回绕到最后一个")
+                .isEqualTo(I18n.t("grid.find.found", "find me", 3, 3));
+        assertThat(focusedCell()).isEqualTo(new int[] {3, 1});
+
+        interact(this::fireFindPrevious);
+        assertThat(lastStatus.get()).isEqualTo(I18n.t("grid.find.found", "find me", 2, 3));
+        assertThat(focusedCell()).isEqualTo(new int[] {1, 2});
+
+        interact(this::fireFindPrevious);
+        assertThat(lastStatus.get()).isEqualTo(I18n.t("grid.find.found", "find me", 1, 3));
+        assertThat(focusedCell()).isEqualTo(new int[] {0, 2});
+
+        interact(this::fireFindPrevious);
+        assertThat(lastStatus.get())
+                .as("到头发完必须再次回绕，不能停在「没有更多」")
+                .isEqualTo(I18n.t("grid.find.found", "find me", 3, 3));
+        assertThat(focusedCell()).isEqualTo(new int[] {3, 1});
+    }
+
+    /**
+     * ⭐ D-72（四）：没有焦点格时按「上一个」从<b>尾端</b>开始 —— 不是从头开始。
+     *
+     * <p>这条钉的是端点：打开查找条直接按 ↑，用户心里的意思是「我要最后一个」
+     * （与「直接按 ↓ 得到第一个」严格对称）。把反向的起点写成 0，前一条用例
+     * 照样全绿 —— 它每一步都有焦点格，永远走不到这个分支。
+     */
+    @Test
+    void previousFromNoFocusStartsAtTheLastMatch() {
+        findField().setText("find me");
+        interact(() -> table().getFocusModel().focus(-1));
+        assertThat(focusedCell())
+                .as("前提：网格没有焦点格")
+                .isNull();
+
+        interact(this::fireFindPrevious);
+        assertThat(lastStatus.get())
+                .as("端点必须是最后一条（第 3 / 3 个），不是第一条")
+                .isEqualTo(I18n.t("grid.find.found", "find me", 3, 3));
+        assertThat(focusedCell()).isEqualTo(new int[] {3, 1});
+    }
+
+    /**
+     * ⭐ D-72（二）：两颗键的<b>文字与次序</b>都在屏上。
+     *
+     * <p>标签写英文<b>字面量</b>而不是 {@code I18n.t("grid.find.previous")} ——
+     * 用同一把键断言同一个键，键值打成什么都绿（自证条款吞真失败）。
+     * 次序钉「上一个」在「下一个」<b>前面</b>：Navicat 就是 ↑ 在 ↓ 前，
+     * 两颗对调后每条「点第二颗」的肌肉记忆都会反向。
+     */
+    @Test
+    void bothArrowsAreOnTheBarInNavicatOrder() throws Exception {
+        interact(() -> page.fireEvent(shortcut(KeyCode.F)));
+        WaitForAsyncUtils.waitFor(2, TimeUnit.SECONDS, page::findBarVisible);
+
+        Button previous = (Button) page.lookup("#data-find-prev");
+        Button next = (Button) page.lookup("#data-find-next");
+        assertThat(previous.getText())
+                .as("「上一个」的英文标签就是 Previous —— 不读键，读字面")
+                .isEqualTo("Previous");
+        assertThat(next.getText()).isEqualTo("Next");
+
+        javafx.scene.layout.HBox bar = (javafx.scene.layout.HBox) page.lookup("#data-find-bar");
+        List<javafx.scene.Node> children = bar.getChildren();
+        assertThat(children.indexOf(previous))
+                .as("↑ 排在 ↓ 前面 —— 与 Navicat 同序")
+                .isLessThan(children.indexOf(next));
+    }
+
+    /**
+     * ⭐ D-72（三）：键盘通道同在 —— F3 = 下一个，Shift+F3 = 上一个。
+     *
+     * <p>这条存在的理由不是「方便」，是<b>反向</b>：F3 早就有，只补按钮不补键盘，
+     * 键盘用户仍旧只能绕圈；而两条各红一次才说明「上一/下一」各自接了各自的处理器
+     * （M：把 Shift 分支接到 findNext 上，只有这条红）。
+     */
+    @Test
+    void shiftF3GoesBackwardsWhileF3GoesForwards() throws Exception {
+        findField().setText("find me");
+        interact(() -> page.fireEvent(shortcut(KeyCode.F)));
+        WaitForAsyncUtils.waitFor(2, TimeUnit.SECONDS, page::findBarVisible);
+
+        interact(() -> page.fireEvent(key(KeyCode.F3, false, false, false)));
+        assertThat(focusedCell()).as("F3 = 第一个").isEqualTo(new int[] {0, 2});
+
+        interact(() -> page.fireEvent(key(KeyCode.F3, false, false, false)));
+        assertThat(focusedCell()).as("F3 = 第二个").isEqualTo(new int[] {1, 2});
+
+        interact(() -> page.fireEvent(shiftKey(KeyCode.F3)));
+        assertThat(lastStatus.get()).isEqualTo(I18n.t("grid.find.found", "find me", 1, 3));
+        assertThat(focusedCell()).as("Shift+F3 必须退回去，而不是继续向前").isEqualTo(new int[] {0, 2});
+    }
+
     // ─────────────────────── 替换 ───────────────────────
 
     @Test
@@ -287,6 +399,11 @@ class DataGridFindReplaceTest {
         ((Button) page.lookup("#data-find-next")).fire();
     }
 
+    /** 点「上一个」（D-72）。 */
+    private void fireFindPrevious() {
+        ((Button) page.lookup("#data-find-prev")).fire();
+    }
+
     /** 焦点格在「可见数据列」坐标系里的 (行, 列下标)；列按表头顺序 id/name/note/amount。 */
     private int[] focusedCell() {
         AtomicReference<int[]> result = new AtomicReference<>();
@@ -355,6 +472,12 @@ class DataGridFindReplaceTest {
     private static KeyEvent key(KeyCode code, boolean control, boolean alt, boolean meta) {
         return new KeyEvent(KeyEvent.KEY_PRESSED, "", "", code,
                 false, control, alt, meta);
+    }
+
+    /** 带 Shift 的按键事件（D-72：Shift+F3 = 上一个）。 */
+    private static KeyEvent shiftKey(KeyCode code) {
+        return new KeyEvent(KeyEvent.KEY_PRESSED, "", "", code,
+                true, false, false, false);
     }
 
     private static void interact(Runnable action) {
