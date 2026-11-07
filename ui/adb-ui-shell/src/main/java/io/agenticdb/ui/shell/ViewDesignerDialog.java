@@ -114,12 +114,11 @@ final class ViewDesignerDialog {
         }
 
         selectEditor.area().setId("new-view-select");
-        // ⭐ D-95：两格都折行。这个共用件**没有横向滚动条**（`SqlEditor` 直接把
-        //    RichTextFX 的 CodeArea 放进 StackPane，而 0.11.7 的 Region 自己不带滚动条），
-        //    一行超过弹窗宽度就只能靠「把光标移到行尾」把内容横移出来 —— 帧面上
-        //    什么线索都没有，读的人看到的是 ``from `us`` 后面凭空没了。
-        //    只开在这儿、不开进共用件：那件牵连查询页 / 结构页 DDL / 两处预览，
-        //    那边缺的是「一条看得见的横条」（D-97），不是折行。
+        // ⭐ D-95：这两格读的是**一整句定义**，折行比横着拖条好读，所以就地开折行。
+        //    （当时共用件 `SqlEditor` 连横条都没有 —— 一行超出弹窗宽度只能靠「把光标
+        //    移到行尾」把内容横移出来，帧面上零线索，读的人看到的是 from `us 后面凭空没了。）
+        //    ⭐ D-97 之后横条在共用件里补上了，这一句**仍然要留着**：AS_NEEDED 的策略下
+        //    折行盒永远不会长出横条，两条路不冲突，而设计器要的本来就是「整句一次看全」。
         selectEditor.area().setWrapText(true);
         selectEditor.setHint(I18n.t("newview.select.hint"));
         selectEditor.setText(initialBody == null ? "" : initialBody);

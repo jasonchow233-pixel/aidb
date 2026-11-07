@@ -219,8 +219,18 @@ class IndexDialogTest {
         fire((Button) find(dialog, "#index-dialog-collapse-sql"));
 
         assertThat(dialog.isSqlPreviewVisible()).isFalse();
-        // ⭐ 折叠收的是整个编辑器（行号 + 文本），CodeArea 只是它的孩子。
-        assertThat(onFx(() -> area.getParent().isManaged())).isFalse();
+        // ⭐ 折叠收的是整个编辑器（行号 + 文本 + D-97 起还有那两条滚动条），
+        //    CodeArea 只是它里面的孙子。原来这里读的是 area.getParent()，等于假设
+        //    「编辑器的盒子就是 CodeArea 的爸爸」—— D-97 给 CodeArea 外面加了一层
+        //    滚动视口，那个假设拿到的就不再是编辑器了。按 id 找本体，别再数层。
+        Node box = find(dialog, "#index-dialog-sql");
+        assertThat(onFx(() -> box.isManaged()))
+                .as("折叠后编辑器本体不再占位")
+                .isFalse();
+        assertThat(onFx(() -> box.isVisible()))
+                .as("本体自己也要不可见 —— CodeArea 住在它里面，本体不画才轮到它不画"
+                        + "（JavaFX 的 isVisible 是各自节点的属性，不随父件继承，别去读孩子）")
+                .isFalse();
     }
 
     // ─────────────────────────── 能力边界：不许虚构 ───────────────────────────

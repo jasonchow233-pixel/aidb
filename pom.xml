@@ -59,6 +59,10 @@
     <javafx.version>25</javafx.version>
     <controlsfx.version>11.2.6</controlsfx.version>
     <richtextfx.version>0.11.7</richtextfx.version>
+    <!-- D-97：编辑器外层视口（滚动条）用的类在 flowless 里，richtextfx 是**传递**带进来的。
+         代码里直接 import 它就得自己声明 —— 版本号必须与 richtextfx 那一份对齐，
+         写成 property 是为了让「richtextfx 升级时这里必须复核」这件事留在明面上。 -->
+    <flowless.version>0.7.4</flowless.version>
 
     <jackson.version>2.22.4</jackson.version>
     <!-- Jackson 2.22 起 annotations 独立发版，版本号不带 patch。 -->
@@ -184,6 +188,11 @@
         <groupId>org.fxmisc.richtext</groupId>
         <artifactId>richtextfx</artifactId>
         <version>${richtextfx.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.fxmisc.flowless</groupId>
+        <artifactId>flowless</artifactId>
+        <version>${flowless.version}</version>
       </dependency>
 
       <!-- ── 数据 / 契约 ─────────────────────────────────────────── -->

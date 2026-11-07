@@ -88,6 +88,18 @@ public final class AppShell extends StackPane {
     private static final int DETAILS_MAX = ObjectDetailsPanel.WIDTH_MAX;
     private static final int DETAILS_DEFAULT = ObjectDetailsPanel.WIDTH_DEFAULT;
 
+    /**
+     * ⭐ D-97 帧证用的姿态 SQL：示例查询的<b>一整行</b>写法（列 / 条件 / 结果集与
+     * {@code p3-query} 那句一致）。横条只在「单行比编辑器盒子还宽」时出现，
+     * 所以这一句必须保持单行且够长 —— {@code SqlEditorScrollTest} 直接量它，
+     * 谁把它改短了，那一帧就退化成「声称有横条、画面里没有」的假帧（D-98 同型病）。
+     */
+    static final String POSE_OVERFLOW_SQL = """
+            SELECT id, name, email, active, score, bio, created_at, \
+                   length(bio) AS bio_len, upper(email) AS email_upper \
+                   FROM users WHERE active = 1 ORDER BY created_at DESC LIMIT 100;
+            """.stripTrailing();
+
     private final SettingsStore settings;
     /** ⭐ P2-3：查询历史（连接 / 表 / 时间）。数据页「历史」与详情面板共用。 */
     private final QueryHistory history;
@@ -2485,6 +2497,13 @@ public final class AppShell extends StackPane {
                     LIMIT 100;
                     """
                     : initialQuery;
+            // ⭐ D-97 帧证：横条只在「单行比盒子还宽」时长出来，而这套帧里没有一张是那种
+            //    形状（默认那句从 D-53 起就是多行写法）—— 于是「一条看得见的横条」这句话
+            //    只有门禁、没有画面。这一格摆的是**同一句查询的一整行写法**（列、条件、
+            //    结果集一字未动），编辑器放不下，帧面上才能核对条真的画在盒子底边。
+            if (flag("adb.queryOverflow", "ADB_QUERY_OVERFLOW")) {
+                sql = POSE_OVERFLOW_SQL;
+            }
             String id = "query:" + activeProfileId() + ":" + System.nanoTime();
             initialQuerySql.put(id, sql);
             openTab(new TabItem(id, I18n.t("shell.sampleQuery"), TabKind.QUERY, null, activeProfileId()));

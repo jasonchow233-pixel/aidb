@@ -106,6 +106,10 @@ SHOTS=(
   "p6-tables||5000|ADB_TABLES=1 ADB_THEME_FORCE=light"
   "p6-tables-grid||5000|ADB_TABLES=1 ADB_TABLE_VIEW=grid ADB_THEME_FORCE=light"
   "p3-query||6000|ADB_QUERY=1 ADB_THEME_FORCE=light"
+  # ⭐ D-97 帧证：共用件补上的那条横条只在「单行比编辑器盒子还宽」时出现，而 p3-query
+  #   从 D-53 起摆的是多行写法、其余带编辑器的帧也都是多行 —— 六个消费者一起变，
+  #   却没有一张帧长那个形状。这一格把同一句查询摆成整行，画面用来核对「条真的看得见」。
+  "p3-query-overflow||9000|ADB_QUERY=1 ADB_QUERY_OVERFLOW=1 ADB_THEME_FORCE=light"
   # ⭐ D-53：结果带「从没执行过」那一态 —— 同一句示例 SQL、同一个页签，只是没按 Run
   #   （跑了这一态就不存在了）。这一帧证的是那句解释真的画上屏幕，不是只在门禁里。
   "p3-query-idle||6000|ADB_QUERY=1 ADB_QUERY_IDLE=1 ADB_THEME_FORCE=light"

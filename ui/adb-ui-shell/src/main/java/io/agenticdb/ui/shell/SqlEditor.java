@@ -5,7 +5,9 @@ import io.agenticdb.sql.SqlBrackets;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.StackPane;
+import org.fxmisc.flowless.VirtualizedScrollPane;
 import org.fxmisc.richtext.CodeArea;
 import org.fxmisc.richtext.model.StyleSpans;
 import org.fxmisc.richtext.LineNumberFactory;
@@ -14,14 +16,27 @@ import java.util.Collection;
 import java.util.function.Consumer;
 
 /**
- * SQL 编辑器：RichTextFX CodeArea + 行号 + 实时高亮 + 空态提示。
+ * SQL 编辑器：RichTextFX CodeArea + 行号 + 实时高亮 + 空态提示 + 溢出滚动条。
  *
  * <p>高亮是「宽容」的：SQL 有语法错误时仍然按 token 上色，不会因为一个
  * 未闭合引号让整段编辑区变成纯文本。
+ *
+ * <p>⭐ D-97：CodeArea 外面套一层 flowless 的 {@link VirtualizedScrollPane}。
+ * 0.11.7 的 {@code GenericStyledArea} 是裸 Region、自己不带 ScrollBar（{@code javap}
+ * 实测只有 {@code estimatedScrollX} / {@code totalWidthEstimate}），所以单行超出盒子宽度时
+ * 内容不丢、但界面上没有任何线索说右边还有东西 —— 只有把光标点到行尾，内容才跟着
+ * 光标横移出来。横条只能由外层虚拟化视口给出，这条路是 RichTextFX 官方给的，
+ * 不是自创：{@code VirtualizedScrollPane} 读 CodeArea 的 {@code totalWidthEstimate}
+ * 来摆条，并把条的位置回灌给编辑区。
+ *
+ * <p>两条都用 {@code AS_NEEDED}：短文本与折行盒（视图设计器那两格是 D-95 开的折行）
+ * 仍然一条都不出现，避免做成装饰条。
  */
 public final class SqlEditor extends StackPane {
 
     private final CodeArea area = new CodeArea();
+    private final VirtualizedScrollPane<CodeArea> viewport = new VirtualizedScrollPane<>(
+            area, ScrollPane.ScrollBarPolicy.AS_NEEDED, ScrollPane.ScrollBarPolicy.AS_NEEDED);
     private final Label hint = new Label(I18n.t("editor.hint",
             io.agenticdb.ui.Shortcuts.of("Mod+Enter"),
             io.agenticdb.ui.Shortcuts.of("Shift+Mod+Enter")));
@@ -47,10 +62,16 @@ public final class SqlEditor extends StackPane {
         StackPane.setAlignment(hint, Pos.TOP_LEFT);
         StackPane.setMargin(hint, new Insets(9, 12, 0, 48));
 
-        getChildren().addAll(area, hint);
+        getChildren().addAll(viewport, hint);
         updateHint();
     }
 
+    /**
+     * 编辑区本体。
+     *
+     * <p>D-97 起它的父件是视口而不是这个盒子本身 —— 宽高、滚动位置都在视口那一层，
+     * 但 {@link CodeArea#requestFollowCaret()} 仍然有效：视口会把条的位置回灌给编辑区。
+     */
     public CodeArea area() {
         return area;
     }

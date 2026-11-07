@@ -443,14 +443,11 @@ class ViewDesignerDialogTest {
 
     private static String dialogPreviewHint(ViewDesignerDialog dialog) {
         // 提示挂在预览编辑器自己的那一层，不在 DialogPane 的 children 里
-        //（与 NewTableDialogTest 同一取法）。
-        return dialog.previewEditor().area().getParent() instanceof javafx.scene.layout.Pane box
-                ? box.getChildrenUnmodifiable().stream()
-                        .filter(node -> node instanceof javafx.scene.control.Label)
-                        .map(node -> ((javafx.scene.control.Label) node).getText())
-                        .filter(text -> !text.isBlank())
-                        .findFirst().orElse("")
-                : "";
+        //（与 NewTableDialogTest 同一取法：按 .adb-query__hint 类查，别数 children 的下标 ——
+        //  D-97 之后 CodeArea 的父件是滚动视口，「取父件的 children」这条路已经指向错的地方）。
+        return dialog.previewEditor().lookup(".adb-query__hint")
+                instanceof javafx.scene.control.Label label
+                ? label.getText() : "";
     }
 
     private static <T> T onFx(java.util.function.Supplier<T> supplier) {
