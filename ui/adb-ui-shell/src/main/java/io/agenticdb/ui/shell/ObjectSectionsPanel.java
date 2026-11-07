@@ -221,6 +221,27 @@ final class ObjectSectionsPanel extends VBox {
         };
     }
 
+    /** {@link #originLabel} 认得的那几枚码 —— 少一列就有门禁红（见 ObjectSectionsPanelTest）。 */
+    private static final java.util.List<String> ORIGIN_CODES = java.util.List.of("pk", "u", "c");
+
+    /**
+     * Origin 那一列的可读下限（D-99，2026-11-07）：按 {@link #originLabel} 能渲出来的<b>最长那一句</b>量。
+     *
+     * <p>为什么这个数放在<b>翻词的那个出口</b>旁边，而不是各界面自己写：切面那侧写死过
+     * prefWidth 100，设计器那侧压根没定过宽，于是同一句「Unique constraint」一边完整、
+     * 一边截成「Unique con…」（帧面 {@code p4-structure-indexes} 实测那一格只有 85px）。
+     * 词有多宽是这个出口的属性，不是某个界面的属性 —— 下一次改文案（或加一枚码）才不会只改到一处。
+     *
+     * <p>数值走 {@code ColumnWidths} 的估算，不是像素级排版：实测见该类里 12px 常规体那一档字宽。
+     */
+    static double originColumnMin() {
+        int units = 0;
+        for (String code : ORIGIN_CODES) {
+            units = Math.max(units, ColumnWidths.visualLength(originLabel(code)));
+        }
+        return ColumnWidths.cellContentWidth(units, ColumnWidths.DATA_MIN, ColumnWidths.DATA_MAX_MIN);
+    }
+
     // ─────────────────────────── 切面切换 ───────────────────────────
 
     /** 切到某个切面（必要时懒加载结构）。 */

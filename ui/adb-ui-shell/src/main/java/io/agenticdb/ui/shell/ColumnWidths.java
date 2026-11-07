@@ -29,6 +29,19 @@ final class ColumnWidths {
     /** 11px 类型标签的平均字宽。 */
     static final double TYPE_CHAR_UNIT = 6.4;
 
+    /**
+     * 12px 常规体（结构页与数据网格的<b>单元格文本</b>）的平均字宽。
+     *
+     * <p>和 {@link #CHAR_UNIT} 分开是量出来的，不是拍的：{@code app.css} 给
+     * {@code .adb-structure__table .table-cell} 写的是 12px 常规体，而 {@link #CHAR_UNIT} 是
+     * 13px 粗体表头那一档。实测「Unique constraint」= 17 个视觉单位 = 88.7px（约 5.2px/单位），
+     * 按 7.2 估会得出 138px —— 比真需要的多塞 30px 空白。这里取 5.6，留约 8% 余量。
+     */
+    static final double CELL_CHAR_UNIT = 5.6;
+
+    /** 单元格左右内边距（{@code app.css}：{@code .adb-structure__table .table-cell} 是 2px 8px）。 */
+    static final double CELL_PADDING = 16;
+
     /** 列头左右内边距 + 排序徽标 + 筛选漏斗 + 间距的固定占位。 */
     static final double HEADER_CHROME = 60;
 
@@ -81,6 +94,17 @@ final class ColumnWidths {
     /** 按视觉长度估算内容宽度，并夹在 [{@code floor}, {@code ceiling}] 内。 */
     static double contentWidth(int units, double padding, double floor, double ceiling) {
         return Math.max(floor, Math.min(ceiling, units * CHAR_UNIT + padding));
+    }
+
+    /**
+     * 单元格文本列的可读下限：按<b>这一列会渲出来的最长那条文本</b>估，走 12px 常规体那一档字宽。
+     *
+     * <p>与 {@link #contentWidth} 的差别只在字宽档：那一条服务表头（13px 粗体），这一条服务
+     * 单元格正文。D-99 立案时设计器索引表的 Origin 列只有 85px，而「Unique constraint」
+     * 需要 88.7px 字宽 + 16px 内边距 —— 用 7.2 那档估会给出 138px，白占半列。
+     */
+    static double cellContentWidth(int units, double floor, double ceiling) {
+        return Math.max(floor, Math.min(ceiling, units * CELL_CHAR_UNIT + CELL_PADDING));
     }
 
     private static double clamp(double value, double min, double max) {

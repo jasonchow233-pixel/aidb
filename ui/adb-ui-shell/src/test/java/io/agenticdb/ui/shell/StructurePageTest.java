@@ -598,6 +598,136 @@ class StructurePageTest {
     }
 
     /**
+     * ⭐ D-99：同一句「Unique constraint」，数据页切面那侧完整，设计器这侧截成「Unique con…」。
+     *
+     * <p>帧面实测（{@code p4-structure-indexes}，1280×792）：索引网格的列边界竖线在
+     * x=278 / 306 / 1024 / 1097 / 1179 / 1264 —— 列宽合计 <b>986</b>，Origin 那一列只分到
+     * <b>85px</b>；而这一格真正要装下的是「Unique constraint」：12px 常规体实测 89px 字宽，
+     * 加 {@code app.css} 给 {@code .adb-structure__table .table-cell} 的左右各 8px 内边距
+     * = <b>105px</b>。差的那 20px 就是画面里那个省略号。
+     *
+     * <p>根因不是哪个数写小了，是<b>这一列从来没定过宽</b>：{@code addColumn} 建出来的文本列
+     * 既不给 min 也不给 pref，于是 {@code CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN} 把可用宽
+     * 按各列默认 pref(80) 摊一遍，最后一列拿到 85 —— 而它正是三枚来源词里最长那一枚
+     * 唯一会露面的地方（切面那侧同一列写的是 prefWidth 100，所以那边没坏）。
+     *
+     * <p>所以这里问两件事，都不看代码里写了什么数，只看量出来的像素：
+     * ① 这一列的<b>下限</b>够不够装下<b>那个出口能渲出来的最长一句</b>——「需要多宽」是拿场景里
+     * 那枚真 {@code .table-cell} 的<b>字体与内边距</b>逐个词量出来的，不是测试写死的常量；
+     * 没定过宽时这一列停在排版政策的默认下限（实测 10px）上，主代码那边按 {@code ColumnWidths}
+     * 估算，两边各自独立才拦得住漂移。② 再要一次<b>实得宽度</b>：下限设了但被排版吃掉，同样红。
+     */
+    @Test
+    void originColumnCarriesAReadableFloorForTheLongestOriginWord(FxRobot robot) throws Exception {
+        waitForStructure();
+        selectTab(robot, "structure-tab-indexes");
+
+        @SuppressWarnings("unchecked")
+        javafx.scene.control.TableView<IndexDef> grid =
+                robot.lookup("#structure-indexes").queryAs(javafx.scene.control.TableView.class);
+        javafx.scene.control.TableColumn<IndexDef, ?> origin = originColumn(grid);
+
+        // 喂布局与读几何必须在同一条 FX 任务里（本类 D-8 那条的教训：分两次调用，
+        // 中间能插入布局事件，读到自相矛盾的帧）。
+        // 返回：{列下限, 列实得宽, 最长那句需要的宽, 单元格左右内边距}
+        double[] measured = WaitForAsyncUtils.asyncFx(() -> {
+            Scene scene = page.getScene();
+            if (scene.getStylesheets().isEmpty()) {
+                scene.getStylesheets().add(getClass()
+                        .getResource("/io/agenticdb/ui/theme-light.css").toExternalForm());
+                scene.getStylesheets().add(getClass()
+                        .getResource("/io/agenticdb/ui/app.css").toExternalForm());
+                scene.getRoot().getStyleClass().add("theme-light");
+            }
+            page.applyCss();
+            page.layout();
+            grid.applyCss();
+            grid.layout();
+
+            javafx.scene.control.Cell<?> cell = null;
+            for (javafx.scene.Node node : grid.lookupAll(".table-cell")) {
+                if (node instanceof javafx.scene.control.TableCell<?, ?> tableCell
+                        && !tableCell.isEmpty() && tableCell.getText() != null
+                        && !tableCell.getText().isEmpty()) {
+                    cell = tableCell;
+                    break;
+                }
+            }
+            if (cell == null) {
+                throw new AssertionError("索引网格里读不到一个有内容的 .table-cell —— "
+                        + "字体与内边距就没地方取，这条闸会量出一套假几何");
+            }
+            javafx.geometry.Insets padding = cell.getPadding();
+            double horizontal = padding.getLeft() + padding.getRight();
+            double needed = 0;
+            for (String code : List.of("pk", "u", "c")) {
+                javafx.scene.text.Text probe =
+                        new javafx.scene.text.Text(ObjectSectionsPanel.originLabel(code));
+                probe.setFont(cell.getFont());
+                needed = Math.max(needed, probe.getLayoutBounds().getWidth() + horizontal);
+            }
+            return new double[] {origin.getMinWidth(), origin.getWidth(), needed, horizontal};
+        }).get();
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(measured[3])
+                .as("自证：内边距是从挂了样式表的真单元格上读的 —— 样式没挂上这里就是 0，"
+                        + "需要宽度会少算 16px，整条闸变成恒真")
+                .isGreaterThan(0);
+        assertThat(measured[0])
+                .as("Origin 列的下限 %.1fpx 装不下那个出口能渲出来的最长一句（%.1fpx）—— "
+                        + "没人给这一列定过宽，它停在排版政策的默认下限上，"
+                        + "帧面那一列因此只拿到 85px，「Unique constraint」截成「Unique con…」",
+                        measured[0], measured[2])
+                .isGreaterThanOrEqualTo(measured[2]);
+        assertThat(measured[1])
+                .as("Origin 列实得 %.1fpx，需要 %.1fpx —— 下限设了却没被排版认账，一样是截字",
+                        measured[1], measured[2])
+                .isGreaterThanOrEqualTo(measured[2]);
+    }
+
+    /**
+     * ⭐ D-99 的配套闸：{@code originColumnMin} 按「出口能渲出来的最长那句」定宽度，
+     * 而它认得哪些码是<b>另写的一份清单</b>（{@code ORIGIN_CODES}）—— 清单漏一枚，那一枚的词
+     * 就重新变成截字，而且<b>没有一帧会红</b>：帧面摆的是演示夹具，未必有那种索引。
+     *
+     * <p>所以这一条扫源码：{@code originLabel} 的 switch 里每一枚 {@code case} 都必须在那份清单里。
+     * 清单多写一枚只是白占几个像素，不反过来管。自证那句先跑：扫描段认不出码时，
+     * 后面那句 {@code containsAll} 是空集对空集，恒真。
+     */
+    @Test
+    void originWidthCoversEveryCodeTheSharedExitRecognizes() throws Exception {
+        String source = Files.readString(repositoryRoot().resolve(
+                "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/ObjectSectionsPanel.java"));
+        int from = source.indexOf("static String originLabel");
+        int to = source.indexOf("originColumnMin");
+        assertThat(from).as("自证：找得到翻词那个出口").isGreaterThan(-1);
+        assertThat(to).as("自证：找得到宽度出口（这一条扫的是它和翻词之间的那段）").isGreaterThan(from);
+        java.util.Set<String> cases = new java.util.TreeSet<>();
+        java.util.regex.Matcher arms = java.util.regex.Pattern.compile("case \"([^\"]+)\"")
+                .matcher(source.substring(from, to));
+        while (arms.find()) {
+            cases.add(arms.group(1));
+        }
+        assertThat(cases).as("自证：扫描段真的从 switch 里认出了码").contains("pk", "u", "c");
+
+        int listAt = source.indexOf("ORIGIN_CODES = java.util.List.of(");
+        assertThat(listAt).as("宽度出口里那份码清单不见了 —— 它一没，最长那句就退回默认宽度")
+                .isGreaterThan(-1);
+        String list = source.substring(listAt, source.indexOf(';', listAt));
+        java.util.Set<String> listed = new java.util.TreeSet<>();
+        java.util.regex.Matcher items = java.util.regex.Pattern.compile("\"([^\"]+)\"")
+                .matcher(list);
+        while (items.find()) {
+            listed.add(items.group(1));
+        }
+        assertThat(listed)
+                .as("ORIGIN_CODES 漏了码：这些 case 的词进不了「最长那句」的估算，列宽会重新截字 "
+                        + cases)
+                .containsAll(cases);
+    }
+
+    /**
      * ⭐ D-96：详情面板的「打开 DDL」不许靠渲染出来的字找页签。
      *
      * <p>立案依据不是「今天坏了」—— 今天没坏，{@code structure.tab.ddl} 在 en/zh 两个 bundle 里

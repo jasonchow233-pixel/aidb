@@ -601,11 +601,12 @@ public final class StructurePage extends VBox implements AutoCloseable {
         return tab;
     }
 
-    private <T> void addColumn(TableView<T> table, String title,
+    private <T> TableColumn<T, String> addColumn(TableView<T> table, String title,
                                Function<T, javafx.beans.value.ObservableValue<String>> factory) {
         TableColumn<T, String> column = new TableColumn<>(title);
         column.setCellValueFactory(data -> factory.apply(data.getValue()));
         table.getColumns().add(column);
+        return column;
     }
 
     /**
@@ -666,8 +667,13 @@ public final class StructurePage extends VBox implements AutoCloseable {
         addColumn(indexes, I18n.t("column.name"), value -> new ReadOnlyStringWrapper(value.name()));
         addFlagColumn(indexes, I18n.t("structure.col.unique"), IndexDef::unique);
         addColumn(indexes, I18n.t("structure.col.columns"), value -> new ReadOnlyStringWrapper(value.columnsLabel()));
-        addColumn(indexes, I18n.t("sections.col.origin"), value -> new ReadOnlyStringWrapper(
-                ObjectSectionsPanel.originLabel(value.origin())));
+        TableColumn<IndexDef, String> origin = addColumn(indexes, I18n.t("sections.col.origin"),
+                value -> new ReadOnlyStringWrapper(ObjectSectionsPanel.originLabel(value.origin())));
+        // ⭐ D-99：这一列以前从来没定过宽，CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN 就按各列
+        //   默认 pref 把可用宽摊一遍，帧面（p4-structure-indexes）那一格只剩 85px ——
+        //   「Unique constraint」于是成了「Unique con…」，而切面那侧同一句是完整的。
+        //   下限从翻词那一个出口取（见 ObjectSectionsPanel#originColumnMin），两处不再各写一个数。
+        origin.setMinWidth(ObjectSectionsPanel.originColumnMin());
         indexes.setItems(FXCollections.observableArrayList(values));
     }
 
