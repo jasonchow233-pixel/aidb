@@ -1,5 +1,7 @@
 package io.agenticdb.jdbc;
 
+import java.util.List;
+
 /**
  * ⭐ R31：表设计器「类型」下拉里的一项。
  *
@@ -29,5 +31,22 @@ public record ColumnTypeOption(String name, boolean length, boolean decimals) {
     /** 长度和小数位都要的类型（定点数）。 */
     public static ColumnTypeOption scaled(String name) {
         return new ColumnTypeOption(name, true, true);
+    }
+
+    /**
+     * 在候选表里找 {@code base} 那一项；没找到（用户自己敲的类型名、方言没话说）
+     * 就当作「两个参数都不吃」。
+     *
+     * <p>⭐ D-71：这是「这一列吃不吃长度 / 小数位」的<b>唯一出口</b> ——
+     * 建表网格和结构页的 Add Field 弹窗是同一条能力的两条通道，答案必须来自同一个地方。
+     */
+    public static ColumnTypeOption option(List<ColumnTypeOption> options, String base) {
+        String name = base == null ? "" : base.trim();
+        for (ColumnTypeOption candidate : options == null ? List.<ColumnTypeOption>of() : options) {
+            if (candidate.name().equalsIgnoreCase(name)) {
+                return candidate;
+            }
+        }
+        return plain(name);
     }
 }

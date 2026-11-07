@@ -76,8 +76,13 @@ public final class StructureSqlBuilder {
         Dialect dialect = session.dialect();
         if (dialect.rebuildsTableOnColumnChange()) {
             // SQLite 的 ALTER TABLE 改不了列 —— 整表重建。
+            //
+            // ⭐ D-71：键按**用户这次选的**走，不拿 old 的。重建语句本来就会重写整张表的
+            // 列定义，所以「把 email 改成唯一」在这里是能落地的；以前这里固定回填
+            // old.unique() / old.primaryKey()，等于结构页的 Key 格子点了等于没点 ——
+            // 弹窗照样报「已保存」，库里一个约束都没变。
             ColumnSpec preserved = new ColumnSpec(next.name(), next.rawType(), next.nullable(),
-                    next.defaultValue(), next.comment(), old.unique(), old.primaryKey());
+                    next.defaultValue(), next.comment(), next.unique(), next.primaryKey());
             return rebuildPlan(session, table, oldName, preserved);
         }
 
