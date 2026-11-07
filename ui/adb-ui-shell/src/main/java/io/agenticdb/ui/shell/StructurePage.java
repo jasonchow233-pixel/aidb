@@ -56,6 +56,7 @@ import javafx.scene.layout.VBox;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -293,7 +294,27 @@ public final class StructurePage extends VBox implements AutoCloseable {
         indexes.setFixedCellSize(rowHeight);
         foreignKeys.setFixedCellSize(rowHeight);
         triggers.setFixedCellSize(rowHeight);
+        watchSelections();
         getChildren().addAll(header, body, loading);
+    }
+
+    /**
+     * ⭐ D-93：工具条的可用态跟着选择走。
+     *
+     * <p>{@code updateButtons()} 以前只在「加载完 / 执行前 / 执行后」调用，选中一列并不刷新它 ——
+     * 于是用户点中一行之后，Edit / 重命名 / 删列<b>还是灰的</b>，而挂在上面的 tooltip
+     * 仍在说「先选中一列」：按钮是死的，说的是假话。双击行和右键菜单都进得了同一个弹窗，
+     * 唯独工具条那颗点不动 —— 三条通道里最显眼的那条坏了。
+     */
+    private void watchSelections() {
+        columns.getSelectionModel().selectedItemProperty()
+                .addListener((observable, oldValue, newValue) -> updateButtons());
+        indexes.getSelectionModel().selectedItemProperty()
+                .addListener((observable, oldValue, newValue) -> updateButtons());
+        foreignKeys.getSelectionModel().selectedItemProperty()
+                .addListener((observable, oldValue, newValue) -> updateButtons());
+        triggers.getSelectionModel().selectedItemProperty()
+                .addListener((observable, oldValue, newValue) -> updateButtons());
     }
 
     private VBox buildColumnsTab() {
@@ -812,18 +833,29 @@ public final class StructurePage extends VBox implements AutoCloseable {
         return dialect.columnTypes().stream().map(ColumnTypeOption::name).toList();
     }
 
-    private void showColumnDialog(String title, ColumnSpec initial) {        if (structure == null || !structure.editable()) {
+    private void showColumnDialog(String title, ColumnSpec initial) {
+        if (structure == null || !structure.editable()) {
             return;
         }
+        // ⭐ D-71：这个弹窗的输入模型直接复用建表网格那一行（{@code ColumnRow}）。
+        // 「这一列吃不吃长度 / 小数」「勾了虚拟要清掉键和默认值」「主键自动非空」
+        // 这些规则本来就写在 ColumnRow + ColumnTypeOption 里；弹窗另抄一份四五个
+        // 独立控件，就是当初 Length / Decimals / Virtual / Key 在「加一列」时
+        // 整个消失的原因 —— 抄的那份少抄了四样，而且没人会发现。
+        List<ColumnTypeOption> typeOptions = session.dialect().columnTypes();
+        NewTableDialog.ColumnRow row = new NewTableDialog.ColumnRow(() -> { });
+        loadColumnRow(row, initial);
+
         Dialog<ColumnSpec> dialog = new Dialog<>();
         dialog.setTitle(I18n.t("structure.dialog.title"));
         dialog.setHeaderText(title);
         dialog.initOwner(sceneWindow());
         DialogStyles.apply(dialog, sceneWindow());
 
-        TextField name = new TextField(initial == null ? "" : initial.name());
+        TextField name = new TextField();
         name.setId("structure-dialog-name");
         name.setPromptText(I18n.t("structure.dialog.name"));
+        name.textProperty().bindBidirectional(row.name);
 
         ComboBox<String> type = new ComboBox<>();
         type.setId("structure-dialog-type");
@@ -833,22 +865,47 @@ public final class StructurePage extends VBox implements AutoCloseable {
         //    而真正用得上的 NUMBER / VARCHAR2 / NVARCHAR 一个都看不到 ——
         //    格子可编辑所以不算堵死，但下拉等于在教用户写一条会失败的 DDL。
         type.getItems().setAll(typeChoices(session.dialect()));
-        type.setValue(initial == null || initial.rawType().isBlank()
-                ? session.dialect().defaultColumnType() : initial.rawType());
+        type.setValue(row.type.get());
+
+        TextField length = new TextField();
+        length.setId("structure-dialog-length");
+        length.setPrefColumnCount(6);
+        length.textProperty().bindBidirectional(row.length);
+
+        TextField decimals = new TextField();
+        decimals.setId("structure-dialog-decimals");
+        decimals.setPrefColumnCount(6);
+        decimals.textProperty().bindBidirectional(row.decimals);
+
+        // ⭐ N29 的键下拉取代原来那个「Unique」勾选框：主键 / 唯一 / 无三选一，
+        //    与建表网格同一个 KeyChoice 枚举 —— 值存代码、显示走本地化。
+        ComboBox<NewTableDialog.KeyChoice> key = new ComboBox<>();
+        key.setId("structure-dialog-key");
+        key.getItems().setAll(NewTableDialog.KeyChoice.values());
+        key.setValue(NewTableDialog.KeyChoice.of(row.key.get()));
 
         CheckBox nullable = new CheckBox(I18n.t("structure.dialog.nullable"));
         nullable.setId("structure-dialog-nullable");
-        nullable.setSelected(initial == null || initial.nullable());
+        nullable.setSelected(!row.notNull.get());
 
-        TextField defaultValue = new TextField(
-                initial == null ? "" : (initial.defaultValue() == null ? "" : initial.defaultValue()));
+        CheckBox virtual = new CheckBox(I18n.t("newtable.col.virtual"));
+        virtual.setId("structure-dialog-virtual");
+        virtual.selectedProperty().bindBidirectional(row.virtual);
+
+        TextField expression = new TextField();
+        expression.setId("structure-dialog-expression");
+        expression.setPrefColumnCount(24);
+        expression.textProperty().bindBidirectional(row.generatedExpression);
+
+        TextField defaultValue = new TextField();
         defaultValue.setId("structure-dialog-default");
         defaultValue.setPromptText(I18n.t("structure.dialog.defaultPrompt"));
+        defaultValue.textProperty().bindBidirectional(row.defaultValue);
 
-        TextField comment = new TextField(
-                initial == null ? "" : (initial.comment() == null ? "" : initial.comment()));
+        TextField comment = new TextField();
         comment.setId("structure-dialog-comment");
         comment.setPromptText(I18n.t("structure.dialog.commentPrompt"));
+        comment.textProperty().bindBidirectional(row.comment);
         // SQLite 没有列注释：输入框可打字但存不住、读不回，是「数据丢失幻觉」。
         // 按能力禁用并说明，而不是留一个骗人的输入框（4.5-22）。
         boolean commentSupported = session.dialect().supportsColumnComment();
@@ -857,9 +914,51 @@ public final class StructurePage extends VBox implements AutoCloseable {
             comment.setPromptText(I18n.t("structure.dialog.commentUnsupported", session.dialect().displayName()));
         }
 
-        CheckBox unique = new CheckBox(I18n.t("structure.col.unique"));
-        unique.setId("structure-dialog-unique");
-        unique.setSelected(initial != null && initial.unique());
+        // 下拉里敲整串 VARCHAR(255) 时，括号里的参数拆进长度 / 小数两格，下拉只留类型名 ——
+        // 与建表网格的编辑提交同一个动作（applyRawType 自己就会在换类型时清掉旧参数，
+        // 所以这里不再另调一遍「按类型清参数」：那条对本路径是空转，留着只会烂掉）。
+        AtomicBoolean syncing = new AtomicBoolean();
+        type.valueProperty().addListener((observable, oldValue, newValue) -> {
+            if (syncing.get()) {
+                return;
+            }
+            syncing.set(true);
+            try {
+                row.applyRawType(newValue);
+                type.setValue(row.type.get());
+            } finally {
+                syncing.set(false);
+            }
+        });
+        // 「可空」是模型里「不为空」的反面：两边各一个方向，值没变就不回圈。
+        nullable.selectedProperty().addListener(
+                (observable, oldValue, newValue) -> row.notNull.set(!newValue));
+        row.notNull.addListener((observable, oldValue, newValue) -> nullable.setSelected(!newValue));
+        key.valueProperty().addListener(
+                (observable, oldValue, newValue) -> row.key.set(newValue == null ? "" : newValue.code()));
+
+        boolean generatedSupported = session.dialect().supportsGeneratedColumn();
+        Runnable sync = () -> {
+            ColumnTypeOption option = ColumnTypeOption.option(typeOptions, row.baseTypeName());
+            length.setDisable(!option.length());
+            decimals.setDisable(!option.decimals());
+            virtual.setDisable(!generatedSupported);
+            // 生成列不能是键（DDL 层同样拒绝）—— 格子直接置灰，别让人选完才报错。
+            key.setDisable(row.virtual.get());
+            expression.setDisable(!generatedSupported || !row.virtual.get());
+            expression.setPromptText(!generatedSupported
+                    ? I18n.t("newtable.expression.unsupported", session.dialect().displayName())
+                    : row.virtual.get() ? I18n.t("newtable.expression.prompt")
+                    : I18n.t("newtable.expression.virtualOnly"));
+            // CheckBox 没有 promptText：置灰的原因挂在工具提示上。
+            virtual.setTooltip(!generatedSupported
+                    ? new Tooltip(I18n.t("newtable.expression.unsupported",
+                            session.dialect().displayName()))
+                    : null);
+        };
+        row.type.addListener((observable, oldValue, newValue) -> sync.run());
+        row.virtual.addListener((observable, oldValue, newValue) -> sync.run());
+        sync.run();
 
         Label error = new Label();
         error.setId("structure-dialog-error");
@@ -874,10 +973,14 @@ public final class StructurePage extends VBox implements AutoCloseable {
         grid.setVgap(8);
         grid.addRow(0, new Label(I18n.t("structure.dialog.name")), name);
         grid.addRow(1, new Label(I18n.t("detail.type")), type);
-        grid.addRow(2, new Label(I18n.t("structure.col.default")), defaultValue);
-        grid.addRow(3, new Label(I18n.t("column.comment")), comment);
-        grid.addRow(4, nullable, unique);
-        grid.add(error, 0, 5, 2, 1);
+        grid.addRow(2, new Label(I18n.t("newtable.col.length")), length);
+        grid.addRow(3, new Label(I18n.t("newtable.col.decimals")), decimals);
+        grid.addRow(4, new Label(I18n.t("newtable.col.key")), key);
+        grid.add(new HBox(14, nullable, virtual), 1, 5);
+        grid.addRow(6, new Label(I18n.t("newtable.field.expression")), expression);
+        grid.addRow(7, new Label(I18n.t("structure.col.default")), defaultValue);
+        grid.addRow(8, new Label(I18n.t("column.comment")), comment);
+        grid.add(error, 0, 9, 2, 1);
         dialog.getDialogPane().setContent(grid);
 
         ButtonType ok = new ButtonType(I18n.t("common.ok"), ButtonBar.ButtonData.OK_DONE);
@@ -887,9 +990,18 @@ public final class StructurePage extends VBox implements AutoCloseable {
         //    关掉再重开等于把刚才填的四五个字段全丢了（4.5-12 / 4.5-16）。
         Button okButton = (Button) dialog.getDialogPane().lookupButton(ok);
         okButton.addEventFilter(ActionEvent.ACTION, event -> {
-            String problem = columnSpecProblem(name.getText(), type.getValue(),
+            // ⭐ D-71：长度 / 小数 / 生成列的非法组合由 {@code row.toSpec()} 判 ——
+            //    那就是建表网格用的同一份校验，报错留在弹窗里而不是丢给执行层。
+            String problem = columnSpecProblem(row.name.get(), row.rawType(),
                     initial == null ? null : initial.name(),
                     structure == null ? List.of() : structure.columns());
+            if (problem == null) {
+                try {
+                    row.toSpec();
+                } catch (RuntimeException e) {
+                    problem = e.getMessage();
+                }
+            }
             if (problem != null) {
                 error.setText(problem);
                 error.setVisible(true);
@@ -898,23 +1010,10 @@ public final class StructurePage extends VBox implements AutoCloseable {
                 event.consume();
             }
         });
-        dialog.setResultConverter(button -> {
-            if (button != ok) {
-                return null;
-            }
-            String rawType = type.getValue() == null ? "TEXT" : type.getValue().trim();
-            return new ColumnSpec(
-                    name.getText().trim(), rawType, nullable.isSelected(),
-                    defaultValue.getText().trim(), comment.getText().trim(),
-                    unique.isSelected(), initial != null && initial.primaryKey());
-        });
+        dialog.setResultConverter(button -> button == ok ? row.toSpec() : null);
 
         dialog.showAndWait().ifPresent(spec -> {
-            if (spec.name().equalsIgnoreCase(initial == null ? "" : initial.name())
-                    && spec.rawType().equalsIgnoreCase(initial == null ? "" : initial.rawType())
-                    && spec.nullable() == (initial == null || initial.nullable())
-                    && java.util.Objects.equals(spec.defaultValue(), initial == null ? null : initial.defaultValue())
-                    && java.util.Objects.equals(spec.comment(), initial == null ? null : initial.comment())) {
+            if (isUnchanged(spec, initial)) {
                 feedback.status(I18n.t("structure.status.unchanged"));
                 return;
             }
@@ -923,6 +1022,52 @@ public final class StructurePage extends VBox implements AutoCloseable {
                     : StructureSqlBuilder.alterColumn(session, structure, initial.name(), spec);
             applyPlan(plan);
         });
+    }
+
+    /**
+     * 把一列的现状装进行模型。
+     *
+     * <p>顺序按 {@code ColumnRow} 自己的不变式来：先「不为空 / 键」，最后才是生成列 ——
+     * 勾上虚拟会清掉键和默认值，反过来装就把用户已有的键清了。
+     */
+    private void loadColumnRow(NewTableDialog.ColumnRow row, ColumnSpec initial) {
+        if (initial == null) {
+            row.type.set(session.dialect().defaultColumnType());
+            return;
+        }
+        row.name.set(initial.name());
+        row.applyRawType(initial.rawType());
+        row.defaultValue.set(initial.defaultValue() == null ? "" : initial.defaultValue());
+        row.comment.set(initial.comment() == null ? "" : initial.comment());
+        row.notNull.set(!initial.nullable());
+        row.key.set(initial.primaryKey() ? NewTableDialog.ColumnRow.KEY_PRIMARY
+                : initial.unique() ? NewTableDialog.ColumnRow.KEY_UNIQUE : "");
+        if (initial.generated()) {
+            row.virtual.set(true);
+            row.generatedExpression.set(initial.generatedExpression());
+        }
+    }
+
+    /**
+     * 「没有改动」的比较。
+     *
+     * <p>⭐ D-71：这里以前只看名称 / 类型 / 可空 / 默认值 / 注释五项，于是<b>只</b>把
+     * Key 或 Virtual 改一下会被判成「原样返回」—— 界面报一句「没有改动」，
+     * 用户以为已经改好了。弹窗补了四样输入，比较就必须跟上同样的四项。
+     */
+    private static boolean isUnchanged(ColumnSpec spec, ColumnSpec initial) {
+        if (initial == null) {
+            return false;
+        }
+        return spec.name().equalsIgnoreCase(initial.name())
+                && spec.rawType().equalsIgnoreCase(initial.rawType())
+                && spec.nullable() == initial.nullable()
+                && java.util.Objects.equals(spec.defaultValue(), initial.defaultValue())
+                && java.util.Objects.equals(spec.comment(), initial.comment())
+                && spec.unique() == initial.unique()
+                && spec.primaryKey() == initial.primaryKey()
+                && java.util.Objects.equals(spec.generatedExpression(),
+                        initial.generatedExpression());
     }
 
     /**

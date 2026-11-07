@@ -549,7 +549,7 @@ class NewTableDialogTest {
         NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
 
         boolean usesCustom = onFx(() -> dialog.columnsTable().getColumns().stream()
-                .filter(column -> I18n.t("structure.col.key").equals(column.getText()))
+                .filter(column -> I18n.t("newtable.col.key").equals(column.getText()))
                 .findFirst()
                 .orElseThrow()
                 .getCellFactory() != null);
@@ -861,7 +861,7 @@ class NewTableDialogTest {
         assertThat(headers).containsExactly(I18n.t("column.name"), I18n.t("detail.type"),
                 I18n.t("newtable.col.length"), I18n.t("newtable.col.decimals"),
                 I18n.t("newtable.col.notNull"), I18n.t("newtable.col.virtual"),
-                I18n.t("structure.col.key"), I18n.t("column.comment"));
+                I18n.t("newtable.col.key"), I18n.t("column.comment"));
     }
 
     // ─────────────── N29：生成列 / 单一键下拉 / 键长 / BINARY / Ask AI ───────────────

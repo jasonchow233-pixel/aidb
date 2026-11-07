@@ -726,7 +726,7 @@ final class NewTableDialog {
      */
     private TableColumn<ColumnRow, KeyChoice> buildKeyColumn(double width) {
         TableColumn<ColumnRow, KeyChoice> column =
-                new TableColumn<>(I18n.t("structure.col.key"));
+                new TableColumn<>(I18n.t("newtable.col.key"));
         column.setId("new-table-column-key");
         column.setPrefWidth(width);
         column.setCellValueFactory(cell ->
@@ -782,10 +782,10 @@ final class NewTableDialog {
         if (option.name().isEmpty()) {
             return;
         }
-        if (!takesLength(row)) {
+        if (!option.length()) {
             row.length.set("");
         }
-        if (!takesDecimals(row)) {
+        if (!option.decimals()) {
             row.decimals.set("");
         }
     }
@@ -802,13 +802,7 @@ final class NewTableDialog {
 
     /** 一行当前的类型在候选表里的定义；自定义类型（下拉里没有）当作「不吃参数」。 */
     private ColumnTypeOption option(ColumnRow row) {
-        String base = row.baseTypeName();
-        for (ColumnTypeOption candidate : typeOptions) {
-            if (candidate.name().equalsIgnoreCase(base)) {
-                return candidate;
-            }
-        }
-        return ColumnTypeOption.plain(base);
+        return ColumnTypeOption.option(typeOptions, row.baseTypeName());
     }
 
     // ─────────────────────── R31：字段属性面板 ───────────────────────

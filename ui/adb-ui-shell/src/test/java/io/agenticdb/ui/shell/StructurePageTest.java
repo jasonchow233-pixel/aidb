@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.IndexDef;
+import io.agenticdb.introspect.StructurePlan;
 import io.agenticdb.introspect.TableOptions;
 import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.jdbc.ConnectionSpec;
@@ -9,6 +10,8 @@ import io.agenticdb.ui.App;
 import io.agenticdb.ui.I18n;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextInputControl;
 import javafx.stage.Stage;
@@ -21,7 +24,10 @@ import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.framework.junit5.Start;
 import org.testfx.util.WaitForAsyncUtils;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.Executors;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -298,6 +304,304 @@ class StructurePageTest {
         assertThat(comment.isDisabled()).isTrue();
         assertThat(comment.getPromptText())
                 .isEqualTo(I18n.t("structure.dialog.commentUnsupported", "SQLite"));
+    }
+
+    // ─────────────────────── ⭐ D-71：Add Field 与建表网格同能力 ───────────────────────
+
+    /**
+     * ⭐ D-71（一）：同一件事两条通道的能力必须一样。
+     *
+     * <p>立案事实：新帧 {@code p7-new-column} 里这个弹窗只有 name / type / default / comment /
+     * Allow NULL / Unique 六项，而 {@code p6-new-table-fields} 的建表网格有
+     * Length / Decimals / Virtual / Key —— 建表能表达的四种参数，加一列时摆不出来，
+     * 用户只能先删表再建，或者去写裸 SQL。
+     *
+     * <p>这一条只钉「格子在不在」；能力对不对由下面四条分别钉。
+     */
+    @Test
+    void addFieldDialogExposesTheSameFourParametersAsTheGrid(FxRobot robot) throws Exception {
+        waitForStructure();
+        robot.clickOn("#structure-add");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(robot.lookup("#structure-dialog-length").queryTextInputControl())
+                .as("Length：与建表网格同一格").isNotNull();
+        assertThat(robot.lookup("#structure-dialog-decimals").queryTextInputControl())
+                .as("Decimals：与建表网格同一格").isNotNull();
+        assertThat(robot.lookup("#structure-dialog-virtual").queryAs(CheckBox.class))
+                .as("Virtual：生成列开关").isNotNull();
+        assertThat(robot.lookup("#structure-dialog-expression").queryTextInputControl())
+                .as("Virtual 的表达式格").isNotNull();
+        assertThat(robot.lookup("#structure-dialog-key").queryAs(ComboBox.class))
+                .as("Key：主键 / 唯一 / 无三选").isNotNull();
+    }
+
+    /**
+     * ⭐ D-71（二）：长度 / 小数要真的拼进 DDL，而不是停在格子里。
+     *
+     * <p>读的是**生成的那条语句**（确认处理器截下来、返回 false 不执行），
+     * 所以这条测的是「弹窗 → ColumnSpec → 方言」整条链，不只是控件存在。
+     */
+    @Test
+    void addFieldLengthAndDecimalsReachTheGeneratedDdl(FxRobot robot) throws Exception {
+        waitForStructure();
+        AtomicReference<StructurePlan> plan = capturePlan(page);
+        robot.clickOn("#structure-add");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        write(robot, "#structure-dialog-name", "amount");
+        setType(robot, "DECIMAL");
+        write(robot, "#structure-dialog-length", "10");
+        write(robot, "#structure-dialog-decimals", "2");
+        robot.clickOn(okButton(robot));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(sql(plan.get()))
+                .as("DECIMAL(10,2)：长度与小数位拼进类型，与建表网格同一个出口")
+                .contains("DECIMAL(10,2)");
+    }
+
+    /**
+     * ⭐ D-71（三）：类型不吃参数时格子必须置灰，换类型时旧参数必须清掉。
+     *
+     * <p>这条钉的是「不对称的另一半」：给了 {@code INTEGER(10)} 的话，格子看着能填、
+     * 填了会被库拒绝。规则与建表网格同一份（{@code ColumnTypeOption.length()/decimals()}）。
+     */
+    @Test
+    void addFieldParameterFieldsFollowTheType(FxRobot robot) throws Exception {
+        waitForStructure();
+        robot.clickOn("#structure-add");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        setType(robot, "VARCHAR");
+        TextInputControl length = robot.lookup("#structure-dialog-length").queryTextInputControl();
+        TextInputControl decimals = robot.lookup("#structure-dialog-decimals").queryTextInputControl();
+        assertThat(length.isDisabled()).as("VARCHAR 吃长度").isFalse();
+        assertThat(decimals.isDisabled()).as("VARCHAR 不吃小数位（只有定点数吃）").isTrue();
+
+        write(robot, "#structure-dialog-length", "32");
+        setType(robot, "INTEGER");
+        assertThat(length.isDisabled()).as("INTEGER 两个参数都不吃").isTrue();
+        assertThat(length.getText())
+                .as("换类型要把旧参数清掉 —— DECIMAL 的 10 不能跟着走进 INT")
+                .isEmpty();
+    }
+
+    /**
+     * ⭐ D-71（四）：勾了 Virtual 却没写表达式，不能悄悄降级成普通列。
+     *
+     * <p>与建表网格同一句报错（{@code newtable.error.virtualNoExpression}），
+     * 且报错留在弹窗里：关掉重开等于把刚才填的六七个格子全丢。
+     */
+    @Test
+    void addFieldVirtualNeedsAnExpressionAndReachesTheDdl(FxRobot robot) throws Exception {
+        waitForStructure();
+        AtomicReference<StructurePlan> plan = capturePlan(page);
+        robot.clickOn("#structure-add");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        write(robot, "#structure-dialog-name", "name_lower");
+        setType(robot, "TEXT");
+        robot.clickOn("#structure-dialog-virtual");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        robot.clickOn(okButton(robot));
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(robot.lookup("#structure-dialog-virtual").queryAs(CheckBox.class))
+                .as("没写表达式时对话框必须还开着")
+                .isNotNull();
+        assertThat(plan.get()).as("没写表达式不能生成一条普通列的计划").isNull();
+
+        write(robot, "#structure-dialog-expression", "lower(name)");
+        robot.clickOn(okButton(robot));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(sql(plan.get()))
+                .as("表达式走 GENERATED ALWAYS AS，与建表网格同一个 ColumnSpec 字段")
+                .contains("GENERATED ALWAYS AS");
+    }
+
+    /**
+     * ⭐ D-71（五）：Key 选主键要带出「不为空」，并且这个选择必须真的进计划。
+     *
+     * <p>以前这个弹窗把 {@code primaryKey} 从 initial 一路**原样带走**，用户点不到它。
+     * 「勾主键自动非空」这条规则是建表网格定的（{@code ColumnRow} 的 key 监听），
+     * 这里复用同一个模型而不是再抄一遍。
+     *
+     * <p>⚠️ 断言停在 {@code NOT NULL} 是**量出来**的，不是保守：实测这条语句是
+     * {@code ALTER TABLE "users" ADD COLUMN "code" INTEGER NOT NULL} —— 六种方言的
+     * {@code addColumnSql} 都不看 {@code primaryKey()}（只有建表语句的
+     * {@code createTableColumnDefinition} 会带 PRIMARY KEY），所以「给已有表加一列主键」
+     * 在 DDL 层根本落不了地。把 {@code doesNotContain("PRIMARY KEY")} 写进门禁等于把这个
+     * 缺口供成规范，这里不写；缺口另立条目（见台账），本条只钉「弹窗不再丢用户的选择」。
+     */
+    @Test
+    void addFieldKeyPrimaryReachesTheDdlAndForcesNotNull(FxRobot robot) throws Exception {
+        waitForStructure();
+        AtomicReference<StructurePlan> plan = capturePlan(page);
+        robot.clickOn("#structure-add");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        write(robot, "#structure-dialog-name", "code");
+        setType(robot, "INTEGER");
+        CheckBox nullable = robot.lookup("#structure-dialog-nullable").queryAs(CheckBox.class);
+        assertThat(nullable.isSelected()).as("新列默认可空").isTrue();
+
+        setKey(robot, NewTableDialog.KeyChoice.PRIMARY);
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(nullable.isSelected())
+                .as("选了主键就自动不是可空 —— 与建表网格同一规则")
+                .isFalse();
+
+        robot.clickOn(okButton(robot));
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(plan.get()).as("Key 的选择不能被「没有改动」或校验吞掉").isNotNull();
+        assertThat(sql(plan.get()))
+                .as("主键带出的非空必须写进语句 —— 这是这一格当下唯一能落地的部分")
+                .contains("NOT NULL");
+    }
+
+    /**
+     * ⭐ D-71（六）：只改 Key / 只改 Virtual 也算改动。
+     *
+     * <p>「没有改动」那段比较以前只看 name / type / nullable / default / comment 五项，
+     * 于是**只**把 Unique 勾上会被判成「原样返回」，界面报一句「没有改动」，
+     * 用户以为已经改好了。补齐四列时必须把新字段一起纳入比较。
+     */
+    @Test
+    void changingOnlyTheKeyIsNotReportedUnchanged(FxRobot robot) throws Exception {
+        waitForStructure();
+        AtomicReference<StructurePlan> plan = capturePlan(page);
+        selectColumn(robot, "email");
+        robot.clickOn("#structure-edit");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        setKey(robot, NewTableDialog.KeyChoice.UNIQUE);
+        robot.clickOn(okButton(robot));
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(plan.get())
+                .as("只动 Key 也要生成计划，不能被「没有改动」吞掉")
+                .isNotNull();
+        assertThat(sql(plan.get())).contains("UNIQUE");
+    }
+
+    /**
+     * ⭐ D-93（D-71 撞出来的新条目）：工具条的可用态必须跟着选择走。
+     *
+     * <p>写上面那条「只改 Key」的门禁时，弹窗根本打不开 —— 一查：
+     * {@code updateButtons()} 只在加载 / 执行前后调用，选中一列不刷新它，于是
+     * 用户点中一行之后 Edit / 重命名 / 删列<b>仍然是灰的</b>，挂在按钮上的 tooltip
+     * 还在说「先选中一列」。同一个弹窗从双击和右键菜单都进得去，唯独工具条那颗点不动。
+     */
+    @Test
+    void toolbarButtonsFollowTheColumnSelection(FxRobot robot) throws Exception {
+        waitForStructure();
+        Button edit = robot.lookup("#structure-edit").queryAs(Button.class);
+        Button rename = robot.lookup("#structure-rename").queryAs(Button.class);
+        Button drop = robot.lookup("#structure-drop").queryAs(Button.class);
+        assertThat(edit.isDisabled()).as("没选列时 Edit 置灰").isTrue();
+        assertThat(rename.isDisabled()).as("没选列时重命名置灰").isTrue();
+        assertThat(drop.isDisabled()).as("没选列时删列置灰").isTrue();
+
+        selectColumn(robot, "email");
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(edit.isDisabled())
+                .as("选中一列后 Edit 必须可用 —— 否则工具条是死按钮，tooltip 还在说假话")
+                .isFalse();
+        assertThat(rename.isDisabled()).as("重命名同样要跟着选择走").isFalse();
+        assertThat(drop.isDisabled()).as("删列同样要跟着选择走").isFalse();
+    }
+
+    /**
+     * ⭐ D-71（七）：「这一列吃不吃长度 / 小数」只许有一个出口。
+     *
+     * <p>建表网格和结构页的 Add Field 弹窗是同一条能力的两条通道。这两处都不许自己去
+     * 遍历方言的类型候选表 —— 一旦有第二份匹配代码，改一处漏一处，弹窗里就会带上
+     * {@code INT(10)} 这种库根本不认的东西，而且两边各红各的门禁，谁也对不上。
+     *
+     * <p>扫的是源码而不是行为：行为上「两份规则刚好一致」是测不出来的，
+     * 只有位置能钉住「只有一个地方在回答这个问题」。
+     */
+    @Test
+    void typeParameterQuestionHasExactlyOneAnswerPoint() throws Exception {
+        String marker = "candidate.name().equalsIgnoreCase(";
+        Path root = repositoryRoot();
+        for (String relative : List.of(
+                "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/StructurePage.java",
+                "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/NewTableDialog.java")) {
+            String source = Files.readString(root.resolve(relative));
+            assertThat(source)
+                    .as(relative + " 不许自己再遍历一遍类型候选表 —— 问 ColumnTypeOption.option")
+                    .doesNotContain(marker);
+        }
+        // 出口自己必须还在，否则上面两句是恒真的空门禁。
+        assertThat(Files.readString(root.resolve(
+                "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/ColumnTypeOption.java")))
+                .as("匹配类型候选表这件事必须仍然只有一个地方在做")
+                .contains(marker);
+    }
+
+    /** 从模块目录往上找到仓库根 —— 与其余源码扫描型门禁同一个找法。 */
+    private static Path repositoryRoot() {
+        Path cursor = Path.of(System.getProperty("user.dir")).toAbsolutePath();
+        while (cursor != null) {
+            if (Files.isRegularFile(cursor.resolve("pom.xml"))
+                    && Files.isDirectory(cursor.resolve("core"))) {
+                return cursor;
+            }
+            cursor = cursor.getParent();
+        }
+        throw new IllegalStateException("找不到仓库根目录");
+    }
+
+    /** 截住计划并取消执行：断言生成出来的 SQL，不需要真的改库。 */
+    private static AtomicReference<StructurePlan> capturePlan(StructurePage page) {
+        AtomicReference<StructurePlan> captured = new AtomicReference<>();
+        page.setConfirmationHandler(candidate -> {
+            captured.set(candidate);
+            return false;
+        });
+        return captured;
+    }
+
+    private static String sql(StructurePlan plan) {
+        return plan == null ? "" : String.join(";\n", plan.statements());
+    }
+
+    private void write(FxRobot robot, String id, String value) {
+        TextInputControl field = robot.lookup(id).queryTextInputControl();
+        robot.clickOn(field);
+        robot.write(value);
+        WaitForAsyncUtils.waitForFxEvents();
+    }
+
+    private void setType(FxRobot robot, String value) {
+        @SuppressWarnings("unchecked")
+        ComboBox<String> type = robot.lookup("#structure-dialog-type").queryAs(ComboBox.class);
+        robot.interact(() -> type.setValue(value));
+        WaitForAsyncUtils.waitForFxEvents();
+    }
+
+    private void setKey(FxRobot robot, NewTableDialog.KeyChoice choice) {
+        @SuppressWarnings("unchecked")
+        ComboBox<NewTableDialog.KeyChoice> key =
+                (ComboBox<NewTableDialog.KeyChoice>) (ComboBox<?>) robot
+                        .lookup("#structure-dialog-key").queryAs(ComboBox.class);
+        robot.interact(() -> key.setValue(choice));
+        WaitForAsyncUtils.waitForFxEvents();
+    }
+
+    private void selectColumn(FxRobot robot, String name) {
+        @SuppressWarnings("unchecked")
+        var table = (javafx.scene.control.TableView<io.agenticdb.model.ColumnDef>) robot
+                .lookup("#structure-columns").queryAs(javafx.scene.control.TableView.class);
+        robot.interact(() -> table.getSelectionModel().select(
+                table.getItems().stream()
+                        .filter(column -> column.name().equalsIgnoreCase(name))
+                        .findFirst()
+                        .orElseThrow(() -> new AssertionError("没有这一列：" + name))));
+        WaitForAsyncUtils.waitForFxEvents();
     }
 
     // ─────────────────────── UX-6 选项页签 ───────────────────────
