@@ -628,12 +628,24 @@ public final class StructurePage extends VBox implements AutoCloseable {
         table.getColumns().add(column);
     }
 
+    /**
+     * 索引表列集（D-74）：名称 / 唯一 / 列 / <b>来源</b>。
+     *
+     * <p>「来源」这一列在数据页切面（对象首页的 Indexes）一直有，设计器却没有 ——
+     * 同一条索引，<b>改它的通道比只读通道信息少</b>。翻设计器时判断「这条能不能删」
+     * 靠的正是来源：主键和唯一约束带出来的是结构本身，删它是改约束，不是删索。
+     *
+     * <p>文案不在这翻：码→词的规则复用 {@link ObjectSectionsPanel#originLabel}，
+     * 两处必须同一个口径（同一个字面在两处各写一份，就是下一次漂移的起点）。
+     */
     private void setIndexes(List<IndexDef> values) {
         indexes.getColumns().clear();
         addIndexIconColumn();
         addColumn(indexes, I18n.t("column.name"), value -> new ReadOnlyStringWrapper(value.name()));
         addFlagColumn(indexes, I18n.t("structure.col.unique"), IndexDef::unique);
         addColumn(indexes, I18n.t("structure.col.columns"), value -> new ReadOnlyStringWrapper(value.columnsLabel()));
+        addColumn(indexes, I18n.t("sections.col.origin"), value -> new ReadOnlyStringWrapper(
+                ObjectSectionsPanel.originLabel(value.origin())));
         indexes.setItems(FXCollections.observableArrayList(values));
     }
 

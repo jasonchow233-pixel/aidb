@@ -542,6 +542,97 @@ class StructurePageTest {
                 .contains(marker);
     }
 
+    /**
+     * ⭐ D-74：同一条索引，数据页切面（对象首页 Indexes）看得出「是主键带的 / 唯一约束带的 /
+     * 手建的」，设计器的索引表只有 名称 / 唯一 / 列 —— 编辑通道反而比只读通道信息少。
+     *
+     * <p>列头字面钉 "Origin"（反循环断言：不吃 {@code I18n.t("sections.col.origin")}，
+     * 否则改键名会带着断言一起绿）；格子渲染的必须是<b>词</b>，不是裸码 —— 裸码在中英文界面上
+     * 都只是一个用户读不懂的字母。
+     */
+    @Test
+    void indexTabShowsWhereEachIndexCameFrom(FxRobot robot) throws Exception {
+        waitForStructure();
+        selectTab(robot, I18n.t("structure.tab.indexes"));
+
+        @SuppressWarnings("unchecked")
+        javafx.scene.control.TableView<IndexDef> grid =
+                robot.lookup("#structure-indexes").queryAs(javafx.scene.control.TableView.class);
+        javafx.scene.control.TableColumn<IndexDef, ?> origin = originColumn(grid);
+
+        // fixture 是 CREATE INDEX 建的，SQLite 的 PRAGMA 给 origin="c"（这条是模型层事实，先量住）
+        IndexDef row = grid.getItems().get(0);
+        assertThat(row.name()).isEqualTo("idx_users_name");
+        assertThat(row.origin()).isEqualTo("c");
+        assertThat(originCellText(grid, origin, row)).isEqualTo("Constraint");
+    }
+
+    /**
+     * 第二条钉「词不是在设计器里各写一份」。
+     *
+     * <p>本来想用<b>行为</b>钉（第二种来源渲出第二个词），量过之后这条路在 SQLite 夹具里走不通，
+     * 两句实测事实记在这里防止下一轮再试一遍：
+     * ① {@code CREATE UNIQUE INDEX} 的 origin 是 <b>"c" 不是 "u"</b>（本轮门禁就是这么撞红的：
+     *    {@code expected: "u" but was: "c"}）；
+     * ② {@code ALTER TABLE … ADD COLUMN … UNIQUE} 被 SQLite 直接拒绝（{@code Cannot add a UNIQUE column}），
+     *    所以夹具里现不出 "u"，而 "pk" 要非 rowid 主键、会连带改坏本类其它夹具断言。
+     *
+     * <p>于是按 D-71 同一处置：行为测不出来的那一面，用**源码扫描**钉「出口唯一」。
+     * 这条不是给「还没实现」立闸，它禁的是<b>第二份译文</b> —— 两处各抄一份字面词，正是下一次
+     * 两个界面口径分叉的起点（D-74 立案依据就是切面与设计器已经分叉了）。
+     */
+    @Test
+    void indexOriginWordsComeFromTheSharedExitOnly() throws Exception {
+        String source = Files.readString(repositoryRoot().resolve(
+                "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/StructurePage.java"));
+        // 设计器里既不许自己查键，也不许把切面那三枚词直接抄成字面量。
+        assertThat(source).as("设计器不许自己按码查键，翻词只许走切面那一个出口")
+                .doesNotContain("idx.origin.");
+        for (String word : List.of("\"Constraint\"", "\"Unique constraint\"", "\"Primary key\"")) {
+            assertThat(source).as("码→词只许一处出口，设计器不许再抄一份：" + word)
+                    .doesNotContain(word);
+        }
+        // 自证：上面的扫描段认得出合法用法，否则四句 doesNotContain 是恒真的空门禁。
+        assertThat(source).contains("ObjectSectionsPanel.originLabel");
+    }
+
+    /** 按<b>字面列头</b>取 Origin 列；取不到就是列没摆出来，红在这里而不是后面的文案。 */
+    private static javafx.scene.control.TableColumn<IndexDef, ?> originColumn(
+            javafx.scene.control.TableView<IndexDef> grid) {
+        return grid.getColumns().stream()
+                .filter(column -> "Origin".equals(column.getText()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(
+                        "设计器索引表没有 Origin 列，现有列头=" + grid.getColumns().stream()
+                                .map(javafx.scene.control.TableColumn::getText).toList()));
+    }
+
+    /**
+     * 读某一格<b>真正渲染出来</b>的文本。
+     *
+     * <p>不直接喂 cellFactory —— 与 {@code ConnectionsPageTest} 同一个理由：工厂交出来的东西
+     * 皮肤未必挂上，只喂工厂的断言能绿在不存在的东西上。格子没渲染出来就当场红，别空过。
+     */
+    private static String originCellText(
+            javafx.scene.control.TableView<IndexDef> grid,
+            javafx.scene.control.TableColumn<IndexDef, ?> column, IndexDef row) {
+        AtomicReference<String> text = new AtomicReference<>();
+        WaitForAsyncUtils.waitForAsyncFx(5_000, () -> {
+            for (javafx.scene.Node node : grid.lookupAll(".table-cell")) {
+                if (node instanceof javafx.scene.control.TableCell<?, ?> cell
+                        && cell.getTableColumn() == column
+                        && cell.getTableRow() instanceof javafx.scene.control.TableRow<?> tableRow
+                        && tableRow.getItem() == row) {
+                    text.set(cell.getText());
+                    return;
+                }
+            }
+            org.assertj.core.api.Assertions.fail("%s 的 Origin 那一格没渲染出来 —— 断言是空的",
+                    row.name());
+        });
+        return text.get();
+    }
+
     /** 从模块目录往上找到仓库根 —— 与其余源码扫描型门禁同一个找法。 */
     private static Path repositoryRoot() {
         Path cursor = Path.of(System.getProperty("user.dir")).toAbsolutePath();
