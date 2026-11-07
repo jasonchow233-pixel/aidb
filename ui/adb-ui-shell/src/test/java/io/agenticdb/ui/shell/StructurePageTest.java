@@ -117,8 +117,9 @@ class StructurePageTest {
             List<String> out = new java.util.ArrayList<>();
             java.util.Set<javafx.scene.Node> seen =
                     java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
-            // ⚠️ 必须逐页签切一遍再量：TabPane 只把**选中**页签的内容挂进场景图，
-            //    直接 lookupAll 只能看见「列」那一排 —— 一条声称"量每一排"、
+            // ⚠️ 必须逐页签切一遍再量：皮肤按**选中**惰性建页签内容，没被选中过的格子里那些节点
+            //    根本还没造出来（造过之后会留在子树里，所以「lookup 查得到」不等于「这一格被选中」，
+            //    见 D-96 那条的实测）。直接 lookupAll 只能看见已建的那几排 —— 一条声称"量每一排"、
             //    实际只量到一排的门禁比没有门禁更危险（同一个坑见 I18nAuditTest 的
             //    ACTION_REGISTRATION 注释）。
             javafx.scene.control.TabPane tabs =
@@ -553,7 +554,7 @@ class StructurePageTest {
     @Test
     void indexTabShowsWhereEachIndexCameFrom(FxRobot robot) throws Exception {
         waitForStructure();
-        selectTab(robot, I18n.t("structure.tab.indexes"));
+        selectTab(robot, "structure-tab-indexes");
 
         @SuppressWarnings("unchecked")
         javafx.scene.control.TableView<IndexDef> grid =
@@ -594,6 +595,164 @@ class StructurePageTest {
         }
         // 自证：上面的扫描段认得出合法用法，否则四句 doesNotContain 是恒真的空门禁。
         assertThat(source).contains("ObjectSectionsPanel.originLabel");
+    }
+
+    /**
+     * ⭐ D-96：详情面板的「打开 DDL」不许靠渲染出来的字找页签。
+     *
+     * <p>立案依据不是「今天坏了」—— 今天没坏，{@code structure.tab.ddl} 在 en/zh 两个 bundle 里
+     * 恰好都是 "DDL"。坏在<b>失效方式</b>：{@code ifPresent} 找不到就安静什么都不做，
+     * 状态栏不报错、门禁不在帧面，而 D-76/77/80 那批正在改的正是页签文案。
+     *
+     * <p>所以这一条把「翻译改了」这件事<b>当场演一遍</b>：先把页签文字换成下一次翻译可能给出的样子，
+     * 再点「打开 DDL」。判据是<b>选中项的身份</b>，而那身份由<b>内容</b>认出（内含
+     * {@code .adb-structure__ddl} 的那一格）—— 不吃文字，否则整条门禁循环自证。
+     *
+     * <p>⚠️ 判据本来想写成「DDL 那一格的内容进没进场景图」，实测不成立：{@code page.lookup(".adb-structure__ddl")}
+     * 在退回列页签之后<b>照样查得到</b>（第一版门禁就红在这条自己写的前提上）—— 皮肤是<b>惰性建</b>内容，
+     * 但一旦这一格被选中过一次，节点就留在子树里，所以「查得到」既不能证明选中、撤不掉。
+     * 于是这里只问选中项，不问可见性。
+     *
+     * <p>三条前置断言是故意的：没有它们，「主代码整个坏了」和「翻译改坏了」会红成同一条，
+     * 报不出可解释的形状（改字之前先落得进去、退回列页签之后真的退掉了）。
+     */
+    @Test
+    void ddlTabSurvivesArenamedLabel(FxRobot robot) throws Exception {
+        waitForStructure();
+        javafx.scene.control.TabPane tabs =
+                robot.lookup("#structure-tabs").queryAs(javafx.scene.control.TabPane.class);
+        javafx.scene.Node ddlEditor = page.lookup(".adb-structure__ddl");
+        assertThat(ddlEditor)
+                .as("前提：结构页里确实有 DDL 那一格")
+                .isNotNull();
+        final javafx.scene.control.Tab ddl = tabs.getTabs().stream()
+                .filter(tab -> tab.getContent() instanceof javafx.scene.layout.Pane pane
+                        && pane.getChildren().contains(ddlEditor))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("DDL 编辑器不在任何页签的内容里 —— 判据没法成立"));
+
+        robot.interact(() -> page.showDdl());
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(tabs.getSelectionModel().getSelectedItem())
+                .as("前提：改字之前「打开 DDL」本来就落得进去（否则下面那句红的是别的东西）")
+                .isSameAs(ddl);
+
+        // 换成「下一次翻译给出的样子」，不动 id、不动内容。
+        robot.interact(() -> ddl.setText("Table SQL"));
+        WaitForAsyncUtils.waitForFxEvents();
+        robot.interact(() -> tabs.getSelectionModel().select(0));
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(tabs.getSelectionModel().getSelectedItem())
+                .as("前提：先证明退回列页签真的退掉了（否则最后一句可能是惯性）")
+                .isNotSameAs(ddl);
+
+        robot.interact(() -> page.showDdl());
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(tabs.getSelectionModel().getSelectedItem())
+                .as("改了页签文字之后「打开 DDL」仍然要落在同一格 —— 找页签只许按 id，不吃显示文本")
+                .isSameAs(ddl);
+    }
+
+    /**
+     * ⭐ D-96 另一半：七颗页签都得有稳定 id。
+     *
+     * <p>这不只是给「打开 DDL」用的：帧通道的点击按元素 id 找控件，而页签不是节点 ——
+     * 于是 {@code p4-structure} 永远只能停在 Fields 那一格，D-74 补的 Origin 列<b>一帧都没证过</b>。
+     *
+     * <p>按 D-66 那条口径写的：遍历<b>期望集</b>（这七枚 id 是台账），不是遍历「页面上找到的页签」——
+     * 后者少摆一格就少跑一轮，照样全绿。
+     */
+    @Test
+    void everyStructureTabCarriesAStableId(FxRobot robot) throws Exception {
+        waitForStructure();
+        javafx.scene.control.TabPane tabs =
+                robot.lookup("#structure-tabs").queryAs(javafx.scene.control.TabPane.class);
+        List<String> expected = List.of("structure-tab-fields", "structure-tab-options",
+                "structure-tab-indexes", "structure-tab-foreign-keys", "structure-tab-checks",
+                "structure-tab-triggers", "structure-tab-ddl");
+
+        List<String> missing = new java.util.ArrayList<>();
+        for (String id : expected) {
+            boolean present = tabs.getTabs().stream().anyMatch(tab -> id.equals(tab.getId()));
+            if (!present) {
+                missing.add(id);
+            }
+        }
+        assertThat(missing)
+                .as("这些页签没有稳定 id —— 按文字选页签的那条路一旦翻译改了就静默失效，"
+                        + "帧通道也点不到它们。现有页签 id=" + tabs.getTabs().stream()
+                        .map(javafx.scene.control.Tab::getId).toList())
+                .isEmpty();
+        assertThat(tabs.getTabs())
+                .as("页签颗数变了：期望集是上面那七枚，改了要一起改")
+                .hasSize(expected.size());
+    }
+
+    /** 第三条钉「答案点只有一个」：按 D-71 先例，行为测不出来的那一面用源码扫描钉结构。 */
+    @Test
+    void structureTabLookupHasExactlyOneAnswerPoint() throws Exception {
+        String source = java.nio.file.Files.readString(repositoryRoot().resolve(
+                "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/StructurePage.java"));
+        assertThat(source)
+                .as("找页签不许再吃显示文本 —— 那是「翻译一改就静默 no-op」的那个口子")
+                .doesNotContain("equals(tab.getText())");
+        // 自证：扫描段认得出合法用法，否则上面那句是恒真的空门禁。
+        assertThat(source)
+                .as("自证：按 id 找页签这一条答案点必须真的在")
+                .contains("equals(tab.getId())");
+    }
+
+    /**
+     * ⭐ D-74 的帧证（这笔账欠了一轮）+ 新帧的「帧前提门」。
+     *
+     * <p>为什么这条必须在<b>主代码这条 id 通道</b>上跑，而不是在测试里自己 select：
+     * {@code ScreenshotSession.click()} 按元素 id 点节点，而页签不是节点 —— 所以
+     * {@code p4-structure} 六拍以来一直停在 Fields，Origin 那一列从没进过画面。
+     * 现在摆态走 {@code ADB_STRUCTURE_TAB} + {@link StructurePage#selectTab}，
+     * 这一条把<b>脚本里那一格的取值</b>读回来、按那个值选、再证明画面里真有 Origin 那一列：
+     * 脚本与主代码共用同一枚 id，任何一侧漂了这条就红。
+     *
+     * <p>与 D-97 那条同一纪律：<b>新立的帧必须同批配一条帧前提门</b> —— 否则这一格从此
+     * 安静地不再证明任何东西（尺寸、字节、去重全过，画面里却是别的面）。
+     */
+    @Test
+    void theStructureIndexesPoseFrameLandsOnTheOriginColumn(FxRobot robot) throws Exception {
+        String script = Files.readString(repositoryRoot().resolve("scripts/shots.sh"));
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("ADB_STRUCTURE_TAB=([A-Za-z0-9_-]+)").matcher(script);
+        assertThat(matcher.find())
+                .as("帧通道里要有一格把结构页摆到 Indexes 页签（D-74 的 Origin 列至今没有画面证据）")
+                .isTrue();
+        String poseTabId = matcher.group(1);
+        assertThat(poseTabId)
+                .as("那一格摆的是 Indexes 页签，脚本里写的必须是页签 id 而不是页签文字")
+                .isEqualTo("structure-tab-indexes");
+
+        waitForStructure();
+        AtomicReference<Boolean> hit = new AtomicReference<>(false);
+        robot.interact(() -> hit.set(page.selectTab(poseTabId)));
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(hit.get())
+                .as("摆态那条开关的取值必须真的在页签 id 清单里（找不到就是静默 no-op）")
+                .isTrue();
+
+        javafx.scene.control.TabPane tabs =
+                robot.lookup("#structure-tabs").queryAs(javafx.scene.control.TabPane.class);
+        assertThat(tabs.getSelectionModel().getSelectedItem().getId())
+                .as("选中项必须真的挪到 Indexes 那一格")
+                .isEqualTo(poseTabId);
+
+        @SuppressWarnings("unchecked")
+        javafx.scene.control.TableView<IndexDef> grid =
+                robot.lookup("#structure-indexes").queryAs(javafx.scene.control.TableView.class);
+        assertThat(grid.getItems())
+                .as("那一帧里索引表必须真的有几行 —— 空表上 Origin 列证不出东西")
+                .isNotEmpty();
+        javafx.scene.control.TableColumn<IndexDef, ?> origin = originColumn(grid);
+        assertThat(originCellText(grid, origin, grid.getItems().get(0)))
+                .as("帧面上那一格要读到的是词，不是裸码")
+                .isEqualTo("Constraint");
     }
 
     /** 按<b>字面列头</b>取 Origin 列；取不到就是列没摆出来，红在这里而不是后面的文案。 */
@@ -704,7 +863,7 @@ class StructurePageTest {
     @Test
     void optionsTabIsHonestWhenTheDialectHasNoTableOptions(FxRobot robot) throws Exception {
         waitForStructure();
-        selectTab(robot, I18n.t("structure.tab.options"));
+        selectTab(robot, "structure-tab-options");
 
         assertThat(robot.lookup("#structure-options-engine").queryAs(Label.class).getText())
                 .isEqualTo("—");
@@ -724,7 +883,7 @@ class StructurePageTest {
     @Test
     void optionsTabShowsEngineCollationAutoIncrementAndRowFormat(FxRobot robot) throws Exception {
         waitForStructure();
-        selectTab(robot, I18n.t("structure.tab.options"));
+        selectTab(robot, "structure-tab-options");
 
         robot.interact(() -> page.renderOptions(
                 new TableOptions("InnoDB", "utf8mb4_0900_ai_ci", 42L, "Dynamic")));
@@ -748,14 +907,21 @@ class StructurePageTest {
                 .queryAs(Label.class).getText()).isEqualTo("—");
     }
 
-    private static void selectTab(FxRobot robot, String title) {
+    /**
+     * ⭐ D-96：测试也按 <b>id</b> 选页签 —— 与主代码同一个答案点。
+     *
+     * <p>原来这一句是 {@code title.equals(tab.getText())}，于是「按文字找页签」在这个仓里有
+     * 两个出口：门禁跟着文字改，主代码坏了也不会红在这里（同一族的先例：R64-b-2 那批
+     * 「门禁自己就是 pose 的同谋」）。
+     */
+    private static void selectTab(FxRobot robot, String id) {
         javafx.scene.control.TabPane tabs =
                 robot.lookup("#structure-tabs").queryAs(javafx.scene.control.TabPane.class);
         robot.interact(() -> tabs.getSelectionModel().select(
                 tabs.getTabs().stream()
-                        .filter(tab -> title.equals(tab.getText()))
+                        .filter(tab -> id.equals(tab.getId()))
                         .findFirst()
-                        .orElseThrow(() -> new AssertionError("没有页签：" + title))));
+                        .orElseThrow(() -> new AssertionError("没有页签：" + id))));
         WaitForAsyncUtils.waitForFxEvents();
     }
 

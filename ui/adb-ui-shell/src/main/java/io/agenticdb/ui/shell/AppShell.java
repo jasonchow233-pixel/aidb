@@ -819,6 +819,33 @@ public final class AppShell extends StackPane {
         });
     }
 
+    /**
+     * 截图用：等结构页建出来再切到 {@code ADB_STRUCTURE_TAB} 指定的那一格页签。
+     *
+     * <p>⭐ D-74 的帧证走这条路。两条失败都必须<b>弃帧</b>，不是打一行日志然后照常按快门：
+     * 页没建出来、或那一枚 id 不在页签清单里，拍出来的都是一张停在 Fields 的图，
+     * 而它声称的是 Indexes（R57 画面债那一族的病，判据见 {@code ScreenshotScriptAuditTest}
+     * 的 {@code shotPosesGiveUpByAbortingNotByShooting}）。
+     */
+    private void poseStructureTabWhenReady(String tabId, int attempt) {
+        Platform.runLater(() -> {
+            StructurePage active = workspace.activeStructure();
+            if (active == null) {
+                if (attempt < POP_READY_MAX_POLLS) {
+                    pollAgain(attempt, () -> poseStructureTabWhenReady(tabId, attempt + 1));
+                    return;
+                }
+                ScreenshotSession.abortMatrixFrame("structure tab pose gave up: the structure"
+                        + " page never got built, so there is no " + tabId + " to select");
+                return;
+            }
+            if (!active.selectTab(tabId)) {
+                ScreenshotSession.abortMatrixFrame("structure tab pose: no structure tab with id "
+                        + tabId + " — the shot row points at a page tab that does not exist");
+            }
+        });
+    }
+
     /** 截图用：等数据页建出来再切到「概览」切面（页签与行数都是异步到的）。 */
     private void showOverviewWhenReady(int attempt) {
         Platform.runLater(() -> {
@@ -2366,6 +2393,16 @@ public final class AppShell extends StackPane {
         if (flag("adb.ddl", "ADB_DDL")) {
             openStructure(activeProfileId(), "users");
             showDdlWhenReady(0);
+        }
+        // ⭐ 截图 / 验收（D-74 的帧证，D-96 之后才做得到）：结构页直接落在指定页签上。
+        //    取值就是页签 id 本身（不做「indexes → structure-tab-indexes」那种映射，
+        //    免得脚本和主代码各持一份口径 —— 那是 D-96 正在拆的东西）。
+        //    为什么以前拍不出来：ScreenshotSession 的点击按元素 id 找**节点**，
+        //    而页签不是节点，于是 p4-structure 六拍以来一直停在 Fields，Origin 那一列从没进过画面。
+        String structureTab = text("adb.structureTab", "ADB_STRUCTURE_TAB").trim();
+        if (!structureTab.isEmpty()) {
+            openStructure(activeProfileId(), "users");
+            poseStructureTabWhenReady(structureTab, 0);
         }
         // ⭐ 截图 / 验收（UX-5-F）：在数据页摆出「选中行 + 光标格 + 详情抽屉」三个交互态。
         //    这三个状态只在真点下去时才出现，以前的帧里一帧都没覆盖到 ——

@@ -125,15 +125,33 @@ public final class StructurePage extends VBox implements AutoCloseable {
      *
      * <p>详情面板的「打开 DDL」走这里 —— 与其新开一个只有一段文本的标签页，
      * 不如复用结构页里那个已经会读真 DDL、能复制的页签。
+     *
+     * <p>⭐ D-96：这一句以前拿<b>页签的显示文字</b>当键去比（比的是 "DDL" 那一枚）。今天不坏 ——
+     * {@code structure.tab.ddl} 在 en/zh 两个 bundle 里恰好都是 "DDL"；坏在<b>失效方式</b>：
+     * 翻译一改（D-76/77/80 那批正在改的就是页签文案），{@code ifPresent} 找不到就<b>安静什么都不做</b>，
+     * 状态栏不报错、门禁也不在帧面上。同仓早有正例 {@code NewTableDialog.selectTab}，按 id。
      */
     public void showDdl() {
+        selectTab("structure-tab-ddl");
+    }
+
+    /**
+     * 按 <b>id</b> 选页签 —— 结构页里「找页签」这件事的<b>唯一</b>答案点。
+     *
+     * <p>两个消费者：详情面板的「打开 DDL」，以及帧通道的 {@code ADB_STRUCTURE_TAB}（D-74 的
+     * Indexes 那一列 Origin 之前没有画面证据，就是因为页签不是节点、pose 的 {@code click} 点不到）。
+     *
+     * @return 是否真找到了那一格；找不到时<b>不</b>静默吞掉 —— 摆态那侧要据此弃帧
+     */
+    boolean selectTab(String id) {
         if (tabs == null) {
-            return;
+            return false;
         }
-        tabs.getTabs().stream()
-                .filter(tab -> "DDL".equals(tab.getText()))
-                .findFirst()
-                .ifPresent(tab -> tabs.getSelectionModel().select(tab));
+        java.util.Optional<javafx.scene.control.Tab> hit = tabs.getTabs().stream()
+                .filter(tab -> id.equals(tab.getId()))
+                .findFirst();
+        hit.ifPresent(tab -> tabs.getSelectionModel().select(tab));
+        return hit.isPresent();
     }
 
     public void setDensity(String density) {
@@ -272,13 +290,14 @@ public final class StructurePage extends VBox implements AutoCloseable {
                 dropIndex(index)));
 
         tabs.getTabs().addAll(
-                tab(I18n.t("structure.tab.fields"), buildColumnsTab()),
-                tab(I18n.t("structure.tab.options"), buildOptionsTab()),
-                tab(I18n.t("structure.tab.indexes"), buildIndexesTab()),
-                tab(I18n.t("structure.tab.foreignKeys"), buildForeignKeysTab()),
-                tab(I18n.t("structure.tab.checks"), buildChecksTab()),
-                tab(I18n.t("structure.tab.triggers"), buildTriggersTab()),
-                tab(I18n.t("structure.tab.ddl"), ddlBox));
+                tab("structure-tab-fields", I18n.t("structure.tab.fields"), buildColumnsTab()),
+                tab("structure-tab-options", I18n.t("structure.tab.options"), buildOptionsTab()),
+                tab("structure-tab-indexes", I18n.t("structure.tab.indexes"), buildIndexesTab()),
+                tab("structure-tab-foreign-keys", I18n.t("structure.tab.foreignKeys"),
+                        buildForeignKeysTab()),
+                tab("structure-tab-checks", I18n.t("structure.tab.checks"), buildChecksTab()),
+                tab("structure-tab-triggers", I18n.t("structure.tab.triggers"), buildTriggersTab()),
+                tab("structure-tab-ddl", I18n.t("structure.tab.ddl"), ddlBox));
 
         VBox body = new VBox(8, toolbar, tabs);
         body.getStyleClass().add("adb-page__body");
@@ -573,8 +592,11 @@ public final class StructurePage extends VBox implements AutoCloseable {
         return new ContextMenu(drop, new SeparatorMenuItem(), copyName);
     }
 
-    private static <T> Tab tab(String title, javafx.scene.Node content) {
+    private static <T> Tab tab(String id, String title, javafx.scene.Node content) {
         Tab tab = new Tab(title, content);
+        // ⭐ D-96：页签要有稳定 id。它不是节点，所以帧通道的 click 点不到它，
+        //    但 {@link #selectTab(String)} 与摆态都按这一枚 id 找人 —— 文字归文字，寻址归 id。
+        tab.setId(id);
         tab.setClosable(false);
         return tab;
     }

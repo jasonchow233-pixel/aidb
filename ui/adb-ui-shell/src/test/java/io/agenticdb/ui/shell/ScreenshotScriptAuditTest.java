@@ -152,6 +152,14 @@ class ScreenshotScriptAuditTest {
         assertThat(methodBody(shell, "private void poseQuerySelectionWhenReady"))
                 .as("选区帧的连接没开成 / 页没建起来，两条都要弃帧")
                 .contains("ScreenshotSession.abortMatrixFrame");
+        // ⭐ D-96 新加的摆态：页签那一格的两个失败分支都要弃帧 —— 只写一条等于另一条可以静默拍。
+        String structurePose = methodBody(shell, "private void poseStructureTabWhenReady");
+        assertThat(structurePose)
+                .as("结构页那一帧：页没建出来要弃帧，不能拍一张停在 Fields 却声称 Indexes 的图")
+                .contains("never got built");
+        assertThat(structurePose)
+                .as("结构页那一帧：id 不在页签清单里也要弃帧 —— 这正是 D-96 拆掉的静默 no-op")
+                .contains("no structure tab with id");
 
         // ⭐ 编辑器「还没挂上窗口」不等于「摆不成」：页刚建好那一刻编辑器常常还不在场景图上，
         //   实测就写过一版「直接 return」，于是一张没有弹层的查询页安静地顶替了证据帧。

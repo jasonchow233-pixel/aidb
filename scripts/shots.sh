@@ -146,6 +146,13 @@ SHOTS=(
   "p3-query-edit-preview||20000|ADB_MATRIX=mysql ADB_CONNECTION=matrix-mysql ADB_RESULT_EDIT_POSE=preview ADB_THEME_FORCE=light"
   "p4-structure||5000|ADB_STRUCTURE=users ADB_THEME_FORCE=light"
   "p4-ddl||7000|ADB_DDL=1 ADB_THEME_FORCE=light"
+  # ⭐ D-74 的帧证（D-96 之后才拍得出来）：结构页直接落在 Indexes 页签上。
+  #   取值就是页签 id 本身 —— 脚本与主代码共用同一枚 id，没有第二份口径。
+  #   以前这一格没有帧：ScreenshotSession 的点击按元素 id 找**节点**，页签不是节点，
+  #   于是 p4-structure 从第 1 拍到第 6 拍都停在 Fields，Origin 那一列从没进过画面。
+  #   演示库 users 上有 idx_users_email（DemoDatabase:150），所以这一帧的索引表不是空的。
+  #   这一帧的前提由 StructurePageTest#theStructureIndexesPoseFrameLandsOnTheOriginColumn 钉住。
+  "p4-structure-indexes||6000|ADB_STRUCTURE_TAB=structure-tab-indexes ADB_THEME_FORCE=light"
   # ⭐ D-23：列对话框那一帧 —— 类型下拉的候选与默认值现在都来自方言，
   #   不再是一份硬编码的 SQLite 清单（SQLite 的默认值因此从 TEXT 变成 VARCHAR，
   #   这一帧拍的就是合上时看得见的那个默认值）。
