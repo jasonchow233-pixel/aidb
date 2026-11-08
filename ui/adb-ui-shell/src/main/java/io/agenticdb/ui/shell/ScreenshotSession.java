@@ -71,10 +71,51 @@ public final class ScreenshotSession {
                 // 点击后的 UI 变化（开页 / 换主题）多半是同步的，这里留出余量。
                 sleep(1200);
             }
+            // ⭐ D-85 第一族：摆过浮层的帧，快门前先等浮层真的登记得上（见下）。
+            awaitPosedOverlay();
             runOnFx(() -> capture(stage, Path.of(dir), name));
         }, "adb-screenshot");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    /**
+     * ⭐ D-85 第一族：这一帧摆过浮层，就在按快门前在 worker 线程上等它真的登记得上。
+     *
+     * <p>PopOver 的 skin 是异步挂的，满负载下「同一拍问」可能还是 null（探针量过：
+     * 隔离 50 轮 0 次 null，窗口只在 FX 争用时张开）。这里最多等 5 秒（25 × 200ms），
+     * 等不到就交给 {@link #capture} 的守门弃帧 —— 不静默出一张没有弹层的补全帧。
+     */
+    private static void awaitPosedOverlay() {
+        if (!overlayPosed) {
+            return;
+        }
+        for (int attempt = 0; attempt < 25; attempt++) {
+            if (askOverlayNow() != null) {
+                return;
+            }
+            sleep(200);
+        }
+    }
+
+    /** 在 FX 线程上同步问一次当前登记的浮层（worker 线程用；FX 没接上/超时都是 null）。 */
+    private static Overlay askOverlayNow() {
+        java.util.concurrent.atomic.AtomicReference<Overlay> got =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        Platform.runLater(() -> {
+            try {
+                got.set(overlayProvider.get());
+            } finally {
+                done.countDown();
+            }
+        });
+        try {
+            done.await(2, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return got.get();
     }
 
     /**
@@ -129,6 +170,16 @@ public final class ScreenshotSession {
      */
     private static java.util.function.Supplier<Overlay> overlayProvider = () -> null;
 
+    /**
+     * ⭐ D-85 第一族：摆态登记过浮层 = 这一帧「该有浮层」。
+     *
+     * <p>补全那格的帧证<b>就是</b>弹层本身；快门时刻拿不到浮层时，老路是
+     * {@code overlay == null ? targetScene(stage) : …} 照常出图 —— 产出一张
+     * 没有弹层的「补全帧」，返回码 0，与 D-98 堵掉的静默假帧同型。
+     * 这个标记就是「该有」的判断依据：真摆过才守，没摆过的帧不受影响。
+     */
+    private static volatile boolean overlayPosed;
+
     /** 一层浮动证据：节点 + 它在主场景里的左上角。 */
     record Overlay(Node node, double x, double y) {
     }
@@ -141,6 +192,12 @@ public final class ScreenshotSession {
      */
     static void setOverlayProvider(java.util.function.Supplier<Overlay> provider) {
         overlayProvider = provider == null ? () -> null : provider;
+        overlayPosed = provider != null;
+    }
+
+    /** 门禁读的一面：这一帧摆过浮层吗（决定快门守不守「拿不到就弃帧」）。 */
+    static boolean isOverlayPosedForTest() {
+        return overlayPosed;
     }
 
     /**
@@ -216,6 +273,15 @@ public final class ScreenshotSession {
         }
         try {
             Overlay overlay = overlayProvider.get();
+            if (overlayPosed && overlay == null) {
+                // ⭐ D-85 第一族：摆态登记过浮层、快门时刻却拿不到 —— 老路照常
+                //   targetScene 出图，产出一张没有弹层的「补全帧」且返回码 0。
+                //   这种帧比缺帧更贵（D-37 的原话）：它看起来正是补全跟库上下文走的证据。
+                //   worker 侧的 awaitPosedOverlay 已经等过 5 秒，到这里还 null 就是真没了。
+                abortMatrixFrame("overlay was posed for this frame but nothing is registrable"
+                        + " at shutter time (popup hidden, or its skin is not attached yet)");
+                return;
+            }
             // ⭐ 有浮层要合成时**不能**走 targetScene：那颗 PopOver 是 PopupWindow，
             //   而 targetScene 见到「主 Stage 之外还在显示的窗口」就改拍它 ——
             //   那是给对话框定的规矩，用在浮层上会拍出一张只有一列候选的小图。

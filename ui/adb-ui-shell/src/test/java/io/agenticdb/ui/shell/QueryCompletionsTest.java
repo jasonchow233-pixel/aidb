@@ -222,7 +222,12 @@ class QueryCompletionsTest {
         interact(() -> page.poseCompletionsWhenReady());
         waitUntil("摆态弹出的是表清单（不是停在句首的关键字列）", () -> completions.isShowingForTest()
                 && completions.candidateNamesForTest().contains("users"));
-
+        // ⭐ D-85 第一族：逻辑上的 showing 与 PopOver skin 的场景挂载**不是同一拍** ——
+        //    满负载下隔一拍去问 overlayForShots() 会拿到 null（探针量过：隔离 50 轮
+        //    0 次 null，这个窗口只在 FX 争用时张开）。等到真的登记得上再断言，
+        //    别把时序竞争当红；真实快门那侧由 ScreenshotSession 的弃帧守门兜底。
+        waitUntil("摆态把浮层登记给截图会话",
+                () -> interactReturning(ScreenshotSession::overlayForShots) != null);
         ScreenshotSession.Overlay overlay = interactReturning(ScreenshotSession::overlayForShots);
         assertThat(overlay)
                 .as("摆态必须把浮层登记给截图会话")
