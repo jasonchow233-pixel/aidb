@@ -25,8 +25,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>门禁钉四件事：列与数据来自真实存储、双击 / 设计打开的就是选中那条、
  * 删除确认的默认键必须是「取消」、页脚按种类计数（与左树 Queries 分组同一口径）。
+ *
+ * <p>⭐ D-85 第三族：存储节点必须隔离 —— 不挂 {@link IsolatedPreferencesExtension}
+ * 时它跑在进程级 {@code adb.prefs.node} 上，满负载下暴露给别的类的节点生命周期
+ * （「条目比期望少」那族）。
  */
-@ExtendWith(ApplicationExtension.class)
+@ExtendWith({ApplicationExtension.class, IsolatedPreferencesExtension.class})
 class SavedQueriesPageTest {
 
     private Stage stage;

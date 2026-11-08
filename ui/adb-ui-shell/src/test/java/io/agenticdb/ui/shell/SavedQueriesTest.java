@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.ui.I18n;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.List;
 
@@ -12,7 +13,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>侧栏的「已保存查询」以前是空壳页 —— 按项目规则「占位要么接要么删」，
  * 现在接了真功能：命名、保存、重命名、删除、按名覆盖。
+ *
+ * <p>⭐ D-85 第三族：本类不挂隔离扩展时，{@code new SettingsStore()} 跑在
+ * 进程级 {@code adb.prefs.node} 上，暴露给别的类的节点生命周期
+ * （满负载下「条目比期望少」的那族）。键虽然各用各的，节点必须是自己的。
  */
+@ExtendWith(IsolatedPreferencesExtension.class)
 class SavedQueriesTest {
 
     /** 每个用例一个独立的存储键 —— 免得互相污染。 */
