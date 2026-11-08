@@ -343,7 +343,13 @@
           <artifactId>maven-surefire-plugin</artifactId>
           <version>${maven-surefire-plugin.version}</version>
           <configuration>
-            <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+            <!-- ⭐ D-85 第四族（fork 无声退出，码 0 无 dump）：崩的时候要留得下证据。
+                 hs_err / 堆转储统一落各模块 target/，别散在基于目录里被 clean 冲掉；
+                 fork 拖到不肯说再见时多等两分钟再判死，减少误报「terminated without saying goodbye」。 -->
+            <argLine>--enable-native-access=ALL-UNNAMED
+              -XX:ErrorFile=target/hs_err_pid%p.log
+              -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=target</argLine>
+            <forkedProcessExitTimeoutInSeconds>120</forkedProcessExitTimeoutInSeconds>
             <!-- TestFX / Monocle 无头参数；只在 UI 测试里生效 -->
             <systemPropertyVariables>
               <testfx.robot>glass</testfx.robot>
