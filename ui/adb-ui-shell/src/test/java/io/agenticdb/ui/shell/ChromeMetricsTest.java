@@ -6,8 +6,12 @@ import javafx.scene.control.TableCell;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
+import javafx.scene.control.TreeView;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,23 +51,35 @@ class ChromeMetricsTest {
     private static String oldPrefsNode;
     private static String oldDensity;
 
-    @Start
-    void start(Stage stage) throws IOException {
-        demoDirectory = Files.createTempDirectory("adb-chrome-test-");
-        prefsNode = "io/agenticdb/tests/chrome-" + System.nanoTime();
-
+    /**
+     * ⭐ D-85 第二族：环境隔离只在 {@code @BeforeAll} 做<b>一次</b>。
+     *
+     * <p>原先这四行捕获写在 {@code @Start} 里 —— 而 TestFX 的 {@code @Start}
+     * 每个测试方法都跑一次，第二个方法会把<b>第一个方法设的临时目录</b>当成
+     * 「原值」捕获进静态 old*，{@code @AfterAll} 就把 {@code adb.demo.db}
+     * 还原成那个<b>已被删除</b>的目录。实测这条链毒不出失败（{@code ensure()}
+     * 会重建父目录和库），但「一类一份、收尾删一份」仍是正确的卫生：一类只
+     * 建一份临时环境，不再每方法造一个、只删最后一个。
+     */
+    @BeforeAll
+    static void isolateEnvironmentOnce() throws IOException {
         oldDemoDb = System.getProperty("adb.demo.db");
         oldConnectionsFile = System.getProperty("adb.connections.file");
         oldPrefsNode = System.getProperty("adb.prefs.node");
         oldDensity = System.getProperty("adb.density");
 
+        demoDirectory = Files.createTempDirectory("adb-chrome-test-");
+        prefsNode = "io/agenticdb/tests/chrome-" + System.nanoTime();
         System.setProperty("adb.demo.db", demoDirectory.resolve("demo.db").toString());
         System.setProperty("adb.connections.file",
                 demoDirectory.resolve("connections.json").toString());
         System.setProperty("adb.prefs.node", prefsNode);
         // ⭐ 压到最密一档：这是「765 高窗口里 ≥ 22 行」的验收档。
         System.setProperty("adb.density", "dense");
+    }
 
+    @Start
+    void start(Stage stage) throws IOException {
         Preferences preferences = Preferences.userRoot().node(prefsNode.replace('.', '/'));
         preferences.put("ui.theme", "light");
         preferences.put("ui.density", "dense");
@@ -115,15 +131,38 @@ class ChromeMetricsTest {
     }
 
     @BeforeEach
-    void openUsers(FxRobot robot) {
+    void openUsers(FxRobot robot) throws Exception {
         WaitForAsyncUtils.waitForFxEvents();
         if (robot.lookup("#data-table").tryQuery().isPresent()) {
             return;
         }
-        @SuppressWarnings("rawtypes")
-        TreeCell<?> cell = robot.lookup(node -> isTableCell(node, "users"))
-                .queryAs(TreeCell.class);
-        robot.doubleClickOn(cell);
+        // 演示库连接是异步的：冷启动下对象树可能还没长出来，先等它出现。
+        try {
+            WaitForAsyncUtils.waitFor(8, TimeUnit.SECONDS,
+                    () -> robot.lookup(node -> isTableCell(node, "users"))
+                            .queryAs(TreeCell.class) != null);
+        } catch (java.util.concurrent.TimeoutException e) {
+            throw new AssertionError("8 秒内对象树里没有出现 users 节点", e);
+        }
+        // ⭐ D-85 第二族（翻案）：robot.doubleClickOn 在冷 JVM / 满负载下会丢双击
+        //   —— 两连击之间被 FX 脉冲拉开，Monocle 判成两次单击，树根本不进数据页，
+        //   8 秒等成超时（批量跑红第二个方法、单跑冷启动红第一个方法，栽的都是它；
+        //   而 @AfterAll 还原已删目录其实无害：ensure() 会重建父目录和库）。
+        //   改成在 FX 线程上选中 users + 合成 clickCount=2 的 MOUSE_CLICKED ——
+        //   SideBar 的双击处理器（tree.setOnMouseClicked）读的正是「选中项」，
+        //   与真实双击同语义，不再依赖鼠标时序。
+        WaitForAsyncUtils.asyncFx(() -> {
+            @SuppressWarnings("rawtypes")
+            TreeCell cell = robot.lookup(node -> isTableCell(node, "users"))
+                    .queryAs(TreeCell.class);
+            @SuppressWarnings("rawtypes")
+            TreeView tree = cell.getTreeView();
+            tree.getSelectionModel().select(cell.getTreeItem());
+            tree.fireEvent(new MouseEvent(MouseEvent.MOUSE_CLICKED,
+                    10, 10, 10, 10, MouseButton.PRIMARY, 2,
+                    false, false, false, false, false, false, false,
+                    false, false, false, null));
+        }).get(5, TimeUnit.SECONDS);
         try {
             WaitForAsyncUtils.waitFor(8, TimeUnit.SECONDS, () -> {
                 Node table = robot.lookup("#data-table").tryQuery().orElse(null);
