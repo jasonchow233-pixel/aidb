@@ -403,6 +403,202 @@ class I18nAuditTest {
     }
 
     /**
+     * 任意字符串字面量（含转义；跨行文本块不含 —— 口径与 {@link #CJK_LITERAL} 一致）。
+     *
+     * <p>死键棘轮的兜底尺：键名只要在主源码里以<b>字面量</b>出现过一次，就记为有消费者。
+     * 这是「本仓约定：键必须写成字面量」的另一面 —— {@code FilterSortPanel} 里那句
+     * 「逐键写死而不是拼 {@code "filter.op." + name}：I18nAuditTest 要求源码里的键是字面量」
+     * 是这条尺子能成立的前提。
+     */
+    private static final Pattern STRING_LITERAL = Pattern.compile("\"((?:\\\\.|[^\"\\\\\\n])*)\"");
+
+    /**
+     * ⭐ D-91 死键棘轮：bundle 里<b>零消费者</b>的键。
+     *
+     * <h2>为什么到 D-91 才做成</h2>
+     * D-70 实测带出的问题：「全仓还有多少死键」此前<b>未知</b>。两次量法都不可信 ——
+     * 第一版只扫 {@code ui/*}\/src/main + workbench + model，漏了
+     * {@code core/adb-safety/ErrorClassifier} 这类<b>字面键写在 core</b> 的用法，
+     * 119 条候选混着假阳性；第二版 {@code case} 分支写坏，退化成全量。
+     * 这两条旧候选清单<b>没有一张当过基线</b>。
+     *
+     * <h2>「有消费者」的判据（覆盖四种合法引用形态）</h2>
+     * <ol>
+     *   <li>{@code I18n.t("k")} 字面量 —— {@link #KEY_REFERENCE}；</li>
+     *   <li>{@code I18n.tPlural("k")} —— 键展开成 {@code k.one} / {@code k.other} 两形；</li>
+     *   <li><b>任意字面量兜底</b>（{@link #STRING_LITERAL}）：枚举存整键再拼
+     *       （{@code TabKind(…, "grid.tab.structure")} → {@code labelKey()}）、
+     *       三元 / {@code case} 里的字面键、core 透传键
+     *       （{@code new ColumnProblem("table.error…")} / {@code Diagnosis} / 枚举
+     *       {@code labelKey()}/{@code hintKey()}）、以及<b>动作 id 与键名同源</b> ——
+     *       本仓动作注册的写法是 {@code actions.register("new-connection",
+     *       I18n.t("action.new-connection"), …)}，{@code action.<id>} 就写在注册点旁边，
+     *       兜底尺一把接住。拼出来的键（{@code "前缀." + name()}）按仓库约定<b>不存在</b>，
+     *       真写了就是死键，门禁红得有理。</li>
+     * </ol>
+     *
+     * <p>⭐ 变异 M4 实证（2026-11-08）：曾给动作 id 单开一条
+     * {@code ACTION_REGISTRATION → "action."+id} 消费规则，摘掉后门禁照样绿 ——
+     * 注册点的标签本来就是 {@code I18n.t("action.<id>")} 字面量，兜底尺完全覆盖它，
+     * 那条规则是与兜底尺并存的第二承重件，按 D-55 maxHeight 先例删除，不留双机制。
+     *
+     * <h2>为什么钉<b>集合</b>而不是钉条数</h2>
+     * 只钉条数留一个洞：死键 A 被接上了、同时新死键 B 进来，条数不变门禁无感。
+     * 集合口径三向都锁死：新增死键红（键没接上）、换血红、消失红（清掉了就删台账行）。
+     * 消费者只认<b>主源码</b>（ui + core + workbench + bootstrap）——
+     * 只有测试在调的键就是死键（D-70 先例：两个只有测试在调的显示 helper 一并删了）。
+     */
+    @Test
+    void deadKeysAreRatchetedDown() throws IOException {
+        Set<String> bundleKeys = I18n.keys(Locale.ENGLISH);
+        assertThat(bundleKeys)
+                .as("en bundle 一个键都没读到 —— 扫描失效，这份审计是假绿")
+                .hasSizeGreaterThan(1000);
+
+        Set<String> consumed = new LinkedHashSet<>();
+        for (Path file : allMainSources()) {
+            String source = stripComments(read(file));
+            Matcher keyRef = KEY_REFERENCE.matcher(source);
+            while (keyRef.find()) {
+                String key = keyRef.group(2);
+                if ("tPlural".equals(keyRef.group(1))) {
+                    consumed.add(key + ".one");
+                    consumed.add(key + ".other");
+                } else {
+                    consumed.add(key);
+                }
+            }
+            Matcher literal = STRING_LITERAL.matcher(source);
+            while (literal.find()) {
+                if (bundleKeys.contains(literal.group(1))) {
+                    consumed.add(literal.group(1));
+                }
+            }
+        }
+
+        assertThat(consumed)
+                .as("一个消费者都没扫到 —— 扫描失效，这份审计是假绿")
+                .hasSizeGreaterThan(1000);
+        // 四种合法引用形态各钉一枚代表键：哪一形态的识别坏了，先红在这句自证上，
+        // 而不是把那一整族键误判成死键（形状⑪：自证与棘轮分两句下）。
+        assertThat(consumed).contains(
+                "menu.file",               // ① I18n.t 字面量
+                "tableList.showingOf.one", // ② tPlural 两形展开
+                "error.summary.notFound",  // ③ core 字面键（第一版漏扫的 ErrorClassifier）
+                "action.new-connection",   // ④ 动作键（注册点旁的 I18n.t 字面量，兜底尺接住）
+                "grid.tab.structure");     // ⑤ 枚举存键名再拼（TabKind.labelKey()）
+
+        Set<String> dead = new TreeSet<>(bundleKeys);
+        dead.removeAll(consumed);
+        assertThat(dead)
+                .as("死键（零消费者）集合变动 —— 只许减少，不许新增、不许换血：\n"
+                        + "  多出来的 = 新加键没接上（界面上永远长不出来，或拼了动态键违反字面量约定）；\n"
+                        + "  少掉的 = 这轮清掉了，把 PINNED_DEAD_KEYS 里对应行删掉再走。\n"
+                        + "当前死键 %d 条（钉死清单 %d 条）：\n  %s",
+                        dead.size(), PINNED_DEAD_KEYS.size(),
+                        String.join("\n  ", dead))
+                .containsExactlyInAnyOrderElementsOf(PINNED_DEAD_KEYS);
+    }
+
+    /**
+     * 已知死键（零消费者，逐条点名）。⚠️ <b>只许减不许增</b>：
+     * 清掉一枚删一行；这里多一行 = 立案一枚新死键（要么接上要么删键）。
+     *
+     * <p>首轮实测 60 条（2026-11-08，D-91）：逐条 grep 过主源码零字面消费者后才进这张表。
+     * 构成 —— {@code object.*} 35 条（对象页右键/提示族被 {@code action.object.*} 取代后的遗留）、
+     * {@code grid.*} 12 条（其中 {@code grid.batch.*} 批量条 8 条，从未接线）、
+     * {@code saved.*} 4 / {@code query.*} 4 / {@code ribbon.*} 2 / 其余零散 3。
+     */
+    private static final Set<String> PINNED_DEAD_KEYS = Set.of(
+            "filter.panel.empty",
+            "grid.aria.selectRow",
+            "grid.batch.apply",
+            "grid.batch.cloneTip",
+            "grid.batch.deleteSelected",
+            "grid.batch.exportTip",
+            "grid.batch.selectAllAria",
+            "grid.batch.selectAllTip",
+            "grid.batch.setEmptyTip",
+            "grid.batch.setNullTip",
+            "grid.pager.jumpRowTip",
+            "grid.pager.pageLabel",
+            "grid.tip.undo",
+            "object.copied",
+            "object.design",
+            "object.designTablesOnly",
+            "object.drop",
+            "object.dropTablesOnly",
+            "object.empty.createQueryHint",
+            "object.empty.noObjects",
+            "object.empty.noObjectsDetail",
+            "object.filter.all",
+            "object.filter.allCount",
+            "object.filter.kindEmpty",
+            "object.filter.kindEmptyDetail",
+            "object.filter.tooltip",
+            "object.grid.empty",
+            "object.hint.design",
+            "object.hint.drop",
+            "object.hint.newTable",
+            "object.hint.open",
+            "object.listName",
+            "object.needConnect.create",
+            "object.needConnect.design",
+            "object.needConnect.drop",
+            "object.needConnect.open",
+            "object.noMatches",
+            "object.noMatchesDetail",
+            "object.noNameContains",
+            "object.openQueryPage",
+            "object.pickFirst",
+            "object.pickObject",
+            "object.pickTableOrView",
+            "object.readFailed",
+            "object.readFailedTitle",
+            "object.searchPrompt",
+            "object.singleOpen",
+            "object.triggerReason",
+            "query.tip.params",
+            "query.tip.runAll",
+            "query.tip.saveNamed",
+            "query.title",
+            "ribbon.favorites",
+            "ribbon.savedQueries",
+            "saved.header",
+            "saved.namePrompt",
+            "saved.needName",
+            "saved.renamed",
+            "shell.openObjectKind",
+            "tableList.transferTooltip");
+
+    /**
+     * 全仓主源码（ui + core + workbench + bootstrap）—— {@link #deadKeysAreRatchetedDown()} 的扫描范围。
+     *
+     * <p>⚠️ 必须<b>全仓</b>：第一版只扫 ui 就漏了 {@code ErrorClassifier} 写在 core 的字面键
+     * （119 条假阳性的来源）。testing/ 是测试支持件不上界面，不进消费者名单。
+     * 排除 {@code /target/}：生成源码不进扫描，死键清单必须可复现。
+     */
+    private static List<Path> allMainSources() throws IOException {
+        Path root = repositoryRoot();
+        List<Path> files = new ArrayList<>();
+        try (Stream<Path> paths = Files.walk(root)) {
+            for (Path path : paths.filter(Files::isRegularFile).toList()) {
+                String relative = root.relativize(path).toString().replace('\\', '/');
+                if (relative.endsWith(".java") && relative.contains("src/main/java")
+                        && !relative.contains("/target/")
+                        && (relative.startsWith("ui/") || relative.startsWith("core/")
+                        || relative.startsWith("workbench/") || relative.startsWith("bootstrap/"))) {
+                    files.add(path);
+                }
+            }
+        }
+        assertThat(files)
+                .as("没有扫到全仓主源码 —— 路径过滤失效，这条门禁是假绿")
+                .hasSizeGreaterThan(30);
+        return files;
+    }
+
+    /**
      * 模型层里「长得像资源键」的字符串字面量。
      *
      * <p>白名单到<b>命名空间</b>：模型层合法地点号字符串很多
