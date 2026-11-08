@@ -2702,6 +2702,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
         private int pageSize = QueryLimits.DEFAULT_PAGE_SIZE;
         private long offset;
         private long total = -1;
+        /** ⭐ H3-e：这次执行里 COUNT 已经炸过 —— 退路只走一次，翻页不许反复重试。 */
+        private boolean countFailed;
         private boolean loading;
         private RowPage lastPage;
 
@@ -2864,9 +2866,21 @@ public final class QueryPage extends VBox implements AutoCloseable {
                     var pageQ = QueryPaginator.pageSql(
                             session.dialect(), sql, params, pageSize, offset);
                     RowPage page = session.query(pageQ.sql(), pageSize, pageQ.params());
-                    var countQ = QueryPaginator.countSql(session.dialect(), sql, params);
-                    RowPage count = session.query(countQ.sql(), 1, countQ.params());
-                    return new PagedData(page, extractTotal(count));
+                    // ⭐ H3-e：COUNT 只在这条执行的首次装载包一次 —— 翻页复用 total
+                    //    （数据页 load(false) 的同一条规矩，查询页是漏网的最后一个）；
+                    //    炸过一次（countFailed）同一次执行内不再重试，行照常上屏，
+                    //    范围措辞落 query.totalUnknown —— 不知道就如实说不知道。
+                    long counted = -1;
+                    if (total < 0 && !countFailed) {
+                        try {
+                            var countQ = QueryPaginator.countSql(session.dialect(), sql, params);
+                            RowPage count = session.query(countQ.sql(), 1, countQ.params());
+                            counted = extractTotal(count);
+                        } catch (Exception e) {
+                            countFailed = true;
+                        }
+                    }
+                    return new PagedData(page, counted);
                 }
             };
             task.setOnSucceeded(event -> {
@@ -2875,7 +2889,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
                 }
                 PagedData data = task.getValue();
                 lastPage = data.page();
-                total = data.total();
+                if (data.total() >= 0) {
+                    total = data.total();
+                }
                 rowOffset.set(offset);
                 table.setItems(FXCollections.observableArrayList(data.page().rows()));
                 loading = false;
