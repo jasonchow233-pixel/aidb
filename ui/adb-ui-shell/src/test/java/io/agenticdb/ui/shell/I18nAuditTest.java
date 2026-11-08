@@ -149,8 +149,14 @@ class I18nAuditTest {
      * （文档里推荐的 <code>node tools/cjk-count.mjs --model</code> 在这台机器上跑不了 ——
      * 没有 node。别再抄文档里的旧数字：G3-a 开工前文档记的「186 顶格」实测是 170，
      * 差的正是那一批清掉的 {@code StructureSqlBuilder}。）
+     *
+     * <p>⭐ 133 → <b>138</b>（H4-a，2026-11-08）：JSON / SQL 导入的两个新编解码器
+     * 各带解析层坏行消息（{@code JsonCodec} 3、{@code SqlCodec} 4）——
+     * 坏行明细是直接给用户看的文案，而 adb-transfer 不依赖 ui 层的 I18n，
+     * 「键 + 参数」在这条架构里走不通；同一批里 {@code TableImporter} 把三处
+     * 「第 N 行：」前缀拼装去重成 {@code rowError}（23 → 21），净增 5 条。
      */
-    private static final int MODEL_CJK_CEILING = 133;
+    private static final int MODEL_CJK_CEILING = 138;
 
     /**
      * 源码里对 {@link I18n#t(String, Object...)} / {@link I18n#tPlural} 的键引用。

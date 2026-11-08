@@ -7,6 +7,8 @@ import io.agenticdb.ui.I18n;
 import io.agenticdb.transfer.ImportFormat;
 import io.agenticdb.transfer.ImportMode;
 import io.agenticdb.transfer.ImportOptions;
+import io.agenticdb.transfer.JsonCodec;
+import io.agenticdb.transfer.SqlCodec;
 import io.agenticdb.transfer.TableImporter;
 import io.agenticdb.transfer.TransferFiles;
 import io.agenticdb.transfer.XlsxCodec;
@@ -367,7 +369,10 @@ final class ImportWizard {
     /** D-58/D-59/D-83：格式变化一次算完 —— 编码是否禁用、说明行、禁用原因。 */
     private void applyFormatEffects(ImportFormat format) {
         boolean binary = format != null && format.binary();
+        boolean implicitHeader = format != null && format.implicitHeader();
         charsetBox.setDisable(binary);
+        // ⭐ H4-a：JSON/SQL 的表头内嵌于格式，表头行选择器拧了也不起作用 —— 直接禁掉。
+        headerRowSpinner.setDisable(implicitHeader);
         formatHint.setText(format == null ? "" : I18n.t(format.hintKey()));
         formatHint.setVisible(format != null);
         formatHint.setManaged(format != null);
@@ -470,6 +475,16 @@ final class ImportWizard {
                 for (List<String> row : rows.subList(from, rows.size())) {
                     previewLines.add(String.join(" | ", row));
                 }
+            } else if (format.implicitHeader()) {
+                // ⭐ H4-a：JSON/SQL 预览 —— 首行是表头（键 / 列清单），本身也是数据，
+                //    与 TableImporterJsonSqlTest 钉的执行语义同一条。
+                List<List<String>> rows = format == ImportFormat.JSON
+                        ? JsonCodec.preview(file, charsetBox.getValue(), PREVIEW_ROWS + 1)
+                        : SqlCodec.preview(file, charsetBox.getValue(), PREVIEW_ROWS + 1);
+                header = rows.isEmpty() ? null : rows.getFirst();
+                for (List<String> row : rows.subList(1, rows.size())) {
+                    previewLines.add(String.join(" | ", row));
+                }
             } else {
                 try (Reader reader = TransferFiles.openReader(file, charsetBox.getValue());
                      PushbackReader pushback = new PushbackReader(reader, 8)) {
@@ -557,10 +572,14 @@ final class ImportWizard {
             TableImporter.ImportReport report = null;
             try {
                 // ⭐ P6-1：带上目标列类型 —— 数值 / 布尔 / 日期先转换，坏值进报告。
-                // ⭐ P6-3：xlsx 走 SAX 流式路径，其余格式按文本行读取（编码与 BOM 由引擎处理）。
-                report = options.format().binary()
-                        ? TableImporter.importXlsx(session, table, columns, options, file)
-                        : TableImporter.importTypedRows(session, table, columns, options, file);
+                // ⭐ P6-3：xlsx 走 SAX 流式路径；⭐ H4-a：JSON / SQL 走各自的编解码器，
+                //    其余格式按文本行读取（编码与 BOM 由引擎处理）。
+                report = switch (options.format()) {
+                    case XLSX -> TableImporter.importXlsx(session, table, columns, options, file);
+                    case JSON -> TableImporter.importJson(session, table, columns, options, file);
+                    case SQL -> TableImporter.importSql(session, table, columns, options, file);
+                    default -> TableImporter.importTypedRows(session, table, columns, options, file);
+                };
                 message = I18n.t("import.done", report.inserted())
                         + (report.deleted() > 0
                                 ? I18n.t("import.done.cleared", report.deleted()) : "")

@@ -121,6 +121,61 @@ public final class TableImporter {
     }
 
     /**
+     * ⭐ H4-a：JSON（NDJSON）导入 —— 与 {@link TableExporter} 的 JSON 导出同形往返。
+     *
+     * <p>表头 = 首个对象的键；后续对象按键名字对齐，缺键落 NULL、多余键忽略。
+     * {@code null} 落库就是 NULL（文本列也是 —— CSV 做不到的那一档），空串原样保住。
+     * 解析失败的行跳过并计入坏行报告。表头行 / 跳过行选项不适用（键内嵌于格式，
+     * 入口处归一成「首对象即表头」，预览与执行同一条语义）。
+     */
+    public static ImportReport importJson(DbSession session, String table,
+                                          List<ColumnDef> columns, ImportOptions options,
+                                          Path file) throws SQLException, IOException {
+        return importStructured(session, table, columns, ImportFormat.JSON, options, file);
+    }
+
+    /**
+     * ⭐ H4-a：SQL（INSERT）导入 —— 与 {@link TableExporter} 的 SQL 导出同形往返。
+     *
+     * <p>表头 = 首条 INSERT 的列清单；后续语句按各自的列清单对到表头（大小写不敏感），
+     * 缺的落 NULL。目标表以参数为准，文件里 {@code INSERT INTO} 的表名不读。
+     * 字面量与导出侧互逆：{@code NULL} 落 NULL、{@code ''} 翻倍还原成单引号、
+     * 数字与布尔原样。非 INSERT 语句跳过并计入坏行报告，注释（{@code --}）是空白。
+     */
+    public static ImportReport importSql(DbSession session, String table,
+                                         List<ColumnDef> columns, ImportOptions options,
+                                         Path file) throws SQLException, IOException {
+        return importStructured(session, table, columns, ImportFormat.SQL, options, file);
+    }
+
+    private static ImportReport importStructured(DbSession session, String table,
+                                                 List<ColumnDef> columns, ImportFormat format,
+                                                 ImportOptions options, Path file)
+            throws SQLException, IOException {
+        List<String> names = new ArrayList<>();
+        List<ColumnType> types = new ArrayList<>();
+        for (ColumnDef column : columns) {
+            names.add(column.name());
+            types.add(column.type());
+        }
+        // ⭐ H4-a：键 / 列清单内嵌于格式 —— 表头永远是首对象（或首语句）自带的名字，
+        //    用户拧的表头行 / 跳过行对这两种格式没有意义。在入口处统一归一，
+        //    预览与执行走同一条语义（TableImporterJsonSqlTest 钉死）。
+        ImportOptions effective = options.withFormat(format).withHeaderRow(1);
+        return importFrom(session, table, names, types, effective, sink -> {
+            if (format == ImportFormat.JSON) {
+                JsonCodec.read(file, effective.charset(),
+                        cells -> accept(cells, sink),
+                        sink::bad);
+            } else {
+                SqlCodec.read(file, effective.charset(),
+                        cells -> accept(cells, sink),
+                        sink::bad);
+            }
+        });
+    }
+
+    /**
      * 从文本文件导入，编码取 {@link ImportOptions#charset()}，开头的 BOM 会被吞掉。
      *
      * <p>编码留在 {@link ImportOptions} 里（而不是让调用方自己 new Reader），
@@ -170,10 +225,16 @@ public final class TableImporter {
         void feed(RowSink sink) throws IOException, SQLException;
     }
 
-    @FunctionalInterface
     private interface RowSink {
         /** @return {@code false} 表示无法继续（例如表头与目标列对不上） */
         boolean accept(List<String> row) throws SQLException;
+
+        /**
+         * ⭐ H4-a：解析层坏行 —— 格式本身坏掉（JSON 一行不是对象、SQL 一句不是
+         * INSERT），区别于「值转不了类型」的那一档。行被跳过，计入坏行报告后继续，
+         * 与值类型坏行同一套口径：能进多少进多少，坏的报告出来。
+         */
+        void bad(String message);
     }
 
     private static ImportReport importFrom(DbSession session, String table,
@@ -286,6 +347,20 @@ public final class TableImporter {
                 commitBatch(session, ownTransaction);
             }
             return true;
+        }
+
+        /** ⭐ H4-a：解析层坏行（仅结构化格式使用）。编号与计数和普通行同一套账。 */
+        @Override
+        public void bad(String message) {
+            if (stopped) {
+                return;
+            }
+            rowNumber++;
+            totalRead++;
+            skipped++;
+            if (errors.size() < MAX_REPORTED) {
+                errors.add(rowError(rowNumber, message));
+            }
         }
 
         /**
@@ -414,7 +489,7 @@ public final class TableImporter {
                 } catch (SQLException | RuntimeException e) {
                     skipped++;
                     if (errors.size() < MAX_REPORTED) {
-                        errors.add("第 " + rowNumber + " 行：" + e.getMessage());
+                        errors.add(rowError(rowNumber, e.getMessage()));
                     }
                 }
             }
@@ -474,7 +549,7 @@ public final class TableImporter {
                 } catch (SQLException | RuntimeException e) {
                     skipped++;
                     if (errors.size() < MAX_REPORTED) {
-                        errors.add("第 " + acceptedRows.get(i) + " 行：" + e.getMessage());
+                        errors.add(rowError(acceptedRows.get(i), e.getMessage()));
                     }
                 }
             }
@@ -626,6 +701,11 @@ public final class TableImporter {
         } else {
             session.connection().createStatement().execute("RELEASE SAVEPOINT " + SAVEPOINT);
         }
+    }
+
+    /** 坏行明细的一句：「第 N 行：原因」。三个拼装点（整批重试两处 + 解析层坏行）共用。 */
+    static String rowError(int rowNumber, String message) {
+        return "第 " + rowNumber + " 行：" + message;
     }
 
     /**

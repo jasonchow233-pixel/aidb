@@ -387,6 +387,86 @@ class TransferWizardTest {
         }
     }
 
+    /**
+     * ⭐ H4-a：JSON 的表头内嵌于格式 —— 预览按「首对象键」出映射，每行都是数据
+     *（第二行键序乱了也按名字对齐）；表头行选择器拧了不生效，必须置灰。
+     */
+    @Test
+    void importPreviewReadsNdjsonWithImplicitHeader() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("h4a-json.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            Path file = temp.resolve("typed.json");
+            Files.writeString(file, """
+                    {"id":920,"name":"张三"}
+                    {"name":"李四","id":921}
+                    """, StandardCharsets.UTF_8);
+
+            ImportWizard wizard = onFx(() -> new ImportWizard(session, "users", userColumns(),
+                    List.of("users"), null, executor, message -> { },
+                    new TransferProfiles(), report -> { }));
+            onFxRun(() -> {
+                ((TextField) wizard.content().lookup("#import-file")).setText(file.toString());
+                ((ComboBox<ImportFormat>) wizard.content().lookup("#import-format"))
+                        .getSelectionModel().select(ImportFormat.JSON);
+            });
+
+            TextArea preview = onFx(() ->
+                    (TextArea) wizard.content().lookup("#import-preview"));
+            assertThat(preview.getText())
+                    .as("H4-a：NDJSON 两行都是数据，键序乱了按名字对齐")
+                    .contains("920 | 张三")
+                    .contains("921 | 李四");
+            assertThat(((javafx.scene.control.Spinner<Integer>)
+                    wizard.content().lookup("#import-header-row")).isDisabled())
+                    .as("H4-a：表头行对 JSON 无意义，必须置灰")
+                    .isTrue();
+            Label summary = onFx(() -> (Label) wizard.content().lookup("#import-summary"));
+            assertThat(summary.getText()).contains(I18n.tPlural("import.summary.mapped", 2, 2));
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
+    /** ⭐ H4-a：SQL 同一条语义 —— 表头取首条语句的列清单，文件里的表名不读。 */
+    @Test
+    void importPreviewReadsInsertStatementsWithImplicitHeader() throws Exception {
+        DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
+                DemoDatabase.create(temp.resolve("h4a-sql.db"))));
+        executor = Executors.newSingleThreadExecutor();
+        try {
+            Path file = temp.resolve("typed.sql");
+            Files.writeString(file, """
+                    -- 导出时间 2026-11-08
+                    INSERT INTO whatever ("id", "name") VALUES (930, '王五');
+                    """, StandardCharsets.UTF_8);
+
+            ImportWizard wizard = onFx(() -> new ImportWizard(session, "users", userColumns(),
+                    List.of("users"), null, executor, message -> { },
+                    new TransferProfiles(), report -> { }));
+            onFxRun(() -> {
+                ((TextField) wizard.content().lookup("#import-file")).setText(file.toString());
+                ((ComboBox<ImportFormat>) wizard.content().lookup("#import-format"))
+                        .getSelectionModel().select(ImportFormat.SQL);
+            });
+
+            TextArea preview = onFx(() ->
+                    (TextArea) wizard.content().lookup("#import-preview"));
+            assertThat(preview.getText())
+                    .as("H4-a：注释是空白，元组进预览")
+                    .contains("930 | 王五");
+            assertThat(((javafx.scene.control.Spinner<Integer>)
+                    wizard.content().lookup("#import-header-row")).isDisabled())
+                    .as("H4-a：表头行对 SQL 无意义，必须置灰")
+                    .isTrue();
+        } finally {
+            executor.shutdownNow();
+            session.close();
+        }
+    }
+
     @Test
     void transferHubOffersRealImportAndExport() throws Exception {
         DbSession session = JdbcSession.open(ConnectionSpec.sqlite(
