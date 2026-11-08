@@ -4783,6 +4783,15 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      * 截图脚本真点 {@code #data-find-next}，那一帧才同时证「按钮能点、计数会走」。
      */
     boolean poseFindBar(String needle) {
+        if (!javafx.application.Platform.isFxApplicationThread()) {
+            // ⭐ D-85 第五族：off-FX 调用会与 showFindBar 里 runLater 的 selectAll
+            //   同帧重建同一颗 caret/selection Path —— 炸点在 TextFieldSkin 内部
+            //   （CME / IndexOutOfBounds），栈上看不出是谁干的，所以入口就得拒。
+            //   （文案用英文：I18nAuditTest 的 CJK 棘轮对主源码字面量只许降不许升。）
+            throw new IllegalStateException(
+                    "poseFindBar must run on the FX thread (an off-FX call races the runLater"
+                            + " selectAll in showFindBar, rebuilding the same caret Path in one pulse)");
+        }
         if (grid.getItems().isEmpty()) {
             return false;
         }

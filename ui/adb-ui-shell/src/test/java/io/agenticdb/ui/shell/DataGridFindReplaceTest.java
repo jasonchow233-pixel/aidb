@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -119,14 +120,46 @@ class DataGridFindReplaceTest {
     void poseForShotsOpensTheFindBarWithTheNeedle() {
         // 截图摆拍钩子的门禁：开关（ADB_FIND）被读由 ScreenshotScriptAuditTest 守，
         // 「摆了真的生效」归这里 —— 否则摆态静默降级，p2-find 会拍成一张普通网格。
-        assertThat(page.poseFindBar("find me")).isTrue();
-        assertThat(page.findBarVisible()).isTrue();
+        // ⭐ D-85 第五族：pose 的写必须落在 FX 线程上 —— 以前这条在测试线程直接调，
+        //    与 showFindBar 里 runLater 的 selectAll 同帧重建同一颗 caret Path，
+        //    满负载下炸成 CME/IOOBE（栈在 TextFieldSkin，查不到凶手）。
+        AtomicBoolean posed = new AtomicBoolean(false);
+        AtomicBoolean visible = new AtomicBoolean(false);
+        interact(() -> {
+            posed.set(page.poseFindBar("find me"));
+            visible.set(page.findBarVisible());
+        });
+        assertThat(posed.get()).as("摆了真的生效").isTrue();
+        assertThat(visible.get()).isTrue();
         assertThat(findField().getText()).isEqualTo("find me");
+    }
+
+    /**
+     * ⭐ D-85 第五族：off-FX 调 poseFindBar 必须在入口被拒。
+     *
+     * <p>不拒的后果不是这条红 —— 是满负载下某一轮在 TextFieldSkin 里炸 CME/IOOBE
+     * （{@code Errors:} 型，栈上查不到凶手），见 D-85 台账第五族。
+     */
+    @Test
+    void poseFindBarRefusesToRunOffTheFxThread() throws Exception {
+        AtomicReference<Throwable> thrown = new AtomicReference<>();
+        Thread offFx = new Thread(() -> {
+            try {
+                page.poseFindBar("off-fx");
+            } catch (RuntimeException e) {
+                thrown.set(e);
+            }
+        }, "d85-offfx-probe");
+        offFx.start();
+        offFx.join(5_000);
+        assertThat(thrown.get())
+                .as("off-FX 调 poseFindBar 必须抛 IllegalStateException")
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     void findNextWalksMatchesInOrderAndWrapsWithACount() {
-        findField().setText("find me");
+        setNeedleOnFx("find me");
 
         interact(() -> fireFindNext());
         assertThat(lastStatus.get()).isEqualTo(I18n.t("grid.find.found", "find me", 1, 3));
@@ -149,7 +182,7 @@ class DataGridFindReplaceTest {
 
     @Test
     void caseSensitiveToggleRecountsMatches() {
-        findField().setText("ALPHA");
+        setNeedleOnFx("ALPHA");
 
         interact(() -> fireFindNext());
         assertThat(lastStatus.get())
@@ -176,7 +209,7 @@ class DataGridFindReplaceTest {
      */
     @Test
     void findPreviousWalksMatchesBackwardsAndWrapsWithACount() {
-        findField().setText("find me");
+        setNeedleOnFx("find me");
         interact(this::fireFindNext);
         assertThat(focusedCell())
                 .as("先落在第一个命中上（row-major 的 0,2）")
@@ -212,7 +245,7 @@ class DataGridFindReplaceTest {
      */
     @Test
     void previousFromNoFocusStartsAtTheLastMatch() {
-        findField().setText("find me");
+        setNeedleOnFx("find me");
         interact(() -> table().getFocusModel().focus(-1));
         assertThat(focusedCell())
                 .as("前提：网格没有焦点格")
@@ -261,7 +294,7 @@ class DataGridFindReplaceTest {
      */
     @Test
     void shiftF3GoesBackwardsWhileF3GoesForwards() throws Exception {
-        findField().setText("find me");
+        setNeedleOnFx("find me");
         interact(() -> page.fireEvent(shortcut(KeyCode.F)));
         WaitForAsyncUtils.waitFor(2, TimeUnit.SECONDS, page::findBarVisible);
 
@@ -280,7 +313,7 @@ class DataGridFindReplaceTest {
 
     @Test
     void replaceCurrentWritesThroughTheEditBufferAndUndoRestores() {
-        findField().setText("Alpha");
+        setNeedleOnFx("Alpha");
         replaceField().setText("Omega");
         interact(() -> fireFindNext());
         assertThat(focusedCell())
@@ -304,7 +337,7 @@ class DataGridFindReplaceTest {
 
     @Test
     void replaceAllRewritesEveryMatchInOneUndoStep() {
-        findField().setText("find me");
+        setNeedleOnFx("find me");
         replaceField().setText("GONE");
 
         interact(() -> replaceAll().fire());
@@ -326,7 +359,7 @@ class DataGridFindReplaceTest {
 
     @Test
     void primaryKeyAndNumericColumnsAreSkippedAndCounted() {
-        findField().setText("1");
+        setNeedleOnFx("1");
         replaceField().setText("9");
 
         interact(() -> replaceAll().fire());
@@ -372,6 +405,11 @@ class DataGridFindReplaceTest {
     @SuppressWarnings("unchecked")
     private static TableView<Map<String, Object>> tableOf(DataGridPage target) {
         return (TableView<Map<String, Object>>) target.lookup("#data-table");
+    }
+
+    /** ⭐ D-85 第五族：findField 的写必须落在 FX 线程上（off-FX setText 同族竞争）。 */
+    private void setNeedleOnFx(String needle) {
+        interact(() -> findField().setText(needle));
     }
 
     private TextField findField() {
