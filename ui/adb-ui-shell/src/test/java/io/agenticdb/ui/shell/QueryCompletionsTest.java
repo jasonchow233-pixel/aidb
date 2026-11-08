@@ -19,6 +19,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 /**
  * ⭐ R57-a：补全的**界面接缝**门禁 —— 真 SQLite 会话 + 真 QueryPage + 真弹层。
@@ -40,6 +41,11 @@ class QueryCompletionsTest {
         session = JdbcSession.open(ConnectionSpec.sqliteMemory());
         session.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)");
         session.execute("CREATE TABLE products (sku TEXT, qty INTEGER)");
+        // ⭐ D-55 门禁的封顶那一侧要一条超过 240px 的大名单 —— 再铺 12 张表把
+        //    「SELECT * FROM 」的全清单顶过封顶线（z 前缀不撞 'use' 小名单那格）。
+        for (int i = 1; i <= 12; i++) {
+            session.execute("CREATE TABLE zdata_" + String.format("%02d", i) + " (v TEXT)");
+        }
         executor = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, "test-completion");
             thread.setDaemon(true);
@@ -261,6 +267,52 @@ class QueryCompletionsTest {
                 .as("弹层要贴在光标下面：光标在主场景 y=" + caretInScene.getY()
                         + "，浮层左上角 y=" + overlay.y())
                 .isBetween(caretInScene.getY() - 30, caretInScene.getY() + 45);
+    }
+
+    /**
+     * ⭐ D-55：弹层按候选条数贴高，不再固定 ~240px 让下面拖一片空白。
+     *
+     * <p>立案（p3-query-completions 帧）：三条候选的弹层高 ~240px，行只占 ~60px。
+     * 根因是 ListView 默认 pref 高 ~400 只被 maxHeight 压到 240 —— 与候选数无关。
+     * 修复后 fixedCellSize = 清单档 21px 令牌，pref 高 = 行数 × 21，超过 240 才封顶滚动。
+     * 两面都钉：小名单贴高（min 的左侧）、大名单封顶（min 的右侧）。
+     */
+    @Test
+    void theCompletionPopupHugsTheCandidateCountInsteadOfStretchingBlank() throws Exception {
+        // 小名单：'use' 前缀只有个位数候选 —— 贴高这一侧。
+        interact(() -> page.setSql("SELECT use"));
+        interact(() -> page.poseCompletionsWhenReady());
+        // 等到 users 出现（对象清单灌回）再读条数 —— 读早了候选只有关键字，条数会漂。
+        waitUntil("小名单弹层出现且表清单到位", () -> completions.isShowingForTest()
+                && completions.candidateNamesForTest().contains("users"));
+        int small = interactReturning(completions::popupCountForTest);
+        assertThat(small).as("'use' 前缀就是个位数候选，否则这个摆态测不了贴高这一侧")
+                .isLessThanOrEqualTo(10);
+        waitUntil("贴高后的列表高度落定", () ->
+                interactReturning(completions::listHeightForTest) > 0);
+        double smallHeight = interactReturning(completions::listHeightForTest);
+        assertThat(smallHeight)
+                .as("候选少的时候弹层贴着候选长（%d 行 × %.0fpx），不再固定 ~240px", small,
+                        QueryCompletions.CELL_HEIGHT)
+                .isCloseTo(QueryCompletions.CELL_HEIGHT * small, within(2.0));
+
+        // 大名单：'SELECT * FROM ' 全清单 —— 封顶那一侧。
+        interact(() -> page.setSql("SELECT * FROM "));
+        waitUntil("全清单弹层出现", () -> completions.isShowingForTest()
+                && completions.candidateNamesForTest().contains("users"));
+        // 「正在读」行占位时弹层比列表高一行 —— 等清单读回、行撤掉再量。
+        waitUntil("列清单读回、『正在读』行撤掉", () ->
+                !completions.loadingRowVisibleForTest());
+        int big = interactReturning(completions::popupCountForTest);
+        double bigHeight = interactReturning(completions::listHeightForTest);
+        assertThat(bigHeight)
+                .as("候选多的时候按 %.0f 上限封顶滚动，不无限撑高（%d 行）",
+                        QueryCompletions.MAX_LIST_HEIGHT, big)
+                .isCloseTo(Math.min(QueryCompletions.MAX_LIST_HEIGHT,
+                        QueryCompletions.CELL_HEIGHT * big), within(2.0));
+        assertThat(big)
+                .as("大名单摆态得真的超过封顶线，否则封顶那一侧没被量到")
+                .isGreaterThan((int) (QueryCompletions.MAX_LIST_HEIGHT / QueryCompletions.CELL_HEIGHT));
     }
 
     /** 认不出的前缀 → 候选为空：这时摆态必须拒绝，否则帧拍的是一列空弹层。 */

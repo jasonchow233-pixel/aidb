@@ -4,6 +4,7 @@ import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
+import io.agenticdb.ui.RowHeights;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
@@ -65,6 +66,14 @@ final class QueryCompletions implements SqlCompletions.Source, AutoCloseable {
     private boolean objectsLoading;
     private long modelGeneration;
 
+    /**
+     * ⭐ D-55：弹层按候选条数贴高 —— 行高走清单档的 21px 令牌（与对象清单同一密度），
+     * 超过 {@link #MAX_LIST_HEIGHT} 封顶滚动。以前 ListView 默认 pref 高 ~400、
+     * 只被 maxHeight 压到 240，三条候选的弹层下面拖着 ~200px 空白（p3 帧）。
+     */
+    static final double CELL_HEIGHT = RowHeights.of("normal");
+    static final double MAX_LIST_HEIGHT = 240;
+
     // ── 弹层状态 ──
     private volatile SqlCompletions.Proposal proposal;
     private volatile boolean showing;
@@ -79,7 +88,14 @@ final class QueryCompletions implements SqlCompletions.Source, AutoCloseable {
         list.getStyleClass().add("adb-completion__list");
         list.setFocusTraversable(false);
         list.setPrefWidth(340);
-        list.setMaxHeight(240);
+        // ⭐ D-55：弹层按候选条数贴高。ListView 的 pref 高不会自己跟着 fixedCellSize
+        //    × 行数走（默认 ~400 —— 三条候选下面拖 ~200px 空白），所以这里显式定高。
+        //    封顶只活在 sizeListTo 这一处（不再另设 maxHeight 兜底）——
+        //    两道封顶机制并存时，摘掉这道门禁的封顶侧是红的还是绿的由运气决定。
+        list.setFixedCellSize(CELL_HEIGHT);
+        list.itemsProperty().addListener((observable, oldItems, items) ->
+                sizeListTo(items));
+        sizeListTo(list.getItems());
         list.setCellFactory(view -> new CandidateCell());
         list.setOnMouseClicked(event -> {
             if (event.getClickCount() == 2) {
@@ -189,6 +205,8 @@ final class QueryCompletions implements SqlCompletions.Source, AutoCloseable {
         boolean hasModelWork = objectsLoading || !proposal.modelReady();
         if (!proposal.candidates().isEmpty()) {
             pendingAuto = false;
+            // ⭐ D-55 变异 M3 实证：show 与灌 items 的先后不影响弹层高
+            //    （PopOver 会在内容变化后重新量高），所以保持原顺序不动。
             if (!showing) {
                 showPopup();
             }
@@ -215,6 +233,12 @@ final class QueryCompletions implements SqlCompletions.Source, AutoCloseable {
         showing = true;
         // 焦点必须留在编辑器：弹层只是展示，按键由编辑器的过滤器接管。
         area.requestFocus();
+    }
+
+    /** ⭐ D-55：行数 × 清单档行高，超过 {@link #MAX_LIST_HEIGHT} 封顶（空清单也按一行摆）。 */
+    private void sizeListTo(java.util.List<?> items) {
+        list.setPrefHeight(Math.min(MAX_LIST_HEIGHT,
+                Math.max(1, items.size()) * CELL_HEIGHT));
     }
 
     /**
@@ -481,6 +505,21 @@ final class QueryCompletions implements SqlCompletions.Source, AutoCloseable {
     /** 让门禁直接触发一次求值（与按键走同一个入口，不另造逻辑）。 */
     void evaluateForTest(boolean force) {
         evaluate(force);
+    }
+
+    /** ⭐ D-55 门禁：当前候选条数。 */
+    int popupCountForTest() {
+        return list.getItems().size();
+    }
+
+    /** ⭐ D-55 门禁：列表已布局的实际高度（贴高/封顶都量它）。 */
+    double listHeightForTest() {
+        return list.getHeight();
+    }
+
+    /** ⭐ D-55 门禁：「正在读」行是否还占着位（占位时弹层比列表高一行）。 */
+    boolean loadingRowVisibleForTest() {
+        return loading.isManaged();
     }
 
     void acceptSelectedForTest() {
