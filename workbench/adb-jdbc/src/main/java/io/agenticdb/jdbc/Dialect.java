@@ -461,17 +461,6 @@ public interface Dialect {
     }
 
     /**
-     * 系统库判据（catalog 层用）：这些名字是服务本身，不进对象树。
-     *
-     * <p>按方言各判各的，不做一张跨库黑名单 —— MySQL 的 {@code sys}
-     * 与 SQL Server 的 {@code msdb} 不是一回事，混在一张表里迟早误伤。
-     * 默认没有系统库（PG 的模板库已在 {@link #catalogsSql()} 里排除）。
-     */
-    default boolean isSystemCatalog(String name) {
-        return false;
-    }
-
-    /**
      * 当前 schema 能不能**在会话内切换**（{@link #setSchemaSql} 真能改解析路径）。
      *
      * <p>PostgreSQL 用 {@code SET search_path}、Oracle 用

@@ -276,9 +276,9 @@ public final class SchemaService {
      * {@link io.agenticdb.jdbc.Dialect#catalogsSql()}）；其它方言返回**空列表**
      * —— 于是对象树里不会出现 catalog 层，不假装有。
      *
-     * <p>系统库由方言自己判定（{@link io.agenticdb.jdbc.Dialect#isSystemCatalog}）：
-     * 它们是服务本身，不是用户的库。判据放在 Java 而不是 SQL 里，
-     * 是为了能对着替身会话单测。
+     * <p>⭐ P-8（2026-11-08 拍板「照 Navicat 显示」）：系统库**不再过滤**，
+     * 与用户库同列上树 —— Navicat 的两张参照帧里 information_schema 都在树上。
+     * 排序对全部名字生效（大小写不敏感）。
      */
     public List<String> listCatalogs(DbSession session) throws SQLException {
         String sql = session.dialect().catalogsSql();
@@ -290,7 +290,7 @@ public final class SchemaService {
              ResultSet rs = statement.executeQuery(sql)) {
             while (rs.next()) {
                 String name = rs.getString(1);
-                if (name != null && !name.isBlank() && !session.dialect().isSystemCatalog(name)) {
+                if (name != null && !name.isBlank()) {
                     catalogs.add(name);
                 }
             }

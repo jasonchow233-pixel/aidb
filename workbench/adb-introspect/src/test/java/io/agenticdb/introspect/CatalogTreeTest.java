@@ -99,25 +99,26 @@ class CatalogTreeTest {
     }
 
     @Test
-    void mysqlSystemSchemasAreFilteredAndTheRestIsSorted() throws SQLException {
+    void mysqlSystemSchemasAreShownLikeNavicatAndEverythingIsSorted() throws SQLException {
         List<String> databases = List.of("orders_db", "information_schema", "mysql",
                 "audit_db", "sys", "performance_schema");
         DbSession session = catalogsSession(DialectKind.MYSQL, databases);
 
         assertThat(new SchemaService().listCatalogs(session))
-                .as("系统库不进对象树；剩下的按名称排（大小写不敏感）")
-                .containsExactly("audit_db", "orders_db");
+                .as("⭐ P-8（照 Navicat）：系统库与用户库同列，全部按名称排（大小写不敏感）")
+                .containsExactly("audit_db", "information_schema", "mysql",
+                        "orders_db", "performance_schema", "sys");
     }
 
     @Test
-    void sqlServerSystemDatabasesAreFiltered() throws SQLException {
+    void sqlServerSystemDatabasesAreShownLikeNavicat() throws SQLException {
         List<String> databases = List.of("master", "Sales", "tempdb", "model", "msdb",
                 "Operations");
         DbSession session = catalogsSession(DialectKind.SQLSERVER, databases);
 
         assertThat(new SchemaService().listCatalogs(session))
-                .as("master / tempdb / model / msdb 是实例自带库，不是用户的库")
-                .containsExactly("Operations", "Sales");
+                .as("⭐ P-8：master / tempdb / model / msdb 不再被藏，全部上树")
+                .containsExactly("master", "model", "msdb", "Operations", "Sales", "tempdb");
     }
 
     @Test
