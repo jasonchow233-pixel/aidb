@@ -2293,7 +2293,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 new javafx.scene.control.CustomMenuItem(header, false));
         for (PageSize option : PageSize.values()) {
             javafx.scene.control.RadioMenuItem item = new javafx.scene.control.RadioMenuItem(
-                    I18n.t("grid.pager.pageSizeOption", option.value()));
+                    I18n.tPlural("grid.pager.pageSizeOption", option.value(), option.value()));
             item.setId("data-page-size-" + option.value());
             item.setSelected(option.value() == pageSize);
             item.setDisable(loading);

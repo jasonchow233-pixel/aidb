@@ -246,7 +246,7 @@ class TableListPageTest {
 
         assertThat(labels)
                 .as("事实行只留有值的片段：「200 行」而不是「200 行 · —」")
-                .anyMatch(text -> text.equals(I18n.t("status.rows", 200)));
+                .anyMatch(text -> text.equals(I18n.tPlural("status.rows", 200, 200)));
         assertThat(labels)
                 .as("整行都是占位符就不渲染这一行 —— 卡片里不许出现「—」")
                 .noneMatch(text -> text.contains("—"));

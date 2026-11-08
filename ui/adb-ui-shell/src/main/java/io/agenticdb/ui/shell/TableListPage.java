@@ -687,7 +687,9 @@ final class TableListPage extends VBox {
         //    实测 SQLite 演示库上一张卡片 3 行有 2 行是纯破折号（§10.3 C2）。
         //    注意 rowsText() 为「—」时不能拼成「— 行」——那不是占位符了。
         String rowsFact = MetadataColumns.isPlaceholder(meta.rowsText())
-                ? null : I18n.t("status.rows", meta.rowsText().trim());
+                // rowsText() 非占位符 ⟺ rows() 非 null（rowsText 就是 rows 的字符串化），
+                // 选形数拿 rows()、显示值仍是 rowsText()。
+                ? null : I18n.tPlural("status.rows", meta.rows(), meta.rowsText().trim());
         Label facts = cardLine("adb-table-card__facts", rowsFact, meta.sizeText());
         Label engine = cardLine("adb-table-card__detail",
                 meta.engineText(), meta.updatedText());
@@ -933,10 +935,12 @@ final class TableListPage extends VBox {
             host.selectionChanged(I18n.t("status.noneSelected"));
         } else if (selected.size() == 1) {
             TableMeta meta = selected.getFirst();
-            String rowsText = meta.rows() == null ? "" : " · " + I18n.t("status.rows", meta.rowsText());
+            String rowsText = meta.rows() == null ? ""
+                    : " · " + I18n.tPlural("status.rows", meta.rows(), meta.rowsText());
             host.selectionChanged(I18n.t("tableList.selectedOne", meta.name() + rowsText));
         } else {
-            host.selectionChanged(I18n.t("tableList.selectedCount", selected.size()));
+            host.selectionChanged(I18n.tPlural("tableList.selectedCount",
+                    selected.size(), selected.size()));
         }
         reportInspect(selected.size() == 1 ? selected.getFirst().name() : null);
         reportCount();

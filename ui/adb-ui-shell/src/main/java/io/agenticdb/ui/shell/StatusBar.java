@@ -95,7 +95,7 @@ public final class StatusBar extends HBox {
     private String serverInfo = "";
     private final Tooltip sourceTooltip = new Tooltip();
 
-    private final Label range = segment(I18n.t("status.rows", 0), "adb-status__range");
+    private final Label range = segment(I18n.tPlural("status.rows", 0, 0), "adb-status__range");
     /** U8：行范围也讲「没数据不占位」—— 对象首页/表清单上那根悬空的「—」就是它。 */
     private final Region rangeSeparator = separator();
     private final Tooltip rangeTooltip = new Tooltip();

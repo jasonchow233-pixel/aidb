@@ -274,7 +274,7 @@ class StatusBarTest {
                 .as("只有计数、没有选中时不许拖着孤零零的「·」")
                 .isZero();
 
-        onFx(() -> bar.setSelectionText(I18n.t("tableList.selectedCount", 3)));
+        onFx(() -> bar.setSelectionText(I18n.tPlural("tableList.selectedCount", 3, 3)));
         assertThat(managedSeparatorsIn(bar, "adb-statusbar__left"))
                 .as("计数与选中同屏时中间要有分隔符 —— 两句黏在一起读不成句")
                 .isEqualTo(1);

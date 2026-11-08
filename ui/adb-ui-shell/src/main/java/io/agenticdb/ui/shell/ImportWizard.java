@@ -495,7 +495,7 @@ final class ImportWizard {
             mappingView.getItems().setAll(mapping);
             summary.setText(I18n.t("import.summary.preview", previewLines.size(),
                     header == null ? I18n.t("import.summary.noHeader")
-                            : I18n.t("import.summary.mapped", mapping.size()),
+                            : I18n.tPlural("import.summary.mapped", mapping.size(), mapping.size()),
                     charsetLabel()));
         } catch (IOException e) {
             summary.setText(I18n.t("import.summary.readFailed", e.getMessage()));

@@ -500,7 +500,7 @@ final class ExportWizard {
                 rows = -1;
             }
             if (rows > 0 && QueryLimits.exportRequiresConfirmation(rows)) {
-                String message = I18n.t("export.confirm",
+                String message = I18n.tPlural("export.confirm", rows,
                         NumberFormat.getInstance().format(rows),
                         NumberFormat.getInstance().format(QueryLimits.MAX_EXPORT_ROWS));
                 Platform.runLater(() -> {

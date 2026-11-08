@@ -272,7 +272,7 @@ class QueryPageTest {
         TableView<?> table = (TableView<?>) page.lookup("#query-result-table");
         waitFor(() -> table.getItems().size() == 200);
         assertThat(pageLabel()).isEqualTo(I18n.t("query.pageOfTotal", 1, 2));
-        assertThat(rangeLabel()).isEqualTo(I18n.t("status.rows", 250));
+        assertThat(rangeLabel()).isEqualTo(I18n.tPlural("status.rows", 250, 250));
         // 第 1 页装的应是前 200 行（id 1..200），绝对行号从 1 开始。
         assertThat(firstRowText(table)).contains("1");
     }
@@ -1146,7 +1146,10 @@ class QueryPageTest {
         interact(() -> page.submitResultSave(0));
 
         waitFor(() -> page.resultDirtyCountForTest(0) == 0);
-        assertShownIsTheLocalized("query.edit.rowMissed", page.statusText(), 0, 1, "users");
+        // D-89：rowMissed 迁 tPlural 后，键按语句数选形（这里 1 条语句 → .one）。
+        assertThat(I18n.tPlural("query.edit.rowMissed", 1, 0, 1, "users"))
+                .as("资源里没有这个键：query.edit.rowMissed").doesNotStartWith("\u26a0");
+        assertThat(page.statusText()).isEqualTo(I18n.tPlural("query.edit.rowMissed", 1, 0, 1, "users"));
         assertThat(dbValue("SELECT name FROM users WHERE id = 99", "name"))
                 .as("没命中的那条不许顺手改动别的内容")
                 .isEqualTo("Ada");

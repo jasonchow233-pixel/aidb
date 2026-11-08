@@ -253,7 +253,7 @@ class TransferWizardTest {
             assertThat(preview.getText()).contains("New Person");
 
             Label summary = onFx(() -> (Label) wizard.content().lookup("#import-summary"));
-            assertThat(summary.getText()).contains(I18n.t("import.summary.mapped", 2));
+            assertThat(summary.getText()).contains(I18n.tPlural("import.summary.mapped", 2, 2));
         } finally {
             executor.shutdownNow();
             session.close();
@@ -290,7 +290,7 @@ class TransferWizardTest {
             assertThat(preview.getText()).as("D-67：敲完路径预览就该有内容")
                     .contains("910 | Typed Row");
             Label summary = onFx(() -> (Label) wizard.content().lookup("#import-summary"));
-            assertThat(summary.getText()).contains(I18n.t("import.summary.mapped", 2));
+            assertThat(summary.getText()).contains(I18n.tPlural("import.summary.mapped", 2, 2));
         } finally {
             executor.shutdownNow();
             session.close();
@@ -349,7 +349,7 @@ class TransferWizardTest {
             assertThat(preview.getText()).as("D-67：CSV→TSV 必须按制表符重新切分")
                     .contains("912 | Zhao");
             Label summary = onFx(() -> (Label) wizard.content().lookup("#import-summary"));
-            assertThat(summary.getText()).contains(I18n.t("import.summary.mapped", 2));
+            assertThat(summary.getText()).contains(I18n.tPlural("import.summary.mapped", 2, 2));
         } finally {
             executor.shutdownNow();
             session.close();
@@ -762,7 +762,7 @@ class TransferWizardTest {
             });
 
             Label summary = onFx(() -> (Label) wizard.content().lookup("#import-summary"));
-            assertThat(summary.getText()).contains(I18n.t("import.summary.mapped", 2));
+            assertThat(summary.getText()).contains(I18n.tPlural("import.summary.mapped", 2, 2));
 
             onFxRun(() -> ((javafx.scene.control.Button)
                     wizard.content().lookup("#import-start")).fire());

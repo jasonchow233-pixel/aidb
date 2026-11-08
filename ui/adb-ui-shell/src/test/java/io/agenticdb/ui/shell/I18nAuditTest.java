@@ -9,9 +9,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
@@ -283,6 +285,120 @@ class I18nAuditTest {
         }
         assertThat(problems)
                 .as("源码引用了但资源里没有的键 —— 界面上会长出 ⚠key")
+                .isEmpty();
+    }
+
+    /**
+     * ⭐ D-89：en bundle 的<b>硬复数棘轮</b>。
+     *
+     * <p>「1 rows」这类句子是英文里唯一能被机械抓住的复数错误：
+     * 占位符后面紧跟一个以 s 结尾的名词。扫描有三个豁免，缺一不可：
+     * <ol>
+     *   <li><b>tPlural 管辖的主干</b>（有 {@code .one} 且有 {@code .other}）——
+     *       它的 {@code .other} 本来就写着 {@code {0} rows}，单数由 {@code .one} 负责，
+     *       不是硬复数；</li>
+     *   <li><b>动词/虚词停用表</b> —— {@code {0} does not allow NULL} 里 {0} 是主语
+     *       （方言名 / 表名），后面那个 -s 词是动词不是数量词；机械扫描约九成的命中是这类
+     *       （D-89 台账的原话：不配停用表就是「向导测试 id」那种批量假阳性）；</li>
+     *   <li><b>已知残留清单</b> —— 台账里 B 组的「能说对但和 A 组两个口径」的句子
+     *       （{@code row(s)} 兜底写法、{@code {1} rows} 的伴随位、单位 {@code bytes}），
+     *       本轮只棘轮冻结、不逐句改写；其中 {@code query.rowsAndDuration} 的句式
+     *       归 D-75/Q13，未拍不擅动。</li>
+     * </ol>
+     *
+     * <p>自证与棘轮分两句下（形状⑪的教训）：自证只断「已知集 ⊆ 扫描集」——
+     * 正则或路径失效导致扫不到时，先红在自证句上，而不是把「扫空」当「清零」。
+     */
+    @Test
+    void hardEnglishPluralsAreRatchetedDown() throws IOException {
+        Map<String, String> values = new LinkedHashMap<>();
+        Path bundle = repositoryRoot().resolve(
+                "ui/adb-ui-core/src/main/resources/io/agenticdb/ui/messages_en.properties");
+        for (String line : Files.readAllLines(bundle, StandardCharsets.UTF_8)) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                continue;
+            }
+            int equals = trimmed.indexOf('=');
+            if (equals > 0) {
+                values.put(trimmed.substring(0, equals).trim(), trimmed.substring(equals + 1));
+            }
+        }
+        assertThat(values)
+                .as("en bundle 一行都没读到 —— 路径或解析失效，这份审计是假绿")
+                .isNotEmpty();
+
+        Set<String> managedStems = new LinkedHashSet<>();
+        for (String key : values.keySet()) {
+            if (key.endsWith(".one")) {
+                String stem = key.substring(0, key.length() - ".one".length());
+                if (values.containsKey(stem + ".other")) {
+                    managedStems.add(stem);
+                }
+            }
+        }
+
+        // {0} 是主语、后面跟的是动词的句子 —— 不是数量词，机械扫描对它们无能为力。
+        Set<String> verbsAndFillers = Set.of(
+                "does", "has", "had", "is", "was", "are", "were",
+                "needs", "runs", "reports", "will", "can", "may", "must", "should", "not");
+        Pattern hardPlural = Pattern.compile("\\{(\\d+)\\}\\s+([a-z]{2,}s)\\b");
+
+        Set<String> scanned = new TreeSet<>();
+        for (Map.Entry<String, String> entry : values.entrySet()) {
+            String key = entry.getKey();
+            String stem = key.endsWith(".one") || key.endsWith(".other")
+                    ? key.substring(0, key.lastIndexOf('.')) : key;
+            if (managedStems.contains(stem)) {
+                continue;
+            }
+            Matcher matcher = hardPlural.matcher(entry.getValue());
+            while (matcher.find()) {
+                String word = matcher.group(2);
+                if (!verbsAndFillers.contains(word)) {
+                    scanned.add(key + ": {" + matcher.group(1) + "} " + word);
+                }
+            }
+        }
+
+        // 已知残留（B 组 + Q13 挡住的 rowsAndDuration）。往这个清单里加行 = 立案；
+        // 从清单里减行 = 抽完了那一句，顺手把 A 组的对应键迁成 tPlural 两形。
+        Set<String> knownRemaining = Set.of(
+                "grid.msg.rectSelected: {1} cells",
+                "shell.connectedObjects: {1} objects",
+                "shell.currentSchema: {1} objects",
+                "shell.objectsLoaded: {1} objects",
+                "query.rowsAndDuration: {0} rows",
+                "query.tabWithRows: {1} rows",
+                "query.truncated: {0} rows",
+                "query.exportedRows: {1} rows",
+                "import.summary.preview: {0} rows",
+                "import.done: {0} rows",
+                "export.field.count: {1} fields",
+                "export.done: {0} rows",
+                "export.done.detail: {3} fields",
+                "ddl.dropping: {0} tables",
+                "ddl.dropped: {0} tables",
+                "ddl.droppedPartial: {1} tables",
+                "var.summary: {0} parameters",
+                "colset.count: {1} columns",
+                "filter.panel.error.limit: {0} conditions",
+                "cell.blob: {0} bytes",
+                "cell.jsonObject: {0} fields",
+                "cell.jsonArray: {0} items",
+                "plan.title.dropTables: {0} tables");
+
+        assertThat(knownRemaining)
+                .as("已知残留没被扫描器认出来 —— 正则或停用表改坏了，先修扫描器再谈棘轮")
+                .allSatisfy(known -> assertThat(scanned).contains(known));
+
+        List<String> newcomers = scanned.stream()
+                .filter(hit -> !knownRemaining.contains(hit))
+                .toList();
+        assertThat(newcomers)
+                .as("en bundle 出现了已知清单之外的「{N} + 复数名词」硬复数句 —— "
+                        + "单数可能被读成「1 rows」；把该句迁成 I18n.tPlural 两形，"
+                        + "或确认它属于 B 组兜底写法后点名进 knownRemaining")
                 .isEmpty();
     }
 

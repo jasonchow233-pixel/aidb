@@ -1394,7 +1394,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             feedback.sql(result.executedText());
         } else {
             long rows = result.results().stream().mapToLong(ExecutionResult::rowCount).sum();
-            range.setText(I18n.t("status.rows", rows));
+            range.setText(I18n.tPlural("status.rows", rows, rows));
             duration.setText(result.durationMs() + " ms");
             // 抬头当参数递进去而不是拼两遍模板：门禁要断言「状态说完成了」时
             // 只需比 `I18n.t("query.done")`，不必知道后面跟了什么、也不必跟着语言改。
@@ -1404,7 +1404,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             // U8（p3-query 实拍第二拍）：行数与耗时各有自己的段，
             // 「执行完成 · N 条语句」把它们再念一遍就是消息段该沉默的时刻。
             feedback.status("");
-            feedback.range(I18n.t("status.rows", rows));
+            feedback.range(I18n.tPlural("status.rows", rows, rows));
             feedback.duration(result.durationMs());
             // ⭐ UX-5-D：状态栏给出「跑的是哪条、这屏结果是什么时候落地的」。
             feedback.sql(result.executedText());
@@ -1907,8 +1907,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
             // ⚠️ 事务里也不能报「已落库」—— 那句得说「写进事务、尚未提交」。
             String message;
             if (matched != plan.size()) {
-                message = I18n.t("query.edit.rowMissed", matched, plan.size(),
-                        edit.schema.name());
+                // 选形数跟 {1}（statements）走：1 条语句说「1 statement」。
+                message = I18n.tPlural("query.edit.rowMissed", plan.size(),
+                        matched, plan.size(), edit.schema.name());
             } else if (inTransaction) {
                 message = I18n.t("grid.msg.savedInTx", plan.size(), matched);
             } else {
@@ -2905,7 +2906,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
             long current = QueryLimits.pageNumberOf(offset, pageSize);
             pageLabel.setText(pages < 0 ? I18n.t("query.pageOf", current)
                     : I18n.t("query.pageOfTotal", current, pages));
-            rangeLabel.setText(total < 0 ? I18n.t("query.totalUnknown") : I18n.t("status.rows", total));
+            rangeLabel.setText(total < 0 ? I18n.t("query.totalUnknown")
+                    : I18n.tPlural("status.rows", total, total));
             tab.setText(I18n.t("query.tabWithRows", I18n.t("query.resultTab", index),
                     total < 0 ? "?" : total));
             updateButtons();
