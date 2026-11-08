@@ -161,6 +161,38 @@ class StructureServiceTest {
     }
 
     @Test
+    void addsPrimaryKeyColumnThroughRebuildAndKeepsTheTableIntact() throws Exception {
+        // ⭐ D-94：SQLite 的 ADD COLUMN 不接受主键列 —— 走整表重建，主键要真的落地。
+        try (java.sql.Statement statement = session.connection().createStatement()) {
+            statement.execute("CREATE TABLE plain (name TEXT)");
+        }
+        TableStructure plain = schema.structure(session, "plain");
+
+        StructurePlan plan = StructureSqlBuilder.addColumn(session, plain,
+                new ColumnSpec("code", "INTEGER", false, null, null, false, true));
+
+        assertThat(plan.approvalRequired()).isTrue();
+        assertThat(plan.sql()).contains("CREATE TABLE \"__adb_rebuild_plain_");
+        execute(plan);
+
+        TableStructure changed = schema.structure(session, "plain");
+        assertThat(changed.primaryKeys()).as("主键必须真的在表上").containsExactly("code");
+        assertThat(changed.columns()).extracting("name").contains("code", "name");
+        assertThat(changed.column("code").nullable()).isFalse();
+    }
+
+    @Test
+    void refusesAddingASecondPrimaryKeyColumn() throws Exception {
+        // ⭐ D-94：users 已有 id 主键 —— 再加一颗主键列要在计划生成前就说人话，
+        //    不能生成一条丢掉主键的 ADD 还报「已保存」。
+        TableStructure users = schema.structure(session, "users");
+        assertThatThrownBy(() -> StructureSqlBuilder.addColumn(session, users,
+                new ColumnSpec("code", "INTEGER", false, null, null, false, true)))
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.primaryKeyExists");
+    }
+
+    @Test
     void refusesDroppingPrimaryKeyColumn() {
         TableStructure users = assertDoesNotThrowStructure("users");
         assertThatThrownBy(() -> StructureSqlBuilder.dropColumn(session, users, "id"))

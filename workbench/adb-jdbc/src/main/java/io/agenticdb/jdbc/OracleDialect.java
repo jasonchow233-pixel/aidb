@@ -556,8 +556,9 @@ public final class OracleDialect implements Dialect {
 
     @Override
     public String addColumnSql(String table, ColumnSpec column) {
-        // ⚠️ Oracle 的 ADD 要括号包列定义。
-        return "ALTER TABLE " + quote(table) + " ADD (" + columnDefinition(column, true) + ")";
+        // ⚠️ Oracle 的 ADD 要括号包列定义；⭐ D-94：主键列在括号里也要落地。
+        return "ALTER TABLE " + quote(table) + " ADD ("
+                + createTableColumnDefinition(column, column.primaryKey()) + ")";
     }
 
     @Override

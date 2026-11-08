@@ -1035,12 +1035,21 @@ public final class StructurePage extends VBox implements AutoCloseable {
             String problem = columnSpecProblem(row.name.get(), row.rawType(),
                     initial == null ? null : initial.name(),
                     structure == null ? List.of() : structure.columns());
+            ColumnSpec spec = null;
             if (problem == null) {
                 try {
-                    row.toSpec();
+                    spec = row.toSpec();
                 } catch (RuntimeException e) {
                     problem = e.getMessage();
                 }
+            }
+            // ⭐ D-94：一张表只能有一颗主键 —— 新列带主键（或把别的列提升为主键）而表里
+            //    已经有一颗时，就在弹窗里就地说清楚，别等计划生成或执行才让服务器抛
+            //    「Multiple primary key defined」。编辑主键列本身不算第二颗。
+            if (problem == null && spec != null && spec.primaryKey()
+                    && (initial == null || !initial.primaryKey())
+                    && structure != null && !structure.primaryKeys().isEmpty()) {
+                problem = I18n.t("column.error.primaryKeyExists", structure.name());
             }
             if (problem != null) {
                 error.setText(problem);

@@ -538,7 +538,10 @@ public class MySqlDialect implements Dialect {
 
     @Override
     public String addColumnSql(String table, ColumnSpec column) {
-        return "ALTER TABLE " + quote(table) + " ADD COLUMN " + columnDefinition(column, true);
+        // ⭐ D-94：主键列在 ADD 里也要落地 —— createTableColumnDefinition 懂
+        //    「PRIMARY KEY 必须插在 COMMENT 之前」这条 MySQL 的顺序硬规矩。
+        return "ALTER TABLE " + quote(table) + " ADD COLUMN "
+                + createTableColumnDefinition(column, column.primaryKey());
     }
 
     @Override

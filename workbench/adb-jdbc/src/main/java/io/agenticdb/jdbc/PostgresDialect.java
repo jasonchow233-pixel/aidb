@@ -512,7 +512,9 @@ public final class PostgresDialect implements Dialect {
 
     @Override
     public String addColumnSql(String table, ColumnSpec column) {
-        return "ALTER TABLE " + quote(table) + " ADD COLUMN " + columnDefinition(column, true);
+        // ⭐ D-94：主键列在 ADD 里也要落地（PG 接受列内联 PRIMARY KEY）。
+        return "ALTER TABLE " + quote(table) + " ADD COLUMN "
+                + createTableColumnDefinition(column, column.primaryKey());
     }
 
     @Override

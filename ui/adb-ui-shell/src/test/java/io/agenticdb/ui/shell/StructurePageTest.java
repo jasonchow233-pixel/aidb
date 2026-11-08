@@ -429,12 +429,11 @@ class StructurePageTest {
      * 「勾主键自动非空」这条规则是建表网格定的（{@code ColumnRow} 的 key 监听），
      * 这里复用同一个模型而不是再抄一遍。
      *
-     * <p>⚠️ 断言停在 {@code NOT NULL} 是**量出来**的，不是保守：实测这条语句是
-     * {@code ALTER TABLE "users" ADD COLUMN "code" INTEGER NOT NULL} —— 六种方言的
-     * {@code addColumnSql} 都不看 {@code primaryKey()}（只有建表语句的
-     * {@code createTableColumnDefinition} 会带 PRIMARY KEY），所以「给已有表加一列主键」
-     * 在 DDL 层根本落不了地。把 {@code doesNotContain("PRIMARY KEY")} 写进门禁等于把这个
-     * 缺口供成规范，这里不写；缺口另立条目（见台账），本条只钉「弹窗不再丢用户的选择」。
+     * <p>⚠️ D-94 收口后本条换了性质：fixture 的 users **已有** id 主键 —— 一张表只能
+     * 有一颗，于是「再加一颗主键」的正确行为是在弹窗里<b>就地拒绝</b>（以前是弹窗
+     * 一关、生成一条丢掉主键的 ADD 还报「已保存」）。主键真正落地的语句形状由
+     * DialectSqlConformanceTest / StructureServiceTest 钉住；这里钉的是
+     * 「弹窗不把非法组合放出去 + 选主键仍强制非空」这两个界面行为。
      */
     @Test
     void addFieldKeyPrimaryReachesTheDdlAndForcesNotNull(FxRobot robot) throws Exception {
@@ -456,10 +455,12 @@ class StructurePageTest {
 
         robot.clickOn(okButton(robot));
         WaitForAsyncUtils.waitForFxEvents();
-        assertThat(plan.get()).as("Key 的选择不能被「没有改动」或校验吞掉").isNotNull();
-        assertThat(sql(plan.get()))
-                .as("主键带出的非空必须写进语句 —— 这是这一格当下唯一能落地的部分")
-                .contains("NOT NULL");
+        Label error = robot.lookup("#structure-dialog-error").queryAs(Label.class);
+        assertThat(error.isVisible())
+                .as("表已有主键时再加一颗主键必须就地拒绝 —— 不能弹窗一关、悄悄丢约束")
+                .isTrue();
+        assertThat(error.getText()).isEqualTo(I18n.t("column.error.primaryKeyExists", "users"));
+        assertThat(plan.get()).as("拒绝之后不许有计划溜出去").isNull();
     }
 
     /**

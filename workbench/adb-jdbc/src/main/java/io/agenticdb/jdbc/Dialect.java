@@ -681,6 +681,16 @@ public interface Dialect {
     String addColumnSql(String table, ColumnSpec column);
 
     /**
+     * ⭐ D-94：把一列提升为主键的表级语句。
+     *
+     * <p>六种方言恰好同形（{@code ALTER TABLE … ADD PRIMARY KEY (…)}），所以给默认实现。
+     * SQLite 永远走不到这里 —— 它的改列走整表重建，主键在 CREATE TABLE 里落地。
+     */
+    default String addPrimaryKeySql(String table, String column) {
+        return "ALTER TABLE " + quote(table) + " ADD PRIMARY KEY (" + quote(column) + ")";
+    }
+
+    /**
      * 建表语句里的单列定义。
      *
      * <p>为什么不能直接复用 {@link #columnDefinition}：{@code PRIMARY KEY} 要放在

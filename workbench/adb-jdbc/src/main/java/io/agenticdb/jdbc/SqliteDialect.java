@@ -386,6 +386,11 @@ public final class SqliteDialect implements Dialect {
 
     @Override
     public String addColumnSql(String table, ColumnSpec column) {
+        if (column.primaryKey()) {
+            // ⭐ D-94：SQLite 的 ADD COLUMN 不能带主键列 —— 有意调用时在这里拦下，
+            //    别让一条必被 SQLite 拒绝的语句溜出去；结构页的正规路径走整表重建。
+            throw new ColumnProblem("column.error.primaryKeyAddUnsupported");
+        }
         if (column.autoIncrement()) {
             // SQLite 的 ALTER TABLE … ADD COLUMN 不接受主键列（更不用说自增）。
             throw new IllegalArgumentException(

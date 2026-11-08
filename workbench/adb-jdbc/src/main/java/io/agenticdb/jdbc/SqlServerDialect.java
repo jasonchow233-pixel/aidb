@@ -643,8 +643,9 @@ public final class SqlServerDialect implements Dialect {
 
     @Override
     public String addColumnSql(String table, ColumnSpec column) {
-        // T-SQL 没有 ADD COLUMN —— 只有 ADD。
-        return "ALTER TABLE " + quote(table) + " ADD " + columnDefinition(column, true);
+        // T-SQL 没有 ADD COLUMN —— 只有 ADD。⭐ D-94：主键列在这里也要落地。
+        return "ALTER TABLE " + quote(table) + " ADD "
+                + createTableColumnDefinition(column, column.primaryKey());
     }
 
     @Override

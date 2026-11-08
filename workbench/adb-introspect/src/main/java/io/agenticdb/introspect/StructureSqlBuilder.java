@@ -41,11 +41,42 @@ public final class StructureSqlBuilder {
             throw new ColumnProblem("structure.error.needDefaultForNotNull",
                     dialect.displayName());
         }
+        // ⭐ D-94：主键是表级约束，一张表只能有一颗。以前这里对 primaryKey() 视而不见，
+        //    生成的 ADD 语句把主键悄悄丢掉，界面照样报「已保存」—— 比丢约束更坏的是
+        //    用户以为约束已经在了。
+        if (column.primaryKey() && !table.primaryKeys().isEmpty()) {
+            throw new ColumnProblem("column.error.primaryKeyExists", table.name());
+        }
+        // ⭐ D-94：SQLite 的 ADD COLUMN 本身不接受主键列 —— 整表重建是唯一诚实的
+        //    落地方式。自增主键列不在此重建：自增的校验与拒绝由方言负责（落空后
+        //    一定会走到 addColumnSql 的现有拒绝）。
+        if (column.primaryKey() && dialect.rebuildsTableOnColumnChange()
+                && !column.autoIncrement()) {
+            return addColumnByRebuild(session, table, column);
+        }
         List<String> statements = new ArrayList<>();
         statements.add(dialect.addColumnSql(table.name(), column));
         dialect.appendColumnComment(table.name(), column, statements);
         return new StructurePlan("plan.title.addColumn", List.of(column.name()), statements,
                 Danger.DESTRUCTIVE, false, false);
+    }
+
+    /**
+     * ⭐ D-94：SQLite 加主键列 = 整表重建（ADD COLUMN 拒绝主键列，没有第三条路）。
+     *
+     * <p>拷数据的 INSERT 只带<b>旧列</b> —— 新列的值交给它的默认值 / NULL 填；
+     * 把新列名带进 SELECT 会直接报「没有这个列」。空表随便加；非空表 +
+     * 「无默认值的主键」会在拷数据时被 NOT NULL 拦下，那是库自己的诚实语义。
+     */
+    private static StructurePlan addColumnByRebuild(DbSession session, TableStructure table,
+                                                    ColumnSpec column) {
+        List<ColumnDef> columns = new ArrayList<>(table.columns());
+        columns.add(toColumnDef(column));
+        List<String> primaryKeys = new ArrayList<>(table.primaryKeys());
+        primaryKeys.add(column.name());
+        return rebuildWith(session, table, columns, primaryKeys, table.foreignKeys(),
+                table.checks(), "plan.title.rebuildForAddPrimaryKey",
+                List.copyOf(table.columns()), column.name());
     }
 
     public static StructurePlan renameColumn(DbSession session, TableStructure table,
@@ -74,6 +105,11 @@ public final class StructureSqlBuilder {
         }
 
         Dialect dialect = session.dialect();
+        // ⭐ D-94：把已有列提升为主键同理 —— 表里已有主键时提前说人话，
+        //    别让计划里躺着一条必炸的 ADD PRIMARY KEY。
+        if (next.primaryKey() && !old.primaryKey() && !table.primaryKeys().isEmpty()) {
+            throw new ColumnProblem("column.error.primaryKeyExists", table.name());
+        }
         if (dialect.rebuildsTableOnColumnChange()) {
             // SQLite 的 ALTER TABLE 改不了列 —— 整表重建。
             //
@@ -90,6 +126,11 @@ public final class StructureSqlBuilder {
         //    PostgreSQL 要拆成 TYPE / NOT NULL / DEFAULT 三条。
         List<String> statements = new ArrayList<>(
                 dialect.alterColumnStatements(table.name(), oldName, next, old.rawType()));
+        // ⭐ D-94：主键是表级约束 —— Key 新选了主键时补一条表级 ADD PRIMARY KEY。
+        //    SQLite 走不到这里（上面的重建分支把主键写进 CREATE TABLE）。
+        if (next.primaryKey() && !old.primaryKey()) {
+            statements.add(dialect.addPrimaryKeySql(table.name(), next.name()));
+        }
         if (next.comment() != null) {
             dialect.appendColumnComment(table.name(), next, statements);
         } else if (old.comment() != null) {
@@ -130,7 +171,8 @@ public final class StructureSqlBuilder {
             }
         }
         return rebuildWith(session, table, columns, table.primaryKeys(),
-                table.foreignKeys(), table.checks(), "plan.title.rebuildForColumn", oldName);
+                table.foreignKeys(), table.checks(), "plan.title.rebuildForColumn",
+                columns, oldName);
     }
 
     /**
@@ -144,7 +186,8 @@ public final class StructureSqlBuilder {
                                              List<ColumnDef> columns, List<String> primaryKeys,
                                              List<ForeignKeyDef> foreignKeys,
                                              List<CheckDef> checks,
-                                             String titleKey, Object... titleArgs) {
+                                             String titleKey, List<ColumnDef> copyColumns,
+                                             Object... titleArgs) {
         String temporary = "__adb_rebuild_" + table.name() + "_" + System.nanoTime();
         String quote = session.dialect().quote(table.name());
         String temporaryQuote = session.dialect().quote(temporary);
@@ -158,11 +201,14 @@ public final class StructureSqlBuilder {
         //    于是 SQLite 改一次列，该表所有 CHECK 约束就静默消失了（D3）。
         statements.add(createTableSqlWithChecks(session, temporary, columns,
                 primaryKeys, table.indexes(), foreignKeys, checks));
-        String columnList = columns.stream()
+        // ⭐ D-94：INSERT 按 copyColumns 拷数据。改列时 copyColumns == columns
+        //    （新列与旧列同名，源表里都在）；加主键列时 copyColumns 是旧列 ——
+        //    新列还不在源表里，带进 SELECT 就是「没有这个列」。
+        String copyList = copyColumns.stream()
                 .map(column -> session.dialect().quote(column.name()))
                 .reduce((a, b) -> a + ", " + b).orElse("");
-        statements.add("INSERT INTO " + temporaryQuote + " (" + columnList + ") SELECT "
-                + columnList + " FROM " + quote);
+        statements.add("INSERT INTO " + temporaryQuote + " (" + copyList + ") SELECT "
+                + copyList + " FROM " + quote);
         statements.add("DROP TABLE " + quote);
         statements.add("ALTER TABLE " + temporaryQuote + " RENAME TO " + quote);
 
@@ -1055,7 +1101,7 @@ public final class StructureSqlBuilder {
             keys.add(foreignKey);
             return rebuildWith(session, table, table.columns(), table.primaryKeys(),
                     keys, table.checks(), "plan.title.rebuildForForeignKey",
-                    foreignKey.displayName());
+                    table.columns(), foreignKey.displayName());
         }
         String sql = dialect.addForeignKeySql(table.name(), foreignKey.name(),
                 foreignKey.columns(), foreignKey.referencedTable(),
@@ -1094,7 +1140,7 @@ public final class StructureSqlBuilder {
             }
             return rebuildWith(session, table, table.columns(), table.primaryKeys(),
                     keys, table.checks(), "plan.title.rebuildDropForeignKey",
-                    foreignKey.displayName());
+                    table.columns(), foreignKey.displayName());
         }
         String sql = dialect.dropForeignKeySql(table.name(), foreignKey.name());
         if (sql == null) {

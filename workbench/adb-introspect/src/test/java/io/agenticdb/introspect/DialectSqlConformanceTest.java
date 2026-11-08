@@ -76,6 +76,89 @@ class DialectSqlConformanceTest {
         assertThat(addColumn(DialectKind.MYSQL, column).statements()).hasSize(1);
     }
 
+    // ─────────────────────────── ⭐ D-94：加列/改列的主键落地 ───────────────────────────
+
+    @Test
+    void addColumnLandsThePrimaryKeyOnEveryDialectThatCanTakeOneInline() {
+        // D-94：主键列在 ADD 里必须真的落地 —— 以前五份 addColumnSql 只走 columnDefinition，
+        // 生成的语句带 NOT NULL 却丢 PRIMARY KEY，界面照样报「已保存」。
+        ColumnSpec column = new ColumnSpec("code", "INTEGER", false, null, null, false, true);
+        TableStructure noKeyTable = tableWithoutPrimaryKey();
+
+        assertThat(StructureSqlBuilder.addColumn(session(DialectKind.POSTGRESQL),
+                noKeyTable, column).statements().getFirst())
+                .isEqualTo("ALTER TABLE \"users\" ADD COLUMN \"code\" INTEGER NOT NULL PRIMARY KEY");
+        assertThat(StructureSqlBuilder.addColumn(session(DialectKind.MYSQL),
+                noKeyTable, column).statements().getFirst())
+                .isEqualTo("ALTER TABLE `users` ADD COLUMN `code` INTEGER NOT NULL PRIMARY KEY");
+        assertThat(StructureSqlBuilder.addColumn(session(DialectKind.ORACLE),
+                noKeyTable, column).statements().getFirst())
+                .isEqualTo("ALTER TABLE \"users\" ADD (\"code\" INTEGER NOT NULL PRIMARY KEY)");
+        assertThat(StructureSqlBuilder.addColumn(session(DialectKind.SQLSERVER),
+                noKeyTable, column).statements().getFirst())
+                .isEqualTo("ALTER TABLE [users] ADD [code] INTEGER NOT NULL PRIMARY KEY");
+        assertThat(StructureSqlBuilder.addColumn(session(DialectKind.MARIADB),
+                noKeyTable, column).statements().getFirst())
+                .isEqualTo("ALTER TABLE `users` ADD COLUMN `code` INTEGER NOT NULL PRIMARY KEY");
+    }
+
+    @Test
+    void sqliteRebuildsTheTableToLandAnAddedPrimaryKey() {
+        // D-94 出路三：SQLite 的 ADD COLUMN 本身不接受主键列 —— 整表重建是唯一诚实的落地方式。
+        ColumnSpec column = new ColumnSpec("code", "INTEGER", false, null, null, false, true);
+        StructurePlan plan = StructureSqlBuilder.addColumn(session(DialectKind.SQLITE),
+                tableWithoutPrimaryKey(), column);
+
+        assertThat(plan.approvalRequired()).isTrue();
+        assertThat(plan.foreignKeysOff()).isTrue();
+        assertThat(plan.sql())
+                .contains("CREATE TABLE \"__adb_rebuild_users_")
+                .contains("\"code\" INTEGER PRIMARY KEY NOT NULL");
+        assertThat(plan.statements()).anySatisfy(statement -> {
+            assertThat(statement).startsWith("INSERT INTO \"__adb_rebuild_users_");
+            // 拷数据的 INSERT 只带旧列：新列的值交给默认值/NULL 填，
+            // 把「code」带进 SELECT 会直接报「没有这个列」。
+            assertThat(statement).doesNotContain("code");
+        });
+    }
+
+    @Test
+    void refusesToAddOrPromoteASecondPrimaryKey() {
+        // 一张表只能有一颗主键 —— 六种方言都是这条规则。与其让服务器抛一句
+        // 「Multiple primary key defined」，不如在计划生成前就说人话。
+        ColumnSpec pk = new ColumnSpec("code", "INTEGER", false, null, null, false, true);
+
+        assertThatThrownBy(() -> StructureSqlBuilder.addColumn(session(DialectKind.SQLITE),
+                table(), pk))
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.primaryKeyExists");
+        assertThatThrownBy(() -> StructureSqlBuilder.addColumn(session(DialectKind.MYSQL),
+                table(), pk))
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.primaryKeyExists");
+
+        ColumnSpec promote = new ColumnSpec("email", "TEXT", false, null, null, false, true);
+        assertThatThrownBy(() -> StructureSqlBuilder.alterColumn(session(DialectKind.POSTGRESQL),
+                table(), "email", promote))
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "column.error.primaryKeyExists");
+    }
+
+    @Test
+    void alterColumnAppendsATableLevelPrimaryKeyWhenTheKeyIsNew() {
+        // D-94 的另一半：改列把 Key 选成主键，同样不能改完列就把主键丢了。
+        // 主键是表级约束 —— 非重建方言补一条表级 ADD PRIMARY KEY。
+        ColumnSpec promote = new ColumnSpec("email", "TEXT", false, null, null, false, true);
+        TableStructure noKeyTable = tableWithoutPrimaryKey();
+
+        assertThat(StructureSqlBuilder.alterColumn(session(DialectKind.POSTGRESQL), noKeyTable,
+                "email", promote).statements())
+                .endsWith("ALTER TABLE \"users\" ADD PRIMARY KEY (\"email\")");
+        assertThat(StructureSqlBuilder.alterColumn(session(DialectKind.MYSQL), noKeyTable,
+                "email", promote).statements())
+                .endsWith("ALTER TABLE `users` ADD PRIMARY KEY (`email`)");
+    }
+
     // ─────────────────────────── 改列 ───────────────────────────
 
     @Test
@@ -239,6 +322,16 @@ class DialectSqlConformanceTest {
 
     private static TableStructure table() {
         return table("TEXT");
+    }
+
+    /** D-94 主键落地用：同一张表但没有主键 —— 加第二颗主键的拒绝规则另有门禁。 */
+    private static TableStructure tableWithoutPrimaryKey() {
+        return new TableStructure("users", false,
+                List.of(new ColumnDef("email", ColumnType.TEXT, true, false, null, null,
+                                null, null, null, null, false, "TEXT"),
+                        new ColumnDef("old", ColumnType.TEXT, false, false, null, null,
+                                null, 64, null, null, false, "VARCHAR")),
+                List.of(), List.of(), List.of(), List.of(), "");
     }
 
     private static TableStructure table(String emailRawType) {
