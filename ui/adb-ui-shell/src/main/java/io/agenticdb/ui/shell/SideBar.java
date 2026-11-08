@@ -900,6 +900,31 @@ public final class SideBar extends VBox {
                     event.consume();
                 }
             }
+            // ⭐ H6-b/P-9（2026-11-08 拍板「F2 + Delete 都加」）：键盘对口右键菜单。
+            //    不进 ActionRegistry 的 accelerator —— 那是场景全局的，F2 会漏到
+            //    别的控件上；树内按键只在树有焦点时生效。动作本体仍走注册表，
+            //    enabled / 危险确认 / 分派与右键菜单是同一条路。
+            else if (event.getCode() == javafx.scene.input.KeyCode.F2) {
+                TreeItem<DemoNode> selected = tree.getSelectionModel().getSelectedItem();
+                if (selected != null && selected.getValue().kind() == NodeKind.TABLE) {
+                    actions.run("object.rename-table");
+                    event.consume();
+                }
+            } else if (event.getCode() == javafx.scene.input.KeyCode.DELETE
+                    || event.getCode() == javafx.scene.input.KeyCode.BACK_SPACE) {
+                TreeItem<DemoNode> selected = tree.getSelectionModel().getSelectedItem();
+                if (selected != null) {
+                    // macOS 的退格是 BACK_SPACE，前向删除才是 DELETE —— 两个都认。
+                    NodeKind kind = selected.getValue().kind();
+                    if (kind == NodeKind.TABLE) {
+                        actions.run("object.drop-table");
+                        event.consume();
+                    } else if (kind == NodeKind.VIEW) {
+                        actions.run("object.drop-view");
+                        event.consume();
+                    }
+                }
+            }
         });
         tree.setOnContextMenuRequested(event -> {
             // 右键先选中鼠标下的行，否则菜单会作用在上一次选中的对象上。

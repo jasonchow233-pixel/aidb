@@ -561,6 +561,88 @@ class SideBarTreeTest {
     }
 
     /**
+     * ⭐ H6-b/P-9（2026-11-08 拍板）：F2 重命名表、Delete / 退格删除 —— 键盘对口右键菜单。
+     *
+     * <p>钉四条边界：<b>F2 只对表</b>（重命名是表级动作，视图没有）；
+     * <b>Delete 表走删表、视图走删视图</b>；<b>非对象节点两个键都不咬</b>
+     * （连接 / 分组上删除树内不接 —— 连接的删除在连接管理页）；
+     * 走的都是注册表分派 —— 危险确认那条路原样生效。
+     */
+    @Test
+    void keyboardF2RenamesAndDeleteDropsThroughTheSameDispatch() {
+        ActionRegistry actions = new ActionRegistry();
+        List<SideBar.TableRequest> requests = new ArrayList<>();
+        List<ConnectionProfile> profiles = List.of(profile("demo", "内存库"));
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "内存库",
+                tab -> { }, message -> { }, "demo", profiles, p -> { }));
+        onFxRun(() -> sideBar.setOnTableDdl(requests::add));
+        onFxRun(() -> sideBar.setObjects("demo", List.of(
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE),
+                new SchemaService.SchemaObject("v_users", SchemaService.ObjectKind.VIEW))));
+
+        TreeView tree = treeOf(sideBar);
+        TreeItem users = findTable(rootOf(tree), "users");
+        onFxRun(() -> {
+            tree.getSelectionModel().select(users);
+            tree.fireEvent(new javafx.scene.input.KeyEvent(
+                    javafx.scene.input.KeyEvent.KEY_PRESSED, "", "",
+                    javafx.scene.input.KeyCode.F2, false, false, false, false));
+        });
+        assertThat(requests)
+                .as("F2 在表节点上 = 重命名（同一条分派，没有第二套）")
+                .hasSize(1);
+        assertThat(requests.getFirst().action()).isEqualTo(SideBar.SideBarObject.RENAME_TABLE);
+        assertThat(requests.getFirst().tableName()).isEqualTo("users");
+
+        requests.clear();
+        onFxRun(() -> tree.fireEvent(new javafx.scene.input.KeyEvent(
+                javafx.scene.input.KeyEvent.KEY_PRESSED, "", "",
+                javafx.scene.input.KeyCode.DELETE, false, false, false, false)));
+        assertThat(requests)
+                .as("Delete 在表节点上 = 删表（危险确认在 TableDdl 那头，原样生效）")
+                .hasSize(1);
+        assertThat(requests.getFirst().action()).isEqualTo(SideBar.SideBarObject.DROP_TABLE);
+
+        TreeItem view = findTable(rootOf(tree), "v_users");
+        onFxRun(() -> tree.getSelectionModel().select(view));
+        requests.clear();
+        onFxRun(() -> tree.fireEvent(new javafx.scene.input.KeyEvent(
+                javafx.scene.input.KeyEvent.KEY_PRESSED, "", "",
+                javafx.scene.input.KeyCode.DELETE, false, false, false, false)));
+        assertThat(requests)
+                .as("Delete 在视图节点上 = 删视图，不是删表")
+                .hasSize(1);
+        assertThat(requests.getFirst().action()).isEqualTo(SideBar.SideBarObject.DROP_VIEW);
+
+        requests.clear();
+        onFxRun(() -> {
+            // 视图上 F2 没有语义（重命名是表级动作）—— 不许落成删表或别的什么。
+            tree.fireEvent(new javafx.scene.input.KeyEvent(
+                    javafx.scene.input.KeyEvent.KEY_PRESSED, "", "",
+                    javafx.scene.input.KeyCode.F2, false, false, false, false));
+        });
+        assertThat(requests).as("视图上 F2 不咬").isEmpty();
+
+        TreeItem connection = findExact(rootOf(tree), "内存库");
+        onFxRun(() -> tree.getSelectionModel().select(connection));
+        onFxRun(() -> {
+            tree.fireEvent(new javafx.scene.input.KeyEvent(
+                    javafx.scene.input.KeyEvent.KEY_PRESSED, "", "",
+                    javafx.scene.input.KeyCode.DELETE, false, false, false, false));
+            tree.fireEvent(new javafx.scene.input.KeyEvent(
+                    javafx.scene.input.KeyEvent.KEY_PRESSED, "", "",
+                    javafx.scene.input.KeyCode.BACK_SPACE, false, false, false, false));
+            tree.fireEvent(new javafx.scene.input.KeyEvent(
+                    javafx.scene.input.KeyEvent.KEY_PRESSED, "", "",
+                    javafx.scene.input.KeyCode.F2, false, false, false, false));
+        });
+        assertThat(requests)
+                .as("连接节点上删除 / 退格 / F2 都不咬 —— 树内不删连接")
+                .isEmpty();
+    }
+
+    /**
      * ⭐ H6-e：「刷新此表」只炸这一张表的两层缓存再重读，不重建整棵树。
      *
      * <p>两层都要清：树自己的 columnsByTable（不清 = 重读被吞）与底层 describe
