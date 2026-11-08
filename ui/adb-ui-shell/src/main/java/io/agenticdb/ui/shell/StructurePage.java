@@ -926,7 +926,9 @@ public final class StructurePage extends VBox implements AutoCloseable {
 
         CheckBox nullable = new CheckBox(I18n.t("structure.dialog.nullable"));
         nullable.setId("structure-dialog-nullable");
-        nullable.setSelected(!row.notNull.get());
+        // ⭐ D-88：ColumnRow 的属性已翻成正向的 nullable —— 直连即可，
+        //    旧世界这里要双向各取一次反。
+        nullable.setSelected(row.nullable.get());
 
         CheckBox virtual = new CheckBox(I18n.t("newtable.col.virtual"));
         virtual.setId("structure-dialog-virtual");
@@ -970,10 +972,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
                 syncing.set(false);
             }
         });
-        // 「可空」是模型里「不为空」的反面：两边各一个方向，值没变就不回圈。
-        nullable.selectedProperty().addListener(
-                (observable, oldValue, newValue) -> row.notNull.set(!newValue));
-        row.notNull.addListener((observable, oldValue, newValue) -> nullable.setSelected(!newValue));
+        nullable.selectedProperty().bindBidirectional(row.nullable);
         key.valueProperty().addListener(
                 (observable, oldValue, newValue) -> row.key.set(newValue == null ? "" : newValue.code()));
 
@@ -1088,7 +1087,7 @@ public final class StructurePage extends VBox implements AutoCloseable {
         row.applyRawType(initial.rawType());
         row.defaultValue.set(initial.defaultValue() == null ? "" : initial.defaultValue());
         row.comment.set(initial.comment() == null ? "" : initial.comment());
-        row.notNull.set(!initial.nullable());
+        row.nullable.set(initial.nullable());
         row.key.set(initial.primaryKey() ? NewTableDialog.ColumnRow.KEY_PRIMARY
                 : initial.unique() ? NewTableDialog.ColumnRow.KEY_UNIQUE : "");
         if (initial.generated()) {

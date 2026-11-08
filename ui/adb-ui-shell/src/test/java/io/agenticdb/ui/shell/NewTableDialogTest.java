@@ -46,9 +46,9 @@ class NewTableDialogTest {
         NewTableDialog.ColumnRow first = dialog.rows().getFirst();
         assertThat(first.name.get()).isEqualTo("id");
         assertThat(first.primaryKey()).isTrue();
-        assertThat(first.notNull.get())
-                .as("主键列不能为 NULL —— 默认就要是对的，别等用户填完再报错")
-                .isTrue();
+        assertThat(first.nullable.get())
+                .as("D-88：主键列不能为 NULL —— 默认就该是不可空，别等用户填完再报错")
+                .isFalse();
         assertThat(first.autoIncrement.get())
                 .as("R31/G15：默认的 id 主键要带自增，否则建完还得以手填 id")
                 .isTrue();
@@ -87,17 +87,44 @@ class NewTableDialogTest {
         assertThat(onFx(dialog::buildPlan)).isNull();
     }
 
+    /**
+     * ⭐ D-88：极性翻正后主键联动的是「可空」—— 选上主键把可空勾掉，
+     * 而不是旧世界的「勾上不为空」。行为等价，但共享同一颗属性语义后，
+     * 新建表网格与 Add Field 弹窗（StructurePage 桥接）不再有正反两套。
+     */
     @Test
-    void checkingPrimaryKeyTurnsOnNotNull() {
+    void checkingPrimaryKeyTurnsOffNullable() {
         NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
         NewTableDialog.ColumnRow row = dialog.rows().getFirst();
         onFxRun(() -> {
             row.key.set("");
-            row.notNull.set(false);
+            row.nullable.set(true);
             row.key.set(NewTableDialog.ColumnRow.KEY_PRIMARY);
         });
 
-        assertThat(row.notNull.get()).isTrue();
+        assertThat(row.nullable.get()).isFalse();
+    }
+
+    /**
+     * ⭐ D-88 的核心行为门：可空复选框直接驱动 DDL 的 NOT NULL 子句 ——
+     * 默认勾着（可空）→ 没有 NOT NULL；勾掉 → NOT NULL 进定义。
+     * 旧世界这颗格子是反着绑的「不为空」，谁也说不清它勾上到底建出什么。
+     */
+    @Test
+    void nullableCheckboxDrivesTheNotNullClause() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        onFxRun(() -> {
+            dialog.nameField().setText("orders");
+            NewTableDialog.ColumnRow plain = typedRow(dialog, "memo", "TEXT");
+            dialog.rows().add(plain);
+        });
+
+        String nullableDdl = onFx(() -> dialog.previewArea().getText());
+        assertThat(nullableDdl).contains("`memo` TEXT").doesNotContain("`memo` TEXT NOT NULL");
+
+        onFxRun(() -> dialog.rows().getLast().nullable.set(false));
+        assertThat(onFx(() -> dialog.previewArea().getText()))
+                .contains("`memo` TEXT NOT NULL");
     }
 
     @Test
@@ -848,8 +875,8 @@ class NewTableDialogTest {
     /**
      * 网格的列 = Navicat 表设计器的列，顺序也一样。
      *
-     * <p>这条不是审美：文档里教用户「第五列勾不为空」，列序一变，
-     * 照着文档点就点到别的格子上。
+     * <p>这条不是审美：文档里教用户「第五列是可空」（D-88 翻正后的叫法），
+     * 列序一变，照着文档点就点到别的格子上。
      */
     @Test
     void theFieldGridHasTheNavicatColumnsInOrder() {
@@ -860,7 +887,7 @@ class NewTableDialogTest {
 
         assertThat(headers).containsExactly(I18n.t("column.name"), I18n.t("detail.type"),
                 I18n.t("newtable.col.length"), I18n.t("newtable.col.decimals"),
-                I18n.t("newtable.col.notNull"), I18n.t("newtable.col.virtual"),
+                I18n.t("newtable.col.nullable"), I18n.t("newtable.col.virtual"),
                 I18n.t("newtable.col.key"), I18n.t("column.comment"));
     }
 
@@ -1272,7 +1299,7 @@ class NewTableDialogTest {
             return plain;
         });
         assertThat(row.primaryKey()).isTrue();
-        assertThat(row.notNull.get()).isTrue();
+        assertThat(row.nullable.get()).isFalse();
 
         onFxRun(() -> row.key.set(""));
         assertThat(row.autoIncrement.get())

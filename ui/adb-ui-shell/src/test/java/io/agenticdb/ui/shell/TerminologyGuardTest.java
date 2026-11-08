@@ -156,16 +156,15 @@ class TerminologyGuardTest {
      * （en `Allow NULL` / zh 「允许 NULL」）—— 上下两屏两种说法，用户要先猜一次
      * 「Allow NULL 和 Nullable 是不是同一件事」。
      *
-     * <p>⚠️ 这条只钉「同概念同叫法」，不钉正反极性：
-     * 新建表对话框那列仍然叫「不为空 / Not Null」（{@code newtable.col.notNull}），
-     * 它是**反着**绑定的（勾上 = NOT NULL，见 {@code NewTableDialog.java:680/1902}），
-     * 跟这里的正向「可空」并存。把前者翻成正向要同时改绑定、列 id、SQL 生成与 67 条
-     * {@code NewTableDialogTest}，属于行为改动，不属于本批文案改动 —— 已另立 D-88。
+     * <p>⭐ D-88（2026-11-08）：新建表网格那列从「不为空 / Not Null」（反向绑定）
+     * 翻成了正向的「可空」（{@code newtable.col.nullable}），一起进这组对照 ——
+     * 三处（设计器列头 / 增改字段弹窗 / 新建表网格）现在是同一概念同一叫法。
      */
     @Test
     void sameConceptUsesOneLabelPerBundle() throws IOException {
         List<String[]> pairs = List.<String[]>of(
-                new String[]{"structure.col.nullable", "structure.dialog.nullable"});
+                new String[]{"structure.col.nullable", "structure.dialog.nullable"},
+                new String[]{"structure.col.nullable", "newtable.col.nullable"});
         for (Path bundle : bundles()) {
             java.util.Properties props = new java.util.Properties();
             try (var in = Files.newInputStream(bundle)) {

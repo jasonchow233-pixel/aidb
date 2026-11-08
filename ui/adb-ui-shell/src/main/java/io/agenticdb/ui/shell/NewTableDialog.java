@@ -507,7 +507,7 @@ final class NewTableDialog {
     TableStructure draftStructure() {
         List<ColumnDef> columns = rows.stream()
                 .map(row -> new ColumnDef(row.name.get().trim(), ColumnType.TEXT,
-                        !row.notNull.get(), row.primaryKey(),
+                        row.nullable.get(), row.primaryKey(),
                         blankToNull(row.defaultValue.get()), blankToNull(row.comment.get()),
                         null, null, null, null, row.uniqueKey(), row.rawType()))
                 .toList();
@@ -677,7 +677,8 @@ final class NewTableDialog {
                 typeColumn,
                 numberColumn(I18n.t("newtable.col.length"), "length", 58, row -> row.length, this::takesLength),
                 numberColumn(I18n.t("newtable.col.decimals"), "decimals", 58, row -> row.decimals, this::takesDecimals),
-                booleanColumn(I18n.t("newtable.col.notNull"), "notNull", 58, row -> row.notNull, row -> true),
+                booleanColumn(I18n.t("newtable.col.nullable"), "nullable", 58,
+                        row -> row.nullable, row -> true),
                 // ⭐ N29：Navicat 的 Virtual 列 —— 生成列由表达式算出来，不用手填。
                 booleanColumn(I18n.t("newtable.col.virtual"), "virtual", 56, row -> row.virtual,
                         row -> session.dialect().supportsGeneratedColumn()),
@@ -1729,8 +1730,13 @@ final class NewTableDialog {
      * 一行列定义。用 JavaFX 属性是为了让表格能直接编辑。
      *
      * <p>⭐ R31：类型拆成「类型 + 长度 + 小数」三项（{@link #rawType()} 负责拼回去），
-     * 并新增「自增」。布尔语义按 Navicat 摆成正向的「不为空」（{@link #notNull}），
-     * 而不是反过来的「可空」—— 勾选框问的应该是「有什么」。
+     * 并新增「自增」。
+     *
+     * <p>⭐ D-88：布尔语义从 Navicat 的反向「不为空」翻成正向的「可空」
+     * （{@link #nullable}）—— 结构页列头、Add Field 弹窗、新建表网格三处
+     * 同一概念同一极性，勾上 = 可空。这一行模型同时喂两条通道
+     * （新建表网格直连、Add Field 经 StructurePage 桥接），旧世界的
+     * 「模型存 notNull、弹窗侧取反桥接」双口径就此并成一份。
      */
     static final class ColumnRow {
 
@@ -1744,7 +1750,8 @@ final class NewTableDialog {
         final StringProperty length = new SimpleStringProperty("");
         /** 小数位（{@code DECIMAL(10,2)} 的 2）；空 = 不带小数位。 */
         final StringProperty decimals = new SimpleStringProperty("");
-        final BooleanProperty notNull = new SimpleBooleanProperty(false);
+        /** ⭐ D-88：正向语义 —— 勾上 = 可空；主键/自增联动把它勾掉。 */
+        final BooleanProperty nullable = new SimpleBooleanProperty(true);
         /** ⭐ N29：主键 / 唯一合成一个下拉（{@link #KEY_PRIMARY} / {@link #KEY_UNIQUE} / 空）。 */
         final StringProperty key = new SimpleStringProperty("");
         /** ⭐ N29：生成列（Navicat 的 Virtual）；表达式在 {@link #generatedExpression}。 */
@@ -1765,7 +1772,7 @@ final class NewTableDialog {
             //    而不是让用户填完再被一句报错打回来。
             key.addListener((observable, oldValue, newValue) -> {
                 if (KEY_PRIMARY.equals(newValue)) {
-                    notNull.set(true);
+                    nullable.set(false);
                 } else {
                     // 自增列必须是主键 —— 取消主键时自增一并没有意义。
                     autoIncrement.set(false);
@@ -1795,7 +1802,7 @@ final class NewTableDialog {
             type.addListener(observable -> onChange.run());
             length.addListener(observable -> onChange.run());
             decimals.addListener(observable -> onChange.run());
-            notNull.addListener(observable -> onChange.run());
+            nullable.addListener(observable -> onChange.run());
             keyLength.addListener(observable -> onChange.run());
             binary.addListener(observable -> onChange.run());
             defaultValue.addListener(observable -> onChange.run());
@@ -1893,7 +1900,7 @@ final class NewTableDialog {
                 throw new IllegalArgumentException(
                         I18n.t("newtable.error.virtualNoExpression", label()));
             }
-            return new ColumnSpec(name.get(), rawType(), !notNull.get(), defaultValue.get(),
+            return new ColumnSpec(name.get(), rawType(), nullable.get(), defaultValue.get(),
                     comment.get(), uniqueKey(), primaryKey(), autoIncrement.get(),
                     charset.get(), collation.get(), prefix, binary.get(),
                     virtual.get() ? expression : null);
