@@ -561,6 +561,72 @@ class SideBarTreeTest {
     }
 
     /**
+     * ⭐ H6-e：「刷新此表」只炸这一张表的两层缓存再重读，不重建整棵树。
+     *
+     * <p>两层都要清：树自己的 columnsByTable（不清 = 重读被吞）与底层 describe
+     * 缓存（不清 = 重读读回的还是旧列 —— H3-d 那份，经 onInvalidateColumns 作废）。
+     * 「已尝试」标记也要清，读失败后再刷一次仍能重试。
+     */
+    @Test
+    void refreshingATableReReadsItsColumnsAndClearsBothCaches() {
+        ActionRegistry actions = new ActionRegistry();
+        List<ConnectionProfile> profiles = List.of(profile("pg", "生产库"));
+        List<String> asked = new ArrayList<>();
+        List<String> invalidated = new ArrayList<>();
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "pg", profiles, p -> { }));
+        onFxRun(() -> sideBar.setOnLoadColumns((connectionId, table) ->
+                asked.add(connectionId + "·" + table)));
+        onFxRun(() -> sideBar.setOnInvalidateColumns((connectionId, table) ->
+                invalidated.add(connectionId + "·" + table)));
+        onFxRun(() -> sideBar.setObjects("pg", List.of(
+                new SchemaService.SchemaObject("users", SchemaService.ObjectKind.TABLE),
+                new SchemaService.SchemaObject("orders", SchemaService.ObjectKind.TABLE))));
+
+        TreeView tree = treeOf(sideBar);
+        TreeItem users = findTable(rootOf(tree), "users");
+        onFxRun(() -> {
+            tree.getSelectionModel().select(users);
+            users.setExpanded(true);
+        });
+        onFxRun(() -> sideBar.setColumns("pg", "users", List.of("id")));
+        assertThat(asked).containsExactly("pg·users");
+
+        onFxRun(() -> sideBar.actionForTest("object.refresh-table"));
+        assertThat(invalidated)
+                .as("底层 describe 缓存条目也要作废 —— 不然重读读回的还是旧列")
+                .containsExactly("pg·users");
+        assertThat(asked)
+                .as("树缓存清掉之后真的会重读一次")
+                .containsExactly("pg·users", "pg·users");
+        assertThat(childNames(users))
+                .as("重读期间节点先摆回「读取列…」占位")
+                .containsExactly(I18n.t("sidebar.columnsLoading"));
+
+        onFxRun(() -> sideBar.setColumns("pg", "users", List.of("id", "email", "created")));
+        assertThat(childNames(users))
+                .as("新列就地替换 —— 其它节点的展开态不动（没有重建树）")
+                .containsExactly("id", "email", "created");
+
+        onFxRun(() -> users.setExpanded(false));
+        onFxRun(() -> users.setExpanded(true));
+        assertThat(asked)
+                .as("新列已进缓存 —— 再展开不重复查库")
+                .hasSize(2);
+
+        TreeItem orders = findTable(rootOf(tree), "orders");
+        onFxRun(() -> tree.getSelectionModel().select(orders));
+        assertThat(actions.find("object.refresh-table").orElseThrow().isEnabled()).isTrue();
+
+        TreeItem connection = findExact(rootOf(tree), "生产库");
+        onFxRun(() -> tree.getSelectionModel().select(connection));
+        assertThat(actions.find("object.refresh-table").orElseThrow().isEnabled())
+                .as("「刷新此表」只挂在表 / 视图节点上")
+                .isFalse();
+    }
+
+    /**
      * ⭐ S-3：读到的列要活过「重建树」。
      *
      * <p>搜索框每敲一个字都会重建整棵树 —— 列如果只挂在旧节点上就全没了，

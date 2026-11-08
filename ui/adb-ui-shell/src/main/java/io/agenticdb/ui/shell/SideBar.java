@@ -127,6 +127,8 @@ public final class SideBar extends VBox {
      * <p>为 null = 没接回调 —— 表节点保持叶子，不摆一个点不开的箭头骗人。
      */
     private BiConsumer<String, String> onLoadColumns;
+    /** ⭐ H6-e：刷新此表时先作废底层 describe 缓存（可空 —— 裸侧栏只清自己的缓存）。 */
+    private BiConsumer<String, String> onInvalidateColumns;
     /** ⭐ S-3：连接 + 表 → 列名（展开读到后缓存，刷新树不丢）。 */
     private final Map<String, List<String>> columnsByTable = new LinkedHashMap<>();
     /** ⭐ S-3：已发起过列读取的表（读失败时摘掉标记 → 再展开一次会重试）。 */
@@ -265,6 +267,9 @@ public final class SideBar extends VBox {
                 () -> onSelected(SideBarObject.DIAGNOSTICS));
         actions.register("object.refresh-objects", I18n.t("action.object.refresh-objects"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.REFRESH_OBJECTS));
+        // ⭐ H6-e：只刷这张表的列清单 —— 不整树重建，缓存只炸这一份。
+        actions.register("object.refresh-table", I18n.t("action.object.refresh-table"), I18n.t("category.object"), null,
+                () -> onSelected(SideBarObject.REFRESH_TABLE));
         // ⭐ U1：切换数据库（catalog 节点专用；其它节点上这个动作是禁用的）。
         actions.register("object.switch-catalog", I18n.t("action.object.switch-catalog"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.SWITCH_CATALOG));
@@ -303,6 +308,8 @@ public final class SideBar extends VBox {
         COPY_SELECT,
         DIAGNOSTICS,
         REFRESH_OBJECTS,
+        /** ⭐ H6-e：只重读这张表 / 视图的列（不重建整棵树）。 */
+        REFRESH_TABLE,
         NEW_TABLE,
         TRUNCATE_TABLE,
         RENAME_TABLE,
@@ -571,6 +578,15 @@ public final class SideBar extends VBox {
         if (!objectsByConnection.isEmpty()) {
             refreshTree();
         }
+    }
+
+    /**
+     * ⭐ H6-e：「刷新此表」在重读之前要先作废底层 describe 缓存（AppShell 接
+     * {@code SchemaService.invalidateTable}）—— 不然重读读回的还是旧列。
+     * 没接（演示 / 裸侧栏）就只清树自己的缓存，行为照旧。
+     */
+    public void setOnInvalidateColumns(BiConsumer<String, String> onInvalidateColumns) {
+        this.onInvalidateColumns = onInvalidateColumns;
     }
 
     /** 供门禁触发对象树动作。 */
@@ -1833,6 +1849,7 @@ public final class SideBar extends VBox {
                     actions.menuItem("object.copy-select"),
                     new SeparatorMenuItem(),
                     actions.menuItem("object.diagnostics"),
+                    actions.menuItem("object.refresh-table"),
                     new SeparatorMenuItem(),
                     actions.menuItem("object.truncate-table"),
                     actions.menuItem("object.rename-table"),
@@ -1849,6 +1866,7 @@ public final class SideBar extends VBox {
                     actions.menuItem("object.copy-name"),
                     actions.menuItem("object.copy-select"),
                     new SeparatorMenuItem(),
+                    actions.menuItem("object.refresh-table"),
                     actions.menuItem("object.design-view"),
                     actions.menuItem("object.drop-view"));
             case CONNECTION -> menu.getItems().addAll(
@@ -1967,6 +1985,13 @@ public final class SideBar extends VBox {
                 onRefreshObjects.accept(owner);
                 status.accept(I18n.t("sidebar.refreshed", node.name()));
             }
+            case REFRESH_TABLE -> {
+                if (isObject) {
+                    refreshTable(owner, node.name());
+                } else {
+                    status.accept(I18n.t("sidebar.onlyObject.refreshTable"));
+                }
+            }
             // ⭐ 表级生命周期：侧栏只负责把「点的是谁」说清楚，执行在 TableDdl。
             case NEW_TABLE ->
                     onTableDdl.accept(new TableRequest(SideBarObject.NEW_TABLE, null, owner));
@@ -2067,6 +2092,7 @@ public final class SideBar extends VBox {
         setObjectActionEnabled("object.copy-select", isObject);
         setObjectActionEnabled("object.refresh-objects",
                 node != null && !isConnectionGroup && !isSavedNode);
+        setObjectActionEnabled("object.refresh-table", isObject);
         // ⭐ 表级生命周期：建表挂在连接 / 分组 / 库上，改表只挂在「表」上 ——
         //    视图没有 TRUNCATE，过程函数更没有，所以不能一律放行。
         setObjectActionEnabled("object.new-table",
@@ -2089,6 +2115,31 @@ public final class SideBar extends VBox {
 
     private void setObjectActionEnabled(String id, boolean enabled) {
         actions.find(id).ifPresent(action -> action.setEnabled(enabled));
+    }
+
+    /**
+     * ⭐ H6-e：「刷新此表」—— 只炸这一个表的列缓存再重读，不重建整棵树。
+     *
+     * <p>缓存与「已尝试」标记都清掉（后者保证读失败后这一项仍可重试），
+     * 底层 describe 缓存由 {@link #onInvalidateColumns} 作废（接了才有），
+     * 节点上先摆回「读取列…」占位，读回后 {@link #setColumns} 就地替换 ——
+     * 其余节点的展开态、选中态一概不动。视图同待遇（列同样会过期）。
+     */
+    private void refreshTable(String connectionId, String table) {
+        String key = columnKey(connectionId, table);
+        columnsByTable.remove(key);
+        attemptedColumns.remove(key);
+        if (onInvalidateColumns != null) {
+            onInvalidateColumns.accept(connectionId, table);
+        }
+        TreeItem<DemoNode> node = findTableNode(tree.getRoot(), connectionId, table);
+        if (node != null) {
+            node.getChildren().setAll(new TreeItem<>(new DemoNode(
+                    I18n.t("sidebar.columnsLoading"), NodeKind.COLUMN, Icons.Icon.COLUMNS,
+                    "", connectionId)));
+        }
+        onLoadColumns.accept(connectionId, table);
+        status.accept(I18n.t("sidebar.refreshed", table));
     }
 
     /** 打开表。{@code targetConnection} 为空表示当前连接。 */

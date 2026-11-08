@@ -137,6 +137,40 @@ class SchemaServiceDescribeCacheTest {
         }
     }
 
+    /**
+     * 门 4（表级失效，⭐ H6-e）：{@code invalidateTable} 只作废点名的那一张。
+     *
+     * <p>「刷新此表」是用户点名要谁新鲜 —— 别的表的缓存不许陪葬
+     * （整会话作废是 DDL 批的口径，DDL 不猜哪张表变了）。
+     */
+    @Test
+    void invalidateTableDropsOnlyTheNamedTable() throws Exception {
+        // ⚠️ 缓存按 DbSession 身份分桶 —— 计数包装与真会话是两个键，
+        //    所以 invalidate / describe 全程走同一只 CountingSession。
+        CountingSession counting = new CountingSession(session);
+        schema.describe(counting, "users");
+        schema.describe(counting, "orders");
+        int warm = counting.statements;
+        assertThat(warm).as("预热首读必须真打库（防门禁空转）").isGreaterThan(0);
+
+        session.execute("ALTER TABLE users ADD COLUMN remark TEXT");
+        schema.invalidateTable(counting, "users");
+
+        schema.describe(counting, "users");
+        assertThat(schema.describe(counting, "users").columns()).extracting(ColumnDef::name)
+                .as("点名的表必须真重读 —— 新列要看得见")
+                .contains("remark");
+        int afterUsers = counting.statements;
+        assertThat(afterUsers)
+                .as("users 的重读真的发生了语句")
+                .isGreaterThan(warm);
+
+        schema.describe(counting, "orders");
+        assertThat(counting.statements)
+                .as("没点名的表缓存原样保留 —— 零语句")
+                .isEqualTo(afterUsers);
+    }
+
     /** 会话级语句计数器：describe 发了几条 SQL，一翻便知。JDBC 元数据调用不计（驱动内部）。 */
     private static final class CountingSession implements DbSession {
 

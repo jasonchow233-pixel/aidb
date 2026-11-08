@@ -436,6 +436,19 @@ public final class SchemaService {
         describeCache.remove(session);
     }
 
+    /**
+     * ⭐ H6-e：只作废这一张表的 describe 条目（「刷新此表」用）。
+     *
+     * <p>DDL 批仍然走整会话 {@link #invalidate}（不猜哪张表变了）；
+     * 用户点名刷某张表时才知道要谁新鲜，按表清就行，别把别的表的缓存陪葬。
+     */
+    public void invalidateTable(DbSession session, String name) {
+        Map<String, CachedSchema> byTable = describeCache.get(session);
+        if (byTable != null) {
+            byTable.remove(name.toLowerCase(Locale.ROOT));
+        }
+    }
+
     /** 用方言的空页探测语句拿结果集元数据，表与视图共用。 */
     public TableSchema describe(DbSession session, String name) throws SQLException {
         String catalog = currentCatalog(session);

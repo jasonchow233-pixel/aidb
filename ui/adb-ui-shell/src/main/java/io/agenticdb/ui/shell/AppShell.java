@@ -270,6 +270,9 @@ public final class AppShell extends StackPane {
         this.sideBar.setOnLoadObjects(this::loadObjectsFor);
         // ⭐ S-3：展开表节点时才读它的列（懒加载，见 loadColumnsFor）。
         this.sideBar.setOnLoadColumns(this::loadColumnsFor);
+        // ⭐ H6-e：「刷新此表」重读前先作废 H3-d 的 describe 条目 ——
+        //    不然树缓存清了、底层读回的还是旧列。
+        this.sideBar.setOnInvalidateColumns(this::invalidateColumnsFor);
         // ⭐ UX-5：连接节点的存活点。**判据只能来自 SessionManager** ——
         //    侧栏没有会话，它自己判断就是第二套真相；外壳也不许替它编一个。
         this.sideBar.setConnectionLiveness(this::isConnectionAlive);
@@ -1747,6 +1750,14 @@ public final class AppShell extends StackPane {
      * <p>失败时侧栏会把占位节点换成「列读取失败（展开重试）」并清掉
      * 「已尝试」标记 —— 用户再展开一次就重试，不静默降级成叶子。
      */
+    /** ⭐ H6-e：「刷新此表」先作废 H3-d 的 describe 缓存条目（只这张表，别的表的缓存不陪葬）。 */
+    private void invalidateColumnsFor(String connectionId, String table) {
+        DbSession session = sessionFor(connectionId);
+        if (session != null) {
+            schemaService.invalidateTable(session, table);
+        }
+    }
+
     private void loadColumnsFor(String connectionId, String table) {
         DbSession session = sessionFor(connectionId);
         if (session == null) {
