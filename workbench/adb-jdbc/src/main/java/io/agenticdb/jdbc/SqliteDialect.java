@@ -63,12 +63,6 @@ public final class SqliteDialect implements Dialect {
     }
 
     @Override
-    public boolean pooled() {
-        // 单文件连接，池化没有意义，还会让「改了文件要重新打开」变麻烦。
-        return false;
-    }
-
-    @Override
     public boolean usesFilePath() {
         return true;
     }

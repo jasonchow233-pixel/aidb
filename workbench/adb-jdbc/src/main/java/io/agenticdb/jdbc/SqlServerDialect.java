@@ -136,11 +136,6 @@ public final class SqlServerDialect implements Dialect {
     }
 
     @Override
-    public boolean pooled() {
-        return true;
-    }
-
-    @Override
     public boolean usesFilePath() {
         return false;
     }

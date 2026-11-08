@@ -38,7 +38,7 @@ workbench/
                       ＋ TableOptions（引擎 / 排序规则 / 自增 / 行格式，只读）
   adb-session        连接档案（ConnectionProfile / ConnectionStore）
                       ＋ 凭据（CredentialStore / Keychain / SecretTool）
-                      ＋ 连接池（HikariCP 包装）
+                      ＋ 会话注册表（SessionManager，H3-f 撤池后所有方言直开 JdbcSession）
   adb-editing        RowIdentity / CellKey / EditBuffer / EditSqlBuilder
   adb-transfer       导入导出引擎：流式 CSV/TSV/JSON/SQL、xlsx（SXSSF 写 / SAX 读）、
                      查询结果导出、按目标列类型转换、字段映射与坏行报告
@@ -81,7 +81,7 @@ RichTextFX 的样式映射在 `ui-shell` 的 `SqlHighlighter` 中完成。
 Launcher
   └─ AppShell
        ├─ ThemeManager（SettingsStore / java.util.prefs）
-       ├─ SessionManager → JdbcSession（SQLite）/ ConnectionPool（PG、MySQL）
+       ├─ SessionManager → JdbcSession（所有方言；H3-f 撤池，见 §6）
        ├─ SchemaService.listObjects() → SideBar
        ├─ SideBar「已保存查询」分组（SavedQueries → 点击开查询页）
        └─ TabBar / WorkspaceView
@@ -104,7 +104,7 @@ Launcher
             └─ ConnectionsPage / ConnectionWizard
                  ├─ ConnectionStore（~/.agenticdb/connections.json）
                  ├─ CredentialStore（WinCred / Keychain / Secret Service / 内存）
-                 └─ ConnectionPool.open(spec) → 测试连接
+                 └─ JdbcSession.open(spec) → 测试连接
 ```
 
 ### 线程模型
@@ -205,23 +205,39 @@ CHECK 约束已内省并随重建搬运；PG 的 DEFAULT / COMMENT / 序列 / `g
 | `ConnectionProfile` | 连接元数据。**⛔ 不含口令**；`options` 是自由 Map，落盘前剔除敏感键 |
 | `ConnectionStore` | `~/.agenticdb/connections.json`；0600 + 临时文件原子替换；损坏时回退为空列表 |
 | `CredentialStore` | 口令接口。`platform()` 依次尝试 Windows WinCred → macOS `security` → Linux `secret-tool` → 内存 |
-| `ConnectionPool` | HikariCP 包装，池大小固定 1（保持单连接串行语义）；SQLite 直连不池化 |
-| `SessionManager` | 按 id 管理多个会话；SQLite → `JdbcSession`，PG/MySQL → `ConnectionPool` |
+| `SessionManager` | 按 id 管理多个会话；所有方言一律直开 `JdbcSession`（H3-f 撤池，见下） |
 
 **已收口的安全项**：macOS 口令走 stdin（A13）、`options` 敏感键脱敏且不再覆盖口令（A14）、
 Windows 走系统凭据管理器（P5-2，JNA `advapi32`，blob 为 UTF-16LE，条目名
 `io.agenticdb.connection/<profileId>`）。
 
 **已知缺口**：
-- ⚠️ **`ConnectionPool` 不是池**：`getConnection()` 借出后全程不归还，`idleTimeout` /
-  `maxLifetime` 形同虚设；每个连接档案一个 `HikariDataSource`。
 - ⚠️ **切连接泄漏会话**：`AppShell.connectProfile` 开新会话不关旧会话。
   （多连接并存已落地；孤儿会话回收与凭据脱敏、口令走 stdin 已在 P5 补齐。）
+
+### 6.1 H3-f 撤池（2026-11-08，决策记录）
+
+曾经的 `ConnectionPool` 是 HikariCP 包装，但 `maxPoolSize=1` 且 `getConnection()`
+借出后全程不归还 —— `idleTimeout` / `maxLifetime` 形同虚设，池语义从未生效过，
+只留下一个数据源对象和它的后台维护线程。
+
+**定夺：撤。** 真池化需要重新设计事务 / 取消 / 串行执行的会话语义
+（借还连接意味着「会话状态」不再绑定一条物理连接），而当前没有这样的用户故事：
+单用户桌面端，一条连接串行执行就是全部需求。
+
+处置：
+- `ConnectionPool` 与其测试整体删除；`SessionManager` 对所有方言直开 `JdbcSession`；
+- `Dialect.pooled()` 能力位连同 5 个实现一并删除（没有消费者了，不留半吊子配置）；
+- HikariCP 依赖从父 POM 与 `adb-session` 移除；
+- 测试连接（向导「测试连接」）同样直开 `JdbcSession`。
+
+> 若将来需要池化，应基于会话语义重新设计借还模型，而不是恢复这个包装。
+> （门禁：`SessionManagerTest.openedSessionsArePlainJdbcSessions` 钉住无包装形态。）
 
 ### 6.2 方言抽象层（A1，✅ 已落地）
 
 以前加一种数据库要改 **5 个文件**（`DialectKind` / `JdbcSession` / `ConnectionProfile` /
-`SchemaService` / `StructureSqlBuilder` / `SessionManager`+`ConnectionPool`），
+`SchemaService` / `StructureSqlBuilder` / `SessionManager`），
 共 6 个 `switch` + 13 个 `if` 方言分支。漏一处就是「某个方言下功能悄悄不对」。
 
 现在：**加一种数据库 = 写一个 `Dialect` 实现 + 在 `DialectKind` 里登记一项**。

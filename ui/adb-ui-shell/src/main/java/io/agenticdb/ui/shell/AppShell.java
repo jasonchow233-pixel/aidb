@@ -2009,7 +2009,7 @@ public final class AppShell extends StackPane {
     }
 
     private String testConnection(ConnectionSpec spec) {
-        try (DbSession test = io.agenticdb.session.ConnectionPool.open(spec)) {
+        try (DbSession test = io.agenticdb.jdbc.JdbcSession.open(spec)) {
             test.query("SELECT 1", 1);
             return null;
         } catch (Exception e) {

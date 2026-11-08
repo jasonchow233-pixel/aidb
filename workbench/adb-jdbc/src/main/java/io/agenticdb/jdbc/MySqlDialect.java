@@ -77,11 +77,6 @@ public class MySqlDialect implements Dialect {
     }
 
     @Override
-    public boolean pooled() {
-        return true;
-    }
-
-    @Override
     public boolean usesFilePath() {
         return false;
     }

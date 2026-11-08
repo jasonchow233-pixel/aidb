@@ -15,7 +15,7 @@ import java.util.Set;
  * <p><b>为什么要有它</b>：加一种数据库以前要改 6 个文件 ——
  * {@code DialectKind}（枚举 + 引用 + URL）、{@code JdbcSession}（驱动类）、
  * {@code ConnectionProfile}（端口 + 展示）、{@code SchemaService}（触发器 + DDL + 5 处分支）、
- * {@code StructureSqlBuilder}（6 处分支）、{@code SessionManager} / {@code ConnectionPool}（池化）。
+ * {@code StructureSqlBuilder}（6 处分支）、{@code SessionManager}（会话开关）。
  * 那些分支散在五个文件里，加一种库要同时改五处，漏一处就是「某个方言下功能悄悄不对」。
  *
  * <p>现在：<b>加一种数据库 = 写一个 {@code Dialect} 实现 + 在 {@link DialectKind} 里登记一项</b>。
@@ -101,9 +101,6 @@ public interface Dialect {
     default java.util.Map<String, String> connectionProperties() {
         return java.util.Map.of();
     }
-
-    /** 是否走连接池。SQLite 是单文件直连，不池化。 */
-    boolean pooled();
 
     /**
      * 连接目标是「文件路径」还是「主机 + 端口 + 库名」。

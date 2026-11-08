@@ -144,7 +144,6 @@ class MySqlIntegrationTest {
         assertThat(dialect.quote("users")).isEqualTo("`users`");
         assertThat(dialect.defaultPort()).isEqualTo(3306);
         assertThat(dialect.driverClassName()).isEqualTo("com.mysql.cj.jdbc.Driver");
-        assertThat(dialect.pooled()).isTrue();
         assertThat(dialect.supportsColumnComment()).isTrue();
         assertThat(dialect.readsColumnsViaJdbcMetadata()).isTrue();
         assertThat(dialect.readsIndexesViaJdbcMetadata()).isTrue();

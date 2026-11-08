@@ -123,16 +123,10 @@ class DialectTest {
     }
 
     @Test
-    void defaultPortsAndPooling() {
+    void defaultPorts() {
         assertThat(DialectKind.SQLITE.dialect().defaultPort()).isZero();
         assertThat(DialectKind.POSTGRESQL.dialect().defaultPort()).isEqualTo(5432);
         assertThat(DialectKind.MYSQL.dialect().defaultPort()).isEqualTo(3306);
-
-        assertThat(DialectKind.SQLITE.dialect().pooled())
-                .as("SQLite 是单文件直连，不池化")
-                .isFalse();
-        assertThat(DialectKind.POSTGRESQL.dialect().pooled()).isTrue();
-        assertThat(DialectKind.MYSQL.dialect().pooled()).isTrue();
     }
 
     @Test

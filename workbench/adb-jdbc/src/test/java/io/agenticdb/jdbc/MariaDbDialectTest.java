@@ -38,7 +38,6 @@ class MariaDbDialectTest {
         assertThat(dialect.driverClassName()).isEqualTo("org.mariadb.jdbc.Driver");
         assertThat(mysql.driverClassName()).isEqualTo("com.mysql.cj.jdbc.Driver");
         assertThat(dialect.defaultPort()).isEqualTo(3306);
-        assertThat(dialect.pooled()).isTrue();
         assertThat(dialect.usesFilePath()).isFalse();
     }
 

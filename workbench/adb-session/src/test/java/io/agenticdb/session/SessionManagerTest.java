@@ -32,6 +32,16 @@ class SessionManagerTest {
     }
 
     @Test
+    void openedSessionsArePlainJdbcSessions() throws Exception {
+        // ⭐ H3-f 撤池：会话就是直开的 JdbcSession，没有任何池化包装 ——
+        //    钉住这个形态，防止哪天把包装层悄悄加回来。
+        try (SessionManager manager = new SessionManager()) {
+            assertThat(manager.open("demo", ConnectionSpec.sqliteMemory()))
+                    .isInstanceOf(io.agenticdb.jdbc.JdbcSession.class);
+        }
+    }
+
+    @Test
     void requireFailsWithReadableMessage() {
         try (SessionManager manager = new SessionManager()) {
             assertThatThrownBy(() -> manager.require("missing"))

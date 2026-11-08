@@ -128,9 +128,11 @@ public final class SessionManager implements AutoCloseable {
             return existing;
         }
         openProbe.accept(id);
-        // ⭐ 是否池化由方言决定（SQLite 单文件直连，PG/MySQL 走池）。
-        DbSession session = spec.kind().dialect().pooled()
-                ? ConnectionPool.open(spec) : JdbcSession.open(spec);
+        // ⭐ H3-f 撤池：所有方言一律直开 JdbcSession。原来的 ConnectionPool
+        //    maxPoolSize=1 且连接借出后全程不归还 —— 池语义从未生效过，
+        //    只留一个 HikariDataSource 和它的后台线程。真池化要重设计
+        //    事务/取消/串行语义，当前没有这样的用户故事（决策记录见 ARCHITECTURE §6）。
+        DbSession session = JdbcSession.open(spec);
         sessions.put(id, session);
         return session;
     }

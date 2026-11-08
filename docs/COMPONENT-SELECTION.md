@@ -23,7 +23,6 @@ JavaFX 内置 `TableView` 底层是 `VirtualFlow`，只创建可见行的 Node�
 | 依赖 | 当前版本 | 许可 | 用途 |
 |---|---|---|---|
 | `com.fasterxml.jackson.core:jackson-databind` | 2.22.4（annotations 2.22） | Apache-2.0 | JSON 摘要/格式化、DTO 序列化 |
-| `com.zaxxer:HikariCP` | 6.3.1 | Apache-2.0 | P5 连接池 |
 | `net.java.dev.jna:jna` | 5.13.0 | LGPL-2.1 / Apache-2.0 双许可 | P5-2 Windows 凭据管理器（WinCred / advapi32） |
 | `org.apache.poi:poi-ooxml` | 5.4.1 | Apache-2.0 | P6-3 xlsx 导入导出（SXSSF 流式写 / SAX 事件模型读） |
 | `org.apache.sshd:sshd-core` | 2.20.1 | Apache-2.0 | G5a SSH 跳板隧道（`SshTunnel`）：只用客户端；服务端同包，只出现在测试里 |

@@ -26,9 +26,6 @@ RichTextFX (org.fxmisc.richtext)
 Jackson (com.fasterxml.jackson)
     Apache-2.0.
 
-HikariCP (com.zaxxer)
-    Apache-2.0.
-
 JNA (net.java.dev.jna)
     Copyright (c) 2007-2024 Wayne Meissner. Apache-2.0 / LGPL-2.1 dual license;
     this project uses the Apache-2.0 option.

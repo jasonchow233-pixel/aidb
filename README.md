@@ -211,7 +211,7 @@ MySQL Connector/J, which is GPL-2.0 with the Universal FOSS Exception).
 
 Built on [JavaFX](https://openjfx.io/) (GPL-2.0 with Classpath Exception),
 [RichTextFX](https://github.com/FXMisc/RichTextFX) and [ControlsFX](https://github.com/controlsfx/controlsfx)
-(BSD), [HikariCP](https://github.com/brettwooldridge/HikariCP), [Jackson](https://github.com/FasterXML/jackson),
+(BSD), [Jackson](https://github.com/FasterXML/jackson),
 [Apache POI](https://poi.apache.org/), [JNA](https://github.com/java-native-access/jna) (Apache-2.0), and
 [Lucide](https://lucide.dev/) icons (ISC — the license text ships next to the assets).
 
