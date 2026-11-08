@@ -46,6 +46,8 @@ class TableListPageTest {
     private final List<String> aiRequests = new ArrayList<>();
     private final List<String> messages = new ArrayList<>();
     private final List<String> selections = new ArrayList<>();
+    /** ⭐ D-90：报给外壳的表数量（状态栏常驻「N tables」）；空串 = 没数出来。 */
+    private final List<String> counts = new ArrayList<>();
     /** 报给右侧「对象详情面板」的表名；{@code null} = 没有单一对象可看。 */
     private final List<String> inspected = new ArrayList<>();
     /** P2-1：列宽偏好用独立作用域，跑完清掉，别污染真实用户偏好。 */
@@ -90,6 +92,11 @@ class TableListPageTest {
         }
 
         @Override
+        public void countChanged(String text) {
+            counts.add(text);
+        }
+
+        @Override
         public void inspectTable(String name) {
             inspected.add(name);
         }
@@ -119,6 +126,31 @@ class TableListPageTest {
                 .containsExactly(I18n.t("column.name"), I18n.t("column.rows"),
                         I18n.t("column.dataLength"), I18n.t("column.engine"),
                         I18n.t("column.updated"), I18n.t("column.comment"));
+    }
+
+    /**
+     * ⭐ D-90：表数量常驻报给外壳（状态栏「N tables」，官方帧左下角那一项）。
+     *
+     * <p>三个时机都要报：喂进数据那一刻、数据变化时、外壳切回页签来要时（{@code refreshSelectionStatus}）。
+     * 单数走 {@code .one} 形 —— 「1 table」不能写成「1 tables」。
+     */
+    @Test
+    void tableCountIsReportedToTheHostWheneverItChanges(FxRobot robot) {
+        // @Start 已喂 3 张表；构造期若还有一次空数（""），endsWith 照样成立。
+        assertThat(counts)
+                .as("喂进 3 张表后要把数量报出去")
+                .endsWith(I18n.tPlural("status.objectCount", 3, 3));
+
+        robot.interact(() -> page.render(List.of(
+                new TableMeta("solo", 1L, null, null, null, null, null, null))));
+        assertThat(counts.getLast())
+                .as("单数走 .one 形")
+                .isEqualTo(I18n.tPlural("status.objectCount", 1, 1));
+
+        robot.interact(() -> page.refreshSelectionStatus());
+        assertThat(counts.getLast())
+                .as("外壳切回页签会来要一次 —— 不许留在旧页的数")
+                .isEqualTo(I18n.tPlural("status.objectCount", 1, 1));
     }
 
     /** S-6 / C3：详情面板挤窄表清单时，列不能被压成省略号。 */

@@ -243,6 +243,67 @@ class StatusBarTest {
                 .isNull();
     }
 
+    /**
+     * ⭐ D-90：对象页左段开头常驻「N tables」（官方帧左下角那项 ——
+     * {@code navicat17-object-list} 读「22 Tables」、{@code navicat-table-list} 读「70 Tables」）。
+     *
+     * <p>N15 撤掉的是<b>工具条</b>那格（理由是「七颗键会被挤出窗口」），
+     * 这个理由在状态栏不成立 —— 左段目前只摆选中与回执。纪律与 {@code setDuration} /
+     * {@code setSql} 同一套：没数出来就整段不占位，收掉时不许剩孤零零的「·」。
+     */
+    @Test
+    void objectCountGetsItsOwnResidentSegmentOnObjectPages() throws Exception {
+        StatusBar bar = new StatusBar();
+        onFx(() -> bar.setMode(StatusBar.Mode.OBJECT));
+
+        assertThat(bar.lookup(".adb-statusbar__left .adb-status__count"))
+                .as("对象页左段开头是计数格")
+                .isNotNull();
+        assertThat(visibleText(bar, "adb-status__count"))
+                .as("还没数出来时整段不占位 —— 不许拿「0 tables」冒充还没开始的页面")
+                .isEmpty();
+        assertThat(managedSeparatorsIn(bar, "adb-statusbar__left"))
+                .as("左段空着时不许有孤零零的分隔符")
+                .isZero();
+
+        onFx(() -> bar.setObjectCountText(I18n.tPlural("status.objectCount", 22, 22)));
+        assertThat(visibleText(bar, "adb-status__count"))
+                .as("计数常驻显示，复数走 D-78 的 tPlural")
+                .isEqualTo(I18n.t("status.objectCount.other", 22));
+        assertThat(managedSeparatorsIn(bar, "adb-statusbar__left"))
+                .as("只有计数、没有选中时不许拖着孤零零的「·」")
+                .isZero();
+
+        onFx(() -> bar.setSelectionText(I18n.t("tableList.selectedCount", 3)));
+        assertThat(managedSeparatorsIn(bar, "adb-statusbar__left"))
+                .as("计数与选中同屏时中间要有分隔符 —— 两句黏在一起读不成句")
+                .isEqualTo(1);
+
+        // 空白 / null 都是「这一页没有可数的」→ 整段连同分隔符收掉。
+        onFx(() -> bar.setObjectCountText("  "));
+        assertThat(visibleText(bar, "adb-status__count")).isEmpty();
+        assertThat(managedSeparatorsIn(bar, "adb-statusbar__left"))
+                .as("计数收掉时分隔符跟收 —— 不给选中句留前导「·」")
+                .isZero();
+
+        onFx(() -> bar.setObjectCountText(null));
+        assertThat(visibleText(bar, "adb-status__count")).isEmpty();
+
+        // 计数格只属于对象页：查询页 / 数据页不挂它。
+        onFx(() -> bar.setMode(StatusBar.Mode.QUERY));
+        assertThat(bar.lookup(".adb-statusbar__left .adb-status__count"))
+                .as("查询页左段从连接灯起头，没有计数格")
+                .isNull();
+        onFx(() -> bar.setMode(StatusBar.Mode.DATA));
+        assertThat(bar.lookup(".adb-statusbar__left .adb-status__count"))
+                .as("数据页左段是当前语句，没有计数格")
+                .isNull();
+        onFx(() -> bar.setMode(StatusBar.Mode.OBJECT));
+        assertThat(bar.lookup(".adb-statusbar__left .adb-status__count"))
+                .as("切回对象页计数格要回来（隐藏不等于永久消失）")
+                .isNotNull();
+    }
+
     @Test
     void versionCarriesNoStageCode() {
         String version = AppVersion.DISPLAY;

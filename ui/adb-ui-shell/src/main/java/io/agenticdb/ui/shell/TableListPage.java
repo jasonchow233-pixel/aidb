@@ -107,6 +107,16 @@ final class TableListPage extends VBox {
         }
 
         /**
+         * ⭐ D-90：表数量变化时告诉外壳（状态栏常驻「N 张表」—— 官方帧左下角那一项）。
+         *
+         * <p>空串 = 还没数出来（页面刚建 / 加载中），外壳把那格收掉；
+         * 数出来之后连「0 张表」也是真话（空 schema 就是 0）。默认空实现，
+         * 老的门禁假 Host 不受影响。
+         */
+        default void countChanged(String text) {
+        }
+
+        /**
          * 选择变化时同步右侧「对象详情面板」（规格 §6.3）。
          *
          * <p>{@code name} = 唯一选中的表名；多选 / 空选传 {@code null}
@@ -166,6 +176,12 @@ final class TableListPage extends VBox {
     private boolean syncingSelection;
     /** 上一次报给外壳「详情面板该看谁」的表名；{@code null} = 没有单一对象。 */
     private String inspectReported;
+    /**
+     * ⭐ D-90：有没有真的数出来过一次表。没数过之前报给状态栏的必须是空串 ——
+     * 空的 {@code rows} 还没被任何一次取数证实过，拿「0 张表」冒充还没开始的页面
+     * 与悬空的「— ms」是同一种错。
+     */
+    private boolean countedOnce;
 
     /** 密度档位 → 行高（不写死）。 */
     private int rowHeight = RowHeights.of("normal");
@@ -923,6 +939,22 @@ final class TableListPage extends VBox {
             host.selectionChanged(I18n.t("tableList.selectedCount", selected.size()));
         }
         reportInspect(selected.size() == 1 ? selected.getFirst().name() : null);
+        reportCount();
+    }
+
+    /**
+     * ⭐ D-90：把「N 张表」报给外壳（状态栏常驻一格 —— 官方帧左下角那一项）。
+     *
+     * <p>与 {@link #reportSelection()} 同一条重报纪律：刷新、切视图、切页签回来
+     * 都重跑一遍，便宜且无环（外壳只把文案摆进状态栏，不会绕回来）。
+     * 加载中 / 还没数过 → 报空串；**数出来之后「0 张表」也是真话**（空 schema 就是 0）。
+     */
+    private void reportCount() {
+        if (host == null) {
+            return;
+        }
+        host.countChanged(!countedOnce || loading ? ""
+                : I18n.tPlural("status.objectCount", rows.size(), rows.size()));
     }
 
     /**
@@ -1092,6 +1124,7 @@ final class TableListPage extends VBox {
     /** 直接喂数据（单测用；真实路径走 {@link #reload()} 的后台读取）。 */
     void render(List<TableMeta> metas) {
         rows.setAll(metas == null ? List.of() : metas);
+        countedOnce = true;
         updateSelectionState();
     }
 
@@ -1153,6 +1186,7 @@ final class TableListPage extends VBox {
                 loading = false;
                 spinner.setVisible(false);
                 rows.setAll(finalMetas);
+                countedOnce = true;
                 updateSummary();
                 updateSelectionState();
                 if (finalError != null) {

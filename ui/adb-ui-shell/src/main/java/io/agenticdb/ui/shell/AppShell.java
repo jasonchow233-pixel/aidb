@@ -1255,6 +1255,12 @@ public final class AppShell extends StackPane {
                 statusBar.setSelectionText(text);
             }
 
+            // ⭐ D-90：表清单把「N 张表」常驻报上来（官方帧左下角那一项）。
+            @Override
+            public void countChanged(String text) {
+                statusBar.setObjectCountText(text);
+            }
+
             @Override
             public void inspectTable(String name) {
                 if (!detailsVisible) {
@@ -3454,6 +3460,9 @@ public final class AppShell extends StackPane {
             statusBar.setRefreshedAt(-1);
             if (page == null) {
                 statusBar.setSelection(0);
+                // ⭐ D-90：这一页没有表清单可数 —— 计数格不能留着上一页的数
+                //     （page != null 时 refreshSelectionStatus 已经把本页的数报上来了）。
+                statusBar.setObjectCountText(null);
             }
         }
         updateTabCloseEnabled();

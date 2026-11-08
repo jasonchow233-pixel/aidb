@@ -109,6 +109,21 @@ public final class StatusBar extends HBox {
     private final Region messageSeparator = separator();
     private final Label selection = segment("", "adb-status__selection");
     /**
+     * ⭐ D-90：对象页常驻的「N 张表」计数（官方帧左下角那一项 ——
+     * {@code navicat17-object-list} 读「22 Tables」）。数据由表清单页经外壳报上来
+     * （{@code TableListPage.Host.countChanged}）。N15 撤的是<b>工具条</b>那格
+     * （「七颗键会被挤出窗口」），这个理由在状态栏不成立。
+     */
+    private final Label objectCount = segment("", "adb-status__count");
+    /**
+     * 计数与选中之间的分隔符 —— 只在<b>两段都在</b>时占位：只剩一段（或都没了）
+     * 时它跟着收，不给任何一句留孤零零的「·」。分隔符属于两句话之间的空隙，
+     * 不属于任何一句，所以它的显隐由两个 setter 共同决定。
+     */
+    private final Region countSeparator = separator();
+    /** 当前计数文案；空串 = 没数出来（加载中 / 没连接），整段不占位。 */
+    private String countText = "";
+    /**
      * ⭐ 第十八轮：耗时段在「没有计时」时**整段隐藏**（连同它前面的分隔符）。
      *
      * <p>以前 {@code setDuration(-1)} 写的是占位文字 {@code "— ms"} —— 而这个方法
@@ -168,6 +183,8 @@ public final class StatusBar extends HBox {
         // U8：没有选择就不占位，「未选择」这三个字对谁都没有信息量。
         selection.setVisible(false);
         selection.setManaged(false);
+        // ⭐ D-90：计数开场没数 —— 整段不占位（不许拿「0 tables」冒充还没开始的页面）。
+        hide(objectCount, countSeparator);
         // U8：连接灯的状态点是**图标**，不是文本符号（与行号列、布尔列同一口径）。
         // ⭐ R54：图形位改由 paintSource() 每次合成（厂商图形 + 灯），这里不再预设。
         // G19b：最后刷新常驻右侧，但开场没取过数 → 连同分隔符一起不占位。
@@ -225,7 +242,8 @@ public final class StatusBar extends HBox {
                         refreshedSeparator, refreshed);
             }
             case OBJECT -> {
-                left.getChildren().addAll(selection, messageSeparator, message);
+                left.getChildren().addAll(objectCount, countSeparator, selection,
+                        messageSeparator, message);
                 right.getChildren().add(source);
             }
         }
@@ -366,6 +384,39 @@ public final class StatusBar extends HBox {
         selection.setText(present ? text : "");
         selection.setVisible(present);
         selection.setManaged(present);
+        paintCountSeparator();
+    }
+
+    /**
+     * ⭐ D-90：对象页的常驻计数（表清单把「N 张表」报上来，官方帧左下角那一项）。
+     *
+     * <p>空白 / null = 这一页没有可数的（加载中 / 对象首页 / 结构页）→ 整段收掉，
+     * **不许拿「0 张表」冒充还没数过的页面** —— 与 {@link #setDuration} 的「— ms」
+     * 同一种错。纪律同套：收掉时连同分隔符，不留悬空物。
+     */
+    public void setObjectCountText(String text) {
+        countText = text == null || text.isBlank() ? "" : text.strip();
+        objectCount.setText(countText);
+        boolean present = !countText.isEmpty();
+        objectCount.setVisible(present);
+        objectCount.setManaged(present);
+        paintCountSeparator();
+    }
+
+    /** 供门禁断言：计数段当前是否占位（D-90：没数出来就不许占一格）。 */
+    public boolean isObjectCountVisible() {
+        return objectCount.isVisible() && objectCount.isManaged();
+    }
+
+    /**
+     * 计数与选中同屏时中间要有「·」；只剩一段（或都没了）时它收掉。
+     * 它的显隐由 {@link #setObjectCountText} 与 {@link #setSelectionText} 共同决定，
+     * 所以两个 setter 都要回到这里重算（其余页型下这颗分隔符不挂载，重算是空操作）。
+     */
+    private void paintCountSeparator() {
+        boolean both = !countText.isEmpty() && selection.isVisible() && selection.isManaged();
+        countSeparator.setVisible(both);
+        countSeparator.setManaged(both);
     }
 
     /**

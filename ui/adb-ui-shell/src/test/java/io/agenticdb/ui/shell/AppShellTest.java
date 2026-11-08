@@ -1101,6 +1101,32 @@ class AppShellTest {
         onFxRun(() -> shell.actionRegistry().run("table-list.view-list"));
         WaitForAsyncUtils.waitForFxEvents();
         assertThat(onFx(() -> shell.lookup("#table-list").isVisible())).isTrue();
+
+        // ⭐ D-90：对象清单页的状态栏常驻「N 张表」（官方帧 navicat17-object-list 左下角
+        //    「22 Tables」）。计数必须与这份清单同源 —— 有几张表就说几张，不许写死。
+        // ⚠️ 断言必须在 onFxRun 外面下：runLater 里的断言失败会掉进 FX 未捕获处理器
+        //    （「written to crash log」），测试照样绿 —— 拆 AppShell 覆写的变异就这么假绿过一次。
+        int objectRows = onFx(() -> {
+            @SuppressWarnings("unchecked")
+            TableView<TableMeta> list = (TableView<TableMeta>) shell.lookup("#table-list");
+            return list.getItems().size();
+        });
+        Label countLabel = onFx(() -> (Label) shell.statusBar().lookup(".adb-status__count"));
+        assertThat(onFx(countLabel::isVisible))
+                .as("D-90：表数量数出来后要常驻占位（N15 撤的是工具条那格，状态栏不撤）")
+                .isTrue();
+        assertThat(onFx(countLabel::getText))
+                .as("D-90：计数说的是这张清单的真实表数")
+                .isEqualTo(I18n.tPlural("status.objectCount", objectRows, objectRows));
+
+        // 切到「连接管理」（CONNECTIONS 同属对象页型，但没有表清单可数）→
+        // 计数格要收掉，不能留着清单页的数。⚠️ 常驻「对象」标签本身就是清单页
+        // （N33），别拿它当反例。
+        onFxRun(() -> shell.actionRegistry().run("connections.manage"));
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(onFx(() -> shell.statusBar().isObjectCountVisible()))
+                .as("D-90：连接管理页没有清单可数 —— 计数格不能留着清单页的数")
+                .isFalse();
     }
 
     // ─────────────────────── §6 右侧对象详情面板 ───────────────────────
