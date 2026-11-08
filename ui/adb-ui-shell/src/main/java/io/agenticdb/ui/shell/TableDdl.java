@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.StructurePlan;
 import io.agenticdb.introspect.StructureSqlBuilder;
 import io.agenticdb.jdbc.DbSession;
@@ -51,6 +52,8 @@ final class TableDdl {
     private final Consumer<String> onChanged;
     private final Supplier<Window> owner;
     private final Supplier<List<String>> stylesheets;
+    /** H3-d：外壳共享的内省缓存 —— DDL 成功后由 runner 作废。 */
+    private final SchemaService schemaService;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Predicate<StructurePlan> confirmation;
 
@@ -71,6 +74,12 @@ final class TableDdl {
                 (connectionId, view) -> null, onChanged, owner, stylesheets);
     }
 
+    /**
+     * 八参版本交给测试：没有共享外壳可给，就给一份自己的空缓存 ——
+     * 作废落在它身上等于无事发生，测试里无副作用。
+     * 生产路径（AppShell）必须走九参版本交<b>共享实例</b>，否则 DDL 之后的
+     * describe 缓存作废不到各页头上（H3-d）。
+     */
     TableDdl(Function<String, DbSession> sessionFor,
              Function<String, Executor> executorFor,
              Consumer<String> status,
@@ -79,6 +88,19 @@ final class TableDdl {
              Consumer<String> onChanged,
              Supplier<Window> owner,
              Supplier<List<String>> stylesheets) {
+        this(sessionFor, executorFor, status, existingTablesFor, viewDefinitionFor,
+                onChanged, owner, stylesheets, new SchemaService());
+    }
+
+    TableDdl(Function<String, DbSession> sessionFor,
+             Function<String, Executor> executorFor,
+             Consumer<String> status,
+             Function<String, List<String>> existingTablesFor,
+             BiFunction<String, String, String> viewDefinitionFor,
+             Consumer<String> onChanged,
+             Supplier<Window> owner,
+             Supplier<List<String>> stylesheets,
+             SchemaService schemaService) {
         this.sessionFor = sessionFor == null ? id -> null : sessionFor;
         this.executorFor = executorFor == null ? id -> Runnable::run : executorFor;
         this.status = status == null ? message -> { } : status;
@@ -88,6 +110,7 @@ final class TableDdl {
         this.onChanged = onChanged == null ? id -> { } : onChanged;
         this.owner = owner == null ? () -> null : owner;
         this.stylesheets = stylesheets == null ? List::of : stylesheets;
+        this.schemaService = schemaService == null ? new SchemaService() : schemaService;
         this.confirmation = plan -> StructurePlanRunner.confirm(
                 this.owner.get(), this.stylesheets.get(), plan);
     }
@@ -314,7 +337,8 @@ final class TableDdl {
             List<String> failures = new ArrayList<>();
             for (String name : names) {
                 try {
-                    StructurePlanRunner.execute(current, StructureSqlBuilder.dropTable(current, name));
+                    StructurePlanRunner.execute(current,
+                            StructureSqlBuilder.dropTable(current, name), schemaService);
                 } catch (Exception e) {
                     failures.add(I18n.t("ddl.failure", name, readable(e)));
                 }
@@ -494,7 +518,7 @@ final class TableDdl {
         status.accept(I18n.t("ddl.executing", StructurePlanRunner.title(plan)));
         executorFor.apply(connectionId).execute(() -> {
             try {
-                StructurePlanRunner.execute(current, plan);
+                StructurePlanRunner.execute(current, plan, schemaService);
                 Platform.runLater(() -> {
                     running.set(false);
                     status.accept(I18n.t("ddl.done", StructurePlanRunner.title(plan)));

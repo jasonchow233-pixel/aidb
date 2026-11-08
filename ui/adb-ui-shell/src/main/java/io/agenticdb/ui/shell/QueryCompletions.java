@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
-import java.util.regex.Pattern;
 
 /**
  * ⭐ R57-a：查询页编辑器的补全控制器 —— 弹层 + 模型缓存 + 触发键。
@@ -43,10 +42,6 @@ import java.util.regex.Pattern;
  * 普通打字**不**弹窗 —— 弹早了是碍事，已开着的时候才跟着筛。
  */
 final class QueryCompletions implements SqlCompletions.Source, AutoCloseable {
-
-    /** 执行文本里的 DDL 形状 —— 命中就把对象/列缓存整份作废（口径同侧栏 S-3）。 */
-    private static final Pattern DDL = Pattern.compile(
-            "(?i)\\b(CREATE|ALTER|DROP|TRUNCATE|RENAME)\\b");
 
     private final CodeArea area;
     private final DbSession session;
@@ -387,7 +382,7 @@ final class QueryCompletions implements SqlCompletions.Source, AutoCloseable {
     /** 查询页在**成功执行**过语句后调这里：执行过 DDL 就把对象与列缓存整份作废。 */
     void onStatementsExecuted(List<String> executedTexts) {
         for (String text : executedTexts) {
-            if (DDL.matcher(text).find()) {
+            if (DdlText.isDdl(text)) {
                 markStale();
                 return;
             }

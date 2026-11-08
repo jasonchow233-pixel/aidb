@@ -421,7 +421,8 @@ public final class AppShell extends StackPane {
                     this::afterTableChanged,
                     () -> stage,
                     () -> getScene() == null ? List.of()
-                            : List.copyOf(getScene().getStylesheets()));
+                            : List.copyOf(getScene().getStylesheets()),
+                    schemaService);
         }
         return tableDdl;
     }

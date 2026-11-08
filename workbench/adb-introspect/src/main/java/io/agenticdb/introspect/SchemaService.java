@@ -13,6 +13,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -21,7 +22,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 元数据内省。P1 只做三件事：对象列表、列定义、精确行数。
@@ -401,25 +405,94 @@ public final class SchemaService {
         return rs.wasNull() ? null : value;
     }
 
+    /**
+     * ⭐ H3-d：describe 的表级缓存。
+     *
+     * <p>树展开、查询页可改性判定、数据页刷新都在重复 describe —— 每次都是
+     * 探测查询 + 元数据主键 + 自增列探测，网络库上是两三个来回（SQLite 本地实测
+     * 1430 µs/次、1 条语句/次，见 {@code SchemaServiceDescribeCacheTest} 的量测条款）。
+     *
+     * <p>口径三条：
+     * <ul>
+     *   <li><b>表级</b>：键 = 会话（弱引用，会话关了条目跟着走）+ catalog + schema +
+     *       表名（小写）。catalog/schema 在命中时现读现比 —— 切 schema（PG 的
+     *       {@code SET search_path}）不用谁通知，旧键自然失配。</li>
+     *   <li><b>失效</b>：{@link #invalidate} 整会话作废 —— 与补全缓存（S-3）同一份
+     *       语义：DDL 成功就不猜「哪张表变了」，整块清。挂点在
+     *       {@code StructurePlanRunner.execute}（结构页/表级/视图设计器共用的那条
+     *       执行路）与查询页的 DDL 执行批。</li>
+     *   <li><b>只缓存 describe</b>：{@link #structure} 是结构页的权威读数，
+     *       永远新鲜，不进缓存。</li>
+     * </ul>
+     */
+    private final Map<DbSession, Map<String, CachedSchema>> describeCache =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    private record CachedSchema(String catalog, String schema, TableSchema value) {
+    }
+
+    /** ⭐ H3-d：这一会话执行过 DDL —— describe 缓存整块作废（口径同补全缓存的 S-3）。 */
+    public void invalidate(DbSession session) {
+        describeCache.remove(session);
+    }
+
     /** 用方言的空页探测语句拿结果集元数据，表与视图共用。 */
     public TableSchema describe(DbSession session, String name) throws SQLException {
+        String catalog = currentCatalog(session);
+        String schemaName = currentSchema(session);
+        Map<String, CachedSchema> byTable = describeCache.get(session);
+        if (byTable != null) {
+            CachedSchema hit = byTable.get(name.toLowerCase(Locale.ROOT));
+            if (hit != null && Objects.equals(hit.catalog(), catalog)
+                    && Objects.equals(hit.schema(), schemaName)) {
+                return hit.value();
+            }
+        }
+        TableSchema result = describeFresh(session, name);
+        synchronized (describeCache) {
+            byTable = describeCache.get(session);
+            if (byTable == null) {
+                byTable = new ConcurrentHashMap<>();
+                describeCache.put(session, byTable);
+            }
+        }
+        byTable.put(name.toLowerCase(Locale.ROOT),
+                new CachedSchema(catalog, schemaName, result));
+        return result;
+    }
+
+    /**
+     * 绕开缓存的 describe 真读 —— 缓存的填充半边与「必须新鲜」的内部读者共用。
+     *
+     * <p>⭐ 首轮实现把缓存直接写在 describe 里，{@link #structure} 经 ：668 的内部
+     * 调用也吃到了陈旧主键 —— SQLite 整表重建后 {@code structure().primaryKeys()}
+     * 还是重建前的空清单（StructureServiceTest D-94 门当场抓获：列清单走新鲜
+     * PRAGMA 所以别名改名测试活着，主键走缓存所以重建测试死了）。
+     * 结构页是权威读数，永远走这一条。
+     */
+    private TableSchema describeFresh(DbSession session, String name) throws SQLException {
+        String catalog = currentCatalog(session);
+        String schemaName = currentSchema(session);
         String sql = session.dialect().probeColumnsSql(name);
         RowPage page = session.query(sql, 1);
-        Set<String> primaryKeys = primaryKeys(session, name);
+        Set<String> primaryKeys = primaryKeys(session, catalog, schemaName, name);
         // ⭐ 自增列：新增行时这一列留空，交给数据库赋值。
         String autoIncrement = autoIncrementColumn(session, name);
+        TableSchema result;
         if (primaryKeys.isEmpty()) {
-            return new TableSchema(name, page.columns(), List.of(), autoIncrement);
+            result = new TableSchema(name, page.columns(), List.of(), autoIncrement);
+        } else {
+            List<ColumnDef> columns = page.columns().stream()
+                    .map(column -> primaryKeys.contains(column.name().toLowerCase(Locale.ROOT))
+                            ? withPrimaryKey(column) : column)
+                    .toList();
+            List<String> orderedKeys = page.columns().stream()
+                    .map(ColumnDef::name)
+                    .filter(key -> primaryKeys.contains(key.toLowerCase(Locale.ROOT)))
+                    .toList();
+            result = new TableSchema(name, columns, orderedKeys, autoIncrement);
         }
-        List<ColumnDef> columns = page.columns().stream()
-                .map(column -> primaryKeys.contains(column.name().toLowerCase(Locale.ROOT))
-                        ? withPrimaryKey(column) : column)
-                .toList();
-        List<String> orderedKeys = page.columns().stream()
-                .map(ColumnDef::name)
-                .filter(key -> primaryKeys.contains(key.toLowerCase(Locale.ROOT)))
-                .toList();
-        return new TableSchema(name, columns, orderedKeys, autoIncrement);
+        return result;
     }
 
     /**
@@ -436,10 +509,11 @@ public final class SchemaService {
         }
     }
 
-    private static Set<String> primaryKeys(DbSession session, String name) throws SQLException {
+    private static Set<String> primaryKeys(DbSession session, String catalog, String schema,
+                                           String name) throws SQLException {
         Set<String> keys = new LinkedHashSet<>();
         try (ResultSet rs = session.connection().getMetaData()
-                .getPrimaryKeys(currentCatalog(session), currentSchema(session), name)) {
+                .getPrimaryKeys(catalog, schema, name)) {
             while (rs.next()) {
                 String column = rs.getString("COLUMN_NAME");
                 if (column != null && !column.isBlank()) {
@@ -607,7 +681,7 @@ public final class SchemaService {
      * 结构变更始终以列/索引元数据为准，不反过来解析 DDL。
      */
     public TableStructure structure(DbSession session, String name) throws SQLException {
-        TableSchema table = describe(session, name);
+        TableSchema table = describeFresh(session, name);
         boolean view = isView(session, name);
         List<IndexDef> indexes = indexes(session, name);
         List<ForeignKeyDef> foreignKeys = foreignKeys(session, name);

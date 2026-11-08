@@ -1371,6 +1371,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
         // ⭐ R57-a：跑成功过 DDL 就把补全的模式缓存作废（侧栏 S-3 同一口径）——
         //    刚建的表要能立刻补出来，比省一次后台内省值钱。
         completions.onStatementsExecuted(result.texts());
+        // ⭐ H3-d：同一份 DDL 形状（DdlText 单一来源）也作废 describe 缓存 ——
+        //    刚改过的表，数据页/树不许再读到旧列。执行过就算（含批内半途失败：
+        //    前面的语句已经跑了），纯 DML 不动缓存。
+        if (result.texts().stream().anyMatch(DdlText::isDdl)) {
+            schemaService.invalidate(session);
+        }
         for (int i = 0; i < result.results().size(); i++) {
             ExecutionResult execution = result.results().get(i);
             String sql = result.texts().get(i);

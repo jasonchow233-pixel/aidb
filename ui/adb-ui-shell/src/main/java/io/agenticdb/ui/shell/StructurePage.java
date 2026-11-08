@@ -1241,7 +1241,8 @@ public final class StructurePage extends VBox implements AutoCloseable {
 
     private void execute(StructurePlan plan) throws Exception {
         // 事务边界与表级生命周期共用 —— 见 StructurePlanRunner。
-        StructurePlanRunner.execute(session, plan);
+        // H3-d：共享的 SchemaService 交出去，DDL 成功即作废 describe 缓存。
+        StructurePlanRunner.execute(session, plan, schemaService);
     }
 
     private boolean defaultConfirm(StructurePlan plan) {

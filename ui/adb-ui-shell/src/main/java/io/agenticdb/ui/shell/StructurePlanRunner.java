@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.ui.I18n;
+import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.StructurePlan;
 import io.agenticdb.jdbc.DbSession;
 import javafx.scene.control.Alert;
@@ -45,6 +46,23 @@ public final class StructurePlanRunner {
      * 会把人家已有的成果一起抹掉。
      */
     static void execute(DbSession session, StructurePlan plan) throws Exception {
+        execute(session, plan, null);
+    }
+
+    /**
+     * ⭐ H3-d：执行整批语句，成功后作废该会话的 describe 缓存。
+     *
+     * <p>失效挂点就这一个 —— 结构页（列级）与表级生命周期（建 / 清空 / 重命名 / 删 /
+     * 视图三件）全部汇进这里，调用方各交自己的 {@link SchemaService}
+     * （外壳里是共享实例，作废才作废得到各页的缓存）。口径同补全缓存的 S-3：
+     * <b>执行过 DDL 就整份作废</b>，不猜哪张表变了 —— 语句执行成功就作废，
+     * 不等 commit（SQLite 同连接立刻看得见未提交的结构变更）；语句炸掉走回滚，
+     * 库没变，缓存保持原样不许白刷。
+     *
+     * @param schemas 该会话所属外壳的缓存；测试或无缓存的调用方传 {@code null}
+     */
+    static void execute(DbSession session, StructurePlan plan, SchemaService schemas)
+            throws Exception {
         boolean foreignKeysOff = plan.foreignKeysOff();
         if (foreignKeysOff) {
             session.update("PRAGMA foreign_keys = OFF");
@@ -56,6 +74,9 @@ public final class StructurePlanRunner {
         try {
             for (String sql : plan.statements()) {
                 session.execute(sql);
+            }
+            if (schemas != null) {
+                schemas.invalidate(session);
             }
             if (ownTransaction) {
                 session.commit();
