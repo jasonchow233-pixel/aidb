@@ -416,6 +416,88 @@ class ScreenshotScriptAuditTest {
         assertThat(mismatched).as("矩阵帧必须连回自己那一台（否则拍的是演示库）").isEmpty();
     }
 
+    /**
+     * ⭐ D-98：帧通道自己不许把「拍错了画面」记成成功。
+     *
+     * <p>立案形状（R71 全量重拍）：{@code p6-design-view-oracle} 从 720x540（弹窗）变成
+     * <b>1280x792 的对象清单整窗</b> —— 弹窗根本没开，快门落在了主窗口上。而 {@code shots.sh}
+     * <b>当场就报了</b>：日志里明写「⚠ 尺寸与已入库版本（720x540）不一致」，可这一张照样计入
+     * {@code captured}、脚本照样返回 0，最后跟着 64 张一起进了仓库（{@code 74af9a5}）。
+     * 踩的是「宁可没图，不可有假图」那条红线，而且<b>信息一直都有</b> —— 缺的不是发现，是「报了就必须拦」。
+     *
+     * <p>所以这一条钉五件事，全在脚本正文里、不靠人眼：
+     * ① 尺寸不符时那一张必须<b>被搬走</b>（不入库），不是留在原地当成果；
+     * ② 搬走的必须<b>计入失败</b>，否则退出码把「跳过」洗成「成功」—— 与 D-37b 同一族病；
+     * ③ 逃生阀（{@code ADB_SHOT_DIMS_OK=1}，给「画面本来就该换尺寸」那一轮用）排在弃帧<b>之前</b>，
+     *    而且默认是弃帧 —— 反过来写就等于把默认变成放行；
+     * ④ 末尾那道退出码门要把 discarded 也算进去；
+     * ⑤ 弃帧时要把<b>已入库那一版放回原位</b> —— 快门是先盖在 {@code docs/screenshots/} 上再判尺寸的，
+     *    只搬走新图等于把仓库里那张好图删掉（实测：一次单帧重拍后 {@code git status} 报
+     *    {@code D p6-new-table.png}）。
+     *
+     * <p>⚠️ ③ 和 ④ 的锚点用的是<b>判断式本身</b>，不是裸开关名 / 整段 fatal：脚本注释里就写着
+     *    {@code ADB_SHOT_DIMS_OK=1}、弃帧那句文案里就写着 {@code discarded} —— 按裸名找位置、
+     *    按整段 {@code if…fi} 找条件，两条都会恒过。钉在会坏的那一行上之后实测：
+     *    M-g（先搬走再问阀）只红「逃生阀必须排在弃帧之前」，M-e（退出码条件里删掉 discarded）
+     *    只红「退出码只看 missing」。这是「自证条款吞掉真失败」那一族的又一次命中。
+     *
+     * <p>⚠️ 四段各有<b>自证</b>在前：锚点找不到就是红，不会退化成「切了个空串、恒过」——
+     * 这条通道已经踩过两次「门禁在开发机上从来没跑过」（bash 3.2 没有关联数组那次）。
+     */
+    @Test
+    void dimsMismatchDiscardsTheFrameInsteadOfShippingIt() throws IOException {
+        String script = Files.readString(repositoryRoot().resolve("scripts/shots.sh"),
+                StandardCharsets.UTF_8);
+
+        int from = script.indexOf("if [ -f \"$SHOTS_DIR/$name.png\" ]");
+        int to = script.indexOf("captured=$((captured + 1))");
+        assertThat(from).as("自证：找得到「拍出来了」那一段（脚本格式变了这条就空转）")
+                .isGreaterThan(-1);
+        assertThat(to).as("自证：找得到产出计数那一行").isGreaterThan(from);
+        String shot = script.substring(from, to);
+
+        int discard = shot.indexOf("mv -f \"$SHOTS_DIR/$name.png\"");
+        assertThat(discard)
+                .as("尺寸不符只 warn 不弃帧 —— 那张 1280x792 的假帧就是这么进仓库的")
+                .isGreaterThan(-1);
+        assertThat(shot)
+                .as("弃掉的那一张没计入失败 —— 返回码照样 0，等于把「跳过」洗成「成功」（D-37b 同型病）")
+                .contains("discarded=$((discarded + 1))");
+
+        // ⭐ 弃帧不能把**已入库那一版**一起弄没：快门是先把新图盖在 docs/screenshots/ 上再判尺寸的，
+        //   所以「搬走新图」=「工作区里这张帧没了」（实测 git status 报 `D p6-new-table.png`）。
+        //   判据是「放回 prev」排在「搬走新图」之后，且 prev 在分叉之前不能被删掉。
+        int restore = shot.indexOf("mv -f \"$prev_png\" \"$SHOTS_DIR/$name.png\"");
+        assertThat(restore)
+                .as("弃帧只搬走新图、没把已入库那一版放回原位 —— 单帧重拍会删掉仓库里那张好图")
+                .isGreaterThan(discard);
+        int branch = shot.indexOf("if [ -n \"$prev\" ] && [ \"$prev\" != \"$dims\" ]");
+        int firstPrevRm = shot.indexOf("rm -f \"$prev_png\"");
+        assertThat(branch).as("自证：找得到尺寸不符那个分叉").isGreaterThan(-1);
+        assertThat(firstPrevRm)
+                .as("prev 在分叉之前就被删了 —— 弃帧时手里已经没有可放回的那一版")
+                .isGreaterThan(branch);
+
+        // ⚠️ 锚点用的是**判断式本身**，不是裸开关名：脚本上面那段注释里就写着 ADB_SHOT_DIMS_OK=1，
+        //    按裸名找永远排在弃帧之前（M-c 实测：把「先问阀、再决定丢」整个倒过来，这条照绿）。
+        int hatch = shot.indexOf("[ \"${ADB_SHOT_DIMS_OK:-0}\" = \"1\" ]");
+        assertThat(hatch)
+                .as("没有 ADB_SHOT_DIMS_OK 逃生阀 —— 有意改窗口尺寸的那一轮会被自己的门禁卡死")
+                .isGreaterThan(-1);
+        assertThat(hatch)
+                .as("逃生阀必须排在弃帧之前：反过来写就是把默认变成放行")
+                .isLessThan(discard);
+
+        int gate = script.indexOf("if [ \"$missing\" -gt 0 ]");
+        assertThat(gate).as("自证：找得到末尾那道退出码门").isGreaterThan(to);
+        // ⚠️ 同样只取**条件**那一段（到 `]; then` 为止）：fatal 的文案里本来就写着 discarded，
+        //    拿整段当判据等于把「条件没算弃帧」也判成过（M-d 实测红不出来）。
+        String cond = script.substring(gate, script.indexOf("]; then", gate));
+        assertThat(cond)
+                .as("退出码只看 missing：弃帧不会让脚本失败")
+                .contains("discarded");
+    }
+
     /** 从一行帧的预置环境变量里取 {@code KEY=value} 的值；没有这个键就是空串。 */
     private static String envValue(String envVars, String key) {
         Matcher matcher = Pattern.compile("(?<=^| )" + key + "=([^ ]*)").matcher(envVars);

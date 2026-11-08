@@ -296,6 +296,10 @@ captured=0
 #   （只 warn，最后照样 ok + 返回 0），而这一轮起 AppShell 会**主动放弃**前提没成立的
 #   真库帧 —— 那条正确路径必须让脚本自己报失败，不然「跳过」看起来像「成功」。
 missing=0
+# ⭐ D-98：拍出来了、但**尺寸和已入库那一版不一样**的格数。这类帧不是「没拍到」，
+#   是「拍错了画面」—— 上一轮 p6-design-view-oracle 就是这么从 720x540（弹窗）
+#   变成 1280x792（整窗、弹窗没开）还跟着进仓库的。它和 missing 走同一个失败口径。
+discarded=0
 for shot in "${SHOTS[@]}"; do
   IFS='|' read -r name click wait envvars <<<"$shot"
 
@@ -383,10 +387,27 @@ png_dims() {
     if git -C "$PROJECT_ROOT" show "HEAD:$rel" >"$prev_png" 2>/dev/null; then
       prev="$(png_dims "$prev_png")"
     fi
-    rm -f "$prev_png"
     if [ -n "$prev" ] && [ "$prev" != "$dims" ]; then
-      warn "$name.png（${size} 字节 · ${dims}）—— 尺寸与已入库版本（${prev}）不一致"
+      # ⭐ D-98：这一支以前只 warn，然后**照常把这一张计入成果** —— 而「尺寸变了」恰恰是
+      #   「快门落在了别的画面上」的实测信号（弹窗族帧的尺寸就是那个弹窗的尺寸：
+      #   p6-design-view-oracle 从 720x540 变成 1280x792 = 弹窗没开、拍的是对象清单整窗）。
+      #   现在默认**弃帧**：搬出仓库目录、不计成果、计入失败，末尾按 D-37b 那套退出码报红。
+      #   有意改画面尺寸的那一轮用 ADB_SHOT_DIMS_OK=1 明确认领 —— 仍然 warn，不静默收下。
+      #   ⚠️ prev_png 在这里**还没删**（原来紧跟在算 prev 后面删，实测会把已入库那一版
+      #   从工作区删掉：快门先把新图盖在 docs/screenshots/ 上，弃帧再把它搬走，
+      #   于是 git status 报 `D p6-new-table.png`）。所以收下就删、弃帧就把 prev 放回原位。
+      if [ "${ADB_SHOT_DIMS_OK:-0}" = "1" ]; then
+        rm -f "$prev_png"
+        warn "$name.png（${size} 字节 · ${dims}）—— 尺寸与已入库版本（${prev}）不一致，ADB_SHOT_DIMS_OK=1 → 按「画面本来就该换尺寸」收下"
+      else
+        mv -f "$SHOTS_DIR/$name.png" "/tmp/adb-shot-dims-$name.png"
+        mv -f "$prev_png" "$SHOTS_DIR/$name.png"
+        warn "$name.png 尺寸与已入库版本（${prev}）不一致 → 弃帧（新图在 /tmp/adb-shot-dims-$name.png，已入库那一版放回原位），不计入成果"
+        discarded=$((discarded + 1))
+        continue
+      fi
     else
+      rm -f "$prev_png"
       ok "$name.png（${size} 字节 · ${dims}）"
     fi
     captured=$((captured + 1))
@@ -401,8 +422,8 @@ step "结果"
 # ⭐ D-37b：有格没产出就必须**失败**。真库帧的前提没成立时，AppShell 现在会放弃那一帧
 #   （宁可没图，不可有假图）；那条正确路径要是在退出码上和「全拍完了」一样，
 #   等于把「跳过」洗成「成功」—— 正是这条通道一开始要防的事。
-if [ "$missing" -gt 0 ]; then
-  fatal "$missing 张没生成（应产出 $((captured + missing)) 张，实际 $captured 张）—— 见上面的日志路径"
+if [ "$missing" -gt 0 ] || [ "$discarded" -gt 0 ]; then
+  fatal "$((missing + discarded)) 张没收下（没生成 $missing 张 / 尺寸不符弃帧 $discarded 张；应产出 $((captured + missing + discarded)) 张，实际 $captured 张）—— 见上面的日志路径；确属「画面本来就该换尺寸」那一轮，设 ADB_SHOT_DIMS_OK=1 重拍"
 fi
 ok "已产出 $captured 张 → $SHOTS_DIR"
 
