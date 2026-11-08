@@ -2724,6 +2724,12 @@
     -fx-text-fill: -adb-text-tertiary;
 }
 
+/* D-90：对象页常驻的「N Tables」计数格 —— 元数据读数，走三级文本灰
+   （Navicat 参照帧 navicat-table-list 左下角就是暗灰的「22 Tables」）。 */
+.adb-status__count {
+    -fx-text-fill: -adb-text-tertiary;
+}
+
 .adb-status__separator {
     -fx-background-color: -adb-border-subtle;
     -fx-min-width: 1;
