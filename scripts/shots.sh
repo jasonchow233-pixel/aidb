@@ -175,6 +175,8 @@ SHOTS=(
   #   所以各拍一帧带真对象的：索引页（列表 + 计数）与 SQL 页（建表 + 索引两条语句）。
   "p6-new-table-index||5000|ADB_NEW_TABLE=1 ADB_NEW_TABLE_POSE=index ADB_THEME_FORCE=light"
   "p6-new-table-sql||5000|ADB_NEW_TABLE=1 ADB_NEW_TABLE_POSE=sql ADB_THEME_FORCE=light"
+  # ⭐ R76 H4-b：CHECK 页 —— 列表一条带名的约束 + SQL 预览里同一段进 CREATE TABLE。
+  "p6-new-table-checks||5000|ADB_NEW_TABLE=1 ADB_NEW_TABLE_POSE=checks ADB_THEME_FORCE=light"
   # ⭐ 页签的底色方向（栏用画布、选中页用 surface）只在暗色下看得出来 ——
   #   浅色主题里两者都是 #FFFFFF，光拍浅色等于没验这条规则。
   "p6-new-table-dark||5000|ADB_NEW_TABLE=1 ADB_NEW_TABLE_POSE=index ADB_THEME_FORCE=dark"

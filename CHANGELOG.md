@@ -22,6 +22,13 @@
 
 ### Added
 
+- **建表设计器补上 CHECK 页签**（2026-11-09，R76 · H4-b）：新建表可以在第四页（外键之后、触发器之前，
+  与结构页的相对顺序一致）录入表级 CHECK 约束，与字段 / 外键 / 索引 / 触发器收敛进**同一条** `CREATE TABLE`
+  计划 —— 预览与执行仍是同一个方法的同一次输出。空表达式与重名（大小写不敏感）在弹窗内就地拦下，
+  校验失败把用户带到 CHECK 页；匿名约束合法（不强制命名）。子句拼法只有 `StructureSqlBuilder.checkClause`
+  一个答案点：新建表与「改列整表重建」共用它，两条通道不可能再各写一种形状。⚠️ 结构页的「检查」页签仍是
+  **只读**（改动请用 SQL）—— 顺带修掉那句「去字段页编辑表达式即可添加」的假指引：字段页没有这个输入框。
+  新帧 `docs/screenshots/p6-new-table-checks.png`（检查页 + 一条约束 + 预览同源），并配帧前提门。
 - **对象树收口四件：系统库照 Navicat 显示、F2/Delete 键盘、「刷新此表」、分组树上管理**（2026-11-08，R68 · H6，P-8/P-9 两条用户拍板）：
   - **系统库不再藏**（P-8 拍「照 Navicat：显示」）：此前 `information_schema` / `mysql` /
     `performance_schema` / `sys`（MySQL 系）与 `master` / `tempdb` / `model` / `msdb`（SQL Server）

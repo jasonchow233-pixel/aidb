@@ -155,6 +155,61 @@ class CreateTableWithObjectsTest {
                 .hasFieldOrPropertyWithValue("key", "trigger.error.duplicate");
     }
 
+    // ─────────────────────────── CHECK（H4-b） ───────────────────────────
+
+    /**
+     * ⭐ H4-b：CHECK 与外键同路 —— 写进 CREATE TABLE 的表级子句，
+     * 不追加 ALTER（SQLite 不支持 ADD CONSTRAINT），也不建完表再补一刀。
+     */
+    @Test
+    void checksAreWrittenIntoCreateTableNotAsAlterStatements() {
+        StructurePlan plan = planWithChecks(DialectKind.SQLITE, List.of(
+                new CheckDef("chk_users_id", "id > 0"),
+                new CheckDef("", "email LIKE '%@%'")));
+
+        assertThat(plan.statements()).hasSize(1);
+        assertThat(plan.statements().getFirst())
+                .contains("CONSTRAINT \"chk_users_id\" CHECK (id > 0)")
+                .contains("\n    CHECK (email LIKE '%@%')");
+
+        assertThat(planWithChecks(DialectKind.MYSQL, List.of(
+                new CheckDef("chk_users_id", "id > 0"))).statements().getFirst())
+                .as("MySQL 用反引号，CHECK 子句同样进 CREATE TABLE")
+                .contains("CONSTRAINT `chk_users_id` CHECK (id > 0)");
+    }
+
+    @Test
+    void checkWithoutAnExpressionIsRefused() {
+        assertThatThrownBy(() -> planWithChecks(DialectKind.SQLITE,
+                List.of(new CheckDef("chk", "   "))))
+                .isInstanceOf(StructureSqlBuilder.DesignStepException.class)
+                .hasFieldOrPropertyWithValue("key", "check.error.noExpression")
+                .hasFieldOrPropertyWithValue("step", StructureSqlBuilder.DesignStep.CHECK);
+    }
+
+    @Test
+    void duplicateCheckNamesAreRefused() {
+        List<CheckDef> checks = List.of(
+                new CheckDef("chk_dup", "id > 0"),
+                new CheckDef("CHK_DUP", "id < 100"));
+
+        assertThatThrownBy(() -> planWithChecks(DialectKind.SQLITE, checks))
+                .isInstanceOf(StructureSqlBuilder.DesignStepException.class)
+                .hasFieldOrPropertyWithValue("key", "check.error.duplicate")
+                .hasFieldOrPropertyWithValue("args", new Object[]{"CHK_DUP"});
+    }
+
+    /** 两条匿名 CHECK 不算重名 —— SQLite 本来就允许，拦了反而是假规则。 */
+    @Test
+    void anonymousChecksDoNotCollideWithEachOther() {
+        StructurePlan plan = planWithChecks(DialectKind.SQLITE, List.of(
+                new CheckDef("", "id > 0"), new CheckDef("", "id < 100")));
+
+        assertThat(plan.statements().getFirst())
+                .contains("CHECK (id > 0)")
+                .contains("CHECK (id < 100)");
+    }
+
     // ─────────────────────────── 计划口径 ───────────────────────────
 
     /**
@@ -168,7 +223,7 @@ class CreateTableWithObjectsTest {
         StructurePlan old = StructureSqlBuilder.createTable(session, "users", COLUMNS, null,
                 List.of());
         StructurePlan now = StructureSqlBuilder.createTableWith(session, "users", COLUMNS, null,
-                List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of());
 
         assertThat(now).isEqualTo(old);
     }
@@ -189,6 +244,11 @@ class CreateTableWithObjectsTest {
     private static StructurePlan plan(DialectKind kind, List<ForeignKeyDef> foreignKeys,
                                       List<IndexDef> indexes, List<TriggerDef> triggers) {
         return StructureSqlBuilder.createTableWith(FakeDialectSession.of(kind), "users",
-                COLUMNS, null, List.of(), foreignKeys, indexes, triggers);
+                COLUMNS, null, List.of(), foreignKeys, indexes, triggers, List.of());
+    }
+
+    private static StructurePlan planWithChecks(DialectKind kind, List<CheckDef> checks) {
+        return StructureSqlBuilder.createTableWith(FakeDialectSession.of(kind), "users",
+                COLUMNS, null, List.of(), List.of(), List.of(), List.of(), checks);
     }
 }

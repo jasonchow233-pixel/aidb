@@ -270,24 +270,26 @@ public final class StructureSqlBuilder {
                                             String tableComment,
                                             List<String> existingTables) {
         return createTableWith(session, name, columns, tableComment, existingTables,
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of());
     }
 
     /**
-     * ⭐ R30-D：新建表 + <b>随表一起建</b>的索引 / 外键 / 触发器。
+     * ⭐ R30-D：新建表 + <b>随表一起建</b>的索引 / 外键 / 触发器 / CHECK。
      *
      * <p>表设计器的 SQL 预览与真正执行的语句必须出自同一处 —— 设计器里填的索引、
      * 外键、触发器如果建完表再各弹一次确认，用户看到的「一条建表计划」就和实际执行
      * 的 N 次动作对不上了。这里把它们合并成<b>一个</b> {@link StructurePlan}：
      * 一个事务、一次确认、失败整体回滚。
      *
-     * <p><b>外键写进 CREATE TABLE</b>，不跟 ALTER TABLE：SQLite 不支持
+     * <p><b>外键与 CHECK 写进 CREATE TABLE</b>，不跟 ALTER TABLE：SQLite 不支持
      * {@code ALTER TABLE … ADD CONSTRAINT}，只能整表重建 —— 对一张还没建出来的表，
-     * 「重建」没有意义。三条方言的 CREATE TABLE 都接受表级 {@code FOREIGN KEY} 子句。
+     * 「重建」没有意义。三条方言的 CREATE TABLE 都接受表级 {@code FOREIGN KEY} /
+     * {@code CHECK} 子句。
      *
      * @param foreignKeys 表级外键约束（可空）
      * @param indexes     建表后追加的索引（可空）
      * @param triggers    建表后追加的触发器（可空）
+     * @param checks      表级 CHECK 约束（可空；H4-b：建表设计器收进来的那一份）
      */
     public static StructurePlan createTableWith(DbSession session, String name,
                                                 List<ColumnSpec> columns,
@@ -295,7 +297,8 @@ public final class StructureSqlBuilder {
                                                 List<String> existingTables,
                                                 List<ForeignKeyDef> foreignKeys,
                                                 List<IndexDef> indexes,
-                                                List<TriggerDef> triggers) {
+                                                List<TriggerDef> triggers,
+                                                List<CheckDef> checks) {
         ColumnProblem problem = tableNameProblem(name, existingTables);
         if (problem != null) {
             throw problem;
@@ -349,6 +352,7 @@ public final class StructureSqlBuilder {
             }
         }
         appendForeignKeyLines(session, columns, foreignKeys, lines);
+        appendCheckLines(session, checks, lines);
 
         List<String> statements = new ArrayList<>();
         // ⭐ 表级选项（MySQL 的 DEFAULT CHARSET=utf8mb4）—— 不带的话，
@@ -377,8 +381,8 @@ public final class StructureSqlBuilder {
                 Danger.DESTRUCTIVE, false, false);
     }
 
-    /** 出错的设计器页签（外键 / 索引 / 触发器）。 */
-    public enum DesignStep { FOREIGN_KEY, INDEX, TRIGGER }
+    /** 出错的设计器页签（外键 / 索引 / 触发器 / CHECK）。 */
+    public enum DesignStep { FOREIGN_KEY, INDEX, TRIGGER, CHECK }
 
     /**
      * 建表计划里「对象」部分的校验失败 —— 异常自带出错的页签，UI 按类型路由。
@@ -454,6 +458,37 @@ public final class StructureSqlBuilder {
                         "fk.error.duplicate", key.name());
             }
             lines.add(foreignKeyClause(session, key));
+        }
+    }
+
+    /**
+     * ⭐ H4-b：表级 CHECK 子句（写进 CREATE TABLE 的那一行）。
+     *
+     * <p>公开是为了让「CHECK」弹窗在设计器里能预览真正会执行的那一段；
+     * 整表重建（{@link #createTableSqlWithChecks}）也走这一份 —— 子句的拼法
+     * 只有一个答案点，两条通道不可能再各写一遍走出两种形状。
+     */
+    public static String checkClause(DbSession session, CheckDef check) {
+        if (check == null || check.expression().isBlank()) {
+            throw new DesignStepException(DesignStep.CHECK, "check.error.noExpression");
+        }
+        String namePart = check.named()
+                ? "CONSTRAINT " + quoteIdentifier(session, check.name()) + " " : "";
+        return namePart + "CHECK (" + check.expression() + ")";
+    }
+
+    private static void appendCheckLines(DbSession session, List<CheckDef> checks,
+                                         List<String> lines) {
+        if (checks == null) {
+            return;
+        }
+        Set<String> names = new HashSet<>();
+        for (CheckDef check : checks) {
+            if (check.named() && !names.add(check.name().toLowerCase(Locale.ROOT))) {
+                throw new DesignStepException(DesignStep.CHECK,
+                        "check.error.duplicate", check.name());
+            }
+            lines.add(checkClause(session, check));
         }
     }
 
@@ -1041,15 +1076,12 @@ public final class StructureSqlBuilder {
                     + " ON UPDATE " + foreignKey.onUpdate()
                     + " ON DELETE " + foreignKey.onDelete());
         }
-        // ⭐ CHECK 约束：整表重建时必须搬运（D3）。
+        // ⭐ CHECK 约束：整表重建时必须搬运（D3）。子句拼法与新建表共用 checkClause。
         for (CheckDef check : checks == null ? List.<CheckDef>of() : checks) {
-            String expression = check.expression() == null ? "" : check.expression().trim();
-            if (expression.isEmpty()) {
+            if (check.expression().isBlank()) {
                 continue;
             }
-            String namePart = check.named()
-                    ? "CONSTRAINT " + quoteIdentifier(session, check.name()) + " " : "";
-            lines.add(namePart + "CHECK (" + expression + ")");
+            lines.add(checkClause(session, check));
         }
         // ⭐ 表级选项（MySQL 的 DEFAULT CHARSET=utf8mb4）—— 不带的话，
         //    MySQL 8.0 之前的服务器默认 latin1，建出来的表存不了中文

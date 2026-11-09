@@ -1,5 +1,6 @@
 package io.agenticdb.ui.shell;
 
+import io.agenticdb.introspect.CheckDef;
 import io.agenticdb.introspect.ForeignKeyDef;
 import io.agenticdb.introspect.IndexDef;
 import io.agenticdb.introspect.StructurePlan;
@@ -178,17 +179,20 @@ final class NewTableDialog {
     /** 本方言的「类型」候选；空 = 自由文本输入。 */
     private final List<ColumnTypeOption> typeOptions;
 
-    /** 设计器里「还没建出来」的索引 / 外键 / 触发器（与字段一起进同一个计划）。 */
+    /** 设计器里「还没建出来」的索引 / 外键 / 触发器 / CHECK（与字段一起进同一个计划）。 */
     private final ObservableList<IndexDef> indexes = FXCollections.observableArrayList();
     private final ObservableList<ForeignKeyDef> foreignKeys = FXCollections.observableArrayList();
     private final ObservableList<TriggerDef> triggers = FXCollections.observableArrayList();
+    private final ObservableList<CheckDef> checks = FXCollections.observableArrayList();
     private final ListView<IndexDef> indexList = new ListView<>(indexes);
     private final ListView<ForeignKeyDef> foreignKeyList = new ListView<>(foreignKeys);
     private final ListView<TriggerDef> triggerList = new ListView<>(triggers);
+    private final ListView<CheckDef> checkList = new ListView<>(checks);
     private final TabPane tabs = new TabPane();
     private Tab columnsTab;
     private Tab indexTab;
     private Tab foreignKeyTab;
+    private Tab checkTab;
     private Tab triggerTab;
 
     /** 子弹窗（索引 / 外键 / 触发器）的宿主与样式表 —— show() 时记下来。 */
@@ -355,12 +359,17 @@ final class NewTableDialog {
                 "new-table-foreign-keys", foreignKeys, this::addForeignKey,
                 key -> key.displayName() + "  ·  " + String.join(", ", key.columns())
                         + " → " + key.referencedTable()));
+        checkTab = tab(I18n.t("structure.tab.checks"), "new-table-tab-checks", buildObjectsPage(
+                checkList, I18n.t("newtable.empty.checks"), I18n.t("newtable.check.add"),
+                "new-table-checks", checks, this::addCheck,
+                check -> check.named() ? check.name() + "  ·  " + check.expression()
+                        : check.expression()));
         triggerTab = tab(I18n.t("structure.tab.triggers"), "new-table-tab-triggers", buildObjectsPage(triggerList,
                 I18n.t("newtable.empty.triggers"), I18n.t("newtable.trigger.add"),
                 "new-table-triggers", triggers, this::addTrigger,
                 trigger -> trigger.name() + "  ·  " + trigger.timingLabel()
                         + " " + trigger.eventLabel()));
-        tabs.getTabs().setAll(columnsTab, indexTab, foreignKeyTab, triggerTab,
+        tabs.getTabs().setAll(columnsTab, indexTab, foreignKeyTab, checkTab, triggerTab,
                 buildOptionsTab(), buildCommentTab(), buildSqlTab());
 
         // 间距与内边距由 .adb-dialog__body 统一给（CSS 会盖掉这里的构造参数，
@@ -392,9 +401,10 @@ final class NewTableDialog {
             refreshPreview();
             fitTableHeight(table);
         });
-        // 三张对象清单任何一张变了，SQL 预览与页签计数都要跟着变 —— 预览与执行同源。
+        // 四张对象清单任何一张变了，SQL 预览与页签计数都要跟着变 —— 预览与执行同源。
         indexes.addListener((ListChangeListener<IndexDef>) change -> refreshPreview());
         foreignKeys.addListener((ListChangeListener<ForeignKeyDef>) change -> refreshPreview());
+        checks.addListener((ListChangeListener<CheckDef>) change -> refreshPreview());
         triggers.addListener((ListChangeListener<TriggerDef>) change -> refreshPreview());
     }
 
@@ -486,6 +496,15 @@ final class NewTableDialog {
                 });
     }
 
+    private void addCheck() {
+        CheckDialog.create(session)
+                .show(owner, stylesheets)
+                .ifPresent(check -> {
+                    checks.add(check);
+                    checkList.getSelectionModel().select(check);
+                });
+    }
+
     private void addTrigger() {
         TriggerDialog.create(session, draftStructure())
                 .show(owner, stylesheets)
@@ -518,7 +537,7 @@ final class NewTableDialog {
         String tableName = name.getText() == null ? "" : name.getText().trim();
         return new TableStructure(tableName.isEmpty() ? "?" : tableName, false, columns,
                 primaryKeys, List.copyOf(indexes), List.copyOf(foreignKeys),
-                List.copyOf(triggers), List.of(), "", "");
+                List.copyOf(triggers), List.copyOf(checks), "", "");
     }
 
     private static String blankToNull(String value) {
@@ -1361,7 +1380,7 @@ final class NewTableDialog {
     }
 
     /**
-     * 设计器的完整计划：字段 + 外键（写进 CREATE TABLE）+ 索引 + 触发器。
+     * 设计器的完整计划：字段 + 外键 / CHECK（写进 CREATE TABLE）+ 索引 + 触发器。
      *
      * <p>预览与 {@link StructurePlanRunner} 执行的必须是同一个方法的同一次输出。
      */
@@ -1369,7 +1388,7 @@ final class NewTableDialog {
         List<ColumnSpec> columns = rows.stream().map(ColumnRow::toSpec).toList();
         return StructureSqlBuilder.createTableWith(session, name.getText(), columns,
                 commentText(), existingTables, List.copyOf(foreignKeys), List.copyOf(indexes),
-                List.copyOf(triggers));
+                List.copyOf(triggers), List.copyOf(checks));
     }
 
     /**
@@ -1383,6 +1402,7 @@ final class NewTableDialog {
             switch (typed.step()) {
                 case FOREIGN_KEY -> tabs.getSelectionModel().select(foreignKeyTab);
                 case INDEX -> tabs.getSelectionModel().select(indexTab);
+                case CHECK -> tabs.getSelectionModel().select(checkTab);
                 case TRIGGER -> tabs.getSelectionModel().select(triggerTab);
             }
             return;
@@ -1417,6 +1437,7 @@ final class NewTableDialog {
         // 页签上的计数是「这几页里有东西」的唯一证据 —— 在字段页也看得见。
         indexTab.setText(counted(I18n.t("structure.tab.indexes"), indexes.size()));
         foreignKeyTab.setText(counted(I18n.t("structure.tab.foreignKeys"), foreignKeys.size()));
+        checkTab.setText(counted(I18n.t("structure.tab.checks"), checks.size()));
         triggerTab.setText(counted(I18n.t("structure.tab.triggers"), triggers.size()));
         fieldCount.setText(I18n.t("newtable.fieldCount", rows.size()));
         try {
@@ -1578,6 +1599,10 @@ final class NewTableDialog {
         return triggers;
     }
 
+    ObservableList<CheckDef> checks() {
+        return checks;
+    }
+
     ListView<IndexDef> indexList() {
         return indexList;
     }
@@ -1637,6 +1662,16 @@ final class NewTableDialog {
                 selectTab("new-table-tab-triggers");
             }
             case "options" -> selectTab("new-table-tab-options");
+            // ⭐ R76 H4-b：CHECK 页的帧 —— 列表里一条带名的约束 + 预览里同一段进 CREATE TABLE。
+            //    空列表证不了「CHECK 真的收进了计划」，与索引页同一口径。
+            case "checks" -> {
+                String column = ensureColumn("amount", "DECIMAL(10,2)");
+                CheckDef check = new CheckDef("chk_" + safeTableName() + "_" + column,
+                        column + " >= 0");
+                checks.add(check);
+                checkList.getSelectionModel().select(check);
+                selectTab("new-table-tab-checks");
+            }
             // ⭐ R31：字段页的「有深度」那一帧 —— 长度 / 小数填上、id 带着自增、
             //    属性面板挂着选中列的默认值与字符集。空网格证不了任何事。
             case "fields" -> {

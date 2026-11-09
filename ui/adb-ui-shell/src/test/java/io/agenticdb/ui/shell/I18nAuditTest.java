@@ -625,9 +625,13 @@ class I18nAuditTest {
      * {@code export.format.xml.hint} 打成 {@code export.format.xtml.hint}」在改完那一刻
      * <b>没有任何门禁能看见</b>——编译期合法，运行时界面上露出 {@code ⚠export.format.xtml.hint}，
      * 而且只在用户真去选一次 XML 时露出来。补进命名空间白名单后由存在性那一段拦下。
+     *
+     * <p>⭐ R76 H4-b 加的 {@code check}：CHECK 的两个校验键由
+     * {@code StructureSqlBuilder} 抛 {@code DesignStepException}，ui 侧只有
+     * {@code problemText} 通用渲染口 —— 与 trigger 同形，补进白名单由存在性段拦下。
      */
     private static final Pattern MODEL_KEY_LITERAL = Pattern.compile(
-            "\"((?:plan|column|table|fk|index|trigger|structure|danger|error|query|import|export)"
+            "\"((?:plan|column|table|fk|index|trigger|check|structure|danger|error|query|import|export)"
                     + "\\.[A-Za-z][A-Za-z0-9]*(?:\\.[A-Za-z0-9]+)*)\"");
 
     /**

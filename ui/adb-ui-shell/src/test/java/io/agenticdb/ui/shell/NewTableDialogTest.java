@@ -250,15 +250,15 @@ class NewTableDialogTest {
                 .as("预览编辑器必须真的挂在这一页上")
                 .isNotNull();
         assertThat(onFx(() -> dialog.tabs().getTabs().size()))
-                .as("字段 / 索引 / 外键 / 触发器 / 选项 / 备注 / SQL 预览")
-                .isEqualTo(7);
+                .as("字段 / 索引 / 外键 / 检查 / 触发器 / 选项 / 备注 / SQL 预览")
+                .isEqualTo(8);
     }
 
     /**
-     * R30-D / R31：七页的<b>顺序</b>就是 Navicat 表设计器的顺序。
+     * R30-D / R31：八页的<b>顺序</b>就是 Navicat 表设计器的顺序。
      *
-     * <p>顺序不是审美问题：文档里写的是「字段 → 索引 → 外键 → 触发器 → 选项 → 备注 → SQL」，
-     * 用户按文档找页签。空表时三张对象页的标题不带计数，方便这条断言钉死标题。
+     * <p>顺序不是审美问题：文档里写的是「字段 → 索引 → 外键 → 检查 → 触发器 → 选项 → 备注 → SQL」，
+     * 用户按文档找页签。空表时各对象页的标题不带计数，方便这条断言钉死标题。
      */
     @Test
     void designerPagesAreInNavicatOrder() {
@@ -269,7 +269,8 @@ class NewTableDialogTest {
 
         assertThat(titles).containsExactly(I18n.t("newtable.tab.fields"),
                 I18n.t("structure.tab.indexes"), I18n.t("structure.tab.foreignKeys"),
-                I18n.t("structure.tab.triggers"), I18n.t("structure.tab.options"),
+                I18n.t("structure.tab.checks"), I18n.t("structure.tab.triggers"),
+                I18n.t("structure.tab.options"),
                 I18n.t("newtable.tab.comment"), I18n.t("newtable.tab.sql"));
     }
 
@@ -286,6 +287,83 @@ class NewTableDialogTest {
         assertThat(onFx(() -> dialog.tabs().getTabs().get(2).getText()))
                 .as("没有外键时标题保持干净")
                 .isEqualTo(I18n.t("structure.tab.foreignKeys"));
+
+        onFxRun(() -> dialog.checks().add(new io.agenticdb.introspect.CheckDef("chk_id", "id > 0")));
+        assertThat(onFx(() -> dialog.tabs().getTabs().get(3).getText()))
+                .as("H4-b：CHECK 页与其他对象页同一套计数")
+                .isEqualTo(I18n.t("newtable.tabCount", I18n.t("structure.tab.checks"), 1));
+    }
+
+    /**
+     * ⭐ H4-b：CHECK 与字段收敛进同一个建表计划 —— 预览里看到的子句
+     * 就是 {@code buildPlan()} 交给执行器的那一句，不多不少一条 CREATE。
+     */
+    @Test
+    void checksGoIntoTheSameCreatePlanAsTheFields() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        onFxRun(() -> {
+            dialog.nameField().setText("orders");
+            dialog.checks().add(new io.agenticdb.introspect.CheckDef("chk_orders_id", "id > 0"));
+        });
+
+        assertThat(onFx(() -> dialog.previewArea().getText()))
+                .contains("CONSTRAINT `chk_orders_id` CHECK (id > 0)");
+        StructurePlan plan = onFx(dialog::buildPlan);
+        assertThat(plan).isNotNull();
+        assertThat(plan.statements()).hasSize(1);
+        assertThat(plan.statements().getFirst())
+                .contains("CONSTRAINT `chk_orders_id` CHECK (id > 0)");
+    }
+
+    /** SQLite 允许匿名 CHECK —— 名字留空就不该长出 CONSTRAINT 关键字。 */
+    @Test
+    void anonymousCheckOmitsTheConstraintName() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        onFxRun(() -> {
+            dialog.nameField().setText("orders");
+            dialog.checks().add(new io.agenticdb.introspect.CheckDef("", "id > 0"));
+        });
+
+        assertThat(onFx(() -> dialog.previewArea().getText()))
+                .contains("\n    CHECK (id > 0)")
+                .doesNotContain("CONSTRAINT");
+    }
+
+    /** 校验失败落在哪一页就把用户带到哪一页 —— CHECK 的问题去 CHECK 页（D-69 同族路由）。 */
+    @Test
+    void checkProblemsRouteToTheChecksTab() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        onFxRun(() -> {
+            dialog.nameField().setText("orders");
+            dialog.checks().add(new io.agenticdb.introspect.CheckDef("chk_blank", "   "));
+        });
+
+        assertThat(onFx(dialog::buildPlan)).isNull();
+        assertThat(onFx(() -> dialog.tabs().getSelectionModel().getSelectedItem().getId()))
+                .isEqualTo("new-table-tab-checks");
+    }
+
+    /**
+     * ⭐ R76 H4-b：`p6-new-table-checks` 的<b>帧前提门</b>。
+     *
+     * <p>pose 名打错一个字母、页签 id 改了、约束没进列表 —— 帧照常拍出默认页、
+     * 返回码照样是 0，那张帧从此安静地不再证明任何东西（D-98 的假帧形状）。
+     * 这条门禁把帧声称的三件事钉死：选中的是检查页、列表里真有一条约束、
+     * SQL 预览里真有同一段子句。
+     */
+    @Test
+    void checksPoseSelectsTheChecksTabAndShowsTheConstraintTheFrameClaims() {
+        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
+        onFxRun(() -> dialog.poseForShots("checks"));
+
+        assertThat(onFx(() -> dialog.tabs().getSelectionModel().getSelectedItem().getId()))
+                .as("检查页帧必须真的落在检查页上")
+                .isEqualTo("new-table-tab-checks");
+        List<io.agenticdb.introspect.CheckDef> posed = onFx(() -> List.copyOf(dialog.checks()));
+        assertThat(posed).as("帧里要有一条真约束，空列表证明不了 CHECK 收进了计划").hasSize(1);
+        assertThat(onFx(() -> dialog.previewArea().getText()))
+                .as("预览必须带上列表里那一条 —— 帧拍的就是「同一条计划」")
+                .contains("CHECK (" + posed.getFirst().expression() + ")");
     }
 
     /**
@@ -1438,13 +1516,13 @@ class NewTableDialogTest {
     void commentHasItsOwnPageAndFeedsThePlan() {
         NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
 
-        javafx.scene.control.Tab commentTab = onFx(() -> dialog.tabs().getTabs().get(5));
+        javafx.scene.control.Tab commentTab = onFx(() -> dialog.tabs().getTabs().get(6));
         assertThat(onFx(commentTab::getId)).isEqualTo("new-table-tab-comment");
         assertThat(onFx(commentTab::getText)).isEqualTo(I18n.t("newtable.tab.comment"));
         assertThat(onFx(() -> commentTab.getContent().lookup("#new-table-comment")))
                 .as("表注释输入必须挂在「备注」页上")
                 .isNotNull();
-        assertThat(onFx(() -> dialog.tabs().getTabs().get(4).getContent()
+        assertThat(onFx(() -> dialog.tabs().getTabs().get(5).getContent()
                 .lookup("#new-table-comment")))
                 .as("选项页里不该再有注释输入")
                 .isNull();
