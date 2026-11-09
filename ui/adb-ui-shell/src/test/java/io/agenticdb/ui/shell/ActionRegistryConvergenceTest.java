@@ -9,6 +9,8 @@ import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TreeItem;
+import javafx.scene.control.TreeView;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -284,8 +286,7 @@ class ActionRegistryConvergenceTest {
     @Test
     void statusBarSelectionFollowsTheDataPage(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
-        robot.doubleClickOn(treeCell(robot, "users"));
-        WaitForAsyncUtils.waitForFxEvents();
+        openTableTab(robot, "users", "tab-grid-demo-users");
 
         String before = onFx(() -> shell(robot).statusBar().selectionText());
         assertThat(before).isEqualTo(I18n.t("status.noneSelected"));
@@ -326,29 +327,70 @@ class ActionRegistryConvergenceTest {
     }
 
     /**
-     * 双击树里的表节点，并等它的数据页<b>真的开出来</b>（与 {@code AccessibilityAuditTest}
-     * 的同名助手同一条理由，R40 记录）：TestFX 的 {@code doubleClickOn} 是两次独立单击，
-     * 机器压满时两次脉冲的间隔越过连击判定窗口，JavaFX 只看到两次单击 → 页根本不开。
+     * 打开树里那张表的数据页，并等页签<b>真的开出来</b>（与 {@code AccessibilityAuditTest}
+     * 的同名助手同一条理由，R40 记录）。
      *
-     * <p>⚠️ 这条原来直接往下读 {@code workspace().activeGrid().rowHeight()}：页没开时
-     * NPE 落在 FX 线程上被 {@code onFx} 吞掉，回一个 {@code null}，于是报的是
-     * 「Expecting actual not to be null」—— 看着像网格坏了，其实是<b>页没开</b>。
-     * 三次仍开不出来就是真失败，不拿重试盖住链路故障。
+     * <p>⚠️ 通道换过一次：原实现是 robot 物理双击 + 三次重试 —— TestFX 的
+     * {@code doubleClickOn} 是两次独立单击，机器压满时两次脉冲的间隔越过连击判定窗口，
+     * JavaFX 只看到两次单击 → 页根本不开。R40 当时装了重试就收工了，但 2026-11-09 冷启动
+     * 单方法跑里三次重试全数落空（JVM 头十几秒 JIT/类加载压满，脉冲间隔整个窗口都不稳），
+     * 这条测试单跑必红、全类跑绿 —— 查了半天才定性。现在改成确定性通道：
+     * FX 线程上选中树节点 + 走注册表 {@code object.open-data}（与右键菜单同一条路），
+     * 不依赖任何物理点击时序；开不出来就是真失败，不拿重试盖住链路故障。
      */
     private void openTableTab(FxRobot robot, String table, String tabId) {
-        for (int attempt = 1; attempt <= 3; attempt++) {
-            robot.doubleClickOn(treeCell(robot, table));
-            WaitForAsyncUtils.waitForFxEvents();
-            try {
-                WaitForAsyncUtils.waitFor(3, java.util.concurrent.TimeUnit.SECONDS, () ->
-                        robot.lookup("#" + tabId).tryQuery().isPresent());
+        AtomicReference<String> problem = new AtomicReference<>();
+        onFxRun(() -> {
+            @SuppressWarnings("rawtypes")
+            TreeView tree = (TreeView) ((javafx.scene.control.TreeCell<?>) treeCell(robot, table)).getTreeView();
+            TreeItem target = findByValueName(tree.getRoot(), table);
+            if (target == null) {
+                // 不在 runLater 里抛 —— 那会被 FX 处理器吞成 crash log，测试线程只能看到超时。
+                problem.set("演示树里没有「" + table + "」—— 树没长出来，查启动链路");
                 return;
-            } catch (java.util.concurrent.TimeoutException ignored) {
-                // 连击没被识别：重取单元格再双击一次。
+            }
+            tree.getSelectionModel().select(target);
+            shell(robot).sideBar().actionForTest("object.open-data");
+        });
+        if (problem.get() != null) {
+            throw new AssertionError(problem.get());
+        }
+        try {
+            WaitForAsyncUtils.waitFor(5, java.util.concurrent.TimeUnit.SECONDS,
+                    () -> robot.lookup("#" + tabId).tryQuery().isPresent());
+        } catch (java.util.concurrent.TimeoutException e) {
+            throw new AssertionError("选中树节点「" + table + "」+ object.open-data 没开出标签 #"
+                    + tabId + " —— 查「树选中 → 注册表 → 开数据页」这条链路", e);
+        }
+    }
+
+    @SuppressWarnings("rawtypes")
+    private static TreeItem findByValueName(TreeItem node, String name) {
+        if (node == null) {
+            return null;
+        }
+        if (name.equals(nameOf(node.getValue()))) {
+            return node;
+        }
+        for (Object childObj : node.getChildren()) {
+            TreeItem hit = findByValueName((TreeItem) childObj, name);
+            if (hit != null) {
+                return hit;
             }
         }
-        throw new AssertionError("双击树节点「" + table + "」三次仍没开出标签 #" + tabId
-                + " —— 不是重试能盖住的慢，要查「双击 → 开数据页」这条链路");
+        return null;
+    }
+
+    /** 从 {@code name=xxx} 里取节点名（DemoNode 的 toString 形态）—— 与 SideBarTreeTest 同一招。 */
+    private static String nameOf(Object demoNode) {
+        String text = String.valueOf(demoNode);
+        int start = text.indexOf("name=");
+        if (start < 0) {
+            return text;
+        }
+        int from = start + "name=".length();
+        int to = text.indexOf(',', from);
+        return to < 0 ? text.substring(from) : text.substring(from, to);
     }
 
     private static Double rowHeightAt(FxRobot robot, String density) {
