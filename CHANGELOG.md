@@ -9,7 +9,45 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **对象树门禁的「单方法冷跑必红」修掉了**（2026-11-09）：`ActionRegistryConvergenceTest#statusBarSelectionFollowsTheDataPage`
+  单方法跑必红、整类跑绿 —— 定性是 R40 那条老病的加重形态：冷 JVM 头十几秒 JIT/类加载压满机器，
+  robot 物理双击的两次脉冲间隔整个窗口都不稳，三次重试也救不回来；`#data-table` 查不到的 NPE
+  又被 FX 处理器吞进 crash log，报出来的反而是一条误导性的状态栏断言。
+  处置不是加重试（R40 原话：不拿重试盖住链路故障），而是把 `openTableTab` 换成确定性通道：
+  FX 线程上按 `name=xxx` 找到树节点（与 SideBarTreeTest 同一招）→ 选中 → 走注册表
+  `object.open-data`（与右键菜单同一条路）→ 等页签真的在场。runLater 里的失败改为带回测试线程再抛，
+  不再被吞。
+
 ### Added
+
+- **对象树收口四件：系统库照 Navicat 显示、F2/Delete 键盘、「刷新此表」、分组树上管理**（2026-11-08，R68 · H6，P-8/P-9 两条用户拍板）：
+  - **系统库不再藏**（P-8 拍「照 Navicat：显示」）：此前 `information_schema` / `mysql` /
+    `performance_schema` / `sys`（MySQL 系）与 `master` / `tempdb` / `model` / `msdb`（SQL Server）
+    被一条 `Dialect.isSystemCatalog` 过滤在树外 —— 而两张 Navicat 参照帧里 information_schema 都在树上。
+    判据只有 `SchemaService.listCatalogs` 一个消费者，处置是整条拆除（Dialect 默认方法 + 两份 override），
+    不留死开关；PG / Oracle / SQLite 本就没有 catalog 层，不受影响。查询页的「库▾」与树读同一个出口，
+    系统库同列在单里。门禁改钉「全部上树 + 大小写不敏感排序」。
+  - **F2 重命名、Delete / 退格删除**（P-9 拍「都加」）：键盘不进注册表 accelerator —— 那是场景全局的，
+    F2 会漏给别的控件；挂在树上，只在树有焦点时咬。F2 → 重命名（只对表，视图没有重命名）；
+    Delete 与 BACK_SPACE（macOS 退格）→ 按节点种类走删表 / 删视图。动作本体仍走注册表分派，
+    enabled、危险确认、命令面板与右键菜单是同一条路 —— 键盘没有第二套删除语义。
+    连接节点上三个键都不咬（连接的删除在连接管理页）；多选 / 拖拽无帧证，按台账原判后置。
+  - **「刷新此表」**：表 / 视图右键新动作（也在命令面板与 F1 快捷键表里）。此前要看一张表的新列
+    只能整树「刷新对象」。两层缓存只炸点名的那一张：树自己的列缓存，以及 H3-d 那份 describe 表级缓存 ——
+    新增 `SchemaService.invalidateTable`（表级失效；整会话作废仍是 DDL 批的口径，DDL 不猜哪张表变了），
+    不然重读读回的还是旧列。重读期间节点摆回「读取列…」占位，读到就地替换，不重建整棵树、
+    别的节点的展开态不动；「已尝试」标记一并清掉，读失败后再刷一次仍能重试。
+  - **分组在树上就能管**：连接右键「移动到分组…」（空 = 移出，也可输入新组名 —— 这就是「建分组」，
+    分组没有独立实体、空组不渲染是诚实行为）、分组右键「重命名分组…」（逐成员搬家，
+    成员按大小写不敏感匹配）。弹窗与连接管理页同一个形状（可编辑下拉 + 已有分组候选），
+    不给树内另写一份对话框规则。
+  - 门禁：`CatalogTreeTest` 两条改钉新形状 · `SchemaServiceDescribeCacheTest` 门 4
+    （表级失效只清点名那张 —— ⚠️ 缓存按 DbSession 身份分桶，计数包装与真会话是两个键，
+    门禁全程必须走同一只 CountingSession，第一版混用当场红）· `SideBarTreeTest` 新增三条
+    （刷新此表的两层缓存与就地替换 / 键盘四条边界 / 分组管理经注入选答驱动，
+    Monocle 按不住模态弹窗 —— D-69/D-73 同一先例）。
 
 - **查询结果那一屏，双击一格就能改回表里 —— 落笔之前先给你看将要执行的那条 UPDATE**（2026-11-04，R58-a/b1/b2/c · H1-c，Q1 拍「做，接进结果区」）：
   此前结果网格永远只读，改数据得回到表清单页开数据页 —— 而「刚跑完一句 SELECT、就想把那一行的
