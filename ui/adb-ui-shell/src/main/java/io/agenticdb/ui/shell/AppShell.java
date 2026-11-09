@@ -273,6 +273,10 @@ public final class AppShell extends StackPane {
         // ⭐ H6-e：「刷新此表」重读前先作废 H3-d 的 describe 条目 ——
         //    不然树缓存清了、底层读回的还是旧列。
         this.sideBar.setOnInvalidateColumns(this::invalidateColumnsFor);
+        // ⭐ H6-d：分组在树上就能管 —— 移动走既有的 moveConnectionToGroup，
+        //    改名逐成员搬家（分组名存在每个连接档案上，没有独立实体）。
+        this.sideBar.setOnMoveToGroup(this::moveConnectionToGroup);
+        this.sideBar.setOnRenameGroup(this::renameGroup);
         // ⭐ UX-5：连接节点的存活点。**判据只能来自 SessionManager** ——
         //    侧栏没有会话，它自己判断就是第二套真相；外壳也不许替它编一个。
         this.sideBar.setConnectionLiveness(this::isConnectionAlive);
@@ -2084,6 +2088,31 @@ public final class AppShell extends StackPane {
         status(group.isEmpty()
                 ? I18n.t("shell.ungrouped", profile.name())
                 : I18n.t("shell.movedToGroup", group, profile.name()));
+    }
+
+    /**
+     * ⭐ H6-d：树内重命名分组 = 逐成员搬家。
+     *
+     * <p>分组没有独立实体（名字存在每个成员档案上），所以「改分组名」没有
+     * 一条 UPDATE 可写 —— 把旧组里每个连接原样移到新组就是全部语义。
+     * 成员按大小写不敏感匹配（与树分组的排序口径一致）；
+     * 快照先取再改 —— {@link #moveConnectionToGroup} 会替换 connections 里的项。
+     */
+    private void renameGroup(String from, String to) {
+        if (from == null || from.isBlank()) {
+            return;
+        }
+        String target = to == null ? "" : to.trim();
+        if (target.isEmpty() || target.equals(from)) {
+            return;
+        }
+        List<ConnectionProfile> members = connections.stream()
+                .filter(profile -> profile.group().equalsIgnoreCase(from))
+                .toList();
+        for (ConnectionProfile member : members) {
+            moveConnectionToGroup(member, target);
+        }
+        status(I18n.t("shell.groupRenamed", from, target));
     }
 
     /** 用改好的档案替换内存里的同一 id 项，并同步顺序 / 顶栏 / 侧栏 / 标签标题。 */

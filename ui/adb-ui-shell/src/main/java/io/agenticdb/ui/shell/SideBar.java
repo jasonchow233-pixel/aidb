@@ -10,6 +10,8 @@ import io.agenticdb.ui.Tokens;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Dialog;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
@@ -142,6 +144,12 @@ public final class SideBar extends VBox {
     private Consumer<String> onRefreshObjects = id -> { };
     private Consumer<TableRequest> onTableDdl = request -> { };
     private Consumer<RoutineRequest> onOpenRoutine = request -> { };
+    /** ⭐ H6-d：树内把连接移进分组（档案与落盘归外壳 —— 侧栏只问名字）。 */
+    private BiConsumer<ConnectionProfile, String> onMoveToGroup;
+    /** ⭐ H6-d：树内重命名分组（外壳逐成员搬家 —— 分组名存在每个连接档案上）。 */
+    private BiConsumer<String, String> onRenameGroup;
+    /** ⭐ H6-d：门禁注入选答（Monocle 按不住模态弹窗 —— D-69/D-73 同一先例）。 */
+    private Function<String, String> groupPromptForTest;
     /** ⭐ UX-6：连接节点下的「已保存查询」来源（外壳给 savedQueries::all）。 */
     private Supplier<List<SavedQueries.Entry>> savedQuerySource = List::of;
     /** ⭐ UX-6：双击 / 回车一条已保存查询 → 外壳建查询页并预填 SQL。 */
@@ -267,9 +275,16 @@ public final class SideBar extends VBox {
                 () -> onSelected(SideBarObject.DIAGNOSTICS));
         actions.register("object.refresh-objects", I18n.t("action.object.refresh-objects"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.REFRESH_OBJECTS));
-        // ⭐ H6-e：只刷这张表的列清单 —— 不整树重建，缓存只炸这一份。
+        // ⭐ H6-e：「刷新此表」—— 不整树重建，缓存只炸这一份。
         actions.register("object.refresh-table", I18n.t("action.object.refresh-table"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.REFRESH_TABLE));
+        // ⭐ H6-d：分组在树上就能管。直接挂 handler 不走 onSelected ——
+        //    那条路对 CONNECTION_GROUP 有「分组只是容器」的闸门，而这两件事
+        //    恰恰只对分组 / 连接节点有意义。
+        actions.register("object.move-to-group", I18n.t("action.object.move-to-group"), I18n.t("category.object"), null,
+                this::moveSelectedConnectionToGroup);
+        actions.register("object.rename-group", I18n.t("action.object.rename-group"), I18n.t("category.object"), null,
+                this::renameSelectedGroup);
         // ⭐ U1：切换数据库（catalog 节点专用；其它节点上这个动作是禁用的）。
         actions.register("object.switch-catalog", I18n.t("action.object.switch-catalog"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.SWITCH_CATALOG));
@@ -420,6 +435,21 @@ public final class SideBar extends VBox {
     /** ⭐ R37 N33：双击 / Enter 例程 → 打开定义体（外壳负责建只读页）。 */
     public void setOnOpenRoutine(Consumer<RoutineRequest> handler) {
         this.onOpenRoutine = handler == null ? request -> { } : handler;
+    }
+
+    /** ⭐ H6-d：树内「移动到分组」—— 名字问完交外壳落档案 + connectionStore。 */
+    public void setOnMoveToGroup(BiConsumer<ConnectionProfile, String> handler) {
+        this.onMoveToGroup = handler;
+    }
+
+    /** ⭐ H6-d：树内「重命名分组」—— 外壳逐成员搬家。 */
+    public void setOnRenameGroup(BiConsumer<String, String> handler) {
+        this.onRenameGroup = handler;
+    }
+
+    /** ⭐ H6-d：门禁注入分组弹窗的选答（header → 选答；返回 null = 取消）。 */
+    void setGroupPromptForTest(Function<String, String> answer) {
+        this.groupPromptForTest = answer;
     }
 
     /**
@@ -1897,6 +1927,8 @@ public final class SideBar extends VBox {
             case CONNECTION -> menu.getItems().addAll(
                     actions.menuItem("new-connection", I18n.t("sidebar.editConnection")),
                     actions.menuItem("object.refresh-objects"),
+                    // ⭐ H6-d：分组在树上就能管 —— 不必去连接管理页。
+                    actions.menuItem("object.move-to-group"),
                     new SeparatorMenuItem(),
                     actions.menuItem("object.new-table"),
                     // ⭐ N28-a：建视图与建表同格 —— 容器节点（连接 / 库 / 分组）都能建。
@@ -1911,8 +1943,10 @@ public final class SideBar extends VBox {
                     actions.menuItem("object.new-view"),
                     actions.menuItem("object.refresh-objects"));
             // ⭐ P5-1：分组节点只装连接 —— 菜单只留「新建连接」。
-            case CONNECTION_GROUP -> menu.getItems().add(
-                    actions.menuItem("new-connection"));
+            case CONNECTION_GROUP -> menu.getItems().addAll(
+                    actions.menuItem("new-connection"),
+                    // ⭐ H6-d：分组改名也在树上做（逐成员搬家，外壳执行）。
+                    actions.menuItem("object.rename-group"));
             case GROUP -> menu.getItems().addAll(
                     actions.menuItem("object.refresh-objects"),
                     new SeparatorMenuItem(),
@@ -2118,6 +2152,9 @@ public final class SideBar extends VBox {
         setObjectActionEnabled("object.refresh-objects",
                 node != null && !isConnectionGroup && !isSavedNode);
         setObjectActionEnabled("object.refresh-table", isObject);
+        // ⭐ H6-d：分组管理 —— 移动只挂在连接节点上，改名只挂在分组节点上。
+        setObjectActionEnabled("object.move-to-group", isConnection);
+        setObjectActionEnabled("object.rename-group", isConnectionGroup);
         // ⭐ 表级生命周期：建表挂在连接 / 分组 / 库上，改表只挂在「表」上 ——
         //    视图没有 TRUNCATE，过程函数更没有，所以不能一律放行。
         setObjectActionEnabled("object.new-table",
@@ -2165,6 +2202,92 @@ public final class SideBar extends VBox {
         }
         onLoadColumns.accept(connectionId, table);
         status.accept(I18n.t("sidebar.refreshed", table));
+    }
+
+    /** ⭐ H6-d：树内「移动到分组」—— 空串 = 移出分组（弹窗提示写明），取消 = 不动。 */
+    private void moveSelectedConnectionToGroup() {
+        DemoNode node = selectedNode;
+        if (node == null || node.kind() != NodeKind.CONNECTION || onMoveToGroup == null) {
+            return;
+        }
+        ConnectionProfile profile = profileOf(node.connectionId());
+        if (profile == null) {
+            return;
+        }
+        String group = askGroupName(I18n.t("conn.group.title"),
+                I18n.t("conn.group.header", profile.name()), profile.group());
+        if (group != null) {
+            onMoveToGroup.accept(profile, group);
+        }
+    }
+
+    /**
+     * ⭐ H6-d：树内「重命名分组」。
+     *
+     * <p>分组没有独立实体（名字存在每个成员的档案上），改名 = 外壳逐成员搬家；
+     * 空名不是合法分组（空分组的节点根本不渲染），同名直接不动。
+     */
+    private void renameSelectedGroup() {
+        DemoNode node = selectedNode;
+        if (node == null || node.kind() != NodeKind.CONNECTION_GROUP || onRenameGroup == null) {
+            return;
+        }
+        String from = node.name();
+        String to = askGroupName(I18n.t("conn.group.renameTitle"),
+                I18n.t("conn.group.renameHeader", from), from);
+        if (to != null && !to.isBlank() && !to.equals(from)) {
+            onRenameGroup.accept(from, to);
+        }
+    }
+
+    /**
+     * ⭐ H6-d：分组名询问弹窗（与连接管理页同一个形状）。返回 null = 取消。
+     * 门禁经 {@link #setGroupPromptForTest} 注入选答 —— Monocle 按不住模态弹窗。
+     */
+    private String askGroupName(String title, String header, String current) {
+        if (groupPromptForTest != null) {
+            return groupPromptForTest.apply(header);
+        }
+        Dialog<String> dialog = new Dialog<>();
+        dialog.setTitle(title);
+        dialog.setHeaderText(header);
+        ComboBox<String> input = new ComboBox<>();
+        input.setId("connection-group-name");
+        input.setEditable(true);
+        input.getItems().setAll(existingGroupNames());
+        input.setValue(current);
+        input.setPrefWidth(240);
+        Label hint = new Label(I18n.t("conn.group.hint"));
+        hint.getStyleClass().add("adb-muted");
+        VBox content = new VBox(8, new Label(I18n.t("conn.col.group")), input, hint);
+        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
+        dialog.setResultConverter(button -> button == ButtonType.OK
+                ? (input.getEditor().getText() == null ? "" : input.getEditor().getText().trim())
+                : null);
+        dialog.initOwner(getScene() == null ? null : getScene().getWindow());
+        DialogStyles.apply(dialog, getScene() == null ? null : getScene().getWindow());
+        return dialog.showAndWait().orElse(null);
+    }
+
+    /** 已有分组名（去重 + 大小写不敏感排序）—— 给下拉做候选，口径同连接管理页。 */
+    private List<String> existingGroupNames() {
+        LinkedHashSet<String> groups = new LinkedHashSet<>();
+        connections.stream()
+                .map(ConnectionProfile::group)
+                .filter(value -> !value.isBlank())
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .forEach(groups::add);
+        return List.copyOf(groups);
+    }
+
+    private ConnectionProfile profileOf(String id) {
+        for (ConnectionProfile profile : connections) {
+            if (profile.id().equals(id)) {
+                return profile;
+            }
+        }
+        return null;
     }
 
     /** 打开表。{@code targetConnection} 为空表示当前连接。 */

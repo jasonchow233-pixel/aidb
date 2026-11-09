@@ -643,6 +643,64 @@ class SideBarTreeTest {
     }
 
     /**
+     * ⭐ H6-d：分组在树上就能管 —— 连接右键「移动到分组」、分组右键「重命名分组」。
+     *
+     * <p>弹窗经注入选答绕开（Monocle 按不住模态 —— D-69/D-73 同一先例）。
+     * 钉：动作只挂对节点（连接 ↔ 移动，分组 ↔ 改名，互相在对方节点上是灰的）、
+     * 回调收到对参数、空名 / 取消不触发、两项都在各自的右键菜单里。
+     */
+    @Test
+    void groupsAreManagedFromTheTree() {
+        ActionRegistry actions = new ActionRegistry();
+        actions.register("new-connection", "New Connection", "test", null, () -> { });
+        List<String> moves = new ArrayList<>();
+        List<String> renames = new ArrayList<>();
+        ConnectionProfile member1 = new ConnectionProfile("srv-1", "生产库",
+                DialectKind.MYSQL, "10.0.0.8", 3306, "orders", "root", false, 0, "生产", Map.of());
+        ConnectionProfile member2 = new ConnectionProfile("srv-2", "备用库",
+                DialectKind.MYSQL, "10.0.0.9", 3306, "orders", "root", false, 0, "生产", Map.of());
+
+        SideBar sideBar = onFx(() -> new SideBar(actions, List.of(), "生产库",
+                tab -> { }, message -> { }, "srv-1", List.of(member1, member2), p -> { }));
+        onFxRun(() -> sideBar.setOnMoveToGroup((profile, group) ->
+                moves.add(profile.name() + "→" + group)));
+        onFxRun(() -> sideBar.setOnRenameGroup((from, to) -> renames.add(from + "→" + to)));
+        onFxRun(() -> sideBar.setGroupPromptForTest(header -> "灾备"));
+
+        TreeView tree = treeOf(sideBar);
+
+        TreeItem connection = findExact(rootOf(tree), "生产库");
+        assertThat(connection).as("分组里的连接节点还在").isNotNull();
+        onFxRun(() -> tree.getSelectionModel().select(connection));
+        assertThat(actions.find("object.move-to-group").orElseThrow().isEnabled()).isTrue();
+        assertThat(actions.find("object.rename-group").orElseThrow().isEnabled())
+                .as("「重命名分组」在连接节点上是灰的")
+                .isFalse();
+        assertThat(menuIds(sideBar)).contains("object.move-to-group");
+        onFxRun(() -> sideBar.actionForTest("object.move-to-group"));
+        assertThat(moves).containsExactly("生产库→灾备");
+
+        TreeItem group = findExact(rootOf(tree), "生产");
+        assertThat(group).as("同组的连接收进分组节点").isNotNull();
+        onFxRun(() -> tree.getSelectionModel().select(group));
+        assertThat(actions.find("object.rename-group").orElseThrow().isEnabled()).isTrue();
+        assertThat(actions.find("object.move-to-group").orElseThrow().isEnabled())
+                .as("「移动到分组」在分组节点上是灰的")
+                .isFalse();
+        assertThat(menuIds(sideBar)).contains("object.rename-group");
+        onFxRun(() -> sideBar.actionForTest("object.rename-group"));
+        assertThat(renames).containsExactly("生产→灾备");
+
+        onFxRun(() -> sideBar.setGroupPromptForTest(header -> "  "));
+        onFxRun(() -> sideBar.actionForTest("object.rename-group"));
+        onFxRun(() -> sideBar.setGroupPromptForTest(header -> null));
+        onFxRun(() -> sideBar.actionForTest("object.rename-group"));
+        assertThat(renames)
+                .as("空名与取消都不触发 —— 分组名不许被改成空白")
+                .hasSize(1);
+    }
+
+    /**
      * ⭐ H6-e：「刷新此表」只炸这一张表的两层缓存再重读，不重建整棵树。
      *
      * <p>两层都要清：树自己的 columnsByTable（不清 = 重读被吞）与底层 describe
