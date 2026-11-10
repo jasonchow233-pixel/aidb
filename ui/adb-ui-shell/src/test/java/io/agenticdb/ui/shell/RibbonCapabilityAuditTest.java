@@ -20,8 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * ⭐ R36 门禁：Ribbon 的磁贴「每格都是真的」。
  *
  * <p>R36 是 12 格；P2 接上 User / Backup、P3 补 Data Profiling / Cross-DB Transfer
- * 之后、2026-11-09 移除 BI 之后是 <b>13 格</b>。其中三格
- * （Function / Automation / Model）仍落说明页。
+ * 之后、2026-11-09 移除 BI、2026-11-10 删除 Automation/Model 入口之后是 <b>11 格</b>。
+ * 其中一格（Function）仍落说明页。
  * 诚实条款允许「还没建」，不允许「装了个死按钮」—— 所以每格必须同时满足：
  * <ol>
  *   <li>磁贴排顺序 = Navicat 17 真源 §1.2 的 12 格，后接 P3 两格（不多不少）；</li>
@@ -61,8 +61,8 @@ class RibbonCapabilityAuditTest {
             actionIds.add(tiles.group(1));
         }
         assertThat(actionIds)
-                .as("功能区必须恰好 13 格（真源 §1.2 的 12 格 + P3 的 Profile / Transfer）")
-                .hasSize(13);
+                .as("功能区必须恰好 11 格（真源 §1.2 的 12 格 + P3 的 Profile / Transfer − 已删入口的 Automation/Model）")
+                .hasSize(11);
 
         Map<String, String> registrations = new LinkedHashMap<>();
         Matcher registers = REGISTER.matcher(assembly);
@@ -101,13 +101,11 @@ class RibbonCapabilityAuditTest {
         }
         assertThat(actionIds)
                 .as("顺序 = 真源 §1.2（12 格）+ P3 两格：Connection·New Query·Table·View"
-                        + "·Function·User·Others｜Query·Backup·Profile·Transfer"
-                        + "·Automation·Model（BI 已移除）")
+                        + "·Function·User·Others｜Query·Backup·Profile·Transfer（BI 已移除、Automation/Model 入口已删）")
                 .containsExactly("new-connection", "new-query", "object.new-table",
                         "ribbon.view", "ribbon.function", "ribbon.user", "ribbon.others",
                         "saved-queries", "ribbon.backup", "ribbon.profiling",
-                        "ribbon.transfer", "ribbon.automation",
-                        "ribbon.model");
+                        "ribbon.transfer");
     }
 
     @Test
@@ -122,7 +120,7 @@ class RibbonCapabilityAuditTest {
             }
         }
         assertThat(missing)
-                .as("13 格磁贴的图标必须全部有彩色资产（Navicat 功能区是全 UI 最彩的一排）：\n  %s",
+                .as("11 格磁贴的图标必须全部有彩色资产（Navicat 功能区是全 UI 最彩的一排）：\n  %s",
                         String.join("\n  ", missing))
                 .isEmpty();
     }
@@ -176,8 +174,10 @@ class RibbonCapabilityAuditTest {
 
         String assembly = assemblySources();
         List<String> honestOnly = new ArrayList<>();
+        List<String> scanned = new ArrayList<>();
         Matcher tiles = TILE.matcher(appBar);
         while (tiles.find()) {
+            scanned.add(tiles.group(1));
             String handler = registrationOf(assembly, tiles.group(1));
             if (handler == null) {
                 continue;
@@ -188,9 +188,17 @@ class RibbonCapabilityAuditTest {
                 honestOnly.add(tiles.group(1));
             }
         }
-        assertThat(honestOnly)
-                .as("判据本身不能是空的 —— 空名单时下面那条 containsExactly 就成了两句空话")
-                .isNotEmpty();
+        // ⭐ 2026-11-10：这条门禁的「非空」守卫从「honestOnly 非空」改成
+        //    「**扫描确实跑过了全部磁贴**」。
+        //    原因：Automation / Model 因「明确不做」删了入口、Function 接上了真实
+        //    例程清单页，功能区 11 格现在**全部**有真落点 —— 一格都不落说明页，
+        //    honestOnly 合法地是空的。这时若还断言它非空，门禁就只能靠「留一格假的」
+        //    才能绿，那正是这个门禁要防的事。
+        //    真正要防的是「扫描器坏了导致两边都空、containsExactly 变成两句空话」——
+        //    所以守卫改成钉住扫描覆盖面：11 格一格都不许漏。
+        assertThat(scanned)
+                .as("扫描器必须真的扫过功能区的每一格（少扫一格，角标名单就可能整份漏掉）")
+                .hasSize(11);
         assertThat(badged)
                 .as("角标必须挂在「落如实说明页」的那几格上，一格不多、一格不落")
                 .containsExactlyInAnyOrderElementsOf(honestOnly);

@@ -22,9 +22,9 @@ import javafx.scene.shape.SVGPath;
  * <p>⭐ 2026-10-30 R36 顶区重做（撤销 R32-D 的精简，用户裁定「完全照 Navicat」）：
  * Ribbon 64px 单行 6 格 → **91px、12 格磁贴**（真源 §1.2 顺序）。
  * 之后 P3 补 Profile / Transfer 两格；2026-11-09 用户裁定**移除 BI**（既不做 BI 工作区，
- * 也不再保留一个只开说明页的入口），当前是 <b>13 格</b>：Connection · New Query ·
- * Table · View · Function · User · Others ｜ Query · Backup · Profile · Transfer ·
- * Automation · Model。顶区 = 菜单 24 + Ribbon 91 + 页签行 25 = 140px。
+ * 也不再保留一个只开说明页的入口）；2026-11-10 用户裁定删除「明确不做」的 Automation / Model 磁贴。
+ * 当前是 <b>11 格</b>：Connection · New Query · Table · View · Function · User · Others ｜
+ * Query · Backup · Profile · Transfer。顶区 = 菜单 24 + Ribbon 91 + 页签行 25 = 140px。
  *
  * <p>⭐ 2026-11-04 R63-2：右端工具件只剩**主题 + ⋯**。原先这里的「当前连接胶囊 ▾」和
  * 「搜索对象或命令」框都删了 —— Navicat 17 实拍的磁贴带右端只有 ⓘ / ☆ / 头像，
@@ -33,12 +33,11 @@ import javafx.scene.shape.SVGPath;
  * 点它弹出的是命令面板，正文永远空白、placeholder 永远不被替换。
  * 切换连接的入口是左侧对象树与「连接」页签，⌘K 仍在（键盘与菜单栏）。
  *
- * <p>13 格里有三格（Function · Automation · Model）背后是还没建的能力面
- * （N28，R42）—— 按诚实条款它们落到**如实说明页**（工具页签 + 一句「本版本未提供」），
- * 不留死按钮；门禁 {@code RibbonCapabilityAuditTest} 逐格钉「必须落到真实目标」。
- * User / Backup / Profile / Transfer 四格已接真工具页。
- * ⭐ R62-a H5-i（Q8 ②）：这六格同时留在原位不动，只在右上角挂一枚统一角标，
- * 把「这版没有」提前说给用户，而不是等点下去才读到 —— 名单见 {@link #PENDING_TILES}。
+ * <p>11 格里<b>每一格</b>背后都有真实能力面 —— Automation / Model 因「明确不做」删了入口，
+ * Function 于 2026-11-10 接上真实的例程清单页（此前落说明页，而例程定义体早已交付，
+ * 两条路自相矛盾）。功能区不再有任何一格需要挂「未提供」角标
+ * （名单见 {@link #PENDING_TILES}，当前为空）；User / Backup / Profile / Transfer
+ * 四格接的是各自的工具页。
  *
  * <p>所有按钮的行为仍来自 {@link ActionRegistry}，没有装饰性假按钮。
  */
@@ -49,13 +48,21 @@ public final class AppBar extends VBox {
      *
      * <p>判据只有一条，而且不是我自己定的：<b>这格的动作处理器调的是
      * {@code openRibbonTool(SideBar.TOOL_…)}</b> —— 也就是它开出的页签
-     * 由 {@code WorkspaceView} 给一句「本版本未提供」。今天命中三格
-     * （Function·Automation·Model），将来哪格建好了能力面，
-     * 它的处理器就不再走那条通道，门禁会逼我把角标同一批摘掉
-     * （见 {@code RibbonCapabilityAuditTest#thePendingBadgesMatchTheHonestLandingPoints}）。
+     * 由 {@code WorkspaceView} 给一句「本版本未提供」。
+     *
+     * <p>⭐ 2026-11-10：这份名单现在是<b>空的</b> ——
+     * Automation / Model 因「明确不做」删了入口，Function 接上了真实例程清单页，
+     * 于是功能区 11 格<b>全部</b>有真落点，没有一格需要挂角标。
+     * 角标机制本身仍在（页内按钮：AI 填充 / 数据画像 / 问 AI / 查询构造器 / OR 条件组
+     * 走 {@code PendingMark.saySo} 与 {@code PendingMark.mark}），
+     * 将来哪格又落回说明页，这里加上名字，机制会自动挂上去。
+     *
+     * <p>⚠️ 名单与 {@code SideBar.TOOL_UNAVAILABLE_ROUTES} /
+     * {@code SideBar.TOOL_OBJECT_ROUTES} 必须同批维护 ——
+     * 门禁 {@code RibbonCapabilityAuditTest#thePendingBadgesMatchTheHonestLandingPoints}
+     * 从那两个集合反推该挂哪几格，改一边不改另一边会立刻红。
      */
-    private static final java.util.Set<String> PENDING_TILES = java.util.Set.of(
-            "ribbon.function", "ribbon.automation", "ribbon.model");
+    private static final java.util.Set<String> PENDING_TILES = java.util.Set.of();
 
     private final HBox utility;
     /** 磁贴排（Ribbon 里可横向滚动的那一段，窄窗口时靠滚动而不是截标签）。 */
@@ -106,11 +113,7 @@ public final class AppBar extends VBox {
                 ribbonButton("ribbon.profiling", Icons.Icon.DATABASE, I18n.t("ribbon.profiling"),
                         "adb-ribbon__icon--profiling"),
                 ribbonButton("ribbon.transfer", Icons.Icon.EXPORT, I18n.t("ribbon.transfer"),
-                        "adb-ribbon__icon--transfer"),
-                ribbonButton("ribbon.automation", Icons.Icon.HISTORY, I18n.t("ribbon.automation"),
-                        "adb-ribbon__icon--automation"),
-                ribbonButton("ribbon.model", Icons.Icon.STRUCTURE, I18n.t("ribbon.model"),
-                        "adb-ribbon__icon--model"));
+                        "adb-ribbon__icon--transfer"));
         tiles.setId("adb-ribbon");
         tiles.getStyleClass().add("adb-ribbon");
         tiles.setAlignment(Pos.CENTER_LEFT);
@@ -118,7 +121,7 @@ public final class AppBar extends VBox {
         //    与宽高算好，环绑在那上面贴右上角，自己 managed=false 不吃排版（详见 PendingMark）。
         PendingMark.attach(tiles, pendingTiles);
 
-        // ⭐ 当前是 13 格（R36 的 12 格 + P3 两格 − 已移除的 BI），
+        // ⭐ 当前是 11 格（R36 的 12 格 + P3 两格 − 已移除的 BI − 已删入口的 Automation/Model），
         //    按英文标签排开就超过 1050px，再加右端工具件必然超过 1280 宽窗口。
         //    Navicat 磁贴定宽 70 吃的是中文；我们的英文标签截不得（标签不许省略号门禁）。
         //    所以磁贴排包进横向 ScrollPane：宽窗不出条，窄窗滚动而不是裁字；

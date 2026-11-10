@@ -2385,29 +2385,25 @@ public final class SideBar extends VBox {
      */
     public static final String TOOL_USERS = "users";
     public static final String TOOL_BACKUP = "backup";
-    public static final String TOOL_AUTOMATION = "automation";
-    public static final String TOOL_MODEL = "model";
     /** ⭐ P3 轻量 Data Profiling：单表列画像（样本）。 */
     public static final String TOOL_PROFILING = "profiling";
     /** ⭐ P3 跨库传输最小切片：单表 DB→DB。 */
     public static final String TOOL_TRANSFER = "transfer";
 
     /**
-     * ⭐ R37 N33：Ribbon 的 Function 格。
+     * ⭐ 2026-11-10：例程清单页的路由键 —— 功能区「函数」格的**真实落点**。
      *
-     * <p>对象清单页只列表（N14）—— 函数的**编辑器**归 N28，还没建。
-     * 这一格因此落在如实说明页（「本版本未提供 + 去左侧树看」），
-     * 而不是死磁贴，也不是一块假装是对象总览的旧页面。
-     *
-     * <p>⚠️ R42 N28-a 之后 <b>View 那格已经不归这里</b>：视图设计器建好了，
-     * Ribbon 的 View 直接开弹窗（{@code AppShell} 里 {@code ribbon.view}），
-     * 再留一条「object-views」说明页路由就是假落点。
+     * <p>此前它落的是「object-functions」那条说明页路由（{@code TOOL_OBJECT_FUNCTIONS}，
+     * 已随之删除），而例程定义体（{@code RoutinePage}）早已交付、入口只在左侧树双击 ——
+     * 两条路自相矛盾。现在这一格开真实的例程清单页（列函数 / 过程 / 事件，
+     * 双击打开定义体）。
      */
-    public static final String TOOL_OBJECT_FUNCTIONS = "object-functions";
+    public static final String TOOL_ROUTINES = "routines";
 
-    /** 没有真编辑器的对象类型格 —— {@code WorkspaceView} 给对象类说明页。 */
-    public static final java.util.Set<String> TOOL_OBJECT_ROUTES =
-            java.util.Set.of(TOOL_OBJECT_FUNCTIONS);
+    /** 对象类说明页路由（这一类对象本版本还没有编辑器）——
+     *  ⭐ 2026-11-10：Function 已接真实例程清单页，集合清空（角标随之摘掉）。
+     *  机制留着：将来哪类对象又落回说明页，把路由常量加回这里即可。 */
+    public static final java.util.Set<String> TOOL_OBJECT_ROUTES = java.util.Set.of();
 
     /** ⭐ R37 N15：「用 AI 新建表」的能力面未建，落如实说明页。 */
     public static final String TOOL_NEW_TABLE_AI = "new-table-ai";
@@ -2416,11 +2412,12 @@ public final class SideBar extends VBox {
      *  ⭐ P2：User / Backup、P3：Profile / Transfer 四格已接真实工具页，移出此集合
      *  （仍是诚实条款，只是从「没这功能」升级为「有这功能」）。
      *  ⭐ 2026-11-09：BI 按用户裁定整体移除（连说明页入口一起），TOOL_BI 不再存在。
+     *  ⭐ 2026-11-10：Automation / Model 因「明确不做」删除入口，移出此集合。
      *  ⚠️ 这份集合同时是 Ribbon 角标的判据来源 ——
      *  {@code RibbonCapabilityAuditTest#thePendingBadgesMatchTheHonestLandingPoints}
      *  读它反推该挂哪几格，改动请与 {@code AppBar.PENDING_TILES} 同批。 */
     public static final java.util.Set<String> TOOL_UNAVAILABLE_ROUTES =
-            java.util.Set.of(TOOL_AUTOMATION, TOOL_MODEL, TOOL_NEW_TABLE_AI);
+            java.util.Set.of(TOOL_NEW_TABLE_AI);
 
     private static void copy(String text) {
         ClipboardContent content = new ClipboardContent();

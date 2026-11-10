@@ -1330,13 +1330,23 @@ public final class AppShell extends StackPane {
      * → 标签页（不是弹窗）。N33 之后唯一入口是左侧对象树的双击 / Enter。
      */
     private void openRoutine(String connectionId, String name, boolean procedure) {
+        openRoutine(connectionId, name, procedure, false);
+    }
+
+    /**
+     * ⭐ 2026-11-10：同 {@link #openRoutine(String, String, boolean)}，但多带一个
+     * 「这是调度事件」的标志 —— MySQL EVENT 与函数 / 过程读定义体的路径不同
+     * （{@code SchemaService.eventDefinition}），且事件不可重建。
+     */
+    private void openRoutine(String connectionId, String name, boolean procedure,
+                             boolean scheduledEvent) {
         DbSession current = sessionFor(connectionId);
         if (current == null) {
             status(I18n.t("shell.needConnection"));
             return;
         }
-        RoutinePage page = new RoutinePage(name, procedure, false, current, new SchemaService(),
-                executors.forConnection(connectionId), this::status);
+        RoutinePage page = new RoutinePage(name, procedure, scheduledEvent, current,
+                new SchemaService(), executors.forConnection(connectionId), this::status);
         String id = "routine:" + connectionId + ":" + name;
         openTab(new TabItem(id, name, TabKind.ROUTINE, name, connectionId, page));
         status(I18n.t("shell.openDefinition", name));
@@ -1643,6 +1653,12 @@ public final class AppShell extends StackPane {
         // ⭐ P3：Data Profiling 与跨库传输同样与会话同源；传输页还需要「其它已开连接」
         // 作目标，以及把连接 id 解析回会话的解析器（复用 SessionManager.find）。
         workspace.setProfiling(session, schemaService, executors.forConnection(activeProfileId()));
+        // ⭐ 2026-11-10：例程清单页同样与会话同源；点开某一行 → 打开该例程的定义体标签页
+        //    （与左侧树双击例程节点同一条路径，只是多带一个「是不是调度事件」的标志）。
+        workspace.setRoutines(session, schemaService, executors.forConnection(activeProfileId()),
+                (name, kind) -> openRoutine(activeProfileId(), name,
+                        kind == io.agenticdb.introspect.SchemaService.ObjectKind.PROCEDURE,
+                        kind == io.agenticdb.introspect.SchemaService.ObjectKind.EVENT));
         workspace.setTransfer(session, schemaService, executors.forConnection(activeProfileId()),
                 connections.stream()
                         .filter(p -> !p.id().equals(activeProfileId()))
@@ -2945,17 +2961,18 @@ public final class AppShell extends StackPane {
                 null, this::openTableList);
 
         // ⭐ R36 N6：Ribbon 12 格补齐（真源 §1.2 顺序）；P3 补两格，BI 已按用户裁定移除。
-        //    User / Backup / Automation / Model 背后是 N28 的能力面（本轮裁定：
-        //    Automation / Model / 数据生成 <b>不做真功能</b>，其余按 R42-b/c/d 排期）——
-        //    按诚实条款先落**如实说明页**（工具页签 + 「本版本未提供」），不留死磁贴。
+        //    ⭐ 2026-11-10：Automation / Model 因「明确不做」已删除入口（磁贴 + 注册一并移除）。
         //    门禁：RibbonCapabilityAuditTest 逐格钉「有注册动作 + 有真实落点」。
         // ⭐ R42 N28-a：View 那一格现在有真落点了 —— 与「新建表」同形，
         //    直接开视图设计器（Navicat 的「新建视图」也是一个窗口，不是一个页签）。
         actions.register("ribbon.view", I18n.t("action.ribbon.view"), I18n.t("category.object"),
                 null, () -> tableDdl().createView(activeProfileId()));
+        // ⭐ 2026-11-10：Function 这一格接上**真实例程清单页**（此前落说明页，而例程定义体
+        //    早已交付、入口只在左侧树双击 —— 两条路自相矛盾）。清单页里双击任一行
+        //    就打开该例程的定义体标签页，与树里双击同一条路径。
         actions.register("ribbon.function", I18n.t("action.ribbon.function"), I18n.t("category.object"),
-                null, () -> openRibbonTool(SideBar.TOOL_OBJECT_FUNCTIONS,
-                        I18n.t("tool.title.functions")));
+                null, () -> openRibbonTool(SideBar.TOOL_ROUTINES,
+                        I18n.t("tool.title.routines")));
         actions.register("ribbon.others", I18n.t("action.ribbon.others"), I18n.t("category.object"),
                 null, this::openAllObjects);
         actions.register("ribbon.user", I18n.t("action.ribbon.user"), I18n.t("category.tools"),
@@ -2968,10 +2985,6 @@ public final class AppShell extends StackPane {
         // ⭐ P3 跨库传输最小切片（Q11）：单表 DB→DB，落在真实工具页。
         actions.register("ribbon.transfer", I18n.t("action.ribbon.transfer"), I18n.t("category.tools"),
                 null, () -> openRibbonTool(SideBar.TOOL_TRANSFER, I18n.t("tool.title.transfer")));
-        actions.register("ribbon.automation", I18n.t("action.ribbon.automation"), I18n.t("category.tools"),
-                null, () -> openRibbonTool(SideBar.TOOL_AUTOMATION, I18n.t("tool.title.automation")));
-        actions.register("ribbon.model", I18n.t("action.ribbon.model"), I18n.t("category.tools"),
-                null, () -> openRibbonTool(SideBar.TOOL_MODEL, I18n.t("tool.title.model")));
 
         // ⭐ N1–N5：表清单的动作全部进注册表 —— 工具栏、右键菜单、命令面板同一份真相。
         //    选择相关的动作先禁用，等表清单页出现后由页面按选择启用。
@@ -3662,6 +3675,10 @@ public final class AppShell extends StackPane {
         // ⭐ P2-3：数据页「历史」只看本表；选中一条载入新查询页。
         page.setHistorySource(() -> history.recentForObject(tab.target(), 10));
         page.setOnHistoryPick(this::openQueryWith);
+        // ⭐ 2026-11-10：数据页工具条的「数据画像」直达画像工具页（带上当前表名）——
+        //    与功能区「数据画像」那一格同一个页面，不该两条路给出两种答案。
+        page.setOpenProfiling(table -> openRibbonTool(SideBar.TOOL_PROFILING + table,
+                I18n.t("tool.title.profiling")));
         page.setDirtyListener(count -> {
             tab.markDirty(count);
             updateEditActions();
@@ -3989,7 +4006,7 @@ public final class AppShell extends StackPane {
     }
 
     /**
-     * ⭐ R36：Ribbon 上还没建能力面的格子（Automation/Model；BI 已移除）
+     * ⭐ R36：Ribbon 上还没建能力面的格子（Function；BI/Automation/Model 已移除或删除入口）
      * 落**如实说明页** —— 走 {@link SideBar#TOOL_USERS} 那族路由键，
      * {@code WorkspaceView} 的 TOOL 分支对未接路由统一给「本版本未提供」的空态。
      */

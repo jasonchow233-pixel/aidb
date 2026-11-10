@@ -79,6 +79,14 @@ public final class WorkspaceView extends StackPane {
     private java.util.function.Function<String, io.agenticdb.jdbc.DbSession> transferResolver =
             id -> null;
 
+    /** ⭐ 2026-11-10：例程清单页的依赖（活动连接 + 内省 + 执行器）与「点开某例程」的回调。 */
+    private io.agenticdb.jdbc.DbSession routinesSession;
+    private io.agenticdb.introspect.SchemaService routinesSchemaService;
+    private java.util.concurrent.Executor routinesExecutor;
+    /** 点开某一行例程 → 外壳据此打开定义体标签页（名字 + 类型）。 */
+    private java.util.function.BiConsumer<String, io.agenticdb.introspect.SchemaService.ObjectKind>
+            routinesOpen = (name, kind) -> { };
+
     /** 当前活动数据页（编辑菜单据此启用/禁用）；不是数据页时为 {@code null}。 */
     public DataGridPage activeGrid() {
         return activeGrid;
@@ -182,6 +190,22 @@ public final class WorkspaceView extends StackPane {
         this.profilingSession = session;
         this.profilingSchemaService = schemaService;
         this.profilingExecutor = executor;
+    }
+
+    /**
+     * ⭐ 2026-11-10：接入例程清单页的依赖（活动连接 + 内省 + 执行器）
+     * 与「点开某例程 → 打开定义体标签页」的回调。
+     */
+    public void setRoutines(io.agenticdb.jdbc.DbSession session,
+                            io.agenticdb.introspect.SchemaService schemaService,
+                            java.util.concurrent.Executor executor,
+                            java.util.function.BiConsumer<String,
+                                    io.agenticdb.introspect.SchemaService.ObjectKind> opener) {
+        this.routinesSession = session;
+        this.routinesSchemaService = schemaService;
+        this.routinesExecutor = executor;
+        this.routinesOpen = opener == null
+                ? (name, kind) -> { } : opener;
     }
 
     /** 接入跨库传输工具页的依赖。 */
@@ -577,8 +601,9 @@ public final class WorkspaceView extends StackPane {
                     body.getChildren().add(new DiagnosticsPage(diagnosticSession,
                             diagnosticSchemaService, table, diagnosticExecutor));
                 } else if (SideBar.TOOL_OBJECT_ROUTES.contains(route)) {
-                    // ⭐ N33：视图 / 函数的**编辑器**还没建，而对象清单页只列表 ——
-                    // 按诚实条款给如实说明页，并说清去哪儿看它们（左侧树）。
+                    // ⭐ 对象类说明页路由 —— 集合当前是空的（Function 已接真实例程清单页）。
+                    //    机制留着：将来哪类对象又落回说明页，把路由常量加回
+                    //    {@code TOOL_OBJECT_ROUTES} 即可，角标名单会由门禁反推着同步。
                     body.getChildren().add(emptyState(
                             Icons.Icon.STRUCTURE, tab.title(),
                             I18n.t("workspace.tool.objectKind")));
@@ -586,14 +611,25 @@ public final class WorkspaceView extends StackPane {
                     // ⭐ P2 Backup：纯 JDBC 转储 / 恢复已落地，这里接上真实工具页。
                     body.getChildren().add(new BackupToolPage(
                             backupSession, backupSchemaService, backupExecutor));
+                } else if (SideBar.TOOL_ROUTINES.equals(route) && routinesSession != null) {
+                    // ⭐ 2026-11-10：功能区「函数」格接上真实例程清单页（此前落说明页，
+                    //    而定义体早已交付 —— 两条路自相矛盾）。双击任一行打开定义体标签页。
+                    body.getChildren().add(new RoutineListPage(
+                            routinesSession, routinesSchemaService, routinesExecutor,
+                            (name, kind) -> routinesOpen.accept(name, kind)));
                 } else if (SideBar.TOOL_USERS.equals(route) && usersSession != null) {
                     // ⭐ P2 User 只读视图（H8）：列出账号 / 角色，只读。
                     body.getChildren().add(new UsersToolPage(
                             usersSession, usersSchemaService, usersExecutor));
-                } else if (SideBar.TOOL_PROFILING.equals(route) && profilingSession != null) {
+                } else if (route.startsWith(SideBar.TOOL_PROFILING)
+                        && profilingSession != null) {
                     // ⭐ P3 轻量 Data Profiling：单条采样查询在内存里算每列画像。
+                    // ⭐ 2026-11-10：路由可以带表名（TOOL_PROFILING + 表名）——
+                    //    数据网格工具条那颗「数据画像」按钮用它直达当前表。
+                    String table = route.substring(SideBar.TOOL_PROFILING.length()).trim();
                     body.getChildren().add(new DataProfilingPage(
-                            profilingSession, profilingSchemaService, profilingExecutor));
+                            profilingSession, profilingSchemaService, profilingExecutor,
+                            table.isEmpty() ? null : table));
                 } else if (SideBar.TOOL_TRANSFER.equals(route) && transferSession != null) {
                     // ⭐ P3 跨库传输最小切片：源表 → 内存 SQL → 目标连接。
                     body.getChildren().add(new TransferToolPage(
@@ -601,9 +637,10 @@ public final class WorkspaceView extends StackPane {
                             transferOthers, transferResolver));
                 } else if (SideBar.TOOL_UNAVAILABLE_ROUTES.contains(route)) {
                     // ⭐ R36 N6 → P2/P3：User / Backup / Profile / Transfer 已升级为真工具页
-                    // （走上面的分支），这里只剩 Automation / Model 与对象清单页的
-                    // new-table-ai —— 能力面没建，按诚实条款给**如实说明页**，不留死磁贴。
-                    // BI 已按 2026-11-09 用户裁定整体移除，不再有这条路由。
+                    // （走上面的分支），这里只剩对象清单页的 new-table-ai —— 能力面没建，
+                    // 按诚实条款给**如实说明页**，不留死磁贴。
+                    // BI 已按 2026-11-09 用户裁定整体移除；Automation / Model 已按 2026-11-10
+                    // 用户裁定删除入口（明确不做），不再有这两条路由。
                     body.getChildren().add(emptyState(
                             Icons.Icon.DIAGNOSTICS, tab.title(),
                             I18n.t("workspace.tool.unavailable")));

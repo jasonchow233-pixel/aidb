@@ -32,7 +32,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>纯图标按钮都有 Tooltip 与 accessible text（读屏能读出语义）；</li>
  *   <li>⭐ 2026-10-30 R36 顶区重做之后：<b>品牌行不再存在</b>、命令带是
  *       Navicat 磁贴（R36 为 12 格，P3 补 Data Profiling / Cross-DB Transfer 后为
- *       <b>13 格</b>；每格都必须有注册动作与真实落点，见
+ *       13 格，2026-11-10 删除「明确不做」的 Automation / Model 后为
+ *       <b>11 格</b>；每格都必须有注册动作与真实落点，见
  *       {@code RibbonCapabilityAuditTest}）、工具件住在 Ribbon 右端；</li>
  *   <li>⭐ R63-2：顶栏<b>没有</b>连接胶囊、<b>没有</b>搜索框 ——
  *       Navicat 17 实拍的磁贴带右端只有主题与「更多」两颗，连接身份归状态栏那颗灯
@@ -76,10 +77,9 @@ class AppBarTest {
         actions.register("ribbon.backup", "备份", "工具", null, () -> { });
         // ⭐ P3：这两格是 R36 之后补的（12 → 13 格）。AppBar 构造时走 actions.require，
         //    少注册一条 @Start 就直接抛 IllegalArgumentException，整份门禁空转。
+        // ⭐ 2026-11-10：Automation / Model 两格按「明确不做」删除入口，随之不再注册。
         actions.register("ribbon.profiling", "数据画像", "工具", null, () -> { });
         actions.register("ribbon.transfer", "跨库传输", "工具", null, () -> { });
-        actions.register("ribbon.automation", "自动化", "工具", null, () -> { });
-        actions.register("ribbon.model", "模型", "工具", null, () -> { });
 
         // R63-2：应用栏不再收连接列表 —— 顶栏没有连接胶囊了，
         // 「我在哪家库 · 连上没有」由状态栏那颗灯说（它有自己的门禁）。
@@ -164,8 +164,9 @@ class AppBarTest {
     }
 
     /**
-     * ⭐ R36 命令带，顺序按真源 §1.2；P3 之后是 <b>13 格</b>（R36 的 12 格 +
-     * Data Profiling / Cross-DB Transfer，两格接在 Backup 之后）。
+     * ⭐ R36 命令带，顺序按真源 §1.2；P3 之后是 13 格（R36 的 12 格 +
+     * Data Profiling / Cross-DB Transfer，两格接在 Backup 之后）；
+     * 2026-11-10 删除「明确不做」的 Automation / Model 后是 <b>11 格</b>。
      *
      * <p>「与别处重复」不再是裁格子的理由 —— Navicat 就是这么排的，用户裁定
      * 完全照它做；重复入口的代价由 {@code RibbonCapabilityAuditTest} 盯住
@@ -175,26 +176,25 @@ class AppBarTest {
      * 漏同步名单时 containsExactly 立刻红 —— 两处都不许悄悄少一格。
      */
     @Test
-    void theRibbonCarriesTheThirteenCommandTiles(FxRobot robot) {
+    void theRibbonCarriesTheElevenCommandTiles(FxRobot robot) {
         WaitForAsyncUtils.waitForFxEvents();
         // ⚠️ 不能按 `#ribbon-object.new-table` 查找：JavaFX 选择器把 `.` 当类分隔符，
         //    带点的 id 永远查不到 —— AppBar 已把 id 里的点统一换成短横线。
         List<String> ids = robot.lookup(".adb-ribbon__button").queryAllAs(Button.class)
                 .stream().map(Button::getId).toList();
         assertThat(ids)
-                .as("13 格磁贴，顺序 = Connection·NewQuery·Table·View·Function·User·Others"
-                        + "｜Query·Backup·Profile·Transfer·Automation·Model·BI")
+                .as("11 格磁贴，顺序 = Connection·NewQuery·Table·View·Function·User·Others"
+                        + "｜Query·Backup·Profile·Transfer（Automation·Model 已按「明确不做」删除）")
                 .containsExactly("ribbon-new-connection", "ribbon-new-query",
                         "ribbon-object-new-table", "ribbon-ribbon-view",
                         "ribbon-ribbon-function", "ribbon-ribbon-user",
                         "ribbon-ribbon-others", "ribbon-saved-queries",
                         "ribbon-ribbon-backup", "ribbon-ribbon-profiling",
-                        "ribbon-ribbon-transfer", "ribbon-ribbon-automation",
-                        "ribbon-ribbon-model");
+                        "ribbon-ribbon-transfer");
     }
 
     /**
-     * ⭐ 命令带的十三个标签**一个都不许被裁成省略号**。
+     * ⭐ 命令带的十一个标签**一个都不许被裁成省略号**。
      *
      * <p>格子原本写死 `min=pref=62px` —— 那是按中文量出来的（"已保存查询" 五个字 62px 装得下）。
      * 换成英文之后 "Saved Queries" 要 ~72px、"Import / Export" 要 ~78px，
@@ -236,7 +236,7 @@ class AppBarTest {
                 .as("命令带标签被裁 —— 英文比中文宽，格子宽度不能按中文写死")
                 .isEmpty();
 
-        // 反向的一半：13 格按英文标签排开可能超过 1280 窗口 —— 替代截字的方案是
+        // 反向的一半：11 格按英文标签排开可能超过 1280 窗口 —— 替代截字的方案是
         // **横向滚动**。这条钉住「放不下时磁贴排真的在可滚动的容器里」，
         // 否则将来有人摘掉 ScrollPane，上面的标签截字门禁会静默失效。
         List<Boolean> geometry = WaitForAsyncUtils.asyncFx(() -> {
@@ -263,7 +263,7 @@ class AppBarTest {
     /**
      * ⭐ H5-h（R62-a）：Ribbon 溢出时那条横向滚动条必须是**细轨 + 无箭头**。
      *
-     * <p>上一条门禁只问了「放得下吗 / 能不能滚」，本条问的是它**长什么样**：13 格磁贴按
+     * <p>上一条门禁只问了「放得下吗 / 能不能滚」，本条问的是它**长什么样**：11 格磁贴按
      * 英文标签排开已过千 px，窗口一窄就必然溢出（产品侧 {@code AppShell} 把根的最小宽度
      * 放到 0，窄窗口真能到那条线以下），于是这条滚动条就是功能区的一部分。Modena 默认给
      * 16px 整宽灰槽 + 两端 {@code ⟨ ⟩} 箭头 —— 实拍里读起来像界面多出一条不属于它的工具。
@@ -359,11 +359,12 @@ class AppBarTest {
     @Test
     void pendingTilesCarryTheCornerBadgeAndOthersDoNot(FxRobot robot) throws Exception {
         WaitForAsyncUtils.waitForFxEvents();
-        // ⭐ P2/P3：User / Backup / Profile / Transfer 四格已接真实工具页，角标随能力面
-        //    落地摘掉；BI 按用户裁定整体移除；只剩 Function（对象类说明页）与
-        //    Automation / Model（本版本未提供）三格。名单与 AppBar.PENDING_TILES 同批维护。
-        List<String> shouldBadge = List.of("ribbon-ribbon-function",
-                "ribbon-ribbon-automation", "ribbon-ribbon-model");
+        // ⭐ 2026-11-10：功能区 11 格现在**全部**有真落点 —— Automation / Model 因
+        //    「明确不做」删了入口，Function 接上了真实例程清单页，于是**一格都不挂角标**。
+        //    这条门禁改成反着钉：角标必须**一个都不许出现**。
+        //    （角标本身的样式契约由 PendingMarkTest 专项守着 —— 拆开是因为
+        //    「哪几格挂标」和「挂出来的环长什么样」是两件事，绑在一起会一起空转。）
+        List<String> shouldBadge = List.of();
         // 每格一行：id、有没有环、环的计算描边色与粗细、环宽、环是不是托管的、吃不吃点击。
         List<List<Object>> rows = WaitForAsyncUtils.<List<List<Object>>>asyncFx(() -> {
             bar.getScene().getRoot().applyCss();
@@ -407,34 +408,16 @@ class AppBarTest {
             }
             return out;
         }).get();
-        assertThat(rows).as("13 格磁贴都要被读到（少一格这条门禁就是空的）").hasSize(13);
+        assertThat(rows).as("11 格磁贴都要被读到（少一格这条门禁就是空的）").hasSize(11);
         List<String> badged = rows.stream().filter(r -> (Boolean) r.get(1))
                 .map(r -> (String) r.get(0)).toList();
         assertThat(badged)
-                .as("角标 = 「本版本未提供」，只许挂在落说明页的那几格上")
+                .as("角标 = 「本版本未提供」，只许挂在落说明页的那几格上 —— "
+                        + "11 格全部有真落点时，一枚都不许出现")
                 .containsExactlyInAnyOrderElementsOf(shouldBadge);
-        for (List<Object> row : rows) {
-            if (!(Boolean) row.get(1)) {
-                continue;
-            }
-            assertThat(row.get(2))
-                    .as("%s：角标描边必须是 text-tertiary 那一档（比正文淡，但在 chrome 底上过 3:1）",
-                            row.get(0))
-                    .isEqualTo(javafx.scene.paint.Color.web(io.agenticdb.ui.Tokens
-                            .TEXT_TERTIARY_LIGHT));
-            assertThat(row.get(3))
-                    .as("%s：环只有 1px 粗才是「淡角标」，粗了就和图标抢视线", row.get(0))
-                    .isEqualTo(1.0);
-            assertThat((Double) row.get(4))
-                    .as("%s：环与状态点同一档尺寸（8px）—— 大小不一的角标读成装饰", row.get(0))
-                    .isEqualTo((double) io.agenticdb.ui.Icons.SIZE_DOT);
-            assertThat(row.get(5))
-                    .as("%s：环不许参与排版（managed=true 就会把这格垫下去）", row.get(0))
-                    .isEqualTo(false);
-            assertThat(row.get(6))
-                    .as("%s：环压在按钮角上，必须让点击透到那一格", row.get(0))
-                    .isEqualTo(true);
-        }
+        // ⚠️ 角标<b>本身</b>的样式契约（1px 描边 / 8px 尺寸 / managed=false /
+        //    mouseTransparent）由 {@code PendingMarkTest} 专项守着 ——
+        //    这里现在一格标都不挂，逐行断言那段会整段空转，契约就跟着失守了。
     }
 
     /**
@@ -442,7 +425,7 @@ class AppBarTest {
      *
      * <p>角标是往图形外面加一个节点，加错地方就会出现「几格的标签比另外几格低一截」
      * —— 同一排磁贴读成两排，而这只有肉眼和这条门禁看得见。钉两个量：
-     * 十三个标签在同一基线上、十三格等高。
+     * 十一个标签在同一基线上、十一格等高。
      *
      * <p>⚠️ 容差 1.5px 是<b>对照量出来</b>的，不是拍的：这一排本来就有 1px 抖动 —— 挂标
      * 与不挂标都读到 view / function / others 三格的标签 Y=45、其余 46。做过控制实验：
@@ -466,7 +449,7 @@ class AppBarTest {
             }
             return out;
         }).get();
-        assertThat(measured).hasSize(13);
+        assertThat(measured).hasSize(11);
         List<Object> first = measured.get(0);
         assertThat((Double) first.get(1)).as("第一格没读到标签 —— 这条门禁空转").isNotEqualTo(-1.0);
         List<String> offBaseline = new ArrayList<>();
@@ -477,12 +460,12 @@ class AppBarTest {
             }
         }
         assertThat(offBaseline)
-                .as("十三格磁贴的标签基线与格高必须一致（第一格基准：Y=%s、高=%s）——"
+                .as("十一格磁贴的标签基线与格高必须一致（第一格基准：Y=%s、高=%s）——"
                         + "角标只许贴在图形角上，不参与排版", first.get(1), first.get(2))
                 .isEmpty();
     }
 
-    /** 13 格磁贴，按 Ribbon 里从左到右的遍历顺序（只能在 FX 线程上调）。 */
+    /** 11 格磁贴，按 Ribbon 里从左到右的遍历顺序（只能在 FX 线程上调）。 */
     private List<Button> ribbonTiles() {
         return bar.lookupAll(".adb-ribbon__button").stream()
                 .filter(Button.class::isInstance).map(Button.class::cast)

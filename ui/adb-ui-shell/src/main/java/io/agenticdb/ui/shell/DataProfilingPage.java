@@ -39,6 +39,8 @@ public final class DataProfilingPage extends VBox {
     private final DbSession session;
     private final SchemaService schemaService;
     private final Executor dbExecutor;
+    /** ⭐ 2026-11-10：网格那边指定要画像的表（可为空 = 让用户自己挑）。 */
+    private final String preselectedTable;
 
     private final Label title = new Label();
     private final Label subtitle = new Label();
@@ -49,9 +51,22 @@ public final class DataProfilingPage extends VBox {
     private final VBox body = new VBox(8);
 
     public DataProfilingPage(DbSession session, SchemaService schemaService, Executor dbExecutor) {
+        this(session, schemaService, dbExecutor, null);
+    }
+
+    /**
+     * ⭐ 2026-11-10：带「预选表」的构造 —— 数据网格工具条那颗「数据画像」按钮
+     * 走这条：它知道当前网格正开着哪张表，不该让用户再在下拉框里挑一次。
+     *
+     * <p>预选的表若不在清单里（例如网格开的是视图），就退回「让用户自己挑」，
+     * 而不是把一个查不存在的表当成有效输入。
+     */
+    public DataProfilingPage(DbSession session, SchemaService schemaService, Executor dbExecutor,
+                             String preselectedTable) {
         this.session = session;
         this.schemaService = schemaService;
         this.dbExecutor = dbExecutor;
+        this.preselectedTable = preselectedTable;
         setSpacing(12);
         setPadding(new Insets(16));
         getStyleClass().add("adb-page__body");
@@ -109,6 +124,14 @@ public final class DataProfilingPage extends VBox {
                     run.setDisable(tables.isEmpty());
                     if (tables.isEmpty()) {
                         message(I18n.t("tool.profiling.noTables"));
+                        return;
+                    }
+                    // ⭐ 2026-11-10：网格指定了表就替他选好并直接跑 ——
+                    //    用户点的是「画像这张表」，再让他挑一次是白绕一圈。
+                    //    表不在清单里（网格开的是视图等）→ 退回「自己挑」，不硬塞一个查不存在的表。
+                    if (preselectedTable != null && tables.contains(preselectedTable)) {
+                        tablePicker.setValue(preselectedTable);
+                        profile(preselectedTable);
                     }
                 });
             } catch (SQLException e) {

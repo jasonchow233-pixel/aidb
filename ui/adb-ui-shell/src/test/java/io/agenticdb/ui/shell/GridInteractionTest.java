@@ -284,14 +284,15 @@ class GridInteractionTest {
      * 右上角挂 PendingMark 环，tooltip 与 accessibleText 带同一句「本版本未提供」。
      *
      * <p>名单随能力面收窄：BI Workspace 已整体移除、Data Masking 在 P-3 接上真
-     * 导出向导，两者都不再挂环（判据始终是落点是不是 {@code showCapabilityNotice}）。
+     * 导出向导、Data Generation 因「明确不做」于 2026-11-10 删掉入口、
+     * Data Profiling 于 2026-11-10 接上真工具页 —— 四者都不再挂环
+     * （判据始终是落点是不是 {@code showCapabilityNotice}）。
      * 环的几何断言走**宿主排里有 mark 孩子**这一构造事实，
      * 不量像素（像素归帧，这里归接线）。
      */
     @Test
     void capabilityPlaceholdersAdvertiseThemselvesBeforeTheClick() {
-        for (String id : java.util.List.of("data-fill-ai", "data-profiling",
-                "data-generation")) {
+        for (String id : java.util.List.of("data-fill-ai")) {
             javafx.scene.Node node = page.lookup("#" + id);
             assertThat(node).as("落点按钮 #%s", id).isNotNull();
             javafx.scene.control.ButtonBase button = (javafx.scene.control.ButtonBase) node;
@@ -308,6 +309,61 @@ class GridInteractionTest {
                     .as("#%s 所在那一排必须挂了角标环（managed=false，不吃排版）", id)
                     .isTrue();
         }
+    }
+
+    /**
+     * ⭐ 2026-11-10：Data Generation 因「明确不做」删掉入口后，**不许悄悄长回来**。
+     *
+     * <p>这一格原先是「保留入口 + 如实说明页」，用户裁定改成整格删除 ——
+     * 所以门禁钉的是「按钮不存在」，而不是「它还在但挂了角标」。
+     */
+    @Test
+    void theDataGenerationEntryStaysDeleted() {
+        assertThat(page.lookup("#data-generation"))
+                .as("Data Generation 已按「明确不做」删除入口（2026-11-10），不许长回来")
+                .isNull();
+    }
+
+    /**
+     * ⭐ 2026-11-10：Data Profiling 接上真工具页后，那颗按钮**不许再挂角标**。
+     *
+     * <p>角标说的是一句可核对的陈述：「这格现在没有真页面」。画像页既然已经接上，
+     * 环还留着就是在说假话 —— 而且是那种「点下去其实能用、但界面上先告诉你没有」
+     * 的最坏组合。
+     *
+     * <p>⚠️ 断言必须按<b>几何</b>认领，不能按「这一排有没有环」：
+     * 画像按钮与「用 AI 填充」同属 toolGroupInsight，那一颗**仍然**挂着环
+     * （AI 填充确实还没有能力面）。环是宿主排的孩子、{@code managed=false}，
+     * 所以认领规则是「谁的右上角被环贴着」。
+     */
+    @Test
+    void theProfilingButtonNoLongerCarriesThePendingRing() {
+        javafx.scene.Node node = page.lookup("#data-profiling");
+        assertThat(node).as("数据画像按钮必须还在").isNotNull();
+        javafx.scene.control.ButtonBase button = (javafx.scene.control.ButtonBase) node;
+        assertThat(button.getTooltip())
+                .as("tooltip 不该再说「本版本未提供」")
+                .isNotNull();
+        assertThat(button.getTooltip().getText())
+                .as("画像页已经接上，tooltip 不许再讲那套旧实话")
+                .doesNotContain(I18n.t("ribbon.pending"));
+
+        javafx.scene.layout.Pane row = (javafx.scene.layout.Pane) button.getParent();
+        javafx.scene.control.Button target = (javafx.scene.control.Button) node;
+        boolean ringOnThisButton = row.getChildren().stream()
+                .filter(javafx.scene.layout.Region.class::isInstance)
+                .map(javafx.scene.layout.Region.class::cast)
+                .filter(child -> child.getStyleClass().contains("adb-pending__mark"))
+                .anyMatch(ring -> {
+                    double insetRight = target.getBoundsInParent().getMaxX()
+                            - ring.getBoundsInParent().getMaxX();
+                    double insetTop = ring.getBoundsInParent().getMinY()
+                            - target.getBoundsInParent().getMinY();
+                    return insetRight >= 0 && insetRight <= 6 && insetTop >= 0 && insetTop <= 6;
+                });
+        assertThat(ringOnThisButton)
+                .as("画像按钮的右上角不许再贴着角标环（同排那颗「用 AI 填充」仍然有环）")
+                .isFalse();
     }
 
     private String headerName(String column) {

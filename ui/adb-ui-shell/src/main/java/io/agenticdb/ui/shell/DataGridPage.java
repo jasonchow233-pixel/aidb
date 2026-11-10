@@ -166,6 +166,20 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final Feedback feedback;
     private final Consumer<String> openStructure;
     private final Executor dbExecutor;
+    /**
+     * ⭐ 2026-11-10：打开「数据画像」工具页（参数 = 表名）。
+     *
+     * <p>此前这颗按钮落的是一句「本版本未提供」的说明页，而画像能力早已交付
+     * （{@code DataProfilingPage} 挂在功能区「数据画像」那一格）—— 同一个能力，
+     * 一条路能用、另一条路说没有。这里把它接到真页面上。
+     *
+     * <p>做成 setter 而不是构造参数：构造签名已经被 20 多处测试用着，
+     * 加一个参数等于把整仓的测试调用点全改一遍（那个改法会把 diff 淹没）。
+     *
+     * <p>⚠️ 没接线时那颗按钮是<b>禁用</b>的 —— 摆一颗点了没反应的按钮，
+     * 正是这个项目反复踩的坑（诚实条款不许「装了个死按钮」）。
+     */
+    private Consumer<String> openProfiling;
 
     private final TableView<Map<String, Object>> grid = new TableView<>();
     private final StackPane body = new StackPane();
@@ -268,8 +282,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             I18n.t("grid.toolbar.fillWithAi"));
     private final Button profilingButton = IconButtons.icon(Icons.Icon.DIAGNOSTICS,
             I18n.t("grid.toolbar.dataProfiling"));
-    private final Button generationButton = IconButtons.icon(Icons.Icon.GRID,
-            I18n.t("grid.toolbar.dataGeneration"));
     private final Button maskingButton = IconButtons.icon(Icons.Icon.LOCK,
             I18n.t("grid.toolbar.dataMasking"));
     private final MenuButton viewButton = IconButtons.iconMenu(new MenuButton(), Icons.Icon.LIST, I18n.t("grid.toolbar.view"));
@@ -1297,8 +1309,15 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         profilingButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         toolbarOp(profilingButton, Icons.Icon.DIAGNOSTICS, I18n.t("grid.toolbar.dataProfiling"),
                 I18n.t("grid.tip.dataProfiling"));
-        profilingButton.setOnAction(event ->
-                showCapabilityNotice(I18n.t("grid.toolbar.dataProfiling"), "grid.capability.profiling"));
+        // ⭐ 2026-11-10：接上真的画像页（此前落说明页，而能力早已交付 ——
+        //    功能区「数据画像」那一格就能用，两条路自相矛盾）。
+        //    外壳还没接线时按钮是**禁用**的（不许摆点了没反应的按钮）。
+        profilingButton.setDisable(true);
+        profilingButton.setOnAction(event -> {
+            if (openProfiling != null) {
+                openProfiling.accept(tableName);
+            }
+        });
 
         // 视图菜单（≡▾）：冻结、隐藏空值、表单视图等 AIDB 已有的显示开关。
         // ⭐ R43-c：这颗挂 adb-button--icon-menu，不是 adb-button--icon ——
@@ -1371,14 +1390,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 I18n.t("grid.tip.import"));
         importButton.setOnAction(event -> openImportWizard());
 
-        generationButton.setId("data-generation");
-        generationButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
-        toolbarOp(generationButton, Icons.Icon.GRID, I18n.t("grid.toolbar.dataGeneration"),
-                I18n.t("grid.tip.dataGeneration"));
-        generationButton.setOnAction(event ->
-                showCapabilityNotice(I18n.t("grid.toolbar.dataGeneration"),
-                        "grid.capability.generation"));
-
         maskingButton.setId("data-masking");
         maskingButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         toolbarOp(maskingButton, Icons.Icon.LOCK, I18n.t("grid.toolbar.dataMasking"),
@@ -1399,7 +1410,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         namedToolbarKeys.addAll(List.of(
                 tableProfileButton, beginTxButton, cellEditorButton, filterButton,
                 columnsButton, historyButton, fillWithAiButton, profilingButton,
-                importButton, exportButton, generationButton, maskingButton));
+                importButton, exportButton, maskingButton));
 
         toolGroupProfile.getChildren().add(tableProfileButton);
         toolGroupTx.getChildren().addAll(beginTxButton, commitTxButton, rollbackTxButton);
@@ -1407,13 +1418,12 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         toolGroupView.getChildren().addAll(columnsButton, historyButton);
         toolGroupInsight.getChildren().addAll(fillWithAiButton, profilingButton);
         toolGroupTransfer.getChildren().addAll(importButton, exportButton,
-                generationButton, maskingButton);
-        // ⭐ D-61：只剩这三颗落 showCapabilityNotice（判据 = 落点函数），入口提前说实话 ——
+                maskingButton);
+        // ⭐ D-61：只剩这颗落 showCapabilityNotice（判据 = 落点函数），入口提前说实话 ——
         //    环挂各自所在组（managed=false 不吃排版），tooltip/accessibleText 带同一句。
-        //    BI Workspace 已移除；Data Masking 在 P-3 接上真导出向导，角标随能力面摘掉。
+        //    BI Workspace 已移除；Data Masking 在 P-3 接上真导出向导、Data Profiling
+        //    在 2026-11-10 接上真工具页，两处的角标都随能力面摘掉了。
         PendingMark.mark(toolGroupInsight, fillWithAiButton);
-        PendingMark.mark(toolGroupInsight, profilingButton);
-        PendingMark.mark(toolGroupTransfer, generationButton);
 
         // ⭐ N18：右端两颗小键 —— 视图菜单（≡▾）+ 溢出（»）。
         //    放不下的具名键从右往左折进 » 的菜单里，不再把整排文字收掉。
@@ -5627,6 +5637,17 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     /** P2-3：历史数据来源（外壳按当前表筛选后喂进来）。 */
     void setHistorySource(java.util.function.Supplier<List<QueryHistory.Entry>> source) {
         this.historySource = source == null ? List::of : source;
+    }
+
+    /**
+     * ⭐ 2026-11-10：打开「数据画像」工具页的回调（参数 = 表名）。
+     *
+     * <p>外壳注入。注入即启用那颗按钮 —— 没注入时它保持禁用，
+     * 而不是摆一颗点了没反应的按钮。
+     */
+    void setOpenProfiling(Consumer<String> opener) {
+        this.openProfiling = opener;
+        profilingButton.setDisable(opener == null);
     }
 
     /** P2-3：选中一条历史后做什么（外壳负责开查询页）。 */

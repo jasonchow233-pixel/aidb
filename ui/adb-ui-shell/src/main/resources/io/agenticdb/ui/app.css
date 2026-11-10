@@ -328,14 +328,6 @@
     -fx-stroke: -adb-kind-procedure;
 }
 
-.adb-ribbon__icon--automation {
-    -fx-stroke: -adb-kind-procedure;
-}
-
-.adb-ribbon__icon--model {
-    -fx-stroke: -adb-kind-trigger;
-}
-
 /* ── 功能区彩色档（R35 N4-a）──────────────────────────────────────────
  *    上面那几条单类规则挂在 Group 上是**死规则**（Group 没有 -fx-stroke），
  *    它们只服务「没有彩色资产 → 回落单色 SVGPath」那条路径。
@@ -351,7 +343,6 @@
 }
 
 .adb-ribbon__icon--query .adb-icon-edge,
-.adb-ribbon__icon--automation .adb-icon-edge,
 .adb-ribbon__icon--user .adb-icon-edge,
 .adb-ribbon__icon--transfer .adb-icon-edge {
     -fx-stroke: -adb-kind-procedure;
@@ -363,10 +354,6 @@
 
 .adb-ribbon__icon--function .adb-icon-edge {
     -fx-stroke: -adb-kind-function;
-}
-
-.adb-ribbon__icon--model .adb-icon-edge {
-    -fx-stroke: -adb-kind-trigger;
 }
 
 .adb-ribbon__icon--others .adb-icon-edge {
