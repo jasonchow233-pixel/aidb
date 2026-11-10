@@ -399,6 +399,12 @@ public final class SqliteDialect implements Dialect {
     }
 
     @Override
+    public String renameViewSql(String oldName, String newName) {
+        // ⭐ 视图也落在 sqlite_master，ALTER TABLE RENAME 同样适用。
+        return "ALTER TABLE " + quote(oldName) + " RENAME TO " + quote(newName);
+    }
+
+    @Override
     public String truncateTableSql(String table) {
         // ⭐ SQLite 没有 TRUNCATE —— 只有 DELETE FROM。
         //   写成 TRUNCATE 会在运行时才炸，所以这个差异必须在方言里兜住。

@@ -518,6 +518,11 @@ public final class PostgresDialect implements Dialect {
     }
 
     @Override
+    public String renameViewSql(String oldName, String newName) {
+        return "ALTER VIEW " + quote(oldName) + " RENAME TO " + quote(newName);
+    }
+
+    @Override
     public String truncateTableSql(String table) {
         return "TRUNCATE TABLE " + quote(table);
     }

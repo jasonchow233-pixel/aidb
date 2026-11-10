@@ -546,6 +546,12 @@ public class MySqlDialect implements Dialect {
     }
 
     @Override
+    public String renameViewSql(String oldName, String newName) {
+        // ⭐ 视图与表同命名空间：RENAME TABLE 对视图同样生效（MySQL 5.7+）。
+        return "RENAME TABLE " + quote(oldName) + " TO " + quote(newName);
+    }
+
+    @Override
     public String truncateTableSql(String table) {
         return "TRUNCATE TABLE " + quote(table);
     }

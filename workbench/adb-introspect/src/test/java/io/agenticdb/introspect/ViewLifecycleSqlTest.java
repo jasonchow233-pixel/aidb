@@ -102,6 +102,58 @@ class ViewLifecycleSqlTest {
                 .containsExactly("DROP VIEW [active_users]");
     }
 
+    // ─────────────────────────── 重命名视图 ───────────────────────────
+
+    @Test
+    void mysqlAndMariaDbRenameViewWithRenameTableTheOthersWithAlter() {
+        // ⭐ 与表重命名同构，但视图与表在六种方言里共处同一命名空间：
+        //    MySQL / MariaDB 的 RENAME TABLE 对视图同样生效；
+        //    PostgreSQL / Oracle 走 ALTER VIEW … RENAME TO；
+        //    SQLite 视图落在 sqlite_master，ALTER TABLE RENAME 适用；
+        //    SQL Server 视图与表一样走 sp_rename。
+        assertThat(StructureSqlBuilder.renameView(
+                FakeDialectSession.of(DialectKind.MYSQL), "v", "v2", List.of())
+                .statements()).containsExactly("RENAME TABLE `v` TO `v2`");
+        assertThat(StructureSqlBuilder.renameView(
+                FakeDialectSession.of(DialectKind.MARIADB), "v", "v2", List.of())
+                .statements()).containsExactly("RENAME TABLE `v` TO `v2`");
+        assertThat(StructureSqlBuilder.renameView(
+                FakeDialectSession.of(DialectKind.POSTGRESQL), "v", "v2", List.of())
+                .statements()).containsExactly("ALTER VIEW \"v\" RENAME TO \"v2\"");
+        assertThat(StructureSqlBuilder.renameView(
+                FakeDialectSession.of(DialectKind.ORACLE), "v", "v2", List.of())
+                .statements()).containsExactly("ALTER VIEW \"v\" RENAME TO \"v2\"");
+        assertThat(StructureSqlBuilder.renameView(
+                FakeDialectSession.of(DialectKind.SQLITE), "v", "v2", List.of())
+                .statements()).containsExactly("ALTER TABLE \"v\" RENAME TO \"v2\"");
+        assertThat(StructureSqlBuilder.renameView(
+                FakeDialectSession.of(DialectKind.SQLSERVER), "v", "v2", List.of())
+                .statements()).containsExactly("EXEC sp_rename N'v', N'v2'");
+
+        // ⭐ 预览与执行同源：标题键、危险等级、二次确认都要钉死。
+        StructurePlan plan = StructureSqlBuilder.renameView(
+                FakeDialectSession.of(DialectKind.SQLITE), "v", "v2", List.of());
+        assertThat(plan.titleKey()).isEqualTo("plan.title.renameView");
+        assertThat(plan.approvalRequired())
+                .as("重命名视图是破坏性动作，必须第二道确认")
+                .isTrue();
+    }
+
+    @Test
+    void renameViewRefusesATakenTargetAndANoOp() {
+        // 视图名与表名共用命名空间，taken 含表名时一样拦（撞表名）。
+        assertThatThrownBy(() -> StructureSqlBuilder.renameView(
+                FakeDialectSession.of(DialectKind.SQLITE), "v", "users", List.of("users")))
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "view.error.nameTaken");
+
+        // 新名 == 旧名（大小写不敏感）是无操作，提前拦掉。
+        assertThatThrownBy(() -> StructureSqlBuilder.renameView(
+                FakeDialectSession.of(DialectKind.SQLITE), "v", "V", List.of()))
+                .isInstanceOf(ColumnProblem.class)
+                .hasFieldOrPropertyWithValue("key", "view.error.sameName");
+    }
+
     // ─────────────────────────── 正文形态 ───────────────────────────
 
     @Test

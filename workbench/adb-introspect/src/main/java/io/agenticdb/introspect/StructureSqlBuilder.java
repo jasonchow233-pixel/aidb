@@ -607,6 +607,36 @@ public final class StructureSqlBuilder {
                 Danger.DESTRUCTIVE, true, false);
     }
 
+    /**
+     * 重命名视图。
+     *
+     * <p>与 {@link #renameTable} 同构，但视图名与表名在六种方言里共处同一命名空间，
+     * 所以 {@code taken} 必须同时含表名与视图名（调用方给的 {@code existingTablesFor}
+     * 已经返回两者）。旧名来自树节点（已是真实视图），仍按 {@code viewNameProblem}
+     * 复核形状 + 重名，并拒绝「新名 == 旧名」这种无操作。
+     *
+     * <p>SQL 形态按方言各不相同（MySQL / MariaDB 走 {@code RENAME TABLE}，
+     * PostgreSQL / Oracle 走 {@code ALTER VIEW … RENAME TO}，SQLite 走
+     * {@code ALTER TABLE … RENAME TO}，SQL Server 走 {@code sp_rename}），
+     * 一律由 {@link Dialect#renameViewSql} 给出，UI 不拼。
+     */
+    public static StructurePlan renameView(DbSession session, String oldName,
+                                           String newName, List<String> taken) {
+        requireViewName(oldName);
+        ColumnProblem problem = viewNameProblem(newName, taken);
+        if (problem != null) {
+            throw problem;
+        }
+        String from = oldName.trim();
+        String to = newName.trim();
+        if (from.equalsIgnoreCase(to)) {
+            throw new ColumnProblem("view.error.sameName");
+        }
+        return new StructurePlan("plan.title.renameView", List.of(from, to),
+                List.of(session.dialect().renameViewSql(from, to)),
+                Danger.DESTRUCTIVE, true, false);
+    }
+
     /** 删除表。 */
     public static StructurePlan dropTable(DbSession session, String name) {
         requireTableName(name);

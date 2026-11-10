@@ -50,6 +50,18 @@
   重写支持新增 / 编辑 / 删除 OR 组，`FilterPanelAuditTest` 改为真测 OR 组合并条件。
   门禁：`DataSqlBuilderTest` 增 3 条（OR 组 / 组内 AND 组间 OR / 单组仍平铺 AND）、
   `I18nAuditTest` 18 条全绿（含 CJK 棘轮；构造函数守卫消息改用中性英文，不增长模型层中文字面量）。
+- **视图重命名落地真实能力**（2026-11-10）：补上视图生命周期的最后一环——此前视图可建 / 改 / 删，
+  但不能改名（backlog 原首条之外的明确缺口）。右键视图节点「重命名视图…」走与表重命名同一套
+  自建 Dialog（`showRenameViewDialog`）：校验拦在关窗之前、错误就地写在弹窗内 `.adb-error` 行，
+  不再关窗后另开 ERROR 弹窗（D-69 范式覆盖到视图）。模型层 `StructureSqlBuilder.renameView` +
+  五方言 `Dialect.renameViewSql`：MySQL / MariaDB 用 `RENAME TABLE`（视图与表同走这条）、
+  PostgreSQL / Oracle 用 `ALTER VIEW … RENAME TO`、SQLite 用 `ALTER TABLE … RENAME TO`、
+  SQL Server 用 `sp_rename`；表与视图在六种方言共享同一命名空间，故撞名检测清单覆盖全部对象名
+  （`existingTablesFor` 已返回表 + 视图）。i18n 中英文 5 组键齐平（`action.object.rename-view` /
+  `sidebar.onlyView.rename` / `view.error.sameName` / `ddl.rename.title.view` / `plan.title.renameView`）。
+  门禁：`ViewLifecycleSqlTest` 增补两条（五方言 SQL 形态 + 撞名 / 同名拒发，`13/13`）、
+  `TableDdlTest` 增补视图重命名行为门禁（SQLite 跑通 / 撞名拒发 / 同名拒发 / 取消零 SQL /
+  双语言计划标题 / 弹窗拦截源码扫描）、`I18nAuditTest` 18 条全绿（CJK 棘轮未增长）。
 
 ### Fixed
 

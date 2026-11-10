@@ -284,6 +284,117 @@ final class TableDdl {
                 existingTablesFor.apply(connectionId)));
     }
 
+    /**
+     * ⭐ B3：重命名视图 —— 与重命名表同构。
+     *
+     * <p>弹输入框问新名字，校验拦在关窗之前（{@link #showRenameViewDialog}），
+     * 通过后走 {@link #renameView(String, String, String)}。
+     */
+    void renameView(String connectionId, String view) {
+        DbSession current = sessionFor.apply(connectionId);
+        if (current == null) {
+            status.accept(I18n.t("ddl.noSession"));
+            return;
+        }
+        if (blank(view)) {
+            status.accept(I18n.t("ddl.pickView"));
+            return;
+        }
+        Dialog<String> dialog = showRenameViewDialog(connectionId, current, view);
+        Optional<String> answer = dialog.showAndWait();
+        if (answer.isEmpty()) {
+            status.accept(I18n.t("ddl.cancelled.rename"));
+            return;
+        }
+        renameView(connectionId, view, answer.get().trim());
+    }
+
+    /**
+     * ⭐ B3：造出重命名视图弹窗 —— 与 {@link #showRenameDialog} 同一套拦截范式，
+     * 只是标题 / 校验换成视图专属（{@code viewNameProblem}）。拆成不 show 的方法，
+     * 同样是为了给行为门禁一个可按键序调用的接缝。
+     */
+    Dialog<String> showRenameViewDialog(String connectionId, DbSession current, String view) {
+        Dialog<String> dialog = new Dialog<>();
+        dialog.setTitle(I18n.t("ddl.rename.title.view"));
+        dialog.setHeaderText(I18n.t("ddl.rename.header.view", view));
+        javafx.scene.control.TextField input = new javafx.scene.control.TextField(view);
+        input.setId("rename-view-input");
+        input.setMaxWidth(Double.MAX_VALUE);
+        javafx.scene.control.Label error = new javafx.scene.control.Label();
+        error.setId("rename-view-error");
+        error.getStyleClass().add("adb-error");
+        error.setVisible(false);
+        error.setManaged(false);
+        javafx.scene.layout.VBox body = new javafx.scene.layout.VBox(8, input, error);
+        ButtonType apply = new ButtonType(I18n.t("ddl.rename.apply"),
+                ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType(I18n.t("common.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
+        dialog.getDialogPane().setContent(body);
+        dialog.getDialogPane().getButtonTypes().addAll(apply, cancel);
+        javafx.scene.Node applyButton = dialog.getDialogPane().lookupButton(apply);
+        applyButton.addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+            String next = input.getText() == null ? "" : input.getText().trim();
+            String problem = viewNameProblem(connectionId, next, current, view);
+            error.setText(problem == null ? "" : problem);
+            error.setVisible(problem != null);
+            error.setManaged(problem != null);
+            if (problem != null) {
+                event.consume();
+            }
+        });
+        dialog.setResultConverter(type -> type == apply
+                ? (input.getText() == null ? "" : input.getText().trim()) : null);
+        input.setOnAction(event -> {
+            if (applyButton instanceof javafx.scene.control.ButtonBase buttonBase) {
+                buttonBase.fire();
+            }
+        });
+        if (owner.get() != null) {
+            dialog.initOwner(owner.get());
+        }
+        DialogStyles.apply(dialog, owner.get());
+        return dialog;
+    }
+
+    /**
+     * ⭐ B3：重命名视图（不弹框版本 —— 名字已确定）。
+     *
+     * <p>校验 + 执行这段能被单测覆盖（弹框层没法在无头里按住，但规则必须守得住）。
+     */
+    void renameView(String connectionId, String view, String next) {
+        DbSession current = sessionFor.apply(connectionId);
+        if (current == null) {
+            status.accept(I18n.t("ddl.noSession"));
+            return;
+        }
+        if (blank(view)) {
+            status.accept(I18n.t("ddl.pickView"));
+            return;
+        }
+        String problem = viewNameProblem(connectionId, next, current, view);
+        if (problem != null) {
+            status.accept(problem);
+            return;
+        }
+        run(connectionId, StructureSqlBuilder.renameView(current, view, next.trim(),
+                existingTablesFor.apply(connectionId)));
+    }
+
+    /** ⭐ B3：视图名的校验（重命名时用；建视图走 {@link StructureSqlBuilder#viewStatements}）。 */
+    private String viewNameProblem(String connectionId, String next, DbSession current,
+                                   String oldName) {
+        // ⭐ 视图与表共用一个命名空间：taken 要含全库对象，再把旧名摘掉（否则新名==旧名被算撞名）。
+        List<String> others = new java.util.ArrayList<>(existingTablesFor.apply(connectionId));
+        others.removeIf(name -> name.equalsIgnoreCase(oldName));
+        try {
+            StructureSqlBuilder.renameView(current, oldName, next, others);
+            return null;
+        } catch (IllegalArgumentException e) {
+            return NewTableDialog.problemText(e);
+        }
+    }
+
     /** T4 删除表。 */
     void dropTable(String connectionId, String table) {
         DbSession current = sessionFor.apply(connectionId);

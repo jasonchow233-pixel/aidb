@@ -721,6 +721,17 @@ public interface Dialect {
     String renameTableSql(String oldName, String newName);
 
     /**
+     * 重命名视图。
+     *
+     * <p>与 {@link #renameTableSql} 同形的方言差异，但视图与表在六种方言里共处同一命名空间：
+     * MySQL / MariaDB 走 {@code RENAME TABLE}（对视图同样生效），
+     * PostgreSQL / Oracle 走 {@code ALTER VIEW … RENAME TO}，
+     * SQLite 走 {@code ALTER TABLE … RENAME TO}（视图也落在 sqlite_master），
+     * SQL Server 走 {@code sp_rename}。UI 一律走这里，不允许在弹窗里拼 "ALTER VIEW " + 名字。
+     */
+    String renameViewSql(String oldName, String newName);
+
+    /**
      * 清空表（保留表结构）。
      *
      * <p>SQLite <b>没有</b> {@code TRUNCATE} —— 只能用 {@code DELETE FROM}。

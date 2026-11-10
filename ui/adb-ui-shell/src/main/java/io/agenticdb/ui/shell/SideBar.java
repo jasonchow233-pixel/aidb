@@ -311,6 +311,9 @@ public final class SideBar extends VBox {
                 () -> onSelected(SideBarObject.DESIGN_VIEW));
         actions.register("object.drop-view", I18n.t("action.object.drop-view"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.DROP_VIEW));
+        // ⭐ B3：重命名视图 —— 与重命名表同格，但只挂在视图节点上（表节点上灰掉）。
+        actions.register("object.rename-view", I18n.t("action.object.rename-view"), I18n.t("category.object"), null,
+                () -> onSelected(SideBarObject.RENAME_VIEW));
         // ⭐ UX-6：侧栏「已保存查询」分组里的条目（打开 = 新查询页 + 预填 SQL）。
         actions.register("saved-query.open", I18n.t("action.saved-query.open"), I18n.t("category.query"), null,
                 () -> onSelected(SideBarObject.OPEN_SAVED_QUERY));
@@ -336,6 +339,8 @@ public final class SideBar extends VBox {
         NEW_VIEW,
         DESIGN_VIEW,
         DROP_VIEW,
+        /** ⭐ B3：重命名视图（执行同样在 {@link TableDdl}）。 */
+        RENAME_VIEW,
         /** ⭐ U1：把当前连接切到这个库（重连）。 */
         SWITCH_CATALOG,
         /** ⭐ UX-6：打开一条已保存查询（新查询页 + 预填 SQL）。 */
@@ -1933,6 +1938,7 @@ public final class SideBar extends VBox {
                     new SeparatorMenuItem(),
                     actions.menuItem("object.refresh-table"),
                     actions.menuItem("object.design-view"),
+                    actions.menuItem("object.rename-view"),
                     actions.menuItem("object.drop-view"));
             case CONNECTION -> menu.getItems().addAll(
                     actions.menuItem("new-connection", I18n.t("sidebar.editConnection")),
@@ -2075,7 +2081,7 @@ public final class SideBar extends VBox {
             //    和建表一样），设计与删除只落在视图节点上 —— 表节点上这两项是灰的。
             case NEW_VIEW ->
                     onTableDdl.accept(new TableRequest(SideBarObject.NEW_VIEW, null, owner));
-            case DESIGN_VIEW, DROP_VIEW -> {
+            case DESIGN_VIEW, DROP_VIEW, RENAME_VIEW -> {
                 if (node.kind() == NodeKind.VIEW) {
                     onTableDdl.accept(new TableRequest(action, node.name(), owner));
                 } else {
@@ -2121,6 +2127,7 @@ public final class SideBar extends VBox {
         return switch (action) {
             case DESIGN_VIEW -> "sidebar.onlyView.design";
             case DROP_VIEW -> "sidebar.onlyView.drop";
+            case RENAME_VIEW -> "sidebar.onlyView.rename";
             default -> "sidebar.onlyView.generic";
         };
     }
@@ -2178,6 +2185,7 @@ public final class SideBar extends VBox {
         setObjectActionEnabled("object.new-view",
                 node != null && !isConnectionGroup && !isSavedNode);
         setObjectActionEnabled("object.design-view", isView);
+        setObjectActionEnabled("object.rename-view", isView);
         setObjectActionEnabled("object.drop-view", isView);
         // ⭐ U1：切库只挂在库节点上。
         setObjectActionEnabled("object.switch-catalog", isCatalog);

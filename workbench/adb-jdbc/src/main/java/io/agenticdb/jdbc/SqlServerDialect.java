@@ -638,6 +638,12 @@ public final class SqlServerDialect implements Dialect {
     }
 
     @Override
+    public String renameViewSql(String oldName, String newName) {
+        return "EXEC sp_rename N'" + quotedLiteral(oldName) + "', N'"
+                + quotedLiteral(newName) + "'";
+    }
+
+    @Override
     public String truncateTableSql(String table) {
         return "TRUNCATE TABLE " + quote(table);
     }

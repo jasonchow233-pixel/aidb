@@ -1047,6 +1047,7 @@ public final class AppShell extends StackPane {
             case NEW_VIEW -> ddl.createView(connectionId);
             case DESIGN_VIEW -> ddl.designView(connectionId, request.tableName());
             case DROP_VIEW -> ddl.dropView(connectionId, request.tableName());
+            case RENAME_VIEW -> ddl.renameView(connectionId, request.tableName());
             default -> status(I18n.t("shell.actionNotWired"));
         }
     }

@@ -336,6 +336,127 @@ class TableDdlTest {
         assertThat(session.executed()).isEmpty();
     }
 
+    // ─────────────────── B3：视图重命名（V3 改名，与表重命名同构） ───────────────────
+
+    /**
+     * V3 重命名视图：SQLite 上仍走 {@code ALTER TABLE … RENAME TO}（表与视图同命名空间，
+     * 但 SQL 由方言给——复用表路径会漏掉 SQL Server 的 {@code sp_rename}）。
+     */
+    @Test
+    void renameViewRunsOnASqliteSession() {
+        TableDdl ddl = ddl(List.of(), true);
+
+        ddl.renameView("conn", "v_active_users", "v_active_users2");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(session.executed())
+                .containsExactly("ALTER TABLE \"v_active_users\" RENAME TO \"v_active_users2\"");
+    }
+
+    /** 视图重名必须被拦下，且不发任何 SQL（与表重名同一规则）。 */
+    @Test
+    void renameViewToAnExistingNameIsRefused() {
+        TableDdl ddl = ddl(List.of("users"), true);
+
+        ddl.renameView("conn", "v_active_users", "users");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(session.executed()).isEmpty();
+        assertThat(statuses).last().asString()
+                .contains(I18n.t("view.error.nameTaken", "users"))
+                .doesNotContain("⚠");
+    }
+
+    /** 新名与旧名相同 = 无操作，必须拦下（与表改名同一规则）。 */
+    @Test
+    void renamingAViewToItselfIsRefused() {
+        TableDdl ddl = ddl(List.of(), true);
+
+        ddl.renameView("conn", "v_active_users", "v_active_users");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(session.executed()).isEmpty();
+        assertThat(statuses).last().asString()
+                .contains(I18n.t("view.error.sameName"))
+                .doesNotContain("⚠");
+    }
+
+    /**
+     * V3 取消重命名视图：与表同一规则 —— 点了取消一条 SQL 都不许发出去。
+     */
+    @Test
+    void cancellingAViewRenameSendsNoSql() {
+        TableDdl ddl = ddl(List.of(), false);
+
+        ddl.renameView("conn", "v_active_users", "v_active_users2");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(session.executed())
+                .as("点了取消就等于什么都没发生 —— 一条 SQL 都不许发出去")
+                .isEmpty();
+    }
+
+    /**
+     * ⭐ B3：结构计划标题在两种语言里都渲染成人话（视图重命名这条）。
+     */
+    @Test
+    void renameViewPlanTitlesRenderAsHumanTextInBothLanguages() {
+        List<StructurePlan> seen = new ArrayList<>();
+        TableDdl ddl = new TableDdl(id -> session, id -> Runnable::run, statuses::add,
+                id -> List.of(), id -> changes.incrementAndGet(), () -> null, List::of);
+        ddl.setConfirmation(plan -> {
+            seen.add(plan);
+            return false;
+        });
+
+        ddl.renameView("conn", "v_active_users", "v_active_users2");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(seen).hasSize(1);
+        try {
+            I18n.setLocale(Locale.ENGLISH);
+            assertThat(StructurePlanRunner.title(seen.get(0)))
+                    .as("英文构建里标题必须是英文")
+                    .isEqualTo("Rename view v_active_users to v_active_users2");
+            I18n.setLocale(Locale.CHINESE);
+            assertThat(StructurePlanRunner.title(seen.get(0)))
+                    .isEqualTo("重命名视图 v_active_users → v_active_users2");
+            assertThat(StructurePlanRunner.title(seen.get(0)))
+                    .as("掉键会露出 ⚠key，掉占位符会露出字面 {0}")
+                    .doesNotContain("⚠").doesNotContain("{");
+        } finally {
+            I18n.setLocale(I18n.DEFAULT_LOCALE);
+        }
+    }
+
+    /**
+     * ⭐ B3：视图重命名弹窗同样要拦在关窗之前（D-69 范式不能只守表）。
+     *
+     * <p>与 {@link #theRenameDialogInterceptsBeforeClosingIt} 同一套判法，只是换成视图的
+     * 字眼：弹窗 OK 按下必须先过 {@code viewNameProblem}，且不能绕开校验直发
+     * {@code renameView(connectionId, view, next.trim())}。
+     */
+    @Test
+    void theRenameViewDialogInterceptsBeforeClosingIt() throws Exception {
+        java.nio.file.Path source = java.nio.file.Path.of(
+                "src/main/java/io/agenticdb/ui/shell/TableDdl.java");
+        String text = stripRenameComments(
+                java.nio.file.Files.readString(source, java.nio.charset.StandardCharsets.UTF_8));
+
+        assertThat(text)
+                .as("视图弹窗的 OK 按下也要先过校验拦一次（EventFilter consume = 弹窗留在原地）")
+                .contains("addEventFilter(javafx.event.ActionEvent.ACTION");
+        assertThat(text)
+                .as("错误要就地显示在弹窗里：内容区必须有错误行")
+                .contains("adb-error");
+        assertThat(text)
+                .as("视图弹窗关窗后的 ERROR 弹窗必须拆掉")
+                .doesNotContain("new Alert(");
+        assertThat(text)
+                .as("视图弹窗不能绕开校验直发 renameView —— 那等于 D-69 没修")
+                .doesNotContain("renameView(connectionId, view, next.trim())");
+    }
+
     /**
      * ⭐ D-15：重命名框必须是<b>我们自建的 Dialog</b>，不许退回 {@code TextInputDialog}。
      *
