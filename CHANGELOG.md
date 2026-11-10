@@ -21,6 +21,16 @@
   原先的口径是「不做 BI，但保留一颗点开只说本版本未提供的说明页」；既然范围无界且已裁定不做，
   继续在界面上摆这颗磁贴本身就等于假装有一个功能面。
 
+### Changed
+
+- **backlog 文档核对（2026-11-10）**：原 backlog 首条「建表弹窗录入外键 / 索引 / CHECK」经查已于
+  第 30/31 轮（commit `0f001a5`）随七页表设计器完整交付——`NewTableDialog` 的索引 / 外键 /
+  CHECK / 触发器四个页签已接上，且 `currentPlan()` 经 `StructureSqlBuilder.createTableWith`
+  把它们与字段合并进同一个 `StructurePlan`（预览与执行同源）。该条目从待执行移除；
+  并同步更正 `STATUS.md`「建表弹窗不能录外键 / 索引 / CHECK」与 `CHANGELOG` 中
+  「功能区角标仍剩 Function / Automation / Model 三格」两处过期措辞（Automation / Model 磁贴
+  已在本次 `Removed` 段删除，角标清单实际已清零）。
+
 ### Added
 
 - **功能区「函数」格接上真实例程清单页**（2026-11-10）：此前那格落的是一句
@@ -31,8 +41,7 @@
 - **数据网格工具条「数据画像」按钮直达画像页**（2026-11-10）：此前这颗按钮同样落说明页，
   而画像能力早已交付并挂在功能区「数据画像」那一格。现在点它直接打开画像工具页并
   **预选当前表**（路由形如 `TOOL_PROFILING + 表名`，与既有的 `TOOL_DIAGNOSTICS + 表名` 同形）。
-功能区角标现只剩
-  Function / Automation / Model 三格，门禁顺序与具名键名单同步收窄。
+功能区角标清单已清零（11 格全部有真落点，`PENDING_TILES` 空集，无遗留诚实环；搜索 / 问 AI 等剩余环不挂在 Ribbon 上）。
 - **Filter & Sort 面板「加 OR 条件组」落地真实能力**（2026-11-10）：此前 `[Ω]` 点开是如实说明页；
   现在它新增一组（上限 `MAX_GROUPS=8`，超出给 `filter.panel.error.groupLimit` 提示），
   组间 `OR`、组内 `AND`，满足 Navicat §1.9 的「条件组」形态。模型层 `DataQuery` 由
