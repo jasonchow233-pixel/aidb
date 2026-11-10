@@ -110,9 +110,14 @@ scale and on any platform.
 
 ## Install
 
-**There are no prebuilt binaries yet**, and that is not a placeholder I can wave away: a
-downloadable build needs an Apple Developer ID and a Windows code-signing certificate, which are
-external resources this project does not have. Until then, run it from source:
+**There are no signed, notarized binaries yet**, and that is not a placeholder I can wave away: a
+trustworthy download needs an Apple Developer ID (for macOS notarization) and a Windows code-signing
+certificate, which are external resources this project does not have. **CI still builds installers** —
+pushing a `v*` tag runs `.github/workflows/release.yml`, which produces an unsigned `.dmg` / `.msi` /
+`.deb` via `jpackage` and attaches them to a draft release. Windows and Linux run those unsigned
+packages without complaint; macOS gatekeeper blocks an unsigned `.dmg`, so for macOS the supported path
+is a source build (`./scripts/dev.sh` or `./scripts/package.sh`) until notarization is wired up. Until
+then, to run it from source:
 
 ```bash
 git clone https://github.com/jasonchow233-pixel/aidb.git
@@ -152,6 +157,15 @@ so there is something real to click on before you point it at your own data.
 ```
 
 Maven is vendored (`./mvnw`), so there is nothing to install beyond a JDK.
+
+**Toolchain:** `scripts/_env.sh` reads the enforcer range straight from `pom.xml` (`[25,28)`) and
+auto-selects a matching JDK before every build/screenshot script. Priority: an explicit, valid
+`JAVA_HOME` (never overridden) → `$HOME/.workbuddy/jdk/*` (a user-level install that survives
+reboots and `/tmp` cleanup) → a JDK registered with macOS `java_home`. Only the script's own
+`JAVA_HOME`/`PATH` are exported; the system default `java` is untouched. On a machine whose default
+JDK is still 11 or 17, drop a Temurin 25 bundle into `$HOME/.workbuddy/jdk/` and the scripts just work —
+no per-shell `export JAVA_HOME` needed. Set `ADB_JDK_DIR` to point somewhere else.
+
 [CONTRIBUTING.md](CONTRIBUTING.md) covers the environment gotchas, the module map and the rules
 every pull request is reviewed against. Design rules are in
 [docs/UI-VISUAL-SPEC.md](docs/UI-VISUAL-SPEC.md), structure in
@@ -242,7 +256,7 @@ MySQL / MariaDB / PostgreSQL 各跑一个加密服务，三家 × 6 条契约问
 全程键盘可达（⌘K 命令面板）。写操作 fail-closed 分级 + 两级确认；口令只进系统钥匙串 / 凭据管理器，明文不落盘。
 暗亮双主题、104 个设计令牌单一真相、四档密度、中英文界面。
 
-**目前没有可下载的安装包**（缺 Apple 公证与 Windows 代码签名证书），只能源码运行：`./scripts/dev.sh`。
+**目前没有「签名 / 公证」过的安装包**：缺 Apple 公证与 Windows 代码签名证书。但 CI 已能出包——推送 `v*` tag 会跑 `.github/workflows/release.yml`，用 `jpackage` 产出**未签名**的 `.dmg` / `.msi` / `.deb` 并挂到草稿发布；Windows / Linux 能直接跑未签名包，macOS 的 gatekeeper 会拦未签名 `.dmg`，所以 macOS 仍走源码构建（`./scripts/dev.sh` 或 `./scripts/package.sh`），等公证接上再放开。眼下最稳的体验仍是源码运行：`./scripts/dev.sh`。
 冷启动实测 **5.0–5.6 秒**（本机 macOS 15.7.9 + JDK 25，三次取最坏，口径「进程启动 → 首屏」），未达 <2 秒目标 ——
 旧文档那句「3.5–3.9 秒」量于另一台机器（Windows 10 + JDK 27）且没记读的是哪个数，不可比，已作废。
 这些都写在 [docs/STATUS.md](docs/STATUS.md) 里，不藏在截图后面。

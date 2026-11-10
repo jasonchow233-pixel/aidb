@@ -12,6 +12,16 @@
 > 配套：`docs/UI-GUIDE.md`（规则）· `docs/UI-FORMS-AND-STATES.md`（形态 / 空态裁定）·
 > `docs/ROADMAP.md`（公开路线图）· `docs/screenshots/`（本项目界面实拍帧，`p*.png`）。
 
+> ⚠️ **2026-11-09 当前口径校准（按轮次记录的下文不改写历史）**：文中 §11 的 Ribbon 示意图、
+> §7 的数据工具条表、以及各轮 CHANGE 记录里出现的「12 格 / `BI` / `Create BI Workspace` /
+> `Data Masking 落说明页`」都是**写下那一轮的事实**，不是今天的实现。当前实现是：
+> **13 格磁贴**（`BI` 整体移除，新增 `Profiling` / `Transfer` 真工具页）、
+> **12 个网格具名键**（`Create BI Workspace` 删除）、
+> **只剩 Fill with AI / Data Profiling / Data Generation 三颗落说明页**（`Data Masking` 已接列级脱敏导出）。
+> 判据以 `RibbonCapabilityAuditTest` / `ToolbarDiscoverabilityTest` / `GridInteractionTest` 为准，
+> 规则摘要以 `docs/UI-GUIDE.md` 的「命令带」一行为准，路线图口径以
+> `docs/internal/AIDB-DEV-PLAN-2026-11-09.md` 为准。
+
 ---
 
 ## 0. 怎么用这份文档

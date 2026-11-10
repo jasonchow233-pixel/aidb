@@ -171,6 +171,8 @@ public final class MenuBarFactory {
 
     private Menu windowMenu() {
         return new Menu(I18n.t("menu.window"), null,
+                actions.menuItem("window.new"),
+                new SeparatorMenuItem(),
                 actions.menuItem("window.minimize"),
                 actions.menuItem("window.zoom"),
                 new SeparatorMenuItem(),

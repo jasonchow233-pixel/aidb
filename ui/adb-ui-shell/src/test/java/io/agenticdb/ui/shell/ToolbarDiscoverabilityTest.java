@@ -45,12 +45,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Navicat 17 的数据网格顶栏是 <b>13 个具名键</b>
  * （{@code docs/internal/NAVICAT-TODO.md} §1.4 的清单），每个都带图标 + 文字 +
- * tooltip + accessibleText。放不下时<b>不再把整排文字收成图标</b> ——
+ * tooltip + accessibleText。⭐ 2026-11-09 BI 整体移除后，AIDB 当前是 <b>12 个具名键</b>
+ * —— 少的那一颗是 Navicat 有、但我们已裁定不做也不再摆占位入口的 `Create BI Workspace`；
+ * 这不是「漏了一颗」，{@link #NAMED_KEYS} 与 `DataGridPage.namedToolbarKeysForTest()` 同口径。
+ * 放不下时<b>不再把整排文字收成图标</b> ——
  * 那样会把 {@code Begin Transaction} 这类本来就该带文字的键一起收掉；
  * 现在从右往左把放不下的键折进右端的 {@code »} 菜单，文字与动作原样保留，
  * 且 {@code »} 可以用键盘（Tab + Enter）到达。
  *
- * <p>编辑簇（{@code + − ✓ ✗ ⋯}）不在这 13 个里：N19 把它们移到了网格左下的
+ * <p>编辑簇（{@code + − ✓ ✗ ⋯}）不在这份具名键名单里：N19 把它们移到了网格左下的
  * 行操作条，那里只有图标，但提示与朗读一样不许少。
  *
  * <p>这里钉五件事：
@@ -67,23 +70,23 @@ class ToolbarDiscoverabilityTest {
 
     /** 1280 是验收帧的宽度。 */
     private static final int WIDE_WIDTH = 1280;
-    /** 窄窗口档：13 个键必然折掉大半。 */
+    /** 窄窗口档：12 个键必然折掉大半。 */
     private static final int NARROW_WIDTH = 900;
 
     /**
-     * ⭐ N19：Navicat 数据页顶栏的 13 个具名键（按视觉顺序）。
+     * ⭐ N19：Navicat 数据页顶栏的具名键（按视觉顺序）。
      *
      * <p>名单来自 {@code docs/internal/NAVICAT-TODO.md} §1.4 的实拍清单：
      * {@code Table Profile▾ · Begin Transaction · Cell Editor · Filter & Sort ·
      * Columns · History · Fill with AI▾ · Data Profiling · Import · Export ·
-     * Data Generation · Data Masking · Create BI Workspace}。
+     * Data Generation · Data Masking}。2026-11-09 用户裁定移除 BI，
+     * 原先的 {@code Create BI Workspace} 连同 Ribbon 的 BI 磁贴一并删掉，当前 <b>12 个</b>。
      * 右端另有两颗小键：视图菜单（≡▾）与溢出（»），它们不算具名键。
      */
     private static final List<String> NAMED_KEYS = List.of(
             "data-table-profile", "data-begin-tx", "data-cell-editor", "data-filter",
             "data-columns", "data-history", "data-fill-ai", "data-profiling",
-            "data-import", "data-export", "data-generation", "data-masking",
-            "data-bi-workspace");
+            "data-import", "data-export", "data-generation", "data-masking");
 
     /** N19：编辑簇在网格左下的行操作条里，只有图标但提示齐全。 */
     private static final List<String> ROW_STRIP_KEYS = List.of(
@@ -198,7 +201,7 @@ class ToolbarDiscoverabilityTest {
         List<String> ids = WaitForAsyncUtils.asyncFx(page::namedToolbarKeysForTest).get()
                 .stream().map(Node::getId).toList();
         assertThat(ids)
-                .as("13 个具名键的项集与顺序必须和 Navicat 对账（§1.4 清单）")
+                .as("12 个具名键的项集与顺序必须和 Navicat 对账（§1.4 清单）")
                 .containsExactlyElementsOf(NAMED_KEYS);
 
         List<ButtonBase> keys = WaitForAsyncUtils.asyncFx(page::namedToolbarKeysForTest).get();
@@ -247,7 +250,7 @@ class ToolbarDiscoverabilityTest {
         DataGridPage page = page(robot);
         List<ButtonBase> folded = WaitForAsyncUtils.asyncFx(page::foldedToolbarKeysForTest).get();
         assertThat(folded)
-                .as("%dpx 下 13 个键不可能全放得下（前置条件：这条门禁在验折叠）", NARROW_WIDTH)
+                .as("%dpx 下 12 个具名键不可能全放得下（前置条件：这条门禁在验折叠）", NARROW_WIDTH)
                 .isNotEmpty();
         for (ButtonBase key : folded) {
             assertHint(key.getId(), key);

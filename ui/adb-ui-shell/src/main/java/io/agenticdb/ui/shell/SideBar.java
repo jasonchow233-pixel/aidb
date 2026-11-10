@@ -246,6 +246,9 @@ public final class SideBar extends VBox {
         buildExpanded();
         buildRail();
         getChildren().add(expanded);
+        // ⭐ 让展开的侧栏占满 SideBar 全高：不然后面的搜索底栏会按自然高度
+        //    停在窗口中上部（悬浮感），而不是贴住窗口底部。
+        VBox.setVgrow(expanded, Priority.ALWAYS);
     }
 
     /**
@@ -712,6 +715,9 @@ public final class SideBar extends VBox {
         }
         collapsed = value;
         getChildren().setAll(value ? rail : expanded);
+        // ⭐ 切换后的子节点也要占满 SideBar 全高（折叠态同理），否则底栏 / 末尾项
+        //    会停在窗口中上部。
+        VBox.setVgrow(value ? rail : expanded, Priority.ALWAYS);
         getStyleClass().remove("adb-sidebar--collapsed");
         if (value) {
             getStyleClass().add("adb-sidebar--collapsed");
@@ -1186,6 +1192,10 @@ public final class SideBar extends VBox {
         //    {@link ConnectionCatalog#graphic} 取（与向导磁贴同一枚）。这里登记的
         //    {@code Icons.Icon.CONNECT} 只是「认不出方言时」的兜底形状。
         ConnectionCatalog.Entry vendor = ConnectionCatalog.forKind(dialectKindOf(id));
+        // ⭐ A-2：连接节点内联「N 张表」计数在 DemoCell 显示层画，绝不拼进 name。
+        //    name 是树内部的**定位键**（展开 / 搜索命中 / 右键 / 门禁 findExact 全按纯名字找）；
+        //    把 " · N" 拼进去会让这些路径整体失效 —— 真机门禁实测 3 条 SideBarTreeTest 直接
+        //    NPE / 展开断言失败。懒加载前 objectsByConnection 为空就不画，load 后 refreshTree 补上。
         TreeItem<DemoNode> connectionNode = new TreeItem<>(new DemoNode(
                 name, NodeKind.CONNECTION, Icons.Icon.CONNECT,
                 "", id, vendor == null ? "" : vendor.styleClass()));
@@ -2367,7 +2377,7 @@ public final class SideBar extends VBox {
     public static final String TOOL_DIAGNOSTICS = "diagnostics:";
 
     /**
-     * ⭐ R36：Ribbon 上「能力面还没建」的五格路由键（N28 → R42）。
+     * ⭐ R36：Ribbon 上「能力面还没建」的路由键（N28 → R42）。
      *
      * <p>走 {@code WorkspaceView} 的 TOOL 分支 —— 这些路由没有真页面，
      * 由 {@link WorkspaceView} 给**如实说明页**（「本版本未提供」），不是死磁贴。
@@ -2377,7 +2387,10 @@ public final class SideBar extends VBox {
     public static final String TOOL_BACKUP = "backup";
     public static final String TOOL_AUTOMATION = "automation";
     public static final String TOOL_MODEL = "model";
-    public static final String TOOL_BI = "bi";
+    /** ⭐ P3 轻量 Data Profiling：单表列画像（样本）。 */
+    public static final String TOOL_PROFILING = "profiling";
+    /** ⭐ P3 跨库传输最小切片：单表 DB→DB。 */
+    public static final String TOOL_TRANSFER = "transfer";
 
     /**
      * ⭐ R37 N33：Ribbon 的 Function 格。
@@ -2399,10 +2412,15 @@ public final class SideBar extends VBox {
     /** ⭐ R37 N15：「用 AI 新建表」的能力面未建，落如实说明页。 */
     public static final String TOOL_NEW_TABLE_AI = "new-table-ai";
 
-    /** 上述五格的集合 —— {@code WorkspaceView} 按它给「本版本未提供」而不是通用空壳文案。 */
+    /** 上述格的集合 —— {@code WorkspaceView} 按它给「本版本未提供」而不是通用空壳文案。
+     *  ⭐ P2：User / Backup、P3：Profile / Transfer 四格已接真实工具页，移出此集合
+     *  （仍是诚实条款，只是从「没这功能」升级为「有这功能」）。
+     *  ⭐ 2026-11-09：BI 按用户裁定整体移除（连说明页入口一起），TOOL_BI 不再存在。
+     *  ⚠️ 这份集合同时是 Ribbon 角标的判据来源 ——
+     *  {@code RibbonCapabilityAuditTest#thePendingBadgesMatchTheHonestLandingPoints}
+     *  读它反推该挂哪几格，改动请与 {@code AppBar.PENDING_TILES} 同批。 */
     public static final java.util.Set<String> TOOL_UNAVAILABLE_ROUTES =
-            java.util.Set.of(TOOL_USERS, TOOL_BACKUP, TOOL_AUTOMATION, TOOL_MODEL, TOOL_BI,
-                    TOOL_NEW_TABLE_AI);
+            java.util.Set.of(TOOL_AUTOMATION, TOOL_MODEL, TOOL_NEW_TABLE_AI);
 
     private static void copy(String text) {
         ClipboardContent content = new ClipboardContent();
@@ -2536,6 +2554,19 @@ public final class SideBar extends VBox {
 
             HBox box = new HBox(6, lead, name);
             box.setAlignment(Pos.CENTER_LEFT);
+
+            // ⭐ A-2：连接名后内联表数（对齐 Navicat 树的信息密度）。这是**展示层**的
+            //    独立 Label：DemoNode.name 保持纯连接名，树内部与门禁都能按名字定位节点。
+            if (item.kind() == NodeKind.CONNECTION) {
+                long tableCount = objectsByConnection
+                        .getOrDefault(item.connectionId(), List.of()).stream()
+                        .filter(object -> object.kind() == ObjectKind.TABLE).count();
+                if (tableCount > 0) {
+                    Label count = new Label("\u00B7 " + tableCount);
+                    count.getStyleClass().add("adb-tree__count");
+                    box.getChildren().add(count);
+                }
+            }
 
             // ⭐ U1：当前正在用的库加粗标出（Navicat 也是这样标当前数据库的）。
             if (item.kind() == NodeKind.CATALOG

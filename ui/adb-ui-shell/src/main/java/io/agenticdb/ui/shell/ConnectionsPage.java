@@ -59,6 +59,8 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
     private final Button group = new Button(I18n.t("conn.action.group"));
     private final Button delete = new Button(I18n.t("common.delete"));
     private final Button refresh = IconButtons.of(Icons.Icon.REFRESH, I18n.t("action.refresh"));
+    /** ⭐ SSH known_hosts 管理入口：连接页是「信任过哪些跳板机」最该被找到的地方。 */
+    private final Button sshHosts = new Button(I18n.t("conn.ssh.hosts"));
 
     private Predicate<ConnectionProfile> deleteConfirmation = this::confirmDelete;
     private Consumer<ConnectionProfile> onOpen;
@@ -140,6 +142,9 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         refresh.getStyleClass().add("adb-button");
         refresh.setId("connections-refresh");
         refresh.setOnAction(event -> refresh());
+        sshHosts.getStyleClass().add("adb-button");
+        sshHosts.setId("connections-ssh-hosts");
+        sshHosts.setOnAction(event -> showSshHostKeys());
 
         HBox toolbar = new HBox(6, newConnection, open, edit, rename, group, duplicate, delete,
                 refresh);
@@ -150,7 +155,9 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         search.getStyleClass().add("adb-connections__search");
         search.setPromptText(I18n.t("conn.search.prompt"));
         favoritesOnly.getStyleClass().add("adb-connections__favorites");
-        HBox filter = new HBox(10, search, favoritesOnly);
+        Region filterSpacer = new Region();
+        HBox.setHgrow(filterSpacer, Priority.ALWAYS);
+        HBox filter = new HBox(10, search, favoritesOnly, filterSpacer, sshHosts);
         filter.setAlignment(Pos.CENTER_LEFT);
 
         buildColumns();
@@ -179,6 +186,28 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
         VBox.setVgrow(table, Priority.ALWAYS);
 
         getChildren().addAll(header, body);
+    }
+
+    /** ⭐ 已知 SSH 主机面板：非阻塞对话框，关闭按钮用项目既有的 common.close 文案。 */
+    private void showSshHostKeys() {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(I18n.t("ssh.hosts.title"));
+        dialog.setHeaderText(I18n.t("ssh.hosts.title"));
+        // 空态的「新建连接」出口：关掉面板、回到连接向导。
+        dialog.getDialogPane().setContent(new SshHostKeysPane(() -> {
+            dialog.close();
+            onNew.run();
+        }));
+        dialog.getDialogPane().getButtonTypes().setAll(new javafx.scene.control.ButtonType(
+                I18n.t("common.close"),
+                javafx.scene.control.ButtonBar.ButtonData.CANCEL_CLOSE));
+        dialog.setResizable(true);
+        if (getScene() != null && getScene().getWindow() != null) {
+            dialog.initOwner(getScene().getWindow());
+        }
+        // ⭐ §七：每颗弹窗都得套应用主题，否则会弹成 Modena 灰皮肤。
+        DialogStyles.apply(dialog, getScene() == null ? null : getScene().getWindow());
+        dialog.show();
     }
 
     /** 七列：名称 / 类型 / 主机 / 端口 / 数据库 / 用户 / 状态。 */

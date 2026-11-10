@@ -8,6 +8,7 @@ import io.agenticdb.model.RowPage;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.transfer.ExportFormat;
 import io.agenticdb.transfer.ExportOptions;
+import io.agenticdb.transfer.MaskRule;
 import io.agenticdb.transfer.TableExporter;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -27,6 +28,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.util.StringConverter;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -36,6 +38,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.SecureRandom;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -132,6 +135,19 @@ final class ExportWizard {
     private final Label formatHint = new Label();
     private final VBox columnBox = new VBox(3);
     private final List<CheckBox> columnChecks = new ArrayList<>();
+    // ⭐ P-3：列级脱敏。刻意不把下拉塞进 columnBox 的每一行 —— 那份 VBox 的孩子
+    //    是 CheckBox（TransferWizardTest 按 index 取它），改结构会把二十多处门禁全打翻。
+    private final CheckBox maskBox = new CheckBox(I18n.t("export.mask.enable"));
+    private final ComboBox<MaskRule.MaskMode> maskModeBox = new ComboBox<>();
+    private final VBox maskColumnBox = new VBox(3);
+    private final List<CheckBox> maskColumnChecks = new ArrayList<>();
+    private final Label maskNote = new Label();
+    // ⭐ P-3 加固：HASH 模式的导出级盐值。只在选了 HASH 时露出来，
+    //    盐值不写进导出文件，拿到文件的人无法对低熵值跑彩虹表。
+    private final TextField maskSaltField = new TextField();
+    private final Button maskSaltGenerate = new Button(I18n.t("export.mask.salt.generate"));
+    private final Label maskSaltHint = new Label(I18n.t("export.mask.salt.hint"));
+    private final HBox maskSaltRow = new HBox(8);
     private final TextField targetField = new TextField();
     private final TextArea log = new TextArea();
     private final ProgressIndicator spinner = new ProgressIndicator();
@@ -322,6 +338,78 @@ final class ExportWizard {
         HBox optionRow = new HBox(12, headerBox, quoteBox);
         optionRow.setAlignment(Pos.CENTER_LEFT);
 
+        // ⭐ P-3：列级脱敏。总开关与策略常驻一行；「要保护哪几列」收在折叠区里，
+        //    没开脱敏时这一节不占位，也不会让人误以为默认就脱敏了。
+        maskBox.setId("export-mask");
+        maskBox.getStyleClass().add("adb-check");
+        maskModeBox.getItems().setAll(MaskRule.MaskMode.values());
+        maskModeBox.getSelectionModel().select(MaskRule.MaskMode.FULL);
+        maskModeBox.setId("export-mask-mode");
+        // 领域枚举不认识 i18n（workbench 层不许反向依赖 UI），文案在这里映射。
+        maskModeBox.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(MaskRule.MaskMode mode) {
+                if (mode == null) {
+                    return "";
+                }
+                return switch (mode) {
+                    case FULL -> I18n.t("export.mask.mode.full");
+                    case EDGES -> I18n.t("export.mask.mode.edges");
+                    case HASH -> I18n.t("export.mask.mode.hash");
+                };
+            }
+
+            @Override
+            public MaskRule.MaskMode fromString(String text) {
+                return null;
+            }
+        });
+        for (String column : this.columns) {
+            CheckBox box = new CheckBox(column);
+            box.getStyleClass().add("adb-check");
+            maskColumnChecks.add(box);
+            maskColumnBox.getChildren().add(box);
+        }
+        maskColumnBox.setId("export-mask-columns");
+        maskNote.setId("export-mask-note");
+        maskNote.getStyleClass().add("adb-muted");
+        maskNote.setWrapText(true);
+
+        maskSaltField.setId("export-mask-salt");
+        maskSaltField.setPromptText(I18n.t("export.mask.salt.prompt"));
+        maskSaltField.setPrefColumnCount(24);
+        HBox.setHgrow(maskSaltField, Priority.ALWAYS);
+        maskSaltGenerate.setId("export-mask-salt-generate");
+        maskSaltGenerate.setOnAction(event -> maskSaltField.setText(randomSalt()));
+        maskSaltHint.setId("export-mask-salt-hint");
+        maskSaltHint.getStyleClass().add("adb-muted");
+        maskSaltHint.setWrapText(true);
+        Label maskSaltCaption = new Label(I18n.t("export.mask.salt"));
+        maskSaltCaption.getStyleClass().add("adb-muted");
+        maskSaltRow.setId("export-mask-salt-row");
+        maskSaltRow.setAlignment(Pos.CENTER_LEFT);
+        maskSaltRow.getChildren().setAll(maskSaltCaption, maskSaltField, maskSaltGenerate);
+
+        Label maskColumnsCaption = new Label(I18n.t("export.mask.columns"));
+        maskColumnsCaption.getStyleClass().add("adb-muted");
+        // 盐值这一行挂在折叠区里，不动 content 的直接子节点结构（TransferWizardTest 按 index 取）。
+        VBox maskSection = new VBox(6, maskColumnsCaption, maskColumnBox,
+                maskSaltRow, maskSaltHint, maskNote);
+        maskSection.setVisible(false);
+        maskSection.setManaged(false);
+        HBox maskRow = new HBox(8, maskBox, maskModeBox);
+        maskRow.setAlignment(Pos.CENTER_LEFT);
+        maskBox.selectedProperty().addListener((observable, old, on) -> {
+            maskSection.setVisible(on);
+            maskSection.setManaged(on);
+            refreshMaskNote();
+        });
+        maskColumnChecks.forEach(box -> box.selectedProperty()
+                .addListener((observable, old, on) -> refreshMaskNote()));
+        maskModeBox.valueProperty()
+                .addListener((observable, old, mode) -> refreshMaskNote());
+        refreshMaskNote();
+
         content.getChildren().addAll(
                 field(I18n.t("export.field.scope"), scopeBox),
                 field(I18n.t("menu.format"), formatBox),
@@ -332,6 +420,8 @@ final class ExportWizard {
                 fieldActions,
                 field(I18n.t("import.field.encoding"), charsetBox),
                 optionRow,
+                maskRow,
+                maskSection,
                 optionNote,
                 summary,
                 log,
@@ -459,6 +549,84 @@ final class ExportWizard {
         return selected;
     }
 
+    // ───────────────────── P-3：列级脱敏 ─────────────────────
+
+    /**
+     * 当前生效的列级规则。未启用 / 一列没勾 / 策略没选时返回空列表 ——
+     * 空规则意味着「原样导出」，{@link io.agenticdb.transfer.DataMasker} 会直接放行。
+     */
+    List<MaskRule> activeMaskRules() {
+        if (!maskBox.isSelected()) {
+            return List.of();
+        }
+        MaskRule.MaskMode mode = maskModeBox.getValue();
+        if (mode == null) {
+            return List.of();
+        }
+        List<MaskRule> rules = new ArrayList<>();
+        for (CheckBox box : maskColumnChecks) {
+            if (box.isSelected()) {
+                rules.add(new MaskRule(box.getText(), mode));
+            }
+        }
+        return List.copyOf(rules);
+    }
+
+    /**
+     * ⭐ 从网格「数据脱敏」入口进来时的预置：按列名提示哪些像敏感列。
+     *
+     * <p>只是<b>预置勾选</b>，不是自动判定，更不是「已经脱敏」—— 用户能看见、
+     * 能改、能整关掉。没认出任何列时<b>仍要打开脱敏区</b>：从「数据脱敏」按钮
+     * 进来却看到一个和普通导出窗一模一样、开关还是关着的界面，等于按钮说了谎。
+     */
+    void presetMasking(java.util.Set<String> lowerCaseNames) {
+        maskBox.setSelected(true);
+        java.util.Set<String> hints = lowerCaseNames == null
+                ? java.util.Set.of() : lowerCaseNames;
+        for (CheckBox box : maskColumnChecks) {
+            box.setSelected(hints.contains(
+                    box.getText().toLowerCase(java.util.Locale.ROOT)));
+        }
+        refreshMaskNote();
+    }
+
+    /**
+     * 当前生效的 HASH 盐值。只有「脱敏开着 + 策略是 HASH」才把框里的值递出去 ——
+     * FULL / EDGES 用不到盐，切回别的策略时不该留一个看似生效、其实没用的开关。
+     */
+    String activeMaskSalt() {
+        if (!maskBox.isSelected()
+                || maskModeBox.getValue() != MaskRule.MaskMode.HASH) {
+            return "";
+        }
+        String value = maskSaltField.getText();
+        return value == null ? "" : value.trim();
+    }
+
+    /** 生成 16 字节随机盐（hex）。只在用户点「生成」时跑，不在向导打开时偷偷随机。 */
+    private static String randomSalt() {
+        byte[] bytes = new byte[16];
+        new SecureRandom().nextBytes(bytes);
+        StringBuilder hex = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) {
+            hex.append(String.format("%02x", value));
+        }
+        return hex.toString();
+    }
+
+    private void refreshMaskNote() {
+        long count = maskColumnChecks.stream().filter(CheckBox::isSelected).count();
+        maskNote.setText(maskBox.isSelected() && count > 0
+                ? I18n.tPlural("export.mask.active", count, count)
+                : I18n.t("export.mask.note"));
+        boolean hashMode = maskBox.isSelected()
+                && maskModeBox.getValue() == MaskRule.MaskMode.HASH;
+        maskSaltRow.setVisible(hashMode);
+        maskSaltRow.setManaged(hashMode);
+        maskSaltHint.setVisible(hashMode);
+        maskSaltHint.setManaged(hashMode);
+    }
+
     /** 开始导出（在后台线程跑）。 */
     void start() {
         if (running) {
@@ -484,7 +652,9 @@ final class ExportWizard {
         summary.setText(I18n.t("export.counting", tableName));
 
         ExportOptions options = new ExportOptions(format, headerBox.isSelected(), 500, 0,
-                quoteBox.isSelected(), charsetBox.getValue());
+                quoteBox.isSelected(), charsetBox.getValue())
+                .withMasks(activeMaskRules())
+                .withMaskSalt(activeMaskSalt());
         // ⭐ 内存范围必须在 FX 线程上取快照（start() 就在 FX 线程），
         //    导出线程只碰这份拷贝 —— 否则后台线程会去读网格控件。
         List<List<Object>> snapshot = scope == Scope.WHOLE_TABLE || rowSource == null

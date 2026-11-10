@@ -2,6 +2,7 @@ package io.agenticdb.session;
 
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.jdbc.HostKeyDecision;
 import io.agenticdb.jdbc.JdbcSession;
 
 import java.sql.SQLException;
@@ -64,24 +65,46 @@ public final class SessionManager implements AutoCloseable {
      * <p>现在：已开着就直接复用；确实要重开（用户点「重新连接」）用 {@link #reopen}。
      */
     public DbSession open(String id, ConnectionSpec spec) throws SQLException {
+        return open(id, spec, null);
+    }
+
+    /**
+     * ⭐ 开会话（可注入 SSH 主机密钥决策）。
+     *
+     * <p>已开着就直接复用；确实要重开（用户点「重新连接」）用 {@link #reopen}。
+     * {@code decision} 非空时，经本连接建立的 SSH 隧道首见未知主机密钥走交互式询问。
+     *
+     * @param id 连接 id
+     * @param spec 连接规格
+     * @param decision 未知主机密钥的信任决策（可空）
+     */
+    public DbSession open(String id, ConnectionSpec spec, HostKeyDecision decision)
+            throws SQLException {
         DbSession existing = sessions.get(id);
         if (existing != null && !existing.isClosed()) {
             return existing;
         }
         synchronized (lockFor(id)) {
-            return openLocked(id, spec);
+            return openLocked(id, spec, decision);
         }
+    }
+
+    public DbSession reopen(String id, ConnectionSpec spec) throws SQLException {
+        return reopen(id, spec, null);
     }
 
     /**
      * ⭐ 强制重开（用户点「重新连接」时用）。
      *
      * <p>与 {@link #open} 的区别就在这里：open 复用已开的会话，reopen 一定换新的。
+     *
+     * @param decision 未知主机密钥的信任决策（可空）
      */
-    public DbSession reopen(String id, ConnectionSpec spec) throws SQLException {
+    public DbSession reopen(String id, ConnectionSpec spec, HostKeyDecision decision)
+            throws SQLException {
         synchronized (lockFor(id)) {
             closeQuietly(id);
-            return openLocked(id, spec);
+            return openLocked(id, spec, decision);
         }
     }
 
@@ -123,6 +146,12 @@ public final class SessionManager implements AutoCloseable {
 
     /** 调用方必须已持有该 id 的锁。 */
     private DbSession openLocked(String id, ConnectionSpec spec) throws SQLException {
+        return openLocked(id, spec, null);
+    }
+
+    /** 调用方必须已持有该 id 的锁。 */
+    private DbSession openLocked(String id, ConnectionSpec spec, HostKeyDecision decision)
+            throws SQLException {
         DbSession existing = sessions.get(id);
         if (existing != null && !existing.isClosed()) {
             return existing;
@@ -132,7 +161,7 @@ public final class SessionManager implements AutoCloseable {
         //    maxPoolSize=1 且连接借出后全程不归还 —— 池语义从未生效过，
         //    只留一个 HikariDataSource 和它的后台线程。真池化要重设计
         //    事务/取消/串行语义，当前没有这样的用户故事（决策记录见 ARCHITECTURE §6）。
-        DbSession session = JdbcSession.open(spec);
+        DbSession session = JdbcSession.open(spec, decision);
         sessions.put(id, session);
         return session;
     }

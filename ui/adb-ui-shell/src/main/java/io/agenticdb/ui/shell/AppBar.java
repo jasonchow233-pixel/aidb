@@ -20,9 +20,11 @@ import javafx.scene.shape.SVGPath;
  * 顶部 91px Ribbon（2026-10-30 R36：按 Navicat 17 实拍逐像素对回来）。
  *
  * <p>⭐ 2026-10-30 R36 顶区重做（撤销 R32-D 的精简，用户裁定「完全照 Navicat」）：
- * Ribbon 64px 单行 6 格 → **91px、12 格磁贴**（Connection · New Query · Table · View ·
- * Function · User · Others ｜ Query · Backup · Automation · Model · BI，真源 §1.2 顺序）。
- * 顶区 = 菜单 24 + Ribbon 91 + 页签行 25 = 140px。
+ * Ribbon 64px 单行 6 格 → **91px、12 格磁贴**（真源 §1.2 顺序）。
+ * 之后 P3 补 Profile / Transfer 两格；2026-11-09 用户裁定**移除 BI**（既不做 BI 工作区，
+ * 也不再保留一个只开说明页的入口），当前是 <b>13 格</b>：Connection · New Query ·
+ * Table · View · Function · User · Others ｜ Query · Backup · Profile · Transfer ·
+ * Automation · Model。顶区 = 菜单 24 + Ribbon 91 + 页签行 25 = 140px。
  *
  * <p>⭐ 2026-11-04 R63-2：右端工具件只剩**主题 + ⋯**。原先这里的「当前连接胶囊 ▾」和
  * 「搜索对象或命令」框都删了 —— Navicat 17 实拍的磁贴带右端只有 ⓘ / ☆ / 头像，
@@ -31,9 +33,10 @@ import javafx.scene.shape.SVGPath;
  * 点它弹出的是命令面板，正文永远空白、placeholder 永远不被替换。
  * 切换连接的入口是左侧对象树与「连接」页签，⌘K 仍在（键盘与菜单栏）。
  *
- * <p>12 格里有六格（Function · User · Backup · Automation · Model · BI）背后是还没建的
- * 能力面（N28，R42）—— 按诚实条款它们落到**如实说明页**（工具页签 + 一句「本版本未提供」），
+ * <p>13 格里有三格（Function · Automation · Model）背后是还没建的能力面
+ * （N28，R42）—— 按诚实条款它们落到**如实说明页**（工具页签 + 一句「本版本未提供」），
  * 不留死按钮；门禁 {@code RibbonCapabilityAuditTest} 逐格钉「必须落到真实目标」。
+ * User / Backup / Profile / Transfer 四格已接真工具页。
  * ⭐ R62-a H5-i（Q8 ②）：这六格同时留在原位不动，只在右上角挂一枚统一角标，
  * 把「这版没有」提前说给用户，而不是等点下去才读到 —— 名单见 {@link #PENDING_TILES}。
  *
@@ -46,14 +49,13 @@ public final class AppBar extends VBox {
      *
      * <p>判据只有一条，而且不是我自己定的：<b>这格的动作处理器调的是
      * {@code openRibbonTool(SideBar.TOOL_…)}</b> —— 也就是它开出的页签
-     * 由 {@code WorkspaceView} 给一句「本版本未提供」。今天命中六格
-     * （Function·User·Backup·Automation·Model·BI），将来哪格建好了能力面，
+     * 由 {@code WorkspaceView} 给一句「本版本未提供」。今天命中三格
+     * （Function·Automation·Model），将来哪格建好了能力面，
      * 它的处理器就不再走那条通道，门禁会逼我把角标同一批摘掉
      * （见 {@code RibbonCapabilityAuditTest#thePendingBadgesMatchTheHonestLandingPoints}）。
      */
     private static final java.util.Set<String> PENDING_TILES = java.util.Set.of(
-            "ribbon.function", "ribbon.user", "ribbon.backup",
-            "ribbon.automation", "ribbon.model", "ribbon.bi");
+            "ribbon.function", "ribbon.automation", "ribbon.model");
 
     private final HBox utility;
     /** 磁贴排（Ribbon 里可横向滚动的那一段，窄窗口时靠滚动而不是截标签）。 */
@@ -101,12 +103,14 @@ public final class AppBar extends VBox {
                         "adb-ribbon__icon--query"),
                 ribbonButton("ribbon.backup", Icons.Icon.SAVE, I18n.t("ribbon.backup"),
                         "adb-ribbon__icon--backup"),
+                ribbonButton("ribbon.profiling", Icons.Icon.DATABASE, I18n.t("ribbon.profiling"),
+                        "adb-ribbon__icon--profiling"),
+                ribbonButton("ribbon.transfer", Icons.Icon.EXPORT, I18n.t("ribbon.transfer"),
+                        "adb-ribbon__icon--transfer"),
                 ribbonButton("ribbon.automation", Icons.Icon.HISTORY, I18n.t("ribbon.automation"),
                         "adb-ribbon__icon--automation"),
                 ribbonButton("ribbon.model", Icons.Icon.STRUCTURE, I18n.t("ribbon.model"),
-                        "adb-ribbon__icon--model"),
-                ribbonButton("ribbon.bi", Icons.Icon.GRID, I18n.t("ribbon.bi"),
-                        "adb-ribbon__icon--bi"));
+                        "adb-ribbon__icon--model"));
         tiles.setId("adb-ribbon");
         tiles.getStyleClass().add("adb-ribbon");
         tiles.setAlignment(Pos.CENTER_LEFT);
@@ -114,7 +118,8 @@ public final class AppBar extends VBox {
         //    与宽高算好，环绑在那上面贴右上角，自己 managed=false 不吃排版（详见 PendingMark）。
         PendingMark.attach(tiles, pendingTiles);
 
-        // ⭐ 12 格按英文标签排开就超过 1050px，再加右端工具件必然超过 1280 宽窗口。
+        // ⭐ 当前是 13 格（R36 的 12 格 + P3 两格 − 已移除的 BI），
+        //    按英文标签排开就超过 1050px，再加右端工具件必然超过 1280 宽窗口。
         //    Navicat 磁贴定宽 70 吃的是中文；我们的英文标签截不得（标签不许省略号门禁）。
         //    所以磁贴排包进横向 ScrollPane：宽窗不出条，窄窗滚动而不是裁字；
         //    右端工具件（主题 / ⋯）在滚动区之外，任何宽度下都可达。
@@ -124,6 +129,18 @@ public final class AppBar extends VBox {
         tileScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         tileScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         tileScroll.setPannable(true);
+        // ⭐ D-19（1280×800 体感）：溢出条按 H5-h 收成 6px 细轨，笔记本上「够得着」
+        //    但很难拖。把竖直滚轮 / 触控板横向增量翻译成 hvalue —— 鼠标停在功能区
+        //    直接滚就能看到后面的格子。只在**真的能横滚**时 consume，不吞页面的竖直滚动。
+        //    ⚠️ 纯事件 handler，不动任何磁贴几何：61+ 帧的像素对照不受影响。
+        tileScroll.setOnScroll(event -> {
+            double next = wheelHvalue(tileScroll.getHvalue(), tileScroll.getHmin(),
+                    tileScroll.getHmax(), event.getDeltaX(), event.getDeltaY());
+            if (next != tileScroll.getHvalue()) {
+                tileScroll.setHvalue(next);
+                event.consume();
+            }
+        });
 
         HBox ribbon = new HBox(tileScroll, spacer(), utility);
         ribbon.getStyleClass().add("adb-appbar__row");
@@ -211,6 +228,32 @@ public final class AppBar extends VBox {
             pendingTiles.add(button);
         }
         return button;
+    }
+
+    /**
+     * ⭐ D-19：滚轮增量 → 横向滚动位置的**纯函数**。
+     *
+     * <p>刻意不碰 {@link ScrollPane}，只收 5 个数：门禁在 headless harness 里
+     * 不必构造 {@code ScrollEvent}（那套构造签名跨 JavaFX 版本会变）就能量到方向、
+     * 步长与夹取。接线在构造器里的 {@code tileScroll.setOnScroll}。
+     *
+     * <p>约定：JavaFX 向下滚 / 触控板左滑给负增量，此时向右看后面的磁贴；
+     * 水平增量优先（两指横滑不该被竖直分量抢走）。一次最多推进 1/4 行程，
+     * 免得一格轮直接跳到末尾；不溢出（{@code max <= min}）时原值返回，
+     * 调用方据此<strong>不</strong>吞事件 —— 页面该收到竖直滚动还是得收到。
+     */
+    static double wheelHvalue(double current, double min, double max,
+                              double deltaX, double deltaY) {
+        if (max <= min) {
+            return current;
+        }
+        double delta = deltaX != 0 ? deltaX : deltaY;
+        if (delta == 0) {
+            return current;
+        }
+        double step = Math.min(0.25, Math.abs(delta) / 320.0);
+        double next = current + (delta < 0 ? step : -step);
+        return Math.min(max, Math.max(min, next));
     }
 
     private Region ribbonSeparator() {

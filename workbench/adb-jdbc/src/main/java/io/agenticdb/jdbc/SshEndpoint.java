@@ -12,9 +12,8 @@ package io.agenticdb.jdbc;
  *
  * <p>{@link #trustOnFirstUse()} 是「首次见到这把主机密钥就记下」（OpenSSH 的默认行为），
  * 不是「不校验」：记完之后密钥<b>变了</b>照样拒绝。关掉它等于 strict host key checking，
- * 没记过的机器一律连不上。Navicat 在这里弹一张「未知密钥，是否接受」的窗，
- * 我们还没做那张窗（欠账记在 {@code docs/internal/GAP-TODOLIST.md}），
- * 所以先按 OpenSSH 的默认来，而不是默默接受任何密钥。
+ * 没记过的机器一律连不上（也不再弹窗询问）。开着时，连接会弹一张「未知密钥，是否接受」
+ * 的指纹比对窗（{@code HostKeyPrompt}），由真人决定是否信任并记录 —— 不再默默接受任何密钥。
  *
  * @param host 跳板机地址
  * @param port SSH 端口；{@code <= 0} 归一成 22

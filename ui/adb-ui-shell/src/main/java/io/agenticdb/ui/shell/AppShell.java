@@ -7,6 +7,7 @@ import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.jdbc.HostKeyDecision;
 import io.agenticdb.jdbc.ViewDefinition;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.ConnectionStore;
@@ -199,6 +200,12 @@ public final class AppShell extends StackPane {
     private String matrixEngineRequested = "";
 
     private Stage stage;
+    /**
+     * ⭐ Q4 后半：新建窗口的回调。外壳自己不 new Stage —— 那是 {@code App} 的职责，
+     * 测试里也没有 JavaFX Application 上下文。每个窗口一套 AppShell / 会话 / 线程池，
+     * 「只给回调、不给实现」才能让这条链在门禁里被单独验证。
+     */
+    private Runnable onNewWindow = () -> { };
     private Region resizer;
     private Region detailsResizer;
     private int sidebarWidth;
@@ -1572,7 +1579,7 @@ public final class AppShell extends StackPane {
             DbSession opened = null;
             List<SchemaObject> objects = List.of();
             try {
-                opened = sessions.open(profile.id(), specOf(profile));
+                opened = sessions.open(profile.id(), specOf(profile), hostKeyDecision());
                 objects = schemaService.listObjects(opened);
             } catch (Exception e) {
                 String reason = readable(e);
@@ -1629,6 +1636,18 @@ public final class AppShell extends StackPane {
         // 侧栏「诊断」接真实功能：表结构 + 行数的健康概览。会话变了要跟着换。
         workspace.setDiagnostics(session, schemaService,
                 executors.forConnection(activeProfileId()));
+        // ⭐ P2：Backup / User 只读视图 与诊断同源（当前活动连接 + 内省 + 执行器），
+        // 会话变了同样要跟着换。
+        workspace.setBackup(session, schemaService, executors.forConnection(activeProfileId()));
+        workspace.setUsers(session, schemaService, executors.forConnection(activeProfileId()));
+        // ⭐ P3：Data Profiling 与跨库传输同样与会话同源；传输页还需要「其它已开连接」
+        // 作目标，以及把连接 id 解析回会话的解析器（复用 SessionManager.find）。
+        workspace.setProfiling(session, schemaService, executors.forConnection(activeProfileId()));
+        workspace.setTransfer(session, schemaService, executors.forConnection(activeProfileId()),
+                connections.stream()
+                        .filter(p -> !p.id().equals(activeProfileId()))
+                        .toList(),
+                id -> sessions.find(id).orElse(null));
         // 4.5-11：状态栏与折叠侧栏的左端徽标显示真实方言，不再是写死的「DEV」。
         String dialectName = session == null ? "—" : session.dialect().displayName();
         // ⭐ R54：状态栏那颗灯旁边再加一枚**那家自己的图形** —— 这一行是界面里唯一常驻
@@ -1721,7 +1740,7 @@ public final class AppShell extends StackPane {
         // ⭐ 按连接取执行器：同一连接的事务要串行。
         executors.forConnection(connectionId).execute(() -> {
             try {
-                DbSession opened = sessions.open(profile.id(), specOf(profile));
+                DbSession opened = sessions.open(profile.id(), specOf(profile), hostKeyDecision());
                 List<SchemaObject> objects = schemaService.listObjects(opened);
                 objectsByConnection.put(profile.id(), objects);
                 Platform.runLater(() -> {
@@ -1930,7 +1949,7 @@ public final class AppShell extends StackPane {
             DbSession opened = null;
             List<SchemaObject> objects = List.of();
             try {
-                opened = sessions.open(variant.id(), specOf(variant));
+                opened = sessions.open(variant.id(), specOf(variant), hostKeyDecision());
                 objects = schemaService.listObjects(opened);
             } catch (Exception e) {
                 String reason = readable(e);
@@ -2235,7 +2254,7 @@ public final class AppShell extends StackPane {
         // ⭐ U2：重连 = **强制换一条新会话**（SessionManager.reopen），
         //    与「切换连接时复用已有会话」是两回事。
         try {
-            sessions.reopen(activeProfile.id(), specOf(activeProfile));
+            sessions.reopen(activeProfile.id(), specOf(activeProfile), hostKeyDecision());
         } catch (java.sql.SQLException e) {
             status(I18n.t("shell.reconnectFailed", readable(e)));
             return;
@@ -2261,6 +2280,16 @@ public final class AppShell extends StackPane {
     }
 
     /**
+     * 用户连接用的主机密钥决策：弹一张指纹比对窗，由真人决定是否信任并记下这把密钥。
+     *
+     * <p>只用于「用户在界面上发起的连接」（{@code connectProfile} / 测试连接变体 / 重新连接）；
+     * 启动连演示库、矩阵验收帧等无 SSH 或无人应答的路径走静默默认，不弹窗。
+     */
+    private HostKeyDecision hostKeyDecision() {
+        return HostKeyPrompt.interactive(stage);
+    }
+
+    /**
      * SSH 跳板机的秘密（登录口令 / 私钥口令短语）。
      *
      * <p>矩阵通道（{@link #ephemeralProfileId}）走不到这里也有秘密：那条通道的档案不带
@@ -2275,6 +2304,16 @@ public final class AppShell extends StackPane {
     }
 
     // ─────────────────────────── 生命周期 ───────────────────────────
+
+    /** ⭐ Q4 后半：由 {@code App} 注入「再开一个独立窗口」的实现。 */
+    public void setOnNewWindow(Runnable handler) {
+        this.onNewWindow = handler == null ? () -> { } : handler;
+    }
+
+    /** 包级读数口：门禁验「动作真的挂到了回调上」，不必起第二个 Stage。 */
+    Runnable newWindowHandlerForTest() {
+        return onNewWindow;
+    }
 
     public void restoreWindow(Stage stage) {
         this.stage = stage;
@@ -2754,6 +2793,10 @@ public final class AppShell extends StackPane {
                 key("Shortcut+O"), this::openSqlFile);
         actions.register("tab.close", I18n.t("action.tab.close"), I18n.t("category.file"),
                 key("Shortcut+W"), () -> tabBar.closeActive());
+        // ⭐ Q4（P0 默认走向）：先做页签 pin，多窗口暂缓。固定标签不参与关闭类动作，
+        //    右键菜单 / ⌘K 与菜单栏同源；落点是当前激活的那一张。
+        actions.register("tab.pin", I18n.t("action.tab.pin"), I18n.t("category.file"),
+                null, () -> tabBar.togglePinnedActive());
         // 4.5-29：标签栏右键菜单以前是手搓 MenuItem，现在也走注册表，
         // 于是「关闭其他 / 全部关闭」能在 ⌘K 里搜到，enabled 也统一。
         actions.register("tab.close-others", I18n.t("action.tab.close-others"), I18n.t("category.file"),
@@ -2765,6 +2808,9 @@ public final class AppShell extends StackPane {
                 null, () -> copyActiveTabTarget(false));
         actions.register("tab.copy-select", I18n.t("action.tab.copy-select"), I18n.t("category.file"),
                 null, () -> copyActiveTabTarget(true));
+        // ⭐ Q4 后半：多窗口。与 window.close 同组，⌘K 与菜单栏同源。
+        actions.register("window.new", I18n.t("action.window.new"), I18n.t("category.window"),
+                null, () -> onNewWindow.run());
         actions.register("window.close", I18n.t("action.window.close"), I18n.t("category.file"),
                 key("Shift+Shortcut+W"), () -> {
                     if (stage != null) {
@@ -2898,8 +2944,8 @@ public final class AppShell extends StackPane {
         actions.register("object.tables", I18n.t("action.object.tables"), I18n.t("category.object"),
                 null, this::openTableList);
 
-        // ⭐ R36 N6：Ribbon 12 格补齐（真源 §1.2 顺序）。
-        //    User / Backup / Automation / Model / BI 背后是 N28 的五个能力面（本轮裁定：
+        // ⭐ R36 N6：Ribbon 12 格补齐（真源 §1.2 顺序）；P3 补两格，BI 已按用户裁定移除。
+        //    User / Backup / Automation / Model 背后是 N28 的能力面（本轮裁定：
         //    Automation / Model / 数据生成 <b>不做真功能</b>，其余按 R42-b/c/d 排期）——
         //    按诚实条款先落**如实说明页**（工具页签 + 「本版本未提供」），不留死磁贴。
         //    门禁：RibbonCapabilityAuditTest 逐格钉「有注册动作 + 有真实落点」。
@@ -2916,12 +2962,16 @@ public final class AppShell extends StackPane {
                 null, () -> openRibbonTool(SideBar.TOOL_USERS, I18n.t("tool.title.users")));
         actions.register("ribbon.backup", I18n.t("action.ribbon.backup"), I18n.t("category.tools"),
                 null, () -> openRibbonTool(SideBar.TOOL_BACKUP, I18n.t("tool.title.backup")));
+        // ⭐ P3 轻量 Data Profiling（Q3 轻量版）：单表列画像，落在真实工具页。
+        actions.register("ribbon.profiling", I18n.t("action.ribbon.profiling"), I18n.t("category.tools"),
+                null, () -> openRibbonTool(SideBar.TOOL_PROFILING, I18n.t("tool.title.profiling")));
+        // ⭐ P3 跨库传输最小切片（Q11）：单表 DB→DB，落在真实工具页。
+        actions.register("ribbon.transfer", I18n.t("action.ribbon.transfer"), I18n.t("category.tools"),
+                null, () -> openRibbonTool(SideBar.TOOL_TRANSFER, I18n.t("tool.title.transfer")));
         actions.register("ribbon.automation", I18n.t("action.ribbon.automation"), I18n.t("category.tools"),
                 null, () -> openRibbonTool(SideBar.TOOL_AUTOMATION, I18n.t("tool.title.automation")));
         actions.register("ribbon.model", I18n.t("action.ribbon.model"), I18n.t("category.tools"),
                 null, () -> openRibbonTool(SideBar.TOOL_MODEL, I18n.t("tool.title.model")));
-        actions.register("ribbon.bi", I18n.t("action.ribbon.bi"), I18n.t("category.tools"),
-                null, () -> openRibbonTool(SideBar.TOOL_BI, I18n.t("tool.title.bi")));
 
         // ⭐ N1–N5：表清单的动作全部进注册表 —— 工具栏、右键菜单、命令面板同一份真相。
         //    选择相关的动作先禁用，等表清单页出现后由页面按选择启用。
@@ -3575,10 +3625,11 @@ public final class AppShell extends StackPane {
     }
 
     private void updateTabCloseEnabled() {
-        // ⭐ 常驻的「对象」标签不可关 —— 停在它上面时「关闭标签」要禁用，
-        //    而不是让用户点了没反应。
+        // ⭐ 常驻的「对象」标签与 Q4 固定标签都不可关 —— 停在它们上面时
+        //    「关闭标签」要禁用，而不是让用户点了没反应。
         actions.find("tab.close").ifPresent(action ->
-                action.setEnabled(!tabBar.isPermanent(tabBar.activeId())));
+                action.setEnabled(!tabBar.isPermanent(tabBar.activeId())
+                        && !tabBar.isPinned(tabBar.activeId())));
     }
 
     private void openTab(TabItem tab) {
@@ -3938,7 +3989,7 @@ public final class AppShell extends StackPane {
     }
 
     /**
-     * ⭐ R36：Ribbon 上还没建能力面的格子（User/Backup/Automation/Model/BI）
+     * ⭐ R36：Ribbon 上还没建能力面的格子（Automation/Model；BI 已移除）
      * 落**如实说明页** —— 走 {@link SideBar#TOOL_USERS} 那族路由键，
      * {@code WorkspaceView} 的 TOOL 分支对未接路由统一给「本版本未提供」的空态。
      */

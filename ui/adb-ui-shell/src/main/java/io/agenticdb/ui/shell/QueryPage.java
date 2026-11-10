@@ -671,7 +671,10 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
         Region statusSpacer = new Region();
         HBox.setHgrow(statusSpacer, Priority.ALWAYS);
-        HBox statusBar = new HBox(12, status, statusSpacer, range, caretReadout, duration);
+        // ⭐ A-4：行数 / 耗时不再在查询页底部重复显示 —— 它们已由全局状态栏
+        //    （经 DataGridPage.Feedback 推送）作为唯一来源呈现（Record X of Y · Elapsed ·
+        //    Last Refresh）。这里只保留编辑器自己的「光标位置」读数，避免两处同报。
+        HBox statusBar = new HBox(12, status, statusSpacer, caretReadout);
         statusBar.getStyleClass().add("adb-query__statusbar");
         statusBar.setAlignment(Pos.CENTER_LEFT);
 

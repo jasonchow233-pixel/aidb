@@ -36,6 +36,8 @@ class ObjectHomeTabTest {
         actions.register("tab.close-all", "全部关闭", "tab", null, () -> { });
         actions.register("tab.copy-name", "复制表名", "tab", null, () -> { });
         actions.register("tab.copy-select", "复制 SELECT", "tab", null, () -> { });
+        // ⭐ Q4：页签节点构造时会向注册表要 tab.pin 的菜单项。
+        actions.register("tab.pin", "固定 / 取消固定", "tab", null, () -> { });
         tabBar = new TabBar(actions);
         stage.setScene(new javafx.scene.Scene(tabBar, 900, 200));
         stage.show();

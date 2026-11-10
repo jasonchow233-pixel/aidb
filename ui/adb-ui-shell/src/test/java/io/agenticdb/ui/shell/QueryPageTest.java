@@ -1539,14 +1539,20 @@ class QueryPageTest {
     }
 
     /**
-     * ⭐ 落点：与底部那几条<b>同一条带</b>，且夹在「行数」与「耗时」中间 ——
-     * Navicat 底部带实测次序是 SQL 回显 | Read Only | Record 1 of 20473 | Ln 11, Col 5 | Elapsed Time。
-     * 台账里那句「与 Read Only pill 同带」量过是错的 —— 我们的 pill 在工具带右上角（帧 p3-query 实测），
-     * Navicat 的 Read Only 才在底部带；这格照 Navicat 的落点，pill 搬家不在这格。
+     * ⭐ A-4 / P1 状态栏去重之后：查询页底部带里只剩编辑器自己的 Ln/Col。
+     *
+     * <p>原门禁按 Navicat 实拍钉「行数 → Ln/Col → 耗时」三条数字同带。但行数 / 耗时
+     * 已经由全局状态栏（经 {@code DataGridPage.Feedback} 推送）作为唯一来源呈现，
+     * 查询页再摆一遍就是同一份信息出现两次 —— P1 把 range / duration 从这条带里摘掉，
+     * 仍通过 {@code feedback.range/duration} 报给全局状态栏（{@link QueryPage} 的
+     * {@code statusBar} 只挂 status / spacer / caretReadout）。
+     *
+     * <p>门禁不能跟着空转：① caret 必须真的和状态文字在同一条带；② 带里除状态文字与
+     * caret 之外不许再有 Label —— 重复数字哪天被加回来，这里当场红。
      */
     @Test
-    void theCaretReadoutSitsInTheBandWithTheOtherStatusNumbers() {
-        int[] place = new int[4];
+    void theCaretReadoutIsTheOnlyNumberInTheDeduplicatedStatusBand() {
+        int[] place = new int[3];
         interact(() -> {
             javafx.scene.Node caret = page.lookup("#query-caret");
             javafx.scene.Node status = page.lookup("#query-status");
@@ -1558,27 +1564,16 @@ class QueryPageTest {
             java.util.List<javafx.scene.Node> kids = band.getChildren();
             place[0] = kids.contains(status) ? 1 : 0;
             place[1] = kids.indexOf(caret);
-            // 带里除状态文字与读数之外只剩两条数字（行数、耗时），按带内的先后取回它们的下标。
-            int[] numbers = kids.stream()
+            place[2] = (int) kids.stream()
                     .filter(node -> node != caret && node != status && node instanceof Label)
-                    .mapToInt(kids::indexOf)
-                    .sorted()
-                    .toArray();
-            place[2] = numbers.length == 2 ? numbers[0] : -1;
-            place[3] = numbers.length == 2 ? numbers[1] : -1;
+                    .count();
         });
 
         assertThat(place[0]).as("#query-caret 不存在，或没和状态文字待在同一条带里").isEqualTo(1);
+        assertThat(place[1]).as("光标读数必须真的挂在带里").isGreaterThanOrEqualTo(0);
         assertThat(place[2])
-                .as("底部带里两条数字（行数 / 耗时）没找到，门禁在空转")
-                .isNotEqualTo(-1);
-        assertThat(place[1])
-                .as("Navicat 的次序是 行数 → Ln/Col → 耗时：读数得夹在两条数字中间，实测落在 %d",
-                        place[1])
-                .isGreaterThan(place[2]);
-        assertThat(place[1])
-                .as("同上：读数不许占在耗时之后 —— 实测落在 %d", place[1])
-                .isLessThan(place[3]);
+                .as("P1 去重：行数 / 耗时由全局状态栏显示，查询页底部带不许再摆一份")
+                .isEqualTo(0);
     }
 
     /** 读 #query-caret 的当前文本；节点不在就直接失败，别让断言空转。 */

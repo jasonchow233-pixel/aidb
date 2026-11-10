@@ -80,6 +80,20 @@ public final class JdbcSession implements DbSession {
     }
 
     public static JdbcSession open(ConnectionSpec spec) throws SQLException {
+        return open(spec, null);
+    }
+
+    /**
+     * 开会话（可注入 SSH 主机密钥决策）。
+     *
+     * <p>{@code decision} 非空时，SSH 隧道首见未知主机密钥走交互式询问；为 {@code null} 时
+     * 退回静默策略（{@link SshTunnel} 按 {@code trustOnFirstUse} 兜底）。
+     *
+     * @param spec 连接规格
+     * @param decision 未知主机密钥的信任决策（可空）
+     */
+    public static JdbcSession open(ConnectionSpec spec, HostKeyDecision decision)
+            throws SQLException {
         try {
             // JDBC 4 会自动加载，但显式加载能给出更清楚的错误
             // ⭐ 驱动类名由方言自己给 —— 以前这里是 switch，加一种库要改两处。
@@ -94,7 +108,7 @@ public final class JdbcSession implements DbSession {
         ConnectionSpec effective = spec;
         try {
             if (spec.usesSshTunnel()) {
-                tunnel = SshTunnel.open(spec.ssh(), spec.host(), spec.port());
+                tunnel = SshTunnel.open(spec.ssh(), spec.host(), spec.port(), decision);
                 effective = spec.overTunnel(tunnel.localHost(), tunnel.localPort());
             }
             Properties props = new Properties();

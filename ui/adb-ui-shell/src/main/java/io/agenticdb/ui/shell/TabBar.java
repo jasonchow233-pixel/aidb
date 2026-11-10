@@ -19,9 +19,11 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -329,6 +331,83 @@ public final class TabBar extends HBox {
         return id != null && id.equals(permanentId);
     }
 
+    // ───────────────────── Q4：固定标签 ─────────────────────
+
+    /** 这个标签是用户钉住的吗？常驻标签永远不算「固定」（它本来就不能关）。 */
+    public boolean isPinned(String id) {
+        TabItem tab = id == null ? null : items.get(id);
+        return tab != null && tab.isPinned();
+    }
+
+    /**
+     * ⭐ Q4：钉住 / 取消钉住一个标签。
+     *
+     * <p>三件事必须同批做完，否则界面会说假话：状态写进 {@link TabItem}、
+     * 场景图里的节点与 {@code items} 一起重排、关闭类动作的可用性重算。
+     * 关闭钮不在这里手动隐藏 —— 它的 visible/managed 直接绑在
+     * {@code pinnedProperty().not()} 上，切状态时 JavaFX 自己收掉。
+     */
+    public void setPinned(String id, boolean value) {
+        TabItem tab = id == null ? null : items.get(id);
+        if (tab == null || isPermanent(id) || tab.isPinned() == value) {
+            return;
+        }
+        tab.setPinned(value);
+        Node node = nodes.get(id);
+        if (node != null) {
+            if (value && !node.getStyleClass().contains("adb-tab--pinned")) {
+                node.getStyleClass().add("adb-tab--pinned");
+            } else if (!value) {
+                node.getStyleClass().remove("adb-tab--pinned");
+            }
+        }
+        reorder();
+        refreshCloseActions();
+    }
+
+    /** 右键菜单 / 命令面板的落点：作用于<b>当前激活</b>的那个标签。 */
+    public void togglePinnedActive() {
+        if (activeId == null || isPermanent(activeId)) {
+            return;
+        }
+        setPinned(activeId, !isPinned(activeId));
+    }
+
+    /**
+     * 常驻 → 固定 → 普通，组内保持稳定顺序（{@code List.sort} 是稳定排序）。
+     *
+     * <p>⚠️ {@code items} 是 {@link LinkedHashMap}：只重排场景图不重排它的话，
+     * {@code openTabs()}、关闭后「下一个激活谁」仍按旧顺序走 —— 两处各说一套。
+     */
+    private void reorder() {
+        List<TabItem> ordered = new ArrayList<>(items.values());
+        ordered.sort(Comparator.comparingInt(tab -> {
+            if (isPermanent(tab.id())) {
+                return 0;
+            }
+            return tab.isPinned() ? 1 : 2;
+        }));
+        items.clear();
+        for (TabItem tab : ordered) {
+            items.put(tab.id(), tab);
+        }
+        // ⚠️ 不能写 .map(nodes::get)：流里是 TabItem，而 nodes 的 key 是 String ——
+        //    方法引用会把整个 TabItem 当 key，四个全取到 null，setAll 会把标签排清空。
+        List<Node> visual = ordered.stream().map(tab -> nodes.get(tab.id()))
+                .filter(Objects::nonNull).toList();
+        tabs.getChildren().setAll(visual);
+    }
+
+    /** 关闭类动作的统一口径：常驻 + 固定标签都不算「可关闭」。 */
+    private void refreshCloseActions() {
+        actions.require("tab.close")
+                .setEnabled(!isPermanent(activeId) && !isPinned(activeId));
+        actions.find("tab.close-others").ifPresent(action ->
+                action.setEnabled(closableCount() > 1));
+        actions.find("tab.close-all").ifPresent(action ->
+                action.setEnabled(closableCount() > 0));
+    }
+
     /**
      * ⭐ X7：激活**常驻标签**（「对象」首页）。
      *
@@ -370,6 +449,12 @@ public final class TabBar extends HBox {
             // ⭐ 常驻标签不可关闭 —— 没有任何标签时，它就是落点。
             return false;
         }
+        if (tab.isPinned()) {
+            // ⭐ Q4：用户钉住的标签不参与关闭 / 关闭其他 / 关闭全部。
+            //    想关就先取消固定 —— 关闭钮此时本来就不在场景图里，这里挡的是
+            //    ⌘W、右键菜单与命令面板那几条同样走 close() 的通道。
+            return false;
+        }
         if (!closeGuard.test(tab)) {
             return false;
         }
@@ -395,13 +480,9 @@ public final class TabBar extends HBox {
             setVisible(false);
             setManaged(false);
         }
-        // ⭐ 常驻标签不参与「关闭」类动作的可用性 ——
-        //    否则在「对象」标签上点「关闭标签」会是「点了没反应」。
-        actions.require("tab.close").setEnabled(!isPermanent(activeId));
-        actions.find("tab.close-others").ifPresent(action ->
-                action.setEnabled(closableCount() > 1));
-        actions.find("tab.close-all").ifPresent(action ->
-                action.setEnabled(closableCount() > 0));
+        // ⭐ 常驻 + 固定标签都不参与「关闭」类动作的可用性 ——
+        //    否则停在这样的标签上点「关闭标签」会是「点了没反应」。
+        refreshCloseActions();
         onClose.accept(tab);
         return true;
     }
@@ -421,9 +502,10 @@ public final class TabBar extends HBox {
         ids.forEach(this::close);
     }
 
-    /** 除常驻标签外还剩几个标签（用于「关闭全部」的可用性）。 */
+    /** 除常驻标签与固定标签外还剩几个标签（用于「关闭全部」的可用性）。 */
     public int closableCount() {
-        return (int) items.keySet().stream().filter(id -> !isPermanent(id)).count();
+        return (int) items.keySet().stream()
+                .filter(id -> !isPermanent(id) && !isPinned(id)).count();
     }
 
     public int count() {
@@ -441,6 +523,26 @@ public final class TabBar extends HBox {
     /** 供门禁检查标签栏右键菜单是否来自注册表（4.5-29）。 */
     ContextMenu contextMenuForTest() {
         return lastContextMenu;
+    }
+
+    /**
+     * 供门禁直接读标签节点。
+     *
+     * <p>⭐ Q4：{@code reorder()} 会把节点从 {@code tabs} 摘下再挂回；在下一帧
+     * {@code applyCss()} 之前，按 {@code #id} / 样式类的 CSS lookup 全部落空。
+     * 门禁要量的是「顺序与状态」，不该取决于有没有跑过一帧 CSS —— 和
+     * {@link #visibleTitleForTest} 一样走包级读数口。
+     */
+    Node tabNodeForTest(String id) {
+        return nodes.get(id);
+    }
+
+    /**
+     * 供门禁读取<b>视觉顺序</b>（{@code tabs} 的孩子，不是 {@code items} 的迭代顺序）。
+     * 两边各排一套是最难发现的分叉，所以这个读数口故意只认场景图。
+     */
+    List<String> visualTabIdsForTest() {
+        return tabs.getChildren().stream().map(Node::getId).toList();
     }
 
     /**
@@ -517,6 +619,9 @@ public final class TabBar extends HBox {
         close.setAccessibleText(I18n.t("tab.close"));
         close.getStyleClass().add("adb-tab__close");
         close.setFocusTraversable(false);
+        // ⭐ Q4：固定标签不摆「点了没反应」的 × —— 直接绑状态，取消固定后自己长回来。
+        close.visibleProperty().bind(tab.pinnedProperty().not());
+        close.managedProperty().bind(tab.pinnedProperty().not());
         close.setOnAction(event -> {
             event.consume();
             close(tab.id());
@@ -527,6 +632,9 @@ public final class TabBar extends HBox {
             node.getChildren().add(close);
         }
         node.getStyleClass().add("adb-tab");
+        if (tab.isPinned()) {
+            node.getStyleClass().add("adb-tab--pinned");
+        }
         // 给标签节点一个 id —— 门禁要能按 id 找到某个标签（常驻标签尤其需要）。
         node.setId(nodeId(tab.id()));
         // ⭐ UX-5：全名提示（重名时标题带连接名，不重名时标题只有表名 ——
@@ -567,17 +675,22 @@ public final class TabBar extends HBox {
             // ⭐ 常驻标签不能关 —— 菜单项直接不出现，而不是「点了没反应」。
             closeItem.setVisible(false);
         }
+        // ⭐ Q4：固定 / 取消固定。文案随状态切换，动作与 ⌘K 同源（ActionRegistry）。
+        //    常驻标签没有「固定」这一说 —— 它本来就永远在最前、不可关闭。
+        MenuItem pinItem = actions.menuItem("tab.pin", I18n.t("tab.pin"));
+        pinItem.setVisible(!isPermanent(tab.id()));
         MenuItem closeOthers = actions.menuItem("tab.close-others", I18n.t("tab.closeOthers"));
         MenuItem closeAll = actions.menuItem("tab.close-all", I18n.t("tab.closeAll"));
         // ⭐ S8：补「复制表名 / 复制 SELECT」—— Navicat 的标签右键也有。
         MenuItem copyName = actions.menuItem("tab.copy-name", I18n.t("tab.copyName"));
         MenuItem copySelect = actions.menuItem("tab.copy-select", I18n.t("tab.copySelect"));
         menu.getItems().addAll(copyName, copySelect, new SeparatorMenuItem(),
-                closeItem, closeOthers, new SeparatorMenuItem(), closeAll);
+                pinItem, closeItem, closeOthers, new SeparatorMenuItem(), closeAll);
         node.setOnContextMenuRequested(event -> {
-            // 右键先激活该标签：这样菜单里的「关闭 / 关闭其他」作用的就是
+            // 右键先激活该标签：这样菜单里的「关闭 / 关闭其他 / 固定」作用的就是
             // 用户右键的那个标签，而不是上一次激活的那个。
             activate(tab.id());
+            pinItem.setText(tab.isPinned() ? I18n.t("tab.unpin") : I18n.t("tab.pin"));
             menu.show(node, event.getScreenX(), event.getScreenY());
         });
 

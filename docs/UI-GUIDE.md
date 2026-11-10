@@ -143,7 +143,7 @@ Windows 上常见字体可能替换或缺失。这条已经**不再是方向而�
 | 区域 | 高度 | 规则 |
 |---|---|---|
 | 菜单栏 | 原生 24 | 原生菜单；macOS 使用系统菜单栏；所有项走 `ActionRegistry` |
-| 命令带 | 91 | **12 格磁贴**（Connection / New Query / Table / View / Function / User / Others ｜ Query / Backup / Automation / Model / BI），62×58 按钮、26px **彩色**图标在上、11px 文字在下；未建能力面落如实说明页。全局工具件在 Ribbon 右端，⭐ R63-2 起**只剩主题与 ⋯ 两颗**（连接胶囊与那颗假搜索框已删）|
+| 命令带 | 91 | ⭐ **2026-11-09 当前口径：13 格磁贴**（Connection / New Query / Table / View / Function / User / Others ｜ Query / Backup / Profiling / Transfer / Automation / Model），62×58 按钮、26px **彩色**图标在上、11px 文字在下；Backup / User / Profiling / Transfer 已接真工具页，只剩 Function / Automation / Model 三格落如实说明页（8px 空心环）。**BI 已按裁定整体移除** —— 不留磁贴、不留说明页、不留路由与文案；上方 140px 那句里的「12 格」是 R36 当时的历史值，**BI 移除前的 14 格则见 `RibbonCapabilityAuditTest` 的顺序门禁**。全局工具件在 Ribbon 右端，⭐ R63-2 起**只剩主题与 ⋯ 两颗**（连接胶囊与那颗假搜索框已删）|
 | 页签行 | 25 | 左侧文档页签；**只放页签**（全局工具件不在这里） |
 | 侧栏 | 250 / 折叠 48，可拖 200–360 | 对象树按连接 → 类型分组 → 对象。**搜索框在底部**（与 ★、« 同行，Navicat 形态） |
 | 对象工具栏 | 30 | 对象级动作（打开 / 刷新 / 结构 / 设计…），随当前对象启用 |

@@ -23,11 +23,15 @@ import org.testfx.framework.junit5.Start;
 import org.testfx.util.WaitForAsyncUtils;
 import javafx.stage.Stage;
 
+import javafx.geometry.Bounds;
+
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+
+import org.assertj.core.data.Offset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -1831,6 +1835,48 @@ class SideBarTreeTest {
             }
         }
         return null;
+    }
+
+    /**
+     * ⭐ 回归防护：展开态侧栏的「内容块」(expanded) 必须占满 SideBar 全高，
+     * 否则底部的搜索栏会按自然高度停在窗口中上部（悬浮感），而不是贴住窗口底部。
+     * 2026-11-09 修的就是这个（expanded 缺 VBox.setVgrow(ALWAYS)）。
+     */
+    @Test
+    void expandedContentFillsSideBarHeightSoSearchBarSitsAtTheBottom() {
+        ActionRegistry actions = new ActionRegistry();
+        List<ConnectionProfile> profiles = List.of(profile("demo", "演示库"));
+
+        SideBar sideBar = onFx(() -> {
+            SideBar created = new SideBar(actions, List.of(), "演示库",
+                    tab -> { }, message -> { }, "demo", profiles, p -> { });
+            Scene scene = new Scene(created, 320, 600);
+            scene.getStylesheets().add(styleUrl("/io/agenticdb/ui/theme-light.css"));
+            scene.getStylesheets().add(styleUrl("/io/agenticdb/ui/app.css"));
+            created.getStyleClass().add("theme-light");
+            stage.setScene(scene);
+            return created;
+        });
+        onFxRun(() -> {
+            sideBar.applyCss();
+            sideBar.layout();
+        });
+
+        Node expanded = onFx(() -> sideBar.getChildren().get(0));
+        Bounds expandedBounds = onFx(expanded::getBoundsInParent);
+
+        double sideBarHeight = sideBar.getHeight();
+        // ⚠️ 不拿 getInsets() 当布局坐标基准：headless 下 Region 的 inset 与
+        //    getBoundsInParent() 的实际起点对不齐（内容按 content 区域从 ≈0 起）。
+        //    直接以 SideBar 自身高度为基准：撑满时底部 ≈ height、顶部 ≈ 0；
+        //    一旦丢了 VBox.setVgrow(ALWAYS)，expanded 只剩自然高度（约百来 px），
+        //    底部离 height 差几百 px，断言立刻红。
+        assertThat(expandedBounds.getMinY())
+                .as("展开态内容块从 SideBar 顶部开始（不悬浮在中部）")
+                .isCloseTo(0.0, Offset.offset(8.0));
+        assertThat(expandedBounds.getMaxY())
+                .as("展开态内容块占满 SideBar 高度，底部搜索栏才贴住窗口底部而不是悬在中间")
+                .isCloseTo(sideBarHeight, Offset.offset(8.0));
     }
 
     private static void onFxRun(Runnable action) {

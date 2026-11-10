@@ -270,6 +270,15 @@ class ConnectionsPageTest {
         assertThat(table.getItems()).extracting(ConnectionProfile::name).containsExactly("PG");
     }
 
+    /** ⭐ SSH 已知主机入口常驻连接页，且不随「有没有选中连接」被禁用。 */
+    @Test
+    void sshKnownHostsEntryIsAlwaysReachable(FxRobot robot) {
+        javafx.scene.control.Button button = robot.lookup("#connections-ssh-hosts")
+                .queryAs(javafx.scene.control.Button.class);
+        assertThat(button.getText()).isEqualTo(I18n.t("conn.ssh.hosts"));
+        assertThat(button.isDisabled()).isFalse();
+    }
+
     /** 找到文本等于连接名的表格单元。 */
     private static javafx.scene.Node cellNamed(FxRobot robot, String name) {
         return robot.lookup(node -> node instanceof TableCell<?, ?> cell

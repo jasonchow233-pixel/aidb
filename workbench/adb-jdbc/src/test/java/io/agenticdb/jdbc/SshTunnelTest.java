@@ -189,6 +189,52 @@ class SshTunnelTest {
     }
 
     /**
+     * ⭐ 交互式信任决策：用户接受 → 隧道开通且密钥写进 known_hosts（与 TOFU 自动记录同源）。
+     *
+     * <p>这条把「决策接受」和「密钥落盘」绑在一起验 —— 接受却不记录等于下次又问，
+     * TOFU 的意义就丢了（见 {@code bytesCrossTheTunnelAndReachTheOtherSide} 的同一条账）。
+     */
+    @Test
+    void unknownHostKeyIsAcceptedWhenTheInteractiveDecisionAccepts() throws Exception {
+        bastion = startBastion("bastion_prompt_accept.key");
+        database = startFakeDatabase();
+
+        HostKeyDecision accept = info -> HostKeyDecision.Choice.ACCEPT_AND_REMEMBER;
+        try (SshTunnel tunnel = SshTunnel.open(endpoint(bastion.getPort()), "127.0.0.1",
+                database.getLocalPort(), accept)) {
+            assertThat(tunnel.localPort()).as("接受后隧道必须正常开通").isPositive();
+        }
+        assertThat(Files.readString(knownHosts))
+                .as("用户接受后密钥必须写进 known_hosts")
+                .contains("[127.0.0.1]:" + bastion.getPort());
+    }
+
+    /**
+     * ⭐ 交互式信任决策：用户拒绝 → 连接失败、归类为「主机密钥不可信」且<b>不</b>记录。
+     *
+     * <p>拒绝和「严格模式拒未知密钥」走的是同一处失败出口（{@code untrustedHostKey()==true}），
+     * 区别只在原因文案：这里是 "user declined"，那里是 "trust on first use is off"。
+     */
+    @Test
+    void unknownHostKeyIsRejectedWhenTheInteractiveDecisionRejects() throws Exception {
+        bastion = startBastion("bastion_prompt_reject.key");
+        database = startFakeDatabase();
+
+        HostKeyDecision reject = info -> HostKeyDecision.Choice.REJECT;
+        assertThatThrownBy(() -> SshTunnel.open(endpoint(bastion.getPort()), "127.0.0.1",
+                database.getLocalPort(), reject))
+                .isInstanceOf(SshTunnelException.class)
+                .satisfies(error -> assertThat(((SshTunnelException) error).untrustedHostKey())
+                        .isTrue())
+                .satisfies(error -> assertThat(String.valueOf(error.getMessage()).toLowerCase())
+                        .as("拒绝要说得清是「用户拒绝」，不是「连不上」")
+                        .contains("user declined"));
+        assertThat(Files.readString(knownHosts))
+                .as("用户拒绝后密钥绝不该写进 known_hosts")
+                .doesNotContain("[127.0.0.1]:" + bastion.getPort());
+    }
+
+    /**
      * ⭐ 这条是本类里最要紧的一条：TOFU 打开后，<b>换过的</b>密钥照样要拒。
      *
      * <p>如果 TOFU 被写成「以后都信」，机房换密钥和有人在中间截取在界面上就变成同一件事，

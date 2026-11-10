@@ -1,0 +1,75 @@
+name: Release
+
+# 打 tag（v*）时出包：复用 scripts/package.sh（jpackage 出 dmg/msi/deb）。
+#
+# ⚠️ 不在 CI 里做签名：C-5/C-6（首发平台与签名边界）尚未拍板，
+# 先出「未签名安装包 + 诚实说明」，签名决策落地后再补 notarize / gpg。
+#
+# 失败看什么：jpackage 缺运行时系统库（Linux 上 libgtk/libxtst、macOS 上合法 JDK）
+# 会红在打包那一步 —— 那是 runner 环境缺库，不是产品缺陷，补依赖后写进 CHANGELOG，
+# 别改门禁期望值。
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: 出包 ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      # Linux 上 jpackage 需要若干 X11/GTK 运行时库，否则打包阶段直接失败。
+      - name: 安装 Linux 打包依赖
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-0 libxtst6 libxslt1.1 libasound2
+        shell: bash
+
+      - name: 出包（按平台类型）
+        run: |
+          case "${{ matrix.os }}" in
+            macos-latest) TYPE=dmg ;;
+            windows-latest) TYPE=msi ;;
+            ubuntu-latest) TYPE=deb ;;
+          esac
+          ./scripts/package.sh "$TYPE"
+        shell: bash
+
+      - name: 上传安装包产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: aidb-${{ matrix.os }}
+          path: 'bootstrap/adb-desktop/target/dist/*'
+          retention-days: 30
+
+      - name: 发布到 GitHub Release（draft）
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          draft: true
+          files: 'bootstrap/adb-desktop/target/dist/*'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

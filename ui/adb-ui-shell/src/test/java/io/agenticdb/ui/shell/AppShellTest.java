@@ -500,6 +500,17 @@ class AppShellTest {
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
+    /** ⭐ Q4 后半：外壳只持回调，不自己 new Stage；注入的处理器必须真的被动作触发。 */
+    @Test
+    void newWindowHandlerIsInjectedAndInvoked(FxRobot robot) {
+        AppShell shell = robot.lookup(".app-shell").queryAs(AppShell.class);
+        java.util.concurrent.atomic.AtomicInteger calls =
+                new java.util.concurrent.atomic.AtomicInteger();
+        shell.setOnNewWindow(calls::incrementAndGet);
+        shell.newWindowHandlerForTest().run();
+        assertThat(calls.get()).isEqualTo(1);
+    }
+
     private static TreeItem sidebarTreeRoot(AppShell shell) {
         TreeView view = (TreeView) shell.sideBar().lookup(".adb-object-tree");
         return (TreeItem) view.getRoot();

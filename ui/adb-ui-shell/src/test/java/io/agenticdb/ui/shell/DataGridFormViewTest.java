@@ -358,7 +358,7 @@ class DataGridFormViewTest {
     @Test
     @SuppressWarnings("unchecked")
     void formViewWithSelectionKeepsTheToolbarInsideTheWindow() throws Exception {
-        // 1154 − 240 侧栏 ≈ 910px 可用：13 个具名键必然有几颗要折进 »。
+        // 1154 − 240 侧栏 ≈ 910px 可用：12 个具名键必然有几颗要折进 »。
         final int width = 1154;
         AtomicReference<DataGridPage> pageRef = new AtomicReference<>();
         AtomicReference<Stage> stageRef = new AtomicReference<>();
@@ -390,7 +390,7 @@ class DataGridFormViewTest {
             assertThat(toolbar).as("找不到 #data-toolbar").isNotNull();
             assertToolbarIsHonest(view, toolbar, width);
             assertThat(WaitForAsyncUtils.asyncFx(view::foldedToolbarKeysForTest).get())
-                    .as("910px 可用宽度下 13 个具名键不可能全放得下（前置条件：这条门禁在验折叠）")
+                    .as("910px 可用宽度下 12 个具名键不可能全放得下（前置条件：这条门禁在验折叠）")
                     .isNotEmpty();
 
             // 第一次：选中行 + 表单视图 —— 删除记录出现在左下条里，顶部宽度不变。
@@ -441,7 +441,7 @@ class DataGridFormViewTest {
                 WaitForAsyncUtils.asyncFx(view::namedToolbarKeysForTest).get();
         List<javafx.scene.control.ButtonBase> folded =
                 WaitForAsyncUtils.asyncFx(view::foldedToolbarKeysForTest).get();
-        assertThat(named).as("13 个具名键").hasSize(13);
+        assertThat(named).as("12 个具名键").hasSize(12);
 
         double sceneRight = toolbar.getScene().getWidth();
         double toolbarRight = toolbar.localToScene(toolbar.getBoundsInLocal()).getMaxX();

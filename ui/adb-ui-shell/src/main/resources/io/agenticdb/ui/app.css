@@ -316,6 +316,18 @@
     -fx-stroke: -adb-kind-table;
 }
 
+/* ⭐ P3 新增两格（Data Profiling / Cross-DB Transfer，R36 的 12 格 → 14 格）。
+   回落单色路径吃这里；彩色路径吃下面「宿主类 + 后代 .adb-icon-edge」那组。
+   不新造语义：画像读的是「表数据」→ kind-table，传输是一条「动作流程」→ kind-procedure。
+   ⚠️ 宿主类由 AppBar 按字面量挂上，StyleClassCoverageTest 双向查 —— 少一条规则就红。 */
+.adb-ribbon__icon--profiling {
+    -fx-stroke: -adb-kind-table;
+}
+
+.adb-ribbon__icon--transfer {
+    -fx-stroke: -adb-kind-procedure;
+}
+
 .adb-ribbon__icon--automation {
     -fx-stroke: -adb-kind-procedure;
 }
@@ -324,12 +336,8 @@
     -fx-stroke: -adb-kind-trigger;
 }
 
-.adb-ribbon__icon--bi {
-    -fx-stroke: -adb-kind-function;
-}
-
 /* ── 功能区彩色档（R35 N4-a）──────────────────────────────────────────
- *    上面那四条单类规则挂在 Group 上是**死规则**（Group 没有 -fx-stroke），
+ *    上面那几条单类规则挂在 Group 上是**死规则**（Group 没有 -fx-stroke），
  *    它们只服务「没有彩色资产 → 回落单色 SVGPath」那条路径。
  *    真拿到彩色资产时，命令色必须靠后代选择器打在子层 .adb-icon-edge 上
  *    —— 与 §4.5 第 7 条（树 / 页签的类型色）同一个机制、同一个理由。
@@ -337,13 +345,15 @@
  *    门禁：IconKindHueTest.ribbonCommandsKeepTheirToneOnTheEdgeLayer */
 .adb-ribbon__icon--connect .adb-icon-edge,
 .adb-ribbon__icon--table .adb-icon-edge,
-.adb-ribbon__icon--backup .adb-icon-edge {
+.adb-ribbon__icon--backup .adb-icon-edge,
+.adb-ribbon__icon--profiling .adb-icon-edge {
     -fx-stroke: -adb-kind-table;
 }
 
 .adb-ribbon__icon--query .adb-icon-edge,
 .adb-ribbon__icon--automation .adb-icon-edge,
-.adb-ribbon__icon--user .adb-icon-edge {
+.adb-ribbon__icon--user .adb-icon-edge,
+.adb-ribbon__icon--transfer .adb-icon-edge {
     -fx-stroke: -adb-kind-procedure;
 }
 
@@ -351,8 +361,7 @@
     -fx-stroke: -adb-kind-view;
 }
 
-.adb-ribbon__icon--function .adb-icon-edge,
-.adb-ribbon__icon--bi .adb-icon-edge {
+.adb-ribbon__icon--function .adb-icon-edge {
     -fx-stroke: -adb-kind-function;
 }
 
@@ -1397,6 +1406,18 @@
     -fx-font-size: 12px;
 }
 
+/* ⭐ A-2：连接节点的表数是展示层的独立 Label，比连接名淡一档 —— 它是
+ * 「这棵树有多少东西」的注脚，不该和名字抢层级。选中态要跟着提一档，
+ * 否则淡字压在选中底色上会读不出来。 */
+.adb-tree__count {
+    -fx-text-fill: -adb-text-tertiary;
+    -fx-font-size: 11px;
+}
+
+.adb-object-tree .tree-cell:selected .adb-tree__count {
+    -fx-text-fill: -adb-text-secondary;
+}
+
 /* ⭐ R62-a H5-j：**粗体只留给「当前在用的库」这一层**。
    原来分组名和连接名都恒粗 —— 侧栏里几乎每一行结构性节点都是粗的，
    于是粗体不再表达任何东西，而它本来是这里唯一说「你现在在哪个库」的线索
@@ -1489,6 +1510,13 @@
 
 .adb-tab:hover {
     -fx-background-color: -adb-bg-hover;
+}
+
+/* ⭐ Q4：固定标签 —— 关闭钮由 Java 侧绑定 pinned.not() 收掉，这一条只给
+ *   「为什么没有 ×」一个视觉解释：一条中性底线，不抢活动标签的 accent。
+ *   必须排在 --active 之前，否则固定的那张恰好是当前页时会盖掉活动色。 */
+.adb-tab--pinned {
+    -fx-border-color: transparent transparent -adb-text-tertiary transparent;
 }
 
 .adb-tab--active {
@@ -1970,8 +1998,11 @@
 }
 
 .adb-grid__column-type {
-    -fx-text-fill: -adb-text-tertiary;
+    /* ⭐ A-6：列头类型徽标原先走三级文字（#707070），和正文区分度偏弱；
+       提到二级文字（#595959），对比度更稳，仍明显轻于列名。 */
+    -fx-text-fill: -adb-text-secondary;
     -fx-font-size: 11px;
+    -fx-font-weight: normal;
 }
 
 .adb-grid__gutter {

@@ -124,7 +124,9 @@ public final class TableExporter {
             if (options.maxRows() > 0 && written >= options.maxRows()) {
                 break;
             }
-            writeDataRow(options, out, data.get(i), names, null, i < data.size() - 1);
+            writeDataRow(options, out,
+                    DataMasker.maskRow(data.get(i), names, options.masks(), options.maskSalt()),
+                    names, null, i < data.size() - 1);
             written++;
         }
         writeFooter(out, format);
@@ -146,7 +148,7 @@ public final class TableExporter {
                 if (options.maxRows() > 0 && written >= options.maxRows()) {
                     break;
                 }
-                xlsx.row(row);
+                xlsx.row(DataMasker.maskRow(row, names, options.masks(), options.maskSalt()));
                 written++;
             }
         }
@@ -183,8 +185,15 @@ public final class TableExporter {
                 for (int i = 1; i <= meta.getColumnCount(); i++) {
                     names.add(meta.getColumnLabel(i));
                 }
-                // ⭐ 表头 / 根节点 / 建表语句都必须在拿到列名之后、第一行之前写出。
-                writePreamble(out, options, names, dialect, table);
+                // ⭐ SQL 格式的 INSERT 前缀（「INSERT INTO t (...) VALUES」）必须等到
+                // 确认至少有第一行之后再写：空结果集会写出悬空的「INSERT ... VALUES」——
+                // 没有值、没有结尾分号，重导时非法。其它格式（CSV 表头 / XML 根 / HTML 头）
+                // 即使零行也是合法文档，照旧提前写。
+                boolean sqlMode = options.format() == ExportFormat.SQL
+                        && table != null && dialect != null;
+                if (!sqlMode) {
+                    writePreamble(out, options, names, dialect, table);
+                }
                 if (!rs.next()) {
                     writeFooter(out, options.format());
                     out.flush();
@@ -193,12 +202,22 @@ public final class TableExporter {
                 // ⭐ 一次只把一批行读进内存，写完就释放。
                 //    这里用「先看有没有下一行」的写法（而不是读完再问），
                 //    因为 SQL 格式要靠「是不是最后一行」决定写 "," 还是 ";"。
+                boolean firstRow = true;
                 while (true) {
                     if (options.maxRows() > 0 && written >= options.maxRows()) {
                         break;
                     }
-                    List<Object> values = readValues(rs, names.size());
+                    // ⭐ P-3：脱敏统一发生在「值离开 JDBC、进编码器之前」这一层，
+                    //    七种格式与三种范围共用，漏一条就会在自以为脱敏的文件里写明文。
+                    List<Object> values = DataMasker.maskRow(
+                            readValues(rs, names.size()), names, options.masks(), options.maskSalt());
                     boolean hasMore = rs.next();
+                    if (firstRow) {
+                        if (sqlMode) {
+                            writeSqlPreamble(out, dialect, table, names);
+                        }
+                        firstRow = false;
+                    }
                     writeDataRow(options, out, values, names, dialect, hasMore);
                     written++;
                     if (!hasMore) {
@@ -286,7 +305,8 @@ public final class TableExporter {
                     if (options.maxRows() > 0 && written >= options.maxRows()) {
                         break;
                     }
-                    xlsx.row(readValues(rs, names.size()));
+                    xlsx.row(DataMasker.maskRow(
+                            readValues(rs, names.size()), names, options.masks(), options.maskSalt()));
                     written++;
                 }
             }

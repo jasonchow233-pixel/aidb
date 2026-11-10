@@ -59,6 +59,11 @@ class ContrastTest {
         // ⭐ U12：凹陷区（输入框 / 网格底）是次要文字实际落底的地方，
         // 以前只查了页面底 —— 老版 #64748B 在 #F1F5F9 上实测 4.34:1，一直不达 AA。
         PAIRS.put("次要文字 / 凹陷区", new String[]{"text-secondary", "bg-inset", "bg-canvas"});
+        // ⭐ A-6：列头类型徽标从三级文字提到二级文字后，它在「光标所在列」的蓝 tint 上
+        //    也要过 AA —— 那一格底色是 32% 半透明（暗色档），必须先叠到页面底再算。
+        //    实测 light 4.503:1 / dark 5.779:1（贴着 4.5 下限），所以这条登记不是凑数：
+        //    将来谁动一下 bg-header-current 或 text-secondary，门禁会当场拦住。
+        PAIRS.put("次要文字 / 当前列表头", new String[]{"text-secondary", "bg-header-current", "bg-canvas"});
         PAIRS.put("三级文字 / 页面底", new String[]{"text-tertiary", "bg-canvas", "bg-canvas"});
         PAIRS.put("三级文字 / 浮层", new String[]{"text-tertiary", "bg-elevated", "bg-canvas"});
         PAIRS.put("三级文字 / 凹陷区", new String[]{"text-tertiary", "bg-inset", "bg-canvas"});

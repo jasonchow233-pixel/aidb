@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import javafx.scene.Node;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuItem;
 import javafx.scene.layout.HBox;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,8 @@ class TabBarTest {
         actions.register("tab.close-all", "全部关闭", "tab", null, () -> { });
         actions.register("tab.copy-name", "复制表名", "tab", null, () -> { });
         actions.register("tab.copy-select", "复制 SELECT", "tab", null, () -> { });
+        // ⭐ Q4：每个页签节点的右键菜单都要问注册表要 tab.pin —— 不注册就抛异常。
+        actions.register("tab.pin", "固定 / 取消固定", "tab", null, () -> { });
         tabBar = new TabBar(actions);
         // 标签只认识 id；名字与库名是外壳给的（档案里才有）。
         tabBar.setConnectionLabels(id -> "pg".equals(id) ? "生产库" : "演示库");
@@ -230,6 +233,105 @@ class TabBarTest {
         assertThat(graphicOf("object-home").getStyleClass())
                 .as("重画/兜底都不能丢掉页签图标自己的类")
                 .contains("adb-tab__icon");
+    }
+
+    // ───────────────────── Q4：固定标签 ─────────────────────
+
+    /**
+     * ⭐ Q4：钉住之后，× 与所有关闭通道都得一起失效 —— 只藏 × 而让 ⌘W 还能关掉
+     * 就是「界面说不能关、动作偏能关」，比没有这个功能更糟。
+     */
+    @Test
+    void aPinnedTabCannotBeClosedAndLosesItsCloseButton() {
+        open("grid:demo:users", "users", "demo");
+        open("grid:demo:orders", "orders", "demo");
+        run(() -> tabBar.setPinned("grid:demo:users", true));
+
+        java.util.concurrent.atomic.AtomicReference<Boolean> closed =
+                new java.util.concurrent.atomic.AtomicReference<>(true);
+        run(() -> closed.set(tabBar.close("grid:demo:users")));
+        assertThat(closed.get()).as("固定标签不参与 close()").isFalse();
+        assertThat(tabBar.openTabs()).extracting(TabItem::id)
+                .as("关不掉就是真还在，不是只返回了 false")
+                .contains("grid:demo:users");
+
+        java.util.concurrent.atomic.AtomicReference<List<Object>> button =
+                new java.util.concurrent.atomic.AtomicReference<>(List.of());
+        run(() -> {
+            HBox box = (HBox) tabBar.tabNodeForTest("grid:demo:users");
+            Node close = box.getChildren().stream()
+                    .filter(child -> child.getStyleClass().contains("adb-tab__close"))
+                    .findFirst().orElse(null);
+            button.set(close == null ? List.of()
+                    : List.of(close.isVisible(), close.isManaged()));
+        });
+        assertThat(button.get())
+                .as("固定标签不该摆一颗点了没反应的 ×（visible 与 managed 都得收掉）")
+                .containsExactly(false, false);
+        assertThat(tabBar.tabNodeForTest("grid:demo:users").getStyleClass())
+                .as("没有 × 要有个视觉解释")
+                .contains("adb-tab--pinned");
+    }
+
+    /** ⭐ Q4：常驻 → 固定 → 普通，且 {@code openTabs()} 与场景图必须同一套顺序。 */
+    @Test
+    void pinnedTabsStayJustBehindThePermanentTab() {
+        run(() -> tabBar.openPermanent(
+                new TabItem("object-home", "对象", TabKind.OBJECT)));
+        open("grid:demo:a", "a", "demo");
+        open("grid:demo:b", "b", "demo");
+        open("grid:demo:c", "c", "demo");
+        run(() -> tabBar.setPinned("grid:demo:c", true));
+
+        assertThat(tabBar.openTabs()).extracting(TabItem::id)
+                .containsExactly("object-home", "grid:demo:c", "grid:demo:a", "grid:demo:b");
+
+        java.util.concurrent.atomic.AtomicReference<List<String>> visual =
+                new java.util.concurrent.atomic.AtomicReference<>(List.of());
+        run(() -> visual.set(tabBar.visualTabIdsForTest()));
+        assertThat(visual.get())
+                .as("items 与场景图各排一套的话，关闭后「下一个激活谁」会说假话")
+                .containsExactly(TabBar.nodeId("object-home"), TabBar.nodeId("grid:demo:c"),
+                        TabBar.nodeId("grid:demo:a"), TabBar.nodeId("grid:demo:b"));
+    }
+
+    /** ⭐ Q4：「关闭全部」不能顺手把用户钉住的标签一起端掉。 */
+    @Test
+    void closingAllKeepsPermanentAndPinnedTabsOnly() {
+        run(() -> tabBar.openPermanent(
+                new TabItem("object-home", "对象", TabKind.OBJECT)));
+        open("grid:demo:a", "a", "demo");
+        open("grid:demo:b", "b", "demo");
+        run(() -> {
+            tabBar.setPinned("grid:demo:b", true);
+            tabBar.closeAll();
+        });
+        assertThat(tabBar.openTabs()).extracting(TabItem::id)
+                .containsExactly("object-home", "grid:demo:b");
+
+        // 取消固定之后就回到普通标签，关闭全部能把它们收干净。
+        run(() -> {
+            tabBar.setPinned("grid:demo:b", false);
+            tabBar.closeAll();
+        });
+        assertThat(tabBar.openTabs()).extracting(TabItem::id)
+                .containsExactly("object-home");
+    }
+
+    /** ⭐ Q4：固定入口来自 ActionRegistry（⌘K / 右键同源），作用于当前激活页。 */
+    @Test
+    void theContextMenuOffersPinAndItFollowsTheActiveTab() {
+        open("grid:demo:users", "users", "demo");
+        java.util.concurrent.atomic.AtomicReference<List<String>> menuIds =
+                new java.util.concurrent.atomic.AtomicReference<>(List.of());
+        run(() -> menuIds.set(tabBar.contextMenuForTest().getItems().stream()
+                .map(MenuItem::getId).toList()));
+        assertThat(menuIds.get()).as("右键菜单必须走注册表那条 tab.pin").contains("tab.pin");
+
+        run(() -> tabBar.togglePinnedActive());
+        assertThat(tabBar.isPinned("grid:demo:users")).isTrue();
+        run(() -> tabBar.togglePinnedActive());
+        assertThat(tabBar.isPinned("grid:demo:users")).isFalse();
     }
 
     // ─────────────────────────── 脚手架 ───────────────────────────

@@ -21,6 +21,14 @@ public final class TabItem {
     private final javafx.scene.Node view;
     private final BooleanProperty dirty = new SimpleBooleanProperty(false);
     private final IntegerProperty dirtyCount = new SimpleIntegerProperty(0);
+    /**
+     * ⭐ Q4：固定标签。与 {@link #dirty} 一样是<b>每个标签自己的状态</b>，不放全局集合 ——
+     * 全局集合会和 {@code TabBar} 的 {@code items} 顺序各说一套，重排时必然串台。
+     *
+     * <p>固定 = 不参与「关闭 / 关闭其他 / 关闭全部」，且排在常驻标签之后、普通标签之前。
+     * 这不是「不可关闭」的另一种写法：常驻标签是系统给的入口，固定标签是用户自己钉住的。
+     */
+    private final BooleanProperty pinned = new SimpleBooleanProperty(false);
 
     public TabItem(String id, String title, TabKind kind) {
         this(id, title, kind, title);
@@ -84,6 +92,19 @@ public final class TabItem {
 
     public IntegerProperty dirtyCountProperty() {
         return dirtyCount;
+    }
+
+    /** ⭐ Q4：固定状态（供关闭钮的可见性直接绑定，切状态不用重建标签节点）。 */
+    public BooleanProperty pinnedProperty() {
+        return pinned;
+    }
+
+    public boolean isPinned() {
+        return pinned.get();
+    }
+
+    public void setPinned(boolean value) {
+        pinned.set(value);
     }
 
     public void markDirty(int count) {

@@ -60,6 +60,70 @@ current_jdk_major() {
   fi
 }
 
+# 读指定 JDK 目录的 major 版本（不依赖 JAVA_HOME，也不改环境）。
+java_major_at() {
+  local raw
+  raw="$("$1/bin/java" -version 2>&1 | head -n 1 || true)"
+  if [[ "$raw" =~ \"1\.([0-9]+)\. ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+  elif [[ "$raw" =~ \"([0-9]+)\. ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+  fi
+}
+
+# ── 自动定位符合 enforcer 区间的 JDK ───────────────────────────────
+# 背景：项目要求 [25,28)，而很多机器默认 JDK 还是 11/17。以前要么每次手工
+# export JAVA_HOME，要么把 JDK 装在 /tmp —— 重启或清理临时目录后就失效。
+# 优先级：显式合格的 JAVA_HOME（尊重调用方）> 用户级持久目录 > 系统注册的 JDK。
+# 只 export 到当前脚本及其子进程，**不改系统默认 java**。
+ADB_JDK_DIR="${ADB_JDK_DIR:-$HOME/.workbuddy/jdk}"
+
+resolve_jdk_home() {
+  local need need_max major home
+  need="$(required_jdk_min)"; [ -n "$need" ] || need=25
+  need_max="$(required_jdk_max)"
+
+  # 1) 调用方显式给的 JAVA_HOME 版本合格 → 一动不动。
+  if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    major="$(java_major_at "$JAVA_HOME")"
+    if [ -n "$major" ] && [ "$major" -ge "$need" ] \
+        && { [ -z "$need_max" ] || [ "$major" -lt "$need_max" ]; }; then
+      return 0
+    fi
+    warn "JAVA_HOME=${JAVA_HOME} 是 JDK ${major:-?}，不在 [${need},${need_max:-∞}) 内；继续自动探测。"
+  fi
+
+  # 2) 用户级持久目录（macOS bundle 与 Linux/Windows 平铺两种布局都认）。
+  for home in "$ADB_JDK_DIR"/*/Contents/Home "$ADB_JDK_DIR"/*; do
+    [ -x "$home/bin/java" ] || continue
+    major="$(java_major_at "$home")"
+    if [ -n "$major" ] && [ "$major" -ge "$need" ] \
+        && { [ -z "$need_max" ] || [ "$major" -lt "$need_max" ]; }; then
+      export JAVA_HOME="$home"
+      export PATH="$JAVA_HOME/bin:$PATH"
+      info "自动选用持久 JDK：${JAVA_HOME}（JDK ${major}）"
+      return 0
+    fi
+  done
+
+  # 3) macOS 已注册的 JDK（只读探测；系统默认 java 不变）。
+  if [ -x /usr/libexec/java_home ]; then
+    home="$(/usr/libexec/java_home -v "$need" 2>/dev/null || true)"
+    if [ -n "$home" ] && [ -x "$home/bin/java" ]; then
+      major="$(java_major_at "$home")"
+      if [ -n "$major" ] && [ "$major" -ge "$need" ] \
+          && { [ -z "$need_max" ] || [ "$major" -lt "$need_max" ]; }; then
+        export JAVA_HOME="$home"
+        export PATH="$JAVA_HOME/bin:$PATH"
+        info "自动选用系统 JDK：${JAVA_HOME}（JDK ${major}）"
+        return 0
+      fi
+    fi
+  fi
+  # 找不到就原样返回，由 require_toolchain 给出带修正建议的清晰报错。
+  return 0
+}
+
 current_maven_version() {
   ./mvnw -v 2>/dev/null | head -n 1 | sed -n 's/.*Apache Maven \([0-9.]*\).*/\1/p'
 }
@@ -69,6 +133,9 @@ current_maven_version() {
 # （"is not in the allowed range"）出现在 build 日志深处，很难一眼看出是环境问题。
 require_toolchain() {
   local need_jdk need_jdk_max need_mvn have_jdk have_mvn
+
+  # 先按 pom 的区间自动挑一个合格 JDK；显式 JAVA_HOME 合格时不会覆盖。
+  resolve_jdk_home
 
   need_jdk="$(required_jdk_min)"; [ -n "$need_jdk" ] || need_jdk=25
   need_jdk_max="$(required_jdk_max)"

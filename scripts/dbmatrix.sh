@@ -27,7 +27,14 @@
 #   「主机名对得上」（host=localhost）和「主机名对不上」（host=127.0.0.1）两种答案，
 #   不用为了负例再开一个容器、也不用改本机 /etc/hosts。
 
-set -euo pipefail
+# ⚠️ 只开 -e -o pipefail，不开 -u（nounset）。
+# macOS 自带 /bin/bash 是 3.2，它的 nounset 有已知 bug：在 for 循环里用 read /
+# 命令替换给 local 变量赋值后，若在「同一个词」里同时展开 ≥2 个这样的变量
+# （例如 `docker run -p "${host_port}:${cur_port}"` 或 `log "起 $container（$image）"`），
+# 后续变量会被误报 unbound variable 直接退出 —— 与是否多变量同条 local、是否带 `=""`
+# 初始化都无关。脚本里所有变量都在引用前已赋值，丢 nounset 不影响正确性，
+# 但能避开这一整类 bash 3.2 怪异。要彻底修需升级到 bash 4+（本机未装）。
+set -eo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
@@ -176,7 +183,9 @@ up() {
   load_env
   # 旧版本生成的口令文件里没有 DB2 那四行：补上，不重新生成口令。
   # （容器还在、口令却换了 = 连接全失败，那比缺键难查得多，见 load_env 上面的注释。）
-  local prefix key
+  # 这里仍用 `local a="" b=""` 逐赋空串：纯风格统一，与 nounset 无关
+  # （真正的 bash 3.2 nounset 坑已在文件头注释说明，靠关掉 -u 解决）。
+  local prefix="" key=""
   for prefix in MYSQL MARIADB PG MSSQL; do
     key="ADB_TEST_${prefix}_DB2"
     if ! grep -q "^${key}=" "$ENV_FILE"; then
@@ -187,7 +196,7 @@ up() {
   done
   $DOCKER_BIN info >/dev/null 2>&1 || die "Docker 守护进程没在跑（先开 Docker Desktop）"
 
-  local entry engine container image host_port cur_port state
+  local entry="" engine="" container="" image="" host_port="" cur_port="" state=""
   for entry in "${IMAGES[@]}"; do
     IFS='|' read -r engine container image host_port cur_port <<<"$entry"
     # 不用 docker inspect 判存在：对象不存在时它也会往 stdout 吐一个空行，
@@ -383,7 +392,7 @@ COMMIT;" >/dev/null
 }
 
 status() {
-  local entry engine container image host_port cur_port state
+  local entry="" engine="" container="" image="" host_port="" cur_port="" state=""
   printf '%-9s %-13s %-7s %s\n' ENGINE CONTAINER PORT STATE
   for entry in "${IMAGES[@]}"; do
     IFS='|' read -r engine container image host_port cur_port <<<"$entry"
@@ -590,7 +599,7 @@ tls_up() {
   gen_pki
   append_tls_env
 
-  local entry label container image host_port cur_port password_var
+  local entry="" label="" container="" image="" host_port="" cur_port="" password_var=""
   for entry in "${TLS_ENGINES[@]}"; do
     IFS='|' read -r label container image host_port cur_port password_var <<<"$entry"
     local state
@@ -621,7 +630,7 @@ tls_up() {
   # ⚠️ 这里不能问「当前会话加没加密」（`SHOW STATUS LIKE 'Ssl_cipher'` /
   # `pg_stat_ssl.ssl`）：那条查询走的是容器内的 CLI 连接 —— mysql 客户端拿的是 socket、
   # psql 同理，量出来永远是「没加密」，跟服务器配了什么无关。第一次写的时候就踩了这个坑。
-  local mysql_cert pg_ssl mariadb_cert
+  local mysql_cert="" pg_ssl="" mariadb_cert=""
   mysql_cert=$(tls_sql MYSQL "SHOW VARIABLES LIKE 'ssl_cert'" 2>/dev/null | tr -d '\n')
   mariadb_cert=$(tls_sql MARIADB "SHOW VARIABLES LIKE 'ssl_cert'" 2>/dev/null | tr -d '\n')
   pg_ssl=$(tls_sql PG "SHOW ssl" 2>/dev/null | tr -d '[:space:]')
@@ -633,7 +642,7 @@ tls_up() {
 }
 
 tls_status() {
-  local entry label container image host_port cur_port password_var state
+  local entry="" label="" container="" image="" host_port="" cur_port="" password_var="" state=""
   printf '%-12s %-17s %-7s %s\n' ENGINE CONTAINER PORT STATE
   for entry in "${TLS_ENGINES[@]}"; do
     IFS='|' read -r label container image host_port cur_port password_var <<<"$entry"
@@ -672,7 +681,7 @@ tls_run_matrix() {
 }
 
 tls_down() {
-  local entry label container image host_port cur_port password_var
+  local entry="" label="" container="" image="" host_port="" cur_port="" password_var=""
   for entry in "${TLS_ENGINES[@]}"; do
     IFS='|' read -r label container image host_port cur_port password_var <<<"$entry"
     if [ -n "$($DOCKER_BIN ps -aq -f name="^${container}$")" ]; then
@@ -683,7 +692,7 @@ tls_down() {
 }
 
 down() {
-  local entry engine container image host_port cur_port
+  local entry="" engine="" container="" image="" host_port="" cur_port=""
   for entry in "${IMAGES[@]}"; do
     IFS='|' read -r engine container image host_port cur_port <<<"$entry"
     if [ -n "$($DOCKER_BIN ps -aq -f name="^${container}$")" ]; then

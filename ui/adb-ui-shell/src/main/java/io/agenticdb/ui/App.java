@@ -9,6 +9,9 @@ import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * AIDB（AgenticDB）桌面入口。
  *
@@ -28,6 +31,9 @@ public class App extends Application {
     public static final double SHOT_SCENE_HEIGHT = 800;
 
     private AppShell shell;
+    /** ⭐ Q4 后半：所有窗口各自一套 AppShell / 会话 / 线程池，退出时逐个释放。 */
+    private final List<AppShell> shells = new ArrayList<>();
+    private Stage primaryStage;
 
     @Override
     public void start(Stage stage) {
@@ -52,6 +58,9 @@ public class App extends Application {
         startup.mark("locale");
 
         shell = new AppShell(settings, themeManager, startup);
+        shell.setOnNewWindow(this::openWindow);
+        shells.add(shell);
+        primaryStage = stage;
         Scene scene = new Scene(shell, SHOT_SCENE_WIDTH, SHOT_SCENE_HEIGHT);
         startup.mark("scene");
 
@@ -74,14 +83,7 @@ public class App extends Application {
         // ⚠️ 列表里每个名字都必须真实存在：下面 `url != null` 会把缺文件**静默跳过**，
         //    少一张图没人报错（踩过：`app-icon-512.png` 从未生成 —— 512 这一档按
         //    `brand/README.md` 约定就叫 `app-icon.png`）。AppIconResourceAuditTest 守着。
-        for (String icon : new String[]{
-                "app-icon-1024.png", "app-icon.png",
-                "app-icon-256.png", "app-icon-128.png", "app-icon-64.png"}) {
-            java.net.URL url = App.class.getResource("/io/agenticdb/ui/" + icon);
-            if (url != null) {
-                stage.getIcons().add(new javafx.scene.image.Image(url.toExternalForm()));
-            }
-        }
+        applyIcons(stage);
         stage.setScene(scene);
         shell.restoreWindow(stage);
         stage.show();
@@ -114,9 +116,79 @@ public class App extends Application {
 
     @Override
     public void stop() {
-        if (shell != null) {
-            shell.close();
+        for (AppShell open : List.copyOf(shells)) {
+            closeShell(open);
         }
+        shells.clear();
+    }
+
+    /** 关窗口与退出应用可能都走到 close()，用身份集合去重，别把同一组会话关两次。 */
+    private final java.util.Set<AppShell> closedShells = java.util.Collections.newSetFromMap(
+            new java.util.IdentityHashMap<>());
+
+    private void closeShell(AppShell target) {
+        if (closedShells.add(target)) {
+            target.close();
+        }
+    }
+
+    /**
+     * 主窗口与后续窗口共用同一套图标清单（AppIconResourceAuditTest 守着文件名）。
+     *
+     * <p>⭐ 注意：这里必须写成 {@code stage.getIcons().add(...)} 这个字面量形态。
+     * 抽成方法时曾经把形参改名成 {@code target}，结果 {@code BrandMarkAuditTest}
+     * 那条「品牌图标必须真的注册进窗口」的源码审计门禁就找不到这行字了 ——
+     * 门禁靠源码字面量守「图标真的进了窗口」，抽方法时把字面量一起抽掉了。
+     */
+    private void applyIcons(Stage stage) {
+        for (String icon : new String[]{
+                "app-icon-1024.png", "app-icon.png",
+                "app-icon-256.png", "app-icon-128.png", "app-icon-64.png"}) {
+            java.net.URL url = App.class.getResource("/io/agenticdb/ui/" + icon);
+            if (url != null) {
+                stage.getIcons().add(new javafx.scene.image.Image(url.toExternalForm()));
+            }
+        }
+    }
+
+    /**
+     * ⭐ Q4 后半：再开一个独立窗口。
+     *
+     * <p>不是把同一个 AppShell 塞进第二个 Scene（JavaFX 一个 Node 只能有一个父节点），
+     * 而是整套新实例：SettingsStore / ThemeManager / AppShell / StartupTrace 各一份。
+     * 连接档案是磁盘上的共享只读配置，但<b>会话、线程池、页签、窗口标题都在各自外壳里</b> ——
+     * 关掉一个窗口不会顺手断掉另一个窗口的连接。
+     */
+    private void openWindow() {
+        SettingsStore windowSettings = new SettingsStore();
+        ThemeManager windowTheme = new ThemeManager(windowSettings);
+        AppShell windowShell = new AppShell(windowSettings, windowTheme,
+                new io.agenticdb.ui.StartupTrace());
+        windowShell.setOnNewWindow(this::openWindow);
+        shells.add(windowShell);
+
+        Scene scene = new Scene(windowShell, SHOT_SCENE_WIDTH, SHOT_SCENE_HEIGHT);
+        windowTheme.attach(scene);
+        windowTheme.apply(ThemeMode.of(windowSettings.get("ui.theme", "system")), false);
+
+        Stage stage = new Stage();
+        stage.setTitle(APP_TITLE);
+        stage.setMinWidth(960);
+        stage.setMinHeight(600);
+        applyIcons(stage);
+        stage.setScene(scene);
+        windowShell.restoreWindow(stage);
+        // 错开一点，别让新窗口严丝合缝盖住主窗口 —— 多窗口要一眼看得出是两个。
+        if (primaryStage != null) {
+            stage.setX(primaryStage.getX() + 32);
+            stage.setY(primaryStage.getY() + 32);
+        }
+        stage.setOnHidden(event -> {
+            shells.remove(windowShell);
+            closeShell(windowShell);
+        });
+        stage.show();
+        windowShell.afterShown(stage);
     }
 
     /**

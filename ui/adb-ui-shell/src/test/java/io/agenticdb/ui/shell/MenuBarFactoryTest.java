@@ -59,11 +59,20 @@ class MenuBarFactoryTest {
             "query.format", "query.save", "query.save-snippet", "query.insert-snippet",
             "favorites.open", "favorites.clear", "diagnostics", "query-history",
             "import-export", "settings",
-            "window.minimize", "shortcuts", "about");
+            "window.new", "window.minimize", "shortcuts", "about");
 
     @Start
     void start(Stage stage) {
         stage.show();
+    }
+
+    /** ⭐ Q4 后半：Window 菜单第一项要能再开一个独立窗口，不是只有关闭/最小化。 */
+    @Test
+    void windowMenuOffersNewWindowFirst() {
+        MenuBar menuBar = bar(registry());
+        Menu window = group(menuBar, "menu.window");
+        assertThat(window.getItems().getFirst().getText())
+                .isEqualTo("label-window.new");
     }
 
     private static ActionRegistry registry() {

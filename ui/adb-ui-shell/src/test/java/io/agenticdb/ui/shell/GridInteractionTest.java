@@ -280,18 +280,18 @@ class GridInteractionTest {
     }
 
     /**
-     * ⭐⭐ D-61：网格工具条的五颗**假按钮**（点了只落如实说明页）必须在点之前就说实话 ——
+     * ⭐⭐ D-61：网格工具条上仍落如实说明页的**假按钮**必须在点之前就说实话 ——
      * 右上角挂 PendingMark 环，tooltip 与 accessibleText 带同一句「本版本未提供」。
      *
-     * <p>Q8 拍板的是「入口也要诚实」，但环此前只画在功能区六格；页内这九处
-     * （判据 = 落点是 {@code showCapabilityNotice}）一枚都没有，假按钮与真功能
-     * 同形同色。环的几何断言走**宿主排里有 mark 孩子**这一构造事实，
+     * <p>名单随能力面收窄：BI Workspace 已整体移除、Data Masking 在 P-3 接上真
+     * 导出向导，两者都不再挂环（判据始终是落点是不是 {@code showCapabilityNotice}）。
+     * 环的几何断言走**宿主排里有 mark 孩子**这一构造事实，
      * 不量像素（像素归帧，这里归接线）。
      */
     @Test
     void capabilityPlaceholdersAdvertiseThemselvesBeforeTheClick() {
-        for (String id : java.util.List.of("data-fill-ai", "data-profiling", "data-generation",
-                "data-masking", "data-bi-workspace")) {
+        for (String id : java.util.List.of("data-fill-ai", "data-profiling",
+                "data-generation")) {
             javafx.scene.Node node = page.lookup("#" + id);
             assertThat(node).as("落点按钮 #%s", id).isNotNull();
             javafx.scene.control.ButtonBase button = (javafx.scene.control.ButtonBase) node;

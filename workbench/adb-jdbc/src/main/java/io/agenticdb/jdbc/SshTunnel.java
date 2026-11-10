@@ -59,7 +59,10 @@ public final class SshTunnel implements AutoCloseable {
     }
 
     /**
-     * 起隧道。
+     * 起隧道（非交互默认）。
+     *
+     * <p>等价于 {@link #open(SshEndpoint, String, int, HostKeyDecision)} 传入
+     * {@link HostKeyDecisions#silentFor(boolean)} —— 保持引入交互式决策前的旧行为。
      *
      * @param endpoint 跳板机与凭据
      * @param remoteHost 数据库地址（按跳板机的解析）
@@ -68,6 +71,27 @@ public final class SshTunnel implements AutoCloseable {
      */
     public static SshTunnel open(SshEndpoint endpoint, String remoteHost, int remotePort)
             throws SQLException {
+        return open(endpoint, remoteHost, remotePort,
+                HostKeyDecisions.silentFor(endpoint.trustOnFirstUse()));
+    }
+
+    /**
+     * 起隧道（可注入主机密钥决策）。
+     *
+     * <p>{@code decision} 非空时，首次见到的主机密钥改走<b>交互式询问</b>（由调用方决定怎么问，
+     * 例如弹一张指纹比对窗）；{@code decision} 为 {@code null} 时退回到按
+     * {@code endpoint.trustOnFirstUse()} 的静默策略（矩阵测试 / 后台重连走这条）。
+     *
+     * <p>密钥<b>变了</b>一律拒绝 —— 这条不受决策影响，见 {@link HostKeys#acceptModifiedServerKey}。
+     *
+     * @param endpoint 跳板机与凭据
+     * @param remoteHost 数据库地址（按跳板机的解析）
+     * @param remotePort 数据库端口
+     * @param decision 未知主机密钥的信任决策（可空）
+     * @throws SshTunnelException 隧道自己的失败（认证 / 主机密钥 / 连不上跳板机）
+     */
+    public static SshTunnel open(SshEndpoint endpoint, String remoteHost, int remotePort,
+            HostKeyDecision decision) throws SQLException {
         if (!endpoint.usable()) {
             throw new SshTunnelException("SSH tunnel: bastion host or username is missing - "
                     + endpoint, false);
@@ -77,7 +101,7 @@ public final class SshTunnel implements AutoCloseable {
                     + "password is required) - " + endpoint.describe(), false);
         }
         Path knownHosts = knownHostsFile();
-        HostKeys hostKeys = new HostKeys(knownHosts, endpoint.trustOnFirstUse());
+        HostKeys hostKeys = new HostKeys(knownHosts, endpoint.trustOnFirstUse(), decision);
         SshClient client = SshClient.setUpDefaultClient();
         client.setServerKeyVerifier(hostKeys);
         ClientSession session = null;
@@ -235,12 +259,14 @@ public final class SshTunnel implements AutoCloseable {
     private static final class HostKeys extends KnownHostsServerKeyVerifier {
 
         private final boolean trustOnFirstUse;
+        private final HostKeyDecision decision;
         private volatile String refusal;
 
-        HostKeys(Path knownHosts, boolean trustOnFirstUse) {
+        HostKeys(Path knownHosts, boolean trustOnFirstUse, HostKeyDecision decision) {
             super(trustOnFirstUse ? AcceptAllServerKeyVerifier.INSTANCE
                     : RejectAllServerKeyVerifier.INSTANCE, knownHosts);
             this.trustOnFirstUse = trustOnFirstUse;
+            this.decision = decision;
         }
 
         String refusal() {
@@ -254,6 +280,20 @@ public final class SshTunnel implements AutoCloseable {
             if (!trustOnFirstUse) {
                 refusal = "the bastion host key is not in known_hosts and "
                         + "\"trust on first use\" is off: " + address(targetServerAddress);
+                return false;
+            }
+            if (decision != null) {
+                // ⭐ 交互式信任：把指纹摆给用户比对，由真人决定，而不是默默接受任何密钥。
+                HostKeyDecision.Choice choice = decision.decide(new HostKeyDecision
+                        .HostKeyPromptInfo(address(targetServerAddress), keyAlgorithm(serverKey),
+                        fingerprint(serverKey)));
+                if (choice == HostKeyDecision.Choice.ACCEPT_AND_REMEMBER) {
+                    // 走父类：把密钥写进 known_hosts 再返回 true（与 TOFU 自动记录同源）。
+                    return super.acceptUnknownHostKey(sshClientSession, targetServerAddress,
+                            serverKey);
+                }
+                refusal = "the user declined to trust the unknown bastion host key ("
+                        + address(targetServerAddress) + ", " + fingerprint(serverKey) + ")";
                 return false;
             }
             return super.acceptUnknownHostKey(sshClientSession, targetServerAddress, serverKey);
@@ -275,6 +315,34 @@ public final class SshTunnel implements AutoCloseable {
             return address instanceof InetSocketAddress socket
                     ? socket.getHostString() + ":" + socket.getPort()
                     : String.valueOf(address);
+        }
+
+        /** 密钥算法（如 {@code ssh-ed25519} / {@code ssh-rsa}），给弹窗做标识。 */
+        private static String keyAlgorithm(PublicKey key) {
+            return key == null ? "unknown" : key.getAlgorithm();
+        }
+
+        /**
+         * OpenSSH 格式的 SHA256 指纹（{@code SHA256:…}），让用户肉眼比对的那一串。
+         *
+         * <p>自己算、不依赖 MINA 的展示 API：公钥原文跑一次 SHA-256，再转 urlsafe base64
+         * 且去掉 padding —— 正好等于 {@code ssh-keygen -lf} 的输出，用户比对得起来。
+         */
+        private static String fingerprint(PublicKey key) {
+            if (key == null) {
+                return "SHA256:UNKNOWN";
+            }
+            try {
+                java.security.MessageDigest sha =
+                        java.security.MessageDigest.getInstance("SHA-256");
+                byte[] digest = sha.digest(key.getEncoded());
+                String base64 = java.util.Base64.getEncoder().encodeToString(digest);
+                // OpenSSH 用 urlsafe 且无 padding。
+                return "SHA256:" + base64.replace('+', '-').replace('/', '_')
+                        .replace("=", "");
+            } catch (java.security.NoSuchAlgorithmException e) {
+                return "SHA256:UNKNOWN";
+            }
         }
     }
 }

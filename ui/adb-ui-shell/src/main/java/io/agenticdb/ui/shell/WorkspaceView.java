@@ -56,6 +56,29 @@ public final class WorkspaceView extends StackPane {
     private io.agenticdb.introspect.SchemaService diagnosticSchemaService;
     private java.util.concurrent.Executor diagnosticExecutor;
 
+    /** Backup 工具页需要的依赖（与诊断页同源：当前活动连接 + 内省 + 执行器）。 */
+    private io.agenticdb.jdbc.DbSession backupSession;
+    private io.agenticdb.introspect.SchemaService backupSchemaService;
+    private java.util.concurrent.Executor backupExecutor;
+
+    /** User 只读视图需要的依赖（与诊断页同源）。 */
+    private io.agenticdb.jdbc.DbSession usersSession;
+    private io.agenticdb.introspect.SchemaService usersSchemaService;
+    private java.util.concurrent.Executor usersExecutor;
+
+    /** Data Profiling 工具页需要的依赖（与诊断页同源）。 */
+    private io.agenticdb.jdbc.DbSession profilingSession;
+    private io.agenticdb.introspect.SchemaService profilingSchemaService;
+    private java.util.concurrent.Executor profilingExecutor;
+
+    /** 跨库传输工具页需要的依赖：源连接会话 + 目标连接解析器 + 其它连接清单。 */
+    private io.agenticdb.jdbc.DbSession transferSession;
+    private io.agenticdb.introspect.SchemaService transferSchemaService;
+    private java.util.concurrent.Executor transferExecutor;
+    private java.util.List<io.agenticdb.session.ConnectionProfile> transferOthers = java.util.List.of();
+    private java.util.function.Function<String, io.agenticdb.jdbc.DbSession> transferResolver =
+            id -> null;
+
     /** 当前活动数据页（编辑菜单据此启用/禁用）；不是数据页时为 {@code null}。 */
     public DataGridPage activeGrid() {
         return activeGrid;
@@ -132,6 +155,46 @@ public final class WorkspaceView extends StackPane {
         this.diagnosticSession = session;
         this.diagnosticSchemaService = schemaService;
         this.diagnosticExecutor = executor;
+    }
+
+    /** 接入 Backup 工具页的依赖（活动连接 + 内省 + 执行器）。 */
+    public void setBackup(io.agenticdb.jdbc.DbSession session,
+                          io.agenticdb.introspect.SchemaService schemaService,
+                          java.util.concurrent.Executor executor) {
+        this.backupSession = session;
+        this.backupSchemaService = schemaService;
+        this.backupExecutor = executor;
+    }
+
+    /** 接入 User 只读视图的依赖（活动连接 + 内省 + 执行器）。 */
+    public void setUsers(io.agenticdb.jdbc.DbSession session,
+                         io.agenticdb.introspect.SchemaService schemaService,
+                         java.util.concurrent.Executor executor) {
+        this.usersSession = session;
+        this.usersSchemaService = schemaService;
+        this.usersExecutor = executor;
+    }
+
+    /** 接入 Data Profiling 工具页的依赖（活动连接 + 内省 + 执行器）。 */
+    public void setProfiling(io.agenticdb.jdbc.DbSession session,
+                             io.agenticdb.introspect.SchemaService schemaService,
+                             java.util.concurrent.Executor executor) {
+        this.profilingSession = session;
+        this.profilingSchemaService = schemaService;
+        this.profilingExecutor = executor;
+    }
+
+    /** 接入跨库传输工具页的依赖。 */
+    public void setTransfer(io.agenticdb.jdbc.DbSession sourceSession,
+                            io.agenticdb.introspect.SchemaService schemaService,
+                            java.util.concurrent.Executor executor,
+                            java.util.List<io.agenticdb.session.ConnectionProfile> otherConnections,
+                            java.util.function.Function<String, io.agenticdb.jdbc.DbSession> resolver) {
+        this.transferSession = sourceSession;
+        this.transferSchemaService = schemaService;
+        this.transferExecutor = executor;
+        this.transferOthers = otherConnections == null ? java.util.List.of() : otherConnections;
+        this.transferResolver = resolver == null ? id -> null : resolver;
     }
 
     public void showTab(TabItem tab) {
@@ -519,9 +582,28 @@ public final class WorkspaceView extends StackPane {
                     body.getChildren().add(emptyState(
                             Icons.Icon.STRUCTURE, tab.title(),
                             I18n.t("workspace.tool.objectKind")));
+                } else if (SideBar.TOOL_BACKUP.equals(route) && backupSession != null) {
+                    // ⭐ P2 Backup：纯 JDBC 转储 / 恢复已落地，这里接上真实工具页。
+                    body.getChildren().add(new BackupToolPage(
+                            backupSession, backupSchemaService, backupExecutor));
+                } else if (SideBar.TOOL_USERS.equals(route) && usersSession != null) {
+                    // ⭐ P2 User 只读视图（H8）：列出账号 / 角色，只读。
+                    body.getChildren().add(new UsersToolPage(
+                            usersSession, usersSchemaService, usersExecutor));
+                } else if (SideBar.TOOL_PROFILING.equals(route) && profilingSession != null) {
+                    // ⭐ P3 轻量 Data Profiling：单条采样查询在内存里算每列画像。
+                    body.getChildren().add(new DataProfilingPage(
+                            profilingSession, profilingSchemaService, profilingExecutor));
+                } else if (SideBar.TOOL_TRANSFER.equals(route) && transferSession != null) {
+                    // ⭐ P3 跨库传输最小切片：源表 → 内存 SQL → 目标连接。
+                    body.getChildren().add(new TransferToolPage(
+                            transferSession, transferSchemaService, transferExecutor,
+                            transferOthers, transferResolver));
                 } else if (SideBar.TOOL_UNAVAILABLE_ROUTES.contains(route)) {
-                    // ⭐ R36 N6：Ribbon 的 User/Backup/Automation/Model/BI 五格 ——
-                    // 能力面（N28）没建，按诚实条款给**如实说明页**，不留死磁贴。
+                    // ⭐ R36 N6 → P2/P3：User / Backup / Profile / Transfer 已升级为真工具页
+                    // （走上面的分支），这里只剩 Automation / Model 与对象清单页的
+                    // new-table-ai —— 能力面没建，按诚实条款给**如实说明页**，不留死磁贴。
+                    // BI 已按 2026-11-09 用户裁定整体移除，不再有这条路由。
                     body.getChildren().add(emptyState(
                             Icons.Icon.DIAGNOSTICS, tab.title(),
                             I18n.t("workspace.tool.unavailable")));
