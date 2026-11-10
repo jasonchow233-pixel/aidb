@@ -63,6 +63,25 @@
   `TableDdlTest` 增补视图重命名行为门禁（SQLite 跑通 / 撞名拒发 / 同名拒发 / 取消零 SQL /
   双语言计划标题 / 弹窗拦截源码扫描）、`I18nAuditTest` 18 条全绿（CJK 棘轮未增长）。
 
+- **视图只读依赖图落地真实能力**（2026-11-10）：右键表 / 视图节点「查看依赖图…」开一个只读依赖图标签页，
+  把原先只在删表前警告里用的 `dependentViews` 补成可视化。模型层三件套全部可无头单测、与 JavaFX 解耦：
+  ① `ViewBodyDependencies.extract(body)` 纯解析视图正文——剥离 `CREATE [OR REPLACE] VIEW … AS`
+  前缀、行 / 块注释与单引号字符串，扫描 FROM/JOIN 的对象路径（`schema.tbl` / 双引号 / 反引号 / 方括号
+  四种标识符，逗号连接与子查询），排除 CTE 名与别名；② `SchemaDependencyGraph.of(inputs)` 建有向图，
+  边方向是「视图 → 它读的对象」，被引用但不在清单里的对象按 `UNKNOWN`「外部」计入（图不丢边），
+  反向边（谁依赖该节点）由同一份前向数据推导，于是「删表会坏哪些视图」一并覆盖；
+  ③ `DependencyLayout.layout(graph, focus)` 纯数学分层坐标（表在第 0 层、越靠下游视图越靠右，
+  遇环就地截断不卡死）。渲染层 `DependencyGraphPage`（JavaFX，只读）消费已建好的图：节点按
+  表 / 视图 / 外部三色、箭头表方向、拖拽平移 + Ctrl+滚轮缩放、聚焦节点上下游高亮其余淡出。
+  UI 入口挂在 `SideBar` 的表 / 视图右键菜单（`SHOW_DEPENDENCY_GRAPH` → `AppShell.showDependencyGraph`：
+  后台线程 `listObjects` + 逐视图 `readDdl(..., view=true)` 取定义体 → 建图 → 切回 FX 线程开页，
+  单个视图读不出定义体只缺它自己的出边、不拖垮整图）。i18n 中英文齐平（`page.depgraph.title` /
+  `page.depgraph.title.focus` / `depgraph.hint` / `depgraph.legend.*` / `action.object.dependency-graph` /
+  `depgraph.loadFailed`）。门禁：`ViewBodyDependenciesTest` 20 / `SchemaDependencyGraphTest` 8 /
+  `DependencyLayoutTest` 2（模型层，无头全绿）、`adb-ui-shell` 编译 + `I18nAuditTest` 18/18（含 CJK 棘轮）。
+  ⚠️ 仅做静态正文解析，不跟踪运行时动态 SQL / 预编译语句里的依赖；跨 schema 引用按「外部」处理。
+  UI 的逐像素验收（TestFX）受无显示器环境限制，留待有显示器的机器补跑。
+
 ### Fixed
 
 - **两处「非空守卫」在角标清零后会空转失守**（2026-11-10）：Ribbon 11 格全部接上真落点后，

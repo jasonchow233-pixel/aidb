@@ -314,6 +314,9 @@ public final class SideBar extends VBox {
         // ⭐ B3：重命名视图 —— 与重命名表同格，但只挂在视图节点上（表节点上灰掉）。
         actions.register("object.rename-view", I18n.t("action.object.rename-view"), I18n.t("category.object"), null,
                 () -> onSelected(SideBarObject.RENAME_VIEW));
+        // ⭐ B4：查看依赖图 —— 表 / 视图节点都能开（表看谁依赖它，视图看它依赖谁）。
+        actions.register("object.dependency-graph", I18n.t("action.object.dependency-graph"), I18n.t("category.object"), null,
+                () -> onSelected(SideBarObject.SHOW_DEPENDENCY_GRAPH));
         // ⭐ UX-6：侧栏「已保存查询」分组里的条目（打开 = 新查询页 + 预填 SQL）。
         actions.register("saved-query.open", I18n.t("action.saved-query.open"), I18n.t("category.query"), null,
                 () -> onSelected(SideBarObject.OPEN_SAVED_QUERY));
@@ -341,6 +344,8 @@ public final class SideBar extends VBox {
         DROP_VIEW,
         /** ⭐ B3：重命名视图（执行同样在 {@link TableDdl}）。 */
         RENAME_VIEW,
+        /** ⭐ B4：查看依赖图（表 / 视图都能开）。 */
+        SHOW_DEPENDENCY_GRAPH,
         /** ⭐ U1：把当前连接切到这个库（重连）。 */
         SWITCH_CATALOG,
         /** ⭐ UX-6：打开一条已保存查询（新查询页 + 预填 SQL）。 */
@@ -1923,6 +1928,7 @@ public final class SideBar extends VBox {
                     new SeparatorMenuItem(),
                     actions.menuItem("object.truncate-table"),
                     actions.menuItem("object.rename-table"),
+                    actions.menuItem("object.dependency-graph"),
                     actions.menuItem("object.drop-table"));
             case VIEW -> menu.getItems().addAll(
                     actions.menuItem("object.open-data"),
@@ -1939,6 +1945,7 @@ public final class SideBar extends VBox {
                     actions.menuItem("object.refresh-table"),
                     actions.menuItem("object.design-view"),
                     actions.menuItem("object.rename-view"),
+                    actions.menuItem("object.dependency-graph"),
                     actions.menuItem("object.drop-view"));
             case CONNECTION -> menu.getItems().addAll(
                     actions.menuItem("new-connection", I18n.t("sidebar.editConnection")),
@@ -2088,6 +2095,9 @@ public final class SideBar extends VBox {
                     status.accept(I18n.t(onlyViewProblemKey(action)));
                 }
             }
+            // ⭐ B4：依赖图 —— 表（看谁依赖它）和视图（看它依赖谁）都能开，不限类型。
+            case SHOW_DEPENDENCY_GRAPH ->
+                    onTableDdl.accept(new TableRequest(action, node.name(), owner));
             // ⭐ U1：切库（重连由外壳做）。
             case SWITCH_CATALOG -> {
                 if (node.kind() == NodeKind.CATALOG) {

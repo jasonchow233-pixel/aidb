@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.fixtures.DemoDatabase;
+import io.agenticdb.introspect.SchemaDependencyGraph;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.SchemaService.SchemaObject;
 import io.agenticdb.introspect.TableStructure;
@@ -1048,6 +1049,7 @@ public final class AppShell extends StackPane {
             case DESIGN_VIEW -> ddl.designView(connectionId, request.tableName());
             case DROP_VIEW -> ddl.dropView(connectionId, request.tableName());
             case RENAME_VIEW -> ddl.renameView(connectionId, request.tableName());
+            case SHOW_DEPENDENCY_GRAPH -> showDependencyGraph(connectionId, request.tableName());
             default -> status(I18n.t("shell.actionNotWired"));
         }
     }
@@ -1095,6 +1097,53 @@ public final class AppShell extends StackPane {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    /**
+     * ⭐ B4：打开某个表 / 视图的<b>只读依赖图</b>标签页。
+     *
+     * <p>后台线程先 {@code listObjects} 拿全量对象，再对每个视图用方言
+     * {@code readDdl(..., view=true)} 取回定义体，交给 {@link SchemaDependencyGraph}
+     * 算前向依赖（视图 → 它读的对象）；入边（谁依赖它）由同一份数据反向推导，
+     * 于是「删表前会坏掉哪些视图」也一并覆盖。图算完才切回 FX 线程开页——
+     * 渲染层只吃已经建好的图，不碰库。
+     *
+     * <p>单个视图读不出定义体（某些方言 / 权限）不会拖垮整张图：那条置为 null，
+     * 仅缺失它自己的出边，其余对象照常入图。
+     */
+    private void showDependencyGraph(String connectionId, String focus) {
+        DbSession current = sessionFor(connectionId);
+        if (current == null) {
+            status(I18n.t("ddl.noSession"));
+            return;
+        }
+        dbExecutor.submit(() -> {
+            try {
+                List<SchemaObject> objects = schemaService.listObjects(current);
+                List<SchemaDependencyGraph.Input> inputs = new ArrayList<>();
+                for (SchemaObject o : objects) {
+                    if (o.kind() == SchemaService.ObjectKind.VIEW) {
+                        String body = null;
+                        try {
+                            body = current.dialect().readDdl(current.connection(), o.name(), true);
+                        } catch (Exception ignored) {
+                            body = null;
+                        }
+                        inputs.add(SchemaDependencyGraph.Input.view(o.name(), body));
+                    } else {
+                        inputs.add(SchemaDependencyGraph.Input.table(o.name()));
+                    }
+                }
+                SchemaDependencyGraph graph = SchemaDependencyGraph.of(inputs);
+                String title = I18n.t("page.depgraph.title.focus", focus);
+                Platform.runLater(() -> openTab(new TabItem(
+                        "depgraph:" + connectionId + ":" + focus, title,
+                        TabKind.TOOL, focus, connectionId,
+                        new DependencyGraphPage(graph, focus))));
+            } catch (Exception e) {
+                Platform.runLater(() -> status(I18n.t("depgraph.loadFailed")));
+            }
+        });
     }
 
     // ─────────────────────────── 连接管理 ───────────────────────────
