@@ -33,6 +33,14 @@
   **预选当前表**（路由形如 `TOOL_PROFILING + 表名`，与既有的 `TOOL_DIAGNOSTICS + 表名` 同形）。
 功能区角标现只剩
   Function / Automation / Model 三格，门禁顺序与具名键名单同步收窄。
+- **Filter & Sort 面板「加 OR 条件组」落地真实能力**（2026-11-10）：此前 `[Ω]` 点开是如实说明页；
+  现在它新增一组（上限 `MAX_GROUPS=8`，超出给 `filter.panel.error.groupLimit` 提示），
+  组间 `OR`、组内 `AND`，满足 Navicat §1.9 的「条件组」形态。模型层 `DataQuery` 由
+  平铺 `List<FilterCondition>` 改为 `List<FilterGroup>`（组内 AND、组间 OR），
+  `DataSqlBuilder` 在单组时逐字节兼容旧版平铺 AND（历史断言不变）；`FilterSortPanel`
+  重写支持新增 / 编辑 / 删除 OR 组，`FilterPanelAuditTest` 改为真测 OR 组合并条件。
+  门禁：`DataSqlBuilderTest` 增 3 条（OR 组 / 组内 AND 组间 OR / 单组仍平铺 AND）、
+  `I18nAuditTest` 18 条全绿（含 CJK 棘轮；构造函数守卫消息改用中性英文，不增长模型层中文字面量）。
 
 ### Fixed
 

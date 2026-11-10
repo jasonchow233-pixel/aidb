@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.DataQuery;
 import io.agenticdb.introspect.FilterCondition;
+import io.agenticdb.introspect.FilterGroup;
 import io.agenticdb.introspect.FilterOperator;
 import io.agenticdb.introspect.SchemaService.TableSchema;
 import io.agenticdb.introspect.SortSpec;
@@ -45,8 +46,10 @@ import java.util.function.Consumer;
  * 编辑成草稿，只有按 {@code Apply Filter & Sort} 才生成新的 {@link DataQuery}。
  * 草稿与已应用条件不一致时右侧亮 {@code Criteria Edited}。
  *
- * <p>模型约束照实表达：{@link DataQuery} 只有**平铺 AND**，所以行间连接词固定
- * {@code and}；{@code [Ω]} 加条件组（OR）没有底层支持，点击给如实说明页，不摆假括号。
+ * <p>⭐ B1（筛选 OR 条件组）：{@link DataQuery} 现在由若干 {@link FilterGroup} 组成，
+ * 组内 {@code AND}、组间 {@code OR}。组 0（默认 AND 组）的结构与旧版平铺 AND 完全一致，
+ * 因此列头筛选、写入回查等只用到一层的路径行为不变；新增的 {@code Ω}（添加条件组）
+ * 现在会真正新增一个 OR 组，不再是「如实说明页」占位。
  * 列头漏斗的「候选值多选」（IN）仍走 {@code ColumnFilterPanel}；这类条件在面板里
  * 原样保留、不参与行编辑，避免把 IN 伪装成单个等值条件。
  */
@@ -54,11 +57,13 @@ final class FilterSortPanel extends VBox {
 
     private final TableSchema schema;
     private final Consumer<DataQuery> onApply;
-    private final Runnable onAddGroup;
 
     private final VBox builderBox = new VBox(6);
     private final VBox rowsBox = new VBox(6);
-    private final HBox sortsBox = new HBox(6);
+    /** 组 0 之外的 OR 条件组（每个都是独立的 AND 组）。 */
+    private final VBox extraContainer = new VBox(8);
+    private final List<GroupEditor> extraGroups = new ArrayList<>();
+    private final VBox sortsBox = new VBox(6);
     private final VBox textBox = new VBox(6);
     private final TextArea textArea = new TextArea();
     private final Label dirtyLabel = new Label(I18n.t("filter.panel.edited"));
@@ -68,16 +73,16 @@ final class FilterSortPanel extends VBox {
     private final ToggleGroup modes = new ToggleGroup();
 
     private final List<Row> rows = new ArrayList<>();
-    /** 行编辑器表达不了的 IN 条件（来自列头值筛选），Apply 时原样带过去。 */
+    /** 行编辑器表达不了的 IN 条件（来自列头值筛选），Apply 时原样带过去（只在组 0）。 */
     private final List<FilterCondition> preserved = new ArrayList<>();
     private final List<SortSpec> sorts = new ArrayList<>();
     private boolean dirty;
     private int rowSeq;
+    private int groupSeq;
 
-    FilterSortPanel(TableSchema schema, Consumer<DataQuery> onApply, Runnable onAddGroup) {
+    FilterSortPanel(TableSchema schema, Consumer<DataQuery> onApply) {
         this.schema = schema;
         this.onApply = onApply;
-        this.onAddGroup = onAddGroup;
 
         setId("data-filter-panel");
         getStyleClass().add("adb-filter-builder");
@@ -120,8 +125,8 @@ final class FilterSortPanel extends VBox {
         addCondition.setTooltip(new Tooltip(I18n.t("filter.panel.addCondition")));
         addCondition.setAccessibleText(I18n.t("filter.panel.addCondition"));
         addCondition.setOnAction(event -> {
-            if (rows.size() < DataQuery.MAX_FILTERS) {
-                rows.add(newRow(null));
+            if (totalConditions() < DataQuery.MAX_FILTERS) {
+                rows.add(newRow(firstColumn(null), rows, this::renderRows));
                 renderRows();
                 touch();
             }
@@ -132,13 +137,11 @@ final class FilterSortPanel extends VBox {
         addGroup.getStyleClass().addAll("adb-chip", "adb-filter-builder__add");
         addGroup.setTooltip(new Tooltip(I18n.t("filter.panel.addGroup")));
         addGroup.setAccessibleText(I18n.t("filter.panel.addGroup"));
-        addGroup.setOnAction(event -> this.onAddGroup.run());
+        // ⭐ B1：Ω 现在真正新增一个 OR 组（不再是「本版本未提供」占位）。
+        addGroup.setOnAction(event -> addGroup());
         HBox rowActions = new HBox(6, addCondition, addGroup);
         rowActions.getStyleClass().add("adb-filter-builder__row-actions");
-        // ⭐ D-61：Ω 的落点是 showCapabilityNotice（判据 = 落点函数）—— 与「添加条件」
-        //    同形的假按钮必须点之前就说实话：环挂 rowActions，提示带「本版本未提供」。
-        PendingMark.mark(rowActions, addGroup);
-        builderBox.getChildren().addAll(rowsBox, rowActions);
+        builderBox.getChildren().addAll(rowsBox, extraContainer, rowActions);
 
         Label sortLabel = new Label(I18n.t("filter.panel.sortBy"));
         sortLabel.getStyleClass().add("adb-filter-builder__label");
@@ -222,6 +225,7 @@ final class FilterSortPanel extends VBox {
     /**
      * 截图 / 验收（R38 N31）：摆出一条完整草稿 —— 两条条件 + 一条排序 + 「Criteria Edited」。
      * 只摆不应用：Apply 的生效路径由 {@code FilterPanelAuditTest} 真点验收。
+     * 单组草稿，与旧版平铺 AND 视觉一致（不涉及 OR 组）。
      */
     void poseForShots() {
         seed(DataQuery.empty());
@@ -234,9 +238,11 @@ final class FilterSortPanel extends VBox {
                 .findFirst().orElse(columns.get(columns.size() - 1));
 
         rows.clear();
-        rows.add(rowFor(FilterCondition.of(text.name(), FilterOperator.CONTAINS, "a")));
+        rows.add(rowFor(FilterCondition.of(text.name(), FilterOperator.CONTAINS, "a"),
+                rows, this::renderRows));
         if (!number.name().equalsIgnoreCase(text.name())) {
-            rows.add(rowFor(FilterCondition.of(number.name(), FilterOperator.GT, 0)));
+            rows.add(rowFor(FilterCondition.of(number.name(), FilterOperator.GT, 0),
+                    rows, this::renderRows));
         }
         sorts.clear();
         sorts.add(new SortSpec(number.name(), false));
@@ -251,16 +257,24 @@ final class FilterSortPanel extends VBox {
         preserved.clear();
         sorts.clear();
         sorts.addAll(query.sorts());
-        for (FilterCondition filter : query.filters()) {
-            if (filter.operator() == FilterOperator.IN) {
-                preserved.add(filter);
-            } else {
-                Row row = rowFor(filter);
-                rows.add(row);
-            }
-        }
+        List<FilterGroup> groups = query.groups();
+        FilterGroup group0 = groups.isEmpty() ? FilterGroup.empty() : groups.get(0);
+        seedGroup(group0, rows, preserved, this::renderRows);
         if (rows.isEmpty()) {
-            rows.add(newRow(firstColumn(null)));
+            rows.add(newRow(firstColumn(null), rows, this::renderRows));
+        }
+        // 额外的 OR 组
+        extraGroups.clear();
+        extraContainer.getChildren().clear();
+        for (int i = 1; i < groups.size(); i++) {
+            GroupEditor editor = new GroupEditor();
+            extraGroups.add(editor);
+            extraContainer.getChildren().add(editor.container);
+            seedGroup(groups.get(i), editor.rows, List.of(), () -> editor.render());
+            if (editor.rows.isEmpty()) {
+                editor.addBlankRow();
+            }
+            editor.render();
         }
         dirty = false;
         setError(null);
@@ -278,16 +292,16 @@ final class FilterSortPanel extends VBox {
 
     DataQuery draft() {
         try {
-            return new DataQuery(buildFilters(), List.copyOf(sorts));
+            return new DataQuery(buildGroups(), List.copyOf(sorts));
         } catch (IllegalArgumentException e) {
             return null;
         }
     }
 
     private void applyDraft() {
-        List<FilterCondition> filters;
+        List<FilterGroup> groups;
         try {
-            filters = buildFilters();
+            groups = buildGroups();
         } catch (IllegalArgumentException e) {
             setError(e.getMessage());
             return;
@@ -295,10 +309,20 @@ final class FilterSortPanel extends VBox {
         setError(null);
         dirty = false;
         showDirty(false);
-        onApply.accept(new DataQuery(filters, List.copyOf(sorts)));
+        onApply.accept(new DataQuery(groups, List.copyOf(sorts)));
     }
 
-    private List<FilterCondition> buildFilters() {
+    /** ⭐ B1：把每组行（含组 0 的保留 IN 条件）收成 AND 组列表，组间交给 SQL 层用 OR 连。 */
+    private List<FilterGroup> buildGroups() {
+        List<FilterGroup> result = new ArrayList<>();
+        result.add(FilterGroup.of(buildGroupConditions(rows, preserved)));
+        for (GroupEditor editor : extraGroups) {
+            result.add(FilterGroup.of(buildGroupConditions(editor.rows, List.of())));
+        }
+        return result;
+    }
+
+    private List<FilterCondition> buildGroupConditions(List<Row> rows, List<FilterCondition> preserved) {
         List<FilterCondition> result = new ArrayList<>(preserved);
         Set<String> columns = new LinkedHashSet<>();
         for (Row row : rows) {
@@ -357,8 +381,8 @@ final class FilterSortPanel extends VBox {
         return FilterCondition.of(column.name(), operator, first);
     }
 
-    private Row rowFor(FilterCondition condition) {
-        Row row = newRow(condition.column());
+    private Row rowFor(FilterCondition condition, List<Row> owner, Runnable rerender) {
+        Row row = newRow(condition.column(), owner, rerender);
         row.operator.setValue(condition.operator());
         List<Object> values = condition.values();
         row.value.setText(values.isEmpty() ? "" : text(values.get(0)));
@@ -369,7 +393,7 @@ final class FilterSortPanel extends VBox {
         return row;
     }
 
-    private Row newRow(String column) {
+    private Row newRow(String column, List<Row> owner, Runnable rerender) {
         Row row = new Row();
         row.column = column == null ? firstColumn(null) : column;
 
@@ -382,7 +406,7 @@ final class FilterSortPanel extends VBox {
         row.field.getStyleClass().add("adb-filter-builder__field");
         row.field.setTooltip(new Tooltip(I18n.t("filter.tip.field")));
         row.field.setAccessibleText(I18n.t("filter.tip.field"));
-        row.field.setOnAction(event -> showColumnMenu(row));
+        row.field.setOnAction(event -> showColumnMenu(row, owner));
 
         row.operator = new ComboBox<>();
         row.operator.getItems().setAll(Arrays.stream(FilterOperator.values())
@@ -446,8 +470,8 @@ final class FilterSortPanel extends VBox {
         Button remove = iconButton(Icons.Icon.CLOSE, I18n.t("filter.panel.removeCondition"));
         remove.getStyleClass().add("adb-filter-builder__remove");
         remove.setOnAction(event -> {
-            rows.remove(row);
-            renderRows();
+            owner.remove(row);
+            rerender.run();
             touch();
         });
 
@@ -468,10 +492,10 @@ final class FilterSortPanel extends VBox {
         return row;
     }
 
-    private void showColumnMenu(Row row) {
+    private void showColumnMenu(Row row, List<Row> owner) {
         ContextMenu menu = new ContextMenu();
         Set<String> used = new LinkedHashSet<>();
-        for (Row other : rows) {
+        for (Row other : owner) {
             if (other != row && other.enabled.isSelected()) {
                 used.add(other.column.toLowerCase(Locale.ROOT));
             }
@@ -505,7 +529,49 @@ final class FilterSortPanel extends VBox {
             row.box.getStyleClass().remove("adb-filter-builder__row--active");
             rowsBox.getChildren().add(row.box);
         }
-        addCondition.setDisable(rows.size() >= DataQuery.MAX_FILTERS);
+        addCondition.setDisable(totalConditions() >= DataQuery.MAX_FILTERS);
+    }
+
+    private void renderGroup(GroupEditor editor) {
+        editor.rowsBox.getChildren().clear();
+        for (int index = 0; index < editor.rows.size(); index++) {
+            Row row = editor.rows.get(index);
+            if (index > 0) {
+                Label and = new Label(I18n.t("filter.panel.and"));
+                and.getStyleClass().add("adb-filter-builder__connector");
+                editor.rowsBox.getChildren().add(and);
+            }
+            row.box.getStyleClass().remove("adb-filter-builder__row--active");
+            editor.rowsBox.getChildren().add(row.box);
+        }
+        editor.addCondition.setDisable(totalConditions() >= DataQuery.MAX_FILTERS);
+    }
+
+    /** ⭐ B1：Ω 真正新增一个 OR 组（独立的 AND 组，组间交给 SQL 层用 OR 连）。 */
+    private void addGroup() {
+        if (extraGroups.size() + 1 >= DataQuery.MAX_GROUPS) {
+            setError(I18n.t("filter.panel.error.groupLimit", DataQuery.MAX_GROUPS));
+            return;
+        }
+        GroupEditor editor = new GroupEditor();
+        extraGroups.add(editor);
+        extraContainer.getChildren().add(editor.container);
+        editor.addBlankRow();
+        touch();
+    }
+
+    private void removeGroup(GroupEditor editor) {
+        extraGroups.remove(editor);
+        extraContainer.getChildren().remove(editor.container);
+        touch();
+    }
+
+    private int totalConditions() {
+        int count = rows.size() + preserved.size();
+        for (GroupEditor editor : extraGroups) {
+            count += editor.rows.size();
+        }
+        return count;
     }
 
     private void renderSorts() {
@@ -664,31 +730,13 @@ final class FilterSortPanel extends VBox {
     }
 
     private String expression() {
-        List<String> conditions = new ArrayList<>();
-        for (FilterCondition filter : preserved) {
-            conditions.add(filter.column() + " ∈ {" + filter.values().size() + "}");
+        List<String> groupTexts = new ArrayList<>();
+        groupTexts.add(groupExpression(rows, preserved));
+        for (GroupEditor editor : extraGroups) {
+            groupTexts.add(groupExpression(editor.rows, List.of()));
         }
-        for (Row row : rows) {
-            if (!row.enabled.isSelected() || incomplete(row)) {
-                continue;
-            }
-            try {
-                FilterCondition condition = conditionOf(row);
-                StringBuilder text = new StringBuilder();
-                text.append(condition.column()).append(' ')
-                        .append(operatorLabel(condition.operator()));
-                if (condition.operator().acceptsValue()) {
-                    text.append(' ').append(format(condition, 0));
-                }
-                if (condition.operator().acceptsSecondValue()) {
-                    text.append(" AND ").append(format(condition, 1));
-                }
-                conditions.add(text.toString());
-            } catch (IllegalArgumentException ignored) {
-                // 未填完的行不写进表达式，面板里仍然是可编辑草稿。
-            }
-        }
-        StringBuilder text = new StringBuilder(String.join(" AND ", conditions));
+        groupTexts.removeIf(String::isEmpty);
+        StringBuilder text = new StringBuilder(String.join(" OR ", groupTexts));
         if (!sorts.isEmpty()) {
             text.append(text.isEmpty() ? "" : " · ");
             text.append("ORDER BY ");
@@ -701,6 +749,45 @@ final class FilterSortPanel extends VBox {
             }
         }
         return text.toString();
+    }
+
+    private String groupExpression(List<Row> rows, List<FilterCondition> preserved) {
+        List<String> conditions = new ArrayList<>();
+        for (FilterCondition filter : preserved) {
+            conditions.add(filter.column() + " ∈ {" + filter.values().size() + "}");
+        }
+        for (Row row : rows) {
+            if (!row.enabled.isSelected() || incomplete(row)) {
+                continue;
+            }
+            try {
+                FilterCondition condition = conditionOf(row);
+                StringBuilder line = new StringBuilder();
+                line.append(condition.column()).append(' ')
+                        .append(operatorLabel(condition.operator()));
+                if (condition.operator().acceptsValue()) {
+                    line.append(' ').append(format(condition, 0));
+                }
+                if (condition.operator().acceptsSecondValue()) {
+                    line.append(" AND ").append(format(condition, 1));
+                }
+                conditions.add(line.toString());
+            } catch (IllegalArgumentException ignored) {
+                // 未填完的行不写进表达式，面板里仍然是可编辑草稿。
+            }
+        }
+        return String.join(" AND ", conditions);
+    }
+
+    private void seedGroup(FilterGroup group, List<Row> targetRows,
+                           List<FilterCondition> targetPreserved, Runnable rerender) {
+        for (FilterCondition filter : group.conditions()) {
+            if (filter.operator() == FilterOperator.IN) {
+                targetPreserved.add(filter);
+            } else {
+                targetRows.add(rowFor(filter, targetRows, rerender));
+            }
+        }
     }
 
     private static String format(FilterCondition condition, int index) {
@@ -801,6 +888,57 @@ final class FilterSortPanel extends VBox {
         Button button = IconButtons.iconMono(icon, hint);
         button.getStyleClass().add("adb-icon-button--small");
         return button;
+    }
+
+    /** ⭐ B1：组 0 之外的 OR 条件组编辑器（独立的 AND 组）。 */
+    private final class GroupEditor {
+        final VBox container = new VBox(6);
+        final VBox rowsBox = new VBox(6);
+        final List<Row> rows = new ArrayList<>();
+        final Button addCondition;
+        final Button removeGroup;
+        final Label orLabel;
+        final int index;
+
+        GroupEditor() {
+            this.index = ++groupSeq;
+            container.getStyleClass().add("adb-filter-builder__group");
+            container.setId("data-filter-group-" + index);
+            orLabel = new Label(I18n.t("filter.panel.or"));
+            orLabel.getStyleClass().add("adb-filter-builder__connector");
+            orLabel.setId("data-filter-or-" + index);
+            rowsBox.setId("data-filter-group-rows-" + index);
+            rowsBox.getStyleClass().add("adb-filter-builder__rows");
+            addCondition = new Button("+");
+            addCondition.setId("data-filter-group-add-" + index);
+            addCondition.setMnemonicParsing(false);
+            addCondition.getStyleClass().addAll("adb-chip", "adb-filter-builder__add");
+            addCondition.setTooltip(new Tooltip(I18n.t("filter.panel.addCondition")));
+            addCondition.setAccessibleText(I18n.t("filter.panel.addCondition"));
+            addCondition.setOnAction(event -> {
+                if (totalConditions() < DataQuery.MAX_FILTERS) {
+                    rows.add(newRow(firstColumn(null), rows, () -> renderGroup(this)));
+                    renderGroup(this);
+                    touch();
+                }
+            });
+            removeGroup = iconButton(Icons.Icon.CLOSE, I18n.t("filter.panel.removeGroup"));
+            removeGroup.setId("data-filter-group-remove-" + index);
+            removeGroup.getStyleClass().add("adb-filter-builder__remove");
+            removeGroup.setOnAction(event -> removeGroup(this));
+            HBox actions = new HBox(6, addCondition, removeGroup);
+            actions.getStyleClass().add("adb-filter-builder__row-actions");
+            container.getChildren().addAll(orLabel, rowsBox, actions);
+        }
+
+        void addBlankRow() {
+            rows.add(newRow(firstColumn(null), rows, () -> renderGroup(this)));
+            renderGroup(this);
+        }
+
+        void render() {
+            renderGroup(this);
+        }
     }
 
     private static final class Row {

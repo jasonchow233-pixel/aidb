@@ -4,6 +4,7 @@ import io.agenticdb.fixtures.DemoDatabase;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.JdbcSession;
+import io.agenticdb.introspect.FilterGroup;
 import io.agenticdb.model.RowPage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -146,5 +147,47 @@ class DataSqlBuilderTest {
                 .cycleSort("name", false);
 
         assertThat(query.sorts()).isEmpty();
+    }
+
+    @Test
+    void orGroupsCombineConditionsWithOr() {
+        DataQuery query = new DataQuery(List.of(
+                FilterGroup.of(List.of(FilterCondition.of("status", FilterOperator.EQ, "PAID"))),
+                FilterGroup.of(List.of(FilterCondition.of("active", FilterOperator.EQ, 1)))),
+                List.of());
+
+        DataSqlBuilder.Sql sql = DataSqlBuilder.page(session, "orders", query, 10, 0);
+
+        assertThat(sql.text()).contains("WHERE (\"status\" = ?) OR (\"active\" = ?)");
+        assertThat(sql.params()).containsExactly("PAID", 1);
+    }
+
+    @Test
+    void andWithinGroupAndOrBetweenGroups() {
+        FilterGroup group0 = FilterGroup.of(List.of(
+                FilterCondition.of("status", FilterOperator.EQ, "PAID"),
+                FilterCondition.of("active", FilterOperator.EQ, 1)));
+        FilterGroup group1 = FilterGroup.of(List.of(
+                FilterCondition.of("amount", FilterOperator.GT, 0)));
+        DataQuery query = new DataQuery(List.of(group0, group1), List.of());
+
+        DataSqlBuilder.Sql sql = DataSqlBuilder.page(session, "orders", query, 10, 0);
+
+        assertThat(sql.text())
+                .contains("WHERE (\"status\" = ? AND \"active\" = ?) OR (\"amount\" > ?)");
+    }
+
+    @Test
+    void singleGroupStillProducesFlatAnd() {
+        // ⭐ B1 向后兼容：单组（默认）等价于旧版平铺 AND，单条件不加括号。
+        DataQuery query = DataQuery.empty()
+                .withFilter(FilterCondition.of("status", FilterOperator.EQ, "PAID"))
+                .withFilter(FilterCondition.of("active", FilterOperator.EQ, 1));
+
+        DataSqlBuilder.Sql sql = DataSqlBuilder.page(session, "orders", query, 10, 0);
+
+        assertThat(sql.text()).isEqualTo(
+                "SELECT * FROM \"orders\" WHERE \"status\" = ? AND \"active\" = ? LIMIT 10 OFFSET 0");
+        assertThat(sql.params()).containsExactly("PAID", 1);
     }
 }

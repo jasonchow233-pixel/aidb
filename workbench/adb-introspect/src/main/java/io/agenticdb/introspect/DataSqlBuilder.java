@@ -82,16 +82,40 @@ public final class DataSqlBuilder {
         return new Sql(sql, where.params());
     }
 
+    /**
+     * ⭐ B1：组内条件以 {@code AND} 连接，组与组之间以 {@code OR} 连接（每组各自括起来，
+     * 确保优先级明确）。单组（默认）等价于旧版平铺 AND —— 不加任何括号，
+     * 以兼容历史精确断言。
+     */
     private static Sql where(DbSession session, String table, DataQuery query) {
         if (query == null || !query.hasFilters()) {
             return new Sql("", List.of());
         }
-        List<String> parts = new ArrayList<>(query.filters().size());
+        List<String> groupParts = new ArrayList<>();
         List<Object> params = new ArrayList<>();
-        for (FilterCondition filter : query.filters()) {
-            parts.add(condition(session, filter, params));
+        for (FilterGroup group : query.groups()) {
+            if (group.isEmpty()) {
+                continue;
+            }
+            List<String> parts = new ArrayList<>(group.conditions().size());
+            for (FilterCondition filter : group.conditions()) {
+                parts.add(condition(session, filter, params));
+            }
+            groupParts.add(String.join(" AND ", parts));
         }
-        return new Sql(" WHERE " + String.join(" AND ", parts), params);
+        if (groupParts.isEmpty()) {
+            return new Sql("", List.of());
+        }
+        String text;
+        if (groupParts.size() == 1) {
+            text = " WHERE " + groupParts.get(0);
+        } else {
+            String orClause = groupParts.stream()
+                    .map(part -> part.startsWith("(") ? part : "(" + part + ")")
+                    .collect(java.util.stream.Collectors.joining(" OR "));
+            text = " WHERE " + orClause;
+        }
+        return new Sql(text, params);
     }
 
     private static String condition(DbSession session, FilterCondition filter,

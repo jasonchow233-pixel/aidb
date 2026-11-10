@@ -3743,9 +3743,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         if (tableSchema == null) {
             return false;
         }
-        filterPanel = new FilterSortPanel(tableSchema, this::applyCriteria,
-                () -> showCapabilityNotice(I18n.t("filter.panel.addGroup"),
-                        "grid.capability.filterGroup"));
+        filterPanel = new FilterSortPanel(tableSchema, this::applyCriteria);
         filterPanelHost.getChildren().setAll(filterPanel);
         return true;
     }

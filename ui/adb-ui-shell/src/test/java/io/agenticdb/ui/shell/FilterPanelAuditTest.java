@@ -159,31 +159,30 @@ class FilterPanelAuditTest {
     // ───────────────── fixtures ─────────────────
 
     /**
-     * ⭐ D-61：面板里「添加分组」（Ω）是九处假按钮之一 —— 落点是
-     * {@code showCapabilityNotice}，与「添加条件」同形。它必须提前说实话：
-     * 环挂在所在那一排、tooltip 与 accessibleText 带「本版本未提供」。
+     * ⭐ B1：Ω（添加条件组）现在真正新增一个 OR 组，不再是「如实说明页」占位。
+     * 端到端验证：组 0 设 id=2，Ω 加组 1 设 id=3，Apply 后命中两行（{@code id=2 OR id=3}），
+     * 表达式里出现 {@code OR} —— 证明组间真的是 OR 而不是 AND。
      */
     @Test
-    void addGroupPlaceholderSpeaksBeforeTheClick() throws Exception {
+    void orGroupsActuallyCombineConditionsWithOr() throws Exception {
         click("#data-filter");
         assertThat(hostVisible()).as("面板先开起来").isTrue();
-        javafx.scene.Node node = WaitForAsyncUtils.asyncFx(() ->
-                page.lookup("#data-filter-add-group")).get();
-        assertThat(node).as("添加分组键").isNotNull();
-        javafx.scene.control.ButtonBase addGroup = (javafx.scene.control.ButtonBase) node;
-        assertThat(WaitForAsyncUtils.asyncFx(() ->
-                addGroup.getTooltip() == null ? "" : addGroup.getTooltip().getText()).get())
-                .as("D-61：Ω 的 tooltip 要点之前就交代「本版本未提供」")
-                .contains(I18n.t("ribbon.pending"));
-        assertThat(WaitForAsyncUtils.asyncFx(addGroup::getAccessibleText).get())
-                .as("D-61：Ω 读屏侧同一句")
-                .contains(I18n.t("ribbon.pending"));
-        javafx.scene.layout.Pane host = (javafx.scene.layout.Pane)
-                WaitForAsyncUtils.asyncFx(addGroup::getParent).get();
-        assertThat(WaitForAsyncUtils.asyncFx(() -> host.getChildren().stream()
-                .anyMatch(child -> child.getStyleClass().contains("adb-pending__mark"))).get())
-                .as("D-61：Ω 所在那一排必须挂了角标环")
-                .isTrue();
+
+        setFirstValue("2");                 // 组 0：id = 2
+        click("#data-filter-add-group");    // 真实新增 OR 组
+        assertThat(groupExists(1)).as("Ω 真正新增了一个 OR 组容器").isTrue();
+
+        click("#data-filter-group-add-1");  // 给组 1 加一行
+        setGroupValue(1, "3");              // 组 1：id = 3（与组 0 用 OR 连）
+
+        switchToText();
+        assertThat(expressionText())
+                .as("表达式里出现 OR 连接两组").contains(" OR ");
+        switchToBuilder();
+
+        click("#data-filter-apply");
+        WaitForAsyncUtils.waitFor(10, TimeUnit.SECONDS, () -> rowCount() == 2);
+        assertThat(rowCount()).as("id=2 OR id=3 命中两行").isEqualTo(2);
     }
 
     private void click(String selector) throws Exception {
@@ -243,6 +242,44 @@ class FilterPanelAuditTest {
             }
             return labels;
         }).get();
+    }
+
+    private boolean groupExists(int index) throws Exception {
+        return WaitForAsyncUtils.asyncFx(() ->
+                page.lookup("#data-filter-group-" + index) != null).get();
+    }
+
+    private void setGroupValue(int groupIndex, String text) throws Exception {
+        WaitForAsyncUtils.asyncFx(() -> {
+            javafx.scene.Node group = page.lookup("#data-filter-group-" + groupIndex);
+            TextField value = (TextField) group.lookupAll(".adb-filter-builder__value").stream()
+                    .filter(node -> node.isVisible() && !node.isDisabled())
+                    .findFirst().orElseThrow();
+            value.setText(text);
+            return null;
+        }).get();
+        WaitForAsyncUtils.waitForFxEvents();
+    }
+
+    private void switchToText() throws Exception {
+        WaitForAsyncUtils.asyncFx(() -> {
+            ((RadioButton) page.lookup("#data-filter-mode-text")).setSelected(true);
+            return null;
+        }).get();
+        WaitForAsyncUtils.waitForFxEvents();
+    }
+
+    private void switchToBuilder() throws Exception {
+        WaitForAsyncUtils.asyncFx(() -> {
+            ((RadioButton) page.lookup("#data-filter-mode-builder")).setSelected(true);
+            return null;
+        }).get();
+        WaitForAsyncUtils.waitForFxEvents();
+    }
+
+    private String expressionText() throws Exception {
+        return WaitForAsyncUtils.asyncFx(() ->
+                ((TextArea) page.lookup("#data-filter-text")).getText()).get();
     }
 
     private int rowCount() throws Exception {
