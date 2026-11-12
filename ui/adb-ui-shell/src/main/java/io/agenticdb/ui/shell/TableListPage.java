@@ -60,13 +60,12 @@ import java.util.function.Function;
  * 显示「—」比编一个看起来像真的值诚实；列本身不再按数据整列隐藏，
  * 六列在任何方言下都会出现（恒空的列按「—」读，位置不随数据跳动）。
  *
- * <p>顶部工具条是 N15 的七键：**打开表 / 设计表 / 新建表 / 用 AI 新建表 /
+ * <p>顶部工具条是 N15 的六键：**打开表 / 设计表 / 新建表 /
  * 删除表 / 导入向导 / 导出向导**：
  * <ul>
  *   <li>危险动作（删除）选中后才会亮，并且一定先展示 SQL 再执行；</li>
  *   <li>多选后删除会先给一张汇总确认页，执行完再报告失败行；</li>
  *   <li>导入 / 导出在单选时直接进向导；没选或多选时先进「选一张表」对话框；</li>
- *   <li>「用 AI 新建表」的能力面还没建，按诚实条款打开如实说明页；</li>
  *   <li>双击行或按 Enter 打开数据页（与对象树的操作一致）。</li>
  * </ul>
  *
@@ -78,14 +77,6 @@ final class TableListPage extends VBox {
     interface Host {
 
         default void newTable() {
-        }
-
-        /**
-         * 「用 AI 新建表」—— 能力面还没建，外壳打开如实说明页。
-         *
-         * <p>默认空实现只为老的测试假 Host 不炸；生产外壳必须覆盖。
-         */
-        default void newTableWithAi() {
         }
 
         default void openTable(String name) {
@@ -139,7 +130,7 @@ final class TableListPage extends VBox {
     record Actions(Action create, Action open, Action design, Action rename,
                    Action truncate, Action drop, Action refresh,
                    Action selectAll, Action viewList, Action viewGrid,
-                   Action createAi, Action importWizard, Action exportWizard) {
+                   Action importWizard, Action exportWizard) {
     }
 
     private final DbSession session;
@@ -227,7 +218,7 @@ final class TableListPage extends VBox {
     private HBox buildToolbar() {
         search.setId("table-list-search");
         search.setPromptText(I18n.t("tableList.searchPrompt"));
-        // 120 是这条工具条的上限：七颗键 + 列表/网格切换已经排到窗口右缘，
+        // 120 是这条工具条的上限：六颗键 + 列表/网格切换已经排到窗口右缘，
         // 放宽到 150 会把第二颗切换键挤出可视区（2026-10-31 帧核对）。
         // 占位符因此用短文案（"Search tables" / "搜索表名"），不靠省略号收尾。
         search.setPrefWidth(120);
@@ -242,7 +233,7 @@ final class TableListPage extends VBox {
 
         summary.setId("table-list-summary");
         summary.getStyleClass().add("adb-muted");
-        // 空文案不占位：常态下工具条只有 Navicat 的七颗键（数量不摆在这一行）。
+        // 空文案不占位：常态下工具条只有 Navicat 的六颗键（数量不摆在这一行）。
         summary.managedProperty().bind(summary.textProperty().isNotEmpty());
 
         spinner.setId("table-list-spinner");
@@ -250,16 +241,12 @@ final class TableListPage extends VBox {
         spinner.setVisible(false);
         spinner.getStyleClass().add("adb-grid__spinner");
 
-        // ⭐ N15：七颗带文字的键 —— 光看图标猜不出「导入」和「打开」的区别。
+        // ⭐ N15：六颗带文字的键 —— 光看图标猜不出「导入」和「打开」的区别。
         //    Navicat 的对象工具条没有「刷新」键：刷新留在右键菜单 / 菜单栏。
+        //    ⭐ 2026-11-11：AI 新建表按「不做假能力」撤掉，不再摆说明页入口。
         Button open = labeledGhost(actions.open(), Icons.Icon.OPEN, "table-list-open");
         Button design = labeledGhost(actions.design(), Icons.Icon.STRUCTURE, "table-list-design");
         Button create = labeledGhost(actions.create(), Icons.Icon.ADD, "table-list-new");
-        Button createAi = labeledGhost(actions.createAi(), Icons.Icon.AI, "table-list-new-ai");
-        // ⭐ R62-a H5-i（Q8②）：这一格落的是「本版本未提供」的说明页（N15 诚实条款），
-        //    实话要说在点之前 —— 横排按钮这一档只补提示语，不挂角标，理由见
-        //    {@link PendingMark#saySo}（包一层会把这颗按钮撑宽，整排跟着挪）。
-        PendingMark.saySo(createAi);
         Button drop = labeledGhost(actions.drop(), Icons.Icon.DELETE, "table-list-drop");
         Button importWizard = labeledGhost(actions.importWizard(), Icons.Icon.IMPORT,
                 "table-list-import");
@@ -276,7 +263,7 @@ final class TableListPage extends VBox {
 
         // 按语义分三组，组间一条竖线 —— 一排按钮不分堆等于没有顺序。
         HBox groupObject = grouped(open, design);
-        HBox groupEdit = grouped(create, createAi, drop);
+        HBox groupEdit = grouped(create, drop);
         HBox groupTransfer = grouped(importWizard, exportWizard);
         HBox groupView = grouped(listButton, gridButton);
 
@@ -289,7 +276,7 @@ final class TableListPage extends VBox {
     }
 
     /**
-     * 带文字的透明底按钮（N15 的七键）。
+     * 带文字的透明底按钮（N15 的六键）。
      *
      * <p>{@code USE_PREF_SIZE} 防止 HBox 把动作名压成省略号 ——
      * 挤不下时该收缩的是搜索框，不是「导入向导」这四个字。
@@ -567,8 +554,9 @@ final class TableListPage extends VBox {
 
     /**
      * @param tooltip 悬停时给出**完整文本**（注释列用）。单元格被列宽截断时，
-     *                tooltip 是唯一能读到全文的出口；占位符「—」不挂 tooltip，
-     *                别把「没有注释」也解释一遍。
+     *                tooltip 是唯一能读到全文的出口；占位符「—」改挂
+     *                {@link MetadataColumns#UNAVAILABLE_HINT}（T7），说明
+     *                「此引擎不提供该元数据」，不编造假数据、也不整列收起。
      */
     private TableColumn<TableMeta, String> textColumn(
             String title, double width, double minWidth,
@@ -588,10 +576,20 @@ final class TableListPage extends VBox {
                 }
                 boolean real = !empty && !MetadataColumns.isPlaceholder(text);
                 setText(empty || text == null ? null : text);
-                if (!tooltip || !real) {
+                if (empty || text == null) {
                     setTooltip(null);
-                } else if (getTooltip() == null || !text.equals(getTooltip().getText())) {
-                    setTooltip(new Tooltip(text));
+                    setAccessibleText(null);
+                } else if (!real) {
+                    // ⭐ T7：dash 说明「此引擎不提供该元数据」，tooltip 与读屏同一句。
+                    setTooltip(new Tooltip(MetadataColumns.UNAVAILABLE_HINT));
+                    setAccessibleText(MetadataColumns.UNAVAILABLE_HINT);
+                } else {
+                    setAccessibleText(null);
+                    if (!tooltip) {
+                        setTooltip(null);
+                    } else if (getTooltip() == null || !text.equals(getTooltip().getText())) {
+                        setTooltip(new Tooltip(text));
+                    }
                 }
             }
         });
@@ -607,6 +605,14 @@ final class TableListPage extends VBox {
                     getStyleClass().add("adb-table-list__number");
                 }
                 setText(empty || value == null ? null : value);
+                // ⭐ T7：Rows / Data Length 的 dash 同样是「引擎不提供」，不是 0 行。
+                if (!empty && value != null && MetadataColumns.isPlaceholder(value)) {
+                    setTooltip(new Tooltip(MetadataColumns.UNAVAILABLE_HINT));
+                    setAccessibleText(MetadataColumns.UNAVAILABLE_HINT);
+                } else {
+                    setTooltip(null);
+                    setAccessibleText(null);
+                }
             }
         };
     }
@@ -989,15 +995,6 @@ final class TableListPage extends VBox {
         host.newTable();
     }
 
-    /** 「用 AI 新建表」—— 能力面还没建，外壳会打开如实说明页。 */
-    void createTableAi() {
-        if (host == null) {
-            status.accept(I18n.t("tableList.connectFirst"));
-            return;
-        }
-        host.newTableWithAi();
-    }
-
     void openSelected() {
         List<TableMeta> selected = selectedMetas();
         if (selected.size() != 1) {
@@ -1079,7 +1076,6 @@ final class TableListPage extends VBox {
         actions.truncate.setEnabled(single);
         actions.drop.setEnabled(count >= 1);
         actions.create.setEnabled(host != null);
-        actions.createAi.setEnabled(host != null);
         // 导入 / 导出要有一张表可选；单选时直接进向导，否则先选表。
         actions.importWizard.setEnabled(!rows.isEmpty());
         actions.exportWizard.setEnabled(!rows.isEmpty());
@@ -1161,7 +1157,7 @@ final class TableListPage extends VBox {
                     rows.size(), filtered.size(), rows.size()));
         } else {
             // ⭐ N15：Navicat 的对象工具条没有「N 张表」这一项 —— 常态留空，
-            //    只有搜索过滤时回一句「显示 X / Y」，否则七颗键会被挤出窗口。
+            //    只有搜索过滤时回一句「显示 X / Y」，否则六颗键会被挤出窗口。
             summary.setText("");
         }
     }
@@ -1260,9 +1256,6 @@ final class TableListPage extends VBox {
                 new Action("table-list.view-grid",
                         io.agenticdb.ui.I18n.t("action.table-list.view-grid"),
                         category, null, () -> showView("grid")),
-                new Action("table-list.new-ai",
-                        io.agenticdb.ui.I18n.t("action.table-list.new-ai"),
-                        category, null, this::createTableAi),
                 new Action("table-list.import",
                         io.agenticdb.ui.I18n.t("action.table-list.import"),
                         category, null, this::openImport),

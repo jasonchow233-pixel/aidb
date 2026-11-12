@@ -8,8 +8,11 @@ import io.agenticdb.introspect.TableStructure;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.asset.AssetKind;
 import io.agenticdb.jdbc.HostKeyDecision;
 import io.agenticdb.jdbc.ViewDefinition;
+import io.agenticdb.redis.RedisSession;
+import io.agenticdb.redis.RedisSessions;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.ConnectionStore;
 import io.agenticdb.session.CredentialStore;
@@ -128,6 +131,19 @@ public final class AppShell extends StackPane {
      * 没有这个观测点，「挪到后台」就只能靠审源码文本自证。
      */
     private volatile String demoDatabaseThread;
+
+    /**
+     * ⭐ P7：演示库连接是在构造器返回后懒加载，而非阻塞冷启动。
+     *
+     * <p>以前构造器会 {@link #awaitDemoDatabase} 并 {@link #connectProfileBlocking}
+     * 同步等待，这部分耗时曾占冷启动的约 1.3s（其中 762ms 是原生库加载，
+     * R61-a 已挪去背景线程，此处剩下真正的 connect）。
+     *
+     * <p>现在：构造器返回时 {@code demoDatabaseConnected} 仍为 {@code false}，
+     * 演示库将在首次需要时（如首次打开表、对象树操作）异步连接。
+     * 若连接失败会静默回退，后续再次尝试。
+     */
+    private volatile boolean demoDatabaseConnected = false;
 
     private final StatusBar statusBar = new StatusBar();
     private final TabBar tabBar = new TabBar(actions);
@@ -267,8 +283,9 @@ public final class AppShell extends StackPane {
         // ⭐ T1–T4 表级生命周期：右键菜单 / 数据库菜单 / 命令面板三条入口进同一个 TableDdl。
         this.sideBar.setOnTableDdl(this::runTableDdl);
         // ⭐ N33：对象首页撤掉后，例程定义体由树的双击 / Enter 打开。
+        // ⭐ T12：树里的 EVENT 节点要把 scheduledEvent 标志带进只读定义体页。
         this.sideBar.setOnOpenRoutine(request -> openRoutine(request.connectionId(),
-                request.name(), request.procedure()));
+                request.name(), request.procedure(), request.event()));
         // ⭐ UX-6：连接节点下直接列「已保存查询」；点一条 = 新查询页 + 预填 SQL。
         this.sideBar.setSavedQuerySource(savedQueries::all);
         this.sideBar.setOnOpenSavedQuery(this::openSavedQuery);
@@ -276,6 +293,7 @@ public final class AppShell extends StackPane {
         this.sideBar.setOnOpenSavedQueries(this::openSavedQueries);
         // ⭐ 多连接对象树：展开一个没读过的连接时，去连它、读它的对象。
         this.sideBar.setOnLoadObjects(this::loadObjectsFor);
+        this.sideBar.setOnLoadRedisDbs(this::loadRedisDbs);
         // ⭐ S-3：展开表节点时才读它的列（懒加载，见 loadColumnsFor）。
         this.sideBar.setOnLoadColumns(this::loadColumnsFor);
         // ⭐ H6-e：「刷新此表」重读前先作废 H3-d 的 describe 条目 ——
@@ -335,7 +353,7 @@ public final class AppShell extends StackPane {
         startup.mark("shell.sidebar");
         this.workspace = new WorkspaceView(actions, connectionName,
                 this::createGridPage, this::createQueryPage, this::createStructurePage,
-                this::createConnectionsPage, tab -> objectHomePage());
+                this::createConnectionsPage, tab -> objectHomePage(), this::createRedisKeysPage);
         this.palette = new CommandPalette(actions);
         // 侧栏「查询历史」接真实功能：QueryHistory 本来就可用，只是侧栏开错了页面。
         this.workspace.setHistory(history, this::openQueryWith);
@@ -377,19 +395,11 @@ public final class AppShell extends StackPane {
         // pageType 那一档才是 "Objects"（Navicat 的对象页头也是复数）。
         tabBar.openPermanent(new TabItem("object-home",
                 I18n.t("window.pageType.object"), TabKind.OBJECT));
-        // ⭐ R61-a：与上面那段 UI 构造重叠到这里才收口 —— 连演示库之前必须保证库已经就绪。
-        //   异常照原样抛出（构造器里 `ensure` 失败本来就该让启动失败，不静默退回空库）。
-        awaitDemoDatabase(demoDb);
+        // ⭐ R61-a：与上面那段 UI 构造重叠到这里才收口 —— 演示库 ensure 已在后台线程。
+        //   不再阻塞冷启动，改为「首次使用时再连」（见 {@link #maybeConnectDemoDatabase()}）。
+        //   若 ensure 失败会在后台抛出，构造器仍会向上抛出让 App.start 处理启动失败。
         startup.mark("shell.demo-db-ready");
-        ConnectionProfile demo = profileById("demo");
-        if (demo != null) {
-            // ⭐ A15：启动时的演示库连接**同步**做 —— 它是本地 SQLite（库就绪后实测毫秒级），
-            //    而且窗口还没出现：此时阻塞没有任何观感问题。
-            //    用户自己连远程库时才走后台（那边可能很慢）。
-            //    ⚠️ 「毫秒级」这句只在 R61-a 之后才成立：库的**第一次打开**（原生库加载 762ms）
-            //    已经挪到上面那条线程上了，这里剩下的是真正的 connect。
-            connectProfileBlocking(demo, false);
-        }
+        // 不再 here 调用 connectProfileBlocking，改为稍后懒加载。
         startup.mark("shell.demo");
         statusBar.setRange("—");
         if (activeProfile == null) {
@@ -419,6 +429,82 @@ public final class AppShell extends StackPane {
                 throw runtime;
             }
             throw new IllegalStateException("cannot open the demo database: " + cause.getMessage(), cause);
+        }
+    }
+
+    /**
+     * ⭐ T1 / Q-D：首屏之后才做首次连接。
+     *
+     * <p>构造器只保证「演示库文件就绪」的后台任务已经派发，不再同步连库；
+     * 这里是它真正的落点。两条分支：
+     * <ul>
+     *   <li><b>确定性会话</b>（截图 / 真库矩阵 / 显式 {@code ADB_*} pose）：保持 HEAD 的
+     *       帧语义，按需同步连演示库，<b>绝不</b>恢复上次连接 —— 否则 68 张基准帧会随
+     *       开发机上的 {@code ui.lastConnection} 变化；</li>
+     *   <li><b>普通桌面会话</b>：排到 {@link Platform#runLater} 里，首屏绘制完再恢复
+     *       上次连接或连演示库。冷启动墙钟不再背这段连接。</li>
+     * </ul>
+     */
+    private void scheduleInitialConnection() {
+        String last = settings.get("ui.lastConnection", "");
+        ConnectionProfile lastProfile = last.isEmpty() ? null : profileById(last);
+        if (isDeterministicSession() || !matrixEngineRequested.isEmpty()) {
+            if (activeProfile == null) {
+                maybeConnectDemoDatabase();
+            }
+            return;
+        }
+        Platform.runLater(() -> {
+            if (lastProfile != null) {
+                selectConnection(lastProfile);
+            } else {
+                maybeConnectDemoDatabase();
+            }
+        });
+    }
+
+    /** 验收 / 截图 / 矩阵会话识别：这类进程必须逐帧可复现，不能被用户设置左右。 */
+    private static boolean isDeterministicSession() {
+        for (String key : System.getenv().keySet()) {
+            if (key.equals("ADB_SHOTS") || key.startsWith("ADB_SHOTS_")
+                    || key.startsWith("ADB_TEST_") || key.equals("ADB_MATRIX")
+                    || key.equals("ADB_CONNECTION") || key.equals("ADB_OPEN")) {
+                return true;
+            }
+        }
+        for (String key : System.getProperties().stringPropertyNames()) {
+            if (key.startsWith("adb.")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * ⭐ P7：按需连接演示库（本地 SQLite，毫秒级）。失败不标记为「已处理」，
+     * 后续用户操作仍可重试；不弹窗、不伪造已连接状态。
+     */
+    private void maybeConnectDemoDatabase() {
+        if (demoDatabaseConnected) {
+            return;
+        }
+        ConnectionProfile demo = profileById("demo");
+        if (demo == null) {
+            demoDatabaseConnected = true; // 档案不存在，别反复找
+            return;
+        }
+        try {
+            connectProfileBlocking(demo, false);
+            demoDatabaseConnected = true;
+            statusBar.setRange("—");
+            if (activeProfile == null) {
+                status(I18n.t("shell.demoUnusable", connectionName));
+            } else {
+                status(I18n.t("shell.connectedObjects", connectionName,
+                        objectsByConnection.getOrDefault(activeProfile.id(), List.of()).size()));
+            }
+        } catch (RuntimeException ignored) {
+            // 演示库被删 / 损坏 / 占用：保持未连接，下次需要时再试。
         }
     }
 
@@ -1028,7 +1114,7 @@ public final class AppShell extends StackPane {
         for (String id : List.of("table-list.new", "table-list.open", "table-list.design",
                 "table-list.rename", "table-list.truncate", "table-list.drop",
                 "table-list.refresh", "table-list.select-all", "table-list.view-list",
-                "table-list.view-grid", "table-list.new-ai", "table-list.import",
+                "table-list.view-grid", "table-list.import",
                 "table-list.export")) {
             actions.find(id).ifPresent(action -> action.setEnabled(false));
         }
@@ -1281,12 +1367,6 @@ public final class AppShell extends StackPane {
             @Override
             public void newTable() {
                 tableDdl().createTable(connectionId);
-            }
-
-            @Override
-            public void newTableWithAi() {
-                openRibbonTool(SideBar.TOOL_NEW_TABLE_AI,
-                        I18n.t("tool.title.new-table-ai"));
             }
 
             @Override
@@ -1718,7 +1798,7 @@ public final class AppShell extends StackPane {
         String dialectName = session == null ? "—" : session.dialect().displayName();
         // ⭐ R54：状态栏那颗灯旁边再加一枚**那家自己的图形** —— 这一行是界面里唯一常驻
         //    回答「我在哪家库」的地方，以前它只有文字，扫一眼读不出是 MySQL 还是 PG。
-        statusBar.setDialect(dialectName, session == null ? null : session.dialect().kind());
+        statusBar.setDialect(dialectName, session == null ? null : AssetKind.from(session.dialect().kind()));
         sideBar.setDialect(dialectName);
         // ⭐ R54：常驻「对象」页签跟着**活动连接**换图形 —— 它没有 connectionId，
         //    切连接后不重画就会停在上一家（PG 的对象页顶着 MySQL 的图形）。
@@ -2083,7 +2163,7 @@ public final class AppShell extends StackPane {
             return;
         }
         ConnectionWizard wizard = new ConnectionWizard(stage, existing, credentials,
-                this::testConnection);
+                connectionTester());
         wizard.showAndWait().ifPresent(profile -> {
             if (existing != null) {
                 connections.removeIf(item -> item.id().equals(existing.id()));
@@ -2117,6 +2197,40 @@ public final class AppShell extends StackPane {
         }
     }
 
+    /**
+     * ⭐ EXT（P1-3）：向导用的连接测试器。
+     *
+     * <p>SQL 走 {@link #testConnection(ConnectionSpec)}；Redis 档案不能落 {@code ConnectionSpec}
+     * （{@code ConnectionProfile#spec} 对非 SQL 抛异常），所以这里覆写 {@code testProfile}，
+     * 走 {@link RedisSessions#connect} 直接验 host/port/auth/db/TLS。
+     */
+    private ConnectionWizard.Tester connectionTester() {
+        return new ConnectionWizard.Tester() {
+            @Override
+            public String test(ConnectionSpec spec) {
+                return AppShell.this.testConnection(spec);
+            }
+
+            @Override
+            public String testProfile(ConnectionProfile profile, String password) {
+                if (profile.kind().isRedis()) {
+                    return testRedisConnection(profile, password);
+                }
+                return ConnectionWizard.Tester.super.testProfile(profile, password);
+            }
+        };
+    }
+
+    /** ⭐ EXT（P1-3）：Redis 连接测试 —— 真实握一次手（{@code INFO keyspace} 取库清单）。 */
+    private String testRedisConnection(ConnectionProfile profile, String password) {
+        try (RedisSession session = RedisSessions.connect(profile, password)) {
+            session.databases();
+            return null;
+        } catch (Exception e) {
+            return readable(e);
+        }
+    }
+
     private void openConnections() {
         openTab(new TabItem("connections", I18n.t("shell.tab.connections"), TabKind.CONNECTIONS));
     }
@@ -2134,6 +2248,42 @@ public final class AppShell extends StackPane {
         page.setRenameHandler(this::renameConnection);
         page.setGroupHandler(this::moveConnectionToGroup);
         return page;
+    }
+
+    /**
+     * ⭐ EXT（P1-5）：Redis 键浏览器页工厂（注入 {@link WorkspaceView}）。
+     *
+     * <p>口令从凭据库现取（不进档案），连接资料从 tab 的 connectionId 反查档案。
+     */
+    private Node createRedisKeysPage(TabItem tab) {
+        ConnectionProfile profile = connectionFor(tab);
+        if (profile == null) {
+            return startupErrorPage(tab);
+        }
+        String password = credentials.password(tab.connectionId()).orElse(null);
+        return new RedisKeysPage(tab, profile, password);
+    }
+
+    /**
+     * ⭐ EXT（P1-5）：侧栏展开 Redis 连接 → 异步拉取「有数据的库」清单。
+     *
+     * <p>网络往返放后台线程，结果回 FX 线程回填侧栏（{@code setRedisDbs}）。
+     * 失败只标记该连接，不连累别的连接。
+     */
+    private void loadRedisDbs(String connectionId) {
+        ConnectionProfile profile = profileById(connectionId);
+        if (profile == null || !profile.kind().isRedis()) {
+            return;
+        }
+        String password = credentials.password(connectionId).orElse(null);
+        new Thread(() -> {
+            try (RedisSession session = RedisSessions.connect(profile, password)) {
+                List<Integer> dbs = session.databases();
+                javafx.application.Platform.runLater(() -> sideBar.setRedisDbs(connectionId, dbs));
+            } catch (Exception e) {
+                javafx.application.Platform.runLater(() -> sideBar.setRedisFailed(connectionId));
+            }
+        }).start();
     }
 
     /**
@@ -2438,15 +2588,22 @@ public final class AppShell extends StackPane {
     public void afterShown(Stage stage) {
         this.stage = stage;
         workspace.requestFocus();
-        // ⭐ R47-b：验收帧要拍在**真服务器**上。演示库是 SQLite，它没有「库」这一层，
+        // ⭐ T1 / D-37 / R54：矩阵与厂商 pose 的注册必须在**任何提前返回之前**。
+        //    11-10 的 WIP 曾把「恢复上次连接」放在这里并直接 return，导致
+        //    registerMatrixProfileFromEnv / registerVendorTreeProfilesFromEnv 被跳过，
+        //    13 张真库帧与 p0-tree-vendors 会拍在错误的档案上。注册前移后不再有此风险。
         //    于是「库▾ 里有两把库」这种只有真服务器才有的形状在 47 帧里一张都没有。
         registerMatrixProfileFromEnv();
         // ⭐ R54：验收「左树里五家各一枚图形」——同一条 ADB_TEST_* 通道，另一格画面。
         registerVendorTreeProfilesFromEnv();
+        // ⭐ T1 / Q-D：构造器不再同步连演示库，首次连接挪到首屏之后；
+        //    截图 / 矩阵 / 显式 ADB_CONNECTION 会话保持确定性同步语义，帧不受影响。
+        scheduleInitialConnection();
         String requested = System.getProperty("adb.connection",
                 System.getenv().getOrDefault("ADB_CONNECTION", "")).trim();
-        if (requested.isEmpty()) {
-            // ⭐ S7：没指定连接就用上次用的那个
+        if (requested.isEmpty() && !isDeterministicSession()) {
+            // ⭐ S7：普通桌面会话没指定连接就用上次用的那个。
+            //    验收 / 截图会话不读它 —— 否则 68 张帧会随开发机上的用户设置漂移。
             requested = settings.get("ui.lastConnection", "");
         }
         final String connection = requested;
@@ -2785,8 +2942,9 @@ public final class AppShell extends StackPane {
         settings.setInt("ui.window.y", (int) Math.round(stage.getY()));
         settings.setInt("ui.sidebar.width", sidebarWidth);
         settings.setBoolean("ui.sidebar.collapsed", sidebarCollapsed);
-        // ⭐ S7：上次用的连接
-        if (activeProfile != null) {
+        // ⭐ S7：只记真实的用户连接。演示库档案与「无连接」都保持原值不动 ——
+        //    写空串会把用户上一次的真连接抹掉，比"首次启动进 demo"更糟。
+        if (activeProfile != null && !"demo".equals(activeProfile.id())) {
             settings.set("ui.lastConnection", activeProfile.id());
         }
         // ⭐ S7：上次打开的对象（标签页）—— 重开后接着用
@@ -3058,8 +3216,6 @@ public final class AppShell extends StackPane {
                 () -> withActiveTableList(page -> page.showView("list")));
         actions.register("table-list.view-grid", I18n.t("action.table-list.view-grid"), I18n.t("category.tableList"), null,
                 () -> withActiveTableList(page -> page.showView("grid")));
-        actions.register("table-list.new-ai", I18n.t("action.table-list.new-ai"), I18n.t("category.tableList"), null,
-                () -> withActiveTableList(TableListPage::createTableAi));
         actions.register("table-list.import", I18n.t("action.table-list.import"), I18n.t("category.tableList"), null,
                 () -> withActiveTableList(TableListPage::openImport));
         actions.register("table-list.export", I18n.t("action.table-list.export"), I18n.t("category.tableList"), null,
@@ -3067,7 +3223,7 @@ public final class AppShell extends StackPane {
         for (String id : List.of("table-list.open", "table-list.design", "table-list.rename",
                 "table-list.truncate", "table-list.drop", "table-list.refresh",
                 "table-list.select-all", "table-list.view-list", "table-list.view-grid",
-                "table-list.new-ai", "table-list.import", "table-list.export")) {
+                "table-list.import", "table-list.export")) {
             actions.find(id).ifPresent(action -> action.setEnabled(false));
         }
         // ⭐ S6：顶级「收藏夹」菜单的入口
@@ -3350,6 +3506,7 @@ public final class AppShell extends StackPane {
             case ROUTINE -> I18n.t("window.pageType.routine");
             case SETTINGS -> I18n.t("window.pageType.settings");
             case TOOL -> I18n.t("window.pageType.tool");
+            case REDIS_KEYS -> I18n.t("window.pageType.redisKeys");
         };
     }
 
@@ -4024,7 +4181,6 @@ public final class AppShell extends StackPane {
                 actions.require("table-list.select-all"),
                 actions.require("table-list.view-list"),
                 actions.require("table-list.view-grid"),
-                actions.require("table-list.new-ai"),
                 actions.require("table-list.import"),
                 actions.require("table-list.export"));
     }

@@ -1,6 +1,6 @@
 package io.agenticdb.ui.shell;
 
-import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.asset.AssetKind;
 import io.agenticdb.ui.AppVersion;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Tokens;
@@ -86,7 +86,7 @@ class StatusBarTest {
         onFx(() -> {
             // 连接灯只在查询页 / 对象页挂载（N25 数据页不显示连接）。
             bar.setMode(StatusBar.Mode.QUERY);
-            bar.setDialect("SQLite", DialectKind.SQLITE);
+            bar.setDialect("SQLite", AssetKind.SQLITE);
             bar.setConnection("agenticdb-demo");
             bar.setServerInfo("3.45.1", "jason");
         });
@@ -132,7 +132,7 @@ class StatusBarTest {
         StatusBar bar = new StatusBar();
         onFx(() -> {
             bar.setMode(StatusBar.Mode.QUERY);
-            bar.setDialect("PostgreSQL", DialectKind.POSTGRESQL);
+            bar.setDialect("PostgreSQL", AssetKind.POSTGRESQL);
             bar.setConnection("analytics");
         });
 

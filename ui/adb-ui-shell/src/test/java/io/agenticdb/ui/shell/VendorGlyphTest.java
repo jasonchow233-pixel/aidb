@@ -1,6 +1,6 @@
 package io.agenticdb.ui.shell;
 
-import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.asset.AssetKind;
 import io.agenticdb.session.CredentialStore;
 import io.agenticdb.ui.Icons;
 import javafx.scene.Group;
@@ -44,7 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <ol>
  *   <li>两家共用一枚标志 → 分厂图标等于没画，界面照样能看（形状两两不同形才作数）；</li>
  *   <li>登记行漏一家 → 那家库顶着一颗通用圆柱，用户以为不支持
- *       （按 {@link DialectKind#values()} 穷举，不照抄手写清单）；</li>
+ *       （按 {@link AssetKind} 的 SQL 型穷举，不照抄手写清单）；</li>
  *   <li>官方色漏了 → 标志还在，但认不出是哪家（每家的<b>签名色</b>必须真的在分层里）；</li>
  *   <li>⚠️ 商标被我们的 CSS 染色 → 法律上各家条款禁止改色，视觉上也不是那家了。
  *       以前这条的反面才是风险（作用域类漏挂 → 品牌色空转），现在反过来：
@@ -69,23 +69,26 @@ class VendorGlyphTest {
      * SQL Server 用 Fluent 蓝）；Oracle 一枚是 {@code #e55844} —— 那是从 Oracle 自己发布的
      * 站点图标上逐像素量出来的红，取证口径写在 {@code icons/brand/TRADEMARK-NOTICE.txt}。
      */
-    private record Vendor(DialectKind kind, String signature) {
+    private record Vendor(AssetKind kind, String signature) {
     }
 
     private static final List<Vendor> VENDORS = List.of(
-            new Vendor(DialectKind.SQLITE, "#0f80cc"),
-            new Vendor(DialectKind.POSTGRESQL, "#336791"),
-            new Vendor(DialectKind.MYSQL, "#00546b"),
-            new Vendor(DialectKind.MARIADB, "#1f305f"),
-            new Vendor(DialectKind.SQLSERVER, "#0078d4"),
-            new Vendor(DialectKind.ORACLE, "#e55844"));
+            new Vendor(AssetKind.SQLITE, "#0f80cc"),
+            new Vendor(AssetKind.POSTGRESQL, "#336791"),
+            new Vendor(AssetKind.MYSQL, "#00546b"),
+            new Vendor(AssetKind.MARIADB, "#1f305f"),
+            new Vendor(AssetKind.SQLSERVER, "#0078d4"),
+            new Vendor(AssetKind.ORACLE, "#e55844"));
 
     static {
-        // 方言加了项却忘了在这里登记 → 上面那六行会少一家，这条先炸在装配期。
-        assertThat(VENDORS).as("每个方言都要有商标断言")
+        // SQL 资产种类加了项却忘了在这里登记 → 上面那六行会少一家，这条先炸在装配期。
+        // 只覆盖 SQL 型（Redis / 对象存储不是「数据库」，没有官方数据库商标）。
+        assertThat(VENDORS).as("每个 SQL 资产种类都要有商标断言")
                 .extracting(Vendor::kind)
                 .containsExactlyInAnyOrderElementsOf(
-                        java.util.Arrays.asList(DialectKind.values()));
+                        java.util.Arrays.stream(AssetKind.values())
+                                .filter(AssetKind::isSql)
+                                .collect(java.util.stream.Collectors.toList()));
     }
 
     private Stage stage;
@@ -228,7 +231,7 @@ class VendorGlyphTest {
     @Test
     void theWizardTileCarriesTheVendorScopeItself(FxRobot robot) {
         openWizard(robot);
-        ToggleButton tile = robot.lookup("#wizard-tile-MYSQL").query();
+        ToggleButton tile = robot.lookup("#wizard-tile-mysql").query();
         assertThat(tile.getStyleClass())
                 .as("磁贴没挂上厂商作用域类 —— 还吃品牌色的表面就没了作用域")
                 .contains("adb-db--mysql");

@@ -3,7 +3,9 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.StructurePlan;
+import io.agenticdb.jdbc.ColumnProblem;
 import io.agenticdb.jdbc.DbSession;
+import io.agenticdb.model.Danger;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
@@ -17,10 +19,9 @@ import java.util.List;
  * 结构变更计划的执行与确认 —— 列级（结构页）和表级（T1–T4）共用一份。
  *
  * <h2>为什么抽出来</h2>
- * 「先给用户看 SQL、再在<b>同一个事务</b>里执行、失败回滚」这套语义，
- * 结构页原本写在自己的私有方法里。表级生命周期（建表 / 清空 / 重命名 / 删表）
- * 需要<b>完全相同</b>的语义 —— 抄一份就会变成两份慢慢跑偏的实现：
- * 将来改了事务边界，只改一处，另一处就成了静默丢数据的口子。
+ * 结构页与表级生命周期共用 SQL 确认、事务边界与缓存失效逻辑。
+ * DDL 的事务与回滚效果由数据库能力决定，不保证跨方言原子性；
+ * 隐式提交方言的行为仍待真库矩阵验证。
  *
  * <h2>安全约定</h2>
  * <ol>
@@ -35,64 +36,83 @@ public final class StructurePlanRunner {
     }
 
     /**
-     * 在单个事务里执行整批语句，失败回滚。
+     * 执行整批语句；仅为自己开启的事务提交或尝试回滚。
      *
-     * <p>SQLite 整表重建期间要临时关掉外键（{@link StructurePlan#foreignKeysOff()}），
-     * 否则复制数据时外键会先炸。
-     *
-     * <p>⭐ G2 之后<b>不能无条件 begin/commit</b>：会话是连接级的，用户可能已经在
-     * 数据页开了显式事务。那时这一批结构变更只是<b>加入</b>他的事务 —— 提交与回滚
-     * 都归他决定。无条件 commit 会把人家没写完的一起落库，无条件 rollback
-     * 会把人家已有的成果一起抹掉。
+     * <p>SQLite 整表重建（{@link StructurePlan#foreignKeysOff()}）仅在原先开启外键时
+     * 临时关闭，并在结束事务后恢复。已有事务时拒绝重建，因为事务内关闭外键无效。
+     * 其它计划可以加入用户事务，提交与回滚仍由用户决定。
      */
     static void execute(DbSession session, StructurePlan plan) throws Exception {
         execute(session, plan, null);
     }
 
     /**
-     * ⭐ H3-d：执行整批语句，成功后作废该会话的 describe 缓存。
+     * 执行结构变更计划，并统一作废该会话的 describe 缓存。
      *
-     * <p>失效挂点就这一个 —— 结构页（列级）与表级生命周期（建 / 清空 / 重命名 / 删 /
-     * 视图三件）全部汇进这里，调用方各交自己的 {@link SchemaService}
-     * （外壳里是共享实例，作废才作废得到各页的缓存）。口径同补全缓存的 S-3：
-     * <b>执行过 DDL 就整份作废</b>，不猜哪张表变了 —— 语句执行成功就作废，
-     * 不等 commit（SQLite 同连接立刻看得见未提交的结构变更）；语句炸掉走回滚，
-     * 库没变，缓存保持原样不许白刷。
+     * <p>结构页与表级生命周期共用此失效挂点。计划中至少一条语句执行成功就作废，
+     * 即使后续失败：用户事务中的 DDL 或数据库隐式提交可能已经改变结构。
+     * 首条语句就失败且没有成功执行过语句时，保留缓存。
      *
      * @param schemas 该会话所属外壳的缓存；测试或无缓存的调用方传 {@code null}
      */
     static void execute(DbSession session, StructurePlan plan, SchemaService schemas)
             throws Exception {
-        boolean foreignKeysOff = plan.foreignKeysOff();
-        if (foreignKeysOff) {
-            session.update("PRAGMA foreign_keys = OFF");
-        }
         boolean ownTransaction = !session.inTransaction();
-        if (ownTransaction) {
-            session.begin();
+        if (plan.foreignKeysOff() && !ownTransaction) {
+            throw new ColumnProblem("structure.error.rebuildInTransaction");
         }
+        for (String sql : plan.statements()) {
+            DbSession.requireDeclared(plan.danger(), sql);
+        }
+        boolean restoreForeignKeys = false;
+        boolean executedStatement = false;
+        Throwable failure = null;
         try {
-            for (String sql : plan.statements()) {
-                session.execute(sql);
+            if (plan.foreignKeysOff()) {
+                var state = session.query("PRAGMA foreign_keys", 1);
+                restoreForeignKeys = ((Number) state.rows().getFirst().get("foreign_keys"))
+                        .intValue() != 0;
+                if (restoreForeignKeys) {
+                    session.update("PRAGMA foreign_keys = OFF", List.of(), Danger.MUTATING);
+                }
             }
-            if (schemas != null) {
-                schemas.invalidate(session);
+            if (ownTransaction) {
+                session.begin();
+            }
+            for (String sql : plan.statements()) {
+                session.execute(sql, plan.danger());
+                executedStatement = true;
             }
             if (ownTransaction) {
                 session.commit();
             }
-        } catch (Exception e) {
+        } catch (Exception | Error e) {
+            failure = e;
             if (ownTransaction) {
                 try {
-                    session.rollback();
-                } catch (Exception ignored) {
-                    // 回滚失败也要把原始 SQL 错误交给用户。
+                    // begin 也可能在已切换事务状态后才报错。
+                    if (session.inTransaction()) {
+                        session.rollback();
+                    }
+                } catch (Exception | Error rollbackError) {
+                    e.addSuppressed(rollbackError);
                 }
             }
             throw e;
         } finally {
-            if (foreignKeysOff) {
-                session.update("PRAGMA foreign_keys = ON");
+            if (executedStatement && schemas != null) {
+                schemas.invalidate(session);
+            }
+            if (restoreForeignKeys) {
+                try {
+                    session.update("PRAGMA foreign_keys = ON", List.of(), Danger.MUTATING);
+                } catch (Exception | Error restoreError) {
+                    if (failure != null) {
+                        failure.addSuppressed(restoreError);
+                    } else {
+                        throw restoreError;
+                    }
+                }
             }
         }
     }
@@ -133,13 +153,19 @@ public final class StructurePlanRunner {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
         alert.setTitle(I18n.t("plan.title"));
         alert.setHeaderText(title);
-        alert.setContentText(I18n.t("plan.body"));
+        javafx.scene.control.Label warning = new javafx.scene.control.Label(I18n.t("plan.body"));
+        warning.setId("plan-warning");
+        warning.setWrapText(true);
         TextArea area = new TextArea(plan.sql());
         area.setEditable(false);
         area.setWrapText(false);
         area.setId("plan-sql");
-        area.setPrefRowCount(Math.min(18, Math.max(4, plan.statements().size() + 2)));
-        alert.getDialogPane().setContent(area);
+        // +1：给最后一行留一行余量，SQL 恰好 N 行时不会因为滚动条把末行挤掉。
+        area.setPrefRowCount((int) Math.min(18, Math.max(6, plan.sql().lines().count() + 1)));
+        javafx.scene.layout.VBox content = new javafx.scene.layout.VBox(10, warning, area);
+        javafx.scene.layout.VBox.setVgrow(area, javafx.scene.layout.Priority.ALWAYS);
+        alert.getDialogPane().setPrefWidth(760);
+        alert.getDialogPane().setContent(content);
         alert.getDialogPane().getButtonTypes().setAll(ok, cancel);
         alert.setResultConverter(type -> type);
         if (owner != null) {

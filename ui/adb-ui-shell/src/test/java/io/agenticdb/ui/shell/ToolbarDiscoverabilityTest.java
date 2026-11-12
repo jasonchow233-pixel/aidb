@@ -1,6 +1,7 @@
 package io.agenticdb.ui.shell;
 
 import io.agenticdb.ui.App;
+import io.agenticdb.ui.I18n;
 import javafx.scene.Node;
 import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ComboBox;
@@ -12,8 +13,11 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
+import javafx.scene.control.TreeView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Region;
@@ -46,9 +50,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Navicat 17 的数据网格顶栏是 <b>13 个具名键</b>
  * （{@code docs/internal/NAVICAT-TODO.md} §1.4 的清单），每个都带图标 + 文字 +
  * tooltip + accessibleText。⭐ 2026-11-09 BI 整体移除后是 12 个；
- * ⭐ 2026-11-10「明确不做的入口全部删掉」后（{@code Data Generation} 整格删除）
- * 当前是 <b>11 个具名键</b> —— 少的那两颗是 Navicat 有、但我们已裁定不做
- * 也不再摆占位入口的 `Create BI Workspace` 与 `Data Generation`；
+ * ⭐ 2026-11-10「明确不做的入口全部删掉」后（{@code Data Generation} 整格删除）是 11 个；
+ * ⭐ 2026-11-11 T9 把 {@code Fill with AI} 整颗删除（AI 是架构红线），当前是
+ * <b>10 个具名键</b> —— 少的三颗是 Navicat 有、但我们已裁定不做、也不再摆占位入口的
+ * `Create BI Workspace`、`Data Generation` 与 `Fill with AI`；
  * 这不是「漏了一颗」，{@link #NAMED_KEYS} 与 `DataGridPage.namedToolbarKeysForTest()` 同口径。
  * 放不下时<b>不再把整排文字收成图标</b> ——
  * 那样会把 {@code Begin Transaction} 这类本来就该带文字的键一起收掉；
@@ -72,7 +77,7 @@ class ToolbarDiscoverabilityTest {
 
     /** 1280 是验收帧的宽度。 */
     private static final int WIDE_WIDTH = 1280;
-    /** 窄窗口档：11 个键必然折掉大半。 */
+    /** 窄窗口档：10 个键必然折掉大半。 */
     private static final int NARROW_WIDTH = 900;
 
     /**
@@ -84,12 +89,13 @@ class ToolbarDiscoverabilityTest {
      * Data Generation · Data Masking}。2026-11-09 用户裁定移除 BI，
      * 原先的 {@code Create BI Workspace} 连同 Ribbon 的 BI 磁贴一并删掉；
      * 2026-11-10 用户裁定「明确不做的入口全部删掉」，{@code Data Generation}
-     * 那一格整格删除 —— 当前 <b>11 个</b>。
+     * 那一格整格删除；⭐ 2026-11-11 T9 又把 {@code Fill with AI} 整颗删除
+     * —— 当前 <b>10 个</b>。
      * 右端另有两颗小键：视图菜单（≡▾）与溢出（»），它们不算具名键。
      */
     private static final List<String> NAMED_KEYS = List.of(
             "data-table-profile", "data-begin-tx", "data-cell-editor", "data-filter",
-            "data-columns", "data-history", "data-fill-ai", "data-profiling",
+            "data-columns", "data-history", "data-profiling",
             "data-import", "data-export", "data-masking");
 
     /** N19：编辑簇在网格左下的行操作条里，只有图标但提示齐全。 */
@@ -179,10 +185,31 @@ class ToolbarDiscoverabilityTest {
         if (hasSaveButton(robot)) {
             return;
         }
-        Node cell = WaitForAsyncUtils.asyncFx(() -> robot.lookup(node -> isTableCell(node, "users"))
-                .tryQuery().orElse(null)).get();
-        assertThat(cell).as("对象树里找不到 users 表节点").isNotNull();
-        WaitForAsyncUtils.asyncFx(() -> robot.doubleClickOn(cell)).get();
+        // 演示库连接是异步的：冷启动下对象树可能还没长出来，先等它出现。
+        // （只 waitForFxEvents 不够 —— 它不等后台的元数据加载，首条用例会假红。）
+        try {
+            WaitForAsyncUtils.waitFor(8, TimeUnit.SECONDS,
+                    () -> robot.lookup(node -> isTableCell(node, "users"))
+                            .queryAs(TreeCell.class) != null);
+        } catch (java.util.concurrent.TimeoutException e) {
+            throw new AssertionError("8 秒内对象树里没有出现 users 节点", e);
+        }
+        // ⚠️ robot.doubleClickOn 在冷 JVM / 满负载下会丢双击（两次点击被 FX 脉冲
+        //    拉开，Monocle 判成两次单击，树不进数据页）。改成在 FX 线程上选中
+        //    users + 合成 clickCount=2 的 MOUSE_CLICKED —— SideBar 的双击处理器
+        //    读的正是「选中项」，与真实双击同语义，不再依赖鼠标时序。
+        WaitForAsyncUtils.asyncFx(() -> {
+            @SuppressWarnings("rawtypes")
+            TreeCell cell = robot.lookup(node -> isTableCell(node, "users"))
+                    .queryAs(TreeCell.class);
+            @SuppressWarnings("rawtypes")
+            TreeView tree = cell.getTreeView();
+            tree.getSelectionModel().select(cell.getTreeItem());
+            tree.fireEvent(new MouseEvent(MouseEvent.MOUSE_CLICKED,
+                    10, 10, 10, 10, MouseButton.PRIMARY, 2,
+                    false, false, false, false, false, false, false,
+                    false, false, false, null));
+        }).get(5, TimeUnit.SECONDS);
         WaitForAsyncUtils.waitFor(8, TimeUnit.SECONDS, () -> {
             try {
                 return hasSaveButton(robot);
@@ -205,7 +232,7 @@ class ToolbarDiscoverabilityTest {
         List<String> ids = WaitForAsyncUtils.asyncFx(page::namedToolbarKeysForTest).get()
                 .stream().map(Node::getId).toList();
         assertThat(ids)
-                .as("11 个具名键的项集与顺序必须和 Navicat 对账（§1.4 清单）")
+                .as("10 个具名键的项集与顺序必须和 Navicat 对账（§1.4 清单）")
                 .containsExactlyElementsOf(NAMED_KEYS);
 
         List<ButtonBase> keys = WaitForAsyncUtils.asyncFx(page::namedToolbarKeysForTest).get();
@@ -220,6 +247,48 @@ class ToolbarDiscoverabilityTest {
                         .as("%s 可见时必须带完整文字", key.getId()).isNotBlank();
             }
         }
+    }
+
+    /**
+     * ⭐ T8：二级工具条这四颗（导入 / 导出 / 脱敏 / 画像）都必须在
+     * {@code namedToolbarKeys} 名单里、挂在可见 group 上，且落点<b>不是</b>
+     * {@code showCapabilityNotice}（全仓说明页入口已归零）。
+     *
+     * <p>核实结论：这四颗本来就已经在名单与可见 group 里（分别落 openImportWizard /
+     * 导出菜单 / openMaskingWizard / openProfiling），本条只补门禁、不做重构。
+     * 判据：名单包含它们、onAction 非 null（不是死按钮）、parent 非 null（不在溢出菜单外）、
+     * tooltip 与 accessibleText 都不带「本版本未提供」；再用反射钉住 DataGridPage 里
+     * {@code showCapabilityNotice} / {@code capabilityAlert} 已整段删除。
+     */
+    @Test
+    void theFourSecondaryToolbarKeysHaveRealLandingPoints(FxRobot robot) throws Exception {
+        DataGridPage page = page(robot);
+        List<String> ids = WaitForAsyncUtils.asyncFx(page::namedToolbarKeysForTest).get()
+                .stream().map(Node::getId).toList();
+        assertThat(ids).as("说明页入口 Fill with AI 已整颗删除").doesNotContain("data-fill-ai");
+
+        for (String id : List.of("data-import", "data-export", "data-masking", "data-profiling")) {
+            assertThat(ids).as("四颗二级入口都必须在具名键名单里").contains(id);
+            ButtonBase key = WaitForAsyncUtils.asyncFx(
+                    () -> (ButtonBase) findById(page, id)).get();
+            assertThat(key).as("#%s 必须有可达落点", id).isNotNull();
+            assertThat(WaitForAsyncUtils.asyncFx(() -> hasLandingPoint(key)).get())
+                    .as("#%s 必须有可达落点（按钮动作或非空菜单项）", id).isTrue();
+            assertThat(WaitForAsyncUtils.asyncFx(key::getParent).get())
+                    .as("#%s 必须挂在可见 group 里，不是只塞在溢出菜单", id).isNotNull();
+            String words = WaitForAsyncUtils.asyncFx(() -> {
+                String tip = key.getTooltip() == null ? "" : key.getTooltip().getText();
+                String aria = key.getAccessibleText() == null ? "" : key.getAccessibleText();
+                return tip + "␀" + aria;
+            }).get();
+            assertThat(words)
+                    .as("#%s 不许再说「本版本未提供」—— 落点不是说明页", id)
+                    .doesNotContain(I18n.t("ribbon.pending"));
+        }
+        assertThat(java.util.Arrays.stream(DataGridPage.class.getDeclaredMethods())
+                .map(java.lang.reflect.Method::getName))
+                .as("DataGridPage 里 showCapabilityNotice / capabilityAlert 必须清零")
+                .doesNotContain("showCapabilityNotice", "capabilityAlert");
     }
 
     @Test
@@ -254,7 +323,7 @@ class ToolbarDiscoverabilityTest {
         DataGridPage page = page(robot);
         List<ButtonBase> folded = WaitForAsyncUtils.asyncFx(page::foldedToolbarKeysForTest).get();
         assertThat(folded)
-                .as("%dpx 下 11 个具名键不可能全放得下（前置条件：这条门禁在验折叠）", NARROW_WIDTH)
+                .as("%dpx 下 10 个具名键不可能全放得下（前置条件：这条门禁在验折叠）", NARROW_WIDTH)
                 .isNotEmpty();
         for (ButtonBase key : folded) {
             assertHint(key.getId(), key);
@@ -660,6 +729,21 @@ class ToolbarDiscoverabilityTest {
         List<Node> hits = new ArrayList<>();
         collect(root, node -> id.equals(node.getId()), hits);
         return hits.isEmpty() ? null : hits.get(0);
+    }
+
+    /**
+     * 真落点：按钮自己的 onAction，或菜单按钮里至少一项有 onAction。
+     *
+     * <p>导出键是 {@code MenuButton}（CSV / 整表向导 / 复制），它本来就不该挂
+     * onAction —— 点开菜单就是它的动作。只查 {@code getOnAction()} 会把一颗
+     * 完全正常的菜单判成死按钮。
+     */
+    private static boolean hasLandingPoint(ButtonBase key) {
+        if (key.getOnAction() != null) {
+            return true;
+        }
+        return key instanceof MenuButton menu
+                && menu.getItems().stream().anyMatch(item -> item.getOnAction() != null);
     }
 
     private static void collect(Node node, Predicate<Node> match, List<Node> out) {

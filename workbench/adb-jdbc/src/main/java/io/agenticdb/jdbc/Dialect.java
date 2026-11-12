@@ -213,6 +213,25 @@ public interface Dialect {
     /** 新增 NOT NULL 列是否必须提供默认值（SQLite 是）。 */
     boolean requiresDefaultForNotNullColumn();
 
+    /**
+     * 本引擎的 DDL 是否能加入用户事务。
+     *
+     * <p>SQLite / PostgreSQL / SQL Server 的常见 DDL 可回滚；MySQL / MariaDB / Oracle
+     * 的 DDL 会隐式提交。传输、恢复、结构计划都靠这一条决定“能否承诺整批回滚”，
+     * UI 不再自己枚举方言。
+     */
+    boolean supportsTransactionalDdl();
+
+    /**
+     * 本方言能否把源表直接传输到目标方言。
+     *
+     * <p>当前只允许同引擎 SQL 重放；真正的异构字段/类型映射由后续能力实现。
+     * 判定放在方言层，UI 不枚举方言做比较。
+     */
+    default boolean canTransferTo(Dialect target) {
+        return target != null && kind() == target.kind();
+    }
+
     // ─────────────────────────── 元数据 ───────────────────────────
 
     /** 列定义查询；返回 {@code null} 表示走 JDBC 元数据。 */
@@ -720,15 +739,11 @@ public interface Dialect {
      */
     String renameTableSql(String oldName, String newName);
 
-    /**
-     * 重命名视图。
-     *
-     * <p>与 {@link #renameTableSql} 同形的方言差异，但视图与表在六种方言里共处同一命名空间：
-     * MySQL / MariaDB 走 {@code RENAME TABLE}（对视图同样生效），
-     * PostgreSQL / Oracle 走 {@code ALTER VIEW … RENAME TO}，
-     * SQLite 走 {@code ALTER TABLE … RENAME TO}（视图也落在 sqlite_master），
-     * SQL Server 走 {@code sp_rename}。UI 一律走这里，不允许在弹窗里拼 "ALTER VIEW " + 名字。
-     */
+    default boolean supportsViewRename() {
+        return true;
+    }
+
+    /** 不支持直接改名的方言抛出 ColumnProblem，不隐式删除并重建视图。 */
     String renameViewSql(String oldName, String newName);
 
     /**

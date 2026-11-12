@@ -14,6 +14,14 @@ final class MetadataColumns {
     /** 占位符：与 {@code TableMeta.textOrDash} 保持一致。 */
     static final String DASH = "—";
 
+    /**
+     * ⭐ T7：引擎拿不到这项元数据时挂在「—」格上的解释（tooltip 与读屏同一句）。
+     *
+     * <p>「—」不是「没有值」，是「此引擎不提供该元数据」—— 这句只解释，不编造数据。
+     * 用 ASCII 字面量：既不自造 i18n 键，也不碰硬编码中文棘轮。
+     */
+    static final String UNAVAILABLE_HINT = "This engine does not provide this metadata";
+
     private MetadataColumns() {
     }
 

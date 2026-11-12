@@ -159,6 +159,11 @@ public final class PostgresDialect implements Dialect {
     }
 
     @Override
+    public boolean supportsTransactionalDdl() {
+        return true;
+    }
+
+    @Override
     public String columnsSql(String table) {
         return null;
     }

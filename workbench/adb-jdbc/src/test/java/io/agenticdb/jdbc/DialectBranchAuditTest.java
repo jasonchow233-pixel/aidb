@@ -32,10 +32,11 @@ class DialectBranchAuditTest {
      * <p>这些地方要么就是方言本身，要么在做「反查枚举」（按 URL 猜方言）、
      * 工厂方法（造一个 SQLite 连接）、或默认值（向导的初始选择）。
      *
-     * <p>{@code ConnectionCatalog} 是<b>登记表</b>：它写 {@code DialectKind.MYSQL}
-     * 是在说「这一项有驱动」，不是「MYSQL 时走这条路」。A1 承诺的后半句
-     * 「登记一项」就落在这里，所以它必须在白名单里 —— 但一旦在这里写出
-     * {@code dialect() == …} 之类的比较，下面的正则照样抓得到（白名单只放枚举项）。
+     * <p>自资产层（{@code adb-asset}）引入后，<b>SQL 资产到 {@code DialectKind}
+     * 的映射唯一定点是 {@code AssetKind}</b>——它取代原先散落在 {@code ConnectionProfile}
+     * /{@code ConnectionCatalog} 里的方言枚举引用，成为 A1 承诺「加一种数据库只写
+     * 一个 Dialect 实现 + 登记一项」在资产层的具体落点。因此那两个旧文件已不再持有
+     * 方言枚举项，被移出白名单以收紧门禁；任何新的方言引用都必须回到 {@code AssetKind}。
      */
     private static final Set<String> ALLOWED = Set.of(
             "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/DialectKind.java",
@@ -47,9 +48,21 @@ class DialectBranchAuditTest {
             "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/OracleDialect.java",
             "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/JdbcSession.java",
             "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/ConnectionSpec.java",
-            "workbench/adb-session/src/main/java/io/agenticdb/session/ConnectionProfile.java",
-            "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/ConnectionWizard.java",
-            "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/ConnectionCatalog.java");
+            // 资产层判别轴唯一定点：SQL 资产 → DialectKind 的映射只写在这里。
+            "workbench/adb-asset/src/main/java/io/agenticdb/asset/AssetKind.java",
+            // 向导当前仅承载 SQL 族，其 DialectKind 默认/注册引用是合法的 SQL-only 行为。
+            "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/ConnectionWizard.java");
+
+    /**
+     * UI（表现层）目录，禁止硬编码资产族常量。
+     *
+     * <p>资产族的判别逻辑必须全部收敛到 {@code adb-asset} 注册表；UI 只能从
+     * {@code AssetFamilyRegistry} / {@code ConnectionCatalog} 取得磁贴与实例委派
+     * （如 {@code entry.kind().dialectKind()}），<b>不得</b>直接写
+     * {@code AssetKind.MYSQL} 之类常量去做分支 —— 否则加一种连接类型就要回来改 UI，
+     * 正是规划里「UI 不得出现资产族分支」要杜绝的。
+     */
+    private static final String UI_LAYER = "ui/adb-ui-shell/src/main/java";
 
     /**
      * 散落的方言分支。
@@ -98,6 +111,48 @@ class DialectBranchAuditTest {
         assertThat(violations)
                 .as("方言分支散落在这些文件里 —— 加一种数据库就要改它们，"
                         + "A1 的承诺（一个 Dialect 实现就够）就破了：\n  %s",
+                        String.join("\n  ", violations))
+                .isEmpty();
+    }
+
+    /**
+     * 升级版承诺：资产族判别逻辑必须收敛到 {@code adb-asset} 注册表，
+     * UI 表现层不得硬编码 {@code AssetKind.XXX} 常量去做分支。
+     *
+     * <p>UI 只允许从注册表取得磁贴与实例委派（如 {@code entry.kind().dialectKind()}、
+     * {@code AssetKind.from(session.dialect().kind())}），不得出现
+     * {@code AssetKind.MYSQL} / {@code AssetKind.REDIS} 这类常量引用 ——
+     * 一旦出现在 UI，加一种连接类型就得回来改界面，违背了「一个族只在注册表登记」的架构。
+     */
+    @Test
+    void uiLayerDoesNotHardcodeAssetFamilyConstants() throws IOException {
+        Path uiRoot = repositoryRoot().resolve(UI_LAYER);
+        Pattern assetConstant = Pattern.compile(
+                "AssetKind\\s*\\.\\s*(REDIS|OBJECT_STORE|SQLITE|POSTGRESQL|MYSQL"
+                        + "|MARIADB|SQLSERVER|ORACLE)");
+        List<String> violations = new ArrayList<>();
+        int scanned = 0;
+
+        try (Stream<Path> paths = Files.walk(uiRoot)) {
+            for (Path path : paths.filter(Files::isRegularFile).toList()) {
+                String relative = uiRoot.relativize(path).toString().replace('\\', '/');
+                if (!relative.endsWith(".java") || relative.contains("/target/")) {
+                    continue;
+                }
+                scanned++;
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (assetConstant.matcher(source).find()) {
+                    violations.add(uiRoot.relativize(path).toString().replace('\\', '/'));
+                }
+            }
+        }
+
+        assertThat(scanned)
+                .as("UI 层没扫到任何文件 —— 路径错了，门禁是假绿")
+                .isGreaterThan(20);
+        assertThat(violations)
+                .as("UI 层硬编码了资产族常量 —— 资产族分支漏进了表现层，"
+                        + "规划承诺「UI 不得出现资产族分支」破了：\n  %s",
                         String.join("\n  ", violations))
                 .isEmpty();
     }

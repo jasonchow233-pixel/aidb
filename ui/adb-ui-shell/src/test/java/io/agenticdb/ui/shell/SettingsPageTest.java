@@ -77,7 +77,7 @@ class SettingsPageTest {
             actions.register(id, I18n.t("action." + id), "测试", null, () -> runs.add(id));
         }
         workspace = new WorkspaceView(actions, "demo.db",
-                tab -> null, tab -> null, tab -> null, tab -> null, tab -> null);
+                tab -> null, tab -> null, tab -> null, tab -> null, tab -> null, tab -> null);
         onFxRun(() -> workspace.showTab(
                 new TabItem("settings", I18n.t("window.pageType.settings"), TabKind.SETTINGS)));
 

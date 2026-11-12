@@ -208,8 +208,9 @@ class TerminologyGuardTest {
      * 把选形绑死在 {@code {0}} 上会写出「Showing 1 of 5 table」。
      *
      * <p>⚠️ 本条只管**立案的几句**。全量实测另有 33 句同族（{@code N rows}、{@code N objects}、
-     * {@code Dropped N tables}…），其中 {@code query.rowsAndDuration} 那一支归 D-75/Q13 未拍，
-     * {@code Showing {0} of {1}} 这种「一个名词两个数」的还要先定句式 —— 已另立 D-89 带清单。
+     * {@code Dropped N tables}…），其中 {@code query.rowsAndDuration} 已由 D-75 拍成
+     * 「只报行数」单形（耗时改由 {@code query.summary.body} 汇总），仍留在 D-89 清单里；
+     * {@code Showing {0} of {1}} 这种「一个名词两个数」的还要先定句式。
      *
      * <p>⭐ D-82 追加第五句 {@code saved.snippetSummary}：页脚改成按种类计数后，
      * 「片段」那半句也是计数句，两种语言同样要有两形（中文两形同文，与 {@code fav.summary} 一致）。

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.agenticdb</groupId>
+    <artifactId>aidb-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>adb-redis</artifactId>
+  <name>AIDB :: Redis</name>
+  <description>Redis 管理后端（基于 Lettuce）。P0 为骨架，P1 落地会话与内省。</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.agenticdb</groupId>
+      <artifactId>adb-model</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.agenticdb</groupId>
+      <artifactId>adb-asset</artifactId>
+    </dependency>
+    <!-- 连接档案模型（ConnectionProfile / SshConfig）：Redis 会话从档案取 host/port/db/用户名。 -->
+    <dependency>
+      <groupId>io.agenticdb</groupId>
+      <artifactId>adb-session</artifactId>
+    </dependency>
+    <!-- Lettuce：netty 异步 Redis 客户端（EXT 规划 Q3）。 -->
+    <dependency>
+      <groupId>io.lettuce</groupId>
+      <artifactId>lettuce-core</artifactId>
+      <version>${lettuce.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- 真 Redis 容器（P1 行为测试）。 -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

@@ -280,35 +280,20 @@ class GridInteractionTest {
     }
 
     /**
-     * ⭐⭐ D-61：网格工具条上仍落如实说明页的**假按钮**必须在点之前就说实话 ——
-     * 右上角挂 PendingMark 环，tooltip 与 accessibleText 带同一句「本版本未提供」。
+     * ⭐ T9（Q-B「要么接要么删」）：最后一颗「用 AI 填充」整颗删除，
+     * 全仓不再有 {@code showCapabilityNotice} 落点、也不再有 PendingMark 环。
      *
      * <p>名单随能力面收窄：BI Workspace 已整体移除、Data Masking 在 P-3 接上真
      * 导出向导、Data Generation 因「明确不做」于 2026-11-10 删掉入口、
-     * Data Profiling 于 2026-11-10 接上真工具页 —— 四者都不再挂环
-     * （判据始终是落点是不是 {@code showCapabilityNotice}）。
-     * 环的几何断言走**宿主排里有 mark 孩子**这一构造事实，
-     * 不量像素（像素归帧，这里归接线）。
+     * Data Profiling 于 2026-11-10 接上真工具页、Fill with AI 于 2026-11-11 整颗删除
+     * （AI 是架构红线）。判据始终是落点是不是说明页；现在为零。
      */
     @Test
-    void capabilityPlaceholdersAdvertiseThemselvesBeforeTheClick() {
-        for (String id : java.util.List.of("data-fill-ai")) {
-            javafx.scene.Node node = page.lookup("#" + id);
-            assertThat(node).as("落点按钮 #%s", id).isNotNull();
-            javafx.scene.control.ButtonBase button = (javafx.scene.control.ButtonBase) node;
-            assertThat(button.getTooltip())
-                    .as("#%s 的 tooltip 必须提前说「本版本未提供」", id)
-                    .isNotNull();
-            assertThat(button.getTooltip().getText())
-                    .contains(I18n.t("ribbon.pending"));
-            assertThat(button.getAccessibleText())
-                    .as("#%s 读屏侧要说同一句", id)
-                    .contains(I18n.t("ribbon.pending"));
-            assertThat(((javafx.scene.layout.Pane) button.getParent()).getChildren().stream()
-                    .anyMatch(child -> child.getStyleClass().contains("adb-pending__mark")))
-                    .as("#%s 所在那一排必须挂了角标环（managed=false，不吃排版）", id)
-                    .isTrue();
-        }
+    void theFillWithAiEntryStaysDeleted() {
+        assertThat(page.lookup("#data-fill-ai"))
+                .as("Fill with AI 已整颗删除，不许长回来").isNull();
+        assertThat(page.lookupAll(".adb-pending__mark"))
+                .as("数据页工具带上不许再有任何角标环").isEmpty();
     }
 
     /**
@@ -331,10 +316,10 @@ class GridInteractionTest {
      * 环还留着就是在说假话 —— 而且是那种「点下去其实能用、但界面上先告诉你没有」
      * 的最坏组合。
      *
-     * <p>⚠️ 断言必须按<b>几何</b>认领，不能按「这一排有没有环」：
-     * 画像按钮与「用 AI 填充」同属 toolGroupInsight，那一颗**仍然**挂着环
-     * （AI 填充确实还没有能力面）。环是宿主排的孩子、{@code managed=false}，
-     * 所以认领规则是「谁的右上角被环贴着」。
+     * <p>⚠️ 断言按<b>几何</b>认领（环是宿主排的孩子、{@code managed=false}，
+     * 规则是「谁的右上角被环贴着」）。⭐ T9：同排那颗「用 AI 填充」已整颗删除，
+     * toolGroupInsight 现在只剩画像按钮一颗、且全排没有环 —— 这条几何门禁照旧生效，
+     * 防的是「以后又给画像按钮贴回角标」。
      */
     @Test
     void theProfilingButtonNoLongerCarriesThePendingRing() {
@@ -362,7 +347,7 @@ class GridInteractionTest {
                     return insetRight >= 0 && insetRight <= 6 && insetTop >= 0 && insetTop <= 6;
                 });
         assertThat(ringOnThisButton)
-                .as("画像按钮的右上角不许再贴着角标环（同排那颗「用 AI 填充」仍然有环）")
+                .as("画像按钮的右上角不许再贴着角标环（同排的 AI 入口已整颗删除）")
                 .isFalse();
     }
 

@@ -1128,51 +1128,27 @@ class NewTableDialogTest {
     }
 
     /**
-     * ⭐ N29 → R43-b：{@code Ask AI} 一击开<b>一份</b>如实说明页。
+     * ⭐ T9（Q-B「要么接要么删」）：第九处假按钮 {@code new-table-ask-ai} 整颗删除。
      *
-     * <p>原来是三项菜单，三项开的是同一段文字 —— 那等于用两步交互伪装三种能力。
-     * 这条门禁现在断的是反方向：<b>不许</b>再长出子菜单，且一击必须有动作。
+     * <p>连着 {@code askAiAlert()} 说明页一起删 —— 全仓「本版未提供」说明页入口归零。
+     * 变异验证：把那颗按钮或 {@code PendingMark.mark} 加回来，这条会红。
      */
     @Test
-    void askAiButtonExplainsInsteadOfPretending() {
+    void theAskAiEntryAndItsNoticeStayDeleted() {
         NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
-
-        javafx.scene.control.Button button = onFx(dialog::askAiButton);
-        assertThat(button).as("字段工具条右端必须有 Ask AI").isNotNull();
-        assertThat(button)
-                .as("说明只有一份，摆成菜单就是假装有三种能力")
-                .isNotInstanceOf(javafx.scene.control.MenuButton.class);
-        assertThat(onFx(() -> button.getOnAction()))
-                .as("按钮必须有动作，不能是死按钮")
+        javafx.scene.Node content = onFx(() -> dialog.dialog().getDialogPane().getContent());
+        assertThat(onFx(() -> content.lookup("#new-table-field-count")))
+                .as("前置条件：字段工具条这一层必须真的在 content 里（否则下面的 isNull 是假绿）")
                 .isNotNull();
-
-        javafx.scene.control.Alert alert = onFx(dialog::askAiAlert);
-        assertThat(onFx(() -> alert.getDialogPane().getId()))
-                .isEqualTo("new-table-ask-ai-notice");
-        assertThat(onFx(alert::getHeaderText)).contains(I18n.t("grid.capability.title"));
-        assertThat(onFx(alert::getContentText)).contains(I18n.t("grid.capability.askAi"));
-    }
-
-    /**
-     * ⭐ D-61：这第九颗假按钮（落点 = 手搓的如实说明页，判据同 {@code showCapabilityNotice}）
-     * 也要**点之前**说实话 —— 环挂在字段工具条那一排、tooltip 与 accessibleText
-     * 都带「本版本未提供」，与功能区六格、工具条五颗、Ω 同一套语法。
-     */
-    @Test
-    void askAiButtonCarriesThePendingMarkToo() {
-        NewTableDialog dialog = onFx(() -> NewTableDialog.create(session, List.of()));
-        javafx.scene.control.Button button = onFx(dialog::askAiButton);
-        assertThat(onFx(() -> button.getTooltip().getText()))
-                .as("D-61：Ask AI 的 tooltip 要点之前就交代「本版本未提供」")
-                .contains(I18n.t("ribbon.pending"));
-        assertThat(onFx(button::getAccessibleText))
-                .as("D-61：Ask AI 读屏侧同一句")
-                .contains(I18n.t("ribbon.pending"));
-        javafx.scene.layout.Pane host = (javafx.scene.layout.Pane) onFx(button::getParent);
-        assertThat(onFx(() -> host.getChildren().stream()
-                .anyMatch(child -> child.getStyleClass().contains(PendingMark.MARK_CLASS))))
-                .as("D-61：字段工具条那一排必须给 Ask AI 挂了角标环")
-                .isTrue();
+        assertThat(onFx(() -> content.lookup("#new-table-ask-ai")))
+                .as("Ask AI 整颗删除（AI 是架构红线），字段工具条右端不许长回来")
+                .isNull();
+        assertThat(onFx(() -> content.lookupAll(".adb-pending__mark")))
+                .as("字段工具条那一排不许再挂角标环").isEmpty();
+        assertThat(java.util.Arrays.stream(NewTableDialog.class.getDeclaredMethods())
+                .map(java.lang.reflect.Method::getName))
+                .as("askAiAlert / showAskAiNotice / askAiButton 三个说明页接缝必须清零")
+                .doesNotContain("askAiAlert", "showAskAiNotice", "askAiButton");
     }
 
     /** 类型格是「点开才选」的可编辑下拉，候选来自本方言。 */

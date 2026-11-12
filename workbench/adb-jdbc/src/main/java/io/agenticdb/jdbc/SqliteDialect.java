@@ -109,6 +109,11 @@ public final class SqliteDialect implements Dialect {
     }
 
     @Override
+    public boolean supportsTransactionalDdl() {
+        return true;
+    }
+
+    @Override
     public String columnsSql(String table) {
         return "PRAGMA table_info(" + quote(table) + ")";
     }
@@ -399,9 +404,13 @@ public final class SqliteDialect implements Dialect {
     }
 
     @Override
+    public boolean supportsViewRename() {
+        return false;
+    }
+
+    @Override
     public String renameViewSql(String oldName, String newName) {
-        // ⭐ 视图也落在 sqlite_master，ALTER TABLE RENAME 同样适用。
-        return "ALTER TABLE " + quote(oldName) + " RENAME TO " + quote(newName);
+        throw new ColumnProblem("view.error.renameUnsupported", displayName());
     }
 
     @Override

@@ -90,31 +90,60 @@ class QueryPageTest {
     }
 
     /**
-     * ⭐⭐ D-61：查询工具条上的 Query Builder 与 Ask AI 落的是如实说明页
-     * （{@code showCapabilityNotice}），与 Save / Beautify SQL 这些真功能同形同色 ——
-     * 判据就是落点函数。这两颗必须提前说实话：右上角挂 PendingMark 环，
-     * tooltip 与 accessibleText 带「本版本未提供」。
+     * ⭐ T9（Q-B「要么接要么删」）：Ask AI 是架构红线，整颗删除，不许长回来。
      */
     @Test
-    void queryToolbarPlaceholdersSpeakBeforeTheClick() throws Exception {
-        for (String id : List.of("query-builder", "query-ask-ai")) {
-            javafx.scene.Node node = WaitForAsyncUtils.asyncFx(() -> page.lookup("#" + id)).get();
-            assertThat(node).as("#%s 必须存在", id).isNotNull();
-            javafx.scene.control.ButtonBase button = (javafx.scene.control.ButtonBase) node;
-            assertThat(WaitForAsyncUtils.asyncFx(() ->
-                    button.getTooltip() == null ? "" : button.getTooltip().getText()).get())
-                    .as("D-61：#%s 的 tooltip 要点之前就交代「本版本未提供」", id)
-                    .contains(I18n.t("ribbon.pending"));
-            assertThat(WaitForAsyncUtils.asyncFx(button::getAccessibleText).get())
-                    .as("D-61：#%s 读屏侧同一句", id)
-                    .contains(I18n.t("ribbon.pending"));
-            javafx.scene.layout.Pane host = (javafx.scene.layout.Pane)
-                    WaitForAsyncUtils.asyncFx(() -> button.getParent()).get();
-            assertThat(WaitForAsyncUtils.asyncFx(() -> host.getChildren().stream()
-                    .anyMatch(child -> child.getStyleClass().contains("adb-pending__mark"))).get())
-                    .as("D-61：#%s 那一排必须挂了角标环", id)
-                    .isTrue();
-        }
+    void theAskAiEntryStaysDeleted() throws Exception {
+        javafx.scene.Node node = WaitForAsyncUtils.asyncFx(() -> page.lookup("#query-ask-ai")).get();
+        assertThat(node).as("Ask AI 整颗删除（AI 不做），工具带上不许再有说明页入口").isNull();
+    }
+
+    /**
+     * ⭐ T9：query-builder 打开的是**只读 SQL 预览**，不会执行 SQL、不改库、无 AI 字样。
+     *
+     * <p>变异验证：把 builder 的落点改回 {@code runCurrent}（执行）或
+     * {@code showCapabilityNotice}（说明页），这条会红 —— 前者结果带会多出页签，
+     * 后者没有 {@code #query-builder-preview}；把预览区 {@code setEditable(true)}
+     * 或往弹窗里塞第二颗动作按钮，同样会红。
+     */
+    @Test
+    void builderOpensAReadOnlyPreviewAndNeverExecutesSql() throws Exception {
+        interact(() -> page.setSql("SELECT 1 AS n"));
+        int tabsBefore = page.resultTabCount();
+
+        javafx.scene.control.ButtonBase button = WaitForAsyncUtils.asyncFx(
+                () -> (javafx.scene.control.ButtonBase) page.lookup("#query-builder")).get();
+        assertThat(button).as("#query-builder 按钮与键 query.builder 必须保留").isNotNull();
+        assertThat(WaitForAsyncUtils.asyncFx(button::getOnAction).get())
+                .as("按钮必须接着落点，不是死按钮").isNotNull();
+
+        javafx.scene.control.Dialog<?> dialog = WaitForAsyncUtils.asyncFx(page::builderDialog).get();
+        // ⚠️ 弹窗未 show：DialogPane 自己的皮肤还没建，从 getContent() 这层查
+        //    （与 NewTableDialog.askAiButton() 老门禁同一条路子），不要在 DialogPane 上 lookup。
+        javafx.scene.Node content = WaitForAsyncUtils.asyncFx(
+                () -> dialog.getDialogPane().getContent()).get();
+        assertThat(content).as("构造器弹窗必须有内容区").isNotNull();
+        javafx.scene.control.TextArea preview = WaitForAsyncUtils.asyncFx(() ->
+                (javafx.scene.control.TextArea) content.lookup("#query-builder-preview")).get();
+        assertThat(preview).as("只读预览区必须存在").isNotNull();
+        assertThat(WaitForAsyncUtils.asyncFx(preview::isEditable).get())
+                .as("预览区只读 —— 构造器不许变成第二个 SQL 编辑器").isFalse();
+        String previewText = WaitForAsyncUtils.asyncFx(() -> { return preview.getText(); }).get();
+        assertThat(previewText)
+                .as("预览的是当前编辑器里的 SQL").contains("SELECT 1 AS n");
+        javafx.scene.Node copy = WaitForAsyncUtils.asyncFx(
+                () -> content.lookup("#query-builder-copy")).get();
+        assertThat(copy).as("必须提供 query.builder.copy 复制按钮").isNotNull();
+        assertThat(WaitForAsyncUtils.asyncFx(() -> dialog.getDialogPane()
+                .getButtonTypes()).get())
+                .as("弹窗只许有 CLOSE —— 不许挂「执行」这类动作按钮")
+                .containsExactly(javafx.scene.control.ButtonType.CLOSE);
+        assertThat(page.resultTabCount())
+                .as("打开构造器绝不执行 SQL（无 DB 执行断言）").isEqualTo(tabsBefore);
+        assertThat(java.util.Arrays.stream(QueryPage.class.getDeclaredMethods())
+                .map(java.lang.reflect.Method::getName))
+                .as("QueryPage 里 showCapabilityNotice 必须清零（说明页入口归零）")
+                .doesNotContain("showCapabilityNotice");
     }
 
     @Test
@@ -1539,23 +1568,23 @@ class QueryPageTest {
     }
 
     /**
-     * ⭐ A-4 / P1 状态栏去重之后：查询页底部带里只剩编辑器自己的 Ln/Col。
+     * ⭐ A-4 / P1 状态栏去重 + ⭐ T6：查询页底部带 = SQL 回显 | Read Only | 光标。
      *
-     * <p>原门禁按 Navicat 实拍钉「行数 → Ln/Col → 耗时」三条数字同带。但行数 / 耗时
-     * 已经由全局状态栏（经 {@code DataGridPage.Feedback} 推送）作为唯一来源呈现，
-     * 查询页再摆一遍就是同一份信息出现两次 —— P1 把 range / duration 从这条带里摘掉，
-     * 仍通过 {@code feedback.range/duration} 报给全局状态栏（{@link QueryPage} 的
-     * {@code statusBar} 只挂 status / spacer / caretReadout）。
+     * <p>行数 / 耗时仍由全局状态栏（经 {@code DataGridPage.Feedback}）独家呈现，
+     * P1 把 range / duration 从这条带里摘掉；T6 把 Read Only pill 从工具带右上角
+     * 搬进来（工具带那颗 {@code #query-risk} 保留为危险等级 badge，两种语义互不顶替）。
      *
-     * <p>门禁不能跟着空转：① caret 必须真的和状态文字在同一条带；② 带里除状态文字与
-     * caret 之外不许再有 Label —— 重复数字哪天被加回来，这里当场红。
+     * <p>门禁不空转：① caret 与状态文字、pill 同带；② 带里除这三者外不许再有 Label
+     * —— 重复数字哪天被加回来，这里当场红。
      */
     @Test
     void theCaretReadoutIsTheOnlyNumberInTheDeduplicatedStatusBand() {
         int[] place = new int[3];
+        String[] pill = new String[2];
         interact(() -> {
             javafx.scene.Node caret = page.lookup("#query-caret");
             javafx.scene.Node status = page.lookup("#query-status");
+            javafx.scene.Node readOnly = page.lookup("#query-read-only");
             if (caret == null || caret.getParent() == null) {
                 java.util.Arrays.fill(place, -1);
                 return;
@@ -1565,15 +1594,61 @@ class QueryPageTest {
             place[0] = kids.contains(status) ? 1 : 0;
             place[1] = kids.indexOf(caret);
             place[2] = (int) kids.stream()
-                    .filter(node -> node != caret && node != status && node instanceof Label)
+                    .filter(node -> node != caret && node != status && node != readOnly
+                            && node instanceof Label)
                     .count();
+            if (readOnly instanceof Label label) {
+                pill[0] = label.getText();
+                pill[1] = label.getParent() == band ? "same" : "different";
+            }
         });
 
         assertThat(place[0]).as("#query-caret 不存在，或没和状态文字待在同一条带里").isEqualTo(1);
         assertThat(place[1]).as("光标读数必须真的挂在带里").isGreaterThanOrEqualTo(0);
         assertThat(place[2])
-                .as("P1 去重：行数 / 耗时由全局状态栏显示，查询页底部带不许再摆一份")
+                .as("P1 去重 + T6：除 status / Read Only pill / caret 外不许再摆 Label")
                 .isEqualTo(0);
+        assertThat(pill[0]).as("Read Only pill 必须真的搬进底部带，文案来自 status.readOnly")
+                .isEqualTo(I18n.t("status.readOnly"));
+        assertThat(pill[1]).as("Read Only pill 与 #query-caret 必须同带").isEqualTo("same");
+    }
+
+    /**
+     * ⭐ T6：Message / Summary 是结果页签**内部**的只读子视图，不往顶层
+     * {@code results} TabPane 加页签（页签数量被十几处门禁钉着）。
+     */
+    @Test
+    void resultViewsCarryReadOnlyMessageAndSummaryWithoutAddingTabs() {
+        interact(() -> {
+            page.setSql("SELECT 1 AS n;");
+            page.runAll();
+        });
+        waitForTabs(1);
+
+        Object[] found = new Object[4];
+        interact(() -> {
+            TabPane results = (TabPane) page.lookup("#query-results");
+            found[0] = results.getTabs().size();
+            javafx.scene.Node content = results.getTabs().getFirst().getContent();
+            found[1] = content.lookup("#result-view-message");
+            found[2] = content.lookup("#result-view-summary");
+        });
+        assertThat(found[0]).as("T6 不许往顶层 results TabPane 加页签").isEqualTo(1);
+        assertThat(found[1]).as("Message 子视图入口").isNotNull();
+        assertThat(found[2]).as("Summary 子视图入口").isNotNull();
+        assertThat(((javafx.scene.control.ToggleButton) found[1]).getText())
+                .isEqualTo(I18n.t("query.result.message"));
+        assertThat(((javafx.scene.control.ToggleButton) found[2]).getText())
+                .isEqualTo(I18n.t("query.result.summary"));
+
+        interact(() -> {
+            ((javafx.scene.control.ToggleButton) found[1]).fire();
+            javafx.scene.Node content = ((TabPane) page.lookup("#query-results"))
+                    .getTabs().getFirst().getContent();
+            found[3] = content.lookup("#query-result-message");
+        });
+        assertThat(found[3]).as("Message 段必须是只读 TextArea").isNotNull();
+        assertThat(((javafx.scene.control.TextArea) found[3]).isEditable()).isFalse();
     }
 
     /** 读 #query-caret 的当前文本；节点不在就直接失败，别让断言空转。 */

@@ -191,6 +191,11 @@ public final class OracleDialect implements Dialect {
         return true;
     }
 
+    @Override
+    public boolean supportsTransactionalDdl() {
+        return false;
+    }
+
     /** {@code ON UPDATE} 在 Oracle 不是合法的外键语法。 */
     @Override
     public boolean supportsForeignKeyOnUpdate() {
@@ -563,7 +568,7 @@ public final class OracleDialect implements Dialect {
 
     @Override
     public String renameViewSql(String oldName, String newName) {
-        return "ALTER VIEW " + quote(oldName) + " RENAME TO " + quote(newName);
+        return "RENAME " + quote(oldName) + " TO " + quote(newName);
     }
 
     @Override

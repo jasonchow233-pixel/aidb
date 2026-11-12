@@ -65,13 +65,16 @@ SQLite table comments, which show up **disabled** rather than pretending to work
 
 ## What it looks like to use
 
+The server results above and screenshots below are historical evidence, not acceptance of the current
+P0 work in progress. Current verification limits are recorded in [STATUS](docs/STATUS.md).
+
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/p2-users.png" alt="Data grid with inline editing, an inline Filter & Sort builder and a pager bar" width="100%"><br><b>Edit data in place.</b> Server-side paging, an inline Filter &amp; Sort builder, value pickers on every column header, up to 3-level sorting, frozen columns, rectangle selection, undo / redo.</td>
     <td width="50%"><img src="docs/screenshots/p3-query.png" alt="SQL editor with syntax highlighting, result tabs and messages" width="100%"><br><b>Write SQL, not mouse strokes.</b> Highlighted editor with line numbers, run the current statement or all of them, cancel a running query, multi-statement result tabs, execution plan, error locator, query history, snippets.</td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/p4-structure.png" alt="Table structure page: columns, indexes, foreign keys, triggers, checks" width="100%"><br><b>Change structure safely.</b> Add / alter / rename / drop columns, indexes, foreign keys, triggers, CHECK constraints and table comments — applied in one transaction, and every open page refreshes with it. Views get the same treatment: a designer dialog for create / redesign / drop.</td>
+    <td width="50%"><img src="docs/screenshots/p4-structure.png" alt="Table structure page: columns, indexes, foreign keys, triggers, checks" width="100%"><br><b>Change structure safely.</b> Add / alter / rename / drop columns, indexes, foreign keys, triggers, CHECK constraints and table comments — preview SQL before execution, then refresh affected pages. DDL rollback depends on the engine; atomic changes are not guaranteed across dialects. Views have a designer dialog for create / redesign / drop.</td>
     <td width="50%"><img src="docs/screenshots/p6-new-table.png" alt="New table dialog with a live SQL preview" width="100%"><br><b>See the statement before it runs.</b> Every dialog that writes shows the exact SQL it is about to execute, so nothing is explained after the fact.</td>
   </tr>
   <tr>
@@ -86,12 +89,14 @@ Writing to a real database should be boring and strict.
 
 1. **Classify first, fail closed.** Every statement is graded by danger before it runs. If the
    grader cannot tell what a statement does, it is treated as dangerous — the default is caution.
-2. **Preview, confirm, one transaction.** Destructive changes need an explicit confirmation;
-   structure edits are previewed as SQL and applied in a single transaction, so a failure rolls
-   back instead of leaving half a table rebuilt. After a save, one click undoes it.
-3. **Not finished: a driver-side second opinion.** `DbSession.execute(sql)` takes no danger
-   argument, so a caller that skips the UI layer is not stopped. Two of the three layers exist —
-   that is open work, not a claim.
+2. **Preview and confirm before writing.** Structure edits, routine rebuilds, restores and table
+   transfers show the SQL before execution. DDL transaction support varies by engine: some commands
+   commit implicitly and failures can leave partial changes. Existing transactions remain the user's
+   responsibility; SQLite table rebuilds require a separate transaction.
+3. **A driver-side second opinion.** `DbSession.execute(String, Danger)` re-classifies the statement
+   via `requireDeclared` and refuses under-declared danger. This is not user authorization: callers
+   must still preview and confirm writes. Bare JDBC operations and convenience overloads do not prove
+   complete UI confirmation coverage; the current audit and verification limits are in [STATUS](docs/STATUS.md).
 
 **Credentials never touch disk.** Passwords go to the OS secure store — macOS Keychain, Windows
 Credential Manager, Linux Secret Service — and fall back to process memory with a loud warning if
@@ -146,6 +151,8 @@ so there is something real to click on before you point it at your own data.
 - **No cloud sync, no multi-user permission system** — single-user desktop, on purpose.
 - **No AI assistant as a core dependency** — you write the SQL; local rules enforce safety rather
   than a model's judgment.
+- **No ER diagrams, no Model ER editor** — not even a read-only structure diagram; explicitly ruled
+  out on 2026-11-10, with the entries removed from the product rather than left as notice pages.
 
 ## Development
 
@@ -198,24 +205,29 @@ every pull request is reviewed against. Design rules are in
 
 ## Known limits, stated plainly
 
-- Cold start measures **5.0–5.6 s** (worst of three, `./scripts/startup-bench.sh`, process start → first paint)
+- Historical cold start measured **5.0–5.6 s** (2026-11-04, worst of three, `./scripts/startup-bench.sh`, process start → first paint)
   against a <2 s goal. The floor is JVM + toolkit init and the first CSS/layout pass (1.6 s), not application
   code; R61 moved the first SQLite driver load (762 ms) off the pre-paint path, which bought ~344 ms on average.
   ⚠️ The **3.5–3.9 s** this file used to quote was measured on a different machine (Windows 10, JDK 27, 2026-10-26)
   and its doc line doesn't record which of `StartupTrace`'s two numbers it read — so the two are not comparable,
-  and 5.0–5.6 s is now the only figure we cite.
-- "Follow system theme" only detects macOS today; Windows and Linux start in light mode.
+  and 5.0–5.6 s remains a historical figure. Lazy initial connection is now WIP in `AppShell`;
+  the current startup path has not been benchmarked for acceptance.
+- "Follow system theme" has macOS, Windows registry and Linux GNOME/KDE detection paths.
+  Windows/Linux detection has not been verified on real desktops; failed detection falls back to light mode.
 - Tables without a primary key, and views, are read-only **in the data grid** — a view's
   *definition* is editable: create, redesign and drop views from the object tree or the View
   ribbon tile, with the same live SQL preview as the table designer. Undo-after-save covers the
   last save.
-- **No job scheduler, no ER-diagram editor.** Those two Navicat surfaces are out of scope for this
-  version by explicit decision; their ribbon tiles open a plain notice that says so rather than a
-  dead button.
+- **No job scheduler, no ER diagrams (not even a read-only structure diagram), no Model ER editor.**
+  These Navicat surfaces are out of scope by explicit decision: Automation (job scheduling), the
+  Model ER editor and ER-diagram views were **removed from the product on 2026-11-10** (the Ribbon
+  tiles / toolbar entries are gone, not replaced with notice pages).
 - No auto-update, no code signing, no `jlink` runtime image (RichTextFX / ControlsFX ship as
   automatic modules).
-- SSH tunnelling is **not implemented** — the connection wizard says so on that page instead of
-  letting you discover it later.
+- SSH tunnelling **is implemented** — a pure-Java tunnel (Apache MINA `sshd-core`, no system
+  `ssh` binary) with OpenSSH `known_hosts` host keys and a TOFU fingerprint prompt; the connection
+  wizard's SSH page is a real form. Only RSA / ECDSA private keys are supported (ed25519 is not),
+  which the wizard states next to the field.
 - The full list, with the date every number was measured: [docs/STATUS.md](docs/STATUS.md).
 
 ## License · Acknowledgements
@@ -257,7 +269,7 @@ MySQL / MariaDB / PostgreSQL 各跑一个加密服务，三家 × 6 条契约问
 暗亮双主题、104 个设计令牌单一真相、四档密度、中英文界面。
 
 **目前没有「签名 / 公证」过的安装包**：缺 Apple 公证与 Windows 代码签名证书。但 CI 已能出包——推送 `v*` tag 会跑 `.github/workflows/release.yml`，用 `jpackage` 产出**未签名**的 `.dmg` / `.msi` / `.deb` 并挂到草稿发布；Windows / Linux 能直接跑未签名包，macOS 的 gatekeeper 会拦未签名 `.dmg`，所以 macOS 仍走源码构建（`./scripts/dev.sh` 或 `./scripts/package.sh`），等公证接上再放开。眼下最稳的体验仍是源码运行：`./scripts/dev.sh`。
-冷启动实测 **5.0–5.6 秒**（本机 macOS 15.7.9 + JDK 25，三次取最坏，口径「进程启动 → 首屏」），未达 <2 秒目标 ——
+历史冷启动实测 **5.0–5.6 秒**（2026-11-04，本机 macOS 15.7.9 + JDK 25，三次取最坏，口径「进程启动 → 首屏」），当时未达 <2 秒目标；当前 `AppShell` 懒连接已在 WIP，尚未完成新路径启动验收。
 旧文档那句「3.5–3.9 秒」量于另一台机器（Windows 10 + JDK 27）且没记读的是哪个数，不可比，已作废。
 这些都写在 [docs/STATUS.md](docs/STATUS.md) 里，不藏在截图后面。
 

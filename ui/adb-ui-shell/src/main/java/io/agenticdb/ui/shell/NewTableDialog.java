@@ -28,7 +28,6 @@ import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
@@ -304,13 +303,9 @@ final class NewTableDialog {
         fieldCount.getStyleClass().add("adb-muted");
         HBox spacer = new HBox();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        // ⭐ N29：Navicat 的字段工具条右端是 Ask AI ▾。本版本没有 AI 后端 ——
-        //    每一项打开如实说明页（不留死按钮），并且指路：⌘K 或手动编辑。
-        Button askAi = buildAskAiButton();
-        HBox fieldToolbar = new HBox(8, rowButtons, spacer, fieldCount, askAi);
+        // ⭐ T9：字段工具条右端不再摆「Ask AI」—— AI 是架构红线，整颗删除。
+        HBox fieldToolbar = new HBox(8, rowButtons, spacer, fieldCount);
         fieldToolbar.setAlignment(Pos.CENTER_LEFT);
-        // ⭐ D-61：第九处假按钮（落点 = 手搓说明页，判据同 showCapabilityNotice）。
-        PendingMark.mark(fieldToolbar, askAi);
 
         // ⭐ R31：Navicat 形态 —— 工具条 / 网格 / 属性面板三段。
         //    属性面板（默认值 / 字符集 / 排序规则）放在网格下方，选中哪行改哪行；
@@ -602,41 +597,6 @@ final class NewTableDialog {
         VBox box = new VBox(8, header, previewEditor);
         VBox.setVgrow(previewEditor, Priority.ALWAYS);
         return tab(I18n.t("newtable.tab.sql"), "new-table-tab-sql", box);
-    }
-
-    /**
-     * ⭐ N29 → R43-b：Navicat 字段工具条右端的 {@code Ask AI}。
-     *
-     * <p>本版本没有 AI 服务。原来这里是一个三项菜单，三项打开的是<b>同一份</b>说明 ——
-     * 三个选项承诺三种能力，点哪个都只有一段「缺什么」，那是装饰不是功能。
-     * 收成一颗按钮：一次点击 = 一份如实说明，并在说明里指一条真能走通的路
-     * （命令面板 ⌘K / 手动编辑），而不是什么也不发生。
-     */
-    private Button buildAskAiButton() {
-        Button askAi = new Button(I18n.t("query.askAi"));
-        askAi.setId("new-table-ask-ai");
-        askAi.getStyleClass().addAll("adb-button", "adb-button--ghost");
-        askAi.setTooltip(new Tooltip(I18n.t("newtable.askAi.tip")));
-        askAi.setOnAction(event -> showAskAiNotice());
-        return askAi;
-    }
-
-    /** 打开如实说明页（真弹窗；门禁走 {@link #askAiAlert()} 不显示）。 */
-    void showAskAiNotice() {
-        Alert alert = askAiAlert();
-        alert.initOwner(dialog.getOwner());
-        alert.showAndWait();
-    }
-
-    /** 门禁接缝：说明页本体，断言标题与说明文案都在这上面做。 */
-    Alert askAiAlert() {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        DialogStyles.apply(alert, dialog.getOwner());
-        alert.getDialogPane().setId("new-table-ask-ai-notice");
-        alert.setTitle(I18n.t("grid.capability.windowTitle"));
-        alert.setHeaderText(I18n.t("query.askAi") + " — " + I18n.t("grid.capability.title"));
-        alert.setContentText(I18n.t("grid.capability.body", I18n.t("grid.capability.askAi")));
-        return alert;
     }
 
     /**
@@ -1533,11 +1493,6 @@ final class NewTableDialog {
     /** ⭐ N29：属性面板的「自增」勾选框（从网格挪过来的）。 */
     CheckBox fieldAutoIncrementBox() {
         return fieldAutoIncrement;
-    }
-
-    /** ⭐ N29 → R43-b：字段工具条右端的 {@code Ask AI}（门禁断言它在且一击开说明）。 */
-    Button askAiButton() {
-        return (Button) dialog.getDialogPane().getContent().lookup("#new-table-ask-ai");
     }
 
     /** ⭐ R31：字段数标签（Navicat 底部的 Number of Fields）。 */

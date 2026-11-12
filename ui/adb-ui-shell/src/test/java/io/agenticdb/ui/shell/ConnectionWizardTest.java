@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.asset.AssetKind;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.CredentialStore;
 import io.agenticdb.session.SshConfig;
@@ -119,7 +120,7 @@ class ConnectionWizardTest {
 
     /** 走完第 1 步（选类型、填名字前先到属性页）。 */
     private void goToProperties(FxRobot robot, DialectKind kind) {
-        click(robot, "wizard-tile-" + kind.name());
+        click(robot, "wizard-tile-" + kind.id());
         click(robot, "wizard-next");
     }
 
@@ -130,7 +131,7 @@ class ConnectionWizardTest {
         open(robot, null);
 
         for (DialectKind kind : DialectKind.values()) {
-            assertThat(robot.lookup("#wizard-tile-" + kind.name()).tryQuery())
+            assertThat(robot.lookup("#wizard-tile-" + kind.id()).tryQuery())
                     .as("真实支持的库型都要有磁贴：" + kind)
                     .isPresent();
         }
@@ -142,7 +143,7 @@ class ConnectionWizardTest {
     }
 
     /**
-     * ⭐ R43-b：类型页只摆<b>真有驱动</b>的六家，一行六张 + 一行「其它怎么走」的提示。
+     * ⭐ R43-b：类型页只摆<b>真有驱动</b>的资产族（六家 SQL + Redis），一行排开 + 一行「其它怎么走」的提示。
      *
      * <p>原来照 Navicat 17 摆 22 张磁贴（9 类型 + 13 厂商）配 22 个复选与一个搜索框，
      * 其中 16 张点进去是一份「本版不支持」。那不是 Navicat 的形态 —— 它摆这些家是因为
@@ -153,7 +154,7 @@ class ConnectionWizardTest {
     void typePageShowsOnlyTheSixDriversItActuallyShips(FxRobot robot) {
         open(robot, null);
 
-        assertThat(ConnectionCatalog.CONNECTIONS).hasSize(6);
+        assertThat(ConnectionCatalog.CONNECTIONS).hasSize(7);
         for (ConnectionCatalog.Entry entry : ConnectionCatalog.CONNECTIONS) {
             assertThat(robot.lookup("#wizard-tile-" + entry.id()).tryQuery())
                     .as("磁贴：" + entry.name())
@@ -189,7 +190,9 @@ class ConnectionWizardTest {
         assertThat(javafx.scene.layout.VBox.getVgrow(tiles.getParent()))
                 .as("body 要吃下 outer 里多出来的高度（少这一句，居中=空转）")
                 .isEqualTo(javafx.scene.layout.Priority.ALWAYS);
-        assertThat(tiles.getChildren()).hasSize(6);
+        // ⭐ EXT：现 7 张磁贴 = 6 家 SQL 驱动 + 1 家 Redis（P1-3 落地向导后纳入）。
+        //    仍远少于 Navicat 的 22 张，复选栏 / 搜索框依旧不许回来。
+        assertThat(tiles.getChildren()).hasSize(7);
         assertThat(tiles.getChildren()).allSatisfy(tile ->
                 assertThat(((javafx.scene.Node) tile).isVisible()).isTrue());
 
@@ -204,7 +207,7 @@ class ConnectionWizardTest {
     void everyTileLeadsToTheRealForm(FxRobot robot) {
         open(robot, null);
 
-        click(robot, "wizard-tile-POSTGRESQL");
+        click(robot, "wizard-tile-postgresql");
         click(robot, "wizard-next");
 
         assertThat(wizard.step()).isEqualTo(2);
@@ -226,7 +229,7 @@ class ConnectionWizardTest {
     void typePageUsesCompactTilesAndASingleFooterRow(FxRobot robot) {
         open(robot, null);
 
-        javafx.scene.layout.Region tile = robot.lookup("#wizard-tile-SQLITE")
+        javafx.scene.layout.Region tile = robot.lookup("#wizard-tile-sqlite")
                 .queryAs(javafx.scene.layout.Region.class);
         assertThat(tile.getPrefHeight())
                 .as("磁贴高度必须是卡片档（≤120），不能被 VGrow 拉满整页")
@@ -300,7 +303,7 @@ class ConnectionWizardTest {
         assertThat(databaseIconClasses(robot)).contains("adb-db--postgresql");
 
         click(robot, "wizard-back");
-        click(robot, "wizard-tile-SQLITE");
+        click(robot, "wizard-tile-sqlite");
         click(robot, "wizard-next");
         java.util.List<String> after = databaseIconClasses(robot);
         assertThat(after)
@@ -360,12 +363,12 @@ class ConnectionWizardTest {
     void uriParserRejectsUnknownSchemesAndReadsSqlitePaths() {
         ConnectionWizard.UriTarget sqlite =
                 ConnectionWizard.parseUri("sqlite:C:/data/shop.db");
-        assertThat(sqlite.kind()).isEqualTo(DialectKind.SQLITE);
+        assertThat(sqlite.kind()).isEqualTo(AssetKind.SQLITE);
         assertThat(sqlite.database()).isEqualTo("C:/data/shop.db");
 
         ConnectionWizard.UriTarget mysql =
                 ConnectionWizard.parseUri("mysql://root@127.0.0.1/orders");
-        assertThat(mysql.kind()).isEqualTo(DialectKind.MYSQL);
+        assertThat(mysql.kind()).isEqualTo(AssetKind.MYSQL);
         assertThat(mysql.port()).isEqualTo(ConnectionProfile.defaultPort(DialectKind.MYSQL));
         assertThat(mysql.password()).isEmpty();
 
@@ -380,14 +383,14 @@ class ConnectionWizardTest {
         // Oracle 的 EZConnect 写法（驱动文档口径）也要能粘进 URI 框。
         ConnectionWizard.UriTarget oracle =
                 ConnectionWizard.parseUri("jdbc:oracle:thin:@//db.local:1521/ORCLPDB");
-        assertThat(oracle.kind()).isEqualTo(DialectKind.ORACLE);
+        assertThat(oracle.kind()).isEqualTo(AssetKind.ORACLE);
         assertThat(oracle.port()).isEqualTo(1521);
         assertThat(oracle.database()).isEqualTo("ORCLPDB");
 
         // SQL Server 的参数用分号、库名在 databaseName 上 —— 按 ? 切会拿到一个错库名。
         ConnectionWizard.UriTarget mssql = ConnectionWizard.parseUri(
                 "jdbc:sqlserver://db.local:1433;databaseName=shop;encrypt=true");
-        assertThat(mssql.kind()).isEqualTo(DialectKind.SQLSERVER);
+        assertThat(mssql.kind()).isEqualTo(AssetKind.SQLSERVER);
         assertThat(mssql.database()).isEqualTo("shop");
         assertThat(mssql.options()).containsEntry("encrypt", "true");
 
@@ -458,10 +461,15 @@ class ConnectionWizardTest {
                 .contains("trustServerCertificate");
     }
 
-    // ─────────────────── 第 2 步：7 个页签 ───────────────────
+    // ─────────────────── 第 2 步：6 个页签 ───────────────────
 
+    /**
+     * ⭐ T15：HTTP/HTTPS 代理隧道按 2026-11-10 裁定不做，页签与入口一并删除，
+     * 属性页从 7 页收成 6 页。这条同时是「删入口」的行为门禁：
+     * 不许再冒出 {@code wizard-tab-http}，也不许留一张「未实现」说明页。
+     */
     @Test
-    void propertiesHaveSevenTabsInNavicatOrder(FxRobot robot) {
+    void propertiesHaveSixTabsInNavicatOrder(FxRobot robot) {
         open(robot, null);
         goToProperties(robot, DialectKind.POSTGRESQL);
 
@@ -469,8 +477,10 @@ class ConnectionWizardTest {
         assertThat(tabs.getTabs()).extracting(Tab::getText)
                 .containsExactly(I18n.t("wizard.tab.general"), I18n.t("wizard.tab.advanced"),
                         I18n.t("wizard.tab.databases"), I18n.t("wizard.tab.ssl"),
-                        I18n.t("wizard.tab.ssh"), I18n.t("wizard.tab.http"),
-                        I18n.t("wizard.tab.remarks"));
+                        I18n.t("wizard.tab.ssh"), I18n.t("wizard.tab.remarks"));
+        assertThat(tabs.getTabs()).extracting(Tab::getId)
+                .as("HTTP 页签入口按裁定删除，不许再摆「未实现」页")
+                .doesNotContain("wizard-tab-http");
     }
 
     /**
@@ -479,16 +489,22 @@ class ConnectionWizardTest {
      * <p>这条替代 R33 时那条「SSH 页必须明说自己没有隧道引擎」—— 引擎已经有了，
      * 那句谎要撤掉。反过来，摆着字段却<b>点了确定什么隧道都不建</b>同样是骗人控件，
      * 所以这里除了字段齐不齐，还量「值进得了档案」「秘密进不了档案」。
+     *
+     * <p>⭐ T15：HTTP 页已按裁定整页删除 —— 这里顺手钉住「页签数 = 6、HTTP id 不存在」，
+     * 免得哪天有人把那张「未实现」说明页又加回来。
      */
     @Test
-    void sshTabHasRealFieldsNowAndHttpStillSaysWhatIsMissing(FxRobot robot) {
+    void sshTabHasRealFieldsNowAndHttpTabIsGone(FxRobot robot) {
         open(robot, null);
         goToProperties(robot, DialectKind.POSTGRESQL);
         selectTab(robot, "wizard-tab-ssh");
 
         TabPane tabs = robot.lookup("#wizard-tabs").queryAs(TabPane.class);
+        assertThat(tabs.getTabs()).as("删掉 HTTP 后属性页只剩 6 页").hasSize(6);
+        assertThat(tabs.getTabs()).extracting(Tab::getId)
+                .as("HTTP 页签入口已删除")
+                .doesNotContain("wizard-tab-http");
         Tab ssh = tabs.getTabs().get(4);
-        Tab http = tabs.getTabs().get(5);
 
         assertThat(ssh.getContent().lookup("#wizard-notice"))
                 .as("「这一版没有隧道引擎」的说明牌要撤掉")
@@ -504,10 +520,6 @@ class ConnectionWizardTest {
         assertThat(ssh.getContent().lookup("#wizard-ssh-key-path"))
                 .as("口令认证时不摆私钥框（摆了也不参与认证）")
                 .isNull();
-
-        assertThat(allText(http.getContent()))
-                .as("HTTP 页还没实现，继续如实说明，不假装有字段")
-                .contains(I18n.t("wizard.http.notice"));
     }
 
     /** 本地文件库没有「另一台机器」可跳：那一页只给说明，不摆填了不生效的输入框。 */
@@ -1026,7 +1038,7 @@ class ConnectionWizardTest {
 
         Optional<ConnectionProfile> result = wizard.dialogResult();
         assertThat(result).isPresent();
-        assertThat(result.orElseThrow().kind()).isEqualTo(DialectKind.SQLITE);
+        assertThat(result.orElseThrow().kind()).isEqualTo(AssetKind.SQLITE);
         assertThat(result.orElseThrow().name()).isEqualTo("Local SQLite");
         assertThat(result.orElseThrow().database()).isEqualTo(sqliteFile.toString());
         assertThat(tested.get()).isNotNull();
@@ -1161,7 +1173,7 @@ class ConnectionWizardTest {
                 .isEqualTo("5432");
 
         click(robot, "wizard-back");
-        click(robot, "wizard-tile-MYSQL");
+        click(robot, "wizard-tile-mysql");
         click(robot, "wizard-next");
         assertThat(robot.lookup("#wizard-port").queryTextInputControl().getText())
                 .as("没手改过端口时跟着库型换默认值").isEqualTo("3306");
@@ -1171,7 +1183,7 @@ class ConnectionWizardTest {
     void everyRegisteredDialectHasItsOwnTile(FxRobot robot) {
         open(robot, null);
         for (DialectKind kind : DialectKind.values()) {
-            ToggleButton tile = robot.lookup("#wizard-tile-" + kind.name())
+            ToggleButton tile = robot.lookup("#wizard-tile-" + kind.id())
                     .queryAs(ToggleButton.class);
             assertThat(tile.isVisible())
                     .as("方言层登记了 %s，类型页就必须摆它的磁贴", kind)

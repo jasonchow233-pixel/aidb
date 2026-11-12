@@ -323,11 +323,10 @@ class DataGridTransactionTest {
 
     // ───────────────────────────── 工具 ─────────────────────────────
 
-    /** 一条低风险结构计划：加列。用于验「结构变更加入用户事务时不许自己提交」。 */
     private static io.agenticdb.introspect.StructurePlan addColumnPlan() {
         return new io.agenticdb.introspect.StructurePlan(
                 "加一列", List.of("ALTER TABLE \"keyed\" ADD COLUMN \"note\" TEXT"),
-                Danger.MUTATING, false, false);
+                Danger.DESTRUCTIVE, false, false);
     }
 
     /** 三处写入 —— 与「保存」走的是同一条 {@link EditSqlBuilder#execute}。 */

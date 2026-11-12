@@ -32,7 +32,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonBase;
@@ -210,7 +209,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private boolean overviewLoading;
     /**
      * ⭐ N19：工具条分六段，顺序照 Navicat 帧 3：
-     * 表概览｜事务｜单元格编辑 + 筛选｜列 + 历史｜AI + 数据剖析｜导入导出 + 三个能力面。
+     * 表概览｜事务｜单元格编辑 + 筛选｜列 + 历史｜数据剖析｜导入 + 导出 + 脱敏。
      */
     private final HBox toolGroupProfile = new HBox(4);
     private final HBox toolGroupTx = new HBox(4);
@@ -218,7 +217,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
     private final HBox toolGroupView = new HBox(4);
     private final HBox toolGroupInsight = new HBox(4);
     private final HBox toolGroupTransfer = new HBox(4);
-    /** ⭐ N18：12 个具名键（视觉顺序）—— 放不下时从右端折进 {@code >>}。 */
+    /** ⭐ N18：10 个具名键（视觉顺序）—— 放不下时从右端折进 {@code >>}。 */
     private final List<ButtonBase> namedToolbarKeys = new ArrayList<>();
     /** 当前折进溢出菜单的键（菜单每次展开时按这份名单重建）。 */
     private final List<ButtonBase> foldedToolbarKeys = new ArrayList<>();
@@ -277,9 +276,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
             IconButtons.iconMenu(new MenuButton(), Icons.Icon.TABLE, I18n.t("grid.toolbar.tableProfile"));
     /** ⭐ N19：单元格编辑器 —— 用现有的详情抽屉，光标在哪一格就开哪一格。 */
     private final Button cellEditorButton = IconButtons.icon(Icons.Icon.EDIT, I18n.t("grid.toolbar.cellEditor"));
-    /** ⭐ N19：AI 与尚未建后端的能力面——按诚实条款给如实说明页。 */
-    private final Button fillWithAiButton = IconButtons.icon(Icons.Icon.AI,
-            I18n.t("grid.toolbar.fillWithAi"));
     private final Button profilingButton = IconButtons.icon(Icons.Icon.DIAGNOSTICS,
             I18n.t("grid.toolbar.dataProfiling"));
     private final Button maskingButton = IconButtons.icon(Icons.Icon.LOCK,
@@ -1295,16 +1291,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 I18n.t("grid.tip.columns"));
         columnsButton.setOnAction(event -> openColumnPanel());
 
-        // ── ⑤ AI + 数据剖析（能力面未建 → 如实说明页）───────────────
-        fillWithAiButton.setId("data-fill-ai");
-        fillWithAiButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
-        toolbarOp(fillWithAiButton, Icons.Icon.AI, I18n.t("grid.toolbar.fillWithAi"),
-                I18n.t("grid.tip.fillWithAi"));
-        // R43-b：原来是「用 AI 填充此列 / 解释这张表」两项下拉，两项开的是同一份说明。
-        // 一颗按钮就够 —— 一次点击 = 一份如实说明，不给用户两个都点了个空。
-        fillWithAiButton.setOnAction(event ->
-                showCapabilityNotice(I18n.t("grid.toolbar.fillWithAi"), "grid.capability.fillAi"));
-
+        // ── ⑤ 数据剖析（接真工具页）─────────────────────────────────
         profilingButton.setId("data-profiling");
         profilingButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
         toolbarOp(profilingButton, Icons.Icon.DIAGNOSTICS, I18n.t("grid.toolbar.dataProfiling"),
@@ -1405,25 +1392,22 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         // 每次展开时重建 —— 历史可能在别的查询页里刚增长，缓存一份只会给出旧列表。
         historyButton.setOnShowing(event -> rebuildHistoryMenu());
 
-        // ⭐ N19：这一排的 12 个具名键（视觉顺序与折叠顺序同一份名单）。
-        //    BI Workspace 已按 2026-11-09 用户裁定整体移除，不再是「看着像功能」的占位。
+        // ⭐ N19：这一排的 10 个具名键（视觉顺序与折叠顺序同一份名单）。
+        //    BI Workspace 已按 2026-11-09 用户裁定整体移除，不再是「看着像功能」的占位；
+        //    ⭐ T9 2026-11-11：Fill with AI 整颗删除（AI 是架构红线），不再是说明页入口。
         namedToolbarKeys.addAll(List.of(
                 tableProfileButton, beginTxButton, cellEditorButton, filterButton,
-                columnsButton, historyButton, fillWithAiButton, profilingButton,
+                columnsButton, historyButton, profilingButton,
                 importButton, exportButton, maskingButton));
 
         toolGroupProfile.getChildren().add(tableProfileButton);
         toolGroupTx.getChildren().addAll(beginTxButton, commitTxButton, rollbackTxButton);
         toolGroupQuery.getChildren().addAll(cellEditorButton, filterButton);
         toolGroupView.getChildren().addAll(columnsButton, historyButton);
-        toolGroupInsight.getChildren().addAll(fillWithAiButton, profilingButton);
+        toolGroupInsight.getChildren().addAll(profilingButton);
         toolGroupTransfer.getChildren().addAll(importButton, exportButton,
                 maskingButton);
-        // ⭐ D-61：只剩这颗落 showCapabilityNotice（判据 = 落点函数），入口提前说实话 ——
-        //    环挂各自所在组（managed=false 不吃排版），tooltip/accessibleText 带同一句。
-        //    BI Workspace 已移除；Data Masking 在 P-3 接上真导出向导、Data Profiling
-        //    在 2026-11-10 接上真工具页，两处的角标都随能力面摘掉了。
-        PendingMark.mark(toolGroupInsight, fillWithAiButton);
+        // ⭐ T9：全仓「本版未提供」说明页入口归零 —— 工具带上再没有 PendingMark 环。
 
         // ⭐ N18：右端两颗小键 —— 视图菜单（≡▾）+ 溢出（»）。
         //    放不下的具名键从右往左折进 » 的菜单里，不再把整排文字收掉。
@@ -1461,7 +1445,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         chipBar.setVisible(false);
         chipBar.setManaged(false);
         // ⭐ N19：清除条件跟着 chip 条走 —— 它只在「有条件下」才有意义，
-        //    占据顶部那一排会给 12 个具名键多挤一格。
+        //    占据顶部那一排会给 10 个具名键多挤一格。
         clearQueryButton.setId("data-clear-query");
         clearQueryButton.getStyleClass().setAll("adb-chip", "adb-chip--muted");
         clearQueryButton.setTooltip(new Tooltip(I18n.t("grid.tip.clearConditions")));
@@ -2047,7 +2031,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
      * ⭐ N19：网格左下的记录操作条 —— {@code + − ✓ ✗} 四颗 + 第 5 颗展开菜单。
      *
      * <p>Navicat 帧 3 的底栏左边就是这一簇纯图标；它们<b>不再占顶部工具条</b>，
-     * 顶部只留 12 个具名键。按钮本体（{@code data-add / data-delete-rows /
+     * 顶部只留 10 个具名键。按钮本体（{@code data-add / data-delete-rows /
      * data-save}）直接挪到这里，可用态判断仍走 {@link #updateEditControls()}，
      * 不做第二份 if。
      *
@@ -2113,31 +2097,6 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         if (definition != null) {
             showDetails(grid.getItems().get(cursorRow), definition);
         }
-    }
-
-    /**
-     * ⭐ N19：能力面还没建的键 —— 真按钮 + 如实说明页。
-     *
-     * <p>现在只剩 {@code Fill with AI / Data Profiling / Data Generation} 三颗
-     * 依赖 R42 的能力面；这一版没有后端，点开必须看到「本版本未提供」，
-     * 而不是什么也不发生（死按钮）或假装在执行。
-     * Data Masking 在 P-3 已接上真导出向导（列级脱敏），BI Workspace 已整体移除。
-     */
-    void showCapabilityNotice(String title, String capabilityKey) {
-        Alert alert = capabilityAlert(title, capabilityKey);
-        alert.initOwner(getScene() == null ? null : getScene().getWindow());
-        alert.showAndWait();
-    }
-
-    /** 门禁接缝：说明页本体（不显示），断言标题与原因都可以在这里做。 */
-    Alert capabilityAlert(String title, String capabilityKey) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        DialogStyles.apply(alert, getScene() == null ? null : getScene().getWindow());
-        alert.getDialogPane().setId("capability-notice");
-        alert.setTitle(I18n.t("grid.capability.windowTitle"));
-        alert.setHeaderText(title + " — " + I18n.t("grid.capability.title"));
-        alert.setContentText(I18n.t("grid.capability.body", I18n.t(capabilityKey)));
-        return alert;
     }
 
     /**
@@ -4720,7 +4679,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
         close.setOnAction(event -> hideFindBar());
 
         // ⭐ N19：本页筛选从工具条挪进查找条 —— 顶部那一排只放 Navicat 的
-        //    12 个具名键与右端两颗小键。⌘F 打开查找条后两个输入框都在：
+        //    10 个具名键与右端两颗小键。⌘F 打开查找条后两个输入框都在：
         //    前方是逐格查找，末尾是本页行过滤。
         searchField.setId("data-search");
         searchField.getStyleClass().add("adb-grid__find-field");
@@ -5807,7 +5766,7 @@ public final class DataGridPage extends VBox implements AutoCloseable {
                 javafx.geometry.Side.BOTTOM, 0, 0);
     }
 
-    /** 门禁接缝：12 个具名键（按视觉顺序，含当前被折进 » 的）。 */
+    /** 门禁接缝：10 个具名键（按视觉顺序，含当前被折进 » 的）。 */
     List<ButtonBase> namedToolbarKeysForTest() {
         return List.copyOf(namedToolbarKeys);
     }

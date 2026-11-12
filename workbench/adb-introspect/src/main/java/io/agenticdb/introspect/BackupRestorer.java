@@ -99,10 +99,10 @@ public final class BackupRestorer {
      * 切分 SQL 为语句列表：以顶层 {@code ;} 为界，忽略字符串字面量与注释里的 {@code ;}。
      *
      * <p>支持的转义：{@code --} 行注释、{@code /* *\/} 块注释、{@code '...'} 字符串
-     * （含 {@code ''} 转义）。与 {@link BackupDumper} 生成的格式一一对应，因此重放文件
-     * 里值里的 {@code ;} 不会被误断。
+     * （含 {@code ''} 转义）。不支持函数体、美元引用或客户端 DELIMITER/GO 指令；
+     * 调用方可先预览返回的语句，再执行同一份列表，不必重新读取文件。
      */
-    static List<String> splitStatements(String sql) {
+    public static List<String> splitStatements(String sql) {
         List<String> statements = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         int i = 0;

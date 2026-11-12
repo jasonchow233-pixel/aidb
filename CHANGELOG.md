@@ -9,7 +9,43 @@
 
 ## [Unreleased]
 
+### In progress — 2026-11-11 P0
+
+- 视图改名：SQLite 明确拒绝直接改名，不隐式删建；Oracle 改用 `RENAME … TO …`。SQLite/JDBC 保留视图、触发器和依赖的回归通过，外部引擎改名矩阵仍待验证。
+- 写入口：结构计划预检整批危险声明；例程、恢复、传输执行前确认固定 SQL；取消不排队写入，忙态防重复。撤销全方言 DDL“失败全部回滚”的错误承诺。
+- 传输：选择源表和目标后刷新按钮状态，仅开放同引擎、不同会话且无同名目标对象的 SQL 重放；异构比较仍只读，异构迁移未交付。
+- 导出：按成功行生成 SQL 前缀、分隔和结尾，空集/坏行/截断可回放；CSV/TSV 默认 CRLF，显式 LF 不再被覆盖。定向通过不等于全部选项、原生 UI 和全量已验收，验证数字仅记于 STATUS。
+
+### Added
+
+- **导出选项（D-86）**（2026-11-11）：导出向导仍是单页，但补齐 Navicat 参照帧里真能实现的
+  十项 —— `Append to existing file` / `Continue on error` / `Record Delimiter` /
+  `Text Qualifier`，以及 Formats 组的 `Date Order` / `Date Delimiter` / `Zero Padding Date` /
+  `Time Delimiter` / `Decimal Symbol` / `Binary Data Encoding`。选项进 `ExportOptions` 后
+  在七种格式的写出路径里逐项生效，格式不支持的那一支在代码里写明理由并在界面置灰，
+  不摆「选了没反应」的假控件。追加不重复表头、出错继续会回报跳过行数、默认值逐字节
+  保持旧行为；新增 15 条行为门禁与变异验证步骤。
+- **当前 SQL 只读预览**：查询页仍以「查询构造器」为入口名，但只预览并复制编辑器中
+  已有的 SQL（不执行、不写库），不是从结构化条件生成 SQL 的查询构造器；实际生成能力
+  仍列为 R13 待做。结果区在 Data / Info 之外补只读 Message 与 Summary 两段，
+  行数与耗时按 Q-A 归一到结果带 + 状态栏两处。
+- **对象树 Backups / Events 分组**：每连接可直接进备份工具；MySQL EVENT 双击打开只读
+  定义体页（`SchemaService.eventDefinition`），读不到时如实说明，不伪造 DDL。
+- **文档棘轮门禁**：`DocLedgerAuditTest` 把 README / ROADMAP / STATUS 里「未实现 / 待启动」
+  的能力名与代码证据互查，防止再出现「代码已交付、文档说没做」。
+- **危险分级第三层回归门禁**：把 DELETE / DROP 声明成只读必须在驱动侧之前被拒，
+  且计数证明语句没有执行。
+
 ### Removed
+
+- **ER 图（含只读结构图与全量 Model 编辑器）**（2026-11-11 用户裁定）：从 backlog、
+  ROADMAP、STATUS 与「明确不做」台账一并清账，不再以「评估 / 落地」形态出现。产品里
+  从未有 ER 图功能；B4 的**视图正文依赖图**是另一项能力，保留但不再被称作 ER 图。
+- **连接向导 HTTP 页签**：HTTP / HTTPS 代理隧道裁定不做，删掉那张「未实现」说明页、
+  相关 pose 分派与三个 i18n 键，属性页 7 → 6 页签。
+- **三枚诚实环 + 建表弹窗第九颗假按钮**：查询页 `Ask AI`、数据网格 `Fill with AI`、
+  建表弹窗 `Ask AI` 全部删除；`grid.capability.*` 全族与相关孤儿键清零。「查询构造器」
+  入口目前仅接上述已有 SQL 的预览 / 复制，不代表实际查询生成能力已完成。
 
 - **「明确不做」的三处入口全部删除**（2026-11-10，用户裁定）：Ribbon 的 `Automation`
   与 `Model` 两颗磁贴（13 → 11 格）、数据网格工具条的 `Data Generation` 按钮，

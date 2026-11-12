@@ -8,6 +8,7 @@ import io.agenticdb.model.RowPage;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.transfer.ExportFormat;
 import io.agenticdb.transfer.ExportOptions;
+import io.agenticdb.transfer.ExportResult;
 import io.agenticdb.transfer.MaskRule;
 import io.agenticdb.transfer.TableExporter;
 import javafx.application.Platform;
@@ -24,6 +25,7 @@ import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -38,6 +40,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.SecureRandom;
 import java.text.NumberFormat;
 import java.util.ArrayList;
@@ -131,6 +134,17 @@ final class ExportWizard {
     private final ComboBox<Charset> charsetBox = new ComboBox<>();
     private final CheckBox headerBox = new CheckBox(I18n.t("export.header.check"));
     private final CheckBox quoteBox = new CheckBox(I18n.t("export.quote.check"));
+    // ── D-86：Options / Formats 两组控件。仍是同一张单页（D-58），只是多两个分区。 ──
+    private final CheckBox appendBox = new CheckBox(I18n.t("export.opt.append"));
+    private final CheckBox continueOnErrorBox = new CheckBox(I18n.t("export.opt.continueOnError"));
+    private final ComboBox<String> recordDelimiterBox = new ComboBox<>();
+    private final ComboBox<String> textQualifierBox = new ComboBox<>();
+    private final ComboBox<String> dateOrderBox = new ComboBox<>();
+    private final ComboBox<String> dateDelimiterBox = new ComboBox<>();
+    private final CheckBox zeroPaddingDateBox = new CheckBox(I18n.t("export.opt.zeroPaddingDate"));
+    private final ComboBox<String> timeDelimiterBox = new ComboBox<>();
+    private final ComboBox<String> decimalSymbolBox = new ComboBox<>();
+    private final ComboBox<String> binaryEncodingBox = new ComboBox<>();
     private final Label optionNote = new Label();
     private final Label formatHint = new Label();
     private final VBox columnBox = new VBox(3);
@@ -243,6 +257,57 @@ final class ExportWizard {
         quoteBox.setSelected(false);
         quoteBox.setId("export-quote");
 
+        // ── D-86：Options 分区的控件 ──
+        appendBox.setId("export-opt-append");
+        appendBox.setTooltip(new Tooltip(I18n.t("export.opt.tip.append")));
+        continueOnErrorBox.setId("export-opt-continue-on-error");
+        continueOnErrorBox.setTooltip(new Tooltip(I18n.t("export.opt.tip.continueOnError")));
+        recordDelimiterBox.getItems().setAll("\n", "\r\n", "\r");
+        recordDelimiterBox.setValue("\n");
+        recordDelimiterBox.setId("export-opt-record-delimiter");
+        // 下拉显示文本用字面量（Navicat 参照帧口径），ComboBox 里存的仍是实际分隔符值。
+        recordDelimiterBox.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(String value) {
+                if (value == null) {
+                    return "";
+                }
+                return switch (value) {
+                    case "\n" -> "\\n";
+                    case "\r\n" -> "CRLF";
+                    case "\r" -> "CR";
+                    default -> value;
+                };
+            }
+
+            @Override
+            public String fromString(String text) {
+                return null;
+            }
+        });
+        textQualifierBox.getItems().setAll("\"", "'");
+        textQualifierBox.setValue("\"");
+        textQualifierBox.setId("export-opt-text-qualifier");
+
+        // ── D-86：Formats 分区的控件（下拉项一律是字面量，不进 i18n 键） ──
+        dateOrderBox.getItems().setAll("YMD", "DMY", "MDY");
+        dateOrderBox.setValue("YMD");
+        dateOrderBox.setId("export-opt-date-order");
+        dateDelimiterBox.getItems().setAll("-", "/", ".");
+        dateDelimiterBox.setValue("-");
+        dateDelimiterBox.setId("export-opt-date-delimiter");
+        zeroPaddingDateBox.setSelected(true);
+        zeroPaddingDateBox.setId("export-opt-zero-padding-date");
+        timeDelimiterBox.getItems().setAll(":", ".");
+        timeDelimiterBox.setValue(":");
+        timeDelimiterBox.setId("export-opt-time-delimiter");
+        decimalSymbolBox.getItems().setAll(".", ",");
+        decimalSymbolBox.setValue(".");
+        decimalSymbolBox.setId("export-opt-decimal-symbol");
+        binaryEncodingBox.getItems().setAll("HEX", "BASE64");
+        binaryEncodingBox.setValue("HEX");
+        binaryEncodingBox.setId("export-opt-binary-encoding");
+
         // ⭐ D-58：禁用不静默 —— 行内说清「为什么这一格灰了」，格式说明行同理（D-83）。
         formatHint.setId("export-format-hint");
         formatHint.getStyleClass().add("adb-muted");
@@ -338,6 +403,33 @@ final class ExportWizard {
         HBox optionRow = new HBox(12, headerBox, quoteBox);
         optionRow.setAlignment(Pos.CENTER_LEFT);
 
+        // ── D-86：两个分区。单页形态不变（D-58）：它们只是 content 里的两个 VBox，
+        //    不是「下一步」。控件都带 ID，既有门禁按 id lookup，不按 content 子节点索引。 ──
+        // 「Options」在给定键清单里没有对应标题键，按「下拉项用字面量」的同款口径
+        // 写成纯 ASCII 字面量；「Formats」有 export.opt.formats 键，走 i18n。
+        Label optionsCaption = new Label("Options");
+        optionsCaption.getStyleClass().add("adb-muted");
+        HBox optionsSwitches = new HBox(12, appendBox, continueOnErrorBox);
+        optionsSwitches.setAlignment(Pos.CENTER_LEFT);
+        VBox optionsSection = new VBox(6,
+                optionsCaption,
+                optionsSwitches,
+                field(I18n.t("export.opt.recordDelimiter"), recordDelimiterBox),
+                field(I18n.t("export.opt.textQualifier"), textQualifierBox));
+        optionsSection.setId("export-opt-options");
+
+        Label formatsCaption = new Label(I18n.t("export.opt.formats"));
+        formatsCaption.getStyleClass().add("adb-muted");
+        VBox formatsSection = new VBox(6,
+                formatsCaption,
+                field(I18n.t("export.opt.dateOrder"), dateOrderBox),
+                field(I18n.t("export.opt.dateDelimiter"), dateDelimiterBox),
+                zeroPaddingDateBox,
+                field(I18n.t("export.opt.timeDelimiter"), timeDelimiterBox),
+                field(I18n.t("export.opt.decimalSymbol"), decimalSymbolBox),
+                field(I18n.t("export.opt.binaryEncoding"), binaryEncodingBox));
+        formatsSection.setId("export-opt-formats");
+
         // ⭐ P-3：列级脱敏。总开关与策略常驻一行；「要保护哪几列」收在折叠区里，
         //    没开脱敏时这一节不占位，也不会让人误以为默认就脱敏了。
         maskBox.setId("export-mask");
@@ -420,6 +512,8 @@ final class ExportWizard {
                 fieldActions,
                 field(I18n.t("import.field.encoding"), charsetBox),
                 optionRow,
+                optionsSection,
+                formatsSection,
                 maskRow,
                 maskSection,
                 optionNote,
@@ -504,6 +598,14 @@ final class ExportWizard {
         if (format == null) {
             return;
         }
+        // D-86 可用性联动：只作用于新增控件，不改下面 optionNote 的既有 reasons。
+        // append 只对「行式文本」有意义 —— XML / HTML 有文档级开闭标签、xlsx 是 zip 容器，
+        // 流式追加会产出坏文档，置灰免得留下「勾了不生效」的谎（理由见 TableExporter 类注释）。
+        boolean delimited = format == ExportFormat.CSV || format == ExportFormat.TSV;
+        appendBox.setDisable(format == ExportFormat.XML || format == ExportFormat.HTML
+                || format.binary());
+        textQualifierBox.setDisable(!delimited);
+        recordDelimiterBox.setDisable(format.binary());
         charsetBox.setDisable(format.binary());
         quoteBox.setDisable(!(format == ExportFormat.CSV || format == ExportFormat.TSV));
         // ⭐ R33：「写表头行」只对分隔符文本有意义 —— XML/HTML 的结构自带头，
@@ -627,6 +729,35 @@ final class ExportWizard {
         maskSaltHint.setManaged(hashMode);
     }
 
+    /**
+     * ⭐ D-86：把向导里所有控件的值组装成一次导出用的 {@link ExportOptions}。
+     *
+     * <p>抽成静态纯函数是为了门禁能<b>无 JavaFX toolkit</b> 直接验证「每个控件都进了选项」
+     * （{@code ExportWizardTest} 不构造向导实例、不碰任何控件类）。生产侧 {@link #start()}
+     * 传进来的正是各控件的当前值。
+     *
+     * <p>先用 8 参兼容构造器填好 D-86 新字段的默认值，再用 withXxx 逐个覆盖：
+     * 任何一条 withXxx 漏带新字段，下面的门禁当场就红。
+     */
+    static ExportOptions composeOptions(
+            ExportFormat format, boolean includeHeader, boolean quoteAll, Charset charset,
+            List<MaskRule> masks, String maskSalt,
+            boolean append, boolean continueOnError, String recordDelimiter, char textQualifier,
+            String dateOrder, String dateDelimiter, boolean zeroPaddingDate,
+            String timeDelimiter, char decimalSymbol, String binaryEncoding) {
+        return new ExportOptions(format, includeHeader, 500, 0, quoteAll, charset, masks, maskSalt)
+                .withAppend(append)
+                .withContinueOnError(continueOnError)
+                .withRecordDelimiter(recordDelimiter)
+                .withTextQualifier(textQualifier)
+                .withFormats(dateOrder, dateDelimiter, zeroPaddingDate,
+                        timeDelimiter, decimalSymbol, binaryEncoding);
+    }
+
+    private static char firstChar(String value, char fallback) {
+        return value == null || value.isEmpty() ? fallback : value.charAt(0);
+    }
+
     /** 开始导出（在后台线程跑）。 */
     void start() {
         if (running) {
@@ -651,10 +782,16 @@ final class ExportWizard {
         spinner.setVisible(true);
         summary.setText(I18n.t("export.counting", tableName));
 
-        ExportOptions options = new ExportOptions(format, headerBox.isSelected(), 500, 0,
-                quoteBox.isSelected(), charsetBox.getValue())
-                .withMasks(activeMaskRules())
-                .withMaskSalt(activeMaskSalt());
+        ExportOptions options = composeOptions(format,
+                headerBox.isSelected(), quoteBox.isSelected(), charsetBox.getValue(),
+                activeMaskRules(), activeMaskSalt(),
+                appendBox.isSelected(), continueOnErrorBox.isSelected(),
+                recordDelimiterBox.getValue(),
+                firstChar(textQualifierBox.getValue(), '"'),
+                dateOrderBox.getValue(), dateDelimiterBox.getValue(),
+                zeroPaddingDateBox.isSelected(), timeDelimiterBox.getValue(),
+                firstChar(decimalSymbolBox.getValue(), '.'),
+                binaryEncodingBox.getValue());
         // ⭐ 内存范围必须在 FX 线程上取快照（start() 就在 FX 线程），
         //    导出线程只碰这份拷贝 —— 否则后台线程会去读网格控件。
         List<List<Object>> snapshot = scope == Scope.WHOLE_TABLE || rowSource == null
@@ -695,10 +832,15 @@ final class ExportWizard {
         dbExecutor.execute(() -> {
             String message;
             try {
-                long rows = run(target, options, scope, selected, snapshot);
-                message = I18n.t("export.done", rows) + I18n.t("export.done.detail",
+                ExportResult result = runDetailed(target, options, scope, selected, snapshot);
+                message = I18n.t("export.done", result.rows()) + I18n.t("export.done.detail",
                         target, scope, options.format().label(), selected.size(),
                         options.charset().name());
+                if (result.hasErrors()) {
+                    // 键清单里没有「跳过 N 行」的文案键，用中性英文补一句 ——
+                    // 错误数必须在结果里回报，不许静默吞掉。
+                    message += " (" + result.errors() + " rows skipped)";
+                }
             } catch (Exception e) {
                 message = I18n.t("export.failed",
                         e.getMessage() == null ? e.toString() : e.getMessage());
@@ -754,9 +896,24 @@ final class ExportWizard {
         return alert.showAndWait().filter(button -> button == ButtonType.OK).isPresent();
     }
 
-    /** @return 实际写出的行数 */
+    /** @return 实际写出的行数（保留旧签名，供既有门禁 / 调用点使用）。 */
     long run(Path target, ExportOptions options, Scope scope, List<String> selected,
              List<List<Object>> snapshot) throws Exception {
+        return runDetailed(target, options, scope, selected, snapshot).rows();
+    }
+
+    /**
+     * D-86：完整结果（含 {@code continueOnError} 跳过的坏行数）。
+     *
+     * <p>{@code append} 的「以 APPEND 打开」在文件层落实，「不重复写表头」通过
+     * {@code skipHeader} 传给 {@link TableExporter}。只有「勾了 append 且目标文件已存在
+     * 且非空」才算真追加；文件不存在时退化为 TRUNCATE + 表头（旧行为）。XML / HTML / xlsx
+     * 的 append 由 {@link #fitOptionAvailability()} 置灰，不会走到追加分支
+     * （理由见 TableExporter 类注释）。
+     */
+    ExportResult runDetailed(Path target, ExportOptions options, Scope scope,
+                             List<String> selected, List<List<Object>> snapshot)
+            throws Exception {
         Path parent = target.toAbsolutePath().getParent();
         if (parent != null) {
             Files.createDirectories(parent);
@@ -767,30 +924,48 @@ final class ExportWizard {
         return runRows(target, options, selected, snapshot);
     }
 
-    private long runWholeTable(Path target, ExportOptions options, List<String> selected)
-            throws Exception {
+    private ExportResult runWholeTable(Path target, ExportOptions options,
+                                       List<String> selected) throws Exception {
         if (options.format().binary()) {
+            // xlsx 是 zip 二进制容器：append 对它忽略（见 TableExporter 类注释），
+            // 两个 zip 拼在一起不是合法工作簿。
             try (OutputStream out = Files.newOutputStream(target)) {
-                return TableExporter.exportXlsx(session, tableName, selected, options, out);
+                return TableExporter.exportXlsxWithResult(session, tableName, selected,
+                        options, out);
             }
         }
+        boolean append = options.append() && Files.exists(target) && Files.size(target) > 0;
         try (Writer writer = new BufferedWriter(
-                Files.newBufferedWriter(target, options.charset()))) {
-            return TableExporter.export(session, tableName, selected, options, writer);
+                openForAppend(target, options.charset(), append))) {
+            return TableExporter.exportWithResult(session, tableName, selected,
+                    options.withAppend(append), writer, append);
         }
     }
 
-    private long runRows(Path target, ExportOptions options, List<String> selected,
-                         List<List<Object>> rows) throws Exception {
+    private ExportResult runRows(Path target, ExportOptions options, List<String> selected,
+                                 List<List<Object>> rows) throws Exception {
         if (options.format().binary()) {
             try (OutputStream out = Files.newOutputStream(target)) {
-                return TableExporter.exportRowsXlsx(selected, rows, options, out);
+                return TableExporter.exportRowsXlsxWithResult(selected, rows, options, out);
             }
         }
+        boolean append = options.append() && Files.exists(target) && Files.size(target) > 0;
         try (Writer writer = new BufferedWriter(
-                Files.newBufferedWriter(target, options.charset()))) {
-            return TableExporter.exportRows(tableName, selected, rows, options, writer);
+                openForAppend(target, options.charset(), append))) {
+            return TableExporter.exportRowsWithResult(tableName, selected, rows,
+                    options.withAppend(append), writer, append);
         }
+    }
+
+    /** append 且目标已有内容时用 APPEND 打开，否则保持默认的 CREATE + TRUNCATE_EXISTING。 */
+    private static Writer openForAppend(Path target, Charset charset, boolean append)
+            throws IOException {
+        if (append) {
+            return Files.newBufferedWriter(target, charset,
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE,
+                    StandardOpenOption.APPEND);
+        }
+        return Files.newBufferedWriter(target, charset);
     }
 
     /** 只替换已知的导出后缀；用户自定义文件名保持原样。 */

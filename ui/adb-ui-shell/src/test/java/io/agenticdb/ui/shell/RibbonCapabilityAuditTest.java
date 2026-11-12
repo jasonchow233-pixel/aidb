@@ -168,9 +168,10 @@ class RibbonCapabilityAuditTest {
         // ⭐ 判据从 SideBar 的「说明页路由集合」反推，不手写名单 ——
         //    这样能力面落地时名单会自己收窄，门禁逼着角标同批摘掉。
         java.util.Set<String> honestRoutes = honestRouteConstants(read(shellSource("SideBar.java")));
-        assertThat(honestRoutes)
-                .as("说明页路由常量不能是空的 —— 空集合会让下面那条断言假绿")
-                .isNotEmpty();
+        // ⭐ 2026-11-11：两个说明页集合现在都合法地为空（11 格全有真落点，
+        //    AI 新建表入口也撤了）。不能再拿「非空」当扫描器守卫 ——
+        //    否则门禁只能靠留一格假的才能绿。honestRouteConstants 里已逐条断言
+        //    两份声明都找得到，下面的 scanned 再钉住 11 格覆盖面。
 
         String assembly = assemblySources();
         List<String> honestOnly = new ArrayList<>();
@@ -203,11 +204,6 @@ class RibbonCapabilityAuditTest {
                 .as("角标必须挂在「落如实说明页」的那几格上，一格不多、一格不落")
                 .containsExactlyInAnyOrderElementsOf(honestOnly);
 
-        // 「用 AI 新建表」不在功能区，在对象清单页的七键里 —— 同一句实话（同一个资源键），
-        // 但那一档只有文字、没有环：横排按钮包一层会撑宽，整排跟着挪（PendingMark#saySo）。
-        assertThat(read(shellSource("TableListPage.java")))
-                .as("对象清单页的 AI 新建表按钮（落 new-table-ai 说明页）必须提前说同一句实话")
-                .contains("PendingMark.saySo(createAi");
         assertThat(hasMessage("ribbon.pending"))
                 .as("角标的提示语必须两个语言包都有 —— 只写一份就是另一种语言里没说")
                 .isTrue();

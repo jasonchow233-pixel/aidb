@@ -105,12 +105,7 @@ class ViewLifecycleSqlTest {
     // ─────────────────────────── 重命名视图 ───────────────────────────
 
     @Test
-    void mysqlAndMariaDbRenameViewWithRenameTableTheOthersWithAlter() {
-        // ⭐ 与表重命名同构，但视图与表在六种方言里共处同一命名空间：
-        //    MySQL / MariaDB 的 RENAME TABLE 对视图同样生效；
-        //    PostgreSQL / Oracle 走 ALTER VIEW … RENAME TO；
-        //    SQLite 视图落在 sqlite_master，ALTER TABLE RENAME 适用；
-        //    SQL Server 视图与表一样走 sp_rename。
+    void supportedDialectsGenerateTheirViewRenameStatements() {
         assertThat(StructureSqlBuilder.renameView(
                 FakeDialectSession.of(DialectKind.MYSQL), "v", "v2", List.of())
                 .statements()).containsExactly("RENAME TABLE `v` TO `v2`");
@@ -122,17 +117,13 @@ class ViewLifecycleSqlTest {
                 .statements()).containsExactly("ALTER VIEW \"v\" RENAME TO \"v2\"");
         assertThat(StructureSqlBuilder.renameView(
                 FakeDialectSession.of(DialectKind.ORACLE), "v", "v2", List.of())
-                .statements()).containsExactly("ALTER VIEW \"v\" RENAME TO \"v2\"");
-        assertThat(StructureSqlBuilder.renameView(
-                FakeDialectSession.of(DialectKind.SQLITE), "v", "v2", List.of())
-                .statements()).containsExactly("ALTER TABLE \"v\" RENAME TO \"v2\"");
+                .statements()).containsExactly("RENAME \"v\" TO \"v2\"");
         assertThat(StructureSqlBuilder.renameView(
                 FakeDialectSession.of(DialectKind.SQLSERVER), "v", "v2", List.of())
                 .statements()).containsExactly("EXEC sp_rename N'v', N'v2'");
 
-        // ⭐ 预览与执行同源：标题键、危险等级、二次确认都要钉死。
         StructurePlan plan = StructureSqlBuilder.renameView(
-                FakeDialectSession.of(DialectKind.SQLITE), "v", "v2", List.of());
+                FakeDialectSession.of(DialectKind.POSTGRESQL), "v", "v2", List.of());
         assertThat(plan.titleKey()).isEqualTo("plan.title.renameView");
         assertThat(plan.approvalRequired())
                 .as("重命名视图是破坏性动作，必须第二道确认")
@@ -152,6 +143,29 @@ class ViewLifecycleSqlTest {
                 FakeDialectSession.of(DialectKind.SQLITE), "v", "V", List.of()))
                 .isInstanceOf(ColumnProblem.class)
                 .hasFieldOrPropertyWithValue("key", "view.error.sameName");
+    }
+
+    @Test
+    void sqliteRenameRejectionPreservesTheViewItsTriggerAndDependents() throws Exception {
+        try (var session = io.agenticdb.jdbc.JdbcSession.open(
+                io.agenticdb.jdbc.ConnectionSpec.sqliteMemory())) {
+            session.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)");
+            session.execute("INSERT INTO t VALUES (1)");
+            session.execute("CREATE VIEW v AS SELECT id FROM t");
+            session.execute("CREATE VIEW dependent AS SELECT id FROM v");
+            session.execute("CREATE TRIGGER v_insert INSTEAD OF INSERT ON v "
+                    + "BEGIN INSERT INTO t VALUES (NEW.id); END");
+            var before = session.query("SELECT name, sql FROM sqlite_master ORDER BY name", 100).rows();
+
+            assertThat(session.dialect().supportsViewRename()).isFalse();
+            assertThatThrownBy(() -> StructureSqlBuilder.renameView(session, "v", "renamed", List.of()))
+                    .isInstanceOf(ColumnProblem.class)
+                    .hasFieldOrPropertyWithValue("key", "view.error.renameUnsupported");
+            assertThat(session.query("SELECT name, sql FROM sqlite_master ORDER BY name", 100).rows())
+                    .isEqualTo(before);
+            session.execute("INSERT INTO v VALUES (2)");
+            assertThat(session.query("SELECT id FROM dependent ORDER BY id", 100).rowCount()).isEqualTo(2);
+        }
     }
 
     // ─────────────────────────── 正文形态 ───────────────────────────

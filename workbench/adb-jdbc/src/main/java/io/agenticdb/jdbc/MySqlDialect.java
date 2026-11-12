@@ -166,6 +166,11 @@ public class MySqlDialect implements Dialect {
     }
 
     @Override
+    public boolean supportsTransactionalDdl() {
+        return false;
+    }
+
+    @Override
     public String columnsSql(String table) {
         return null;
     }

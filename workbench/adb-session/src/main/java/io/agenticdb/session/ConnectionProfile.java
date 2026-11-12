@@ -1,5 +1,6 @@
 package io.agenticdb.session;
 
+import io.agenticdb.asset.AssetKind;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DialectKind;
 
@@ -18,7 +19,7 @@ import java.util.UUID;
 public record ConnectionProfile(
         String id,
         String name,
-        DialectKind kind,
+        AssetKind kind,
         String host,
         int port,
         String database,
@@ -52,11 +53,15 @@ public record ConnectionProfile(
      * ⚠ 类内那些 {@code withXxx} 复制方法<b>不用</b>它 —— 复制必须带上 ssh，
      * 否则「切库把跳板机切没了」这类账会在运行时才冒出来。
      */
+    /**
+     * ⭐ EXT（P0-1）：迁移桥。旧 DialectKind 调用点（含大量测试）保持可用；
+     * 新代码请直接用 {@link AssetKind} 版的主构造器。
+     */
     public ConnectionProfile(String id, String name, DialectKind kind, String host, int port,
                              String database, String username, boolean favorite, long lastUsedAt,
                              String group, Map<String, String> options) {
-        this(id, name, kind, host, port, database, username, favorite, lastUsedAt, group,
-                options, SshConfig.NONE);
+        this(id, name, AssetKind.from(kind), host, port, database, username, favorite, lastUsedAt,
+                group, options, SshConfig.NONE);
     }
 
     public static ConnectionProfile newProfile(String name, DialectKind kind, String host,
@@ -65,9 +70,16 @@ public record ConnectionProfile(
                 database, username, false, 0, "", Map.of());
     }
 
+    /** ⭐ EXT：直接用 {@link AssetKind} 建档（新代码走这条）。 */
+    public static ConnectionProfile newProfile(String name, AssetKind kind, String host,
+                                               int port, String database, String username) {
+        return new ConnectionProfile(UUID.randomUUID().toString(), name, kind, host, port,
+                database, username, false, 0, "", Map.of(), SshConfig.NONE);
+    }
+
     public static ConnectionProfile sqlite(String id, String name, String path) {
-        return new ConnectionProfile(id, name, DialectKind.SQLITE, "", 0, path, "", false, 0, "",
-                Map.of());
+        return new ConnectionProfile(id, name, AssetKind.SQLITE, "", 0, path, "", false, 0, "",
+                Map.of(), SshConfig.NONE);
     }
 
     // ─────────────────── catalog 虚拟连接（U1）───────────────────
@@ -118,6 +130,11 @@ public record ConnectionProfile(
         return kind.dialect().defaultPort();
     }
 
+    /** ⭐ EXT：资产种类取默认端口（SQL 委派方言；Redis 6379；对象存储 443 占位）。 */
+    public static int defaultPort(AssetKind kind) {
+        return kind.defaultPort();
+    }
+
     public ConnectionProfile withFavorite(boolean value) {
         return new ConnectionProfile(id, name, kind, host, port, database, username, value,
                 lastUsedAt, group, options, ssh);
@@ -151,7 +168,13 @@ public record ConnectionProfile(
      * 「配了隧道结果直连」是会比报错更难查的事。
      */
     public ConnectionSpec spec(String password, SshSecrets sshSecrets) {
-        return new ConnectionSpec(kind, host, port, database, username,
+        // ⭐ EXT：非 SQL 资产（Redis / 对象存储）尚未落地后端会话（P1 / P2），
+        //     这里直接抛，不当成「能连的 SQL」骗 UI（同 v4 诚实环纪律）。
+        if (!kind.isSql()) {
+            throw new UnsupportedOperationException(
+                    kind.displayName() + " 尚未开放连接（P1 / P2 落地后端会话）");
+        }
+        return new ConnectionSpec(kind.dialectKind(), host, port, database, username,
                 password == null || password.isBlank() ? null : password,
                 sanitizedOptions(options), ssh.endpoint(sshSecrets));
     }
@@ -217,9 +240,16 @@ public record ConnectionProfile(
     }
 
     public String displayTarget() {
-        return kind.dialect().usesFilePath()
-                ? database
-                : host + ":" + port + "/" + database;
+        if (kind.isSql()) {
+            return kind.dialect().usesFilePath()
+                    ? database
+                    : host + ":" + port + "/" + database;
+        }
+        if (kind.isRedis()) {
+            return host + ":" + port;
+        }
+        // OBJECT_STORE：endpoint / bucket 语义，没有「库名」概念。
+        return host.isBlank() ? database : host;
     }
 
     /**

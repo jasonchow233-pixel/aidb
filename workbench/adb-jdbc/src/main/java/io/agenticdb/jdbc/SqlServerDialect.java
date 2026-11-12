@@ -190,6 +190,11 @@ public final class SqlServerDialect implements Dialect {
         return true;
     }
 
+    @Override
+    public boolean supportsTransactionalDdl() {
+        return true;
+    }
+
     /** 执行计划要 {@code SET SHOWPLAN_ALL ON} → 跑 → {@code OFF} 三段，一条语句做不到。 */
     @Override
     public boolean supportsExplainPlan() {

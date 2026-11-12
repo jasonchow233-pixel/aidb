@@ -705,6 +705,39 @@ public final class RealDatabaseContract {
         }
     }
 
+    public static void viewRenamePreservesRows(ExternalDatabase target) throws Exception {
+        try (JdbcSession session = JdbcSession.open(target.spec())) {
+            Dialect dialect = session.dialect();
+            String suffix = Long.toUnsignedString(System.nanoTime());
+            String table = "adb_vr_t_" + suffix;
+            String view = "adb_vr_v_" + suffix;
+            String renamed = "adb_vr_n_" + suffix;
+            boolean renamedSuccessfully = false;
+            try {
+                session.execute("CREATE TABLE " + dialect.quote(table) + " (id INTEGER PRIMARY KEY)");
+                session.execute("INSERT INTO " + dialect.quote(table) + " (id) VALUES (1)");
+                session.execute(dialect.createViewSql(view, "SELECT id FROM " + dialect.quote(table)));
+                assertThat(dialect.supportsViewRename()).isTrue();
+                String collisionSql = dialect.renameViewSql(view, table);
+                assertThatThrownBy(() -> session.execute(collisionSql,
+                        io.agenticdb.safety.DangerClassifier.classify(collisionSql)))
+                        .isInstanceOf(SQLException.class);
+                ExecutionResult before = session.execute("SELECT * FROM " + dialect.quote(view));
+                String renameSql = dialect.renameViewSql(view, renamed);
+                session.execute(renameSql, io.agenticdb.safety.DangerClassifier.classify(renameSql));
+                renamedSuccessfully = true;
+                ExecutionResult after = session.execute("SELECT * FROM " + dialect.quote(renamed));
+                assertThat(after.rows()).isEqualTo(before.rows());
+                assertThat(after.columnKeys()).isEqualTo(before.columnKeys());
+                assertThatThrownBy(() -> session.execute("SELECT * FROM " + dialect.quote(view)))
+                        .isInstanceOf(SQLException.class);
+            } finally {
+                dropViewQuietly(session, dialect, renamedSuccessfully ? renamed : view);
+                dropQuietly(session, dialect, table);
+            }
+        }
+    }
+
     // ─────────────────────────── 契约 9：切库落点与隔离（R52） ───────────────────────────
 
     /**

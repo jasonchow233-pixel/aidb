@@ -140,11 +140,14 @@ class StyleClassCoverageTest {
     private static Set<String> usedInJava() throws IOException {
         Set<String> used = new TreeSet<>();
         // adb-ui-core 也要扫：`.adb-icon--filled` 是在 Icons 里加上的。
-        for (String module : new String[]{"adb-ui-shell", "adb-ui-core"}) {
-            Path root = Path.of("..", module, "src", "main", "java");
-            if (!Files.isDirectory(root)) {
-                root = Path.of("ui", module, "src", "main", "java");
-            }
+        // adb-asset 是资产族登记表：磁贴的厂商作用域类（.adb-db--*）在这里声明，
+        // 向导磁贴与导航树都从它取样式类，所以 CSS 厂商色类的「被使用」证据落在这一层。
+        for (String rootSpec : new String[]{
+                "../adb-ui-shell/src/main/java",
+                "../adb-ui-core/src/main/java",
+                "../../workbench/adb-asset/src/main/java",
+                "workbench/adb-asset/src/main/java"}) {
+            Path root = Path.of(rootSpec);
             if (!Files.isDirectory(root)) {
                 continue;
             }

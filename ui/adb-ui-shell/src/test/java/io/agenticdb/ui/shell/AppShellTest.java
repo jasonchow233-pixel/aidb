@@ -1057,7 +1057,7 @@ class AppShellTest {
                 "table-list.rename", "table-list.truncate", "table-list.drop",
                 "table-list.refresh", "table-list.select-all",
                 "table-list.view-list", "table-list.view-grid",
-                "table-list.new-ai", "table-list.import", "table-list.export")
+                "table-list.import", "table-list.export")
                 .stream().allMatch(id -> shell.actionRegistry().find(id).isPresent())))
                 .as("表清单动作必须全部进注册表（工具条 / 右键 / 命令面板同一份）")
                 .isTrue();

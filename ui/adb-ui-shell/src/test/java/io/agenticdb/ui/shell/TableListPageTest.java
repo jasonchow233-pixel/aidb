@@ -43,7 +43,6 @@ class TableListPageTest {
     private final List<String> opened = new ArrayList<>();
     private final List<String> designed = new ArrayList<>();
     private final List<List<String>> dropped = new ArrayList<>();
-    private final List<String> aiRequests = new ArrayList<>();
     private final List<String> messages = new ArrayList<>();
     private final List<String> selections = new ArrayList<>();
     /** ⭐ D-90：报给外壳的表数量（状态栏常驻「N tables」）；空串 = 没数出来。 */
@@ -66,11 +65,6 @@ class TableListPageTest {
     }
 
     private final TableListPage.Host host = new TableListPage.Host() {
-        @Override
-        public void newTableWithAi() {
-            aiRequests.add("requested");
-        }
-
         @Override
         public void openTable(String name) {
             opened.add(name);
@@ -321,9 +315,6 @@ class TableListPageTest {
         assertThat(button("#table-list-new").isDisable())
                 .as("新建表不依赖行选择")
                 .isFalse();
-        assertThat(button("#table-list-new-ai").isDisable())
-                .as("「用 AI 新建表」也不依赖行选择")
-                .isFalse();
         assertThat(button("#table-list-drop").isDisable())
                 .as("没选行时删除必须禁用")
                 .isTrue();
@@ -343,58 +334,6 @@ class TableListPageTest {
     }
 
     /**
-     * ⭐ N15：「用 AI 新建表」不是死按钮 —— 它把请求交给宿主，
-     * 生产环境里宿主打开如实说明页（能力面还没建）。
-     */
-    @Test
-    void theAiEntryHandsOffToTheHost(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        robot.interact(() -> button("#table-list-new-ai").fire());
-        assertThat(aiRequests)
-                .as("点「用 AI 新建表」必须真的触发宿主，而不是静默 no-op")
-                .hasSize(1);
-    }
-
-    /**
-     * ⭐ R62-a H5-i（拍板 Q8 第②案）：七键里唯一「本版本未提供」的那颗，实话要说在点之前。
-     *
-     * <p>「用 AI 新建表」按诚实条款落说明页（{@code theAiEntryHandsOffToTheHost} 只证了
-     * 「点下去有反应」）。这一档补的是<b>提示语</b>：Tooltip 与 accessibleText 里都得带
-     * 「未提供」那句话，而且用的必须是功能区<b>同一个资源键</b> —— 两处各写一遍字面量，
-     * 改天就是一处说了、一处没说。
-     *
-     * <p>⚠️ 这里<b>不</b>钉角标：横排按钮的图形槽包一层容器会把这颗按钮撑宽，同排另外
-     * 六颗跟着左右挪（理由与量出来的数写在 {@link PendingMark#saySo}）。
-     * 环只给功能区磁贴，那一半由 {@code AppBarTest} 连颜色一起钉。
-     */
-    @Test
-    void thePendingAiEntrySaysSoBeforeTheClick(FxRobot robot) {
-        WaitForAsyncUtils.waitForFxEvents();
-        Button ai = button("#table-list-new-ai");
-        String pending = I18n.t("ribbon.pending");
-        assertThat(pending).as("资源键不能是空的 —— 空串时 contains 恒真，这条门禁就空转了")
-                .isNotBlank();
-        assertThat(ai.getAccessibleText())
-                .as("读屏必须在按下之前就听到这句实话")
-                .contains(pending);
-        assertThat(ai.getTooltip().getText())
-                .as("鼠标悬停必须在按下之前就看到这句实话")
-                .contains(pending);
-        assertThat(ai.lookup(".adb-pending__mark"))
-                .as("横排按钮这一档不挂角标（包一层会撑宽这颗按钮，整排跟着挪）")
-                .isNull();
-
-        // 反向：同排另外六颗有真落点，一句「未提供」都不许说。
-        for (String id : List.of("#table-list-open", "#table-list-design", "#table-list-new",
-                "#table-list-drop", "#table-list-import", "#table-list-export")) {
-            Button other = button(id);
-            String words = other.getAccessibleText() + "␀"
-                    + (other.getTooltip() == null ? "" : other.getTooltip().getText());
-            assertThat(words).as("%s 有真页面，不许挂着「未提供」的话", id).doesNotContain(pending);
-        }
-    }
-
-    /**
      * 窄窗口下动作名不许被压成「打开…」：挤不下时该缩的是搜索框。
      *
      * <p>2026-10-25 截图对比发现：1280 宽窗口里清单工具条把五个文字按钮压到省略号，
@@ -406,7 +345,7 @@ class TableListPageTest {
     @Test
     void toolbarLabelsAreNotAllowedToShrinkIntoAnEllipsis() {
         for (String id : List.of("#table-list-open", "#table-list-design",
-                "#table-list-new", "#table-list-new-ai", "#table-list-drop",
+                "#table-list-new", "#table-list-drop",
                 "#table-list-import", "#table-list-export")) {
             assertThat(button(id).getMinWidth())
                     .as("%s 的文字不能被压成省略号", id)
@@ -634,7 +573,8 @@ class TableListPageTest {
     }
 
     /**
-     * 注释列被列宽截断时，tooltip 必须给全文；占位符「—」不挂 tooltip。
+     * 注释列被列宽截断时，tooltip 必须给全文；占位符「—」改挂
+     * {@code MetadataColumns.UNAVAILABLE_HINT}（T7：说明此引擎不提供该元数据）。
      */
     @Test
     void longCommentsAreReachableThroughATooltip(FxRobot robot) {
@@ -660,9 +600,73 @@ class TableListPageTest {
                 .as("tooltip 给的是全文，不是截断后的显示串")
                 .isEqualTo(longComment);
 
-        assertThat(commentCell("—").getTooltip())
-                .as("「—」表示没有注释，不该再弹一个 tooltip 解释它")
-                .isNull();
+        TableCell<?, ?> dash = commentCell("—");
+        assertThat(dash.getTooltip())
+                .as("T7：「—」不是「没有注释」，要说明此引擎不提供该元数据")
+                .isNotNull();
+        assertThat(dash.getTooltip().getText())
+                .isEqualTo(MetadataColumns.UNAVAILABLE_HINT);
+        assertThat(dash.getAccessibleText())
+                .as("T7：读屏侧同一句解释")
+                .isEqualTo(MetadataColumns.UNAVAILABLE_HINT);
+    }
+
+    /**
+     * ⭐ T7：SQLite 演示库上 Rows / Data Length / Engine / Modified Date / Comment
+     * 多为「—」。这些 dash 格必须逐一带「此引擎不提供该元数据」的解释
+     * （tooltip + accessibleText），但<b>绝不编造假数据</b>；列本身也不自动收起。
+     *
+     * <p>变异验证：把 dash 的 tooltip/accessibleText 摘掉、或给空格补一个
+     * 「0」「0 B」这类看起来像真的值，这条会红。
+     */
+    @Test
+    void dashCellsExplainThatTheEngineDoesNotProvideTheMetadata(FxRobot robot) {
+        WaitForAsyncUtils.waitForFxEvents();
+        robot.interact(() -> page.render(List.of(
+                new TableMeta("users", 200L, null, null, null, null, null, null),
+                new TableMeta("logs", null, null, null, null, null, null, null))));
+        robot.interact(() -> {
+            page.applyCss();
+            page.layout();
+        });
+        WaitForAsyncUtils.waitForFxEvents();
+
+        List<TableCell<?, ?>> cells = page.table().lookupAll(".table-cell").stream()
+                .filter(TableCell.class::isInstance)
+                .<TableCell<?, ?>>map(node -> (TableCell<?, ?>) node)
+                .toList();
+        List<TableCell<?, ?>> dashes = cells.stream()
+                .filter(cell -> "—".equals(cell.getText()))
+                .toList();
+        assertThat(dashes)
+                .as("前置条件：这一屏必须真的有多格 dash（否则下面的解释断言是空转）")
+                .hasSizeGreaterThanOrEqualTo(5);
+        for (TableCell<?, ?> cell : dashes) {
+            assertThat(cell.getTooltip())
+                    .as("dash 格必须带解释 tooltip").isNotNull();
+            assertThat(cell.getTooltip().getText())
+                    .as("解释要说清「此引擎不提供该元数据」")
+                    .isEqualTo(MetadataColumns.UNAVAILABLE_HINT);
+            assertThat(cell.getAccessibleText())
+                    .as("dash 格读屏侧同一句")
+                    .isEqualTo(MetadataColumns.UNAVAILABLE_HINT);
+            assertThat(cell.getText())
+                    .as("解释只进 tooltip / 读屏，格子本身仍显示「—」，不许编造假值")
+                    .isEqualTo("—");
+        }
+        for (TableCell<?, ?> cell : cells) {
+            if ("—".equals(cell.getText())) {
+                continue;
+            }
+            assertThat(cell.getTooltip() == null ? "" : cell.getTooltip().getText())
+                    .as("真值格不许被误标成「引擎不提供」")
+                    .isNotEqualTo(MetadataColumns.UNAVAILABLE_HINT);
+        }
+        // 列仍恒在（刻意差异：不自动收列）。
+        assertThat(visibleTitles()).containsExactly(I18n.t("column.name"),
+                I18n.t("column.rows"), I18n.t("column.dataLength"),
+                I18n.t("column.engine"), I18n.t("column.updated"),
+                I18n.t("column.comment"));
     }
 
     private TableListPage pageWithLayout(SettingsStore settings, String scope) {

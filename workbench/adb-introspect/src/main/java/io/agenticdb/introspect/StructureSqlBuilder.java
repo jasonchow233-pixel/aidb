@@ -32,6 +32,17 @@ public final class StructureSqlBuilder {
     private StructureSqlBuilder() {
     }
 
+    private static StructurePlan generatedPlan(String titleKey, List<Object> titleArgs,
+            List<String> statements, Danger minimumDanger, boolean approvalRequired,
+            boolean foreignKeysOff) {
+        Danger danger = minimumDanger;
+        for (String sql : statements) {
+            danger = danger.worse(io.agenticdb.safety.DangerClassifier.classify(sql));
+        }
+        return new StructurePlan(titleKey, titleArgs, statements, danger,
+                approvalRequired || danger == Danger.ADMIN, foreignKeysOff);
+    }
+
     public static StructurePlan addColumn(DbSession session, TableStructure table,
                                           ColumnSpec column) {
         validateColumn(column);
@@ -57,7 +68,7 @@ public final class StructureSqlBuilder {
         List<String> statements = new ArrayList<>();
         statements.add(dialect.addColumnSql(table.name(), column));
         dialect.appendColumnComment(table.name(), column, statements);
-        return new StructurePlan("plan.title.addColumn", List.of(column.name()), statements,
+        return generatedPlan("plan.title.addColumn", List.of(column.name()), statements,
                 Danger.DESTRUCTIVE, false, false);
     }
 
@@ -91,7 +102,7 @@ public final class StructureSqlBuilder {
         ColumnDef old = table.column(oldName);
         String sql = session.dialect().renameColumnSql(table.name(), oldName,
                 newName.trim(), old);
-        return new StructurePlan("plan.title.renameColumn",
+        return generatedPlan("plan.title.renameColumn",
                 List.of(oldName, newName.trim()),
                 List.of(sql), Danger.DESTRUCTIVE, false, false);
     }
@@ -139,7 +150,7 @@ public final class StructureSqlBuilder {
             //   只在原来有注释时下发，避免每次改列都多一条空操作。
             dialect.appendColumnCommentReset(table.name(), next.name(), statements);
         }
-        return new StructurePlan("plan.title.alterColumn", List.of(oldName), statements,
+        return generatedPlan("plan.title.alterColumn", List.of(oldName), statements,
                 Danger.DESTRUCTIVE, true, false);
     }
 
@@ -152,7 +163,7 @@ public final class StructureSqlBuilder {
             throw new ColumnProblem("column.error.primaryKeyFirst");
         }
         String sql = session.dialect().dropColumnSql(table.name(), columnName);
-        return new StructurePlan("plan.title.dropColumn", List.of(columnName), List.of(sql),
+        return generatedPlan("plan.title.dropColumn", List.of(columnName), List.of(sql),
                 Danger.DESTRUCTIVE, true, false);
     }
 
@@ -230,7 +241,7 @@ public final class StructureSqlBuilder {
                 statements.add(sql.strip().replaceAll(";\\s*$", ""));
             }
         }
-        return new StructurePlan(titleKey, List.of(titleArgs), statements,
+        return generatedPlan(titleKey, List.of(titleArgs), statements,
                 Danger.DESTRUCTIVE, true, true);
     }
 
@@ -377,7 +388,7 @@ public final class StructureSqlBuilder {
         }
         appendIndexStatements(session, tableName, columns, indexes, statements);
         appendTriggerStatements(session, tableName, triggers, statements);
-        return new StructurePlan("plan.title.createTable", List.of(tableName), statements,
+        return generatedPlan("plan.title.createTable", List.of(tableName), statements,
                 Danger.DESTRUCTIVE, false, false);
     }
 
@@ -585,7 +596,7 @@ public final class StructureSqlBuilder {
     public static StructurePlan truncateTable(DbSession session, String name) {
         requireTableName(name);
         String sql = session.dialect().truncateTableSql(name.trim());
-        return new StructurePlan("plan.title.truncate", List.of(name.trim()), List.of(sql),
+        return generatedPlan("plan.title.truncate", List.of(name.trim()), List.of(sql),
                 Danger.DESTRUCTIVE, true, false);
     }
 
@@ -602,7 +613,7 @@ public final class StructureSqlBuilder {
         if (from.equalsIgnoreCase(to)) {
             throw new ColumnProblem("table.error.sameName");
         }
-        return new StructurePlan("plan.title.renameTable", List.of(from, to),
+        return generatedPlan("plan.title.renameTable", List.of(from, to),
                 List.of(session.dialect().renameTableSql(from, to)),
                 Danger.DESTRUCTIVE, true, false);
     }
@@ -615,10 +626,7 @@ public final class StructureSqlBuilder {
      * 已经返回两者）。旧名来自树节点（已是真实视图），仍按 {@code viewNameProblem}
      * 复核形状 + 重名，并拒绝「新名 == 旧名」这种无操作。
      *
-     * <p>SQL 形态按方言各不相同（MySQL / MariaDB 走 {@code RENAME TABLE}，
-     * PostgreSQL / Oracle 走 {@code ALTER VIEW … RENAME TO}，SQLite 走
-     * {@code ALTER TABLE … RENAME TO}，SQL Server 走 {@code sp_rename}），
-     * 一律由 {@link Dialect#renameViewSql} 给出，UI 不拼。
+     * <p>SQL 由 {@link Dialect#renameViewSql} 给出；不支持的方言在生成计划前拒绝。
      */
     public static StructurePlan renameView(DbSession session, String oldName,
                                            String newName, List<String> taken) {
@@ -632,7 +640,7 @@ public final class StructureSqlBuilder {
         if (from.equalsIgnoreCase(to)) {
             throw new ColumnProblem("view.error.sameName");
         }
-        return new StructurePlan("plan.title.renameView", List.of(from, to),
+        return generatedPlan("plan.title.renameView", List.of(from, to),
                 List.of(session.dialect().renameViewSql(from, to)),
                 Danger.DESTRUCTIVE, true, false);
     }
@@ -640,7 +648,7 @@ public final class StructureSqlBuilder {
     /** 删除表。 */
     public static StructurePlan dropTable(DbSession session, String name) {
         requireTableName(name);
-        return new StructurePlan("plan.title.dropTable", List.of(name.trim()),
+        return generatedPlan("plan.title.dropTable", List.of(name.trim()),
                 List.of(session.dialect().dropTableSql(name.trim())),
                 Danger.DESTRUCTIVE, true, false);
     }
@@ -667,7 +675,7 @@ public final class StructureSqlBuilder {
                 statements.add(session.dialect().dropTableSql(trimmed));
             }
         }
-        return new StructurePlan("plan.title.dropTables", List.of(cleaned.size()), statements,
+        return generatedPlan("plan.title.dropTables", List.of(cleaned.size()), statements,
                 Danger.DESTRUCTIVE, true, false);
     }
 
@@ -1171,7 +1179,7 @@ public final class StructureSqlBuilder {
         if (sql == null) {
             throw new ColumnProblem("fk.error.addUnsupported", dialect.displayName());
         }
-        return new StructurePlan("plan.title.addForeignKey", List.of(foreignKey.displayName()),
+        return generatedPlan("plan.title.addForeignKey", List.of(foreignKey.displayName()),
                 List.of(sql), Danger.DESTRUCTIVE, true, false);
     }
 
@@ -1208,7 +1216,7 @@ public final class StructureSqlBuilder {
         if (sql == null) {
             throw new ColumnProblem("fk.error.dropUnsupported", dialect.displayName());
         }
-        return new StructurePlan("plan.title.dropForeignKey", List.of(foreignKey.displayName()),
+        return generatedPlan("plan.title.dropForeignKey", List.of(foreignKey.displayName()),
                 List.of(sql), Danger.DESTRUCTIVE, true, false);
     }
 
@@ -1250,7 +1258,7 @@ public final class StructureSqlBuilder {
         // 迟早会走出不同规则（例如将来加 INSTEAD OF 时机，只改一处就成了静默漏洞）。
         appendTriggerStatements(session, table.name(),
                 List.of(new TriggerDef(triggerName, when, what, body.trim())), statements);
-        return new StructurePlan("plan.title.createTrigger", List.of(triggerName), statements,
+        return generatedPlan("plan.title.createTrigger", List.of(triggerName), statements,
                 Danger.DESTRUCTIVE, true, false);
     }
 
@@ -1261,7 +1269,7 @@ public final class StructureSqlBuilder {
             throw new ColumnProblem("trigger.error.pickToDrop");
         }
         String sql = session.dialect().dropTriggerSql(table.name(), trigger.name());
-        return new StructurePlan("plan.title.dropTrigger", List.of(trigger.name()),
+        return generatedPlan("plan.title.dropTrigger", List.of(trigger.name()),
                 List.of(sql), Danger.DESTRUCTIVE, true, false);
     }
 
@@ -1284,7 +1292,7 @@ public final class StructureSqlBuilder {
         String sql = text.isEmpty()
                 ? dialect.clearTableCommentSql(table.name())
                 : dialect.tableCommentSql(table.name(), text);
-        return new StructurePlan(text.isEmpty()
+        return generatedPlan(text.isEmpty()
                         ? "plan.title.clearTableComment"
                         : "plan.title.setTableComment",
                 List.of(table.name()),
@@ -1317,7 +1325,7 @@ public final class StructureSqlBuilder {
                 throw new ColumnProblem("index.error.duplicate", index.name());
             }
         }
-        return new StructurePlan("plan.title.createIndex", List.of(index.name()),
+        return generatedPlan("plan.title.createIndex", List.of(index.name()),
                 List.of(createIndexSql(session, table.name(), index)),
                 Danger.DESTRUCTIVE, false, false);
     }
@@ -1342,7 +1350,7 @@ public final class StructureSqlBuilder {
                 session.dialect().primaryIndexName())) {
             throw new ColumnProblem("index.error.autoCreated", index.name());
         }
-        return new StructurePlan("plan.title.dropIndex", List.of(index.name()),
+        return generatedPlan("plan.title.dropIndex", List.of(index.name()),
                 List.of(session.dialect().dropIndexSql(table.name(), index.name())),
                 Danger.DESTRUCTIVE, false, false);
     }

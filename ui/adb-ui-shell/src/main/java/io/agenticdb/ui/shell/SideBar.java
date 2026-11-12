@@ -31,7 +31,7 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 import io.agenticdb.jdbc.Dialect;
-import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.asset.AssetKind;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.SchemaService.ObjectKind;
 import io.agenticdb.introspect.SchemaService.SchemaObject;
@@ -106,6 +106,12 @@ public final class SideBar extends VBox {
     private Consumer<String> onLoadObjects = connectionId -> { };
     /** 需要某个连接的 catalog 清单时调用（AppShell 负责读）。 */
     private Consumer<String> onLoadCatalogs = connectionId -> { };
+    /** ⭐ EXT（P1-4）：需要某个 Redis 连接的库清单时调用（AppShell 负责连上去读）。 */
+    private Consumer<String> onLoadRedisDbs = connectionId -> { };
+    /** ⭐ EXT（P1-4）：每个 Redis 连接「有数据的库」清单（{@code INFO keyspace} 过滤空库）。 */
+    private final Map<String, List<Integer>> redisDbsByConnection = new LinkedHashMap<>();
+    /** ⭐ EXT（P1-4）：库清单读失败的连接（展开可重试）。 */
+    private final Set<String> failedRedis = new LinkedHashSet<>();
     /** 已经尝试读过 catalog 的连接（读失败也不反复试）。 */
     private final Set<String> attemptedCatalogs = new LinkedHashSet<>();
     /** 双击 / 右键「切换到此数据库」（AppShell 负责重连）。 */
@@ -401,8 +407,14 @@ public final class SideBar extends VBox {
      * @param connectionId 对象所属连接（可能是 catalog 虚拟连接）
      * @param name         例程名
      * @param procedure    {@code true} = 存储过程，{@code false} = 函数
+     * @param event        {@code true} = 调度事件（MySQL EVENT），交给外壳开<b>只读</b>定义体页
      */
-    public record RoutineRequest(String connectionId, String name, boolean procedure) {
+    public record RoutineRequest(String connectionId, String name, boolean procedure,
+                                 boolean event) {
+        /** 函数 / 过程的旧调用点不带事件位 —— 保持 false，不波及外壳接线。 */
+        public RoutineRequest(String connectionId, String name, boolean procedure) {
+            this(connectionId, name, procedure, false);
+        }
     }
 
     /** 设置某个连接的 catalog 清单（U1；空清单 = 这个连接没有库一层）。 */
@@ -420,6 +432,30 @@ public final class SideBar extends VBox {
     /** 需要某个连接的 catalog 清单时调用（AppShell 负责读）。 */
     public void setOnLoadCatalogs(Consumer<String> onLoadCatalogs) {
         this.onLoadCatalogs = onLoadCatalogs == null ? id -> { } : onLoadCatalogs;
+    }
+
+    /** ⭐ EXT（P1-4）：需要某个 Redis 连接的库清单时调用（AppShell 负责读）。 */
+    public void setOnLoadRedisDbs(Consumer<String> onLoadRedisDbs) {
+        this.onLoadRedisDbs = onLoadRedisDbs == null ? id -> { } : onLoadRedisDbs;
+    }
+
+    /**
+     * ⭐ EXT（P1-4）：AppShell 读完某 Redis 连接的库清单后回填。
+     *
+     * <p>就地重建整棵树（与 SQL 对象回填同形）—— 展开态会由
+     * {@link #connectionNode} 对当前连接 / 已加载库重新展开，不丢上下文。
+     */
+    public void setRedisDbs(String connectionId, List<Integer> dbs) {
+        failedRedis.remove(connectionId);
+        redisDbsByConnection.put(connectionId,
+                dbs == null ? List.of() : List.copyOf(dbs));
+        refreshTree();
+    }
+
+    /** ⭐ EXT（P1-4）：Redis 库清单读失败 → 标记，树里给「展开重试」。 */
+    public void setRedisFailed(String connectionId) {
+        failedRedis.add(connectionId);
+        refreshTree();
     }
 
     /** 双击 / 右键「切换到此数据库」（AppShell 负责重连）。 */
@@ -881,7 +917,8 @@ public final class SideBar extends VBox {
             //    不这么做的话，多连接树里非当前连接的节点永远是空的。
             if (item != null) {
                 DemoNode node = item.getValue();
-                if (node.kind() == NodeKind.CONNECTION && !node.connectionId().isBlank()) {
+                if (node.kind() == NodeKind.CONNECTION && !node.connectionId().isBlank()
+                        && !isRedisConnection(node.connectionId())) {
                     loadObjectsIfNeeded(node.connectionId());
                     // ⭐ U1：顺便读这个连接的库清单（没有库的连接什么都不发生）。
                     loadCatalogsIfNeeded(node.connectionId());
@@ -906,12 +943,20 @@ public final class SideBar extends VBox {
                     // ⭐ R37 N33：例程的定义体从这里打开（对象首页撤掉后的唯一入口）。
                     onOpenRoutine.accept(new RoutineRequest(node.connectionId(), node.name(),
                             node.kind() == NodeKind.PROCEDURE));
+                } else if (node.kind() == NodeKind.EVENT) {
+                    // ⭐ T12：调度事件也上树了 —— 双击开定义体，但带事件位，
+                    //   外壳据此建「只读」页（不可执行 / 不可重建，见 RoutinePage）。
+                    onOpenRoutine.accept(new RoutineRequest(node.connectionId(), node.name(),
+                            false, true));
                 } else if (node.kind() == NodeKind.SAVED_QUERY) {
                     // ⭐ UX-6：双击已保存查询 = 新开查询页并载入它。
                     openSavedQuery(node.connectionId(), node.name());
                 } else if (node.kind() == NodeKind.SAVED_GROUP) {
                     // ⭐ N24：Queries 分组 = 对象清单页（Navicat 同形）。
                     onOpenSavedQueries.run();
+                } else if (node.kind() == NodeKind.REDIS_KEY) {
+                    // ⭐ EXT（P1-4）：双击 Redis 库节点 → 开键浏览器标签。
+                    openRedisKeys(node.connectionId(), Integer.parseInt(node.schema()));
                 } else if (node.kind() == NodeKind.CATALOG) {
                     // ⭐ U1：双击一个库 = 把当前连接切到它（MySQL 要重连）。
                     onSwitchCatalog.accept(new CatalogSwitch(node.connectionId(), node.name()));
@@ -935,11 +980,19 @@ public final class SideBar extends VBox {
                     onOpenRoutine.accept(new RoutineRequest(node.connectionId(), node.name(),
                             node.kind() == NodeKind.PROCEDURE));
                     event.consume();
+                } else if (node.kind() == NodeKind.EVENT) {
+                    // ⭐ T12：与双击同一条路 —— 事件位交给外壳开只读定义体页。
+                    onOpenRoutine.accept(new RoutineRequest(node.connectionId(), node.name(),
+                            false, true));
+                    event.consume();
                 } else if (node.kind() == NodeKind.SAVED_QUERY) {
                     openSavedQuery(node.connectionId(), node.name());
                     event.consume();
                 } else if (node.kind() == NodeKind.SAVED_GROUP) {
                     onOpenSavedQueries.run();
+                    event.consume();
+                } else if (node.kind() == NodeKind.REDIS_KEY) {
+                    openRedisKeys(node.connectionId(), Integer.parseInt(node.schema()));
                     event.consume();
                 } else if (node.kind() == NodeKind.CATALOG) {
                     onSwitchCatalog.accept(new CatalogSwitch(node.connectionId(), node.name()));
@@ -1016,7 +1069,8 @@ public final class SideBar extends VBox {
             case FUNCTION -> InspectTarget.Topic.FUNCTION;
             case PROCEDURE -> InspectTarget.Topic.PROCEDURE;
             case EVENT -> InspectTarget.Topic.EVENT;
-            case ROOT, GROUP, COLUMN, CONNECTION_GROUP, SAVED_GROUP, SAVED_QUERY, RETRY -> null;
+            case ROOT, GROUP, COLUMN, CONNECTION_GROUP, SAVED_GROUP, SAVED_QUERY, RETRY,
+                    REDIS_DB, REDIS_KEY -> null;
         };
         if (topic == null) {
             return;
@@ -1109,8 +1163,8 @@ public final class SideBar extends VBox {
      * 折叠态那颗钮代表「当前在哪个连接上」—— 当前活跃的可能是一条 catalog 虚拟连接
      * （{@code 父id@库名}），它没有档案，所以回父连接取方言。
      */
-    private DialectKind railDialectKind() {
-        DialectKind kind = dialectKindOf(connectionId);
+    private AssetKind railDialectKind() {
+        AssetKind kind = dialectKindOf(connectionId);
         if (kind == null && ConnectionProfile.isCatalogVariantId(connectionId)) {
             kind = dialectKindOf(ConnectionProfile.parentOfCatalogVariant(connectionId));
         }
@@ -1185,14 +1239,14 @@ public final class SideBar extends VBox {
      * <p>两条来源按可信度排：已保存的连接档案（没连上也答得出）优先，
      * 其次当前会话的方言解析器（临时连接、还没建档时走这条）。
      */
-    private DialectKind dialectKindOf(String id) {
+    private AssetKind dialectKindOf(String id) {
         for (ConnectionProfile profile : connections) {
             if (profile.id().equals(id)) {
                 return profile.kind();
             }
         }
         Dialect dialect = dialectFor.apply(id);
-        return dialect == null ? null : dialect.kind();
+        return dialect == null ? null : AssetKind.from(dialect.kind());
     }
 
     /** 一个连接节点：有 catalog 的连接先出库一层，否则分组直接挂连接下。 */
@@ -1257,8 +1311,62 @@ public final class SideBar extends VBox {
         if (saved != null) {
             connectionNode.getChildren().add(saved);
         }
+        // ⚠️ 连接下的 Backups 分组已撤：当前它只列 Dump / Restore 两个工具入口，
+        //    不是 Navicat 那种备份文件历史。等 C01 实现真实历史后再上树，
+        //    避免用分组名冒充不存在的能力。备份工具仍可从功能区 / 菜单进入。
+
+        // ⭐ EXT（P1-4）：Redis 连接 → 挂一个「键」分组，展开即拉有数据的库清单。
+        if (isRedisConnection(id)) {
+            connectionNode.getChildren().add(redisGroupNode(id, needle));
+        }
 
         root.getChildren().add(connectionNode);
+    }
+
+    /**
+     * ⭐ EXT（P1-4）：Redis 连接的「键」分组节点。
+     *
+     * <p>库清单没读过时放一个占位子节点当箭头由头，展开即触发 {@link #onLoadRedisDbs}；
+     * 读到了就把每个「有数据的库」挂成 {@code REDIS_KEY} 叶子（双击开键浏览器）。
+     * 读失败给「展开重试」（复用 SQL 库清单失败那套文案）。
+     */
+    private TreeItem<DemoNode> redisGroupNode(String id, String needle) {
+        TreeItem<DemoNode> group = new TreeItem<>(new DemoNode(
+                I18n.t("sidebar.group.redisKeys"), NodeKind.REDIS_DB, Icons.Icon.DATABASE, "", id));
+        List<Integer> dbs = redisDbsByConnection.getOrDefault(id, List.of());
+        if (dbs.isEmpty()) {
+            if (failedRedis.contains(id)) {
+                group.getChildren().add(retryNode("sidebar.databasesFailed", id,
+                        () -> onLoadRedisDbs.accept(id)));
+            } else {
+                // 占位子节点 + 展开即加载（与对象 / 列懒加载同形）。
+                group.getChildren().add(new TreeItem<>(new DemoNode(
+                        I18n.t("sidebar.redisLoading"), NodeKind.RETRY, Icons.Icon.REFRESH, "", id)));
+                group.expandedProperty().addListener((obs, was, is) -> {
+                    if (is) {
+                        onLoadRedisDbs.accept(id);
+                    }
+                });
+            }
+        } else {
+            for (Integer db : dbs) {
+                if (matches("db " + db, needle)) {
+                    // ⭐ schema 字段借给「库下标」用（Redis 没有 schema；
+                    //    双击时从 schema 还原 db，避免 DemoNode 再加一个字段）。
+                    group.getChildren().add(new TreeItem<>(new DemoNode(
+                            "db " + db, NodeKind.REDIS_KEY, Icons.Icon.LIST,
+                            String.valueOf(db), id)));
+                }
+            }
+            group.setExpanded(true);
+        }
+        return group;
+    }
+
+    /** ⭐ EXT（P1-4）：这个连接是不是 Redis（按档案 kind 判，不靠 URL / 文件名）。 */
+    private boolean isRedisConnection(String id) {
+        AssetKind kind = dialectKindOf(id);
+        return kind != null && kind.isRedis();
     }
 
     /**
@@ -1349,6 +1457,28 @@ public final class SideBar extends VBox {
         onOpenSavedQuery.accept(new SavedQueryRequest(targetConnection, entry.name(), entry.sql()));
     }
 
+    /**
+     * ⭐ EXT（P1-4）：双击 / 回车 Redis 库节点 → 开键浏览器标签。
+     *
+     * <p>标签 id 编码成 {@code redis-keys:<connId>:<db>}，{@link WorkspaceView} 据此
+     * 同一 (连接, 库) 只建一个页面实例并缓存；{@code target} 存库下标，页面据此 SCAN。
+     */
+    private void openRedisKeys(String connectionId, int db) {
+        String id = "redis-keys:" + connectionId + ":" + db;
+        String title = I18n.t("redis.keys.header", connectionNameFor(connectionId), db);
+        openTab.accept(new TabItem(id, title, TabKind.REDIS_KEYS, String.valueOf(db), connectionId));
+    }
+
+    /** ⭐ EXT（P1-4）：按连接 id 取档案名（找不到时退化为 id 本身）。 */
+    private String connectionNameFor(String id) {
+        for (ConnectionProfile profile : connections) {
+            if (profile.id().equals(id)) {
+                return profile.name();
+            }
+        }
+        return id;
+    }
+
     /** 空分组不占位（没读到对象的连接只留一个可展开的节点）。 */
     private List<TreeItem<DemoNode>> nonEmptyGroups(String servingConnectionId, String needle) {
         List<TreeItem<DemoNode>> groups = new ArrayList<>(groupsOf(servingConnectionId, needle));
@@ -1392,11 +1522,14 @@ public final class SideBar extends VBox {
         List<SchemaObject> profileRoutines = objects.stream()
                 .filter(object -> object.kind() == ObjectKind.FUNCTION
                         || object.kind() == ObjectKind.PROCEDURE).toList();
+        List<SchemaObject> profileEvents = objects.stream()
+                .filter(object -> object.kind() == ObjectKind.EVENT).toList();
 
         return List.of(
                 kindGroup(I18n.t("sidebar.group.tables"), NodeKind.TABLE, profileTables, needle, servingConnectionId),
                 kindGroup(I18n.t("sidebar.group.views"), NodeKind.VIEW, profileViews, needle, servingConnectionId),
-                kindGroup(I18n.t("sidebar.group.functions"), NodeKind.FUNCTION, profileRoutines, needle, servingConnectionId));
+                kindGroup(I18n.t("sidebar.group.functions"), NodeKind.FUNCTION, profileRoutines, needle, servingConnectionId),
+                kindGroup(I18n.t("sidebar.group.events"), NodeKind.EVENT, profileEvents, needle, servingConnectionId));
     }
 
 
@@ -1659,9 +1792,9 @@ public final class SideBar extends VBox {
     /** 容器节点：连接 / 分组 / 库 / 对象分组 —— 搜索态下按「有没有命中」决定展开。 */
     private static boolean isContainer(NodeKind kind) {
         return switch (kind) {
-            case ROOT, CONNECTION, CONNECTION_GROUP, CATALOG, GROUP, SAVED_GROUP -> true;
+            case ROOT, CONNECTION, CONNECTION_GROUP, CATALOG, GROUP, SAVED_GROUP, REDIS_DB -> true;
             case TABLE, VIEW, PROCEDURE, FUNCTION, TRIGGER, EVENT, COLUMN, SAVED_QUERY,
-                    RETRY -> false;
+                    RETRY, REDIS_KEY -> false;
         };
     }
 
@@ -1700,7 +1833,7 @@ public final class SideBar extends VBox {
             // ⭐ S-3：列不是对象 —— 不进「有多少个对象」的计数，
             //    否则一张 50 列的表会让搜索空态判断失真。
             case COLUMN, ROOT, CONNECTION, CONNECTION_GROUP, GROUP, CATALOG, EVENT,
-                    SAVED_GROUP, SAVED_QUERY, RETRY -> false;
+                    SAVED_GROUP, SAVED_QUERY, RETRY, REDIS_DB, REDIS_KEY -> false;
         };
     }
 
@@ -2420,22 +2553,20 @@ public final class SideBar extends VBox {
 
     /** 对象类说明页路由（这一类对象本版本还没有编辑器）——
      *  ⭐ 2026-11-10：Function 已接真实例程清单页，集合清空（角标随之摘掉）。
+     *  ⭐ 2026-11-11：AI 新建表入口按「不做假能力」撤掉，说明页集合保持为空。
      *  机制留着：将来哪类对象又落回说明页，把路由常量加回这里即可。 */
     public static final java.util.Set<String> TOOL_OBJECT_ROUTES = java.util.Set.of();
 
-    /** ⭐ R37 N15：「用 AI 新建表」的能力面未建，落如实说明页。 */
-    public static final String TOOL_NEW_TABLE_AI = "new-table-ai";
-
-    /** 上述格的集合 —— {@code WorkspaceView} 按它给「本版本未提供」而不是通用空壳文案。
+    /** 落「本版本未提供」说明页的路由集合。
      *  ⭐ P2：User / Backup、P3：Profile / Transfer 四格已接真实工具页，移出此集合
      *  （仍是诚实条款，只是从「没这功能」升级为「有这功能」）。
      *  ⭐ 2026-11-09：BI 按用户裁定整体移除（连说明页入口一起），TOOL_BI 不再存在。
      *  ⭐ 2026-11-10：Automation / Model 因「明确不做」删除入口，移出此集合。
+     *  ⭐ 2026-11-11：AI 新建表入口撤掉，集合清空。
      *  ⚠️ 这份集合同时是 Ribbon 角标的判据来源 ——
      *  {@code RibbonCapabilityAuditTest#thePendingBadgesMatchTheHonestLandingPoints}
      *  读它反推该挂哪几格，改动请与 {@code AppBar.PENDING_TILES} 同批。 */
-    public static final java.util.Set<String> TOOL_UNAVAILABLE_ROUTES =
-            java.util.Set.of(TOOL_NEW_TABLE_AI);
+    public static final java.util.Set<String> TOOL_UNAVAILABLE_ROUTES = java.util.Set.of();
 
     private static void copy(String text) {
         ClipboardContent content = new ClipboardContent();
@@ -2463,6 +2594,10 @@ public final class SideBar extends VBox {
         CATALOG,
         /** ⭐ S-3：列（展开表 / 视图节点后出现的叶子）。 */
         COLUMN,
+        /** ⭐ EXT（P1-4）：Redis 连接下的「键」分组（展开即拉库清单）。 */
+        REDIS_DB,
+        /** ⭐ EXT（P1-4）：某个 Redis 库节点（双击打开键浏览器标签）。 */
+        REDIS_KEY,
         /** ⭐ UX-6：已保存查询分组 / 条目（连接节点下）。 */
         SAVED_GROUP, SAVED_QUERY,
         /**

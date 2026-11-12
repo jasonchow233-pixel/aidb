@@ -4,7 +4,7 @@ import javafx.beans.binding.Bindings;
 import javafx.geometry.Pos;
 import javafx.scene.AccessibleRole;
 import javafx.scene.Node;
-import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.asset.AssetKind;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.scene.control.Button;
@@ -63,7 +63,7 @@ public final class TabBar extends HBox {
      * <p>页签自己只认识 id，方言在档案里 —— 和连接名、库名同一个理由，由外壳注入。
      * 没有注入时「对象」页签保持那枚通用圆柱：宁可看不出是哪家，也不猜一家。
      */
-    private Function<String, DialectKind> connectionKind = id -> null;
+    private Function<String, AssetKind> connectionKind = id -> null;
 
     public TabBar(ActionRegistry actions) {
         this.actions = actions;
@@ -139,7 +139,7 @@ public final class TabBar extends HBox {
      * 只写字段不重画 = 那一格永远停在通用圆柱上，而这种「接上了但没红」的分叉最难发现。
      */
     public void setConnectionKinds(
-            Function<String, DialectKind> connectionKind) {
+            Function<String, AssetKind> connectionKind) {
         this.connectionKind = connectionKind == null ? id -> null : connectionKind;
         refreshVendorGlyphs();
     }
@@ -173,7 +173,7 @@ public final class TabBar extends HBox {
      * 同一个兜底口径，不在页签这侧再造一套真相。
      */
     private Node vendorGraphic(TabItem tab) {
-        DialectKind kind = connectionKind.apply(tab.connectionId());
+        AssetKind kind = connectionKind.apply(tab.connectionId());
         Node vendor = ConnectionCatalog.graphic(kind, Icons.SIZE_LABEL);
         return vendor == null ? Icons.colored(tab.kind().icon(), Icons.SIZE_LABEL) : vendor;
     }

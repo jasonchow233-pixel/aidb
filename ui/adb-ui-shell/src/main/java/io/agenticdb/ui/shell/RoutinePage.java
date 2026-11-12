@@ -2,9 +2,10 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.introspect.RoutineSql;
 import io.agenticdb.introspect.SchemaService;
+import io.agenticdb.introspect.StructurePlan;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.DialectKind;
-import io.agenticdb.jdbc.ExecutionResult;
+import io.agenticdb.model.Danger;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.geometry.Pos;
@@ -16,9 +17,10 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
-import java.sql.SQLException;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * O2：函数 / 存储过程的**定义体**标签页。
@@ -59,6 +61,8 @@ final class RoutinePage extends VBox {
     private final DialectKind dialectKind;
     /** 仅 PostgreSQL 这一家本版本开放编辑与执行；其余方言只读。 */
     private final boolean editable;
+    private final Predicate<StructurePlan> confirmation;
+    private boolean busy;
 
     /**
      * @param event true = 这是个**调度事件**（MySQL EVENT），不是函数 / 过程
@@ -71,6 +75,15 @@ final class RoutinePage extends VBox {
     RoutinePage(String name, boolean procedure, boolean scheduledEvent, DbSession session,
                 SchemaService schemaService, Executor dbExecutor,
                 java.util.function.Consumer<String> status) {
+        this(name, procedure, scheduledEvent, session, schemaService, dbExecutor, status, null);
+    }
+
+    RoutinePage(String name, boolean procedure, boolean scheduledEvent, DbSession session,
+                SchemaService schemaService, Executor dbExecutor, Consumer<String> status,
+                Predicate<StructurePlan> confirmation) {
+        this.confirmation = confirmation != null ? confirmation : plan -> StructurePlanRunner.confirm(
+                getScene() == null ? null : getScene().getWindow(),
+                getScene() == null ? List.of() : getScene().getStylesheets(), plan);
         this.routineName = name;
         this.procedure = procedure;
         this.scheduledEvent = scheduledEvent;
@@ -159,11 +172,13 @@ final class RoutinePage extends VBox {
             fail(I18n.t("routine.noExecutor"));
             return;
         }
+        setBusy(true);
         dbExecutor.execute(() -> {
             String definition = scheduledEvent
                     ? schemaService.eventDefinition(session, routineName)
                     : schemaService.routineDefinition(session, routineName, procedure);
             javafx.application.Platform.runLater(() -> {
+                setBusy(false);
                 if (definition == null || definition.isBlank()) {
                     fail(I18n.t("routine.readFailed",
                             dialectKind == null ? "?" : dialectKind.displayName(), routineName));
@@ -200,46 +215,67 @@ final class RoutinePage extends VBox {
         note.setText(composed.note());
     }
 
-    /** 按编辑后的定义体重建例程：先算 CREATE OR REPLACE，再在后台执行，最后回读刷新。 */
     private void executeRoutine() {
+        if (!editable || busy || session == null) {
+            return;
+        }
         if (dbExecutor == null) {
             fail(I18n.t("routine.noExecutor"));
             return;
         }
-        if (status != null) {
-            status.accept(I18n.t("routine.executing", routineName));
+        String sql = RoutineSql.preview(routineName, !procedure, body.getText(), dialectKind);
+        if (sql == null || sql.isBlank()) {
+            fail(I18n.t("routine.cannotRebuild", dialectKind.displayName()));
+            return;
         }
-        dbExecutor.execute(() -> {
-            try {
-                String definition = body.getText();
-                String sql = RoutineSql.preview(routineName, !procedure, definition, dialectKind);
-                if (sql == null || sql.isBlank()) {
-                    javafx.application.Platform.runLater(() ->
-                            fail(I18n.t("routine.cannotRebuild", dialectKind.displayName())));
-                    return;
-                }
-                // ⭐ CREATE OR REPLACE 被危险分级判为 DESTRUCTIVE，execute 只校验「声明=真实危险」，
-                // 不拦截执行；重建例程是用户点 Execute 的显式意图，无需额外确认框。
-                ExecutionResult result = session.execute(sql);
-                String reloaded = scheduledEvent
-                        ? schemaService.eventDefinition(session, routineName)
-                        : schemaService.routineDefinition(session, routineName, procedure);
-                javafx.application.Platform.runLater(() -> {
-                    if (reloaded != null && !reloaded.isBlank()) {
-                        body.setText(reloaded);
-                    }
-                    error.setVisible(false);
-                    if (status != null) {
-                        status.accept(I18n.t("routine.executed", routineName));
-                    }
-                });
-            } catch (SQLException ex) {
-                String detail = ex.getMessage() == null || ex.getMessage().isBlank()
-                        ? ex.getClass().getSimpleName() : ex.getMessage();
-                javafx.application.Platform.runLater(() ->
-                        fail(I18n.t("routine.executeFailed", detail)));
+        Danger danger = Danger.DESTRUCTIVE.worse(io.agenticdb.safety.DangerClassifier.classify(sql));
+        StructurePlan plan = new StructurePlan("routine.plan", List.of(session.label(), routineName),
+                List.of(sql), danger, true, false);
+        setBusy(true);
+        try {
+            if (!confirmation.test(plan)) {
+                setBusy(false);
+                if (status != null) status.accept(I18n.t("routine.cancelled"));
+                return;
             }
-        });
+            if (status != null) status.accept(I18n.t("routine.executing", routineName));
+            dbExecutor.execute(() -> {
+                try {
+                    session.execute(sql, plan.danger());
+                    schemaService.invalidate(session);
+                    String reloaded = schemaService.routineDefinition(session, routineName, procedure);
+                    javafx.application.Platform.runLater(() -> {
+                        setBusy(false);
+                        if (reloaded == null || reloaded.isBlank()) {
+                            fail(I18n.t("routine.executedReadFailed", routineName));
+                            return;
+                        }
+                        body.setText(reloaded);
+                        error.setVisible(false);
+                        if (status != null) status.accept(I18n.t("routine.executed", routineName));
+                    });
+                } catch (Exception ex) {
+                    javafx.application.Platform.runLater(() -> executionFailed(ex));
+                }
+            });
+        } catch (RuntimeException ex) {
+            executionFailed(ex);
+        }
+    }
+
+    private void setBusy(boolean value) {
+        busy = value;
+        executeButton.setDisable(value || !editable);
+        body.setEditable(!value && editable);
+    }
+
+    private void executionFailed(Exception ex) {
+        setBusy(false);
+        String detail = ex.getMessage() == null || ex.getMessage().isBlank()
+                ? ex.getClass().getSimpleName() : ex.getMessage();
+        String message = I18n.t("routine.executeFailed", detail);
+        fail(message);
+        if (status != null) status.accept(message);
     }
 
     private void fail(String reason) {

@@ -7,9 +7,7 @@ import java.util.List;
 /**
  * 一次结构变更的完整计划。
  *
- * <p>UI 先把 {@link #sql()} 原样展示给用户，再执行；执行时整批语句在同一个
- * 事务里完成，任何一条失败都回滚。{@code approvalRequired} 表示删列、改类型、
- * 重建表这类高风险动作，需要第二道确认。
+ * <p>UI 先把 {@link #sql()} 原样展示给用户，再执行；DDL 事务效果取决于引擎。
  *
  * <p>⭐ R45 G3-a：标题不再是模型层拼好的中文句子，而是<b>i18n 键 + 参数</b>
  * （{@code I18nAuditTest.modelLayerChineseIsRatchetedDown} 钉住这条边界）。

@@ -37,7 +37,7 @@ class TableDdlTest {
         stage.show();
     }
 
-    private final FakeDbSession session = FakeDbSession.of(DialectKind.SQLITE);
+    private FakeDbSession session = FakeDbSession.of(DialectKind.SQLITE);
     private final List<String> statuses = new ArrayList<>();
     private final AtomicInteger changes = new AtomicInteger();
 
@@ -338,19 +338,31 @@ class TableDdlTest {
 
     // ─────────────────── B3：视图重命名（V3 改名，与表重命名同构） ───────────────────
 
-    /**
-     * V3 重命名视图：SQLite 上仍走 {@code ALTER TABLE … RENAME TO}（表与视图同命名空间，
-     * 但 SQL 由方言给——复用表路径会漏掉 SQL Server 的 {@code sp_rename}）。
-     */
     @Test
-    void renameViewRunsOnASqliteSession() {
+    void sqliteViewRenameIsRefusedWithoutOpeningADialogOrExecuting() {
+        TableDdl ddl = ddl(List.of(), true);
+
+        ddl.renameView("conn", "v_active_users");
+        ddl.renameView("conn", "v_active_users", "v_active_users2");
+        WaitForAsyncUtils.waitForFxEvents();
+
+        assertThat(session.executed()).isEmpty();
+        assertThat(changes.get()).isZero();
+        assertThat(statuses).hasSize(2).allSatisfy(text ->
+                assertThat(text).isEqualTo(I18n.t("view.error.renameUnsupported", "SQLite")));
+    }
+
+    @Test
+    void postgresViewRenameUsesTheViewStatement() {
+        session = FakeDbSession.of(DialectKind.POSTGRESQL);
         TableDdl ddl = ddl(List.of(), true);
 
         ddl.renameView("conn", "v_active_users", "v_active_users2");
         WaitForAsyncUtils.waitForFxEvents();
 
         assertThat(session.executed())
-                .containsExactly("ALTER TABLE \"v_active_users\" RENAME TO \"v_active_users2\"");
+                .containsExactly("ALTER VIEW \"v_active_users\" RENAME TO \"v_active_users2\"");
+        assertThat(changes.get()).isEqualTo(1);
     }
 
     /** 视图重名必须被拦下，且不发任何 SQL（与表重名同一规则）。 */
@@ -386,6 +398,7 @@ class TableDdlTest {
      */
     @Test
     void cancellingAViewRenameSendsNoSql() {
+        session = FakeDbSession.of(DialectKind.POSTGRESQL);
         TableDdl ddl = ddl(List.of(), false);
 
         ddl.renameView("conn", "v_active_users", "v_active_users2");
@@ -401,6 +414,7 @@ class TableDdlTest {
      */
     @Test
     void renameViewPlanTitlesRenderAsHumanTextInBothLanguages() {
+        session = FakeDbSession.of(DialectKind.POSTGRESQL);
         List<StructurePlan> seen = new ArrayList<>();
         TableDdl ddl = new TableDdl(id -> session, id -> Runnable::run, statuses::add,
                 id -> List.of(), id -> changes.incrementAndGet(), () -> null, List::of);

@@ -24,4 +24,15 @@ class MetadataColumnsTest {
         assertThat(MetadataColumns.isPlaceholder("0")).isFalse();
         assertThat(MetadataColumns.isPlaceholder("0 B")).isFalse();
     }
+
+    /** ⭐ T7：dash 的解释只说「引擎不提供」，不塞任何看起来像真的值。 */
+    @Test
+    void theUnavailableHintExplainsWithoutInventingData() {
+        assertThat(MetadataColumns.UNAVAILABLE_HINT)
+                .as("解释不能是空串（空串的 contains 恒真，门禁会空转）")
+                .isNotBlank();
+        assertThat(MetadataColumns.UNAVAILABLE_HINT)
+                .as("解释里不许编出 0 / B 这类假数据")
+                .doesNotContain("0", " B ");
+    }
 }

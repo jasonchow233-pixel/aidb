@@ -300,6 +300,10 @@ final class TableDdl {
             status.accept(I18n.t("ddl.pickView"));
             return;
         }
+        if (!current.dialect().supportsViewRename()) {
+            status.accept(I18n.t("view.error.renameUnsupported", current.dialect().displayName()));
+            return;
+        }
         Dialog<String> dialog = showRenameViewDialog(connectionId, current, view);
         Optional<String> answer = dialog.showAndWait();
         if (answer.isEmpty()) {

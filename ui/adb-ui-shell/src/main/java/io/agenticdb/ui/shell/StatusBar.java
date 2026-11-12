@@ -1,6 +1,6 @@
 package io.agenticdb.ui.shell;
 
-import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.asset.AssetKind;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.animation.KeyFrame;
@@ -83,7 +83,7 @@ public final class StatusBar extends HBox {
      * 唯一常驻回答「我在哪家库」的地方，以前它<b>只有文字</b> —— 灯是绿的还是灰的看得出，
      * 是哪家库要读字。图形走 {@link ConnectionCatalog#graphic}，与树、磁贴同一枚。
      */
-    private DialectKind dialectKind;
+    private AssetKind dialectKind;
     /**
      * ⭐ i18n 前置修正：连接与否以前靠 {@code !"未连接".equals(connectionName)} 判断 ——
      * **拿显示文案当状态哨兵**。默认语言换成英文之后，这个比较会永远为真，
@@ -273,7 +273,7 @@ public final class StatusBar extends HBox {
      * <p>⭐ R54：{@code kind} 为 null（会话还没建起来、方言认不出）时图形位<b>只剩那颗灯</b> ——
      * 不知道是哪家就画成某一家，是在编造。
      */
-    public void setDialect(String value, DialectKind kind) {
+    public void setDialect(String value, AssetKind kind) {
         dialectName = value == null || value.isBlank() ? "—" : value;
         dialectKind = kind;
         paintSource();

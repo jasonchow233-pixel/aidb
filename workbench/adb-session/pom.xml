@@ -17,6 +17,8 @@
   <dependencies>
     <dependency><groupId>io.agenticdb</groupId><artifactId>adb-model</artifactId></dependency>
     <dependency><groupId>io.agenticdb</groupId><artifactId>adb-jdbc</artifactId></dependency>
+    <!-- EXT：AssetKind 判别轴（P0-1）。 -->
+    <dependency><groupId>io.agenticdb</groupId><artifactId>adb-asset</artifactId></dependency>
     <!-- P5-3：在会话边界断言错误归类与建议动作。 -->
     <dependency><groupId>io.agenticdb</groupId><artifactId>adb-safety</artifactId><scope>test</scope></dependency>
     <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId></dependency>

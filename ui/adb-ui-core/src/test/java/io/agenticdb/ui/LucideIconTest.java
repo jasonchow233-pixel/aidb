@@ -119,8 +119,7 @@ class LucideIconTest {
 
     @Test
     void selfDrawnIconsAreTheDocumentedExceptions() {
-        // BRAND（品牌 mark）、DOT（实心状态点）与 AI（星芒，Lucide 没有 sparkles）
-        // 没有 Lucide 等价物；于是自绘。
+        // BRAND（品牌 mark）与 DOT（实心状态点）没有 Lucide 等价物；于是自绘。
         // 其余全部来自源文件。
         //
         // ⭐ R63-3：六家数据库的图形不再在这个枚举里 —— 官方商标走**另一条通道**
@@ -133,7 +132,7 @@ class LucideIconTest {
                 selfDrawn.add(icon.name());
             }
         }
-        assertThat(selfDrawn).containsExactlyInAnyOrder("BRAND", "DOT", "AI");
+        assertThat(selfDrawn).containsExactlyInAnyOrder("BRAND", "DOT");
     }
 
     // ─────────────────────────── 转换器逐条验证 ───────────────────────────

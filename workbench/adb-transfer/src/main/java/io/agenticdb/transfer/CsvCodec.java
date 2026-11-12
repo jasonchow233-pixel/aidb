@@ -39,13 +39,27 @@ public final class CsvCodec {
      */
     public static void writeRow(Writer out, List<String> values, char delimiter, boolean quoteAll)
             throws IOException {
+        // 默认限定符 '"' + 默认 CRLF 行尾 —— 兼容 D-86 之前所有调用点的逐字节输出。
+        writeRow(out, values, delimiter, '"', quoteAll, "\r\n");
+    }
+
+    /**
+     * D-86：写一行，支持自定义文本限定符与记录分隔符。
+     *
+     * @param qualifier       引用字符；字段内出现的该字符写成两个（转义规则随它变化）
+     * @param quoteAll        是否给<b>所有</b>字段加引号（与 qualifier 是两件事）
+     * @param recordDelimiter 本行的记录结尾
+     */
+    public static void writeRow(Writer out, List<String> values, char delimiter,
+                                char qualifier, boolean quoteAll, String recordDelimiter)
+            throws IOException {
         for (int i = 0; i < values.size(); i++) {
             if (i > 0) {
                 out.write(delimiter);
             }
-            out.write(escape(values.get(i), delimiter, quoteAll));
+            out.write(escape(values.get(i), delimiter, qualifier, quoteAll));
         }
-        out.write("\r\n");
+        out.write(recordDelimiter);
     }
 
     /** 转义单个字段。需要时加引号。 */
@@ -53,15 +67,22 @@ public final class CsvCodec {
         return escape(value, delimiter, false);
     }
 
-    /** 转义单个字段。 */
+    /** 转义单个字段（默认限定符 '"'）。 */
     public static String escape(String value, char delimiter, boolean quoteAll) {
+        return escape(value, delimiter, '"', quoteAll);
+    }
+
+    /** D-86：转义单个字段，引用字符随 qualifier 变化。 */
+    public static String escape(String value, char delimiter, char qualifier, boolean quoteAll) {
         if (value == null) {
-            return quoteAll ? "\"\"" : "";
+            return quoteAll ? new String(new char[]{qualifier, qualifier}) : "";
         }
-        boolean quote = quoteAll || value.indexOf(delimiter) >= 0 || value.indexOf('"') >= 0
-                || value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0;
-        String escaped = value.replace("\"", "\"\"");
-        return quote ? '"' + escaped + '"' : escaped;
+        boolean quote = quoteAll || value.indexOf(delimiter) >= 0
+                || value.indexOf(qualifier) >= 0 || value.indexOf('\n') >= 0
+                || value.indexOf('\r') >= 0;
+        String q = String.valueOf(qualifier);
+        String escaped = value.replace(q, q + q);
+        return quote ? q + escaped + q : escaped;
     }
 
     /**

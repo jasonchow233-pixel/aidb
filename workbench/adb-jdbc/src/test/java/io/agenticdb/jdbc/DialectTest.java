@@ -104,6 +104,33 @@ class DialectTest {
         assertThat(DialectKind.SQLSERVER.dialect().bareResolvesTo("Orders")).isTrue();
     }
 
+    /**
+     * 事务性 DDL 是方言能力，不是 UI 里的 switch。
+     *
+     * <p>MySQL / MariaDB / Oracle 的 DDL 会隐式提交；另外三家可加入用户事务。
+     */
+    @Test
+    void transactionalDdlIsDeclaredByEachDialect() {
+        assertThat(DialectKind.SQLITE.dialect().supportsTransactionalDdl()).isTrue();
+        assertThat(DialectKind.POSTGRESQL.dialect().supportsTransactionalDdl()).isTrue();
+        assertThat(DialectKind.SQLSERVER.dialect().supportsTransactionalDdl()).isTrue();
+        assertThat(DialectKind.MYSQL.dialect().supportsTransactionalDdl()).isFalse();
+        assertThat(DialectKind.MARIADB.dialect().supportsTransactionalDdl()).isFalse();
+        assertThat(DialectKind.ORACLE.dialect().supportsTransactionalDdl()).isFalse();
+    }
+
+    @Test
+    void transferCompatibilityDefaultsToSameEngine() {
+        assertThat(DialectKind.SQLITE.dialect()
+                .canTransferTo(DialectKind.SQLITE.dialect())).isTrue();
+        assertThat(DialectKind.SQLITE.dialect()
+                .canTransferTo(DialectKind.POSTGRESQL.dialect())).isFalse();
+        assertThat(DialectKind.MYSQL.dialect()
+                .canTransferTo(DialectKind.MARIADB.dialect()))
+                .as("MySQL / MariaDB 共享实现不等于同一个引擎：传输仍按同引擎限制")
+                .isFalse();
+    }
+
     // ─────────────────────────── 连接 ───────────────────────────
 
     @Test

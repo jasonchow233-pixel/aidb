@@ -32,12 +32,16 @@ public final class WorkspaceView extends StackPane {
     private final Function<TabItem, ConnectionsPage> connectionsPageFactory;
     /** ⭐ S5：常驻的「对象」首页。 */
     private final Function<TabItem, Node> objectHomeFactory;
+    /** ⭐ EXT（P1-5）：Redis 键浏览器页工厂（与 grid / object 同形，返回 Node）。 */
+    private final Function<TabItem, Node> redisKeysPageFactory;
     private final Map<String, DataGridPage> gridPages = new LinkedHashMap<>();
     private final Map<String, QueryPage> queryPages = new LinkedHashMap<>();
     private final Map<String, StructurePage> structurePages = new LinkedHashMap<>();
     private final Map<String, ConnectionsPage> connectionsPages = new LinkedHashMap<>();
     /** 表清单页（自己带内容的标签页，按 tab id 缓存，好让密度能下发给它）。 */
     private final Map<String, TableListPage> tableListPages = new LinkedHashMap<>();
+    /** ⭐ EXT（P1-5）：Redis 键浏览器页缓存（按 tab id，密度下发 + 关闭释放都靠它）。 */
+    private final Map<String, RedisKeysPage> redisKeysPages = new LinkedHashMap<>();
 
     private DataGridPage activeGrid;
     private QueryPage activeQuery;
@@ -124,6 +128,9 @@ public final class WorkspaceView extends StackPane {
         for (TableListPage page : tableListPages.values()) {
             page.setDensity(density);
         }
+        for (RedisKeysPage page : redisKeysPages.values()) {
+            page.setDensity(density);
+        }
     }
 
     public WorkspaceView(ActionRegistry actions, String connectionName,
@@ -131,7 +138,8 @@ public final class WorkspaceView extends StackPane {
                          Function<TabItem, QueryPage> queryPageFactory,
                          Function<TabItem, StructurePage> structurePageFactory,
                          Function<TabItem, ConnectionsPage> connectionsPageFactory,
-                         Function<TabItem, Node> objectHomeFactory) {
+                         Function<TabItem, Node> objectHomeFactory,
+                         Function<TabItem, Node> redisKeysPageFactory) {
         this.actions = actions;
         this.connectionName = connectionName;
         this.gridPageFactory = gridPageFactory;
@@ -139,6 +147,7 @@ public final class WorkspaceView extends StackPane {
         this.structurePageFactory = structurePageFactory;
         this.connectionsPageFactory = connectionsPageFactory;
         this.objectHomeFactory = objectHomeFactory;
+        this.redisKeysPageFactory = redisKeysPageFactory;
         getStyleClass().add("adb-workspace");
         // ⭐ S-7：这里原来会画一张欢迎页，然后**立刻被对象首页盖掉** ——
         //    AppShell 无条件 openPermanent(object-home)，欢迎页永远没人看得到。
@@ -242,6 +251,38 @@ public final class WorkspaceView extends StackPane {
                 getChildren().setAll(page);
             }
             return;
+        }
+        if (tab.kind() == TabKind.REDIS_KEYS) {
+            // ⭐ EXT（P1-5）：Redis 键浏览器。每个 (连接, db) 一个独立实例并缓存，
+            // 切标签不会重连、不会丢前缀/类型过滤状态。
+            RedisKeysPage page = redisKeysPages.get(tab.id());
+            if (page == null) {
+                Node created = redisKeysPageFactory.apply(tab);
+                if (created instanceof RedisKeysPage redisPage) {
+                    page = redisPage;
+                    redisKeysPages.put(tab.id(), page);
+                } else if (created != null) {
+                    activeGrid = null;
+                    activeQuery = null;
+                    activeStructure = null;
+                    activeConnections = null;
+                    activeObjectTab = null;
+                    activeObjectPage = null;
+                    getChildren().setAll(created);
+                    return;
+                }
+            }
+            if (page != null) {
+                activeGrid = null;
+                activeQuery = null;
+                activeStructure = null;
+                activeConnections = null;
+                activeObjectTab = null;
+                activeObjectPage = null;
+                getChildren().setAll(page);
+                page.activate();
+                return;
+            }
         }
         activeObjectTab = null;
         activeObjectPage = null;
@@ -362,6 +403,11 @@ public final class WorkspaceView extends StackPane {
         ConnectionsPage connections = connectionsPages.remove(id);
         if (connections != null) {
             connections.close();
+        }
+        // ⭐ EXT（P1-5）：Redis 键浏览器页同样按 id 精确释放，关掉标签页要断会话。
+        RedisKeysPage redis = redisKeysPages.remove(id);
+        if (redis != null) {
+            redis.close();
         }
         // 表清单页没有 close()，但缓存必须一起移除 —— 否则关掉的标签页会永远留在
         // applyDensity 的遍历里（关 20 个表清单就多 20 个对象）。
@@ -562,6 +608,7 @@ public final class WorkspaceView extends StackPane {
             case SETTINGS -> I18n.t("workspace.context.settings");
             case OBJECT -> connectionName;
             case ROUTINE -> I18n.t("workspace.context.routine", connectionName);
+            case REDIS_KEYS -> connectionName;
         });
         context.getStyleClass().add("adb-muted");
         // ⚠️ 徽标与右侧说明同文时（「工具」/「工具」）右侧那份是纯噪音 —— 藏掉。
@@ -637,8 +684,8 @@ public final class WorkspaceView extends StackPane {
                             transferOthers, transferResolver));
                 } else if (SideBar.TOOL_UNAVAILABLE_ROUTES.contains(route)) {
                     // ⭐ R36 N6 → P2/P3：User / Backup / Profile / Transfer 已升级为真工具页
-                    // （走上面的分支），这里只剩对象清单页的 new-table-ai —— 能力面没建，
-                    // 按诚实条款给**如实说明页**，不留死磁贴。
+                    // （走上面的分支）。2026-11-11 AI 新建表入口撤掉后集合为空；
+                    // 机制保留：将来哪条路由又落回说明页，仍按诚实条款给**如实说明页**。
                     // BI 已按 2026-11-09 用户裁定整体移除；Automation / Model 已按 2026-11-10
                     // 用户裁定删除入口（明确不做），不再有这两条路由。
                     body.getChildren().add(emptyState(
@@ -651,6 +698,8 @@ public final class WorkspaceView extends StackPane {
                 }
             }
             case SETTINGS -> body.getChildren().add(settingsSkeleton());
+            case REDIS_KEYS -> body.getChildren().add(emptyState(Icons.Icon.LIST,
+                    tab.title(), ""));
             default -> body.getChildren().add(emptyState(Icons.Icon.VIEW_OBJECT,
                     tab.title(), ""));
         }

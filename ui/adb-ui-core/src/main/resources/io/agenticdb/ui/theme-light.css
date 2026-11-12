@@ -77,5 +77,10 @@
     -adb-vendor-oracle: #C71000;
     -adb-vendor-sqlite: #0F83AE;
     -adb-vendor-mariadb: #003545;
+    -adb-vendor-redis: #C71000;
+    -adb-vendor-aws-s3: #B25900;
+    -adb-vendor-aliyun-oss: #C2410C;
+    -adb-vendor-qiniu: #2B6FD0;
+    -adb-vendor-tencent-cos: #0A5BD6;
     -adb-brand-plate: #FFFFFF;
 }

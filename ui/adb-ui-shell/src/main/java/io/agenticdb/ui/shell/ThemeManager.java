@@ -107,7 +107,6 @@ public final class ThemeManager {
         return url;
     }
 
-    /** macOS 深色模式探测；其他平台先返回 false（亮色是评审基准）。 */
     /**
      * ⭐ A22：系统主题探测的结果**缓存起来**。
      *
@@ -128,6 +127,8 @@ public final class ThemeManager {
      *   <li><b>Linux</b>：{@code gsettings get org.gnome.desktop.interface color-scheme}
      *       （{@code prefer-dark} = 暗色）；KDE 走 {@code kdeglobals} 里的配置。</li>
      * </ul>
+     * ⭐ T1：{@code ADB_THEME=dark|light} 是跨平台统一覆盖（验收 / 无桌面环境的
+     * Windows / Linux 也需要一条不依赖桌面配置的通道），优先级高于系统探测。
      * 探测不到就按亮色（保守：亮色在所有平台都可读）。
      */
     private static boolean systemPrefersDark() {
@@ -181,7 +182,7 @@ public final class ThemeManager {
         }
     }
 
-    /** Windows：AppsUseLightTheme = 0 表示暗色。 */
+    /** Windows：AppsUseLightTheme = 0 表示暗色；注册表读不到就退回亮色。 */
     private static boolean detectWindowsDark() {
         try {
             Process process = new ProcessBuilder("reg", "query",
@@ -200,13 +201,13 @@ public final class ThemeManager {
             if (index < 0) {
                 return false;
             }
-            return output.substring(index + 2).trim().equals("0");
+            return output.substring(index + 2).trim().equalsIgnoreCase("0");
         } catch (Exception ignored) {
             return false;
         }
     }
 
-    /** Linux：GNOME 的 color-scheme，或 KDE 的 kdeglobals。 */
+    /** Linux：GNOME 的 color-scheme，或 KDE 的 kdeglobals；都读不到就退回亮色。 */
     private static boolean detectLinuxDark() {
         String gnome = runAndRead("gsettings", "get", "org.gnome.desktop.interface", "color-scheme");
         if (gnome != null) {

@@ -44,7 +44,7 @@ class TabBarTest {
         // ⭐ R54：哪家库也是档案里才知道的事。这里**故意只给 pg 一家** ——
         //    「演示库」那条认不出方言，正好用来钉「认不出就退回通用圆柱，不许蒙一家」。
         tabBar.setConnectionKinds(id -> "pg".equals(id)
-                ? io.agenticdb.jdbc.DialectKind.POSTGRESQL : null);
+                ? io.agenticdb.asset.AssetKind.POSTGRESQL : null);
         stage.setScene(new javafx.scene.Scene(tabBar, 900, 200));
         stage.show();
     }
@@ -200,7 +200,7 @@ class TabBarTest {
                 .doesNotContain("adb-db--mysql");
 
         run(() -> tabBar.setConnectionKinds(id -> "late".equals(id)
-                ? io.agenticdb.jdbc.DialectKind.MYSQL : null));
+                ? io.agenticdb.asset.AssetKind.MYSQL : null));
 
         assertThat(graphicOf("obj-late").getStyleClass())
                 .as("后到的方言必须重画已开着的页签")
@@ -223,7 +223,7 @@ class TabBarTest {
     void thePermanentObjectTabFallsBackToTheActiveConnection() {
         run(() -> {
             // 外壳那侧的形态：认不出 id 就回落到活动档案（这里是 MySQL）。
-            tabBar.setConnectionKinds(id -> io.agenticdb.jdbc.DialectKind.MYSQL);
+            tabBar.setConnectionKinds(id -> io.agenticdb.asset.AssetKind.MYSQL);
             tabBar.openPermanent(new TabItem("object-home", "Objects", TabKind.OBJECT));
         });
 

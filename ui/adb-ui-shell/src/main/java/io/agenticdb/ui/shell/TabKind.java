@@ -19,6 +19,8 @@ public enum TabKind {
     OBJECT(Icons.Icon.DATABASE, "category.object"),
     /** ⭐ O2：函数 / 存储过程的**定义体**（只读标签页）。 */
     ROUTINE(Icons.Icon.FUNCTION, "tab.kind.routine"),
+    /** ⭐ EXT（P1-5）：Redis 键浏览器标签页（列表 + 前缀 / 类型过滤）。 */
+    REDIS_KEYS(Icons.Icon.LIST, "tab.kind.redisKeys"),
     SETTINGS(Icons.Icon.SETTINGS, "window.pageType.settings");
 
     private final Icons.Icon icon;

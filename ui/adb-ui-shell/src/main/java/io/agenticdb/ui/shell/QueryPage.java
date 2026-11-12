@@ -9,6 +9,7 @@ import io.agenticdb.editing.ResultEditPolicy;
 import io.agenticdb.editing.RowIdentity;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.ExecutionResult;
+import io.agenticdb.asset.AssetKind;
 import io.agenticdb.introspect.QueryPaginator;
 import io.agenticdb.introspect.SchemaService;
 import io.agenticdb.introspect.SchemaService.TableSchema;
@@ -43,6 +44,7 @@ import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
@@ -149,6 +151,9 @@ public final class QueryPage extends VBox implements AutoCloseable {
     /** 密度档位 → 行高（结果网格按 D1 比档位低一档，初值 = {@code RowHeights.grid("normal")}）。 */
     private int rowHeight = RowHeights.grid("normal");
     private final Label status = new Label(I18n.t("query.ready"));
+    /** ⭐ T6：底部带上恒定的 Read Only pill（查询结果只读，与语句危险等级无关）。 */
+    private final Label readOnlyPill = new Label(I18n.t("status.readOnly"));
+    /** ⭐ T6：这颗留在工具带当危险等级 badge —— updateRisk() 会改写它的文字与配色。 */
     private final Label risk = new Label(I18n.t("status.readOnly"));
     private final Label range = new Label("—");
     private final Label duration = new Label("— ms");
@@ -161,7 +166,6 @@ public final class QueryPage extends VBox implements AutoCloseable {
     private final Button explain = IconButtons.of(Icons.Icon.EXPLAIN, I18n.t("query.explain"));
     private final Button format = new Button(I18n.t("query.beautify"));
     private final Button save = new Button(I18n.t("query.save"));
-    private final Button askAi = new Button(I18n.t("query.askAi"));
     private MenuButton nameMenu;
     private MenuButton connectionMenu;
     private String queryName;
@@ -483,7 +487,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
         builder.setId("query-builder");
         builder.getStyleClass().add("adb-button");
         builder.setTooltip(new Tooltip(I18n.t("query.tip.builder")));
-        builder.setOnAction(event -> showCapabilityNotice(I18n.t("query.builder"), "grid.capability.queryBuilder"));
+        // ⭐ T9：只读最小版查询构造器 —— 预览当前 SQL，不执行、不改库、无 AI 字样。
+        builder.setOnAction(event -> openBuilder());
 
         format.setId("query-format");
         format.getStyleClass().add("adb-button");
@@ -496,14 +501,6 @@ public final class QueryPage extends VBox implements AutoCloseable {
         snippet.setTooltip(new Tooltip(I18n.t("query.tip.snippet")));
         snippet.setOnAction(event -> onInsertSnippet.run());
 
-        askAi.setId("query-ask-ai");
-        askAi.getStyleClass().add("adb-button");
-        askAi.setTooltip(new Tooltip(I18n.t("query.tip.askAi")));
-        // R43-b：原来这里挂两项（生成 SQL / 解释这条查询），两项打开的是同一段说明。
-        // 菜单留着只是让一次点击多两步 —— 收成一颗按钮，一击 = 一份如实说明。
-        askAi.setOnAction(event ->
-                showCapabilityNotice(I18n.t("query.askAi"), "grid.capability.askAi"));
-
         risk.setId("query-risk");
         risk.getStyleClass().addAll("adb-badge", "adb-query__risk");
         risk.setTooltip(new Tooltip(I18n.t("query.tip.risk")));
@@ -511,14 +508,10 @@ public final class QueryPage extends VBox implements AutoCloseable {
         Region row1Spacer = new Region();
         HBox.setHgrow(row1Spacer, Priority.ALWAYS);
 
-        HBox row1 = new HBox(6, save, builder, format, snippet, askAi,
+        HBox row1 = new HBox(6, save, builder, format, snippet,
                 row1Spacer, risk, historyButton);
         row1.getStyleClass().add("adb-query__toolbar-row");
         row1.setAlignment(Pos.CENTER_LEFT);
-        // ⭐ D-61：这两颗的落点是如实说明页（判据 = showCapabilityNotice），
-        //    入口必须提前说实话：环挂 row1、tooltip 与 accessibleText 带「本版本未提供」。
-        PendingMark.mark(row1, builder);
-        PendingMark.mark(row1, askAi);
 
         // ── 行 2：查询名 / 连接 / 执行（Navicat 17 查询工具带下排） ──
         nameMenu = new MenuButton(I18n.t("query.name.untitled"));
@@ -541,7 +534,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         //    顶上放那一家自己的图形 —— 与树、磁贴、状态栏同一枚、同一个品牌色。
         if (session != null) {
             connectionMenu.setGraphic(ConnectionCatalog.graphic(
-                    session.dialect().kind(), Icons.SIZE_LABEL));
+                    AssetKind.from(session.dialect().kind()), Icons.SIZE_LABEL));
         }
         rebuildConnectionMenu();
 
@@ -661,9 +654,12 @@ public final class QueryPage extends VBox implements AutoCloseable {
 
         status.setId("query-status");
         status.getStyleClass().add("adb-query__status-text");
-        // ⭐ D-54：Navicat 底部那条带实测次序是 SQL 回显 | Read Only | Record 1 of 20473 |
-        //    Ln 11, Col 5 | Elapsed Time —— 行列夹在「行数」与「耗时」中间，这一条带照它排。
-        //    （pill 那颗 Read Only 在工具带右上角，搬家不在这格。）
+        // ⭐ T6：Read Only pill 从工具带右上角搬到这条底部带（Navicat 次序：
+        //    SQL 回显 | Read Only | 行数 | 光标 | 耗时）。行数 / 耗时按 A-4 仍由全局
+        //    状态栏独家呈现，这里不重复摆第二份；工具带那颗 risk 保留为危险等级 badge
+        //    （updateRisk() 会改写它的文字），两者语义互不顶替。
+        readOnlyPill.setId("query-read-only");
+        readOnlyPill.getStyleClass().add("adb-badge");
         caretReadout.setId("query-caret");
         caretReadout.getStyleClass().add("adb-query__status-meta");
         range.getStyleClass().add("adb-query__status-meta");
@@ -674,7 +670,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         // ⭐ A-4：行数 / 耗时不再在查询页底部重复显示 —— 它们已由全局状态栏
         //    （经 DataGridPage.Feedback 推送）作为唯一来源呈现（Record X of Y · Elapsed ·
         //    Last Refresh）。这里只保留编辑器自己的「光标位置」读数，避免两处同报。
-        HBox statusBar = new HBox(12, status, statusSpacer, caretReadout);
+        HBox statusBar = new HBox(12, status, readOnlyPill, statusSpacer, caretReadout);
         statusBar.getStyleClass().add("adb-query__statusbar");
         statusBar.setAlignment(Pos.CENTER_LEFT);
 
@@ -1380,12 +1376,17 @@ public final class QueryPage extends VBox implements AutoCloseable {
         if (result.texts().stream().anyMatch(DdlText::isDdl)) {
             schemaService.invalidate(session);
         }
+        // ⭐ T6：整批汇总给每个结果页签的 Summary 子视图；耗时只在这里出现一次。
+        long totalRows = result.results().stream().mapToLong(ExecutionResult::rowCount).sum();
+        String summary = I18n.t("query.summary.body",
+                result.results().size(), totalRows, result.durationMs());
         for (int i = 0; i < result.results().size(); i++) {
             ExecutionResult execution = result.results().get(i);
             String sql = result.texts().get(i);
             List<Object> bound = result.bound().get(i);
+            String message = executionMessage(execution, i + 1);
             results.getTabs().add(execution.hasRows()
-                    ? resultTab(execution, i + 1, sql, bound)
+                    ? resultTab(execution, i + 1, sql, bound, message, summary)
                     : messageTab(execution, i + 1));
         }
         if (result.error() != null) {
@@ -1402,8 +1403,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             //    但**不推进刷新时刻** —— 这一轮没有取到任何新数据。
             feedback.sql(result.executedText());
         } else {
-            long rows = result.results().stream().mapToLong(ExecutionResult::rowCount).sum();
-            range.setText(I18n.tPlural("status.rows", rows, rows));
+            range.setText(I18n.tPlural("status.rows", totalRows, totalRows));
             duration.setText(result.durationMs() + " ms");
             // 抬头当参数递进去而不是拼两遍模板：门禁要断言「状态说完成了」时
             // 只需比 `I18n.t("query.done")`，不必知道后面跟了什么、也不必跟着语言改。
@@ -1413,7 +1413,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
             // U8（p3-query 实拍第二拍）：行数与耗时各有自己的段，
             // 「执行完成 · N 条语句」把它们再念一遍就是消息段该沉默的时刻。
             feedback.status("");
-            feedback.range(I18n.tPlural("status.rows", rows, rows));
+            feedback.range(I18n.tPlural("status.rows", totalRows, totalRows));
             feedback.duration(result.durationMs());
             // ⭐ UX-5-D：状态栏给出「跑的是哪条、这屏结果是什么时候落地的」。
             feedback.sql(result.executedText());
@@ -1571,7 +1571,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
         return rowHeight;
     }
 
-    private Tab resultTab(ExecutionResult result, int index, String sql, List<Object> params) {
+    private Tab resultTab(ExecutionResult result, int index, String sql, List<Object> params,
+                          String message, String summary) {
         TableView<java.util.Map<String, Object>> table = new TableView<>();
         resultTables.add(table);
         table.setFixedCellSize(rowHeight);
@@ -1661,13 +1662,14 @@ public final class QueryPage extends VBox implements AutoCloseable {
             VBox dataPane = new VBox(0, loader.node(), table);
             VBox.setVgrow(table, Priority.ALWAYS);
             tab.setContent(resultViews(dataPane, result.columns(), sql, null, null, edit.note,
-                    edit.changes, edit.discard, edit.save));
+                    message, summary, edit.changes, edit.discard, edit.save));
             loader.start();
             return tab;
         }
 
         table.setItems(FXCollections.observableArrayList(result.rows()));
-        Label meta = new Label(I18n.t("query.rowsAndDuration", result.rowCount(), result.durationMs()));
+        // ⭐ D-75：这句现在只报行数（{0} 行 / {0} rows），耗时不再挤在这里。
+        Label meta = new Label(I18n.t("query.rowsAndDuration", result.rowCount()));
         meta.getStyleClass().add("adb-query__result-meta");
 
         Button copy = new Button(I18n.t("query.copyTsv"));
@@ -1695,7 +1697,7 @@ public final class QueryPage extends VBox implements AutoCloseable {
         VBox dataPane = new VBox(0, table);
         VBox.setVgrow(table, Priority.ALWAYS);
         tab.setContent(resultViews(dataPane, result.columns(), sql, meta, warning, edit.note,
-                edit.changes, edit.discard, edit.save, copy, export));
+                message, summary, edit.changes, edit.discard, edit.save, copy, export));
         return tab;
     }
 
@@ -2059,7 +2061,8 @@ public final class QueryPage extends VBox implements AutoCloseable {
      * 判定为不可改时它们本来就不 managed，不会把 32px 那条撑开。
      */
     private VBox resultViews(javafx.scene.Node dataPane, List<ColumnDef> columns, String sql,
-                             Label meta, Label warning, Label editState, javafx.scene.Node... actions) {
+                             Label meta, Label warning, Label editState,
+                             String messageText, String summaryText, javafx.scene.Node... actions) {
         javafx.scene.control.ToggleButton data = new javafx.scene.control.ToggleButton(
                 I18n.t("query.result.data"));
         data.setId("result-view-data");
@@ -2068,9 +2071,21 @@ public final class QueryPage extends VBox implements AutoCloseable {
                 I18n.t("query.result.info"));
         info.setId("result-view-info");
         info.getStyleClass().add("adb-query__result-view");
+        // ⭐ T6：Message / Summary 是 Data / Info 同级的只读子视图 —— 不往顶层
+        //    results TabPane 加页签（页签数量由 QueryPageTest 等门禁钉着）。
+        javafx.scene.control.ToggleButton messageView = new javafx.scene.control.ToggleButton(
+                I18n.t("query.result.message"));
+        messageView.setId("result-view-message");
+        messageView.getStyleClass().add("adb-query__result-view");
+        javafx.scene.control.ToggleButton summaryView = new javafx.scene.control.ToggleButton(
+                I18n.t("query.result.summary"));
+        summaryView.setId("result-view-summary");
+        summaryView.getStyleClass().add("adb-query__result-view");
         javafx.scene.control.ToggleGroup group = new javafx.scene.control.ToggleGroup();
         data.setToggleGroup(group);
         info.setToggleGroup(group);
+        messageView.setToggleGroup(group);
+        summaryView.setToggleGroup(group);
         data.setSelected(true);
 
         VBox infoPane = new VBox(8);
@@ -2091,26 +2106,62 @@ public final class QueryPage extends VBox implements AutoCloseable {
         infoPane.setVisible(false);
         infoPane.setManaged(false);
 
-        StackPane views = new StackPane(dataPane, infoPane);
+        // Message：这条语句的执行回显（与 messageTab 共用一份文案），只读 TextArea。
+        VBox messagePane = new VBox(0);
+        messagePane.setId("query-result-message-pane");
+        TextArea messageArea = new TextArea(messageText);
+        messageArea.setId("query-result-message");
+        messageArea.setEditable(false);
+        messageArea.setWrapText(false);
+        messageArea.getStyleClass().add("adb-query__message");
+        VBox.setVgrow(messageArea, Priority.ALWAYS);
+        messagePane.getChildren().add(messageArea);
+        messagePane.setVisible(false);
+        messagePane.setManaged(false);
+
+        // Summary：整批的语句数 / 总行数 / 耗时，纯展示 Label，不新建编辑器、不写库。
+        VBox summaryPane = new VBox(8);
+        summaryPane.setId("query-result-summary-pane");
+        summaryPane.getStyleClass().add("adb-query__result-info");
+        Label summaryLabel = new Label(summaryText);
+        summaryLabel.setId("query-result-summary");
+        summaryLabel.setWrapText(true);
+        summaryPane.getChildren().add(summaryLabel);
+        summaryPane.setVisible(false);
+        summaryPane.setManaged(false);
+
+        StackPane views = new StackPane(dataPane, infoPane, messagePane, summaryPane);
         VBox.setVgrow(views, Priority.ALWAYS);
 
         data.setOnAction(event -> {
             if (group.getSelectedToggle() == null) {
                 data.setSelected(true);
             }
-            showPane(infoPane, false);
+            showOnly(dataPane, dataPane, infoPane, messagePane, summaryPane);
         });
         info.setOnAction(event -> {
             if (group.getSelectedToggle() == null) {
                 info.setSelected(true);
             }
-            showPane(infoPane, true);
+            showOnly(infoPane, dataPane, infoPane, messagePane, summaryPane);
+        });
+        messageView.setOnAction(event -> {
+            if (group.getSelectedToggle() == null) {
+                messageView.setSelected(true);
+            }
+            showOnly(messagePane, dataPane, infoPane, messagePane, summaryPane);
+        });
+        summaryView.setOnAction(event -> {
+            if (group.getSelectedToggle() == null) {
+                summaryView.setSelected(true);
+            }
+            showOnly(summaryPane, dataPane, infoPane, messagePane, summaryPane);
         });
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox band = new HBox(4, data, info);
+        HBox band = new HBox(4, data, info, messageView, summaryView);
         if (warning != null) {
             band.getChildren().add(warning);
         }
@@ -2124,9 +2175,13 @@ public final class QueryPage extends VBox implements AutoCloseable {
         return box;
     }
 
-    private static void showPane(javafx.scene.Node pane, boolean visible) {
-        pane.setVisible(visible);
-        pane.setManaged(visible);
+    /** 四段子视图互斥：只让选中的那一段可见并参与排版，其余收起。 */
+    private static void showOnly(javafx.scene.Node shown, javafx.scene.Node... all) {
+        for (javafx.scene.Node pane : all) {
+            boolean visible = pane == shown;
+            pane.setVisible(visible);
+            pane.setManaged(visible);
+        }
     }
 
     /**
@@ -3106,15 +3161,20 @@ public final class QueryPage extends VBox implements AutoCloseable {
         }
     }
 
-    private Tab messageTab(ExecutionResult result, int index) {
-        TextArea text = new TextArea("""
+    /** ⭐ T6：messageTab 与结果子视图的 Message 段共用同一份执行回显文案。 */
+    private static String executionMessage(ExecutionResult result, int index) {
+        return """
                 语句 %d 执行完成。
                 影响行数：%d
                 耗时：%d ms
 
                 %s
                 """.formatted(index, result.updateCount(), result.durationMs(),
-                result.statement()));
+                result.statement());
+    }
+
+    private Tab messageTab(ExecutionResult result, int index) {
+        TextArea text = new TextArea(executionMessage(result, index));
         text.setEditable(false);
         text.setWrapText(false);
         text.getStyleClass().add("adb-query__message");
@@ -3384,22 +3444,48 @@ public final class QueryPage extends VBox implements AutoCloseable {
     }
 
     /**
-     * ⭐ N21：未建成的能力给「如实说明页」，不留死按钮。
+     * ⭐ T9：只读最小版查询构造器 —— 只预览编辑器里的 SQL，不执行、不改库、不提 AI。
      *
-     * <p>Query Builder / Ask AI 在 Navicat 17 的查询页上各占一席 —— 这一版没有实现，
-     * 点开必须说清楚「需要什么、什么都没改」，而不是静默无反应。
+     * <p>构造与展示分开：{@link #builderDialog()} 返回弹窗本体（门禁接缝，不显示），
+     * 真正的入口只负责 showAndWait。预览区是 {@code setEditable(false)} 的 TextArea，
+     * 空编辑器换成 {@code query.builder.empty}；「复制」只把原文放进系统剪贴板。
      */
-    private void showCapabilityNotice(String title, String capabilityKey) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.getDialogPane().setId("capability-notice");
-        alert.setTitle(I18n.t("grid.capability.windowTitle"));
-        alert.setHeaderText(title + " — " + I18n.t("grid.capability.title"));
-        alert.setContentText(I18n.t("grid.capability.body", I18n.t(capabilityKey)));
+    private void openBuilder() {
+        builderDialog().showAndWait();
+    }
+
+    /** 门禁接缝：只读查询构造器弹窗本体（不显示），供断言预览区与「没有执行入口」。 */
+    Dialog<Void> builderDialog() {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(I18n.t("query.builder.title"));
+        dialog.getDialogPane().setId("query-builder-dialog");
+
+        String sql = editor.text();
+        boolean empty = sql == null || sql.isBlank();
+        Label hint = new Label(I18n.t("query.builder.readOnly"));
+        hint.setId("query-builder-hint");
+        TextArea preview = new TextArea(empty ? I18n.t("query.builder.empty") : sql);
+        preview.setId("query-builder-preview");
+        preview.setEditable(false);
+        preview.setWrapText(true);
+        preview.getStyleClass().add("adb-query__message");
+        VBox.setVgrow(preview, Priority.ALWAYS);
+
+        Button copy = new Button(I18n.t("query.builder.copy"));
+        copy.setId("query-builder-copy");
+        copy.getStyleClass().add("adb-button");
+        copy.setDisable(empty);
+        copy.setOnAction(event -> putOnClipboard(empty ? "" : sql));
+
+        VBox content = new VBox(8, hint, preview, copy);
+        content.setPadding(new Insets(8));
+        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
         if (getScene() != null) {
-            alert.initOwner(getScene().getWindow());
+            dialog.initOwner(getScene().getWindow());
         }
-        DialogStyles.apply(alert, getScene() == null ? null : getScene().getWindow());
-        alert.showAndWait();
+        DialogStyles.apply(dialog, getScene() == null ? null : getScene().getWindow());
+        return dialog;
     }
 
     private boolean confirmDanger(Danger danger) {        ButtonType execute = new ButtonType(I18n.t("query.confirmRunButton", DangerLabels.t(danger)),

@@ -93,6 +93,18 @@
     <jna.version>5.13.0</jna.version>
     <poi.version>5.4.1</poi.version>
 
+    <!-- EXT：Redis / 对象存储 SDK 选型（P0-4 落地，P1/P2 使用） -->
+    <!-- Lettuce：netty 异步模型贴合现有执行器，优于 Jedis（EXT 规划 Q3）。 -->
+    <lettuce.version>6.6.0.RELEASE</lettuce.version>
+    <!-- AWS SDK v2（S3 兼容，含 minio / localstack 测试）。 -->
+    <aws.sdk.version>2.31.0</aws.sdk.version>
+    <!-- 阿里云 OSS（注意其 license 与 NOTICE 同步）。 -->
+    <aliyun.oss.version>3.18.5</aliyun.oss.version>
+    <!-- 七牛云 Kodo（无服务端 move，UI 须置灰说明）。 -->
+    <qiniu.version>7.19.0</qiniu.version>
+    <!-- 腾讯云 COS。 -->
+    <cos.version>5.6.227</cos.version>
+
     <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
     <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
     <maven-jar-plugin.version>3.4.1</maven-jar-plugin.version>
@@ -164,6 +176,24 @@
       <dependency>
         <groupId>io.agenticdb</groupId>
         <artifactId>adb-ui-shell</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <!-- EXT：资产族抽象地基 -->
+      <dependency>
+        <groupId>io.agenticdb</groupId>
+        <artifactId>adb-asset</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <!-- EXT：Redis 管理 -->
+      <dependency>
+        <groupId>io.agenticdb</groupId>
+        <artifactId>adb-redis</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <!-- EXT：对象存储管理 -->
+      <dependency>
+        <groupId>io.agenticdb</groupId>
+        <artifactId>adb-objectstore</artifactId>
         <version>${project.version}</version>
       </dependency>
 
@@ -402,6 +432,12 @@
     <module>workbench/adb-session</module>
     <module>workbench/adb-editing</module>
     <module>workbench/adb-transfer</module>
+    <!-- EXT：资产族抽象地基（AssetKind / AssetFamily 注册表） -->
+    <module>workbench/adb-asset</module>
+    <!-- EXT：Redis 管理（P1） -->
+    <module>workbench/adb-redis</module>
+    <!-- EXT：对象存储管理 S3 / 阿里云 OSS / 七牛 / 腾讯云 COS（P2） -->
+    <module>workbench/adb-objectstore</module>
 
     <!-- ui：JavaFX -->
     <module>ui/adb-ui-core</module>

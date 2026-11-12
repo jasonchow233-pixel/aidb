@@ -3,6 +3,7 @@ package io.agenticdb.ui.shell;
 import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.jdbc.DialectKind;
+import io.agenticdb.asset.AssetKind;
 import io.agenticdb.jdbc.SshEndpoint;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.CredentialStore;
@@ -60,7 +61,7 @@ import java.util.function.Consumer;
 /**
  * 新建/编辑连接向导（Navicat 口径）：<b>类型选择页 → 属性页</b>。
  *
- * <p>⭐ R33-G8/G20：以前是「类型下拉 → 主机端口 → 复核」三步，没有 SSL / SSH / HTTP，
+ * <p>⭐ R33-G8/G20：以前是「类型下拉 → 主机端口 → 复核」三步，没有 SSL / SSH，
  * 也没有 URI 入口。现在：
  * <ul>
  *   <li><b>第 1 步</b>（N27-a → R43-b）：一行六张彩色磁贴 —— <b>只摆真有驱动的六家</b>，
@@ -68,22 +69,29 @@ import java.util.function.Consumer;
  *       原来这里照 Navicat 摆 22 张（9 类型 + 13 厂商）配 22 个复选与搜索框，
  *       其中 16 张点进去是「本版不支持」—— 复选栏、搜索框、滚动容器与那张说明页随死磁贴一起删，
  *       「其它怎么办」改成页面上明写的一行；</li>
- *   <li><b>第 2 步</b>（N27-b）：7 个页签 —— 常规 / 高级 / 数据库 / SSL / SSH / HTTP / 备注，
+ *   <li><b>第 2 步</b>（N27-b）：6 个页签 —— 常规 / 高级 / 数据库 / SSL / SSH / 备注，
  *       常规页上方是 `AIDB ⟷ Database` 示意图；底部「测试连接 / URI… / 上一步 / 取消 / 确定」。</li>
  * </ul>
  *
  * <p>⛔ 按钮仍在<b>内容区</b>：{@code DialogPane.createButton} 会给按钮栏里每个按钮挂
  * {@code setResultAndClose}，点「下一步」会把整个向导关掉（4.5-12 的回归点）。
  *
- * <p>⛔ HTTP 页<b>只说明不伪装</b>：本版没有 REST 引擎，摆一组填不进驱动的输入框
- * 等于骗人。页签在（形态对齐 Navicat），内容写清楚为什么没有、替代做法是什么。
- * （SSH 页以前也在这一条里 —— G5a 之后它有真字段了，见 {@code sshControls()}。）
+ * <p>⛔ HTTP/HTTPS 代理隧道按 2026-11-10 裁定不做，页签已删除 ——
+ * 不摆「未实现」的说明页，也不摆填不进驱动的输入框。（SSH 页有真字段，见 {@code sshControls()}。）
  */
 public final class ConnectionWizard {
 
     public interface Tester {
         /** @return null 表示连接成功；非 null 为可读错误 */
         String test(ConnectionSpec spec);
+
+        /**
+         * ⭐ EXT：按档案测连接（SQL 走 {@link ConnectionSpec}，非 SQL 由实现方分支）。
+         * 默认实现直接委派 {@link ConnectionProfile#spec(String)}，非 SQL 档案需实现方覆写。
+         */
+        default String testProfile(ConnectionProfile profile, String password) {
+            return test(profile.spec(password));
+        }
     }
 
     /**
@@ -105,14 +113,14 @@ public final class ConnectionWizard {
     }
 
     /** URI 解析结果（口令只回填到输入框，不写进 options）。 */
-    record UriTarget(DialectKind kind, String host, int port, String database,
+    record UriTarget(AssetKind kind, String host, int port, String database,
                      String username, String password, Map<String, String> options) {
 
         UriTarget {
             options = options == null ? Map.of() : Map.copyOf(options);
         }
 
-        UriTarget(DialectKind kind, String host, int port, String database,
+        UriTarget(AssetKind kind, String host, int port, String database,
                   String username, String password) {
             this(kind, host, port, database, username, password, Map.of());
         }
@@ -166,6 +174,11 @@ public final class ConnectionWizard {
     private final HBox uriRow = new HBox(8);
     private final TextField uriField = new TextField();
     private DialectKind type = DialectKind.SQLITE;
+    /**
+     * 当前选中的非 SQL 资产种类（Redis / 对象存储）。为 {@code null} 表示走 SQL 方言分支；
+     * 一旦选中非 SQL 磁贴就置上，属性页据此渲染家族自定义步骤而不是 SQL 六页签。
+     */
+    private AssetKind nonSqlKind = null;
 
     private final TextField name = new TextField();
     private final TextField file = new TextField();
@@ -227,6 +240,8 @@ public final class ConnectionWizard {
     /** SSH 页的容器：字段与「这一家用不上隧道」的说明随选中的数据库换（同 TLS 页的做法）。 */
     private final StackPane sshPaneHost = new StackPane();
     private final TextArea remarks = new TextArea();
+    /** Redis 的 TLS 开关（非 SQL 资产专用；SQL 的 TLS 由方言档位表达）。 */
+    private final CheckBox redisSsl = new CheckBox(I18n.t("wizard.redis.ssl"));
     private TabPane tabs;
 
     private final Label testResult = new Label(I18n.t("wizard.test.notYet"));
@@ -347,6 +362,10 @@ public final class ConnectionWizard {
         remarks.setPromptText(I18n.t("wizard.remarks.prompt"));
         remarks.setPrefRowCount(5);
 
+        redisSsl.setId("wizard-redis-ssl");
+        // ⚠️ 不复用 adb-form__check：该样式类在 app.css 无定义（StyleClassCoverageTest 门禁），
+        //     与其它向导复选框（savePassword / sshEnabled 等）保持一致，使用默认复选框样式。
+
         testResult.setId("wizard-test-result");
         testResult.getStyleClass().add("adb-muted");
         saveError.setId("wizard-save-error");
@@ -457,7 +476,12 @@ public final class ConnectionWizard {
             if (!button.isSelected()) {
                 button.setSelected(true);
             }
-            selectType(entry.kind());
+            // SQL 族走方言分支；非 SQL（Redis）走资产族自定义步骤 —— 不在这里写 AssetKind 字面量分支。
+            if (entry.kind().isSql()) {
+                selectType(entry.kind().dialectKind());
+            } else {
+                selectNonSql(entry.kind());
+            }
         });
         return button;
     }
@@ -482,11 +506,15 @@ public final class ConnectionWizard {
     }
 
     void selectType(DialectKind kind) {
+        // 切回 SQL 族时清掉非 SQL 选择，避免两路状态叠加。
+        nonSqlKind = null;
         DialectKind previous = type;
         type = kind;
+        // ⚠️ 磁贴组里也含非 SQL 资产（Redis），它没 DialectKind，必须先 isSql() 再反查，
+        //    否则遍历到 Redis 磁贴时 dialectKind() 会抛「不是 SQL 资产」。
         typeGroup.getToggles().forEach(toggle -> toggle.setSelected(
                 toggle.getUserData() instanceof ConnectionCatalog.Entry entry
-                        && entry.kind() == kind));
+                        && entry.kind().isSql() && entry.kind().dialectKind() == kind));
         String current = port.getText();
         if (current == null || current.isBlank()
                 || current.equals(String.valueOf(ConnectionProfile.defaultPort(previous)))) {
@@ -495,6 +523,56 @@ public final class ConnectionWizard {
         }
         applySslLevels(kind);
         refreshSslPane();
+    }
+
+    /**
+     * 选中一张非 SQL 磁贴（Redis / 对象存储）：不走方言分支，置 {@link #nonSqlKind} 让属性页
+     * 渲染资产族自定义步骤。端口取该种类的默认端口（Redis 6379）。
+     */
+    void selectNonSql(AssetKind kind) {
+        AssetKind previous = nonSqlKind;
+        nonSqlKind = kind;
+        typeGroup.getToggles().forEach(toggle -> toggle.setSelected(
+                toggle.getUserData() instanceof ConnectionCatalog.Entry entry
+                        && entry.kind().equals(kind)));
+        // 端口预填：仅当用户没动过（空白，或仍等于上一个非 SQL 种类的默认端口）时才覆盖。
+        // ⚠️ 这里不能用资产族常量兜底（DialectBranchAudit 门禁禁止 UI 层硬编码资产族常量）；
+        //    previous 为空说明是首次选择，直接取当前种类的默认端口即可。
+        int priorDefault = previous != null ? ConnectionProfile.defaultPort(previous)
+                : ConnectionProfile.defaultPort(kind);
+        String current = port.getText();
+        if (current == null || current.isBlank()
+                || current.equals(String.valueOf(priorDefault))) {
+            port.setText(String.valueOf(ConnectionProfile.defaultPort(kind)));
+        }
+        redisSsl.setSelected(false);
+        // 非 SQL 资产无方言档位；SSL 由 redisSsl 复选框（options 的 ssl=true）表达。
+        if (sslHost != null) {
+            sslHost.getChildren().clear();
+            sslHost.getChildren().add(nonSqlSslNotice());
+        }
+    }
+
+    /** 当前是否「本地文件库」（SQLite）：非 SQL 资产一律按「非文件」渲染常规页。 */
+    private boolean isFileBased() {
+        return nonSqlKind == null && type != null && type.dialect().usesFilePath();
+    }
+
+    /** 非 SQL 资产的 TLS 说明 + 开关（Redis 用 options 的 ssl=true）。 */
+    private Node nonSqlSslNotice() {
+        VBox box = new VBox(10);
+        Label summary = new Label(I18n.t("wizard.redis.sslNote"));
+        summary.setWrapText(true);
+        summary.getStyleClass().add("adb-muted");
+        box.getChildren().addAll(summary, redisSsl);
+        HBox centered = new HBox(box);
+        centered.setAlignment(Pos.CENTER);
+        return centered;
+    }
+
+    /** 示意图里要画的「对方」资产种类：非 SQL 用 {@link #nonSqlKind}，否则从方言推。 */
+    private AssetKind diagramAssetKind() {
+        return nonSqlKind != null ? nonSqlKind : AssetKind.from(type.dialect().kind());
     }
 
     /**
@@ -534,12 +612,17 @@ public final class ConnectionWizard {
             return false;
         }
         clearStepError();
-        selectType(target.kind());
+        if (target.kind().isSql()) {
+            selectType(target.kind().dialectKind());
+        } else {
+            selectNonSql(target.kind());
+        }
         if (name.getText() == null || name.getText().isBlank()) {
             String suffix = target.database().isBlank() ? "" : " · " + target.database();
             name.setText(target.kind().displayName() + suffix);
         }
-        file.setText(target.kind().dialect().usesFilePath() ? target.database() : "");
+        boolean fileBased = target.kind().isSql() && target.kind().dialect().usesFilePath();
+        file.setText(fileBased ? target.database() : "");
         host.setText(target.host());
         if (target.port() > 0) {
             port.setText(String.valueOf(target.port()));
@@ -588,7 +671,44 @@ public final class ConnectionWizard {
             if (path.isBlank()) {
                 throw new IllegalArgumentException(I18n.t("wizard.uri.missingPath"));
             }
-            return new UriTarget(DialectKind.SQLITE, "", 0, path, "", "");
+            return new UriTarget(AssetKind.from(DialectKind.SQLITE), "", 0, path, "", "");
+        }
+
+        // Redis / Redis-SSL 连接 URI（非 SQL 资产；用 AssetKind.of 解析避免字面量分支）。
+        if (normalized.startsWith("redis://") || normalized.startsWith("rediss://")) {
+            boolean tls = normalized.startsWith("rediss://");
+            String body = raw.substring(normalized.indexOf("://") + 3);
+            int slash = body.indexOf('/');
+            String authority = slash < 0 ? body : body.substring(0, slash);
+            String dbPath = slash < 0 ? "" : body.substring(slash + 1);
+            int at = authority.lastIndexOf('@');
+            String user = "", secret = "";
+            if (at >= 0) {
+                String userinfo = authority.substring(0, at);
+                authority = authority.substring(at + 1);
+                int colon = userinfo.indexOf(':');
+                user = decode(colon < 0 ? userinfo : userinfo.substring(0, colon));
+                secret = colon < 0 ? "" : decode(userinfo.substring(colon + 1));
+            }
+            if (authority.isBlank()) {
+                throw new IllegalArgumentException(I18n.t("wizard.uri.missingHost"));
+            }
+            int portValue = 6379;
+            String hostVal = authority;
+            int colonPort = authority.lastIndexOf(':');
+            if (colonPort >= 0) {
+                try {
+                    portValue = Integer.parseInt(authority.substring(colonPort + 1));
+                    hostVal = authority.substring(0, colonPort);
+                } catch (NumberFormatException ignored) {
+                    // 没带端口：回落默认 6379。
+                }
+            }
+            Map<String, String> opts = new LinkedHashMap<>();
+            if (tls) {
+                opts.put("ssl", "true");
+            }
+            return new UriTarget(AssetKind.of("redis"), hostVal, portValue, dbPath, user, secret, opts);
         }
 
         DialectKind kind = kindOfScheme(normalized);
@@ -641,7 +761,7 @@ public final class ConnectionWizard {
         }
         int portValue = uri.getPort() > 0 ? uri.getPort()
                 : ConnectionProfile.defaultPort(kind);
-        return new UriTarget(kind, uri.getHost(), portValue, decode(db), user, secret, params);
+        return new UriTarget(AssetKind.from(kind), uri.getHost(), portValue, decode(db), user, secret, params);
     }
 
     /** 按方言自报的 scheme / 别名认类型（SQLite 走文件路径，不在这条路上）。 */
@@ -713,9 +833,13 @@ public final class ConnectionWizard {
         return outer;
     }
 
-    // ─────────────────── 第 2 步：属性页（7 个页签） ───────────────────
+    // ─────────────────── 第 2 步：属性页（6 个页签） ───────────────────
 
     private Node propertiesStep() {
+        // 非 SQL 资产（Redis）：不走 SQL 六页签，渲染资产族自定义步骤。
+        if (nonSqlKind != null && !nonSqlKind.isSql()) {
+            return nonSqlPropertiesStep();
+        }
         TabPane tabs = new TabPane();
         this.tabs = tabs;
         tabs.setId("wizard-tabs");
@@ -727,9 +851,6 @@ public final class ConnectionWizard {
                 tab("wizard-tab-databases", I18n.t("wizard.tab.databases"), databasesPane()),
                 tab("wizard-tab-ssl", I18n.t("wizard.tab.ssl"), sslPane()),
                 tab("wizard-tab-ssh", I18n.t("wizard.tab.ssh"), sshPane()),
-                tab("wizard-tab-http", I18n.t("wizard.tab.http"), notice(
-                        I18n.t("wizard.http.notice"),
-                        I18n.t("wizard.http.workaround"))),
                 tab("wizard-tab-remarks", I18n.t("wizard.tab.remarks"), remarksPane()));
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
@@ -770,6 +891,58 @@ public final class ConnectionWizard {
         return box;
     }
 
+    /**
+     * 非 SQL 资产的属性页（Redis）：复用常规 / 高级 / SSL / SSH / 备注五页，但去掉 SQL 专属的
+     * 「数据库」页（库下标落在常规页的 database 字段）。SQL 六页签的渲染逻辑不动。
+     */
+    private Node nonSqlPropertiesStep() {
+        TabPane tabs = new TabPane();
+        this.tabs = tabs;
+        tabs.setId("wizard-tabs");
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        tabs.getStyleClass().add("adb-form");
+        tabs.getTabs().addAll(
+                tab("wizard-tab-general", I18n.t("wizard.tab.general"), generalPane()),
+                tab("wizard-tab-advanced", I18n.t("wizard.tab.advanced"), advancedPane()),
+                tab("wizard-tab-ssl", I18n.t("wizard.tab.ssl"), sslPane()),
+                tab("wizard-tab-ssh", I18n.t("wizard.tab.ssh"), sshPane()),
+                tab("wizard-tab-remarks", I18n.t("wizard.tab.remarks"), remarksPane()));
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+
+        Button testButton = new Button(I18n.t("wizard.test"));
+        testButton.setId("wizard-test");
+        testButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        testButton.setOnAction(event -> testConnection());
+
+        Button uriButton = new Button(I18n.t("wizard.uriButton"));
+        uriButton.setId("wizard-uri-open");
+        uriButton.getStyleClass().addAll("adb-button", "adb-button--ghost");
+        uriButton.setOnAction(event -> {
+            step = 1;
+            updateStep();
+            toggleUriRow(true);
+        });
+
+        Button saveButton = new Button(I18n.t("common.ok"));
+        saveButton.setId("wizard-save");
+        saveButton.getStyleClass().addAll("adb-button", "adb-button--primary");
+        saveButton.setOnAction(event -> commit());
+
+        Region navGap = new Region();
+        HBox.setHgrow(navGap, Priority.ALWAYS);
+        HBox nav = new HBox(8, testButton, uriButton, navGap,
+                navButton("wizard-back", I18n.t("wizard.back"), this::goBack),
+                cancelButton, saveButton);
+        nav.setAlignment(Pos.CENTER_LEFT);
+        nav.getStyleClass().add("adb-wizard__footer");
+        VBox status = new VBox(2, testResult, saveError);
+        status.getStyleClass().add("adb-wizard__footer");
+
+        VBox box = new VBox(8, tabs, status, nav);
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+        return box;
+    }
+
     private static Tab tab(String id, String title, Node content) {
         Tab tab = new Tab(title, content);
         tab.setId(id);
@@ -781,7 +954,7 @@ public final class ConnectionWizard {
         GridPane grid = grid();
         grid.setId("wizard-general-grid");
         grid.addRow(0, new Label(I18n.t("wizard.name")), name);
-        if (type.dialect().usesFilePath()) {
+        if (isFileBased()) {
             Button browse = new Button(I18n.t("wizard.browse"));
             browse.setId("wizard-browse");
             browse.getStyleClass().addAll("adb-button", "adb-button--ghost");
@@ -834,10 +1007,10 @@ public final class ConnectionWizard {
         line.setMaxHeight(1);
 
         // ⭐ R54：这一格整块就是「你要连哪家」，图形不能还是那颗通用圆柱。
-        Node vendor = ConnectionCatalog.graphic(type.dialect().kind(), Icons.SIZE_TILE);
+        Node vendor = ConnectionCatalog.graphic(diagramAssetKind(), Icons.SIZE_TILE);
         Label dbIcon = bigIcon(vendor != null ? vendor
                 : Icons.colored(Icons.Icon.DATABASE, Icons.SIZE_TILE));
-        Label dbName = new Label(type.displayName());
+        Label dbName = new Label(diagramAssetKind().displayName());
         dbName.getStyleClass().add("adb-wizard__diagram-name");
         VBox database = new VBox(6, dbIcon, dbName);
         database.setAlignment(Pos.CENTER);
@@ -858,7 +1031,7 @@ public final class ConnectionWizard {
     }
 
     private Node databasesPane() {
-        Label summary = new Label(type.dialect().usesFilePath()
+        Label summary = new Label(isFileBased()
                 ? I18n.t("wizard.databases.sqlite")
                 : I18n.t("wizard.databases.server"));
         summary.setId("wizard-databases-summary");
@@ -880,6 +1053,12 @@ public final class ConnectionWizard {
      */
     private void refreshSslPane() {
         if (sslHost == null) {
+            return;
+        }
+        // 非 SQL 资产（Redis）：TLS 由 redisSsl 复选框表达，不摆方言档位。
+        if (nonSqlKind != null && !nonSqlKind.isSql()) {
+            sslHost.getChildren().clear();
+            sslHost.getChildren().add(nonSqlSslNotice());
             return;
         }
         sslHost.getChildren().clear();
@@ -953,7 +1132,7 @@ public final class ConnectionWizard {
             return;
         }
         sshPaneHost.getChildren().clear();
-        sshPaneHost.getChildren().add(type.dialect().usesFilePath()
+        sshPaneHost.getChildren().add(isFileBased()
                 ? notice(I18n.t("wizard.ssh.sqlite"), I18n.t("wizard.ssh.sqliteNext"))
                 : sshControls());
     }
@@ -1190,7 +1369,6 @@ public final class ConnectionWizard {
             case "ssl" -> propertiesPose("ssl");
             case "ssh" -> propertiesPose("ssh");
             case "sshkey" -> propertiesPose("sshkey");
-            case "http" -> propertiesPose("http");
             case "remarks" -> propertiesPose("remarks");
             default -> { }
         }
@@ -1312,9 +1490,17 @@ public final class ConnectionWizard {
             showStepError(I18n.t("wizard.error.name"));
             return false;
         }
-        if (type.dialect().usesFilePath()) {
+        if (isFileBased()) {
             if (file.getText() == null || file.getText().isBlank()) {
                 showStepError(I18n.t("wizard.error.file"));
+                return false;
+            }
+            return true;
+        }
+        // 非 SQL 资产（Redis）：主机必填，库下标可选（默认 0）。
+        if (nonSqlKind != null && !nonSqlKind.isSql()) {
+            if (host.getText() == null || host.getText().isBlank()) {
+                showStepError(I18n.t("wizard.error.host"));
                 return false;
             }
             return true;
@@ -1348,10 +1534,17 @@ public final class ConnectionWizard {
             return;
         }
         testResult.setText(I18n.t("wizard.test.running"));
-        // 测试连接用的是<b>表单里</b>的秘密：这时候档案还没落库、凭据库也还没写，
-        // 从凭据库读会拿到上一次的值（改口令后点测试却拿旧口令试，是最难查的假失败）。
-        String error = tester.test(
-                profile.spec(password.getText(), sshSecretsFromForm()));
+        String error;
+        if (nonSqlKind != null && !nonSqlKind.isSql()) {
+            // 非 SQL（Redis）：档案不能落 ConnectionSpec（spec() 对非 SQL 抛异常），
+            // 走覆写的 testProfile，由 AppShell 接 RedisSessions 直接验 host/port/auth/db/TLS。
+            error = tester.testProfile(profile, password.getText());
+        } else {
+            // SQL：规格必须带上<b>表单里</b>的 SSH 秘密（spec(password) 默认用
+            // SshSecrets.NONE，会让「测连接走隧道」悄悄缺口令，变成最难查的假失败）。
+            // 密码同理用表单里的，不读凭据库（档案还没落库）。
+            error = tester.test(profile.spec(password.getText(), sshSecretsFromForm()));
+        }
         testResult.setText(error == null ? I18n.t("wizard.test.ok")
                 : I18n.t("wizard.test.failed", error));
     }
@@ -1363,6 +1556,18 @@ public final class ConnectionWizard {
                 ? kind.displayName() : name.getText().trim();
         Map<String, String> options = collectOptions();
         ConnectionProfile profile;
+        // 非 SQL 资产（Redis）：用 AssetKind 主构造器建档，库下标即 database 字段。
+        if (nonSqlKind != null && !nonSqlKind.isSql()) {
+            return new ConnectionProfile(id, connectionName, nonSqlKind,
+                    host.getText() == null ? "" : host.getText().trim(),
+                    parsePort(port.getText(), ConnectionProfile.defaultPort(nonSqlKind)),
+                    database.getText() == null ? "" : database.getText().trim(),
+                    username.getText() == null ? "" : username.getText().trim(),
+                    initial != null && initial.favorite(),
+                    initial == null ? 0 : initial.lastUsedAt(),
+                    initial == null ? "" : initial.group(), options, SshConfig.NONE)
+                    .withSsh(sshConfigFromForm());
+        }
         if (kind.dialect().usesFilePath()) {
             profile = new ConnectionProfile(id, connectionName, kind, "", 0,
                     file.getText() == null ? "" : file.getText().trim(), "",
@@ -1407,16 +1612,21 @@ public final class ConnectionWizard {
         }
         put(options, OPT_QUERY_TIMEOUT, queryTimeout.getText());
         put(options, OPT_CHARSET, charset.getText());
-        Dialect dialect = type.dialect();
-        if (dialect.supportsSslOptionsUi()) {
-            Dialect.SslLevel level = sslMode.getValue() == null
-                    ? Dialect.SslLevel.OFF : sslMode.getValue();
-            // 档位 → 驱动参数：键与值都由方言给，界面不再猜。
-            options.putAll(dialect.sslOptions(level));
-            String rootKey = dialect.sslRootCertOption();
-            if (rootKey != null) {
-                put(options, rootKey, sslRoot.getText());
+        // 非 SQL 资产：没有方言档位；TLS 走 redisSsl 复选框（options 的 ssl=true）。
+        if (nonSqlKind == null) {
+            Dialect dialect = type.dialect();
+            if (dialect.supportsSslOptionsUi()) {
+                Dialect.SslLevel level = sslMode.getValue() == null
+                        ? Dialect.SslLevel.OFF : sslMode.getValue();
+                // 档位 → 驱动参数：键与值都由方言给，界面不再猜。
+                options.putAll(dialect.sslOptions(level));
+                String rootKey = dialect.sslRootCertOption();
+                if (rootKey != null) {
+                    put(options, rootKey, sslRoot.getText());
+                }
             }
+        } else if (nonSqlKind.isRedis()) {
+            put(options, "ssl", redisSsl.isSelected() ? "true" : null);
         }
         put(options, OPT_REMARKS, remarks.getText());
         return Map.copyOf(options);
@@ -1444,9 +1654,16 @@ public final class ConnectionWizard {
             selectType(DialectKind.SQLITE);
             return;
         }
-        selectType(initial.kind());
+        // 既有连接可能是非 SQL 档案（Redis）：用 isSql() 分流，不在此写 AssetKind 字面量。
+        if (initial.kind().isSql()) {
+            selectType(initial.kind().dialectKind());
+        } else {
+            selectNonSql(initial.kind());
+        }
         name.setText(initial.name());
-        file.setText(initial.kind().dialect().usesFilePath() ? initial.database() : "");
+        boolean initialFileBased = initial.kind().isSql()
+                && initial.kind().dialect().usesFilePath();
+        file.setText(initialFileBased ? initial.database() : "");
         host.setText(initial.host());
         int portValue = initial.port() > 0 ? initial.port()
                 : ConnectionProfile.defaultPort(initial.kind());
@@ -1504,12 +1721,17 @@ public final class ConnectionWizard {
      * 否则 URI 里带的 {@code ?sslmode=require} 会被静默丢掉，界面上却还显示「不加密」。
      */
     private void applyOptions(Map<String, String> options) {
-        Dialect dialect = type.dialect();
         queryTimeout.setText(options.getOrDefault(OPT_QUERY_TIMEOUT, ""));
         charset.setText(options.getOrDefault(OPT_CHARSET, ""));
-        sslMode.getSelectionModel().select(dialect.sslLevel(options));
-        String rootKey = dialect.sslRootCertOption();
-        sslRoot.setText(rootKey == null ? "" : options.getOrDefault(rootKey, ""));
+        // 非 SQL 资产：没有方言档位；TLS 复选框从 options 的 ssl 回填。
+        if (nonSqlKind == null) {
+            Dialect dialect = type.dialect();
+            sslMode.getSelectionModel().select(dialect.sslLevel(options));
+            String rootKey = dialect.sslRootCertOption();
+            sslRoot.setText(rootKey == null ? "" : options.getOrDefault(rootKey, ""));
+        } else if (nonSqlKind.isRedis()) {
+            redisSsl.setSelected("true".equals(options.getOrDefault("ssl", "")));
+        }
         remarks.setText(options.getOrDefault(OPT_REMARKS, ""));
 
         StringBuilder rest = new StringBuilder();

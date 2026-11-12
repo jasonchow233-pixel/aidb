@@ -2140,6 +2140,17 @@
     -fx-background-radius: 4px;
 }
 
+/* ⭐ B1：组 0 之外的 OR 条件组 —— 每组一条分隔线，rows 只负责组内行距。 */
+.adb-filter-builder__group {
+    -fx-padding: 6px 0px 0px 0px;
+    -fx-border-color: -adb-border-subtle;
+    -fx-border-width: 1 0 0 0;
+}
+
+.adb-filter-builder__rows {
+    -fx-padding: 2px 0px 0px 0px;
+}
+
 /* 当前编辑行浅蓝高亮（§1.9 第二行的状态语言）。 */
 .adb-filter-builder__row--active {
     -fx-background-color: -adb-bg-selected;
@@ -2230,6 +2241,19 @@
     -fx-font-size: 11px;
     -fx-font-style: italic;
     -fx-text-fill: -adb-text-tertiary;
+}
+
+/* ── 依赖图（DependencyGraphPage）────────────────────────────────── */
+.adb-graph-header {
+    -fx-background-color: -adb-bg-subtle;
+    -fx-border-color: -adb-border-subtle;
+    -fx-border-width: 0 0 1 0;
+    -fx-text-fill: -adb-text-secondary;
+}
+
+.adb-graph-scroll {
+    -fx-background-color: -adb-bg-canvas;
+    -fx-background: -adb-bg-canvas;
 }
 
 /* 工具条里带按下态的开关（N31 的 Filter & Sort）。 */
@@ -4192,6 +4216,48 @@
 
 .adb-db--mariadb .adb-icon-tone-c {
     -fx-fill: -adb-vendor-mariadb;
+}
+
+/* ⭐ EXT：Redis / 对象存储四家（WIP 磁贴，尚未开放连接）沿用同一套厂商作用域类，
+   让向导里的占位磁贴也能按品牌着色。颜色变量见 theme-dark/light.css。 */
+.adb-db--redis .adb-icon {
+    -fx-stroke: -adb-vendor-redis;
+}
+
+.adb-db--aws-s3 .adb-icon {
+    -fx-stroke: -adb-vendor-aws-s3;
+}
+
+.adb-db--aliyun-oss .adb-icon {
+    -fx-stroke: -adb-vendor-aliyun-oss;
+}
+
+.adb-db--qiniu .adb-icon {
+    -fx-stroke: -adb-vendor-qiniu;
+}
+
+.adb-db--tencent-cos .adb-icon {
+    -fx-stroke: -adb-vendor-tencent-cos;
+}
+
+.adb-db--redis .adb-icon-tone-c {
+    -fx-fill: -adb-vendor-redis;
+}
+
+.adb-db--aws-s3 .adb-icon-tone-c {
+    -fx-fill: -adb-vendor-aws-s3;
+}
+
+.adb-db--aliyun-oss .adb-icon-tone-c {
+    -fx-fill: -adb-vendor-aliyun-oss;
+}
+
+.adb-db--qiniu .adb-icon-tone-c {
+    -fx-fill: -adb-vendor-qiniu;
+}
+
+.adb-db--tencent-cos .adb-icon-tone-c {
+    -fx-fill: -adb-vendor-tencent-cos;
 }
 
 /* ⭐ R63-3：官方商标的浅色底板。
