@@ -143,7 +143,8 @@ class ConnectionWizardTest {
     }
 
     /**
-     * ⭐ R43-b：类型页只摆<b>真有驱动</b>的资产族（六家 SQL + Redis），一行排开 + 一行「其它怎么走」的提示。
+     * ⭐ R43-b：类型页只摆<b>真有驱动</b>的资产族（六家 SQL + Redis + 四家对象存储），
+     *    一行排开 + 一行「其它怎么走」的提示。P2 落地对象存储后磁贴数由 7 变 11。
      *
      * <p>原来照 Navicat 17 摆 22 张磁贴（9 类型 + 13 厂商）配 22 个复选与一个搜索框，
      * 其中 16 张点进去是一份「本版不支持」。那不是 Navicat 的形态 —— 它摆这些家是因为
@@ -154,7 +155,10 @@ class ConnectionWizardTest {
     void typePageShowsOnlyTheSixDriversItActuallyShips(FxRobot robot) {
         open(robot, null);
 
-        assertThat(ConnectionCatalog.CONNECTIONS).hasSize(7);
+        // ⭐ P2：6 SQL + 1 Redis + 4 对象存储 = 11 张真有驱动的磁贴。
+        //    写死一个常数会让「加一家 provider」意外通过或意外变红；这里钉的是
+        //    「注册表里有几家，页面上就有几张」，多一家驱动就得改注册表而不是改测试。
+        assertThat(ConnectionCatalog.CONNECTIONS).hasSize(11);
         for (ConnectionCatalog.Entry entry : ConnectionCatalog.CONNECTIONS) {
             assertThat(robot.lookup("#wizard-tile-" + entry.id()).tryQuery())
                     .as("磁贴：" + entry.name())
@@ -190,9 +194,9 @@ class ConnectionWizardTest {
         assertThat(javafx.scene.layout.VBox.getVgrow(tiles.getParent()))
                 .as("body 要吃下 outer 里多出来的高度（少这一句，居中=空转）")
                 .isEqualTo(javafx.scene.layout.Priority.ALWAYS);
-        // ⭐ EXT：现 7 张磁贴 = 6 家 SQL 驱动 + 1 家 Redis（P1-3 落地向导后纳入）。
-        //    仍远少于 Navicat 的 22 张，复选栏 / 搜索框依旧不许回来。
-        assertThat(tiles.getChildren()).hasSize(7);
+        // ⭐ P2：现 11 张磁贴 = 6 家 SQL + 1 家 Redis + 4 家对象存储。
+        //    默认「全部」族选中，所以每一张都可见；复选栏 / 搜索框依旧不许回来。
+        assertThat(tiles.getChildren()).hasSize(ConnectionCatalog.CONNECTIONS.size());
         assertThat(tiles.getChildren()).allSatisfy(tile ->
                 assertThat(((javafx.scene.Node) tile).isVisible()).isTrue());
 
@@ -1214,6 +1218,93 @@ class ConnectionWizardTest {
                 .findFirst()
                 .ifPresent(tab -> tabs.getSelectionModel().select(tab));
         WaitForAsyncUtils.waitForFxEvents();
+    }
+
+    // ─────────────────── P3-2：资产族筛选带 ───────────────────
+
+    private static javafx.scene.layout.TilePane tilePane(FxRobot robot) {
+        return robot.lookup("#wizard-type-tiles")
+                .queryAs(javafx.scene.layout.TilePane.class);
+    }
+
+    private static List<String> visibleTileIds(FxRobot robot) {
+        return tilePane(robot).getChildren().stream()
+                .filter(javafx.scene.Node::isVisible)
+                .map(node -> node.getId().substring("wizard-tile-".length()))
+                .toList();
+    }
+
+    private static String selectedTileId(FxRobot robot) {
+        return tilePane(robot).getChildren().stream()
+                .filter(node -> node instanceof ToggleButton button && button.isSelected())
+                .map(node -> node.getId().substring("wizard-tile-".length()))
+                .findFirst().orElse(null);
+    }
+
+    /**
+     * 默认「全部」：11 张磁贴一张不少。这一条和
+     * {@link #typePageShowsOnlyTheSixDriversItActuallyShips} 是同一句话的两面 ——
+     * 筛选器不许把「注册表即页面」这条 R43-b 承诺悄悄改成默认只显示一族。
+     */
+    @Test
+    void familyFilterDefaultsToAllElevenTiles(FxRobot robot) {
+        open(robot, null);
+
+        assertThat(robot.lookup("#wizard-family-cards").tryQuery()).isPresent();
+        assertThat(robot.lookup("#wizard-family-all").queryAs(ToggleButton.class).isSelected())
+                .isTrue();
+        assertThat(visibleTileIds(robot))
+                .hasSize(ConnectionCatalog.CONNECTIONS.size())
+                .contains("mysql", "redis", "object_store-s3", "object_store-cos");
+        assertThat(tilePane(robot).getChildren())
+                .allSatisfy(node -> assertThat(node.isManaged()).isTrue());
+    }
+
+    /** 选一族 → 只有那一族的磁贴可见，其余连布局空间都不占。 */
+    @Test
+    void familyFilterHidesOtherFamiliesWithoutRebuildingTiles(FxRobot robot) {
+        open(robot, null);
+        List<String> before = visibleTileIds(robot);
+
+        click(robot, "wizard-family-object-store");
+
+        assertThat(visibleTileIds(robot))
+                .as("对象存储族只剩四家")
+                .containsExactly("object_store-s3", "object_store-oss",
+                        "object_store-qiniu", "object_store-cos");
+        assertThat(tilePane(robot).getChildren())
+                .as("不重建磁贴：总节点数不变，只是可见性切换")
+                .hasSize(before.size());
+        assertThat(tilePane(robot).getChildren())
+                .filteredOn(node -> !node.isVisible())
+                .allSatisfy(node -> assertThat(node.isManaged()).isFalse());
+
+        click(robot, "wizard-family-sql");
+        assertThat(visibleTileIds(robot)).hasSize(6);
+
+        click(robot, "wizard-family-all");
+        assertThat(visibleTileIds(robot)).hasSize(ConnectionCatalog.CONNECTIONS.size());
+    }
+
+    /**
+     * 诚实性：当前选中的磁贴被筛掉时，选择必须跟着挪到该族第一张，
+     * 不能让「下一步」带着一个用户看不见的类型进属性页。
+     */
+    @Test
+    void filteringAwayTheSelectedTileMovesTheSelection(FxRobot robot) {
+        open(robot, null);
+
+        click(robot, "wizard-tile-redis");
+        assertThat(selectedTileId(robot)).isEqualTo("redis");
+
+        click(robot, "wizard-family-sql");
+
+        String selected = selectedTileId(robot);
+        assertThat(selected).as("换族后仍要有选中项").isNotNull();
+        assertThat(visibleTileIds(robot))
+                .as("选中项必须在本族可见磁贴里")
+                .contains(selected);
+        assertThat(selected).isNotEqualTo("redis");
     }
 
     /** 节点树里的全部文字（页签内容可能套了几层容器）。 */

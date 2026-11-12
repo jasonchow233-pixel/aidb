@@ -469,8 +469,12 @@ final class RedisValueDrawer extends VBox {
         if (!danger.requiresConfirm()) {
             return true;
         }
-        return DestructiveConfirm.of(
+        DestructiveConfirm confirm = DestructiveConfirm.of(
                 I18n.t("redis.value.title", currentKey == null ? "" : currentKey),
-                header, content, destructiveLabel).confirmed();
+                header, content, destructiveLabel);
+        // ⭐ §七：DestructiveConfirm 自己只造 Alert，主题类得由调用方抄过去，
+        //    否则这颗确认框会退回 Modena 灰皮肤（DialogStylesTest 按文件计数守着）。
+        DialogStyles.apply(confirm.alert(), getScene() == null ? null : getScene().getWindow());
+        return confirm.confirmed();
     }
 }

@@ -4,6 +4,8 @@ import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.Dialect;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.asset.AssetKind;
+import io.agenticdb.asset.ObjectStoreProvider;
+import io.agenticdb.objectstore.ObjectStoreCredentials;
 import io.agenticdb.jdbc.SshEndpoint;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.CredentialStore;
@@ -28,6 +30,7 @@ import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Toggle;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
@@ -160,6 +163,12 @@ public final class ConnectionWizard {
         List<String> all = new java.util.ArrayList<>(
                 List.of(OPT_QUERY_TIMEOUT, OPT_CHARSET, OPT_REMARKS));
         all.addAll(SSL_KEYS);
+        // ⭐ P2-6：对象存储专属表单键也由向导渲染，不回显到「附加参数」框。
+        all.add(ObjectStoreCredentials.OPT_PROVIDER);
+        all.add(ObjectStoreCredentials.OPT_ENDPOINT);
+        all.add(ObjectStoreCredentials.OPT_REGION);
+        all.add(ObjectStoreCredentials.OPT_BUCKET);
+        all.add(ObjectStoreCredentials.OPT_PATH_STYLE);
         return List.copyOf(all);
     }
 
@@ -242,6 +251,57 @@ public final class ConnectionWizard {
     private final TextArea remarks = new TextArea();
     /** Redis 的 TLS 开关（非 SQL 资产专用；SQL 的 TLS 由方言档位表达）。 */
     private final CheckBox redisSsl = new CheckBox(I18n.t("wizard.redis.ssl"));
+
+    // ── ⭐ EXT P2-6：对象存储专属表单 ──
+    // provider 由第 1 步选中的磁贴决定（四家共用一个 AssetKind），不在这里再选一次。
+    private final Label osProviderLabel = new Label();
+    private final TextField osEndpoint = new TextField();
+    private final TextField osRegion = new TextField();
+    private final TextField osBucket = new TextField();
+    private final TextField osAccessKey = new TextField();
+    private final PasswordField osSecretKey = new PasswordField();
+    private final CheckBox osPathStyle = new CheckBox(I18n.t("wizard.os.pathStyle"));
+    private final CheckBox osSsl = new CheckBox(I18n.t("wizard.os.ssl"));
+    private ObjectStoreProvider selectedOsProvider = ObjectStoreProvider.S3;
+
+    // ── ⭐ EXT（P3-2）：首步的三类资产族卡片选择器 ──
+    private final ToggleGroup familyGroup = new ToggleGroup();
+    private HBox familyCards;
+
+    /**
+     * ⭐ P3-2：磁贴从 7 张长到 11 张之后，一行铺开已经读不出「这是什么」了。
+     * 三类资产族给一条筛选带；{@code ALL} 是默认值，保证「注册表里几家、
+     * 页面上就几张」这条 R43-b 门禁仍然成立。
+     *
+     * <p>筛选只切 {@code visible/managed}，<b>不重建磁贴</b>：重建会把
+     * {@code typeGroup} 里的旧 Toggle 一起丢掉，用户已经选中的那家会静默失效。
+     */
+    enum TileFamily {
+        ALL("wizard.family.all"),
+        SQL("wizard.family.sql"),
+        REDIS("wizard.family.redis"),
+        OBJECT_STORE("wizard.family.objectstore");
+
+        private final String labelKey;
+
+        TileFamily(String labelKey) {
+            this.labelKey = labelKey;
+        }
+
+        String id() {
+            return name().toLowerCase(Locale.ROOT).replace('_', '-');
+        }
+
+        boolean accepts(ConnectionCatalog.Entry entry) {
+            return switch (this) {
+                case ALL -> true;
+                case SQL -> entry.kind().isSql();
+                case REDIS -> entry.kind().isRedis();
+                case OBJECT_STORE -> entry.kind().isObjectStore();
+            };
+        }
+    }
+
     private TabPane tabs;
 
     private final Label testResult = new Label(I18n.t("wizard.test.notYet"));
@@ -278,6 +338,7 @@ public final class ConnectionWizard {
 
     private void build() {
         buildTileGrid();
+        buildFamilyCards();
 
         uriField.setId("wizard-uri");
         uriField.setPromptText(I18n.t("wizard.uri.example"));
@@ -431,6 +492,99 @@ public final class ConnectionWizard {
         }
     }
 
+    /** ⭐ P3-2：一条筛选带，四枚 chip（全部 / SQL / Redis / 对象存储）。 */
+    private void buildFamilyCards() {
+        Label title = new Label(I18n.t("wizard.family.title"));
+        title.setId("wizard-family-title");
+        title.getStyleClass().add("adb-page__title");
+
+        Label hint = new Label(I18n.t("wizard.family.hint"));
+        hint.setId("wizard-family-hint");
+        hint.getStyleClass().add("adb-muted");
+        hint.setWrapText(true);
+
+        HBox chips = new HBox(6);
+        chips.setId("wizard-family-chips");
+        ToggleButton all = null;
+        for (TileFamily family : TileFamily.values()) {
+            ToggleButton chip = new ToggleButton(I18n.t(family.labelKey));
+            chip.setId("wizard-family-" + family.id());
+            chip.setUserData(family);
+            chip.setToggleGroup(familyGroup);
+            chip.getStyleClass().add("adb-chip");
+            chip.setOnAction(event -> {
+                // ⛔ ToggleGroup 允许再点一次变成「全不选」；筛选带必须永远有一族生效。
+                if (!chip.isSelected()) {
+                    chip.setSelected(true);
+                }
+            });
+            chips.getChildren().add(chip);
+            if (family == TileFamily.ALL) {
+                all = chip;
+            }
+        }
+        // 默认「全部」：11 张磁贴全部可见，与「注册表即页面」的旧门禁一致。
+        familyGroup.selectToggle(all);
+        markSelectedFamilyChip();
+        familyGroup.selectedToggleProperty().addListener((observable, before, after) -> {
+            markSelectedFamilyChip();
+            TileFamily family = after == null ? TileFamily.ALL
+                    : (TileFamily) after.getUserData();
+            applyFamilyFilter(family);
+        });
+
+        VBox labels = new VBox(2, title, hint);
+        Region gap = new Region();
+        HBox.setHgrow(gap, Priority.ALWAYS);
+        familyCards = new HBox(12, labels, gap, chips);
+        familyCards.setId("wizard-family-cards");
+        familyCards.setAlignment(Pos.CENTER_LEFT);
+        familyCards.getStyleClass().add("adb-toolbar__group");
+    }
+
+    /** 选中那枚 chip 用「活的限制」tint；不是新样式，复用网格筛选 chip 的语义。 */
+    private void markSelectedFamilyChip() {
+        for (Toggle toggle : familyGroup.getToggles()) {
+            if (toggle instanceof ToggleButton chip) {
+                boolean selected = chip.isSelected();
+                if (selected && !chip.getStyleClass().contains("adb-chip--filter")) {
+                    chip.getStyleClass().add("adb-chip--filter");
+                } else if (!selected) {
+                    chip.getStyleClass().remove("adb-chip--filter");
+                }
+            }
+        }
+    }
+
+    /**
+     * 只切换可见性。当前选中的磁贴被筛掉时，把选择挪到该族第一张 ——
+     * 否则「下一步」会带着一个用户看不见的类型进属性页（假一致性）。
+     */
+    private void applyFamilyFilter(TileFamily family) {
+        ToggleButton firstVisible = null;
+        for (Node node : tiles.getChildren()) {
+            boolean visible = family == TileFamily.ALL
+                    || (node.getUserData() instanceof ConnectionCatalog.Entry entry
+                        && family.accepts(entry));
+            node.setVisible(visible);
+            node.setManaged(visible);
+            if (visible && firstVisible == null && node instanceof ToggleButton button) {
+                firstVisible = button;
+            }
+        }
+        Toggle selected = typeGroup.getSelectedToggle();
+        if (selected instanceof Node node && (!node.isVisible() || !node.isManaged())
+                && firstVisible != null) {
+            typeGroup.selectToggle(firstVisible);
+            ConnectionCatalog.Entry entry = (ConnectionCatalog.Entry) firstVisible.getUserData();
+            if (entry.kind().isSql()) {
+                selectType(entry.kind().dialectKind());
+            } else {
+                selectNonSql(entry);
+            }
+        }
+    }
+
     /**
      * 一张磁贴 = 彩色图标 + 名称。说明收进 tooltip —— Navicat 的磁贴只有这两行，
      * 多一行小字会顶破 108px 的磁贴高度（R43-b 之后是一行六张，也没有第二行可挤）。
@@ -439,7 +593,9 @@ public final class ConnectionWizard {
         // ⭐ R63-3：磁贴顶的是那一家自己的**官方标志**，走统一出口 graphic()（与树、
         //    状态栏、页签同一枚）。adb-db--* 类照旧挂在磁贴上 —— 库节点那种「形状是自己的、
         //    颜色跟厂走」的吃法还靠它，磁贴自己不再从 CSS 取色。
-        Node glyph = ConnectionCatalog.graphic(entry.kind(), Icons.SIZE_TILE);
+        // ⭐ P2-6：按具体磁贴行取图形 —— 对象存储四家同一个 AssetKind，
+        //    若按 kind 反查会把四张磁贴都画成第一家的商标。
+        Node glyph = ConnectionCatalog.graphicFor(entry, Icons.SIZE_TILE);
         Label icon = bigIcon(glyph);
         icon.getStyleClass().add("adb-type-tile__icon");
 
@@ -476,11 +632,12 @@ public final class ConnectionWizard {
             if (!button.isSelected()) {
                 button.setSelected(true);
             }
-            // SQL 族走方言分支；非 SQL（Redis）走资产族自定义步骤 —— 不在这里写 AssetKind 字面量分支。
+            // SQL 族走方言分支；非 SQL（Redis / 对象存储）走资产族自定义步骤 ——
+            // 传整行 entry 而不是 kind，才能把「四家中的哪一家」带下去。
             if (entry.kind().isSql()) {
                 selectType(entry.kind().dialectKind());
             } else {
-                selectNonSql(entry.kind());
+                selectNonSql(entry);
             }
         });
         return button;
@@ -529,12 +686,19 @@ public final class ConnectionWizard {
      * 选中一张非 SQL 磁贴（Redis / 对象存储）：不走方言分支，置 {@link #nonSqlKind} 让属性页
      * 渲染资产族自定义步骤。端口取该种类的默认端口（Redis 6379）。
      */
-    void selectNonSql(AssetKind kind) {
+    void selectNonSql(ConnectionCatalog.Entry entry) {
+        AssetKind kind = entry.kind();
         AssetKind previous = nonSqlKind;
         nonSqlKind = kind;
+        if (entry.provider() != null) {
+            selectedOsProvider = entry.provider();
+            osProviderLabel.setText(selectedOsProvider.displayName());
+        }
+        // ⭐ 按磁贴 id 精确选中：对象存储四张是同一个 AssetKind，
+        //    用 kind.equals 会把四张一起点亮（ToggleGroup 只剩最后一个，看上去像随机跳）。
         typeGroup.getToggles().forEach(toggle -> toggle.setSelected(
-                toggle.getUserData() instanceof ConnectionCatalog.Entry entry
-                        && entry.kind().equals(kind)));
+                toggle.getUserData() instanceof ConnectionCatalog.Entry e
+                        && e.id().equals(entry.id())));
         // 端口预填：仅当用户没动过（空白，或仍等于上一个非 SQL 种类的默认端口）时才覆盖。
         // ⚠️ 这里不能用资产族常量兜底（DialectBranchAudit 门禁禁止 UI 层硬编码资产族常量）；
         //    previous 为空说明是首次选择，直接取当前种类的默认端口即可。
@@ -546,10 +710,19 @@ public final class ConnectionWizard {
             port.setText(String.valueOf(ConnectionProfile.defaultPort(kind)));
         }
         redisSsl.setSelected(false);
-        // 非 SQL 资产无方言档位；SSL 由 redisSsl 复选框（options 的 ssl=true）表达。
+        // 非 SQL 资产无方言档位；Redis 用 redisSsl、对象存储用 osSsl 表达 TLS。
         if (sslHost != null) {
             sslHost.getChildren().clear();
-            sslHost.getChildren().add(nonSqlSslNotice());
+            sslHost.getChildren().add(
+                    kind.isObjectStore() ? objectStoreSslNotice() : nonSqlSslNotice());
+        }
+    }
+
+    /** 既有档案 / URI 的 kind 级入口：按 kind 反查首行磁贴（对象存储由 loadInitial 精确覆盖）。 */
+    void selectNonSql(AssetKind kind) {
+        ConnectionCatalog.Entry entry = ConnectionCatalog.forKind(kind);
+        if (entry != null) {
+            selectNonSql(entry);
         }
     }
 
@@ -568,6 +741,54 @@ public final class ConnectionWizard {
         HBox centered = new HBox(box);
         centered.setAlignment(Pos.CENTER);
         return centered;
+    }
+
+    /** 对象存储的 TLS 页：开关 + 凭据落盘口径说明。 */
+    private Node objectStoreSslNotice() {
+        VBox box = new VBox(10);
+        Label summary = new Label(I18n.t("wizard.os.credentialsHint"));
+        summary.setWrapText(true);
+        summary.getStyleClass().add("adb-muted");
+        box.getChildren().addAll(summary, osSsl);
+        HBox centered = new HBox(box);
+        centered.setAlignment(Pos.CENTER);
+        return centered;
+    }
+
+    /**
+     * ⭐ P2-6：对象存储专属页。provider 由第 1 步的磁贴决定（展示为只读标签），
+     * 其余是 endpoint / region / bucket / 凭据 / path-style。
+     *
+     * <p>凭据<b>不</b>写进 {@code options}：那条 map 会明文落盘到 connections.json。
+     * accessKey / secretKey 经 {@link ObjectStoreCredentials#encode} 编成一条串，
+     * 由 {@link #password()} 交给调用方存进系统凭据库。
+     */
+    private Node objectStorePane() {
+        GridPane grid = grid();
+        grid.setId("wizard-os-grid");
+        osProviderLabel.setId("wizard-os-provider");
+        osEndpoint.setId("wizard-os-endpoint");
+        osRegion.setId("wizard-os-region");
+        osBucket.setId("wizard-os-bucket");
+        osAccessKey.setId("wizard-os-access-key");
+        osSecretKey.setId("wizard-os-secret-key");
+        osPathStyle.setId("wizard-os-path-style");
+        osSsl.setId("wizard-os-ssl");
+
+        grid.addRow(0, new Label(I18n.t("wizard.os.provider")), osProviderLabel);
+        grid.addRow(1, new Label(I18n.t("wizard.os.endpoint")), osEndpoint);
+        grid.addRow(2, new Label(I18n.t("wizard.os.region")), osRegion);
+        grid.addRow(3, new Label(I18n.t("wizard.os.bucket")), osBucket);
+        grid.addRow(4, new Label(I18n.t("wizard.os.accessKey")), osAccessKey);
+        grid.addRow(5, new Label(I18n.t("wizard.os.secretKey")), osSecretKey);
+        grid.addRow(6, new Label(""), osPathStyle);
+
+        Label hint = new Label(I18n.t("wizard.os.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("adb-muted");
+        VBox box = new VBox(12, grid, hint);
+        box.getStyleClass().add("adb-form");
+        return box;
     }
 
     /** 示意图里要画的「对方」资产种类：非 SQL 用 {@link #nonSqlKind}，否则从方言推。 */
@@ -808,7 +1029,9 @@ public final class ConnectionWizard {
         hint.setId("wizard-type-hint");
         hint.getStyleClass().add("adb-muted");
         hint.setWrapText(true);
-        VBox body = new VBox(10, header, tiles, hint);
+        // ⭐ P3-2：11 张磁贴靠一条族筛选带收口；它是 body 的直接子节点，
+        //    tiles 的父节点仍是 VBox（R43-b 那条「grow 链」门禁不受影响）。
+        VBox body = new VBox(10, header, familyCards, tiles, hint);
         body.setAlignment(Pos.TOP_LEFT);
         VBox.setVgrow(tiles, Priority.ALWAYS);
 
@@ -901,12 +1124,18 @@ public final class ConnectionWizard {
         tabs.setId("wizard-tabs");
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         tabs.getStyleClass().add("adb-form");
-        tabs.getTabs().addAll(
-                tab("wizard-tab-general", I18n.t("wizard.tab.general"), generalPane()),
-                tab("wizard-tab-advanced", I18n.t("wizard.tab.advanced"), advancedPane()),
-                tab("wizard-tab-ssl", I18n.t("wizard.tab.ssl"), sslPane()),
-                tab("wizard-tab-ssh", I18n.t("wizard.tab.ssh"), sshPane()),
-                tab("wizard-tab-remarks", I18n.t("wizard.tab.remarks"), remarksPane()));
+        java.util.List<Tab> pages = new java.util.ArrayList<>();
+        pages.add(tab("wizard-tab-general", I18n.t("wizard.tab.general"), generalPane()));
+        if (nonSqlKind.isObjectStore()) {
+            // 对象存储多一页专属子表单；Redis 仍是五页，SQL 走另一条六页分支（门禁钉着 6）。
+            pages.add(tab("wizard-tab-objectstore", I18n.t("wizard.tab.objectstore"),
+                    objectStorePane()));
+        }
+        pages.add(tab("wizard-tab-advanced", I18n.t("wizard.tab.advanced"), advancedPane()));
+        pages.add(tab("wizard-tab-ssl", I18n.t("wizard.tab.ssl"), sslPane()));
+        pages.add(tab("wizard-tab-ssh", I18n.t("wizard.tab.ssh"), sshPane()));
+        pages.add(tab("wizard-tab-remarks", I18n.t("wizard.tab.remarks"), remarksPane()));
+        tabs.getTabs().addAll(pages);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         Button testButton = new Button(I18n.t("wizard.test"));
@@ -1343,8 +1572,20 @@ public final class ConnectionWizard {
         return Optional.ofNullable(dialog.getResult());
     }
 
-    /** 只有勾了「保存口令」才交给调用方落进凭据库。 */
+    /**
+     * 交给调用方落进凭据库的那一条串。
+     *
+     * <p>⭐ P2-6：对象存储的 AK/SK 不是「可选口令」而是连接必需参数，
+     * 所以不看「保存口令」复选框，统一经 {@link ObjectStoreCredentials#encode}
+     * 编成一条串（三段密钥点号分隔），由后端会话工厂解出；否则连接根本建不起来。
+     */
     public String password() {
+        if (nonSqlKind != null && nonSqlKind.isObjectStore()) {
+            return ObjectStoreCredentials.encode(
+                    osAccessKey.getText() == null ? "" : osAccessKey.getText().trim(),
+                    osSecretKey.getText() == null ? "" : osSecretKey.getText(),
+                    "");
+        }
         return savePassword.isSelected() ? password.getText() : "";
     }
 
@@ -1499,6 +1740,18 @@ public final class ConnectionWizard {
         }
         // 非 SQL 资产（Redis）：主机必填，库下标可选（默认 0）。
         if (nonSqlKind != null && !nonSqlKind.isSql()) {
+            if (nonSqlKind.isObjectStore()) {
+                // 对象存储用自己的子表单，不复用 SQL 的 host/database 校验口径。
+                if (osBucket.getText() == null || osBucket.getText().isBlank()) {
+                    showStepError(I18n.t("wizard.error.bucket"));
+                    return false;
+                }
+                if (osEndpoint.getText() == null || osEndpoint.getText().isBlank()) {
+                    showStepError(I18n.t("wizard.error.endpoint"));
+                    return false;
+                }
+                return true;
+            }
             if (host.getText() == null || host.getText().isBlank()) {
                 showStepError(I18n.t("wizard.error.host"));
                 return false;
@@ -1538,7 +1791,11 @@ public final class ConnectionWizard {
         if (nonSqlKind != null && !nonSqlKind.isSql()) {
             // 非 SQL（Redis）：档案不能落 ConnectionSpec（spec() 对非 SQL 抛异常），
             // 走覆写的 testProfile，由 AppShell 接 RedisSessions 直接验 host/port/auth/db/TLS。
-            error = tester.testProfile(profile, password.getText());
+            // 对象存储的表单口令在专属页（AK/SK 编码串），Redis/SQL 用主口令框原值
+            // —— 测连接不能用「保存口令」复选框过滤后的值，否则测的是空账号。
+            error = tester.testProfile(profile,
+                    nonSqlKind != null && nonSqlKind.isObjectStore()
+                            ? password() : password.getText());
         } else {
             // SQL：规格必须带上<b>表单里</b>的 SSH 秘密（spec(password) 默认用
             // SshSecrets.NONE，会让「测连接走隧道」悄悄缺口令，变成最难查的假失败）。
@@ -1552,16 +1809,26 @@ public final class ConnectionWizard {
     private ConnectionProfile buildProfile() {
         DialectKind kind = type;
         String id = initial == null ? UUID.randomUUID().toString() : initial.id();
+        // 非 SQL 资产要用自己的 displayName 兜底，否则新 Redis/对象存储档案会叫「SQLite」。
         String connectionName = name.getText() == null || name.getText().isBlank()
-                ? kind.displayName() : name.getText().trim();
+                ? (nonSqlKind != null ? nonSqlKind.displayName() : kind.displayName())
+                : name.getText().trim();
         Map<String, String> options = collectOptions();
         ConnectionProfile profile;
-        // 非 SQL 资产（Redis）：用 AssetKind 主构造器建档，库下标即 database 字段。
+        // 非 SQL 资产（Redis / 对象存储）：用 AssetKind 主构造器建档。
+        // Redis 的 database 字段借存库下标；对象存储借存 bucket（host 存 endpoint）。
         if (nonSqlKind != null && !nonSqlKind.isSql()) {
+            boolean os = nonSqlKind.isObjectStore();
+            String endpointOrHost = os
+                    ? (osEndpoint.getText() == null ? "" : osEndpoint.getText().trim())
+                    : (host.getText() == null ? "" : host.getText().trim());
+            String bucketOrDb = os
+                    ? (osBucket.getText() == null ? "" : osBucket.getText().trim())
+                    : (database.getText() == null ? "" : database.getText().trim());
             return new ConnectionProfile(id, connectionName, nonSqlKind,
-                    host.getText() == null ? "" : host.getText().trim(),
+                    endpointOrHost,
                     parsePort(port.getText(), ConnectionProfile.defaultPort(nonSqlKind)),
-                    database.getText() == null ? "" : database.getText().trim(),
+                    bucketOrDb,
                     username.getText() == null ? "" : username.getText().trim(),
                     initial != null && initial.favorite(),
                     initial == null ? 0 : initial.lastUsedAt(),
@@ -1627,6 +1894,15 @@ public final class ConnectionWizard {
             }
         } else if (nonSqlKind.isRedis()) {
             put(options, "ssl", redisSsl.isSelected() ? "true" : null);
+        } else if (nonSqlKind.isObjectStore()) {
+            // ⭐ P2-6：非敏感参数落 options；AK/SK 绝不进来（会被明文写进 connections.json）。
+            put(options, ObjectStoreCredentials.OPT_PROVIDER, selectedOsProvider.id());
+            put(options, ObjectStoreCredentials.OPT_ENDPOINT, osEndpoint.getText());
+            put(options, ObjectStoreCredentials.OPT_REGION, osRegion.getText());
+            put(options, ObjectStoreCredentials.OPT_BUCKET, osBucket.getText());
+            options.put(ObjectStoreCredentials.OPT_PATH_STYLE,
+                    String.valueOf(osPathStyle.isSelected()));
+            put(options, "ssl", osSsl.isSelected() ? "true" : null);
         }
         put(options, OPT_REMARKS, remarks.getText());
         return Map.copyOf(options);
@@ -1654,9 +1930,21 @@ public final class ConnectionWizard {
             selectType(DialectKind.SQLITE);
             return;
         }
-        // 既有连接可能是非 SQL 档案（Redis）：用 isSql() 分流，不在此写 AssetKind 字面量。
+        // 既有连接可能是非 SQL 档案（Redis / 对象存储）：用 isSql() 分流，
+        // 对象存储还要按 options 里的 provider 精确选中四张磁贴中的那一张。
         if (initial.kind().isSql()) {
             selectType(initial.kind().dialectKind());
+        } else if (initial.kind().isObjectStore()) {
+            String providerId = initial.options().getOrDefault(
+                    ObjectStoreCredentials.OPT_PROVIDER, "s3");
+            // tileId 的口吻在 TileDescriptor.tileId()：分隔符是 '-'（CSS id 安全）。
+            ConnectionCatalog.Entry entry = ConnectionCatalog.forTileId(
+                    initial.kind().id() + "-" + providerId);
+            if (entry != null) {
+                selectNonSql(entry);
+            } else {
+                selectNonSql(initial.kind());
+            }
         } else {
             selectNonSql(initial.kind());
         }
@@ -1671,7 +1959,16 @@ public final class ConnectionWizard {
         database.setText(initial.database());
         username.setText(initial.username());
         Optional<String> saved = credentials.password(initial.id());
-        saved.ifPresent(password::setText);
+        if (initial.kind().isObjectStore()) {
+            // 凭据库里那条是三段编码串，解回专属页的两个框；界面从不假装知道存了什么。
+            saved.ifPresent(stored -> {
+                String[] parts = ObjectStoreCredentials.decode(stored);
+                osAccessKey.setText(parts[0]);
+                osSecretKey.setText(parts[1]);
+            });
+        } else {
+            saved.ifPresent(password::setText);
+        }
         savePassword.setSelected(saved.isPresent());
 
         loadInitialSsh(initial.ssh());
@@ -1731,6 +2028,22 @@ public final class ConnectionWizard {
             sslRoot.setText(rootKey == null ? "" : options.getOrDefault(rootKey, ""));
         } else if (nonSqlKind.isRedis()) {
             redisSsl.setSelected("true".equals(options.getOrDefault("ssl", "")));
+        } else if (nonSqlKind.isObjectStore()) {
+            osEndpoint.setText(options.getOrDefault(ObjectStoreCredentials.OPT_ENDPOINT, ""));
+            osRegion.setText(options.getOrDefault(ObjectStoreCredentials.OPT_REGION, ""));
+            osBucket.setText(options.getOrDefault(ObjectStoreCredentials.OPT_BUCKET, ""));
+            osPathStyle.setSelected(Boolean.parseBoolean(
+                    options.getOrDefault(ObjectStoreCredentials.OPT_PATH_STYLE, "true")));
+            osSsl.setSelected("true".equals(options.getOrDefault("ssl", "")));
+            String providerId = options.getOrDefault(ObjectStoreCredentials.OPT_PROVIDER, "");
+            if (!providerId.isBlank()) {
+                try {
+                    selectedOsProvider = ObjectStoreProvider.of(providerId);
+                    osProviderLabel.setText(selectedOsProvider.displayName());
+                } catch (IllegalArgumentException ignored) {
+                    // 旧档案里的未知 provider：保留默认，不偷偷改成别家。
+                }
+            }
         }
         remarks.setText(options.getOrDefault(OPT_REMARKS, ""));
 

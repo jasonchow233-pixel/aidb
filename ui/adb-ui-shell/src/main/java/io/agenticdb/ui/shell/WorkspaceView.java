@@ -34,6 +34,8 @@ public final class WorkspaceView extends StackPane {
     private final Function<TabItem, Node> objectHomeFactory;
     /** ⭐ EXT（P1-5）：Redis 键浏览器页工厂（与 grid / object 同形，返回 Node）。 */
     private final Function<TabItem, Node> redisKeysPageFactory;
+    /** ⭐ EXT（P2-8）：对象存储浏览器页工厂。 */
+    private final Function<TabItem, Node> objectBrowserPageFactory;
     private final Map<String, DataGridPage> gridPages = new LinkedHashMap<>();
     private final Map<String, QueryPage> queryPages = new LinkedHashMap<>();
     private final Map<String, StructurePage> structurePages = new LinkedHashMap<>();
@@ -42,6 +44,8 @@ public final class WorkspaceView extends StackPane {
     private final Map<String, TableListPage> tableListPages = new LinkedHashMap<>();
     /** ⭐ EXT（P1-5）：Redis 键浏览器页缓存（按 tab id，密度下发 + 关闭释放都靠它）。 */
     private final Map<String, RedisKeysPage> redisKeysPages = new LinkedHashMap<>();
+    /** ⭐ EXT（P2-8）：对象存储浏览器页缓存（同 RedisKeysPage 口径）。 */
+    private final Map<String, ObjectBrowserPage> objectBrowserPages = new LinkedHashMap<>();
 
     private DataGridPage activeGrid;
     private QueryPage activeQuery;
@@ -131,8 +135,12 @@ public final class WorkspaceView extends StackPane {
         for (RedisKeysPage page : redisKeysPages.values()) {
             page.setDensity(density);
         }
+        for (ObjectBrowserPage page : objectBrowserPages.values()) {
+            page.setDensity(density);
+        }
     }
 
+    /** ⭐ 8 参兼容构造：既有的 38 项门禁仍按旧签名装配；对象存储工厂缺省为空。 */
     public WorkspaceView(ActionRegistry actions, String connectionName,
                          Function<TabItem, Node> gridPageFactory,
                          Function<TabItem, QueryPage> queryPageFactory,
@@ -140,6 +148,20 @@ public final class WorkspaceView extends StackPane {
                          Function<TabItem, ConnectionsPage> connectionsPageFactory,
                          Function<TabItem, Node> objectHomeFactory,
                          Function<TabItem, Node> redisKeysPageFactory) {
+        this(actions, connectionName, gridPageFactory, queryPageFactory,
+                structurePageFactory, connectionsPageFactory, objectHomeFactory,
+                redisKeysPageFactory, tab -> null);
+    }
+
+    /** ⭐ EXT（P2-8）：9 参构造 —— AppShell 注入对象存储浏览器页工厂。 */
+    public WorkspaceView(ActionRegistry actions, String connectionName,
+                         Function<TabItem, Node> gridPageFactory,
+                         Function<TabItem, QueryPage> queryPageFactory,
+                         Function<TabItem, StructurePage> structurePageFactory,
+                         Function<TabItem, ConnectionsPage> connectionsPageFactory,
+                         Function<TabItem, Node> objectHomeFactory,
+                         Function<TabItem, Node> redisKeysPageFactory,
+                         Function<TabItem, Node> objectBrowserPageFactory) {
         this.actions = actions;
         this.connectionName = connectionName;
         this.gridPageFactory = gridPageFactory;
@@ -148,6 +170,8 @@ public final class WorkspaceView extends StackPane {
         this.connectionsPageFactory = connectionsPageFactory;
         this.objectHomeFactory = objectHomeFactory;
         this.redisKeysPageFactory = redisKeysPageFactory;
+        this.objectBrowserPageFactory = objectBrowserPageFactory == null
+                ? tab -> null : objectBrowserPageFactory;
         getStyleClass().add("adb-workspace");
         // ⭐ S-7：这里原来会画一张欢迎页，然后**立刻被对象首页盖掉** ——
         //    AppShell 无条件 openPermanent(object-home)，欢迎页永远没人看得到。
@@ -230,6 +254,16 @@ public final class WorkspaceView extends StackPane {
         this.transferResolver = resolver == null ? id -> null : resolver;
     }
 
+    /** 切到非 SQL 资产页时，把 SQL 侧的「当前活动页」引用一次性清干净。 */
+    private void resetActivePages() {
+        activeGrid = null;
+        activeQuery = null;
+        activeStructure = null;
+        activeConnections = null;
+        activeObjectTab = null;
+        activeObjectPage = null;
+    }
+
     public void showTab(TabItem tab) {
         if (tab.kind() == TabKind.OBJECT) {
             // ⭐ N33：常驻的「对象」标签托管表清单页（Navicat 的「对象」同形）。
@@ -273,12 +307,29 @@ public final class WorkspaceView extends StackPane {
                 }
             }
             if (page != null) {
-                activeGrid = null;
-                activeQuery = null;
-                activeStructure = null;
-                activeConnections = null;
-                activeObjectTab = null;
-                activeObjectPage = null;
+                resetActivePages();
+                getChildren().setAll(page);
+                page.activate();
+                return;
+            }
+        }
+        if (tab.kind() == TabKind.OBJECT_BROWSER) {
+            // ⭐ EXT（P2-8）：对象存储浏览器。每个 (连接, bucket) 一个实例并缓存，
+            // 切标签不重连、不丢当前前缀与滚动位置。
+            ObjectBrowserPage page = objectBrowserPages.get(tab.id());
+            if (page == null) {
+                Node created = objectBrowserPageFactory.apply(tab);
+                if (created instanceof ObjectBrowserPage browser) {
+                    page = browser;
+                    objectBrowserPages.put(tab.id(), page);
+                } else if (created != null) {
+                    resetActivePages();
+                    getChildren().setAll(created);
+                    return;
+                }
+            }
+            if (page != null) {
+                resetActivePages();
                 getChildren().setAll(page);
                 page.activate();
                 return;
@@ -408,6 +459,11 @@ public final class WorkspaceView extends StackPane {
         RedisKeysPage redis = redisKeysPages.remove(id);
         if (redis != null) {
             redis.close();
+        }
+        // ⭐ EXT（P2-8）：对象存储浏览器页同理，关标签要释放会话。
+        ObjectBrowserPage browser = objectBrowserPages.remove(id);
+        if (browser != null) {
+            browser.close();
         }
         // 表清单页没有 close()，但缓存必须一起移除 —— 否则关掉的标签页会永远留在
         // applyDensity 的遍历里（关 20 个表清单就多 20 个对象）。
@@ -608,7 +664,7 @@ public final class WorkspaceView extends StackPane {
             case SETTINGS -> I18n.t("workspace.context.settings");
             case OBJECT -> connectionName;
             case ROUTINE -> I18n.t("workspace.context.routine", connectionName);
-            case REDIS_KEYS -> connectionName;
+            case REDIS_KEYS, OBJECT_BROWSER -> connectionName;
         });
         context.getStyleClass().add("adb-muted");
         // ⚠️ 徽标与右侧说明同文时（「工具」/「工具」）右侧那份是纯噪音 —— 藏掉。

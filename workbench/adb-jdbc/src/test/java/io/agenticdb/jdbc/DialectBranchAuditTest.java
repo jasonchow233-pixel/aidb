@@ -50,7 +50,11 @@ class DialectBranchAuditTest {
             "workbench/adb-jdbc/src/main/java/io/agenticdb/jdbc/ConnectionSpec.java",
             // 资产层判别轴唯一定点：SQL 资产 → DialectKind 的映射只写在这里。
             "workbench/adb-asset/src/main/java/io/agenticdb/asset/AssetKind.java",
-            // 向导当前仅承载 SQL 族，其 DialectKind 默认/注册引用是合法的 SQL-only 行为。
+            // 向导同时承载 SQL / Redis / 对象存储三族，但仍需要一处 DialectKind
+            // 默认值与 SQL 方言注册引用（非 SQL 族一律走 AssetFamily 的步骤 id，
+            // 不在这里反查方言）。P4-1 起「UI 不得硬编码资产族常量」由
+            // uiLayerDoesNotHardcodeAssetFamilyConstants 与
+            // AssetFamilyFilterAuditTest 的新族覆盖断言共同守着。
             "ui/adb-ui-shell/src/main/java/io/agenticdb/ui/shell/ConnectionWizard.java");
 
     /**

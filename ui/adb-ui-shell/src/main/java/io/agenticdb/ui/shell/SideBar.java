@@ -112,6 +112,12 @@ public final class SideBar extends VBox {
     private final Map<String, List<Integer>> redisDbsByConnection = new LinkedHashMap<>();
     /** ⭐ EXT（P1-4）：库清单读失败的连接（展开可重试）。 */
     private final Set<String> failedRedis = new LinkedHashSet<>();
+    /** ⭐ EXT（P2-7）：需要某个对象存储连接的 bucket 清单时调用（AppShell 负责读）。 */
+    private Consumer<String> onLoadBuckets = connectionId -> { };
+    /** ⭐ EXT（P2-7）：每个对象存储连接的 bucket 清单。 */
+    private final Map<String, List<String>> bucketsByConnection = new LinkedHashMap<>();
+    /** ⭐ EXT（P2-7）：bucket 清单读失败的连接（展开可重试）。 */
+    private final Set<String> failedObjectStore = new LinkedHashSet<>();
     /** 已经尝试读过 catalog 的连接（读失败也不反复试）。 */
     private final Set<String> attemptedCatalogs = new LinkedHashSet<>();
     /** 双击 / 右键「切换到此数据库」（AppShell 负责重连）。 */
@@ -455,6 +461,25 @@ public final class SideBar extends VBox {
     /** ⭐ EXT（P1-4）：Redis 库清单读失败 → 标记，树里给「展开重试」。 */
     public void setRedisFailed(String connectionId) {
         failedRedis.add(connectionId);
+        refreshTree();
+    }
+
+    /** ⭐ EXT（P2-7）：对象存储 bucket 清单的懒加载回调。 */
+    public void setOnLoadBuckets(Consumer<String> onLoadBuckets) {
+        this.onLoadBuckets = onLoadBuckets == null ? id -> { } : onLoadBuckets;
+    }
+
+    /** ⭐ EXT（P2-7）：AppShell 读完 bucket 清单后回填（就地重建树，保留展开态）。 */
+    public void setBuckets(String connectionId, List<String> buckets) {
+        failedObjectStore.remove(connectionId);
+        bucketsByConnection.put(connectionId,
+                buckets == null ? List.of() : List.copyOf(buckets));
+        refreshTree();
+    }
+
+    /** ⭐ EXT（P2-7）：bucket 清单读失败 → 标记，树里给「展开重试」。 */
+    public void setObjectStoreFailed(String connectionId) {
+        failedObjectStore.add(connectionId);
         refreshTree();
     }
 
@@ -957,6 +982,9 @@ public final class SideBar extends VBox {
                 } else if (node.kind() == NodeKind.REDIS_KEY) {
                     // ⭐ EXT（P1-4）：双击 Redis 库节点 → 开键浏览器标签。
                     openRedisKeys(node.connectionId(), Integer.parseInt(node.schema()));
+                } else if (node.kind() == NodeKind.BUCKET) {
+                    // ⭐ EXT（P2-7）：双击 bucket → 开对象浏览器标签。
+                    openBucket(node.connectionId(), node.name());
                 } else if (node.kind() == NodeKind.CATALOG) {
                     // ⭐ U1：双击一个库 = 把当前连接切到它（MySQL 要重连）。
                     onSwitchCatalog.accept(new CatalogSwitch(node.connectionId(), node.name()));
@@ -993,6 +1021,9 @@ public final class SideBar extends VBox {
                     event.consume();
                 } else if (node.kind() == NodeKind.REDIS_KEY) {
                     openRedisKeys(node.connectionId(), Integer.parseInt(node.schema()));
+                    event.consume();
+                } else if (node.kind() == NodeKind.BUCKET) {
+                    openBucket(node.connectionId(), node.name());
                     event.consume();
                 } else if (node.kind() == NodeKind.CATALOG) {
                     onSwitchCatalog.accept(new CatalogSwitch(node.connectionId(), node.name()));
@@ -1070,7 +1101,7 @@ public final class SideBar extends VBox {
             case PROCEDURE -> InspectTarget.Topic.PROCEDURE;
             case EVENT -> InspectTarget.Topic.EVENT;
             case ROOT, GROUP, COLUMN, CONNECTION_GROUP, SAVED_GROUP, SAVED_QUERY, RETRY,
-                    REDIS_DB, REDIS_KEY -> null;
+                    REDIS_DB, REDIS_KEY, BUCKET, OBJECT_FOLDER, OBJECT -> null;
         };
         if (topic == null) {
             return;
@@ -1319,6 +1350,10 @@ public final class SideBar extends VBox {
         if (isRedisConnection(id)) {
             connectionNode.getChildren().add(redisGroupNode(id, needle));
         }
+        // ⭐ EXT（P2-7）：对象存储连接 → 挂一个「桶」分组，展开即拉 bucket 清单。
+        if (isObjectStoreConnection(id)) {
+            connectionNode.getChildren().add(objectStoreGroupNode(id, needle));
+        }
 
         root.getChildren().add(connectionNode);
     }
@@ -1367,6 +1402,50 @@ public final class SideBar extends VBox {
     private boolean isRedisConnection(String id) {
         AssetKind kind = dialectKindOf(id);
         return kind != null && kind.isRedis();
+    }
+
+    /** ⭐ EXT（P2-7）：这个连接是不是对象存储（按档案 kind 判）。 */
+    private boolean isObjectStoreConnection(String id) {
+        AssetKind kind = dialectKindOf(id);
+        return kind != null && kind.isObjectStore();
+    }
+
+    /**
+     * ⭐ EXT（P2-7）：对象存储连接的「桶」分组。
+     *
+     * <p>与 {@link #redisGroupNode} 同形：没读过时放占位子节点、展开触发懒加载；
+     * 读失败给「展开重试」；读到后每个 bucket 挂一个 {@code BUCKET} 叶子
+     * （双击进对象浏览器）。七牛只暴露配置里那一个桶 —— 后端能力声明如此，
+     * 树不谎称能列出全部 bucket。
+     */
+    private TreeItem<DemoNode> objectStoreGroupNode(String id, String needle) {
+        TreeItem<DemoNode> group = new TreeItem<>(new DemoNode(
+                I18n.t("sidebar.group.buckets"), NodeKind.GROUP, Icons.Icon.FOLDER, "", id));
+        List<String> buckets = bucketsByConnection.getOrDefault(id, List.of());
+        if (buckets.isEmpty()) {
+            if (failedObjectStore.contains(id)) {
+                group.getChildren().add(retryNode("sidebar.bucketsFailed", id,
+                        () -> onLoadBuckets.accept(id)));
+            } else {
+                group.getChildren().add(new TreeItem<>(new DemoNode(
+                        I18n.t("sidebar.bucketsLoading"), NodeKind.RETRY,
+                        Icons.Icon.REFRESH, "", id)));
+                group.expandedProperty().addListener((obs, was, is) -> {
+                    if (is) {
+                        onLoadBuckets.accept(id);
+                    }
+                });
+            }
+        } else {
+            for (String bucket : buckets) {
+                if (matches(bucket, needle)) {
+                    group.getChildren().add(new TreeItem<>(new DemoNode(
+                            bucket, NodeKind.BUCKET, Icons.Icon.FOLDER, "", id)));
+                }
+            }
+            group.setExpanded(true);
+        }
+        return group;
     }
 
     /**
@@ -1467,6 +1546,18 @@ public final class SideBar extends VBox {
         String id = "redis-keys:" + connectionId + ":" + db;
         String title = I18n.t("redis.keys.header", connectionNameFor(connectionId), db);
         openTab.accept(new TabItem(id, title, TabKind.REDIS_KEYS, String.valueOf(db), connectionId));
+    }
+
+    /**
+     * ⭐ EXT（P2-7）：双击 / 回车 bucket 节点 → 开对象浏览器标签。
+     *
+     * <p>id 编码成 {@code object-browser:<connId>:<bucket>}，同一 (连接, 桶) 只建一个
+     * 页面实例；{@code target} 存 bucket 名，页面据此列举。
+     */
+    private void openBucket(String connectionId, String bucket) {
+        String id = "object-browser:" + connectionId + ":" + bucket;
+        String title = I18n.t("objectstore.header", connectionNameFor(connectionId), bucket);
+        openTab.accept(new TabItem(id, title, TabKind.OBJECT_BROWSER, bucket, connectionId));
     }
 
     /** ⭐ EXT（P1-4）：按连接 id 取档案名（找不到时退化为 id 本身）。 */
@@ -1792,9 +1883,10 @@ public final class SideBar extends VBox {
     /** 容器节点：连接 / 分组 / 库 / 对象分组 —— 搜索态下按「有没有命中」决定展开。 */
     private static boolean isContainer(NodeKind kind) {
         return switch (kind) {
-            case ROOT, CONNECTION, CONNECTION_GROUP, CATALOG, GROUP, SAVED_GROUP, REDIS_DB -> true;
+            case ROOT, CONNECTION, CONNECTION_GROUP, CATALOG, GROUP, SAVED_GROUP,
+                    REDIS_DB, OBJECT_FOLDER -> true;
             case TABLE, VIEW, PROCEDURE, FUNCTION, TRIGGER, EVENT, COLUMN, SAVED_QUERY,
-                    RETRY, REDIS_KEY -> false;
+                    RETRY, REDIS_KEY, BUCKET, OBJECT -> false;
         };
     }
 
@@ -1833,7 +1925,8 @@ public final class SideBar extends VBox {
             // ⭐ S-3：列不是对象 —— 不进「有多少个对象」的计数，
             //    否则一张 50 列的表会让搜索空态判断失真。
             case COLUMN, ROOT, CONNECTION, CONNECTION_GROUP, GROUP, CATALOG, EVENT,
-                    SAVED_GROUP, SAVED_QUERY, RETRY, REDIS_DB, REDIS_KEY -> false;
+                    SAVED_GROUP, SAVED_QUERY, RETRY, REDIS_DB, REDIS_KEY,
+                    BUCKET, OBJECT_FOLDER, OBJECT -> false;
         };
     }
 
@@ -2598,6 +2691,18 @@ public final class SideBar extends VBox {
         REDIS_DB,
         /** ⭐ EXT（P1-4）：某个 Redis 库节点（双击打开键浏览器标签）。 */
         REDIS_KEY,
+        /**
+         * ⭐ EXT（P2-7）：一个 bucket（双击打开对象浏览器）。
+         *
+         * <p>刻意做成<b>叶子</b>：对象的前缀层级由 {@link ObjectBrowserPage} 的
+         * delimiter 折叠 + 面包屑承担，树上不复制一遍异步对象枚举 —— 两层都列
+         * 同一批 key 只会让「哪边是最新」变成新的不一致来源。
+         */
+        BUCKET,
+        /** ⭐ EXT（P2-7）：虚拟前缀文件夹（浏览器内层级用；树预留）。 */
+        OBJECT_FOLDER,
+        /** ⭐ EXT（P2-7）：一个对象（浏览器内层级用；树预留）。 */
+        OBJECT,
         /** ⭐ UX-6：已保存查询分组 / 条目（连接节点下）。 */
         SAVED_GROUP, SAVED_QUERY,
         /**

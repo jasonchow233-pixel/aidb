@@ -24,13 +24,23 @@ public final class AssetFamilyRegistry {
     }
 
     /**
-     * ⭐ EXT（P0/P1）：类加载期自登记已知族，避免「生产代码要先于 AppShell 启动去 register」
-     * 的时序竞态 —— {@link ConnectionCatalog} 在静态初始化时就读 {@link #tiles()}，
-     * 那时 AppShell 还没跑。对象存储族（{@code ObjectStoreFamily}）在 P2 落地向导后再加入此处。
+     * ⭐ EXT（P0/P1/P2）：类加载期自登记已知族，避免「生产代码要先于 AppShell 启动去
+     * register」的时序竞态 —— {@link ConnectionCatalog} 在静态初始化时就读 {@link #tiles()}，
+     * 那时 AppShell 还没跑。三个族（SQL / Redis / 对象存储）全部在这里一处登记，
+     * 向导磁贴、树分支、品牌图自动跟随（加一种连接类型 = 只改这里）。
      */
     static {
+        registerDefaults();
+    }
+
+    /**
+     * 登记全部内置资产族（幂等）。类初始化与 {@code reset()} 之后的门禁都走这里，
+     * 于是「默认登记了什么」这件事可测，而不是藏在只跑一次的静态块里。
+     */
+    public static void registerDefaults() {
         register(SqlFamily.INSTANCE);
         register(RedisFamily.INSTANCE);
+        register(ObjectStoreFamily.INSTANCE);
     }
 
     public static synchronized void register(AssetFamily family) {

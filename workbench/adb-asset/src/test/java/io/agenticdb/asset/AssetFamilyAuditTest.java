@@ -74,10 +74,32 @@ class AssetFamilyAuditTest {
     void nonConnectableFamiliesSignalWorkInProgressWithoutFakeControls() {
         AssetFamilyRegistry.register(RedisFamily.INSTANCE);
         AssetFamilyRegistry.register(ObjectStoreFamily.INSTANCE);
-        // Redis / 对象存储尚未落地向导步骤：connectable() 应为 false，
-        // 向导据此给明确提示而非摆假控件。
-        assertThat(RedisFamily.INSTANCE.connectable()).isFalse();
-        assertThat(ObjectStoreFamily.INSTANCE.connectable()).isFalse();
+        // P1 Redis 与 P2 对象存储的向导页都已落地 -> 三个族全部可连。
+        assertThat(RedisFamily.INSTANCE.connectable()).isTrue();
+        assertThat(ObjectStoreFamily.INSTANCE.connectable()).isTrue();
         assertThat(SqlFamily.INSTANCE.connectable()).isTrue();
+    }
+
+    @Test
+    void objectStoreFamilyDeclaresItsWizardStepInOnePlace() {
+        assertThat(ObjectStoreFamily.INSTANCE.wizardStepIds())
+                .containsExactly("objectstore");
+        // 「可连」由步骤清单推导，而不是再写一个布尔字段 —— 两处不同步就不会发生。
+        assertThat(ObjectStoreFamily.INSTANCE.connectable())
+                .isEqualTo(!ObjectStoreFamily.INSTANCE.wizardStepIds().isEmpty());
+    }
+
+    @Test
+    void everyFamilyIsRegisteredByDefaultWithoutAppShellStartup() {
+        // 静态块自登记三族：ConnectionCatalog 在类初始化时就读 tiles()，不能等 AppShell。
+        // reset() 后显式重新走同一条登记路径，避免依赖测试执行顺序。
+        AssetFamilyRegistry.reset();
+        AssetFamilyRegistry.registerDefaults();
+        for (AssetKind kind : AssetKind.values()) {
+            assertThat(AssetFamilyRegistry.forKind(kind))
+                    .as("%s 必须在默认登记里就能找到族", kind)
+                    .isNotNull();
+        }
+        assertThat(AssetFamilyRegistry.tiles()).hasSize(11);
     }
 }

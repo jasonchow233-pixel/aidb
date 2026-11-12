@@ -59,7 +59,9 @@ class MenuBarFactoryTest {
             "query.format", "query.save", "query.save-snippet", "query.insert-snippet",
             "favorites.open", "favorites.clear", "diagnostics", "query-history",
             "import-export", "settings",
-            "window.new", "window.minimize", "shortcuts", "about");
+            "window.new", "window.minimize", "shortcuts", "about",
+            // ⭐ P3：两个治理入口 —— 首启引导重开（Help）、标签总览（Window）
+            "reopen-guide", "tabs");
 
     @Start
     void start(Stage stage) {

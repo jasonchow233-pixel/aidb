@@ -165,7 +165,9 @@ final class RedisKeysPage extends VBox {
 
         table.getColumns().setAll(keyCol, typeCol, ttlCol, sizeCol);
         table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
-        table.setPlaceholder(new Label(I18n.t("redis.keys.empty")));
+        table.setPlaceholder(EmptyState.of(Icons.Icon.LIST,
+                I18n.t("redis.keys.emptyTitle"),
+                I18n.t("redis.keys.emptyHint")));
         VBox.setVgrow(table, Priority.ALWAYS);
     }
 
@@ -318,8 +320,12 @@ final class RedisKeysPage extends VBox {
 
     /** DESTRUCTIVE 专用确认：取消为默认按钮（回车不会落到「删除」上）。 */
     private boolean confirmDestructive(String header, String content, String destructiveLabel) {
-        return DestructiveConfirm.of(I18n.t("redis.value.title", ""), header, content,
-                destructiveLabel).confirmed();
+        DestructiveConfirm confirm = DestructiveConfirm.of(I18n.t("redis.value.title", ""),
+                header, content, destructiveLabel);
+        // ⭐ §七：DestructiveConfirm 自己只造 Alert，主题类得由调用方抄过去，
+        //    否则这颗确认框会退回 Modena 灰皮肤（DialogStylesTest 按文件计数守着）。
+        DialogStyles.apply(confirm.alert(), getScene() == null ? null : getScene().getWindow());
+        return confirm.confirmed();
     }
 
     /** 断开底层会话（标签关闭时由 WorkspaceView.closeTab 调用）。 */

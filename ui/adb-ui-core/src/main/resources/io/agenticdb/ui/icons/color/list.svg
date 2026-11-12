@@ -1,0 +1,12 @@
+<!-- AIDB 自有彩色资产（P2/P3）：无序列表（Redis 键列表 / 标签总览）。
+     与 list-ordered.svg 同一套分层口径：小圆点用 tone-c（14px 档 tone-a 在这颗
+     r=1.4 的点上等于看不见），三条横线用 edge 收尾 —— 自下而上画，EDGE 收尾，
+     否则 14px 下轮廓被色块压住，整颗图标糊成一片。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <circle data-paint="tone-c" cx="4.5" cy="6" r="1.4"/>
+  <circle data-paint="tone-c" cx="4.5" cy="12" r="1.4"/>
+  <circle data-paint="tone-c" cx="4.5" cy="18" r="1.4"/>
+  <line data-paint="edge" x1="9.5" y1="6" x2="20" y2="6"/>
+  <line data-paint="edge" x1="9.5" y1="12" x2="20" y2="12"/>
+  <line data-paint="edge" x1="9.5" y1="18" x2="20" y2="18"/>
+</svg>

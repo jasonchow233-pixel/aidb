@@ -21,6 +21,8 @@ public enum TabKind {
     ROUTINE(Icons.Icon.FUNCTION, "tab.kind.routine"),
     /** ⭐ EXT（P1-5）：Redis 键浏览器标签页（列表 + 前缀 / 类型过滤）。 */
     REDIS_KEYS(Icons.Icon.LIST, "tab.kind.redisKeys"),
+    /** ⭐ EXT（P2-8）：对象存储浏览器标签页（前缀 + 虚拟文件夹 + 上传/下载/删除）。 */
+    OBJECT_BROWSER(Icons.Icon.FOLDER, "tab.kind.objectBrowser"),
     SETTINGS(Icons.Icon.SETTINGS, "window.pageType.settings");
 
     private final Icons.Icon icon;

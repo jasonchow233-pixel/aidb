@@ -7,7 +7,32 @@
 
 ## 1. 验证基线
 
-### 当前工作树（2026-11-11，P0 收口 · 代码门禁已绿）
+### 当前工作树（2026-11-12，P1/P2/P3 收口 · 全量门禁已绿）
+
+- **2069 执行 / 0 失败 / 113 跳过 / 221 个测试类**，`BUILD SUCCESS`、`BUILD_EXIT=0`。
+  命令 `MAVEN_ARGS=-o ./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`），
+  2026-11-12 14:41 +08:00、本机 Darwin 24.6.0 x86_64、Zulu JDK 25.0.5（`JAVA_HOME` 显式指向
+  `/tmp/zulu25/...`），Total time **30:00 min**，**16/16 模块 SUCCESS**。基于 `13c4813` + 52 个
+  工作树文件（26 改 + 26 新增）。较 2026-11-11 的 **1998 / 113** 多 **71 条执行**、跳数不变；
+  新增的两格是 `adb-objectstore` **19** 与 `adb-redis` **14**。逐模块执行数（`TestCount` 口径，
+  跳过单列）：`adb-ui-shell` **1155** · `adb-ui-core` 70 · `adb-safety` 88 · `adb-sql` 42 ·
+  `adb-model` 30 · `adb-fixtures` 3 · `adb-editing` 39（跳 15）· `adb-objectstore` 19 ·
+  `adb-asset` 14 · `adb-introspect` 273（跳 19）· `adb-redis` 14 · `adb-session` 39（跳 5）·
+  `adb-transfer` 115 · `adb-jdbc` 168（跳 74）。
+- ⚠️ **五家外部数据库本轮仍未验**：113 条跳过里 74 条在 `adb-jdbc`、19 条在 `adb-introspect`、
+  15 条在 `adb-editing`（`ADB_TEST_*` / `dbmatrix.sh` 未配置），另有 `adb-session` 5 条 WinCred
+  平台跳过；矩阵复跑属 **R2 配置阻塞**。四家对象存储与 Redis 只有编译 + 内存契约
+  （`adb-objectstore` 19 / `adb-redis` 14），**没有真端点证据**，边界详见 §3。
+- ⚠️ **68 张已入库截图与当前源码不同版**（R1 环境阻塞）：首启引导、族筛选带、对象浏览器、
+  标签概览四个新面只有行为门禁，没有同版帧；五枚新品牌图仍是占位件（R4）。
+- ⚠️ **一次时序假红已排除、不是靠调断言过的**：本轮第一次全量 `BUILD FAILURE`，唯一红是
+  `TerminologyGuardTest.oneActionHasExactlyOneName`（UI Shell 1155 条里 1 条）—— 构建跑到
+  UI Shell 之后才把 `action.tabs` 的中文术语改成规范词「概览」，而这条门禁读源码、跑在改动
+  之前；它同时会从本地安装的 `adb-ui-core` 资源里取文案。刷新该 jar 后单独复验 7/0/0，
+  再 clean 重跑全量得上面的全绿。教训与 2026-11-11 的 stale jar 坑同源：**构建中途改
+  `messages_*.properties` 会让当轮结果失真，必须重装再重跑**。
+
+### 上一次全量（2026-11-11，P0 收口 · 代码门禁已绿）
 
 - 基于 `d976732` + 58 个 WIP 文件，已通过完整门禁（`./scripts/build.sh` = `clean verify` + `tools/TestCount.java`）：**1998 执行 / 0 失败 / 113 跳过**，2026-11-11 本机 Darwin 24.6.0 x86_64、Temurin JDK 25.0.5+8、`BUILD SUCCESS`。本次回量覆盖全部 P0/P1 收口改动（导出十项选项、查询构造器只读化、三枚诚实环删除、ER 图/HTTP 页签删除、Backups/Events 树分组、危险分级第三层回归门禁、文档棘轮门禁）。
 - ⚠️ **五家外部数据库本轮仍未验**：`ADB_TEST_*` 未配置，矩阵类 `ExternalRealDatabaseTest`(51/50 跳)、`ExternalTlsDatabaseTest`(18/18 跳)、`EditWriteBackMatrixTest`(15/15 跳)、`TransferRoundTripMatrixTest`(5/5 跳)、`SshTunnelMatrixTest`(5/5 跳) 全跳过；仅 testcontainers 自起的 mysql:8.4 / postgres:16-alpine 一组替身跑了连接与契约用例。新增视图改名契约后主矩阵规模 **5 × 10 + 1 = 51**，待 `scripts/dbmatrix.sh` 起满五引擎后复跑。
@@ -66,6 +91,11 @@
 | 键盘与可访问性 | ✅ | ⌘K 命令面板；六区焦点顺序；页签 / 切面键盘切换；逐页可朗读名称（`AccessibilityAuditTest` 断言） |
 | 界面语言 | ✅ | 英文（默认）· 简体中文；主源码里的硬编码汉字由棘轮压到 8 条（且那 8 条是**输入 token**，不是文案） |
 | 可观测性 | ✅ | `StartupTrace` 分段打点 → `~/.agenticdb/logs/startup.log`；诊断页 |
+| 资产族地基（P0） | ✅ | `AssetKind` 取代 `DialectKind` 成为 `ConnectionProfile` 的判别轴；`AssetFamily` / `AssetFamilyRegistry` 是「加一种连接类型 = 一处登记」的单一真相源（SQL 6 家 + Redis 1 家 + 对象存储 4 家 = 11 张磁贴）。四类对象存储合并成一个 `OBJECT_STORE` kind + `ObjectStoreProvider` 子判别，不拆四个 kind；旧档案 `kind` 写枚举名仍可读，无需迁移。`DialectBranchAuditTest` 禁止 UI 硬编码资产族常量，`AssetFamilyFilterAuditTest` 动态断「注册表加一族 → 向导筛选带必须加一枚 chip」 |
+| Redis 管理（P1） | ✅ | `adb-redis`（Lettuce）：按 `INFO keyspace` 懒加载 db 分组，`SCAN` 出 key / type / TTL / size；`RedisKeysPage` 前缀 + 类型过滤，五种值类型抽屉查看/编辑，TTL、`DEL`、`FLUSHDB`、`FLUSHALL` 全走 `RedisDanger` 分级 + `DestructiveConfirm`（取消为默认按钮）。`RedisScanTest` / `RedisMutateTest` / `RedisTreeTest` 钉住内省、写安全与双击路由。⚠️ **Redis over SSH 未接入**（`RedisSessions` 类注释如实写明），SQL 那套隧道尚未复用到这一族 |
+| 对象存储（P2） | ✅ / 🟡 | `adb-objectstore` 把四家 SDK（AWS SDK v2 / aliyun-sdk-oss / qiniu-java-sdk / cos_api）适配到同一个 `ObjectStoreSession`，另附 `InMemoryObjectStoreSession` 供无云账号环境跑行为契约（19 条）。对象存储没有真目录：key 里的 `/` 配 delimiter 折叠成 `ObjectEntry.folder()` 虚拟文件夹行；不传 delimiter 时平铺，用于递归删前缀。`ObjectBrowserPage` 提供前缀面包屑、上传 / 下载 / 删一颗 / 递归删前缀 / 元数据 / 预签名 URL / 移动重命名；`ObjectStoreCapabilities` 显式声明能力，七牛 `supportsMove=false` / `supportsListBuckets=false` → 按钮置灰 + tooltip 说明 + 后端 UOE，树只显示配置的那一个桶。删除类操作由 `ObjectStoreDanger` 判成 `DESTRUCTIVE`，未知 / 空白操作 fail-closed 到 `ADMIN`。密钥只进 `CredentialStore`，`connections.json` 只留非敏感 options。⚠️ 🟡：**四家只有编译 + 内存后端契约，没有真云账号 / 仿真服务的执行证据**；当前 delimiter 层一次列完，无服务端翻页 |
+| 首启引导与 Tab 治理（P3） | ✅ | `OnboardingOverlay` 叠在 demo 自动连接之上、关后即焚（`ui.onboarding.seen`），Help 菜单可重开，验收 / 截图 / 测试会话不自动弹以保证逐帧可复现；向导首步四枚族筛选 chip 用**可见性切换**而非重建磁贴，被筛掉的选中项自动挪到该族第一张；`tabs` 命令（命令面板 + Window 菜单）打开非常驻的 `TabOverviewPanel`，按连接分组 / 搜索 / 激活 / 逐条关闭 / 按连接全关，**三条关闭回调全部回到 `TabBar.close()`**，`closeGuard` 脏检查、钉住态、常驻标签规则一条不绕过。⚠️ TabBar 分组视觉未新增，沿用既有连接名 / 库名 / 厂商图形注入；连接管理页「无连接三步上手」未单独做，由引导层三张卡片承担 |
+| 品牌资产（P3-6） | 🟡 | `redis.svg` + `aws-s3` / `aliyun-oss` / `qiniu` / `tencent-cos` 五枚落地，`TRADEMARK-NOTICE.txt` 逐枚点名 `BrandIconTest` 通过；彩色 `list.svg` 补齐图标系统。⚠️ 五枚均为**中性几何占位件**，发布前必须换成各家品牌页的原始矢量件（R4 资产阻塞） |
 | 打包 | 🟡 | `scripts/package.sh` 出 app-image / dmg / msi / deb，实测可启动；**未签名、未公证、无自动更新、无发布渠道** |
 
 ## 3. 已知限制（完整清单）
@@ -123,6 +153,17 @@
 
 ### 能力缺口
 
+- ⭐ **资产族扩展（P0–P3，2026-11-12）的四条如实边界**：
+  1. **真端点证据为空（R2 配置阻塞）**：四家对象存储 SDK 适配器只有编译通过 + `InMemoryObjectStoreSession`
+     上的 19 条行为契约；没有真实云账号，也没有 minio / localstack / OSS / COS / Kodo 仿真服务，
+     因此「连得上、列举 / 上传 / 下载 / 预签名真的生效」**不写已验**。Redis 同理：本机没有真
+     Redis 服务端的同版验收帧。
+  2. **Redis over SSH 未接入**：档案里的 SSH 段目前只作用于 SQL 连接；`RedisSessions` 在代码里
+     写明这一点，界面不摆一个勾了没反应的开关。
+  3. **对象存储无服务端翻页**：`listObjects` 一次列完当前 delimiter 层，超大 bucket 的性能边界
+     未量过；递归删前缀用不传 delimiter 的平铺列举实现，删之前会走 `DESTRUCTIVE` 确认。
+  4. **画面证据缺失（R1 环境阻塞）**：首启引导、族筛选带、对象浏览器、标签概览四个新面只有
+     行为门禁，没有同版截图；已入库的 68 张帧仍落后于当前源码。五枚新品牌图是占位件（R4）。
 - **Filter & Sort 面板支持条件组（组内 AND、组间 OR）**：`[Ω]`（加 OR 条件组）已落地真实能力——
   按 `MAX_GROUPS=8` 新增组、组间 `OR` 连接、组内 `AND`（单组等价于旧版平铺 AND，SQL 输出逐字节兼容）；
   `IN` 条件仍由列头漏斗的候选值多选提供，面板内原样保留、不可行内编辑；Text 模式是**只读**的生成表达式。
@@ -263,6 +304,13 @@
 ⭐ **P-3 已交付**：`MaskRule` / `DataMasker` / `ExportWizard` 列级脱敏（掩码 / 哈希 / 置空），18 条门禁覆盖。
 ⭐ **ER 图（含只读版与全量 Model 编辑器）2026-11-10 用户裁定不做**，已从 backlog 与产品面删除。
 理由见 [README.md](../README.md) 与 [docs/ROADMAP.md](ROADMAP.md)。
+⭐ **2026-11-12 用户裁定反转 v4 的「不扩 Redis」条款**：Redis 与 S3 / 阿里云 OSS / 七牛 Kodo /
+腾讯云 COS 已带着真驱动接入（见 §2）。MongoDB / Snowflake / DynamoDB 仍在「不做」清单里；
+「不摆没有驱动的假厂商磁贴」这条纪律继续有效 —— 新增族必须先有会话实现与行为门禁。
+⭐ 同批明确不做：**对象存储不做真实目录**（key 里的 `/` + delimiter 折叠成虚拟文件夹行，
+不伪造一棵目录树）；**七牛不做服务端 move 的全套假实现**（UI 置灰 + 后端 UOE，要用请走
+copy + delete）；**标签概览不做常驻页签**（Q5：命令面板 `tabs` 唤起，避免标签栏膨胀）；
+**首启引导不替代工作区页面**（叠在 demo 之上，关掉即露出下面的对象首页）。
 
 ## 5. 相关文档
 

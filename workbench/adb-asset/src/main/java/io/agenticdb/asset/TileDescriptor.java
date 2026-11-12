@@ -26,10 +26,16 @@ public record TileDescriptor(
         /** 对象存储子判别；SQL / Redis 磁贴为 {@code null}。 */
         ObjectStoreProvider provider) {
 
-    /** 磁贴的稳定 id：对象存储用 {@code object_store:<provider>}，其余用资产 kind 的 id。 */
+    /**
+     * 磁贴的稳定 id：对象存储用 {@code object_store-<provider>}，其余用资产 kind 的 id。
+     *
+     * <p>⚠️ 分隔符是 {@code -} 不是 {@code :}：这个 id 会原样变成 JavaFX 节点的
+     * {@code fx:id}（{@code #wizard-tile-<id>}），而 CSS id 选择器里的 {@code :}
+     * 会被解析成伪类 —— 门禁按选择器查这四张磁贴时会一个都查不到。
+     */
     public String tileId() {
         if (provider != null) {
-            return kind.id() + ":" + provider.id();
+            return kind.id() + "-" + provider.id();
         }
         return kind.id();
     }

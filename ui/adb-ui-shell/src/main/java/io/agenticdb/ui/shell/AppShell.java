@@ -13,6 +13,9 @@ import io.agenticdb.jdbc.HostKeyDecision;
 import io.agenticdb.jdbc.ViewDefinition;
 import io.agenticdb.redis.RedisSession;
 import io.agenticdb.redis.RedisSessions;
+import io.agenticdb.objectstore.Bucket;
+import io.agenticdb.objectstore.ObjectStoreSession;
+import io.agenticdb.objectstore.ObjectStoreSessions;
 import io.agenticdb.session.ConnectionProfile;
 import io.agenticdb.session.ConnectionStore;
 import io.agenticdb.session.CredentialStore;
@@ -167,6 +170,13 @@ public final class AppShell extends StackPane {
     /** 表级 DDL 协调者（懒建 —— 构造时 stage 还没有）。 */
     private TableDdl tableDdl;
     private final CommandPalette palette;
+    /**
+     * ⭐ P3-1：首启引导浮层。它<b>盖在</b> demo 自动连接之上，不替代任何工作区页面；
+     * 「看过」写进 {@link SettingsStore}，关后即焚，Help 菜单可随时重开。
+     */
+    private final OnboardingOverlay onboarding;
+    /** ⭐ P3-4：非常驻的标签总览弹窗；同一时刻只开一个。 */
+    private javafx.scene.control.Dialog<Void> tabsOverview;
     private final ConnectionStore connectionStore;
     private final SavedQueries savedQueries;
     /** ⭐ N24：已保存查询的对象清单页（单实例 —— 同一个标签反复打开不重建）。 */
@@ -294,6 +304,8 @@ public final class AppShell extends StackPane {
         // ⭐ 多连接对象树：展开一个没读过的连接时，去连它、读它的对象。
         this.sideBar.setOnLoadObjects(this::loadObjectsFor);
         this.sideBar.setOnLoadRedisDbs(this::loadRedisDbs);
+        // ⭐ EXT（P2-7）：展开对象存储连接 → 异步拉 bucket 清单。
+        this.sideBar.setOnLoadBuckets(this::loadBuckets);
         // ⭐ S-3：展开表节点时才读它的列（懒加载，见 loadColumnsFor）。
         this.sideBar.setOnLoadColumns(this::loadColumnsFor);
         // ⭐ H6-e：「刷新此表」重读前先作废 H3-d 的 describe 条目 ——
@@ -353,8 +365,12 @@ public final class AppShell extends StackPane {
         startup.mark("shell.sidebar");
         this.workspace = new WorkspaceView(actions, connectionName,
                 this::createGridPage, this::createQueryPage, this::createStructurePage,
-                this::createConnectionsPage, tab -> objectHomePage(), this::createRedisKeysPage);
+                this::createConnectionsPage, tab -> objectHomePage(), this::createRedisKeysPage,
+                this::createObjectBrowserPage);
         this.palette = new CommandPalette(actions);
+        // ⭐ P3-1：引导页的「打开示例库」走的是同一个 demo.open 动作 ——
+        //    不另造一条打开链路，菜单 / 命令面板 / 引导三处行为必须一致。
+        this.onboarding = new OnboardingOverlay(settings, () -> actions.run("demo.open"));
         // 侧栏「查询历史」接真实功能：QueryHistory 本来就可用，只是侧栏开错了页面。
         this.workspace.setHistory(history, this::openQueryWith);
         startup.mark("shell.views");
@@ -2216,6 +2232,12 @@ public final class AppShell extends StackPane {
                 if (profile.kind().isRedis()) {
                     return testRedisConnection(profile, password);
                 }
+                if (profile.kind().isObjectStore()) {
+                    if (password == null || password.isBlank()) {
+                        return I18n.t("wizard.test.incomplete");
+                    }
+                    return ObjectStoreSessions.test(profile.options(), password);
+                }
                 return ConnectionWizard.Tester.super.testProfile(profile, password);
             }
         };
@@ -2282,6 +2304,51 @@ public final class AppShell extends StackPane {
                 javafx.application.Platform.runLater(() -> sideBar.setRedisDbs(connectionId, dbs));
             } catch (Exception e) {
                 javafx.application.Platform.runLater(() -> sideBar.setRedisFailed(connectionId));
+            }
+        }).start();
+    }
+
+    /**
+     * ⭐ EXT（P2-8）：对象存储浏览器页工厂（注入 {@link WorkspaceView}）。
+     *
+     * <p>会话工厂按需提供：浏览器页只调一次并缓存，切标签不重连。
+     */
+    private Node createObjectBrowserPage(TabItem tab) {
+        ConnectionProfile profile = connectionFor(tab);
+        if (profile == null) {
+            return startupErrorPage(tab);
+        }
+        return new ObjectBrowserPage(tab, profile, () -> objectStoreSessionFor(profile));
+    }
+
+    /**
+     * ⭐ EXT（P2-7/P2-8）：按档案建对象存储会话。
+     *
+     * <p>凭据库里没有条目时走<b>内存/离线后端</b>（demo 连接、无云账号环境），
+     * 明确不冒充真实账号；有凭据时按 provider 分派到四家 SDK 适配器。
+     */
+    private ObjectStoreSession objectStoreSessionFor(ConnectionProfile profile) {
+        String stored = credentials.password(profile.id()).orElse(null);
+        if (stored == null || stored.isBlank()) {
+            return ObjectStoreSessions.inMemory(profile.options(), stored);
+        }
+        return ObjectStoreSessions.connect(profile.options(), stored);
+    }
+
+    /** ⭐ EXT（P2-7）：侧栏展开对象存储连接 → 异步拉 bucket 清单回填树。 */
+    private void loadBuckets(String connectionId) {
+        ConnectionProfile profile = profileById(connectionId);
+        if (profile == null || !profile.kind().isObjectStore()) {
+            return;
+        }
+        new Thread(() -> {
+            try (ObjectStoreSession session = objectStoreSessionFor(profile)) {
+                List<String> names = session.listBuckets().stream().map(Bucket::name).toList();
+                javafx.application.Platform.runLater(
+                        () -> sideBar.setBuckets(connectionId, names));
+            } catch (Exception e) {
+                javafx.application.Platform.runLater(
+                        () -> sideBar.setObjectStoreFailed(connectionId));
             }
         }).start();
     }
@@ -2896,6 +2963,13 @@ public final class AppShell extends StackPane {
         if (initial.isEmpty() && structure.isEmpty() && initialQuery.isEmpty()) {
             restoreLastTabs();
         }
+        // ⭐ P3-1：首启引导只在真实桌面会话自动弹 —— 它盖在 demo 自动连接之上，
+        //    关掉后下面的对象首页原样可见。验收 / 截图 / 矩阵 / 测试会话必须逐帧
+        //    可复现（surefire 固定带 adb.startup.log=false，isDeterministicSession()
+        //    为真），不能被「用户是否看过」左右；要看这一帧走 Help 菜单重开。
+        if (!isDeterministicSession()) {
+            onboarding.maybeShow();
+        }
         // ⭐ P7：首屏 = 启动参数 / 上次标签都恢复完（后续截图弹窗走 runLater，不计入）。
         startup.mark("shell.after-shown");
     }
@@ -3266,6 +3340,13 @@ public final class AppShell extends StackPane {
                         I18n.t("shell.aboutBody", io.agenticdb.ui.AppVersion.DISPLAY,
                                 startupText()),
                         Icons.Icon.BRAND));
+        // ⭐ P3-1 / P3-4：首启引导可重开；标签总览由命令面板的 `tabs` 命令唤起
+        //    （Q5：不是常驻标签，避免标签栏膨胀）。两颗都无加速器 —— 低频治理动作
+        //    不占快捷键位，走菜单 / ⌘K 搜索即可。
+        actions.register("reopen-guide", I18n.t("action.reopen-guide"),
+                I18n.t("category.help"), null, onboarding::reopenGuide);
+        actions.register("tabs", I18n.t("action.tabs"), I18n.t("category.window"),
+                null, this::openTabsOverview);
         updateQueryActions();
     }
 
@@ -3322,7 +3403,9 @@ public final class AppShell extends StackPane {
         StackPane.setAlignment(toast, Pos.BOTTOM_CENTER);
         StackPane.setMargin(toast, new Insets(0, 0, 40, 0));
 
-        getChildren().addAll(root, palette, toast);
+        // ⭐ P3-1：引导浮层放最后 = 默认在最上层；CommandPalette 打开时自己有
+        //    showPalette() 的上屏逻辑，两者不会同时抢焦点（引导关掉才进得去命令面板）。
+        getChildren().addAll(root, palette, toast, onboarding);
     }
 
     private Region buildResizer() {
@@ -3507,6 +3590,7 @@ public final class AppShell extends StackPane {
             case SETTINGS -> I18n.t("window.pageType.settings");
             case TOOL -> I18n.t("window.pageType.tool");
             case REDIS_KEYS -> I18n.t("window.pageType.redisKeys");
+            case OBJECT_BROWSER -> I18n.t("tab.kind.objectBrowser");
         };
     }
 
@@ -4665,6 +4749,51 @@ public final class AppShell extends StackPane {
                 : I18n.t("shell.startupUnrecorded");
         return line + (startup.slow() ? I18n.t("shell.startupSlow") : "")
                 + "\n" + I18n.t("shell.startupLog");
+    }
+
+    /**
+     * ⭐ P3-4：已打开标签总览。由命令面板的 {@code tabs} 命令唤起，<b>非常驻</b>。
+     *
+     * <p>三条回调全部回到 {@link TabBar#close(String)} / {@link TabBar#activate(String)}，
+     * 所以脏检查（{@code closeGuard}）、钉住态与常驻标签规则一条都绕不过去 ——
+     * 总览页不是「批量强关」的后门。标签数据在打开时快照，面板不自称是实时视图。
+     *
+     * <p>非模态：用户要能连续关掉好几张，而不是每关一张就重开一次面板。
+     */
+    private void openTabsOverview() {
+        if (tabsOverview != null && tabsOverview.isShowing()) {
+            tabsOverview.getDialogPane().requestFocus();
+            return;
+        }
+        javafx.scene.control.Dialog<Void> dialog = new javafx.scene.control.Dialog<>();
+        dialog.setTitle(I18n.t("tab.overview.title"));
+        dialog.setHeaderText(null);
+        List<TabItem> snapshot = tabBar.openTabs();
+        TabOverviewPanel panel = new TabOverviewPanel(
+                snapshot,
+                tab -> {
+                    tabBar.activate(tab.id());
+                    dialog.hide();
+                },
+                tab -> tabBar.close(tab.id()),
+                group -> {
+                    for (TabItem tab : snapshot) {
+                        String id = tab.connectionId() == null ? "" : tab.connectionId();
+                        if (java.util.Objects.equals(group, id)) {
+                            tabBar.close(tab.id());
+                        }
+                    }
+                });
+        dialog.getDialogPane().setContent(panel);
+        dialog.getDialogPane().getButtonTypes().add(javafx.scene.control.ButtonType.CLOSE);
+        DialogStyles.apply(dialog, stage);
+        tabsOverview = dialog;
+        dialog.setOnHidden(event -> {
+            if (tabsOverview == dialog) {
+                tabsOverview = null;
+            }
+        });
+        dialog.show();
     }
 
     private void showInfo(String title, String content) {

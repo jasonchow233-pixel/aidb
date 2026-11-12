@@ -30,13 +30,34 @@ public final class ObjectStoreFamily implements AssetFamily {
             // 品牌作用域类：沿用 .adb-db--<brandKey> 机制，与 SQL 磁贴同口径。
             // 用 provider.styleClass()（完整字面量）而非拼接，让覆盖门禁能校验它。
             String styleClass = provider.styleClass();
-            String hintKey = "wizard.tile.objectstore." + provider.id();
             tiles.add(new TileDescriptor(
                     AssetKind.OBJECT_STORE, provider.displayName(), styleClass,
-                    hintKey, provider.brandKey(), provider));
+                    hintKey(provider), provider.brandKey(), provider));
         }
         return tiles;
     }
 
-    // connectable() = false：wizardStepIds 为空，向导给 WIP 提示。
+    /**
+     * ⚠️ 提示键写成<b>完整字面量</b>而不是 {@code "wizard.tile.objectstore." + id} 拼接：
+     * {@code I18nAuditTest.deadKeysAreRatchetedDown()} 只认源码里的字符串字面量，
+     * 拼出来的键会被判成「零消费者的死键」。四家一处登记，也免得资源包与枚举漂移。
+     */
+    private static String hintKey(ObjectStoreProvider provider) {
+        return switch (provider) {
+            case S3 -> "wizard.tile.objectstore.s3";
+            case OSS -> "wizard.tile.objectstore.oss";
+            case QINIU -> "wizard.tile.objectstore.qiniu";
+            case COS -> "wizard.tile.objectstore.cos";
+        };
+    }
+
+    /**
+     * ⭐ P2-6：对象存储向导页已落地（provider 子表单 + endpoint/region/bucket/凭据）。
+     * 返回非空步骤 id 后 {@link #connectable()} 自动为 true，向导据此渲染真实控件，
+     * 不再摆「尚未开放」的假提示。
+     */
+    @Override
+    public List<String> wizardStepIds() {
+        return List.of("objectstore");
+    }
 }

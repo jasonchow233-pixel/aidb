@@ -2803,6 +2803,12 @@
     -fx-background-color: transparent;
 }
 
+/* ⭐ P3-1 首启引导浮层：与命令面板同一层表面，但类名分开 ——
+   命令面板的门禁按 .adb-palette-overlay 单点查询，两个浮层共用会撞查询。 */
+.adb-onboarding-overlay {
+    -fx-background-color: transparent;
+}
+
 .adb-palette__scrim {
     /* ⭐ V-2：真正的遮罩色（overlay 令牌），不再用「背景色 + 半透明」凑。 */
     -fx-background-color: -adb-overlay;

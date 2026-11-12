@@ -176,6 +176,8 @@ public final class MenuBarFactory {
                 actions.menuItem("window.minimize"),
                 actions.menuItem("window.zoom"),
                 new SeparatorMenuItem(),
+                // ⭐ P3-4：标签总览是「窗口治理」，不是又一个常驻页签。
+                actions.menuItem("tabs"),
                 actions.menuItem("window.close"));
     }
 
@@ -183,6 +185,8 @@ public final class MenuBarFactory {
         return new Menu(I18n.t("menu.help"), null,
                 actions.menuItem("shortcuts"),
                 new SeparatorMenuItem(),
+                // ⭐ P3-1：首启引导关掉之后还能从 Help 重开（不看「看过」标志）。
+                actions.menuItem("reopen-guide"),
                 actions.menuItem("about"));
     }
 }

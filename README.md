@@ -33,6 +33,8 @@ deliberately does not do those things ([why](#explicitly-not-on-the-roadmap)).
 | **MariaDB** | ✅ 10.x / 11.x — catalog SQL and DDL confirmed against a real server |
 | **SQL Server** | ✅ 2019+ — `sys.*` catalog queries confirmed against a real server |
 | **Oracle** | ✅ 12c+ — `ALL_*` catalog queries and `DBMS_METADATA` confirmed against a real server |
+| **Redis** | ✅ key browsing (`SCAN`, type, TTL, size), value view/edit for five types, TTL and `DEL` / `FLUSHDB` / `FLUSHALL` behind the shared destructive-confirm gate. ⚠️ Redis over SSH is not wired up yet |
+| **Object storage** | ✅ one browser for four providers: S3-compatible endpoints (AWS S3, MinIO, LocalStack), Alibaba Cloud OSS, Qiniu Kodo and Tencent Cloud COS. Prefix navigation, upload / download, single-object and recursive-prefix delete, metadata, presigned URLs and move/rename. Credentials live in the system credential store, never in `connections.json` |
 
 ✅ for the last three means the dialect, DDL generation, paging and capability gates are covered by
 unit tests **and** executed against real servers in the Docker matrix (`scripts/dbmatrix.sh`, opt-in
@@ -62,6 +64,19 @@ Oracle `ON UPDATE`) instead of offering dead controls.
 Dialect differences sit behind one `Dialect` abstraction, so introspection, DDL generation and
 type mapping behave the same on every server — including where they genuinely cannot, such as
 SQLite table comments, which show up **disabled** rather than pretending to work.
+
+Connection types are registered in one place (`AssetFamilyRegistry`): adding a family registers its
+tiles, wizard steps and tree behaviour, rather than threading a new `if` through the UI. Redis and
+object storage use the same write-safety model as SQL — every mutating operation is classified
+(`READ_ONLY` / `MUTATING` / `DESTRUCTIVE` / `ADMIN`, unknown operations fail closed to the highest
+level) and destructive ones go through a confirmation dialogue whose default button is *Cancel*.
+
+Object storage has no real directories. The browser folds keys containing `/` into virtual folder
+rows using a delimiter, and flattens the listing when it needs to delete a prefix recursively.
+Capabilities are declared per provider instead of guessed: Qiniu Kodo has no server-side move and
+cannot list buckets, so **Move / rename is disabled with a tooltip that says why** (and the backend
+throws `UnsupportedOperationException`), and the tree shows only the configured bucket. No control
+is left in place that silently does nothing.
 
 ## What it looks like to use
 
@@ -228,6 +243,19 @@ every pull request is reviewed against. Design rules are in
   `ssh` binary) with OpenSSH `known_hosts` host keys and a TOFU fingerprint prompt; the connection
   wizard's SSH page is a real form. Only RSA / ECDSA private keys are supported (ed25519 is not),
   which the wizard states next to the field.
+- **Object storage backends are compiled and covered by an in-memory contract suite, but have not
+  been exercised against real cloud accounts or emulators** (no `ADB_TEST_*` credentials in this
+  environment). The four SDK adapters share one interface and one capability matrix; real-endpoint
+  verification is an open acceptance item, not a delivered claim. The browser also lists a whole
+  delimiter level in one call — there is no server-side pagination for very large buckets yet.
+- **Redis over SSH is not wired up**: `RedisSessions` states this in code. SQL connections still
+  support the pure-Java SSH tunnel; Redis connections currently go direct.
+- **Five new brand marks are neutral geometric placeholders** (`redis`, `aws-s3`, `aliyun-oss`,
+  `qiniu`, `tencent-cos`). `TRADEMARK-NOTICE.txt` names each one; official vector assets must
+  replace them before any public release.
+- The first-run welcome overlay, the wizard's family filter, the object browser and the tabs
+  overview have behaviour gates but **no matching screenshots yet** — the captured frame set is
+  still from an older build.
 - The full list, with the date every number was measured: [docs/STATUS.md](docs/STATUS.md).
 
 ## License · Acknowledgements

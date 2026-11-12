@@ -9,6 +9,57 @@
 
 ## [Unreleased]
 
+### Added — 2026-11-12 P1/P2/P3：资产族扩展（Redis + 对象存储 + 引导/Tab 治理）
+
+- **资产族地基（P0 收口）**：`AssetKind` 取代 `DialectKind` 成为连接档案的判别轴，
+  `AssetFamily` / `AssetFamilyRegistry` 做「加一种连接类型 = 一处登记」的单一真相源。
+  四类对象存储合并成一个 `OBJECT_STORE` kind + `ObjectStoreProvider` 子判别，不拆四个 kind。
+  旧的 `connections.json` 里 `kind` 写枚举名的档案仍能读，无需迁移。
+- **Redis（P1）**：新增 `adb-redis` 模块与向导页；对象树按 `INFO keyspace` 懒加载
+  `db 0 / db 1 …` 分组；`RedisKeysPage` 列键 / 类型 / TTL / 大小，五种值类型可在抽屉里查看编辑，
+  TTL、`DEL`、`FLUSHDB`、`FLUSHALL` 一律走 `RedisDanger` 分级 + `DestructiveConfirm`
+  （取消是默认按钮，回车不会落到删除上）。`RedisMutateTest` / `RedisTreeTest` 钉住写安全与双击路由。
+- **对象存储（P2）**：新增 `adb-objectstore` 模块，四家 SDK（AWS SDK v2 / 阿里云 OSS /
+  七牛 Kodo / 腾讯云 COS）适配到同一个 `ObjectStoreSession` 接口，另附 `InMemoryObjectStoreSession`
+  让无云账号环境也能跑行为门禁。对象存储没有真目录 —— 用 key 里的 `/` 与 delimiter 折叠成
+  `ObjectEntry.folder()` 行表达层级，不传 delimiter 时平铺用于递归删前缀。`ObjectBrowserPage`
+  提供前缀过滤、面包屑、上传 / 下载 / 删一颗 / 递归删前缀 / 元数据 / 预签名 URL / 移动重命名。
+  **诚实性**：`ObjectStoreCapabilities` 显式声明能力，七牛 `supportsMove=false` /
+  `supportsListBuckets=false`，UI 把移动按钮置灰并写明原因、后端抛
+  `UnsupportedOperationException`，不留「点了没反应」的假控件。删除类操作由
+  `ObjectStoreDanger` 判成 `DESTRUCTIVE`（未知 / 空白操作 fail-closed 到 `ADMIN`），
+  与 SQL / Redis 共用 `DestructiveConfirm`。**凭据**：`accessKey / secretKey / token`
+  只进 `CredentialStore`，`connections.json` 里只留非敏感 options。
+- **首启引导（P3-1）**：`OnboardingOverlay` 叠在 demo 自动连接**之上**、关后即焚，
+  「看过」写进 `SettingsStore`；Help 菜单可随时重开。验收 / 截图 / 测试会话不自动弹，
+  保证逐帧可复现。
+- **向导族筛选（P3-2）**：磁贴从 7 张长到 11 张后，首步加一条「全部 / SQL / Redis / 对象存储」
+  筛选带；用可见性切换而非重建磁贴，避免污染 `ToggleGroup`。当前选中项被筛掉时自动挪到
+  该族第一张，不让「下一步」带着一个看不见的类型进属性页。
+- **标签概览（P3-4/P3-5）**：命令面板 `tabs` 与 Window 菜单打开非常驻的
+  `TabOverviewPanel`（按连接分组、搜索、激活、逐条关闭、按连接全关）。所有关闭都回调
+  `TabBar.close()`，因此 `closeGuard` 脏检查、钉住态与常驻标签规则一条都绕不过去。
+- **品牌资产与门禁**：`redis.svg` 与四枚对象存储占位 SVG 落地，
+  `TRADEMARK-NOTICE.txt` 逐枚点名；彩色 `list.svg` 补齐图标系统。新增
+  `ObjectStoreTreeTest` / `ObjectBrowserPageTest` / `OnboardingOverlayTest` /
+  `TabOverviewPanelTest`，并把 `AssetFamilyAuditTest` / `BrandIconTest` /
+  `I18nAuditTest` / `StyleClassCoverageTest` 的期望同步到新基线。
+
+### Fixed — 2026-11-12
+
+- 向导磁贴 id 分隔符由 `:` 改成 `-`：`object_store:s3` 会被 CSS id 选择器解析成伪类，
+  门禁按 `#wizard-tile-<id>` 查这四张磁贴时一个都查不到。
+- `ConnectionCatalog.graphic(Entry, …)` 改名 `graphicFor(...)`：与既有
+  `graphic(AssetKind, …)` 同名的引用类型重载让 `graphic(null, size)` 变成编译期歧义。
+- 五处 `DestructiveConfirm` / `TextInputDialog` 调用点补上 `DialogStyles.apply`，
+  否则这些弹窗退回 Modena 灰皮肤（§七门禁按文件计数守着）。
+- 对象存储移动按钮的说明从 `Tooltip.install` 改成 `setTooltip`：前者不写
+  `getTooltip()`，无障碍读数与行为门禁都读不到那句「为什么置灰」。
+- 彩色 `list.svg` 按图标系统的分层口径重画：圆点走 `tone-c`、三条横线由 `edge`
+  收尾且 EDGE 必须是最后一层。初稿只有色块层，`ColoredIconTest` 在 14px 下读不出轮廓。
+- 术语统一：`action.tabs` 中文由「打开标签总览」改为「打开标签概览」；
+  `TerminologyGuardTest` 钉的是「一个动作只有一个名字」，规范词是「概览」。
+
 ### In progress — 2026-11-11 P0
 
 - 视图改名：SQLite 明确拒绝直接改名，不隐式删建；Oracle 改用 `RENAME … TO …`。SQLite/JDBC 保留视图、触发器和依赖的回归通过，外部引擎改名矩阵仍待验证。
