@@ -248,14 +248,18 @@ every pull request is reviewed against. Design rules are in
   environment). The four SDK adapters share one interface and one capability matrix; real-endpoint
   verification is an open acceptance item, not a delivered claim. The browser also lists a whole
   delimiter level in one call — there is no server-side pagination for very large buckets yet.
+  **Redis is different**: its 14 contract cases run against a real `redis:7.2` testcontainers
+  instance (including a real FLUSHALL mutation check), and the key browser has a matching UI
+  frame captured against a real `redis:7.2` container (`docs/screenshots/p10-redis-keys.png`).
 - **Redis over SSH is not wired up**: `RedisSessions` states this in code. SQL connections still
   support the pure-Java SSH tunnel; Redis connections currently go direct.
 - **Five new brand marks are neutral geometric placeholders** (`redis`, `aws-s3`, `aliyun-oss`,
   `qiniu`, `tencent-cos`). `TRADEMARK-NOTICE.txt` names each one; official vector assets must
   replace them before any public release.
-- The first-run welcome overlay, the wizard's family filter, the object browser and the tabs
-  overview have behaviour gates but **no matching screenshots yet** — the captured frame set is
-  still from an older build.
+- The first-run welcome overlay, the wizard's family filter, the object browser, the tabs
+  overview and the Redis key browser each have a matching frame in `docs/screenshots/`; the
+  object-browser frame still runs on the offline in-memory backend — real-endpoint evidence
+  for object storage is an open item.
 - The full list, with the date every number was measured: [docs/STATUS.md](docs/STATUS.md).
 
 ## License · Acknowledgements

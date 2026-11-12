@@ -4224,8 +4224,9 @@
     -fx-fill: -adb-vendor-mariadb;
 }
 
-/* ⭐ EXT：Redis / 对象存储四家（WIP 磁贴，尚未开放连接）沿用同一套厂商作用域类，
-   让向导里的占位磁贴也能按品牌着色。颜色变量见 theme-dark/light.css。 */
+/* ⭐ EXT：Redis / 对象存储四家的磁贴与向导控件沿用同一套厂商作用域类，
+   让磁贴与真实表单控件都按品牌着色（Redis P1、对象存储 P2-6 已开放连接）。
+   颜色变量见 theme-dark/light.css。 */
 .adb-db--redis .adb-icon {
     -fx-stroke: -adb-vendor-redis;
 }

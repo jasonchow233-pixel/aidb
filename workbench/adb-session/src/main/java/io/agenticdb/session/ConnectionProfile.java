@@ -168,11 +168,13 @@ public record ConnectionProfile(
      * 「配了隧道结果直连」是会比报错更难查的事。
      */
     public ConnectionSpec spec(String password, SshSecrets sshSecrets) {
-        // ⭐ EXT：非 SQL 资产（Redis / 对象存储）尚未落地后端会话（P1 / P2），
-        //     这里直接抛，不当成「能连的 SQL」骗 UI（同 v4 诚实环纪律）。
+        // ⭐ EXT：ConnectionSpec 是 JDBC/SQL 语义。Redis 走 RedisSessions、
+        //     对象存储走 adb-objectstore 的会话路径，都不经过这里。
+        //     非 SQL 档案走到这条 = 调用方没按 kind 分支（路由 bug），直接抛，
+        //     不当成「能连的 SQL」骗 UI（同 v4 诚实环纪律）。
         if (!kind.isSql()) {
             throw new UnsupportedOperationException(
-                    kind.displayName() + " 尚未开放连接（P1 / P2 落地后端会话）");
+                    kind.displayName() + " 不是 SQL 资产，不走 ConnectionSpec（请用其资产族自己的会话路径）");
         }
         return new ConnectionSpec(kind.dialectKind(), host, port, database, username,
                 password == null || password.isBlank() ? null : password,

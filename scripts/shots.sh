@@ -270,6 +270,24 @@ SHOTS=(
   #   两行条件 + and 连接词 + Sort By 芯片 + Criteria Edited 脏标记都在画面里。
   #   10000ms：连接 → 表结构 → 行 两轮轮询都要等够，面板才有列可摆。
   "p2-filter-sort||10000|ADB_OPEN=users ADB_FILTER_SORT=1 ADB_THEME_FORCE=light"
+  # ── EXT P2/P3 画面债：四个新面各一帧，证的是「真的画出来了」而不是只有行为门禁 ──
+  #   引导浮层是主场景里的 StackPane 子节点，capture 拍主窗口就能拿到；它叠在 demo
+  #   自动连接之上，所以这一帧同时证「关掉前工作区仍在、没有拿一张欢迎页顶替它」。
+  "p10-onboarding||5000|ADB_ONBOARDING=1 ADB_THEME_FORCE=light"
+  #   族筛选那一格不走新开关：沿用 ADB_CONNECT_WIZARD 的 pose 通道，新增一个摆态值，
+  #   由 poseForShots 真的选中 chip（不是把磁贴可见性硬改一遍）。
+  "p5-connect-family||4000|ADB_CONNECT_WIZARD=family-objectstore ADB_THEME_FORCE=light"
+  #   标签概览是「有 owner 的非模态 Dialog」，ScreenshotSession.targetScene 的兜底分支认它；
+  #   先摆三张标签再开概览，否则面板只剩空态，证不了按连接分组与逐条关闭。
+  "p10-tabs-overview||7000|ADB_TABS_OVERVIEW=1 ADB_THEME_FORCE=light"
+  #   对象浏览器走离线内存后端：注册一条没有凭据的演示档案 + 预置三颗对象，
+  #   不连真云账号也不冒充真端点（真端点证据属 R2，见 STATUS §3）。
+  "p10-object-browser||8000|ADB_OBJECT_BROWSER=1 ADB_THEME_FORCE=light"
+  #   Redis 键浏览器帧：这一格**要求真 Redis 服务端**（与对象浏览器相反 ——
+  #   对象存储没有仿真服务，只能用离线内存后端；Redis 本机有 redis:7.2）。
+  #   落点门在 AppShell.poseRedisKeysForShots()：没配 ADB_TEST_REDIS_HOST 就弃帧，
+  #   宁可没图也不拍一张演示库空表冒充真 Redis。
+  "p10-redis-keys||9000|ADB_REDIS_KEYS=1 ADB_THEME_FORCE=light"
 )
 
 step "编译并安装（否则拍到的是旧界面）"

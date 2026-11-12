@@ -281,15 +281,17 @@ public final class ConnectionsPage extends VBox implements AutoCloseable {
 
         // ⭐ M3：端口列以前直接绑原值 —— SQLite 明明没有端口概念，却显示「0」，
         //    和真的端口 0（异常值）长得一模一样。
-        //    「这个方言有没有端口」是**方言层的事**（`usesFilePath` = 走文件路径，
-        //    自然没有主机与端口）—— 这里不能按具体方言写分支，
-        //    否则就破了 A1 的承诺（加一种数据库只改 Dialect 实现）。
+        //    「这一族有没有端口」是**注册表层的事**（{@code AssetKind.hasHostPort()}：
+        //    SQL 族问方言的 {@code usesFilePath()}，Redis 有真端口，对象存储走 endpoint 没有端口）
+        //    —— 这里不能按具体方言写分支，否则就破了 A1 的承诺（加一种数据库只改 Dialect 实现）。
+        //    ⚠️ 这一格曾经直接调 {@code kind().dialect()}，而对象存储 / Redis 没有方言 ——
+        //    档案列表里只要有这两种连接，打开连接管理就抛 IllegalStateException（真实崩溃）。
         TableColumn<ConnectionProfile, String> port = column(I18n.t("wizard.port"),
                 "port", 80);
         port.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
-                data.getValue().kind().dialect().usesFilePath()
-                        ? "—"
-                        : String.valueOf(data.getValue().port())));
+                data.getValue().kind().hasHostPort()
+                        ? String.valueOf(data.getValue().port())
+                        : "—"));
 
         TableColumn<ConnectionProfile, String> database = column(I18n.t("category.database"),
                 "database", 180);

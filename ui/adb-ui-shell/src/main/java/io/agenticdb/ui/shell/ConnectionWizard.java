@@ -1611,7 +1611,21 @@ public final class ConnectionWizard {
             case "ssh" -> propertiesPose("ssh");
             case "sshkey" -> propertiesPose("sshkey");
             case "remarks" -> propertiesPose("remarks");
+            // ⭐ EXT 帧证（P3-2）：族筛选带不是摆一张静态图 —— 真的选中「对象存储」那枚
+            //   chip，由 ToggleGroup 的 listener 顺带把另外两族磁贴切不可见，于是这一帧
+            //   同时证的是「chip 与磁贴走同一条链路」，不是两处各自的假状态。
+            case "family-objectstore" -> selectFamilyForShots(TileFamily.OBJECT_STORE);
             default -> { }
+        }
+    }
+
+    /** ⭐ EXT 帧证：选中某枚族 chip，让筛选走产品自己的 ToggleGroup 链路。 */
+    private void selectFamilyForShots(TileFamily family) {
+        for (Toggle toggle : familyGroup.getToggles()) {
+            if (toggle.getUserData() == family) {
+                familyGroup.selectToggle(toggle);
+                return;
+            }
         }
     }
 

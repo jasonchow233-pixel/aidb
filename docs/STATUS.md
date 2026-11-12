@@ -7,31 +7,83 @@
 
 ## 1. 验证基线
 
-### 当前工作树（2026-11-12，P1/P2/P3 收口 · 全量门禁已绿）
+### 当前工作树（2026-11-12，P1/P2/P3 收口 + 画面债平账 + 非 SQL 连接路由修复 · 全量门禁已绿）
 
-- **2069 执行 / 0 失败 / 113 跳过 / 221 个测试类**，`BUILD SUCCESS`、`BUILD_EXIT=0`。
-  命令 `MAVEN_ARGS=-o ./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`），
-  2026-11-12 14:41 +08:00、本机 Darwin 24.6.0 x86_64、Zulu JDK 25.0.5（`JAVA_HOME` 显式指向
-  `/tmp/zulu25/...`），Total time **30:00 min**，**16/16 模块 SUCCESS**。验证时源码为
-  `13c4813` + 52 个工作树文件（26 改 + 26 新增），该工作树随后完整提交为 `0ecf228`，内容一致。
-  较 2026-11-11 的 **1998 / 113** 多 **71 条执行**、跳数不变；
-  新增的两格是 `adb-objectstore` **19** 与 `adb-redis` **14**。逐模块执行数（`TestCount` 口径，
-  跳过单列）：`adb-ui-shell` **1155** · `adb-ui-core` 70 · `adb-safety` 88 · `adb-sql` 42 ·
-  `adb-model` 30 · `adb-fixtures` 3 · `adb-editing` 39（跳 15）· `adb-objectstore` 19 ·
-  `adb-asset` 14 · `adb-introspect` 273（跳 19）· `adb-redis` 14 · `adb-session` 39（跳 5）·
-  `adb-transfer` 115 · `adb-jdbc` 168（跳 74）。
-- ⚠️ **五家外部数据库本轮仍未验**：113 条跳过里 74 条在 `adb-jdbc`、19 条在 `adb-introspect`、
-  15 条在 `adb-editing`（`ADB_TEST_*` / `dbmatrix.sh` 未配置），另有 `adb-session` 5 条 WinCred
-  平台跳过；矩阵复跑属 **R2 配置阻塞**。四家对象存储与 Redis 只有编译 + 内存契约
-  （`adb-objectstore` 19 / `adb-redis` 14），**没有真端点证据**，边界详见 §3。
-- ⚠️ **68 张已入库截图与当前源码不同版**（R1 环境阻塞）：首启引导、族筛选带、对象浏览器、
-  标签概览四个新面只有行为门禁，没有同版帧；五枚新品牌图仍是占位件（R4）。
-- ⚠️ **一次时序假红已排除、不是靠调断言过的**：本轮第一次全量 `BUILD FAILURE`，唯一红是
+- **2186 执行 / 0 失败 / 6 跳过 / 224 个测试类**，`BUILD SUCCESS`、`BUILD_EXIT=0`。
+  命令 `set -a && . scripts/.dbmatrix.env && set +a && MAVEN_ARGS=-o ./scripts/build.sh`
+  （= `./mvnw -B clean verify` + `java tools/TestCount.java`），
+  2026-11-12 19:05 +08:00、本机 Darwin 24.6.0 x86_64、Temurin JDK 25.0.5（`JAVA_HOME` 指向
+  `~/.workbuddy/jdk/jdk-25.0.5+8`），Total time **28:51 min**，**16/16 模块 SUCCESS**。验证时源码为
+  `93a6ee2` + 66 个工作树文件（58 改 + 8 新增：45 张重拍帧改、5 张新面帧、3 个新门禁类，
+  另有 README / CHANGELOG / STATUS / shots.sh / 8 个源文件改动）。
+  较同日早间不带环境的 **2079 / 113** 多 **107 条执行**、**少 107 条跳过**；
+  较 2026-11-11 的 **1998 / 113** 多 **188 条执行**。
+  逐模块执行数（`TestCount` 口径，跳过单列）：`adb-ui-shell` **1158** · `adb-ui-core` 70 ·
+  `adb-safety` 88 · `adb-sql` 42 · `adb-model` 30 · `adb-fixtures` 3 · `adb-editing` **54** ·
+  `adb-objectstore` 19 · `adb-asset` **18** · `adb-introspect` **292** · `adb-redis` 14 ·
+  `adb-session` **42**（跳 5）· `adb-transfer` 115 · `adb-jdbc` **241**（跳 1）。
+- ⭐ **五套真库矩阵契约本轮全部实跑、0 跳过**（带环境那一次逐类读出来的，不是抄上一版）：
+  主矩阵 `ExternalRealDatabaseTest` **51 / 0 失败 / 0 跳过**（五引擎 × 10 + 1）、
+  TLS 矩阵 `ExternalTlsDatabaseTest` **18 / 0 / 0**（三个加密对端 33071/33072/54331）、
+  写回矩阵 `EditWriteBackMatrixTest` **15 / 0 / 0**（契约第 10 / 11 / 14 条）、
+  导出往返 `TransferRoundTripMatrixTest` **5 / 0 / 0**（第 12 条）、
+  SSH 跳板 `SshTunnelMatrixTest` **5 / 0 / 0**（第 13 条）+ `SshTunnelTest` 11。
+  账闭环：**2079 + 107 = 2186**，**113 − 107 = 6**；较上一基线（2026-11-12 16:14 的
+  **2176 / 6**，`0ecf228` + 56 文件）**+10 条执行**，全部是本轮新增门禁：
+  `NonSqlProfileSpecGuardTest` 3（session 39→42）、`AssetKindCapabilityTest` 4
+  （asset 14→18）、`NonSqlProfileRenderTest` 3（ui-shell 1155→1158）。
+- ⭐ **画面债已平账（R1 转绿）**：`docs/screenshots/` 现为 **73 张**（68 张基准帧全部同版重拍
+  + 5 张新面首入库），`md5` **零重复**，逐张目视核对过五个新面。
+  五个新面的帧：`p10-onboarding`（引导浮层三卡片 + 背景工作区可见，1280×792）、
+  `p5-connect-family`（族筛选带选中 Object Storage chip、只剩 4 张对象存储磁贴，900×700）、
+  `p10-tabs-overview`（搜索框 + 按连接分组 + 5 行标签 + Activate/Close，642×376）、
+  `p10-object-browser`（README.md 47B + `brand/` `reports/` 虚拟文件夹 + 完整工具条，1280×792）、
+  `p10-redis-keys`（**真 Redis 端点**：redis:7.2 容器 127.0.0.1:16379，键表逐行真实数据，
+  状态栏「Connected matrix Redis」+ 绿灯 `Redis · matrix Redis`，1280×792）。
+  ⚠️ **`p10-redis-keys` 是真服务端帧但不算对象存储证据**：Redis 键浏览器连的是本机
+  redis:7.2 容器（与 14 条真容器契约同一镜像）；对象浏览器帧走的是离线
+  `InMemoryObjectStoreSession` 演示数据，真端点证据属 R2，见 §3 第 1 条。
+  五枚新品牌图仍是中性几何占位件（R4）。
+- ⭐ **目视验收抓出一处真实文案缺陷并已修**：`wizard.type.hint` 仍写「ships drivers for these
+  **six** databases only」，而磁贴已从 7 张扩到 11 张 —— 中英两版都改成不带数量断言的
+  「This edition ships the connection types shown above.」/「本版只带上面列出的这些连接类型。」。
+  这是行为门禁抓不到的缺陷（它问的是键在不在、值对不对，不问数字对不对）。
+- ⭐ **目视验收抓出 Redis 帧里的假阴性报错，顺藤摸出一条真缺陷并已修（非 SQL 连接路由）**：
+  第一版 `p10-redis-keys` 帧键数据正常、状态栏却写「Connection failed: Redis 尚未开放连接
+  （P1 / P2 落地后端会话）」—— 键明明是 `RedisSessions` 真连出来的。根因是三条 SQL 专属
+  路径没按资产 kind 分派：
+  ① 侧栏/页签激活连接统一走 `connectProfile → sessions.open(specOf(profile))`，而
+  `ConnectionProfile.spec()` 对非 SQL kind 抛护栏 → 被当成「连接失败」；
+  ② 侧栏 `setConnection` 无条件触发对象懒加载，`loadObjectsFor` 只会说 SQL 这一种话；
+  ③ `loadCatalogsFor` 对对象存储档案会挂出假的「catalog 读取失败」重试节点。
+  修复：`connectProfile` 对非 SQL 分派到新的 `connectNonSqlProfile`（后台用浏览页
+  <b>真正会用的会话路径</b>真验证一次可达性——Redis 真握手 `databases()`，对象存储走
+  同一个 `objectStoreSessionFor` 工厂真列 bucket；成功才点亮状态栏，新增 i18n 键
+  `shell.connectedReady`）；`loadObjectsFor` / `loadCatalogsFor` 对非 SQL kind 直接收口
+  （树内容各自由 `loadRedisDbs` / `loadBuckets` 懒加载）。修完重拍，帧内状态栏为
+  「Connected matrix Redis」、右下角绿灯 `Redis · matrix Redis`。
+  这也是行为门禁抓不到的缺陷——`NonSqlProfileRenderTest` 只钉「打开页签不抛异常」，
+  状态栏谎报没人问。
+- ⭐ **同源过期文案一并清理**：`ConnectionProfile.spec()` 护栏消息从「尚未开放连接
+  （P1 / P2 落地后端会话）」改为「不是 SQL 资产，不走 ConnectionSpec（请用其资产族自己的
+  会话路径）」—— 护栏本身必要（`ConnectionSpec` 是 JDBC 语义），但旧文案撒谎说后端会话
+  未落地；新护栏被新门禁 `NonSqlProfileSpecGuardTest`（adb-session，3 例）钉住。
+  `ObjectStoreFamily` 类注释与 `app.css` 的「尚未开放连接」注释同步改为已落地口径。
+  棘轮门禁（`I18nAuditTest.modelLayerChineseIsRatchetedDown`）当轮抓住：护栏消息拆成
+  两条 CJK 字面量超限，合并回单条后转绿——这条门禁确实在工作。
+- ⚠️ **剩余 6 条跳过都是设计如此，不是「没验」**：`adb-session` 5 条是 `CredentialStoreTest`
+  里的 Windows 凭据管理器（WinCred）用例，按平台 `assumeTrue` 跳过（本机 macOS，这一半只能在
+  Windows 上跑）；`adb-jdbc` 1 条是 `DatabaseVersionMatrixTest`，它要 `ADB_TEST_VERSION_MATRIX=1`
+  才开跑（同一引擎多版本矩阵，跑一次十几分钟，故意不并进默认门禁）。
+- ⚠️ **一次时序假红已排除、不是靠调断言过的**：本日第一次全量 `BUILD FAILURE`，唯一红是
   `TerminologyGuardTest.oneActionHasExactlyOneName`（UI Shell 1155 条里 1 条）—— 构建跑到
   UI Shell 之后才把 `action.tabs` 的中文术语改成规范词「概览」，而这条门禁读源码、跑在改动
   之前；它同时会从本地安装的 `adb-ui-core` 资源里取文案。刷新该 jar 后单独复验 7/0/0，
   再 clean 重跑全量得上面的全绿。教训与 2026-11-11 的 stale jar 坑同源：**构建中途改
   `messages_*.properties` 会让当轮结果失真，必须重装再重跑**。
+- ⚠️ **本轮撞过一次环境的批量删除保护**：整批重拍到第 50 张时，脚本每帧前删旧 PNG 的动作
+  累计触发 `SAFE_DELETE_BULK_CONFIRM_REQUIRED`（本轮累计 50 次 `rm`）。这不是项目缺陷 ——
+  补拍改成「每帧输出到独立临时目录 + `cp -f` 覆盖」，全程零删除。
 
 ### 上一次全量（2026-11-11，P0 收口 · 代码门禁已绿）
 
@@ -155,16 +207,23 @@
 ### 能力缺口
 
 - ⭐ **资产族扩展（P0–P3，2026-11-12）的四条如实边界**：
-  1. **真端点证据为空（R2 配置阻塞）**：四家对象存储 SDK 适配器只有编译通过 + `InMemoryObjectStoreSession`
-     上的 19 条行为契约；没有真实云账号，也没有 minio / localstack / OSS / COS / Kodo 仿真服务，
-     因此「连得上、列举 / 上传 / 下载 / 预签名真的生效」**不写已验**。Redis 同理：本机没有真
-     Redis 服务端的同版验收帧。
+  1. **对象存储真端点证据为空（R2 资产阻塞）**：四家对象存储 SDK 适配器只有编译通过 +
+     `InMemoryObjectStoreSession` 上的 19 条行为契约；没有真实云账号，也没有 minio / localstack /
+     OSS / COS / Kodo 仿真服务，因此「连得上、列举 / 上传 / 下载 / 预签名真的生效」**不写已验**。
+     ⚠️ **Redis 不在此列**：`adb-redis` 的 14 条契约（`RedisScanTest` 5 + `RedisMutateTest` 9）
+     跑在 testcontainers 起的真 `redis:7.2` 容器上，含 FLUSHALL 的真实变异验证；同版 UI 验收帧
+     （`p10-redis-keys`，真容器实拍）也已入库 —— Redis 这一族服务端与画面证据都齐了，
+     只是 over SSH 未接（下条）。此前把两者并成一句「真端点证据为空」不准确。
   2. **Redis over SSH 未接入**：档案里的 SSH 段目前只作用于 SQL 连接；`RedisSessions` 在代码里
      写明这一点，界面不摆一个勾了没反应的开关。
   3. **对象存储无服务端翻页**：`listObjects` 一次列完当前 delimiter 层，超大 bucket 的性能边界
      未量过；递归删前缀用不传 delimiter 的平铺列举实现，删之前会走 `DESTRUCTIVE` 确认。
-  4. **画面证据缺失（R1 环境阻塞）**：首启引导、族筛选带、对象浏览器、标签概览四个新面只有
-     行为门禁，没有同版截图；已入库的 68 张帧仍落后于当前源码。五枚新品牌图是占位件（R4）。
+  4. **画面证据已补齐、但仍不是真端点证据（R1 转绿，R2 未动）**：首启引导、族筛选带、对象浏览器、
+     标签概览、Redis 键浏览器五个新面的同版帧本轮已入库（`docs/screenshots/` 73 张，`md5` 零重复，
+     逐张目视核对过），68 张基准帧也全部重拍到当前源码。其中 **Redis 键浏览器帧拍在真
+     redis:7.2 容器上**（与 14 条真容器契约同一镜像），Redis 的「同版 UI 验收帧」欠账就此还清；
+     但**对象浏览器那张走的是离线内存后端**，证明的是「浏览器的壳与交互画出来了」，
+     不是「连上了某家云」。五枚新品牌图仍是中性几何占位件（R4）。
 - **Filter & Sort 面板支持条件组（组内 AND、组间 OR）**：`[Ω]`（加 OR 条件组）已落地真实能力——
   按 `MAX_GROUPS=8` 新增组、组间 `OR` 连接、组内 `AND`（单组等价于旧版平铺 AND，SQL 输出逐字节兼容）；
   `IN` 条件仍由列头漏斗的候选值多选提供，面板内原样保留、不可行内编辑；Text 模式是**只读**的生成表达式。

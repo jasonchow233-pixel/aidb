@@ -8,8 +8,8 @@ import java.util.List;
  * {@link AssetKind#OBJECT_STORE} kind，靠 {@link ObjectStoreProvider} 子判别。
  *
  * <p>四家共享 95% 数据模型（bucket / object / prefix），所以合并成一个 kind、四张磁贴，
- * 而不是四个独立 kind（EXT 规划 §0.2 Q2）。后端会话与向导步骤在 P2 落地
- * （{@code adb-objectstore} 模块）。当前 {@link #wizardStepIds()} 为空 = 尚未开放连接。
+ * 而不是四个独立 kind（EXT 规划 §0.2 Q2）。后端会话由 {@code adb-objectstore} 模块提供，
+ * 向导步骤在 P2-6 落地 —— {@link #wizardStepIds()} 返回非空步骤 id = 已开放连接。
  */
 public final class ObjectStoreFamily implements AssetFamily {
 

@@ -35,19 +35,29 @@ public enum AssetKind {
 
     // ───────────────────────── 非 SQL 族 ─────────────────────────
     /** Redis 键值库。 */
-    REDIS("redis", "Redis", null),
+    REDIS("redis", "Redis", null, true),
     /** 对象存储：S3 / 阿里云 OSS / 七牛 / 腾讯云 COS 共用此 kind，靠 provider 子判别。 */
-    OBJECT_STORE("object_store", "Object Storage", null);
+    OBJECT_STORE("object_store", "Object Storage", null, false);
 
     private final String id;
     private final String displayName;
     /** SQL 成员持有对应方言；非 SQL 为 {@code null}。 */
     private final DialectKind dialectKind;
+    /**
+     * 非 SQL 成员自己回答「有没有主机 + 端口这一层」；SQL 成员为 {@code null} ——
+     * 那一层由方言决定（SQLite 走文件路径）。
+     */
+    private final Boolean hostPort;
 
     AssetKind(String id, String displayName, DialectKind dialectKind) {
+        this(id, displayName, dialectKind, null);
+    }
+
+    AssetKind(String id, String displayName, DialectKind dialectKind, Boolean hostPort) {
         this.id = id;
         this.displayName = displayName;
         this.dialectKind = dialectKind;
+        this.hostPort = hostPort;
     }
 
     /** 持久化 id（小写，稳定）。序列化走它，旧档案的枚举名也认。 */
@@ -84,6 +94,33 @@ public enum AssetKind {
     /** 反查方言行为实现（非 SQL 抛）。 */
     public Dialect dialect() {
         return dialectKind().dialect();
+    }
+
+    /**
+     * 这一族有没有「主机 + 端口」这一层。
+     *
+     * <p>SQL 族问方言（{@code usesFilePath()}：SQLite 走文件路径，没有主机与端口）；
+     * 非 SQL 族自己声明 —— Redis 有 host/port，对象存储走 endpoint（域名），没有端口。
+     *
+     * <p>⚠️ 这一格存在的理由是一批**真实崩溃**：非 SQL 成员没有方言，而 UI 有几处
+     * 直接调 {@code kind().dialect()}，档案列表里一旦有 Redis / 对象存储连接就会抛
+     * {@code IllegalStateException}。判据收敛到注册表层之后，UI 不会再长出新的裸方言调用。
+     */
+    public boolean hasHostPort() {
+        if (isSql()) {
+            return !dialect().usesFilePath();
+        }
+        return hostPort != null && hostPort;
+    }
+
+    /**
+     * 这一族要不要「切库就重连」（页签标题 {@code <对象> @<库> (<连接>)} 那种形态）。
+     *
+     * <p>SQL 族问方言；非 SQL 族一律 false —— Redis 的 db 下标是**另一个键浏览器实例**
+     * （同一台服务器上的另一个库视图），不是「同一连接切库」；对象存储只有 bucket，同理。
+     */
+    public boolean switchesCatalogByReconnect() {
+        return isSql() && dialect().switchesCatalogByReconnect();
     }
 
     // ───────────── 把 SQL 常用行为直接委派出来，调用点少一层 .dialectKind() ─────────────

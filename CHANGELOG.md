@@ -47,6 +47,19 @@
 
 ### Fixed — 2026-11-12
 
+- **非 SQL 档案的「连接」不再谎报失败**：侧栏选中 / 页签激活一条 Redis 或对象存储连接时，
+  原来统一走 SQL 的 `sessions.open(specOf(profile))`，撞上护栏后状态栏显示
+  「Connection failed: Redis 尚未开放连接…」，而键浏览器其实连得好好的。现在
+  `connectProfile` 按资产 kind 分派：非 SQL 走 `connectNonSqlProfile`，后台用浏览页
+  真正会用的会话路径真验证一次可达性（Redis 真握手 `databases()`、对象存储走同一个
+  会话工厂真列 bucket），成功才点亮状态栏（新增文案键 `shell.connectedReady`）；
+  「重新连接」对非 SQL 档案同样重跑这条路径。对象树懒加载
+  （`loadObjectsFor` / `loadCatalogsFor`）对非 SQL kind 收口，不再挂出假的
+  「读取失败 / catalog 读取失败」重试节点——树内容各自由 Redis 库清单与 bucket 清单
+  懒加载。`NonSqlProfileSpecGuardTest`（3 例）钉住 `spec()` 护栏消息本身。
+- `ConnectionProfile.spec()` 的护栏消息从「尚未开放连接（P1 / P2 落地后端会话）」改为
+  「不是 SQL 资产，不走 ConnectionSpec（请用其资产族自己的会话路径）」：护栏必要，
+  但旧文案撒谎说后端会话未落地。`ObjectStoreFamily` 与 `app.css` 的同源过期注释同步修正。
 - 向导磁贴 id 分隔符由 `:` 改成 `-`：`object_store:s3` 会被 CSS id 选择器解析成伪类，
   门禁按 `#wizard-tile-<id>` 查这四张磁贴时一个都查不到。
 - `ConnectionCatalog.graphic(Entry, …)` 改名 `graphicFor(...)`：与既有

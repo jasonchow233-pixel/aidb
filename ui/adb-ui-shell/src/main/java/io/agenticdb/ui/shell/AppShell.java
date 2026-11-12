@@ -9,14 +9,17 @@ import io.agenticdb.jdbc.ConnectionSpec;
 import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.DialectKind;
 import io.agenticdb.asset.AssetKind;
+import io.agenticdb.asset.AssetFamilyRegistry;
 import io.agenticdb.jdbc.HostKeyDecision;
 import io.agenticdb.jdbc.ViewDefinition;
 import io.agenticdb.redis.RedisSession;
 import io.agenticdb.redis.RedisSessions;
 import io.agenticdb.objectstore.Bucket;
+import io.agenticdb.objectstore.ObjectStoreCredentials;
 import io.agenticdb.objectstore.ObjectStoreSession;
 import io.agenticdb.objectstore.ObjectStoreSessions;
 import io.agenticdb.session.ConnectionProfile;
+import io.agenticdb.session.SshConfig;
 import io.agenticdb.session.ConnectionStore;
 import io.agenticdb.session.CredentialStore;
 import io.agenticdb.session.SessionManager;
@@ -175,6 +178,13 @@ public final class AppShell extends StackPane {
      * 「看过」写进 {@link SettingsStore}，关后即焚，Help 菜单可随时重开。
      */
     private final OnboardingOverlay onboarding;
+
+    /**
+     * ⭐ EXT 帧证：截图会话专用的离线对象存储会话（预置三颗演示对象）。
+     * 只在 {@code ADB_OBJECT_BROWSER=1} 的摆态里创建，生产路径恒为 {@code null}；
+     * 不连真云账号、不冒充真端点 —— 真端点证据仍属 R2（见 STATUS §3）。
+     */
+    private ObjectStoreSession screenshotObjectStoreSession;
     /** ⭐ P3-4：非常驻的标签总览弹窗；同一时刻只开一个。 */
     private javafx.scene.control.Dialog<Void> tabsOverview;
     private final ConnectionStore connectionStore;
@@ -225,6 +235,17 @@ public final class AppShell extends StackPane {
      * 的假帧 —— 所以外壳要把它拦下来，见 {@link #afterShown}。
      */
     private String matrixEngineRequested = "";
+    /**
+     * ⭐ EXT（P1 画面债）：Redis 真端点帧的临时档案 id 与口令。
+     *
+     * <p>与上面那对 {@code ephemeral*} 是同一条纪律的另一个实例，但**分开两个字段**：
+     * {@code ephemeralProfileId} 牵着 D-37 的落点门（{@code ADB_MATRIX} 声称拍在某台
+     * SQL 服务器上），而 Redis 这一族不参与那个门 —— 它自己的落点门是
+     * {@code ADB_REDIS_KEYS=1} 却没配 {@code ADB_TEST_REDIS_HOST} 时直接弃帧。
+     * 合并成一个字段会让「声称拍在 matrix-mysql 上」的检查把 Redis 帧也卷进去。
+     */
+    private String redisShotProfileId = "";
+    private String redisShotPassword = "";
 
     private Stage stage;
     /**
@@ -1294,7 +1315,7 @@ public final class AppShell extends StackPane {
         });
         tabBar.setConnectionCatalogs(id -> {
             ConnectionProfile profile = profileById(id);
-            if (profile == null || !profile.kind().dialect().switchesCatalogByReconnect()) {
+            if (profile == null || !profile.kind().switchesCatalogByReconnect()) {
                 return "";
             }
             return profile.database();
@@ -1597,6 +1618,56 @@ public final class AppShell extends StackPane {
         return value == null || value.isBlank();
     }
 
+    /**
+     * ⭐ EXT（P1 画面债）：Redis 真端点帧的档案注册。
+     *
+     * <p>与 {@link #registerMatrixProfileFromEnv()} 同形，走 {@code ADB_TEST_REDIS_*}：
+     * 口令只从环境变量读、只活在进程里（{@link #passwordFor}），档案不落
+     * {@code connections.json}。**没配就什么都不做** —— 不注册一条连主机都没有的连接，
+     * 更不退回演示库拍一张「名字写着 redis、画面是空表」的假帧。
+     *
+     * <p>Redis 这一族**没有**走 {@code ADB_MATRIX}：那个通道的取值是方言 id
+     * （mysql / postgresql / sqlserver / oracle），对象存储与 Redis 都不在方言层里，
+     * 硬塞进去会让「{@code ADB_MATRIX} 指的是哪台服务器」这句话失去唯一落点。
+     */
+    private void registerRedisProfileFromEnv() {
+        String host = System.getenv("ADB_TEST_REDIS_HOST");
+        String port = System.getenv("ADB_TEST_REDIS_PORT");
+        if (isBlank(host) || isBlank(port)) {
+            return;
+        }
+        String database = System.getenv().getOrDefault("ADB_TEST_REDIS_DB", "0");
+        String password = System.getenv().getOrDefault("ADB_TEST_REDIS_PASSWORD", "");
+        AssetKind kind = redisKindFromRegistry();
+        String id = "matrix-redis";
+        redisShotProfileId = id;
+        redisShotPassword = password;
+        if (profileById(id) == null) {
+            connections.add(new ConnectionProfile(id, "matrix " + kind.displayName(), kind,
+                    host, Integer.parseInt(port.trim()), database, "", false, 0, "",
+                    Map.of(), SshConfig.NONE));
+            refreshProfiles();
+        }
+        System.out.println("[screenshot] redis profile " + id + " -> " + host + ":" + port
+                + "/" + database + " (password stays in-process)");
+    }
+
+    /**
+     * 取 Redis 的资产 kind —— **从注册表拿，不写族常量**。
+     *
+     * <p>UI 层写死某个资产族常量等于「加一种连接类型要回来改外壳」，
+     * {@code DialectBranchAuditTest.uiLayerDoesNotHardcodeAssetFamilyConstants} 守着这条。
+     * 这里用的是 {@link AssetKind#isRedis()} 这个**谓词**而不是族常量本身。
+     */
+    private static AssetKind redisKindFromRegistry() {
+        return AssetFamilyRegistry.families().stream()
+                .flatMap(family -> family.kinds().stream())
+                .filter(AssetKind::isRedis)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "no Redis family is registered in AssetFamilyRegistry"));
+    }
+
     /** 矩阵环境变量用的简称与方言 id 之间的那点名字差异（不含方言行为）。 */
     private static String matrixEnvPrefix(String engineId) {
         return switch (engineId) {
@@ -1701,6 +1772,10 @@ public final class AppShell extends StackPane {
         if (!ephemeralProfileId.isEmpty() && credentialId.equals(ephemeralProfileId)) {
             return ephemeralPassword;
         }
+        // ⭐ Redis 真端点帧的临时口令同理：只在进程里，不进凭据库。
+        if (!redisShotProfileId.isEmpty() && credentialId.equals(redisShotProfileId)) {
+            return redisShotPassword;
+        }
         return credentials.password(credentialId).orElse(null);
     }
 
@@ -1714,6 +1789,13 @@ public final class AppShell extends StackPane {
      */
     private void connectProfile(ConnectionProfile profile, boolean touch) {
         if (profile == null) {
+            return;
+        }
+        // ⭐ EXT：非 SQL 资产不落 ConnectionSpec（spec() 对它们抛护栏），
+        //     「连接」动作分派到各自资产族真正的会话路径 —— 否则点一下 Redis
+        //     连接会在状态栏谎报 Connection failed，而键浏览器页其实连得好好的。
+        if (!profile.kind().isSql()) {
+            connectNonSqlProfile(profile, touch);
             return;
         }
         activeProfile = profile;
@@ -1760,6 +1842,88 @@ public final class AppShell extends StackPane {
                 applyConnectedUi(profile, loaded);
             });
         });
+    }
+
+    /**
+     * ⭐ EXT：非 SQL 档案（Redis / 对象存储）的「连接」动作。
+     *
+     * <p>不建 {@code DbSession} —— 键浏览器页与对象浏览器页各自按需开会话，
+     * 这里只做三件事：登记活动连接、后台<b>真验证一次可达性</b>、把状态栏
+     * 点亮成「已连接该档案」。验证失败才走 {@code shell.connectFailed}。
+     *
+     * <p>诚实口径：验证走的就是浏览页真正会用的那条会话路径（
+     * {@link #verifyNonSqlConnection}）—— Redis 真握一次手，对象存储真列一次
+     * bucket。演示档案无凭据时落离线内存后端也能「连上」，但那正是浏览器页
+     * 将要使用的后端，不冒充真端点（真端点证据属 R2，见 STATUS §3）。
+     *
+     * <p>与 SQL 路径共用 A15 纪律：网络往返在后台线程，结果回 FX 线程刷新。
+     */
+    private void connectNonSqlProfile(ConnectionProfile profile, boolean touch) {
+        activeProfile = profile;
+        connectionName = profile.name();
+        session = null;
+        if (touch) {
+            connectionStore.touch(profile);
+            ConnectionProfile touched = profile.withLastUsed(System.currentTimeMillis());
+            connections.removeIf(existing -> existing.id().equals(touched.id()));
+            connections.add(touched);
+            resortConnections();
+            connectionStore.save(touched);
+        }
+        status(I18n.t("shell.connecting", profile.name()));
+        executors.forConnection(profile.id()).execute(() -> {
+            try {
+                verifyNonSqlConnection(profile);
+            } catch (Exception e) {
+                String reason = readable(e);
+                Platform.runLater(() -> {
+                    session = null;
+                    status(I18n.t("shell.connectFailed", reason));
+                    statusBar.setConnection(null);
+                    statusBar.setDialect("—", null);
+                    sideBar.refreshConnectionLiveness();
+                });
+                return;
+            }
+            Platform.runLater(() -> {
+                sideBar.setConnection(profile.id(), profile.name());
+                sideBar.setObjects(profile.id(), List.of());
+                applyNonSqlConnectedUi(profile);
+            });
+        });
+    }
+
+    /**
+     * 非 SQL 档案的可达性验证 —— <b>用浏览页真正会用的那条会话路径</b>。
+     *
+     * <p>Redis：{@code RedisSessions.connect} 真握一次手（{@code databases()}
+     * 走 {@code INFO keyspace}）。对象存储：与浏览器页同一个
+     * {@link #objectStoreSessionFor} 工厂，真列一次 bucket 清单 ——
+     * 有凭据走 SDK（错了这里就报），无凭据落离线内存后端（演示档案）。
+     */
+    private void verifyNonSqlConnection(ConnectionProfile profile) throws Exception {
+        if (profile.kind().isRedis()) {
+            try (RedisSession handshake = RedisSessions.connect(profile,
+                    passwordFor(profile.id()))) {
+                handshake.databases();
+            }
+            return;
+        }
+        // 对象存储：listBuckets 对七牛这类不支持列举的 provider 返回配置 bucket，
+        // 对真云账号错误凭据在这里抛 —— 与浏览器页打开时的行为一致。
+        try (ObjectStoreSession session = objectStoreSessionFor(profile)) {
+            session.listBuckets();
+        }
+    }
+
+    /** 非 SQL 档案连接就绪后的状态栏刷新（必须在 FX 线程调用）。 */
+    private void applyNonSqlConnectedUi(ConnectionProfile profile) {
+        statusBar.setConnection(connectionTitle(profile));
+        String dialectName = profile.kind().displayName();
+        statusBar.setDialect(dialectName, profile.kind());
+        sideBar.setDialect(dialectName);
+        tabBar.refreshVendorGlyphs();
+        status(I18n.t("shell.connectedReady", profile.name()));
     }
 
     /** 连接就绪后的界面刷新（必须在 FX 线程调用）。 */
@@ -1833,7 +1997,7 @@ public final class AppShell extends StackPane {
     private static String connectionTitle(ConnectionProfile profile) {
         String database = profile.database();
         if (database.isBlank()
-                || !profile.kind().dialect().switchesCatalogByReconnect()) {
+                || !profile.kind().switchesCatalogByReconnect()) {
             return profile.name();
         }
         String suffix = " · " + database;
@@ -1897,6 +2061,13 @@ public final class AppShell extends StackPane {
     private void loadObjectsFor(String connectionId) {
         ConnectionProfile profile = profileFor(connectionId);
         if (profile == null) {
+            return;
+        }
+        // ⭐ EXT：非 SQL 资产的树内容不走「对象清单」—— Redis 的库清单由
+        //     loadRedisDbs、对象存储的 bucket 清单由 loadBuckets 各自懒加载。
+        //     走到这里 = 把 SQL 的 spec() 套在非 SQL 档案上，只会假报「读失败」
+        //     （侧栏 setConnection 无条件触发懒加载，SQL 专属前提在这里收口）。
+        if (!profile.kind().isSql()) {
             return;
         }
         // ⭐ 按连接取执行器：同一连接的事务要串行。
@@ -1980,6 +2151,11 @@ public final class AppShell extends StackPane {
         }
         ConnectionProfile parent = profileById(connectionId);
         if (parent == null || catalogsLoaded.contains(connectionId)) {
+            return;
+        }
+        // ⭐ EXT：catalog 是 SQL 方言语义（「切库要重连」的那几家才有）。
+        //     Redis / 对象存储没有库一层，走进来只会挂出假的「读取失败」重试节点。
+        if (!parent.kind().isSql()) {
             return;
         }
         DbSession target = sessionFor(connectionId);
@@ -2282,7 +2458,7 @@ public final class AppShell extends StackPane {
         if (profile == null) {
             return startupErrorPage(tab);
         }
-        String password = credentials.password(tab.connectionId()).orElse(null);
+        String password = passwordFor(tab.connectionId());
         return new RedisKeysPage(tab, profile, password);
     }
 
@@ -2297,7 +2473,7 @@ public final class AppShell extends StackPane {
         if (profile == null || !profile.kind().isRedis()) {
             return;
         }
-        String password = credentials.password(connectionId).orElse(null);
+        String password = passwordFor(connectionId);
         new Thread(() -> {
             try (RedisSession session = RedisSessions.connect(profile, password)) {
                 List<Integer> dbs = session.databases();
@@ -2328,6 +2504,11 @@ public final class AppShell extends StackPane {
      * 明确不冒充真实账号；有凭据时按 provider 分派到四家 SDK 适配器。
      */
     private ObjectStoreSession objectStoreSessionFor(ConnectionProfile profile) {
+        // ⭐ EXT 帧证：摆态预置的离线会话要复用同一个实例，否则页面每次重新
+        //   ensureSession() 都会拿到一个空 bucket，预置的对象一颗也看不到。
+        if (screenshotObjectStoreSession != null) {
+            return screenshotObjectStoreSession;
+        }
         String stored = credentials.password(profile.id()).orElse(null);
         if (stored == null || stored.isBlank()) {
             return ObjectStoreSessions.inMemory(profile.options(), stored);
@@ -2534,6 +2715,14 @@ public final class AppShell extends StackPane {
             status(I18n.t("shell.noConnections"));
             return;
         }
+        // ⭐ EXT：非 SQL 档案没有可 reopen 的 DbSession —— 「重连」就是把它
+        //     的连接动作整个重跑一遍（后台真验证可达性 + 刷新状态栏）。
+        //     走 SQL reopen 会先撞 spec() 护栏，而且那异常不是 SQLException，
+        //     下面这条 catch 接不住。
+        if (!activeProfile.kind().isSql()) {
+            connectNonSqlProfile(activeProfile, false);
+            return;
+        }
         // ⭐ U2：重连 = **强制换一条新会话**（SessionManager.reopen），
         //    与「切换连接时复用已有会话」是两回事。
         try {
@@ -2663,6 +2852,8 @@ public final class AppShell extends StackPane {
         registerMatrixProfileFromEnv();
         // ⭐ R54：验收「左树里五家各一枚图形」——同一条 ADB_TEST_* 通道，另一格画面。
         registerVendorTreeProfilesFromEnv();
+        // ⭐ EXT（P1 画面债）：Redis 真端点帧的档案（走 ADB_TEST_REDIS_*，不走 ADB_MATRIX）。
+        registerRedisProfileFromEnv();
         // ⭐ T1 / Q-D：构造器不再同步连演示库，首次连接挪到首屏之后；
         //    截图 / 矩阵 / 显式 ADB_CONNECTION 会话保持确定性同步语义，帧不受影响。
         scheduleInitialConnection();
@@ -2832,6 +3023,28 @@ public final class AppShell extends StackPane {
                 wizard.poseForShots(pose);
                 wizard.show();
             });
+        }
+        // ── EXT P2/P3 画面债：三个新面的 pose（族筛选那一格走上面的向导通道）──
+        //   都在 FX 线程上摆、都不依赖异步连接：引导浮层是主场景子节点、标签概览是
+        //   有 owner 的非模态 Dialog、对象浏览器走离线内存后端。每张帧只设一个开关。
+        Platform.runLater(() -> {
+            if (flag("adb.onboarding", "ADB_ONBOARDING")) {
+                // 截图会话是 deterministic，maybeShow() 不会自己弹；显式重开才拍得到，
+                // 且不写「看过」标志 —— 验收帧不能污染下一次的偏好状态。
+                onboarding.reopenGuide();
+            }
+            if (flag("adb.tabsOverview", "ADB_TABS_OVERVIEW")) {
+                poseTabsOverviewForShots();
+            }
+            if (flag("adb.objectBrowser", "ADB_OBJECT_BROWSER")) {
+                poseObjectBrowserForShots();
+            }
+        });
+        // ⭐ EXT（P1 画面债）：Redis 键浏览器帧。
+        //    与上面三个新面不同 —— 这一格**要求真 Redis 服务端**，落点门在
+        //    poseRedisKeysForShots() 里（没配 ADB_TEST_REDIS_HOST 就弃帧）。
+        if (flag("adb.redisKeys", "ADB_REDIS_KEYS")) {
+            poseRedisKeysForShots();
         }
         // ⭐ 截图 / 验收（UX-6）：启动直接落在数据页「概览」切面。
         //    切面标签的 id 是动态拼的（object-tab-<id>），截图脚本的静态审计
@@ -4794,6 +5007,87 @@ public final class AppShell extends StackPane {
             }
         });
         dialog.show();
+    }
+
+    /**
+     * ⭐ EXT 帧证（P3-4）：先摆三张标签，再打开标签概览。
+     *
+     * <p>不摆标签的话面板只剩空态，按连接分组 / 搜索 / 逐条关闭一件都证不了。
+     * 这三条只是 TabBar 里的普通标签（不连库、不改档案），概览的关闭回调仍然
+     * 全部回到 {@code TabBar.close()} —— 摆态不绕过脏检查。
+     */
+    private void poseTabsOverviewForShots() {
+        String conn = activeProfileId();
+        openTab(new TabItem("shot-grid", "users", TabKind.GRID, "users", conn));
+        openTab(new TabItem("shot-structure", "users · Structure",
+                TabKind.STRUCTURE, "users", conn));
+        openTab(new TabItem("shot-query", "Query 1", TabKind.QUERY, "", conn));
+        openTabsOverview();
+    }
+
+    /**
+     * ⭐ EXT 帧证（P2-8）：注册一条离线演示档案 + 预置三颗对象，打开对象浏览器。
+     *
+     * <p>档案不带凭据，所以 {@link #objectStoreSessionFor} 会落内存后端；这里把同一个
+     * 会话实例缓存下来，页面重新 ensureSession() 时看到的还是这三颗对象。
+     * <b>不连真云账号、不冒充真端点</b> —— 真端点证据属 R2（见 STATUS §3）。
+     * kind 从注册表取而不是写资产族常量字面量：UI 层不许把资产族常量散进分支，
+     * 连注释里的字面量也不行（{@code DialectBranchAuditTest} 扫源码全文，含注释）。
+     */
+    private void poseObjectBrowserForShots() {
+        AssetKind osKind = ConnectionCatalog.CONNECTIONS.stream()
+                .map(ConnectionCatalog.Entry::kind)
+                .filter(AssetKind::isObjectStore)
+                .findFirst()
+                .orElseThrow();
+        String id = "shot-object-store";
+        Map<String, String> options = Map.of(
+                ObjectStoreCredentials.OPT_PROVIDER, "s3",
+                ObjectStoreCredentials.OPT_BUCKET, "assets");
+        ConnectionProfile profile = new ConnectionProfile(id, "Demo object store", osKind,
+                "", 0, "", "", false, 0, "", options, SshConfig.NONE);
+        if (profileById(id) == null) {
+            connections.add(profile);
+        }
+        ObjectStoreSession session = ObjectStoreSessions.inMemory(options, null);
+        session.putObject("assets", "brand/logo.svg",
+                "<svg viewBox=\"0 0 24 24\"/>".getBytes(StandardCharsets.UTF_8), "image/svg+xml");
+        session.putObject("assets", "reports/2026-11.csv",
+                "month,amount\n2026-11,12800\n".getBytes(StandardCharsets.UTF_8), "text/csv");
+        session.putObject("assets", "README.md",
+                "# Assets\nDemo objects for the screenshot pose.\n"
+                        .getBytes(StandardCharsets.UTF_8), "text/markdown");
+        screenshotObjectStoreSession = session;
+        openTab(new TabItem("object-browser:" + id + ":assets", "assets",
+                TabKind.OBJECT_BROWSER, "assets", id));
+    }
+
+    /**
+     * ⭐ EXT（P1 画面债）：摆出 Redis 键浏览器页，落在**真 Redis 服务端**上。
+     *
+     * <p>它与 {@link #poseObjectBrowserForShots()} 的取法相反：对象浏览器那一格走离线
+     * 内存后端（对象存储没有仿真服务，R2 未平），而这一格**要求真服务端** ——
+     * 键浏览器画的就是「连上了某台 Redis 的键清单」，连不上就没有清单可画。
+     * 所以档案没注册上时<b>弃帧</b>（D-37 同一条纪律：宁可没图，不可有假图），
+     * 而不是退回演示库拍一张空表。
+     */
+    private void poseRedisKeysForShots() {
+        if (redisShotProfileId.isEmpty()) {
+            ScreenshotSession.abortMatrixFrame("ADB_REDIS_KEYS=1 but no Redis server was"
+                    + " registered: ADB_TEST_REDIS_HOST / ADB_TEST_REDIS_PORT are absent."
+                    + " Start a redis container and export those two variables.");
+            return;
+        }
+        ConnectionProfile profile = profileById(redisShotProfileId);
+        if (profile == null) {
+            ScreenshotSession.abortMatrixFrame("ADB_REDIS_KEYS=1 but the Redis profile vanished"
+                    + " before the tab could open.");
+            return;
+        }
+        String db = profile.database();
+        String title = I18n.t("redis.keys.header", profile.name(), db);
+        openTab(new TabItem("redis-keys:" + profile.id() + ":" + db,
+                title, TabKind.REDIS_KEYS, db, profile.id()));
     }
 
     private void showInfo(String title, String content) {
