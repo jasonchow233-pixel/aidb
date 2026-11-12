@@ -12,8 +12,9 @@
 - **2069 执行 / 0 失败 / 113 跳过 / 221 个测试类**，`BUILD SUCCESS`、`BUILD_EXIT=0`。
   命令 `MAVEN_ARGS=-o ./scripts/build.sh`（= `./mvnw -B clean verify` + `java tools/TestCount.java`），
   2026-11-12 14:41 +08:00、本机 Darwin 24.6.0 x86_64、Zulu JDK 25.0.5（`JAVA_HOME` 显式指向
-  `/tmp/zulu25/...`），Total time **30:00 min**，**16/16 模块 SUCCESS**。基于 `13c4813` + 52 个
-  工作树文件（26 改 + 26 新增）。较 2026-11-11 的 **1998 / 113** 多 **71 条执行**、跳数不变；
+  `/tmp/zulu25/...`），Total time **30:00 min**，**16/16 模块 SUCCESS**。验证时源码为
+  `13c4813` + 52 个工作树文件（26 改 + 26 新增），该工作树随后完整提交为 `0ecf228`，内容一致。
+  较 2026-11-11 的 **1998 / 113** 多 **71 条执行**、跳数不变；
   新增的两格是 `adb-objectstore` **19** 与 `adb-redis` **14**。逐模块执行数（`TestCount` 口径，
   跳过单列）：`adb-ui-shell` **1155** · `adb-ui-core` 70 · `adb-safety` 88 · `adb-sql` 42 ·
   `adb-model` 30 · `adb-fixtures` 3 · `adb-editing` 39（跳 15）· `adb-objectstore` 19 ·
