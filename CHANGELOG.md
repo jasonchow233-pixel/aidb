@@ -9,6 +9,35 @@
 
 ## [Unreleased]
 
+### Added — 2026-11-14 R2：S3 兼容真端点契约与真端点画面帧
+
+- **`S3RealEndpointContractTest`（10 条）**：testcontainers 起真
+  `localstack/localstack:4.9.2`，经产品同一条 `ObjectStoreSessions.connect/test` 工厂路径，
+  验完列 bucket、put→get→metadata 往返、delimiter 折叠、**1001 颗对象跨 ListObjectsV2
+  千条页边界**、删一颗、递归删前缀、move 保留 MIME、预签名 URL 用真 HTTP GET 取回、
+  坏端点与缺凭据的错误口径。没有 Docker 时整类跳过（与既有真库契约同口径）。
+  ⚠️ 这是 S3 兼容协议的真服务端，不是公有云账号；OSS / Kodo / COS 三家原生 SDK 仍无真端点证据。
+- **真端点画面帧 `p10-object-store-real.png`**：`ADB_OBJECT_BROWSER_REAL=1` 摆态经产品工厂连真
+  S3 兼容端点、用产品会话把三颗对象写进服务端，画面里是服务端返回的
+  58 B / 时间戳 / `STANDARD` 存储类型；连不上或桶不存在就弃帧，不退回内存后端。
+  该帧是 opt-in（需 `ADB_TEST_S3_ENDPOINT`），默认批量重拍不受影响。
+  `docs/screenshots/` 现 **74 张**，`md5` 零重复。
+- **无 Docker 也能守的行为门禁**：`ObjectStoreSessionTest` 新增
+  `contentTypeIsSeparateFromStorageClassAndSurvivesMove()`，钉住字段分离与移动后 MIME 不丢。
+
+### Fixed — 2026-11-14
+
+- **对象移动会丢 MIME 类型**：`AbstractObjectStoreSession.moveObject` 原来把
+  `storageClass` 当 `contentType` 传给 `putObject`；`InMemoryObjectStoreSession` 把
+  contentType 塞进 storageClass，七牛适配器把 `mimeType` 塞进 storageClass —— 三处同一处模型错位。
+  真端点契约实测：上传时 `text/plain; charset=utf-8`，移动后变成 `application/octet-stream`。
+  现在 `ObjectMeta` 增加独立的 `contentType` 字段，四家 SDK 适配器的
+  `metadata()` 各自填真值（列举接口拿不到 MIME 时给空串），`moveObject` 传
+  `old.contentType()`。顺带把七牛 `mimeType` 归位到 contentType。
+- 源码与文档里「四家对象存储真端点证据为空」「对象存储没有仿真服务」
+  「对象浏览器帧不是真端点证据」等过期口径按新事实重写；新增如实边界：
+  AWS SDK 2.31 对纯 `http://` 的 S3 兼容端点会卡 `Expect: 100-continue`，产品尚未适配明文端点。
+
 ### Added — 2026-11-12 P1/P2/P3：资产族扩展（Redis + 对象存储 + 引导/Tab 治理）
 
 - **资产族地基（P0 收口）**：`AssetKind` 取代 `DialectKind` 成为连接档案的判别轴，

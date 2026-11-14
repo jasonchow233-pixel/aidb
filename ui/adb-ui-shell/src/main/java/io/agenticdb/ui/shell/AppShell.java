@@ -180,9 +180,11 @@ public final class AppShell extends StackPane {
     private final OnboardingOverlay onboarding;
 
     /**
-     * ⭐ EXT 帧证：截图会话专用的离线对象存储会话（预置三颗演示对象）。
-     * 只在 {@code ADB_OBJECT_BROWSER=1} 的摆态里创建，生产路径恒为 {@code null}；
-     * 不连真云账号、不冒充真端点 —— 真端点证据仍属 R2（见 STATUS §3）。
+     * ⭐ EXT 帧证：截图摆态专用的对象存储会话（页面每次 ensureSession() 都复用它）。
+     * 生产路径恒为 {@code null}。两格摆态共用：{@code ADB_OBJECT_BROWSER=1} 走离线内存后端，
+     * {@code ADB_OBJECT_BROWSER_REAL=1} 走产品工厂连真 S3 兼容端点（见
+     * {@link #poseRealObjectBrowserForShots()}）；后者的服务端契约另在
+     * {@code S3RealEndpointContractTest}。
      */
     private ObjectStoreSession screenshotObjectStoreSession;
     /** ⭐ P3-4：非常驻的标签总览弹窗；同一时刻只开一个。 */
@@ -3039,6 +3041,9 @@ public final class AppShell extends StackPane {
             if (flag("adb.objectBrowser", "ADB_OBJECT_BROWSER")) {
                 poseObjectBrowserForShots();
             }
+            if (flag("adb.objectBrowserReal", "ADB_OBJECT_BROWSER_REAL")) {
+                poseRealObjectBrowserForShots();
+            }
         });
         // ⭐ EXT（P1 画面债）：Redis 键浏览器帧。
         //    与上面三个新面不同 —— 这一格**要求真 Redis 服务端**，落点门在
@@ -5063,13 +5068,78 @@ public final class AppShell extends StackPane {
     }
 
     /**
+     * ⭐ R2：对象浏览器的<b>真端点验收帧</b>（opt-in，{@code ADB_OBJECT_BROWSER_REAL=1}）。
+     *
+     * <p>与 {@link #poseObjectBrowserForShots()} 的离线内存后端相反：这一格经产品工厂
+     * {@code ObjectStoreSessions.connect} 连真 S3 兼容端点，三颗对象也是经产品会话
+     * {@code putObject} 写进去的 —— 画面里的清单来自服务端，不是进程内演示数据。
+     * 没配环境变量、桶不存在或连不上时<b>弃帧</b>（与 Redis 帧同一条 D-37 纪律），
+     * 绝不退回内存后端冒充真端点。服务端契约另见 {@code S3RealEndpointContractTest}。
+     */
+    private void poseRealObjectBrowserForShots() {
+        String endpoint = text("adb.s3.endpoint", "ADB_TEST_S3_ENDPOINT");
+        String bucket = text("adb.s3.bucket", "ADB_TEST_S3_BUCKET");
+        String accessKey = text("adb.s3.accessKey", "ADB_TEST_S3_ACCESS_KEY");
+        String secretKey = text("adb.s3.secretKey", "ADB_TEST_S3_SECRET_KEY");
+        if (endpoint.isBlank() || bucket.isBlank() || accessKey.isBlank() || secretKey.isBlank()) {
+            ScreenshotSession.abortMatrixFrame("ADB_OBJECT_BROWSER_REAL=1 but the real object"
+                    + " store env is incomplete: set ADB_TEST_S3_ENDPOINT / _BUCKET /"
+                    + " _ACCESS_KEY / _SECRET_KEY (LocalStack 4.x over HTTPS).");
+            return;
+        }
+        AssetKind osKind = ConnectionCatalog.CONNECTIONS.stream()
+                .map(ConnectionCatalog.Entry::kind)
+                .filter(AssetKind::isObjectStore)
+                .findFirst()
+                .orElseThrow();
+        Map<String, String> options = Map.of(
+                ObjectStoreCredentials.OPT_PROVIDER, "s3",
+                ObjectStoreCredentials.OPT_ENDPOINT, endpoint,
+                ObjectStoreCredentials.OPT_REGION, "us-east-1",
+                ObjectStoreCredentials.OPT_BUCKET, bucket,
+                ObjectStoreCredentials.OPT_PATH_STYLE, "true");
+        ObjectStoreSession session;
+        try {
+            session = ObjectStoreSessions.connect(options,
+                    ObjectStoreCredentials.encode(accessKey, secretKey, ""));
+            boolean exists = session.listBuckets().stream().anyMatch(b -> b.name().equals(bucket));
+            if (!exists) {
+                session.close();
+                ScreenshotSession.abortMatrixFrame("ADB_OBJECT_BROWSER_REAL=1 but bucket "
+                        + bucket + " is missing on the endpoint; create it before shooting.");
+                return;
+            }
+            session.putObject(bucket, "brand/logo.svg",
+                    "<svg viewBox=\"0 0 24 24\"/>".getBytes(StandardCharsets.UTF_8), "image/svg+xml");
+            session.putObject(bucket, "reports/2026-11.csv",
+                    "month,amount\n2026-11,12800\n".getBytes(StandardCharsets.UTF_8), "text/csv");
+            session.putObject(bucket, "README.md",
+                    "# Assets\nObjects served by a real S3-compatible endpoint.\n"
+                            .getBytes(StandardCharsets.UTF_8), "text/markdown");
+        } catch (Exception e) {
+            ScreenshotSession.abortMatrixFrame("ADB_OBJECT_BROWSER_REAL=1 could not use the"
+                    + " real S3 endpoint: " + e);
+            return;
+        }
+        screenshotObjectStoreSession = session;
+        String id = "shot-object-store-real";
+        ConnectionProfile profile = new ConnectionProfile(id, "Real S3 endpoint", osKind,
+                "", 0, "", "", false, 0, "", options, SshConfig.NONE);
+        if (profileById(id) == null) {
+            connections.add(profile);
+        }
+        openTab(new TabItem("object-browser:" + id + ":" + bucket, bucket,
+                TabKind.OBJECT_BROWSER, bucket, id));
+    }
+
+    /**
      * ⭐ EXT（P1 画面债）：摆出 Redis 键浏览器页，落在**真 Redis 服务端**上。
      *
-     * <p>它与 {@link #poseObjectBrowserForShots()} 的取法相反：对象浏览器那一格走离线
-     * 内存后端（对象存储没有仿真服务，R2 未平），而这一格**要求真服务端** ——
-     * 键浏览器画的就是「连上了某台 Redis 的键清单」，连不上就没有清单可画。
-     * 所以档案没注册上时<b>弃帧</b>（D-37 同一条纪律：宁可没图，不可有假图），
-     * 而不是退回演示库拍一张空表。
+     * <p>这一格要求真服务端 —— 键浏览器画的就是「连上了某台 Redis 的键清单」，
+     * 连不上就没有清单可画。所以档案没注册上时<b>弃帧</b>（D-37 同一条纪律：
+     * 宁可没图，不可有假图），而不是退回演示库拍一张空表。
+     * 对象存储一侧的离线帧与真端点帧分别是 {@link #poseObjectBrowserForShots()}
+     * 与 {@link #poseRealObjectBrowserForShots()}。
      */
     private void poseRedisKeysForShots() {
         if (redisShotProfileId.isEmpty()) {

@@ -20,7 +20,8 @@ import java.util.List;
  * 凭据为 AccessKeyId / AccessKeySecret。列举按 marker 翻页直到取完，
  * 不做「只显示第一页」的假完整。
  *
- * <p>⚠️ 真实云端连通性属 P4-3 的 R2 阻塞项；行为门禁在内存后端验证。
+ * <p>⚠️ 阿里云 OSS 原生协议<b>仍无真端点证据</b>（R2 剩余阻塞项）；
+ * 本类只有编译期 SDK 类型 + 内存后端行为契约，不宣称连过真实 OSS。
  */
 public final class OssObjectStoreSession extends AbstractObjectStoreSession {
 
@@ -58,7 +59,7 @@ public final class OssObjectStoreSession extends AbstractObjectStoreSession {
             for (OSSObjectSummary s : page.getObjectSummaries()) {
                 out.add(new ObjectMeta(s.getKey(), s.getSize(),
                         SdkSupport.instant(s.getLastModified()),
-                        SdkSupport.safe(s.getETag()), ""));
+                        SdkSupport.safe(s.getETag()), "", ""));
             }
             String next = page.getNextMarker();
             if (next == null || next.isBlank()) {
@@ -95,7 +96,8 @@ public final class OssObjectStoreSession extends AbstractObjectStoreSession {
     public ObjectMeta metadata(String bucket, String key) {
         ObjectMetadata m = client.getObjectMetadata(bucket, key);
         return new ObjectMeta(key, m.getContentLength(),
-                SdkSupport.instant(m.getLastModified()), SdkSupport.safe(m.getETag()), "");
+                SdkSupport.instant(m.getLastModified()), SdkSupport.safe(m.getETag()), "",
+                SdkSupport.safe(m.getContentType()));
     }
 
     @Override

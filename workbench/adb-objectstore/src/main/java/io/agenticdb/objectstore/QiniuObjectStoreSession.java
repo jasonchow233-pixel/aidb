@@ -32,7 +32,8 @@ import java.util.List;
  * <p>putTime 单位是 100 纳秒，除以 10000 才是毫秒 —— 这里统一换算，
  * 避免 UI 上的「最后修改」显示成公元 1970 年。
  *
- * <p>⚠️ 真实云端连通性属 P4-3 的 R2 阻塞项；行为门禁在内存后端验证。
+ * <p>⚠️ 七牛 Kodo 原生协议<b>仍无真端点证据</b>（R2 剩余阻塞项）；
+ * 本类只有编译期 SDK 类型 + 内存后端行为契约，不宣称连过真实 Kodo。
  */
 public final class QiniuObjectStoreSession extends AbstractObjectStoreSession {
 
@@ -69,8 +70,10 @@ public final class QiniuObjectStoreSession extends AbstractObjectStoreSession {
                 FileListing page = bucketManager.listFilesV2(bucket, prefix, marker, 1000, "");
                 if (page.items != null) {
                     for (FileInfo f : page.items) {
+                        // ⭐ mimeType 是 MIME，不是存储类型：早年塞进 storageClass 是语义错位，
+                        //    与 S3/OSS/COS 的 contentType 字段对齐（R2 真端点契约抓出）。
                         out.add(new ObjectMeta(f.key, f.fsize, qiniuTime(f.putTime),
-                                SdkSupport.safe(f.hash), SdkSupport.safe(f.mimeType)));
+                                SdkSupport.safe(f.hash), "", SdkSupport.safe(f.mimeType)));
                     }
                 }
                 if (page.isEOF() || page.marker == null || page.marker.isBlank()) {
@@ -119,7 +122,7 @@ public final class QiniuObjectStoreSession extends AbstractObjectStoreSession {
         try {
             FileInfo info = bucketManager.stat(bucket, key);
             return new ObjectMeta(key, info.fsize, qiniuTime(info.putTime),
-                    SdkSupport.safe(info.hash), SdkSupport.safe(info.mimeType));
+                    SdkSupport.safe(info.hash), "", SdkSupport.safe(info.mimeType));
         } catch (QiniuException e) {
             throw SdkSupport.wrap("metadata", e);
         }

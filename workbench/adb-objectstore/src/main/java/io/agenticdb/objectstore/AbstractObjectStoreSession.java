@@ -94,7 +94,10 @@ public abstract class AbstractObjectStoreSession implements ObjectStoreSession {
         }
         byte[] data = getObject(bucket, from);
         ObjectMeta old = metadata(bucket, from);
-        putObject(bucket, to, data, old == null ? "" : old.storageClass());
+        // ⭐ 传的是 contentType，不是 storageClass —— 早期版本把两者混用，
+        //    真端点契约抓到「移动后 MIME 变成 application/octet-stream」。
+        //    move = copy + delete（非原子），自定义用户元数据不在此承诺保留。
+        putObject(bucket, to, data, old == null ? "" : old.contentType());
         deleteObject(bucket, from);
     }
 

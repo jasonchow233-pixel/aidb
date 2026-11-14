@@ -280,15 +280,26 @@ SHOTS=(
   #   标签概览是「有 owner 的非模态 Dialog」，ScreenshotSession.targetScene 的兜底分支认它；
   #   先摆三张标签再开概览，否则面板只剩空态，证不了按连接分组与逐条关闭。
   "p10-tabs-overview||7000|ADB_TABS_OVERVIEW=1 ADB_THEME_FORCE=light"
-  #   对象浏览器走离线内存后端：注册一条没有凭据的演示档案 + 预置三颗对象，
-  #   不连真云账号也不冒充真端点（真端点证据属 R2，见 STATUS §3）。
+  #   对象浏览器（离线帧）：注册一条没有凭据的演示档案 + 预置三颗对象，
+  #   不连真云账号也不冒充真端点；真端点另有 p10-object-store-real 一格（见下方）。
   "p10-object-browser||8000|ADB_OBJECT_BROWSER=1 ADB_THEME_FORCE=light"
-  #   Redis 键浏览器帧：这一格**要求真 Redis 服务端**（与对象浏览器相反 ——
-  #   对象存储没有仿真服务，只能用离线内存后端；Redis 本机有 redis:7.2）。
+  #   Redis 键浏览器帧：这一格**要求真 Redis 服务端**（本机 redis:7.2）。
   #   落点门在 AppShell.poseRedisKeysForShots()：没配 ADB_TEST_REDIS_HOST 就弃帧，
   #   宁可没图也不拍一张演示库空表冒充真 Redis。
   "p10-redis-keys||9000|ADB_REDIS_KEYS=1 ADB_THEME_FORCE=light"
 )
+
+# ⭐ R2：对象存储的**真端点帧**是 opt-in —— 只有显式给了 ADB_TEST_S3_ENDPOINT 才进批量清单，
+#   否则没起 LocalStack 的机器会把这一格判成缺帧，连累整批验收。
+#   需要：docker run -d -p 4566:4566 -e SERVICES=s3 localstack/localstack:4.9.2，
+#   再用 curl PUT 建桶；端点必须是 https://localhost.localstack.cloud:4566（公开 CA 签发，
+#   JDK 默认信任库可验）。SDK 2.31 在明文 HTTP 上会卡 Expect: 100-continue，见 STATUS §3。
+#   摆态在 AppShell.poseRealObjectBrowserForShots()，连不上就弃帧，不退回内存后端。
+if [ -n "${ADB_TEST_S3_ENDPOINT:-}" ]; then
+  SHOTS+=(
+    "p10-object-store-real||8000|ADB_OBJECT_BROWSER_REAL=1 ADB_THEME_FORCE=light"
+  )
+fi
 
 step "编译并安装（否则拍到的是旧界面）"
 require_toolchain

@@ -82,7 +82,7 @@ public final class InMemoryObjectStoreSession extends AbstractObjectStoreSession
                 }
                 StoredObject o = e.getValue();
                 out.add(new ObjectMeta(e.getKey(), o.data().length, o.lastModified(),
-                        o.etag(), o.storageClass()));
+                        o.etag(), o.storageClass(), SdkSupport.safe(o.contentType())));
             }
         }
         out.sort(java.util.Comparator.comparing(ObjectMeta::key));
@@ -101,11 +101,13 @@ public final class InMemoryObjectStoreSession extends AbstractObjectStoreSession
         byte[] copy = data == null ? new byte[0] : data.clone();
         Instant now = Instant.now();
         String etag = md5Hex(copy);
-        String storageClass = contentType == null ? "" : contentType;
+        String safeType = contentType == null ? "" : contentType;
         synchronized (objects) {
-            objects.put(key, new StoredObject(copy, contentType, now, etag, storageClass));
+            // 内存后端没有存储类型概念：storageClass 留空，contentType 单独存，
+            // 不再把 MIME 塞进 storageClass（真端点 move 契约钉住这一点）。
+            objects.put(key, new StoredObject(copy, safeType, now, etag, ""));
         }
-        return new ObjectMeta(key, copy.length, now, etag, storageClass);
+        return new ObjectMeta(key, copy.length, now, etag, "", safeType);
     }
 
     @Override
@@ -119,7 +121,8 @@ public final class InMemoryObjectStoreSession extends AbstractObjectStoreSession
     @Override
     public ObjectMeta metadata(String bucket, String key) {
         StoredObject o = require(bucket, key);
-        return new ObjectMeta(key, o.data().length, o.lastModified(), o.etag(), o.storageClass());
+        return new ObjectMeta(key, o.data().length, o.lastModified(), o.etag(),
+                o.storageClass(), SdkSupport.safe(o.contentType()));
     }
 
     @Override

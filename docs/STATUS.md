@@ -7,42 +7,46 @@
 
 ## 1. 验证基线
 
-### 当前工作树（2026-11-12，P1/P2/P3 收口 + 画面债平账 + 非 SQL 连接路由修复 · 全量门禁已绿）
+### 当前工作树（2026-11-14，R2 S3 兼容真端点契约 + contentType 模型修复 + 真端点画面帧 · 全量门禁已绿）
 
-- **2186 执行 / 0 失败 / 6 跳过 / 224 个测试类**，`BUILD SUCCESS`、`BUILD_EXIT=0`。
+- **2197 执行 / 0 失败 / 6 跳过 / 225 个测试类**，`BUILD SUCCESS`、`BUILD_EXIT=0`。
   命令 `set -a && . scripts/.dbmatrix.env && set +a && MAVEN_ARGS=-o ./scripts/build.sh`
   （= `./mvnw -B clean verify` + `java tools/TestCount.java`），
-  2026-11-12 19:05 +08:00、本机 Darwin 24.6.0 x86_64、Temurin JDK 25.0.5（`JAVA_HOME` 指向
-  `~/.workbuddy/jdk/jdk-25.0.5+8`），Total time **28:51 min**，**16/16 模块 SUCCESS**。验证时源码为
-  提交 `48e055e`（基线量于其工作树 = `93a6ee2` + 66 个文件：58 改 + 8 新增：45 张重拍帧改、5 张新面帧、3 个新门禁类，
-  另有 README / CHANGELOG / STATUS / shots.sh / 8 个源文件改动）。
-  较同日早间不带环境的 **2079 / 113** 多 **107 条执行**、**少 107 条跳过**；
-  较 2026-11-11 的 **1998 / 113** 多 **188 条执行**。
-  逐模块执行数（`TestCount` 口径，跳过单列）：`adb-ui-shell` **1158** · `adb-ui-core` 70 ·
-  `adb-safety` 88 · `adb-sql` 42 · `adb-model` 30 · `adb-fixtures` 3 · `adb-editing` **54** ·
-  `adb-objectstore` 19 · `adb-asset` **18** · `adb-introspect` **292** · `adb-redis` 14 ·
-  `adb-session` **42**（跳 5）· `adb-transfer` 115 · `adb-jdbc` **241**（跳 1）。
-- ⭐ **五套真库矩阵契约本轮全部实跑、0 跳过**（带环境那一次逐类读出来的，不是抄上一版）：
+  2026-11-14 23:16 +08:00、本机 Darwin 24.6.0 x86_64、Temurin JDK 25.0.5（`JAVA_HOME` 指向
+  `~/.workbuddy/jdk/jdk-25.0.5+8`），Total time **35:18 min**，**16/16 模块 SUCCESS**。验证时源码为
+  `97dd36d` + 16 个工作树文件（14 改 + 2 新增：新增 1 个真端点契约类、1 张真端点帧）。
+  同日不带环境的全量为 **2090 / 0 / 113**（36:35 min，**16/16 模块 SUCCESS**）；
+  两次差 **107 条执行 / 107 条跳过**，与上一基线同口径。较 2026-11-12 的 **2186 / 6**
+  多 **11 条执行**，全部来自本轮 `adb-objectstore`（19→30）：
+  `S3RealEndpointContractTest` 10 + `ObjectStoreSessionTest` 新增 1。
+  逐模块执行数（`TestCount` 口径，带环境那一次，跳过单列）：`adb-ui-shell` **1158** ·
+  `adb-ui-core` 70 · `adb-safety` 88 · `adb-sql` 42 · `adb-model` 30 · `adb-fixtures` 3 ·
+  `adb-editing` **54** · `adb-objectstore` **30** · `adb-asset` **18** ·
+  `adb-introspect` **292** · `adb-redis` 14 · `adb-session` **42**（跳 5）·
+  `adb-transfer` 115 · `adb-jdbc` **241**（跳 1）。
+- ⭐ **五套真库矩阵 + 一套对象存储真端点契约本轮全部实跑、0 跳过**
+  （带环境那一次逐类读出来的，不是抄上一版）：
   主矩阵 `ExternalRealDatabaseTest` **51 / 0 失败 / 0 跳过**（五引擎 × 10 + 1）、
   TLS 矩阵 `ExternalTlsDatabaseTest` **18 / 0 / 0**（三个加密对端 33071/33072/54331）、
   写回矩阵 `EditWriteBackMatrixTest` **15 / 0 / 0**（契约第 10 / 11 / 14 条）、
   导出往返 `TransferRoundTripMatrixTest` **5 / 0 / 0**（第 12 条）、
-  SSH 跳板 `SshTunnelMatrixTest` **5 / 0 / 0**（第 13 条）+ `SshTunnelTest` 11。
-  账闭环：**2079 + 107 = 2186**，**113 − 107 = 6**；较上一基线（2026-11-12 16:14 的
-  **2176 / 6**，`0ecf228` + 56 文件）**+10 条执行**，全部是本轮新增门禁：
-  `NonSqlProfileSpecGuardTest` 3（session 39→42）、`AssetKindCapabilityTest` 4
-  （asset 14→18）、`NonSqlProfileRenderTest` 3（ui-shell 1155→1158）。
-- ⭐ **画面债已平账（R1 转绿）**：`docs/screenshots/` 现为 **73 张**（68 张基准帧全部同版重拍
-  + 5 张新面首入库），`md5` **零重复**，逐张目视核对过五个新面。
-  五个新面的帧：`p10-onboarding`（引导浮层三卡片 + 背景工作区可见，1280×792）、
+  SSH 跳板 `SshTunnelMatrixTest` **5 / 0 / 0**（第 13 条）+ `SshTunnelTest` 11、
+  ⭐ `S3RealEndpointContractTest` **10 / 0 / 0**（真 LocalStack 4.9.2 容器，30.34 s）。
+  账闭环：**2090 + 107 = 2197**，**113 − 107 = 6**；较上一基线 **+11 条执行**，
+  两次全量（带 / 不带矩阵）都把这 11 条实跑了。
+- ⭐ **画面债已平账，并补上对象存储真端点帧**：`docs/screenshots/` 现为 **74 张**
+  （68 张基准帧同版重拍 + 6 张新面），`md5` **零重复**，逐张目视核对过。
+  六个新面的帧：`p10-onboarding`（引导浮层三卡片 + 背景工作区可见，1280×792）、
   `p5-connect-family`（族筛选带选中 Object Storage chip、只剩 4 张对象存储磁贴，900×700）、
   `p10-tabs-overview`（搜索框 + 按连接分组 + 5 行标签 + Activate/Close，642×376）、
-  `p10-object-browser`（README.md 47B + `brand/` `reports/` 虚拟文件夹 + 完整工具条，1280×792）、
-  `p10-redis-keys`（**真 Redis 端点**：redis:7.2 容器 127.0.0.1:16379，键表逐行真实数据，
-  状态栏「Connected matrix Redis」+ 绿灯 `Redis · matrix Redis`，1280×792）。
-  ⚠️ **`p10-redis-keys` 是真服务端帧但不算对象存储证据**：Redis 键浏览器连的是本机
-  redis:7.2 容器（与 14 条真容器契约同一镜像）；对象浏览器帧走的是离线
-  `InMemoryObjectStoreSession` 演示数据，真端点证据属 R2，见 §3 第 1 条。
+  `p10-object-browser`（离线内存后端：README.md 47B + `brand/` `reports/` 虚拟文件夹，1280×792）、
+  `p10-redis-keys`（**真 Redis 端点**：redis:7.2 容器、状态栏绿灯、1280×792）、
+  ⭐ `p10-object-store-real`（**真 S3 兼容端点**：LocalStack 4.9.2 over HTTPS，
+  `README.md` 58 B + 服务端时间戳 + `Storage class STANDARD` + `brand/` `reports/` 文件夹，
+  1280×792；走 `ADB_OBJECT_BROWSER_REAL=1` 摆态，经产品工厂连真端点并用产品会话写入对象，
+  连不上就弃帧，不退回内存后端）。
+  ⚠️ 两族真服务端帧都只证**各自那一支**：Redis 帧连 redis:7.2，对象存储帧连 S3 兼容端点；
+  OSS / Kodo / COS 三家原生 SDK 仍无画面证据（R2 剩余阻塞项，见 §3 第 1 条）。
   五枚新品牌图仍是中性几何占位件（R4）。
 - ⭐ **目视验收抓出一处真实文案缺陷并已修**：`wizard.type.hint` 仍写「ships drivers for these
   **six** databases only」，而磁贴已从 7 张扩到 11 张 —— 中英两版都改成不带数量断言的
@@ -146,7 +150,7 @@
 | 可观测性 | ✅ | `StartupTrace` 分段打点 → `~/.agenticdb/logs/startup.log`；诊断页 |
 | 资产族地基（P0） | ✅ | `AssetKind` 取代 `DialectKind` 成为 `ConnectionProfile` 的判别轴；`AssetFamily` / `AssetFamilyRegistry` 是「加一种连接类型 = 一处登记」的单一真相源（SQL 6 家 + Redis 1 家 + 对象存储 4 家 = 11 张磁贴）。四类对象存储合并成一个 `OBJECT_STORE` kind + `ObjectStoreProvider` 子判别，不拆四个 kind；旧档案 `kind` 写枚举名仍可读，无需迁移。`DialectBranchAuditTest` 禁止 UI 硬编码资产族常量，`AssetFamilyFilterAuditTest` 动态断「注册表加一族 → 向导筛选带必须加一枚 chip」 |
 | Redis 管理（P1） | ✅ | `adb-redis`（Lettuce）：按 `INFO keyspace` 懒加载 db 分组，`SCAN` 出 key / type / TTL / size；`RedisKeysPage` 前缀 + 类型过滤，五种值类型抽屉查看/编辑，TTL、`DEL`、`FLUSHDB`、`FLUSHALL` 全走 `RedisDanger` 分级 + `DestructiveConfirm`（取消为默认按钮）。`RedisScanTest` / `RedisMutateTest` / `RedisTreeTest` 钉住内省、写安全与双击路由。⚠️ **Redis over SSH 未接入**（`RedisSessions` 类注释如实写明），SQL 那套隧道尚未复用到这一族 |
-| 对象存储（P2） | ✅ / 🟡 | `adb-objectstore` 把四家 SDK（AWS SDK v2 / aliyun-sdk-oss / qiniu-java-sdk / cos_api）适配到同一个 `ObjectStoreSession`，另附 `InMemoryObjectStoreSession` 供无云账号环境跑行为契约（19 条）。对象存储没有真目录：key 里的 `/` 配 delimiter 折叠成 `ObjectEntry.folder()` 虚拟文件夹行；不传 delimiter 时平铺，用于递归删前缀。`ObjectBrowserPage` 提供前缀面包屑、上传 / 下载 / 删一颗 / 递归删前缀 / 元数据 / 预签名 URL / 移动重命名；`ObjectStoreCapabilities` 显式声明能力，七牛 `supportsMove=false` / `supportsListBuckets=false` → 按钮置灰 + tooltip 说明 + 后端 UOE，树只显示配置的那一个桶。删除类操作由 `ObjectStoreDanger` 判成 `DESTRUCTIVE`，未知 / 空白操作 fail-closed 到 `ADMIN`。密钥只进 `CredentialStore`，`connections.json` 只留非敏感 options。⚠️ 🟡：**四家只有编译 + 内存后端契约，没有真云账号 / 仿真服务的执行证据**；当前 delimiter 层一次列完，无服务端翻页 |
+| 对象存储（P2） | ✅ / 🟡 | `adb-objectstore` 把四家 SDK（AWS SDK v2 / aliyun-sdk-oss / qiniu-java-sdk / cos_api）适配到同一个 `ObjectStoreSession`，另附 `InMemoryObjectStoreSession` 供无云账号环境跑行为契约（19 条）。对象存储没有真目录：key 里的 `/` 配 delimiter 折叠成 `ObjectEntry.folder()` 虚拟文件夹行；不传 delimiter 时平铺，用于递归删前缀。`ObjectBrowserPage` 提供前缀面包屑、上传 / 下载 / 删一颗 / 递归删前缀 / 元数据 / 预签名 URL / 移动重命名；`ObjectStoreCapabilities` 显式声明能力，七牛 `supportsMove=false` / `supportsListBuckets=false` → 按钮置灰 + tooltip 说明 + 后端 UOE，树只显示配置的那一个桶。删除类操作由 `ObjectStoreDanger` 判成 `DESTRUCTIVE`，未知 / 空白操作 fail-closed 到 `ADMIN`。密钥只进 `CredentialStore`，`connections.json` 只留非敏感 options。⚠️ 🟡：**S3 兼容分支已有真端点证据**（`S3RealEndpointContractTest` 10 条跑真 LocalStack 4.9.2 容器，含 1001 对象跨页与预签名 URL 真 HTTP 取回；另有 `p10-object-store-real` 真端点画面帧），**OSS / Kodo / COS 三家原生 SDK 仍只有编译 + 内存后端契约**；当前 `listObjects` 一次列完（SDK 内部确实跨页，但接口不暴露分页 token），超大 bucket 无渐进加载 |
 | 首启引导与 Tab 治理（P3） | ✅ | `OnboardingOverlay` 叠在 demo 自动连接之上、关后即焚（`ui.onboarding.seen`），Help 菜单可重开，验收 / 截图 / 测试会话不自动弹以保证逐帧可复现；向导首步四枚族筛选 chip 用**可见性切换**而非重建磁贴，被筛掉的选中项自动挪到该族第一张；`tabs` 命令（命令面板 + Window 菜单）打开非常驻的 `TabOverviewPanel`，按连接分组 / 搜索 / 激活 / 逐条关闭 / 按连接全关，**三条关闭回调全部回到 `TabBar.close()`**，`closeGuard` 脏检查、钉住态、常驻标签规则一条不绕过。⚠️ TabBar 分组视觉未新增，沿用既有连接名 / 库名 / 厂商图形注入；连接管理页「无连接三步上手」未单独做，由引导层三张卡片承担 |
 | 品牌资产（P3-6） | 🟡 | `redis.svg` + `aws-s3` / `aliyun-oss` / `qiniu` / `tencent-cos` 五枚落地，`TRADEMARK-NOTICE.txt` 逐枚点名 `BrandIconTest` 通过；彩色 `list.svg` 补齐图标系统。⚠️ 五枚均为**中性几何占位件**，发布前必须换成各家品牌页的原始矢量件（R4 资产阻塞） |
 | 打包 | 🟡 | `scripts/package.sh` 出 app-image / dmg / msi / deb，实测可启动；**未签名、未公证、无自动更新、无发布渠道** |
@@ -207,23 +211,37 @@
 ### 能力缺口
 
 - ⭐ **资产族扩展（P0–P3，2026-11-12）的四条如实边界**：
-  1. **对象存储真端点证据为空（R2 资产阻塞）**：四家对象存储 SDK 适配器只有编译通过 +
-     `InMemoryObjectStoreSession` 上的 19 条行为契约；没有真实云账号，也没有 minio / localstack /
-     OSS / COS / Kodo 仿真服务，因此「连得上、列举 / 上传 / 下载 / 预签名真的生效」**不写已验**。
+  1. ⭐ **R2 已部分平账：S3 兼容分支有真端点证据，三家原生 SDK 仍缺**：本轮新增
+     `S3RealEndpointContractTest`（10 条，testcontainers 起的真 `localstack/localstack:4.9.2`
+     容器 + 受信任的 HTTPS 端点），覆盖工厂连接 / 连接测试 / 列举 bucket / put→get→metadata
+     往返 / delimiter 折叠 / **1001 对象跨 ListObjectsV2 千条页边界** / 删一颗 / 递归删前缀 /
+     move 保留 contentType / 预签名 URL 用真 HTTP GET 取回。走的都是产品同一条
+     `ObjectStoreSessions.connect/test` 路径，不内联兜底。
+     ⚠️ 这是 **S3 兼容协议**的真服务端（AWS S3 / MinIO / LocalStack 一支），**不是**某家公有云账号；
+     阿里云 OSS、七牛 Kodo、腾讯云 COS 三家原生 SDK 仍只有编译 + 内存后端契约，
+     需要各家仿真服务或真账号才能升级，「连得上四家」依旧**不写已验**。
+     ⚠️ **明文 HTTP 端点边界（本轮实测）**：AWS SDK 2.31 在 `http://` 上给 PutObject 加
+     `Expect: 100-continue` + 流式 SigV4；LocalStack 的 Twisted 网关把 `100 Continue` 与
+     `200 OK` 一起回，SDK 的 Apache 客户端每个 PUT 都卡到 30s 读超时再重试（服务端每次记 200）。
+     真实 S3 / MinIO 生产端点都是 HTTPS，契约因此走 TLS；**产品对纯 HTTP 的 S3 兼容端点
+     未做适配**，用户配明文 endpoint 可能遇到上传超时。
      ⚠️ **Redis 不在此列**：`adb-redis` 的 14 条契约（`RedisScanTest` 5 + `RedisMutateTest` 9）
      跑在 testcontainers 起的真 `redis:7.2` 容器上，含 FLUSHALL 的真实变异验证；同版 UI 验收帧
      （`p10-redis-keys`，真容器实拍）也已入库 —— Redis 这一族服务端与画面证据都齐了，
-     只是 over SSH 未接（下条）。此前把两者并成一句「真端点证据为空」不准确。
+     只是 over SSH 未接（下条）。
   2. **Redis over SSH 未接入**：档案里的 SSH 段目前只作用于 SQL 连接；`RedisSessions` 在代码里
      写明这一点，界面不摆一个勾了没反应的开关。
-  3. **对象存储无服务端翻页**：`listObjects` 一次列完当前 delimiter 层，超大 bucket 的性能边界
-     未量过；递归删前缀用不传 delimiter 的平铺列举实现，删之前会走 `DESTRUCTIVE` 确认。
-  4. **画面证据已补齐、但仍不是真端点证据（R1 转绿，R2 未动）**：首启引导、族筛选带、对象浏览器、
-     标签概览、Redis 键浏览器五个新面的同版帧本轮已入库（`docs/screenshots/` 73 张，`md5` 零重复，
-     逐张目视核对过），68 张基准帧也全部重拍到当前源码。其中 **Redis 键浏览器帧拍在真
-     redis:7.2 容器上**（与 14 条真容器契约同一镜像），Redis 的「同版 UI 验收帧」欠账就此还清；
-     但**对象浏览器那张走的是离线内存后端**，证明的是「浏览器的壳与交互画出来了」，
-     不是「连上了某家云」。五枚新品牌图仍是中性几何占位件（R4）。
+  3. **对象存储接口无渐进翻页（SDK 层已验跨页）**：`S3RealEndpointContractTest` 灌 1001 颗对象、
+     断言 `listObjects` 全部列回，证明 `S3ObjectStoreSession.flatList` 的 `continuationToken`
+     循环真的跨过 ListObjectsV2 的千条页边界；但 `ObjectStoreSession.listObjects` 仍一次返回整层，
+     不暴露分页 token，超大 bucket 无法渐进加载、性能边界未量。递归删前缀用不传 delimiter 的
+     平铺列举实现，删之前会走 `DESTRUCTIVE` 确认。
+  4. **画面证据：两族各有真服务端帧，三家原生 SDK 仍缺（R1 转绿，R2 部分平账）**：
+     六个新面同版帧已入库（`docs/screenshots/` 74 张，`md5` 零重复，逐张目视核对过），
+     68 张基准帧全部重拍到当前源码。`p10-redis-keys` 拍在真 redis:7.2 容器上，
+     ⭐ `p10-object-store-real` 拍在真 LocalStack 4.9.2 S3 兼容端点上（对象由产品会话写入服务端），
+     离线 `p10-object-browser` 帧也保留作壳与交互的对照。⚠️ 对象存储真端点帧只覆盖 S3 兼容协议一支，
+     OSS / Kodo / COS 三家原生 SDK 既无真端点契约也无画面证据。五枚新品牌图仍是中性几何占位件（R4）。
 - **Filter & Sort 面板支持条件组（组内 AND、组间 OR）**：`[Ω]`（加 OR 条件组）已落地真实能力——
   按 `MAX_GROUPS=8` 新增组、组间 `OR` 连接、组内 `AND`（单组等价于旧版平铺 AND，SQL 输出逐字节兼容）；
   `IN` 条件仍由列头漏斗的候选值多选提供，面板内原样保留、不可行内编辑；Text 模式是**只读**的生成表达式。

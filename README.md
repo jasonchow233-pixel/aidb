@@ -34,7 +34,7 @@ deliberately does not do those things ([why](#explicitly-not-on-the-roadmap)).
 | **SQL Server** | ✅ 2019+ — `sys.*` catalog queries confirmed against a real server |
 | **Oracle** | ✅ 12c+ — `ALL_*` catalog queries and `DBMS_METADATA` confirmed against a real server |
 | **Redis** | ✅ key browsing (`SCAN`, type, TTL, size), value view/edit for five types, TTL and `DEL` / `FLUSHDB` / `FLUSHALL` behind the shared destructive-confirm gate. ⚠️ Redis over SSH is not wired up yet |
-| **Object storage** | ✅ one browser for four providers: S3-compatible endpoints (AWS S3, MinIO, LocalStack), Alibaba Cloud OSS, Qiniu Kodo and Tencent Cloud COS. Prefix navigation, upload / download, single-object and recursive-prefix delete, metadata, presigned URLs and move/rename. Credentials live in the system credential store, never in `connections.json` |
+| **Object storage** | ✅ one browser for four providers: S3-compatible endpoints (AWS S3, MinIO, LocalStack), Alibaba Cloud OSS, Qiniu Kodo and Tencent Cloud COS. Prefix navigation, upload / download, single-object and recursive-prefix delete, metadata, presigned URLs and move/rename. Credentials live in the system credential store, never in `connections.json`. ⭐ The S3-compatible branch has a real LocalStack endpoint contract + a matching UI frame; OSS / Kodo / COS are compile-and-in-memory only — see Limitations |
 
 ✅ for the last three means the dialect, DDL generation, paging and capability gates are covered by
 unit tests **and** executed against real servers in the Docker matrix (`scripts/dbmatrix.sh`, opt-in
@@ -212,7 +212,7 @@ every pull request is reviewed against. Design rules are in
   </tr>
   <tr>
     <td><img src="docs/screenshots/p7-new-index.png" alt="New index dialog with live DDL preview" width="380"><br>Index dialog with live DDL</td>
-    <td></td>
+    <td><img src="docs/screenshots/p10-object-store-real.png" alt="Object browser backed by a real LocalStack S3 endpoint" width="380"><br>Object browser against a real S3 endpoint</td>
   </tr>
 </table>
 
@@ -243,23 +243,32 @@ every pull request is reviewed against. Design rules are in
   `ssh` binary) with OpenSSH `known_hosts` host keys and a TOFU fingerprint prompt; the connection
   wizard's SSH page is a real form. Only RSA / ECDSA private keys are supported (ed25519 is not),
   which the wizard states next to the field.
-- **Object storage backends are compiled and covered by an in-memory contract suite, but have not
-  been exercised against real cloud accounts or emulators** (no `ADB_TEST_*` credentials in this
-  environment). The four SDK adapters share one interface and one capability matrix; real-endpoint
-  verification is an open acceptance item, not a delivered claim. The browser also lists a whole
-  delimiter level in one call — there is no server-side pagination for very large buckets yet.
-  **Redis is different**: its 14 contract cases run against a real `redis:7.2` testcontainers
-  instance (including a real FLUSHALL mutation check), and the key browser has a matching UI
-  frame captured against a real `redis:7.2` container (`docs/screenshots/p10-redis-keys.png`).
+- **Object storage: the S3-compatible branch now has real-endpoint evidence; the three native
+  SDK adapters do not.** `S3RealEndpointContractTest` runs 10 cases against a real
+  `localstack/localstack:4.9.2` container over a trusted HTTPS endpoint — bucket listing,
+  put/get/metadata, delimiter folding, **1001 objects across the ListObjectsV2 page boundary**,
+  single-object and recursive-prefix delete, move with MIME preservation, and a presigned URL
+  fetched with a real HTTP GET. All cases go through the product's own
+  `ObjectStoreSessions.connect` factory. `p10-object-store-real.png` is the matching UI frame.
+  Alibaba OSS, Qiniu Kodo and Tencent COS still have only compile-time SDK types plus the
+  in-memory contract suite — no real account or emulator evidence, so "all four providers connect"
+  is not a claim this project makes. The browser still lists a whole delimiter level in one call;
+  there is no progressive pagination for very large buckets.
+  ⚠️ A plain `http://` S3-compatible endpoint is not supported yet: AWS SDK 2.31 sends
+  `Expect: 100-continue` with streaming SigV4 and some gateways never answer it, so uploads stall
+  until read timeout. Use an HTTPS endpoint.
+  **Redis** has 14 contract cases on a real `redis:7.2` testcontainers instance (including a real
+  FLUSHALL mutation check) and a matching frame shot against that container.
 - **Redis over SSH is not wired up**: `RedisSessions` states this in code. SQL connections still
   support the pure-Java SSH tunnel; Redis connections currently go direct.
 - **Five new brand marks are neutral geometric placeholders** (`redis`, `aws-s3`, `aliyun-oss`,
   `qiniu`, `tencent-cos`). `TRADEMARK-NOTICE.txt` names each one; official vector assets must
   replace them before any public release.
 - The first-run welcome overlay, the wizard's family filter, the object browser, the tabs
-  overview and the Redis key browser each have a matching frame in `docs/screenshots/`; the
-  object-browser frame still runs on the offline in-memory backend — real-endpoint evidence
-  for object storage is an open item.
+  overview, the Redis key browser and a real-endpoint object browser each have a matching frame
+  in `docs/screenshots/` (74 frames, no duplicate hashes). The offline `p10-object-browser.png`
+  frame is kept as a shell/interaction reference; `p10-object-store-real.png` is the one backed
+  by an actual S3 server.
 - The full list, with the date every number was measured: [docs/STATUS.md](docs/STATUS.md).
 
 ## License · Acknowledgements

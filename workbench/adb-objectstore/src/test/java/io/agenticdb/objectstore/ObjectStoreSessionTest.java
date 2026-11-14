@@ -15,8 +15,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>与 {@code RedisMutateTest} 的定位一致：写操作必须真的改状态，
  * 破坏性操作的分级由 {@code ObjectStoreDangerTest} 守，这里验证语义正确。
- * 四家 SDK 会话的真实云端连通性属 R2 环境阻塞项（无凭据 / 无网络），
- * 故以内存后端做协议级验证，并在 javadoc 里如实标注，不假装连过云账号。
+ * S3 兼容分支另有 {@link S3RealEndpointContractTest} 跑真 LocalStack 端点；
+ * 其余三家原生 SDK 仍只有编译期类型与内存后端契约（R2 剩余阻塞项），
+ * 本类不冒充云端连通性证据。
  */
 class ObjectStoreSessionTest {
 
@@ -50,6 +51,28 @@ class ObjectStoreSessionTest {
         assertThat(meta.size()).isEqualTo(5);
         assertThat(meta.etag()).isNotBlank();
         assertThat(meta.lastModified()).isNotNull();
+    }
+
+    /**
+     * ⭐ R2 真端点契约抓出的缺陷：早期把 contentType 塞进 storageClass，
+     * moveObject 又把 storageClass 当 contentType 传，结果移动一次 MIME 就丢。
+     * 这条不依赖 Docker，保证无容器环境也守得住字段分离。
+     */
+    @Test
+    void contentTypeIsSeparateFromStorageClassAndSurvivesMove() {
+        InMemoryObjectStoreSession s = open(ObjectStoreProvider.S3, "photos");
+        byte[] data = "hello".getBytes(StandardCharsets.UTF_8);
+        ObjectMeta written = s.putObject("photos", "typed.txt", data, "text/plain");
+        assertThat(written.contentType()).isEqualTo("text/plain");
+        assertThat(written.storageClass()).isEmpty();
+        assertThat(s.metadata("photos", "typed.txt").contentType()).isEqualTo("text/plain");
+        assertThat(s.listObjects("photos", "", null).get(0).storageClass()).isEmpty();
+
+        s.moveObject("photos", "typed.txt", "moved.txt");
+        ObjectMeta moved = s.metadata("photos", "moved.txt");
+        assertThat(moved.contentType()).isEqualTo("text/plain");
+        assertThat(moved.storageClass()).isEmpty();
+        assertThat(s.getObject("photos", "moved.txt")).isEqualTo(data);
     }
 
     @Test

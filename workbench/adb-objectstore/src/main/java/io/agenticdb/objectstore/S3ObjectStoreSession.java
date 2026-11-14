@@ -33,8 +33,10 @@ import java.util.List;
  * （MinIO / LocalStack 都不支持 virtual-host 风格）。region 缺省 {@code us-east-1}。
  * 有 sessionToken 时用 {@link AwsSessionCredentials}（STS 临时凭据）。
  *
- * <p>⚠️ 真实云端连通性属于规划 P4-3 的 <b>R2 环境阻塞项</b>：本类在编译期由 SDK 类型钉住，
- * 行为门禁跑在 {@link InMemoryObjectStoreSession} 上，不会假装连过云账号。
+ * <p>本类在 LocalStack 4.9.2 的<b>真 S3 协议端点</b>上有 10 条全链路契约
+ * （{@code S3RealEndpointContractTest}：列举 / 上传下载 / 元数据 / delimiter 折叠 /
+ * 1001 对象跨页 / 删除 / 递归删 / move / 预签名 URL 真 HTTP 取回 / 连接测试）。
+ * 那不是某家公有云账号，只是 S3 兼容协议分支；其余三家原生 SDK 仍无真端点证据。
  */
 public final class S3ObjectStoreSession extends AbstractObjectStoreSession {
 
@@ -92,7 +94,7 @@ public final class S3ObjectStoreSession extends AbstractObjectStoreSession {
             for (S3Object o : page.contents()) {
                 out.add(new ObjectMeta(o.key(), o.size() == null ? 0L : o.size(),
                         o.lastModified(), SdkSupport.safe(o.eTag()),
-                        SdkSupport.safe(o.storageClassAsString())));
+                        SdkSupport.safe(o.storageClassAsString()), ""));
             }
             token = Boolean.TRUE.equals(page.isTruncated()) ? page.nextContinuationToken() : null;
         } while (token != null && !token.isBlank());
@@ -126,7 +128,7 @@ public final class S3ObjectStoreSession extends AbstractObjectStoreSession {
                 HeadObjectRequest.builder().bucket(bucket).key(key).build());
         return new ObjectMeta(key, h.contentLength() == null ? 0L : h.contentLength(),
                 h.lastModified(), SdkSupport.safe(h.eTag()),
-                SdkSupport.safe(h.storageClassAsString()));
+                SdkSupport.safe(h.storageClassAsString()), SdkSupport.safe(h.contentType()));
     }
 
     @Override

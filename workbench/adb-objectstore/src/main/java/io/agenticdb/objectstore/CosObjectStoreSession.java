@@ -21,7 +21,8 @@ import java.util.List;
  * <p>region 形如 {@code ap-guangzhou}；凭据 SecretId / SecretKey。
  * 列举按 marker 翻页。SDK 与 OSS 形态接近但类型完全独立，故单独一个适配器。
  *
- * <p>⚠️ 真实云端连通性属 P4-3 的 R2 阻塞项；行为门禁在内存后端验证。
+ * <p>⚠️ 腾讯云 COS 原生协议<b>仍无真端点证据</b>（R2 剩余阻塞项）；
+ * 本类只有编译期 SDK 类型 + 内存后端行为契约，不宣称连过真实 COS。
  */
 public final class CosObjectStoreSession extends AbstractObjectStoreSession {
 
@@ -59,7 +60,7 @@ public final class CosObjectStoreSession extends AbstractObjectStoreSession {
             for (COSObjectSummary s : page.getObjectSummaries()) {
                 out.add(new ObjectMeta(s.getKey(), s.getSize(),
                         SdkSupport.instant(s.getLastModified()),
-                        SdkSupport.safe(s.getETag()), ""));
+                        SdkSupport.safe(s.getETag()), "", ""));
             }
             if (!page.isTruncated()) {
                 break;
@@ -99,7 +100,8 @@ public final class CosObjectStoreSession extends AbstractObjectStoreSession {
     public ObjectMeta metadata(String bucket, String key) {
         ObjectMetadata m = client.getObjectMetadata(bucket, key);
         return new ObjectMeta(key, m.getContentLength(),
-                SdkSupport.instant(m.getLastModified()), SdkSupport.safe(m.getETag()), "");
+                SdkSupport.instant(m.getLastModified()), SdkSupport.safe(m.getETag()), "",
+                SdkSupport.safe(m.getContentType()));
     }
 
     @Override
