@@ -12,7 +12,8 @@
 - **2207 执行 / 0 失败 / 7 跳过 / 227 个测试类**，`BUILD SUCCESS`、**16/16 模块 SUCCESS**。
   命令 `set -a && . scripts/.dbmatrix.env && set +a && ADB_TEST_OSS_ENDPOINT/… && MAVEN_ARGS=-o ./scripts/build.sh`
   （= `./mvnw -B clean verify` + `java tools/TestCount.java`），2026-11-15 01:36 +08:00、
-  本机 Darwin 24.6.0 x86_64、Temurin JDK 25.0.5，Total time **28:59 min**。
+  本机 Darwin 24.6.0 x86_64、Temurin JDK 25.0.5，Total time **28:59 min**；验证时源码为
+  提交 `bac3a0b`（12 个文件：10 改 + 2 新增，含 2 个新测试类与 2 张同版重拍帧）。
   同日不带环境的全量 **2093 / 0 / 121 跳过 / 227 类**（31:07 min，16/16 模块 SUCCESS）。
   账闭环 **2093 + 114 = 2207**、**121 − 114 = 7**；较 2026-11-14 的 **2197 / 2090**
   多 **10 条执行**（`ObjectBrowserDensityTest` 3 + OSS 契约实跑 7）、类数 225 → **227**。
