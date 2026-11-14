@@ -9,6 +9,38 @@
 
 ## [Unreleased]
 
+### Added — 2026-11-15：阿里云 OSS 真账号只读契约 + 对象浏览器密度
+
+- **`OssRealEndpointContractTest`（8 条，opt-in）**：R2 的第二支原生 SDK 真端点证据。
+  经产品同一条 `ObjectStoreSessions.connect/test` 工厂连真实北京区域 OSS 账号，验
+  `listBuckets`、精确 key 前缀列举、delimiter 折叠、**ListObjects V1 跨 1000 条页边界**
+  （用原生 SDK 逐页数出的条数与产品 `listObjects` 逐条对账）、`metadata` 的
+  `contentType` 独立字段、预签名 URL 用真 HTTPS GET 取回 200、运营方给的 `urlPrefix`
+  域名可达且与预签名链接同 host、坏端点与缺凭据的失败口径。
+  ⚠️ **凭据只从 `ADB_TEST_OSS_*` 环境变量读，仓库内零字面量、零落盘**；没给环境变量整类跳过。
+  默认全部只读，唯一的写契约额外要求 `ADB_TEST_OSS_WRITE=true`，只碰自建前缀并在 finally 清理。
+  规模纪律：真实桶 >12000 对象，样本只用一页、分页只用受限前缀，绝不列全桶。
+- **`ObjectBrowserDensityTest`（3 条）**：挂真实主题读计算样式与布局后的几何 —— 表格正文 /
+  列头与对象树同为 12px、9 颗工具键实得宽度不小于 prefWidth（文字不许省略号）、
+  短标签必配 tooltip 与 accessibleText、三档行高 21 / 24 / 32。
+- **工具条短标签与完整名分家**：新增 5 个 i18n 键（中英各一份），
+  `URL / Info / Move / Del prefix` 等短标签负责一眼认出，完整动作名留在 tooltip 与读屏文本。
+
+### Fixed — 2026-11-15
+
+- **对象浏览器表格与树不是一套密度**：表格此前没有样式类、吃 Modena 默认的 13px 正文
+  与 32px 行高，3 行数据铺掉半屏空白。新增 `.adb-objects__table`（正文 / 列头 12px、
+  2px 8px 内边距），默认行高 32 → **24**（compact 21 / loose 32），列宽改
+  `CONSTRAINED_RESIZE_POLICY` 铺满表格、消掉右侧无列头的空白带。
+- **工具条 11 颗带文字按钮挤一行被压成省略号**：实拍 `p10-object-store-real` 里
+  `Download` 只剩 `Do…`、`Temporary URL` 只剩 `Temporar…`。页头拆成标题行 +
+  可横向滚动的工具带，按钮 padding 4px 12px → 2px 6px、高度 28 → 24、
+  图标文字间距 6 → 4，每颗 `minWidth = USE_PREF_SIZE`，放不下时整条滚动而不是截字。
+- **危险按钮的变体类单独挂载**：`UnifiedControlTest` 在首次全量里抓到两颗删除键把
+  `adb-button--danger` 与基础类分成两次 `add`（拿不到统一尺寸与五态），改为同一次 `addAll`。
+- **两帧同版重拍**：`p10-object-browser.png` / `p10-object-store-real.png`（后者仍是真
+  LocalStack 4.9.2 over HTTPS，经产品工厂连真端点），`docs/screenshots/` 74 张、`md5` 零重复。
+
 ### Added — 2026-11-14 R2：S3 兼容真端点契约与真端点画面帧
 
 - **`S3RealEndpointContractTest`（10 条）**：testcontainers 起真

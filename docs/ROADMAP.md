@@ -8,8 +8,9 @@
 ## 已支持
 
 > 下表区分已接线能力与验收边界；资产族扩展（P0–P3）的代码与行为门禁已落地，
-> ⭐ 2026-11-14：**R1 已转绿**（同版帧 + 真端点画面帧齐），**R2 部分平账**（S3 兼容分支已有
-> 真 LocalStack 契约 + 真端点帧；OSS / Kodo / COS 三家原生 SDK 仍无真端点证据）。
+> ⭐ 2026-11-15：**R1 已转绿**（同版帧 + 真端点画面帧齐）；**R2 已平两支**
+> （S3 兼容分支的真 LocalStack 契约 + 真端点帧、阿里云 OSS 真账号只读契约），
+> **Kodo / COS 两支原生 SDK 仍无真端点证据**。
 > **发布与商标原件仍属阻塞项**（R3/R4）。历史真库结果不代表当前工作树已验收，
 > 验证基线见 [STATUS](STATUS.md) §1。
 
@@ -18,7 +19,7 @@
 | 数据库 | SQLite · MySQL · PostgreSQL · MariaDB · SQL Server · Oracle（后五家全部在本机 Docker 真库矩阵上跑过；MySQL 只有 8.x 有执行证据，5.7 见 `docs/STATUS.md` §测试环境） |
 | 资产族地基 | `AssetKind` 为连接判别轴、`AssetFamilyRegistry` 为单一登记处；四类对象存储合并成一个 `OBJECT_STORE` kind + provider 子判别，旧 `connections.json` 无需迁移。UI 不得硬编码资产族常量，新增一族必须同时给向导筛选带补一枚 chip（`AssetFamilyFilterAuditTest` 动态钉住） |
 | Redis | 向导连接、树按 `INFO keyspace` 懒加载 db 分组、键列表（前缀 / 类型过滤）、五种值类型查看与编辑、TTL、`DEL` / `FLUSHDB` / `FLUSHALL` 全走 `RedisDanger` 分级 + 破坏性确认。⚠️ Redis over SSH 未接入 |
-| 对象存储 | 同一浏览器覆盖 S3 兼容端点（AWS S3 / MinIO / LocalStack）、阿里云 OSS、七牛 Kodo、腾讯云 COS；前缀面包屑、delimiter 折叠的虚拟文件夹、上传 / 下载 / 删一颗 / 递归删前缀 / 元数据 / 预签名 URL / 移动重命名。`ObjectStoreCapabilities` 显式声明能力：七牛无服务端 move、不能列 bucket → 按钮置灰写明原因 + 后端抛 UOE，树只显示配置的那一个桶。密钥只进系统凭据库。⚠️ ⭐ S3 兼容分支已有真端点契约（10 条，LocalStack 4.9.2 真容器 + HTTPS，含 1001 对象跨页）与真端点画面帧 `p10-object-store-real`；**OSS / Kodo / COS 三家原生 SDK 仍只有编译 + 内存后端契约**；`listObjects` 仍一次列完整层，无渐进翻页 |
+| 对象存储 | 同一浏览器覆盖 S3 兼容端点（AWS S3 / MinIO / LocalStack）、阿里云 OSS、七牛 Kodo、腾讯云 COS；前缀面包屑、delimiter 折叠的虚拟文件夹、上传 / 下载 / 删一颗 / 递归删前缀 / 元数据 / 预签名 URL / 移动重命名。`ObjectStoreCapabilities` 显式声明能力：七牛无服务端 move、不能列 bucket → 按钮置灰写明原因 + 后端抛 UOE，树只显示配置的那一个桶。密钥只进系统凭据库。⚠️ ⭐ S3 兼容分支已有真端点契约（10 条，LocalStack 4.9.2 真容器 + HTTPS，含 1001 对象跨页）与真端点画面帧 `p10-object-store-real`；⭐ OSS 已有真账号只读契约（8 例，含 ListObjects V1 跨千条页边界与预签名 URL 真 HTTPS GET，凭据只进环境变量、写契约 opt-in），但**没有真账号画面帧**；**Kodo / COS 两家原生 SDK 仍只有编译 + 内存后端契约**；`listObjects` 仍一次列完整层，无渐进翻页（真账号桶 >12000 对象，这是实测而非假想） |
 | 写操作安全（非 SQL 族） | Redis 与对象存储复用 `Danger` 三级分级和 `DestructiveConfirm`（取消是默认按钮）；`DELETE_OBJECT` / `DELETE_PREFIX` 为 `DESTRUCTIVE`，未知 / 空白操作 fail-closed 到 `ADMIN` |
 | 首启引导 | 叠加在 demo 自动连接之上的一次欢迎浮层，关后即焚（`ui.onboarding.seen`），Help 菜单可重开；验收 / 截图 / 测试会话不自动弹，保证逐帧可复现 |
 | 向导族筛选 / 标签概览 | 11 张磁贴配「全部 / SQL / Redis / 对象存储」四枚筛选 chip（可见性切换，不重建磁贴）；`tabs` 命令（命令面板 + Window 菜单）打开非常驻的标签概览，按连接分组、搜索、激活与关闭。**所有关闭都回到 `TabBar.close()`**，`closeGuard` 脏检查、钉住态与常驻标签规则不被绕过 |
@@ -48,12 +49,16 @@
 > 下列条目为当前**尚未构建 / 仅部分构建**的能力，列为明确执行项（不再保留「如实说明页」占位）。
 > 已交付的「危险分级第三层」「数据脱敏导出」已移入上表；裁定不做的「ER 图」「HTTP 隧道」见下「明确不做」。
 
-1. **对象存储真端点验收（R2 · ⭐ S3 兼容分支已平，剩三家原生 SDK）** ——
+1. **对象存储真端点验收（R2 · ⭐ S3 兼容分支 + 阿里云 OSS 真账号两支已平，剩 Kodo / COS）** ——
    `S3RealEndpointContractTest` 已在真 `localstack/localstack:4.9.2` 容器 + 受信任 HTTPS 端点上
    验完「连得上、列举 / 上传 / 下载 / 元数据 / 删除 / move / 预签名 URL 真 HTTP 取回」，
    并用 1001 颗对象量出 ListObjectsV2 跨页确实生效；`p10-object-store-real` 是同族真端点画面帧。
-   **仍需**：阿里云 OSS / 七牛 Kodo / 腾讯云 COS 三家原生 SDK 的仿真服务或真账号契约；
-   以及 `listObjects` 暴露分页 token、让超大 bucket 渐进加载（当前一次列完整层）。
+   ⭐ `OssRealEndpointContractTest` 已对运营方真账号跑完只读 8 例（7 通过 + 写契约 opt-in）：
+   ListObjects V1 跨千条页边界与原生 SDK 逐条对账、metadata 的 contentType、预签名 URL 真
+   HTTPS GET、`urlPrefix` 同域；凭据只进环境变量，默认不写生产桶，也没有真账号画面帧。
+   **仍需**：七牛 Kodo / 腾讯云 COS 两支原生 SDK 的仿真服务或真账号契约；OSS 真账号画面帧
+   （会拍进生产对象名，需先定脱敏口径）；以及 `listObjects` 暴露分页 token、让超大 bucket
+   渐进加载（当前一次列完整层，OSS 真桶实测 >12000 对象）。
    ⚠️ 另有一条边界：SDK 2.31 对纯 `http://` 的 S3 兼容端点会卡 `Expect: 100-continue`
    （见 STATUS §3），产品尚未适配明文端点。
 2. **Redis over SSH** —— 档案里的 SSH 段目前不作用于 Redis 连接（`RedisSessions` 已如实注明），

@@ -4801,3 +4801,163 @@
     -fx-text-fill: -adb-text-tertiary;
     -fx-padding: 0px 4px 0px 0px;
 }
+
+/* ── 对象浏览器（P2-8）专用密度 ────────────────────────────────────────
+ * ⭐ 实拍 p10-object-store-real：`ObjectBrowserPage` 的 TableView 以前**没有样式类**，
+ *    吃的是 Modena 默认 —— 13px 正文、6px 列头内边距、32px 固定行高，
+ *    而左边对象树是 12px / 21px。同一屏两套密度，3 行数据铺掉半屏空白。
+ *    这里把字体与树对齐（12px）、行内边距收到 2px 8px，行高由 Java 侧
+ *    `setDensity` 给 21 / 24 / 32（默认 24）。
+ * ⚠️ 颜色一律走 -adb-* 令牌，不新造色值；内容层不投影。
+ * ─────────────────────────────────────────────────────────────────── */
+
+.adb-objects__header {
+    -fx-padding: 4px 12px 4px 12px;
+    -fx-spacing: 4px;
+}
+
+.adb-objects__line {
+    -fx-spacing: 8px;
+    -fx-alignment: center-left;
+}
+
+.adb-objects__toolbar {
+    -fx-spacing: 4px;
+    -fx-alignment: center-left;
+    -fx-padding: 0px;
+    -fx-background-color: transparent;
+}
+
+/* 放不下时横向滚动，绝不把按钮压成省略号。滚动条收成 6px 细轨、无箭头。 */
+.adb-objects__scroll,
+.adb-objects__scroll > .viewport {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 0px;
+}
+
+.adb-objects__scroll > .scroll-bar:horizontal {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0px;
+    -fx-padding: 0px 4px 0px 4px;
+    -fx-min-height: 6px;
+    -fx-pref-height: 6px;
+    -fx-max-height: 6px;
+}
+
+.adb-objects__scroll > .scroll-bar:horizontal > .track,
+.adb-objects__scroll > .scroll-bar:horizontal > .track-background {
+    -fx-background-color: transparent;
+    -fx-padding: 0px;
+}
+
+.adb-objects__scroll > .scroll-bar:horizontal > .thumb {
+    -fx-background-color: derive(-adb-text-tertiary, 25%);
+    -fx-background-insets: 1px 0px 1px 0px;
+    -fx-background-radius: 3px;
+}
+
+.adb-objects__scroll > .scroll-bar:horizontal > .decrement-button,
+.adb-objects__scroll > .scroll-bar:horizontal > .increment-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0px;
+    -fx-min-width: 0px;
+    -fx-pref-width: 0px;
+    -fx-max-width: 0px;
+    -fx-min-height: 0px;
+    -fx-pref-height: 0px;
+    -fx-max-height: 0px;
+}
+
+.adb-objects__scroll > .scroll-bar:horizontal > .decrement-button > .decrement-arrow,
+.adb-objects__scroll > .scroll-bar:horizontal > .increment-button > .increment-arrow {
+    -fx-background-color: transparent;
+    -fx-padding: 0px;
+    -fx-shape: null;
+    -fx-effect: null;
+}
+
+/* ⭐ 紧凑动作键：基础 .adb-button 是 4px 12px / 28px，这里压到 2px 6px / 24px。
+   带两个类（0,2,0）且排在其后，才压得过基础规则；文字保持 12px 可读下限。
+   minWidth 由 Java 侧钉成 USE_PREF_SIZE —— CSS 缩的是内边距，不是文字。 */
+.adb-button.adb-objects__action {
+    -fx-padding: 2px 6px;
+    -fx-font-size: 12px;
+    -fx-min-height: 24;
+    -fx-pref-height: 24;
+}
+
+.adb-objects__table {
+    -fx-background-color: -adb-bg-surface;
+    -fx-border-color: transparent;
+    -fx-background-radius: 4px;
+    -fx-padding: 0px;
+    -fx-table-cell-border-color: transparent;
+}
+
+.adb-objects__table .virtual-flow,
+.adb-objects__table .virtual-flow .clipped-container,
+.adb-objects__table .virtual-flow .sheet {
+    -fx-background-color: transparent;
+}
+
+.adb-objects__table .column-header-background {
+    -fx-background-color: -adb-bg-surface;
+    -fx-border-color: transparent transparent -adb-border-subtle transparent;
+    -fx-background-radius: 4px 4px 0px 0px;
+}
+
+.adb-objects__table .column-header {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent -adb-border-subtle transparent transparent;
+    -fx-border-width: 0px 1px 0px 0px;
+    -fx-padding: 2px 8px;
+}
+
+.adb-objects__table .column-header .label {
+    -fx-font-size: 12px;
+    -fx-alignment: center-left;
+}
+
+.adb-objects__table .filler {
+    -fx-background-color: -adb-bg-surface;
+}
+
+.adb-objects__table .table-row-cell {
+    -fx-background-color: -adb-bg-surface;
+    -fx-border-color: transparent transparent -adb-border-subtle transparent;
+    -fx-border-width: 0px 0px 1px 2px;
+    -fx-padding: 0px;
+}
+
+.adb-objects__table .table-row-cell:odd {
+    -fx-background-color: -adb-bg-stripe;
+}
+
+.adb-objects__table .table-row-cell:empty {
+    -fx-background-color: -adb-bg-surface;
+    -fx-border-color: transparent;
+}
+
+.adb-objects__table .table-row-cell:hover {
+    -fx-background-color: -adb-bg-hover;
+}
+
+.adb-objects__table .table-row-cell:selected {
+    -fx-background-color: -adb-bg-selected-grid;
+    -fx-border-color: transparent transparent -adb-border-subtle -adb-accent;
+}
+
+.adb-objects__table .table-cell {
+    -fx-text-fill: -adb-text-primary;
+    -fx-font-size: 12px;
+    -fx-padding: 2px 8px;
+    -fx-border-color: transparent -adb-border-subtle transparent transparent;
+    -fx-border-width: 0px 1px 0px 2px;
+    -fx-alignment: center-left;
+}
+
+.adb-objects__table .placeholder .label {
+    -fx-text-fill: -adb-text-tertiary;
+    -fx-font-size: 12px;
+}

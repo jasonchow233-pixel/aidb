@@ -10,11 +10,14 @@ import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.application.Platform;
 import javafx.geometry.Pos;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.HBox;
@@ -64,7 +67,7 @@ final class ObjectBrowserPage extends VBox {
     private final TextField prefixField = new TextField();
     private final Label statusLabel = new Label();
     private final Label breadcrumb = new Label();
-    private final VBox details = new VBox(8);
+    private final VBox details = new VBox(4);
 
     private volatile ObjectStoreSession session;
     private volatile boolean busy;
@@ -84,8 +87,8 @@ final class ObjectBrowserPage extends VBox {
         getStyleClass().add("adb-page");
         setSpacing(0);
 
-        HBox header = buildHeader();
-        header.getStyleClass().add("adb-page__header");
+        VBox header = buildHeader();
+        header.getStyleClass().addAll("adb-page__header", "adb-objects__header");
 
         details.getStyleClass().add("adb-details");
         details.setVisible(false);
@@ -103,52 +106,77 @@ final class ObjectBrowserPage extends VBox {
         statusLabel.setText(I18n.t("objectstore.loading"));
     }
 
-    private HBox buildHeader() {
-        HBox header = new HBox(10);
-        header.setAlignment(Pos.CENTER_LEFT);
+    /**
+     * ⭐ 两行页头：第一行是「这是什么 / 到哪一层 / 当前状态」，第二行才放动作。
+     *
+     * <p>以前 11 颗带文字的图标按钮 + 标题 + 面包屑 + 过滤框 + 状态全挤在一行，
+     * 1024px 的窗口里 HBox 会把按钮按最小宽压扁 —— 实拍 p10-object-store-real
+     * 里 "Download" 只剩 "Do…"、"Temporary URL" 只剩 "Temporar…"，动作名等于丢失。
+     * 现在：① 两行分担宽度；② 动作按钮一律 {@code minWidth = USE_PREF_SIZE}
+     * （文字不许被压成省略号）；③ 整条工具带套一层横向滚动，窄窗口宁可滚，
+     * 也不截断。短标签只管「一眼认出」，完整动作名留在 tooltip / accessibleText。
+     */
+    private VBox buildHeader() {
+        VBox header = new VBox(4);
+
+        HBox titleLine = new HBox(8);
+        titleLine.setAlignment(Pos.CENTER_LEFT);
+        titleLine.getStyleClass().add("adb-objects__line");
 
         Label title = new Label(I18n.t("objectstore.header", profile.name(), bucket));
         title.getStyleClass().add("adb-page__title");
+        title.setMinWidth(Region.USE_PREF_SIZE);
 
         breadcrumb.getStyleClass().add("adb-muted");
         breadcrumb.setText("/");
+        breadcrumb.setMinWidth(Region.USE_PREF_SIZE);
 
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
+        Region titleSpacer = new Region();
+        HBox.setHgrow(titleSpacer, Priority.ALWAYS);
+
+        statusLabel.getStyleClass().add("adb-muted");
+        statusLabel.setMinWidth(Region.USE_PREF_SIZE);
+        titleLine.getChildren().addAll(title, breadcrumb, titleSpacer, statusLabel);
+
+        HBox toolbar = new HBox(6);
+        toolbar.setAlignment(Pos.CENTER_LEFT);
+        toolbar.getStyleClass().add("adb-objects__toolbar");
+        // 工具带自己肯认输：最小宽归零，父容器才不会把超宽的一排居中裁掉。
+        toolbar.setMinWidth(0);
 
         prefixField.setPromptText(I18n.t("objectstore.prefix"));
-        prefixField.setPrefWidth(180);
+        prefixField.setPrefWidth(160);
+        prefixField.setMinWidth(120);
         prefixField.setOnAction(event -> {
             prefix = prefixField.getText() == null ? "" : prefixField.getText();
             load();
         });
 
-        var up = IconButtons.of(Icons.Icon.PREVIOUS, I18n.t("objectstore.up"));
-        up.getStyleClass().addAll("adb-button");
+        var up = iconAction(Icons.Icon.PREVIOUS, I18n.t("objectstore.up"));
         up.setOnAction(event -> upOneLevel());
 
-        var refresh = IconButtons.of(Icons.Icon.REFRESH, I18n.t("objectstore.refresh"));
-        refresh.getStyleClass().addAll("adb-button");
+        var refresh = iconAction(Icons.Icon.REFRESH, I18n.t("objectstore.refresh"));
         refresh.setOnAction(event -> load());
 
-        HBox filter = new HBox(8, breadcrumb, up, prefixField, refresh);
+        HBox filter = new HBox(4, up, prefixField, refresh);
         filter.getStyleClass().add("adb-toolbar__group");
         filter.setAlignment(Pos.CENTER_LEFT);
+        filter.setMinWidth(Region.USE_PREF_SIZE);
 
-        var upload = IconButtons.of(Icons.Icon.IMPORT, I18n.t("objectstore.upload"));
-        upload.getStyleClass().addAll("adb-button");
+        var upload = action(Icons.Icon.IMPORT,
+                I18n.t("objectstore.upload"), I18n.t("objectstore.upload"));
         upload.setOnAction(event -> uploadFile());
 
-        var download = IconButtons.of(Icons.Icon.EXPORT, I18n.t("objectstore.download"));
-        download.getStyleClass().addAll("adb-button");
+        var download = action(Icons.Icon.EXPORT,
+                I18n.t("objectstore.download"), I18n.t("objectstore.download"));
         download.setOnAction(event -> downloadSelected());
 
-        var presign = IconButtons.of(Icons.Icon.OPEN, I18n.t("objectstore.presign"));
-        presign.getStyleClass().addAll("adb-button");
+        var presign = action(Icons.Icon.OPEN,
+                I18n.t("objectstore.action.presign"), I18n.t("objectstore.presign"));
         presign.setOnAction(event -> copyPresignedUrl());
 
-        var metadata = IconButtons.of(Icons.Icon.LIST, I18n.t("objectstore.metadata"));
-        metadata.getStyleClass().addAll("adb-button");
+        var metadata = action(Icons.Icon.LIST,
+                I18n.t("objectstore.action.metadata"), I18n.t("objectstore.metadata"));
         metadata.setOnAction(event -> {
             ObjectEntry selected = table.getSelectionModel().getSelectedItem();
             if (selected != null && !selected.folder()) {
@@ -157,29 +185,80 @@ final class ObjectBrowserPage extends VBox {
         });
 
         // ⭐ 能力差异的可视落点：七牛无服务端 move，按钮置灰 + tooltip 说明。
-        moveButton = IconButtons.of(Icons.Icon.EDIT, I18n.t("objectstore.move"));
-        moveButton.getStyleClass().addAll("adb-button");
+        moveButton = action(Icons.Icon.EDIT,
+                I18n.t("objectstore.action.move"), I18n.t("objectstore.move"));
         moveButton.setOnAction(event -> moveSelected());
 
-        var deleteOne = IconButtons.of(Icons.Icon.DELETE, I18n.t("objectstore.delete"));
-        deleteOne.getStyleClass().addAll("adb-button", "adb-button--danger");
+        var deleteOne = action(Icons.Icon.DELETE,
+                I18n.t("objectstore.delete"), I18n.t("objectstore.delete"), true);
         deleteOne.setOnAction(event -> deleteSelected());
 
-        var deletePrefix = IconButtons.of(Icons.Icon.DELETE, I18n.t("objectstore.deletePrefix"));
-        deletePrefix.getStyleClass().addAll("adb-button", "adb-button--danger");
+        var deletePrefix = action(Icons.Icon.DELETE,
+                I18n.t("objectstore.action.deletePrefix"),
+                I18n.t("objectstore.tip.deletePrefix"), true);
         deletePrefix.setOnAction(event -> deleteCurrentPrefix());
 
-        HBox actions = new HBox(8, upload, download, presign, metadata, moveButton,
+        HBox actions = new HBox(4, upload, download, presign, metadata, moveButton,
                 deleteOne, deletePrefix);
         actions.getStyleClass().add("adb-toolbar__group");
         actions.setAlignment(Pos.CENTER_LEFT);
+        actions.setMinWidth(Region.USE_PREF_SIZE);
 
-        statusLabel.getStyleClass().add("adb-muted");
-        header.getChildren().addAll(title, spacer, filter, actions, statusLabel);
+        Region actionSpacer = new Region();
+        HBox.setHgrow(actionSpacer, Priority.ALWAYS);
+        toolbar.getChildren().addAll(filter, actionSpacer, actions);
+
+        ScrollPane scroll = new ScrollPane(toolbar);
+        scroll.getStyleClass().add("adb-objects__scroll");
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        scroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.setFitToHeight(true);
+        scroll.setFitToWidth(false);
+        scroll.setMinHeight(32);
+        scroll.setPrefHeight(32);
+        scroll.setMaxHeight(32);
+
+        header.getChildren().addAll(titleLine, scroll);
         return header;
     }
 
+    /** 图标 + 短文字的紧凑动作键：文字不许压缩，完整动作名进 tooltip。 */
+    private Button action(Icons.Icon icon, String label, String hint) {
+        return action(icon, label, hint, false);
+    }
+
+    /**
+     * ⚠️ 变体类（--danger）必须和基础类在<b>同一次</b> {@code addAll} 里挂上：
+     * `UnifiedControlTest.everyVariantCarriesItsBaseClass` 按调用逐条查，
+     * 单独再 add 一次会被判成「拿不到统一尺寸与五态」。
+     */
+    private Button action(Icons.Icon icon, String label, String hint, boolean danger) {
+        Button button = IconButtons.of(icon, label);
+        if (danger) {
+            button.getStyleClass().addAll("adb-button", "adb-objects__action",
+                    "adb-button--danger");
+        } else {
+            button.getStyleClass().addAll("adb-button", "adb-objects__action");
+        }
+        button.setGraphicTextGap(4);
+        button.setMinWidth(Region.USE_PREF_SIZE);
+        button.setTooltip(new Tooltip(hint));
+        button.setAccessibleText(hint);
+        return button;
+    }
+
+    /** 只读导航键（返回上一级 / 刷新）：纯图标，提示与无障碍读数不缺。 */
+    private Button iconAction(Icons.Icon icon, String hint) {
+        Button button = IconButtons.icon(icon, hint);
+        // 纯图标键的宽度下限由 .adb-button--icon 的 30px 守住，不需要再钉 minWidth。
+        button.getStyleClass().addAll("adb-button", "adb-button--icon", "adb-objects__action");
+        return button;
+    }
+
     private void configureTable() {
+        // ⭐ 专用样式类：没有它这张表吃的是 Modena 默认（13px 正文 + 大内边距），
+        //    而侧栏对象树是 12px / 21px 行 —— 同一屏里两套密度。
+        table.getStyleClass().add("adb-objects__table");
         TableColumn<ObjectEntry, String> keyCol = new TableColumn<>(I18n.t("objectstore.column.key"));
         keyCol.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
                 c.getValue().folder()
@@ -206,7 +285,9 @@ final class ObjectBrowserPage extends VBox {
         storageCol.setPrefWidth(120);
 
         table.getColumns().setAll(keyCol, sizeCol, modifiedCol, storageCol);
-        table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
+        // ⭐ 列宽按 pref 比例铺满表格：UNCONSTRAINED 会把剩下的一两百像素留成
+        //    一条没有列头的空白带，实拍里右侧看着像「列表没画完」。
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         // ⭐ 空态给「上传」这个明确出口，不是一行「暂无数据」。
         table.setPlaceholder(EmptyState.of(Icons.Icon.FOLDER,
                 I18n.t("objectstore.emptyTitle"), I18n.t("objectstore.emptyHint"),
@@ -517,12 +598,18 @@ final class ObjectBrowserPage extends VBox {
         return confirm.confirmed();
     }
 
-    /** 密度档位：直接改行高（与 RedisKeysPage 同口径）。 */
+    /**
+     * 密度档位：直接改行高（与 RedisKeysPage 同口径）。
+     *
+     * <p>⭐ 默认 32 → 24：侧栏对象树在 normal 档是 21px、正文 12px，
+     * 对象表以前是 32px 行高 + 13px 字，实拍里 3 条数据铺了半屏空白。
+     * 现在四档与树同量级（21 / 24 / 32），字号由 .adb-objects__table 钉成 12px。
+     */
     void setDensity(String density) {
         double h = switch (density) {
-            case "compact" -> 24;
-            case "loose" -> 40;
-            default -> 32;
+            case "compact" -> 21;
+            case "loose" -> 32;
+            default -> 24;
         };
         table.setFixedCellSize(h);
     }
