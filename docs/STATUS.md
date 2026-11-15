@@ -13,7 +13,7 @@
   命令 `set -a && . scripts/.dbmatrix.env && set +a && ADB_TEST_OSS_* && ADB_TEST_KODO_* && MAVEN_ARGS=-o ./scripts/build.sh`
   （= `./mvnw -B clean verify` + `java tools/TestCount.java`），2026-11-15 11:26 +08:00、
   本机 Darwin 24.6.0 x86_64、Temurin JDK 25.0.5，Total time **30:16 min**；验证时源码为
-  **本轮工作树（20 个文件：13 改 + 5 枚新 SVG + 2 个新测试类，含 2 张同版重拍帧）**，
+  提交 `5865bd4`（20 个文件：13 改 + 5 枚新 SVG + 2 个新测试类，含 2 张同版重拍帧），
   两次全量期间未改动任何文件。同日不带环境的全量 **2096 / 0 / 133 跳过 / 229 类**
   （33:20 min，16/16 模块 SUCCESS）。账闭环 **2096 + 125 = 2221**、**133 − 125 = 8**；
   较凌晨基线 **2207 / 2093** 多 **14 条执行**（`ObjectBrowserIconsTest` 3 + Kodo 契约实跑 11）、
