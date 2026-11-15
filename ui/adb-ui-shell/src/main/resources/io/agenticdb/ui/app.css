@@ -4961,3 +4961,38 @@
     -fx-text-fill: -adb-text-tertiary;
     -fx-font-size: 12px;
 }
+
+/* ── 对象列表行首字形 ──────────────────────────────────────────────────
+ * 一行一枚：文件夹、图片、文本、代码/结构化数据、通用文件、未知类型。
+ * 颜色只上在图标上，键名仍是正文色 —— 与侧栏对象树的类型色同一套语义。
+ * 「认不出类型」用琥珀色问号文件，不能默默画成普通文件。
+ * ──────────────────────────────────────────────────────────────────── */
+.adb-objects__icon {
+    -fx-fill: transparent;
+    -fx-stroke-line-cap: round;
+    -fx-stroke-line-join: round;
+}
+
+.adb-objects__icon--folder {
+    -fx-stroke: -adb-accent;
+}
+
+.adb-objects__icon--image {
+    -fx-stroke: -adb-kind-view;
+}
+
+.adb-objects__icon--text {
+    -fx-stroke: -adb-text-secondary;
+}
+
+.adb-objects__icon--code {
+    -fx-stroke: -adb-success;
+}
+
+.adb-objects__icon--unknown {
+    -fx-stroke: -adb-warning;
+}
+
+.adb-objects__icon--file {
+    -fx-stroke: -adb-text-tertiary;
+}

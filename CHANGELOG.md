@@ -9,6 +9,33 @@
 
 ## [Unreleased]
 
+### Added — 2026-11-15（第二轮）：对象列表类型图标 + 七牛 Kodo 真账号只读契约
+
+- **对象列表每一行都有类型图标**：新增 5 枚与项目同版本（Lucide v1.61.0）的 SVG
+  （`file` / `image` / `file-text` / `file-code` / `file-question`）与 `Icons.Icon` 枚举值，
+  `ObjectBrowserPage` 的 Key 列改自定义 `TableCell`：文件夹、图片、文本、代码/数据、
+  未知 / 无扩展名各有独立图标、颜色与中英类型 tooltip。两帧同版重拍后目视核对过
+  七行数据（含无扩展名的「未知类型」），图标与文字对齐、不重叠。
+  `ObjectBrowserIconsTest`（3 例）钉住分类映射、SVG 资源存在、CSS/i18n 双向覆盖。
+- **`QiniuRealEndpointContractTest`（12 条，opt-in）**：R2 的第三支真端点证据。经产品同一条
+  `ObjectStoreSessions.connect/test` 工厂连运营方真 Kodo 账号，验能力诚实性（Kodo
+  不列全桶、不支持服务端 move）、公开空间 `mhg-public` 与私有空间 `mhg-private` 的列举 /
+  delimiter 折叠 / `metadata` 的 contentType 与 `putTime` 换算 / 公开与签名 URL 真 HTTP GET /
+  坏凭据必须失败，并用真实 `STORE/` 层级键（4 页 3427 条）做跨 marker 页边界与原生 SDK
+  逐条对账。凭据**只从 `ADB_TEST_KODO_*` 环境变量读**，仓库内零字面量、零落盘；
+  没给环境变量整类跳过，写契约另需 `ADB_TEST_KODO_WRITE=true`（默认跳过）。
+- **截图摆态补齐六档图标**：`poseObjectBrowserForShots` 与真端点 pose 各写入
+  图片 / 文本 / 代码 / 无扩展名样本，让 `p10-object-browser` / `p10-object-store-real`
+  同时展示文件夹与五档文件图标，而不是只有一行 README.md。
+
+### Fixed — 2026-11-15（第二轮）
+
+- **Kodo 坏凭据会让「测试连接」假绿**：`QiniuObjectStoreSession.listBuckets()` 是配置项的
+  本地回显（能力矩阵本就写着 `supportsListBuckets=false`），而 `ObjectStoreSessions.test`
+  只调这一个方法，于是错的 AK/SK 也能返回成功。现在**四家统一两步**：列桶之后追加一次
+  **不存在前缀**的真 `listObjects` 当握手（命中 0 条、不拉全桶、不写数据），由服务端判
+  凭据 / 端点 / 桶名；新增契约里的坏凭据用例钉住这条。
+
 ### Added — 2026-11-15：阿里云 OSS 真账号只读契约 + 对象浏览器密度
 
 - **`OssRealEndpointContractTest`（8 条，opt-in）**：R2 的第二支原生 SDK 真端点证据。

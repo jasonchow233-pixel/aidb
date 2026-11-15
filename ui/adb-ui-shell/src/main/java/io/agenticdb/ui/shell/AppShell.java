@@ -5031,10 +5031,10 @@ public final class AppShell extends StackPane {
     }
 
     /**
-     * ⭐ EXT 帧证（P2-8）：注册一条离线演示档案 + 预置三颗对象，打开对象浏览器。
+     * ⭐ EXT 帧证（P2-8）：注册一条离线演示档案 + 预置七颗对象，打开对象浏览器。
      *
      * <p>档案不带凭据，所以 {@link #objectStoreSessionFor} 会落内存后端；这里把同一个
-     * 会话实例缓存下来，页面重新 ensureSession() 时看到的还是这三颗对象。
+     * 会话实例缓存下来，页面重新 ensureSession() 时看到的还是这七颗对象。
      * <b>不连真云账号、不冒充真端点</b> —— 真端点证据属 R2（见 STATUS §3）。
      * kind 从注册表取而不是写资产族常量字面量：UI 层不许把资产族常量散进分支，
      * 连注释里的字面量也不行（{@code DialectBranchAuditTest} 扫源码全文，含注释）。
@@ -5062,6 +5062,15 @@ public final class AppShell extends StackPane {
         session.putObject("assets", "README.md",
                 "# Assets\nDemo objects for the screenshot pose.\n"
                         .getBytes(StandardCharsets.UTF_8), "text/markdown");
+        // ⭐ 行首字形验收帧：根目录铺满六档（文件夹 / 图片 / 文本 / 代码 / 通用文件 /
+        //    无扩展名的未知类型），截图里一眼能看出「未见类型」也有图标。
+        session.putObject("assets", "cover.png", new byte[]{1, 2, 3}, "image/png");
+        session.putObject("assets", "schema.json",
+                "{\"version\":1}\n".getBytes(StandardCharsets.UTF_8), "application/json");
+        session.putObject("assets", "bundle.zip", new byte[]{4, 5, 6}, "application/zip");
+        session.putObject("assets", "LICENSE",
+                "No extension on purpose.\n".getBytes(StandardCharsets.UTF_8),
+                "application/octet-stream");
         screenshotObjectStoreSession = session;
         openTab(new TabItem("object-browser:" + id + ":assets", "assets",
                 TabKind.OBJECT_BROWSER, "assets", id));
@@ -5071,7 +5080,7 @@ public final class AppShell extends StackPane {
      * ⭐ R2：对象浏览器的<b>真端点验收帧</b>（opt-in，{@code ADB_OBJECT_BROWSER_REAL=1}）。
      *
      * <p>与 {@link #poseObjectBrowserForShots()} 的离线内存后端相反：这一格经产品工厂
-     * {@code ObjectStoreSessions.connect} 连真 S3 兼容端点，三颗对象也是经产品会话
+     * {@code ObjectStoreSessions.connect} 连真 S3 兼容端点，七颗对象也是经产品会话
      * {@code putObject} 写进去的 —— 画面里的清单来自服务端，不是进程内演示数据。
      * 没配环境变量、桶不存在或连不上时<b>弃帧</b>（与 Redis 帧同一条 D-37 纪律），
      * 绝不退回内存后端冒充真端点。服务端契约另见 {@code S3RealEndpointContractTest}。
@@ -5116,6 +5125,14 @@ public final class AppShell extends StackPane {
             session.putObject(bucket, "README.md",
                     "# Assets\nObjects served by a real S3-compatible endpoint.\n"
                             .getBytes(StandardCharsets.UTF_8), "text/markdown");
+            // 与离线帧同口径：六档行首字形在真服务端数据上也要看得见。
+            session.putObject(bucket, "cover.png", new byte[]{1, 2, 3}, "image/png");
+            session.putObject(bucket, "schema.json",
+                    "{\"version\":1}\n".getBytes(StandardCharsets.UTF_8), "application/json");
+            session.putObject(bucket, "bundle.zip", new byte[]{4, 5, 6}, "application/zip");
+            session.putObject(bucket, "LICENSE",
+                    "No extension on purpose.\n".getBytes(StandardCharsets.UTF_8),
+                    "application/octet-stream");
         } catch (Exception e) {
             ScreenshotSession.abortMatrixFrame("ADB_OBJECT_BROWSER_REAL=1 could not use the"
                     + " real S3 endpoint: " + e);

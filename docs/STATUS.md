@@ -7,7 +7,50 @@
 
 ## 1. 验证基线
 
-### 当前工作树（2026-11-15，对象浏览器密度 + 阿里云 OSS 真账号只读契约 · 全量门禁已绿）
+### 当前工作树（2026-11-15 第二轮，对象列表类型图标 + 七牛 Kodo 真账号只读契约 · 全量门禁已绿）
+
+- **2221 执行 / 0 失败 / 8 跳过 / 229 个测试类**，`BUILD SUCCESS`、**16/16 模块 SUCCESS**。
+  命令 `set -a && . scripts/.dbmatrix.env && set +a && ADB_TEST_OSS_* && ADB_TEST_KODO_* && MAVEN_ARGS=-o ./scripts/build.sh`
+  （= `./mvnw -B clean verify` + `java tools/TestCount.java`），2026-11-15 11:26 +08:00、
+  本机 Darwin 24.6.0 x86_64、Temurin JDK 25.0.5，Total time **30:16 min**；验证时源码为
+  **本轮工作树（20 个文件：13 改 + 5 枚新 SVG + 2 个新测试类，含 2 张同版重拍帧）**，
+  两次全量期间未改动任何文件。同日不带环境的全量 **2096 / 0 / 133 跳过 / 229 类**
+  （33:20 min，16/16 模块 SUCCESS）。账闭环 **2096 + 125 = 2221**、**133 − 125 = 8**；
+  较凌晨基线 **2207 / 2093** 多 **14 条执行**（`ObjectBrowserIconsTest` 3 + Kodo 契约实跑 11）、
+  类数 227 → **229**。五套真库矩阵 + **三支**对象存储真端点契约本轮全部实跑：主矩阵 51 /
+  TLS 18 / 写回 15 / 导出往返 5 / SSH 5 + `SshTunnelTest` 11 / `S3RealEndpointContractTest` 10 /
+  `OssRealEndpointContractTest` **8（7 通过 + 写契约 1 跳过）** /
+  ⭐ `QiniuRealEndpointContractTest` **12（11 通过 + 写契约 1 跳过）**。
+- ⭐ **七牛 Kodo 原生 SDK 首次有真账号证据**：`QiniuRealEndpointContractTest` 走产品同一条
+  `ObjectStoreSessions.connect/test` 工厂，对运营方真账号的公开 `mhg-public` 与私有
+  `mhg-private` 两空间验证能力诚实性（Kodo 不列全桶、无服务端 move）、精确前缀列举与
+  delimiter 折叠、**`STORE/` 层级键 4 页 3427 条跨 marker 页边界**（与原生 SDK 逐条对账）、
+  `metadata` 的 contentType 与 `putTime` 换算、公开 URL 与私有空间签名 URL 的真 HTTPS GET、
+  坏凭据必须失败。跨页契约第一次被跳过只是候选前缀太窄，改用真层级键后**真正实跑**，
+  不是靠放宽断言过的。凭据**只从 `ADB_TEST_KODO_*` 环境变量读**，仓库内零字面量；
+  类为 opt-in，默认只跑只读，写契约另需 `ADB_TEST_KODO_WRITE=true`。
+  ⚠️ 加上 S3 兼容（真 LocalStack）与 OSS 真账号，**R2 已平三支，仅腾讯云 COS 一家仍无
+  真端点证据**；三家真账号都**没有画面帧**（会拍进生产对象名，需先定脱敏口径）。
+- ⭐ **对象列表每一行都有类型图标**：新增 5 枚与项目同版本（Lucide v1.61.0）的 SVG 与
+  `Icons.Icon` 枚举值，Key 列改自定义 `TableCell`，文件夹 / 图片 / 文本 / 代码数据 /
+  未知（含无扩展名）各有独立图标、颜色与中英类型 tooltip；`ObjectBrowserIconsTest`（3 例）
+  钉住分类映射、SVG 资源存在、CSS 与 i18n 双向覆盖。两帧同版重拍后逐行目视核对过
+  七行数据，图标与文字对齐、不重叠；`docs/screenshots/` 仍 **74 张**、`md5` 零重复。
+- ⭐ **契约实跑逼出一处产品假绿修复**：`QiniuObjectStoreSession.listBuckets()` 是配置项的
+  本地诚实回显（能力矩阵本就写着 `supportsListBuckets=false`），而 `ObjectStoreSessions.test`
+  原先只调这一个方法 —— 错的 AK/SK 也能让向导「测试连接」通过。现在**四家统一两步**：
+  `listBuckets()` 之后追加一次**不存在前缀**的真 `listObjects` 当握手，前缀命中 0 条所以
+  不拉全桶、不改数据，但凭据 / 端点 / 桶名任一不对都会在这里暴露；坏凭据契约钉住这条。
+- ⚠️ **剩余 8 条跳过都是设计如此**：`adb-session` 5 条 Windows 凭据管理器（本机 macOS）、
+  `adb-jdbc` 1 条 `DatabaseVersionMatrixTest`（需 `ADB_TEST_VERSION_MATRIX=1`）、
+  OSS 1 条写契约（需 `ADB_TEST_OSS_WRITE=true`）、⭐ Kodo 1 条写契约
+  （需 `ADB_TEST_KODO_WRITE=true`）。
+- ⚠️ **本轮环境问题已排除，不是靠调断言过的**：Docker Desktop 又一次自行退出，把上一轮
+  未跑完的全量一起中断；`docker start` 起回九个容器（含截图用 `adb-localstack-shots`）、
+  逐一验九个端口、`./scripts/dbmatrix.sh tls-run` 焐热 MySQL TLS 认证缓存（18/0/0）后，
+  两次全量各自 clean 重跑到全绿。
+
+### 上一轮全量（2026-11-15 凌晨，对象浏览器密度 + 阿里云 OSS 真账号只读契约 · 提交 bac3a0b）
 
 - **2207 执行 / 0 失败 / 7 跳过 / 227 个测试类**，`BUILD SUCCESS`、**16/16 模块 SUCCESS**。
   命令 `set -a && . scripts/.dbmatrix.env && set +a && ADB_TEST_OSS_ENDPOINT/… && MAVEN_ARGS=-o ./scripts/build.sh`
@@ -29,7 +72,8 @@
   类为 opt-in（没给 `ADB_TEST_OSS_*` 整类跳过），默认只跑只读，写契约另需
   `ADB_TEST_OSS_WRITE=true` 且只碰自建前缀并清理。
   ⚠️ 这是**一家真账号的只读证据**，不是「四家都连过」；七牛 Kodo / 腾讯云 COS 仍只有
-  编译 + 内存后端契约。OSS 也没有真端点画面帧（真账号帧会拍进生产对象名，本轮不拍）。
+  编译 + 内存后端契约（Kodo 已在下一轮补上真账号契约，见本节最上方）。
+  OSS 也没有真端点画面帧（真账号帧会拍进生产对象名，本轮不拍）。
   ⚠️ 实测桶 >12000 对象，`ObjectStoreSession.listObjects` 仍一次列完整层、不暴露分页
   token —— 超大 bucket 渐进加载依旧是缺口（见 §3 第 3 条）。
 - ⭐ **对象浏览器密度按实拍返工**：`p10-object-store-real` 旧帧里表格吃 Modena 默认
@@ -197,7 +241,7 @@
 | 可观测性 | ✅ | `StartupTrace` 分段打点 → `~/.agenticdb/logs/startup.log`；诊断页 |
 | 资产族地基（P0） | ✅ | `AssetKind` 取代 `DialectKind` 成为 `ConnectionProfile` 的判别轴；`AssetFamily` / `AssetFamilyRegistry` 是「加一种连接类型 = 一处登记」的单一真相源（SQL 6 家 + Redis 1 家 + 对象存储 4 家 = 11 张磁贴）。四类对象存储合并成一个 `OBJECT_STORE` kind + `ObjectStoreProvider` 子判别，不拆四个 kind；旧档案 `kind` 写枚举名仍可读，无需迁移。`DialectBranchAuditTest` 禁止 UI 硬编码资产族常量，`AssetFamilyFilterAuditTest` 动态断「注册表加一族 → 向导筛选带必须加一枚 chip」 |
 | Redis 管理（P1） | ✅ | `adb-redis`（Lettuce）：按 `INFO keyspace` 懒加载 db 分组，`SCAN` 出 key / type / TTL / size；`RedisKeysPage` 前缀 + 类型过滤，五种值类型抽屉查看/编辑，TTL、`DEL`、`FLUSHDB`、`FLUSHALL` 全走 `RedisDanger` 分级 + `DestructiveConfirm`（取消为默认按钮）。`RedisScanTest` / `RedisMutateTest` / `RedisTreeTest` 钉住内省、写安全与双击路由。⚠️ **Redis over SSH 未接入**（`RedisSessions` 类注释如实写明），SQL 那套隧道尚未复用到这一族 |
-| 对象存储（P2） | ✅ / 🟡 | `adb-objectstore` 把四家 SDK（AWS SDK v2 / aliyun-sdk-oss / qiniu-java-sdk / cos_api）适配到同一个 `ObjectStoreSession`，另附 `InMemoryObjectStoreSession` 供无云账号环境跑行为契约。对象存储没有真目录：key 里的 `/` 配 delimiter 折叠成 `ObjectEntry.folder()` 虚拟文件夹行；不传 delimiter 时平铺，用于递归删前缀。`ObjectBrowserPage` 提供前缀面包屑、上传 / 下载 / 删一颗 / 递归删前缀 / 元数据 / 预签名 URL / 移动重命名；`ObjectStoreCapabilities` 显式声明能力，七牛 `supportsMove=false` / `supportsListBuckets=false` → 按钮置灰 + tooltip 说明 + 后端 UOE，树只显示配置的那一个桶。删除类操作由 `ObjectStoreDanger` 判成 `DESTRUCTIVE`，未知 / 空白操作 fail-closed 到 `ADMIN`。密钥只进 `CredentialStore`，`connections.json` 只留非敏感 options。⚠️ 🟡：**S3 兼容分支已有真端点证据**（`S3RealEndpointContractTest` 10 条跑真 LocalStack 4.9.2 容器，含 1001 对象跨页与预签名 URL 真 HTTP 取回；另有 `p10-object-store-real` 真端点画面帧），⭐ **OSS 已有真账号只读契约**（`OssRealEndpointContractTest` 8 例：ListObjects V1 跨 1000 条页边界、metadata 的 contentType、预签名 URL 真 HTTPS GET、urlPrefix 同域）；**Kodo / COS 两家原生 SDK 仍只有编译 + 内存后端契约**；当前 `listObjects` 一次列完（SDK 内部确实跨页，但接口不暴露分页 token），超大 bucket 无渐进加载 |
+| 对象存储（P2） | ✅ / 🟡 | `adb-objectstore` 把四家 SDK（AWS SDK v2 / aliyun-sdk-oss / qiniu-java-sdk / cos_api）适配到同一个 `ObjectStoreSession`，另附 `InMemoryObjectStoreSession` 供无云账号环境跑行为契约。对象存储没有真目录：key 里的 `/` 配 delimiter 折叠成 `ObjectEntry.folder()` 虚拟文件夹行；不传 delimiter 时平铺，用于递归删前缀。`ObjectBrowserPage` 提供前缀面包屑、上传 / 下载 / 删一颗 / 递归删前缀 / 元数据 / 预签名 URL / 移动重命名；`ObjectStoreCapabilities` 显式声明能力，七牛 `supportsMove=false` / `supportsListBuckets=false` → 按钮置灰 + tooltip 说明 + 后端 UOE，树只显示配置的那一个桶。删除类操作由 `ObjectStoreDanger` 判成 `DESTRUCTIVE`，未知 / 空白操作 fail-closed 到 `ADMIN`。密钥只进 `CredentialStore`，`connections.json` 只留非敏感 options。⚠️ 🟡：**S3 兼容分支已有真端点证据**（`S3RealEndpointContractTest` 10 条跑真 LocalStack 4.9.2 容器，含 1001 对象跨页与预签名 URL 真 HTTP 取回；另有 `p10-object-store-real` 真端点画面帧），⭐ **OSS 已有真账号只读契约**（`OssRealEndpointContractTest` 8 例：ListObjects V1 跨 1000 条页边界、metadata 的 contentType、预签名 URL 真 HTTPS GET、urlPrefix 同域），⭐ **Kodo 已有真账号只读契约**（`QiniuRealEndpointContractTest` 12 例：11 通过 + 写契约 opt-in 跳过，覆盖 `STORE/` 层级键 4 页 3427 条跨页、公开 / 私有空间签名 URL 真 HTTP 读、`putTime` 换算、坏凭据必须失败）；⭐ 契约实跑逼出一处**产品假绿修复**：Kodo 的 `listBuckets()` 原是本地回显，坏凭据也能让向导「测试连接」通过，现 `ObjectStoreSessions.test` 四家统一在列桶后追加一次不存在前缀的真列举当握手（不拉全桶、不写数据）；**仅 COS 一家原生 SDK 仍只有编译 + 内存后端契约**；当前 `listObjects` 一次列完（SDK 内部确实跨页，但接口不暴露分页 token），超大 bucket 无渐进加载 |
 | 首启引导与 Tab 治理（P3） | ✅ | `OnboardingOverlay` 叠在 demo 自动连接之上、关后即焚（`ui.onboarding.seen`），Help 菜单可重开，验收 / 截图 / 测试会话不自动弹以保证逐帧可复现；向导首步四枚族筛选 chip 用**可见性切换**而非重建磁贴，被筛掉的选中项自动挪到该族第一张；`tabs` 命令（命令面板 + Window 菜单）打开非常驻的 `TabOverviewPanel`，按连接分组 / 搜索 / 激活 / 逐条关闭 / 按连接全关，**三条关闭回调全部回到 `TabBar.close()`**，`closeGuard` 脏检查、钉住态、常驻标签规则一条不绕过。⚠️ TabBar 分组视觉未新增，沿用既有连接名 / 库名 / 厂商图形注入；连接管理页「无连接三步上手」未单独做，由引导层三张卡片承担 |
 | 品牌资产（P3-6） | 🟡 | `redis.svg` + `aws-s3` / `aliyun-oss` / `qiniu` / `tencent-cos` 五枚落地，`TRADEMARK-NOTICE.txt` 逐枚点名 `BrandIconTest` 通过；彩色 `list.svg` 补齐图标系统。⚠️ 五枚均为**中性几何占位件**，发布前必须换成各家品牌页的原始矢量件（R4 资产阻塞） |
 | 打包 | 🟡 | `scripts/package.sh` 出 app-image / dmg / msi / deb，实测可启动；**未签名、未公证、无自动更新、无发布渠道** |
@@ -258,19 +302,25 @@
 ### 能力缺口
 
 - ⭐ **资产族扩展（P0–P3，2026-11-12）的四条如实边界**：
-  1. ⭐ **R2 已平两支：S3 兼容协议 + 阿里云 OSS 真账号，剩 Kodo / COS**：
+  1. ⭐ **R2 已平三支：S3 兼容协议 + 阿里云 OSS + 七牛 Kodo 三家真账号/真服务端，仅剩 COS**：
      `S3RealEndpointContractTest`（10 条，testcontainers 起的真 `localstack/localstack:4.9.2`
      容器 + 受信任的 HTTPS 端点）覆盖工厂连接 / 连接测试 / 列举 bucket / put→get→metadata
      往返 / delimiter 折叠 / **1001 对象跨 ListObjectsV2 千条页边界** / 删一颗 / 递归删前缀 /
      move 保留 contentType / 预签名 URL 用真 HTTP GET 取回；
      ⭐ `OssRealEndpointContractTest`（8 条，opt-in 真账号）覆盖 OSS 原生 SDK 的
      精确前缀列举 / delimiter / **ListObjects V1 跨 1000 条页边界**（与原生 SDK 逐页数出的
-     条数对账）/ metadata contentType / 预签名 URL 真 HTTPS GET / `urlPrefix` 同域。
-     两支走的都是产品同一条 `ObjectStoreSessions.connect/test` 路径，不内联兜底。
+     条数对账）/ metadata contentType / 预签名 URL 真 HTTPS GET / `urlPrefix` 同域；
+     ⭐ `QiniuRealEndpointContractTest`（12 条，11 通过 + 写契约 opt-in 跳过，opt-in 真账号）
+     覆盖 Kodo 原生 SDK 的能力诚实性 / delimiter / **`STORE/` 层级键 4 页 3427 条跨 marker
+     页边界**（与原生 SDK 对账）/ metadata 的 contentType 与 putTime / 公开与私有空间签名 URL
+     真 HTTPS GET / 坏凭据必须失败。
+     三支走的都是产品同一条 `ObjectStoreSessions.connect/test` 路径，不内联兜底。
      ⚠️ S3 那一支是 **S3 兼容协议**的真服务端（AWS S3 / MinIO / LocalStack），**不是**公有云账号；
-     OSS 那一支是**一家真账号的只读证据**（凭据只进环境变量、写契约 opt-in、无画面帧）。
-     七牛 Kodo / 腾讯云 COS 两家原生 SDK 仍只有编译 + 内存后端契约，
-     「连得上四家」依旧**不写已验**。
+     OSS 与 Kodo 两支是**真账号的只读证据**（凭据只进环境变量、写契约 opt-in、无画面帧）。
+     ⭐ Kodo 契约实跑逼出一处产品修复：其 `listBuckets()` 是配置项本地回显，坏 AK/SK 也能让
+     向导「测试连接」假绿；`ObjectStoreSessions.test` 现在四家统一在列桶后追加一次不存在
+     前缀的真列举当握手（命中 0 条、不拉全桶、不写数据）。
+     仅腾讯云 COS 一家原生 SDK 仍只有编译 + 内存后端契约，「连得上四家」依旧**不写已验**。
      ⚠️ **明文 HTTP 端点边界（本轮实测）**：AWS SDK 2.31 在 `http://` 上给 PutObject 加
      `Expect: 100-continue` + 流式 SigV4；LocalStack 的 Twisted 网关把 `100 Continue` 与
      `200 OK` 一起回，SDK 的 Apache 客户端每个 PUT 都卡到 30s 读超时再重试（服务端每次记 200）。
@@ -289,12 +339,14 @@
      平铺列举实现，删之前会走 `DESTRUCTIVE` 确认。⭐ 本轮真 OSS 账号实测该桶 >12000 对象、
      无 `/` 层级 —— 顶层浏览仍会把整桶拉回来再交给 UI，这是分页 token 缺口在真实数据上
      的分量，不是假想边界；契约因此只对受限前缀做跨页对账，绝不列全桶。
-  4. **画面证据：两族各有真服务端帧，OSS 无帧、Kodo / COS 全缺（R1 转绿，R2 两支已平）**：
+  4. **画面证据：两族各有真服务端帧，OSS / Kodo 有契约无帧、COS 两者皆无（R1 转绿，R2 三支已平）**：
      六个新面同版帧已入库（`docs/screenshots/` 74 张，`md5` 零重复，逐张目视核对过），
      68 张基准帧全部重拍到当前源码。`p10-redis-keys` 拍在真 redis:7.2 容器上，
      ⭐ `p10-object-store-real` 拍在真 LocalStack 4.9.2 S3 兼容端点上（对象由产品会话写入服务端），
-     离线 `p10-object-browser` 帧也保留作壳与交互的对照。     ⚠️ 对象存储真端点帧只覆盖 S3 兼容协议一支；OSS 有真账号只读契约但**无画面帧**
-     （真账号帧会拍进生产对象名），Kodo / COS 两者皆无。五枚新品牌图仍是中性几何占位件（R4）。
+     离线 `p10-object-browser` 帧也保留作壳与交互的对照。⭐ 本轮两帧重拍后，Key 列每行都有
+     文件夹 / 图片 / 文本 / 代码 / 未知类型的独立图标（`ObjectBrowserIconsTest` 钉住分类与资源）。
+     ⚠️ 对象存储真端点帧只覆盖 S3 兼容协议一支；OSS / Kodo 有真账号只读契约但**无画面帧**
+     （真账号帧会拍进生产对象名），COS 两者皆无。五枚新品牌图仍是中性几何占位件（R4）。
 - **Filter & Sort 面板支持条件组（组内 AND、组间 OR）**：`[Ω]`（加 OR 条件组）已落地真实能力——
   按 `MAX_GROUPS=8` 新增组、组间 `OR` 连接、组内 `AND`（单组等价于旧版平铺 AND，SQL 输出逐字节兼容）；
   `IN` 条件仍由列头漏斗的候选值多选提供，面板内原样保留、不可行内编辑；Text 模式是**只读**的生成表达式。

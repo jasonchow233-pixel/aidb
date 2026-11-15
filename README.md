@@ -34,7 +34,7 @@ deliberately does not do those things ([why](#explicitly-not-on-the-roadmap)).
 | **SQL Server** | ✅ 2019+ — `sys.*` catalog queries confirmed against a real server |
 | **Oracle** | ✅ 12c+ — `ALL_*` catalog queries and `DBMS_METADATA` confirmed against a real server |
 | **Redis** | ✅ key browsing (`SCAN`, type, TTL, size), value view/edit for five types, TTL and `DEL` / `FLUSHDB` / `FLUSHALL` behind the shared destructive-confirm gate. ⚠️ Redis over SSH is not wired up yet |
-| **Object storage** | ✅ one browser for four providers: S3-compatible endpoints (AWS S3, MinIO, LocalStack), Alibaba Cloud OSS, Qiniu Kodo and Tencent Cloud COS. Prefix navigation, upload / download, single-object and recursive-prefix delete, metadata, presigned URLs and move/rename. Credentials live in the system credential store, never in `connections.json`. ⭐ The S3-compatible branch has a real LocalStack endpoint contract + a matching UI frame, and Alibaba Cloud OSS has a real-account read-only contract (credentials from environment variables only, no writes by default); Kodo / COS are compile-and-in-memory only — see Limitations |
+| **Object storage** | ✅ one browser for four providers: S3-compatible endpoints (AWS S3, MinIO, LocalStack), Alibaba Cloud OSS, Qiniu Kodo and Tencent Cloud COS. Prefix navigation, upload / download, single-object and recursive-prefix delete, metadata, presigned URLs and move/rename. Credentials live in the system credential store, never in `connections.json`. ⭐ The S3-compatible branch has a real LocalStack endpoint contract + a matching UI frame, and Alibaba Cloud OSS and Qiniu Kodo both have real-account read-only contracts (credentials from environment variables only, no writes by default); COS is compile-and-in-memory only — see Limitations |
 
 ✅ for the last three means the dialect, DDL generation, paging and capability gates are covered by
 unit tests **and** executed against real servers in the Docker matrix (`scripts/dbmatrix.sh`, opt-in
@@ -254,10 +254,15 @@ every pull request is reviewed against. Design rules are in
   (bucket listing, marker paging across the 1000-object boundary checked against the native SDK,
   metadata, and a presigned URL fetched over real HTTPS); credentials are read only from
   `ADB_TEST_OSS_*` environment variables, the suite is read-only by default and no credential
-  literal is stored in the repository. Qiniu Kodo and Tencent COS still have only compile-time SDK
-  types plus the in-memory contract suite, so "all four providers connect" is not a claim this
-  project makes. The browser still lists a whole delimiter level in one call — measured on a
-  bucket with over 12,000 objects — so there is no progressive pagination for very large buckets.
+  literal is stored in the repository. `QiniuRealEndpointContractTest` adds 12 opt-in cases against
+  a real Kodo account (bucket listing honesty, delimiter folding, marker paging across 1000 objects
+  checked against the native SDK, metadata contentType / putTime, public and private-space presigned
+  URLs fetched over real HTTPS, and a bad-credential rejection that exposed a false-green connection
+  test); credentials come only from `ADB_TEST_KODO_*` and writes are opt-in. Tencent COS still has
+  only compile-time SDK types plus the in-memory contract suite, so "all four providers connect" is
+  not a claim this project makes. The browser still lists a whole delimiter level in one call —
+  measured on buckets with over 12,000 objects — so there is no progressive pagination for very
+  large buckets.
   ⚠️ A plain `http://` S3-compatible endpoint is not supported yet: AWS SDK 2.31 sends
   `Expect: 100-continue` with streaming SigV4 and some gateways never answer it, so uploads stall
   until read timeout. Use an HTTPS endpoint.
@@ -272,7 +277,8 @@ every pull request is reviewed against. Design rules are in
   overview, the Redis key browser and a real-endpoint object browser each have a matching frame
   in `docs/screenshots/` (74 frames, no duplicate hashes). The offline `p10-object-browser.png`
   frame is kept as a shell/interaction reference; `p10-object-store-real.png` is the one backed
-  by an actual S3 server.
+  by an actual S3 server. Both object-browser frames show per-row type icons (folder, image,
+  text, code/data and unknown) so a folder never looks like a nameless file.
 - The full list, with the date every number was measured: [docs/STATUS.md](docs/STATUS.md).
 
 ## License · Acknowledgements

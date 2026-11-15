@@ -50,10 +50,20 @@ public final class ObjectStoreSessions {
         return new InMemoryObjectStoreSession(c);
     }
 
-    /** 连接测试：只做一次列举，成功返回 {@code null}，失败返回错误文本（同向导 Tester 口径）。 */
+    /**
+     * 连接测试：成功返回 {@code null}，失败返回错误文本（同向导 Tester 口径）。
+     *
+     * <p>⭐ 两歩而不是一步：{@code listBuckets()} 对七牛 Kodo 是<b>本地诚实回显</b>
+     * （能力声明 {@code supportsListBuckets=false}，只报配置里的那一个桶，不发请求），
+     * 于是坏 AK/SK 也能「测试连接通过」。追加一次<b>不存在前缀</b>的真实列举当握手：
+     * 四家都会签一次名并打一次网络，前缀命中 0 条所以不会拉全桶、不改任何数据，
+     * 但凭据/端点/桶名里任何一处不对都会在这里暴露。
+     */
     public static String test(Map<String, String> options, String storedCredentials) {
         try (ObjectStoreSession session = connect(options, storedCredentials)) {
             session.listBuckets();
+            String bucket = options.getOrDefault(ObjectStoreCredentials.OPT_BUCKET, "");
+            session.listObjects(bucket, "__aidb_connection_probe__/", null);
             return null;
         } catch (Exception e) {
             String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();

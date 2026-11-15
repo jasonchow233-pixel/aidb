@@ -267,6 +267,21 @@ public final class Icons {
         /** 网格视图（lucide: layout-grid）。 */
         GRID(null, "layout-grid"),
 
+        // ── 对象存储的文件类型（列表行首字形，单色描边 + 类型色）──────────────
+        //   规矩：一行一枚，文件夹与「认不出类型」都必须有字形 —— 没图标的行
+        //   在密集列表里读起来像数据缺了一格。分类只看 key 的扩展名，
+        //   不读 MIME（列举结果里没有 MIME，见 ObjectEntry）。
+        /** 通用文件（有扩展名但没有专属字形）。 */
+        FILE(null, "file"),
+        /** 图片对象（lucide: image）。 */
+        FILE_IMAGE(null, "image"),
+        /** 文本 / 文档对象（lucide: file-text）。 */
+        FILE_TEXT(null, "file-text"),
+        /** 代码 / 结构化数据对象（lucide: file-code）。 */
+        FILE_CODE(null, "file-code"),
+        /** 无扩展名 / 认不出类型的对象（lucide: file-question）。 */
+        FILE_UNKNOWN(null, "file-question"),
+
         // ── 集合（导航树里的分组节点，R62-a H6-g）──────────────────────────
         //   规矩只有一条：**分组字形不许和它孩子的字形是同一枚**。以前「Tables」这行
         //   画的就是表图标，「Views」画的就是视图图标 —— 于是一棵树里父与子长得一样，

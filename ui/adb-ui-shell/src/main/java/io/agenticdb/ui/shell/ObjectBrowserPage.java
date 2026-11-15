@@ -14,10 +14,12 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
+import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.shape.SVGPath;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.HBox;
@@ -33,6 +35,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -58,6 +61,65 @@ final class ObjectBrowserPage extends VBox {
     private static final DateTimeFormatter TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ROOT)
                     .withZone(ZoneId.systemDefault());
+
+    private static final Set<String> IMAGE_EXT = Set.of(
+            "png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "tif", "tiff", "ico", "avif", "heic");
+    private static final Set<String> TEXT_EXT = Set.of(
+            "txt", "md", "log", "pdf", "doc", "docx", "rtf", "readme");
+    private static final Set<String> CODE_EXT = Set.of(
+            "json", "xml", "yaml", "yml", "sql", "csv", "tsv", "html", "css", "js", "ts",
+            "java", "kt", "py", "go", "rs", "sh", "properties", "toml", "gradle", "ini");
+
+    /**
+     * 列表行首字形。<b>六档都有图标</b> —— 文件夹、已知类型和「认不出类型」都不许留空，
+     * 否则密集列表里那一行看着像数据缺了一格。颜色只上在图标上，文字保持正文色。
+     */
+    enum ObjectVisual {
+        FOLDER(Icons.Icon.FOLDER, "adb-objects__icon--folder", "objectstore.type.folder"),
+        IMAGE(Icons.Icon.FILE_IMAGE, "adb-objects__icon--image", "objectstore.type.image"),
+        TEXT(Icons.Icon.FILE_TEXT, "adb-objects__icon--text", "objectstore.type.text"),
+        CODE(Icons.Icon.FILE_CODE, "adb-objects__icon--code", "objectstore.type.code"),
+        UNKNOWN(Icons.Icon.FILE_UNKNOWN, "adb-objects__icon--unknown", "objectstore.type.unknown"),
+        FILE(Icons.Icon.FILE, "adb-objects__icon--file", "objectstore.type.file");
+
+        final Icons.Icon icon;
+        final String styleClass;
+        final String labelKey;
+
+        ObjectVisual(Icons.Icon icon, String styleClass, String labelKey) {
+            this.icon = icon;
+            this.styleClass = styleClass;
+            this.labelKey = labelKey;
+        }
+    }
+
+    /**
+     * 只按 key 的扩展名分类：{@link ObjectEntry} 里没有 MIME，列举结果也不该为了画图标
+     * 再去 stat 一次。无扩展名 / 点结尾 / 以点开头没有后缀的 key 一律落 UNKNOWN，
+     * 用问号文件图标明确告诉用户「这个类型没认出来」，而不是悄悄画成通用文件。
+     */
+    static ObjectVisual visualFor(ObjectEntry entry) {
+        if (entry == null || entry.folder()) {
+            return ObjectVisual.FOLDER;
+        }
+        String key = entry.key() == null ? "" : entry.key();
+        String name = key.substring(key.lastIndexOf('/') + 1);
+        int dot = name.lastIndexOf('.');
+        if (dot <= 0 || dot == name.length() - 1) {
+            return ObjectVisual.UNKNOWN;
+        }
+        String ext = name.substring(dot + 1).toLowerCase(Locale.ROOT);
+        if (IMAGE_EXT.contains(ext)) {
+            return ObjectVisual.IMAGE;
+        }
+        if (TEXT_EXT.contains(ext)) {
+            return ObjectVisual.TEXT;
+        }
+        if (CODE_EXT.contains(ext)) {
+            return ObjectVisual.CODE;
+        }
+        return ObjectVisual.FILE;
+    }
 
     private final ConnectionProfile profile;
     private final String bucket;
@@ -260,10 +322,34 @@ final class ObjectBrowserPage extends VBox {
         //    而侧栏对象树是 12px / 21px 行 —— 同一屏里两套密度。
         table.getStyleClass().add("adb-objects__table");
         TableColumn<ObjectEntry, String> keyCol = new TableColumn<>(I18n.t("objectstore.column.key"));
+        // ⭐ 行首字形取代了以前的 "Folder  " 文字前缀：一屏里同样的信息用图标更省宽度，
+        //    文件夹与「未见类型」也终于有明确的图形，不再靠读文字猜这一行是什么。
         keyCol.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
-                c.getValue().folder()
-                        ? I18n.t("objectstore.folder") + "  " + c.getValue().key()
-                        : c.getValue().key()));
+                c.getValue().key()));
+        keyCol.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(String key, boolean empty) {
+                super.updateItem(key, empty);
+                ObjectEntry entry = empty || getTableRow() == null
+                        ? null : (ObjectEntry) getTableRow().getItem();
+                if (key == null || entry == null) {
+                    setText(null);
+                    setGraphic(null);
+                    setTooltip(null);
+                    setAccessibleText(null);
+                    return;
+                }
+                ObjectVisual visual = visualFor(entry);
+                setText(key);
+                SVGPath glyph = Icons.of(visual.icon, Icons.SIZE_LABEL);
+                glyph.getStyleClass().addAll("adb-objects__icon", visual.styleClass);
+                setGraphic(glyph);
+                setGraphicTextGap(6);
+                String hint = I18n.t(visual.labelKey);
+                setTooltip(new Tooltip(hint));
+                setAccessibleText(hint);
+            }
+        });
         keyCol.setPrefWidth(360);
 
         TableColumn<ObjectEntry, String> sizeCol =
