@@ -13,8 +13,8 @@
   命令 `set -a && . scripts/.dbmatrix.env && set +a && MAVEN_ARGS=-o ./scripts/build.sh`
   （= `./mvnw -B clean verify` + `java tools/TestCount.java`），
   2026-11-15 13:15 +08:00、本机 Darwin 24.6.0 x86_64、Temurin JDK 25.0.5，
-  Total time **31:08 min**；验证时源码为提交 `80a3de2` 之上的本轮工作树
-  （16 改 + 4 新增，共 20 个文件），全量期间未改动任何文件。
+  Total time **31:08 min**；验证时源码为提交 **`9c4a1da`**
+  （16 改 + 4 新增，共 20 个文件，即本节标题那一轮），全量期间未改动任何文件。
   ⚠️ 本轮**没有** `ADB_TEST_OSS_*` / `ADB_TEST_KODO_*` 凭据（凭据只从环境变量读、
   仓库零字面量），那两类真账号只读契约整类跳过（OSS 8 + Kodo 12 = 20 条）；
   另外 6 条是设计如此：`adb-session` 5 条 Windows 凭据管理器（本机 macOS）、
