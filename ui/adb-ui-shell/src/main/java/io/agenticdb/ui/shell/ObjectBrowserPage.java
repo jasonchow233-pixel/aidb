@@ -2,6 +2,7 @@ package io.agenticdb.ui.shell;
 
 import io.agenticdb.objectstore.ObjectEntry;
 import io.agenticdb.objectstore.ObjectMeta;
+import io.agenticdb.objectstore.ObjectPage;
 import io.agenticdb.objectstore.ObjectStoreCapabilities;
 import io.agenticdb.objectstore.ObjectStoreDanger;
 import io.agenticdb.objectstore.ObjectStoreSession;
@@ -33,8 +34,10 @@ import java.nio.file.Files;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -53,6 +56,11 @@ import java.util.function.Supplier;
  * 等级由 {@link ObjectStoreDanger} 判定（DELETE_* = DESTRUCTIVE），
  * 与 Redis / SQL 的三级门禁同一套语义，不另造确认 UI。
  *
+ * <p><b>渐进加载</b>：列举一律走 {@code ObjectStoreSession.listObjectsPage}，
+ * 首屏只取 {@code PAGE_SIZE}（200）行；还有下一页时列表下方才出现「加载更多」，
+ * 逐页按 key 去重累加。旧的全量 {@code listObjects} 留给递归删前缀与后端契约，
+ * 不再用来喂这张表（真 OSS 账号实测桶内 &gt;12000 对象）。
+ *
  * <p>按 {@code (连接, bucket)} 一个实例并缓存（{@link WorkspaceView} 按 tab id 存），
  * 切标签不重连、不丢当前前缀；{@link #close()} 时断开会话。
  */
@@ -61,6 +69,12 @@ final class ObjectBrowserPage extends VBox {
     private static final DateTimeFormatter TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ROOT)
                     .withZone(ZoneId.systemDefault());
+
+    /**
+     * 首屏 / 每次「加载更多」向服务端要的条数，与后端 {@code PageCursor.DEFAULT_PAGE_SIZE}
+     * 同值。真 OSS 账号的桶实测 &gt;12000 对象，一次列完整层会把整桶拉回内存再交给表格。
+     */
+    private static final int PAGE_SIZE = 200;
 
     private static final Set<String> IMAGE_EXT = Set.of(
             "png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "tif", "tiff", "ico", "avif", "heic");
@@ -130,15 +144,23 @@ final class ObjectBrowserPage extends VBox {
     private final Label statusLabel = new Label();
     private final Label breadcrumb = new Label();
     private final VBox details = new VBox(4);
+    /** 页脚：只有确实还有下一页时才出现，小 bucket 不摆一个点了没反应的假按钮。 */
+    private final HBox moreBar = new HBox();
+
+    /** 已加载的行（按 key 去重：服务端 delimiter 折叠可能跨页回同一个文件夹）。 */
+    private final Map<String, ObjectEntry> pageRows = new LinkedHashMap<>();
 
     private volatile ObjectStoreSession session;
-    private volatile boolean busy;
+    private volatile long listGeneration;
+    private volatile boolean loadingMore;
     private boolean activated;
     private String prefix = "";
+    private String nextCursor;
     private ObjectStoreCapabilities capabilities;
 
     /** 移动/重命名按钮：能力不支持时置灰（测试据此验证诚实性）。 */
     private javafx.scene.control.Button moveButton;
+    private javafx.scene.control.Button moreButton;
 
     ObjectBrowserPage(TabItem tab, ConnectionProfile profile,
                       Supplier<ObjectStoreSession> sessionFactory) {
@@ -162,7 +184,7 @@ final class ObjectBrowserPage extends VBox {
         HBox.setHgrow(table, Priority.ALWAYS);
         VBox.setVgrow(body, Priority.ALWAYS);
 
-        getChildren().addAll(header, new Separator(), body);
+        getChildren().addAll(header, new Separator(), body, buildMoreBar());
         configureTable();
         setDensity("standard");
         statusLabel.setText(I18n.t("objectstore.loading"));
@@ -408,34 +430,134 @@ final class ObjectBrowserPage extends VBox {
         }
     }
 
+    /**
+     * 页脚「加载更多」。默认隐藏 —— 没有更多数据时留一颗灰按钮等于摆假控件。
+     * 它也不进那条已经很挤的工具带，避免把上一轮刚修好的短标签再压成省略号。
+     */
+    private HBox buildMoreBar() {
+        // ⚠️ 不挂 .adb-objects__action：那个类是「工具带动作键」的专属标记，
+        //    ObjectBrowserDensityTest 按它数 9 颗并逐颗量宽度。页脚这颗属于另一个区域，
+        //    复用同一套紧凑尺寸（见 app.css 的 .adb-objects__more-button），但不混进工具带。
+        String hint = I18n.t("objectstore.loadMore");
+        moreButton = IconButtons.of(Icons.Icon.MORE, I18n.t("objectstore.action.loadMore"));
+        moreButton.getStyleClass().addAll("adb-button", "adb-objects__more-button");
+        moreButton.setGraphicTextGap(4);
+        moreButton.setMinWidth(Region.USE_PREF_SIZE);
+        moreButton.setTooltip(new Tooltip(hint));
+        moreButton.setAccessibleText(hint);
+        moreButton.setOnAction(event -> loadMore());
+        moreBar.getChildren().add(moreButton);
+        moreBar.setAlignment(Pos.CENTER_LEFT);
+        moreBar.getStyleClass().add("adb-objects__more");
+        moreBar.setVisible(false);
+        moreBar.setManaged(false);
+        return moreBar;
+    }
+
+    /**
+     * ⭐ 首屏只取一页。所有列举都经 {@link ObjectStoreSession#listObjectsPage}，
+     * <b>不再</b>调一次列完整层的 {@code listObjects} 再交给表格切片 ——
+     * 真 OSS 账号的桶 &gt;12000 对象，那条老路会把整桶拉回来。
+     *
+     * <p>{@code listGeneration} 负责丢弃过期结果：用户改前缀 / 进下一层时上一页
+     * 可能还在后台飞，回来后不许把旧层的行盖到新层上。
+     */
     private void load() {
-        if (busy) {
-            return;
-        }
-        busy = true;
+        final long gen = ++listGeneration;
+        final String p = prefix;
+        nextCursor = null;
+        loadingMore = false;
+        moreBar.setVisible(false);
+        moreBar.setManaged(false);
         statusLabel.setText(I18n.t("objectstore.loading"));
-        breadcrumb.setText("/" + prefix);
+        breadcrumb.setText("/" + p);
         new Thread(() -> {
             try {
                 ObjectStoreSession s = ensureSession();
-                List<ObjectEntry> rows = List.copyOf(s.listObjects(bucket, prefix, "/"));
+                ObjectPage page = s.listObjectsPage(bucket, p, "/", null, PAGE_SIZE);
                 ObjectStoreCapabilities caps = s.capabilities();
                 Platform.runLater(() -> {
-                    table.getItems().setAll(rows);
+                    if (gen != listGeneration) {
+                        return;
+                    }
+                    pageRows.clear();
+                    appendPage(page);
+                    nextCursor = page.nextToken();
                     capabilities = caps;
                     applyCapabilities();
-                    statusLabel.setText(
-                            I18n.tPlural("objectstore.count", rows.size(), rows.size()));
-                    busy = false;
+                    updateMoreBar();
+                    statusLabel.setText(statusFor(pageRows.size(), page.hasMore()));
                 });
             } catch (Exception e) {
                 String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 Platform.runLater(() -> {
+                    if (gen != listGeneration) {
+                        return;
+                    }
                     statusLabel.setText(I18n.t("objectstore.error", msg));
-                    busy = false;
+                    moreBar.setVisible(false);
+                    moreBar.setManaged(false);
                 });
             }
         }).start();
+    }
+
+    /** 追加下一页；同一 key 只留一行（文件夹折叠可能跨页重复）。 */
+    private void loadMore() {
+        if (loadingMore || nextCursor == null || nextCursor.isBlank()) {
+            return;
+        }
+        loadingMore = true;
+        final long gen = listGeneration;
+        final String cursor = nextCursor;
+        final String p = prefix;
+        moreButton.setDisable(true);
+        statusLabel.setText(I18n.t("objectstore.loading"));
+        new Thread(() -> {
+            try {
+                ObjectPage page = ensureSession()
+                        .listObjectsPage(bucket, p, "/", cursor, PAGE_SIZE);
+                Platform.runLater(() -> {
+                    loadingMore = false;
+                    if (gen != listGeneration) {
+                        return; // 期间换了前缀 / 层级，这一页作废
+                    }
+                    appendPage(page);
+                    nextCursor = page.nextToken();
+                    updateMoreBar();
+                    statusLabel.setText(statusFor(pageRows.size(), page.hasMore()));
+                });
+            } catch (Exception e) {
+                String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                Platform.runLater(() -> {
+                    loadingMore = false;
+                    if (gen != listGeneration) {
+                        return;
+                    }
+                    statusLabel.setText(I18n.t("objectstore.error", msg));
+                    updateMoreBar();
+                });
+            }
+        }).start();
+    }
+
+    private void appendPage(ObjectPage page) {
+        for (ObjectEntry entry : page.entries()) {
+            pageRows.putIfAbsent(entry.key(), entry);
+        }
+        table.getItems().setAll(pageRows.values());
+    }
+
+    private void updateMoreBar() {
+        boolean more = nextCursor != null && !nextCursor.isBlank();
+        moreBar.setVisible(more);
+        moreBar.setManaged(more);
+        moreButton.setDisable(loadingMore);
+    }
+
+    private String statusFor(int count, boolean more) {
+        return more ? I18n.tPlural("objectstore.count.more", count, count)
+                : I18n.tPlural("objectstore.count", count, count);
     }
 
     /**
@@ -450,6 +572,27 @@ final class ObjectBrowserPage extends VBox {
     /** 门禁用：读那颗随能力开合的按钮状态。 */
     javafx.scene.control.Button moveButtonForTest() {
         return moveButton;
+    }
+
+    /** 门禁用：分页页脚 / 加载更多键 / 列表 / 状态栏 / 前缀框。 */
+    HBox moreBarForTest() {
+        return moreBar;
+    }
+
+    javafx.scene.control.Button moreButtonForTest() {
+        return moreButton;
+    }
+
+    TableView<ObjectEntry> tableForTest() {
+        return table;
+    }
+
+    Label statusLabelForTest() {
+        return statusLabel;
+    }
+
+    TextField prefixFieldForTest() {
+        return prefixField;
     }
 
     /** 能力声明 → 按钮状态：不支持就置灰并说明，绝不留假控件。 */
@@ -492,8 +635,11 @@ final class ObjectBrowserPage extends VBox {
                 I18n.t("objectstore.status.moved"));
     }
 
-    /** 会话按需建立一次（后台线程调用）。 */
-    private ObjectStoreSession ensureSession() {
+    /**
+     * 会话按需建立一次（后台线程调用）。{@code synchronized} 是为了切前缀时
+     * 两次加载并发进来也只建一个会话 —— 分页放宽了加载并发，旧的单线程假设不再成立。
+     */
+    private synchronized ObjectStoreSession ensureSession() {
         ObjectStoreSession s = session;
         if (s == null) {
             s = sessionFactory.get();
@@ -652,7 +798,6 @@ final class ObjectBrowserPage extends VBox {
                 op.run();
                 Platform.runLater(() -> {
                     statusLabel.setText(okMessage);
-                    busy = false;
                     load();
                 });
             } catch (Exception e) {

@@ -13,7 +13,9 @@ import com.qcloud.cos.region.Region;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 腾讯云 COS 适配器（{@code cos_api}）。
@@ -21,8 +23,9 @@ import java.util.List;
  * <p>region 形如 {@code ap-guangzhou}；凭据 SecretId / SecretKey。
  * 列举按 marker 翻页。SDK 与 OSS 形态接近但类型完全独立，故单独一个适配器。
  *
- * <p>⚠️ 腾讯云 COS 原生协议<b>仍无真端点证据</b>（R2 剩余阻塞项）；
+ * <p>⚠️ 四家原生 SDK 里<b>只剩 COS 一支无真端点证据</b>（R2 剩余阻塞项）：
  * 本类只有编译期 SDK 类型 + 内存后端行为契约，不宣称连过真实 COS。
+ * 分页入口同样按 COS 的 marker / commonPrefixes 语义实现，但未在真端点上验过。
  */
 public final class CosObjectStoreSession extends AbstractObjectStoreSession {
 
@@ -58,9 +61,7 @@ public final class CosObjectStoreSession extends AbstractObjectStoreSession {
         while (true) {
             ObjectListing page = client.listObjects(req);
             for (COSObjectSummary s : page.getObjectSummaries()) {
-                out.add(new ObjectMeta(s.getKey(), s.getSize(),
-                        SdkSupport.instant(s.getLastModified()),
-                        SdkSupport.safe(s.getETag()), "", ""));
+                out.add(meta(s));
             }
             if (!page.isTruncated()) {
                 break;
@@ -72,6 +73,48 @@ public final class CosObjectStoreSession extends AbstractObjectStoreSession {
             req.setMarker(next);
         }
         return out;
+    }
+
+    /**
+     * ⭐ 浏览页的真分页：COS 的 marker + maxKeys + 服务端 {@code commonPrefixes} 折叠。
+     * ⚠️ 这一支仍只有编译期 SDK 类型与内存后端行为契约，没有真端点证据（R2 仅剩 COS）。
+     */
+    @Override
+    public ObjectPage listObjectsPage(String bucket, String prefix, String delimiter,
+                                      String cursor, int maxKeys) {
+        String safePrefix = prefix == null ? "" : prefix;
+        String safeDelimiter = delimiter == null ? "" : delimiter;
+        String marker = PageCursor.tokenFor(cursor, bucket, safePrefix, safeDelimiter);
+        ListObjectsRequest req = new ListObjectsRequest();
+        req.setBucketName(bucket);
+        req.setPrefix(safePrefix);
+        req.setMaxKeys(PageCursor.pageSize(maxKeys));
+        if (!safeDelimiter.isBlank()) {
+            req.setDelimiter(safeDelimiter);
+        }
+        if (marker != null) {
+            req.setMarker(marker);
+        }
+        ObjectListing page = client.listObjects(req);
+        Map<String, ObjectEntry> rows = new LinkedHashMap<>();
+        if (page.getCommonPrefixes() != null) {
+            for (String cp : page.getCommonPrefixes()) {
+                rows.putIfAbsent(cp, ObjectEntry.folder(cp));
+            }
+        }
+        for (COSObjectSummary s : page.getObjectSummaries()) {
+            rows.putIfAbsent(s.getKey(), ObjectEntry.object(meta(s)));
+        }
+        String token = page.getNextMarker();
+        String next = page.isTruncated() && token != null && !token.isBlank()
+                ? PageCursor.of(bucket, safePrefix, safeDelimiter, token) : null;
+        return new ObjectPage(new ArrayList<>(rows.values()), next);
+    }
+
+    private static ObjectMeta meta(COSObjectSummary s) {
+        return new ObjectMeta(s.getKey(), s.getSize(),
+                SdkSupport.instant(s.getLastModified()),
+                SdkSupport.safe(s.getETag()), "", "");
     }
 
     @Override

@@ -24,6 +24,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,8 +47,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>⚠️ 诚实边界：这是 <b>S3 兼容协议</b>的真服务端，只覆盖
  * {@link S3ObjectStoreSession}（AWS S3 / MinIO / LocalStack 一支）。
- * 阿里云 OSS、七牛 Kodo、腾讯云 COS 三家走各自的原生 SDK，需要各家仿真服务或真账号，
- * <b>本类不宣称验过它们</b>。没有 Docker 时整类跳过（与
+ * 阿里云 OSS 与七牛 Kodo 已另有真账号只读契约（{@code OssRealEndpointContractTest} /
+ * {@code QiniuRealEndpointContractTest}），四家里<b>仅腾讯云 COS 仍无真端点证据</b>；
+ * 那两家走各自原生 SDK，<b>本类不宣称验过它们</b>。没有 Docker 时整类跳过（与
  * {@code PostgresIntrospectionTest} 同口径），有 Docker 就必须实跑。
  *
  * <p>⚠️ 契约与产品共用同一条路：种子数据（建桶 / 批量灌对象）用原生 SDK 直接写服务端，
@@ -232,6 +234,58 @@ class S3RealEndpointContractTest {
         }
         try (ObjectStoreSession s = session()) {
             assertThat(s.listObjects(BUCKET, "page/", null)).hasSize(count);
+        }
+    }
+
+    /**
+     * ⭐ 渐进分页在真 S3 服务端上验一次：一次只问一页、ListObjectsV2 的
+     * continuationToken 真跨页、delimiter 折叠由 commonPrefixes 给，
+     * 游标还必须绑住 (bucket, prefix, delimiter)，换层不许串数据。
+     * 全量 {@code listObjects} 的千条跨页由上面那条负责，这里验的是<b>暴露给 UI 的那一页</b>。
+     */
+    @Test
+    void pagedListingWalksRealServerTokensWithoutLosingRows() {
+        try (ObjectStoreSession s = session()) {
+            for (int i = 0; i < 12; i++) {
+                s.putObject(BUCKET, "paged/" + String.format("%02d", i) + ".bin",
+                        bytes("p"), "application/octet-stream");
+            }
+            s.putObject(BUCKET, "paged/dir-a/a.txt", bytes("a"), "text/plain");
+            s.putObject(BUCKET, "paged/dir-b/b.txt", bytes("b"), "text/plain");
+
+            List<String> paged = new ArrayList<>();
+            String cursor = null;
+            String firstToken = null;
+            int pages = 0;
+            while (true) {
+                ObjectPage page = s.listObjectsPage(BUCKET, "paged/", "/", cursor, 5);
+                pages++;
+                if (firstToken == null) {
+                    firstToken = page.nextToken();
+                }
+                assertThat(page.entries()).hasSizeLessThanOrEqualTo(5);
+                for (ObjectEntry entry : page.entries()) {
+                    paged.add(entry.key());
+                }
+                if (!page.hasMore()) {
+                    break;
+                }
+                assertThat(page.nextToken()).isNotEqualTo(cursor).as("服务端游标必须前进");
+                cursor = page.nextToken();
+                assertThat(pages).isLessThan(20).as("分页没有收敛");
+            }
+            assertThat(pages).isGreaterThan(2);
+            assertThat(firstToken).isNotBlank();
+            assertThat(paged).doesNotHaveDuplicates()
+                    .containsExactlyInAnyOrderElementsOf(
+                            s.listObjects(BUCKET, "paged/", "/").stream()
+                                    .map(ObjectEntry::key).toList());
+            assertThat(paged).contains("paged/dir-a/", "paged/dir-b/");
+
+            String token = firstToken;
+            assertThatThrownBy(() -> s.listObjectsPage(BUCKET, "other/", "/", token, 5))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("does not match");
         }
     }
 

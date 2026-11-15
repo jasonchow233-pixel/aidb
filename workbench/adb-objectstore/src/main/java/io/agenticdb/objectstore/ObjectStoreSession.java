@@ -29,12 +29,56 @@ public interface ObjectStoreSession extends AutoCloseable {
     List<Bucket> listBuckets();
 
     /**
-     * 列举某个 bucket 在 {@code prefix} 下的对象。
+     * 列举某个 bucket 在 {@code prefix} 下的<b>整层全部</b>对象。
      *
      * @param delimiter 传 {@code "/"} 时把同前缀折叠成 {@link ObjectEntry#folder()} 行；
      *                  传 {@code null} / 空串时平铺全部对象（递归删前缀用）
+     *
+     * <p>⚠️ 这是全量入口：超大 bucket 会一次把所有页拉回来。浏览页请用
+     * {@link #listObjectsPage}，本入口保留给递归删前缀、连接测试与既有真端点契约。
      */
     List<ObjectEntry> listObjects(String bucket, String prefix, String delimiter);
+
+    /**
+     * 列举一页；首屏 {@code cursor = null}，之后把 {@link ObjectPage#nextToken()}
+     * 原样传回，直到 {@link ObjectPage#hasMore()} 为 false。
+     *
+     * @param maxKeys   本页条数上限（非正数取默认 200，最多夹到 1000）
+     * @return          本页条目 + 下一页游标；到底时游标为 {@code null}
+     *
+     * <p><b>默认实现是兼容 fallback，不是真渐进</b>：它调
+     * {@link #listObjects} 取全量再按偏移切片，只保证语义正确，<b>不</b>减少服务端请求量。
+     * 四家 SDK 会话与内存后端都覆写成各自的分页原语（服务端 delimiter 折叠 +
+     * continuationToken / marker），结构门禁 {@code ObjectStorePagingTest} 钉住这一点。
+     * 新接入的会话若不覆写，就不能宣称支持渐进加载。
+     */
+    default ObjectPage listObjectsPage(String bucket, String prefix, String delimiter,
+                                       String cursor, int maxKeys) {
+        String safePrefix = prefix == null ? "" : prefix;
+        String safeDelimiter = delimiter == null ? "" : delimiter;
+        int offset = 0;
+        if (cursor != null && !cursor.isBlank()) {
+            String token = PageCursor.tokenFor(cursor, bucket, safePrefix, safeDelimiter);
+            try {
+                offset = Integer.parseInt(token);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("invalid object list cursor", e);
+            }
+            if (offset < 0) {
+                throw new IllegalArgumentException("invalid object list cursor offset");
+            }
+        }
+        List<ObjectEntry> all = listObjects(bucket, safePrefix, safeDelimiter);
+        int size = PageCursor.pageSize(maxKeys);
+        long endLong = (long) offset + size;
+        int end = (int) Math.min((long) all.size(), endLong);
+        List<ObjectEntry> slice = offset >= all.size()
+                ? List.of() : List.copyOf(all.subList(offset, end));
+        String next = end < all.size()
+                ? PageCursor.of(bucket, safePrefix, safeDelimiter, Integer.toString(end))
+                : null;
+        return new ObjectPage(slice, next);
+    }
 
     byte[] getObject(String bucket, String key);
 

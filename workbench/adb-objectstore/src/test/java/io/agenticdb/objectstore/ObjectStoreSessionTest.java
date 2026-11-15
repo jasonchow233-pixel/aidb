@@ -15,9 +15,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>与 {@code RedisMutateTest} 的定位一致：写操作必须真的改状态，
  * 破坏性操作的分级由 {@code ObjectStoreDangerTest} 守，这里验证语义正确。
- * S3 兼容分支另有 {@link S3RealEndpointContractTest} 跑真 LocalStack 端点；
- * 其余三家原生 SDK 仍只有编译期类型与内存后端契约（R2 剩余阻塞项），
- * 本类不冒充云端连通性证据。
+ * S3 兼容分支另有 {@link S3RealEndpointContractTest} 跑真 LocalStack 端点，
+ * OSS / Kodo 另有真账号只读契约；四家里仅腾讯云 COS 仍只有编译期类型与
+ * 内存后端契约（R2 剩余阻塞项）。本类不冒充云端连通性证据。
+ * 分页语义另由 {@link ObjectStorePagingTest} 在无 Docker 环境下钉住。
  */
 class ObjectStoreSessionTest {
 

@@ -4828,6 +4828,14 @@
     -fx-background-color: transparent;
 }
 
+/* 分页页脚：只有确实还有下一页时才出现，小 bucket 不摆点了没反应的假按钮。 */
+.adb-objects__more {
+    -fx-padding: 4px 12px 8px 12px;
+    -fx-spacing: 4px;
+    -fx-alignment: center-left;
+    -fx-background-color: transparent;
+}
+
 /* 放不下时横向滚动，绝不把按钮压成省略号。滚动条收成 6px 细轨、无箭头。 */
 .adb-objects__scroll,
 .adb-objects__scroll > .viewport {
@@ -4881,6 +4889,15 @@
    带两个类（0,2,0）且排在其后，才压得过基础规则；文字保持 12px 可读下限。
    minWidth 由 Java 侧钉成 USE_PREF_SIZE —— CSS 缩的是内边距，不是文字。 */
 .adb-button.adb-objects__action {
+    -fx-padding: 2px 6px;
+    -fx-font-size: 12px;
+    -fx-min-height: 24;
+    -fx-pref-height: 24;
+}
+
+/* 页脚「加载更多」同一档紧凑尺寸，但不挂工具带标记：
+   ObjectBrowserDensityTest 按 .adb-objects__action 数工具带的 9 颗键。 */
+.adb-button.adb-objects__more-button {
     -fx-padding: 2px 6px;
     -fx-font-size: 12px;
     -fx-min-height: 24;

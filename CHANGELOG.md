@@ -9,6 +9,44 @@
 
 ## [Unreleased]
 
+### Added — 2026-11-15（第三轮）：对象存储渐进分页
+
+- **一页一页地列，不再把整桶拉回内存**：新增 `ObjectPage`（一页条目 + 不透明
+  `nextToken`）与 `PageCursor`（把 bucket/prefix/delimiter 编进游标，解不开或上下文不符
+  一律抛异常，不静默从首页重来）；`ObjectStoreSession.listObjectsPage` 由四家 SDK 会话各自
+  覆写成真分页 —— S3 的 `continuationToken`、OSS / COS / Kodo 的 `marker`，delimiter
+  折叠交给服务端 `commonPrefixes`。接口 default 只是「全量后切片」的兼容 fallback，
+  `ObjectStorePagingTest` 用反射钉住四家不许退化。旧的全量 `listObjects` 保留给递归删前缀、
+  连接测试与既有真端点契约，不再喂浏览页的表格。
+- **浏览器首屏 200 行**：`ObjectBrowserPage` 改走分页入口，列表底部「加载更多」只在确实
+  还有下一页时出现（小 bucket 不摆点了没反应的灰按钮），逐页按 key 去重、改前缀 / 换层级
+  重置游标、并发加载用 generation 丢弃过期结果；状态栏在还有更多时写明「已显示 N 项 ·
+  还有更多」。页脚按钮用独立样式类，工具带仍是 9 颗键，上一轮修好的密度与短标签不受影响。
+- **真端点证据（S3 兼容一支）**：`S3RealEndpointContractTest` 10 → **11 条**，新增用例在真
+  LocalStack 4.9.2 上用产品分页入口逐页走完真 `continuationToken`、与全量列举逐条对账，
+  并验换前缀的旧游标必须被拒；本轮实跑 11/11、0 跳过。
+- **行为门禁**：`ObjectStorePagingTest`（8 例：跨页无损 / 游标上下文绑定 / 坏游标
+  fail-closed / 页大小夹取 / 四家覆写结构门禁 / 第三方旧会话 default 兼容）、
+  `ObjectBrowserPagingTest`（7 例：用会计数的假会话钉住 UI 没有偷偷退回全量列举、逐页
+  追加直到收口、换前缀重置、跨页文件夹去重、无更多时页脚隐藏、页脚按钮不被压缩）、
+  `DocLedgerAuditTest` 新增「渐进分页已交付」文档棘轮。
+
+### Fixed — 2026-11-15（第三轮）
+
+- **英文硬复数被 i18n 棘轮抓住**：新状态文案初版写 `{0} items shown`，单条会读成
+  "1 items"；全量门禁 `I18nAuditTest.hardEnglishPluralsAreRatchetedDown` 判红，改成
+  `objectstore.count.more.one/.other` 两形并走 `I18n.tPlural`。又一次「模块绿 ≠ 全量绿」。
+- **四家适配器与测试类里的过期 javadoc**：OSS / Kodo 仍写「原生协议无真端点证据」，
+  S3 / `ObjectStoreSessionTest` 仍写「其余三家无真端点证据」；按「三家已有证据、仅 COS
+  仍缺」的新事实重写，并如实标注分页实现尚未在 OSS / Kodo / COS 真端点上验过。
+
+### 边界（不写成已验）
+
+- OSS / Kodo / COS 三支的分页按各自 SDK 语义落地，但本轮没有真账号凭据（凭据只从环境变量
+  读）也没有 COS 仿真服务，**没有真端点分页证据**；超大 bucket 的端到端耗时 / 内存曲线未量。
+- 74 张截图帧本轮未重拍：页脚在无更多数据时 `visible/managed` 同为 false、工具带与表格密度
+  未变，画面内容不受影响，但「同版重拍证明」没有补。
+
 ### Added — 2026-11-15（第二轮）：对象列表类型图标 + 七牛 Kodo 真账号只读契约
 
 - **对象列表每一行都有类型图标**：新增 5 枚与项目同版本（Lucide v1.61.0）的 SVG

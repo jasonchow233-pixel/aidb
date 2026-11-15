@@ -7,7 +7,47 @@
 
 ## 1. 验证基线
 
-### 当前工作树（2026-11-15 第二轮，对象列表类型图标 + 七牛 Kodo 真账号只读契约 · 全量门禁已绿）
+### 当前工作树（2026-11-15 第三轮，对象存储渐进分页 · 全量门禁已绿）
+
+- **2219 执行 / 0 失败 / 26 跳过 / 231 个测试类**，`BUILD SUCCESS`、**16/16 模块 SUCCESS**。
+  命令 `set -a && . scripts/.dbmatrix.env && set +a && MAVEN_ARGS=-o ./scripts/build.sh`
+  （= `./mvnw -B clean verify` + `java tools/TestCount.java`），
+  2026-11-15 13:15 +08:00、本机 Darwin 24.6.0 x86_64、Temurin JDK 25.0.5，
+  Total time **31:08 min**；验证时源码为提交 `80a3de2` 之上的本轮工作树
+  （16 改 + 4 新增，共 20 个文件），全量期间未改动任何文件。
+  ⚠️ 本轮**没有** `ADB_TEST_OSS_*` / `ADB_TEST_KODO_*` 凭据（凭据只从环境变量读、
+  仓库零字面量），那两类真账号只读契约整类跳过（OSS 8 + Kodo 12 = 20 条）；
+  另外 6 条是设计如此：`adb-session` 5 条 Windows 凭据管理器（本机 macOS）、
+  `adb-jdbc` 1 条 `DatabaseVersionMatrixTest`（需 `ADB_TEST_VERSION_MATRIX=1`）。
+  账闭环：较上一轮带凭据基线 **2221 / 8 / 229 类**，本轮 +16 条执行
+  （`ObjectStorePagingTest` 8 + `ObjectBrowserPagingTest` 7 + S3 契约新增 1）、
+  +2 个测试类、-18 条实跑（OSS 7 + Kodo 11 因缺凭据转跳过）→
+  **2221 + 16 − 18 = 2219**、跳过 **8 + 18 = 26**、类 **229 + 2 = 231**。
+  五套真库矩阵本轮全部实跑（主矩阵 51 / TLS 18 / 写回 15 / 导出往返 5 / SSH 5 +
+  `SshTunnelTest` 11），`S3RealEndpointContractTest` **11 / 0 失败 / 0 跳过**。
+- ⭐ **对象存储渐进分页落地**：`ObjectPage` / `PageCursor`（游标绑定
+  bucket/prefix/delimiter，解不开或上下文不符即拒绝）+
+  `ObjectStoreSession.listObjectsPage`；四家 SDK 会话各自覆写成原生分页
+  （S3 continuationToken、OSS / COS / Kodo marker，delimiter 折叠交给服务端），
+  接口 default 只作兼容 fallback，`ObjectStorePagingTest` 用反射钉住四家不许退化。
+  `ObjectBrowserPage` 首屏 200 行、底部「加载更多」只在还有下一页时出现、逐页按 key
+  去重、换前缀重置；`ObjectBrowserPagingTest` 用会计数的假会话钉住 UI 没有偷偷退回
+  全量列举。旧的全量 `listObjects` 只留递归删前缀 / 连接测试 / 真端点契约。
+- ⭐ **分页的真端点证据只有 S3 兼容一支**：`S3RealEndpointContractTest` 10 → **11 条**，
+  新用例在真 LocalStack 4.9.2 上用产品分页入口逐页走完真 `continuationToken`、
+  与全量列举逐条对账，并验换前缀的旧游标被拒；本轮 11/11 实跑、0 跳过。
+  ⚠️ OSS / Kodo / COS 三支分页按各自 SDK 语义落地，但本轮无凭据 / 无仿真服务，
+  **没有真端点分页证据**；超大 bucket 的端到端耗时 / 内存曲线未量。
+- ⚠️ **一次真实失败已排除，不是靠调断言过的**：首次全量 `I18nAuditTest.
+  hardEnglishPluralsAreRatchetedDown` 抓到新状态文案 `{0} items shown` 是硬复数
+  （单条会读成 "1 items"）；改成 `objectstore.count.more.one/.other` 两形并走
+  `I18n.tPlural`，刷新 `adb-ui-core` 资源 jar 后 clean 重跑全量得上面的全绿。
+  又一次「模块绿 ≠ 全量绿」。同批把「渐进分页已交付」加进 `DocLedgerAuditTest`
+  文案棘轮，并清理 README / ROADMAP / STATUS 里五处旧口径。
+- ⚠️ **74 张帧本轮未重拍**：页脚在无更多数据时 `visible/managed` 同为 false、工具带
+  仍是 9 颗键、表格密度未动，画面内容不受影响；严格「同版重拍证明」没有补，见 §3 第 4 条。
+
+### 上一轮全量（2026-11-15 第二轮，对象列表类型图标 + 七牛 Kodo 真账号只读契约 · 提交 5865bd4）
 
 - **2221 执行 / 0 失败 / 8 跳过 / 229 个测试类**，`BUILD SUCCESS`、**16/16 模块 SUCCESS**。
   命令 `set -a && . scripts/.dbmatrix.env && set +a && ADB_TEST_OSS_* && ADB_TEST_KODO_* && MAVEN_ARGS=-o ./scripts/build.sh`
@@ -74,8 +114,9 @@
   ⚠️ 这是**一家真账号的只读证据**，不是「四家都连过」；七牛 Kodo / 腾讯云 COS 仍只有
   编译 + 内存后端契约（Kodo 已在下一轮补上真账号契约，见本节最上方）。
   OSS 也没有真端点画面帧（真账号帧会拍进生产对象名，本轮不拍）。
-  ⚠️ 实测桶 >12000 对象，`ObjectStoreSession.listObjects` 仍一次列完整层、不暴露分页
-  token —— 超大 bucket 渐进加载依旧是缺口（见 §3 第 3 条）。
+  ⚠️ 当时实测桶 >12000 对象，旧的 `ObjectStoreSession.listObjects` 一次列完整层、
+  未提供分页入口 —— 超大 bucket 的渐进加载是那一轮记下的缺口（**本轮已交付**，见本节
+  最上方与 §3 第 3 条）。
 - ⭐ **对象浏览器密度按实拍返工**：`p10-object-store-real` 旧帧里表格吃 Modena 默认
   （13px 正文 / 32px 行高），11 颗带文字按钮挤一行被压成 `Do…` / `Temporar…` / `Move/re…`。
   现在表格挂 `.adb-objects__table`（正文 / 列头 12px，与对象树同档）、默认行高 32 → **24**
@@ -241,7 +282,7 @@
 | 可观测性 | ✅ | `StartupTrace` 分段打点 → `~/.agenticdb/logs/startup.log`；诊断页 |
 | 资产族地基（P0） | ✅ | `AssetKind` 取代 `DialectKind` 成为 `ConnectionProfile` 的判别轴；`AssetFamily` / `AssetFamilyRegistry` 是「加一种连接类型 = 一处登记」的单一真相源（SQL 6 家 + Redis 1 家 + 对象存储 4 家 = 11 张磁贴）。四类对象存储合并成一个 `OBJECT_STORE` kind + `ObjectStoreProvider` 子判别，不拆四个 kind；旧档案 `kind` 写枚举名仍可读，无需迁移。`DialectBranchAuditTest` 禁止 UI 硬编码资产族常量，`AssetFamilyFilterAuditTest` 动态断「注册表加一族 → 向导筛选带必须加一枚 chip」 |
 | Redis 管理（P1） | ✅ | `adb-redis`（Lettuce）：按 `INFO keyspace` 懒加载 db 分组，`SCAN` 出 key / type / TTL / size；`RedisKeysPage` 前缀 + 类型过滤，五种值类型抽屉查看/编辑，TTL、`DEL`、`FLUSHDB`、`FLUSHALL` 全走 `RedisDanger` 分级 + `DestructiveConfirm`（取消为默认按钮）。`RedisScanTest` / `RedisMutateTest` / `RedisTreeTest` 钉住内省、写安全与双击路由。⚠️ **Redis over SSH 未接入**（`RedisSessions` 类注释如实写明），SQL 那套隧道尚未复用到这一族 |
-| 对象存储（P2） | ✅ / 🟡 | `adb-objectstore` 把四家 SDK（AWS SDK v2 / aliyun-sdk-oss / qiniu-java-sdk / cos_api）适配到同一个 `ObjectStoreSession`，另附 `InMemoryObjectStoreSession` 供无云账号环境跑行为契约。对象存储没有真目录：key 里的 `/` 配 delimiter 折叠成 `ObjectEntry.folder()` 虚拟文件夹行；不传 delimiter 时平铺，用于递归删前缀。`ObjectBrowserPage` 提供前缀面包屑、上传 / 下载 / 删一颗 / 递归删前缀 / 元数据 / 预签名 URL / 移动重命名；`ObjectStoreCapabilities` 显式声明能力，七牛 `supportsMove=false` / `supportsListBuckets=false` → 按钮置灰 + tooltip 说明 + 后端 UOE，树只显示配置的那一个桶。删除类操作由 `ObjectStoreDanger` 判成 `DESTRUCTIVE`，未知 / 空白操作 fail-closed 到 `ADMIN`。密钥只进 `CredentialStore`，`connections.json` 只留非敏感 options。⚠️ 🟡：**S3 兼容分支已有真端点证据**（`S3RealEndpointContractTest` 10 条跑真 LocalStack 4.9.2 容器，含 1001 对象跨页与预签名 URL 真 HTTP 取回；另有 `p10-object-store-real` 真端点画面帧），⭐ **OSS 已有真账号只读契约**（`OssRealEndpointContractTest` 8 例：ListObjects V1 跨 1000 条页边界、metadata 的 contentType、预签名 URL 真 HTTPS GET、urlPrefix 同域），⭐ **Kodo 已有真账号只读契约**（`QiniuRealEndpointContractTest` 12 例：11 通过 + 写契约 opt-in 跳过，覆盖 `STORE/` 层级键 4 页 3427 条跨页、公开 / 私有空间签名 URL 真 HTTP 读、`putTime` 换算、坏凭据必须失败）；⭐ 契约实跑逼出一处**产品假绿修复**：Kodo 的 `listBuckets()` 原是本地回显，坏凭据也能让向导「测试连接」通过，现 `ObjectStoreSessions.test` 四家统一在列桶后追加一次不存在前缀的真列举当握手（不拉全桶、不写数据）；**仅 COS 一家原生 SDK 仍只有编译 + 内存后端契约**；当前 `listObjects` 一次列完（SDK 内部确实跨页，但接口不暴露分页 token），超大 bucket 无渐进加载 |
+| 对象存储（P2） | ✅ / 🟡 | `adb-objectstore` 把四家 SDK（AWS SDK v2 / aliyun-sdk-oss / qiniu-java-sdk / cos_api）适配到同一个 `ObjectStoreSession`，另附 `InMemoryObjectStoreSession` 供无云账号环境跑行为契约。对象存储没有真目录：key 里的 `/` 配 delimiter 折叠成 `ObjectEntry.folder()` 虚拟文件夹行；不传 delimiter 时平铺，用于递归删前缀。`ObjectBrowserPage` 提供前缀面包屑、上传 / 下载 / 删一颗 / 递归删前缀 / 元数据 / 预签名 URL / 移动重命名；`ObjectStoreCapabilities` 显式声明能力，七牛 `supportsMove=false` / `supportsListBuckets=false` → 按钮置灰 + tooltip 说明 + 后端 UOE，树只显示配置的那一个桶。删除类操作由 `ObjectStoreDanger` 判成 `DESTRUCTIVE`，未知 / 空白操作 fail-closed 到 `ADMIN`。密钥只进 `CredentialStore`，`connections.json` 只留非敏感 options。⚠️ 🟡：**S3 兼容分支已有真端点证据**（`S3RealEndpointContractTest` 10 条跑真 LocalStack 4.9.2 容器，含 1001 对象跨页与预签名 URL 真 HTTP 取回；另有 `p10-object-store-real` 真端点画面帧），⭐ **OSS 已有真账号只读契约**（`OssRealEndpointContractTest` 8 例：ListObjects V1 跨 1000 条页边界、metadata 的 contentType、预签名 URL 真 HTTPS GET、urlPrefix 同域），⭐ **Kodo 已有真账号只读契约**（`QiniuRealEndpointContractTest` 12 例：11 通过 + 写契约 opt-in 跳过，覆盖 `STORE/` 层级键 4 页 3427 条跨页、公开 / 私有空间签名 URL 真 HTTP 读、`putTime` 换算、坏凭据必须失败）；⭐ 契约实跑逼出一处**产品假绿修复**：Kodo 的 `listBuckets()` 原是本地回显，坏凭据也能让向导「测试连接」通过，现 `ObjectStoreSessions.test` 四家统一在列桶后追加一次不存在前缀的真列举当握手（不拉全桶、不写数据）；**仅 COS 一家原生 SDK 仍只有编译 + 内存后端契约**；⭐ **渐进分页已落地**：新增 `ObjectPage` / `PageCursor` 与 `ObjectStoreSession.listObjectsPage`（四家 SDK 各自原生分页 + 服务端 delimiter 折叠，游标绑定 bucket/prefix/delimiter 且校验失败即拒绝，接口 default 只是兼容 fallback）；`ObjectBrowserPage` 首屏只取 200 行、底部「加载更多」逐页累加、按 key 去重、换前缀重置，没有下一页时页脚隐藏。旧的全量 `listObjects` 只留给递归删前缀 / 连接测试 / 既有真端点契约。⚠️ **真端点分页证据只有 S3 兼容一支**（`S3RealEndpointContractTest` 11 条里新增一条真分页契约，实跑 0 跳过）；OSS / Kodo / COS 三支分页按各自 SDK 的 marker / token 语义实现，本轮无凭据 / 无仿真服务，**没有真端点分页证据** |
 | 首启引导与 Tab 治理（P3） | ✅ | `OnboardingOverlay` 叠在 demo 自动连接之上、关后即焚（`ui.onboarding.seen`），Help 菜单可重开，验收 / 截图 / 测试会话不自动弹以保证逐帧可复现；向导首步四枚族筛选 chip 用**可见性切换**而非重建磁贴，被筛掉的选中项自动挪到该族第一张；`tabs` 命令（命令面板 + Window 菜单）打开非常驻的 `TabOverviewPanel`，按连接分组 / 搜索 / 激活 / 逐条关闭 / 按连接全关，**三条关闭回调全部回到 `TabBar.close()`**，`closeGuard` 脏检查、钉住态、常驻标签规则一条不绕过。⚠️ TabBar 分组视觉未新增，沿用既有连接名 / 库名 / 厂商图形注入；连接管理页「无连接三步上手」未单独做，由引导层三张卡片承担 |
 | 品牌资产（P3-6） | 🟡 | `redis.svg` + `aws-s3` / `aliyun-oss` / `qiniu` / `tencent-cos` 五枚落地，`TRADEMARK-NOTICE.txt` 逐枚点名 `BrandIconTest` 通过；彩色 `list.svg` 补齐图标系统。⚠️ 五枚均为**中性几何占位件**，发布前必须换成各家品牌页的原始矢量件（R4 资产阻塞） |
 | 打包 | 🟡 | `scripts/package.sh` 出 app-image / dmg / msi / deb，实测可启动；**未签名、未公证、无自动更新、无发布渠道** |
@@ -303,9 +344,11 @@
 
 - ⭐ **资产族扩展（P0–P3，2026-11-12）的四条如实边界**：
   1. ⭐ **R2 已平三支：S3 兼容协议 + 阿里云 OSS + 七牛 Kodo 三家真账号/真服务端，仅剩 COS**：
-     `S3RealEndpointContractTest`（10 条，testcontainers 起的真 `localstack/localstack:4.9.2`
-     容器 + 受信任的 HTTPS 端点）覆盖工厂连接 / 连接测试 / 列举 bucket / put→get→metadata
-     往返 / delimiter 折叠 / **1001 对象跨 ListObjectsV2 千条页边界** / 删一颗 / 递归删前缀 /
+     `S3RealEndpointContractTest`（⭐ 本轮 10 → **11 条**，testcontainers 起的真
+     `localstack/localstack:4.9.2` 容器 + 受信任的 HTTPS 端点）覆盖工厂连接 / 连接测试 /
+     列举 bucket / put→get→metadata 往返 / delimiter 折叠 /
+     **1001 对象跨 ListObjectsV2 千条页边界** / ⭐ **新增：走产品分页入口逐页走完真
+     continuationToken 并与全量列举对账、换前缀的旧游标必须被拒** / 删一颗 / 递归删前缀 /
      move 保留 contentType / 预签名 URL 用真 HTTP GET 取回；
      ⭐ `OssRealEndpointContractTest`（8 条，opt-in 真账号）覆盖 OSS 原生 SDK 的
      精确前缀列举 / delimiter / **ListObjects V1 跨 1000 条页边界**（与原生 SDK 逐页数出的
@@ -332,13 +375,20 @@
      只是 over SSH 未接（下条）。
   2. **Redis over SSH 未接入**：档案里的 SSH 段目前只作用于 SQL 连接；`RedisSessions` 在代码里
      写明这一点，界面不摆一个勾了没反应的开关。
-  3. **对象存储接口无渐进翻页（SDK 层已验跨页）**：`S3RealEndpointContractTest` 灌 1001 颗对象、
-     断言 `listObjects` 全部列回，证明 `S3ObjectStoreSession.flatList` 的 `continuationToken`
-     循环真的跨过 ListObjectsV2 的千条页边界；但 `ObjectStoreSession.listObjects` 仍一次返回整层，
-     不暴露分页 token，超大 bucket 无法渐进加载、性能边界未量。递归删前缀用不传 delimiter 的
-     平铺列举实现，删之前会走 `DESTRUCTIVE` 确认。⭐ 本轮真 OSS 账号实测该桶 >12000 对象、
-     无 `/` 层级 —— 顶层浏览仍会把整桶拉回来再交给 UI，这是分页 token 缺口在真实数据上
-     的分量，不是假想边界；契约因此只对受限前缀做跨页对账，绝不列全桶。
+  3. ⭐ **渐进分页已落地（本轮）；剩下的是真端点证据与性能量测**：新增 `ObjectPage`
+     （一页条目 + 不透明 `nextToken`）与 `PageCursor`（把 bucket/prefix/delimiter 编进游标，
+     解不开 / 上下文不符一律抛异常，不静默从首页重来）；`ObjectStoreSession.listObjectsPage`
+     由四家 SDK 会话各自覆写成真分页（S3 `continuationToken`、OSS / COS / Kodo `marker`，
+     delimiter 折叠交给服务端 `commonPrefixes`），接口 default 只是「全量后切片」的兼容
+     fallback，`ObjectStorePagingTest` 用反射钉住四家不许退化。浏览页首屏 200 行，
+     底部「加载更多」只在还有下一页时出现，逐页按 key 去重、换前缀重置、并发加载用
+     generation 丢弃过期结果。`ObjectBrowserPagingTest` 用会计数的假会话钉住 UI 没有
+     偷偷退回全量列举。旧的全量 `listObjects` 保留给递归删前缀（仍走 `DESTRUCTIVE`
+     确认）、连接测试与既有真端点契约。
+     ⚠️ **尚未验的**：真端点分页证据只有 S3 兼容一支（11 条契约里新增的那条，本轮实跑）；
+     OSS / Kodo / COS 三支分页本轮没有真账号凭据 / 仿真服务，只有编译期 SDK 类型与内存
+     后端语义门禁，**不写已验**；超大 bucket 的端到端耗时 / 内存曲线也还没量过。
+     真 OSS 账号那个 >12000 对象、无 `/` 层级的桶是这条能力的动机，不是假想边界。
   4. **画面证据：两族各有真服务端帧，OSS / Kodo 有契约无帧、COS 两者皆无（R1 转绿，R2 三支已平）**：
      六个新面同版帧已入库（`docs/screenshots/` 74 张，`md5` 零重复，逐张目视核对过），
      68 张基准帧全部重拍到当前源码。`p10-redis-keys` 拍在真 redis:7.2 容器上，
@@ -347,6 +397,9 @@
      文件夹 / 图片 / 文本 / 代码 / 未知类型的独立图标（`ObjectBrowserIconsTest` 钉住分类与资源）。
      ⚠️ 对象存储真端点帧只覆盖 S3 兼容协议一支；OSS / Kodo 有真账号只读契约但**无画面帧**
      （真账号帧会拍进生产对象名），COS 两者皆无。五枚新品牌图仍是中性几何占位件（R4）。
+     ⭐ 本轮渐进分页**没有重拍**这 74 张帧：页脚在「没有下一页」时 `visible/managed`
+     同为 false（不占位），工具带仍是 9 颗键、表格密度未动，样本桶也远小于 200 行，
+     所以画面内容不受影响；但严格意义上的「同版重拍证明」本轮没有补，不写已验。
 - **Filter & Sort 面板支持条件组（组内 AND、组间 OR）**：`[Ω]`（加 OR 条件组）已落地真实能力——
   按 `MAX_GROUPS=8` 新增组、组间 `OR` 连接、组内 `AND`（单组等价于旧版平铺 AND，SQL 输出逐字节兼容）；
   `IN` 条件仍由列头漏斗的候选值多选提供，面板内原样保留、不可行内编辑；Text 模式是**只读**的生成表达式。

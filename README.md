@@ -34,7 +34,7 @@ deliberately does not do those things ([why](#explicitly-not-on-the-roadmap)).
 | **SQL Server** | ✅ 2019+ — `sys.*` catalog queries confirmed against a real server |
 | **Oracle** | ✅ 12c+ — `ALL_*` catalog queries and `DBMS_METADATA` confirmed against a real server |
 | **Redis** | ✅ key browsing (`SCAN`, type, TTL, size), value view/edit for five types, TTL and `DEL` / `FLUSHDB` / `FLUSHALL` behind the shared destructive-confirm gate. ⚠️ Redis over SSH is not wired up yet |
-| **Object storage** | ✅ one browser for four providers: S3-compatible endpoints (AWS S3, MinIO, LocalStack), Alibaba Cloud OSS, Qiniu Kodo and Tencent Cloud COS. Prefix navigation, upload / download, single-object and recursive-prefix delete, metadata, presigned URLs and move/rename. Credentials live in the system credential store, never in `connections.json`. ⭐ The S3-compatible branch has a real LocalStack endpoint contract + a matching UI frame, and Alibaba Cloud OSS and Qiniu Kodo both have real-account read-only contracts (credentials from environment variables only, no writes by default); COS is compile-and-in-memory only — see Limitations |
+| **Object storage** | ✅ one browser for four providers: S3-compatible endpoints (AWS S3, MinIO, LocalStack), Alibaba Cloud OSS, Qiniu Kodo and Tencent Cloud COS. Prefix navigation, upload / download, single-object and recursive-prefix delete, metadata, presigned URLs and move/rename. ⭐ **Progressive paging**: 200 rows per screen via server-side tokens, with a "Load more" footer that only appears when there really is a next page; the cursor is bound to bucket/prefix/delimiter. Credentials live in the system credential store, never in `connections.json`. ⭐ The S3-compatible branch has a real LocalStack endpoint contract (11 cases, including the paged listing) + a matching UI frame, and Alibaba Cloud OSS and Qiniu Kodo both have real-account read-only contracts (credentials from environment variables only, no writes by default); COS is compile-and-in-memory only — see Limitations |
 
 ✅ for the last three means the dialect, DDL generation, paging and capability gates are covered by
 unit tests **and** executed against real servers in the Docker matrix (`scripts/dbmatrix.sh`, opt-in
@@ -243,13 +243,14 @@ every pull request is reviewed against. Design rules are in
   `ssh` binary) with OpenSSH `known_hosts` host keys and a TOFU fingerprint prompt; the connection
   wizard's SSH page is a real form. Only RSA / ECDSA private keys are supported (ed25519 is not),
   which the wizard states next to the field.
-- **Object storage: S3-compatible and Alibaba Cloud OSS have real-endpoint evidence; the two
-  remaining native SDK adapters do not.** `S3RealEndpointContractTest` runs 10 cases against a real
+- **Object storage: three of four providers have real-endpoint evidence; Tencent COS does not.**
+  `S3RealEndpointContractTest` runs 11 cases against a real
   `localstack/localstack:4.9.2` container over a trusted HTTPS endpoint — bucket listing,
   put/get/metadata, delimiter folding, **1001 objects across the ListObjectsV2 page boundary**,
-  single-object and recursive-prefix delete, move with MIME preservation, and a presigned URL
-  fetched with a real HTTP GET. All cases go through the product's own
-  `ObjectStoreSessions.connect` factory. `p10-object-store-real.png` is the matching UI frame.
+  **the paged listing API walking real continuation tokens**, single-object and recursive-prefix
+  delete, move with MIME preservation, and a presigned URL fetched with a real HTTP GET. All cases
+  go through the product's own `ObjectStoreSessions.connect` factory.
+  `p10-object-store-real.png` is the matching UI frame.
   `OssRealEndpointContractTest` adds 8 opt-in cases against a real Alibaba Cloud OSS account
   (bucket listing, marker paging across the 1000-object boundary checked against the native SDK,
   metadata, and a presigned URL fetched over real HTTPS); credentials are read only from
@@ -260,9 +261,15 @@ every pull request is reviewed against. Design rules are in
   URLs fetched over real HTTPS, and a bad-credential rejection that exposed a false-green connection
   test); credentials come only from `ADB_TEST_KODO_*` and writes are opt-in. Tencent COS still has
   only compile-time SDK types plus the in-memory contract suite, so "all four providers connect" is
-  not a claim this project makes. The browser still lists a whole delimiter level in one call —
-  measured on buckets with over 12,000 objects — so there is no progressive pagination for very
-  large buckets.
+  not a claim this project makes.
+  **Progressive paging is delivered**: `ObjectStoreSession.listObjectsPage` returns one page plus
+  an opaque cursor bound to bucket/prefix/delimiter; all four SDK sessions implement it with their
+  native continuation token / marker and server-side delimiter folding, and the browser loads
+  200 rows at a time with a "Load more" footer. The old whole-level `listObjects` entry stays for
+  recursive prefix delete, connection probes and the existing real-endpoint contracts — it no
+  longer feeds the table. ⚠️ Only the S3-compatible branch has **real-endpoint evidence for the
+  paged path**; OSS, Kodo and COS paging follows each SDK's token semantics but has not been
+  exercised against a real account or simulator (no credentials / simulator available this round).
   ⚠️ A plain `http://` S3-compatible endpoint is not supported yet: AWS SDK 2.31 sends
   `Expect: 100-continue` with streaming SigV4 and some gateways never answer it, so uploads stall
   until read timeout. Use an HTTPS endpoint.

@@ -88,6 +88,21 @@ class DocLedgerAuditTest {
                     "record FilterGroup",
                     List.of("只有平铺 and",
                             "or 组.*说明页")),
+            /**
+             * ⭐ 2026-11-15 第三轮：分页能力刚落地时，三份公开文档里同时留着
+             * 「一次列完整层」「不暴露分页 token」「no progressive pagination」等旧口径。
+             * 逐处改完还不够 —— 把它们收进棘轮，下次谁再把已交付写成未完成就红。
+             */
+            new Capability("对象存储渐进分页",
+                    "workbench/adb-objectstore/src/main/java/io/agenticdb/objectstore/ObjectPage.java",
+                    "record ObjectPage",
+                    List.of("无渐进翻页",
+                            "不暴露分页 token",
+                            "无渐进加载",
+                            "无法渐进加载",
+                            "分页 token 缺口",
+                            "no progressive pagination",
+                            "lists a whole delimiter level in one call")),
             new Capability("ER 图（用户裁定不做）",
                     null, null,
                     List.of("只读 er 图.*评估",

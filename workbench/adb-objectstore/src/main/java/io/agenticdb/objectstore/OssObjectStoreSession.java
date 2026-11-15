@@ -11,7 +11,9 @@ import com.aliyun.oss.model.ObjectMetadata;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 阿里云 OSS 适配器（{@code aliyun-sdk-oss}）。
@@ -20,8 +22,10 @@ import java.util.List;
  * 凭据为 AccessKeyId / AccessKeySecret。列举按 marker 翻页直到取完，
  * 不做「只显示第一页」的假完整。
  *
- * <p>⚠️ 阿里云 OSS 原生协议<b>仍无真端点证据</b>（R2 剩余阻塞项）；
- * 本类只有编译期 SDK 类型 + 内存后端行为契约，不宣称连过真实 OSS。
+ * <p>⭐ 原生 SDK 已有真账号只读证据：{@code OssRealEndpointContractTest} 走产品同一条
+ * 工厂连真实北京区域账号，验过列桶 / 精确前缀 / delimiter / ListObjects V1 跨千条页边界 /
+ * metadata 的 contentType / 预签名 URL 真 HTTPS GET。凭据只从环境变量读，
+ * 写契约 opt-in；这仍是<b>一家账号的只读证据</b>，不是「所有 OSS 端点都验过」。
  */
 public final class OssObjectStoreSession extends AbstractObjectStoreSession {
 
@@ -57,9 +61,7 @@ public final class OssObjectStoreSession extends AbstractObjectStoreSession {
         while (true) {
             ObjectListing page = client.listObjects(req);
             for (OSSObjectSummary s : page.getObjectSummaries()) {
-                out.add(new ObjectMeta(s.getKey(), s.getSize(),
-                        SdkSupport.instant(s.getLastModified()),
-                        SdkSupport.safe(s.getETag()), "", ""));
+                out.add(meta(s));
             }
             String next = page.getNextMarker();
             if (next == null || next.isBlank()) {
@@ -68,6 +70,57 @@ public final class OssObjectStoreSession extends AbstractObjectStoreSession {
             req.setMarker(next);
         }
         return out;
+    }
+
+    /**
+     * ⭐ 浏览页的真分页：ListObjects V1 的 marker + maxKeys，文件夹由服务端
+     * {@code commonPrefixes} 折叠。真账号那个 &gt;12000 对象的桶就是这条入口要解决的形状。
+     */
+    @Override
+    public ObjectPage listObjectsPage(String bucket, String prefix, String delimiter,
+                                      String cursor, int maxKeys) {
+        String safePrefix = prefix == null ? "" : prefix;
+        String safeDelimiter = delimiter == null ? "" : delimiter;
+        String marker = PageCursor.tokenFor(cursor, bucket, safePrefix, safeDelimiter);
+        ListObjectsRequest req = new ListObjectsRequest(bucket);
+        req.setPrefix(safePrefix);
+        req.setMaxKeys(PageCursor.pageSize(maxKeys));
+        if (!safeDelimiter.isBlank()) {
+            req.setDelimiter(safeDelimiter);
+        }
+        if (marker != null) {
+            req.setMarker(marker);
+        }
+        ObjectListing page = client.listObjects(req);
+        Map<String, ObjectEntry> rows = new LinkedHashMap<>();
+        if (page.getCommonPrefixes() != null) {
+            for (String cp : page.getCommonPrefixes()) {
+                rows.putIfAbsent(cp, ObjectEntry.folder(cp));
+            }
+        }
+        for (OSSObjectSummary s : page.getObjectSummaries()) {
+            rows.putIfAbsent(s.getKey(), ObjectEntry.object(meta(s)));
+        }
+        String next = null;
+        if (page.isTruncated()) {
+            String token = page.getNextMarker();
+            if (token == null || token.isBlank()) {
+                // V1 在平铺模式下不保证回 nextMarker：约定用本页最后一条 key 当下一页起点。
+                for (String key : rows.keySet()) {
+                    token = key;
+                }
+            }
+            if (token != null && !token.isBlank()) {
+                next = PageCursor.of(bucket, safePrefix, safeDelimiter, token);
+            }
+        }
+        return new ObjectPage(new ArrayList<>(rows.values()), next);
+    }
+
+    private static ObjectMeta meta(OSSObjectSummary s) {
+        return new ObjectMeta(s.getKey(), s.getSize(),
+                SdkSupport.instant(s.getLastModified()),
+                SdkSupport.safe(s.getETag()), "", "");
     }
 
     @Override

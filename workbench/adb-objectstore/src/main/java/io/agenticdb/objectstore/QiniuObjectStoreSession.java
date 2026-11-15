@@ -14,7 +14,9 @@ import java.io.InputStream;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 七牛云 Kodo 适配器（{@code qiniu-java-sdk}）—— <b>能力差异最大</b>的一家。
@@ -32,8 +34,10 @@ import java.util.List;
  * <p>putTime 单位是 100 纳秒，除以 10000 才是毫秒 —— 这里统一换算，
  * 避免 UI 上的「最后修改」显示成公元 1970 年。
  *
- * <p>⚠️ 七牛 Kodo 原生协议<b>仍无真端点证据</b>（R2 剩余阻塞项）；
- * 本类只有编译期 SDK 类型 + 内存后端行为契约，不宣称连过真实 Kodo。
+ * <p>⭐ 原生 SDK 已有真账号只读证据：{@code QiniuRealEndpointContractTest} 对公开 /
+ * 私有两空间验过签名列举 / {@code STORE/} 层级键 4 页 3427 条跨 marker 页边界 /
+ * stat 的 mimeType 与 putTime / 公开与签名 URL 真 HTTPS GET / 坏凭据必须失败。
+ * 凭据只从环境变量读，写契约 opt-in。
  */
 public final class QiniuObjectStoreSession extends AbstractObjectStoreSession {
 
@@ -70,10 +74,7 @@ public final class QiniuObjectStoreSession extends AbstractObjectStoreSession {
                 FileListing page = bucketManager.listFilesV2(bucket, prefix, marker, 1000, "");
                 if (page.items != null) {
                     for (FileInfo f : page.items) {
-                        // ⭐ mimeType 是 MIME，不是存储类型：早年塞进 storageClass 是语义错位，
-                        //    与 S3/OSS/COS 的 contentType 字段对齐（R2 真端点契约抓出）。
-                        out.add(new ObjectMeta(f.key, f.fsize, qiniuTime(f.putTime),
-                                SdkSupport.safe(f.hash), "", SdkSupport.safe(f.mimeType)));
+                        out.add(meta(f));
                     }
                 }
                 if (page.isEOF() || page.marker == null || page.marker.isBlank()) {
@@ -85,6 +86,48 @@ public final class QiniuObjectStoreSession extends AbstractObjectStoreSession {
             throw SdkSupport.wrap("listObjects", e);
         }
         return out;
+    }
+
+    /**
+     * ⭐ 浏览页的真分页：Kodo 的 listFilesV2 传 delimiter 时由服务端给
+     * {@code commonPrefixes}，续页凭证是 marker。
+     *
+     * <p>⚠️ {@code FileListing.isEOF()} 在 SDK 里就是「marker 为空」（已核字节码），
+     * 因此有无下一页的唯一判据是 marker 非空；UI 侧按 key 去重，重复页不会插回两遍。
+     */
+    @Override
+    public ObjectPage listObjectsPage(String bucket, String prefix, String delimiter,
+                                      String cursor, int maxKeys) {
+        String safePrefix = prefix == null ? "" : prefix;
+        String safeDelimiter = delimiter == null ? "" : delimiter;
+        String marker = PageCursor.tokenFor(cursor, bucket, safePrefix, safeDelimiter);
+        try {
+            FileListing page = bucketManager.listFilesV2(
+                    bucket, safePrefix, marker, PageCursor.pageSize(maxKeys), safeDelimiter);
+            Map<String, ObjectEntry> rows = new LinkedHashMap<>();
+            if (page.commonPrefixes != null) {
+                for (String cp : page.commonPrefixes) {
+                    rows.putIfAbsent(cp, ObjectEntry.folder(cp));
+                }
+            }
+            if (page.items != null) {
+                for (FileInfo f : page.items) {
+                    rows.putIfAbsent(f.key, ObjectEntry.object(meta(f)));
+                }
+            }
+            String next = page.marker != null && !page.marker.isBlank()
+                    ? PageCursor.of(bucket, safePrefix, safeDelimiter, page.marker) : null;
+            return new ObjectPage(new ArrayList<>(rows.values()), next);
+        } catch (QiniuException e) {
+            throw SdkSupport.wrap("listObjectsPage", e);
+        }
+    }
+
+    private static ObjectMeta meta(FileInfo f) {
+        // ⭐ mimeType 是 MIME，不是存储类型：早年塞进 storageClass 是语义错位，
+        //    与 S3/OSS/COS 的 contentType 字段对齐（R2 真端点契约抓出）。
+        return new ObjectMeta(f.key, f.fsize, qiniuTime(f.putTime),
+                SdkSupport.safe(f.hash), "", SdkSupport.safe(f.mimeType));
     }
 
     @Override
