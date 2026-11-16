@@ -9,6 +9,19 @@
 
 ## [Unreleased]
 
+### Added — 2026-11-16：Redis over SSH
+
+- **Redis 连接现在也能走 SSH 隧道**：档案启用 SSH 时，`RedisSessions.connect` 复用 SQL 那套
+  纯 Java 隧道（`SshTunnel`）开本地端口转发，让 Lettuce 连环回口；连接失败透出隧道错误、
+  会话关闭时释放隧道。`RedisSession.via()` 如实报告跳板机，界面四处 connect 调用透传
+  SSH 秘密（只从凭据库取、不进 `connections.json`），成功状态栏附「经 {跳板机} 跳转」，
+  不摆一个勾了没反应的开关。
+- **端到端门禁**：`RedisSshTunnelTest` 4 例用进程内 MINA 跳板机 + 真 `redis:7.2` 容器验证
+  SCAN 确实经隧道转发、`via()` 报告正确、错误口令报为隧道失败、关闭后本地端口释放；
+  `DocLedgerAuditTest` 新增「Redis over SSH 已交付」文档棘轮。证据是集成测试级，
+  不是真云堡垒机账号。
+- 公开文档（README / ROADMAP / STATUS）中六处「Redis over SSH 未接入」按新事实改写。
+
 ### Added — 2026-11-15（第三轮）：对象存储渐进分页
 
 - **一页一页地列，不再把整桶拉回内存**：新增 `ObjectPage`（一页条目 + 不透明

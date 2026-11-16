@@ -7,6 +7,7 @@ import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.ScoredValue;
+import io.agenticdb.jdbc.SshTunnel;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -31,10 +32,14 @@ final class LettuceRedisSession implements RedisSession {
     private final RedisClient client;
     private final StatefulRedisConnection<String, String> connection;
     private final RedisCommands<String, String> sync;
+    /** SSH 隧道（直连时为 {@code null}）。会话关闭时一并释放，避免本地端口与 SSH 会话泄漏。 */
+    private final SshTunnel tunnel;
 
-    LettuceRedisSession(RedisClient client, StatefulRedisConnection<String, String> connection) {
+    LettuceRedisSession(RedisClient client, StatefulRedisConnection<String, String> connection,
+                        SshTunnel tunnel) {
         this.client = client;
         this.connection = connection;
+        this.tunnel = tunnel;
         this.sync = connection.sync();
     }
 
@@ -239,11 +244,24 @@ final class LettuceRedisSession implements RedisSession {
     }
 
     @Override
+    public String via() {
+        return tunnel == null ? "" : tunnel.via();
+    }
+
+    /** 测试用：隧道在本地绑的端口（直连为 -1），证会话关闭后端口确实释放。 */
+    int tunnelLocalPort() {
+        return tunnel == null ? -1 : tunnel.localPort();
+    }
+
+    @Override
     public void close() {
         try {
             connection.close();
         } finally {
             client.shutdown();
+            if (tunnel != null) {
+                tunnel.close();
+            }
         }
     }
 }

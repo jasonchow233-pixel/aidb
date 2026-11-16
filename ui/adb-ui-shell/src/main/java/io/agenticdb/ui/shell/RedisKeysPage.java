@@ -4,6 +4,7 @@ import io.agenticdb.redis.RedisKey;
 import io.agenticdb.redis.RedisSession;
 import io.agenticdb.redis.RedisSessions;
 import io.agenticdb.session.ConnectionProfile;
+import io.agenticdb.session.SshSecrets;
 import io.agenticdb.ui.I18n;
 import io.agenticdb.ui.Icons;
 import javafx.application.Platform;
@@ -35,6 +36,7 @@ final class RedisKeysPage extends VBox {
 
     private final ConnectionProfile profile;
     private final String password;
+    private final SshSecrets sshSecrets;
     private final int db;
 
     private final TableView<RedisKey> table = new TableView<>();
@@ -47,9 +49,10 @@ final class RedisKeysPage extends VBox {
     private volatile boolean busy;
     private boolean activated;
 
-    RedisKeysPage(TabItem tab, ConnectionProfile profile, String password) {
+    RedisKeysPage(TabItem tab, ConnectionProfile profile, String password, SshSecrets sshSecrets) {
         this.profile = profile;
         this.password = password == null ? "" : password;
+        this.sshSecrets = sshSecrets == null ? SshSecrets.NONE : sshSecrets;
         this.db = parseDb(tab.target());
 
         getStyleClass().add("adb-page");
@@ -205,14 +208,20 @@ final class RedisKeysPage extends VBox {
             try {
                 RedisSession s = session;
                 if (s == null) {
-                    s = RedisSessions.connect(profile, password);
+                    s = RedisSessions.connect(profile, password, sshSecrets);
                     session = s;
                 }
-                List<RedisKey> keys = List.copyOf(s.scan(db, prefix, typeFilter));
+                final RedisSession established = s;
+                List<RedisKey> keys = List.copyOf(established.scan(db, prefix, typeFilter));
                 Platform.runLater(() -> {
                     table.getItems().setAll(keys);
                     // ⚠️ 数量要按数取形：1 个 = "1 key"，其余 = "N keys"，避免「1 keys」的硬复数。
-                    statusLabel.setText(I18n.tPlural("redis.keys.count", keys.size(), keys.size()));
+                    String status = I18n.tPlural("redis.keys.count", keys.size(), keys.size());
+                    // 经 SSH 隧道时如实标注，避免「摆出隧道却没真用」的假状态。
+                    if (established.via() != null && !established.via().isBlank()) {
+                        status += I18n.t("redis.keys.via", established.via());
+                    }
+                    statusLabel.setText(status);
                     busy = false;
                 });
             } catch (Exception e) {
@@ -239,7 +248,7 @@ final class RedisKeysPage extends VBox {
     private RedisSession ensureSession() {
         RedisSession s = session;
         if (s == null) {
-            s = RedisSessions.connect(profile, password);
+            s = RedisSessions.connect(profile, password, sshSecrets);
             session = s;
         }
         return s;

@@ -92,6 +92,16 @@ public interface RedisSession extends AutoCloseable {
     /** 清空所有库（跨库，等价于 redis-cli FLUSHALL）。 */
     void flushAll();
 
+    /**
+     * 连接经哪台 SSH 跳板机（{@code 用户@主机:端口}）；直连时返回空串。
+     *
+     * <p>界面据此在状态栏标注「经隧道」，避免「摆出隧道却没真用」的假状态 ——
+     * 与 SQL 连接那一侧的 {@code ConnectionSpec.via} 同口径。
+     */
+    default String via() {
+        return "";
+    }
+
     @Override
     void close();
 }

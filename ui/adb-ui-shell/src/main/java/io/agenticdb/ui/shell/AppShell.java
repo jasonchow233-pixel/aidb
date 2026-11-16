@@ -1906,7 +1906,7 @@ public final class AppShell extends StackPane {
     private void verifyNonSqlConnection(ConnectionProfile profile) throws Exception {
         if (profile.kind().isRedis()) {
             try (RedisSession handshake = RedisSessions.connect(profile,
-                    passwordFor(profile.id()))) {
+                    passwordFor(profile.id()), sshSecretsFor(profile.id()))) {
                 handshake.databases();
             }
             return;
@@ -2423,7 +2423,8 @@ public final class AppShell extends StackPane {
 
     /** ⭐ EXT（P1-3）：Redis 连接测试 —— 真实握一次手（{@code INFO keyspace} 取库清单）。 */
     private String testRedisConnection(ConnectionProfile profile, String password) {
-        try (RedisSession session = RedisSessions.connect(profile, password)) {
+        try (RedisSession session = RedisSessions.connect(profile, password,
+                sshSecretsFor(profile.id()))) {
             session.databases();
             return null;
         } catch (Exception e) {
@@ -2461,7 +2462,7 @@ public final class AppShell extends StackPane {
             return startupErrorPage(tab);
         }
         String password = passwordFor(tab.connectionId());
-        return new RedisKeysPage(tab, profile, password);
+        return new RedisKeysPage(tab, profile, password, sshSecretsFor(tab.connectionId()));
     }
 
     /**
@@ -2477,7 +2478,8 @@ public final class AppShell extends StackPane {
         }
         String password = passwordFor(connectionId);
         new Thread(() -> {
-            try (RedisSession session = RedisSessions.connect(profile, password)) {
+            try (RedisSession session = RedisSessions.connect(profile, password,
+                    sshSecretsFor(connectionId))) {
                 List<Integer> dbs = session.databases();
                 javafx.application.Platform.runLater(() -> sideBar.setRedisDbs(connectionId, dbs));
             } catch (Exception e) {

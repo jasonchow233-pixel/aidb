@@ -33,7 +33,7 @@ deliberately does not do those things ([why](#explicitly-not-on-the-roadmap)).
 | **MariaDB** | ✅ 10.x / 11.x — catalog SQL and DDL confirmed against a real server |
 | **SQL Server** | ✅ 2019+ — `sys.*` catalog queries confirmed against a real server |
 | **Oracle** | ✅ 12c+ — `ALL_*` catalog queries and `DBMS_METADATA` confirmed against a real server |
-| **Redis** | ✅ key browsing (`SCAN`, type, TTL, size), value view/edit for five types, TTL and `DEL` / `FLUSHDB` / `FLUSHALL` behind the shared destructive-confirm gate. ⚠️ Redis over SSH is not wired up yet |
+| **Redis** | ✅ key browsing (`SCAN`, type, TTL, size), value view/edit for five types, TTL and `DEL` / `FLUSHDB` / `FLUSHALL` behind the shared destructive-confirm gate. ⭐ **Redis over SSH** reuses the same pure-Java tunnel as SQL connections (end-to-end verified in `RedisSshTunnelTest` against an in-process bastion and a real `redis:7.2` container) |
 | **Object storage** | ✅ one browser for four providers: S3-compatible endpoints (AWS S3, MinIO, LocalStack), Alibaba Cloud OSS, Qiniu Kodo and Tencent Cloud COS. Prefix navigation, upload / download, single-object and recursive-prefix delete, metadata, presigned URLs and move/rename. ⭐ **Progressive paging**: 200 rows per screen via server-side tokens, with a "Load more" footer that only appears when there really is a next page; the cursor is bound to bucket/prefix/delimiter. Credentials live in the system credential store, never in `connections.json`. ⭐ The S3-compatible branch has a real LocalStack endpoint contract (11 cases, including the paged listing) + a matching UI frame, and Alibaba Cloud OSS and Qiniu Kodo both have real-account read-only contracts (credentials from environment variables only, no writes by default); COS is compile-and-in-memory only — see Limitations |
 
 ✅ for the last three means the dialect, DDL generation, paging and capability gates are covered by
@@ -275,8 +275,10 @@ every pull request is reviewed against. Design rules are in
   until read timeout. Use an HTTPS endpoint.
   **Redis** has 14 contract cases on a real `redis:7.2` testcontainers instance (including a real
   FLUSHALL mutation check) and a matching frame shot against that container.
-- **Redis over SSH is not wired up**: `RedisSessions` states this in code. SQL connections still
-  support the pure-Java SSH tunnel; Redis connections currently go direct.
+- **Redis over SSH is wired up**: `RedisSessions` opens the same pure-Java (Apache MINA sshd)
+  local-port forward as SQL connections and points Lettuce at the loopback port; the new
+  `RedisSshTunnelTest` proves the tunnel forwards real bytes to a `redis:7.2` container behind an
+  in-process bastion. SSH secrets come from the credential store, never `connections.json`.
 - **Five new brand marks are neutral geometric placeholders** (`redis`, `aws-s3`, `aliyun-oss`,
   `qiniu`, `tencent-cos`). `TRADEMARK-NOTICE.txt` names each one; official vector assets must
   replace them before any public release.

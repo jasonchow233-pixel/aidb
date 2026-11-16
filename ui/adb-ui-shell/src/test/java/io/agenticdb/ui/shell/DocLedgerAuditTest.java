@@ -103,6 +103,18 @@ class DocLedgerAuditTest {
                             "分页 token 缺口",
                             "no progressive pagination",
                             "lists a whole delimiter level in one call")),
+            /**
+             * ⭐ 2026-11-15 第四轮：Redis over SSH 刚接入（P1-1 闭环）。公开文档此前同时留着
+             * "Redis over SSH is not wired up" / "Redis over SSH 未接入" / "SSH 段不作用于 Redis"
+             * 等旧口径，逐处改完还不够 —— 把它们收进棘轮，下次谁再把已交付写成未完成就红。
+             */
+            new Capability("Redis over SSH",
+                    "workbench/adb-redis/src/main/java/io/agenticdb/redis/RedisSessions.java",
+                    "SshTunnel.open",
+                    List.of("redis over ssh is not wired up",
+                            "redis over ssh 未接入",
+                            "redis connections currently go direct",
+                            "ssh 段目前不作用于 redis")),
             new Capability("ER 图（用户裁定不做）",
                     null, null,
                     List.of("只读 er 图.*评估",
@@ -200,7 +212,9 @@ class DocLedgerAuditTest {
                 "3. **数据脱敏导出** —— 此前为「如实说明页」，现转为真实能力",
                 "底层 `DataQuery` 只有平铺 AND —— `and` 固定，`[Ω]`（OR 组）给如实说明页",
                 "4. **ER 图（只读结构图）** —— 评估并落地只读实体关系图",
-                "⚠️ 口径分清：**只读 ER 图**仍在评估、未承诺");
+                "⚠️ 口径分清：**只读 ER 图**仍在评估、未承诺",
+                "Redis over SSH is not wired up yet — the connection wizard says so",
+                "⚠️ Redis over SSH 未接入（还在说明页）");
 
         List<Pattern> all = CAPABILITIES.stream()
                 .flatMap(c -> c.forbidden().stream())

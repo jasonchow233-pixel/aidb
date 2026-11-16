@@ -28,6 +28,11 @@
       <groupId>io.agenticdb</groupId>
       <artifactId>adb-session</artifactId>
     </dependency>
+    <!-- 纯 Java SSH 隧道（SshTunnel / SshEndpoint）：Redis over SSH 复用 SQL 那一套，不包 ssh -L。 -->
+    <dependency>
+      <groupId>io.agenticdb</groupId>
+      <artifactId>adb-jdbc</artifactId>
+    </dependency>
     <!-- Lettuce：netty 异步 Redis 客户端（EXT 规划 Q3）。 -->
     <dependency>
       <groupId>io.lettuce</groupId>
@@ -48,6 +53,12 @@
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>testcontainers</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- 进程内 SSH 跳板机（Redis over SSH 集成门禁，与 SshTunnelTest 同款）。 -->
+    <dependency>
+      <groupId>org.apache.sshd</groupId>
+      <artifactId>sshd-core</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

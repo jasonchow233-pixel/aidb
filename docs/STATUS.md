@@ -7,7 +7,36 @@
 
 ## 1. 验证基线
 
-### 当前工作树（2026-11-15 第三轮，对象存储渐进分页 · 全量门禁已绿）
+### 当前工作树（2026-11-16，Redis over SSH · 全量门禁已绿）
+
+- **2223 执行 / 0 失败 / 26 跳过 / 232 个测试类**，`BUILD SUCCESS`、**16/16 模块 SUCCESS**。
+  命令 `set -a && . scripts/.dbmatrix.env && set +a && MAVEN_OPTS=-Xmx3g MAVEN_ARGS=-o ./scripts/build.sh`
+  （= `./mvnw -B clean verify` + `java tools/TestCount.java`），
+  2026-11-16 22:06 +08:00、本机 Darwin 24.6.0 x86_64、Temurin JDK 25.0.5，
+  Total time **33:10 min**；验证时源码为提交 `5d2c99a` 之上的本轮工作树
+  （13 改 + 1 新增，共 14 个文件），全量期间未改动任何文件。
+  ⚠️ 本轮**没有** `ADB_TEST_OSS_*` / `ADB_TEST_KODO_*` 凭据（凭据只从环境变量读、
+  仓库零字面量），那两类真账号只读契约整类跳过（OSS 8 + Kodo 12 = 20 条）；
+  另外 6 条是设计如此：`adb-session` 5 条 Windows 凭据管理器（本机 macOS）、
+  `adb-jdbc` 1 条 `DatabaseVersionMatrixTest`（需 `ADB_TEST_VERSION_MATRIX=1`）。
+  账闭环：较上一轮 **2219 / 26 / 231 类**，本轮 +4 条执行、+1 个测试类
+  （全部来自新增 `RedisSshTunnelTest`）→ **2223 执行 / 232 类**，跳过 26 不变。
+- ⭐ **一次环境性 JVM 崩溃已排除，不是代码缺陷、也不是靠调断言过的**：首次全量在 UI Shell
+  最后一个 fork（`ObjectHeaderAndTabsTest`）上 `The forked VM terminated without properly
+  saying goodbye`，退出码 0、无 dump / 无报告，而此前 337 个测试全绿。单独重跑该类
+  **9/9 通过**，判定为 TestFX 无头渲染的偶发 JVM 崩溃；`MAVEN_OPTS=-Xmx3g` 后 clean 重跑
+  全量得上面的全绿。日志中另有 Monocle `Too small int buffer size` 告警，属无头渲染告警、
+  不影响测试结果。
+- ⭐ **Redis over SSH 已接入并端到端验证**：`RedisSessions.connect` 新增带 `SshSecrets`
+  的重载，档案启用 SSH 时复用 SQL 那套纯 Java 隧道（`SshTunnel`）开本地端口转发，
+  让 Lettuce 连环回口；失败透出隧道错误、关闭时释放隧道。`RedisSession.via()` 报告跳板机，
+  UI 四处 connect 调用透传 `sshSecretsFor(...)`、状态栏附「经 {bastion} 跳转」。
+  `RedisSshTunnelTest` 4 例用进程内 MINA 跳板机 + 真 `redis:7.2` 容器端到端验证
+  转发生效 / via 报告 / 错误口令报为隧道失败 / 关闭释放本地端口，本轮 4/4 实跑。
+  ⚠️ 证据是**集成测试级**（进程内跳板机 + 真 Redis 容器），不是真云堡垒机账号。
+- ⚠️ **74 张帧本轮未重拍**：SSH 接线不改变键浏览器画面内容，严格「同版重拍证明」未补。
+
+### 上一轮全量（2026-11-15 第三轮，对象存储渐进分页 · 提交 9c4a1da）
 
 - **2219 执行 / 0 失败 / 26 跳过 / 231 个测试类**，`BUILD SUCCESS`、**16/16 模块 SUCCESS**。
   命令 `set -a && . scripts/.dbmatrix.env && set +a && MAVEN_ARGS=-o ./scripts/build.sh`
@@ -281,7 +310,7 @@
 | 界面语言 | ✅ | 英文（默认）· 简体中文；主源码里的硬编码汉字由棘轮压到 8 条（且那 8 条是**输入 token**，不是文案） |
 | 可观测性 | ✅ | `StartupTrace` 分段打点 → `~/.agenticdb/logs/startup.log`；诊断页 |
 | 资产族地基（P0） | ✅ | `AssetKind` 取代 `DialectKind` 成为 `ConnectionProfile` 的判别轴；`AssetFamily` / `AssetFamilyRegistry` 是「加一种连接类型 = 一处登记」的单一真相源（SQL 6 家 + Redis 1 家 + 对象存储 4 家 = 11 张磁贴）。四类对象存储合并成一个 `OBJECT_STORE` kind + `ObjectStoreProvider` 子判别，不拆四个 kind；旧档案 `kind` 写枚举名仍可读，无需迁移。`DialectBranchAuditTest` 禁止 UI 硬编码资产族常量，`AssetFamilyFilterAuditTest` 动态断「注册表加一族 → 向导筛选带必须加一枚 chip」 |
-| Redis 管理（P1） | ✅ | `adb-redis`（Lettuce）：按 `INFO keyspace` 懒加载 db 分组，`SCAN` 出 key / type / TTL / size；`RedisKeysPage` 前缀 + 类型过滤，五种值类型抽屉查看/编辑，TTL、`DEL`、`FLUSHDB`、`FLUSHALL` 全走 `RedisDanger` 分级 + `DestructiveConfirm`（取消为默认按钮）。`RedisScanTest` / `RedisMutateTest` / `RedisTreeTest` 钉住内省、写安全与双击路由。⚠️ **Redis over SSH 未接入**（`RedisSessions` 类注释如实写明），SQL 那套隧道尚未复用到这一族 |
+| Redis 管理（P1） | ✅ | `adb-redis`（Lettuce）：按 `INFO keyspace` 懒加载 db 分组，`SCAN` 出 key / type / TTL / size；`RedisKeysPage` 前缀 + 类型过滤，五种值类型抽屉查看/编辑，TTL、`DEL`、`FLUSHDB`、`FLUSHALL` 全走 `RedisDanger` 分级 + `DestructiveConfirm`（取消为默认按钮）。`RedisScanTest` / `RedisMutateTest` / `RedisTreeTest` 钉住内省、写安全与双击路由。⭐ **Redis over SSH 已接入**：`RedisSessions` 复用 SQL 那套纯 Java 隧道（`SshTunnel`），启用时开本地端口转发、让 Lettuce 连环回口；`RedisSshTunnelTest` 进程内跳板机 + 真 `redis:7.2` 容器端到端验证转发生效、错误口令报为隧道失败、关闭后释放本地端口。SSH 秘密只从凭据库取。|
 | 对象存储（P2） | ✅ / 🟡 | `adb-objectstore` 把四家 SDK（AWS SDK v2 / aliyun-sdk-oss / qiniu-java-sdk / cos_api）适配到同一个 `ObjectStoreSession`，另附 `InMemoryObjectStoreSession` 供无云账号环境跑行为契约。对象存储没有真目录：key 里的 `/` 配 delimiter 折叠成 `ObjectEntry.folder()` 虚拟文件夹行；不传 delimiter 时平铺，用于递归删前缀。`ObjectBrowserPage` 提供前缀面包屑、上传 / 下载 / 删一颗 / 递归删前缀 / 元数据 / 预签名 URL / 移动重命名；`ObjectStoreCapabilities` 显式声明能力，七牛 `supportsMove=false` / `supportsListBuckets=false` → 按钮置灰 + tooltip 说明 + 后端 UOE，树只显示配置的那一个桶。删除类操作由 `ObjectStoreDanger` 判成 `DESTRUCTIVE`，未知 / 空白操作 fail-closed 到 `ADMIN`。密钥只进 `CredentialStore`，`connections.json` 只留非敏感 options。⚠️ 🟡：**S3 兼容分支已有真端点证据**（`S3RealEndpointContractTest` 10 条跑真 LocalStack 4.9.2 容器，含 1001 对象跨页与预签名 URL 真 HTTP 取回；另有 `p10-object-store-real` 真端点画面帧），⭐ **OSS 已有真账号只读契约**（`OssRealEndpointContractTest` 8 例：ListObjects V1 跨 1000 条页边界、metadata 的 contentType、预签名 URL 真 HTTPS GET、urlPrefix 同域），⭐ **Kodo 已有真账号只读契约**（`QiniuRealEndpointContractTest` 12 例：11 通过 + 写契约 opt-in 跳过，覆盖 `STORE/` 层级键 4 页 3427 条跨页、公开 / 私有空间签名 URL 真 HTTP 读、`putTime` 换算、坏凭据必须失败）；⭐ 契约实跑逼出一处**产品假绿修复**：Kodo 的 `listBuckets()` 原是本地回显，坏凭据也能让向导「测试连接」通过，现 `ObjectStoreSessions.test` 四家统一在列桶后追加一次不存在前缀的真列举当握手（不拉全桶、不写数据）；**仅 COS 一家原生 SDK 仍只有编译 + 内存后端契约**；⭐ **渐进分页已落地**：新增 `ObjectPage` / `PageCursor` 与 `ObjectStoreSession.listObjectsPage`（四家 SDK 各自原生分页 + 服务端 delimiter 折叠，游标绑定 bucket/prefix/delimiter 且校验失败即拒绝，接口 default 只是兼容 fallback）；`ObjectBrowserPage` 首屏只取 200 行、底部「加载更多」逐页累加、按 key 去重、换前缀重置，没有下一页时页脚隐藏。旧的全量 `listObjects` 只留给递归删前缀 / 连接测试 / 既有真端点契约。⚠️ **真端点分页证据只有 S3 兼容一支**（`S3RealEndpointContractTest` 11 条里新增一条真分页契约，实跑 0 跳过）；OSS / Kodo / COS 三支分页按各自 SDK 的 marker / token 语义实现，本轮无凭据 / 无仿真服务，**没有真端点分页证据** |
 | 首启引导与 Tab 治理（P3） | ✅ | `OnboardingOverlay` 叠在 demo 自动连接之上、关后即焚（`ui.onboarding.seen`），Help 菜单可重开，验收 / 截图 / 测试会话不自动弹以保证逐帧可复现；向导首步四枚族筛选 chip 用**可见性切换**而非重建磁贴，被筛掉的选中项自动挪到该族第一张；`tabs` 命令（命令面板 + Window 菜单）打开非常驻的 `TabOverviewPanel`，按连接分组 / 搜索 / 激活 / 逐条关闭 / 按连接全关，**三条关闭回调全部回到 `TabBar.close()`**，`closeGuard` 脏检查、钉住态、常驻标签规则一条不绕过。⚠️ TabBar 分组视觉未新增，沿用既有连接名 / 库名 / 厂商图形注入；连接管理页「无连接三步上手」未单独做，由引导层三张卡片承担 |
 | 品牌资产（P3-6） | 🟡 | `redis.svg` + `aws-s3` / `aliyun-oss` / `qiniu` / `tencent-cos` 五枚落地，`TRADEMARK-NOTICE.txt` 逐枚点名 `BrandIconTest` 通过；彩色 `list.svg` 补齐图标系统。⚠️ 五枚均为**中性几何占位件**，发布前必须换成各家品牌页的原始矢量件（R4 资产阻塞） |
@@ -373,8 +402,9 @@
      跑在 testcontainers 起的真 `redis:7.2` 容器上，含 FLUSHALL 的真实变异验证；同版 UI 验收帧
      （`p10-redis-keys`，真容器实拍）也已入库 —— Redis 这一族服务端与画面证据都齐了，
      只是 over SSH 未接（下条）。
-  2. **Redis over SSH 未接入**：档案里的 SSH 段目前只作用于 SQL 连接；`RedisSessions` 在代码里
-     写明这一点，界面不摆一个勾了没反应的开关。
+  2. ✅ **Redis over SSH 已接入（本轮）**：`RedisSessions` 复用 SQL 那套纯 Java 隧道，启用时开本地
+     端口转发、让 Lettuce 连环回口；`RedisSshTunnelTest` 用进程内跳板机 + 真 `redis:7.2` 容器
+     端到端验证转发生效、错误口令报为隧道失败、会话关闭后本地端口释放。SSH 秘密只从凭据库取。
   3. ⭐ **渐进分页已落地（本轮）；剩下的是真端点证据与性能量测**：新增 `ObjectPage`
      （一页条目 + 不透明 `nextToken`）与 `PageCursor`（把 bucket/prefix/delimiter 编进游标，
      解不开 / 上下文不符一律抛异常，不静默从首页重来）；`ObjectStoreSession.listObjectsPage`
