@@ -2,6 +2,7 @@ package io.agenticdb.introspect;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -127,5 +128,64 @@ class ViewBodyDependenciesTest {
         assertThat(ex("WITH RECURSIVE cte AS (SELECT id FROM base UNION ALL "
                 + "SELECT id FROM cte) SELECT * FROM cte"))
                 .containsExactlyInAnyOrder("base");
+    }
+
+    // ── R16：限定名保留 ─────────────────────────────────────────────
+
+    private List<String> qualified(String body) {
+        return ViewBodyDependencies.extractQualified(body).stream()
+                .map(ViewBodyDependencies.ObjectRef::canonical)
+                .toList();
+    }
+
+    @Test
+    void qualifiedKeepsSchemaPrefix() {
+        assertThat(qualified("SELECT * FROM dbo.users"))
+                .containsExactly("dbo.users");
+        assertThat(qualified("SELECT * FROM catalog.dbo.users"))
+                .containsExactly("catalog.dbo.users");
+    }
+
+    @Test
+    void unqualifiedStaysBare() {
+        assertThat(qualified("SELECT * FROM users")).containsExactly("users");
+    }
+
+    @Test
+    void twoSchemasSameBareNameAreNotMerged() {
+        // 这正是 R16 的根因：裸名集合会把 sales.orders / hr.orders 并成 "orders"
+        assertThat(ex("SELECT * FROM sales.orders JOIN hr.orders ON sales.orders.id = hr.orders.id"))
+                .containsExactly("orders"); // extract 仍保持旧行为（向后兼容）
+        assertThat(qualified("SELECT * FROM sales.orders JOIN hr.orders ON 1=1"))
+                .containsExactlyInAnyOrder("sales.orders", "hr.orders");
+    }
+
+    @Test
+    void quotedQualifierIsPreserved() {
+        assertThat(qualified("SELECT * FROM [dbo].[users]")).containsExactly("dbo.users");
+        assertThat(qualified("SELECT * FROM \"sales\".\"orders\""))
+                .containsExactly("sales.orders");
+        // 引号内含点：限定前缀整体保留
+        assertThat(qualified("SELECT * FROM \"schema.with.dot\".\"table\""))
+                .containsExactly("schema.with.dot.table");
+    }
+
+    @Test
+    void qualifiedDedupIsByCanonicalName() {
+        assertThat(qualified("SELECT * FROM a.t JOIN a.t t2 ON 1=1"))
+                .containsExactly("a.t");
+    }
+
+    @Test
+    void objectRefExposesParts() {
+        ViewBodyDependencies.ObjectRef qualified = new ViewBodyDependencies.ObjectRef("dbo", "users");
+        assertThat(qualified.qualified()).isTrue();
+        assertThat(qualified.name()).isEqualTo("users");
+        assertThat(qualified.qualifier()).isEqualTo("dbo");
+        assertThat(qualified.canonical()).isEqualTo("dbo.users");
+
+        ViewBodyDependencies.ObjectRef bare = new ViewBodyDependencies.ObjectRef(null, "users");
+        assertThat(bare.qualified()).isFalse();
+        assertThat(bare.canonical()).isEqualTo("users");
     }
 }

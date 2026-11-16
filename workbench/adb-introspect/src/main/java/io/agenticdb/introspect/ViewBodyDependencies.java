@@ -1,6 +1,9 @@
 package io.agenticdb.introspect;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -35,6 +38,29 @@ import java.util.regex.Pattern;
  */
 public final class ViewBodyDependencies {
 
+    /**
+     * 一处对象引用：{@code name} 是最后一段裸名，{@code qualifier} 是它前面的限定前缀
+     * （如 {@code dbo} / {@code catalog.dbo}，已去引号，点分隔；无前缀时为 {@code null}）。
+     *
+     * <p>为什么留着 qualifier：库里同名对象分属不同 schema（{@code sales.orders} 与
+     * {@code hr.orders}）时，只取裸名会把两条边并成一个节点（R16）。建图时限定名精确匹配优先，
+     * 匹配不到再退回裸名，退回仍歧义的按 UNKNOWN 处理，不许臆造合并。
+     */
+    public record ObjectRef(String qualifier, String name) {
+        public ObjectRef {
+            qualifier = qualifier == null || qualifier.isEmpty() ? null : qualifier;
+        }
+
+        public boolean qualified() {
+            return qualifier != null;
+        }
+
+        /** {@code schema.table} 形态的规范名（无前缀时就是裸名）。 */
+        public String canonical() {
+            return qualified() ? qualifier + "." + name : name;
+        }
+    }
+
     private ViewBodyDependencies() {
     }
 
@@ -55,12 +81,35 @@ public final class ViewBodyDependencies {
      * @return 去重后的裸对象名集合（保留原大小写；图里按大小写不敏感匹配）
      */
     public static Set<String> extract(String viewBody) {
+        Set<String> names = new HashSet<>();
+        for (ObjectRef ref : extractQualified(viewBody)) {
+            names.add(ref.name());
+        }
+        return names;
+    }
+
+    /**
+     * 与 {@link #extract(String)} 同一套解析，但保留每处引用的限定前缀（R16）。
+     *
+     * <p>返回顺序为首次出现顺序、按 {@code qualifier + name} 去重；裸名相同的两处引用若
+     * 前缀不同（{@code sales.orders} / {@code hr.orders}）会各自保留，由建图阶段决定是否合并。
+     *
+     * @return 去重的引用列表（保留大小写）
+     */
+    public static List<ObjectRef> extractQualified(String viewBody) {
         String body = stripCreatePrefix(viewBody == null ? "" : viewBody);
         body = stripComments(body);
         body = stripSingleQuoted(body);
         Set<String> ctes = collectCtes(body);
-        Set<String> refs = new HashSet<>();
-        scanFromJoin(body, ctes, refs);
+        Set<String> seen = new LinkedHashSet<>();
+        List<ObjectRef> refs = new ArrayList<>();
+        scanFromJoin(body, ctes, (bare, qualifier) -> {
+            String key = (qualifier == null ? "" : qualifier.toLowerCase(Locale.ROOT) + ".") +
+                    bare.toLowerCase(Locale.ROOT);
+            if (seen.add(key)) {
+                refs.add(new ObjectRef(qualifier, bare));
+            }
+        });
         return refs;
     }
 
@@ -194,21 +243,31 @@ public final class ViewBodyDependencies {
         return i;
     }
 
+    /** from-item 引用接收器：裸名 + 限定前缀（无前缀为 null）。 */
+    @FunctionalInterface
+    private interface RefSink {
+        void accept(String bare, String qualifier);
+    }
+
     /** 扫所有 {@code FROM}/{@code JOIN} 后跟的 from-item，提取对象名（去 CTE）。 */
-    private static void scanFromJoin(String body, Set<String> ctes, Set<String> refs) {
+    private static void scanFromJoin(String body, Set<String> ctes, RefSink sink) {
         Matcher m = Pattern.compile("(?i)\\b(FROM|JOIN)\\b").matcher(body);
         while (m.find()) {
             int i = m.end();
             // 一个 from-item 列表：一个或多个对象路径，逗号分隔，遇边界停
             while (i < body.length()) {
                 i = skipSpace(body, i);
-                String name = readPathLastSegment(body, i);
-                if (name == null) {
+                List<String> segments = readPathSegments(body, i);
+                if (segments.isEmpty()) {
                     break; // 括号子查询 / 意外字符：本 from-item 收尾，子查询内部会被另行扫到
                 }
+                String name = segments.get(segments.size() - 1);
                 int after = afterPath(body, i);
                 if (!ctes.contains(name.toLowerCase(Locale.ROOT))) {
-                    refs.add(name);
+                    String qualifier = segments.size() > 1
+                            ? String.join(".", segments.subList(0, segments.size() - 1))
+                            : null;
+                    sink.accept(name, qualifier);
                 }
                 i = skipSpace(body, after);
                 // 吃掉可能的别名（FROM a b / FROM a AS b），再判逗号或边界
@@ -247,15 +306,24 @@ public final class ViewBodyDependencies {
 
     /** 读一个对象路径（schema.表 / 带引号标识符 / [s].[t] 等形式），返回最后一段去引号；不是路径返回 null。 */
     static String readPathLastSegment(String body, int start) {
+        List<String> segments = readPathSegments(body, start);
+        return segments.isEmpty() ? null : segments.get(segments.size() - 1);
+    }
+
+    /**
+     * 读一个对象路径的<b>所有</b>段（每段去引号、保原大小写）。
+     * 空列表表示起点不是标识符 / 路径。供限定名解析与 CTE 收集共用一套分段逻辑。
+     */
+    static List<String> readPathSegments(String body, int start) {
+        List<String> segments = new ArrayList<>();
         int i = start;
         int n = body.length();
-        String last = null;
         while (i < n) {
             String seg = readSegment(body, i);
             if (seg == null) {
                 break;
             }
-            last = seg;
+            segments.add(seg);
             i = afterSegment(body, i);
             i = skipSpace(body, i);
             if (i < n && body.charAt(i) == '.') {
@@ -265,7 +333,7 @@ public final class ViewBodyDependencies {
             }
             break;
         }
-        return last;
+        return segments;
     }
 
     /** 返回对象路径之后的位置（最后一个段之后）。 */

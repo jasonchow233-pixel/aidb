@@ -48,7 +48,8 @@ public final class DependencyGraphPage extends VBox {
 
     public DependencyGraphPage(SchemaDependencyGraph graph, String focus) {
         this.graph = graph;
-        this.focus = focus;
+        // 裸名焦点（右键菜单传 o.name()）→ 节点实际显示名（可能是 schema.name），否则高亮对不上
+        this.focus = graph.resolveNodeName(focus);
 
         String title = focus == null || focus.isBlank()
                 ? I18n.t("page.depgraph.title")
@@ -130,8 +131,15 @@ public final class DependencyGraphPage extends VBox {
         box.setFill(Color.web(fill));
         box.setArcWidth(8.0);
         box.setArcHeight(8.0);
-        box.setStroke(lit ? Color.web("#ffd479") : Color.web("#00000000"));
-        box.setStrokeWidth(lit ? 2.5 : 0.0);
+        // R16：定义体缺失的视图画琥珀色虚线框，和高亮黄实线区分 —— 让「少边」在图上可见
+        if (node.unresolved()) {
+            box.setStroke(Color.web("#e08a1e"));
+            box.setStrokeWidth(lit ? 2.5 : 1.5);
+            box.getStrokeDashArray().addAll(6.0, 4.0);
+        } else {
+            box.setStroke(lit ? Color.web("#ffd479") : Color.web("#00000000"));
+            box.setStrokeWidth(lit ? 2.5 : 0.0);
+        }
         box.setLayoutX(x);
         box.setLayoutY(y);
         nodeBoxes.put(node.name(), box);
@@ -142,8 +150,9 @@ public final class DependencyGraphPage extends VBox {
         name.setLayoutX(x + 6);
         name.setLayoutY(y + 6);
 
-        Label kind = new Label(I18n.t(kindKey(node.kind())));
-        kind.setStyle("-fx-text-fill:#e8e8e8; -fx-font-size:10px;");
+        Label kind = new Label(I18n.t(node.unresolved() ? "depgraph.legend.unresolved" : kindKey(node.kind())));
+        kind.setStyle("-fx-text-fill:" + (node.unresolved() ? "#ffd9a0" : "#e8e8e8")
+                + "; -fx-font-size:10px;");
         kind.setLayoutX(x + 6);
         kind.setLayoutY(y + 26);
 

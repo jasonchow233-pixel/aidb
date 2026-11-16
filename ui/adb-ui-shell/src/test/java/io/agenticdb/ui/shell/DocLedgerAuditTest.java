@@ -132,6 +132,20 @@ class DocLedgerAuditTest {
                             "尚不能从结构化条件生成",
                             "实际生成能力仍待",
                             "不是从结构化条件生成查询")),
+            /**
+             * ⭐ 2026-11-16 R16：视图依赖图的限定名合并与缺定义体少边两处边界已修。
+             * 收进棘轮，防止「限定名仍可能被合并」「缺少定义体时会少边」这类旧口径被写回去。
+             */
+            new Capability("视图依赖解析边界（R16）",
+                    "workbench/adb-introspect/src/main/java/io/agenticdb/introspect/SchemaDependencyGraph.java",
+                    "resolveNodeName",
+                    List.of("限定名仍可能被合并",
+                            "限定名仍可能合并",
+                            "限定名可能合并",
+                            "缺少定义体时会少边",
+                            "缺定义少边",
+                            "缺少视图定义体时会少边",
+                            "r16.*待修")),
             new Capability("ER 图（用户裁定不做）",
                     null, null,
                     List.of("只读 er 图.*评估",

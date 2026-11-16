@@ -9,6 +9,19 @@
 
 ## [Unreleased]
 
+### Fixed — 2026-11-16（续二）：视图依赖解析边界（R16）
+
+- **限定名不再被合并**：视图正文里带前缀的引用（`sales.orders`）现在按 `schema.name` 全名精确
+  匹配建节点，不同 schema 的同名对象不再并成一个；裸名引用先按视图所在 schema、再按唯一裸名
+  匹配，仍歧义的按「外部」灰显，不臆造连边。解析层 `ViewBodyDependencies.extractQualified()`
+  保留每处引用的限定前缀，建图层 `SchemaDependencyGraph` 用全名 key + 裸名回退解析。
+- **缺定义体不再静默少边**：定义体读不到的视图照常入图、画琥珀色虚线框标注「定义体缺失」，
+  让「少边」在图上可见（`unresolvedViews()` 可程序化取全部）。裸名焦点也能规范化到全名节点，
+  高亮不再对不上。
+- **门禁**：`ViewBodyDependenciesTest` 26 / `SchemaDependencyGraphTest` 14 / `DependencyLayoutTest` 2，
+  `DocLedgerAuditTest` 新增「R16 已修」棘轮，i18n 中英补 `depgraph.legend.unresolved`。
+  ⚠️ 仍是静态正文解析、不跟踪动态 SQL；缺定义体的视图出边确实为空（现在看得见），不保证完整影响分析。
+
 ### Added — 2026-11-16（续）：实际查询构造器（R13）
 
 - **「查询构造器」从只读预览变成真构造器**：选表 / 视图、勾选列、加 AND / OR 条件组，

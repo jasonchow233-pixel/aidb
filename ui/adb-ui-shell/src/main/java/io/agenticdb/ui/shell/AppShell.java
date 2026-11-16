@@ -1233,8 +1233,10 @@ public final class AppShell extends StackPane {
      * 于是「删表前会坏掉哪些视图」也一并覆盖。图算完才切回 FX 线程开页——
      * 渲染层只吃已经建好的图，不碰库。
      *
-     * <p>单个视图读不出定义体（某些方言 / 权限）不会拖垮整张图：那条置为 null，
-     * 仅缺失它自己的出边，其余对象照常入图。
+     * <p>单个视图读不出定义体（某些方言 / 权限）不会拖垮整张图：那条照常入图、标
+     * {@code unresolved}，图上把它画成「定义体缺失 · 依赖可能不完整」，其余对象不受影响
+     * （R16：让「少边」可见，而不是静默跳过）。同名对象分属不同 schema 时按
+     * {@code schema.name} 精确建节点，不再合并成一个。
      */
     private void showDependencyGraph(String connectionId, String focus) {
         DbSession current = sessionFor(connectionId);
@@ -1247,6 +1249,7 @@ public final class AppShell extends StackPane {
                 List<SchemaObject> objects = schemaService.listObjects(current);
                 List<SchemaDependencyGraph.Input> inputs = new ArrayList<>();
                 for (SchemaObject o : objects) {
+                    String schema = o.schema();
                     if (o.kind() == SchemaService.ObjectKind.VIEW) {
                         String body = null;
                         try {
@@ -1254,9 +1257,9 @@ public final class AppShell extends StackPane {
                         } catch (Exception ignored) {
                             body = null;
                         }
-                        inputs.add(SchemaDependencyGraph.Input.view(o.name(), body));
+                        inputs.add(SchemaDependencyGraph.Input.view(o.name(), schema, body));
                     } else {
-                        inputs.add(SchemaDependencyGraph.Input.table(o.name()));
+                        inputs.add(SchemaDependencyGraph.Input.table(o.name(), schema));
                     }
                 }
                 SchemaDependencyGraph graph = SchemaDependencyGraph.of(inputs);
