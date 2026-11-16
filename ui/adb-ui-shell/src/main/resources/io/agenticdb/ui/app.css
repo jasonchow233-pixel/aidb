@@ -3635,6 +3635,10 @@
     -fx-font-size: 12px;
 }
 
+.adb-query__builder-column {
+    -fx-font-size: 12px;
+}
+
 .adb-query__split > .split-pane-divider {
     -fx-background-color: -adb-border-subtle;
     -fx-padding: 0px 0px 0px 0px;

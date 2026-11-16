@@ -115,6 +115,23 @@ class DocLedgerAuditTest {
                             "redis over ssh 未接入",
                             "redis connections currently go direct",
                             "ssh 段目前不作用于 redis")),
+            /**
+             * ⭐ 2026-11-16：R13 实际查询构造器从只读预览升级为真构造器。公开文档此前同时留着
+             * 「查询构造器待做」「仅预览 / 复制」「尚不能从结构化条件生成」等旧口径，
+             * 收进棘轮，防止已交付的能力被写回去。
+             */
+            new Capability("实际查询构造器（R13）",
+                    "workbench/adb-introspect/src/main/java/io/agenticdb/introspect/SelectBuilder.java",
+                    "class SelectBuilder",
+                    List.of("查询构造器.*待做",
+                            "r13.*待做",
+                            "r13 仍待",
+                            "仅预览 / 复制",
+                            "仅预览/复制",
+                            "只预览 / 复制",
+                            "尚不能从结构化条件生成",
+                            "实际生成能力仍待",
+                            "不是从结构化条件生成查询")),
             new Capability("ER 图（用户裁定不做）",
                     null, null,
                     List.of("只读 er 图.*评估",
@@ -214,7 +231,9 @@ class DocLedgerAuditTest {
                 "4. **ER 图（只读结构图）** —— 评估并落地只读实体关系图",
                 "⚠️ 口径分清：**只读 ER 图**仍在评估、未承诺",
                 "Redis over SSH is not wired up yet — the connection wizard says so",
-                "⚠️ Redis over SSH 未接入（还在说明页）");
+                "⚠️ Redis over SSH 未接入（还在说明页）",
+                "8. **实际查询构造器（R13，待做）** —— 当前同名入口只预览 / 复制现有 SQL",
+                "当前「查询构造器」仅预览 / 复制编辑器中已有 SQL，不是从结构化条件生成查询，实际生成能力 R13 待做");
 
         List<Pattern> all = CAPABILITIES.stream()
                 .flatMap(c -> c.forbidden().stream())

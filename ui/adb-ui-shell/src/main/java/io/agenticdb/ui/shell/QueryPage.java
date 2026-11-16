@@ -11,7 +11,12 @@ import io.agenticdb.jdbc.DbSession;
 import io.agenticdb.jdbc.ExecutionResult;
 import io.agenticdb.asset.AssetKind;
 import io.agenticdb.introspect.QueryPaginator;
+import io.agenticdb.introspect.DataQuery;
+import io.agenticdb.introspect.QueryCriteria;
+import io.agenticdb.introspect.SelectBuilder;
+import io.agenticdb.introspect.FilterOperator;
 import io.agenticdb.introspect.SchemaService;
+import io.agenticdb.introspect.SchemaService.SchemaObject;
 import io.agenticdb.introspect.SchemaService.TableSchema;
 import io.agenticdb.model.ColumnDef;
 import io.agenticdb.model.Danger;
@@ -43,12 +48,14 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.Separator;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
@@ -3454,30 +3461,23 @@ public final class QueryPage extends VBox implements AutoCloseable {
         builderDialog().showAndWait();
     }
 
-    /** 门禁接缝：只读查询构造器弹窗本体（不显示），供断言预览区与「没有执行入口」。 */
+    /**
+     * 门禁接缝：查询构造器弹窗本体（不显示）。
+     *
+     * <p>⭐ R13：从「只读预览编辑器 SQL」升级为**真构造器** —— 选表 / 勾列 / 加
+     * AND / OR 条件，实时生成可直接执行的 SELECT。保留旧契约：预览区只读、
+     * {@code #query-builder-preview} / {@code #query-builder-copy} 仍在、DialogPane
+     * 只挂 CLOSE、**不执行任何 SQL**。新增的「插入编辑器」按钮放在 content 里
+     * （不是 DialogPane 动作按钮），只回填文本、不触发执行。
+     */
     Dialog<Void> builderDialog() {
         Dialog<Void> dialog = new Dialog<>();
         dialog.setTitle(I18n.t("query.builder.title"));
         dialog.getDialogPane().setId("query-builder-dialog");
 
-        String sql = editor.text();
-        boolean empty = sql == null || sql.isBlank();
-        Label hint = new Label(I18n.t("query.builder.readOnly"));
-        hint.setId("query-builder-hint");
-        TextArea preview = new TextArea(empty ? I18n.t("query.builder.empty") : sql);
-        preview.setId("query-builder-preview");
-        preview.setEditable(false);
-        preview.setWrapText(true);
-        preview.getStyleClass().add("adb-query__message");
-        VBox.setVgrow(preview, Priority.ALWAYS);
-
-        Button copy = new Button(I18n.t("query.builder.copy"));
-        copy.setId("query-builder-copy");
-        copy.getStyleClass().add("adb-button");
-        copy.setDisable(empty);
-        copy.setOnAction(event -> putOnClipboard(empty ? "" : sql));
-
-        VBox content = new VBox(8, hint, preview, copy);
+        BuilderForm form = new BuilderForm();
+        TextArea preview = form.preview;
+        VBox content = new VBox(8, form.buildForm(), new Separator(), preview, form.actionBar());
         content.setPadding(new Insets(8));
         dialog.getDialogPane().setContent(content);
         dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
@@ -3485,7 +3485,220 @@ public final class QueryPage extends VBox implements AutoCloseable {
             dialog.initOwner(getScene().getWindow());
         }
         DialogStyles.apply(dialog, getScene() == null ? null : getScene().getWindow());
+        form.loadTables();
+        form.refresh();
         return dialog;
+    }
+
+    /**
+     * R13 构造器的表单状态与控件。抽取成内部类是为了让状态收集 / 刷新有单一出处，
+     * 不是散在十个监听器里的临时变量。生成 SQL 的逻辑全在
+     * {@link QueryCriteria} + {@link SelectBuilder}（已各自门禁），这里只做收集与回填。
+     */
+    private final class BuilderForm {
+        private final ComboBox<String> tableChoice = new ComboBox<>();
+        private final VBox columnBox = new VBox(3);
+        private final VBox conditionBox = new VBox(4);
+        private final TextArea preview = new TextArea();
+        private final Button insert = new Button(I18n.t("query.builder.insert"));
+        private final Label status = new Label();
+        /** 表是否已成功加载且被选中 —— 决定预览显示生成 SQL 还是回退编辑器原文。 */
+        private boolean hasTable;
+
+        BuilderForm() {
+            tableChoice.setId("query-builder-table");
+            tableChoice.setPromptText(I18n.t("query.builder.tablePrompt"));
+            tableChoice.valueProperty().addListener((obs, oldTable, newTable) -> {
+                hasTable = newTable != null && !newTable.isBlank();
+                if (hasTable) {
+                    loadColumns(newTable);
+                } else {
+                    columnBox.getChildren().clear();
+                }
+                refresh();
+            });
+
+            preview.setId("query-builder-preview");
+            preview.setEditable(false);
+            preview.setWrapText(true);
+            preview.getStyleClass().add("adb-query__message");
+            VBox.setVgrow(preview, Priority.ALWAYS);
+
+            insert.setId("query-builder-insert");
+            insert.getStyleClass().add("adb-button");
+            insert.setOnAction(event -> {
+                String generated = generatedSql();
+                if (generated != null && !generated.isBlank()) {
+                    editor.setText(generated);
+                    updateRisk();
+                    updateButtons();
+                    setDirty(true);
+                }
+            });
+
+            status.setId("query-builder-status");
+            status.getStyleClass().add("adb-query__message");
+        }
+
+        Node buildForm() {
+            Label hint = new Label(I18n.t("query.builder.hint"));
+            hint.setId("query-builder-hint");
+            hint.setWrapText(true);
+
+            Label tableLabel = new Label(I18n.t("query.builder.table"));
+            tableLabel.setLabelFor(tableChoice);
+
+            Label colLabel = new Label(I18n.t("query.builder.columns"));
+
+            Button addRow = new Button(I18n.t("query.builder.addCondition"));
+            addRow.setId("query-builder-add-row");
+            addRow.getStyleClass().add("adb-button");
+            addRow.setOnAction(event -> {
+                conditionBox.getChildren().add(new ConditionRow(conditionBox.getChildren().isEmpty()));
+                refresh();
+            });
+
+            return new VBox(6, hint, new HBox(6, tableLabel, tableChoice),
+                    colLabel, columnBox, conditionBox, addRow, status);
+        }
+
+        Node actionBar() {
+            Button copy = new Button(I18n.t("query.builder.copy"));
+            copy.setId("query-builder-copy");
+            copy.getStyleClass().add("adb-button");
+            copy.setOnAction(event -> {
+                String text = preview.getText();
+                putOnClipboard(text == null ? "" : text);
+            });
+            return new HBox(6, insert, copy);
+        }
+
+        void loadTables() {
+            dbExecutor.execute(() -> {
+                java.util.List<String> names;
+                try {
+                    names = schemaService.listObjects(session).stream()
+                            .filter(o -> o.kind() == SchemaService.ObjectKind.TABLE
+                                    || o.kind() == SchemaService.ObjectKind.VIEW)
+                            .map(SchemaObject::name)
+                            .sorted(String.CASE_INSENSITIVE_ORDER)
+                            .toList();
+                } catch (Exception e) {
+                    names = java.util.List.of();
+                }
+                java.util.List<String> loaded = names;
+                Platform.runLater(() -> {
+                    tableChoice.getItems().setAll(loaded);
+                    status.setText(loaded.isEmpty()
+                            ? I18n.t("query.builder.noTables") : "");
+                });
+            });
+        }
+
+        void loadColumns(String table) {
+            dbExecutor.execute(() -> {
+                java.util.List<String> names;
+                try {
+                    TableSchema schema = schemaService.describe(session, table);
+                    names = schema == null ? java.util.List.of()
+                            : schema.columns().stream().map(ColumnDef::name).toList();
+                } catch (Exception e) {
+                    names = java.util.List.of();
+                }
+                java.util.List<String> loaded = names;
+                Platform.runLater(() -> {
+                    columnBox.getChildren().clear();
+                    for (String name : loaded) {
+                        CheckBox box = new CheckBox(name);
+                        box.getStyleClass().add("adb-query__builder-column");
+                        box.selectedProperty().addListener((obs, o, n) -> refresh());
+                        columnBox.getChildren().add(box);
+                    }
+                    refresh();
+                });
+            });
+        }
+
+        /** 生成 SQL；无有效选表时返回 null（预览回退编辑器原文）。 */
+        String generatedSql() {
+            if (!hasTable || tableChoice.getValue() == null) {
+                return null;
+            }
+            java.util.List<String> columns = new java.util.ArrayList<>();
+            for (javafx.scene.Node node : columnBox.getChildren()) {
+                if (node instanceof CheckBox box && box.isSelected()) {
+                    columns.add(box.getText());
+                }
+            }
+            java.util.List<QueryCriteria.Criterion> rows = new java.util.ArrayList<>();
+            for (javafx.scene.Node node : conditionBox.getChildren()) {
+                if (node instanceof ConditionRow row) {
+                    rows.add(row.toCriterion());
+                }
+            }
+            DataQuery query = new QueryCriteria(rows).toDataQuery();
+            return SelectBuilder.select(session, tableChoice.getValue(), columns, query);
+        }
+
+        void refresh() {
+            String generated = generatedSql();
+            if (generated != null && !generated.isBlank()) {
+                preview.setText(generated);
+                insert.setDisable(false);
+            } else {
+                String sql = editor.text();
+                boolean empty = sql == null || sql.isBlank();
+                preview.setText(empty ? I18n.t("query.builder.empty") : sql);
+                insert.setDisable(true);
+            }
+        }
+
+        /** 一行条件：连接词 + 列 + 操作符 + 值（BETWEEN 第二个值框按需显示）。 */
+        private final class ConditionRow extends HBox {
+            private final ComboBox<QueryCriteria.Connector> connector = new ComboBox<>();
+            private final ComboBox<String> column = new ComboBox<>();
+            private final ComboBox<FilterOperator> operator = new ComboBox<>();
+            private final TextField value = new TextField();
+            private final TextField value2 = new TextField();
+
+            ConditionRow(boolean first) {
+                super(4);
+                setId("query-builder-condition-row");
+                connector.getItems().setAll(QueryCriteria.Connector.values());
+                connector.setValue(first ? QueryCriteria.Connector.AND : QueryCriteria.Connector.AND);
+                connector.setDisable(first); // 第一行的连接词无意义
+                connector.setOnAction(event -> refresh());
+                column.getItems().setAll(columnBox.getChildren().stream()
+                        .filter(n -> n instanceof CheckBox)
+                        .map(n -> ((CheckBox) n).getText()).toList());
+                column.setPromptText(I18n.t("query.builder.colPrompt"));
+                column.setOnAction(event -> refresh());
+                operator.getItems().setAll(FilterOperator.values());
+                operator.setValue(FilterOperator.EQ);
+                operator.setOnAction(event -> {
+                    value2.setVisible(operator.getValue() == FilterOperator.BETWEEN);
+                    refresh();
+                });
+                value.setPromptText(I18n.t("query.builder.valuePrompt"));
+                value.textProperty().addListener((obs, o, n) -> refresh());
+                value2.setPromptText(I18n.t("query.builder.value2Prompt"));
+                value2.setVisible(false);
+                value2.textProperty().addListener((obs, o, n) -> refresh());
+                Button remove = new Button("×");
+                remove.setId("query-builder-remove-row");
+                remove.getStyleClass().add("adb-button");
+                remove.setOnAction(event -> {
+                    conditionBox.getChildren().remove(this);
+                    refresh();
+                });
+                getChildren().addAll(connector, column, operator, value, value2, remove);
+            }
+
+            QueryCriteria.Criterion toCriterion() {
+                return new QueryCriteria.Criterion(connector.getValue(), column.getValue(),
+                        operator.getValue(), value.getText(), value2.getText());
+            }
+        }
     }
 
     private boolean confirmDanger(Danger danger) {        ButtonType execute = new ButtonType(I18n.t("query.confirmRunButton", DangerLabels.t(danger)),

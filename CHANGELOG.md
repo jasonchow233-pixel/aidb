@@ -9,6 +9,21 @@
 
 ## [Unreleased]
 
+### Added — 2026-11-16（续）：实际查询构造器（R13）
+
+- **「查询构造器」从只读预览变成真构造器**：选表 / 视图、勾选列、加 AND / OR 条件组，
+  实时生成可直接执行的字面量 SELECT；「插入编辑器」只回填文本、不自动执行、不写库。
+  生成逻辑是纯逻辑层 `QueryCriteria`（表单行 → `DataQuery`，按 OR 切组 + 值类型推断）
+  与 `SelectBuilder`（→ 字面量 SELECT：标识符走方言 quote、LIKE 沿用 escapeLike、
+  字符串单引号翻倍、BLOB 拒绝），不另造第二套条件模型。
+- **行为门禁**：`SelectBuilderTest` 15（各操作符 / 注入转义 / AND-OR / 方言引用 / fail-closed）、
+  `QueryCriteriaTest` 8（切组 / 类型推断 / IN / BETWEEN）、`QueryBuilderUiTest` 2
+  （选表出 SQL / 插入只回填不执行），`DocLedgerAuditTest` 新增「R13 已交付」棘轮。
+- ⚠️ 诚实边界：只生成 SELECT、不带 LIMIT / OFFSET（用户自定）、不自动执行；
+  证据是测试里的真 SQLite，画面帧未重拍。
+- 公开文档（ROADMAP / STATUS）中「查询构造器待做 / 仅预览复制」的旧口径按新事实改写，
+  并清掉不再使用的 `query.builder.readOnly` 文案键。
+
 ### Added — 2026-11-16：Redis over SSH
 
 - **Redis 连接现在也能走 SSH 隧道**：档案启用 SSH 时，`RedisSessions.connect` 复用 SQL 那套
