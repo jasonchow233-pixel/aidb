@@ -68,8 +68,8 @@
     <!-- Jackson 2.22 起 annotations 独立发版，版本号不带 patch。 -->
     <jackson-annotations.version>2.22</jackson-annotations.version>
 
-    <junit.version>5.10.2</junit.version>
-    <assertj.version>3.27.6</assertj.version>
+    <junit.version>5.14.4</junit.version>
+    <assertj.version>3.27.7</assertj.version>
     <testfx.version>4.0.18</testfx.version>
     <monocle.version>21.0.2</monocle.version>
     <testcontainers.version>1.21.4</testcontainers.version>
