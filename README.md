@@ -80,6 +80,8 @@ cd aidb
 
 The first launch creates a demo database (`~/.agenticdb/agenticdb-demo.db`) so there is something real to click on before you point it at your own data. `./scripts/package.sh` produces a `jpackage` app-image / `.dmg` / `.msi` / `.deb` for your platform — it works, it is just unsigned.
 
+**Fat jar (direct run):** `./mvnw -Pfat-jar -pl bootstrap/adb-desktop -am package -DskipTests` produces `target/adb-desktop-1.0.0-SNAPSHOT-fat.jar` (~101 MB, all dependencies bundled). Run with `java -jar adb-desktop-1.0.0-SNAPSHOT-fat.jar`.
+
 ### Feature highlights
 
 - **Write safety, three layers.** Every SQL statement is classified by danger before it runs (fail-closed). Write operations preview the exact SQL and require confirmation; the driver re-checks the declared danger level and refuses under-declared danger. A save preview offers one-click undo.
@@ -199,6 +201,8 @@ cd aidb
 ```
 
 首次启动会创建演示数据库（`~/.agenticdb/agenticdb-demo.db`），让你在连自己的数据前就有东西可点。`./scripts/package.sh` 为你的平台生成 `jpackage` 应用镜像 / `.dmg` / `.msi` / `.deb` —— 能用，只是未签名。
+
+**Fat jar（直接运行）：** `./mvnw -Pfat-jar -pl bootstrap/adb-desktop -am package -DskipTests` 生成 `target/adb-desktop-1.0.0-SNAPSHOT-fat.jar`（约 101 MB，已打包所有依赖）。用 `java -jar adb-desktop-1.0.0-SNAPSHOT-fat.jar` 运行。
 
 ### 功能亮点
 
