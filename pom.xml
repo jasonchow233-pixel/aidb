@@ -56,7 +56,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>25</maven.compiler.release>
 
-    <javafx.version>25</javafx.version>
+    <javafx.version>25.0.5.1</javafx.version>
     <controlsfx.version>11.2.6</controlsfx.version>
     <richtextfx.version>0.11.7</richtextfx.version>
     <!-- D-97：编辑器外层视口（滚动条）用的类在 flowless 里，richtextfx 是**传递**带进来的。
