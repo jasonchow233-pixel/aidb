@@ -58,3 +58,6 @@ scripts/.dbmatrix.env
 # ── 真库矩阵的本地 TLS 材料（R47：自签 CA + 服务器证书 + **私钥**） ──
 # 这目录里是私钥，跟口令同一级敏感；测试侧只按路径读文件，绝不把内容写进任何文档或提交。
 scripts/.dbmatrix-tls/
+
+# ── Navicat 商业软件截图（仅本地对拍量具，版权风险，不进公开仓库） ──
+docs/screenshots/navicat/

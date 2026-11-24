@@ -1,0 +1,29 @@
+# CODEOWNERS — 自动请求审核的文件所有者
+
+# GitHub 会根据这个文件，在 PR 涉及对应路径时自动请求列出的评审人审核。
+# 格式：`<路径模式> <@用户或@团队>`
+
+# 整个仓库的默认审核人
+* @jasonchow233-pixel
+
+# 核心模块（方言、安全、SQL 内核）由架构负责人审核
+core/ @jasonchow233-pixel
+workbench/adb-jdbc/ @jasonchow233-pixel
+workbench/adb-safety/ @jasonchow233-pixel
+workbench/adb-sql/ @jasonchow233-pixel
+
+# UI 层（JavaFX 外壳、设计令牌、主题）由 UI 负责人审核
+ui/ @jasonchow233-pixel
+
+# 构建与打包脚本
+scripts/ @jasonchow233-pixel
+.github/workflows/ @jasonchow233-pixel
+
+# 公开文档
+README.md @jasonchow233-pixel
+docs/*.md @jasonchow233-pixel
+
+# 许可与法律文件（变更需谨慎）
+LICENSE @jasonchow233-pixel
+NOTICE @jasonchow233-pixel
+pom.xml @jasonchow233-pixel

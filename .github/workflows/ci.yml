@@ -57,16 +57,17 @@ jobs:
           path: '**/target/surefire-reports/'
           retention-days: 7
 
-  build-smoke:
-    name: 三平台编译冒烟（不跑测试）
+  cross-platform-test:
+    name: 跨平台测试（macOS / Windows，排除 adb-redis）
     # 桌面客户端的依赖里有一堆平台相关的东西（JavaFX classifier、JNA、各驱动）。
-    # 这个 job 只回答一个问题：在 mac/windows 上还能不能构建。测试在 Linux 那一份里跑。
+    # 这个 job 验证 UI 测试（TestFX + Monocle）在非 Linux 上能否正常运行。
+    # macOS / Windows runner 无 Docker，因此排除 adb-redis（需 Testcontainers 启动 Redis）。
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -77,6 +78,16 @@ jobs:
           java-version: '25'
           cache: maven
 
-      - name: 编译并安装（跳过测试）
-        run: ./scripts/build.sh --no-tests
+      - name: 编译并跑测试（排除 adb-redis，因 runner 无 Docker）
+        run: |
+          ./mvnw -B clean verify -pl '!workbench/adb-redis'
+          java tools/TestCount.java
         shell: bash
+
+      - name: 上传测试报告
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-${{ matrix.os }}
+          path: '**/target/surefire-reports/'
+          retention-days: 7
