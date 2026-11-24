@@ -51,7 +51,7 @@ jobs:
       # 没有它，一次跨平台的远程失败基本只能靠重跑猜。
       - name: 上传测试报告
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: surefire-reports
           path: '**/target/surefire-reports/'
@@ -86,7 +86,7 @@ jobs:
 
       - name: 上传测试报告
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: surefire-reports-${{ matrix.os }}
           path: '**/target/surefire-reports/'
